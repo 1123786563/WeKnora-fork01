@@ -18,7 +18,7 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 ].join('\n')), import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { TagFilterPanel, TagPickerDialog } = await import('./TagPickerDialog.tsx');
+const { TagFilterPanel, TagManageDialog, TagPickerDialog } = await import('./TagPickerDialog.tsx');
 const { tagSurfaceT } = await import('./tags-locale.ts');
 const { KnowledgeDocumentsPage } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
@@ -147,6 +147,32 @@ test('tag filter panel shows the Vue empty result and hides clear without select
   assert.ok(!html.includes('清空已选'), 'clear hidden with no selection');
 });
 
+// --- R490 B2: tag manage entry + dialog (KbTagManageDrawer.vue) ---------------------
+
+test('tag filter panel shows the 管理标签… footer entry only for contributors (Vue canEdit)', () => {
+  const managed = renderToStaticMarkup(React.createElement(TagFilterPanel, {
+    t: tt,
+    tags,
+    selectedIds: [],
+    onToggle: () => {},
+    onClear: () => {},
+    onClose: () => {},
+    canManage: true,
+    onManage: () => {},
+  }));
+  assert.ok(managed.includes('管理标签…'), 'manage entry (tagManageLink)');
+
+  const readonly = renderToStaticMarkup(React.createElement(TagFilterPanel, {
+    t: tt,
+    tags,
+    selectedIds: [],
+    onToggle: () => {},
+    onClear: () => {},
+    onClose: () => {},
+  }));
+  assert.ok(!readonly.includes('管理标签…'), 'viewer surface hides the manage entry (Vue v-if=canEdit)');
+});
+
 // --- Documents page chrome (SSR) ----------------------------------------------------
 
 test('documents page keeps Vue batch controls hidden until batch mode and drops the raw-ID prompt', () => {
@@ -172,4 +198,44 @@ test('documents page keeps the pre-existing filter chrome green', () => {
   assert.ok(html.includes('全部状态'), 'parse status filter');
   assert.ok(html.includes('全部来源'), 'source filter');
   assert.ok(html.includes('doc-filter-bar'), 'Vue filter bar class');
+});
+
+test('tag manage dialog renders the Vue drawer copy, doc counts and per-row actions', () => {
+  const html = renderToStaticMarkup(React.createElement(TagManageDialog, {
+    t: tt,
+    open: true,
+    tags: [
+      { id: '7', name: '重要', knowledge_count: 12, seq_id: 7 },
+      { id: '9', name: '合同', knowledge_count: 3, seq_id: 9 },
+      { id: '11', name: '无序号', knowledge_count: 0 },
+    ],
+    createTag: () => Promise.resolve(),
+    updateTag: () => Promise.resolve(),
+    deleteTag: () => Promise.resolve(),
+    onClose: () => {},
+  }));
+  assert.ok(html.includes('管理标签</'), 'dialog title (tagManageTitle)');
+  assert.ok(html.includes('新建、重命名或删除知识库标签'), 'description (tagManageDescription)');
+  assert.ok(html.includes('12 个文档'), 'row count uses the doc variant (tagManageDocCount)');
+  assert.ok(html.includes('3 个文档'), 'second row count');
+  assert.ok(html.includes('重命名'), 'rename action (tagEditAction)');
+  assert.ok(html.includes('删除'), 'delete action (tagDeleteAction)');
+  assert.ok(html.includes('新建标签'), 'create affordance (tagCreateAction)');
+  assert.ok(html.includes('输入标签名称关键字'), 'search placeholder (tagSearchPlaceholder)');
+  // Vue deleteTag uses tag.seq_id; a tag without a safe seq_id disables delete.
+  const disabledCount = (html.match(/disabled(="")?/g) ?? []).length;
+  assert.ok(disabledCount >= 1, 'row without seq_id keeps delete disabled');
+});
+
+test('tag manage dialog hides its body when closed', () => {
+  const html = renderToStaticMarkup(React.createElement(TagManageDialog, {
+    t: tt,
+    open: false,
+    tags,
+    createTag: () => Promise.resolve(),
+    updateTag: () => Promise.resolve(),
+    deleteTag: () => Promise.resolve(),
+    onClose: () => {},
+  }));
+  assert.equal(html, '', 'closed dialog renders nothing');
 });

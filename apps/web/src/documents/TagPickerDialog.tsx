@@ -1,8 +1,9 @@
 // Tag surfaces for the documents page, ported from the Vue baseline:
 // - TagPickerDialog  ← BatchTagDialog.vue + TagEditDialog.vue (batch & single modes)
 // - TagFilterPanel   ← the tag-filter popup in KnowledgeBase.vue L2465-2556
+// - TagManageDialog  ← KbTagManageDrawer.vue (R490 B2: the 管理标签… entry)
 // Chips, sections and footer copy mirror the Vue dialogs; state stays local.
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button, Dialog, Input } from '@weknora/ui';
 import type { KnowledgeTag } from '@weknora/api-client';
 import { filterTagOptions, selectTagId, tagCreateFailureMessage } from './tags.ts';
@@ -238,6 +239,10 @@ interface TagFilterPanelProps {
   loadingMore?: boolean;
   onLoadMore?: () => void;
   total?: number;
+  /** R490 B2 — Vue canEdit gate on the tag-filter footer 管理标签… entry. */
+  canManage?: boolean;
+  /** Opens the tag manage dialog (Vue openTagManageDrawer closes the panel first). */
+  onManage?: () => void;
 }
 
 /** The Vue tag-filter popup body (KnowledgeBase.vue L2468-2523). */
@@ -254,6 +259,8 @@ export function TagFilterPanel({
   loadingMore = false,
   onLoadMore = () => undefined,
   total,
+  canManage = false,
+  onManage,
 }: TagFilterPanelProps): ReactNode {
   // Vue sidebarTags: selections missing from the current page stay visible.
   const missing = selectedIds
@@ -312,12 +319,233 @@ export function TagFilterPanel({
         ) : null}
       </div>
       {selectedIds.length > 0 ? (
-        <div className="tag-filter-panel__footer mt-[10px] flex justify-start border-t border-[var(--wk-border,#e4e7ec)] pt-[10px]">
+        <div className="tag-filter-panel__footer mt-[10px] flex justify-start border-t border-[var(--wk-border,#e7e7ec)] pt-[10px]">
           <button type="button" className="wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[13px] text-[var(--wk-muted,#98a2b8)] transition-colors hover:text-[var(--wk-brand,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]" onClick={onClear}>
             {t('knowledgeBase.tagClearAction')}
           </button>
         </div>
       ) : null}
+      {canManage && onManage ? (
+        <div className="tag-filter-panel__footer mt-[10px] flex justify-start border-t border-[var(--wk-border,#e7e7ec)] pt-[10px]">
+          <button type="button" className="tag-manage-link wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[13px] text-[var(--wk-muted,#98a2b8)] transition-colors hover:text-[var(--wk-brand,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]" onClick={onManage}>
+            {t('knowledgeBase.tagManageLink')}
+          </button>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+export interface TagManageDialogProps {
+  t: TagSurfaceT;
+  open: boolean;
+  tags: readonly KnowledgeTag[];
+  /** POST /knowledge-bases/:id/tags (Vue createKnowledgeBaseTag). */
+  createTag: (name: string) => Promise<unknown>;
+  /** PUT tag rename (Vue updateKnowledgeBaseTag). */
+  updateTag: (tagId: string, name: string) => Promise<unknown>;
+  /** DELETE tag by seq_id with force (Vue deleteKnowledgeBaseTag force:true). */
+  deleteTag: (tag: KnowledgeTag) => Promise<unknown>;
+  onClose: () => void;
+  /** Vue @changed — reload the page tag data after each mutation; the
+   *  deletedTagId payload mirrors KbTagManageDrawer's emit. */
+  onChanged?: (payload?: { deletedTagId?: string }) => void;
+}
+
+/**
+ * R490 B2 — minimal-form port of KbTagManageDrawer.vue (the 管理标签… target):
+ * a dialog listing the KB tags with search + create + rename + delete, the
+ * exact affordances the Vue drawer ships. Local list filtering mirrors the
+ * React FAQ counterpart (FAQTagManageDialog); the drawer's server-side paging
+ * rides on the page-provided tag list instead of a second pager.
+ */
+export function TagManageDialog({
+  t,
+  open,
+  tags,
+  createTag,
+  updateTag,
+  deleteTag,
+  onClose,
+  onChanged,
+}: TagManageDialogProps): ReactNode {
+  const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const visible = tags.filter((tag) => !query.trim() || (tag.name || '').toLowerCase().includes(query.trim().toLowerCase()));
+
+  // Vue KbTagManageDrawer resetLocalState on close.
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+    setCreating(false);
+    setDraft('');
+    setEditingId(null);
+    setEditingName('');
+    setError('');
+  }, [open]);
+
+  if (!open) return null;
+
+  const failureMessage = (cause: unknown): string =>
+    typeof cause === 'object' && cause !== null && 'message' in cause && typeof (cause as { message?: unknown }).message === 'string' && (cause as { message: string }).message.trim()
+      ? (cause as { message: string }).message
+      : t('common.operationFailed');
+
+  async function submitCreate() {
+    const name = draft.trim();
+    if (!name) {
+      setError(t('knowledgeBase.tagNameRequired'));
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await createTag(name);
+      setCreating(false);
+      setDraft('');
+      onChanged?.();
+    } catch (cause) {
+      setError(failureMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitRename() {
+    if (!editingId) return;
+    const name = editingName.trim();
+    if (!name) {
+      setError(t('knowledgeBase.tagNameRequired'));
+      return;
+    }
+    // Vue submitEditTag: an unchanged name just cancels the editor.
+    const current = tags.find((tag) => tag.id === editingId);
+    if (current && name === current.name) {
+      setEditingId(null);
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await updateTag(editingId, name);
+      setEditingId(null);
+      onChanged?.();
+    } catch (cause) {
+      setError(failureMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeTag(tag: KnowledgeTag) {
+    if (busy) return;
+    if (!window.confirm(t('knowledgeBase.tagDeleteDescDoc', { name: tag.name }))) return;
+    setBusy(true);
+    setError('');
+    try {
+      await deleteTag(tag);
+      setCreating(false);
+      setEditingId(null);
+      onChanged?.({ deletedTagId: tag.id });
+    } catch (cause) {
+      setError(failureMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} title={t('knowledgeBase.tagManageTitle')} onClose={onClose} closeLabel={t('common.cancel')}>
+      <p className="tag-manage-description m-0 mt-1 text-[12px] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.tagManageDescription')}</p>
+      {error ? <p className="tag-manage-error m-0 mt-2 text-[12px]" role="alert" style={{ color: 'var(--wk-danger,#d54941)' }}>{error}</p> : null}
+      <div className="tag-manage-toolbar mt-3 flex items-center gap-2">
+        <Input
+          type="search"
+          className="min-w-0 flex-1"
+          value={query}
+          placeholder={t('knowledgeBase.tagSearchPlaceholder')}
+          aria-label={t('knowledgeBase.tagSearchPlaceholder')}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <Button
+          type="button"
+          className="shrink-0"
+          disabled={busy || creating}
+          onClick={() => {
+            setCreating(true);
+            setEditingId(null);
+          }}
+        >
+          {t('knowledgeBase.tagCreateAction')}
+        </Button>
+      </div>
+      {creating ? (
+        <div className="tag-manage-create mt-2 flex items-center gap-2">
+          <Input
+            autoFocus
+            maxLength={40}
+            className="min-w-0 flex-1"
+            value={draft}
+            placeholder={t('knowledgeBase.tagNamePlaceholder')}
+            aria-label={t('knowledgeBase.tagNamePlaceholder')}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void submitCreate();
+              if (event.key === 'Escape') setCreating(false);
+            }}
+          />
+          <Button type="button" loading={busy} onClick={() => void submitCreate()}>{t('common.create')}</Button>
+          <Button type="button" disabled={busy} onClick={() => setCreating(false)}>{t('common.cancel')}</Button>
+        </div>
+      ) : null}
+      <ul className="tag-manage-list m-0 mt-3 grid list-none gap-2 p-0">
+        {visible.map((tag) => editingId === tag.id ? (
+          <li key={tag.id} className="tag-manage-row flex items-center justify-between gap-2 border-b border-[var(--wk-border,#e7e7ec)] py-2">
+            <Input
+              autoFocus
+              maxLength={40}
+              className="min-w-0 flex-1"
+              value={editingName}
+              placeholder={t('knowledgeBase.tagNamePlaceholder')}
+              aria-label={t('knowledgeBase.tagNamePlaceholder')}
+              onChange={(event) => setEditingName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void submitRename();
+                if (event.key === 'Escape') setEditingId(null);
+              }}
+            />
+            <Button type="button" loading={busy} onClick={() => void submitRename()}>{t('common.save')}</Button>
+            <Button type="button" disabled={busy} onClick={() => setEditingId(null)}>{t('common.cancel')}</Button>
+          </li>
+        ) : (
+          <li key={tag.id} className="tag-manage-row flex items-center justify-between gap-2 border-b border-[var(--wk-border,#e7e7ec)] py-2">
+            <span className="grid min-w-0 flex-1 gap-0.5">
+              <strong className="truncate text-[13px] font-semibold">{tag.name}</strong>
+              <small className="text-[11px] leading-[1.5] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.tagManageDocCount', { count: tag.knowledge_count || 0 })}</small>
+            </span>
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setEditingId(tag.id);
+                setEditingName(tag.name);
+                setCreating(false);
+              }}
+            >
+              {t('knowledgeBase.tagEditAction')}
+            </Button>
+            <Button type="button" disabled={busy || !Number.isSafeInteger(tag.seq_id)} onClick={() => void removeTag(tag)}>{t('knowledgeBase.tagDeleteAction')}</Button>
+          </li>
+        ))}
+        {visible.length === 0 ? <li className="tag-manage-empty py-4 text-center text-[12px] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.tagEmptyResult')}</li> : null}
+      </ul>
+    </Dialog>
   );
 }

@@ -97,7 +97,7 @@ import {
   tagFilterTitle,
   tagUpdatesFor,
 } from "./tags.ts";
-import { TagFilterPanel, TagPickerDialog } from "./TagPickerDialog.tsx";
+import { TagFilterPanel, TagManageDialog, TagPickerDialog } from "./TagPickerDialog.tsx";
 import { tagSurfaceT } from "./tags-locale.ts";
 import { useKbDetailGuideTrigger } from "../../../../packages/views/src/guides/use-kb-detail-guide-trigger.ts";
 import uploadMaskIllustration from "./upload-mask.svg";
@@ -2263,6 +2263,9 @@ export function KnowledgeDocumentsPage({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [tagFilterCleared, setTagFilterCleared] = useState(false);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
+  // R490 B2 — Vue tagManageDrawerVisible: the 管理标签… drawer behind the tag
+  // filter panel footer (KbTagManageDrawer.vue).
+  const [tagManageOpen, setTagManageOpen] = useState(false);
   // Vue tagEditDialog/batchTagDialogVisible (L444, L734): per-document and batch tagging.
   const [tagDialog, setTagDialog] = useState<
     | { mode: "batch" }
@@ -3818,6 +3821,12 @@ export function KnowledgeDocumentsPage({
                       loadingMore={tagLoadingMore}
                       onLoadMore={() => setTagPage((pageNumber) => pageNumber + 1)}
                       total={tagTotal}
+                      canManage={canContribute}
+                      onManage={() => {
+                        // Vue openTagManageDrawer closes the filter panel first.
+                        setTagFilterOpen(false);
+                        setTagManageOpen(true);
+                      }}
                     />
                   ) : null}
                 </div>
@@ -4675,6 +4684,38 @@ export function KnowledgeDocumentsPage({
           createTag={canContribute ? (name) => createKnowledgeTag(name) : undefined}
           onConfirm={(tagIds) => void submitTagDialog(tagIds)}
           onClose={() => setTagDialog(null)}
+        />
+      ) : null}
+      {canContribute ? (
+        <TagManageDialog
+          open={tagManageOpen}
+          t={tt}
+          tags={tags}
+          createTag={(name) => createKnowledgeTag(name)}
+          updateTag={(tagId, name) =>
+            client.knowledgeBases.documents.updateTag(knowledgeBaseId, tagId, { name })}
+          deleteTag={(tag) =>
+            client.knowledgeBases.documents.deleteTag(knowledgeBaseId, Number(tag.seq_id), true)}
+          onClose={() => setTagManageOpen(false)}
+          onChanged={(payload) => {
+            // Vue onTagManageChanged: reload the tag list + document list
+            // (reloadToken drives both effects); a deleted tag that is part
+            // of the active filter clears the filter, and deletes outside the
+            // filter re-poll after the backend's delayed cascade (800ms).
+            setTagPage(1);
+            setReloadToken((value) => value + 1);
+            const deletedTagId = payload?.deletedTagId;
+            if (deletedTagId && selectedTagIds.includes(deletedTagId)) {
+              setSelectedTagIds([]);
+              setTagFilterCleared(true);
+              return;
+            }
+            if (deletedTagId) {
+              window.setTimeout(() => {
+                setReloadToken((value) => value + 1);
+              }, 800);
+            }
+          }}
         />
       ) : null}
       {kbSettingsOpen ? (
