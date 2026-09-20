@@ -54,6 +54,11 @@ x-backend-environment: &backend-env
   "LAGO_DISABLE_PDF_GENERATION": ${LAGO_DISABLE_PDF_GENERATION:-false}
   "LAGO_OAUTH_PROXY_URL": https://proxy.getlago.com
   "LAGO_LICENSE": ${LAGO_LICENSE:-}
+  "LAGO_CREATE_ORG": ${LAGO_CREATE_ORG:-false}
+  "LAGO_ORG_USER_PASSWORD": ${LAGO_ORG_USER_PASSWORD:-}
+  "LAGO_ORG_USER_EMAIL": ${LAGO_ORG_USER_EMAIL:-}
+  "LAGO_ORG_NAME": ${LAGO_ORG_NAME:-}
+  "LAGO_ORG_API_KEY": ${LAGO_ORG_API_KEY:-}
 x-frontend-environment: &frontend-env
   "API_URL": ${LAGO_API_URL:-http://127.0.0.1:48889}
   "APP_ENV": production
