@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 try:  # Importable both as a package member and as a plain script.
     from deploy.lago.health import load_release_identity
@@ -31,6 +31,11 @@ DEFAULT_API_PORT = "48889"
 PROBE_ID_PREFIX = "weknora-t01-probe-"
 REQUEST_TIMEOUT_SECONDS = 10
 EXIT_CODES = {"pass": 0, "fail": 1, "blocked-env": 2}
+
+# The probe origin is always local (127.0.0.1): requests, and above all the
+# Bearer credential, must never be routed through a system- or env-configured
+# proxy, so every call goes through this proxy-less opener.
+_OPENER = build_opener(ProxyHandler({}))
 
 
 def _utc_now():
@@ -62,7 +67,7 @@ def _json_call(method, url, api_key=None, payload=None, parse=True):
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     request = Request(url, data=body, headers=headers, method=method)
-    with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+    with _OPENER.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
         status = response.status
         raw = response.read()
     if not parse or not raw:

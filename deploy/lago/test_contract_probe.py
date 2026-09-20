@@ -199,6 +199,28 @@ class AuthRedactionTests(ContractProbeTestCase):
         self.assertEqual(self.server.requests, [])
         self.assertIn("LAGO_API_KEY", result.serialized())
 
+    def test_probe_ignores_proxy_environment_and_reaches_the_origin_directly(self):
+        # Every proxy variable points at a dead local address: honoring any
+        # of them would divert the requests (and the Bearer credential) away
+        # from the configured Lago origin and fail the probe.
+        dead_proxy = "http://127.0.0.1:9/"
+        env = {
+            "http_proxy": dead_proxy,
+            "https_proxy": dead_proxy,
+            "HTTP_PROXY": dead_proxy,
+            "HTTPS_PROXY": dead_proxy,
+            "all_proxy": dead_proxy,
+            "ALL_PROXY": dead_proxy,
+        }
+        with mock.patch.dict(os.environ, env):
+            result = run_probe(self.server.url, api_key=API_KEY)
+
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(
+            [r["method"] for r in self.server.requests], ["GET", "POST", "DELETE"]
+        )
+        self.assertEqual(len(self.server.deleted_external_ids), 1)
+
 
 class FailureTests(ContractProbeTestCase):
     def test_unhealthy_api_fails_before_creating_anything(self):
