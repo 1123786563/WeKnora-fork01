@@ -339,3 +339,50 @@ test('confirming the delete panel passes the purge choice to remove and splits t
   assert.match(page, /await dataSources\.remove\(deleteSource\.id, \{ purgeDocuments: purge \}\);/);
   assert.match(page, /text: purge \? t\('dataSource\.deleteSuccessPurged'\) : t\('dataSource\.deleteSuccess'\)/);
 });
+
+// SP2-b Task 7: the log panel renders the per-item failure samples the
+// backend keeps in result.errors — a scoped/full run can finish
+// status=success while individual items failed, so the rendering keys off
+// result (never status). Port of the Vue DataSourceSyncLogs drawer: the list
+// is capped at 50 (FAILED_ITEMS_CAP), each row is "title — reason" with the
+// reason localised through dataSource.syncError.<code> (falling back to the
+// wire message, then the raw code), and the remainder beyond the sample list
+// is summarised from items_failed as the "+N more" line.
+test('log rows render capped failure samples localised via syncError codes with a +N more overflow', () => {
+  assert.match(page, /const FAILED_ITEMS_CAP = 50;/);
+  assert.match(page, /function failedItemSamples\(log: DataSourceSyncLog\): DataSourceSyncItemError\[\] \{\s*return \(log\.result\?\.errors \?\? \[\]\)\.slice\(0, FAILED_ITEMS_CAP\);\s*\}/);
+  assert.match(page, /const key = `dataSource\.syncError\.\$\{error\.code\}`;/);
+  assert.match(page, /reason = localised === key \? \(error\.message \|\| error\.code\) : localised;/);
+  assert.match(page, /return error\.title \? \(reason \? `\$\{error\.title\} — \$\{reason\}` : error\.title\) : reason;/);
+  assert.match(page, /data-kind="failed-items"/);
+  assert.match(page, /data-kind="failed-item"/);
+  assert.match(page, /const overflow = Math\.max\(0, failedCount - samples\.length\);/);
+  assert.match(page, /t\('dataSource\.logDetail\.failedItemsMore', \{ n: overflow \}\)/);
+});
+
+// Only failure samples that carry an external_id can be re-fetched by id, so
+// exactly those rows grow a checkbox; the panel header offers one shared
+// "retry selected" action that stays disabled until at least one sample is
+// checked. Opening the logs for another source resets the selection.
+test('failed items with external ids grow retry checkboxes and a disabled-until-selection retry button', () => {
+  assert.match(page, /const \[retrySelection, setRetrySelection\] = useState<Set<string>>\(\(\) => new Set\(\)\);/);
+  assert.match(page, /function toggleRetrySelection\(externalId: string\)/);
+  assert.match(page, /canManage && id !== '' \? <Checkbox checked=\{retrySelection\.has\(id\)\} onChange=\{\(\) => toggleRetrySelection\(id\)\} \/> : null/);
+  assert.match(page, /disabled=\{retrySelection\.size === 0\}/);
+  assert.match(page, /\{t\('dataSource\.retrySelected'\)\}/);
+  assert.match(page, /async function showLogs\(source: DataSource\) \{ setLogsSource\(source\); setLogs\(\[\]\); setLogsOffset\(0\); setLogsHasNext\(false\); setLogsError\(null\); setRetrySelection\(new Set\(\)\);/);
+});
+
+// Retry posts the checked external ids as ONE scoped reindex run
+// (POST /datasource/:id/reindex, 202) with a fresh crypto.randomUUID()
+// request id per click; success toasts reindexSubmitted and reloads the panel
+// so the run's own SyncLog row appears, while the 409 duplicate rejection
+// (same request_id still queued) maps to the duplicateRequest toast instead
+// of a raw error.
+test('retrySelected posts one scoped reindex with a fresh uuid and splits the 409 toast', () => {
+  assert.match(page, /async function retrySelected\(\) \{\s*if \(!canManage \|\| !logsSource \|\| retrySelection\.size === 0\) return;/);
+  assert.match(page, /await dataSources\.reindexItems\(logsSource\.id, externalIds, crypto\.randomUUID\(\)\);/);
+  assert.match(page, /text: t\('dataSource\.reindexSubmitted'\)/);
+  assert.match(page, /await loadLogs\(logsSource, 0\);/);
+  assert.match(page, /if \(error instanceof ApiError && error\.status === 409\) setMessage\(\{ tone: 'warning', text: t\('dataSource\.duplicateRequest'\) \}\);/);
+});
