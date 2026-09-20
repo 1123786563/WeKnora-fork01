@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ func TestNativeUsageDuplicateCallbacksRecordOneDelta(t *testing.T) {
 	first, err := ledger.ObserveDelta(context.Background(), fence, observation)
 	require.NoError(t, err)
 	require.EqualValues(t, 15, first.TotalTokens)
+	require.NoError(t, ledger.ConfirmSettlement(context.Background(), fence, first.IntentID))
 	replay, err := ledger.ObserveDelta(context.Background(), fence, observation)
 	require.NoError(t, err)
 	require.Zero(t, replay.TotalTokens)
@@ -70,4 +72,22 @@ func TestNativeUsageRejectsCumulativeRegression(t *testing.T) {
 	regression := observation
 	regression.Revision, regression.PromptTokens, regression.CompletionTokens, regression.TotalTokens = 2, 9, 5, 14
 	require.Equal(t, nativecontract.ErrConflict, nativeUsageCode(t, ledger.Observe(context.Background(), fence, regression)))
+}
+
+func TestNativeUsageConcurrentIdenticalCallbackConverges(t *testing.T) {
+	ledger, fence, observation := nativeUsageFixture(t)
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() { defer wg.Done(); errs <- ledger.Observe(context.Background(), fence, observation) }()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	var count int64
+	require.NoError(t, ledger.db.Table("native_agent_usage_observations").Count(&count).Error)
+	require.EqualValues(t, 1, count)
 }

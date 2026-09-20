@@ -11,6 +11,7 @@ import (
 type NativeUsageDelta = repository.NativeUsageDelta
 type NativeUsageStore interface {
 	ObserveDelta(context.Context, nativecontract.Fence, nativecontract.UsageObservation) (NativeUsageDelta, error)
+	ConfirmSettlement(context.Context, nativecontract.Fence, string) error
 }
 type NativeUsageFunding interface {
 	Funding(context.Context, nativecontract.RunIdentity) (nativecontract.FundingBinding, error)
@@ -83,13 +84,22 @@ func (s *NativeUsageService) Observe(ctx context.Context, fence nativecontract.F
 		root.RunID = fence.Run.RunID
 	}
 	key := o.AttemptID + ":" + o.ObservationID
-	if o.AccountingStatus == "unknown" && delta.TotalTokens != 0 {
-		return s.budget.MarkUnknown(ctx, root, key)
-	}
-	if o.AccountingStatus != "known" || delta.TotalTokens == 0 {
+	if !delta.Pending {
 		return nil
 	}
-	return s.budget.Settle(ctx, root, key, delta)
+	if o.AccountingStatus == "unknown" {
+		if err := s.budget.MarkUnknown(ctx, root, key); err != nil {
+			return err
+		}
+		return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)
+	}
+	if o.AccountingStatus != "known" || delta.TotalTokens == 0 {
+		return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)
+	}
+	if err := s.budget.Settle(ctx, root, key, delta); err != nil {
+		return err
+	}
+	return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)
 }
 func (s *NativeUsageService) authoritativeFunding(ctx context.Context, run nativecontract.RunIdentity) (nativecontract.FundingBinding, error) {
 	if s.funding == nil {
