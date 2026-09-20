@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01、V02、C01、C02、C03、I01、I02 已按各自证据层和验收门槛标记为 verified；A01、V03 正在独立 worktree 实施；其余 15 个正式任务仍为 pending。V03 当前范围为离线评估器基础，不替代真实模式对照、模型/Provider、门槛确认或生产验收。先导 probe 另行留证。总计划：[实施入口](../2026-09-11-semantica-implementation.md)，校准入口：[2026-09-20 rebaseline](../2026-09-20-semantica-rebaseline.md)。ADR-0002 与 rebaseline 优先于旧计划中的未验证建议。
+状态：V01、V02、C01、C02、C03、I01、I02、A01 已按各自证据层和验收门槛标记为 verified；V03 仍为 in_progress，其余 14 个正式任务为 pending。V03 当前范围为离线评估器基础，不替代真实模式对照、模型/Provider、门槛确认或生产验收。先导 probe 另行留证。总计划：[实施入口](../2026-09-11-semantica-implementation.md)，校准入口：[2026-09-20 rebaseline](../2026-09-20-semantica-rebaseline.md)。ADR-0002 与 rebaseline 优先于旧计划中的未验证建议。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制及证据层（static / actual-runtime / controlled-provider / live-model / real-storage）；无真实对应层证据不标记verified，mock 不得替代实际运行或存储。执行前记录实际基线与已有脏文件。
 
@@ -17,7 +17,7 @@
 | I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | pending | 尚未执行 |
 | I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | pending | 尚未执行 |
 | I05 | 文档任务、attempt与终态协调 | I04 | pending | 尚未执行 |
-| A01 | 可信AccessScope与权限变更屏障 | C02,I02 | in_progress | 2026-09-21：按 `2026-09-21-semantic-a01-access-scope.md` 和账户生命周期修正实现 HS256 Go scope、独立 bearer/audience 内部解析、最终活身份/ACL/hash/epoch/expiry 检查，以及 member/user/tenant/org/share/KB delete/move/clone 写前失效。迁移后的临时 SQLite 库覆盖精确 fanout、SQL 写顺序、失败屏障、删除身份、保留旧 revision、篡改/过期和同读集降权。A01 focused gate 五包通过；完整 service/config/container/runtime 通过，repository/handler/router 复现既有 artifact migration 和 execution registration 失败，未扩大修复。精确写入口与排除项见 `acl-write-inventory.md`；SDD `implementation-report.md`/日志记录命令、退出码和测试限制。独立最终 Review 尚待完成，故保持 in_progress；没有 A02/A03/Q04、session 临时附件授权、模型/生产调用或上线验收声明。 |
+| A01 | 可信AccessScope与权限变更屏障 | C02,I02 | verified | 2026-09-21：实现提交 `75ae9a14`，最终 caller-binding 修复 `a61b30e3f`（最终集成 HEAD `a61b30e3f`）；按 `2026-09-21-semantic-a01-access-scope.md` 和账户生命周期修正实现 HS256 Go scope、独立 bearer/audience 内部解析、最终认证 caller/活身份/ACL/hash/epoch/expiry 检查，以及 member/user/tenant/org/share/KB delete/move/clone 写前失效。独立最终安全 Review 初次发现 ValidateDelivery 未绑定当前 caller；RED 测试分别证实异用户和异 requester tenant 可重放旧 capability，修复后只读 scoped re-review 无 Critical/Important。最终 fresh 验证：`go test ./internal/application/service ./internal/application/repository ./internal/handler ./internal/router ./internal/config -run 'TestSemanticScope|TestSemanticInternalScope|TestSemantic.*Scope' -count=1` exit 0（五包），`go test ./internal/application/service -count=1` exit 0（77.035s），`git diff --check 654da9cf3047f0651a8b1ea23fa32e17e999ccae..HEAD` exit 0。实现报告记录更广七包回归中复现既有 artifact migration、三项 registration 404 与偶发 SQLite 并发锁定（无关变更未纳入）。写入口/排除见 `acl-write-inventory.md`；详细 SDD 证据见 `.superpowers/sdd/2026-09-21-semantic-a01-access-scope/implementation-report.md`。范围不含 A02/A03/Q04、session 临时附件授权、模型/生产调用或上线验收声明。 |
 | A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | pending | 尚未执行 |
 | A03 | 模型代理、原始用量与预算 | C02,I01,A01 | pending | 尚未执行 |
 | Q01 | GraphRAG检索与有界执行 | A02,V03 | pending | 尚未执行 |

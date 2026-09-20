@@ -52,21 +52,21 @@
 - `SemanticControlRepository.BumpSemanticEpochs(ctx, scopes) error` de-duplicates and lexically sorts valid scopes, then bumps every epoch in one short transaction. Empty scope list is a no-op; malformed scopes fail before SQL.
 - Tenant impact query returns every non-deleted KB owned by the tenant plus every non-deleted source KB shared to an organization the tenant belongs to. User impact query gathers every active membership tenant then applies tenant fanout. Organization impact query returns every active source KB share to that organization. All queries return source-owner `(tenant_id,kb_id)` keys and deduplicate them.
 
-- [ ] **Step 1: Write failing epoch discovery tests**
+- [x] **Step 1: Write failing epoch discovery tests**
 
 Use a temporary SQLite DB with formal migrations. Seed tenant 1's `owned` KB, tenant 2's membership in `org-1`, one active `kb_shares` row from tenant 1's `shared` KB to `org-1`, and one unrelated `org-2` share. Assert `InvalidateTenant(2)` affects exactly `(1,shared)`, `InvalidateOrganization(org-1)` affects exactly `(1,shared)`, and `InvalidateTenant(1)` includes `(1,owned)`. Send duplicate/unsorted scopes directly to `BumpSemanticEpochs` and assert one increment per distinct key.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 Run: `go test ./internal/application/repository -run '^TestSemanticScopeEpoch' -count=1`
 
 Expected: fail because scope impact queries and multi-scope invalidation do not exist.
 
-- [ ] **Step 3: Implement deterministic scope fanout and bump**
+- [x] **Step 3: Implement deterministic scope fanout and bump**
 
 Use joins over `knowledge_bases`, `organization_tenant_members`, and `kb_shares`; filter soft-deleted KB/share rows. For tenant impact include owner KBs and shares through active tenant-org membership. For organization impact include shares where `organization_id` matches. Call existing `BumpSemanticEpoch(tx, scope)` in one transaction sorted by `(tenant_id,kb_id)`.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `go test ./internal/application/repository -run '^TestSemanticScopeEpoch' -count=1`
 
@@ -93,7 +93,7 @@ Expected: scope-key sets and epoch counts match, duplicate scopes increment once
 - Scope hash is SHA-256 of canonical JSON containing owner scope, subject, requester tenant, requester role, effective KB read grant, purpose, budget reference, epoch, sorted allowed IDs/revisions, sorted denials, and per-document `allow_retained_previous`; expiry and signature are bound separately in signed claims.
 - `SEMANTIC_SCOPE_SIGNING_KEY` is added to `SemanticServiceConfig`, overridden only from that environment variable, marked sensitive in startup diagnostics, and validated only when `semantic.enabled=true`; require at least 32 non-whitespace bytes.
 
-- [ ] **Step 1: Write failing scope tests**
+- [x] **Step 1: Write failing scope tests**
 
 ```go
 func TestSemanticScopeRejectsEpochChange(t *testing.T) {
@@ -165,23 +165,23 @@ func TestSemanticScopeDoesNotTrustShareForSoftDeletedOrganization(t *testing.T) 
 }
 ```
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 Run: `go test ./internal/application/service ./internal/config -run 'TestSemantic(Scope|Enabled)' -count=1`
 
 Expected: scope-service symbols/tests fail because the issuer, signer, and I02 scope-state read do not exist.
 
-- [ ] **Step 3: Derive current access and build canonical snapshot**
+- [x] **Step 3: Derive current access and build canonical snapshot**
 
 Load the KB without assuming the request tenant owns it; compare the signed owner scope to `KnowledgeBase.TenantID`. Require the authenticated `Caller.UserID` to equal `subjectID`, load the caller's current active user/requester-tenant membership and role, and use `KBShareService.CheckTenantKBPermission` for shared KBs. In `CheckTenantKBPermission`, resolve each share's organization row and active status before accepting its tenant membership; treat `ErrOrganizationNotFound`/soft deletion as no grant, ignore only `ErrOrgMemberNotFound`, and propagate all other organization lookup errors. Only after access succeeds, list the source KB's `Knowledge` rows by the owner tenant and intersect IDs with I02 active semantic revisions; exclude current denials and set `AllowRetainedPrevious=true` for non-denied live documents. All repository/permission failures return errors and do not mint a scope.
 
-- [ ] **Step 4: Implement HMAC capability, resolver, and delivery recheck**
+- [x] **Step 4: Implement HMAC capability, resolver, and delivery recheck**
 
-Use a fixed claims struct and `golang-jwt/jwt/v5` HS256 with no algorithm fallback; include token version, subject, requester tenant, owner tenant/KB, purpose, audience, budget ref, epoch, scope hash, issued-at, and expiry. Set a five-minute maximum TTL. Issue sets C01 metadata from the same claims. Resolve verifies signature/version/audience/expiry, rehydrates current member role from signed subject/requester tenant, rebuilds current snapshot, and compares epoch/hash. ValidateDelivery parses the capability and exact-matches every field in `SemanticAccessScope` before rebuilding and comparing current live access. Live documents retain the prior published generation by default; current deletion denial excludes all prior generations. Never reveal signing key or ACL query errors.
+Use a fixed claims struct and `golang-jwt/jwt/v5` HS256 with no algorithm fallback; include token version, subject, requester tenant, owner tenant/KB, purpose, audience, budget ref, epoch, scope hash, issued-at, and expiry. Set a five-minute maximum TTL. Issue sets C01 metadata from the same claims. Resolve verifies signature/version/audience/expiry, rehydrates current member role from signed subject/requester tenant, rebuilds current snapshot, and compares epoch/hash. ValidateDelivery requires the current authenticated caller's user and requester tenant to match the signed subject and requester tenant, then parses the capability and exact-matches every field in `SemanticAccessScope` before rebuilding and comparing current live access. Live documents retain the prior published generation by default; current deletion denial excludes all prior generations. Never reveal signing key or ACL query errors.
 
 Register `repository.NewSemanticControlRepository` and the invalidator provider in the container. Scope issue/resolve handlers are opt-in with `semantic.enabled`; epoch invalidation remains available to ACL writers whenever I02 migrations are installed.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 Run: `go test ./internal/application/service ./internal/config -run 'TestSemantic(Scope|Enabled)' -count=1`.
 
@@ -201,21 +201,21 @@ Expected: forged, expired, wrong owner, shared-owner, denied-revision, membershi
 - The route requires exact `Authorization: Bearer <SEMANTIC_SERVICE_TOKEN>` and `X-WeKnora-Audience == SemanticServiceConfig.Audience`, checked with constant-time token comparison. User JWT and API keys are not fallback credentials.
 - Handler calls `SemanticScopeService.Resolve`; invalid/expired/changed scope returns a non-leaking unauthorized response; internal errors fail closed and return service unavailable.
 
-- [ ] **Step 1: Write failing route tests**
+- [x] **Step 1: Write failing route tests**
 
 Test missing token, wrong token, wrong audience, malformed/expired capability, and valid configured service request. Assert unauthenticated calls do not invoke the service and responses never contain the signing key or service token.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 Run: `go test ./internal/handler ./internal/router -run '^TestSemanticInternalScope' -count=1`
 
 Expected: fail because the resolver route is not registered.
 
-- [ ] **Step 3: Implement internal route and handler**
+- [x] **Step 3: Implement internal route and handler**
 
 Register only under the internal route prefix; authenticate service token and audience before JSON decoding/resolution; propagate request cancellation; never attach ordinary user RBAC as a substitute.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `go test ./internal/handler ./internal/router -run '^TestSemanticInternalScope' -count=1`.
 
@@ -230,19 +230,19 @@ Expected: only the configured authenticated service resolves a valid scope.
 - Modify: `internal/container/container.go`
 - Test: relevant KB-share/KB-delete tests and `semantic_scope_test.go`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Assert share create, duplicate-share permission update, permission change, share removal, and KB soft-delete advance the source owner KB epoch before the mutation repository is called. A deliberately failing mutation must leave share/KB data unchanged but keep the epoch increment; a failing epoch repository must prevent the mutation entirely.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 Run: `go test ./internal/application/service -run '^TestSemanticScope(KBShare|KBDelete)' -count=1`.
 
-- [ ] **Step 3: Pre-invalidate exact owner scope before existing writes**
+- [x] **Step 3: Pre-invalidate exact owner scope before existing writes**
 
 Resolve the source KB owner, call `InvalidateKB(ctx, ownerTenant, kbID)`, then execute the existing authorized mutation. Preserve duplicate, audit, soft-delete, and async cleanup behavior. Do not bump for reads/no-op writes.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run the same focused service test command; expected: invalidation is first, failures remain fail-closed, and the prior error/result contract is unchanged.
 
@@ -259,19 +259,19 @@ Run the same focused service test command; expected: invalidation is first, fail
 - Create: `docs/plans/semantica/acl-write-inventory.md`
 - Test: tenant member, organization, transfer tests, and `semantic_scope_test.go`
 
-- [ ] **Step 1: Write failing fanout and ordering tests**
+- [x] **Step 1: Write failing fanout and ordering tests**
 
 For tenant member add/role-change/removal or tenant deletion, assert `InvalidateTenant` includes all owned KBs and source KB scopes shared to organizations the tenant belongs to. For user deletion, assert `InvalidateUser` unions all scopes for the user's active membership tenants. For org join/leave/role/review/delete, assert `InvalidateOrganization` includes all shared source KB scopes. For move/clone, assert `InvalidateTransfer` receives both source and destination owner scopes before the first per-document transfer checkpoint. A same-KB folder move must not invalidate. Invitation issue/revoke alone must not invalidate; successful invitation acceptance uses `AddMember` and does.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 Run: `go test ./internal/application/service -run '^TestSemanticScope(Tenant|User|Organization|Transfer|Invitation)' -count=1`.
 
-- [ ] **Step 3: Wire every listed ACL mutation before its first state change**
+- [x] **Step 3: Wire every listed ACL mutation before its first state change**
 
 Validate the caller and target first, then invalidate, then perform the existing write. Include `ReviewJoinRequest` only when it approves a role/join change; it should not invalidate when rejecting or re-reviewing a terminal request. Org deletion invalidates shared KB scopes before any best-effort share cleanup. Cross-KB transfer and FAQ clone admission invalidate source and target before the resumable move/clone starts; the per-document binding checkpoints live in `knowledge_transfer.go` as well as request orchestration in `knowledge_clone_move.go`. User and tenant deletion invalidate all related owner scopes before soft-deleting the identity. `ValidateDelivery` rechecks live content after later checkpoints. Inventory every callsite in `acl-write-inventory.md` with service method, repository mutation, affected owner scopes, ordering test, and explicit exclusion for session shares/temporary attachments.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `go test ./internal/application/service -run '^TestSemanticScope(Tenant|User|Organization|Transfer|Invitation)' -count=1` and `go test ./internal/application/repository -run '^TestSemanticScopeEpoch' -count=1`.
 
@@ -279,17 +279,17 @@ Expected: grants/revocations invalidate all impacted scopes before mutation; fai
 
 ### Task 6: Final A01 verification and evidence
 
-- [ ] **Step 1: Run focused and broad regression suites**
+- [x] **Step 1: Run focused and broad regression suites**
 
 Run: `go test ./internal/application/service ./internal/application/repository ./internal/handler ./internal/router ./internal/config -run 'TestSemanticScope|TestSemanticInternalScope|TestSemantic.*Scope' -count=1`.
 
 Also run full existing member, organization, KB-share, KB delete, knowledge-transfer, and config test packages without `-run` filters.
 
-- [ ] **Step 2: Audit ACL write inventory**
+- [x] **Step 2: Audit ACL write inventory**
 
 Use `rg` on production callers of all listed mutations; reconcile every caller with `acl-write-inventory.md`. Confirm the scope guard is injected in the application container. If any permission writer mutates scopes without pre-invalidation or current-hash revalidation, A01 is not complete.
 
-- [ ] **Step 3: Commit and record evidence**
+- [x] **Step 3: Commit and record evidence**
 
 Update `docs/plans/semantica/progress.md` with exact commands, exits, environment, review result, and limitations. Commit scoped A01 files as `feat(semantic): a01 trusted access scopes and revocation barrier`.
 
