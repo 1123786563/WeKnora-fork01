@@ -189,10 +189,15 @@ class NativeEnvClient:
         started = time.monotonic()
         events = self._request(f"/api/v1/knowledge-chat/{session_id}", {"query": case["question"], "knowledge_ids": list(allowed_document_ids), "disable_title": True}, stream=True)
         references: list[dict[str, Any]] = []
+        complete = False
         for event in events:
-            data = event.get("data")
-            if event.get("type") in {"reference", "references"} and isinstance(data, dict):
-                references.append(data)
+            if event.get("response_type") == "error":
+                raise RuntimeError(str(event.get("content") or "SSE error"))
+            if event.get("response_type") == "references":
+                references.extend(item for item in event.get("knowledge_references", []) if isinstance(item, dict))
+            complete = complete or event.get("response_type") == "complete"
+        if not complete:
+            raise RuntimeError("SSE ended without complete event")
         return {
             "case_id": case["case_id"], "document_revision": case["document_revision"],
             "requested_mode": "native", "actual_mode": "native", "status": "completed",
@@ -205,4 +210,4 @@ class NativeEnvClient:
         try:
             return self.query(case, allowed_document_ids, session_id=session_id)
         except (RuntimeError, ValueError) as error:
-            return {"case_id": case.get("case_id"), "document_revision": case.get("document_revision"), "requested_mode": "native", "actual_mode": "native", "status": "failed", "engine_version": self.engine_version, "model_version": self.model_version, "evidence_ids": list(allowed_document_ids), "references": [], "latency_ms": None, "tokens": None, "error": str(error)}
+            return {"case_id": case.get("case_id"), "document_revision": case.get("document_revision"), "requested_mode": "native", "actual_mode": "native", "status": "failed", "engine_version": self.engine_version, "model_version": self.model_version, "evidence_ids": [], "references": [], "latency_ms": None, "tokens": None, "error": str(error)}

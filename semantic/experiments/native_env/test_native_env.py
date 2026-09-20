@@ -40,7 +40,7 @@ class _Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         self.calls.append((self.path, body))
         if self.path == "/api/v1/knowledge-chat/s-1":
-            payload = 'data: {"type":"reference","data":{"match_type":"graph","knowledge_id":"k-1","chunk_id":"c-2"}}\n\n'
+            payload = 'event: message\ndata: {"response_type":"references","knowledge_references":[{"match_type":"graph","knowledge_id":"k-1","id":"c-2"}]}\n\nevent: message\ndata: {"response_type":"complete","done":true}\n\n'
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Content-Length", str(len(payload.encode())))
