@@ -182,6 +182,22 @@ class SearchResponse:
             raise ValueError("search cannot implicitly upgrade graph_rag to reason")
 
 
+def evidence_to_wire(value: Evidence):
+    from semantic_service.proto import semantic_pb2
+
+    wire = semantic_pb2.Evidence(evidence_id=value.evidence_id, document_id=value.document_id, revision=value.revision, chunk_id=value.chunk_id, content_hash=value.content_hash, quote=value.quote)
+    if value.start_char is not None:
+        wire.start_char = value.start_char
+        wire.end_char = value.end_char
+    return wire
+
+
+def evidence_from_wire(wire) -> Evidence:
+    start_char = wire.start_char if wire.HasField("start_char") else None
+    end_char = wire.end_char if wire.HasField("end_char") else None
+    return Evidence(wire.evidence_id, wire.document_id, wire.revision, wire.chunk_id, wire.content_hash, wire.quote, start_char, end_char)
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"

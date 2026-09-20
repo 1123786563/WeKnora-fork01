@@ -115,3 +115,11 @@ def test_reason_response_keeps_retrieval_without_conclusion() -> None:
     response = ReasonResponse(status=ReasonStatus.INSUFFICIENT_EVIDENCE, conclusion=None, retrieval=retrieval, premise_ids=(), rule_ids=(), limitations=("missing",))
 
     assert response.conclusion is None and response.retrieval is retrieval
+
+
+def test_evidence_wire_round_trip_preserves_absent_span() -> None:
+    from semantic_service.contracts import Evidence, evidence_from_wire, evidence_to_wire
+
+    evidence = Evidence("e", "d", 1, "c", "h", "文本", None, None)
+
+    assert evidence_from_wire(evidence_to_wire(evidence)) == evidence
