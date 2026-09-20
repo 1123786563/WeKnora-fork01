@@ -5,7 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
@@ -37,6 +38,31 @@ var _ nativecontract.UsageLedger = (*NativeUsageLedger)(nil)
 func (s *NativeUsageLedger) Observe(ctx context.Context, fence nativecontract.Fence, observation nativecontract.UsageObservation) error {
 	_, err := s.ObserveDelta(ctx, fence, observation)
 	return err
+}
+
+// NativeUsageRevisionIdentity is the canonical identity for one cumulative
+// usage receipt revision. Its length-delimited observation base is securely
+// hashed, so untrusted IDs containing separators cannot merge separate
+// receipts or their commercial settlement effects. The fixed-width hash keeps
+// the revision suffix safely queryable for serial settlement recovery.
+func NativeUsageRevisionIdentity(o nativecontract.UsageObservation) string {
+	return nativeUsageObservationIdentity(o) + ":" + strconv.FormatInt(o.Revision, 10)
+}
+
+func nativeUsageObservationIdentity(o nativecontract.UsageObservation) string {
+	var encoded strings.Builder
+	for _, value := range []string{
+		strconv.FormatUint(o.Run.TenantID, 10),
+		o.Run.RunID,
+		o.AttemptID,
+		o.ObservationID,
+	} {
+		encoded.WriteString(strconv.Itoa(len(value)))
+		encoded.WriteByte(':')
+		encoded.WriteString(value)
+	}
+	sum := sha256.Sum256([]byte(encoded.String()))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *NativeUsageLedger) ObserveDelta(ctx context.Context, fence nativecontract.Fence, o nativecontract.UsageObservation) (NativeUsageDelta, error) {
@@ -132,9 +158,9 @@ func (s *NativeUsageLedger) ObserveDelta(ctx context.Context, fence nativecontra
 // transaction. Replays recover the original delta until a budget transition
 // confirms the intent; they never reinterpret a failed settlement as free.
 func (s *NativeUsageLedger) usageSettlementIntent(tx *gorm.DB, f nativecontract.Fence, o nativecontract.UsageObservation, observationHash string, delta *NativeUsageDelta) error {
-	id := "usage-settlement:" + o.AttemptID + ":" + o.ObservationID + ":" + fmt.Sprint(o.Revision)
+	id := "usage-settlement:" + NativeUsageRevisionIdentity(o)
 	var prior int64
-	if err := tx.Table("native_agent_commit_intents").Where("tenant_id=? AND run_id=? AND intent_id LIKE ? AND intent_id <> ? AND state IN ?", f.Run.TenantID, f.Run.RunID, "usage-settlement:"+o.AttemptID+":"+o.ObservationID+":%", id, []string{"pending", "applying"}).Count(&prior).Error; err != nil {
+	if err := tx.Table("native_agent_commit_intents").Where("tenant_id=? AND run_id=? AND intent_id LIKE ? AND intent_id <> ? AND state IN ?", f.Run.TenantID, f.Run.RunID, "usage-settlement:"+nativeUsageObservationIdentity(o)+":%", id, []string{"pending", "applying"}).Count(&prior).Error; err != nil {
 		return err
 	}
 	if prior != 0 {

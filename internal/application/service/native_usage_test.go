@@ -30,7 +30,7 @@ func (s *nativeUsageStoreFake) ObserveDelta(_ context.Context, _ nativecontract.
 	if s.deltas == nil {
 		s.deltas = map[string]NativeUsageDelta{}
 	}
-	k := o.AttemptID + ":" + o.ObservationID
+	k := nativeUsageTestObservationIdentity(o)
 	old, ok := s.seen[k]
 	intent := "usage-settlement:" + k + ":" + fmt.Sprint(o.Revision)
 	if ok && old.Revision == o.Revision {
@@ -49,6 +49,10 @@ func (s *nativeUsageStoreFake) ObserveDelta(_ context.Context, _ nativecontract.
 	delta := NativeUsageDelta{TotalTokens: o.TotalTokens - old.TotalTokens, PromptTokens: o.PromptTokens - old.PromptTokens, CompletionTokens: o.CompletionTokens - old.CompletionTokens, IntentID: intent, Pending: true}
 	s.deltas[intent] = delta
 	return delta, nil
+}
+
+func nativeUsageTestObservationIdentity(o nativecontract.UsageObservation) string {
+	return fmt.Sprintf("%q:%q:%d", o.AttemptID, o.ObservationID, o.Revision)
 }
 func (s *nativeUsageStoreFake) ConfirmSettlement(_ context.Context, _ nativecontract.Fence, intent string) error {
 	s.mu.Lock()
@@ -291,8 +295,38 @@ func TestNativeUsageServicePartialUsageRetryDoesNotRepeatKnownSettlement(t *test
 	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
 	require.Equal(t, 1, budget.settles)
 	require.Equal(t, 1, budget.unknowns)
-	require.Equal(t, []string{"a:o:1:known"}, budget.settleKeys)
-	require.Equal(t, []string{"a:o:1:unknown"}, budget.unknownKeys)
+	require.Equal(t, []string{repository.NativeUsageRevisionIdentity(o) + ":known"}, budget.settleKeys)
+	require.Equal(t, []string{repository.NativeUsageRevisionIdentity(o) + ":unknown"}, budget.unknownKeys)
+}
+
+func TestNativeUsageServiceCollidingLegacyKeysSettleKnownAndUnknownIndependently(t *testing.T) {
+	base := nativeUsageServiceObservation()
+	first := base
+	first.AttemptID, first.ObservationID = "a:b", "c"
+	second := base
+	second.AttemptID, second.ObservationID = "a", "b:c"
+	require.Equal(t, first.AttemptID+":"+first.ObservationID+":1", second.AttemptID+":"+second.ObservationID+":1")
+
+	for _, status := range []string{"known", "unknown"} {
+		t.Run(status, func(t *testing.T) {
+			store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
+			budget := &nativeUsageBudgetFake{remaining: 100}
+			svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: base.Funding}, budget)
+			first.AccountingStatus, second.AccountingStatus = status, status
+
+			require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), first))
+			require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), second))
+			if status == "known" {
+				require.Equal(t, 2, budget.settles)
+				require.Len(t, budget.settleKeys, 2)
+				require.NotEqual(t, budget.settleKeys[0], budget.settleKeys[1])
+			} else {
+				require.Equal(t, 2, budget.unknowns)
+				require.Len(t, budget.unknownKeys, 2)
+				require.NotEqual(t, budget.unknownKeys[0], budget.unknownKeys[1])
+			}
+		})
+	}
 }
 
 func nativeUsageRealLedgerService(t *testing.T, budget *nativeUsageBudgetFake, funding nativecontract.FundingBinding) (*NativeUsageService, nativecontract.Fence) {

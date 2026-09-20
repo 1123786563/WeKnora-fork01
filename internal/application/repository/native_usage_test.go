@@ -112,6 +112,32 @@ func TestNativeUsageLargeIntegersRemainExactAcrossRevisionAndReplay(t *testing.T
 	require.Contains(t, payload, strconv.FormatInt(correction.PromptTokens, 10))
 }
 
+func TestNativeUsageCollidingLegacyKeysPersistSeparateSettlementIntents(t *testing.T) {
+	ledger, fence, observation := nativeUsageFixture(t)
+	first := observation
+	first.AttemptID, first.ObservationID = "a:b", "c"
+	second := observation
+	second.AttemptID, second.ObservationID = "a", "b:c"
+	require.Equal(t, first.AttemptID+":"+first.ObservationID+":1", second.AttemptID+":"+second.ObservationID+":1")
+	require.NoError(t, ledger.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, attempt_number, lease_epoch) VALUES (?, ?, ?, ?, ?)`, 1, "run-1", first.AttemptID, 1, fence.Epoch).Error)
+	require.NoError(t, ledger.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, attempt_number, lease_epoch) VALUES (?, ?, ?, ?, ?)`, 1, "run-1", second.AttemptID, 2, fence.Epoch).Error)
+
+	firstDelta, err := ledger.ObserveDelta(context.Background(), fence, first)
+	require.NoError(t, err)
+	secondDelta, err := ledger.ObserveDelta(context.Background(), fence, second)
+	require.NoError(t, err)
+	require.NotEqual(t, firstDelta.IntentID, secondDelta.IntentID)
+	for _, delta := range []NativeUsageDelta{firstDelta, secondDelta} {
+		claimed, err := ledger.ClaimSettlement(context.Background(), fence, delta.IntentID)
+		require.NoError(t, err)
+		require.True(t, claimed)
+		require.NoError(t, ledger.ConfirmSettlement(context.Background(), fence, delta.IntentID))
+	}
+	var receipts int64
+	require.NoError(t, ledger.db.Table("native_agent_usage_observations").Count(&receipts).Error)
+	require.EqualValues(t, 2, receipts)
+}
+
 func TestNativeUsageRejectsChangedReplayStaleRevisionAndStaleFence(t *testing.T) {
 	ledger, fence, observation := nativeUsageFixture(t)
 	require.NoError(t, ledger.Observe(context.Background(), fence, observation))
