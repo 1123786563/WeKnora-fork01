@@ -187,7 +187,14 @@ func runSync[N any](
 			processed++
 			if processed%FeishuStreamCheckpointInterval == 0 || time.Since(lastCheckpoint) >= FeishuStreamCheckpointMaxInterval {
 				if cerr := h.Checkpoint(ctx, ops.EncodeCursor(newTimes, lastSync)); cerr != nil {
-					logger.Warnf(ctx, "%s stream Checkpoint failed: %v", ops.LogTag(), cerr)
+					// Propagate like every other streaming connector (gitlab/
+					// confluence). Progress past a failed checkpoint is not
+					// durable, and the service's cooperative-cancel sentinel
+					// (SP2-a Task 4) arrives through this same channel —
+					// swallowing it would keep fetching past a user cancel and
+					// let the final success write overwrite the canceled
+					// terminal state.
+					return nil, cerr
 				}
 				lastCheckpoint = time.Now()
 			}

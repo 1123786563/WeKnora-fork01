@@ -294,6 +294,49 @@ func TestFetchStream_EmitErrorAborts(t *testing.T) {
 	}
 }
 
+// cancelingHandler simulates the service's cooperative-cancel checkpoint
+// (SP2-a Task 4): after recording the cursor like a normal handler, it returns
+// an error — the same channel the service uses to surface its cancel sentinel.
+type cancelingHandler struct {
+	recordingHandler
+	boom error
+}
+
+func (h *cancelingHandler) Checkpoint(ctx context.Context, cursor *types.SyncCursor) error {
+	if err := h.recordingHandler.Checkpoint(ctx, cursor); err != nil {
+		return err
+	}
+	return h.boom
+}
+
+// A Checkpoint error must abort the stream (matching gitlab/confluence): the
+// service's cooperative-cancel sentinel arrives through exactly this channel,
+// so swallowing it would keep fetching past a user cancel and let the final
+// success write overwrite the canceled terminal state.
+func TestFetchStream_CheckpointErrorAborts(t *testing.T) {
+	prev := core.FeishuStreamCheckpointInterval
+	core.FeishuStreamCheckpointInterval = 1 // checkpoint after every node
+	defer func() { core.FeishuStreamCheckpointInterval = prev }()
+
+	nodes := []core.WikiNode{
+		{NodeToken: "nt1", ObjToken: "obj1", ObjType: "docx", Title: "Doc", ObjEditTime: "100"},
+		{NodeToken: "nt3", ObjToken: "obj3", ObjType: "docx", Title: "Doc3", ObjEditTime: "300"},
+	}
+	ts, cfg := fakeFeishu(nodes)
+	defer ts.Close()
+
+	sentinel := errors.New("sync canceled by user")
+	c := NewConnector(core.RegionFeishu)
+	h := &cancelingHandler{boom: sentinel}
+	_, err := c.FetchStream(context.Background(), makeConfig(cfg, []string{"space1"}), nil, h)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("FetchStream() error = %v, want the Checkpoint error %v (engine must propagate, not swallow)", err, sentinel)
+	}
+	if len(h.checkpoints) != 1 {
+		t.Errorf("checkpoints = %d, want 1 (the run must stop at the first failed checkpoint, not continue to nt3)", len(h.checkpoints))
+	}
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Stream integration: docx blocks fan-out (multi-item) through FetchStream
 // ──────────────────────────────────────────────────────────────────────
