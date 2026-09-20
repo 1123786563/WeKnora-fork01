@@ -39,10 +39,14 @@ PLAN_INTERVAL = "monthly"
 
 # Single source of truth for both the decimal string sent to Lago and the
 # integer expectation compared locally -- derived, never duplicated.
+# Live-verified contract (v1.53.0, 2026-09-20): charge ``properties.amount``
+# is a decimal string in WHOLE currency units, and Lago applies the x100
+# currency exponent itself (units x "7" -> 700 cents per unit).  The integer
+# cent expectations below therefore divide by 100 to derive the wire value.
 STANDARD_AMOUNT_CENTS = 7
-STANDARD_AMOUNT_DECIMAL = str(STANDARD_AMOUNT_CENTS)
+STANDARD_AMOUNT_DECIMAL = str(Decimal(STANDARD_AMOUNT_CENTS) / 100)   # "0.07"
 PACKAGE_AMOUNT_CENTS = 1500
-PACKAGE_AMOUNT_DECIMAL = str(PACKAGE_AMOUNT_CENTS)
+PACKAGE_AMOUNT_DECIMAL = str(Decimal(PACKAGE_AMOUNT_CENTS) / 100)     # "15"
 PACKAGE_SIZE = 100
 FREE_UNITS = 0
 

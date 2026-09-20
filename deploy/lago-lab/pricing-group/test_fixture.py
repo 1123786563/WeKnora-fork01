@@ -84,8 +84,18 @@ class BuildRunTests(unittest.TestCase):
     def test_charge_amount_constants_are_derived_not_duplicated(self):
         # The decimal string sent to Lago and the local integer expectation
         # must come from the same constant, so they cannot drift apart.
-        self.assertEqual(fixture.STANDARD_AMOUNT_DECIMAL, str(fixture.STANDARD_AMOUNT_CENTS))
-        self.assertEqual(fixture.PACKAGE_AMOUNT_DECIMAL, str(fixture.PACKAGE_AMOUNT_CENTS))
+        # v1.53.0 live-verified: charge amount is decimal CURRENCY units and
+        # Lago applies the x100 exponent (units x "7" would be 700 cents/unit).
+        self.assertEqual(
+            Decimal(fixture.STANDARD_AMOUNT_DECIMAL) * 100,
+            Decimal(fixture.STANDARD_AMOUNT_CENTS),
+        )
+        self.assertEqual(
+            Decimal(fixture.PACKAGE_AMOUNT_DECIMAL) * 100,
+            Decimal(fixture.PACKAGE_AMOUNT_CENTS),
+        )
+        self.assertEqual(fixture.STANDARD_AMOUNT_DECIMAL, "0.07")
+        self.assertEqual(fixture.PACKAGE_AMOUNT_DECIMAL, "15")
         run = fixture.build_run(_run_id(), task_count=2)
         standard = run.plan.charges[0]
         package = run.plan.charges[1]
