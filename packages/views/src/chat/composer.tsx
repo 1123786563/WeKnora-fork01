@@ -116,6 +116,9 @@ export interface ChatComposerProps {
   mentionOpen?: boolean;
   mentionLoading?: boolean;
   mentionError?: string;
+  /** R490 B1 — Vue mentionEmptyHint: agent-compatibility empty state, shown
+   *  instead of mentionNoAvailable when the filter emptied the list. */
+  mentionEmptyHint?: string;
   onMentionOpen?(): void;
   onMentionSelect?(item: ChatMentionView): void;
   onMentionRemove?(id: string): void;
@@ -177,7 +180,7 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, steerQueue = [], onSteerPromote, onSteerRemove, onSteerRetry, webSearchVisible = false, webSearchConfigured = true, webSearchEnabled = false, onWebSearchToggle, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, mentionEmptyHint, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, agentModels, onManageAgents, onConfigureAgent, onAgentNotReady, modelLabel, modelContext, modelContextIsDefault, modelOptions = [], selectedModelId, onModelChange, streaming = false, canSteer = false, onStop, steerQueue = [], onSteerPromote, onSteerRemove, onSteerRetry, webSearchVisible = false, webSearchConfigured = true, webSearchEnabled = false, onWebSearchToggle, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -452,7 +455,7 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
               <div id="wk-chat-mention-options">
               {filteredMentionOptions.map((item, index) => <button key={item.id} id={`wk-chat-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} data-mention-type={item.type} className={index === activeMentionIndex ? 'flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-[#f3f3f3] px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] focus:outline-none' : 'flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-transparent px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] hover:bg-[#f3f3f3] focus:bg-[#f3f3f3] focus:outline-none'} onMouseEnter={() => setActiveMentionIndex(index)} onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">{mentionMarker(item.type)}</span><span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span></button>)}
               </div>
-            </div> : <p className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{mentionQuery ? t.mentionNoResults : t.mentionNoAvailable}</p>}
+            </div> : <p className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{mentionQuery ? t.mentionNoResults : (mentionEmptyHint ?? t.mentionNoAvailable)}</p>}
           </div> : null}
           </div>
         </div>

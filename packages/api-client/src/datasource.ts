@@ -113,7 +113,21 @@ export function createDataSourcesApi(request: (input: ClientRequest) => Promise<
       if (!Array.isArray(raw)) throw new Error('Invalid data source logs');
       return raw.map((item) => { const log = row(item, 'data source log'); if (typeof log.id !== 'string' || typeof log.status !== 'string') throw new Error('Invalid data source log fields'); return log as DataSourceSyncLog; });
     },
-    async remove(id: string): Promise<void> { await request({ method: 'DELETE', path: path(id) }); },
+    // SP2-a spec §4.1: a bare DELETE keeps the pre-SP2-a promise — synced
+    // documents stay; purge_documents=true (the backend honors only the exact
+    // "true" string, internal/handler/datasource.go DeleteDataSource)
+    // cascades the delete to every synced document asynchronously.
+    async remove(id: string, opts?: { purgeDocuments?: boolean }): Promise<void> {
+      await request({ method: 'DELETE', path: path(id, opts?.purgeDocuments ? '?purge_documents=true' : '') });
+    },
+    // GET /:id/documents-count answers {"count": N} (Task 9); it drives the
+    // delete panel's "N synced documents" copy and purge warning.
+    async documentsCount(id: string): Promise<number> {
+      const value = await request({ method: 'GET', path: path(id, '/documents-count') });
+      const envelope = row(value, 'data source documents count');
+      if (typeof envelope.count !== 'number' || !Number.isSafeInteger(envelope.count)) throw new Error('Invalid data source documents count');
+      return envelope.count;
+    },
     async validate(id: string): Promise<unknown> { return request({ method: 'POST', path: path(id, '/validate'), body: {} }); },
     async validateCredentials(type: string, credentials: Record<string, unknown>): Promise<unknown> {
       return request({ method: 'POST', path: '/api/v1/datasource/validate-credentials', body: { type, credentials } });

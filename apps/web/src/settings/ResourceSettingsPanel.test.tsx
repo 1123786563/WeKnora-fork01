@@ -200,6 +200,15 @@ test('vectorstore add drawer renders the Vue structured form, not a JSON textare
   assert.match(drawer.textContent!, /高级设置/);
   // Test connection lives in the drawer footer with the save/cancel pair.
   assert.match(drawer.textContent!, /测试连接/);
+  // R490 C3 (M3-N1) — footer order mirrors Vue SettingDrawer (L45-61):
+  // footer-left 测试连接, right pair 取消 → 保存; the create submit reads
+  // common.save (Vue never overrides confirmText in the engine drawers).
+  // The drawer TITLE still reuses the panel add label (Vue addStore).
+  const footerButtons = Array.from(drawer.querySelectorAll<HTMLButtonElement>('form button'))
+    .map((button) => (button.textContent ?? '').trim())
+    .filter((text) => ['测试连接', '取消', '保存'].includes(text));
+  assert.deepEqual(footerButtons, ['测试连接', '取消', '保存'], 'footer reads 测试连接/取消/保存 in the Vue SettingDrawer order');
+  assert.equal(drawer.querySelector('form button[type="submit"]')?.textContent, '保存', 'create submit is 保存, not the panel add label');
   // The legacy bare form is gone.
   assert.doesNotMatch(drawer.textContent!, /安全配置 JSON/);
   assert.equal(drawer.querySelector('textarea'), null);

@@ -977,8 +977,13 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
           {editingId && api.setDefault && section === 'storage' ? <Button type="button" disabled={!editingId || busy} onClick={() => void setDefault(editingId)}>{t(keys.setDefault)}</Button> : null}
           {editingId ? <Button type="button" disabled={busy} onClick={() => void remove(editingId)}>{t('common.delete')}</Button> : null}
           <span className="flex-1" />
-          <Button type="submit" loading={busy}>{editingId ? t('common.save') : t(keys.add)}</Button>
+          {/* R490 C3 (R489 M3-N1) — mirror the Vue SettingDrawer footer
+              (SettingDrawer.vue L45-61): footer-left 测试连接, then the
+              right pair in 取消 → 保存 order; none of the three Vue engine
+              drawers override confirmText, so create AND edit both read
+              common.save (was t(keys.add), e.g. 添加数据库, on create). */}
           <Button type="button" disabled={busy} onClick={closeDrawer}>{t('common.cancel')}</Button>
+          <Button type="submit" loading={busy}>{t('common.save')}</Button>
         </div>
       </form>
     </Sheet>

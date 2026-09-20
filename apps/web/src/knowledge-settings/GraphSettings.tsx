@@ -77,7 +77,7 @@ export function GraphSettings({ graphExtract, modelId, client, embedded = false,
       setSystem({ status: 'ready', engine: graphDatabaseEngine });
       return;
     }
-    if (!client) {
+    if (!client || typeof (client as { request?: unknown }).request !== 'function') {
       setSystem({ status: 'error', message: '知识图谱数据库状态不可用' });
       return;
     }

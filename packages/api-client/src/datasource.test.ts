@@ -94,6 +94,43 @@ test('cancelSyncLog propagates transport failures and rejects broken envelopes',
   await assert.rejects(malformed.cancelSyncLog('ds-1', 'log-9'), /Invalid data source sync cancel/);
 });
 
+// SP2-a Task 10: remove grows the dual-choice delete opts — purge_documents
+// only when explicitly opted in (the backend honors only the exact "true"
+// string, internal/handler/datasource.go DeleteDataSource), so absent opts,
+// an empty opts object and purgeDocuments:false all keep the pre-SP2-a
+// keep-documents promise on the same bare DELETE path.
+test('remove keeps the bare DELETE by default and appends purge_documents=true only when opted in', async () => {
+  const requests: Array<{ method: string; path: string }> = [];
+  const api = createDataSourcesApi(async (request) => { requests.push({ method: request.method, path: request.path }); return undefined; });
+  await api.remove('ds/a');
+  await api.remove('ds/a', {});
+  await api.remove('ds/a', { purgeDocuments: false });
+  await api.remove('ds/a', { purgeDocuments: true });
+  assert.deepEqual(requests, [
+    { method: 'DELETE', path: '/api/v1/datasource/ds%2Fa' },
+    { method: 'DELETE', path: '/api/v1/datasource/ds%2Fa' },
+    { method: 'DELETE', path: '/api/v1/datasource/ds%2Fa' },
+    { method: 'DELETE', path: '/api/v1/datasource/ds%2Fa?purge_documents=true' },
+  ]);
+});
+
+// SP2-a Task 9/10: GET /datasource/:id/documents-count answers {"count": N}
+// and drives the delete panel's "N synced documents" copy; the client
+// unwraps the envelope and rejects anything that is not a count integer.
+test('documentsCount GETs the count route and unwraps the envelope', async () => {
+  const requests: Array<{ method: string; path: string }> = [];
+  const api = createDataSourcesApi(async (request) => { requests.push({ method: request.method, path: request.path }); return { count: 7 }; });
+  assert.equal(await api.documentsCount('ds/a'), 7);
+  assert.deepEqual(requests, [{ method: 'GET', path: '/api/v1/datasource/ds%2Fa/documents-count' }]);
+});
+
+test('documentsCount rejects malformed envelopes and propagates failures', async () => {
+  const malformed = createDataSourcesApi(async () => ({ count: '7' }));
+  await assert.rejects(malformed.documentsCount('ds-1'), /Invalid data source documents count/);
+  const failing = createDataSourcesApi(async () => { throw new Error('500: count failed'); });
+  await assert.rejects(failing.documentsCount('ds-1'), /500/);
+});
+
 test('exposes connector types, credential writes, and sync logs as separate routes', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createDataSourcesApi(async (request) => {

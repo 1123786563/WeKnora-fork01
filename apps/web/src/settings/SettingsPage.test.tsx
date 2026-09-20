@@ -452,3 +452,34 @@ test('chathistory section renders Vue rows, stats panel and no English notes', a
   assert.ok(text.includes('启用并选择 Embedding 模型后，对话消息将自动向量化索引'), 'the empty-stats hint renders');
   assert.equal(text.includes('The server owns the generated knowledge-base identity'), false, 'no English stats note');
 });
+
+// R490 C5 (R489 M3 D8 尾巴) — Vue's chrome/claw landing「打开 API 信息」button
+// pushes ?section=integration-api (ChromeExtensionLanding.vue openApiSettings
+// L119-122); the URL, the settings section and the sidebar highlight move
+// together. Clicking the React button must update the address bar too, not
+// just swap the embedded tab content.
+test('chrome landing 打开 API 信息 syncs the settings URL to integration-api', async () => {
+  const client = makeClient();
+  // The api tab's mounts fetch these; wire them so the section actually loads.
+  (client as unknown as Record<string, unknown>).administration = {
+    ...((client as unknown as { administration: Record<string, unknown> }).administration ?? {}),
+    tenantApiKeys: {
+      list: async () => [],
+      principalConfig: async () => ({ mode: 'tenant', require_direct_header: false }),
+    },
+  };
+  (client as unknown as Record<string, unknown>).knowledgeBases = { list: async () => [] };
+  const container = await mountPage(client, '?section=integration-chrome');
+
+  const button = [...container.querySelectorAll('button')].find((entry) => entry.textContent === '打开 API 信息');
+  assert.ok(button, 'the chrome landing exposes the 打开 API 信息 button (Vue openApiSettings)');
+  await act(async () => { button!.click(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
+
+  assert.equal(
+    new URLSearchParams(dom.window.location.search).get('section'),
+    'integration-api',
+    'the URL section param follows the button like Vue router.push',
+  );
+  assert.ok(container.textContent!.includes('API'), 'the integrations page shows the API section');
+});

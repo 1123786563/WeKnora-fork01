@@ -19,6 +19,10 @@ import type { ChatMentionView, ChatSubmission } from '@weknora/views/chat/compos
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
 import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
+// R490 B1 — Vue Input-field.vue agent-scoped KB filter for the @ mention popup.
+import { deriveKbFilterForAgent, resolveMentionAgentKbScope } from './mention-agent-filter.ts';
+// R490 B3 — Vue botmsg handleAddToKnowledge: prefilled manual-editor dialog.
+import { BookmarkAnswerDialog, buildManualBookmarkContent, formatManualBookmarkTitle } from './BookmarkAnswerDialog.tsx';
 import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip, resolveChatModelOptions } from './model-chip.ts';
 import { buildHeaderUtilityItems } from './header-menu-actions.ts';
 import { readStoredLocale } from '../i18n.ts';
@@ -347,6 +351,14 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setMentionLoading(false);
     };
   }, [client, scope.scope]);
+
+  // R490 B1 — Vue Input-field.vue watches selectedAgentId / agent KB config
+  // and re-resolves the @ list under the new agent. Reset the loaded cache so
+  // the next popup open re-runs the agent compatibility filter (the chips and
+  // any open popup are left alone; only the cache is invalidated).
+  useEffect(() => {
+    mentionLoadedRef.current = false;
+  }, [selectedAgentId, agents]);
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
@@ -925,8 +937,26 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // SP11 message feedback (Task 8): optimistic pressed-state with symmetric
   // rollback when the persisted rating call fails (transient toast, no banner).
   const ratingOf = useCallback((messageId: string): FeedbackRating | undefined => ratings[messageId], [ratings]);
-  const onRateMessage = useCallback(async (messageId: string, rating: FeedbackRating): Promise<void> => {
-    setRatings((prev) => ({ ...prev, [messageId]: rating }));
+  // R490 B3 — Vue botmsg.vue handleAddToKnowledge: the answer toolbar's
+  // 添加到知识库 opens the manual editor prefilled from the paired
+  // question/answer; an empty answer warns and does not open.
+  const [bookmarkTarget, setBookmarkTarget] = useState<{ title: string; content: string } | null>(null);
+  const onBookmarkMessage = useCallback((messageId: string): void => {
+    const index = messages.findIndex((message) => message.id === messageId);
+    if (index < 0) return;
+    const answer = (messages[index]?.content ?? '').trim();
+    if (!answer) {
+      showAgentToast(copy.bookmarkEmptyContentWarning);
+      return;
+    }
+    const question = messages.slice(0, index).reverse().find((message) => message.role === 'user')?.content ?? '';
+    setBookmarkTarget({
+      title: formatManualBookmarkTitle(question.trim(), copy.bookmarkSessionExcerpt),
+      content: buildManualBookmarkContent(answer, copy.bookmarkNoAnswerContent),
+    });
+  }, [messages, copy]);
+
+  const onRateMessage = useCallback(async (messageId: string, rating: FeedbackRating): Promise<void> => {    setRatings((prev) => ({ ...prev, [messageId]: rating }));
     const sessionId = selectedSessionId;
     if (!sessionId) return;
     try {
@@ -1422,10 +1452,27 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     mentionLoadingRef.current = true;
     setMentionLoading(true);
     setMentionError(undefined);
-    const documentSearch = client.knowledge.documents?.search
-      ? client.knowledge.documents.search({ recent: true, offset: 0, limit: 20 })
+    // R490 B1 — Vue Input-field.vue 1288-1399: the @ popup scopes KBs by the
+    // selected agent. The '' selection falls back to the builtin quick-answer
+    // agent, mirroring the agent-not-ready gate below and Vue's
+    // BUILTIN_QUICK_ANSWER_ID fallback.
+    const mentionAgent = agents.find((item) => item.id === selectedAgentId)
+      ?? (selectedAgentId === '' ? agents.find((item) => item.is_builtin === true && item.id === 'builtin-quick-answer') : undefined);
+    const mentionScope = resolveMentionAgentKbScope(
+      mentionAgent?.config as Record<string, unknown> | undefined,
+      // Rows are threaded through below once the list resolves; the file gate
+      // and capability filter only need the agent config up front.
+      [],
+    );
+    const documentSearch = mentionScope.shouldLoadFiles && client.knowledge.documents?.search
+      ? client.knowledge.documents.search({
+        recent: true,
+        offset: 0,
+        limit: 20,
+        ...(mentionScope.fileTypes.length > 0 ? { file_types: mentionScope.fileTypes } : {}),
+      })
       : Promise.resolve({ data: [] } as any);
-    const hasDocumentSearch = typeof client.knowledge.documents?.search === 'function';
+    const hasDocumentSearch = mentionScope.shouldLoadFiles && typeof client.knowledge.documents?.search === 'function';
     const mcpList = client.configuration?.mcp?.list
       ? client.configuration.mcp.list()
       : Promise.resolve([] as any[]);
@@ -1452,17 +1499,22 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           return;
         }
         const kbValues = results[0].status === 'fulfilled' ? results[0].value : [];
-        const kbItems = kbValues.map((item) => ({
+        // R490 B1 — resolveMentionAgentKbScope applies the Vue pass:
+        // 'none' empties, 'selected' narrows to the configured ids, 'all'
+        // keeps only agent-compatible KBs (mode + tool-derived capabilities).
+        const agentScope = resolveMentionAgentKbScope(mentionAgent?.config as Record<string, unknown> | undefined, kbValues);
+        const scopedKbs = agentScope.scopedKbs;
+        const kbItems = scopedKbs.map((item) => ({
           id: item.id,
           name: item.name,
           type: 'kb' as const,
           kbType: item.type === 'faq' ? 'faq' as const : 'document' as const,
         }));
-        const tagResults = await Promise.allSettled(kbValues.map((item) => client.knowledge.documents.tags(item.id, { page_size: 200 })));
+        const tagResults = await Promise.allSettled(scopedKbs.map((item) => client.knowledge.documents.tags(item.id, { page_size: 200 })));
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
         const tagItems = tagResults.flatMap((result, index) => {
           if (result.status !== 'fulfilled') return [];
-          const kb = kbValues[index];
+          const kb = scopedKbs[index];
           return result.value.map((tag: any) => ({
             id: String(tag.id),
             name: String(tag.name ?? tag.label ?? tag.id),
@@ -1471,14 +1523,24 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
             kbName: kb?.name,
           }));
         });
-        const fileResult = results[1].status === 'fulfilled' ? results[1].value.data : [];
-        const fileItems = Array.isArray(fileResult) ? fileResult.map((item: any) => ({
+        // R490 B1 — Vue filters searched files to the same agent KB scope
+        // (mentionAllowedKbIds; Input-field.vue 1426-1436): a file whose KB is
+        // not in scope is dropped, and files do not load at all when the agent
+        // disables KBs or no tool consumes file ids.
+        const fileRecords = agentScope.shouldLoadFiles && results[1].status === 'fulfilled' ? results[1].value.data : [];
+        const scopedFileRecords = agentScope.allowedKbIds
+          ? (Array.isArray(fileRecords) ? fileRecords : []).filter((item: any) => {
+            const kbId = item.knowledge_base_id ?? item.kb_id;
+            return kbId != null && agentScope.allowedKbIds?.has(String(kbId));
+          })
+          : (Array.isArray(fileRecords) ? fileRecords : []);
+        const fileItems = scopedFileRecords.map((item: any) => ({
           id: String(item.id),
           name: String(item.title ?? item.file_name ?? item.id),
           type: 'file' as const,
           kbId: item.knowledge_base_id ?? item.kb_id,
           kbName: item.knowledge_base_name ?? '',
-        })) : [];
+        }));
         const mcpItems = results[2].status === 'fulfilled' ? results[2].value.map((item: any) => ({
           id: item.id,
           name: item.name,
@@ -1507,6 +1569,23 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setMentionLoading(false);
     });
   }
+
+  // R490 B1 — Vue mentionEmptyHint (Input-field.vue 433-441): when the agent
+  // capability filter empties the @ list with no search term, show the
+  // dedicated hint instead of the generic empty label. The query/empty-list
+  // checks ride on the composer side, mirroring the Vue computed.
+  const mentionNoCompatibleKbHint = useMemo(() => {
+    if (mentionOptions.length !== 0) return undefined;
+    const agent = agents.find((item) => item.id === selectedAgentId)
+      ?? (selectedAgentId === '' ? agents.find((item) => item.is_builtin === true && item.id === 'builtin-quick-answer') : undefined);
+    const config = agent?.config as Record<string, unknown> | undefined;
+    if (!config) return undefined;
+    const kbMode = String(config.kb_selection_mode ?? '') || 'all';
+    if (kbMode !== 'all') return undefined;
+    const agentMode = typeof config.agent_mode === 'string' ? config.agent_mode : '';
+    const allowedTools = Array.isArray(config.allowed_tools) ? config.allowed_tools.map((tool) => String(tool)) : [];
+    return deriveKbFilterForAgent(agentMode, allowedTools) ? copy.mentionNoCompatibleKbForAgent : undefined;
+  }, [mentionOptions, agents, selectedAgentId, copy]);
 
   function selectMention(item: ChatMentionView): void {
     setMentionedItems((current) => current.some((selected) => selected.id === item.id) ? current : [...current, item]);
@@ -1784,6 +1863,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     mentionedItems={mentionedItems}
     mentionLoading={mentionLoading}
     mentionError={mentionError}
+    mentionEmptyHint={mentionNoCompatibleKbHint}
     onMentionOpen={loadMentionOptions}
     onMentionSelect={selectMention}
     onMentionRemove={removeMention}
@@ -1828,6 +1908,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onForkMessage={forkAtMessage}
     canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}
     onRateMessage={onRateMessage}
+    onBookmark={onBookmarkMessage}
     onRemoveRating={onRemoveRating}
     ratingOf={ratingOf}
     starterQuestionsLoading={starterQuestionsLoading}
@@ -1894,6 +1975,17 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     canSteer={Boolean(selectedAgentId)}
     onStopStream={() => void stopStream()}
     send={send}
-  />
+    />
+    {bookmarkTarget ? (
+      <BookmarkAnswerDialog
+        client={client}
+        copy={copy}
+        open
+        initialTitle={bookmarkTarget.title}
+        initialContent={bookmarkTarget.content}
+        onClose={() => setBookmarkTarget(null)}
+        onSaved={() => showAgentToast(copy.bookmarkDraftSaved)}
+      />
+    ) : null}
   </>;
 }

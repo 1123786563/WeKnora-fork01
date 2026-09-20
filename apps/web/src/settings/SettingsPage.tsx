@@ -415,7 +415,15 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
         // would reset and replay the .wks-section fade-in animation on every
         // revisit, which read as a flicker.
         : { position: 'absolute', top: 0, left: 0, width: '100%', visibility: 'hidden', pointerEvents: 'none' }} className={`wks-content-wrapper${key === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(key) || sectionIntegrationTab ? ' wks-content-wrapper--full' : '')}`}>
-        {sectionIntegrationTab ? (sectionDenied ?? <IntegrationsRoutePage key={`${tenantId}:${sectionIntegrationTab}`} client={client} tenantId={String(tenantId)} activeTab={sectionIntegrationTab} embedded canEdit={roleAtLeast(role, 'admin')} />) : <div className="wk-settings-section wks-section">
+        {sectionIntegrationTab ? (sectionDenied ?? <IntegrationsRoutePage key={`${tenantId}:${sectionIntegrationTab}`} client={client} tenantId={String(tenantId)} activeTab={sectionIntegrationTab} embedded canEdit={roleAtLeast(role, 'admin')} onTabChange={(nextTab) => {
+          // R490 C5 (R489 M3 D8 尾巴) — Vue integration tabs ARE settings
+          // sections: the chrome/claw landing「打开 API 信息」button pushes
+          // ?section=integration-api (ChromeExtensionLanding.vue openApiSettings
+          // L119-122), moving the URL, the section and the sidebar highlight
+          // together. Route tab switches through the section select so the
+          // address bar tracks the visible section instead of going stale.
+          select('integration-' + nextTab);
+        }} />) : <div className="wk-settings-section wks-section">
           {/* Panels owning their full Vue section header render it themselves:
               general/models here, and members — TenantMembers.vue:8-65 renders
               the h2 + permissions popover + audit entry + section-description

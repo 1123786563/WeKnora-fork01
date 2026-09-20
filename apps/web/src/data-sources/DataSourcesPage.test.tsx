@@ -27,7 +27,9 @@ test('keeps permission gates on both opening and saving paths', () => {
   assert.match(page, /function openCreate\(\) \{ if \(accessDenied \|\| !canManage\) return;/);
   assert.match(page, /function openEdit\(source: DataSource\) \{ if \(!canManage\) return;/);
   assert.match(page, /async function save\(event\?: FormEvent<HTMLFormElement>\) \{[\s\S]*?if \(!canManage\) return;/);
-  assert.match(page, /async function remove\(source: DataSource\) \{ if \(!canManage\) return;/);
+  // SP2-a Task 10 rewrote remove() from a one-line window.confirm into the
+  // dual-choice panel opener; the canManage gate stays the first statement.
+  assert.match(page, /async function remove\(source: DataSource\) \{\s*if \(!canManage\) return;/);
 });
 
 test('preserves credential replacement and deletion semantics on edit', () => {
@@ -293,4 +295,47 @@ test('keeps the empty-state, add-card and loading copy on i18n keys', () => {
   assert.doesNotMatch(page, /No data sources/);
   assert.doesNotMatch(page, /Add an external connector/);
   assert.doesNotMatch(page, /Sync status/);
+});
+
+// SP2-a Task 10: the card delete action no longer window.confirms — it opens
+// a controlled Sheet dual-choice panel. Entering the panel fetches the
+// synced-documents count (GET /datasource/:id/documents-count, Task 9) that
+// drives the "N synced documents" line, the purge checkbox label and the
+// purge warning; a request serial keeps a late count response from landing
+// in a panel opened for a different source.
+test('delete opens a controlled dual-choice Sheet and drops window.confirm', () => {
+  assert.doesNotMatch(page, /window\.confirm/);
+  assert.match(page, /const \[deleteSource, setDeleteSource\] = useState<DataSource \| null>\(null\);/);
+  assert.match(page, /const \[deletePurge, setDeletePurge\] = useState\(false\);/);
+  assert.match(page, /async function remove\(source: DataSource\) \{\s*if \(!canManage\) return;[\s\S]*?setDeleteSource\(source\);[\s\S]*?setDeletePurge\(false\);/);
+  assert.match(page, /const request = \+\+deleteCountRequest\.current;/);
+  assert.match(page, /await dataSources\.documentsCount\(source\.id\);/);
+  assert.match(page, /if \(deleteCountRequest\.current === request\) setDeleteCount\(count\);/);
+  assert.match(page, /t\('dataSource\.deletePanelTitle', \{ name: deleteSource\.name \}\)/);
+});
+
+// Default state keeps the existing promise copy (documents stay); checking
+// the purge checkbox swaps the body to the red irreversible warning and the
+// confirm button to the deleteAndPurge label.
+test('delete panel keeps the keep copy by default and swaps to the red purge warning once checked', () => {
+  assert.match(page, /data-kind=\{deletePurge \? 'delete-purge-warning' : 'delete-keep'\}/);
+  assert.match(page, /\{deletePurge \? <span className="font-medium text-danger">\{purgeWarningText\}<\/span> : t\('dataSource\.deletePanelKeep'\)\}/);
+  assert.match(page, /<Checkbox checked=\{deletePurge\} onChange=\{\(event\) => setDeletePurge\(event\.target\.checked\)\} \/>/);
+  assert.match(page, /purgeLabelText = deleteCount !== null \? t\('dataSource\.deletePanelPurgeLabel', \{ count: deleteCount \}\) : t\('dataSource\.deletePanelPurgeLabelUnknown'\)/);
+  assert.match(page, /purgeWarningText = deleteCount !== null \? t\('dataSource\.deletePanelPurgeWarning', \{ count: deleteCount \}\) : t\('dataSource\.deletePanelPurgeWarningUnknown'\)/);
+  assert.match(page, /\{deletePurge \? t\('dataSource\.deleteAndPurge'\) : t\('dataSource\.delete'\)\}/);
+});
+
+// The count line loads behind the panel: a loading placeholder first, the
+// interpolated "synced documents: N" once the count resolves.
+test('delete panel renders the documents count with a loading state', () => {
+  assert.match(page, /deleteCountLoading \? <p className="m-0 text-muted" data-kind="delete-count-loading">\{t\('common\.loading'\)\}<\/p> : deleteCount !== null \? <p className="m-0 text-muted" data-kind="delete-count">\{t\('dataSource\.deletePanelCount', \{ count: deleteCount \}\)\}<\/p> : null/);
+});
+
+// Confirm runs the dual-choice delete: the checkbox rides into
+// remove(id, {purgeDocuments}) (DELETE ?purge_documents=true, Task 9) and the
+// success toast distinguishes purged from kept documents.
+test('confirming the delete panel passes the purge choice to remove and splits the toast', () => {
+  assert.match(page, /await dataSources\.remove\(deleteSource\.id, \{ purgeDocuments: purge \}\);/);
+  assert.match(page, /text: purge \? t\('dataSource\.deleteSuccessPurged'\) : t\('dataSource\.deleteSuccess'\)/);
 });

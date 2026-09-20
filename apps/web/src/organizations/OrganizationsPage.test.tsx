@@ -518,6 +518,32 @@ test('members list renders the Vue table anatomy with joined dates and owner bad
   assert.equal(textButtons(bobRow, '移除').length, 1, 'non-owner actions cell keeps the remove affordance');
 });
 
+// R490 C1 — the app router always passes role={scopeRuntime.role()} (never
+// null), which used to short-circuit the auth/me fetch that populates
+// currentUserId; production then hid the「我」badge while role-less test
+// mounts kept seeing it. The badge must render on the role-prop path too.
+test('owner row keeps the 我 badge when the router-supplied role prop is set', async () => {
+  const { client } = clientWith([ownerOrg]);
+  client.identity.organizations.members.list = async () => ({
+    items: [
+      { id: 'member-owner', user_id: 'u1', username: 'Alice', email: 'alice@example.dev', role: 'admin', tenant_id: 1, tenant_name: 'Alice Workspace', joined_at: '2030-03-05T00:00:00' },
+    ],
+    total: 1,
+  });
+  const root = await mountPage(client, undefined, 'owner');
+  await click(orgCards(root)[0] as HTMLElement);
+  await act(async () => {});
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
+  await click([...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理') as HTMLElement);
+  await act(async () => {});
+  const table = dialog.querySelector('table') as HTMLTableElement | null;
+  assert.ok(table);
+  const ownerRow = [...table.querySelectorAll('tbody tr')].find((row) => (row.textContent ?? '').includes('Alice Workspace')) as HTMLTableRowElement;
+  assert.ok(ownerRow);
+  assert.match(ownerRow.textContent ?? '', /创建者/, 'owner row shows the 创建者 badge even with the role prop');
+  assert.match(ownerRow.textContent ?? '', /我/, 'own row shows the 我 badge on the role-prop path (production router mount)');
+});
+
 // R488 D-B5 — Vue has NO resident add-member form: the invite entry is an
 // admin-only icon button that opens a popup (Vue :408-446). The resident
 // 「添加成员」 form block must be gone.
@@ -615,10 +641,10 @@ test('more menu offers leave for joined spaces and hides delete for non-owners',
   const cards = orgCards(root);
   const joinedCard = cards.find((card) => card.textContent?.includes('joined-org'));
   assert.ok(joinedCard);
-  const more = (joinedCard as HTMLElement).querySelector('[role="button"][aria-label="编辑"]');
+  const more = (joinedCard as HTMLElement).querySelector('[role="button"][aria-label="更多操作"]');
   assert.ok(more);
   await click(more as HTMLElement);
-  const menu = (joinedCard as HTMLElement).querySelector('[role="button"][aria-label="编辑"] > div');
+  const menu = (joinedCard as HTMLElement).querySelector('[role="button"][aria-label="更多操作"] > div');
   assert.ok(menu);
   assert.match(menu.textContent ?? '', /退出共享空间/);
   assert.doesNotMatch(menu.textContent ?? '', /删除/);
@@ -635,10 +661,10 @@ const NEED_TENANT_ADMIN_TIP = '此操作需要当前空间的 admin 或更高角
 async function openCardMenu(root: HTMLElement, name: string): Promise<HTMLElement> {
   const card = orgCards(root).find((entry) => entry.textContent?.includes(name));
   assert.ok(card, 'expected card ' + name);
-  const more = (card as HTMLElement).querySelector('[role="button"][aria-label="编辑"]');
+  const more = (card as HTMLElement).querySelector('[role="button"][aria-label="更多操作"]');
   assert.ok(more);
   await click(more as HTMLElement);
-  const menu = (card as HTMLElement).querySelector('[role="button"][aria-label="编辑"] > div');
+  const menu = (card as HTMLElement).querySelector('[role="button"][aria-label="更多操作"] > div');
   assert.ok(menu, 'expected popup menu for ' + name);
   return menu as HTMLElement;
 }

@@ -10,10 +10,19 @@ export type ActivityTone = 'success' | 'warning' | 'error' | 'primary' | 'defaul
 export function activityDateTime(value: string, locale?: string): { date: string; time: string } {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return { date: value, time: '' };
-  return {
-    date: date.toLocaleDateString(locale),
-    time: date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }),
-  };
+  // R490 A9 (Vue KnowledgeBaseActivitySettings.vue formatDatePart/formatTimePart
+  // :515-540): the date renders with 2-digit month/day (2026/09/19, not
+  // 2026/9/19) and the clock keeps seconds on a 24h face (00:22:01) — the
+  // default toLocaleDateString/toLocaleTimeString pair produced unpadded
+  // month/day and dropped the seconds.
+  try {
+    return {
+      date: new Intl.DateTimeFormat(locale || 'zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date),
+      time: new Intl.DateTimeFormat(locale || 'zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(date),
+    };
+  } catch {
+    return { date: value, time: '' };
+  }
 }
 
 export function activityActionTone(action: string): ActivityTone {

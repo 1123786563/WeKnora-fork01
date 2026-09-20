@@ -746,3 +746,13 @@ test('incompatibleSelectedKbCount counts selected KBs the new preset disables (K
   // outside the selected scope nothing counts
   assert.equal(incompatibleSelectedKbCount('all', ['kb-w'], kbs, findAgentTypePreset('rag-qa'), 'smart-reasoning'), 0);
 });
+
+// R490 B4 — the fallback table is static (no vue-i18n literal {'{{'} syntax),
+// so the hint must carry the already-unescaped braces Vue renders at runtime.
+test('agentEditor.placeholders.hint renders a clean {{ in every fallback locale', () => {
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    const hint = agentEditorFallback[locale]['agentEditor.placeholders.hint'];
+    assert.ok(hint.includes('{{'), `${locale} keeps the {{ trigger`);
+    assert.ok(!hint.includes(`{'`), `${locale} drops the vue-i18n literal quoting`);
+  }
+});

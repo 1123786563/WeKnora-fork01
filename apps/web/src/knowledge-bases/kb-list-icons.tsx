@@ -36,7 +36,8 @@ export type KbIconName =
   | 'check-circle-filled'
   | 'usergroup-add'
   | 'wiki'
-  | 'chevron-left';
+  | 'chevron-left'
+  | 'add';
 
 const ICONS: Record<KbIconName, ReactNode> = {
   layers: (
@@ -214,6 +215,9 @@ const ICONS: Record<KbIconName, ReactNode> = {
     </>
   ),
   "chevron-left": <path d="m15 6-6 6 6 6" />,
+  // R490 A7/A8: TDesign t-icon "add" — an SVG glyph so icon buttons stop
+  // leaking a literal "+" character into innerText.
+  add: <path d="M12 5v14M5 12h14" />,
 };
 
 export function KbIcon({ name, size = 16 }: { name: KbIconName; size?: number }): ReactNode {

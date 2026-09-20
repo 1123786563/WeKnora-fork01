@@ -411,10 +411,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   // rendering only — the server route guard remains the real boundary.
   const [resolvedCanManage, setResolvedCanManage] = useState<boolean | null>(null);
   useEffect(() => {
-    if (role) {
-      setResolvedCanManage(role === 'admin' || role === 'owner');
-      return;
-    }
+    if (role) setResolvedCanManage(role === 'admin' || role === 'owner');
+    // R490 C1: auth/me must still run when the role prop short-circuits the
+    // canManage resolution — the app router always passes scopeRuntime.role()
+    // (never null), and the「我」member badge keys off the user id that call
+    // carries (Vue authStore.currentUserId, OrganizationSettingsModal.vue:467).
+    // Skipping it left currentUserId '' and hid the badge in production while
+    // role-less test mounts kept seeing it.
     let active = true;
     void client.auth?.me?.().then((me) => {
       if (!active) return;
@@ -423,6 +426,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
       // (Vue authStore.currentUserId, OrganizationSettingsModal.vue:467).
       const userId = record.id;
       if (typeof userId === 'string' || typeof userId === 'number') setCurrentUserId(String(userId));
+      if (role) return;
       const selected = readReactPlatformState(window.localStorage)?.tenantId ?? null;
       const homeTenant = me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '';
       const tenantId = selected ?? homeTenant;
@@ -437,7 +441,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     }).catch(() => {
       // Identity unavailable (embedded/test mounts): keep the legacy
       // permissive UI; the server still rejects unauthorized writes.
-      if (active) setResolvedCanManage(false);
+      if (active && !role) setResolvedCanManage(false);
     });
     return () => { active = false; };
   }, [client, role]);
@@ -934,7 +938,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
             <div className="flex min-w-0 flex-1 flex-col gap-[2px]"><span className="truncate text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[rgba(23,26,29,0.92)]" title={org.name}>{org.name}</span></div>
           </div>
           <div className={'relative flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] opacity-0 [transition:all_.2s_ease] group-hover:opacity-60 hover:bg-[#f3f3f5] hover:opacity-100!' + (moreMenuOrgId === org.id ? ' bg-[#f3f3f5] opacity-100!' : '')}
-            role="button" tabIndex={0} aria-label={t(locale, 'common.edit')}
+            role="button" tabIndex={0} aria-label={t(locale, 'common.moreActions')}
             onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(moreMenuOrgId === org.id ? null : org.id); }}
             onKeyDown={(event) => { if (event.key === 'Enter') { event.stopPropagation(); setMoreMenuOrgId(moreMenuOrgId === org.id ? null : org.id); } }}>
             <IconMore />

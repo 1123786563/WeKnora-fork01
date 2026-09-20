@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Organization, WeKnoraClient } from '@weknora/api-client';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { SpaceAvatar } from '../organizations/SpaceAvatar.tsx';
+import { KbIcon } from '../knowledge-bases/kb-list-icons.tsx';
 
 // R485 (Vue KBShareSettings): the shared-to management list embedded in the
 // KB settings drawer — a count badge next to the "已共享到" header, a search
@@ -144,7 +145,7 @@ export function KBShareSettingsSection({ client, knowledgeBaseId, canShare = fal
           {/* Vue share-hint-trigger-btn: an icon-only trigger carrying the
               sharing-notes popover (hintTitle + tip1/tip2). */}
           <span className="relative inline-flex">
-            <button type="button" aria-label={t('knowledgeEditor.share.hintTitle')} title={t('knowledgeEditor.share.hintTitle')} aria-expanded={hintOpen} onClick={() => setHintOpen((current) => !current)}><span aria-hidden="true">ⓘ</span></button>
+            <button type="button" aria-label={t('knowledgeEditor.share.hintTitle')} title={t('knowledgeEditor.share.hintTitle')} aria-expanded={hintOpen} onClick={() => setHintOpen((current) => !current)}>{/* R490 A7 (Vue t-icon name="info-circle"): the hint trigger is an SVG glyph — the old literal "ⓘ" character leaked into innerText. */}<KbIcon name="info-circle" size={16} /></button>
             {hintOpen ? <div role="note" data-share-hint="" className="absolute right-0 top-[calc(100%+4px)] z-20 grid max-w-[380px] gap-1 rounded-control border border-line bg-surface p-3 text-xs shadow-[0_8px_20px_rgb(16_24_40/14%)]">
               <strong className="font-semibold">{t('knowledgeEditor.share.hintTitle')}</strong>
               <span>{t('knowledgeEditor.share.tip1')}</span>
@@ -167,7 +168,7 @@ export function KBShareSettingsSection({ client, knowledgeBaseId, canShare = fal
               data-share-add-trigger=""
               onClick={() => { setAddOpen((current) => !current); setSelectedOrgId(''); setSelectedPermission('viewer'); }}
               className="inline-flex h-7 w-7 items-center justify-center rounded-control border border-line-control text-sm"
-            >+</button>
+            >{/* R490 A7 (Vue t-button #icon + t-icon "add"): the square add trigger is an SVG glyph — the old literal "+" character leaked into innerText. */}<KbIcon name="add" size={16} /></button>
           ) : null}
         </div>
       </div>

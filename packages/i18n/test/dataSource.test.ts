@@ -73,6 +73,16 @@ const EDITOR_KEYS = [
   'dataSource.syncLogsLoadMoreFailed',
   // SP2-a Task 6: cooperative cancel button for running syncs.
   'dataSource.cancelSync',
+  // SP2-a Task 10: dual-choice delete panel (keep vs purge synced documents).
+  'dataSource.deletePanelTitle',
+  'dataSource.deletePanelKeep',
+  'dataSource.deletePanelCount',
+  'dataSource.deletePanelPurgeLabel',
+  'dataSource.deletePanelPurgeLabelUnknown',
+  'dataSource.deletePanelPurgeWarning',
+  'dataSource.deletePanelPurgeWarningUnknown',
+  'dataSource.deleteAndPurge',
+  'dataSource.deleteSuccessPurged',
   'dataSource.noDeclaredCapabilities',
   'dataSource.connectorTypePlaceholder',
   'dataSource.cronSchedulePlaceholder',
@@ -137,8 +147,8 @@ function dataSourceKeys(locale: string): string[] {
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
   // 224 Vue-ported keys + 13 confluence/dingtalk connector/desc/field keys
-  // + 1 cancelSync (SP2-a Task 6).
-  assert.equal(keys.length, 238);
+  // + 1 cancelSync (SP2-a Task 6) + 9 delete-panel keys (SP2-a Task 10).
+  assert.equal(keys.length, 247);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');
@@ -222,6 +232,32 @@ test('cancelSync copy is byte-exact in every locale', () => {
   assert.equal(formatMessage('ja-JP', 'dataSource.cancelSync'), 'Cancel sync');
   assert.equal(formatMessage('ko-KR', 'dataSource.cancelSync'), 'Cancel sync');
   assert.equal(formatMessage('ru-RU', 'dataSource.cancelSync'), 'Cancel sync');
+});
+
+// SP2-a Task 10: dual-choice delete panel copy — the keep promise by default,
+// the red irreversible purge warning once the checkbox is on, the documents
+// count line, and the purged/kept toast split. ja/ko/ru ship the English
+// copy (no Vue baseline, same as cancelSync).
+test('delete panel copy is byte-exact in every locale and interpolates count/name', () => {
+  assert.equal(formatMessage('zh-CN', 'dataSource.deletePanelTitle', { name: '飞书 wiki' }), '删除数据源 飞书 wiki');
+  assert.equal(formatMessage('zh-CN', 'dataSource.deletePanelKeep'), '仅删除数据源，已同步到知识库的文档将保留。');
+  assert.equal(formatMessage('zh-CN', 'dataSource.deletePanelCount', { count: 3 }), '同步的文档：3 篇');
+  assert.equal(formatMessage('zh-CN', 'dataSource.deletePanelPurgeLabel', { count: 3 }), '同时删除这 3 篇同步文档');
+  assert.equal(formatMessage('zh-CN', 'dataSource.deletePanelPurgeLabelUnknown'), '同时删除全部已同步文档');
+  assert.equal(formatMessage('zh-CN', 'dataSource.deletePanelPurgeWarning', { count: 3 }), '将从知识库中永久删除 3 篇文档及其向量/索引，不可恢复。');
+  assert.equal(formatMessage('zh-CN', 'dataSource.deletePanelPurgeWarningUnknown'), '将从知识库中永久删除全部已同步文档及其向量/索引，不可恢复。');
+  assert.equal(formatMessage('zh-CN', 'dataSource.deleteAndPurge'), '删除数据源及文档');
+  assert.equal(formatMessage('zh-CN', 'dataSource.deleteSuccessPurged'), '数据源及已同步文档已删除');
+  assert.equal(formatMessage('en-US', 'dataSource.deletePanelTitle', { name: 'Notion' }), 'Delete data source Notion');
+  assert.equal(formatMessage('en-US', 'dataSource.deletePanelKeep'), 'Only the data source is deleted; documents already synced into the knowledge base are kept.');
+  assert.equal(formatMessage('en-US', 'dataSource.deletePanelCount', { count: 3 }), 'Synced documents: 3');
+  assert.equal(formatMessage('en-US', 'dataSource.deletePanelPurgeLabel', { count: 3 }), 'Also delete these 3 synced documents');
+  assert.equal(formatMessage('en-US', 'dataSource.deletePanelPurgeWarning', { count: 3 }), 'This will permanently delete 3 documents and their vectors/indexes from the knowledge base. This cannot be undone.');
+  assert.equal(formatMessage('en-US', 'dataSource.deleteAndPurge'), 'Delete data source and documents');
+  assert.equal(formatMessage('en-US', 'dataSource.deleteSuccessPurged'), 'Data source and its synced documents were deleted');
+  assert.equal(formatMessage('ja-JP', 'dataSource.deleteAndPurge'), 'Delete data source and documents');
+  assert.equal(formatMessage('ko-KR', 'dataSource.deletePanelCount', { count: 5 }), 'Synced documents: 5');
+  assert.equal(formatMessage('ru-RU', 'dataSource.deleteSuccessPurged'), 'Data source and its synced documents were deleted');
 });
 
 // R453 A1: Vue DataSourceEditorDialog prereq setup-guide + doc-hint copy,
