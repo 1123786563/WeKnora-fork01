@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -37,21 +39,44 @@ type response struct {
 	RawUsage  usage  `json:"raw_usage"`
 	Model     string `json:"model"`
 	Transport string `json:"transport"`
+	Completed bool   `json:"completed"`
+	Truncated bool   `json:"truncated"`
 }
 
 func decodePrompt(w http.ResponseWriter, r *http.Request) (string, error) {
 	if r.Method != http.MethodPost {
 		return "", fmt.Errorf("POST required")
 	}
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		return "", fmt.Errorf("application/json Content-Type required")
+	}
 	defer r.Body.Close()
 	var input request
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPrompt+128)).Decode(&input); err != nil {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPrompt+128))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
 		return "", fmt.Errorf("fixed V02 prompt required: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return "", fmt.Errorf("fixed V02 request must contain exactly one JSON object")
 	}
 	if input.Prompt == "" || len(input.Prompt) > maxPrompt {
 		return "", fmt.Errorf("fixed V02 prompt required")
 	}
 	return input.Prompt, nil
+}
+
+func appendCapped(output *strings.Builder, written int, chunk string) (int, bool) {
+	for _, runeValue := range chunk {
+		runeBytes := len(string(runeValue))
+		if written+runeBytes > maxOutput {
+			return written, true
+		}
+		output.WriteRune(runeValue)
+		written += runeBytes
+	}
+	return written, false
 }
 
 func validUsage(value usage) bool {
@@ -100,23 +125,32 @@ func generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var output strings.Builder
+	written := 0
+	truncated := false
 	var raw *types.TokenUsage
 	for event := range stream {
 		if event.ResponseType == types.ResponseTypeError {
 			http.Error(w, event.Content, http.StatusBadGateway)
 			return
 		}
-		if len(output.String()) < maxOutput {
-			output.WriteString(event.Content)
+		if !truncated {
+			written, truncated = appendCapped(&output, written, event.Content)
+			if truncated {
+				cancel()
+			}
 		}
 		if event.Usage != nil {
 			raw = event.Usage
 		}
+	}
+	if truncated {
+		http.Error(w, "V02 model output exceeded fixed cap; result is truncated", http.StatusRequestEntityTooLarge)
+		return
 	}
 	if raw == nil || !validUsage(usage{PromptTokens: raw.PromptTokens, CompletionTokens: raw.CompletionTokens, TotalTokens: raw.TotalTokens}) {
 		http.Error(w, "missing or inconsistent streaming raw usage", http.StatusBadGateway)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(response{Text: output.String(), RawUsage: usage{raw.PromptTokens, raw.CompletionTokens, raw.TotalTokens}, Model: modelName, Transport: "weknora-ollama-chatstream"})
+	_ = json.NewEncoder(w).Encode(response{Text: output.String(), RawUsage: usage{raw.PromptTokens, raw.CompletionTokens, raw.TotalTokens}, Model: modelName, Transport: "weknora-ollama-chatstream", Completed: true, Truncated: false})
 }

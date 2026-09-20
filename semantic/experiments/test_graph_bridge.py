@@ -19,6 +19,8 @@ def test_persistent_bridge_keeps_source_ids() -> None:
     assert result["engine_version"]
     assert result["client_reopened"] is True
     assert result["storage_rows"] == 3
+    assert result["run_nonce"]
+    assert result["resource_cleanup_verified"] is True
     assert "e-hidden" not in result["evidence_ids"]
     assert "隐藏组件" not in str(result["result"])
 

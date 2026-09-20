@@ -7,7 +7,7 @@
     "semantica_version": "0.6.8",
     "neo4j_image": "neo4j@sha256:155c8aad10d5c838bc3bbc476c0418779086547822acb214ec5e3d49ba336907",
     "neo4j_server_version": "2025.10.1",
-    "storage_boundary": "dedicated semantica-v02-bridge container and semantica-v02-bridge-data volume, bolt bound only to 127.0.0.1:17687",
+    "storage_boundary": "run-unique semantica-v02-<nonce> container and volume; each destructive operation verifies exact container ID, v02/nonce labels, pinned image, running state, and 127.0.0.1:17687 mapping",
     "model_transport": "registered Semantica GraphReasoner provider -> 127.0.0.1:18092 Go loopback -> existing WeKnora Ollama ChatStream adapter -> qwen2.5:0.5b"
   },
   "roundtrip": {
@@ -29,14 +29,14 @@
       "premises": ["depends_on(a,b)", "depends_on(b,c)"]
     },
     "missing_premise": {"facts": ["depends_on(a,b)"], "conclusions": []},
-    "conflict": {"fact": "not_depends_on(a,b)", "status": "conflicting_evidence", "no_negated_derivation": true}
+    "conflict": {"fact": "not_depends_on(a,b)", "classification": "actual-runtime", "status": "unavailable", "reason": "Semantica 0.6.8 Reasoner.forward_chain exposes inferred facts only and has no registered contradiction/conflict operation", "actual_inference_preserved": "indirectly_depends_on(a,c)"}
   },
   "model_reasoner": {
     "availability": "live-local-provider",
     "actual_backend": "semantica-graphreasoner-via-go-loopback",
     "query": "构建依赖什么？请只根据图中的中文证据回答。",
     "result": "构建依赖发布。",
-    "evidence_ids": ["e-d1"],
+    "evidence_ids": ["e-d1", "e-d2"],
     "raw_usage": {"prompt_tokens": 166, "completion_tokens": 5, "total_tokens": 171},
     "window_invocations": [
       {"kind": "pytest model contract", "raw_usage": {"prompt_tokens": 157, "completion_tokens": 5, "total_tokens": 162}},
@@ -44,6 +44,16 @@
       {"kind": "full V02 acceptance replay", "raw_usage": {"prompt_tokens": 157, "completion_tokens": 5, "total_tokens": 162}}
     ],
     "window_raw_usage_total": {"prompt_tokens": 480, "completion_tokens": 15, "total_tokens": 495},
+    "review_repair_window": {
+      "invocations": [
+        {"kind": "composed projection/model assertion failed after provider success", "raw_usage": {"prompt_tokens": 254, "completion_tokens": 5, "total_tokens": 259}, "test_failure": "expected only e-d1 despite composed ground truth containing allowed D1 and D2"},
+        {"kind": "corrected composed projection/model acceptance", "raw_usage": {"prompt_tokens": 254, "completion_tokens": 5, "total_tokens": 259}, "test_status": "passed"},
+        {"kind": "full V02 acceptance replay", "raw_usage": {"prompt_tokens": 254, "completion_tokens": 5, "total_tokens": 259}, "test_status": "passed"}
+      ],
+      "raw_usage_total": {"prompt_tokens": 762, "completion_tokens": 15, "total_tokens": 777},
+      "cumulative_v02_raw_usage_total": {"prompt_tokens": 1242, "completion_tokens": 30, "total_tokens": 1272}
+    },
+    "composed_prompt": {"evidence_ids": ["e-d1", "e-d2"], "allowed_assertion_ids": ["a-d1-build-release", "a-d2-release-deploy"], "allowed_revisions": ["r1", "r3"], "hidden_absent": true},
     "usage_invariant": "total_tokens == prompt_tokens + completion_tokens",
     "non_stream_usage_not_used": true
   }
