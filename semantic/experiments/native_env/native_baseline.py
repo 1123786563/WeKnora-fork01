@@ -94,18 +94,25 @@ def provision_and_query(config: NativeEnvConfig) -> dict[str, Any]:
     verify_persisted_graph_config(request(config.app_url, "GET", f"/api/v1/initialization/config/{kb['id']}", token=token))
     client = NativeEnvClient(config.app_url, token, config.query_timeout_seconds, model_version=config.model_name)
     document_ids = []
+    indexing_started_at = time.time()
     for evidence, title, content in (("e-d1", "甲服务", "甲服务依赖乙服务。"), ("e-d2", "乙服务", "乙服务依赖丙服务。")):
         document = request(config.app_url, "POST", f"/api/v1/knowledge-bases/{kb['id']}/knowledge/manual", {"title": title, "content": content, "status": "publish", "channel": "native-v03"}, token)["data"]
         document_ids.append(document["id"])
         client.bind_evidence(document["id"], evidence)
     _wait_for_documents(config, token, kb["id"], document_ids)
+    indexing_finished_at = time.time()
     graph_count = _graph_count(config, document_ids)
     if graph_count < 1:
         raise RuntimeError("isolated Neo4j has no source-linked graph data")
     session = request(config.app_url, "POST", "/api/v1/sessions", {"title": "native graph smoke"}, token)["data"]
+    first_query_started_at = time.time()
     result = client.run_case({"case_id": "native-smoke", "document_revision": "synthetic-v1", "question": "甲服务依赖什么？"}, document_ids, session_id=session["id"])
     result["graph_node_count"] = graph_count
     result["raw_sse"] = client.last_sse_raw or ""
+    result["indexing_started_at"] = indexing_started_at
+    result["indexing_finished_at"] = indexing_finished_at
+    result["first_query_started_at"] = first_query_started_at
+    result["first_query_finished_at"] = time.time()
     return result
 
 
@@ -116,12 +123,14 @@ def _source_commit() -> str | None:
 
 def run_lifecycle(config: NativeEnvConfig, output: Path, *, up_fn: Callable[[NativeEnvConfig], int] = up, provision_fn: Callable[[NativeEnvConfig], dict[str, Any]] = provision_and_query, teardown_fn: Callable[[NativeEnvConfig], int] = teardown) -> int:
     started = time.time()
-    result: dict[str, Any] = {"run_id": config.run_id, "source_commit": _source_commit(), "images": {name: service["image"] for name, service in config.compose_document()["services"].items()}, "started_at": started, "command_exits": {}}
+    source_commit = _source_commit()
+    result: dict[str, Any] = {"run_id": config.run_id, "source_commit": source_commit, "engine_version": source_commit, "images": {name: service["image"] for name, service in config.compose_document()["services"].items()}, "started_at": started, "indexing_started_at": None, "command_exits": {}}
     exit_code = 1
     try:
         result["command_exits"]["up"] = up_fn(config)
         if result["command_exits"]["up"] != 0:
             raise RuntimeError("isolated startup failed")
+        result["indexing_started_at"] = time.time()
         result.update(provision_fn(config))
         raw_sse = _redact(str(result.pop("raw_sse", "")))
         if raw_sse:
@@ -140,12 +149,15 @@ def run_lifecycle(config: NativeEnvConfig, output: Path, *, up_fn: Callable[[Nat
         result["finished_at"] = time.time()
         try:
             result["command_exits"]["teardown"] = teardown_fn(config)
+            if result["command_exits"]["teardown"] != 0:
+                result["teardown_failure"] = f"teardown exited {result['command_exits']['teardown']}"
+                result.update({"status": "failed", "failure_stage": "teardown", "error": result["teardown_failure"]})
+                exit_code = 1
         except Exception as error:
             result["command_exits"]["teardown"] = 1
-            result["teardown_error"] = _redact(str(error))
-            if result.get("status") == "completed":
-                result.update({"status": "failed", "failure_stage": "teardown", "error": result["teardown_error"]})
-                exit_code = 1
+            result["teardown_failure"] = _redact(str(error))
+            result.update({"status": "failed", "failure_stage": "teardown", "error": result["teardown_failure"]})
+            exit_code = 1
         _atomic_json(output, result)
     return exit_code
 

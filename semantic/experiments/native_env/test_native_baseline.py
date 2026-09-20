@@ -48,6 +48,19 @@ class NativeBaselineTest(unittest.TestCase):
             self.assertEqual(result["status"], "negative")
             self.assertEqual(result["evidence_ids"], [])
 
+    def test_lifecycle_fails_when_teardown_returns_nonzero(self) -> None:
+        with TemporaryDirectory() as directory:
+            config = NativeEnvConfig.from_mapping({"run_id": "unit-teardown", "artifact_dir": directory})
+            output = Path(directory) / "result.json"
+            def complete(_: NativeEnvConfig) -> dict:
+                return {"status": "completed", "evidence_ids": ["e-d1"], "references": []}
+            exit_code = run_lifecycle(config, output, up_fn=lambda _: 0, provision_fn=complete, teardown_fn=lambda _: 7)
+            result = json.loads(output.read_text())
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["failure_stage"], "teardown")
+            self.assertEqual(result["teardown_failure"], "teardown exited 7")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,15 +7,14 @@ the running Go server is started on a distinct loopback port. It never loads
 the repository `.env`, connects to existing dev containers, downloads models,
 or uses a user database.
 
-Copy `config.example.json` to an untracked local config, then prepare and
-start it:
+Copy `config.example.json` to an untracked local config, then run the complete
+transactional smoke:
 
 ```sh
-python3 semantic/experiments/native_env/orchestrate.py prepare --config /path/to/native-v03.json
-python3 semantic/experiments/native_env/orchestrate.py up --config /path/to/native-v03.json
+python3 semantic/experiments/native_env/native_baseline.py --config /path/to/native-v03.json --output semantic/experiments/native_env/artifacts/native-smoke-result.json
 ```
 
-`up` writes random experiment-only credentials into
+The lifecycle command writes random experiment-only credentials into
 `artifact_dir/run_id/runtime.env` with mode `0600`; do not commit it. It starts
 `go run ./cmd/server` with `NEO4J_ENABLE=true`, the fixed local Ollama model
 `qwen2.5:0.5b`, short request/task/query limits from the config, and isolated
