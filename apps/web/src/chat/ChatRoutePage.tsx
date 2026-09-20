@@ -1512,8 +1512,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         // merge after them (deduped by id, shares bypass the readiness gate).
         const sharedValues = results[4] && results[4].status === 'fulfilled' ? results[4].value : [];
         const mentionBaseKbs = mergeSharedKbsForMention(
-          kbValues.filter((item) => isKbModelReady(item)),
-          Array.isArray(sharedValues) ? sharedValues : [],
+          kbValues.filter((item) => isKbModelReady(item as Record<string, unknown>)),
+          (Array.isArray(sharedValues) ? sharedValues : []) as Record<string, unknown>[],
         );
         // R490 B1 — resolveMentionAgentKbScope applies the Vue pass:
         // 'none' empties, 'selected' narrows to the configured ids, 'all'

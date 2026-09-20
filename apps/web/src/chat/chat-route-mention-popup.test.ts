@@ -26,12 +26,15 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 
 const require_ = createRequire(import.meta.url);
 
-let bundleModule: {
+interface BundleApi {
   mount(client: unknown, scopeController: unknown): Promise<HTMLElement>;
   act(fn: () => Promise<void> | void): Promise<void>;
   click(el: HTMLElement): Promise<void>;
   unmount(): Promise<void>;
-} | undefined;
+}
+
+let bundleModule: BundleModule;
+type BundleModule = BundleApi | undefined;
 
 async function loadBundle(): Promise<void> {
   if (bundleModule) return;
@@ -86,6 +89,20 @@ async function loadBundle(): Promise<void> {
   const code = result.outputFiles[0]?.text;
   if (!code) throw new Error('ChatRoutePage mention-popup test bundle was empty');
   const module = { exports: {} as Record<string, unknown> };
+  // React's scheduler uses MessageChannel ports for task queueing; Node ports
+  // pin the event loop after the tests finish. A task-based stand-in keeps the
+  // scheduler semantics without lingering handles.
+  const taskMessageChannel = {
+    MessageChannel: class MessageChannel {
+      port1: { onmessage: ((event: { data: unknown }) => void) | null } = { onmessage: null };
+      port2 = {
+        postMessage: (message: unknown): void => {
+          const port1 = this.port1;
+          queueMicrotask(() => port1.onmessage?.({ data: message }));
+        },
+      };
+    },
+  };
   vm.runInNewContext(code, {
     module,
     exports: module.exports,
@@ -108,8 +125,7 @@ async function loadBundle(): Promise<void> {
     Blob,
     DOMException,
     AbortController,
-    MessageChannel,
-    MessagePort: globalThis.MessagePort,
+    MessageChannel: taskMessageChannel.MessageChannel as unknown as typeof MessageChannel,
     CustomEvent: dom.window.CustomEvent,
     PopStateEvent: dom.window.PopStateEvent,
     Event: dom.window.Event,
@@ -119,7 +135,7 @@ async function loadBundle(): Promise<void> {
     requestAnimationFrame: dom.window.requestAnimationFrame,
     cancelAnimationFrame: dom.window.cancelAnimationFrame,
   }, { filename: 'chat-route-mention-popup-test-bundle.cjs' });
-  bundleModule = module.exports as typeof bundleModule;
+  bundleModule = module.exports as unknown as BundleApi;
 }
 
 // --- fixtures ----------------------------------------------------------------
@@ -274,7 +290,7 @@ test('@ popup keeps a model-ready KB, scopes tags to it, and drops files from ot
 test('@ popup merges writable-shared KBs after the own rows, deduped by id (Input-field.vue 1265-1284)', async () => {
   await loadBundle();
   const { client } = mentionClientStub({
-    kbs: [READY_KB, { id: 'kb-shared-dupe', name: 'Own Dup', summary_model_id: 'llm-1' }],
+    kbs: [READY_KB, { id: 'kb-shared-dupe', name: 'Own Dup', summary_model_id: 'llm-1', indexing_strategy: { vector_enabled: false, keyword_enabled: false, wiki_enabled: true } }],
     shared: [
       { knowledge_base: { id: 'kb-shared-1', name: 'Shared KB', capabilities: { vector: true } }, permission: 'editor', org_name: 'Parity Org' },
       { knowledge_base: { id: 'kb-shared-dupe', name: 'Own Dup (shared copy)' }, permission: 'admin', org_name: 'Parity Org' },
