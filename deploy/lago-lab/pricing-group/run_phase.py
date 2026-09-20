@@ -543,7 +543,7 @@ def phase_acceptance() -> int:
         "transaction_id": control.transaction_id,
         "external_subscription_id": control.external_subscription_id,
         "code": control.code,
-        "timestamp": base.isoformat(),
+        "timestamp": int(base.timestamp()),
         "properties": dict(control.properties),
     }
     control_result = send_event(API_BASE, key, control_payload)

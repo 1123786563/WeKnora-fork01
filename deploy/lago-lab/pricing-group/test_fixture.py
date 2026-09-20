@@ -170,18 +170,26 @@ class EventMaterializationTests(unittest.TestCase):
             for value in payload["properties"].values():
                 self.assertIsInstance(value, int)
 
-    def test_timestamps_are_monotonic_and_inside_the_current_period(self):
+    def test_timestamps_are_epoch_integers_monotonic_and_inside_the_period(self):
         run = fixture.build_run("weknora-t04-tsprobe", task_count=2)
         task = run.tasks[1]  # a 20-event load task exercises the widest span
         base = datetime(2026, 9, 21, 12, 0, 0, tzinfo=timezone.utc)
+        base_epoch = int(base.timestamp())
         stamps = [
-            datetime.fromisoformat(
-                fixture.event_payload(event, task.subscription_external_id, base)["timestamp"]
-            )
+            fixture.event_payload(event, task.subscription_external_id, base)["timestamp"]
             for event in task.events
         ]
+        # v1.53.0 live-verified: the events API takes Unix epoch seconds,
+        # and ISO-8601 strings are rejected -- so payloads must carry ints.
+        for stamp in stamps:
+            self.assertIsInstance(stamp, int)
         self.assertEqual(stamps, sorted(stamps))
-        self.assertTrue(all(base <= stamp <= base + timedelta(seconds=60) for stamp in stamps))
+        self.assertTrue(
+            all(base_epoch <= stamp <= base_epoch + 60 for stamp in stamps)
+        )
+        self.assertEqual(
+            stamps[0], base_epoch + task.events[0].offset_seconds
+        )
 
 
 class NegativeControlAndConflictTests(unittest.TestCase):

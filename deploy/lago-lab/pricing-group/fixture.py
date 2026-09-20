@@ -431,13 +431,18 @@ def key_of(metric_code: str) -> str:
 def event_payload(
     event: UsageEvent, external_subscription_id: str, base: datetime
 ) -> dict:
-    """Materialize one event into a v1.53.0 POST /api/v1/events body member."""
-    timestamp = base + timedelta(seconds=event.offset_seconds)
+    """Materialize one event into a v1.53.0 POST /api/v1/events body member.
+
+    Live-verified contract (v1.53.0): ``timestamp`` is Unix epoch SECONDS
+    (integer); ISO-8601 strings are rejected with 422 ``invalid_format``.
+    Lago returns the stored instant as ISO-8601 on read-back.
+    """
+    epoch = int(base.timestamp()) + event.offset_seconds
     return {
         "transaction_id": event.transaction_id,
         "external_subscription_id": external_subscription_id,
         "code": event.code,
-        "timestamp": timestamp.isoformat(),
+        "timestamp": epoch,
         "properties": dict(event.properties),
     }
 
