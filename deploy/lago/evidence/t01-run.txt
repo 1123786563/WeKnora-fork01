@@ -14,7 +14,12 @@ All timestamps UTC 2026-09-20. No secret values appear in this file.
 16:41:20  up exit 0 after 3m08s. Compose --wait reported, in order:
             db Healthy -> redis Healthy -> migrate (one-shot) exited 0
             -> api Healthy, api-worker Healthy, api-clock running,
-               front Healthy, pdf Healthy
+               front running (unverified), pdf running (unverified)
+            [2026-09-21 final-review transcription correction: this line
+             originally read "front Healthy, pdf Healthy"; compose defines
+             no healthchecks for front or pdf, so --wait cannot report
+             them Healthy, and the authoritative snapshot t01-health.json
+             records both as running_unverified]
 16:41:3x  ./deploy/lago/lago.sh status --json
           overall: "ready"
             api healthy | api-worker healthy | db healthy | redis healthy

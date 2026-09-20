@@ -19,6 +19,17 @@ LAGO_SH = DEPLOY_DIR / "lago.sh"
 
 REQUIRED_SERVICES = {"api", "api-worker", "api-clock", "db", "redis", "front", "pdf"}
 
+# Seed env keys the official getlago/lago v1.53.0 docker-compose.yml passes
+# to the backend so the migrate one-shot can run rake signup:seed_organization
+# (restored in db503a6d "pass official Lago v1.53.0 seed env vars through").
+SEED_ENV_KEYS = (
+    "LAGO_CREATE_ORG",
+    "LAGO_ORG_NAME",
+    "LAGO_ORG_USER_EMAIL",
+    "LAGO_ORG_USER_PASSWORD",
+    "LAGO_ORG_API_KEY",
+)
+
 
 def load_compose():
     return COMPOSE_PATH.read_text(encoding="utf-8")
@@ -85,6 +96,16 @@ def top_level_volume_names(compose_text):
         if match:
             names.add(match.group(1))
     return names
+
+
+def backend_environment_block(compose_text):
+    """Raw indented block of the shared `x-backend-environment` anchor."""
+    match = re.search(
+        r"^x-backend-environment: &backend-env\s*$\n((?:[ \t]+.*(?:\n|$))*)",
+        compose_text,
+        re.MULTILINE,
+    )
+    return match.group(1) if match else ""
 
 
 class ImageLockTests(unittest.TestCase):
@@ -186,6 +207,35 @@ class ComposeTopologyTests(unittest.TestCase):
 
     def test_community_build_keeps_the_license_flag_empty(self):
         self.assertIn('"LAGO_LICENSE": ${LAGO_LICENSE:-}', load_compose())
+
+    def test_no_sample_fallback_defaults_in_compose(self):
+        """Regression: the upstream sample placeholder values (exposed by
+        lago.sh as SAMPLE_POSTGRES_PASSWORD / SAMPLE_SECRET_KEY_BASE for the
+        generated .env) must never leak into compose.yaml as `:-` fallbacks.
+        Real values must come from the operator .env, not baked-in samples."""
+        compose = load_compose()
+        self.assertNotIn(":-changeme", compose)
+        self.assertNotIn(":-your-secret-key-base-hex-64", compose)
+
+    def test_api_environment_passes_through_seed_keys(self):
+        """Regression: the seed env keys from the official getlago/lago
+        v1.53.0 compose must reach the api service environment via the
+        shared *backend-env anchor, so the migrate one-shot can run
+        rake signup:seed_organization with the LAGO_ORG_* values."""
+        compose = load_compose()
+        api_block = service_blocks(compose)["api"]
+        self.assertIn(
+            "<<: [*backend-env,",
+            api_block,
+            "api environment must merge the shared backend-env anchor",
+        )
+        backend_env = backend_environment_block(compose)
+        self.assertTrue(
+            backend_env, "x-backend-environment anchor block not found"
+        )
+        for key in SEED_ENV_KEYS:
+            with self.subTest(key=key):
+                self.assertIn(f'"{key}":', backend_env)
 
 
 class PortUrlConsistencyTests(unittest.TestCase):
