@@ -99,6 +99,9 @@ function makeSectionClient(section: 'storage' | 'vectorstore' | 'websearch', rou
     remove: async (id: string) => { calls.push({ method: 'DELETE', path: `remove/${id}` }); return { success: true }; },
     test: async (input: unknown) => { calls.push({ method: 'POST', path: 'test', body: input }); tested.push(input); return { success: true, message: 'ok' }; },
     testById: async (id: string) => { calls.push({ method: 'POST', path: `testById/${id}` }); tested.push({ id }); return { success: true }; },
+    // Credential subresource (Vue WebSearchSettings credentialApi).
+    putCredentials: async (id: string, input: unknown) => { calls.push({ method: 'PUT', path: `credentials/${id}`, body: input }); return { fields: { api_key: { configured: true } } }; },
+    deleteCredential: async (id: string, field: string) => { calls.push({ method: 'DELETE', path: `credentials/${id}/${field}` }); return { success: true }; },
   };
   const settings = section === 'storage'
     ? { storage: { backends: sectionApi } }
@@ -432,4 +435,140 @@ test('websearch edit drawer locks the provider and never posts the api_key', asy
   assert.equal(input.provider, 'brave');
   assert.equal('api_key' in input.parameters, false);
   assert.equal(input.parameters.proxy_url, 'http://127.0.0.1:7890');
+});
+
+// ---------------------------------------------------------------------------
+// R486 J2 — R485 H2 debt 1: websearch edit mode manages the api_key through
+// the /credentials subresource with the Vue CredentialResource card
+// (configured badge / inline confirm-remove / per-field replace), instead of
+// a plain password input piggybacked on the main save.
+
+const credentialedProvider = {
+  id: 'provider-1', name: 'Prod Brave', provider: 'brave', description: 'notes',
+  parameters: { proxy_url: 'http://127.0.0.1:7890' },
+  credentials: { api_key: { configured: true } },
+  is_default: false,
+};
+
+function findCredentialRow(drawer: Element, kind: string): HTMLElement {
+  const row = drawer.querySelector(`[data-kind="${kind}"]`);
+  assert.ok(row, `expected the credential card row [data-kind="${kind}"]`);
+  return row as HTMLElement;
+}
+
+test('websearch edit drawer replaces the api_key through the /credentials subresource', async () => {
+  const { client, calls, updated } = makeSectionClient('websearch', {
+    types: webSearchTypes,
+    list: [credentialedProvider],
+  });
+  const container = await mountPanel(client as never, 'websearch');
+
+  await act(async () => { findButton(container, 'Prod Brave').click(); });
+  const drawer = document.body.querySelector('aside[role="dialog"]')!;
+
+  // Edit mode shows the configured credential card, not a password input.
+  const configured = findCredentialRow(drawer, 'configured');
+  assert.match(configured.textContent!, /已配置/);
+  assert.equal(drawer.querySelectorAll('input[type="password"]').length, 0);
+
+  // 更换 expands an explicit input + 保存/取消 pair (Vue CredentialResource
+  // editing state) — the commit is its own PUT, not the main form submit.
+  await act(async () => { findButton(configured, '更换').click(); });
+  const draft = drawer.querySelector('input[type="password"]') as HTMLInputElement;
+  assert.ok(draft, 'editing state exposes a password input');
+  assert.equal(draft.placeholder, '请输入');
+  setInputValue(draft, 'BSA-rotated');
+  await act(async () => { findButton(drawer, '保存').click(); });
+
+  const credentialPut = calls.filter((call) => call.method === 'PUT' && call.path === 'credentials/provider-1');
+  assert.deepEqual(credentialPut, [{ method: 'PUT', path: 'credentials/provider-1', body: { api_key: 'BSA-rotated' } }]);
+  // The save's returned meta flips the card back to configured.
+  findCredentialRow(drawer, 'configured');
+
+  // The main save never carries the credential — one credentials PUT total.
+  await submitForm(drawer);
+  assert.equal(calls.filter((call) => call.path === 'credentials/provider-1').length, 1);
+  assert.equal(updated.length, 1);
+  assert.equal('api_key' in (updated[0]!.input as { parameters: Record<string, unknown> }).parameters, false);
+});
+
+test('websearch edit drawer removes the api_key with an inline confirm, then reconfigures', async () => {
+  const { client, calls } = makeSectionClient('websearch', {
+    types: webSearchTypes,
+    list: [credentialedProvider],
+  });
+  const container = await mountPanel(client as never, 'websearch');
+
+  await act(async () => { findButton(container, 'Prod Brave').click(); });
+  const drawer = document.body.querySelector('aside[role="dialog"]')!;
+
+  // First 移除 click only flips the row into the danger confirm standoff —
+  // no DELETE until the second deliberate click (Vue two-step remove).
+  const configured = findCredentialRow(drawer, 'configured');
+  await act(async () => { findButton(configured, '移除').click(); });
+  const confirmRow = findCredentialRow(drawer, 'confirm-remove');
+  assert.match(confirmRow.textContent!, /确认移除？此操作不可撤销/);
+  assert.equal(calls.some((call) => call.method === 'DELETE'), false);
+
+  await act(async () => { findButton(confirmRow, '确认移除').click(); });
+  assert.deepEqual(calls.filter((call) => call.method === 'DELETE'), [{ method: 'DELETE', path: 'credentials/provider-1/api_key' }]);
+  // The row flips to unconfigured and flashes the anchored removed toast —
+  // Vue swaps the placeholder text for removedToast during the flash window
+  // and hides the Configure affordance until the flash clears.
+  const unconfigured = findCredentialRow(drawer, 'unconfigured');
+  assert.match(unconfigured.textContent!, /凭据已移除/);
+});
+
+test('websearch edit drawer with an unconfigured credential opens editing via 配置', async () => {
+  const { client } = makeSectionClient('websearch', {
+    types: webSearchTypes,
+    list: [{ ...credentialedProvider, credentials: { api_key: { configured: false } } }],
+  });
+  const container = await mountPanel(client as never, 'websearch');
+
+  await act(async () => { findButton(container, 'Prod Brave').click(); });
+  const drawer = document.body.querySelector('aside[role="dialog"]')!;
+  const unconfigured = findCredentialRow(drawer, 'unconfigured');
+  assert.match(unconfigured.textContent!, /未配置/);
+
+  // 配置 re-enters the editing state from the unconfigured row.
+  await act(async () => { findButton(unconfigured, '配置').click(); });
+  assert.ok(drawer.querySelector('input[type="password"]'), '配置 re-opens the editing input');
+});
+
+// ---------------------------------------------------------------------------
+// R486 J2 — R485 H2 debt 2: per-engine brand badge in the drawer header
+// (Vue SettingDrawer #headerIcon) for all three resource sections.
+
+test('resource drawers render the per-engine brand badge in the header', async () => {
+  // Websearch: the monogram initial comes from the type display name (Vue
+  // providerInitial looks providerTypes up by id) and tint from the
+  // websearch brand table (zhipu → #2563EB, WebSearchSettings.vue L1200;
+  // jsdom normalizes the hex to rgb() in serialized inline styles).
+  const web = makeSectionClient('websearch', { types: [{ id: 'zhipu', name: '智谱搜索', requires_api_key: true }] });
+  const webContainer = await mountPanel(web.client as never, 'websearch');
+  await act(async () => { findButton(webContainer, '添加搜索引擎').click(); });
+  let drawer = document.body.querySelector('aside[role="dialog"]')!;
+  const webHeader = drawer.querySelector('header')!;
+  assert.match(webHeader.textContent!, /智/);
+  assert.match(webHeader.innerHTML, /37, 99, 235/);
+  // The badge sits before the drawer title heading (Vue header layout).
+  const headingIndex = webHeader.innerHTML.indexOf('<h2');
+  const badgeIndex = webHeader.innerHTML.indexOf('智');
+  assert.ok(headingIndex > -1 && badgeIndex > -1 && badgeIndex < headingIndex, 'badge precedes the title');
+
+  document.body.querySelector('aside[role="dialog"]')?.remove();
+  await act(async () => { mountedRoot?.unmount(); });
+  mountedRoot = undefined;
+
+  // Vectorstore: initial comes from the raw engine_type (Vue engineInitial)
+  // and tint from the vectorstore brand table (elasticsearch → #D97706 →
+  // jsdom-normalized rgb(217, 119, 6)).
+  const vector = makeSectionClient('vectorstore', { types: vectorTypes });
+  const vectorContainer = await mountPanel(vector.client as never, 'vectorstore');
+  await act(async () => { findButton(vectorContainer, '添加数据库').click(); });
+  drawer = document.body.querySelector('aside[role="dialog"]')!;
+  const vectorHeader = drawer.querySelector('header')!;
+  assert.match(vectorHeader.textContent!, /E/);
+  assert.match(vectorHeader.innerHTML, /217, 119, 6/);
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
@@ -45,6 +45,7 @@ type ResourceApi = {
   testRaw?: (input: Record<string, unknown>) => Promise<ResourceTestResult>;
   setDefault?: (id: string) => Promise<unknown>;
   putCredentials?: (id: string, input: Record<string, unknown>) => Promise<unknown>;
+  deleteCredential?: (id: string, field: string) => Promise<unknown>;
 };
 
 const RESOURCE_COPY: Record<Locale, { unnamed: string; typeUnavailable: string; defaultLabel: string; loadFailed: string; setDefaultFailed: string; localLabel: string; expand: string; collapse: string }> = {
@@ -68,6 +69,43 @@ function rowRecord(row: ResourceRow, key: string): Record<string, unknown> {
 }
 
 function providerInitial(provider: string): string { return (provider.trim().charAt(0) || '?').toUpperCase(); }
+
+/** Mono brand logo rendered as a currentColor mask (Vue .header-icon__mono /
+ *  .provider-card__badge--mono::before share the same recipe). */
+function monoLogoMask(url: string): CSSProperties {
+  return {
+    width: '22px',
+    height: '22px',
+    backgroundColor: 'currentColor',
+    WebkitMaskImage: `url("${url}")`,
+    WebkitMaskPosition: 'center',
+    WebkitMaskRepeat: 'no-repeat',
+    WebkitMaskSize: 'contain',
+    maskImage: `url("${url}")`,
+    maskPosition: 'center',
+    maskRepeat: 'no-repeat',
+    maskSize: 'contain',
+  };
+}
+
+/** Brand badge for the drawer header — the Vue SettingDrawer #headerIcon
+ *  slot: same logo/mono/monogram ladder as the list cards at the header's
+ *  32px size, tinted by the per-provider brand table. */
+function drawerHeaderBadge(section: ResourceSection, id: string, initial: string): ReactNode {
+  const logo = providerLogo(section, id);
+  const brand = PROVIDER_BRAND[section][id.toLowerCase()] ?? { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' };
+  if (logo?.mode === 'color') {
+    return <div className="flex h-8 w-8 items-center justify-center rounded-[9px] border border-[rgba(0,0,0,0.06)] bg-white" aria-hidden="true">
+      <img src={logo.url} alt="" className="h-6 w-6 object-contain" />
+    </div>;
+  }
+  if (logo?.mode === 'mono') {
+    return <div className="flex h-8 w-8 items-center justify-center rounded-[9px]" style={{ backgroundColor: brand.bg, color: brand.color }} role="img" aria-label={id}>
+      <span style={monoLogoMask(logo.url)} aria-hidden="true" />
+    </div>;
+  }
+  return <div className="flex h-8 w-8 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]" style={{ backgroundColor: brand.bg, color: brand.color }}>{initial || '?'}</div>;
+}
 
 // Per-provider brand colors (Vue .backend-card--<id>/.store-card--<id> badge
 // rules: StorageBackendSettings.vue:524-531, VectorStoreSettings.vue:949-987).
@@ -97,7 +135,19 @@ const PROVIDER_BRAND: Record<ResourceSection, Record<string, { bg: string; color
     doris: { bg: 'rgba(255, 90, 0, 0.12)', color: '#E55A00' },
     sqlite: { bg: 'rgba(70, 70, 70, 0.1)', color: '#464646' },
   },
-  websearch: {},
+  websearch: {
+    // Vue WebSearchSettings.vue provider-card--{id} badge colors (L884-921);
+    // the drawer header badge (non-scoped drawer block L1168-1203) mirrors them.
+    duckduckgo: { bg: 'rgba(222, 88, 51, 0.12)', color: '#DE5833' },
+    bing: { bg: 'rgba(0, 137, 255, 0.12)', color: '#0089FF' },
+    google: { bg: 'rgba(66, 133, 244, 0.12)', color: '#4285F4' },
+    tavily: { bg: 'rgba(98, 53, 187, 0.12)', color: '#6235BB' },
+    baidu: { bg: 'rgba(41, 50, 225, 0.12)', color: '#2932E1' },
+    searxng: { bg: 'rgba(33, 86, 137, 0.12)', color: '#215689' },
+    ollama: { bg: 'rgba(70, 70, 70, 0.12)', color: '#464646' },
+    keenable: { bg: 'rgba(20, 158, 130, 0.12)', color: '#149E82' },
+    zhipu: { bg: 'rgba(37, 99, 235, 0.12)', color: '#2563EB' },
+  },
 };
 
 function apiFor(client: WeKnoraClient, section: ResourceSection): ResourceApi {
@@ -262,6 +312,14 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
   const [isDefault, setIsDefault] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingRow, setEditingRow] = useState<ResourceRow | null>(null);
+  // Websearch edit-mode credential card (Vue CredentialResource): the api_key
+  // is an independent /credentials subresource with its own committed state —
+  // configured / unconfigured / editing / inline confirm-remove.
+  const [credentialConfigured, setCredentialConfigured] = useState(false);
+  const [credentialStep, setCredentialStep] = useState<'idle' | 'editing' | 'confirm-remove'>('idle');
+  const [credentialDraft, setCredentialDraft] = useState('');
+  const [credentialBusy, setCredentialBusy] = useState<'save' | 'remove' | null>(null);
+  const [credentialFlashRemoved, setCredentialFlashRemoved] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -270,6 +328,11 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => { setRows(settingsResourceRows(initialValue, section)); }, [initialValue, section]);
+
+  // Clear the credential card's removed-flash timer on unmount so it never
+  // writes into a torn-down component (Vue onBeforeUnmount equivalent).
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (flashTimerRef.current) clearTimeout(flashTimerRef.current); }, []);
 
   // The 默认 tag needs the list envelope's default id (storage section), which
   // the parent's prefetched initialValue does not carry — refetch on mount.
@@ -321,6 +384,9 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     setStorageConfig(storageBlankConfig());
     setDescription(''); setApiKey(''); setEngineId(''); setBaseUrl(''); setProxyUrl(''); setExtraConfig({});
     setIsDefault(false); setLastTestOk(null);
+    setCredentialConfigured(false); setCredentialStep('idle'); setCredentialDraft('');
+    setCredentialBusy(null); setCredentialFlashRemoved(false);
+    if (flashTimerRef.current) { clearTimeout(flashTimerRef.current); flashTimerRef.current = null; }
   }
 
   function openCreate() {
@@ -360,6 +426,10 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
       const storedExtra = rowRecord(parameters, 'extra_config');
       setExtraConfig(Object.fromEntries(Object.entries(storedExtra).filter((entry): entry is [string, string] => typeof entry[1] === 'string')));
       setIsDefault(row.is_default === true);
+      // Credential card seed: configured? rides on the main row payload
+      // (row.credentials.api_key.configured — Vue credentialMeta L421).
+      setCredentialConfigured(rowRecord(rowRecord(row, 'credentials'), 'api_key').configured === true);
+      setCredentialStep('idle'); setCredentialDraft(''); setCredentialBusy(null); setCredentialFlashRemoved(false);
     }
     setDrawerOpen(true);
   }
@@ -427,14 +497,12 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
         saved = editingId ? await api.update(editingId, input) : await api.create(input);
       } else {
         const fields = { name, provider: type, providerDisplayName: selectedWebType?.name || '', description, apiKey, engineId, baseUrl, proxyUrl, extraConfig, isDefault };
-        if (editingId) {
-          // Fresh credentials commit through /credentials before the main save
-          // (Vue CredentialResource ordering), never through the entity body.
-          if (apiKey && api.putCredentials) await api.putCredentials(editingId, { api_key: apiKey });
-          saved = await api.update(editingId, webSearchUpdatePayload(fields));
-        } else {
-          saved = await api.create(webSearchCreatePayload(fields));
-        }
+        // Edit mode commits credentials only through the /credentials card
+        // (Vue CredentialResource) — the update body never carries api_key,
+        // and no PUT /credentials runs on the main save.
+        saved = editingId
+          ? await api.update(editingId, webSearchUpdatePayload(fields))
+          : await api.create(webSearchCreatePayload(fields));
       }
       setRows((current) => editingId ? current.map((row) => rowId(row) === editingId ? saved : row) : [...current, saved]);
       clearForm(); setDrawerOpen(false); setNotice(t(editingId ? keys.updated : keys.created));
@@ -498,6 +566,45 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     setBusy(true); setError(null); setNotice(null);
     try { await api.setDefault(id); setNotice(t('settings.storageBackend.defaultUpdated')); await refresh(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : copy.setDefaultFailed); setBusy(false); }
+  }
+
+  // Vue CredentialResource actions (frontend/src/components/credentials/
+  // CredentialResource.vue). Every commit is an explicit call to the
+  // /credentials subresource — never piggybacked on the main drawer save.
+  function enterCredentialEdit() {
+    setCredentialDraft(''); setCredentialStep('editing');
+  }
+
+  function cancelCredentialEdit() {
+    setCredentialDraft(''); setCredentialStep('idle');
+  }
+
+  async function saveCredential() {
+    if (!editingId || !credentialDraft.trim() || !api.putCredentials) return;
+    setCredentialBusy('save'); setError(null);
+    try {
+      const result = await api.putCredentials(editingId, { api_key: credentialDraft });
+      const fields = rowRecord(result && typeof result === 'object' ? result as ResourceRow : {}, 'fields');
+      setCredentialConfigured(rowRecord(fields, 'api_key').configured === true);
+      setCredentialDraft(''); setCredentialStep('idle');
+      setNotice(t('common.saveSuccess'));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('dataSource.credential.saveFailed')); }
+    finally { setCredentialBusy(null); }
+  }
+
+  async function removeCredential() {
+    if (!editingId || !api.deleteCredential) return;
+    setCredentialBusy('remove'); setError(null);
+    try {
+      await api.deleteCredential(editingId, 'api_key');
+      setCredentialConfigured(false); setCredentialStep('idle');
+      // Anchored inline flash (Vue flashInlineToast ~2.4s) instead of a
+      // global toast — the row is where the user just clicked.
+      setCredentialFlashRemoved(true);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => { flashTimerRef.current = null; setCredentialFlashRemoved(false); }, 2400);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('dataSource.credential.removeFailed')); }
+    finally { setCredentialBusy(null); }
   }
 
   // Per-section card meta, mirroring the Vue surfaces: storage cards show
@@ -716,7 +823,58 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
         </FormItem> : null}
         {selectedWebType?.requires_api_key || selectedWebType?.supports_optional_api_key ? (
           <FormItem label={selectedWebType?.supports_optional_api_key && !selectedWebType?.requires_api_key ? t('webSearchSettings.apiKeyOptionalLabel') : t('webSearchSettings.apiKeyLabel')} required={selectedWebType?.requires_api_key}>
-            <Input type="password" value={apiKey} placeholder={t('webSearchSettings.apiKeyPlaceholder')} onChange={(event) => { setApiKey(event.target.value); resetConnectionHint(); }} />
+            {editingId ? (
+              // Edit mode — Vue CredentialResource: the api_key is a per-field
+              // credential card committed straight to PUT/DELETE /credentials,
+              // decoupled from this form's submit.
+              credentialStep === 'editing' ? (
+                <div className="grid gap-[6px]">
+                  <Input
+                    type="password"
+                    value={credentialDraft}
+                    placeholder={t('dataSource.credential.inputPlaceholder')}
+                    onChange={(event) => setCredentialDraft(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCredential(); } }}
+                  />
+                  <div className="flex items-center justify-end gap-[4px]">
+                    <Button type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={cancelCredentialEdit}>{t('common.cancel')}</Button>
+                    <Button type="button" variant="primary" size="small" loading={credentialBusy === 'save'} disabled={!credentialDraft} onClick={() => void saveCredential()}>{t('common.save')}</Button>
+                  </div>
+                </div>
+              ) : credentialConfigured ? (
+                credentialStep === 'confirm-remove' ? (
+                  <div data-kind="confirm-remove" className="flex h-[32px] items-center gap-[8px] rounded-[6px] border border-danger/40 bg-danger/5 px-[12px] text-[13px]">
+                    <span className="flex-none text-danger" aria-hidden="true">⚠</span>
+                    <span className="min-w-0 flex-1 truncate font-medium text-danger">{t('dataSource.credential.confirmRemovePrompt')}</span>
+                    <div className="flex flex-none items-center gap-[2px]">
+                      <Button type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={() => setCredentialStep('idle')}>{t('common.cancel')}</Button>
+                      <span className="h-[14px] w-px bg-line" />
+                      <Button type="button" variant="danger" size="small" loading={credentialBusy === 'remove'} onClick={() => void removeCredential()}>{t('dataSource.credential.confirmRemove')}</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div data-kind="configured" className="flex h-[32px] items-center gap-[8px] rounded-[6px] border border-line-soft bg-surface px-[12px] text-[13px]" title={t('dataSource.credential.configured')}>
+                    <span className="flex-none text-success-text" aria-hidden="true">✓</span>
+                    <span className="min-w-0 flex-1 truncate">{t('dataSource.credential.configured')}</span>
+                    <div className="flex flex-none items-center gap-[2px]">
+                      <Button type="button" variant="text" size="small" onClick={enterCredentialEdit}>{t('dataSource.credential.update')}</Button>
+                      <span className="h-[14px] w-px bg-line" />
+                      <Button type="button" variant="danger" size="small" onClick={() => setCredentialStep('confirm-remove')}>{t('dataSource.credential.remove')}</Button>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div data-kind="unconfigured" className={`flex h-[32px] items-center gap-[8px] rounded-[6px] border px-[12px] text-[13px] ${credentialFlashRemoved ? 'border-[#9edec0] bg-[#e8f8f2]' : 'border-line-soft bg-surface'}`}>
+                  {credentialFlashRemoved ? <span className="flex-none text-[#0a7f43]" aria-hidden="true">✓</span> : null}
+                  <span className={`min-w-0 flex-1 truncate ${credentialFlashRemoved ? 'text-[#0a7f43]' : 'text-muted'}`}>{credentialFlashRemoved ? t('dataSource.credential.removedToast') : t('dataSource.credential.unconfigured')}</span>
+                  {credentialFlashRemoved ? null : <Button type="button" variant="text" size="small" className="flex-none" onClick={enterCredentialEdit}>{t('dataSource.credential.configure')}</Button>}
+                </div>
+              )
+            ) : (
+              // Create mode keeps the plain password input (Vue L239-246) —
+              // the key rides the initial POST only.
+              <Input type="password" value={apiKey} placeholder={t('webSearchSettings.apiKeyPlaceholder')} onChange={(event) => { setApiKey(event.target.value); resetConnectionHint(); }} />
+            )}
           </FormItem>
         ) : null}
         {selectedWebType?.requires_engine_id ? <FormItem label={t('webSearchSettings.engineIdLabel')} required>
@@ -757,19 +915,6 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
         const meta = resourceMeta(row);
         const logo = providerLogo(section, provider);
         const brand = PROVIDER_BRAND[section][provider.toLowerCase()] ?? { bg: 'rgba(0, 82, 217, 0.1)', color: '#0052D9' };
-        const monoMaskStyle = logo?.mode === 'mono' ? {
-          width: '22px',
-          height: '22px',
-          backgroundColor: 'currentColor',
-          WebkitMaskImage: `url("${logo.url}")`,
-          WebkitMaskPosition: 'center',
-          WebkitMaskRepeat: 'no-repeat',
-          WebkitMaskSize: 'contain',
-          maskImage: `url("${logo.url}")`,
-          maskPosition: 'center',
-          maskRepeat: 'no-repeat',
-          maskSize: 'contain',
-        } as CSSProperties : undefined;
         return <article
           key={id || index}
           role="button"
@@ -782,7 +927,7 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
             <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-[rgba(0,0,0,0.06)] bg-white" style={{ color: brand.color }} aria-label={provider}>
               {logo.mode === 'color'
                 ? <img src={logo.url} alt="" className="h-6 w-6 object-contain" />
-                : <span style={monoMaskStyle} aria-hidden="true" />}
+                : <span style={monoLogoMask(logo.url)} aria-hidden="true" />}
             </div>
           ) : (
             <div className="backend-card__badge inline-flex h-10 w-10 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]" style={{ backgroundColor: brand.bg, color: brand.color }} aria-label={provider}>{providerInitial(provider || nameValue)}</div>
@@ -812,9 +957,14 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     {/* Vue WebSearchSettings L13: the empty-state hint only renders for
         non-admin viewers; admins get the bare grid, no desc line. */}
     {rows.length === 0 && !(section === 'websearch' && (role === 'owner' || role === 'admin')) ? <Status>{t(keys.empty)}</Status> : null}
+    {/* Drawer header brand badge — Vue renders #headerIcon for every section:
+        vectorstore v-if="form.engine_type", storage always, websearch
+        v-if="selectedProviderType". The websearch initial comes from the type
+        display name (Vue providerInitial), the other two from the raw id. */}
     <Sheet
       open={drawerOpen}
       title={editingId ? t(keys.edit) : t(keys.add)}
+      headerIcon={type ? drawerHeaderBadge(section, type, section === 'websearch' ? (providerTypes.find((entry) => entry.id === type)?.name || type).trim().charAt(0).toUpperCase() : providerInitial(type)) : undefined}
       onClose={closeDrawer}
       width="460px"
     >

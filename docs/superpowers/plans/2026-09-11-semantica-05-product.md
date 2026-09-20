@@ -6,13 +6,15 @@
 
 **Architecture:** 用户经Go使用能力；客户端只反映授权结果，后端切换有明确管理动作。
 
-**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/Neo4j、React/TypeScript；按涉及范围使用。
+**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/候选隔离图与向量存储、React/TypeScript；按涉及范围使用。
 
 **Spec:** [架构规格](../specs/2026-09-11-semantica-graphrag-reasoning-design.md)；[总计划与完整类型表](2026-09-11-semantica-implementation.md)。
 
 ## Global Constraints
 
 完整继承总计划 Global Constraints，必须先读；本计划不扩大语义服务所有权、授权范围或首版能力。所有代码和测试均为后续实施输入，未执行。
+
+[ADR-0002](../../adr/0002-semantica-independent-service.md) 与 [2026-09-20 rebaseline](2026-09-20-semantica-rebaseline.md) 优先。全部 24 项仍为 pending；不得因计划存在而默认启用、自动迁移或把未验收 KB 切换为 Semantica。
 
 ---
 
@@ -33,7 +35,7 @@
 - `packages/contracts/package.json`：新增子路径export
 - `packages/api-client/package.json`：新增子路径export
 
-**接口：** 建议路由 GET /api/v1/knowledge-bases/:id/semantic/status、POST .../semantic/search、POST .../semantic/reason；POST /api/v1/knowledge/:id/semantic/retry。客户端getSemanticStatus、searchSemantic、reasonSemantic、retrySemanticIndex；ID/revision为十进制字符串，后端禁止body覆盖path scope。
+**接口：** 建议路由 GET /api/v1/knowledge-bases/:id/semantic/status、POST .../semantic/search、POST .../semantic/reason、POST .../semantic/preview、POST .../semantic/enable；POST /api/v1/knowledge/:id/semantic/retry。客户端 `previewSemanticPilot(kbID, signal?)` 和 `enableSemanticPilot(kbID, settings, signal?)` 只发送业务请求与 DTO，不传授权角色；`captureRequest(action: () => Promise<unknown>): Promise<{body?: string}>` 是 api-client 测试 helper。ID/revision为十进制字符串，后端禁止body覆盖path scope。`newSemanticHandlerFixture(t) *semanticHandlerFixture` 必须使用认证 context 和实际 KB grant；其 `GrantKBRole(subjectID, kbID, role string)` 与 `RequestAs(subjectID, method, path string, body any)` 用于 handler 合同测试。preview/enable 需要 KB 管理权限，默认关闭。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -45,13 +47,28 @@ test("semantic revision preserves uint64 precision", () => {
   });
   assert.equal(value.revision, "18446744073709551615");
 });
+test("pilot client omits authorization role from its request", async () => {
+  const request = await captureRequest(() => previewSemanticPilot("kb-1"));
+  assert.deepEqual(JSON.parse(request.body || "{}"), {});
+  assert.equal("role" in JSON.parse(request.body || "{}"), false);
+});
+
+func TestSemanticPilotRequiresKBManager(t *testing.T) {
+    f := newSemanticHandlerFixture(t)
+    f.GrantKBRole("reader-1", "kb-1", "reader")
+    denied := f.RequestAs("reader-1", http.MethodPost, "/api/v1/knowledge-bases/kb-1/semantic/preview", map[string]any{"role": "manager"})
+    if denied.Code != http.StatusForbidden { t.Fatalf("got %d", denied.Code) }
+    f.GrantKBRole("manager-1", "kb-1", "manager")
+    allowed := f.RequestAs("manager-1", http.MethodPost, "/api/v1/knowledge-bases/kb-1/semantic/preview", map[string]any{"role": "reader"})
+    if allowed.Code != http.StatusOK { t.Fatalf("got %d", allowed.Code) }
+}
 ```
 
-- [ ] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/contracts/test/semantic.test.ts packages/api-client/src/semantic.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/contracts/test/semantic.test.ts packages/api-client/src/semantic.test.ts` 与 `go test ./internal/handler -run TestSemanticPilot -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 使用现有session/API key权限路由，不另建前端直连Python；读状态需资源可读，重试/配置变更需资源管理权限**
+- [ ] **3. 使用现有session/API key权限路由，不另建前端直连Python；读状态需资源可读，重试/preview/enable/配置变更需 KB 管理权限。默认 disabled；preview 返回存量规模和预算设置，enable 才提交自动 backfill。管理端预算设置必须经授权、额度校验和持久化，随后仅由 Go 为每次模型调用派生预算上限，客户端不得把预算上限传入模型执行 wire 请求。**
 
-- [ ] **4. 定义带实际mode、status、generation、证据、推理类型和限制的DTO；未知枚举视为兼容未知状态，不能默认ready；内部错误不泄露服务地址/凭据**
+- [ ] **4. 定义带 requested_mode、actual_mode、status、generation、stale/version、证据、推理类型和限制的DTO；未知枚举视为兼容未知状态，不能默认ready；内部错误不泄露服务地址/凭据**
 
 - [ ] **5. 客户端支持AbortSignal，retry通过服务端幂等提交；所有scope由服务端根据path与身份决定；补充API文档及路由合同测试**
 
@@ -93,7 +110,7 @@ export interface SemanticDocumentStatus {
 - `pnpm-lock.yaml`：仅由包管理器更新测试依赖锁
 - `package.json`：把新测试与typecheck入口加入现有脚本
 
-**接口：** deriveSemanticView(status:SemanticDocumentStatus)->{label:string,canRetry:boolean,canReadText:boolean}；SemanticPanel接收KB/document身份及API client，EvidencePanel接收query结果；主App通过现有导航接入，不重写布局。
+**接口：** deriveSemanticView(status:SemanticDocumentStatus)->{label:string,canRetry:boolean,canReadText:boolean}；SemanticPanel接收KB/document身份及API client，EvidencePanel接收query结果；主App通过现有导航接入，不重写布局。试点 KB 管理页展示 preview 的存量规模和预算设置，再提供 enable；未验收 KB 继续显示 native。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -110,9 +127,9 @@ test("deleting document cannot retry semantic indexing", () => {
 
 - [ ] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 新增索引状态与单独重试交互，区分解析完成/语义失败/旧索引；权限决定操作显示且服务器再次校验，避免前端状态充当授权**
+- [ ] **3. 新增索引状态与单独重试交互，区分解析完成/语义失败/旧索引；KB 管理员先看到 preview 的存量规模和预算设置才可 enable，启用后显示 backfill 进度；权限决定操作显示且服务器再次校验，避免前端状态充当授权**
 
-- [ ] **4. 展示普通检索、GraphRAG、规则推导、模型推断的实际类型；证据点开准确document/revision/chunk，历史原文不可取时明确说明，不跳成当前版本**
+- [ ] **4. 展示 requested/actual mode 及普通检索、GraphRAG、规则推导、模型推断的实际类型；证据点开准确document/revision/chunk，历史原文不可取时明确说明，不跳成当前版本。Reason 未完成显示重试入口，普通检索必须显示未使用语义图谱。**
 
 - [ ] **5. 取消请求时Abort并丢弃迟到响应；query_id/generation绑定当前视图，权限错误清空结果。不得在模型推断旁显示“已证明”**
 
@@ -142,7 +159,7 @@ if (response.query_id !== activeQueryId || signal.aborted) return;
 - `internal/application/repository/semantic_outbox.go`：后端检查点与持久切换
 - `docs/superpowers/plans/semantica/backend-runbook.md`：操作与回滚手册
 
-**接口：** BackendService.SetDesired(ctx,scope,backend)error、Promote(ctx,scope,expectedActiveGeneration string)error、Rollback(ctx,scope)error；持久状态desired_backend/active_backend/active_generation/native_checkpoint/semantic_checkpoint；内部接口在本任务定义，不直接暴露数据库指针。
+**接口：** BackendService.Preview(ctx,scope) (PilotPreview,error)、SetDesired(ctx,scope,backend)error、Promote(ctx,scope,expectedActiveGeneration string)error、Rollback(ctx,scope)error；PilotPreview 含 backfill_document_count 与 budget_setting。持久状态desired_backend/active_backend/active_generation/native_checkpoint/semantic_checkpoint；内部接口在本任务定义，不直接暴露数据库指针。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -159,9 +176,9 @@ func TestSemanticRollbackRequiresNativeCatchup(t *testing.T) {
 
 - [ ] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticBackend -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. SetDesired仅触发影子构建，active保持native；影子结果不能混入正式查询，后台更新使用同一outbox输入同步checkpoint**
+- [ ] **3. 默认保持 native；KB 管理员的 preview 展示存量规模和预算设置后，SetDesired 才触发自动 backfill/影子构建，active 仍保持 native。影子结果不能混入正式查询，后台更新使用同一outbox输入同步checkpoint。**
 
-- [ ] **4. Promote检查完整manifest、capability、验收policy与当前源版本；CAS切换active backend/generation，旧请求沿固定read lease完成且仍校验最新deny**
+- [ ] **4. Promote 检查完整manifest、选定拓扑能力证据、验收policy与当前源版本；CAS切换active backend/generation，旧请求沿固定read lease完成且仍校验最新deny。未验收 KB 不得 promotion，其他 KB 保持 native。**
 
 - [ ] **5. Rollback先补齐native在切换期间的文档更新/删除，检查源revision清单一致后切换；native不可用则保持语义后端或明确禁用图能力，不能静默回旧图**
 

@@ -1,0 +1,8 @@
+# Bounded import-probe runtime only; deliberately excludes Semantica's default ML stack.
+numpy==2.0.2
+scipy==1.13.1
+networkx==3.2.1
+pytest==8.4.2
+python-dateutil==2.9.0.post0
+pyyaml==6.0.2
+rdflib==7.1.4

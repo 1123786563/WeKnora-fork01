@@ -6,23 +6,25 @@
 
 **Architecture:** Go 管理文档、授权、业务任务与回答交付；Python 服务管理语义操作、图谱、索引发布和查询计算。跨服务采用独立版本化 gRPC 契约，持久图先筛成授权子图再进入 Semantica 算法。
 
-**Tech Stack:** 仓库 Go 1.26、Gin、GORM、Asynq、PostgreSQL/SQLite；Python、gRPC、Semantica、服务专属 PostgreSQL schema、独立 Neo4j；React 19、TypeScript 6、pnpm 10.28.2。Python/Semantica 精确版本由 V01 冻结。
+**Tech Stack:** 仓库 Go 1.26、Gin、GORM、Asynq、PostgreSQL/SQLite；Python、gRPC、Semantica，以及待验证的图/向量/对象存储隔离；React 19、TypeScript 6、pnpm 10.28.2。Python/Semantica 精确版本由 V01 冻结。
 
-**Spec:** [完整架构规格](../specs/2026-09-11-semantica-graphrag-reasoning-design.md)。所有执行者必须同时阅读规格、总计划与当前子计划。
+**Spec:** [完整架构规格](../specs/2026-09-11-semantica-graphrag-reasoning-design.md)、[ADR-0002](../../adr/0002-semantica-independent-service.md)、[2026-09-20 rebaseline](2026-09-20-semantica-rebaseline.md)。所有执行者必须同时阅读 ADR、rebaseline、规格、总计划与当前子计划。
 
 ## Global Constraints
 
+- ADR-0002 与 2026-09-20 rebaseline 优先于本计划的历史建议。24 项仍全部 `pending`；本轮 probe、静态资料或文档不使 V01/V02 变为 `verified`。
+- 未验证的上游版本、协议、持久化、拓扑和阈值均为候选；证据按 static、actual-runtime、controlled-provider、live-model、real-storage 分层，mock 不得提升为 verified。
 - 已确认：独立 Python 服务、gRPC、Go 适配层；语义服务承担构图、GraphRAG 与推理；Go 保留业务资源及授权管理。
 - 所有记录显式携带 tenant_id、kb_id。
 - 处理顺序必须是授权事实过滤 → 有界图扩展 → 推理或摘要。
 - 禁止把 PolicyEngine 等同于 WeKnora ACL，把自然语言解释等同于规则证明，把官方功能说明等同于中文质量或性能结论。
-- Neo4j 内部 ID 不作为对外永久 ID。
+- 候选图存储的内部 ID 不作为对外永久 ID。
 - 首版只流式展示进度，证据和答案在最终授权检查之后交付。
 - 首版每 KB 串行发布；查询强制按固定 generation 过滤。
 - 来源事实表示“文档声称”，不表示客观真理；冲突断言并存，缺少事实不推导其否定。
 - 不接管 docreader 解析、Go 标准分块、原有向量/全文索引、主 Agent 循环或会话记忆。不接入任意查询语言、跨租户合并及全库共享摘要。
 - 所有业务后台、API、Agent 和缓存路径使用同一授权边界；不能为了性能绕过来源过滤。
-- `2 跳、500 节点、1000 边、top_k 10；Search 10 秒、Reason 30 秒` 是可配置实验初值，不是性能承诺。
+- `2 跳、500 节点、1000 边、top_k 10；Search 10 秒、Reason 30 秒` 是历史候选实验初值，不是性能承诺，必须由后续测量和批准决定是否采用。
 - 保护现有 React、商业能力与其他并行工作，只提交当前任务拥有的文件；不使用 `git add .`。新迁移号执行时重新核对，不覆盖他人迁移。
 - 本计划只授权规划；实施、依赖安装、容器启动和真实模型调用由后续执行指令启动。示例代码是测试断言与关键实现片段，不声称当前可运行或已经通过。
 
@@ -129,8 +131,8 @@ AccessScope {scope:ScopeKey, subject_id:string, scope_ref:string,
 QueryLimits {max_hops:uint32, max_nodes:uint32, max_edges:uint32,
   top_k:uint32, max_tokens:uint32, deadline_ms:uint32}
 SearchRequest {query_id:string, query:string, access_scope:AccessScope,
-  limits:QueryLimits, mode:string}
-SearchResponse {query_id:string, generation:string, mode:string, evidence:Evidence[],
+  limits:QueryLimits, requested_mode:string}
+SearchResponse {query_id:string, generation:string, requested_mode:string, actual_mode:string, evidence:Evidence[],
   assertion_ids:string[], paths:string[][], stale:bool, partial:bool, truncated:bool}
 ReasonRequest {search:SearchRequest, reasoning_mode:rules|model, rule_set_version:string}
 ReasonResponse {retrieval:SearchResponse, status:string, conclusion:string,
@@ -138,7 +140,7 @@ ReasonResponse {retrieval:SearchResponse, status:string, conclusion:string,
   model_version:string?, prompt_version:string?, limitations:string[]}
 ```
 
-C01 定义 RPC `GetCapabilities/ApplyDocumentRevision/DeleteDocument/GetOperation/CancelOperation/Search/Reason` 的 request/response envelope，并保留 protobuf tag，禁止重新编号。Delete 使用 DocumentRevision 且 deleted=true；Get/Cancel 使用 ScopeKey+operation_id。能力字段必须说明可用性、原因和限制。签名令牌放 metadata；AccessScope 中的字段必须与已验证令牌一致。
+C01 定义 RPC `GetCapabilities/ApplyDocumentRevision/DeleteDocument/GetOperation/CancelOperation/Search/Reason` 的 request/response envelope，并保留 protobuf tag，禁止重新编号。Search 请求使用 `requested_mode`，响应回显 `requested_mode` 和实际执行的 `actual_mode`；Reason 内嵌同一 SearchRequest，`reasoning_mode` 只选择 rules/model，不能替代查询模式。Delete 使用 DocumentRevision 且 deleted=true；Get/Cancel 使用 ScopeKey+operation_id。能力字段必须说明可用性、原因和限制。签名令牌放 metadata；AccessScope 中的字段必须与已验证令牌一致。
 
 Go DTO统一添加Semantic前缀：Python `ScopeKey/ApplyRequest/Operation/AccessScope/SearchRequest/SearchResponse/ReasonRequest/ReasonResponse` 对应 Go `types.SemanticScopeKey/types.SemanticApplyRequest/types.SemanticOperation/types.SemanticAccessScope/types.SemanticSearchRequest/types.SemanticSearchResponse/types.SemanticReasonRequest/types.SemanticReasonResponse`。其他DTO同样使用Semantic前缀；TS公共类型另由W01显式映射。Python DTO使用标准库 `@dataclass(frozen=True)`，代码中的 `replace` 指 `dataclasses.replace`，可变集合在构造时复制，不依赖Pydantic模型替换语义。
 
@@ -150,9 +152,9 @@ C01建立 `semantic/pyproject.toml`、生产包和pytest开发依赖，测试包
 
 Python 从仓库根运行 `uv run --project semantic python -m pytest semantic/tests/... -q`。Go 使用 `go test ./确切包 -run '确切测试前缀' -count=1`；竞态任务增加 `-race`。共享 TS 使用 `pnpm exec tsx --test 确切测试文件`。这些都是实施期命令，本轮不执行。
 
-持久化集成测试必须连接隔离环境，缺环境时显式失败；不得 Skip 后计为通过。C02 建立 `semantic/tests/conftest.py` 的 `rpc_client`，I01 扩展 `operation_store`，I03 扩展 `index_store`，A02 扩展 `access_graph`；均为真实适配器/受控 fixture，不是在内存里模拟生产事务。纯算法测试可用冻结时钟和内存输入。
+持久化集成测试必须连接隔离环境，缺环境时显式失败；不得 Skip 后计为通过。优先验证 shared-isolated（专用 account 及适用 database/schema/collection/prefix），不能可靠隔离时验证 dedicated 实例；两种路径都不能由 mock 代替。C02 建立 `semantic/tests/conftest.py` 的 `rpc_client`，I01 扩展 `operation_store`，I03 扩展 `index_store`，A02 扩展 `access_graph`；均为真实适配器/受控 fixture，不是在内存里模拟生产事务。纯算法测试可用冻结时钟和内存输入。
 
-证据 fixture：同一租户 KB 中 D1“甲公司控股乙公司”、D2“乙公司控股丙公司”、D3“甲公司不再控股乙公司”；另有受限 D4“丙公司的密钥代号是松柏”。期望：D1+D2 在注册控股传递规则下可推导甲→丙；无 D2 时不得推导；D4 不可见时任何答案、别名、路径及摘要不得暴露“松柏”。另一租户使用相同名称，必须完全隔离。业务规则仅作为测试规则，不默认适用于真实商业关系。
+证据 fixture：同一租户 KB 中 D1“模块 A depends_on 模块 B”、D2“模块 B depends_on 模块 C”、D3“模块 B 不再 depends_on 模块 C”；另有受限 D4“模块 C 的内部代号是松柏”。期望：仅在显式注册 `depends_on` 传递规则时，D1+D2 可生成 `A indirectly_depends_on C`；无 D2、冲突或前提撤销时不得推导，其他关系不自动传递；D4 不可见时任何答案、别名、路径及摘要不得暴露“松柏”。另一租户使用相同名称，必须完全隔离。
 
 每个任务执行时先读取其测试片段和接口定义，补齐同文件 imports/fixtures 后运行 RED；RED 必须证明目标行为缺失，不能把无关环境错误算 RED。实现代码块给出关键不变量，工程师必须完成所列流程，不以片段代替完整实现。
 

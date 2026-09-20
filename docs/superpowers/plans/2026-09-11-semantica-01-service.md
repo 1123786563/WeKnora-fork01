@@ -6,13 +6,15 @@
 
 **Architecture:** 生产包只使用V01锁定依赖，Go与Python显式映射；证据模型先于持久化。
 
-**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/Neo4j、React/TypeScript；按涉及范围使用。
+**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/候选隔离图与向量存储、React/TypeScript；按涉及范围使用。
 
 **Spec:** [架构规格](../specs/2026-09-11-semantica-graphrag-reasoning-design.md)；[总计划与完整类型表](2026-09-11-semantica-implementation.md)。
 
 ## Global Constraints
 
 完整继承总计划 Global Constraints，必须先读；本计划不扩大语义服务所有权、授权范围或首版能力。所有代码和测试均为后续实施输入，未执行。
+
+[ADR-0002](../../adr/0002-semantica-independent-service.md) 与 [2026-09-20 rebaseline](2026-09-20-semantica-rebaseline.md) 优先。全部 24 项仍为 pending；本计划中的协议和版本是候选，不能由静态资料或 probe 宣称 verified。
 
 ---
 
@@ -38,7 +40,7 @@
 - `internal/infrastructure/semantic/contract_test.go`：Go golden校验
 - `semantic/tests/fixtures/contract-v1.json`：共享跨语言样本
 
-**接口：** 实现总计划4.1全部 DTO 与7个RPC；Go SemanticClient 接口 Apply(ctx,types.SemanticApplyRequest)(types.SemanticOperation,error)、Delete(ctx,types.SemanticDocumentRevision)(types.SemanticOperation,error)、Get/Cancel(ctx,types.SemanticScopeKey,string)(types.SemanticOperation,error)、Search(ctx,types.SemanticSearchRequest)(types.SemanticSearchResponse,error)、Reason(ctx,types.SemanticReasonRequest)(types.SemanticReasonResponse,error)、Capabilities(ctx)(types.SemanticCapabilities,error)。ctx均为context.Context。
+**接口：** 实现总计划4.1全部 DTO 与7个RPC；Search request 使用 `requested_mode`，Search response 使用 `requested_mode` 与 `actual_mode`，Reason 嵌入前者且只额外使用 `reasoning_mode`；Go SemanticClient 接口 Apply(ctx,types.SemanticApplyRequest)(types.SemanticOperation,error)、Delete(ctx,types.SemanticDocumentRevision)(types.SemanticOperation,error)、Get/Cancel(ctx,types.SemanticScopeKey,string)(types.SemanticOperation,error)、Search(ctx,types.SemanticSearchRequest)(types.SemanticSearchResponse,error)、Reason(ctx,types.SemanticReasonRequest)(types.SemanticReasonResponse,error)、Capabilities(ctx)(types.SemanticCapabilities,error)。ctx均为context.Context。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 

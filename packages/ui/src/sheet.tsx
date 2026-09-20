@@ -19,6 +19,9 @@ export interface SheetProps {
   storageKey?: string;
   resizeLabel?: string;
   className?: string;
+  /** Optional badge rendered beside the title inside the header — the Vue
+   *  SettingDrawer #headerIcon slot (per-engine brand logo). */
+  headerIcon?: ReactNode;
   /** Keep SSR/static rendering inline; browser usage portals to body by default. */
   portal?: boolean;
 }
@@ -32,7 +35,7 @@ const sideClasses = {
  * 侧滑抽屉（Radix Dialog 承载）：用于 API 调试、向导等与主内容并行的临时表面。
  * z 取 1200 层级，置于常规弹窗（1100）之上，对齐 integrations 抽屉既定语义。
  */
-export function Sheet({ open, title, children, onClose, closeLabel = 'Close', side = 'right', width = '420px', resizable = false, minWidth = 320, maxWidth = 1400, storageKey, resizeLabel = 'Resize drawer', className, portal = true }: SheetProps) {
+export function Sheet({ open, title, children, onClose, closeLabel = 'Close', side = 'right', width = '420px', resizable = false, minWidth = 320, maxWidth = 1400, storageKey, resizeLabel = 'Resize drawer', className, headerIcon, portal = true }: SheetProps) {
   const initialWidth = /^\d+(?:\.\d+)?px$/.test(width) ? Number.parseFloat(width) : 420;
   const [panelWidth, setPanelWidth] = useState(initialWidth);
   const panelRef = useRef<HTMLElement>(null);
@@ -118,7 +121,14 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
         >
           {resizable ? <div role="separator" aria-orientation="vertical" aria-label={resizeLabel} title={resizeLabel} className={`absolute ${side === 'right' ? 'left-[-4px]' : 'right-[-4px]'} top-0 z-[1] h-full w-2 cursor-col-resize`} onMouseDown={beginResize} /> : null}
           <header className="flex items-start justify-between gap-4 px-5 py-4">
+            {headerIcon ? (
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="flex h-8 w-8 flex-none items-center justify-center rounded-[9px] text-[16px]">{headerIcon}</div>
+                <h2 id={titleId} className="m-0 text-[1.05rem] font-semibold text-ink">{title}</h2>
+              </div>
+            ) : (
               <h2 id={titleId} className="m-0 text-[1.05rem] font-semibold text-ink">{title}</h2>
+            )}
             <button
               type="button"
               aria-label={closeLabel}

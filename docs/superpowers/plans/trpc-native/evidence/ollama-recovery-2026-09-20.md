@@ -21,3 +21,10 @@ PostgreSQL DSN database path and allocates unique database/schema names per
 matrix. The corrected run is the authoritative result. P0 native Runner
 product execution remains NO-GO only for the remaining persistence composition,
 native product wiring and client/release acceptance gates.
+
+Follow-up reproducibility check on 2026-09-20 with the same PostgreSQL and
+Ollama settings did not settle the first two cases within the harness timeout
+and was interrupted after 197s. This does not revoke the earlier 9/9 result,
+but deterministic repeatability of the real-model PostgreSQL matrix is not
+established; treat that row as a recorded pass with a flakiness caveat rather
+than a fresh current acceptance run.

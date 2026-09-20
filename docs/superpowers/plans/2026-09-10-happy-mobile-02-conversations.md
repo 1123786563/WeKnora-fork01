@@ -1,5 +1,7 @@
 # Happy 统一 Agent 会话 Implementation Plan
 
+> **历史/相关架构说明（2026-09-20）**：本计划保留历史任务和进度；当前移动与云端架构请读[移动 AI 办公候选设计](../specs/2026-09-20-mobile-ai-office-design.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 交付无需选择知识库的 Agent 会话，以及发送、审批、追加和可恢复的原生交互。

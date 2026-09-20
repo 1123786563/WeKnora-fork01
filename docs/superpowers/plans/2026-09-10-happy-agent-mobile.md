@@ -1,5 +1,7 @@
 # Happy 统一 Agent 移动客户端 Implementation Plan
 
+> **历史/相关架构说明（2026-09-20）**：本计划及子计划保留原任务分解和历史进度，不再作为移动底座或云端执行承载的当前架构依据；请改读[移动 AI 办公候选设计](../specs/2026-09-20-mobile-ai-office-design.md)。未涉及的有效后端工作不因此取消。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 保留 Happy 移动交互，通过共享契约、SDK 与领域逻辑接入 WeKnora，交付知识问答、通用 Agent、专业 Agent 的统一原生客户端。

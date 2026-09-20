@@ -6,13 +6,15 @@
 
 **Architecture:** 默认关闭正式流量；CI和人工验收共同控制启用，不以构建成功代替业务可用。
 
-**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/Neo4j、React/TypeScript；按涉及范围使用。
+**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/候选隔离图与向量存储、React/TypeScript；按涉及范围使用。
 
 **Spec:** [架构规格](../specs/2026-09-11-semantica-graphrag-reasoning-design.md)；[总计划与完整类型表](2026-09-11-semantica-implementation.md)。
 
 ## Global Constraints
 
 完整继承总计划 Global Constraints，必须先读；本计划不扩大语义服务所有权、授权范围或首版能力。所有代码和测试均为后续实施输入，未执行。
+
+[ADR-0002](../../adr/0002-semantica-independent-service.md) 与 [2026-09-20 rebaseline](2026-09-20-semantica-rebaseline.md) 优先。全部 24 项仍为 pending；每一层证据独立记录，mock 或静态资料不得填作 verified 或上线验收。
 
 ---
 
@@ -49,11 +51,11 @@ def test_restoring_service_is_not_ready(health_state):
 
 - [ ] **3. 固定基础镜像digest和V01锁，镜像分API/worker入口；生产profile默认关闭，内部RPC不publish公网或宿主业务端口，secret只引用不写入镜像**
 
-- [ ] **4. 提供隔离PG/Neo4j/向量/对象存储测试环境，固定测试端口或容器网络名；健康探针区分存活和可用，恢复期间拒绝query**
+- [ ] **4. 为选定的 shared-isolated 或 dedicated 候选提供隔离控制存储、图/向量/对象存储测试环境，记录专用 account 与适用 database/schema/collection/prefix 或实例边界；健康探针区分存活和可用，恢复期间拒绝query。完整部署验收只覆盖能力证据选定的生产拓扑。**
 
 - [ ] **5. 记录operation/generation/trace及耗时、错误、截断、队列年龄、用量；默认不记录chunk、prompt、凭据；worker shutdown停止claim并释放或等待有效租约**
 
-- [ ] **6. 为PG/SQLite业务控制路径和服务独立PG配置文档；SQLite部署要启用Semantica时需额外启动服务依赖，native-only不受影响**
+- [ ] **6. 为PG/SQLite业务控制路径及选定语义存储隔离配置文档；SQLite部署要启用Semantica时需额外启动服务依赖，native-only不受影响**
 
 关键实现约束：
 
@@ -132,10 +134,10 @@ set_query_ready(True)
 - `semantic/experiments/evaluate.py`：用生产适配重放冻结语料
 - `scripts/semantic/check_acceptance.py`：policy和证据完整性门禁
 - `scripts/semantic/test_check_acceptance.py`：门禁失败行为
-- `docs/superpowers/plans/semantica/final-evidence.md`：四层证据汇总
+- `docs/superpowers/plans/semantica/final-evidence.md`：五层能力证据与验收域汇总
 - `docs/superpowers/plans/semantica/progress.md`：最终逐任务状态
 
-**接口：** check_acceptance(policy:dict,evidence:dict)->list[str]返回所有阻断原因；release可用条件为policy.approved、无权限泄漏、证据完整、指标满足阈值、所启用能力verified。CI无模型凭据只能运行受控provider合同，真实模型验收独立受保护任务执行。
+**接口：** check_acceptance(policy:dict,evidence:dict)->list[str]返回所有阻断原因；能力证据层为 static、actual-runtime、controlled-provider、live-model、real-storage，验收域为 contract、integration、recovery、browser、live_model，两者分别记录，不能互相替代。release可用条件为policy.approved、无权限泄漏、五层证据和验收域完整、指标满足阈值、所启用能力verified。CI无模型凭据只能运行受控provider合同，真实模型验收独立受保护任务执行。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -151,11 +153,11 @@ def test_any_permission_leak_blocks_release():
 
 - [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立CI阶段：proto生成一致性→Go/Python/TS聚焦单测→真实PG/SQLite控制合同与Neo4j集成→浏览器流程；首次无关失败记录基线，不能删断言使绿**
+- [ ] **3. 建立CI阶段：proto生成一致性→Go/Python/TS聚焦单测→真实PG/SQLite控制合同与选定 real-storage 集成→浏览器流程；首次无关失败记录基线，不能删断言使绿**
 
-- [ ] **4. 使用正式adapter重放V03语料，对照冻结基线；报告冷/热延迟、索引耗时、引用准确性、无答案判断、真实模型用量和成本估算依据**
+- [ ] **4. 先使用正式adapter重放 V03 冻结语料，对照冻结基线；再以获得授权、版本固定且不提交仓库的代表性业务样本与 native 对照。两阶段均记录样本授权、文档/模型/配置版本、测量命令和质量/延迟/成本结果；产品确认门槛前，第二阶段缺失即 blocked，不能 promotion。**
 
-- [ ] **5. 把能力、测试、恢复和用户阈值确认关联到同一commit/version/lock hash；未确认阈值或无真实模型证据时明确blocked，不启用相应正式模式**
+- [ ] **5. 把 static、actual-runtime、controlled-provider、live-model、real-storage 五层能力证据、测试、恢复和用户阈值确认关联到同一commit/version/lock hash；mock 或静态资料不得标记 verified。未确认阈值或无真实模型证据时明确blocked，不启用相应正式模式**
 
 - [ ] **6. 最后进行整条分支review、修复发现并重跑受影响检查；填写24任务证据与已知限制，交付部署/回滚手册，正式部署或KB切换另按用户授权执行**
 
@@ -170,13 +172,18 @@ def check_acceptance(policy, evidence):
         errors.append("missing_security_measurement")
     elif evidence["security_leaks"] != 0:
         errors.append("permission_leak")
-    for required in ("contract", "integration", "recovery", "browser", "live_model"):
-        if evidence.get(required) != "verified":
-            errors.append("missing_" + required)
+    for layer in ("static", "actual-runtime", "controlled-provider", "live-model", "real-storage"):
+        if evidence.get("layers", {}).get(layer) != "verified":
+            errors.append("missing_layer_" + layer)
+    for domain in ("contract", "integration", "recovery", "browser", "live_model"):
+        if evidence.get("domains", {}).get(domain) != "verified":
+            errors.append("missing_domain_" + domain)
+    if evidence.get("business_sample_comparison") != "verified":
+        errors.append("missing_business_sample_comparison")
     return errors
 # 同文件继续逐项比较policy中的明确阈值，并校验commit/version/hash一致。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`，预期退出码 0；另完成：门禁对缺证据、假approved、泄漏、质量/延迟/用量超限全部失败；最终报告分别写静态/单测、集成、浏览器、真实模型四层状态。
+- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`，预期退出码 0；另完成：门禁对缺能力层、缺验收域、缺业务样本比较、假approved、泄漏、质量/延迟/用量超限全部失败；最终报告分别写五层能力证据和五类验收域状态，且不提交业务原文数据。
 
 - [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o03 质量回归、CI门禁与最终交付`。

@@ -6,13 +6,15 @@
 
 **Architecture:** Go事务outbox与Python持久operation分工；发布只切换已验证不可变manifest。
 
-**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/Neo4j、React/TypeScript；按涉及范围使用。
+**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/候选隔离图与向量存储、React/TypeScript；按涉及范围使用。
 
 **Spec:** [架构规格](../specs/2026-09-11-semantica-graphrag-reasoning-design.md)；[总计划与完整类型表](2026-09-11-semantica-implementation.md)。
 
 ## Global Constraints
 
 完整继承总计划 Global Constraints，必须先读；本计划不扩大语义服务所有权、授权范围或首版能力。所有代码和测试均为后续实施输入，未执行。
+
+[ADR-0002](../../adr/0002-semantica-independent-service.md) 与 [2026-09-20 rebaseline](2026-09-20-semantica-rebaseline.md) 优先。全部 24 项仍为 pending；存储、拓扑和阈值均待相应实际验证，不能由本计划声明 verified。
 
 ---
 
@@ -136,12 +138,12 @@ COMMIT;
 - `semantic/migrations/002_generations.sql`：active指针、manifest和读取租约
 - `semantic/semantic_service/indexing/manifest.py`：不可变版本清单
 - `semantic/semantic_service/indexing/builder.py`：抽取、实体等价和产物准备
-- `semantic/semantic_service/indexing/store.py`：Neo4j与隔离向量适配
+- `semantic/semantic_service/indexing/store.py`：选定的隔离图与向量存储适配
 - `semantic/semantic_service/indexing/publisher.py`：CAS发布与read lease
 - `semantic/tests/test_generation_publish.py`：故障与并发发布
-- `semantic/tests/conftest.py`：index_store真实PG/Neo4j与隔离向量fixture
+- `semantic/tests/conftest.py`：index_store真实控制存储与隔离向量fixture
 
-**接口：** IndexBuilder.stage(op:Operation,request:ApplyRequest)->IndexManifest；Publisher.publish(scope:ScopeKey,base_generation:str|None,manifest:IndexManifest,lease_token:int)->bool；IndexStore.pin(scope)->ReadLease，release(lease_id)->None。IndexManifest含generation、base_generation、documents映射、配置digest、artifact hash列表、complete标志；ReadLease含lease_id/generation/expires_at。
+**接口：** IndexBuilder.stage(op:Operation,request:ApplyRequest)->IndexManifest；Publisher.publish(scope:ScopeKey,base_generation:str|None,manifest:IndexManifest,lease_token:int)->bool；IndexStore.pin(scope)->ReadLease，release(lease_id)->None，stage_successor(manifest:IndexManifest)->IndexManifest，query(scope:ScopeKey)->QuerySnapshot。IndexManifest含generation、base_generation、documents映射、配置digest、artifact hash列表、complete标志；ReadLease含lease_id/generation/expires_at；QuerySnapshot 含 generation/version/stale。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -152,6 +154,14 @@ def test_incomplete_generation_never_becomes_active(index_store, complete_manife
     with pytest.raises(ValueError):
         index_store.publish(incomplete.scope, before, incomplete, lease_token=1)
     assert index_store.active(incomplete.scope) == before
+
+def test_query_keeps_old_generation_stale_until_publish(index_store, complete_manifest):
+    pending = index_store.stage_successor(complete_manifest)
+    result = index_store.query(complete_manifest.scope)
+    assert result.generation == complete_manifest.generation
+    assert result.stale is True
+    assert result.version == complete_manifest.generation
+    assert pending.generation != result.generation
 ```
 
 - [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
@@ -178,7 +188,7 @@ with control_db.transaction() as tx:
 # tx方法在publisher.py实现；图/向量写入必须在此事务之前完成。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`，预期退出码 0；另完成：真实库模拟图成功/向量失败、两个base相同发布、租约过期、重启、read lease延迟GC；查询始终只见完整旧版或完整新版；记录实际后端。
+- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`，预期退出码 0；另完成：选定真实存储模拟图成功/向量失败、两个base相同发布、租约过期、重启、read lease延迟GC；新 generation 构建期间查询返回旧 generation 的 stale/version，发布成功后才切换；记录实际后端。
 
 - [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i03 有来源的构图与generation原子发布`。
 
@@ -259,17 +269,26 @@ func TestSemanticCompletionCannotDrainNewAttempt(t *testing.T) {
     f.DeliverTerminal("new-operation", 2, "succeeded")
     if f.PendingCount(2) != 0 { t.Fatal("completion was not idempotent") }
 }
+
+func TestSemanticBackfillResumesFromPersistedPage(t *testing.T) {
+    f := newSemanticTaskFixture(t)
+    f.EnablePilotKB("kb-1", f.Preview("kb-1"))
+    f.DeliverBackfillPage("kb-1", "cursor-1")
+    f.RestartCoordinator()
+    if got := f.NextBackfillCursor("kb-1"); got != "cursor-1" { t.Fatalf("got %q", got) }
+    if f.ParseStatus("d1") != "ready" || f.SemanticStatus("d1") != "indexing" { t.Fatal("states merged") }
+}
 ```
 
-- [ ] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticCompletion -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `go test ./internal/application/service -run 'TestSemantic(Completion|Backfill)' -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 使用I02事务API接入创建/更新/重解析/删除，复查实际调用链，禁止先更新业务再单独发消息；标准chunk落库后产生manifest**
+- [ ] **3. 使用I02事务API接入创建/更新/重解析/删除，复查实际调用链，禁止先更新业务再单独发消息；标准chunk落库后产生manifest。KB 启用后按持久 cursor 分页回填存量，重启从最后成功页恢复。**
 
 - [ ] **4. 将业务任务与operation建立持久映射；Go只提交并协调状态，重试复用idempotency key；Python内部phase不创建重复Go子任务**
 
 - [ ] **5. 在同事务写completion receipt并对匹配attempt的pending计数完成一次；取消/被替代operation不得扣新计数，operation成功后重复通知无副作用**
 
-- [ ] **6. 区分解析完成、语义失败、stale和deleting；新增只重建语义的重试入口，保留原parse和普通索引结果**
+- [ ] **6. 区分 parse_status 与 semantic_status，以及解析完成、语义失败、stale和deleting；新增只重建语义的重试入口，保留原 parse 和普通索引结果；新 generation 构建期间向 Q04 返回 active 旧 generation、version 与 stale。**
 
 关键实现约束：
 
@@ -282,6 +301,6 @@ ON CONFLICT DO NOTHING;
 -- 不对新attempt做任何更新；RPC终态与业务状态在下一次reconcile可恢复。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `go test ./internal/application/service -run TestSemanticCompletion -count=1`，预期退出码 0；另完成：运行现有knowledge_post_process相关回归；验证丢响应、重复终态、取消、重解析和删除；真实RPC至少完成一次文档→generation闭环。
+- [ ] **7. 确认 GREEN 与验收**。重跑 `go test ./internal/application/service -run 'TestSemantic(Completion|Backfill)' -count=1`，预期退出码 0；另完成：运行现有knowledge_post_process相关回归；验证分页回填重启恢复、parse/semantic 状态分离、丢响应、重复终态、取消、重解析和删除；真实RPC至少完成一次文档→generation闭环。
 
 - [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I05 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i05 文档任务、attempt与终态协调`。

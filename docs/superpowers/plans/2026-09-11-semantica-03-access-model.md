@@ -6,13 +6,15 @@
 
 **Architecture:** Go签发不可变范围并维护撤销epoch；Python在候选/边/推理前提阶段执行来源过滤。
 
-**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/Neo4j、React/TypeScript；按涉及范围使用。
+**Tech Stack:** Go/Gin/GORM、Python/gRPC/Semantica、PostgreSQL/候选隔离图与向量存储、React/TypeScript；按涉及范围使用。
 
 **Spec:** [架构规格](../specs/2026-09-11-semantica-graphrag-reasoning-design.md)；[总计划与完整类型表](2026-09-11-semantica-implementation.md)。
 
 ## Global Constraints
 
 完整继承总计划 Global Constraints，必须先读；本计划不扩大语义服务所有权、授权范围或首版能力。所有代码和测试均为后续实施输入，未执行。
+
+[ADR-0002](../../adr/0002-semantica-independent-service.md) 与 [2026-09-20 rebaseline](2026-09-20-semantica-rebaseline.md) 优先。全部 24 项仍为 pending；模型和商业接缝需实际验证，不能由静态资料或本计划宣称 verified。
 
 ---
 
@@ -144,7 +146,7 @@ cache_identity = (owner_tenant, kb_id, generation, scope_hash,
 - `migrations/sqlite/000018_semantic_invocations.up.sql`：SQLite等价记录
 - `migrations/sqlite/000018_semantic_invocations.down.sql`：SQLite回退
 
-**接口：** ModelGateway.invoke(invocation_id:str,operation_id:str,model_profile_ref:str,messages:list,budget_ref:str)->ModelResult；ModelResult含text、input_tokens、output_tokens、provider_request_id、status。ledger.claim仅获执行权的首次调用返回new，其余返回completed/in_flight/unknown，避免把本次claim误当重复请求。Go SemanticBudgetPort.Reserve/Finalize/Reconcile围绕invocation ID；复用已实现预算系统，否则建立本任务预算仓库和原始用量表，不伪称已接商业结算。
+**接口：** 先定义消费者自有 `SemanticModelGateway.Invoke(ctx, SemanticModelRequest) (SemanticModelResult, error)`；Python wire 仅含 capability token、消息和参数，Go 以 `buildTrustedSemanticModelRequest(ctx, wire)` 校验认证短期 capability 后派生 tenant/run/call/model、预算上限和 deadline。预算上限来自经授权、额度校验并持久化的管理端设置、模型配置和价格估算，不能由 wire 覆盖。result 包含文本、输入/输出 token、provider request ID、model version。实现使用 `interfaces.ModelService.GetChatModel(ctx, modelID)` 解析租户模型，并围绕 invocation ID 组合 `commercial.ExecutionGate.Begin(ctx, BudgetRequest)` 与 `Finish(ctx, reservationID, UsageFact)`；不能假定 Craft 私有 gateway 的 handler 或签名可复用。`newSemanticModelFixture(t) *semanticModelFixture` 必须提供 `InvokeWire(capability string, raw map[string]any) error`、`GetChatModelCalls() int`、`BeginCalls() int`、`ReservationID(invocationID string) string` 和 `FinishReservationID(invocationID string) string`，用于验证失败不派发和同 reservation 结算。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -155,11 +157,38 @@ def test_retry_same_invocation_does_not_double_finalize(model_gateway):
     assert first == second
     assert model_gateway.recorded_invocations("inv-1") == 1
 # model_gateway fixture：真实Go内部HTTP+受控provider，计数来自持久调用表。
+
+func TestSemanticModelGateDenialDoesNotResolveChatModel(t *testing.T) {
+    f := newSemanticModelFixture(t)
+    f.GateDeny("budget-a")
+    _ = f.Invoke("inv-1")
+    if f.GetChatModelCalls() != 0 { t.Fatal("model resolved after denied budget") }
+    if f.FinishCalls("inv-1") != 0 { t.Fatal("denied invocation settled") }
+}
+
+func TestSemanticModelRejectsTamperedWireBeforeModelOrBudget(t *testing.T) {
+    f := newSemanticModelFixture(t)
+    err := f.InvokeWire("capability-for-tenant-1", map[string]any{
+        "tenant_id": 2, "model_id": "other", "upper": 999999,
+    })
+    if !errors.Is(err, ErrInvalidSemanticCapability) { t.Fatalf("got %v", err) }
+    if f.GetChatModelCalls() != 0 || f.BeginCalls() != 0 { t.Fatal("tampered wire dispatched") }
+}
+
+func TestSemanticModelSettlesOneReservation(t *testing.T) {
+    f := newSemanticModelFixture(t)
+    f.Invoke("inv-1")
+    if f.FinishCalls("inv-1") != 1 { t.Fatal("reservation not settled exactly once") }
+    reservationID := f.ReservationID("inv-1")
+    if got := f.FinishReservationID("inv-1"); got != reservationID {
+        t.Fatalf("Finish used %q, want %q", got, reservationID)
+    }
+}
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q` 与 `go test ./internal/application/service -run TestSemanticModel -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 定义operation/query关联短期模型能力凭据，校验tenant、用途、model_profile、budget；禁止任意URL/长期key透传；验证Semantica各调用入口都经过该adapter**
+- [ ] **3. 定义消费者自有 SemanticModelGateway、Python wire 类型和 Go trusted request 构造；校验 capability 的 tenant、用途、model_profile、budget 绑定，拒绝 wire 的 tenant/model/upper 覆盖或篡改 token，且失败时不得调用 GetChatModel 或 Begin。管理端预算设置需授权、额度校验和持久化，再由 Go 派生本次 Upper；Begin 拒绝时不得调用 GetChatModel，成功调用以同一 reservation ID 恰好一次 Finish；禁止任意URL/长期key透传，验证Semantica各调用入口都经过该adapter**
 
 - [ ] **4. 把预算预占、调用记录、实际用量和未知结果分开；未发送前失败可释放，provider可能执行但响应丢失进入unknown并对账，不能盲重发同一invocation**
 
@@ -170,15 +199,20 @@ def test_retry_same_invocation_does_not_double_finalize(model_gateway):
 关键实现约束：
 
 ```
-claim = ledger.claim(invocation_id, request_hash)
-if claim.state == "completed":
-    return claim.saved_result
-if claim.state in {"in_flight", "unknown"}:
-    raise InvocationNeedsReconciliation()
-reservation = budget.reserve(budget_ref, invocation_id, upper_bound)
-# provider调用后ledger.save_actual并按同一invocation finalize；未知结果保留预占待对账。
+request, err := buildTrustedSemanticModelRequest(ctx, wire)
+if err != nil { return SemanticModelResult{}, err }
+reservation, err := executionGate.Begin(ctx, commercial.BudgetRequest{
+    TenantID: request.Capability.TenantID, RunID: request.Capability.RunID,
+    Key: request.Capability.CallID, Upper: request.Capability.Upper,
+    Deadline: request.Capability.Deadline,
+})
+if err != nil { return SemanticModelResult{}, err }
+result := invokeResolvedChatModel(ctx, request)
+fact := trustedUsageFact(request, result) // 构造 UsageFact 的实际字段由本任务定义并校验。
+if err := executionGate.Finish(ctx, reservation.ID, fact); err != nil { return SemanticModelResult{}, err }
+// 幂等 ledger 以 Capability.CallID 保存 completed/in_flight/unknown；unknown 上游结果不调用 Finish，保留 invocation 与 reservation 以供对账，不能盲重发。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`，预期退出码 0；另完成：Go TestSemanticModel覆盖额度竞争、BYOK原始用量、unknown对账；真实模型至少一次证明上游无旁路直连；无凭据保持真实调用项未通过。
+- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q` 与 `go test ./internal/application/service -run TestSemanticModel -count=1`，预期退出码 0；另完成：覆盖额度竞争、BYOK原始用量、unknown对账；真实模型至少一次证明上游无旁路直连；无凭据保持真实调用项未通过。
 
 - [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a03 模型代理、原始用量与预算`。

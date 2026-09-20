@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "classification_legend": [
+    "actual-runtime",
+    "mock",
+    "source-only",
+    "not-tested"
+  ],
+  "python": {
+    "version": "3.12.12 (main, Feb  4 2026, 01:57:59) [Clang 21.1.4 ]",
+    "executable": "/Users/wuyongjun/.codex/worktrees/semantica-capability-probe/WeKnora-fork01/semantic/experiments/.venv312/bin/python"
+  },
+  "package": {
+    "name": "semantica",
+    "requested_version": "0.6.8",
+    "wheel_sha256": "0af4d9dd9b01503e0d72c0ae6b0703364d01dd1443e42bc7e9a6f415835917d7",
+    "expected_wheel_sha256": "0af4d9dd9b01503e0d72c0ae6b0703364d01dd1443e42bc7e9a6f415835917d7",
+    "official_tag_object_sha": "29f3c3230cb72e6b84201a0f5f4e310929fefb47",
+    "official_source_commit_sha": "f73f599a22c320676a45f247247038ca1fcf40f0"
+  },
+  "fixture_summary": {
+    "fact_count": 2,
+    "authorized_node_count": 3
+  },
+  "public_import": {
+    "classification": "actual-runtime",
+    "command": [
+      "semantic/experiments/.venv312/bin/python",
+      "-c",
+      "from semantica.reasoning import Reasoner, GraphReasoner; from semantica.context import ContextGraph, ContextRetriever; print('ok')"
+    ],
+    "exit_code": 0,
+    "stdout": "ok",
+    "stderr": ""
+  },
+  "capabilities": {
+    "rule_reasoner": {
+      "classification": "source-only",
+      "status": "not-executed",
+      "reason": "public import succeeded",
+      "source_findings": {
+        "add_fact": true,
+        "add_rule": true,
+        "forward_chain": true,
+        "premises_api": true,
+        "requested_chain": "A DependsOn B + B DependsOn C => IndirectDependsOn(A,C) was not executed"
+      }
+    },
+    "context_authorized_subgraph_bridge": {
+      "classification": "source-only",
+      "status": "not-an-acl-acceptance",
+      "reason": "ContextGraph is an in-memory API candidate; persistent storage, Go authorization prefilter, and deletion/revocation checks were not exercised",
+      "source_findings": {
+        "context_graph_add_nodes": true,
+        "context_graph_add_edges": true,
+        "fixture_parsed": true
+      }
+    },
+    "graph_reasoner_provider_injection": {
+      "classification": "source-only",
+      "status": "not-executed",
+      "reason": "public import succeeded",
+      "source_findings": {
+        "reason_signature": true,
+        "returns_plain_string": true,
+        "constructor_provider_argument": true,
+        "factory_creation": true,
+        "direct_provider_object_injection": false,
+        "entity_properties_enter_prompt": true,
+        "relationship_properties_enter_prompt": true,
+        "controlled_provider_return": "not-tested: no mock is presented as a real provider"
+      }
+    }
+  },
+  "limits": [
+    "No persistent Neo4j, Go ACL, deletion/revocation, performance, quality, budget, or real provider call was tested."
+  ]
+}
