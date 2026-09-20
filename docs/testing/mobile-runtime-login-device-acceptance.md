@@ -49,8 +49,8 @@ device evidence file.
   "deviceOrSimulator": "redacted model and OS version",
   "build": "bundle/package identifier and build identifier",
   "deploymentOrigin": "https://staging.example",
-  "loginFlow": "password | oidc",
-  "scenario": "authorized | rejected-origin | oidc-cancel | protocol-gate",
+  "loginFlow": "password | oidc | setup | protocol",
+  "scenario": "development-build-installed | deployment-origin-normalized | origin-rejected-non-https | origin-rejected-path | origin-rejected-query-or-fragment | origin-rejected-embedded-credentials | password-authorized | password-sign-out | password-relaunch-session-cleared | oidc-authorized | oidc-cancel | oidc-callback-mismatch | oidc-state-mismatch | oidc-provider-failure | capability-compatible | capability-incompatible | capability-malformed | capability-missing | evidence-recorded",
   "clientProtocol": 3,
   "capabilityMode": "compatible | incompatible | malformed | missing",
   "outcome": "accepted | rejected | blocked | unavailable",
@@ -60,7 +60,7 @@ device evidence file.
 }
 ```
 
-## Current Task 7 status (2026-09-21)
+## Current Task 7 status (2026-09-21): unresolved native acceptance
 
 Neither platform is accepted. This checkout has iOS simulators and Xcode, but
 does not contain an iOS/Android native project or an installed WeKnora

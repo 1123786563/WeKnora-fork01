@@ -91,3 +91,43 @@ in the Task 7 checklist.
 
 This task adds operational documentation only and makes no behavior or script
 change, so a RED/GREEN implementation cycle is not applicable.
+
+## Fix round 1 — acceptance schema and boundary baseline (base `966bc59e`)
+
+The checklist's `scenario` enum now names every required installed-device
+check: development-build installation, accepted and each rejected origin form,
+password authorization/sign-out/relaunch, successful and each negative OIDC
+return, each individual capability disposition, and evidence recording. The
+current-status heading explicitly says native acceptance is unresolved.
+
+The boundary command was compared at Task 7's implementation base to the
+current checkout with these commands:
+
+```sh
+git archive ae41e2719beefcd3e98a52a626567ed907d44008 | tar -x -C "$baseline_dir"
+(cd "$baseline_dir" && node scripts/check-react-boundaries.mjs >"$baseline_log" 2>&1)
+node scripts/check-react-boundaries.mjs >"$current_log" 2>&1
+git diff --no-index -- "$baseline_log" "$current_log"
+```
+
+The exact result was identical:
+
+```text
+baseline command: node scripts/check-react-boundaries.mjs
+baseline_exit=1
+baseline_failure_count=227
+
+current command: node scripts/check-react-boundaries.mjs
+current_exit=1
+current_failure_count=227
+
+diff -- baseline-errors current-errors
+diff_exit=0
+```
+
+The boundary gate was therefore already outstanding at
+`ae41e2719beefcd3e98a52a626567ed907d44008`; Task 7 did not introduce it. It
+remains a release gate for its owning boundary-remediation work. This fix is
+documentation-only and does not alter application behavior, tests, scripts,
+or workflows. Native acceptance remains unavailable for the platform and
+staging reasons recorded above.
