@@ -67,6 +67,25 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		commercialHandler.RequirePlatformRefundReviewer(),
 		commercialHandler.AdminReviewRefund)
 
+	// T07 (#79): platform plan-version admin surface. Catalog operations
+	// are cross-space, so the endpoints hang DIRECTLY on the parent group
+	// behind their OWN platform-operator gate — the exact refund-review
+	// precedent: a platform API key (scope.IsPlatform) or the explicit
+	// plan_publish grant at platform scope (tenant_id=0). A space owner,
+	// Admin or billing grantee is 403; drafts are never reachable through
+	// tenant authority. Responses are closed WeKnora vocabulary only: the
+	// external plan code lives in commercial_plan_publications and never
+	// crosses this API (ADR-0014).
+	planAdmin := r.Group("/admin/plans", commercialHandler.RequirePlatformPlanPublisher())
+	{
+		planAdmin.POST("/drafts", commercialHandler.CreatePlanDraft)
+		planAdmin.PATCH("/drafts/:key/:version", commercialHandler.UpdatePlanDraft)
+		planAdmin.POST("/drafts/:key/:version/validate", commercialHandler.ValidatePlanDraft)
+		planAdmin.POST("/drafts/:key/:version/publish", commercialHandler.PublishPlanVersion)
+		planAdmin.GET("/versions", commercialHandler.ListPlanVersions)
+		planAdmin.GET("/versions/:key/:version", commercialHandler.GetPlanVersion)
+	}
+
 	// Provider payment callbacks: publicly reachable and authenticated by
 	// provider signature verification instead of session/API-key. They hang
 	// DIRECTLY on the parent group — the capability/billing guards above

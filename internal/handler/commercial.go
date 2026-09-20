@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -54,6 +55,10 @@ type CommercialHandler struct {
 	// reconciliation. nil until the container wires it — the readiness read
 	// then fails closed honestly (unavailable/unconfigured), never fabricated.
 	platform commercial.CommercialPlatform
+	// planVersions is the T07 (#79) plan-version lifecycle service; nil
+	// until the container wires it — the admin plan endpoints then fail
+	// closed with 503, never a fabricated success.
+	planVersions *commercialsvc.PlanVersionService
 }
 
 // NewCommercialHandler builds the handler and makes sure the resource
@@ -770,4 +775,382 @@ func (h *CommercialHandler) AdminReviewRefund(c *gin.Context) {
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported review action"})
 	}
+}
+
+// ---- T07 (#79): platform plan-version admin surface ----
+
+// PlatformPlanPublisherCapability is the explicit grant (a row in
+// commercial_grants with capability='plan_publish' at platform scope
+// tenant_id = 0) that admits a human operator to the plan publish surface.
+// Catalog operations are cross-space by nature — publishing a plan touches
+// every tenant's catalog — so tenant authority (owner, Admin, billing
+// grantee) must NEVER admit it: the exact RequirePlatformRefundReviewer
+// precedent.
+const PlatformPlanPublisherCapability = "plan_publish"
+
+// hasPlatformPlanPublisher reports platform plan-publish authority: either
+// a platform API key (scope.IsPlatform) or a human user carrying the
+// explicit plan_publish grant at platform scope. Any lookup failure fails
+// closed (not a publisher).
+func (h *CommercialHandler) hasPlatformPlanPublisher(c *gin.Context) bool {
+	if h == nil || h.db == nil {
+		return false
+	}
+	if scope, ok := types.TenantAPIKeyScopeFromContext(c.Request.Context()); ok {
+		return scope.IsPlatform()
+	}
+	userID := commercialUserID(c)
+	if userID == "" {
+		return false
+	}
+	var n int64
+	if err := h.db.Raw(`SELECT COUNT(*) FROM commercial_grants
+		WHERE tenant_id = 0 AND user_id = ? AND capability = ?`,
+		userID, PlatformPlanPublisherCapability).Scan(&n).Error; err != nil {
+		return false
+	}
+	return n > 0
+}
+
+// RequirePlatformPlanPublisher gates the plan admin surface. Space
+// administration NEVER admits a publisher: the caller must be an
+// authenticated platform operator — a platform API key or a user holding
+// the platform-scope plan_publish grant.
+func (h *CommercialHandler) RequirePlatformPlanPublisher() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !h.hasPlatformPlanPublisher(c) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "Forbidden: plan publish requires platform operator authority",
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
+// planDraftRequest is the admin draft wire contract. Money arrives as the
+// digit-string-or-number json.Number (the quoteWire precedent).
+type planDraftRequest struct {
+	PlanKey              string              `json:"plan_key"`
+	Name                 string              `json:"name"`
+	AmountFen            json.Number         `json:"amount_fen"`
+	Currency             string              `json:"currency"`
+	IncludedCreditsMicro json.Number         `json:"included_credits_micro"`
+	Features             map[string]bool     `json:"features"`
+	Limits               map[string]int64    `json:"limits"`
+	Charges              []planChargeRequest `json:"charges"`
+}
+
+type planChargeRequest struct {
+	Dimension    string      `json:"dimension"`
+	Model        string      `json:"model"`
+	AmountFen    json.Number `json:"amount_fen"`
+	PackageUnits json.Number `json:"package_units"`
+	FreeUnits    json.Number `json:"free_units"`
+}
+
+// toDraftInput converts the wire contract onto the service input.
+func (r planDraftRequest) toDraftInput() (commercialsvc.DraftInput, error) {
+	amount, err := r.AmountFen.Int64()
+	if err != nil {
+		return commercialsvc.DraftInput{}, err
+	}
+	credits, err := r.IncludedCreditsMicro.Int64()
+	if err != nil {
+		return commercialsvc.DraftInput{}, err
+	}
+	charges := make([]commercial.PlanCharge, 0, len(r.Charges))
+	for _, c := range r.Charges {
+		chargeAmount, err := c.AmountFen.Int64()
+		if err != nil {
+			return commercialsvc.DraftInput{}, err
+		}
+		var packageUnits, freeUnits int64
+		if c.PackageUnits.String() != "" {
+			if packageUnits, err = c.PackageUnits.Int64(); err != nil {
+				return commercialsvc.DraftInput{}, err
+			}
+		}
+		if c.FreeUnits.String() != "" {
+			if freeUnits, err = c.FreeUnits.Int64(); err != nil {
+				return commercialsvc.DraftInput{}, err
+			}
+		}
+		charges = append(charges, commercial.PlanCharge{
+			Dimension: c.Dimension, Model: c.Model, AmountFen: chargeAmount,
+			PackageUnits: packageUnits, FreeUnits: freeUnits,
+		})
+	}
+	return commercialsvc.DraftInput{
+		PlanKey: r.PlanKey, Name: r.Name, AmountFen: amount,
+		IncludedCreditsMicro: credits, Features: r.Features, Limits: r.Limits,
+		Currency: r.Currency, Charges: charges,
+	}, nil
+}
+
+// planVersionWire projects a version view onto the CLOSED admin response
+// set: WeKnora product vocabulary only. The external plan code and every
+// provider identifier are absent BY DESIGN — the mapping lives in
+// commercial_plan_publications and is addressed by (plan_key, version).
+func planVersionWire(view repocommercial.VersionView) (gin.H, error) {
+	var definition commercial.PlanVersion
+	if err := json.Unmarshal([]byte(view.DefinitionJSON), &definition); err != nil {
+		return nil, fmt.Errorf("%w: %v", repocommercial.ErrInvalidPlanRow, err)
+	}
+	features := definition.Features
+	if features == nil {
+		features = map[string]bool{}
+	}
+	limits := definition.Limits
+	if limits == nil {
+		limits = map[string]int64{}
+	}
+	data := gin.H{
+		"plan_key":               view.PlanKey,
+		"version":                view.Version,
+		"state":                  view.State,
+		"name":                   definition.Name,
+		"amount_fen":             strconv.FormatInt(int64(definition.Price), 10),
+		"currency":               definition.Currency,
+		"included_credits_micro": int64(definition.Monthly),
+		"features":               features,
+		"limits":                 limits,
+	}
+	charges := make([]gin.H, 0, len(definition.Charges))
+	for _, c := range definition.Charges {
+		charges = append(charges, gin.H{
+			"dimension":     c.Dimension,
+			"model":         c.Model,
+			"amount_fen":    strconv.FormatInt(c.AmountFen, 10),
+			"package_units": c.PackageUnits,
+			"free_units":    c.FreeUnits,
+		})
+	}
+	data["charges"] = charges
+	if view.ReceiptJSON != "" {
+		var receipt commercial.CommandReceipt
+		if err := json.Unmarshal([]byte(view.ReceiptJSON), &receipt); err != nil {
+			return nil, fmt.Errorf("%w: receipt", repocommercial.ErrInvalidPlanRow)
+		}
+		data["receipt"] = gin.H{
+			"received":     true,
+			"published_at": view.PublishedAt.UTC().Format(time.RFC3339),
+			"command_key":  receipt.Key, // WeKnora's own key — never the external code
+		}
+	}
+	return data, nil
+}
+
+// planAdminError maps the service errors onto closed HTTP answers; err.Error()
+// is never echoed.
+func planAdminError(c *gin.Context, err error, report commercialsvc.ValidationReport) {
+	switch {
+	case errors.Is(err, commercialsvc.ErrPublishValidationFailed):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"success": false, "error": "publish_validation_failed", "validation": report,
+		})
+	case errors.Is(err, repocommercial.ErrPlanNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "plan_version_not_found"})
+	case errors.Is(err, repocommercial.ErrPublishedPlanImmutable):
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": "published_plan_immutable"})
+	case errors.Is(err, commercial.ErrPlatformInvalidResponse):
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": "publish_conflict"})
+	case errors.Is(err, commercial.ErrPlatformUnconfigured):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "platform_unconfigured"})
+	case errors.Is(err, commercial.ErrPlatformUnreachable):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "platform_unreachable"})
+	case errors.Is(err, commercialsvc.ErrInvalidDraftInput):
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid_draft_input"})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "internal_error"})
+	}
+}
+
+// SetPlanVersionService wires the plan version lifecycle service (injection
+// point for the container). Until it is called the admin plan endpoints
+// fail closed with 503 — never a fabricated success.
+func (h *CommercialHandler) SetPlanVersionService(s *commercialsvc.PlanVersionService) {
+	h.planVersions = s
+}
+
+func (h *CommercialHandler) requirePlanVersionService(c *gin.Context) (*commercialsvc.PlanVersionService, bool) {
+	if h.planVersions == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "plan_service_unconfigured"})
+		return nil, false
+	}
+	return h.planVersions, true
+}
+
+// CreatePlanDraft serves POST /admin/plans/drafts.
+func (h *CommercialHandler) CreatePlanDraft(c *gin.Context) {
+	svc, ok := h.requirePlanVersionService(c)
+	if !ok {
+		return
+	}
+	var req planDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid_draft_input"})
+		return
+	}
+	in, err := req.toDraftInput()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid_draft_input"})
+		return
+	}
+	view, err := svc.CreateDraft(c.Request.Context(), commercialUserID(c), in)
+	if err != nil {
+		planAdminError(c, err, commercialsvc.ValidationReport{})
+		return
+	}
+	data, err := planVersionWire(view)
+	if err != nil {
+		planAdminError(c, err, commercialsvc.ValidationReport{})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": data})
+}
+
+// UpdatePlanDraft serves PATCH /admin/plans/drafts/:key/:version.
+func (h *CommercialHandler) UpdatePlanDraft(c *gin.Context) {
+	svc, ok := h.requirePlanVersionService(c)
+	if !ok {
+		return
+	}
+	version, err := strconv.ParseInt(c.Param("version"), 10, 64)
+	if err != nil || version <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid_version"})
+		return
+	}
+	var req planDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid_draft_input"})
+		return
+	}
+	in, err := req.toDraftInput()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid_draft_input"})
+		return
+	}
+	view, err := svc.UpdateDraft(c.Request.Context(), c.Param("key"), version, in)
+	if err != nil {
+		planAdminError(c, err, commercialsvc.ValidationReport{})
+		return
+	}
+	data, err := planVersionWire(view)
+	if err != nil {
+		planAdminError(c, err, commercialsvc.ValidationReport{})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+// ValidatePlanDraft serves POST /admin/plans/drafts/:key/:version/validate:
+// the itemized six-axis report, no state change.
+func (h *CommercialHandler) ValidatePlanDraft(c *gin.Context) {
+	svc, ok := h.requirePlanVersionService(c)
+	if !ok {
+		return
+	}
+	version, err := strconv.ParseInt(c.Param("version"), 10, 64)
+	if err != nil || version <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid_version"})
+		return
+	}
+	report, err := svc.Validate(c.Request.Context(), c.Param("key"), version)
+	if err != nil {
+		planAdminError(c, err, commercialsvc.ValidationReport{})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"plan_key":   c.Param("key"),
+		"version":    version,
+		"validation": report,
+	}})
+}
+
+// PublishPlanVersion serves POST /admin/plans/drafts/:key/:version/publish.
+// The actor comes from the authenticated principal; the reason from the body.
+func (h *CommercialHandler) PublishPlanVersion(c *gin.Context) {
+	svc, ok := h.requirePlanVersionService(c)
+	if !ok {
+		return
+	}
+	version, err := strconv.ParseInt(c.Param("version"), 10, 64)
+	if err != nil || version <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid_version"})
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&req) // an empty reason is legal
+	actor := commercialUserID(c)
+	if actor == "" {
+		actor = "platform_operator" // platform API keys carry no human id
+	}
+	result, err := svc.Publish(c.Request.Context(), actor, req.Reason, c.Param("key"), version)
+	if err != nil {
+		planAdminError(c, err, result.Report)
+		return
+	}
+	data, err := planVersionWire(result.Version)
+	if err != nil {
+		planAdminError(c, err, commercialsvc.ValidationReport{})
+		return
+	}
+	if result.Receipt != nil {
+		data["receipt"] = gin.H{
+			"received":     result.Receipt.Received,
+			"published_at": result.Receipt.PublishedAt.UTC().Format(time.RFC3339),
+			"command_key":  result.Receipt.CommandKey,
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+// ListPlanVersions serves GET /admin/plans/versions.
+func (h *CommercialHandler) ListPlanVersions(c *gin.Context) {
+	svc, ok := h.requirePlanVersionService(c)
+	if !ok {
+		return
+	}
+	views, err := svc.ListVersions(c.Request.Context())
+	if err != nil {
+		planAdminError(c, err, commercialsvc.ValidationReport{})
+		return
+	}
+	data := make([]gin.H, 0, len(views)) // SP11: never null
+	for _, view := range views {
+		wire, err := planVersionWire(view)
+		if err != nil {
+			planAdminError(c, err, commercialsvc.ValidationReport{})
+			return
+		}
+		data = append(data, wire)
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+// GetPlanVersion serves GET /admin/plans/versions/:key/:version.
+func (h *CommercialHandler) GetPlanVersion(c *gin.Context) {
+	svc, ok := h.requirePlanVersionService(c)
+	if !ok {
+		return
+	}
+	version, err := strconv.ParseInt(c.Param("version"), 10, 64)
+	if err != nil || version <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid_version"})
+		return
+	}
+	view, err := svc.GetVersion(c.Request.Context(), c.Param("key"), version)
+	if err != nil {
+		planAdminError(c, err, commercialsvc.ValidationReport{})
+		return
+	}
+	data, err := planVersionWire(view)
+	if err != nil {
+		planAdminError(c, err, commercialsvc.ValidationReport{})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
