@@ -114,10 +114,22 @@ def probe_roundtrip(config: TopologyConfig, fixture_path: Path | str) -> dict[st
     }
 
 
-def probe_rule(assertion_ids: list[str], rule_id: str) -> dict[str, Any]:
+def probe_rule(assertions: list[dict[str, Any]], rule_id: str) -> dict[str, Any]:
     if rule_id != RULE_ID:
         raise ValueError(f"unsupported rule: {rule_id}")
-    if not {"a-d1", "a-d2"}.issubset(assertion_ids):
+    by_id = {assertion.get("semantic_id"): assertion for assertion in assertions}
+    first = by_id.get("a-d1")
+    second = by_id.get("a-d2")
+    if not (
+        first
+        and second
+        and first.get("predicate") == "depends_on"
+        and first.get("subject") == "A"
+        and first.get("object") == "B"
+        and second.get("predicate") == "depends_on"
+        and second.get("subject") == "B"
+        and second.get("object") == "C"
+    ):
         return {"status": "insufficient_evidence", "conclusions": []}
     return {
         "status": "derived",
@@ -129,6 +141,6 @@ def probe_rule(assertion_ids: list[str], rule_id: str) -> dict[str, Any]:
             "kind": "rule",
             "rule_id": RULE_ID,
             "premise_ids": ["a-d1", "a-d2"],
-            "evidence_ids": ["e-d1", "e-d2"],
+            "evidence_ids": [*first["evidence_ids"], *second["evidence_ids"]],
         }],
     }

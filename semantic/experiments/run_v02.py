@@ -47,30 +47,51 @@ def _reader_result(config: TopologyConfig, fixture_path: Path) -> dict[str, Any]
         "storage_returned_ids": sorted(assertion_ids),
         "foreign_ids": sorted(row["semantic_id"] for row in target if row["tenant_id"] != "T1" or row["kb_id"] != "K1"),
         "provenance": target,
-        "rule": probe_rule(sorted(assertion_ids), "technical-dependency-transitivity@v1"),
+        "rule": probe_rule(target, "technical-dependency-transitivity@v1"),
         "fixture": str(fixture_path),
     }
 
 
-def _run_child(mode: str, fixture_path: Path) -> dict[str, Any]:
+def _run_child(mode: str, fixture_path: Path, config: TopologyConfig) -> dict[str, Any]:
+    child_environment = dict(os.environ)
+    child_environment.update({
+        "SEMANTICA_V02_NEO4J_URI": config.uri,
+        "SEMANTICA_V02_NEO4J_USER": config.user,
+        "SEMANTICA_V02_NEO4J_DATABASE": config.database,
+    })
     process = subprocess.run(
         [sys.executable, str(Path(__file__)), mode, "--fixture", str(fixture_path)],
         cwd=ROOT,
         check=True,
         capture_output=True,
         text=True,
+        env=child_environment,
     )
     return json.loads(process.stdout)
 
 
-def run_writer_then_reader(config: TopologyConfig, fixture_path: Path | str) -> dict[str, Any]:
+def _reader_sets(reader: dict[str, Any]) -> dict[str, Any]:
+    for key in ("assertion_ids", "evidence_ids", "storage_returned_ids", "foreign_ids"):
+        reader[key] = set(reader[key])
+    return reader
+
+
+def seed_writer(config: TopologyConfig, fixture_path: Path | str) -> dict[str, Any]:
     if config.topology != "dedicated":
         raise ValueError("V02 local runner accepts dedicated topology only")
     fixture = Path(fixture_path).resolve()
-    writer = _run_child("writer", fixture)
-    reader = _run_child("reader", fixture)
-    for key in ("assertion_ids", "evidence_ids", "storage_returned_ids", "foreign_ids"):
-        reader[key] = set(reader[key])
+    return _run_child("writer", fixture, config)
+
+
+def reader_only(config: TopologyConfig, fixture_path: Path | str) -> dict[str, Any]:
+    if config.topology != "dedicated":
+        raise ValueError("V02 local runner accepts dedicated topology only")
+    return _reader_sets(_run_child("reader", Path(fixture_path).resolve(), config))
+
+
+def run_writer_then_reader(config: TopologyConfig, fixture_path: Path | str) -> dict[str, Any]:
+    writer = seed_writer(config, fixture_path)
+    reader = reader_only(config, fixture_path)
     return {
         **reader,
         "writer_pid": writer["writer_pid"],
@@ -104,7 +125,9 @@ def evidence_metadata(config: TopologyConfig) -> dict[str, Any]:
     }
 
 
-def capture_dedicated_run(config: TopologyConfig, fixture_path: Path, output: Path, phase: str) -> dict[str, Any]:
+def capture_dedicated_run(
+    config: TopologyConfig, fixture_path: Path, output: Path, phase: str, *, reader_only_run: bool = False
+) -> dict[str, Any]:
     existing = json.loads(output.read_text()) if output.exists() else {
         "schema_version": 1,
         "topology": "dedicated",
@@ -117,7 +140,16 @@ def capture_dedicated_run(config: TopologyConfig, fixture_path: Path, output: Pa
         ],
     }
     existing["metadata"] = evidence_metadata(config)
-    existing["runs"][phase] = evidence_record(run_writer_then_reader(config, fixture_path))
+    if reader_only_run:
+        result = reader_only(config, fixture_path)
+        seed = existing["runs"].get("initial")
+        if seed is None or "writer_pid" not in seed:
+            raise ValueError("reader-only capture requires an initial seeded run")
+        result["seed_writer_pid"] = seed["writer_pid"]
+        result["restart_verified"] = result["reader_pid"] != result["seed_writer_pid"]
+    else:
+        result = run_writer_then_reader(config, fixture_path)
+    existing["runs"][phase] = evidence_record(result)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(existing, ensure_ascii=False, indent=2) + "\n")
     return existing
@@ -129,6 +161,7 @@ def main() -> int:
     parser.add_argument("--fixture", required=True, type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--phase")
+    parser.add_argument("--reader-only", action="store_true")
     args = parser.parse_args()
     config = from_environment()
     if args.mode == "writer":
@@ -139,7 +172,7 @@ def main() -> int:
     else:
         if args.output is None or not args.phase:
             parser.error("capture requires --output and --phase")
-        print(json.dumps(capture_dedicated_run(config, args.fixture, args.output, args.phase), ensure_ascii=False))
+        print(json.dumps(capture_dedicated_run(config, args.fixture, args.output, args.phase, reader_only_run=args.reader_only), ensure_ascii=False))
     return 0
 
 

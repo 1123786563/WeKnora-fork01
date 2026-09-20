@@ -46,6 +46,20 @@ def test_fresh_reader_process_recovers_persisted_provenance() -> None:
     assert result["restart_verified"] is True
     assert result["assertion_ids"] == {"a-d1", "a-d2"}
     assert result["evidence_ids"] == {"e-d1", "e-d2"}
+    assert result["storage_returned_ids"] == {"a-d1", "a-d2"}
+    assert result["foreign_ids"] == set()
+
+
+def test_reader_only_process_recovers_seeded_fixture() -> None:
+    from run_v02 import from_environment, reader_only, seed_writer
+
+    config = from_environment()
+    writer = seed_writer(config, FIXTURE)
+    reader = reader_only(config, FIXTURE)
+
+    assert writer["writer_pid"] != reader["reader_pid"]
+    assert reader["storage_returned_ids"] == {"a-d1", "a-d2"}
+    assert reader["foreign_ids"] == set()
 
 
 def test_evidence_record_serializes_logical_sets() -> None:

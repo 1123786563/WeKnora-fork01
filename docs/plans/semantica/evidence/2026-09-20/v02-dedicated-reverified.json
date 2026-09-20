@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "topology": "dedicated",
+  "backend": "neo4j",
+  "evidence_layer": "real-storage",
+  "runs": {
+    "initial": {
+      "reader_pid": 96529,
+      "assertion_ids": [
+        "a-d1",
+        "a-d2"
+      ],
+      "evidence_ids": [
+        "e-d1",
+        "e-d2"
+      ],
+      "storage_returned_ids": [
+        "a-d1",
+        "a-d2"
+      ],
+      "foreign_ids": [],
+      "provenance": [
+        {
+          "tenant_id": "T1",
+          "generation": "g1",
+          "record_kind": "assertion",
+          "subject": "A",
+          "document_id": "D1",
+          "chunk_id": "C1",
+          "revision": 1,
+          "predicate": "depends_on",
+          "kb_id": "K1",
+          "quote": "模块 A 依赖模块 B。",
+          "semantic_id": "a-d1",
+          "content_hash": "sha256-d1",
+          "evidence_ids": [
+            "e-d1"
+          ],
+          "object": "B"
+        },
+        {
+          "tenant_id": "T1",
+          "generation": "g1",
+          "record_kind": "assertion",
+          "subject": "B",
+          "document_id": "D2",
+          "chunk_id": "C1",
+          "revision": 1,
+          "predicate": "depends_on",
+          "kb_id": "K1",
+          "quote": "模块 B 依赖模块 C。",
+          "semantic_id": "a-d2",
+          "content_hash": "sha256-d2",
+          "evidence_ids": [
+            "e-d2"
+          ],
+          "object": "C"
+        }
+      ],
+      "rule": {
+        "status": "derived",
+        "conclusions": [
+          {
+            "assertion_id": "r-a-d1-a-d2",
+            "predicate": "indirectly_depends_on",
+            "subject": "A",
+            "object": "C",
+            "kind": "rule",
+            "rule_id": "technical-dependency-transitivity@v1",
+            "premise_ids": [
+              "a-d1",
+              "a-d2"
+            ],
+            "evidence_ids": [
+              "e-d1",
+              "e-d2"
+            ]
+          }
+        ]
+      },
+      "fixture": "/Users/wuyongjun/.codex/worktrees/semantica-v01/WeKnora-fork01/semantic/experiments/fixtures/v02-controlled-graph.json",
+      "writer_pid": 96526,
+      "restart_verified": true,
+      "backend": "neo4j",
+      "topology": "dedicated"
+    },
+    "after_container_restart": {
+      "reader_pid": 96742,
+      "assertion_ids": [
+        "a-d1",
+        "a-d2"
+      ],
+      "evidence_ids": [
+        "e-d1",
+        "e-d2"
+      ],
+      "storage_returned_ids": [
+        "a-d1",
+        "a-d2"
+      ],
+      "foreign_ids": [],
+      "provenance": [
+        {
+          "tenant_id": "T1",
+          "generation": "g1",
+          "record_kind": "assertion",
+          "subject": "A",
+          "document_id": "D1",
+          "chunk_id": "C1",
+          "revision": 1,
+          "predicate": "depends_on",
+          "kb_id": "K1",
+          "quote": "模块 A 依赖模块 B。",
+          "semantic_id": "a-d1",
+          "content_hash": "sha256-d1",
+          "evidence_ids": [
+            "e-d1"
+          ],
+          "object": "B"
+        },
+        {
+          "tenant_id": "T1",
+          "generation": "g1",
+          "record_kind": "assertion",
+          "subject": "B",
+          "document_id": "D2",
+          "chunk_id": "C1",
+          "revision": 1,
+          "predicate": "depends_on",
+          "kb_id": "K1",
+          "quote": "模块 B 依赖模块 C。",
+          "semantic_id": "a-d2",
+          "content_hash": "sha256-d2",
+          "evidence_ids": [
+            "e-d2"
+          ],
+          "object": "C"
+        }
+      ],
+      "rule": {
+        "status": "derived",
+        "conclusions": [
+          {
+            "assertion_id": "r-a-d1-a-d2",
+            "predicate": "indirectly_depends_on",
+            "subject": "A",
+            "object": "C",
+            "kind": "rule",
+            "rule_id": "technical-dependency-transitivity@v1",
+            "premise_ids": [
+              "a-d1",
+              "a-d2"
+            ],
+            "evidence_ids": [
+              "e-d1",
+              "e-d2"
+            ]
+          }
+        ]
+      },
+      "fixture": "/Users/wuyongjun/.codex/worktrees/semantica-v01/WeKnora-fork01/semantic/experiments/fixtures/v02-controlled-graph.json",
+      "seed_writer_pid": 96526,
+      "restart_verified": true
+    }
+  },
+  "limitations": [
+    "Dedicated local topology only; shared-isolated comparison remains required for V02 verification.",
+    "No model/provider, production ACL, or Go service integration was invoked."
+  ],
+  "metadata": {
+    "topology": "dedicated",
+    "backend": "neo4j",
+    "endpoint_alias": "loopback:17687",
+    "database": "neo4j",
+    "account_identity": "neo4j",
+    "volume_identity": "semantica-v02_semantica-v02-neo4j-data",
+    "semantica_version": "0.6.8",
+    "v01_lock_sha256": "c643ce123490c93f56ed95e9d6501bbd90daf8b2cdc74b183067dccd63864c54",
+    "v02_lock_sha256": "7cea23660879d96120a8936b44d9c23d4aaaf036b31c9a4e79812d31a4efe709"
+  }
+}
