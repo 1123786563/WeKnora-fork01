@@ -28,6 +28,8 @@ without data loss. Captured 2026-09-20 on the T01 worktree
 | `t01-health.json` | `overall: ready` — API `/health` ok, api/api-worker/db/redis Compose-healthy, api-clock running, release v1.53.0 + all five digests from the lock | `./deploy/lago/lago.sh status --json` (verbatim stdout) |
 | `t01-contract.json` | Real contract pass on the pinned runtime: `GET /health` 200, `POST /api/v1/customers` 200 (created `weknora-t01-probe-<uuid>`), `DELETE /api/v1/customers/<id>` 200 (deleted); status `pass` | `LAGO_API_KEY=<operator key> ./deploy/lago/lago.sh contract-probe --output ...` (verbatim sanitized report) |
 | `t01-images.txt` | The five digests actually pulled and run locally equal `images.lock.json` | `docker image inspect` per locked reference, generated after `down` |
+| `t05-run.txt` | T05 (#77) timeline: isolated stack (`COMPOSE_PROJECT_NAME=weknora-lago-77`, loopback ports 48897/48898), seeding, tagged Go adapter integration PASS, `down`, volume survival | sanitized operator narrative with UTC timestamps |
+| `t05-health.json` | T05 stack `overall: ready` — api healthy, release v1.53.0 + locked digests from the lock | `./deploy/lago/lago.sh status --json` on the T05 stack (verbatim stdout) |
 
 ## Regenerating
 

@@ -115,11 +115,18 @@ def _create_customer(base_url, api_key, external_id, name):
 
 
 def _delete_customer(base_url, api_key, external_id):
-    """DELETE the customer by external id; classify the outcome, never raise."""
+    """DELETE the customer by external id; classify the outcome, never raise.
+
+    A 404 is a provable miss — a clean end state ("absent"), not a failure —
+    which is what makes the lenient cleanup after a failed create safe: the
+    requested id is deleted whether or not the server persisted it.
+    """
     url = f"{base_url}/api/v1/customers/{quote(external_id, safe='')}"
     try:
         status, _ = _json_call("DELETE", url, api_key=api_key, parse=False)
     except HTTPError as error:
+        if error.code == 404:
+            return {"outcome": "absent", "http_status": 404}
         return {"outcome": "failed", "http_status": error.code}
     except OSError:
         return {"outcome": "failed", "http_status": None}
@@ -189,9 +196,11 @@ def run_probe(base_url, api_key, release_identity=None, lock_path=LOCK_PATH):
         return finish()
 
     created_external_id = None
+    create_attempted = False
     failure = None
     try:
         report["health"] = {"outcome": "ok", "http_status": _check_health(base_url)}
+        create_attempted = True
         create_status, created_external_id = _create_customer(
             base_url, api_key, external_id, name
         )
@@ -204,10 +213,18 @@ def run_probe(base_url, api_key, release_identity=None, lock_path=LOCK_PATH):
         }
         report["error"] = step_failure.reason
     finally:
-        # Cleanup always runs once a customer was created, whatever else failed.
+        # Cleanup always runs once a customer was created, whatever else
+        # failed. #73 carryover: after a create step that was ATTEMPTED but
+        # failed (rejected/error/malformed), the server may still have
+        # persisted the synthetic customer (persisted-but-response-lost), so
+        # the probe lenient-deletes the REQUESTED id too — a 404 is the
+        # provable nothing-was-created case and counts as a clean end state.
+        # A health failure (create never attempted) stays delete-free.
         if created_external_id is not None:
             report["customer"]["created_external_id"] = created_external_id
             report["cleanup"] = _delete_customer(base_url, api_key, created_external_id)
+        elif create_attempted:
+            report["cleanup"] = _delete_customer(base_url, api_key, external_id)
 
     if failure is not None:
         report["status"] = "fail"

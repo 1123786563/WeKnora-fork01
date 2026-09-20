@@ -84,6 +84,16 @@ class RecordingLagoHandler(BaseHTTPRequestHandler):
             return
         customer = body.get("customer") if isinstance(body, dict) else None
         self.server.created_customers.append(customer)
+        if isinstance(customer, dict) and customer.get("external_id"):
+            self.server.last_requested_external_id = customer["external_id"]
+        if self.server.persist_then_drop_create:
+            # Persist the customer, then drop the connection with no response:
+            # the create outcome is indeterminate for the client.
+            self.close_connection = True
+            return
+        if self.server.fail_create_with_status is not None:
+            self._send_json(self.server.fail_create_with_status, {"error": "injected create failure"})
+            return
         if self.server.create_raw_body is not None:
             self._send_raw(self.server.create_status, self.server.create_raw_body)
         elif self.server.create_customer_response is not None:
@@ -99,7 +109,9 @@ class RecordingLagoHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "not found"})
             return
         self.server.deleted_external_ids.append(match.group(1))
-        if self._after_create_fault():
+        if self.server.delete_responds_404:
+            self._send_json(404, {"error": "not found"})
+        elif self._after_create_fault():
             self._send_json(500, {"error": "boom-after-create"})
         else:
             self._send_json(self.server.delete_status, {"customer": {"external_id": match.group(1)}})
@@ -115,11 +127,15 @@ class RecordingLagoServer(ThreadingHTTPServer):
         self.requests = []
         self.created_customers = []
         self.deleted_external_ids = []
+        self.last_requested_external_id = None
         self.health_status = 200
         self.create_status = 200
         self.create_customer_response = None  # None -> echo the requested external_id
         self.create_raw_body = None           # bytes -> sent verbatim (malformed-body tests)
+        self.fail_create_with_status = None   # int -> create answers this non-2xx status
+        self.persist_then_drop_create = False # persist the create, then drop the connection
         self.delete_status = 200
+        self.delete_responds_404 = False      # DELETE answers 404 (lenient-cleanup tests)
         self.fail_after_create = False        # fail every request after the first create
 
     @property
@@ -235,15 +251,24 @@ class FailureTests(ContractProbeTestCase):
         self.assertEqual(self.server.created_customers, [])
         self.assertEqual(self.server.deleted_external_ids, [])
 
-    def test_non_2xx_create_is_rejected_and_nothing_is_cleaned_up(self):
+    def test_non_2xx_create_is_rejected_and_lenient_deletes_requested_id(self):
+        # #73 carryover: even a definitive create rejection must still attempt
+        # the lenient DELETE of the REQUESTED id — a server that persisted the
+        # customer while answering 4xx must never orphan it.
         self.server.create_status = 422
         result = run_probe(self.server.url, api_key=API_KEY)
 
         self.assertEqual(result.status, "fail")
         report = json.loads(result.serialized())
         self.assertEqual(report["create"], {"outcome": "rejected", "http_status": 422})
-        self.assertEqual(report["cleanup"], {"outcome": "not-attempted", "http_status": None})
-        self.assertEqual(self.server.deleted_external_ids, [])
+        self.assertEqual(
+            report["cleanup"], {"outcome": "deleted", "http_status": 200}
+        )
+        self.assertEqual(
+            self.server.deleted_external_ids,
+            [report["customer"]["requested_external_id"]],
+        )
+        self.assertIsNone(report["customer"]["created_external_id"])
 
     def test_unparseable_create_response_is_malformed(self):
         self.server.create_raw_body = b"{not json"
@@ -252,7 +277,10 @@ class FailureTests(ContractProbeTestCase):
         self.assertEqual(result.status, "fail")
         report = json.loads(result.serialized())
         self.assertEqual(report["create"]["outcome"], "malformed")
-        self.assertEqual(self.server.deleted_external_ids, [])
+        self.assertEqual(
+            self.server.deleted_external_ids,
+            [report["customer"]["requested_external_id"]],
+        )
 
     def test_create_response_without_customer_external_id_is_malformed(self):
         self.server.create_customer_response = {"customer": {"lago_id": "no-external-id"}}
@@ -261,7 +289,10 @@ class FailureTests(ContractProbeTestCase):
         self.assertEqual(result.status, "fail")
         report = json.loads(result.serialized())
         self.assertEqual(report["create"], {"outcome": "malformed", "http_status": 200})
-        self.assertEqual(self.server.deleted_external_ids, [])
+        self.assertEqual(
+            self.server.deleted_external_ids,
+            [report["customer"]["requested_external_id"]],
+        )
 
     def test_probe_deletes_created_customer_after_later_failure(self):
         # Required case from the task brief (translated to unittest style):
@@ -283,6 +314,63 @@ class FailureTests(ContractProbeTestCase):
         self.assertEqual(report["create"]["outcome"], "created")
         self.assertEqual(report["cleanup"], {"outcome": "failed", "http_status": 500})
         self.assertIn("cleanup", report["error"])
+
+
+class LenientCleanupTests(ContractProbeTestCase):
+    """#73 carryover: after ANY create-step failure the probe lenient-cleans
+    the REQUESTED external id, and a 404 cleanup is a clean end state."""
+
+    def test_create_transport_failure_still_deletes_requested_id(self):
+        # Server persists the customer, then drops the connection
+        # (indeterminate outcome for the client).
+        self.server.persist_then_drop_create = True
+        result = run_probe(self.server.url, api_key="secret-for-test-only")
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(
+            self.server.deleted_external_ids, [self.server.last_requested_external_id]
+        )
+        # The credential never reaches the sanitized report, not even on the
+        # transport-failure path.
+        self.assertNotIn("secret-for-test-only", result.serialized())
+
+    def test_create_malformed_response_still_deletes_requested_id(self):
+        self.server.create_customer_response = "not-json{"
+        result = run_probe(self.server.url, api_key="secret-for-test-only")
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(
+            self.server.deleted_external_ids, [self.server.last_requested_external_id]
+        )
+
+    def test_lenient_cleanup_treats_404_as_absent_not_failed(self):
+        self.server.fail_create_with_status = 404          # nothing was created
+        self.server.delete_responds_404 = True             # lenient delete also 404s
+        result = run_probe(self.server.url, api_key="secret-for-test-only")
+
+        self.assertEqual(result.status, "fail")            # the create itself failed
+        report = json.loads(result.serialized())
+        self.assertEqual(report["cleanup"]["outcome"], "absent")
+
+    def test_health_failure_performs_no_delete(self):
+        # A health-step failure happens BEFORE any create was attempted, so
+        # no delete of any id may be issued.
+        self.server.health_status = 503
+        result = run_probe(self.server.url, api_key="secret-for-test-only")
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(self.server.deleted_external_ids, [])
+
+    def test_success_path_still_deletes_the_echoed_created_id(self):
+        # When the create succeeded, cleanup keeps deleting the ECHOED id —
+        # the lenient path never replaces the authoritative one.
+        self.server.create_customer_response = {
+            "customer": {"external_id": "weknora-t01-probe-echoed"}
+        }
+        result = run_probe(self.server.url, api_key="secret-for-test-only")
+
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(self.server.deleted_external_ids, ["weknora-t01-probe-echoed"])
 
 
 class CliTests(ContractProbeTestCase):

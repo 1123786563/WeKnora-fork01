@@ -89,6 +89,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/im/wechat"
 	"github.com/Tencent/WeKnora/internal/im/wecom"
 	"github.com/Tencent/WeKnora/internal/im/yunzhijia"
+	commercialplatform "github.com/Tencent/WeKnora/internal/infrastructure/commercialplatform"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	ommeter "github.com/Tencent/WeKnora/internal/infrastructure/openmeter"
 	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
@@ -760,6 +761,22 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewEmbedChannelHandler))
 	must(container.Provide(handler.NewWeKnoraCloudHandler))
 	must(container.Provide(handler.NewCommercialHandler))
+	// T05 Commercial Platform seam (#77): the deep provider-neutral port
+	// behind the frozen commercial.CommercialPlatform interface (readiness
+	// snapshot first; command/reconcile families stay frozen and fail
+	// closed). Registered NEXT TO the commercial handler on purpose — away
+	// from the pre-craft-Invoke provider block around the OpenMeter gateway
+	// (see the ordering comment there): nothing inside the craft runtime
+	// resolves this interface, so a later registration cannot strand the
+	// craft Invoke. Adapter selection is env-driven
+	// (WEKNORA_COMMERCIAL_PLATFORM_*): unset stays legal as blocked-env and
+	// the readiness read fails closed; an unknown provider fails startup
+	// instead of silently falling back. The legacy OpenMeter gateway above
+	// keeps its own registration untouched (removal is #105).
+	must(container.Provide(commercialplatform.NewPlatformFromEnv, dig.As(new(domain.CommercialPlatform))))
+	must(container.Invoke(func(h *handler.CommercialHandler, p domain.CommercialPlatform) {
+		h.SetCommercialPlatform(p)
+	}))
 	// W04/A02/A07/A03 app-connector HTTP surface: four single-lifecycle
 	// handlers (installations, connections incl. OAuth, sync status,
 	// actions), each owning its routes and write gate.

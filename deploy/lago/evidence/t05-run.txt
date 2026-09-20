@@ -1,0 +1,57 @@
+Lago T05 real runtime run narrative (sanitized operator log)
+Ticket: #77 [Lago 05] Commercial Platform seam (readiness slice)
+Machine: macOS arm64 (Apple Silicon), Docker available via docker compose.
+All timestamps UTC 2026-09-20. No secret values appear in this file.
+
+Stack isolation (per plan): COMPOSE_PROJECT_NAME=weknora-lago-77,
+LAGO_API_PORT=48897, LAGO_FRONT_PORT=48898 — this run never touched the
+OpenMeter deployment, another ticket's Compose project, volumes, or ports.
+
+~17:2x  ./deploy/lago/lago.sh init
+        wrote deploy/lago/.env (mode 600, local-only secrets). init bakes
+        its default ports/project into .env, so the local .env was then
+        edited (the supported operator path; ./lago.sh config re-validates
+        port/URL consistency) to the T05 stack values above, plus the
+        first-run org seeding knobs (LAGO_CREATE_ORG=true and LAGO_ORG_*
+        values incl. a randomly generated LAGO_ORG_API_KEY).
+        ./deploy/lago/lago.sh config -> consistent (secrets redacted).
+
+~17:3x  COMPOSE_PROJECT_NAME=weknora-lago-77 LAGO_API_PORT=48897 \
+          LAGO_FRONT_PORT=48898 ./deploy/lago/lago.sh up
+        exit 0; docker compose up -d --wait reported, in order:
+        db Healthy -> redis Healthy -> migrate (one-shot) exited 0
+        -> api Healthy, api-worker Healthy, api-clock Healthy,
+           front Healthy, pdf Healthy
+        migrate one-shot log ends with the official on-premise seed:
+          "starting seeding environment" / "ending seeding environment"
+        (organization + operator user + API key created from the local
+        gitignored .env values — the same first-run path recorded in
+        t01-run.txt; no secret values are echoed here.)
+
+~17:4x  COMPOSE_PROJECT_NAME=weknora-lago-77 ... ./deploy/lago/lago.sh status --json
+        overall: "ready"; api healthy; release "v1.53.0" and all five
+        locked digests reported from images.lock.json
+        -> captured verbatim as t05-health.json
+
+17:4x   LAGO_INTEGRATION_BASE_URL=http://127.0.0.1:48897 \
+          LAGO_INTEGRATION_API_KEY=<seeded operator key from local .env> \
+          go test -tags lago_integration \
+          ./internal/infrastructure/commercialplatform/ \
+          -run TestLagoAdapterIntegration -v
+        --- PASS: TestLagoAdapterIntegration (0.01s)
+        The Go Lago adapter read the REAL pinned stack: readiness snapshot
+        State == ready, Release == "v1.53.0" (asserted against
+        images.lock.json, not hardcoded), CheckedAt fresh, Reason empty.
+        Without the lago_integration build tag the normal suite never runs
+        this test (unit tests stay Docker-free); without the env pair it
+        skips as blocked-env.
+
+17:45:52Z  COMPOSE_PROJECT_NAME=weknora-lago-77 ./deploy/lago/lago.sh down
+        containers and network removed; the named data volumes
+        (lago_postgres_data, lago_redis_data, lago_storage_data) are
+        preserved by design (verified via docker volume ls).
+
+Secret hygiene: before committing, every secret value in the local .env
+(8 values: postgres password, secret key base, three encryption keys, RSA
+key, org user password, org API key) was grepped against t05-health.json
+and this narrative — zero hits.
