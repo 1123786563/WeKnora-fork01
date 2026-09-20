@@ -70,6 +70,8 @@ import { PersonaSection } from './PersonaSection.tsx';
 import { SubagentsSection } from './SubagentsSection.tsx';
 import { navigate } from '../platform/navigation.ts';
 import { usePreferredLocale } from '../locale.ts';
+import { createAgentMarketplaceApi } from '../agent-marketplace/agent-marketplace-api.ts';
+import { AgentVersionActions } from '../agent-marketplace/AgentVersionActions.tsx';
 
 export interface AgentEditorModalProps {
   open: boolean;
@@ -289,6 +291,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   // fallback so the editor renders before and after a failed fetch.
   const [runtimeResources, setRuntimeResources] = useState<AgentEditorRuntimeData | null>(null);
   const resources = useMemo(() => resolveAgentEditorResources(runtimeResources, locale), [runtimeResources, locale]);
+  const marketplaceApi = useMemo(() => createAgentMarketplaceApi(client), [client]);
   // R486 D4 — caret insert targets (Vue promptTextareaRef / contextTemplateTextareaRef)
   const systemPromptRef = useRef<HTMLTextAreaElement | null>(null);
   const contextTemplateRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1889,7 +1892,14 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             </nav>
           </aside>
           <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex-1 overflow-y-auto px-6 py-5">{renderSection()}</div>
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {renderSection()}
+              {editorMode === 'edit' && form.id && !readOnly ? (
+                <div className="mt-8 border-t border-[var(--td-component-stroke,#e7e7e7)] pt-5">
+                  <AgentVersionActions api={marketplaceApi} agentId={form.id} agentName={form.name} />
+                </div>
+              ) : null}
+            </div>
             <footer className="flex flex-col gap-1.5 border-t border-[var(--td-component-stroke,#e7e7e7)] px-6 py-2.5">
               {/* R486 KB warn — Vue MessagePlugin.warning(kbIncompatibleWarn, 4000);
                   React has no global toast host here, so the warning rides the
