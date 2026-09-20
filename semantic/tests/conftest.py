@@ -65,6 +65,34 @@ class UnmigratedOperationSchema:
             return connection.execute(sql.SQL("SELECT max(version) FROM {}.schema_migrations").format(sql.Identifier(self.schema))).fetchone()[0]
 
 
+@dataclass(frozen=True)
+class TransitionalV1OperationSchema(UnmigratedOperationSchema):
+    def seed_versioned_v1_with_stage_and_fence(self, request: ApplyRequest) -> str:
+        from uuid import uuid4
+        migration = (Path(__file__).parent.parent / "migrations" / "001_operations.sql").read_text()
+        operation_id = str(uuid4())
+        identifier = sql.Identifier(self.schema)
+        with psycopg.connect(self.dsn) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql.SQL("CREATE SCHEMA {}").format(identifier))
+                cursor.execute(migration.replace("{{schema}}", identifier.as_string(connection)))
+                cursor.execute(sql.SQL("ALTER TABLE {}.operations ADD COLUMN stage TEXT NOT NULL DEFAULT 'running'").format(identifier))
+                cursor.execute(sql.SQL("ALTER TABLE {}.operations ADD CONSTRAINT operations_lease_token_uint64_check CHECK (lease_token >= 0 AND lease_token <= 18446744073709551615)").format(identifier))
+                cursor.execute(sql.SQL("CREATE TABLE {}.schema_migrations (version INTEGER PRIMARY KEY)").format(identifier))
+                cursor.execute(sql.SQL("INSERT INTO {}.schema_migrations (version) VALUES (1)").format(identifier))
+                cursor.execute(sql.SQL("""
+                    INSERT INTO {}.operations
+                      (operation_id, tenant_id, kb_id, document_id, revision, config_digest, idempotency_key, payload_hash,
+                       phase, stage, request_bytes, lease_owner, lease_until, lease_token)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'running', 'running', %s, 'legacy-worker', clock_timestamp() + interval '30 seconds', 1)
+                """).format(identifier),
+                               (operation_id, request.document.scope.tenant_id, request.document.scope.kb_id,
+                                request.document.document_id, request.document.revision, request.config.config_digest,
+                                request.idempotency_key, request.payload_hash,
+                                apply_request_to_wire(request).SerializeToString(deterministic=True)))
+        return operation_id
+
+
 @dataclass
 class RPCClient:
     unauthenticated: object
@@ -126,6 +154,19 @@ def unmigrated_operation_schema():
     if not dsn:
         pytest.fail("SEMANTIC_TEST_POSTGRES_DSN is required")
     fixture = UnmigratedOperationSchema(dsn, f"semantic_unmigrated_{secrets.token_hex(8)}")
+    try:
+        yield fixture
+    finally:
+        with psycopg.connect(dsn) as connection:
+            connection.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(fixture.schema)))
+
+
+@pytest.fixture
+def transitional_v1_operation_schema():
+    dsn = os.environ.get("SEMANTIC_TEST_POSTGRES_DSN")
+    if not dsn:
+        pytest.fail("SEMANTIC_TEST_POSTGRES_DSN is required")
+    fixture = TransitionalV1OperationSchema(dsn, f"semantic_transitional_{secrets.token_hex(8)}")
     try:
         yield fixture
     finally:

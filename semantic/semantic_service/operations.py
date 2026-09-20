@@ -119,7 +119,9 @@ class PostgresOperationStore:
                     cursor.execute(sql.SQL("INSERT INTO {}.schema_migrations (version) VALUES (1)").format(self._schema))
                     versions.add(1)
                 if 2 not in versions:
-                    cursor.execute(migrations[2].replace("{{schema}}", self._schema.as_string(connection)))
+                    migration = migrations[2].replace("{{schema}}", self._schema.as_string(connection))
+                    migration = migration.replace("{{schema_regclass}}", f"{self._schema.as_string(connection)}.operations")
+                    cursor.execute(migration)
                     cursor.execute(sql.SQL("INSERT INTO {}.schema_migrations (version) VALUES (2)").format(self._schema))
 
     def accept(self, request: ApplyRequest) -> Operation:

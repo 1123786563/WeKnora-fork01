@@ -205,6 +205,16 @@ def test_store_migration_upgrades_a_previously_created_operations_table(legacy_o
     assert request_bytes_for_test(store, operation_id) == apply_request_to_wire(apply_request).SerializeToString(deterministic=True)
 
 
+def test_store_migration_upgrades_transitional_v1_schema(transitional_v1_operation_schema, apply_request):
+    operation_id = transitional_v1_operation_schema.seed_versioned_v1_with_stage_and_fence(apply_request)
+    store = transitional_v1_operation_schema.new_store()
+    store.migrate()
+    restored = store.get(apply_request.document.scope, operation_id)
+    assert restored.stage == "running"
+    assert request_bytes_for_test(store, operation_id) == apply_request_to_wire(apply_request).SerializeToString(deterministic=True)
+    assert transitional_v1_operation_schema.schema_version() == 2
+
+
 def test_two_new_stores_can_migrate_same_empty_schema_concurrently(unmigrated_operation_schema):
     first, second = unmigrated_operation_schema.new_store(), unmigrated_operation_schema.new_store()
     with ThreadPoolExecutor(max_workers=2) as pool:
