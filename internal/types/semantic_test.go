@@ -114,6 +114,18 @@ func TestSemanticApplyRequestWireRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSemanticCapabilitiesWireRoundTrip(t *testing.T) {
+	original := SemanticCapabilities{ProtocolVersion: "v1", EngineVersion: "engine", RetrievalModes: []SemanticRetrievalMode{SemanticRetrievalModeGraphRAG}, ReasoningModes: []SemanticReasoningMode{SemanticReasoningModeRules}, Limits: SemanticQueryLimits{MaxNodes: 2}, Limitations: []string{"limit"}}
+	wire, err := SemanticCapabilitiesToWire(original)
+	if err != nil {
+		t.Fatalf("to wire: %v", err)
+	}
+	result, err := SemanticCapabilitiesFromWire(wire)
+	if err != nil || result.ProtocolVersion != original.ProtocolVersion || len(result.RetrievalModes) != 1 {
+		t.Fatalf("round trip = %#v, %v", result, err)
+	}
+}
+
 func TestSemanticSearchResponseRejectsImplicitReasonUpgrade(t *testing.T) {
 	_, err := SemanticSearchResponseFromWire(&semanticpb.SearchResponse{
 		RequestedMode: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG,

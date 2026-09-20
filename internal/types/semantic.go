@@ -274,6 +274,69 @@ type SemanticApplyRequest struct {
 	ManifestRef                 *string
 }
 
+type SemanticCapabilities struct {
+	ProtocolVersion, EngineVersion string
+	RetrievalModes                 []SemanticRetrievalMode
+	ReasoningModes                 []SemanticReasoningMode
+	Limits                         SemanticQueryLimits
+	Limitations                    []string
+	UnavailableReason              *string
+}
+
+func SemanticCapabilitiesFromWire(wire *semanticpb.Capabilities) (SemanticCapabilities, error) {
+	if wire == nil || wire.ProtocolVersion == "" || wire.EngineVersion == "" || wire.Limits == nil {
+		return SemanticCapabilities{}, fmt.Errorf("semantic capabilities are incomplete")
+	}
+	retrievalMap := map[semanticpb.RetrievalMode]SemanticRetrievalMode{semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG: SemanticRetrievalModeGraphRAG, semanticpb.RetrievalMode_RETRIEVAL_MODE_REASON: SemanticRetrievalModeReason}
+	reasoningMap := map[semanticpb.ReasoningMode]SemanticReasoningMode{semanticpb.ReasoningMode_REASONING_MODE_RULES: SemanticReasoningModeRules, semanticpb.ReasoningMode_REASONING_MODE_MODEL: SemanticReasoningModeModel}
+	result := SemanticCapabilities{ProtocolVersion: wire.ProtocolVersion, EngineVersion: wire.EngineVersion, Limits: SemanticQueryLimits{MaxHops: wire.Limits.MaxHops, MaxNodes: wire.Limits.MaxNodes, MaxEdges: wire.Limits.MaxEdges, TopK: wire.Limits.TopK, MaxTokens: wire.Limits.MaxTokens, DeadlineMS: wire.Limits.DeadlineMs}, Limitations: append([]string(nil), wire.Limitations...)}
+	for _, mode := range wire.RetrievalModes {
+		mapped, ok := retrievalMap[mode]
+		if !ok {
+			return SemanticCapabilities{}, fmt.Errorf("unsupported capability retrieval mode")
+		}
+		result.RetrievalModes = append(result.RetrievalModes, mapped)
+	}
+	for _, mode := range wire.ReasoningModes {
+		mapped, ok := reasoningMap[mode]
+		if !ok {
+			return SemanticCapabilities{}, fmt.Errorf("unsupported capability reasoning mode")
+		}
+		result.ReasoningModes = append(result.ReasoningModes, mapped)
+	}
+	if wire.UnavailableReason != nil {
+		result.UnavailableReason = wire.UnavailableReason
+	}
+	return result, nil
+}
+
+func SemanticCapabilitiesToWire(value SemanticCapabilities) (*semanticpb.Capabilities, error) {
+	if value.ProtocolVersion == "" || value.EngineVersion == "" {
+		return nil, fmt.Errorf("semantic capabilities are incomplete")
+	}
+	retrievalMap := map[SemanticRetrievalMode]semanticpb.RetrievalMode{SemanticRetrievalModeGraphRAG: semanticpb.RetrievalMode_RETRIEVAL_MODE_GRAPH_RAG, SemanticRetrievalModeReason: semanticpb.RetrievalMode_RETRIEVAL_MODE_REASON}
+	reasoningMap := map[SemanticReasoningMode]semanticpb.ReasoningMode{SemanticReasoningModeRules: semanticpb.ReasoningMode_REASONING_MODE_RULES, SemanticReasoningModeModel: semanticpb.ReasoningMode_REASONING_MODE_MODEL}
+	wire := &semanticpb.Capabilities{ProtocolVersion: value.ProtocolVersion, EngineVersion: value.EngineVersion, Limits: &semanticpb.QueryLimits{MaxHops: value.Limits.MaxHops, MaxNodes: value.Limits.MaxNodes, MaxEdges: value.Limits.MaxEdges, TopK: value.Limits.TopK, MaxTokens: value.Limits.MaxTokens, DeadlineMs: value.Limits.DeadlineMS}, Limitations: append([]string(nil), value.Limitations...)}
+	for _, mode := range value.RetrievalModes {
+		mapped, ok := retrievalMap[mode]
+		if !ok {
+			return nil, fmt.Errorf("unsupported capability retrieval mode")
+		}
+		wire.RetrievalModes = append(wire.RetrievalModes, mapped)
+	}
+	for _, mode := range value.ReasoningModes {
+		mapped, ok := reasoningMap[mode]
+		if !ok {
+			return nil, fmt.Errorf("unsupported capability reasoning mode")
+		}
+		wire.ReasoningModes = append(wire.ReasoningModes, mapped)
+	}
+	if value.UnavailableReason != nil {
+		wire.UnavailableReason = value.UnavailableReason
+	}
+	return wire, nil
+}
+
 func SemanticApplyRequestFromWire(wire *semanticpb.ApplyRequest) (SemanticApplyRequest, error) {
 	if wire == nil || wire.Document == nil || wire.Config == nil || wire.IdempotencyKey == "" || wire.PayloadHash == "" {
 		return SemanticApplyRequest{}, fmt.Errorf("semantic apply request is incomplete")
