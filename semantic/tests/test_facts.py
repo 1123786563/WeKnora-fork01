@@ -125,6 +125,12 @@ def test_dangling_and_cyclic_premises_are_rejected():
     with pytest.raises(ValueError):
         validate_assertion(cyclic, {}, {"a1": cyclic})
 
+def test_multi_node_derivation_cycle_is_rejected():
+    first = rule_assertion(assertion_id="a1", premise_id="a2")
+    second = rule_assertion(assertion_id="a2", premise_id="a1")
+    with pytest.raises(ValueError):
+        validate_assertion(first, {}, {"a1": first, "a2": second})
+
 
 def test_rule_and_model_derivations_require_matching_version_pairs():
     premise = source_assertion(assertion_id="p1")
