@@ -29,6 +29,13 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		commercialGroup.GET("/plans", commercialHandler.Plans)
 		commercialGroup.GET("/usage", commercialHandler.Usage)
 		commercialGroup.GET("/orders", commercialHandler.Orders)
+		// T05: the one protected, read-only Billing API operation through the
+		// frozen Commercial Platform seam — the billing authority's
+		// readiness/version snapshot, answered in closed product vocabulary.
+		// The capability gate above applies; as a GET it bypasses the
+		// billing-role write gate by design (it is a read). The handler fails
+		// closed when no platform is wired (unavailable/unconfigured).
+		commercialGroup.GET("/platform/readiness", commercialHandler.PlatformReadiness)
 		// P02: quote and order pipeline. The billing gate and capability
 		// checks above apply; tenant comes exclusively from the authenticated
 		// context. Checkout names the channel provider explicitly.

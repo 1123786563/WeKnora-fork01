@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
@@ -48,6 +49,11 @@ type CommercialHandler struct {
 	// orders is the P02 order pipeline; nil until the container wires it,
 	// in which case order writes fail closed with 501.
 	orders *commercialsvc.OrderService
+	// platform is the Lago-era Commercial Platform seam (T05): the deep
+	// provider-neutral port for commercial commands, snapshots and
+	// reconciliation. nil until the container wires it — the readiness read
+	// then fails closed honestly (unavailable/unconfigured), never fabricated.
+	platform commercial.CommercialPlatform
 }
 
 // NewCommercialHandler builds the handler and makes sure the resource
@@ -310,6 +316,68 @@ func (h *CommercialHandler) Usage(c *gin.Context) {
 // container). Until it is called, POST /commercial/orders fails closed
 // with 501 — the edge never fabricates a checkout.
 func (h *CommercialHandler) SetOrderService(s *commercialsvc.OrderService) { h.orders = s }
+
+// SetCommercialPlatform wires the Commercial Platform seam (injection point
+// for the container, T05). Until it is called, the readiness read answers
+// honestly unavailable/unconfigured — it never fabricates platform state.
+func (h *CommercialHandler) SetCommercialPlatform(p commercial.CommercialPlatform) { h.platform = p }
+
+// PlatformReadiness serves GET /commercial/platform/readiness: the one
+// protected, read-only Billing API operation shipped through the frozen
+// Commercial Platform seam (T05). The answer is the CLOSED product envelope
+// only — state from the closed readiness enum, a closed reason token
+// (unconfigured|unreachable|invalid_response|unsupported, empty when
+// ready), the deployment-pinned release (omitted when unknown) and the
+// check time. No provider URL, identifier, path, raw error text or response
+// body ever crosses into the answer: adapter failures map onto the closed
+// tokens and err.Error() is never echoed.
+func (h *CommercialHandler) PlatformReadiness(c *gin.Context) {
+	if h.platform == nil {
+		// Fail closed, honestly: no seam wired means no authority answer.
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+			"state":  string(commercial.ReadinessUnavailable),
+			"reason": "unconfigured",
+		}})
+		return
+	}
+	snap, err := h.platform.ReadSnapshot(c.Request.Context(), commercial.SnapshotQuery{
+		Kind: commercial.SnapshotKindReadiness,
+	})
+	if err != nil {
+		reason := "unsupported"
+		switch {
+		case errors.Is(err, commercial.ErrPlatformUnconfigured):
+			reason = "unconfigured"
+		case errors.Is(err, commercial.ErrPlatformUnreachable):
+			reason = "unreachable"
+		case errors.Is(err, commercial.ErrPlatformInvalidResponse):
+			reason = "invalid_response"
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+			"state":  string(commercial.ReadinessUnavailable),
+			"reason": reason,
+		}})
+		return
+	}
+	if snap.Readiness == nil {
+		// A snapshot without its readiness section is not an answer; the
+		// endpoint stays honest instead of projecting one.
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+			"state":  string(commercial.ReadinessUnavailable),
+			"reason": "unsupported",
+		}})
+		return
+	}
+	data := gin.H{
+		"state":      string(snap.Readiness.State),
+		"checked_at": snap.Readiness.CheckedAt.UTC().Format(time.RFC3339),
+		"reason":     snap.Readiness.Reason,
+	}
+	if snap.Readiness.Release != "" {
+		data["release"] = snap.Readiness.Release
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
 
 // Orders lists the caller space orders inside the shared envelope; every
 // element carries the same wire projection as GetOrder.
@@ -594,7 +662,7 @@ func (h *CommercialHandler) CreateRefund(c *gin.Context) {
 		// the quote/order wire (RefundView parses strings).
 		c.JSON(http.StatusCreated, gin.H{"success": true, "data": gin.H{
 			"id": state.ID, "order_id": state.OrderID, "state": state.State,
-			"amount_fen": strconv.FormatInt(int64(state.Amount), 10),
+			"amount_fen":    strconv.FormatInt(int64(state.Amount), 10),
 			"credits_micro": int64(state.CreditAmount),
 		}})
 	case errors.Is(err, commercialsvc.ErrRefundOrderMismatch):
