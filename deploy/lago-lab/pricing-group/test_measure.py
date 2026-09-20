@@ -173,9 +173,9 @@ class PlanPayloadTests(unittest.TestCase):
         charges = plan["charges"]
         self.assertEqual(charges[0]["billable_metric_id"], lago_ids[run.metrics[0].code])
         self.assertEqual(charges[0]["charge_model"], "standard")
-        self.assertEqual(charges[0]["properties"]["amount"], "7")  # decimal string
+        self.assertEqual(charges[0]["properties"]["amount"], "0.07")  # decimal currency units
         self.assertEqual(charges[1]["billable_metric_id"], lago_ids[run.metrics[1].code])
-        self.assertEqual(charges[1]["properties"]["amount"], "1500")
+        self.assertEqual(charges[1]["properties"]["amount"], "15")
         self.assertEqual(charges[1]["properties"]["package_size"], 100)
         self.assertEqual(charges[1]["properties"]["free_units"], 0)
         # the v1.53.0 live-verified 404 trap: never reference metrics by code
