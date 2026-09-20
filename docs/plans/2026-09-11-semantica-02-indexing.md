@@ -20,7 +20,7 @@
 
 ---
 
-迁移顺序：I01服务库001 → I02业务PG96/SQLite17 → I03服务库002 → I04服务库003。业务迁移号实施前查重；测试必须覆盖PG与SQLite两条业务路径。
+迁移顺序：I01语义服务库001 → I02业务PG178/SQLite99 → I03语义服务库002 → I04语义服务库003。2026-09-21复核发现PG/SQLite当前迁移头分别为177/98，历史提议PG96/SQLite17已被占用；后续实现前再次复查迁移头，绝不重写已执行迁移。测试必须覆盖PG与SQLite两条业务路径。
 
 ## I01：持久操作、幂等与worker租约
 
@@ -28,13 +28,14 @@
 
 **文件与职责：**
 
-- `semantic/migrations/001_operations.sql`：operations唯一键与租约schema
+- `semantic/migrations/001_operations.sql`：operations唯一键、持久ApplyRequest和租约schema
 - `semantic/semantic_service/operations.py`：操作状态机与仓库
 - `semantic/semantic_service/worker.py`：领取、续租、恢复
+- `semantic/pyproject.toml`、`semantic/uv.lock`：锁定同步PostgreSQL driver
 - `semantic/tests/conftest.py`：operation_store真实PG fixture
 - `semantic/tests/test_operations.py`：重复投递/失联worker/取消竞争
 
-**接口：** OperationStore.accept(req:ApplyRequest)->Operation、claim(worker_id:str,lease_seconds:int)->Operation|None、transition(operation_id:str,lease_token:int,expected:str,next_state:str)->bool、cancel(scope:ScopeKey,operation_id:str)->Operation；以ScopeKey+idempotency_key唯一，payload_hash冲突报错。
+**接口：** OperationStore.accept(req:ApplyRequest)->Operation、get(scope,operation_id)->Operation、claim(worker_id,lease_seconds)->LeasedOperation|None、renew(operation_id,worker_id,lease_token,lease_seconds)->bool、transition(operation_id,worker_id,lease_token,expected:OperationPhase,next:OperationPhase)->bool、cancel(scope:ScopeKey,operation_id:str)->Operation；以ScopeKey+idempotency_key和scope/document/revision/config digest去重，payload_hash冲突报错。C01 OperationState保持冻结；内部accepted/staged/publishing映射到pending/running及stage，superseded映射为failed + error_code，详见I01执行计划。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -52,7 +53,7 @@ def test_stale_lease_cannot_publish(operation_store, claimed_operation):
 
 - [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立service专属schema与迁移器；operation表保存请求hash、阶段、租约到期、递增lease_token、错误码、重试时间；唯一键冲突查回原操作并校验payload**
+- [ ] **3. 建立service专属schema与迁移器；operation表保存deterministic C01 ApplyRequest bytes、payload hash、阶段、租约到期、递增lease_token、错误码、重试时间；非终态需可恢复，终态清除请求正文；唯一键冲突查回原操作并校验payload**
 
 - [ ] **4. 使用事务和FOR UPDATE SKIP LOCKED领取，续租必须匹配token；每次接管增加token，过期worker不能写stage、结果或终态**
 
@@ -79,16 +80,16 @@ WHERE operation_id = :operation_id AND state = :expected
 
 **文件与职责：**
 
-- `migrations/versioned/000096_semantic_control.up.sql`：PG业务控制表
-- `migrations/versioned/000096_semantic_control.down.sql`：PG回退
-- `migrations/sqlite/000017_semantic_control.up.sql`：SQLite同等业务约束
-- `migrations/sqlite/000017_semantic_control.down.sql`：SQLite回退
+- `migrations/versioned/000178_semantic_control.up.sql`：PG业务控制表
+- `migrations/versioned/000178_semantic_control.down.sql`：PG回退
+- `migrations/sqlite/000099_semantic_control.up.sql`：SQLite同等业务约束
+- `migrations/sqlite/000099_semantic_control.down.sql`：SQLite回退
 - `internal/types/semantic_control.go`：业务控制记录
 - `internal/application/repository/semantic_outbox.go`：同事务revision/outbox/删除屏障
 - `internal/application/repository/semantic_outbox_test.go`：事务回滚与重复事件
 - `internal/database/semantic_migration_test.go`：PG/SQLite迁移合同
 
-**接口：** 定义 SemanticMutation{TenantID uint64, KBID,DocumentID string, ExpectedRevision uint64, Deleted bool, Payload []byte}；WithSemanticMutation(ctx,mutation,func(tx *gorm.DB)error)(revision uint64,err error)。业务资源修改、revision、outbox、删除屏障必须同事务，禁止另开隐含事务。
+**接口：** 定义 SemanticMutation{TenantID uint64, KBID,DocumentID,ContentHash string, ExpectedRevision uint64, Deleted bool, Payload []byte}；WithSemanticMutation(ctx,mutation,func(tx *gorm.DB)error)(revision uint64,err error)。业务资源修改、revision、outbox、删除屏障和epoch变更必须同事务，禁止另开隐含事务。ContentHash由Go业务层提供并原样保留；outbox payload hash仅针对payload bytes做SHA-256。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
@@ -107,9 +108,9 @@ func TestSemanticMutationRollback(t *testing.T) {
 
 - [ ] **2. 确认 RED**。执行 `go test ./internal/application/repository -run TestSemanticMutation -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 实施前检查最新迁移号；当前建议PG96/SQLite17，如被占用则分配下一空号并同步本计划/台账，不重写已执行迁移**
+- [x] **3. 实施前检查最新迁移号；实际PG头177、SQLite头98，因此分配PG178/SQLite99并同步本计划/台账；后续实现前复查，不重写已执行迁移**
 
-- [ ] **4. 建立semantic_document_revisions、semantic_outbox、semantic_access_epochs、semantic_denials、semantic_backend_states与semantic_completion_receipts；唯一键包含tenant/KB/document或event身份，PG/SQLite分别实现等价CAS**
+- [ ] **4. 建立semantic_document_revisions、semantic_outbox、semantic_access_epochs、semantic_denials；唯一键包含tenant/KB/document或event身份，PG/SQLite分别实现等价CAS。backend states由W03、completion receipts由I05定义，I02不预冻结其表结构**
 
 - [ ] **5. 实现transaction回调，按expected_revision CAS递增；删除同时创建deny并提高KB epoch。权限变更提供同事务BumpSemanticEpoch(tx,scope)入口给A01接线**
 
