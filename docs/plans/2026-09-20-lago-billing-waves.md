@@ -133,3 +133,8 @@ W4+ 渐进风险（提前登记）：#80/#81 都会触及 `internal/commercial/`
 
 - **2026-09-21 Wave 3 完成**：#78/#79（产品代码，均 Approved 无 Critical/Important；真实栈证据各 4/4）。两分支基于旧链 6a651c30（secret 事件前），已 rebase 到 1b5b241 后并入（merge 冲突=共享 seam 扩展点 union 合并 + 1 处联动修正，6ea0511f）。go test 120 包零 FAIL。迁移 000178/000099（#78）+ 000179/000100（#79）。运行时裁决：create-on-external_id=UPSERT；GET /plans/{code} 可用。
 - **W4 启动（降级为单票）**：#80 ready；#81 被 #74（blocked-env 待 Stripe key）阻塞，保持等待——依赖安全优先于并发数。
+
+- **2026-09-21 Wave 4 完成**：#80 关闭（TOCTOU Important fix 当轮完成并 re-review PASS；真实栈 6 阶段）。集成 e87eb459 已 push，go test 零 FAIL。
+- **编排抵达硬阻塞点**：frontier 重算后剩余 26 票全部传递依赖 #74（Stripe TEST key / Premium 决策）或 #75-a2 设计决策。等待用户输入：
+  1. Stripe TEST key → 一条命令补齐 #74 AC1-3 运行时证据 → 关 #74 → #81/#82/#83... 主链恢复
+  2. a2 决策（≤5 并发充值批次 vs 协调层批次到期+ADR 修订）→ #85 前需要，影响 #86→#87→#88 链
