@@ -58,9 +58,18 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
 	require.NoError(t, m.Up())
+	version, dirty, err := m.Version()
+	require.NoError(t, err)
+	require.Equal(t, uint(178), version)
+	require.False(t, dirty)
 	for _, table := range []string{"semantic_document_revisions", "semantic_outbox", "semantic_access_epochs", "semantic_denials"} {
 		var n int
 		require.NoError(t, db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name=?", schema, table).Scan(&n).Error)
+		require.Equal(t, 1, n)
+	}
+	for _, index := range []string{"idx_semantic_outbox_claim"} {
+		var n int
+		require.NoError(t, db.Raw("SELECT COUNT(*) FROM pg_indexes WHERE schemaname=? AND indexname=?", schema, index).Scan(&n).Error)
 		require.Equal(t, 1, n)
 	}
 	require.NoError(t, m.Steps(-1))
@@ -68,5 +77,9 @@ func TestSemanticPostgresMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name='semantic_outbox'", schema).Scan(&n).Error)
 	require.Zero(t, n)
 	require.NoError(t, m.Up())
+	version, dirty, err = m.Version()
+	require.NoError(t, err)
+	require.Equal(t, uint(178), version)
+	require.False(t, dirty)
 	_ = sql.ErrNoRows
 }
