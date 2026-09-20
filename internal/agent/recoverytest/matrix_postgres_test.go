@@ -2,14 +2,40 @@ package recoverytest
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/lib/pq"
 )
+
+func TestPostgresDSNForDatabaseReplacesAnySourceDatabase(t *testing.T) {
+	got, err := postgresDSNForDatabase("postgres://postgres:secret@127.0.0.1:5432/WeKnora?sslmode=disable", "matrix_case")
+	if err != nil {
+		t.Fatalf("postgresDSNForDatabase() error = %v", err)
+	}
+	parsed, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if parsed.Path != "/matrix_case" {
+		t.Fatalf("database path = %q, want %q", parsed.Path, "/matrix_case")
+	}
+	if parsed.Query().Get("sslmode") != "disable" {
+		t.Fatalf("sslmode = %q, want disable", parsed.Query().Get("sslmode"))
+	}
+}
+
+func TestPostgresMatrixDatabaseNameIsUniqueAndSafe(t *testing.T) {
+	if got := postgresMatrixDatabaseName("TestCrashMatrixPostgreSQL/after_admission", 123); got != "testcrashmatrixpostgresql_after_admission_123" {
+		t.Fatalf("database name = %q", got)
+	}
+}
 
 // bootstrapMatrixDatabase creates a throwaway database for one matrix run and
 // returns a DSN pointing at it; the database is dropped on cleanup.
@@ -20,7 +46,7 @@ func bootstrapMatrixDatabase(t *testing.T, dsn string) string {
 		t.Fatalf("open postgres admin: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	name := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "_"))
+	name := postgresMatrixDatabaseName(t.Name(), time.Now().UnixNano())
 	if _, err := db.Exec("DROP DATABASE IF EXISTS " + name); err != nil {
 		t.Fatalf("drop stale matrix database: %v", err)
 	}
@@ -34,7 +60,27 @@ func bootstrapMatrixDatabase(t *testing.T, dsn string) string {
 			t.Logf("drop matrix database %s: %v", name, dropErr)
 		}
 	})
-	return strings.Replace(dsn, "/trpc_test", "/"+name, 1)
+	freshDSN, err := postgresDSNForDatabase(dsn, name)
+	if err != nil {
+		t.Fatalf("replace matrix database in DSN: %v", err)
+	}
+	return freshDSN
+}
+
+func postgresDSNForDatabase(dsn, name string) (string, error) {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return "", err
+	}
+	if (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") || parsed.Host == "" || name == "" {
+		return "", fmt.Errorf("invalid PostgreSQL database DSN")
+	}
+	parsed.Path = "/" + name
+	return parsed.String(), nil
+}
+
+func postgresMatrixDatabaseName(testName string, nonce int64) string {
+	return fmt.Sprintf("%s_%d", strings.ToLower(strings.ReplaceAll(testName, "/", "_")), nonce)
 }
 
 // TestCrashMatrixPostgreSQL runs the same SIGKILL matrix against an isolated
@@ -92,7 +138,7 @@ func TestCrashMatrixPostgreSQL(t *testing.T) {
 				wantCalls = 0
 			}
 			if report.ExternalCalls != wantCalls {
-				t.Fatalf("case %s calls=%d want=%d", name, report.ExternalCalls, wantCalls)
+				t.Fatalf("case %s calls=%d want=%d counter=%d report=%#v", name, report.ExternalCalls, wantCalls, counter.value(), report)
 			}
 			if report.LostEvents != 0 {
 				t.Fatalf("case %s lost events=%d", name, report.LostEvents)

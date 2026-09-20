@@ -2,11 +2,34 @@ package main
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 )
+
+func TestCounterCountRejectsMalformedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
+	}))
+	defer server.Close()
+
+	if _, err := counterCount(server.URL); err == nil {
+		t.Fatal("counterCount() error = nil, want invalid response error")
+	}
+}
+
+func TestCompletedAssistantRowsSQLUsesDialectBooleanLiteral(t *testing.T) {
+	if got := completedAssistantRowsSQL("postgres"); !strings.Contains(got, "is_completed = true") {
+		t.Fatalf("PostgreSQL completed-message query = %q, want boolean predicate", got)
+	}
+	if got := completedAssistantRowsSQL("sqlite"); !strings.Contains(got, "is_completed = 1") {
+		t.Fatalf("SQLite completed-message query = %q, want integer predicate", got)
+	}
+}
 
 func TestNewRecoveryChatUsesScriptedModelWithoutOllamaConfiguration(t *testing.T) {
 	t.Setenv(recoveryOllamaModelEnv, "")

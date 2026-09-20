@@ -71,11 +71,17 @@ const (
 )
 
 type crashReport struct {
-	ExternalCalls int    `json:"external_calls"`
-	FinalStatus   string `json:"final_status"`
-	AssistantRows int    `json:"assistant_rows"`
-	LostEvents    int    `json:"lost_events"`
-	Parked        bool   `json:"parked"`
+	ExternalCalls int      `json:"external_calls"`
+	FinalStatus   string   `json:"final_status"`
+	AssistantRows int      `json:"assistant_rows"`
+	LostEvents    int      `json:"lost_events"`
+	Parked        bool     `json:"parked"`
+	ToolStatuses  []string `json:"tool_statuses,omitempty"`
+	ToolResults   []string `json:"tool_results,omitempty"`
+	EventTypes    []string `json:"event_types,omitempty"`
+	FinalAnswer   string   `json:"final_answer,omitempty"`
+	Diagnostics   []string `json:"diagnostics,omitempty"`
+	CounterURL    string   `json:"counter_url,omitempty"`
 }
 
 func main() {
@@ -164,10 +170,8 @@ func main() {
 			key := agentruntime.RunKey{TenantID: 1, RunID: runID}
 			if run, getErr := store.Get(ctx, key); getErr == nil &&
 				run.Status == "succeeded" && rejected > 0 {
-				out := crashReport{
-					ExternalCalls: counterCount(counterURL),
-					FinalStatus:   "stale-rejected",
-				}
+				calls, _ := counterCount(counterURL)
+				out := crashReport{ExternalCalls: calls, FinalStatus: "stale-rejected"}
 				raw, _ := json.Marshal(out)
 				_ = os.WriteFile(*report, append(raw, '\n'), 0o644)
 				fmt.Println(string(raw))
@@ -604,17 +608,22 @@ func (t *countingTool) Execute(ctx context.Context, _ json.RawMessage) (*types.T
 	return &types.ToolResult{Success: true, Output: string(payload)}, nil
 }
 
-func counterCount(counterURL string) int {
+func counterCount(counterURL string) (int, error) {
 	resp, err := http.Get(counterURL + "/count")
 	if err != nil {
-		return -1
+		return -1, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return -1, fmt.Errorf("counter response status %s", resp.Status)
+	}
 	var out struct {
 		Count int `json:"count"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&out)
-	return out.Count
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return -1, fmt.Errorf("decode counter response: %w", err)
+	}
+	return out.Count, nil
 }
 
 // ---- barrier-aware journal ----
@@ -914,26 +923,61 @@ func buildReport(
 	ctx context.Context, db *gorm.DB, store *repository.AgentRunStore,
 	counterURL string, final agentruntime.Run, parked bool,
 ) crashReport {
+	calls, countErr := counterCount(counterURL)
 	report := crashReport{
-		ExternalCalls: counterCount(counterURL),
+		ExternalCalls: calls,
 		FinalStatus:   final.Status,
 		Parked:        parked,
+		CounterURL:    counterURL,
+	}
+	if countErr != nil {
+		report.Diagnostics = append(report.Diagnostics, "counter: "+countErr.Error())
 	}
 	var rows int64
-	completed := "SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'assistant' AND is_completed = 1"
-	_ = db.Raw(completed, "matrix-session").Scan(&rows).Error
+	completed := completedAssistantRowsSQL(db.Name())
+	if err := db.Raw(completed, "matrix-session").Scan(&rows).Error; err != nil {
+		report.Diagnostics = append(report.Diagnostics, "assistant rows: "+err.Error())
+	}
 	report.AssistantRows = int(rows)
+	if err := db.Raw("SELECT content FROM messages WHERE id = ?", assistantID).Scan(&report.FinalAnswer).Error; err != nil {
+		report.Diagnostics = append(report.Diagnostics, "assistant answer: "+err.Error())
+	}
 	events, err := store.ReadEvents(ctx, agentruntime.RunKey{TenantID: 1, RunID: runID}, 0, 1000)
-	if err == nil {
+	if err != nil {
+		report.Diagnostics = append(report.Diagnostics, "events: "+err.Error())
+	} else {
 		var last int64
 		for i, evt := range events {
+			report.EventTypes = append(report.EventTypes, evt.Type)
 			if i > 0 && evt.Seq != last+1 {
 				report.LostEvents++
 			}
 			last = evt.Seq
 		}
 	}
+	var tools []struct {
+		Status string
+		Result *string
+	}
+	if err := db.Raw("SELECT status, result FROM agent_tool_calls WHERE tenant_id = 1 AND run_id = ? ORDER BY call_seq", runID).Scan(&tools).Error; err != nil {
+		report.Diagnostics = append(report.Diagnostics, "tool calls: "+err.Error())
+	} else {
+		for _, tool := range tools {
+			report.ToolStatuses = append(report.ToolStatuses, tool.Status)
+			if tool.Result != nil {
+				report.ToolResults = append(report.ToolResults, *tool.Result)
+			}
+		}
+	}
 	return report
+}
+
+func completedAssistantRowsSQL(dialect string) string {
+	completed := "1"
+	if dialect == "postgres" {
+		completed = "true"
+	}
+	return "SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'assistant' AND is_completed = " + completed
 }
 
 func touchBarrier(path string) {
