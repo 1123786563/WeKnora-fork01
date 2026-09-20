@@ -20,9 +20,10 @@ test('parses the canonical v1 fixture without losing decimal counters or public 
   const wire = await fixture();
   const parsed = parseNativeAgentFixture(wire);
 
-  assert.equal(parsed.last_event_id.sequence, 9007199254740993n);
+  assert.equal(parsed.last_event_id.sequence, 8n);
   assert.equal(parsed.events[0]?.tenant_id, '9007199254740993');
-  assert.equal(parsed.events[4]?.payload.usage?.prompt_tokens, '9007199254740993');
+  const usage = parsed.events.find((event): event is Extract<typeof event, { kind: 'usage.observed' }> => event.kind === 'usage.observed');
+  assert.equal(usage?.payload.usage.prompt_tokens, '9007199254740993');
   assert.deepEqual(parsed.events[3], (wire.events as unknown[])[3]);
   assert.deepEqual(parsed.pending, wire.pending);
   assert.deepEqual(parsed.command_errors, wire.command_errors);
@@ -49,6 +50,28 @@ test('rejects malformed native events before a reducer can consume them', async 
   assert.throws(() => parseNativeEvent({ ...event, run_id: '' }), /run_id/);
   assert.throws(() => parseNativeEvent({ ...event, seq: '1.1' }), /seq/);
   assert.throws(() => parseNativeEvent({ ...event, kind: 'sdk.internal' }), /kind/);
+});
+
+test('rejects private and unknown fields from every public event projection', async () => {
+  const wire = await fixture();
+  const waiting = (wire.events as Record<string, unknown>[])[0]!;
+  assert.throws(() => parseNativeEvent({ ...waiting, payload: { ...(waiting.payload as Record<string, unknown>), status: 'sdk.internal' } }), /payload.status/);
+  assert.throws(() => parseNativeEvent({ ...waiting, payload: { ...(waiting.payload as Record<string, unknown>), provider_receipt: 'private' } }), /payload.provider_receipt/);
+  const outcome = (wire.events as Record<string, unknown>[])[3]!;
+  assert.throws(() => parseNativeEvent({ ...outcome, payload: { ...(outcome.payload as Record<string, unknown>), unknown: true } }), /payload.unknown/);
+});
+
+test('requires a complete public decision reference and a decimal artifact size', () => {
+  const decision = {
+    protocol: 'weknora.agent.v1', schema_version: 1, event_id: 'decision', tenant_id: '1', session_id: 'session', run_id: 'run', attempt_id: 'attempt', seq: '1', kind: 'decision.required',
+    payload: { call_id: 'call', plan_version: 1, args_hash: 'sha256:args', expires_at: '2026-09-20T12:00:00Z', wait_kind: 'tool_approval' },
+  };
+  assert.throws(() => parseNativeEvent(decision), /payload.pending/);
+  const artifact = {
+    protocol: 'weknora.agent.v1', schema_version: 1, event_id: 'artifact', tenant_id: '1', session_id: 'session', run_id: 'run', seq: '2', kind: 'artifact.available',
+    payload: { artifact: { id: 'a', media_type: 'text/plain', sha256: 'sha256:a', size_bytes: 42 } },
+  };
+  assert.throws(() => parseNativeEvent(artifact), /size_bytes/);
 });
 
 test('validates the scoped v1 Last-Event-ID representation', () => {

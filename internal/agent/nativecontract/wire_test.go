@@ -20,6 +20,7 @@ type wireFixture struct {
 	Events      []json.RawMessage `json:"events"`
 	Pending     json.RawMessage   `json:"pending"`
 	Errors      []json.RawMessage `json:"command_errors"`
+	Archive     json.RawMessage   `json:"archive"`
 }
 
 func loadWireFixture(t *testing.T) wireFixture {
@@ -131,6 +132,14 @@ func TestWireV1FixtureRoundTripsThroughBusinessEventJSONTags(t *testing.T) {
 		}
 		assertWireJSONEqual(t, fmt.Sprintf("command error %d", index), raw, failure)
 	}
+	var archive ArchivePage
+	if err := json.Unmarshal(fixture.Archive, &archive); err != nil {
+		t.Fatalf("decode archive: %v", err)
+	}
+	assertWireJSONEqual(t, "archive", fixture.Archive, archive)
+	if got := PublicArtifact(ArtifactRef{ID: "artifact-1", MediaType: "text/plain", SHA256: "sha256:artifact", SizeBytes: 42}).SizeBytes; got != "42" {
+		t.Fatalf("public artifact size = %q", got)
+	}
 }
 
 func TestWireV1RejectsIncompatibleEventVersionsAndMalformedSequence(t *testing.T) {
@@ -184,7 +193,7 @@ func TestWireV1LastEventIDIsCanonicalAndScopedToFixtureRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse fixture Last-Event-ID: %v", err)
 	}
-	if runID != "run-9007199254740993" || sequence != "9007199254740993" {
+	if runID != "run-9007199254740993" || sequence != "8" {
 		t.Fatalf("Last-Event-ID = %q/%q", runID, sequence)
 	}
 	for _, value := range []string{"v2:cnVuLTE:7", "v1:not-base64!:7", "v1:cnVuLTE:0", "v1:cnVuLTE:7:extra"} {

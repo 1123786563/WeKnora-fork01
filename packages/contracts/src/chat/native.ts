@@ -37,7 +37,22 @@ export interface NativePublicUsage {
   accounting_status: string;
 }
 
-export interface NativeEvent {
+export interface NativePendingReference { pending_id: string; detail_path: string; revision: string; }
+export interface NativePublicArtifact { id: string; media_type: string; sha256: string; size_bytes: string; }
+export interface NativeOutcome { attempt_id: string; call_id: string; result_hash: string; effect: NativeFailure['effect']; is_error: boolean; truncated: boolean; content: null; failure?: NativeFailure; }
+export type NativeEventPayload =
+  | { status: string; wait_kind?: string; pending_id?: string }
+  | { replaces_attempt_id: string }
+  | { text: string; offset: number }
+  | { call_id: string; plan_version: number; tool_name: string }
+  | { call_id: string; outcome: NativeOutcome }
+  | { pending: NativePendingReference; call_id: string; plan_version: number; args_hash: string; expires_at: string; wait_kind: string }
+  | { usage: NativePublicUsage }
+  | { artifact: NativePublicArtifact }
+  | { failure: NativeFailure }
+  | Record<string, never>;
+
+export interface NativeEventBase {
   protocol: typeof NATIVE_AGENT_PROTOCOL;
   schema_version: typeof NATIVE_AGENT_SCHEMA_VERSION;
   event_id: string;
@@ -47,9 +62,18 @@ export interface NativeEvent {
   parent_run_id?: string;
   attempt_id?: string;
   seq: string;
-  kind: NativeEventKind;
-  payload: Record<string, unknown> & { usage?: NativePublicUsage };
 }
+export type NativeEvent = NativeEventBase
+  & ({ kind: 'run.status'; payload: { status: string; wait_kind?: string; pending_id?: string } }
+    | { kind: 'attempt.started' | 'attempt.finished'; payload: Record<string, never> }
+    | { kind: 'attempt.replaced'; payload: { replaces_attempt_id: string } }
+    | { kind: 'text.delta' | 'reasoning.delta'; attempt_id: string; payload: { text: string; offset: number } }
+    | { kind: 'tool.planned'; payload: { call_id: string; plan_version: number; tool_name: string } }
+    | { kind: 'tool.result'; attempt_id: string; payload: { call_id: string; outcome: NativeOutcome } }
+    | { kind: 'decision.required'; payload: { pending: NativePendingReference; call_id: string; plan_version: number; args_hash: string; expires_at: string; wait_kind: string } }
+    | { kind: 'usage.observed'; attempt_id: string; payload: { usage: NativePublicUsage } }
+    | { kind: 'artifact.available'; payload: { artifact: NativePublicArtifact } }
+    | { kind: 'error'; payload: { failure: NativeFailure } });
 
 export interface NativeLastEventID {
   run_id: string;
@@ -73,11 +97,18 @@ const EVENT_KINDS = new Set<NativeEventKind>([
 const EFFECTS = new Set(['not_dispatched', 'confirmed', 'unknown']);
 const WAIT_KINDS = new Set(['tool_approval', 'mcp_oauth', 'connector_approval', 'unknown_result']);
 const RUN_STATUSES = new Set(['queued', 'running', 'waiting_user', 'cancelling', 'succeeded', 'failed', 'cancelled']);
+const ERROR_CODES = new Set(['unauthorized', 'forbidden', 'invalid_request', 'conflict', 'not_found', 'lease_lost', 'cancelled', 'deadline_exceeded', 'budget_exhausted', 'provider_error', 'incomplete_stream', 'unknown_effect', 'durable_store_unavailable', 'checkpoint_incompatible', 'cursor_expired', 'archive_read_only', 'client_upgrade_required', 'admission_closed', 'execution_gate_closed']);
 const SENSITIVE_FIELD = /(?:token|secret|password|credential|authorization|receipt|anchor)/i;
 
 function object(value: unknown, path: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new ContractError(path, 'expected an object');
   return value as Record<string, unknown>;
+}
+
+function exact(row: Record<string, unknown>, allowed: readonly string[], path: string): void {
+  for (const key of Object.keys(row)) {
+    if (!allowed.includes(key)) throw new ContractError(`${path}${path === '' ? '' : '.'}${key}`, 'unknown or private public-wire field');
+  }
 }
 
 function nonEmpty(value: unknown, path: string): string {
@@ -118,10 +149,13 @@ function version(row: Record<string, unknown>, path = ''): void {
 
 function failure(value: unknown, path: string): NativeFailure {
   const row = object(value, path);
+  exact(row, ['code', 'message', 'retryable', 'effect', 'attempt_id'], path);
   const effect = nonEmpty(row.effect, `${path}.effect`);
   if (!EFFECTS.has(effect)) throw new ContractError(`${path}.effect`, 'unknown effect');
+  const code = nonEmpty(row.code, `${path}.code`);
+  if (!ERROR_CODES.has(code)) throw new ContractError(`${path}.code`, 'unknown error code');
   const parsed: NativeFailure = {
-    code: nonEmpty(row.code, `${path}.code`),
+    code,
     message: nonEmpty(row.message, `${path}.message`),
     retryable: typeof row.retryable === 'boolean' ? row.retryable : (() => { throw new ContractError(`${path}.retryable`, 'expected a boolean'); })(),
     effect: effect as NativeFailure['effect'],
@@ -146,30 +180,79 @@ function publicUsage(value: unknown, path: string): NativePublicUsage {
   };
 }
 
-function payload(value: unknown, event: Pick<NativeEvent, 'kind' | 'attempt_id'>, path: string): NativeEvent['payload'] {
+function pendingReference(value: unknown, path: string): NativePendingReference {
   const row = object(value, path);
-  if (event.kind === 'text.delta' || event.kind === 'reasoning.delta') {
-    if (event.attempt_id === undefined) throw new ContractError(`${path}.attempt_id`, 'stream delta requires an attempt');
-    nonEmpty(row.text, `${path}.text`);
-    nonNegativeSafeInteger(row.offset, `${path}.offset`);
-  }
-  if (event.kind === 'attempt.replaced') nonEmpty(row.replaces_attempt_id, `${path}.replaces_attempt_id`);
-  if (event.kind === 'tool.result') {
-    nonEmpty(row.call_id, `${path}.call_id`);
-    const outcome = object(row.outcome, `${path}.outcome`);
-    for (const field of ['provider_receipt', 'query_anchor'] as const) {
-      if (field in outcome) throw new ContractError(`${path}.outcome.${field}`, 'is not public wire data');
+  exact(row, ['pending_id', 'detail_path', 'revision'], path);
+  return { pending_id: nonEmpty(row.pending_id, `${path}.pending_id`), detail_path: nonEmpty(row.detail_path, `${path}.detail_path`), revision: decimal(row.revision, `${path}.revision`) };
+}
+
+function publicArtifact(value: unknown, path: string): NativePublicArtifact {
+  const row = object(value, path);
+  exact(row, ['id', 'media_type', 'sha256', 'size_bytes'], path);
+  return { id: nonEmpty(row.id, `${path}.id`), media_type: nonEmpty(row.media_type, `${path}.media_type`), sha256: nonEmpty(row.sha256, `${path}.sha256`), size_bytes: decimal(row.size_bytes, `${path}.size_bytes`) };
+}
+
+function publicOutcome(value: unknown, path: string): NativeOutcome {
+  const row = object(value, path);
+  exact(row, ['attempt_id', 'call_id', 'result_hash', 'effect', 'is_error', 'truncated', 'content', 'failure'], path);
+  const effect = nonEmpty(row.effect, `${path}.effect`);
+  if (!EFFECTS.has(effect)) throw new ContractError(`${path}.effect`, 'unknown effect');
+  if (typeof row.is_error !== 'boolean' || typeof row.truncated !== 'boolean' || row.content !== null) throw new ContractError(path, 'invalid public outcome');
+  const parsed: NativeOutcome = { attempt_id: nonEmpty(row.attempt_id, `${path}.attempt_id`), call_id: nonEmpty(row.call_id, `${path}.call_id`), result_hash: nonEmpty(row.result_hash, `${path}.result_hash`), effect: effect as NativeFailure['effect'], is_error: row.is_error, truncated: row.truncated, content: null };
+  if (row.failure !== undefined) parsed.failure = failure(row.failure, `${path}.failure`);
+  return parsed;
+}
+
+function payload(value: unknown, event: Pick<NativeEvent, 'kind' | 'attempt_id'>, path: string): NativeEventPayload {
+  const row = object(value, path);
+  switch (event.kind) {
+    case 'run.status': {
+      exact(row, ['status', 'wait_kind', 'pending_id'], path);
+      const status = nonEmpty(row.status, `${path}.status`);
+      if (!RUN_STATUSES.has(status)) throw new ContractError(`${path}.status`, 'unknown run status');
+      const wait = optionalString(row.wait_kind, `${path}.wait_kind`);
+      const pendingID = optionalString(row.pending_id, `${path}.pending_id`);
+      if (wait !== undefined && !WAIT_KINDS.has(wait)) throw new ContractError(`${path}.wait_kind`, 'unknown wait kind');
+      if (status === 'waiting_user' && (wait === undefined || pendingID === undefined)) throw new ContractError(path, 'waiting status requires wait_kind and pending_id');
+      if (status !== 'waiting_user' && (wait !== undefined || pendingID !== undefined)) throw new ContractError(path, 'only waiting status may carry pending state');
+      return { status, ...(wait === undefined ? {} : { wait_kind: wait }), ...(pendingID === undefined ? {} : { pending_id: pendingID }) };
     }
-    nonEmpty(outcome.attempt_id, `${path}.outcome.attempt_id`);
-    nonEmpty(outcome.call_id, `${path}.outcome.call_id`);
-    nonEmpty(outcome.result_hash, `${path}.outcome.result_hash`);
-    if (!EFFECTS.has(nonEmpty(outcome.effect, `${path}.outcome.effect`))) throw new ContractError(`${path}.outcome.effect`, 'unknown effect');
-    if (typeof outcome.is_error !== 'boolean' || typeof outcome.truncated !== 'boolean' || outcome.content !== null) throw new ContractError(`${path}.outcome`, 'must contain public outcome fields only');
-    if (outcome.failure !== undefined) failure(outcome.failure, `${path}.outcome.failure`);
+    case 'attempt.started':
+    case 'attempt.finished':
+      exact(row, [], path);
+      return {};
+    case 'attempt.replaced':
+      exact(row, ['replaces_attempt_id'], path);
+      return { replaces_attempt_id: nonEmpty(row.replaces_attempt_id, `${path}.replaces_attempt_id`) };
+    case 'text.delta':
+    case 'reasoning.delta':
+      if (event.attempt_id === undefined) throw new ContractError('attempt_id', 'stream delta requires an attempt');
+      exact(row, ['text', 'offset'], path);
+      return { text: nonEmpty(row.text, `${path}.text`), offset: nonNegativeSafeInteger(row.offset, `${path}.offset`) };
+    case 'tool.planned':
+      exact(row, ['call_id', 'plan_version', 'tool_name'], path);
+      return { call_id: nonEmpty(row.call_id, `${path}.call_id`), plan_version: nonNegativeSafeInteger(row.plan_version, `${path}.plan_version`), tool_name: nonEmpty(row.tool_name, `${path}.tool_name`) };
+    case 'tool.result':
+      if (event.attempt_id === undefined) throw new ContractError('attempt_id', 'tool result requires an attempt');
+      exact(row, ['call_id', 'outcome'], path);
+      return { call_id: nonEmpty(row.call_id, `${path}.call_id`), outcome: publicOutcome(row.outcome, `${path}.outcome`) };
+    case 'decision.required': {
+      exact(row, ['pending', 'call_id', 'plan_version', 'args_hash', 'expires_at', 'wait_kind'], path);
+      const wait = nonEmpty(row.wait_kind, `${path}.wait_kind`);
+      if (!WAIT_KINDS.has(wait)) throw new ContractError(`${path}.wait_kind`, 'unknown wait kind');
+      return { pending: pendingReference(row.pending, `${path}.pending`), call_id: nonEmpty(row.call_id, `${path}.call_id`), plan_version: nonNegativeSafeInteger(row.plan_version, `${path}.plan_version`), args_hash: nonEmpty(row.args_hash, `${path}.args_hash`), expires_at: nonEmpty(row.expires_at, `${path}.expires_at`), wait_kind: wait };
+    }
+    case 'usage.observed':
+      if (event.attempt_id === undefined) throw new ContractError('attempt_id', 'usage requires an attempt');
+      exact(row, ['usage'], path);
+      return { usage: publicUsage(row.usage, `${path}.usage`) };
+    case 'artifact.available':
+      exact(row, ['artifact'], path);
+      return { artifact: publicArtifact(row.artifact, `${path}.artifact`) };
+    case 'error':
+      exact(row, ['failure'], path);
+      return { failure: failure(row.failure, `${path}.failure`) };
   }
-  if (event.kind === 'usage.observed') row.usage = publicUsage(row.usage, `${path}.usage`);
-  if (event.kind === 'error') row.failure = failure(row.failure, `${path}.failure`);
-  return row as NativeEvent['payload'];
 }
 
 export function parseSequence(value: string): bigint {
@@ -179,10 +262,11 @@ export function parseSequence(value: string): bigint {
 
 export function parseNativeEvent(value: unknown): NativeEvent {
   const row = object(value, '');
+  exact(row, ['protocol', 'schema_version', 'event_id', 'tenant_id', 'session_id', 'run_id', 'parent_run_id', 'attempt_id', 'seq', 'kind', 'payload'], '');
   version(row);
   const kind = nonEmpty(row.kind, 'kind');
   if (!EVENT_KINDS.has(kind as NativeEventKind)) throw new ContractError('kind', 'unknown native event kind');
-  const event: NativeEvent = {
+  const event: NativeEventBase & { kind: NativeEventKind } = {
     protocol: NATIVE_AGENT_PROTOCOL,
     schema_version: NATIVE_AGENT_SCHEMA_VERSION,
     event_id: nonEmpty(row.event_id, 'event_id'),
@@ -191,14 +275,12 @@ export function parseNativeEvent(value: unknown): NativeEvent {
     run_id: nonEmpty(row.run_id, 'run_id'),
     seq: decimal(row.seq, 'seq', false),
     kind: kind as NativeEventKind,
-    payload: {},
   };
   const parentRunID = optionalString(row.parent_run_id, 'parent_run_id');
   const attemptID = optionalString(row.attempt_id, 'attempt_id');
   if (parentRunID !== undefined) event.parent_run_id = parentRunID;
   if (attemptID !== undefined) event.attempt_id = attemptID;
-  event.payload = payload(row.payload, event, 'payload');
-  return event;
+  return { ...event, payload: payload(row.payload, event, 'payload') } as NativeEvent;
 }
 
 export function parseLastEventID(value: unknown): NativeLastEventID {

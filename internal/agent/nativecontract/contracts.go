@@ -6,6 +6,7 @@ package nativecontract
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/event"
@@ -403,22 +404,22 @@ type PublicUsage struct {
 	AccountingStatus  string `json:"accounting_status"`
 }
 type EventPayload struct {
-	Pending           *PendingReference `json:"pending,omitempty"`
-	Status            RunStatus         `json:"status,omitempty"`
-	Wait              WaitKind          `json:"wait_kind,omitempty"`
-	Text              string            `json:"text,omitempty"`
-	Offset            *int64            `json:"offset,omitempty"`
-	ReplacesAttemptID string            `json:"replaces_attempt_id,omitempty"`
-	CallID            string            `json:"call_id,omitempty"`
-	PlanVersion       int               `json:"plan_version,omitempty"`
-	ToolName          string            `json:"tool_name,omitempty"`
-	PendingID         string            `json:"pending_id,omitempty"`
-	ArgsHash          string            `json:"args_hash,omitempty"`
-	ExpiresAt         *time.Time        `json:"expires_at,omitempty"`
-	Outcome           *ToolOutcome      `json:"outcome,omitempty"`
-	Usage             *PublicUsage      `json:"usage,omitempty"`
-	Artifact          *ArtifactRef      `json:"artifact,omitempty"`
-	Failure           *Failure          `json:"failure,omitempty"`
+	Pending           *PendingReference  `json:"pending,omitempty"`
+	Status            RunStatus          `json:"status,omitempty"`
+	Wait              WaitKind           `json:"wait_kind,omitempty"`
+	Text              string             `json:"text,omitempty"`
+	Offset            *int64             `json:"offset,omitempty"`
+	ReplacesAttemptID string             `json:"replaces_attempt_id,omitempty"`
+	CallID            string             `json:"call_id,omitempty"`
+	PlanVersion       int                `json:"plan_version,omitempty"`
+	ToolName          string             `json:"tool_name,omitempty"`
+	PendingID         string             `json:"pending_id,omitempty"`
+	ArgsHash          string             `json:"args_hash,omitempty"`
+	ExpiresAt         *time.Time         `json:"expires_at,omitempty"`
+	Outcome           *ToolOutcome       `json:"outcome,omitempty"`
+	Usage             *PublicUsage       `json:"usage,omitempty"`
+	Artifact          *PublicArtifactRef `json:"artifact,omitempty"`
+	Failure           *Failure           `json:"failure,omitempty"`
 }
 type BusinessEvent struct {
 	Protocol      string       `json:"protocol"`
@@ -448,6 +449,20 @@ type ArtifactRef struct {
 	SHA256    string `json:"sha256"`
 	SizeBytes int64  `json:"size_bytes"`
 }
+
+// PublicArtifactRef is the browser/client wire projection. ArtifactRef remains
+// an internal storage value, while public int64 counters are decimal strings.
+type PublicArtifactRef struct {
+	ID        string `json:"id"`
+	MediaType string `json:"media_type"`
+	SHA256    string `json:"sha256"`
+	SizeBytes string `json:"size_bytes"`
+}
+
+func PublicArtifact(ref ArtifactRef) PublicArtifactRef {
+	return PublicArtifactRef{ID: ref.ID, MediaType: ref.MediaType, SHA256: ref.SHA256, SizeBytes: strconv.FormatInt(ref.SizeBytes, 10)}
+}
+
 type SessionAppend struct {
 	Key                        session.Key
 	StableEventID, PayloadHash string
@@ -518,13 +533,15 @@ type ArchiveQuery struct {
 	Limit                   int
 }
 type ArchiveRecord struct {
-	ID, SessionID, Kind string
-	Data                json.RawMessage
-	Artifacts           []ArtifactRef
+	ID        string              `json:"id"`
+	SessionID string              `json:"session_id"`
+	Kind      string              `json:"kind"`
+	Data      json.RawMessage     `json:"data"`
+	Artifacts []PublicArtifactRef `json:"artifacts"`
 }
 type ArchivePage struct {
-	Records    []ArchiveRecord
-	NextCursor string
+	Records    []ArchiveRecord `json:"records"`
+	NextCursor string          `json:"next_cursor,omitempty"`
 }
 type ArchiveReader interface {
 	List(context.Context, Scope, ArchiveQuery) (ArchivePage, error)

@@ -1,7 +1,7 @@
 {
   "protocol": "weknora.agent.v1",
   "schema_version": 1,
-  "last_event_id": "v1:cnVuLTkwMDcxOTkyNTQ3NDA5OTM:9007199254740993",
+  "last_event_id": "v1:cnVuLTkwMDcxOTkyNTQ3NDA5OTM:8",
   "events": [
     {
       "protocol": "weknora.agent.v1",
@@ -77,6 +77,28 @@
       "seq": "6",
       "kind": "error",
       "payload": { "failure": { "code": "cursor_expired", "message": "history trimmed; resync required", "retryable": true, "effect": "not_dispatched" } }
+    },
+    {
+      "protocol": "weknora.agent.v1",
+      "schema_version": 1,
+      "event_id": "event-succeeded",
+      "tenant_id": "9007199254740993",
+      "session_id": "session-1",
+      "run_id": "run-9007199254740993",
+      "seq": "7",
+      "kind": "run.status",
+      "payload": { "status": "succeeded" }
+    },
+    {
+      "protocol": "weknora.agent.v1",
+      "schema_version": 1,
+      "event_id": "event-artifact",
+      "tenant_id": "9007199254740993",
+      "session_id": "session-1",
+      "run_id": "run-9007199254740993",
+      "seq": "8",
+      "kind": "artifact.available",
+      "payload": { "artifact": { "id": "artifact-1", "media_type": "text/plain", "sha256": "sha256:artifact", "size_bytes": "42" } }
     }
   ],
   "pending": {
@@ -102,8 +124,25 @@
     "oauth": { "service_id": "service-1", "state": "required", "begin_path": "/api/v1/native-agent/runs/run-9007199254740993/pending/pending-1/oauth", "expires_at": "2026-09-20T12:00:00Z" }
   },
   "command_errors": [
+    { "code": "unauthorized", "message": "authentication required", "retryable": false, "effect": "not_dispatched" },
+    { "code": "forbidden", "message": "scope revoked", "retryable": false, "effect": "not_dispatched" },
+    { "code": "invalid_request", "message": "input rejected", "retryable": false, "effect": "not_dispatched" },
+    { "code": "conflict", "message": "revision conflict", "retryable": true, "effect": "not_dispatched" },
+    { "code": "not_found", "message": "run not found", "retryable": false, "effect": "not_dispatched" },
+    { "code": "lease_lost", "message": "worker lease lost", "retryable": true, "effect": "unknown" },
+    { "code": "cancelled", "message": "run cancelled", "retryable": false, "effect": "unknown" },
+    { "code": "deadline_exceeded", "message": "deadline elapsed", "retryable": false, "effect": "unknown" },
+    { "code": "budget_exhausted", "message": "budget exhausted", "retryable": false, "effect": "not_dispatched" },
+    { "code": "provider_error", "message": "provider unavailable", "retryable": true, "effect": "unknown" },
+    { "code": "incomplete_stream", "message": "stream incomplete", "retryable": true, "effect": "unknown" },
+    { "code": "unknown_effect", "message": "external result needs review", "retryable": false, "effect": "unknown" },
+    { "code": "durable_store_unavailable", "message": "storage unavailable", "retryable": true, "effect": "not_dispatched" },
+    { "code": "checkpoint_incompatible", "message": "checkpoint incompatible", "retryable": false, "effect": "not_dispatched" },
+    { "code": "cursor_expired", "message": "history trimmed; resync required", "retryable": true, "effect": "not_dispatched" },
+    { "code": "archive_read_only", "message": "archive is read only", "retryable": false, "effect": "not_dispatched" },
     { "code": "client_upgrade_required", "message": "native-agent protocol v1 is required", "retryable": false, "effect": "not_dispatched" },
-    { "code": "cursor_expired", "message": "history trimmed; resync required", "retryable": true, "effect": "not_dispatched" }
+    { "code": "admission_closed", "message": "admission closed", "retryable": true, "effect": "not_dispatched" },
+    { "code": "execution_gate_closed", "message": "execution gate closed", "retryable": true, "effect": "not_dispatched" }
   ],
   "archive": {
     "records": [
