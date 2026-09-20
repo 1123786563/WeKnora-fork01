@@ -6,6 +6,8 @@ verify the deployment files that ship in the repository.
 
 import json
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from pathlib import Path
 DEPLOY_DIR = Path(__file__).resolve().parent
 COMPOSE_PATH = DEPLOY_DIR / "compose.yaml"
 LOCK_PATH = DEPLOY_DIR / "images.lock.json"
+LAGO_SH = DEPLOY_DIR / "lago.sh"
 
 REQUIRED_SERVICES = {"api", "api-worker", "api-clock", "db", "redis", "front", "pdf"}
 
@@ -183,6 +186,60 @@ class ComposeTopologyTests(unittest.TestCase):
 
     def test_community_build_keeps_the_license_flag_empty(self):
         self.assertIn('"LAGO_LICENSE": ${LAGO_LICENSE:-}', load_compose())
+
+
+class PortUrlConsistencyTests(unittest.TestCase):
+    """Behavioral tests for the operator .env port/URL consistency guard."""
+
+    BASE_ENV = [
+        "COMPOSE_PROJECT_NAME=weknora-lago",
+        "LAGO_API_PORT=48889",
+        "LAGO_FRONT_PORT=48890",
+        "LAGO_API_URL=http://127.0.0.1:48889",
+        "LAGO_FRONT_URL=http://127.0.0.1:48890",
+    ]
+
+    @staticmethod
+    def run_consistency_check(env_lines):
+        """Source lago.sh and run check_port_url_consistency on a temp .env."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            env_path.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+            script = f"source '{LAGO_SH}'\ncheck_port_url_consistency '{env_path}'\n"
+            return subprocess.run(
+                ["bash", "-c", script], capture_output=True, text=True, timeout=30
+            )
+
+    def test_consistent_env_passes(self):
+        result = self.run_consistency_check(self.BASE_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_api_port_changed_without_url_is_rejected(self):
+        env = [
+            line.replace("LAGO_API_PORT=48889", "LAGO_API_PORT=48891")
+            for line in self.BASE_ENV
+        ]
+        result = self.run_consistency_check(env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("LAGO_API_URL", result.stderr)
+        self.assertIn("lago.sh init", result.stderr)
+
+    def test_front_port_changed_without_url_is_rejected(self):
+        env = [
+            line.replace("LAGO_FRONT_PORT=48890", "LAGO_FRONT_PORT=48891")
+            for line in self.BASE_ENV
+        ]
+        result = self.run_consistency_check(env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("LAGO_FRONT_URL", result.stderr)
+
+    def test_up_runs_the_consistency_check_before_compose(self):
+        text = LAGO_SH.read_text(encoding="utf-8")
+        self.assertIn(
+            "check_port_url_consistency\n  compose up -d --wait",
+            text,
+            "cmd_up must validate port/URL consistency before starting Compose",
+        )
 
 
 if __name__ == "__main__":

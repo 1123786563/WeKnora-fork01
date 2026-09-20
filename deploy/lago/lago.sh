@@ -37,11 +37,27 @@ compose() {
 }
 
 env_value() {
-  local key="$1" line
-  line="$(grep -E "^${key}=" "$ENV_FILE" | tail -n 1 || true)"
+  local key="$1" file="${2:-$ENV_FILE}" line
+  line="$(grep -E "^${key}=" "$file" | tail -n 1 || true)"
   line="${line#*=}"
   line="${line#\"}"
   printf '%s' "${line%\"}"
+}
+
+check_port_url_consistency() {
+  # The frontend's browser-side API URL is baked from the ports at init time;
+  # reject an .env where a port was changed without updating its URL.
+  local env_file="${1:-$ENV_FILE}"
+  local name port url url_port
+  for name in LAGO_API LAGO_FRONT; do
+    port="$(env_value "${name}_PORT" "$env_file")"
+    url="$(env_value "${name}_URL" "$env_file")"
+    [[ -n "$port" && -n "$url" ]] || continue
+    url_port="${url##*:}"
+    if [[ "$url_port" != "$port" ]]; then
+      die "${name}_URL '${url}' does not point at the configured ${name}_PORT '${port}' -- fix .env or delete it and re-run ./deploy/lago/lago.sh init"
+    fi
+  done
 }
 
 ensure_env() {
@@ -101,6 +117,7 @@ cmd_init() {
 
 cmd_up() {
   check_secrets
+  check_port_url_consistency
   compose up -d --wait
 }
 
@@ -157,13 +174,15 @@ cmd_contract_probe() {
   exit 1
 }
 
-case "${1:-}" in
-  init) shift; cmd_init "$@" ;;
-  up) shift; cmd_up "$@" ;;
-  down) shift; cmd_down "$@" ;;
-  status) shift; cmd_status "$@" ;;
-  config) shift; cmd_config "$@" ;;
-  contract-probe) shift; cmd_contract_probe "$@" ;;
-  -h|--help|help) usage ;;
-  *) usage ;;
-esac
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  case "${1:-}" in
+    init) shift; cmd_init "$@" ;;
+    up) shift; cmd_up "$@" ;;
+    down) shift; cmd_down "$@" ;;
+    status) shift; cmd_status "$@" ;;
+    config) shift; cmd_config "$@" ;;
+    contract-probe) shift; cmd_contract_probe "$@" ;;
+    -h|--help|help) usage ;;
+    *) usage ;;
+  esac
+fi
