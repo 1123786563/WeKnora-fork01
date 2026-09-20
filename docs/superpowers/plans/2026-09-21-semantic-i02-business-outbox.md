@@ -47,7 +47,7 @@
 
 **Interfaces:**
 - `types.SemanticMutation` contains `TenantID uint64`, `KBID string`, `DocumentID string`, `ExpectedRevision uint64`, Go-authoritative opaque `ContentHash string`, `Deleted bool`, and immutable `Payload []byte` supplied by the caller. For active revisions, payload is the serialized C01 apply request; a delete event uses the tombstone metadata and may have an empty payload.
-- `SemanticControlRepository.WithSemanticMutation(ctx, mutation, func(tx *gorm.DB) error) (uint64, error)` creates/locks the scoped revision row, requires stored revision to equal `ExpectedRevision`, increments without uint64 overflow, calls the business callback with that same `tx`, stores Go's supplied content hash unchanged, inserts one semantic outbox event with stable UUID and `sha256:<hex>` hash of the exact payload bytes, and returns the new revision. Any callback/SQL error rolls back every write.
+- `SemanticControlRepository.WithSemanticMutation(ctx, mutation, func(tx *gorm.DB) error) (uint64, error)` requires nonzero tenant, nonempty KB/document/content hash, nonnil callback, nonempty active payload (delete payload may be empty), creates/locks the scoped revision row, requires stored revision to equal `ExpectedRevision`, increments without uint64 overflow, calls the business callback with that same `tx`, stores Go's supplied content hash unchanged, inserts one semantic outbox event with stable UUID and `sha256:<hex>` hash of the exact payload bytes, and returns the new revision. Any callback/SQL error rolls back every write.
 - First document mutation expects revision 0 and creates revision 1. A later mutation must provide the exact current revision. Deletion writes/advances a scoped deny row and bumps KB epoch in the same transaction. A non-delete mutation whose expected revision is the current tombstone explicitly restores that document, clears its deny row, and bumps KB epoch.
 - `BumpSemanticEpoch(tx *gorm.DB, scope types.SemanticScopeKey) (uint64, error)` is callable by A01 inside its already-open transaction; it never starts a nested transaction.
 - `types.SemanticOutboxEvent` carries stable `EventID`, scope, document, revision, content hash, tombstone flag, payload bytes, SHA-256 payload hash, attempt count, lease token, lease expiry, and retry time; the payload hash is `sha256:` plus lowercase hex of exact stored bytes.
@@ -62,7 +62,7 @@ func TestSemanticMutationRollback(t *testing.T) {
     db := newSemanticSQLiteTestDB(t) // uses t.TempDir and the formal migration runner
     require.NoError(t, db.Exec("CREATE TABLE semantic_test_business (id TEXT PRIMARY KEY)").Error)
     repo := NewSemanticControlRepository(db)
-    _, err := repo.WithSemanticMutation(ctx, mutationFixture(0, false, []byte("apply-rollback")), func(tx *gorm.DB) error {
+    _, err := repo.WithSemanticMutation(ctx, mutationFixture(0, true, nil), func(tx *gorm.DB) error {
         if err := tx.Exec("INSERT INTO semantic_test_business(id) VALUES (?)", "resource-1").Error; err != nil {
             return err
         }
@@ -72,6 +72,8 @@ func TestSemanticMutationRollback(t *testing.T) {
     assertRowCount(t, db, "semantic_test_business", 0)
     assertRowCount(t, db, "semantic_document_revisions", 0)
     assertRowCount(t, db, "semantic_outbox", 0)
+    assertRowCount(t, db, "semantic_denials", 0)
+    assertRowCount(t, db, "semantic_access_epochs", 0)
 }
 
 func TestSemanticMutationCommitsBusinessRevisionAndOutboxTogether(t *testing.T) {
@@ -168,6 +170,24 @@ func TestSemanticMutationPreservesMaximumUint64(t *testing.T) {
         return bumpErr
     }).Error
     require.ErrorIs(t, err, ErrSemanticEpochOverflow)
+}
+
+func TestSemanticMutationPostgresConcurrentExpectedRevisionHasOneWinner(t *testing.T) {
+    db1, db2 := newSemanticPostgresTestDBPair(t) // separate connections, same disposable schema
+    repo1, repo2 := NewSemanticControlRepository(db1), NewSemanticControlRepository(db2)
+    start := make(chan struct{})
+    results := make(chan error, 2)
+    for _, repo := range []*SemanticControlRepository{repo1, repo2} {
+        go func(repo *SemanticControlRepository) {
+            <-start
+            _, err := repo.WithSemanticMutation(context.Background(), mutationFixture(0, false, []byte("same-revision")), noBusinessWrite)
+            results <- err
+        }(repo)
+    }
+    close(start)
+    first, second := <-results, <-results
+    require.NotEqual(t, first == nil, second == nil) // exactly one commit wins
+    assertPostgresOutboxCount(t, db1, fixtureScope, "doc-1", 1)
 }
 ```
 

@@ -45,7 +45,7 @@
 **Interfaces:**
 - `PostgresOperationStore(dsn: str, schema: str = "semantic_service")` owns a connection per call and the service schema; validate schema identifiers before interpolating them.
 - `accept(request: ApplyRequest) -> Operation` deduplicates by both `(scope, idempotency_key)` and `(scope, document_id, revision, config_digest)`; a matching payload hash returns the existing operation, mismatched hash/identity raises `OperationPayloadConflict`.
-- `get(scope: ScopeKey, operation_id: str) -> Operation` is scope-bound; missing/wrong-scope IDs return the same not-found result.
+- `get(scope: ScopeKey, operation_id: str) -> Operation` is scope-bound; missing/wrong-scope IDs raise the same `OperationNotFound` result. `cancel` has the same scope-bound not-found behavior.
 - Internal `OperationPhase` contains the eight persisted phases from Global Constraints; C01 DTO conversion applies the projection described above.
 - `LeasedOperation` contains `operation: Operation`, the decoded durable `request: ApplyRequest`, `worker_id`, and `lease_token`.
 - `claim(worker_id: str, lease_seconds: int) -> LeasedOperation | None` atomically selects one accepted or expired nonterminal row with `FOR UPDATE SKIP LOCKED`, updates owner/deadline, and increments the fence before returning.
@@ -83,6 +83,19 @@ def test_same_document_revision_and_config_deduplicates_across_request_retry_key
     retry = dataclasses.replace(apply_request, idempotency_key="retry-key")
     second = operation_store.accept(retry)
     assert second.operation_id == first.operation_id
+
+def test_get_and_cancel_do_not_cross_scope(operation_store, apply_request):
+    operation = operation_store.accept(apply_request)
+    wrong_scopes = (
+        ScopeKey(apply_request.document.scope.tenant_id + 1, apply_request.document.scope.kb_id),
+        ScopeKey(apply_request.document.scope.tenant_id, "other-kb"),
+    )
+    for wrong_scope in wrong_scopes:
+        with pytest.raises(OperationNotFound):
+            operation_store.get(wrong_scope, operation.operation_id)
+        with pytest.raises(OperationNotFound):
+            operation_store.cancel(wrong_scope, operation.operation_id)
+    assert operation_store.get(apply_request.document.scope, operation.operation_id) == operation
 
 def test_two_postgres_connections_cannot_claim_the_same_live_lease(operation_store, apply_request):
     operation_store.accept(apply_request)
