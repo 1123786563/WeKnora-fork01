@@ -15,9 +15,11 @@ import (
 
 type stubDataSourceService struct {
 	interfaces.DataSourceService
-	getSyncLogs   func(ctx context.Context, dsID string, limit int, offset int) ([]*types.SyncLog, error)
-	getDataSource func(ctx context.Context, id string) (*types.DataSource, error)
-	cancelSyncLog func(ctx context.Context, tenantID uint64, dsID, logID string) error
+	getSyncLogs              func(ctx context.Context, dsID string, limit int, offset int) ([]*types.SyncLog, error)
+	getDataSource            func(ctx context.Context, id string) (*types.DataSource, error)
+	cancelSyncLog            func(ctx context.Context, tenantID uint64, dsID, logID string) error
+	deleteDataSource         func(ctx context.Context, id string, purgeDocuments bool) error
+	countDataSourceDocuments func(ctx context.Context, tenantID uint64, dsID string) (int64, error)
 }
 
 func (s *stubDataSourceService) GetSyncLogs(ctx context.Context, dsID string, limit int, offset int) ([]*types.SyncLog, error) {
@@ -39,6 +41,20 @@ func (s *stubDataSourceService) CancelSyncLog(ctx context.Context, tenantID uint
 		return s.cancelSyncLog(ctx, tenantID, dsID, logID)
 	}
 	return nil
+}
+
+func (s *stubDataSourceService) DeleteDataSource(ctx context.Context, id string, purgeDocuments bool) error {
+	if s.deleteDataSource != nil {
+		return s.deleteDataSource(ctx, id, purgeDocuments)
+	}
+	return nil
+}
+
+func (s *stubDataSourceService) CountDataSourceDocuments(ctx context.Context, tenantID uint64, dsID string) (int64, error) {
+	if s.countDataSourceDocuments != nil {
+		return s.countDataSourceDocuments(ctx, tenantID, dsID)
+	}
+	return 0, nil
 }
 
 type stubKBServiceForDS struct {
@@ -65,6 +81,8 @@ func newDataSourceTestRouter(h *DataSourceHandler) *gin.Engine {
 	})
 	r.GET("/datasource/:id/logs", h.GetSyncLogs)
 	r.POST("/datasource/:id/logs/:log_id/cancel", h.CancelSyncLog)
+	r.GET("/datasource/:id/documents-count", h.CountDocuments)
+	r.DELETE("/datasource/:id", h.DeleteDataSource)
 	return r
 }
 

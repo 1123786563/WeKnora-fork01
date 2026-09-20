@@ -439,10 +439,14 @@ func TestPurgeWorkerDrainsAcrossBatches(t *testing.T) {
 	assert.Equal(t, int64(0), n, "every batched document must be purged, tombstones included")
 }
 
-// A canceled context interrupts the drain BETWEEN batches: the first batch
-// completes fully, the loop-top ctx.Err() check stops the run before the
-// second batch is even fetched, and the remainder survives for the asynq
-// retry.
+// A cancel landing right after a batch's soft delete interrupts the drain
+// inside that batch: the canceled context fails the same batch's hard
+// delete (that error is what the run surfaces), so the ≤200 soft-deleted
+// rows of that one batch stay behind as tombstones while the not-yet-touched
+// remainder survives live for the asynq retry. The tombstone residue is
+// harmless — the source is deleted, so no future sync can re-create (or be
+// blocked by) those external ids, and the drain's live-only predicate
+// simply skips the rows on retry.
 func TestPurgeWorkerStopsBetweenBatchesWhenContextCanceled(t *testing.T) {
 	f := newDataSourcePurgeFixture(t, false)
 	var allIDs []string
@@ -473,11 +477,18 @@ func TestPurgeWorkerStopsBetweenBatchesWhenContextCanceled(t *testing.T) {
 	var remaining int64
 	require.NoError(t, f.db.Model(&types.Knowledge{}).Where("id IN ?", allIDs).Count(&remaining).Error)
 	assert.Equal(t, int64(5), remaining, "the un-drained remainder must survive for the retry")
+
+	// The interrupted batch's 200 rows are soft-deleted tombstones, not fully
+	// removed — pinned here so the comment above cannot silently rot.
+	var tombstoned int64
+	require.NoError(t, f.db.Unscoped().Model(&types.Knowledge{}).
+		Where("id IN ? AND deleted_at IS NOT NULL", allIDs).Count(&tombstoned).Error)
+	assert.Equal(t, int64(200), tombstoned)
 }
 
-// cancelAfterBatchKS cancels the run context as soon as one batch delete
-// returns, simulating an asynq cancellation landing exactly on the batch
-// boundary.
+// cancelAfterBatchKS cancels the run context as soon as one batch's
+// DeleteKnowledgeList (the soft delete) returns — i.e. between the soft and
+// the hard delete of the same batch, the tightest in-batch cancel window.
 type cancelAfterBatchKS struct {
 	interfaces.KnowledgeService
 	cancel context.CancelFunc
@@ -529,4 +540,35 @@ func TestDataSourcePurgeQueueTopology(t *testing.T) {
 	queue, ok := types.QueueForTaskType(types.TypeDataSourcePurge)
 	require.True(t, ok, "datasource:purge must be registered in the queue topology")
 	assert.Equal(t, types.QueueMaintenance, queue)
+}
+
+// CountDataSourceDocuments (the confirmation-dialog N) counts only the live
+// documents this source synced into its KB: sibling-source and manual
+// documents are excluded, tombstones stop counting, a foreign tenant scope
+// sees zero, and an unknown id surfaces the lookup error.
+func TestCountDataSourceDocumentsScopesToTenantKbDataSource(t *testing.T) {
+	f := newDataSourcePurgeFixture(t, false)
+
+	n, err := f.svc.CountDataSourceDocuments(context.Background(), purgeTenantID, f.ds.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), n, "exactly the 3 docs this source synced")
+
+	n, err = f.svc.CountDataSourceDocuments(context.Background(), purgeTenantID, f.otherDS.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n, "sibling source's doc belongs to that source only")
+
+	n, err = f.svc.CountDataSourceDocuments(context.Background(), purgeTenantID+1, f.ds.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n, "foreign tenant scope must see zero")
+
+	_, err = f.svc.CountDataSourceDocuments(context.Background(), purgeTenantID, "ds-nope")
+	require.Error(t, err, "unknown data source id must error, not report 0")
+
+	// A soft-deleted row stops counting — the count mirrors what the drain
+	// would remove, and the drain's predicate is deleted_at IS NULL.
+	require.NoError(t, f.db.Model(&types.Knowledge{}).Where("id = ?", "doc-purge-1").
+		Update("deleted_at", "2026-01-01 00:00:00").Error)
+	n, err = f.svc.CountDataSourceDocuments(context.Background(), purgeTenantID, f.ds.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n, "tombstones must not count")
 }

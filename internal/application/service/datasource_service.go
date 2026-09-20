@@ -585,8 +585,11 @@ func (s *DataSourceService) ProcessDataSourcePurge(ctx context.Context, task *as
 // (vectors, graph, wiki pages, chunks, physical files) with the same cleanup
 // scope ProcessKnowledgeListDelete uses, then removes the soft-deleted
 // tombstones. ctx.Err() is checked between batches so an asynq cancellation
-// interrupts the drain; every step is idempotent, the retry simply continues
-// where the previous attempt stopped.
+// interrupts the drain; every step is idempotent and a retry continues with
+// the rows still live. A cancel landing inside a batch (after its soft
+// delete, before its hard delete) leaves that one batch's ≤200 rows as
+// tombstones — harmless residue the retry skips, since the deleted source
+// can never re-sync those external ids.
 func (s *DataSourceService) PurgeDataSourceDocuments(ctx context.Context, payload types.DataSourcePurgePayload) error {
 	if payload.TenantID == 0 || payload.KnowledgeBaseID == "" || payload.DataSourceID == "" {
 		return fmt.Errorf("invalid purge scope: %w", asynq.SkipRetry)
@@ -650,6 +653,20 @@ func (s *DataSourceService) PurgeDataSourceDocuments(ctx context.Context, payloa
 			map[string]any{"purge_completed": true, "purged_documents": purged})
 	}
 	return nil
+}
+
+// CountDataSourceDocuments returns how many live documents one data source
+// synced into its knowledge base (SP2-a spec §4.1). The handler has already
+// proven tenant ownership via getOwnedDataSource; the count re-scopes to the
+// same (tenant, kb, data source) triple the delete-source cascade drains, so
+// the number shown in the confirmation dialog matches exactly what
+// purge_documents=true will remove.
+func (s *DataSourceService) CountDataSourceDocuments(ctx context.Context, tenantID uint64, dsID string) (int64, error) {
+	ds, err := s.dsRepo.FindByID(ctx, dsID)
+	if err != nil {
+		return 0, err
+	}
+	return s.knowledgeService.GetRepository().CountKnowledgeByDataSourceID(ctx, tenantID, ds.KnowledgeBaseID, dsID)
 }
 
 // ValidateConnection tests the connection to an external data source

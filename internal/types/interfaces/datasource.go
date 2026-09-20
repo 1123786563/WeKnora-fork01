@@ -29,6 +29,11 @@ type DataSourceService interface {
 	// is byte-identical with the pre-SP2-a delete (documents stay).
 	DeleteDataSource(ctx context.Context, id string, purgeDocuments bool) error
 
+	// CountDataSourceDocuments counts the live documents one data source
+	// synced into its knowledge base — the number the delete-source
+	// confirmation dialog shows before the purge choice (SP2-a spec §4.1).
+	CountDataSourceDocuments(ctx context.Context, tenantID uint64, dsID string) (int64, error)
+
 	// UpdateDataSourceCredentials replaces the connector credential map.
 	// DataSource credentials are per-connector atomic — there is no
 	// individual-field PUT, the whole map gets replaced. Returns the updated

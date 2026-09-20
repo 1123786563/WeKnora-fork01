@@ -311,6 +311,12 @@ func RegisterDataSourceRoutes(
 		ds.PUT("/:id", g.Admin(), handler.UpdateDataSource)
 		ds.DELETE("/:id", g.Admin(), handler.DeleteDataSource)
 
+		// Document count for the delete-source confirmation dialog (SP2-a
+		// §4.1) — Viewer+: the dialog shows "also delete N synced documents"
+		// before the Admin-only DELETE is offered; count and delete scope to
+		// the same (tenant, kb, datasource) triple.
+		ds.GET("/:id/documents-count", g.Viewer(), handler.CountDocuments)
+
 		// Credential subresource. Single logical field "credentials" because
 		// connector credentials are a per-connector atomic map (see
 		// internal/handler/datasource_credentials.go). — Admin+

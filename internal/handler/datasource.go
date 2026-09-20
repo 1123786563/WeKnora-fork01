@@ -234,9 +234,10 @@ func (h *DataSourceHandler) UpdateDataSource(c *gin.Context) {
 
 // DeleteDataSource godoc
 // @Summary Delete a data source
-// @Description Delete a data source (soft delete)
+// @Description Delete a data source (soft delete). With purge_documents=true the synced documents are purged asynchronously; without it they are kept (pre-SP2-a behavior).
 // @Tags DataSource
 // @Param id path string true "Data source ID"
+// @Param purge_documents query boolean false "Cascade-delete every document the source synced (async, best-effort)"
 // @Success 204
 // @Failure 404 {object} map[string]string
 // @Router /datasource/{id} [delete]
@@ -255,15 +256,56 @@ func (h *DataSourceHandler) DeleteDataSource(c *gin.Context) {
 		return
 	}
 
-	// purge_documents stays false here for now: the query-parameter wiring
-	// (DELETE /datasource/:id?purge_documents=true) lands with the API task
-	// (SP2-a Task 9) together with the documents-count endpoint.
-	if err := h.service.DeleteDataSource(ctx, id, false); err != nil {
+	// purge_documents=true (SP2-a spec §4.1) cascades the delete to every
+	// document the source synced into its KB; anything else — absent, false,
+	// lookalike values — keeps the legacy keep-documents behavior (fully
+	// backward compatible). The purge itself is async and best-effort: this
+	// 204 only means the data source delete is durable and the purge task was
+	// accepted. An enqueue failure keeps the documents; it is recorded in the
+	// data_source_deleted audit as purge_documents="enqueue_failed" (and
+	// logged), not surfaced in this response — there is deliberately no
+	// progress endpoint (YAGNI, spec §4.1).
+	purgeDocuments := c.Query("purge_documents") == "true"
+	if err := h.service.DeleteDataSource(ctx, id, purgeDocuments); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete data source"})
 		return
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// CountDocuments godoc
+// @Summary Count a data source's synced documents
+// @Description Count the live documents one data source synced into its knowledge base — the number the delete-source confirmation dialog shows before the purge choice.
+// @Tags DataSource
+// @Produce json
+// @Param id path string true "Data source ID"
+// @Success 200 {object} map[string]int64
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /datasource/{id}/documents-count [get]
+func (h *DataSourceHandler) CountDocuments(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := h.getTenantID(c)
+	if tenantID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	id := c.Param("id")
+
+	if _, status, msg := h.getOwnedDataSource(ctx, tenantID, id); status != http.StatusOK {
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	count, err := h.service.CountDataSourceDocuments(ctx, tenantID, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count documents"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"count": count})
 }
 
 // ValidateConnection godoc
