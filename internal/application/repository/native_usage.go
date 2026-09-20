@@ -133,6 +133,13 @@ func (s *NativeUsageLedger) ObserveDelta(ctx context.Context, fence nativecontra
 // confirms the intent; they never reinterpret a failed settlement as free.
 func (s *NativeUsageLedger) usageSettlementIntent(tx *gorm.DB, f nativecontract.Fence, o nativecontract.UsageObservation, observationHash string, delta *NativeUsageDelta) error {
 	id := "usage-settlement:" + o.AttemptID + ":" + o.ObservationID + ":" + fmt.Sprint(o.Revision)
+	var prior int64
+	if err := tx.Table("native_agent_commit_intents").Where("tenant_id=? AND run_id=? AND intent_id LIKE ? AND intent_id <> ? AND state IN ?", f.Run.TenantID, f.Run.RunID, "usage-settlement:"+o.AttemptID+":"+o.ObservationID+":%", id, []string{"pending", "applying"}).Count(&prior).Error; err != nil {
+		return err
+	}
+	if prior != 0 {
+		return nativeUsageFailure(nativecontract.ErrConflict, "prior usage settlement is pending")
+	}
 	var row struct{ State, PayloadHash, Payload string }
 	err := tx.Table("native_agent_commit_intents").Select("state, payload_hash, payload").Where("tenant_id=? AND run_id=? AND intent_id=?", f.Run.TenantID, f.Run.RunID, id).Take(&row).Error
 	if err == nil {
@@ -143,9 +150,10 @@ func (s *NativeUsageLedger) usageSettlementIntent(tx *gorm.DB, f nativecontract.
 			*delta = NativeUsageDelta{}
 		} else if row.Payload != "" {
 			var stored nativeUsageSettlementIntent
-			if json.Unmarshal([]byte(row.Payload), &stored) == nil {
-				*delta = stored.Delta
+			if err := json.Unmarshal([]byte(row.Payload), &stored); err != nil {
+				return nativeUsageFailure(nativecontract.ErrStore, "usage settlement intent is corrupt")
 			}
+			*delta = stored.Delta
 		}
 		delta.IntentID, delta.Pending = id, row.State != "applied"
 		return nil
@@ -178,7 +186,7 @@ func (s *NativeUsageLedger) ConfirmSettlement(ctx context.Context, fence nativec
 		if err := nativeUsageFence(tx, fence); err != nil {
 			return err
 		}
-		updated := tx.Exec(`UPDATE native_agent_commit_intents SET state='applied', applied_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND run_id=? AND intent_id=? AND state='pending'`, fence.Run.TenantID, fence.Run.RunID, intentID)
+		updated := tx.Exec(`UPDATE native_agent_commit_intents SET state='applied', applied_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND run_id=? AND intent_id=? AND state='applying'`, fence.Run.TenantID, fence.Run.RunID, intentID)
 		if updated.Error != nil {
 			return updated.Error
 		}
@@ -188,8 +196,52 @@ func (s *NativeUsageLedger) ConfirmSettlement(ctx context.Context, fence nativec
 				return nativeUsageFailure(nativecontract.ErrNotFound, "usage settlement intent was not found")
 			}
 			if state != "applied" {
-				return nativeUsageFailure(nativecontract.ErrConflict, "usage settlement intent is not pending")
+				return nativeUsageFailure(nativecontract.ErrConflict, "usage settlement intent is not claimed")
 			}
+		}
+		return nil
+	})
+}
+
+func (s *NativeUsageLedger) ClaimSettlement(ctx context.Context, fence nativecontract.Fence, intentID string) (bool, error) {
+	if intentID == "" {
+		return false, nativeUsageFailure(nativecontract.ErrInvalid, "usage settlement intent is required")
+	}
+	claimed := false
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := nativeUsageFence(tx, fence); err != nil {
+			return err
+		}
+		r := tx.Exec(`UPDATE native_agent_commit_intents SET state='applying' WHERE tenant_id=? AND run_id=? AND intent_id=? AND state='pending'`, fence.Run.TenantID, fence.Run.RunID, intentID)
+		if r.Error != nil {
+			return r.Error
+		}
+		if r.RowsAffected == 1 {
+			claimed = true
+			return nil
+		}
+		var state string
+		if err := tx.Table("native_agent_commit_intents").Select("state").Where("tenant_id=? AND run_id=? AND intent_id=?", fence.Run.TenantID, fence.Run.RunID, intentID).Take(&state).Error; err != nil {
+			return nativeUsageFailure(nativecontract.ErrNotFound, "usage settlement intent was not found")
+		}
+		if state == "applying" || state == "applied" {
+			return nil
+		}
+		return nativeUsageFailure(nativecontract.ErrConflict, "usage settlement intent is invalid")
+	})
+	return claimed, err
+}
+func (s *NativeUsageLedger) ReleaseSettlement(ctx context.Context, fence nativecontract.Fence, intentID string) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := nativeUsageFence(tx, fence); err != nil {
+			return err
+		}
+		r := tx.Exec(`UPDATE native_agent_commit_intents SET state='pending' WHERE tenant_id=? AND run_id=? AND intent_id=? AND state='applying'`, fence.Run.TenantID, fence.Run.RunID, intentID)
+		if r.Error != nil {
+			return r.Error
+		}
+		if r.RowsAffected != 1 {
+			return nativeUsageFailure(nativecontract.ErrConflict, "usage settlement intent is not claimed")
 		}
 		return nil
 	})

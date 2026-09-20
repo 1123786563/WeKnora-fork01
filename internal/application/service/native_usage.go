@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
@@ -12,6 +13,8 @@ type NativeUsageDelta = repository.NativeUsageDelta
 type NativeUsageStore interface {
 	ObserveDelta(context.Context, nativecontract.Fence, nativecontract.UsageObservation) (NativeUsageDelta, error)
 	ConfirmSettlement(context.Context, nativecontract.Fence, string) error
+	ClaimSettlement(context.Context, nativecontract.Fence, string) (bool, error)
+	ReleaseSettlement(context.Context, nativecontract.Fence, string) error
 }
 type NativeUsageFunding interface {
 	Funding(context.Context, nativecontract.RunIdentity) (nativecontract.FundingBinding, error)
@@ -83,12 +86,20 @@ func (s *NativeUsageService) Observe(ctx context.Context, fence nativecontract.F
 	if root.RunID == "" {
 		root.RunID = fence.Run.RunID
 	}
-	key := o.AttemptID + ":" + o.ObservationID
+	key := o.AttemptID + ":" + o.ObservationID + ":" + fmt.Sprint(o.Revision)
 	if !delta.Pending {
+		return nil
+	}
+	claimed, err := s.store.ClaimSettlement(ctx, fence, delta.IntentID)
+	if err != nil {
+		return err
+	}
+	if !claimed {
 		return nil
 	}
 	if o.AccountingStatus == "unknown" {
 		if err := s.budget.MarkUnknown(ctx, root, key); err != nil {
+			_ = s.store.ReleaseSettlement(ctx, fence, delta.IntentID)
 			return err
 		}
 		return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)
@@ -97,6 +108,7 @@ func (s *NativeUsageService) Observe(ctx context.Context, fence nativecontract.F
 		return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)
 	}
 	if err := s.budget.Settle(ctx, root, key, delta); err != nil {
+		_ = s.store.ReleaseSettlement(ctx, fence, delta.IntentID)
 		return err
 	}
 	return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)

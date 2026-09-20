@@ -31,6 +31,9 @@ func TestNativeUsageDuplicateCallbacksRecordOneDelta(t *testing.T) {
 	first, err := ledger.ObserveDelta(context.Background(), fence, observation)
 	require.NoError(t, err)
 	require.EqualValues(t, 15, first.TotalTokens)
+	claimed, err := ledger.ClaimSettlement(context.Background(), fence, first.IntentID)
+	require.NoError(t, err)
+	require.True(t, claimed)
 	require.NoError(t, ledger.ConfirmSettlement(context.Background(), fence, first.IntentID))
 	replay, err := ledger.ObserveDelta(context.Background(), fence, observation)
 	require.NoError(t, err)
@@ -42,8 +45,12 @@ func TestNativeUsageDuplicateCallbacksRecordOneDelta(t *testing.T) {
 
 func TestNativeUsageHigherRevisionSettlesOnlyCumulativeDelta(t *testing.T) {
 	ledger, fence, observation := nativeUsageFixture(t)
-	_, err := ledger.ObserveDelta(context.Background(), fence, observation)
+	first, err := ledger.ObserveDelta(context.Background(), fence, observation)
 	require.NoError(t, err)
+	claimed, err := ledger.ClaimSettlement(context.Background(), fence, first.IntentID)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, ledger.ConfirmSettlement(context.Background(), fence, first.IntentID))
 	correction := observation
 	correction.Revision, correction.PromptTokens, correction.CompletionTokens, correction.TotalTokens = 2, 17, 9, 26
 	delta, err := ledger.ObserveDelta(context.Background(), fence, correction)
@@ -90,4 +97,27 @@ func TestNativeUsageConcurrentIdenticalCallbackConverges(t *testing.T) {
 	var count int64
 	require.NoError(t, ledger.db.Table("native_agent_usage_observations").Count(&count).Error)
 	require.EqualValues(t, 1, count)
+}
+
+func TestNativeUsagePendingRevisionBlocksLaterRevisionUntilConfirmed(t *testing.T) {
+	ledger, fence, first := nativeUsageFixture(t)
+	delta, err := ledger.ObserveDelta(context.Background(), fence, first)
+	require.NoError(t, err)
+	later := first
+	later.Revision, later.PromptTokens, later.CompletionTokens, later.TotalTokens = 2, 12, 6, 18
+	require.Equal(t, nativecontract.ErrConflict, nativeUsageCode(t, ledger.Observe(context.Background(), fence, later)))
+	claimed, err := ledger.ClaimSettlement(context.Background(), fence, delta.IntentID)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, ledger.ConfirmSettlement(context.Background(), fence, delta.IntentID))
+	require.NoError(t, ledger.Observe(context.Background(), fence, later))
+}
+
+func TestNativeUsageCorruptPendingIntentReturnsStoreFailure(t *testing.T) {
+	ledger, fence, observation := nativeUsageFixture(t)
+	delta, err := ledger.ObserveDelta(context.Background(), fence, observation)
+	require.NoError(t, err)
+	require.NoError(t, ledger.db.Exec(`UPDATE native_agent_commit_intents SET payload = ? WHERE tenant_id=? AND run_id=? AND intent_id=?`, "{", 1, "run-1", delta.IntentID).Error)
+	_, err = ledger.ObserveDelta(context.Background(), fence, observation)
+	require.Equal(t, nativecontract.ErrStore, nativeUsageCode(t, err))
 }

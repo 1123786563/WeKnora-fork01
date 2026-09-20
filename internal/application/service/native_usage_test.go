@@ -17,6 +17,7 @@ type nativeUsageStoreFake struct {
 	mu        sync.Mutex
 	seen      map[string]nativecontract.UsageObservation
 	confirmed map[string]bool
+	claimed   map[string]bool
 }
 
 func (s *nativeUsageStoreFake) ObserveDelta(_ context.Context, _ nativecontract.Fence, o nativecontract.UsageObservation) (NativeUsageDelta, error) {
@@ -44,6 +45,22 @@ func (s *nativeUsageStoreFake) ConfirmSettlement(_ context.Context, _ nativecont
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.confirmed[intent] = true
+	delete(s.claimed, intent)
+	return nil
+}
+func (s *nativeUsageStoreFake) ClaimSettlement(_ context.Context, _ nativecontract.Fence, intent string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.claimed[intent] || s.confirmed[intent] {
+		return false, nil
+	}
+	s.claimed[intent] = true
+	return true, nil
+}
+func (s *nativeUsageStoreFake) ReleaseSettlement(_ context.Context, _ nativecontract.Fence, intent string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.claimed, intent)
 	return nil
 }
 
@@ -58,12 +75,14 @@ type nativeUsageBudgetFake struct {
 	reserves, settles, unknowns int
 	roots                       []string
 	settleErr                   error
+	unknownErr                  error
 	remaining                   int64
 }
 
-func (b *nativeUsageBudgetFake) Reserve(_ context.Context, _ nativecontract.RunIdentity, _ string, units int64) error {
+func (b *nativeUsageBudgetFake) Reserve(_ context.Context, root nativecontract.RunIdentity, _ string, units int64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.roots = append(b.roots, root.RunID)
 	if units > b.remaining {
 		return &nativecontract.Failure{Code: nativecontract.ErrBudget}
 	}
@@ -81,9 +100,13 @@ func (b *nativeUsageBudgetFake) Settle(_ context.Context, root nativecontract.Ru
 	b.settles++
 	return nil
 }
-func (b *nativeUsageBudgetFake) MarkUnknown(_ context.Context, _ nativecontract.RunIdentity, _ string) error {
+func (b *nativeUsageBudgetFake) MarkUnknown(_ context.Context, root nativecontract.RunIdentity, _ string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.roots = append(b.roots, root.RunID)
+	if b.unknownErr != nil {
+		return b.unknownErr
+	}
 	b.unknowns++
 	return nil
 }
@@ -97,20 +120,20 @@ func nativeUsageServiceFence() nativecontract.Fence {
 
 func TestNativeUsageServiceSharesParentBudgetAndSettlesFailedUsageOnce(t *testing.T) {
 	o := nativeUsageServiceObservation()
-	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}}
+	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
 	budget := &nativeUsageBudgetFake{remaining: 10}
 	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
 	require.NoError(t, svc.Reserve(context.Background(), nativeUsageServiceFence(), "call", 10))
 	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
 	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
 	require.Equal(t, 1, budget.settles)
-	require.Equal(t, []string{"root"}, budget.roots)
+	require.Equal(t, []string{"root", "root"}, budget.roots)
 	require.Equal(t, "root", svc.BudgetRoot(o))
 }
 
 func TestNativeUsageServiceRacingChildrenCannotOverspendRoot(t *testing.T) {
 	o := nativeUsageServiceObservation()
-	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}}
+	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
 	budget := &nativeUsageBudgetFake{remaining: 10}
 	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
 	var wg sync.WaitGroup
@@ -141,12 +164,13 @@ func TestNativeUsageServiceRacingChildrenCannotOverspendRoot(t *testing.T) {
 
 func TestNativeUsageServiceUnknownIsReconciledNotFreedAndFundingIsServerOwned(t *testing.T) {
 	o := nativeUsageServiceObservation()
-	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}}
+	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
 	budget := &nativeUsageBudgetFake{remaining: 10}
 	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
 	o.AccountingStatus = "unknown"
 	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
 	require.Equal(t, 1, budget.unknowns)
+	require.Equal(t, []string{"root"}, budget.roots)
 	require.Zero(t, budget.settles)
 	forged := o
 	forged.Funding.BudgetRootRunID = "other"
@@ -155,7 +179,7 @@ func TestNativeUsageServiceUnknownIsReconciledNotFreedAndFundingIsServerOwned(t 
 
 func TestNativeUsageServiceBudgetFailureReplaysPendingSettlement(t *testing.T) {
 	o := nativeUsageServiceObservation()
-	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}}
+	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
 	budget := &nativeUsageBudgetFake{remaining: 10, settleErr: errors.New("budget unavailable")}
 	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
 	require.Error(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
@@ -167,11 +191,42 @@ func TestNativeUsageServiceBudgetFailureReplaysPendingSettlement(t *testing.T) {
 func TestNativeUsageServiceZeroUnknownCreatesReconciliationIntent(t *testing.T) {
 	o := nativeUsageServiceObservation()
 	o.PromptTokens, o.CompletionTokens, o.TotalTokens, o.AccountingStatus = 0, 0, 0, "unknown"
-	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}}
+	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
 	budget := &nativeUsageBudgetFake{remaining: 10}
 	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
 	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
 	require.Equal(t, 1, budget.unknowns)
+}
+
+func TestNativeUsageServiceFailedUnknownReplaysPendingIntent(t *testing.T) {
+	o := nativeUsageServiceObservation()
+	o.AccountingStatus = "unknown"
+	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
+	budget := &nativeUsageBudgetFake{remaining: 10, unknownErr: errors.New("reconciliation unavailable")}
+	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
+	require.Error(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
+	budget.unknownErr = nil
+	require.NoError(t, svc.Observe(context.Background(), nativeUsageServiceFence(), o))
+	require.Equal(t, 1, budget.unknowns)
+}
+
+func TestNativeUsageServiceConcurrentDuplicateHasOneBudgetEffect(t *testing.T) {
+	o := nativeUsageServiceObservation()
+	store := &nativeUsageStoreFake{seen: map[string]nativecontract.UsageObservation{}, confirmed: map[string]bool{}, claimed: map[string]bool{}}
+	budget := &nativeUsageBudgetFake{remaining: 10}
+	svc := NewNativeUsageService(store, nativeUsageFundingFake{funding: o.Funding}, budget)
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() { defer wg.Done(); errs <- svc.Observe(context.Background(), nativeUsageServiceFence(), o) }()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, budget.settles)
 }
 
 func nativeUsageFailureCode(t *testing.T, err error) nativecontract.ErrorCode {
