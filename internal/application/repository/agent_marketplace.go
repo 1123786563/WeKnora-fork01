@@ -29,6 +29,19 @@ type AgentMarketplaceRepository interface {
 	ReviewAndPublishTx(context.Context, uint64, string, string, string, types.AgentReleaseReviewDecision) (*types.AgentReleaseReviewEntity, *types.AgentReleaseEntity, error)
 	ListTenantCatalog(context.Context, uint64) ([]types.AgentMarketplaceListingEntity, error)
 	GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error)
+	GetSubmission(context.Context, uint64, string) (*types.AgentReleaseSubmissionEntity, error)
+}
+
+func (r *agentMarketplaceRepository) GetSubmission(ctx context.Context, tenantID uint64, submissionID string) (*types.AgentReleaseSubmissionEntity, error) {
+	var row types.AgentReleaseSubmissionEntity
+	err := r.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(submissionID)).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
 }
 
 type agentMarketplaceRepository struct{ db *gorm.DB }
