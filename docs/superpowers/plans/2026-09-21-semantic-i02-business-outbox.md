@@ -60,7 +60,7 @@
 - `FailSemanticOutbox` rejects an empty error code before SQL without mutating the event; the empty migration default is only for events not yet failed.
 - Migration rows are private GORM models with canonical decimal-string IDs in queries; do not let GORM or SQLite coerce uint64 values through float64.
 
-- [ ] **Step 1: Write failing SQLite transaction/revision/outbox tests**
+- [x] **Step 1: Write failing SQLite transaction/revision/outbox tests**
 
 ```go
 func TestSemanticMutationRollback(t *testing.T) {
@@ -282,13 +282,13 @@ func TestSemanticMutationPostgresConcurrentDifferentDocumentDenialsBothCommit(t 
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `go test ./internal/application/repository ./internal/database -run 'TestSemanticMutation|TestSemanticMigration' -count=1`
 
 Expected: fail because I02 types, repository, migrations, and tests do not exist.
 
-- [ ] **Step 3: Write migration-head and migration-up/down/up tests first**
+- [x] **Step 3: Write migration-head and migration-up/down/up tests first**
 
 In `internal/database/semantic_migration_test.go`, add `TestSemanticMigrationSQLiteUpDownUp`: migrate a fresh temp DB to the current head, assert head 99 and all four owned tables/indexes, migrate down one migration, assert all four I02 tables/indexes are absent, then migrate up and reassert head 99, clean state, and all four tables/indexes. In `internal/database/semantic_migration_pg_test.go` under `//go:build semantic_integration`, add the same PG test using a disposable DB plus UUID schema and formal migration stream. The PG test fails if `TRPC_TEST_POSTGRES_DSN` is absent; it is not skipped.
 
@@ -296,21 +296,21 @@ Run: `go test ./internal/database -run '^TestSemanticMigrationSQLiteUpDownUp$' -
 
 Expected: FAIL because migration 99 does not yet create semantic control tables and the up/down/up contract fails.
 
-- [ ] **Step 4: Implement migrations and private exact-uint64 rows**
+- [x] **Step 4: Implement migrations and private exact-uint64 rows**
 
 PostgreSQL uses `NUMERIC(20,0)` plus canonical nonnegative decimal checks; SQLite stores canonical decimal TEXT. The only I02 tables are document revisions, outbox, access epochs, and denials. Add down scripts that remove only these tables in reverse dependency order.
 
-- [ ] **Step 5: Implement transaction callback, denial/epoch and fenced outbox methods**
+- [x] **Step 5: Implement transaction callback, denial/epoch and fenced outbox methods**
 
 Use a conditional revision row insert for first revision, then `SELECT ... FOR UPDATE` on PostgreSQL and revision conditional update on both dialects. Insert the caller's business row through the supplied tx before commit. Compute event payload hash once, store immutable bytes, and require matching lease token for ack/failure.
 
-- [ ] **Step 6: Run GREEN on SQLite and isolated PostgreSQL**
+- [x] **Step 6: Run GREEN on SQLite and isolated PostgreSQL**
 
 Run: `go test ./internal/application/repository -run '^TestSemanticMutation' -count=1` and `go test ./internal/database -run '^TestSemanticMigrationSQLiteUpDownUp$' -count=1`.
 
 Expected: SQLite tests exercise formal up/down/up and rollback. Also run `go test -tags=semantic_integration ./internal/application/repository ./internal/database -run 'TestSemantic(Postgres|MutationPostgres)' -count=1` with `TRPC_TEST_POSTGRES_DSN` set to a disposable test database; the PG tests fail if it is missing and must prove isolation/up/down/up/transaction rollback with real independent connections. Never use the running WeKnora development database or a user's application DB.
 
-- [ ] **Step 7: Commit Task I02**
+- [x] **Step 7: Commit Task I02**
 
 Commit `feat(semantic): i02 business revisions and outbox` with only I02 Go types, migrations, repository, and tests.
 
@@ -318,5 +318,5 @@ Commit `feat(semantic): i02 business revisions and outbox` with only I02 Go type
 
 ## Final I02 Gate
 
-- [ ] Request an independent read-only review of the complete I02 range; fix Critical/Important findings with RED→GREEN behavior tests.
-- [ ] Record the actual PostgreSQL and SQLite evidence separately; no production KB mutation, permission-service integration, or live outbox delivery claim.
+- [x] Request an independent read-only review of the complete I02 range; fix Critical/Important findings with RED→GREEN behavior tests.
+- [x] Record the actual PostgreSQL and SQLite evidence separately; no production KB mutation, permission-service integration, or live outbox delivery claim.
