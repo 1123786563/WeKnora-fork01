@@ -84,6 +84,39 @@ func TestMatchesKnowledgePreservesPerKnowledgeAllowList(t *testing.T) {
 	}
 }
 
+// SP2-a Task 5 contract: DataSourceService.Delete/Pause call
+// CancelTasksForKnowledgeBase with an EMPTY kbID and a single dataSourceID.
+// An empty kbID must skip the KB filter entirely (it must not degenerate into
+// matching payloads with an empty knowledge_base_id) so the call stays scoped
+// to exactly one data source's tasks — dssync payloads carry no
+// knowledge_base_id at all.
+func TestMatchesKnowledgeBaseEmptyKBIDScopesToDataSource(t *testing.T) {
+	dataSourceIDs := map[string]struct{}{"datasource-1": {}}
+
+	if !matchesKnowledgeBase(types.TypeDataSourceSync,
+		[]byte(`{"data_source_id":"datasource-1"}`), "", nil, dataSourceIDs) {
+		t.Fatal("dssync task must match via data_source_id when kbID is empty")
+	}
+	if matchesKnowledgeBase(types.TypeDocumentProcess,
+		[]byte(`{"knowledge_base_id":"kb-1"}`), "", nil, dataSourceIDs) {
+		t.Fatal("empty kbID must not match KB-scoped tasks of other scopes")
+	}
+	if matchesKnowledgeBase(types.TypeDataSourceSync,
+		[]byte(`{"data_source_id":"datasource-other"}`), "", nil, dataSourceIDs) {
+		t.Fatal("tasks of other data sources must stay untouched")
+	}
+}
+
+// SP2-a Task 5: datasource:sync joins the cancellable type set so the runtime
+// dashboard treats it as a first-class cancellable citizen. The
+// data-source-scoped hard cancel itself does not gate on this set
+// (matchesKnowledgeBase matches by payload), so this pins the declared intent.
+func TestTaskTypesForKnowledgeCancelIncludesDataSourceSync(t *testing.T) {
+	if _, ok := taskTypesForKnowledgeCancel[types.TypeDataSourceSync]; !ok {
+		t.Fatalf("taskTypesForKnowledgeCancel must include %q", types.TypeDataSourceSync)
+	}
+}
+
 func TestCancelTasksForKnowledgeBaseRescansMutatedPages(t *testing.T) {
 	server := miniredis.RunT(t)
 	redisClient := redis.NewClient(&redis.Options{Addr: server.Addr()})

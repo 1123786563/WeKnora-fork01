@@ -83,7 +83,12 @@ var queuesScanned = func() []string {
 // taskTypesForKnowledgeCancel lists every asynq task type that carries
 // a knowledge_id in its payload and should be cancelable. The set is
 // deliberately narrow: we don't touch FAQ import / KB-level tasks
-// because the cancel API is per-knowledge.
+// because the cancel API is per-knowledge. datasource:sync carries no
+// knowledge_id (its payload only has data_source_id, so the per-knowledge
+// matcher never fires on it); it is listed so data-source-scoped hard
+// cancel (SP2-a Task 5 delete/pause, via CancelTasksForKnowledgeBase +
+// dataSourceIDs, which does not gate on this set) treats the type as a
+// first-class cancellable citizen.
 var taskTypesForKnowledgeCancel = map[string]struct{}{
 	types.TypeDocumentProcess:      {},
 	types.TypeManualProcess:        {},
@@ -92,6 +97,7 @@ var taskTypesForKnowledgeCancel = map[string]struct{}{
 	types.TypeQuestionGeneration:   {},
 	types.TypeSummaryGeneration:    {},
 	types.TypeChunkExtract:         {},
+	types.TypeDataSourceSync:       {},
 }
 
 // listPageSize caps each Redis LIST call. Asynq pages tasks, so we
