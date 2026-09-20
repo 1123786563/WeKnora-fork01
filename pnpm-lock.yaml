@@ -339,6 +339,16 @@ importers:
 
   packages/i18n: {}
 
+  packages/mobile-core:
+    dependencies:
+      '@weknora/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
+      '@types/node':
+        specifier: 22.14.0
+        version: 22.14.0
+
   packages/ui:
     dependencies:
       '@radix-ui/react-dialog':
