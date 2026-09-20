@@ -33,11 +33,22 @@ type cacheEntry struct {
 }
 
 // CachedClient wraps an inner Client with a per-key TTL cache, request
-// deduplication and stale-fallback. It implements Client.
+// deduplication and stale-fallback. It implements Client and, when the inner
+// client also implements SkillsetClient, the skillset index surface with the
+// same semantics.
+//
+// Download deliberately bypasses the cache (M4 hand-off ruling): package
+// payloads are 32 MiB zips, so caching them would pin hundreds of megabytes
+// in the entries map and stale-fallback would resurrect outdated packages
+// after an outage. Every Download fetches fresh from the inner client.
 type CachedClient struct {
 	inner Client
 	ttl   time.Duration
 	group singleflight.Group
+
+	// skillsets is inner narrowed to SkillsetClient when it implements it;
+	// nil means the skillset operations are unavailable (ErrNoSkillsetClient).
+	skillsets SkillsetClient
 
 	mu      sync.Mutex
 	entries map[string]*cacheEntry
@@ -53,12 +64,16 @@ func NewCached(inner Client, ttl time.Duration) *CachedClient {
 }
 
 func newCached(inner Client, ttl time.Duration, now func() time.Time) *CachedClient {
-	return &CachedClient{
+	c := &CachedClient{
 		inner:   inner,
 		ttl:     ttl,
 		entries: make(map[string]*cacheEntry),
 		now:     now,
 	}
+	if skillsets, ok := inner.(SkillsetClient); ok {
+		c.skillsets = skillsets
+	}
+	return c
 }
 
 // Search implements Client.
@@ -91,17 +106,11 @@ func (c *CachedClient) Rankings(ctx context.Context, kind string) ([]SkillSummar
 	return results, err
 }
 
-// Download implements Client.
+// Download implements Client. It bypasses the cache entirely: every call
+// fetches fresh from the inner client, and errors propagate unwrapped (no
+// ErrStaleOnly / ErrUnreachable markers — see the CachedClient doc comment).
 func (c *CachedClient) Download(ctx context.Context, slug string) ([]byte, error) {
-	key := cacheKey("download", slug)
-	value, err := c.do(ctx, key, func() (any, error) {
-		return c.inner.Download(ctx, slug)
-	})
-	if value == nil {
-		return nil, err
-	}
-	payload, _ := value.([]byte)
-	return payload, err
+	return c.inner.Download(ctx, slug)
 }
 
 // do is the shared cache flow: fresh hit, deduplicated upstream fetch, then

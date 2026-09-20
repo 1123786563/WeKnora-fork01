@@ -134,7 +134,7 @@ func TestCachedKeysAreScopedPerOperationAndArgument(t *testing.T) {
 
 	s, _, d := inner.counts()
 	require.Equal(t, 2, s)
-	require.Equal(t, 1, d)
+	require.Equal(t, 2, d, "downloads bypass the cache: every call fetches fresh")
 }
 
 func TestCachedSingleflightDeduplicatesConcurrentMisses(t *testing.T) {
@@ -231,23 +231,34 @@ func TestCachedRecoversAfterStaleWindow(t *testing.T) {
 	require.Equal(t, fresh, results)
 }
 
-func TestCachedDownloadStaleAndUnreachable(t *testing.T) {
+// TestCachedDownloadBypassesCache pins the M4 hand-off ruling: package
+// payloads are 32 MiB zips, so the stale-fallback cache must never wrap
+// Download — every call fetches fresh from the inner client and errors
+// propagate unwrapped (no ErrStaleOnly / ErrUnreachable markers, no cached
+// bytes resurrected after an outage).
+func TestCachedDownloadBypassesCache(t *testing.T) {
 	inner := &scriptedInner{downloadResp: []byte("zip")}
 	clock := newFakeClock()
-	c := newCached(inner, time.Minute, clock.Now)
+	c := newCached(inner, time.Hour, clock.Now)
 
 	got, err := c.Download(context.Background(), "slug")
 	require.NoError(t, err)
 	require.Equal(t, []byte("zip"), got)
+	got, err = c.Download(context.Background(), "slug")
+	require.NoError(t, err)
+	require.Equal(t, []byte("zip"), got)
+	_, _, d := inner.counts()
+	require.Equal(t, 2, d, "downloads always fetch fresh, even inside the TTL")
 
 	inner.mu.Lock()
+	inner.downloadResp = nil
 	inner.downloadErr = errors.New("connection reset")
 	inner.mu.Unlock()
-	clock.advance(2 * time.Minute)
-
 	got, err = c.Download(context.Background(), "slug")
-	require.ErrorIs(t, err, ErrStaleOnly)
-	require.Equal(t, []byte("zip"), got)
+	require.ErrorIs(t, err, inner.downloadErr)
+	require.Nil(t, got)
+	require.NotErrorIs(t, err, ErrStaleOnly)
+	require.NotErrorIs(t, err, ErrUnreachable)
 }
 
 func TestCachedRankingsInvalidKindShortCircuits(t *testing.T) {

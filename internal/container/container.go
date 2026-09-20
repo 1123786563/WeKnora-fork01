@@ -260,6 +260,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewTenantSandboxConfigRepository))
 	must(container.Provide(repository.NewTenantSkillRepository))
 	must(container.Provide(repository.NewTenantSubagentRepository))
+	must(container.Provide(repository.NewExpertInstallRepository))
 	must(container.Provide(repository.NewCustomAgentRepository))
 	must(container.Provide(repository.NewOrganizationRepository))
 	must(container.Provide(repository.NewKBShareRepository))
@@ -657,14 +658,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// creation through the shared CustomAgentService, and the production
 	// bundled-skill resolver — installs go through the tenant skill service,
 	// installed-skill lookups through the tenant skill repository (the same
-	// lister the session path uses).
+	// lister the session path uses). Since M4 the catalog is builtin ∪ the
+	// tenant's market installs (builtin precedence on ID collision): the
+	// source scans <LOCAL_STORAGE_BASE_DIR>/expert-market/<tenant>/, the
+	// trees MaterializeSkillset + WriteMaterializedExpert produce.
 	must(container.Provide(func(
 		agents interfaces.CustomAgentService,
 		tenantSkills *service.TenantSkillService,
 		skillRepo repository.TenantSkillRepository,
 	) *handler.ExpertHandler {
 		resolver := service.NewBundledSkillResolver(tenantSkills, skillRepo)
-		expertSvc := service.NewExpertService(experts.LoadBuiltinExperts, agents, resolver)
+		expertSvc := service.NewExpertServiceWithSource(
+			experts.LoadBuiltinExperts, agents, resolver,
+			service.NewMarketExpertSource(experts.MarketDataRoot()))
 		return handler.NewExpertHandler(expertSvc)
 	}))
 	// Sub-agent catalog API (M3): the real builtin library (lazy scan, shared

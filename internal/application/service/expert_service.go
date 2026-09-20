@@ -21,6 +21,9 @@ const (
 	// expertSourceBuiltin stamps agents instantiated from the shipped
 	// config/experts templates.
 	expertSourceBuiltin = "builtin"
+	// expertSourceSkillhub stamps agents instantiated from experts a tenant
+	// installed out of the SkillHub market (M4).
+	expertSourceSkillhub = "skillhub"
 	// expertPersonaFileSeparator joins an expert's persona documents (and
 	// the agent-config system prompt) into one markdown system prompt.
 	expertPersonaFileSeparator = "\n\n---\n\n"
@@ -34,6 +37,19 @@ const (
 	// ones in manifest order rather than failing CreateAgent validation.
 	expertStartersValidationLimit = 8
 )
+
+// ExpertSource supplies the experts one tenant installed from the skill
+// market (M4). It is the per-tenant half of the catalog: ExpertService keeps
+// its tenant-blind builtin catalog function and unions this lookup on top,
+// because the injected catalog func (M2 seam) has no tenant parameter.
+// Implementations must be degraded-mode — scan trouble answers an empty
+// list, never an error — so a broken install directory cannot take the
+// whole catalog down.
+type ExpertSource interface {
+	// InstalledExperts returns the tenant's installed experts. The returned
+	// slice and experts are shared read-only; callers must not mutate.
+	InstalledExperts(ctx context.Context, tenantID uint64) []*experts.Expert
+}
 
 // ExpertSkillResolution is what an ExpertSkillResolver produced for one
 // expert instantiation: the skill names the agent should pin, install jobs
@@ -68,6 +84,9 @@ type expertService struct {
 	catalog func() []*experts.Expert
 	agents  interfaces.CustomAgentService
 	skills  ExpertSkillResolver
+	// installed is the optional per-tenant expert source (M4 market); nil
+	// keeps the service builtin-only, exactly as before the seam existed.
+	installed ExpertSource
 }
 
 var _ interfaces.ExpertService = (*expertService)(nil)
@@ -81,32 +100,114 @@ func NewExpertService(
 	agents interfaces.CustomAgentService,
 	skills ExpertSkillResolver,
 ) interfaces.ExpertService {
+	return newExpertService(catalog, agents, skills, nil)
+}
+
+// NewExpertServiceWithSource additionally unions a per-tenant ExpertSource
+// (M4 skill market) onto the builtin catalog: listing and lookups serve
+// builtin ∪ installed, with builtin precedence when IDs collide. The source
+// is only consulted for requests that carry a tenant (ListExperts/GetExpert
+// read it from ctx; Instantiate uses its explicit tenantID).
+func NewExpertServiceWithSource(
+	catalog func() []*experts.Expert,
+	agents interfaces.CustomAgentService,
+	skills ExpertSkillResolver,
+	installed ExpertSource,
+) interfaces.ExpertService {
+	return newExpertService(catalog, agents, skills, installed)
+}
+
+func newExpertService(
+	catalog func() []*experts.Expert,
+	agents interfaces.CustomAgentService,
+	skills ExpertSkillResolver,
+	installed ExpertSource,
+) interfaces.ExpertService {
 	if skills == nil {
 		skills = noopSkillResolver{}
 	}
-	return &expertService{catalog: catalog, agents: agents, skills: skills}
+	return &expertService{catalog: catalog, agents: agents, skills: skills, installed: installed}
 }
 
-// ListExperts returns every expert the catalog exposes.
-func (s *expertService) ListExperts(_ context.Context) ([]*experts.Expert, error) {
-	return s.catalog(), nil
+// ListExperts returns builtin experts plus, when the request carries a
+// tenant and a source is wired, that tenant's installed market experts.
+// Builtin experts keep precedence: an installed expert whose manifest ID
+// collides with a builtin is shadowed, never merged.
+func (s *expertService) ListExperts(ctx context.Context) ([]*experts.Expert, error) {
+	builtin := s.catalog()
+	installed := s.ctxInstalledExperts(ctx)
+	if len(installed) == 0 {
+		return builtin, nil
+	}
+	return mergeExperts(builtin, installed), nil
 }
 
 // GetExpert returns the expert with the given manifest ID.
-func (s *expertService) GetExpert(_ context.Context, id string) (*experts.Expert, error) {
-	if e := s.findExpert(id); e != nil {
+func (s *expertService) GetExpert(ctx context.Context, id string) (*experts.Expert, error) {
+	tenantID, _ := types.TenantIDFromContext(ctx)
+	if e := s.findExpert(ctx, tenantID, id); e != nil {
 		return e, nil
 	}
 	return nil, ErrExpertNotFound
 }
 
-func (s *expertService) findExpert(id string) *experts.Expert {
-	for _, e := range s.catalog() {
+// findExpert looks id up in the builtin catalog first, then in the given
+// tenant's installed experts. Instantiate passes its explicit tenantID; the
+// ctx-only callers resolve it before getting here.
+func (s *expertService) findExpert(ctx context.Context, tenantID uint64, id string) *experts.Expert {
+	if e := findExpertIn(s.catalog(), id); e != nil {
+		return e
+	}
+	if s.installed == nil {
+		return nil
+	}
+	return findExpertIn(s.installed.InstalledExperts(ctx, tenantID), id)
+}
+
+// ctxInstalledExperts answers the requesting tenant's installed experts, or
+// nil when no source is wired, the request carries no tenant, or the source
+// answers nothing.
+func (s *expertService) ctxInstalledExperts(ctx context.Context) []*experts.Expert {
+	if s.installed == nil {
+		return nil
+	}
+	tenantID, ok := types.TenantIDFromContext(ctx)
+	if !ok {
+		return nil
+	}
+	return s.installed.InstalledExperts(ctx, tenantID)
+}
+
+// findExpertIn scans one slice for a manifest ID match.
+func findExpertIn(list []*experts.Expert, id string) *experts.Expert {
+	for _, e := range list {
 		if e != nil && e.Manifest.ID == id {
 			return e
 		}
 	}
 	return nil
+}
+
+// mergeExperts unions builtin and installed experts by manifest ID with
+// builtin precedence, preserving order (builtins first, then installed in
+// source order).
+func mergeExperts(builtin, installed []*experts.Expert) []*experts.Expert {
+	seen := make(map[string]bool, len(builtin))
+	for _, e := range builtin {
+		if e != nil {
+			seen[e.Manifest.ID] = true
+		}
+	}
+	merged := make([]*experts.Expert, 0, len(builtin)+len(installed))
+	merged = append(merged, builtin...)
+	for _, e := range installed {
+		if e == nil || seen[e.Manifest.ID] {
+			continue
+		}
+		seen[e.Manifest.ID] = true
+		merged = append(merged, e)
+	}
+	return merged
 }
 
 // ResolveExpertLocaleText exposes the expert locale-text resolution rule to
@@ -142,7 +243,7 @@ func (s *expertService) Instantiate(
 	expertID string,
 	req interfaces.InstantiateRequest,
 ) (*interfaces.InstantiateResult, error) {
-	e := s.findExpert(expertID)
+	e := s.findExpert(ctx, tenantID, expertID)
 	if e == nil {
 		return nil, ErrExpertNotFound
 	}
@@ -200,7 +301,8 @@ func (s *expertService) Instantiate(
 //   - PersonaMBTI passthrough
 //   - SkillsSelectionMode="selected" + SelectedSkills=manifest skills, only
 //     when the expert bundles skills
-//   - ExpertSource{ExpertID, Source:"builtin"} provenance
+//   - ExpertSource provenance: builtin for shipped templates, skillhub +
+//     the skillset slug for market-installed ones (expertProvenance)
 func buildAgentFromExpert(e *experts.Expert, locale, nameOverride string) *types.CustomAgent {
 	m := e.Manifest
 
@@ -296,11 +398,26 @@ func buildAgentFromExpert(e *experts.Expert, locale, nameOverride string) *types
 		agent.Config.SelectedSkills = append([]string(nil), m.Skills...)
 	}
 
-	agent.Config.ExpertSource = &types.ExpertSourceStruct{
-		ExpertID: m.ID,
+	agent.Config.ExpertSource = expertProvenance(m.ID)
+	return agent
+}
+
+// expertProvenance stamps where a template came from: builtin experts carry
+// Source "builtin"; market-installed experts (IDs under the
+// skillhub-skillset- prefix) carry Source "skillhub" plus the skillset slug,
+// which disambiguates same-ID templates from the market.
+func expertProvenance(expertID string) *types.ExpertSourceStruct {
+	if slug, ok := experts.MarketExpertSlugFromID(expertID); ok {
+		return &types.ExpertSourceStruct{
+			ExpertID: expertID,
+			Source:   expertSourceSkillhub,
+			Slug:     slug,
+		}
+	}
+	return &types.ExpertSourceStruct{
+		ExpertID: expertID,
 		Source:   expertSourceBuiltin,
 	}
-	return agent
 }
 
 // resolveExpertLocaleText picks the best locale match from an experts
