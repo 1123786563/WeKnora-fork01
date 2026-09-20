@@ -54,6 +54,12 @@ def test_delete_request_rejects_non_tombstone_revision() -> None:
         assert "deleted" in str(error)
     else:
         raise AssertionError("expected delete boundary validation")
+    try:
+        DeleteDocumentRequest(revision)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected direct delete boundary validation")
 
 
 def test_evidence_preserves_absent_span_and_access_scope_identity() -> None:
@@ -130,6 +136,17 @@ def test_access_scope_wire_round_trip_preserves_expiry() -> None:
 
     scope = AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 2, "2026-09-20T00:00:00Z", "semantic", "search", "budget")
     assert access_scope_from_wire(access_scope_to_wire(scope)) == scope
+
+
+def test_access_scope_rejects_invalid_expiry_and_empty_budget() -> None:
+    from semantic_service.contracts import AccessScope, ScopeKey
+    for expires_at, budget_ref in (("not-a-time", "budget"), ("2026-09-20T00:00:00Z", "")):
+        try:
+            AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 2, expires_at, "semantic", "search", budget_ref)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("expected access scope validation")
 
 
 def test_operation_wire_round_trip_preserves_state() -> None:

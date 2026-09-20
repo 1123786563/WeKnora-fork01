@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from datetime import datetime
 
 
 UINT64_MAX = 2**64 - 1
@@ -46,6 +47,9 @@ class DocumentRevision:
 @dataclass(frozen=True)
 class DeleteDocumentRequest:
     revision: DocumentRevision
+
+    def __post_init__(self) -> None:
+        self.revision.require_delete()
 
     @classmethod
     def from_revision(cls, revision: DocumentRevision) -> "DeleteDocumentRequest":
@@ -90,8 +94,13 @@ class AccessScope:
     budget_ref: str
 
     def __post_init__(self) -> None:
+        _uint(self.scope.tenant_id, UINT64_MAX, "tenant_id", nonzero=True)
         _uint(self.permission_epoch, UINT64_MAX, "permission_epoch")
-        if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.expires_at or not self.audience or not self.purpose:
+        try:
+            datetime.fromisoformat(self.expires_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("expires_at must be an ISO-8601 timestamp") from exc
+        if not self.subject_id or not self.scope_ref or not self.scope_hash or not self.expires_at or not self.audience or not self.purpose or not self.budget_ref:
             raise ValueError("access scope identity fields are required")
 
 
