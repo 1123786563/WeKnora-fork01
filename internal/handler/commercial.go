@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
-
 // CommercialAPIKeyCapability is the explicit additive capability an API
 // key must carry to reach commercial endpoints. Full access deliberately
 // does NOT imply it: purchase authority is never auto-derived from a
@@ -54,6 +54,12 @@ type CommercialHandler struct {
 	// reconciliation. nil until the container wires it — the readiness read
 	// then fails closed honestly (unavailable/unconfigured), never fabricated.
 	platform commercial.CommercialPlatform
+	// billingAccounts is the T06 (#78) billing account service: the lazy
+	// ensure-on-first-billing-access flow behind GET /commercial/account.
+	// nil until the container wires it — the account read then answers
+	// honestly pending/unconfigured; the endpoint never 500s for a wiring
+	// gap.
+	billingAccounts *commercialsvc.BillingAccountService
 }
 
 // NewCommercialHandler builds the handler and makes sure the resource
@@ -321,6 +327,69 @@ func (h *CommercialHandler) SetOrderService(s *commercialsvc.OrderService) { h.o
 // for the container, T05). Until it is called, the readiness read answers
 // honestly unavailable/unconfigured — it never fabricates platform state.
 func (h *CommercialHandler) SetCommercialPlatform(p commercial.CommercialPlatform) { h.platform = p }
+
+// SetBillingAccountService wires the billing account service (injection
+// point for the container, T06/#78). Until it is called, the account read
+// answers honestly pending/unconfigured — the endpoint never 500s for a
+// wiring gap.
+func (h *CommercialHandler) SetBillingAccountService(s *commercialsvc.BillingAccountService) {
+	h.billingAccounts = s
+}
+
+// tenantDisplayName reads the space's display name for the ADVISORY
+// metadata of the ensure command. A missing name (or a missing tenants
+// table) degrades to a stable placeholder — never an error.
+func (h *CommercialHandler) tenantDisplayName(tenantID uint64) string {
+	if h == nil || h.db == nil {
+		return fmt.Sprintf("WeKnora Space %d", tenantID)
+	}
+	var name string
+	if err := h.db.Raw(`SELECT name FROM tenants WHERE id = ?`, tenantID).Scan(&name).Error; err != nil || name == "" {
+		return fmt.Sprintf("WeKnora Space %d", tenantID)
+	}
+	return name
+}
+
+// AccountStatus serves GET /commercial/account: the caller space's billing
+// account status (T06, #78). This GET is the documented LAZY ENSURE trigger
+// (first billing access): an idempotent, authority-failure-safe establish
+// of the space's Billing Account, then the CLOSED product envelope —
+// state ∈ {linked, pending}, reason ∈ {"", unconfigured, unreachable,
+// invalid_response, unsupported} (empty iff linked), ensured_at RFC3339
+// (omitted when never ensured). No Lago URL, path, external id, provider
+// reference or err.Error() text ever crosses; the tenant comes exclusively
+// from the authenticated context.
+func (h *CommercialHandler) AccountStatus(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.billingAccounts == nil {
+		// Fail closed, honestly: no service wired means no account answer.
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+			"state":  "pending",
+			"reason": "unconfigured",
+		}})
+		return
+	}
+	status, err := h.billingAccounts.EnsureBillingAccount(
+		c.Request.Context(), tenantID, h.tenantDisplayName(tenantID), commercialUserID(c))
+	if err != nil {
+		// A database failure is the only error class: generic 500 text, no
+		// provider vocabulary ever rides along.
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "account status unavailable"})
+		return
+	}
+	data := gin.H{
+		"state":  status.State,
+		"reason": status.Reason,
+	}
+	if status.EnsuredAt != nil {
+		data["ensured_at"] = status.EnsuredAt.UTC().Format(time.RFC3339)
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
 
 // PlatformReadiness serves GET /commercial/platform/readiness: the one
 // protected, read-only Billing API operation shipped through the frozen

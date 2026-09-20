@@ -777,6 +777,17 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(func(h *handler.CommercialHandler, p domain.CommercialPlatform) {
 		h.SetCommercialPlatform(p)
 	}))
+	// T06 (#78) billing account service: the lazy ensure-on-first-billing-
+	// access flow behind GET /commercial/account (tenant → exactly one
+	// authority customer under the deterministic identity). Placed IMMEDIATELY
+	// after the platform Invoke above, on purpose — the same ordering-trap
+	// rule applies: away from the pre-craft-Invoke provider block (see the
+	// comment there). The service consumes the same seam registration; a
+	// pending account never blocks space functions (fail-closed posture).
+	must(container.Provide(commercialsvc.NewBillingAccountService))
+	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.BillingAccountService) {
+		h.SetBillingAccountService(s)
+	}))
 	// W04/A02/A07/A03 app-connector HTTP surface: four single-lifecycle
 	// handlers (installations, connections incl. OAuth, sync status,
 	// actions), each owning its routes and write gate.
