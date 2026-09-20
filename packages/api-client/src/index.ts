@@ -128,6 +128,24 @@ export type {
   SubagentCatalog,
   SubagentDetail,
 } from './subagents.ts';
+export { createMarketApi } from './market.ts';
+export type {
+  MarketApi,
+  MarketSkillSummary,
+  MarketListResult,
+  MarketSkillInstallResult,
+  MarketSkillset,
+  MarketSkillsetIndex,
+  MarketSkillsetDetail,
+  MarketSkillsetInstallResult,
+  TenantPublishedSkill,
+  TenantPublishedSkillIndex,
+  PublishedSkillView,
+  TenantPublishedExpert,
+  TenantPublishedExpertIndex,
+  PublishedExpertView,
+  PublishExpertInput,
+} from './market.ts';
 export { createExecutionsApi, executionEventsRequest } from './mobile/executions.ts';
 export { createInteractionsApi } from './mobile/interactions.ts';
 export { createOverviewApi } from './mobile/overview.ts';
