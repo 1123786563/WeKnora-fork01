@@ -6,5 +6,4 @@
 
 The adaptation preserves the title's `children`, `numberOfLines`, `testID`, and
 `style` interface. It replaces `react-native-unistyles` theme access with the
-mobile app's generated tokens and React Native `StyleSheet`, and the surrounding
-shell uses a supplied route callback rather than Paseo navigation state.
+mobile app runtime theme and React Native `StyleSheet`.

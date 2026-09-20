@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { StyleSheet, Text, type StyleProp, type TextStyle } from "react-native";
-import { generatedTokens } from "@/theme/tokens.generated";
+import { useTheme } from "@/theme/ThemeProvider";
 
 export interface PaseoScreenTitleProps {
   children: ReactNode;
@@ -14,6 +14,20 @@ export interface PaseoScreenTitleProps {
  * never children, so the title continues to own its truncation behavior.
  */
 export function PaseoScreenTitle({ children, numberOfLines = 1, testID, style }: PaseoScreenTitleProps) {
+  const { theme } = useTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        text: {
+          flexShrink: 1,
+          minWidth: 0,
+          fontSize: theme.type.body.fontSize,
+          fontWeight: "400",
+          color: theme.c.ink,
+        },
+      }),
+    [theme],
+  );
   const combinedStyle = useMemo(() => [styles.text, style], [style]);
 
   return (
@@ -22,13 +36,3 @@ export function PaseoScreenTitle({ children, numberOfLines = 1, testID, style }:
     </Text>
   );
 }
-
-const styles = StyleSheet.create({
-  text: {
-    flexShrink: 1,
-    minWidth: 0,
-    fontSize: generatedTokens.typography.body.fontSize,
-    fontWeight: "400",
-    color: generatedTokens.colors.light.ink,
-  },
-});
