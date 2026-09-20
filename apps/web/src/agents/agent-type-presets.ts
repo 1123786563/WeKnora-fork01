@@ -269,6 +269,73 @@ Help users explore, analyze, and derive insights from their tabular data through
 `,
 };
 
+/**
+ * Selector-facing metadata for the vendored builtin agent_system_prompt
+ * templates (config/prompt_templates/agent_system_prompt.yaml — name/
+ * description/default fields, zh-CN i18n included; the shipped catalog marks
+ * progressive_rag_agent as the global default). Backs the 使用模板 /
+ * 恢复默认 controls the Vue editor renders via PromptTemplateSelector
+ * (frontend/src/components/PromptTemplateSelector.vue); tenant-customized
+ * entries are unreachable from this client until the prompt-templates
+ * endpoint lands in the api-client (gap recorded in the R485 report).
+ */
+export interface AgentSystemPromptTemplateOption {
+  id: string;
+  name: { zh: string; en: string };
+  description: { zh: string; en: string };
+  default: boolean;
+  content: string;
+}
+
+export const AGENT_SYSTEM_PROMPT_TEMPLATE_LIST: AgentSystemPromptTemplateOption[] = [
+  {
+    id: 'progressive_rag_agent',
+    name: { zh: '渐进式 RAG 智能体', en: 'Progressive RAG Agent' },
+    description: { zh: '带知识库的渐进式检索增强生成智能体系统提示词', en: 'System prompt for Progressive Agentic RAG mode with Knowledge Bases' },
+    default: true,
+    content: AGENT_SYSTEM_PROMPT_TEMPLATES['progressive_rag_agent']!,
+  },
+  {
+    id: 'wiki_researcher',
+    name: { zh: '维基研究员', en: 'Wiki Researcher' },
+    description: { zh: '专用于 Wiki 知识库图谱导航与深度阅读的智能体系统提示词', en: 'System prompt for Wiki Researcher agent with knowledge graph traversal' },
+    default: false,
+    content: AGENT_SYSTEM_PROMPT_TEMPLATES['wiki_researcher']!,
+  },
+  {
+    id: 'hybrid_rag_wiki_agent',
+    name: { zh: 'Wiki + RAG 混合智能体', en: 'Hybrid RAG + Wiki Agent' },
+    description: { zh: '同时启用 Wiki 与向量/关键词索引的知识库场景下使用的系统提示词', en: 'System prompt for agents working on KBs where BOTH Wiki and chunk (vector/keyword) indexes are enabled.' },
+    default: false,
+    content: AGENT_SYSTEM_PROMPT_TEMPLATES['hybrid_rag_wiki_agent']!,
+  },
+  {
+    id: 'data_analyst',
+    name: { zh: '数据分析师', en: 'Data Analyst' },
+    description: { zh: '基于 DuckDB SQL 的数据分析智能体系统提示词', en: 'System prompt for Data Analyst agent with DuckDB SQL analysis' },
+    default: false,
+    content: AGENT_SYSTEM_PROMPT_TEMPLATES['data_analyst']!,
+  },
+];
+
+/**
+ * Vue handleAgentSystemPromptResetDefault (AgentEditorModal.vue:4689-4712):
+ * the "default" for a non-custom agent type is the template its preset binds
+ * (Wiki 问答 → wiki_researcher); custom (or unknown/unbound) types fall back
+ * to the global default entry (findDefaultTemplate: default:true, else first).
+ */
+export function resolveAgentSystemPromptResetTemplate(agentTypeId: string | undefined): AgentSystemPromptTemplateOption | null {
+  if (agentTypeId && agentTypeId !== 'custom') {
+    const preset = findAgentTypePreset(agentTypeId);
+    const promptId = preset?.config?.system_prompt_id;
+    if (promptId) {
+      const bound = AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.find((tpl) => tpl.id === promptId);
+      if (bound) return bound;
+    }
+  }
+  return AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.find((tpl) => tpl.default) ?? AGENT_SYSTEM_PROMPT_TEMPLATE_LIST[0] ?? null;
+}
+
 /** config/agent_type_presets.yaml, order preserved. */
 export const AGENT_TYPE_PRESETS: AgentTypePreset[] = [
   {

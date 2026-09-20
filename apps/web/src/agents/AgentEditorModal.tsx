@@ -2,22 +2,28 @@
  * React port of frontend/src/views/agent/AgentEditorModal.vue (Vue baseline).
  * Behaviour parity notes cite the Vue source per block; the pure logic lives
  * in agent-editor.ts and agent-type-presets.ts. Stage scope: create/edit
- * shell + grouped rail, basic info (incl. agent type presets), prompts, model
- * config, conversation, question suggestions, personalization (MBTI persona),
- * knowledge, retrieval, web search, attachment upload, tools, MCP services
- * and skills. Out of scope (recorded gaps): intent prompts, the placeholder
- * autocomplete popup, the embedded KBParserSettings rules editor, share
- * settings and tenant-customized prompt templates.
+ * shell + grouped rail, basic info (incl. agent type presets), prompts (with
+ * the R486 placeholder tag strip + builtin template controls), model config,
+ * conversation, question suggestions, personalization (MBTI persona),
+ * knowledge (file-types dropdown multi-select), retrieval (tenant-configured
+ * create defaults), web search, attachment upload (with the embedded chat
+ * parser rules editor), tools, MCP services and skills. Out of scope
+ * (recorded gaps): intent prompts, the `{{` caret autocomplete popup,
+ * share settings and tenant-customized prompt templates (api-client lacks
+ * the prompt-templates / agents/placeholders endpoints; the shipped builtin
+ * catalog is vendored instead).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
 import { Checkbox, Input, Radio, Range, Select, Textarea } from '@weknora/ui';
 import {
   AGENT_FILE_TYPE_OPTIONS,
+  AGENT_SYSTEM_PROMPT_TEMPLATE_LIST,
   AGENT_TYPE_PRESETS,
   agentTypePresetDescription,
   agentTypePresetLabel,
   applyAgentModeSwitch,
+  applyCreateRetrievalDefaults,
   applyKbSelectionMode,
   applyAgentTypePreset,
   applyScopeSelectionMode,
@@ -27,8 +33,10 @@ import {
   defaultAgentForm,
   findAgentTypePreset,
   hydrateAgentForm,
+  incompatibleSelectedKbCount,
   initKbSelectionMode,
   initScopeSelectionMode,
+  insertPlaceholderAtCursor,
   isDescriptionSystemGenerated,
   isNameSystemGenerated,
   isNamedSandboxBackend,
@@ -37,7 +45,10 @@ import {
   needsRerankModel,
   presetDefaultDescription,
   presetDefaultName,
+  promptPlaceholdersFor,
+  resolveAgentSystemPromptResetTemplate,
   seedCreateAgentForm,
+  tenantRetrievalDefaultsFromConfig,
   TOOL_CATALOG,
   TOOL_GROUPS,
   validateAgentForm,
@@ -52,6 +63,8 @@ import {
   type ToolCapabilityScope,
   type Translate,
 } from './agent-editor.ts';
+import { AgentParserRules, chatParserGroups, ensureCompleteParserRules } from './AgentParserRules.tsx';
+import type { ParserEngineInfo, ParserEngineRule } from '../knowledge-settings/parserSettings.tsx';
 import { PersonaSection } from './PersonaSection.tsx';
 import { SubagentsSection } from './SubagentsSection.tsx';
 import { navigate } from '../platform/navigation.ts';
@@ -78,9 +91,12 @@ interface EditorDeps {
   catalog: SkillCatalog[];
   mcpServices: McpServiceLike[];
   storageStatus: Record<string, boolean>;
+  // R486 — GET /system/parser-engines registry feeding the embedded chat
+  // attachment parser rules editor (Vue editorResources.ensureParserEngines).
+  parserEngines: ParserEngineInfo[];
 }
 
-const EMPTY_DEPS: EditorDeps = { models: [], kbOptions: [], providers: [], sandboxConfigs: [], catalog: [], mcpServices: [], storageStatus: {} };
+const EMPTY_DEPS: EditorDeps = { models: [], kbOptions: [], providers: [], sandboxConfigs: [], catalog: [], mcpServices: [], storageStatus: {}, parserEngines: [] };
 const EMPTY_SCOPE: ToolCapabilityScope = { vector: false, keyword: false, wiki: false, graph: false, faq: false };
 
 const missReasonKey = (missKind: string): string =>
@@ -103,9 +119,9 @@ const FIELD_TALL = 'min-h-[200px]';
 const ROW_ERROR_FIELDS = '[&_.wk-ae-input]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-textarea]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-select]:border-[var(--td-error-color,#d54941)]';
 const AE_BTN = 'cursor-pointer rounded-md px-4 py-1.5 text-[14px]';
 
-function Row({ label, required = false, desc, hint, htmlFor, error, children }: {
+function Row({ label, required = false, desc, hint, htmlFor, error, extra, children }: {
   label: string; required?: boolean; desc?: string; hint?: string; htmlFor?: string;
-  error?: string; children: React.ReactNode;
+  error?: string; extra?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
     <div className={`flex items-start gap-6${error ? ` ${ROW_ERROR_FIELDS}` : ''}`}>
@@ -116,11 +132,73 @@ function Row({ label, required = false, desc, hint, htmlFor, error, children }: 
         </label>
         {desc ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{desc}</p> : null}
         {hint ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{hint}</p> : null}
+        {extra}
       </div>
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
         {children}
         {error ? <p className="m-0 mt-0.5 text-[12px] text-[var(--td-error-color,#d54941)]" data-field-error={htmlFor ? htmlFor.replace('wk-ae-', '').replace(/-/g, '_') : undefined}>{error}</p> : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * R486 P3-2 — the supported-file-types control as a dropdown multi-select,
+ * mirroring the Vue t-select multiple (AgentEditorModal.vue:1529-1536): a
+ * single trigger showing the joined labels (placeholder 全部类型 when empty)
+ * that opens a checkbox panel; the selected set semantics are unchanged and
+ * write straight back to config.supported_file_types.
+ */
+function FileTypeMultiSelect({ selected, options, onChange, placeholderLabel, t }: {
+  selected: string[];
+  options: typeof AGENT_FILE_TYPE_OPTIONS;
+  onChange: (next: string[]) => void;
+  placeholderLabel: string;
+  t: Translate;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [open]);
+  const optionLabel = (option: typeof options[number]) => (option.labelKey ? t(option.labelKey) : option.label);
+  const selectedLabels = options.filter((option) => selected.includes(option.value)).map(optionLabel);
+  return (
+    <div className="relative w-full max-w-[460px]" ref={rootRef} data-field-group="supported_file_types">
+      <button
+        type="button"
+        data-file-types-trigger
+        aria-haspopup="listbox"
+        aria-expanded={open ? 'true' : 'false'}
+        className={`flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] px-2.5 text-left text-[14px] ${selected.length === 0 ? 'text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]' : ''}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="truncate">{selectedLabels.length > 0 ? selectedLabels.join('、') : placeholderLabel}</span>
+        <span aria-hidden="true" className="text-[10px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">▾</span>
+      </button>
+      {open ? (
+        <div className="absolute top-[calc(100%+4px)] left-0 z-30 w-full rounded-md border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-container,#fff)] p-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="listbox" data-file-types-panel>
+          {options.map((option) => (
+            <label key={option.value} title={t(option.descriptionKey)} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]">
+              <Checkbox
+                data-file-type={option.value}
+                checked={selected.includes(option.value)}
+                onChange={(event) => {
+                  const set = new Set(selected);
+                  if (event.target.checked) set.add(option.value); else set.delete(option.value);
+                  onChange([...set]);
+                }}
+              />
+              <span>{optionLabel(option)}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -198,8 +276,19 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   const [installingId, setInstallingId] = useState('');
   // R485 D1 — question suggestions tab (Vue suggestionTab, starters default)
   const [suggestionTab, setSuggestionTab] = useState<'starters' | 'followUps'>('starters');
+  // R486 D4 — 使用模板 popup (Vue PromptTemplateSelector popupVisible)
+  const [templatePanelOpen, setTemplatePanelOpen] = useState(false);
+  // R486 KB warn — agent-type switch KB-conflict toast (Vue MessagePlugin.warning
+  // with a 4000ms duration; React renders it in-modal as a status region)
+  const [kbWarn, setKbWarn] = useState<string | null>(null);
+  const kbWarnTimer = useRef<number | null>(null);
+  // R486 D4 — caret insert targets (Vue promptTextareaRef / contextTemplateTextareaRef)
+  const systemPromptRef = useRef<HTMLTextAreaElement | null>(null);
+  const contextTemplateRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef(form);
   formRef.current = form;
+
+  useEffect(() => () => { if (kbWarnTimer.current !== null) window.clearTimeout(kbWarnTimer.current); }, []);
 
   const patch = useCallback((mutate: (draft: AgentEditorForm) => void) => {
     setForm((current) => {
@@ -228,9 +317,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     setHighlightedField(highlight);
     setPostCreate(false);
     setSuggestionTab('starters');
+    setTemplatePanelOpen(false);
+    setKbWarn(null);
     void (async () => {
       const next: EditorDeps = { ...EMPTY_DEPS };
-      const [models, kbs, sandboxes, catalog, providers, mcpServices, storageStatus] = await Promise.allSettled([
+      const [models, kbs, sandboxes, catalog, providers, mcpServices, storageStatus, parserEngines, retrievalConfig] = await Promise.allSettled([
         client.configuration.models.list(),
         client.knowledgeBases.list(),
         client.sandboxConfigurations.list(),
@@ -238,6 +329,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
         client.settings.webSearch.providers.list(),
         client.configuration.mcp.list(),
         client.settings.storage.legacy.status(),
+        // R486 — parser registry + tenant retrieval-config (Vue prefetchAgent-
+        // EditorDeps ensureParserEngines / ensureTenantRetrievalConfig); the
+        // Promise.resolve wrapper also catches a synchronously missing client
+        // method so one absent endpoint cannot take the whole load down.
+        Promise.resolve().then(() => client.knowledgeBases.settings.parserEngines()),
+        Promise.resolve().then(() => client.settings.retrieval.get()),
       ]);
       if (!active) return;
       if (models.status === 'fulfilled') next.models = Array.isArray(models.value) ? models.value as ModelConfiguration[] : [];
@@ -267,6 +364,20 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
           next.storageStatus = map;
         }
       }
+      if (parserEngines.status === 'fulfilled') {
+        // GET /system/parser-engines -> { data: [{Name, Description, FileTypes, Available}] }
+        const rows = (parserEngines.value as unknown as Record<string, unknown> | undefined)?.data;
+        if (Array.isArray(rows)) {
+          next.parserEngines = rows
+            .filter((row): row is Record<string, unknown> => row !== null && typeof row === 'object')
+            .map((row) => ({
+              Name: String(row.Name ?? ''),
+              ...(typeof row.Description === 'string' ? { Description: row.Description } : {}),
+              ...(Array.isArray(row.FileTypes) ? { FileTypes: row.FileTypes.filter((ext): ext is string => typeof ext === 'string') } : {}),
+              ...(row.Available === undefined ? {} : { Available: row.Available === true }),
+            }));
+        }
+      }
       setDeps(next);
 
       if (mode === 'edit' && agent) {
@@ -282,7 +393,14 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
         // R485 D3: the default agent_type preset ('rag-qa') is applied on open
         // so name/description/system prompt/tools match the type dropdown.
         // R485 D5: chat/rerank models prefilled when empty.
-        setForm(seedCreateAgentForm(t, locale, next.models));
+        const seeded = seedCreateAgentForm(t, locale, next.models);
+        // R486 D9 — create-mode retrieval knobs open at the tenant-configured
+        // values (Vue 3477-3481 newFormData defaults + 3912-3917 tenant reads;
+        // the `|| / !== undefined` semantics live in tenantRetrievalDefaultsFromConfig)
+        if (retrievalConfig.status === 'fulfilled') {
+          applyCreateRetrievalDefaults(seeded, tenantRetrievalDefaultsFromConfig(retrievalConfig.value as Record<string, unknown>));
+        }
+        setForm(seeded);
         setKbMode('all');
         setMcpMode('none');
         setSkillsMode('none');
@@ -304,6 +422,31 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
+
+  // R486 — Vue KBParserSettings ensureCompleteRules (onMounted → loadEngines):
+  // once the parser registry is loaded, materialise a rule per chat-relevant
+  // family so the stored config covers defaults too, not only touched rows.
+  useEffect(() => {
+    if (!open || deps.parserEngines.length === 0) return;
+    const current = Array.isArray(form.config.chat_parser_engine_rules) ? form.config.chat_parser_engine_rules as ParserEngineRule[] : [];
+    const complete = ensureCompleteParserRules(current, chatParserGroups(t, deps.parserEngines), deps.parserEngines);
+    if (complete.length > current.length) patchConfig('chat_parser_engine_rules', complete);
+  }, [open, deps.parserEngines, form.config.chat_parser_engine_rules, t, patchConfig]);
+
+  // R486 D4 — Vue handlePlaceholderClick('system'|'context') → insertPlaceholder:
+  // splice the full {{name}} token at the textarea caret and park the caret
+  // after it.
+  const insertPromptPlaceholder = useCallback((field: 'system_prompt' | 'context_template', name: string) => {
+    const textarea = field === 'system_prompt' ? systemPromptRef.current : contextTemplateRef.current;
+    const value = field === 'system_prompt' ? formRef.current.config.system_prompt : formRef.current.config.context_template;
+    const caret = textarea ? textarea.selectionStart : value.length;
+    const next = insertPlaceholderAtCursor(value, caret, name);
+    patchConfig(field, next.value);
+    if (textarea) {
+      textarea.setSelectionRange(next.cursorPos, next.cursorPos);
+      textarea.focus();
+    }
+  }, [patchConfig]);
 
   const isAgentMode = form.config.agent_mode === 'smart-reasoning';
   const hasKnowledgeBase = kbMode !== 'none';
@@ -396,8 +539,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     });
   }, []);
 
-  // R485 D2 — Vue onAgentTypeChange 3334-3361: system-generated name/description
-  // refresh (user-edited values survive), preset application, KB-mode sync.
+  // R485 D2 + R486 KB warn — Vue onAgentTypeChange 3334-3361: system-generated
+  // name/description refresh (user-edited values survive), preset application,
+  // KB-mode sync (the Vue watch clears the explicit list on all/none), and a
+  // soft warning when the post-switch preset/mode disables selected KBs
+  // (MessagePlugin.warning kbIncompatibleWarn, 4000ms — rendered in-modal).
   const onAgentTypeChange = useCallback((value: string) => {
     const current = formRef.current;
     const canOverrideName = isNameSystemGenerated(current.name, t, locale);
@@ -416,9 +562,26 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     if (canOverrideName) draft.name = presetDefaultName(preset, t, locale);
     if (canOverrideDesc) draft.description = presetDefaultDescription(preset, locale);
     const presetKbMode = preset?.config?.kb_selection_mode;
-    if (presetKbMode === 'all' || presetKbMode === 'selected' || presetKbMode === 'none') setKbMode(presetKbMode);
+    if (presetKbMode === 'all' || presetKbMode === 'selected' || presetKbMode === 'none') {
+      // Vue applyAgentTypePreset 3316-3318 writes both the config and the UI
+      // radio; the kbSelectionMode watch (3639-3650) clears the explicit list
+      // for all/none so residue never leaks into the payload.
+      draft.config.kb_selection_mode = presetKbMode;
+      if (presetKbMode !== 'selected') draft.config.knowledge_bases = [];
+      setKbMode(presetKbMode);
+    }
     setForm(draft);
-  }, [t, locale]);
+    // Vue 3342-3347 — soft warning on incompatible selections (no forced removal)
+    const nextMode = draft.config.kb_selection_mode;
+    const count = incompatibleSelectedKbCount(nextMode, draft.config.knowledge_bases, deps.kbOptions, value === 'custom' ? null : preset, draft.config.agent_mode);
+    if (kbWarnTimer.current !== null) window.clearTimeout(kbWarnTimer.current);
+    if (count > 0) {
+      setKbWarn(t('agentEditor.agentType.kbIncompatibleWarn', { count }));
+      kbWarnTimer.current = window.setTimeout(() => setKbWarn(null), 4000);
+    } else {
+      setKbWarn(null);
+    }
+  }, [t, locale, deps.kbOptions]);
 
   // Deep-patch helper for the nested question_suggestions block (Vue v-model
   // binds straight into the nested objects; React needs a fresh copy).
@@ -610,6 +773,92 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     );
   }
 
+  // R486 D4 — the placeholder tag strip Vue renders under each prompt desc
+  // (AgentEditorModal.vue:221-231): 可用变量 label, one {{name}} chip per
+  // definition (tooltip = description + click-to-insert) and the hint.
+  const renderPlaceholderTags = (field: 'agent_system_prompt' | 'system_prompt' | 'context_template', target: 'system_prompt' | 'context_template', tagBlock: string) => (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1" data-placeholder-tags={tagBlock}>
+      <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.placeholders.available')}</span>
+      {promptPlaceholdersFor(field).map((def) => (
+        <button
+          key={def.name}
+          type="button"
+          data-placeholder-tag={def.name}
+          title={`${def.description}${t('agentEditor.placeholders.clickToInsert')}`}
+          className="cursor-pointer rounded border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] px-1.5 py-[1px] font-[family-name:monospace] text-[11px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:border-[var(--td-brand-color,#0052d9)] hover:text-[var(--td-brand-color,#0052d9)]"
+          onClick={() => insertPromptPlaceholder(target, def.name)}
+        >{`{{${def.name}}}`}</button>
+      ))}
+      <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.placeholders.hint')}</span>
+    </div>
+  );
+
+  // R486 D4 — PromptTemplateSelector corner controls (frontend/src/components/
+  // PromptTemplateSelector.vue): 恢复默认 + 使用模板 popup over the vendored
+  // builtin agent_system_prompt templates. Vue renders these for both prompt
+  // modes; the normal-mode system/context template bodies are not vendored and
+  // the tenant prompt-templates endpoint is missing from the api-client, so
+  // the controls stay agent-mode only (gap recorded in the R486 report).
+  const renderTemplateControls = () => (
+    <div className="relative flex items-center gap-1.5 self-end">
+      <button
+        type="button"
+        data-prompt-reset-default
+        className="flex cursor-pointer items-center gap-1 rounded-md border-none bg-transparent px-1.5 py-[3px] text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))] hover:text-[var(--td-brand-color,#0052d9)]"
+        onClick={() => {
+          const template = resolveAgentSystemPromptResetTemplate(form.config.agent_type);
+          if (!template) return;
+          patch((draft) => {
+            draft.config.system_prompt = template.content;
+            draft.config.system_prompt_id = template.id;
+          });
+        }}
+      >⟲ {t('promptTemplate.resetDefault')}</button>
+      <div className="relative">
+        <button
+          type="button"
+          data-prompt-template-toggle
+          aria-haspopup="listbox"
+          aria-expanded={templatePanelOpen ? 'true' : 'false'}
+          className="flex cursor-pointer items-center gap-1 rounded-md border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] px-2 py-[3px] text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:border-[var(--td-brand-color,#0052d9)] hover:text-[var(--td-brand-color,#0052d9)]"
+          onClick={() => setTemplatePanelOpen((current) => !current)}
+        >▦ {t('promptTemplate.useTemplate')}</button>
+        {templatePanelOpen ? (
+          <div className="absolute right-0 bottom-[calc(100%+4px)] z-30 w-[420px] rounded-md border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-container,#fff)] p-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="listbox" data-prompt-template-panel>
+            <p className="m-0 border-b border-[var(--td-component-stroke,#e7e7e7)] px-3 py-2 text-[13px] font-medium">{t('promptTemplate.selectTemplate')}</p>
+            <div className="max-h-[320px] overflow-y-auto p-1">
+              {AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.length === 0 ? (
+                <p className="m-0 px-3 py-6 text-center text-[13px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('promptTemplate.noTemplates')}</p>
+              ) : AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  data-prompt-template={template.id}
+                  className="mb-1 flex w-full cursor-pointer flex-col items-start gap-1 rounded-md border-none bg-transparent px-3 py-2.5 text-left last:mb-0 hover:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]"
+                  onClick={() => {
+                    // Vue handleSystemPromptTemplateSelect (4683-4686): the
+                    // selection replaces the body only; system_prompt_id is
+                    // written by 恢复默认, not by a manual pick.
+                    patchConfig('system_prompt', template.content);
+                    setTemplatePanelOpen(false);
+                  }}
+                >
+                  <span className="flex items-center gap-2 text-[13px] font-medium">
+                    {locale.startsWith('zh') ? template.name.zh : template.name.en}
+                    {template.default ? (
+                      <span className="rounded bg-[var(--td-warning-color-light,#fdf1e3)] px-1.5 py-[1px] text-[11px] font-medium text-[var(--td-warning-color,#e37318)]" data-template-default>{t('promptTemplate.default')}</span>
+                    ) : null}
+                  </span>
+                  <span className="text-left text-[12px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{locale.startsWith('zh') ? template.description.zh : template.description.en}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+
   function renderPrompts() {
     return (
       <section className="wk-ae-section" data-editor-section="prompts">
@@ -624,7 +873,9 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             desc={t('agentEditor.desc.systemPrompt')}
             htmlFor="wk-ae-system-prompt"
             error={errorMessage('system_prompt')}
+            extra={renderPlaceholderTags(isAgentMode ? 'agent_system_prompt' : 'system_prompt', 'system_prompt', 'system')}
           >
+            {isAgentMode ? renderTemplateControls() : null}
             <Textarea
               id="wk-ae-system-prompt"
               data-field="system_prompt"
@@ -632,6 +883,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               rows={10}
               value={form.config.system_prompt}
               disabled={form.is_builtin}
+              ref={systemPromptRef}
               onChange={(event) => patchConfig('system_prompt', event.target.value)}
             />
           </Row>
@@ -642,6 +894,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               desc={t('agentEditor.desc.contextTemplate')}
               htmlFor="wk-ae-context-template"
               error={errorMessage('context_template')}
+              extra={renderPlaceholderTags('context_template', 'context_template', 'context')}
             >
               <Textarea
                 id="wk-ae-context-template"
@@ -650,6 +903,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                 rows={8}
                 value={form.config.context_template}
                 disabled={form.is_builtin}
+                ref={contextTemplateRef}
                 onChange={(event) => patchConfig('context_template', event.target.value)}
               />
             </Row>
@@ -900,36 +1154,18 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             </Row>
           ) : null}
           {hasKnowledgeBase ? (
-            // R484 D8 — Vue AgentEditorModal.vue:1523-1536: 支持的文件类型
-            // multi-select limits the file types users can @ mention; empty =
-            // all types (the t-select placeholder, shown as a trailing hint).
+            // R486 P3-2 — Vue AgentEditorModal.vue:1529-1536: 支持的文件类型 is
+            // a t-select multiple (placeholder 全部类型, min-collapsed-num 3);
+            // the dropdown multi-select keeps the selected-set semantics and
+            // writes back config.supported_file_types unchanged.
             <Row label={t('agentEditor.fileTypes.label')} desc={t('agentEditor.fileTypes.desc')}>
-              <div className="flex w-full max-w-[460px] flex-wrap items-center gap-1" data-field-group="supported_file_types">
-                {AGENT_FILE_TYPE_OPTIONS.map((option) => {
-                  const checked = form.config.supported_file_types.includes(option.value);
-                  return (
-                    <label key={option.value} title={t(option.descriptionKey)}
-                      className="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1 text-[13px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]">
-                      <Checkbox
-                        data-file-type={option.value}
-                        checked={checked}
-                        onChange={(event) => {
-                          const next = event.target.checked;
-                          patch((draft) => {
-                            const set = new Set(draft.config.supported_file_types);
-                            if (next) set.add(option.value); else set.delete(option.value);
-                            draft.config.supported_file_types = [...set];
-                          });
-                        }}
-                      />
-                      <span>{option.labelKey ? t(option.labelKey) : option.label}</span>
-                    </label>
-                  );
-                })}
-                {form.config.supported_file_types.length === 0 ? (
-                  <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.fileTypes.allTypes')}</span>
-                ) : null}
-              </div>
+              <FileTypeMultiSelect
+                selected={form.config.supported_file_types}
+                options={AGENT_FILE_TYPE_OPTIONS}
+                placeholderLabel={t('agentEditor.fileTypes.allTypes')}
+                t={t}
+                onChange={(next) => patchConfig('supported_file_types', next)}
+              />
             </Row>
           ) : null}
           {hasKnowledgeBase ? (
@@ -1395,17 +1631,20 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               value={form.config.attachment_parse_wait_timeout_sec}
               onChange={(event) => patchConfig('attachment_parse_wait_timeout_sec', Number(event.target.value) || 0)} />
           </Row>
-          {/* R485 D1 剩余：嵌入式 KBParserSettings 规则编辑器（按文件类型选解析
-              引擎，依赖 /system/parser-engines 注册表）未移植；区块标题与已配置
-              规则数先行对齐文本面，规则编辑记录于 R485 报告。 */}
+          {/* R486 — Vue 869-878 <KBParserSettings embedded>: per-file-type
+              parser engine rows for chat attachments (CHAT_PARSER_EXTENSIONS
+              families only), reusing the knowledge-settings rule math. */}
           <div className="rounded-lg border border-[var(--td-component-stroke,#e7e7e7)] p-3" data-parser-policy-block>
             <p className="m-0 text-[13px] font-medium">{t('agentEditor.chatParser.label')}</p>
             <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.chatParser.desc')}</p>
-            <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">
-              {form.config.chat_parser_engine_rules.length > 0
-                ? t('agentEditor.chatParser.rulesConfigured', { count: form.config.chat_parser_engine_rules.length })
-                : t('agentEditor.chatParser.noCustomRules')}
-            </p>
+            <div className="mt-2">
+              <AgentParserRules
+                engines={deps.parserEngines}
+                rules={Array.isArray(form.config.chat_parser_engine_rules) ? form.config.chat_parser_engine_rules as ParserEngineRule[] : []}
+                onChange={(rules) => patchConfig('chat_parser_engine_rules', rules)}
+                t={t}
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -1627,6 +1866,12 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex-1 overflow-y-auto px-6 py-5">{renderSection()}</div>
             <footer className="flex flex-col gap-1.5 border-t border-[var(--td-component-stroke,#e7e7e7)] px-6 py-2.5">
+              {/* R486 KB warn — Vue MessagePlugin.warning(kbIncompatibleWarn, 4000);
+                  React has no global toast host here, so the warning rides the
+                  modal footer as a polite status region (shell share-toast form). */}
+              {kbWarn ? (
+                <p className="m-0 text-[12px] text-[var(--td-warning-color,#e37318)]" role="status" data-agent-type-warn>{kbWarn}</p>
+              ) : null}
               {postCreate ? (
                 <p className="m-0 text-[12px] text-[var(--td-success-color,#2ba471)]" data-post-create>
                   <strong>{t('agent.editor.postCreateHint.title')}</strong>

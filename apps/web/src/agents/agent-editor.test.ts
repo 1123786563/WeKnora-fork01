@@ -8,6 +8,7 @@ import {
   agentTypePresetLabel,
   applyAgentModeSwitch,
   applyAgentTypePreset,
+  applyCreateRetrievalDefaults,
   applyKbSelectionMode,
   applyScopeSelectionMode,
   buildAgentPayload,
@@ -15,24 +16,34 @@ import {
   catalogSkillRows,
   defaultAgentForm,
   editorT,
+  effectivePresetKbFilter,
   evaluateToolRequirement,
   findAgentTypePreset,
   hydrateAgentForm,
+  incompatibleSelectedKbCount,
   initKbSelectionMode,
   initScopeSelectionMode,
+  insertPlaceholderAtCursor,
   isNameSystemGenerated,
   kbOptionFromRecord,
+  kbSatisfiesPresetFilter,
   makeEditorT,
   mcpOptionRows,
   needsRerankModel,
+  promptPlaceholdersFor,
   seedCreateAgentForm,
   selectInitialModelId,
+  tenantRetrievalDefaultsFromConfig,
   TOOL_CATALOG,
   validateAgentForm,
   type AgentEditorForm,
   type KbOption,
   type ToolCapabilityScope,
 } from './agent-editor.ts';
+import {
+  AGENT_SYSTEM_PROMPT_TEMPLATE_LIST,
+  resolveAgentSystemPromptResetTemplate,
+} from './agent-type-presets.ts';
 import { agentEditorFallback } from './agent-editor-fallback.ts';
 
 const fullScope: ToolCapabilityScope = { vector: true, keyword: true, wiki: true, graph: true, faq: true };
@@ -611,4 +622,127 @@ test('needsRerankModel derives from the KB scope rag capability (D6)', () => {
   assert.equal(needsRerankModel('selected', kbs, ['kb-2']), false, 'selected scope has no RAG kb');
   assert.equal(needsRerankModel('selected', kbs, ['kb-1', 'kb-2']), true, 'selected scope includes a RAG kb');
   assert.equal(needsRerankModel('none', kbs, []), false, 'no kb scope -> never required');
+});
+
+// --- R486 D4: prompt placeholder catalogue (internal/types/placeholder.go static port) ---
+test('promptPlaceholdersFor mirrors the backend PlaceholdersByField sets (D4)', () => {
+  assert.deepEqual(
+    promptPlaceholdersFor('agent_system_prompt').map((p) => p.name),
+    ['knowledge_bases', 'web_search_status', 'current_time', 'language'],
+  );
+  assert.deepEqual(
+    promptPlaceholdersFor('system_prompt').map((p) => p.name),
+    ['query', 'contexts', 'current_time', 'current_week', 'language'],
+  );
+  assert.deepEqual(
+    promptPlaceholdersFor('context_template').map((p) => p.name),
+    ['query', 'contexts', 'current_time', 'current_week', 'language'],
+  );
+  // every definition carries the backend label + description pair
+  for (const def of promptPlaceholdersFor('agent_system_prompt')) {
+    assert.ok(def.label, 'label missing for ' + def.name);
+    assert.ok(def.description, 'description missing for ' + def.name);
+  }
+});
+
+// --- R486 D4: cursor insert (Vue insertPlaceholder tag-click path 4100-4146) ------------
+test('insertPlaceholderAtCursor splices {{name}} at the caret and returns the new caret (D4)', () => {
+  // Vue tail: cursorPos + name.length + 4 (the {{ + }} braces)
+  assert.deepEqual(insertPlaceholderAtCursor('ab', 1, 'query'), { value: 'a{{query}}b', cursorPos: 1 + 5 + 4 });
+  assert.deepEqual(insertPlaceholderAtCursor('ab', 0, 'language'), { value: '{{language}}ab', cursorPos: 8 + 4 });
+  assert.deepEqual(insertPlaceholderAtCursor('ab', 2, 'query'), { value: 'ab{{query}}', cursorPos: 2 + 5 + 4 });
+});
+
+// --- R486 D4: agent system prompt reset-default resolution (Vue 4689-4712) --------------
+test('resolveAgentSystemPromptResetTemplate prefers the preset-bound template then the global default (D4)', () => {
+  const wiki = resolveAgentSystemPromptResetTemplate('wiki-qa');
+  assert.equal(wiki?.id, 'wiki_researcher');
+  assert.ok(wiki!.content.startsWith('<role>'), 'wiki template body expected');
+  // custom (or unknown) types fall back to the global default template
+  const fallback = resolveAgentSystemPromptResetTemplate('custom');
+  assert.equal(fallback?.id, 'progressive_rag_agent');
+  assert.ok(fallback!.content.startsWith('You are WeKnora'), 'default template body expected');
+  const analyst = resolveAgentSystemPromptResetTemplate('data-analysis');
+  assert.equal(analyst?.id, 'data_analyst');
+});
+
+test('agent system prompt template list carries the 4 vendored builtin entries (D4)', () => {
+  assert.deepEqual(
+    AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.map((tpl) => tpl.id),
+    ['progressive_rag_agent', 'wiki_researcher', 'hybrid_rag_wiki_agent', 'data_analyst'],
+  );
+  assert.equal(AGENT_SYSTEM_PROMPT_TEMPLATE_LIST.find((tpl) => tpl.default)?.id, 'progressive_rag_agent');
+  for (const tpl of AGENT_SYSTEM_PROMPT_TEMPLATE_LIST) {
+    assert.ok(tpl.name.zh, 'zh name missing for ' + tpl.id);
+    assert.ok(tpl.description.zh, 'zh description missing for ' + tpl.id);
+    assert.ok(tpl.content.length > 100, 'body missing for ' + tpl.id);
+  }
+});
+
+// --- R486 D9: tenant retrieval-config defaults (Vue 2340-2344 + 3912-3917) --------------
+test('tenantRetrievalDefaultsFromConfig keeps the Vue || / !== undefined override semantics (D9)', () => {
+  const base = tenantRetrievalDefaultsFromConfig(null);
+  assert.deepEqual(base, { embeddingTopK: 10, keywordThreshold: 0.3, vectorThreshold: 0.5, rerankTopK: 5, rerankThreshold: 0.5 });
+  // thresholds use !== undefined: an explicit 0 overrides the built-in default
+  assert.deepEqual(
+    tenantRetrievalDefaultsFromConfig({ keyword_threshold: 0, vector_threshold: 0 }),
+    { embeddingTopK: 10, keywordThreshold: 0, vectorThreshold: 0, rerankTopK: 5, rerankThreshold: 0.5 },
+  );
+  // top-k fields use truthiness: 0 keeps the default
+  assert.deepEqual(
+    tenantRetrievalDefaultsFromConfig({ embedding_top_k: 50, rerank_top_k: 0 }),
+    { embeddingTopK: 50, keywordThreshold: 0.3, vectorThreshold: 0.5, rerankTopK: 5, rerankThreshold: 0.5 },
+  );
+  assert.deepEqual(
+    tenantRetrievalDefaultsFromConfig({ rerank_threshold: 1.5 }),
+    { embeddingTopK: 10, keywordThreshold: 0.3, vectorThreshold: 0.5, rerankTopK: 5, rerankThreshold: 1.5 },
+  );
+});
+
+test('applyCreateRetrievalDefaults writes the tenant defaults onto a fresh create form (D9)', () => {
+  const t = makeEditorT('zh-CN');
+  const form = seedCreateAgentForm(t);
+  applyCreateRetrievalDefaults(form, { embeddingTopK: 50, keywordThreshold: 0, vectorThreshold: 0.2, rerankTopK: 8, rerankThreshold: 0.6 });
+  assert.equal(form.config.embedding_top_k, 50);
+  assert.equal(form.config.keyword_threshold, 0);
+  assert.equal(form.config.vector_threshold, 0.2);
+  assert.equal(form.config.rerank_top_k, 8);
+  assert.equal(form.config.rerank_threshold, 0.6);
+});
+
+// --- R486 D2/KB warn: preset KB filter + incompatible selected count (Vue 3190-3288) ----
+test('effectivePresetKbFilter derives any_of from the preset tools and merges yaml filters (KB warn)', () => {
+  // rag-qa writes no kb_filter: the filter is derived from its RAG tools
+  assert.deepEqual(effectivePresetKbFilter(findAgentTypePreset('rag-qa')), { any_of: ['vector', 'keyword'], all_of: [], none_of: [] });
+  // data-analysis keeps the derived any_of plus the yaml none_of faq
+  assert.deepEqual(effectivePresetKbFilter(findAgentTypePreset('data-analysis')), { any_of: ['vector', 'keyword'], all_of: [], none_of: ['faq'] });
+  // custom applies nothing -> no filter
+  assert.equal(effectivePresetKbFilter(findAgentTypePreset('custom')), null);
+  assert.equal(effectivePresetKbFilter(null), null);
+});
+
+test('kbSatisfiesPresetFilter evaluates a KB against the derived filter (KB warn)', () => {
+  const wikiOnly: KbOption = { label: 'w', value: 'kb-w', type: 'document', count: 0, shared: false, ragEnabled: false, wikiEnabled: true };
+  const rag: KbOption = { label: 'r', value: 'kb-r', type: 'document', count: 0, shared: false, ragEnabled: true, wikiEnabled: false };
+  const faq: KbOption = { label: 'f', value: 'kb-f', type: 'faq', count: 0, shared: false, ragEnabled: true, wikiEnabled: false };
+  assert.equal(kbSatisfiesPresetFilter(rag, findAgentTypePreset('rag-qa')).ok, true);
+  assert.equal(kbSatisfiesPresetFilter(wikiOnly, findAgentTypePreset('rag-qa')).ok, false);
+  assert.equal(kbSatisfiesPresetFilter(wikiOnly, findAgentTypePreset('wiki-qa')).ok, true);
+  assert.equal(kbSatisfiesPresetFilter(faq, findAgentTypePreset('data-analysis')).ok, false, 'faq is excluded by none_of');
+  assert.equal(kbSatisfiesPresetFilter(rag, null).ok, true, 'no preset -> everything satisfies');
+});
+
+test('incompatibleSelectedKbCount counts selected KBs the new preset disables (KB warn)', () => {
+  const t = makeEditorT('zh-CN');
+  const kbs: KbOption[] = [
+    { label: 'wiki', value: 'kb-w', type: 'document', count: 0, shared: false, ragEnabled: false, wikiEnabled: true },
+    { label: 'rag', value: 'kb-r', type: 'document', count: 0, shared: false, ragEnabled: true, wikiEnabled: false },
+  ];
+  // switching to rag-qa disables the wiki-only selection
+  assert.equal(incompatibleSelectedKbCount('selected', ['kb-w', 'kb-r'], kbs, findAgentTypePreset('rag-qa'), 'smart-reasoning'), 1);
+  assert.equal(incompatibleSelectedKbCount('selected', ['kb-r'], kbs, findAgentTypePreset('rag-qa'), 'smart-reasoning'), 0);
+  // quick-answer mode has no preset but still disables wiki-only KBs
+  assert.equal(incompatibleSelectedKbCount('selected', ['kb-w'], kbs, null, 'quick-answer'), 1);
+  // outside the selected scope nothing counts
+  assert.equal(incompatibleSelectedKbCount('all', ['kb-w'], kbs, findAgentTypePreset('rag-qa'), 'smart-reasoning'), 0);
 });

@@ -29,6 +29,12 @@ export {
   type AgentTypePreset,
   type AgentTypePresetConfig,
 } from './agent-type-presets.ts';
+// R486 D4 — 使用模板/恢复默认 selector surface (vendored agent_system_prompt.yaml)
+export {
+  AGENT_SYSTEM_PROMPT_TEMPLATE_LIST,
+  resolveAgentSystemPromptResetTemplate,
+  type AgentSystemPromptTemplateOption,
+} from './agent-type-presets.ts';
 
 export type Translate = (key: string, values?: Record<string, string | number>) => string;
 
@@ -732,6 +738,172 @@ export function needsRerankModel(kbMode: ScopeSelectionMode, kbOptions: readonly
   if (kbMode === 'none') return false;
   if (kbMode === 'all') return kbOptions.some((kb) => kb.ragEnabled);
   return kbOptions.some((kb) => selectedIds.includes(kb.value) && kb.ragEnabled);
+}
+
+// --- R486 D4: prompt placeholder catalogue (internal/types/placeholder.go) ----------------
+//
+// The Vue editor fetches these definitions from GET /api/v1/agents/placeholders
+// (editorResources.ensurePlaceholders); the React api-client has no endpoint,
+// so the backend's static PlaceholdersByField table is vendored here the same
+// way agent-type-presets.ts vendors the YAML catalogs.
+
+export interface PromptPlaceholderDef { name: string; label: string; description: string }
+
+const PLACEHOLDER_DEFINITIONS: Record<string, PromptPlaceholderDef> = {
+  query: { name: 'query', label: '用户问题', description: '用户当前的问题或查询内容' },
+  contexts: { name: 'contexts', label: '检索内容', description: '从知识库检索到的相关内容列表' },
+  current_time: { name: 'current_time', label: '当前时间', description: '当前日期（ISO 格式：2006-01-02）。只用日期、不用时钟，避免秒级变化打断 provider 前缀缓存。' },
+  current_week: { name: 'current_week', label: '当前星期', description: '当前星期几（如：星期一、Monday）' },
+  knowledge_bases: { name: 'knowledge_bases', label: '知识库列表', description: '自动格式化的知识库列表，包含名称、描述、文档数量等信息' },
+  web_search_status: { name: 'web_search_status', label: '网络搜索状态', description: '网络搜索工具是否启用的状态（Enabled 或 Disabled）' },
+  language: { name: 'language', label: '用户语言', description: '用户界面的语言偏好，如 Chinese (Simplified)、English、Korean 等，用于控制 LLM 回答语言' },
+};
+
+/** internal/types/placeholder.go PlaceholdersByField — order preserved per field. */
+export function promptPlaceholdersFor(field: 'agent_system_prompt' | 'system_prompt' | 'context_template'): PromptPlaceholderDef[] {
+  if (field === 'agent_system_prompt') {
+    return [PLACEHOLDER_DEFINITIONS.knowledge_bases!, PLACEHOLDER_DEFINITIONS.web_search_status!, PLACEHOLDER_DEFINITIONS.current_time!, PLACEHOLDER_DEFINITIONS.language!];
+  }
+  // system_prompt and context_template share the normal-mode set (Go switch)
+  return [PLACEHOLDER_DEFINITIONS.query!, PLACEHOLDER_DEFINITIONS.contexts!, PLACEHOLDER_DEFINITIONS.current_time!, PLACEHOLDER_DEFINITIONS.current_week!, PLACEHOLDER_DEFINITIONS.language!];
+}
+
+/**
+ * Vue insertPlaceholder tag-click tail (AgentEditorModal.vue:4140-4146): splice
+ * the full {{name}} token at the caret and return the caret position that lands
+ * right after the inserted token.
+ */
+export function insertPlaceholderAtCursor(value: string, cursorPos: number, name: string): { value: string; cursorPos: number } {
+  const clamped = Math.max(0, Math.min(cursorPos, value.length));
+  const token = `{{${name}}}`;
+  return {
+    value: value.slice(0, clamped) + token + value.slice(clamped),
+    cursorPos: clamped + token.length,
+  };
+}
+
+// --- R486 D9: tenant retrieval-config defaults (Vue 2340-2344 + 3912-3917) ---------------
+
+export interface TenantRetrievalDefaults {
+  embeddingTopK: number;
+  keywordThreshold: number;
+  vectorThreshold: number;
+  rerankTopK: number;
+  rerankThreshold: number;
+}
+
+/**
+ * Vue defaultEmbeddingTopK & friends start at 10/0.3/0.5/5/0.5 and the
+ * tenant retrieval-config overrides them on load. The override semantics differ
+ * per field exactly as the Vue writes read (AgentEditorModal.vue:3912-3917):
+ * top-k fields are truthiness-gated (`if (rc?.embedding_top_k)`) so a 0 keeps
+ * the default, thresholds use `!== undefined` so an explicit 0 wins.
+ */
+export function tenantRetrievalDefaultsFromConfig(config: Record<string, unknown> | null | undefined): TenantRetrievalDefaults {
+  const defaults: TenantRetrievalDefaults = { embeddingTopK: 10, keywordThreshold: 0.3, vectorThreshold: 0.5, rerankTopK: 5, rerankThreshold: 0.5 };
+  if (!config) return defaults;
+  if (typeof config.embedding_top_k === 'number' && config.embedding_top_k) defaults.embeddingTopK = config.embedding_top_k;
+  if (typeof config.rerank_top_k === 'number' && config.rerank_top_k) defaults.rerankTopK = config.rerank_top_k;
+  if (typeof config.keyword_threshold === 'number') defaults.keywordThreshold = config.keyword_threshold;
+  if (typeof config.vector_threshold === 'number') defaults.vectorThreshold = config.vector_threshold;
+  if (typeof config.rerank_threshold === 'number') defaults.rerankThreshold = config.rerank_threshold;
+  return defaults;
+}
+
+/**
+ * Create-mode only (Vue watch(visible) 3474-3481): the fresh form's retrieval
+ * knobs open at the tenant-configured defaults; edit mode keeps stored values.
+ */
+export function applyCreateRetrievalDefaults(form: AgentEditorForm, defaults: TenantRetrievalDefaults): void {
+  form.config.embedding_top_k = defaults.embeddingTopK;
+  form.config.keyword_threshold = defaults.keywordThreshold;
+  form.config.vector_threshold = defaults.vectorThreshold;
+  form.config.rerank_top_k = defaults.rerankTopK;
+  form.config.rerank_threshold = defaults.rerankThreshold;
+}
+
+// --- R486 KB warn: preset KB filter + incompatible selected count (Vue 3190-3288) --------
+
+export interface PresetKbFilter { any_of: string[]; all_of: string[]; none_of: string[] }
+
+/**
+ * Vue effectiveKbFilter (AgentEditorModal.vue:3190-3208 + frontend/src/utils/
+ * tool-capabilities.ts deriveKbFilterFromTools): the any_of set is derived
+ * from the preset's tool requirements (union of anyOf+allOf capabilities,
+ * resolved through TOOL_CATALOG), a yaml any_of overrides the derivation, and
+ * all_of/none_of ride along from the yaml. Empty everywhere → null (no filter).
+ */
+export function effectivePresetKbFilter(preset: AgentTypePreset | null): PresetKbFilter | null {
+  if (!preset) return null;
+  const derived = new Set<string>();
+  for (const toolId of preset.config?.allowed_tools ?? []) {
+    const tool = TOOL_CATALOG.find((tool) => tool.value === toolId);
+    for (const capability of tool?.anyOf ?? []) derived.add(capability);
+    for (const capability of tool?.allOf ?? []) derived.add(capability);
+  }
+  const yamlAnyOf = preset.kb_filter?.any_of ?? [];
+  const anyOf = yamlAnyOf.length > 0 ? yamlAnyOf : [...derived];
+  const allOf = preset.kb_filter?.all_of ?? [];
+  const noneOf = preset.kb_filter?.none_of ?? [];
+  if (anyOf.length === 0 && allOf.length === 0 && noneOf.length === 0) return null;
+  return { any_of: anyOf, all_of: allOf, none_of: noneOf };
+}
+
+const kbCapabilitiesOf = (kb: KbOption): Partial<ToolCapabilityScope> => kb.capabilities ?? {
+  vector: kb.ragEnabled,
+  keyword: kb.ragEnabled,
+  wiki: kb.wikiEnabled,
+  graph: false,
+  faq: kb.type === 'faq',
+};
+
+/**
+ * Vue kbSatisfiesPresetFilter (3211-3243): evaluate a KB option against the
+ * effective filter. The `reason` string comes from presetKbMismatchReason and
+ * is only used for option tooltips; the count logic reads `ok`.
+ */
+export function kbSatisfiesPresetFilter(kb: KbOption, preset: AgentTypePreset | null): { ok: boolean; reason: string } {
+  const filter = effectivePresetKbFilter(preset);
+  if (!preset || !filter) return { ok: true, reason: '' };
+  const caps = kbCapabilitiesOf(kb);
+  const has = (name: string): boolean => (caps as Record<string, boolean | undefined>)[name] === true;
+  if (filter.all_of.length > 0 && !filter.all_of.every(has)) return { ok: false, reason: 'mismatch' };
+  if (filter.any_of.length > 0 && !filter.any_of.some(has)) return { ok: false, reason: 'mismatch' };
+  if (filter.none_of.length > 0 && filter.none_of.some(has)) return { ok: false, reason: 'mismatch' };
+  return { ok: true, reason: '' };
+}
+
+/**
+ * Vue kbSatisfiesQuickAnswerMode (3250-3258): quick-answer retrieval needs a
+ * vector or keyword index; wiki-only KBs would come back empty, so they count
+ * as incompatible even though quick-answer has no agent_type preset.
+ */
+export function kbSatisfiesQuickAnswerMode(agentMode: AgentMode, kb: KbOption): boolean {
+  if (agentMode !== 'quick-answer') return true;
+  const caps = kb.capabilities;
+  return caps ? caps.vector === true || caps.keyword === true : kb.ragEnabled;
+}
+
+/**
+ * Vue incompatibleSelectedKbCount (3276-3281): how many of the explicitly
+ * selected KBs the post-switch preset / mode would disable. Zero outside the
+ * "selected" scope — an all/none preset switch clears the list before this
+ * can count (Vue watch 3639-3650), so the warning only fires for presets that
+ * keep the selected scope.
+ */
+export function incompatibleSelectedKbCount(
+  kbMode: ScopeSelectionMode,
+  selectedIds: readonly string[],
+  kbOptions: readonly KbOption[],
+  preset: AgentTypePreset | null,
+  agentMode: AgentMode,
+): number {
+  if (kbMode !== 'selected') return 0;
+  const selected = new Set(selectedIds);
+  return kbOptions.filter((kb) => {
+    if (!selected.has(kb.value)) return false;
+    return !kbSatisfiesPresetFilter(kb, preset).ok || !kbSatisfiesQuickAnswerMode(agentMode, kb);
+  }).length;
 }
 
 // --- MCP service options (AgentEditorModal.vue mcpOptions 2039-2068) ------------------
