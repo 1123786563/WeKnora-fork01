@@ -297,6 +297,11 @@ type GetSystemInfoResponse struct {
 	StartedAt string `json:"started_at,omitempty"`
 	// UptimeSeconds is seconds elapsed since process start.
 	UptimeSeconds int64 `json:"uptime_seconds,omitempty"`
+	// SwaggerEnabled reports whether the swagger docs route is mounted. The
+	// router only serves /swagger/*any when gin.Mode() != gin.ReleaseMode
+	// (internal/router/router.go), so the frontend gates its "API 文档" links
+	// on this flag instead of pointing at a route that release builds 404.
+	SwaggerEnabled bool `json:"swagger_enabled"`
 }
 
 // 编译时注入的版本信息
@@ -369,6 +374,7 @@ func (h *SystemHandler) GetSystemInfo(c *gin.Context) {
 		DBMigrationError:    dbMigrationErr,
 		StartedAt:           startedAt,
 		UptimeSeconds:       uptimeSec,
+		SwaggerEnabled:      gin.Mode() != gin.ReleaseMode,
 	}
 
 	logger.Info(ctx, "System info retrieved successfully")

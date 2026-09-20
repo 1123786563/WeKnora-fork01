@@ -39,6 +39,8 @@ export interface SystemInfo extends SettingsPayload {
   go_version?: string;
   started_at?: string;
   uptime_seconds?: number;
+  /** Whether the backend serves /swagger/index.html (release builds disable the route). Absent on older backends. */
+  swagger_enabled?: boolean;
 }
 
 export interface ConnectionTestResult extends SettingsPayload {

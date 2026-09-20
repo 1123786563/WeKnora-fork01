@@ -137,6 +137,9 @@ test('authenticated platform paths match their pages inside the shell layout', (
     ['/platform/billing', '/platform/billing'],
     ['/platform/billing/checkout', '/platform/billing/checkout'],
     ['/platform/billing/admin', '/platform/billing/admin'],
+    // SP13 Task 8 — read-only shared session entry, pinned alongside the
+    // SP14 Task 2 guardRoute allowlist closure for these paths.
+    ['/platform/shared/session-token', '/platform/shared/$token'],
   ] as const) {
     const ids = matchedRouteIds(router, path.split('?')[0]!);
     assert.ok(ids.includes(routeId), `${path} should match ${routeId}, got ${ids.join(',')}`);

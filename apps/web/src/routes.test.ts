@@ -236,3 +236,30 @@ test('keeps same-path settings history in the SPA for query and subsection back/
   assert.equal(shouldReloadOnPopState('/platform/settings', '/platform/settings'), false);
   assert.equal(shouldReloadOnPopState('/platform/settings', '/platform/knowledge-bases'), true);
 });
+
+// SP14 Task 2 收口: Task 1 mounted /platform/billing* and SP13 Task 8 mounted
+// /platform/shared/:token in the TanStack tree, but the resolveRoute platform
+// allowlist (routes.tsx) never learned them — the guard only let them through
+// via the not-found fallback, so the matrix pins the explicit entries.
+test('resolves billing pages and shared-session links as guarded platform routes', () => {
+  for (const path of ['/platform/billing', '/platform/billing/checkout', '/platform/billing/admin', '/platform/shared/session-token']) {
+    assert.deepEqual(resolveRoute(path), { kind: 'platform', path });
+  }
+  for (const path of ['/platform/billing', '/platform/billing/checkout', '/platform/billing/admin', '/platform/shared/session-token']) {
+    assert.deepEqual(guardRoute(path, { ...authenticated, authenticated: false, tenantId: null }), {
+      kind: 'redirect',
+      to: '/login',
+      reason: 'authentication-required',
+    });
+    assert.deepEqual(guardRoute(path, { ...authenticated, tenantId: null }), {
+      kind: 'redirect',
+      to: '/onboarding/workspace',
+      reason: 'workspace-required',
+    });
+    assert.deepEqual(guardRoute(path, authenticated), { kind: 'allow' });
+  }
+  // Only the mounted billing pages resolve; arbitrary billing subpaths stay
+  // not-found (RefundPage is deliberately unrouted, Ruling P-1).
+  assert.equal(resolveRoute('/platform/billing/refund').kind, 'not-found');
+  assert.equal(resolveRoute('/platform/shared').kind, 'not-found');
+});

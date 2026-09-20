@@ -602,7 +602,13 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
           liteMode={liteMode}
           client={client}
           tenantId={Number(scopeRuntime.current().scope.tenantId)}
-          role={scopeRuntime.role() === 'owner' ? 'owner' : scopeRuntime.role() === 'admin' ? 'admin' : 'viewer'}
+          // SP14 Task 2 — platform-api-keys was unreachable: scopeRuntime.role()
+          // never returns 'system-admin', so folding the role to owner/admin/
+          // viewer filtered every registry section with minRole 'system-admin'
+          // out of the settings nav. A system admin outranks owner in the
+          // SettingsRole ranking, so widening to 'system-admin' keeps all the
+          // ordinary sections visible while restoring the system-admin group.
+          role={scopeRuntime.isSystemAdmin() ? 'system-admin' : scopeRuntime.role() === 'owner' ? 'owner' : scopeRuntime.role() === 'admin' ? 'admin' : 'viewer'}
         />
       </Suspense>
     ),

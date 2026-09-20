@@ -34,6 +34,10 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   const [imChannels, setImChannels] = useState<IntegrationResource[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  // SP14 Task 2 — the API tab's swagger docs row renders only when
+  // /system/info confirms swagger_enabled (undefined hides it: older
+  // backends lack the field and release builds disable the route).
+  const [swaggerEnabled, setSwaggerEnabled] = useState<boolean | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [principal, setPrincipal] = useState<APIPrincipalConfig | null>(null);
@@ -110,6 +114,15 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   }, [client, tab, activeTenantId]);
 
   useEffect(() => { setRequestedTab(undefined); }, [activeTab]);
+
+  useEffect(() => {
+    if (tab !== 'api') return;
+    let current = true;
+    void client.settings.system.info()
+      .then((info) => { if (current) setSwaggerEnabled(info.swagger_enabled === true); })
+      .catch(() => { if (current) setSwaggerEnabled(undefined); });
+    return () => { current = false; };
+  }, [client, tab]);
 
   useEffect(() => { if (tab === 'api' && activeTenantId !== null) void client.administration.tenantApiKeys.principalConfig(activeTenantId).then(setPrincipal).catch(() => setPrincipal(null)); else setPrincipal(null); }, [activeTenantId, client, tab]);
   useEffect(() => { restoreApiPlaygroundFocus(playgroundTrigger.current, apiPlaygroundOpen); }, [apiPlaygroundOpen]);
@@ -197,7 +210,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   return <>
     {embedPreviewNotice ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{embedPreviewNotice}</p> : null}
     <EmbedPreviewModal open={embedPreview !== null} channelId={embedPreview?.channelId ?? ''} token={embedPreview?.token ?? ''} title={embedPreview?.title} apiBaseUrl={window.location.origin} locale={embedPreview?.locale} refreshKey={embedPreview?.refreshKey} onClose={() => setEmbedPreview(null)} />
-    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={(nextTab) => { setTab(nextTab); setRequestedTab(nextTab); }} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => { playgroundTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setApiPlaygroundOpen(true); }} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} />
+    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={(nextTab) => { setTab(nextTab); setRequestedTab(nextTab); }} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} swaggerEnabled={swaggerEnabled} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => { playgroundTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setApiPlaygroundOpen(true); }} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} />
     <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={playgroundApiKey || apiKeys.find((key) => key.api_key)?.api_key || ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} agentsLoading={agentsLoading} agentsError={agentsError || undefined} apiBaseUrl={apiBaseUrl} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => integrationsT(currentIntegrationsLocale(), key, values)} />
   </>;
 }
