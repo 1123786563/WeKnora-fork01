@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -415,18 +417,43 @@ func TestArtifactVersionsMigrationDownIsReversible(t *testing.T) {
 		return count
 	}
 	require.Equal(t, 1, tableCount(), "000067 up must create artifact_versions")
-	// Step back to exactly 000066 so the 000067 DOWN runs last: the head
-	// keeps advancing with later tasks (W30's 000068 voice_sessions already
-	// follows), so the step count is derived from the live head instead of
-	// assuming this migration is the newest one.
+	// Step back to exactly 000066 so the 000067 DOWN runs last. Migration
+	// versions are sparse, so count actual migration entries rather than
+	// treating the label difference as a migrate.Steps count.
 	version, dirty, err := migrator.Version()
 	require.NoError(t, err)
 	require.False(t, dirty)
 	require.Greater(t, version, uint(66), "000067 must already be applied")
-	stepsTo := int(version - 66) // land on 000066 so the 000067 DOWN runs last
+	stepsTo := artifactVersionMigrationStepsAfter(t, repoRoot, 66)
 	require.NoError(t, migrator.Steps(-stepsTo))
+	version, dirty, err = migrator.Version()
+	require.NoError(t, err)
+	require.False(t, dirty)
+	require.Equal(t, uint(66), version, "rollback must land exactly on migration 000066")
 	require.Zero(t, tableCount(), "000067 down must drop artifact_versions")
 	// Re-applying must restore the table.
 	require.NoError(t, migrator.Steps(stepsTo))
 	require.Equal(t, 1, tableCount())
+}
+
+func artifactVersionMigrationStepsAfter(t *testing.T, repoRoot string, version uint) int {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(repoRoot, "migrations", "sqlite"))
+	require.NoError(t, err)
+
+	steps := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".up.sql") {
+			continue
+		}
+		versionText, _, found := strings.Cut(entry.Name(), "_")
+		require.Truef(t, found, "SQLite migration must use a versioned filename: %s", entry.Name())
+		candidate, err := strconv.ParseUint(versionText, 10, 0)
+		require.NoErrorf(t, err, "SQLite migration must start with a numeric version: %s", entry.Name())
+		if uint(candidate) > version {
+			steps++
+		}
+	}
+	require.Positivef(t, steps, "SQLite fixture must contain migrations after version %d", version)
+	return steps
 }
