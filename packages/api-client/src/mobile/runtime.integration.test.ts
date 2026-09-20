@@ -18,7 +18,8 @@ import { emitMobileRuntimeIntegrationEvidence, mobileRuntimeIntegrationConfig, r
 test('real HTTP login reaches identity, capabilities, and an authorized Runtime surface', async (t) => {
   const config = mobileRuntimeIntegrationConfig(process.env);
   if (!config.enabled) {
-    t.skip(`MOBILE_RUNTIME_HTTP_SKIPPED: ${config.reason}`);
+    if (config.disposition === 'skip') t.skip(`MOBILE_RUNTIME_HTTP_SKIPPED: ${config.reason}`);
+    else assert.fail(`MOBILE_RUNTIME_HTTP_INVALID: ${config.reason}`);
     return;
   }
 
@@ -30,7 +31,7 @@ test('real HTTP login reaches identity, capabilities, and an authorized Runtime 
   assert.equal(evidence.identity, 'present', 'real /auth/me must produce stable user and tenant identities');
 });
 
-test('integration config rejects a path-bearing deployment URL', () => {
+test('integration config marks a path-bearing deployment URL invalid rather than skippable', () => {
   const config = mobileRuntimeIntegrationConfig({
     WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'https://deployment.example/api/v1',
     WEKNORA_MOBILE_TEST_EMAIL: 'mobile-test@example.test',
@@ -39,6 +40,7 @@ test('integration config rejects a path-bearing deployment URL', () => {
 
   assert.deepEqual(config, {
     enabled: false,
+    disposition: 'invalid',
     reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must be a credential-free HTTPS origin',
   });
 });

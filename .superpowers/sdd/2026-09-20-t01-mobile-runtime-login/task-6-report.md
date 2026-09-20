@@ -144,3 +144,43 @@ git diff --check
 
 The local fixture and protected-environment limitation above is unchanged; no
 live authorization was performed or claimed in this fix round.
+
+## Re-review fix round 2
+
+The integration configuration now has explicit disabled dispositions. Only a
+missing `WEKNORA_MOBILE_TEST_*` variable returns `disposition: "skip"`. A
+fully supplied malformed, path-bearing, non-HTTPS, credential-bearing, query,
+or fragment origin returns `disposition: "invalid"`. The integration test
+uses that disposition to raise the safe
+`MOBILE_RUNTIME_HTTP_INVALID: <validation reason>` assertion before it calls
+the runner, so invalid configured input cannot be reclassified as a skip or
+issue a request.
+
+### RED
+
+```text
+pnpm exec tsx --test packages/api-client/src/mobile/runtime.integration.test.ts
+# fail 2
+# MOBILE_RUNTIME_HTTP_INVALID: missing WEKNORA_MOBILE_TEST_DEPLOYMENT_URL,
+# WEKNORA_MOBILE_TEST_EMAIL, WEKNORA_MOBILE_TEST_PASSWORD
+# path-bearing expected disposition: "invalid" but was absent
+```
+
+### GREEN
+
+```text
+pnpm exec tsx --test packages/api-client/src/mobile/runtime.integration.test.ts \
+  packages/api-client/src/mobile/runtime.test.ts \
+  packages/mobile-core/src/runtime/mobile-runtime.test.ts
+# tests 23 / pass 22 / fail 0 / skipped 1
+# the explicit skip is exclusively the absent-environment path
+
+pnpm --filter @weknora/mobile typecheck
+# exit 0
+
+git diff --check
+# exit 0
+```
+
+No local HTTPS fixture or protected test credentials became available; live
+authorization remains unverified and unclaimed.

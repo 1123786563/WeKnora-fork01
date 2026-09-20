@@ -8,7 +8,8 @@ const CLIENT_PROTOCOL = CLIENT_PROTOCOL_VERSION;
 
 export type MobileRuntimeIntegrationConfig =
   | { enabled: true; deploymentOrigin: string; email: string; password: string }
-  | { enabled: false; reason: string };
+  | { enabled: false; disposition: 'skip'; reason: string }
+  | { enabled: false; disposition: 'invalid'; reason: string };
 
 export interface MobileRuntimeIntegrationEvidence {
   deploymentOrigin: string;
@@ -38,17 +39,17 @@ export function mobileRuntimeIntegrationConfig(env: Record<string, string | unde
       email ? undefined : 'WEKNORA_MOBILE_TEST_EMAIL',
       password ? undefined : 'WEKNORA_MOBILE_TEST_PASSWORD',
     ].filter((name): name is string => name !== undefined);
-    return { enabled: false, reason: `missing ${missing.join(', ')}` };
+    return { enabled: false, disposition: 'skip', reason: `missing ${missing.join(', ')}` };
   }
 
   let parsed: URL;
   try {
     parsed = new URL(deploymentOrigin);
   } catch {
-    return { enabled: false, reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL is not an absolute URL' };
+    return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL is not an absolute URL' };
   }
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
-    return { enabled: false, reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must be a credential-free HTTPS origin' };
+    return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must be a credential-free HTTPS origin' };
   }
   return { enabled: true, deploymentOrigin: parsed.origin, email, password };
 }
