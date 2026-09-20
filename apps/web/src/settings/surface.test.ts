@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { chatHistoryEmbeddingLocked, cloudCredentialPatch, envVarRemove, envVarSet, formatUptimeText, memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, ollamaModelInput, profilePasswordPatch, settingsCloseMode, settingsConfigPatch, settingsResourceInput, settingsResourceRows, settingsSectionHeading, settingsSectionMeta, settingsValueEntries, systemInfoRows, tenantEditState, tenantModelIds, tenantPatch } from './surface.ts';
+import { chatHistoryEmbeddingLocked, cloudCredentialPatch, envVarRemove, envVarSet, formatUptimeText, memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, ollamaModelInput, profilePasswordPatch, settingsCloseMode, settingsConfigPatch, settingsResourceRows, settingsSectionHeading, settingsSectionMeta, settingsValueEntries, systemInfoRows, tenantEditState, tenantModelIds, tenantPatch } from './surface.ts';
 import { SETTINGS_SECTIONS, roleAtLeast, settingsSection, settingsSectionsForRole } from '@weknora/views';
 
 // Vue section headers: GeneralSettings.vue lines 3-6, EnvVarSettings.vue lines
@@ -103,19 +103,9 @@ test('limits tenant editing to the server-owned name and description fields', ()
   assert.throws(() => tenantPatch('  ', 'Docs'), /name/);
 });
 
-test('normalizes resource settings rows and validates a resource mutation payload', () => {
+test('normalizes resource settings rows', () => {
   assert.deepEqual(settingsResourceRows({ backends: [{ id: 'storage-1', name: 'Local' }], legacy: {} }, 'storage'), [{ id: 'storage-1', name: 'Local' }]);
   assert.deepEqual(settingsResourceRows([{ id: 'vector-1' }], 'vectorstore'), [{ id: 'vector-1' }]);
-  assert.deepEqual(settingsResourceInput('  Primary ', ' qdrant ', '{"url":"http://qdrant"}'), {
-    name: 'Primary',
-    type: 'qdrant',
-    config: { url: 'http://qdrant' },
-  });
-  assert.throws(() => settingsResourceInput('', 'qdrant', '{}'), /name/);
-  assert.throws(() => settingsResourceInput('   ', 'qdrant', '{}'), /name/);
-  assert.throws(() => settingsResourceInput('Primary', '', '{}'), /type/);
-  assert.throws(() => settingsResourceInput('Primary', 'qdrant', '{bad json}'), /JSON/);
-  assert.throws(() => settingsResourceInput('Primary', 'qdrant', '[]'), /object/);
 });
 
 test('builds field-level patches for retrieval, chat history, and parser settings', () => {

@@ -124,6 +124,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // Vue readLastChatModelID: the chip resolves the user's *explicit* pick, not
   // the synthetic first-model default the loader seeds selectedModelId with.
   const [userModelPick, setUserModelPick] = useState(() => readStoredChatModelId(scope.scope));
+  // SP14 Task 4 — 用户默认模型（Ruling P-3 方案 A）：server-side
+  // preferences.default_model，拉取一次；失败/未设静默保持 undefined（芯片
+  // 与发送链维持 models[0] 兜底）。模型解析链变为 pick > 助手绑定 >
+  // 用户默认 > models[0]。
+  const [userDefaultModel, setUserDefaultModel] = useState<string | undefined>(undefined);
   // Empty-state suggested questions (creatChat view) come from the selected
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
@@ -205,8 +210,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     models: chatModels,
     agentModelId,
     selectedModelId: userModelPick,
+    // SP14 P-3 user-default layer: only reaches the chip when neither an
+    // explicit pick nor an agent binding exists (model-chip.ts priority).
+    userDefaultModel,
     notConfiguredLabel: MODEL_CHIP_NOT_CONFIGURED[readStoredLocale()] ?? MODEL_CHIP_NOT_CONFIGURED['zh-CN'],
-  }), [agentModelId, chatModels, userModelPick]);
+  }), [agentModelId, chatModels, userModelPick, userDefaultModel]);
   const modelChipLabel = modelChip.label;
   const modelChipContext = modelChip.context;
   const modelChipIsDefault = modelChip.isDefaultContext;
@@ -491,10 +499,42 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           setAgentModels(result.map((model) => ({ id: String(model.id), type: typeof model.type === 'string' ? model.type : undefined })));
           const models = listChatModels(result);
           setChatModels(models);
-          setSelectedModelId((current) => current && models.some((model) => String(model.id) === current) ? current : String(models[0]?.id ?? ''));
+          // Vue ensureModelSelection seeding: an explicit pick that still
+          // resolves keeps winning; otherwise the synthetic (memory-only)
+          // default seeds from the user's server-side default (SP14 P-3)
+          // before the tenant's first chat model. The pick layer (localStorage
+          // persistence in onModelChange) is untouched — a synthetic seed is
+          // never written there.
+          const explicitPick = readStoredChatModelId(scope.scope);
+          if (explicitPick && models.some((model) => String(model.id) === explicitPick)) {
+            setSelectedModelId(explicitPick);
+          } else {
+            setSelectedModelId(userDefaultModel && models.some((model) => String(model.id) === userDefaultModel)
+              ? userDefaultModel
+              : String(models[0]?.id ?? ''));
+          }
         }
       },
       () => { if (active) setChatModels([]); },
+    );
+    return () => { active = false; };
+    // userDefaultModel re-runs the seeding so a preference that arrives after
+    // the list still lands (the effect body only re-reads, never refetches
+    // unless the scope changed).
+  }, [client, scope.signal, scope.scope, scopeController, userDefaultModel]);
+
+  // SP14 Task 4 — pull the user's default chat model once (PUT-backed
+  // preferences from the 会话偏好 settings section). A failed read leaves the
+  // chip on the first-model fallback; only a non-empty string counts.
+  useEffect(() => {
+    let active = true;
+    void client.settings.preferences.get(scope.signal).then(
+      (preferences) => {
+        if (!active || !scopeController.isCurrent(scope.scope)) return;
+        const value = preferences?.default_model;
+        if (typeof value === 'string' && value.trim()) setUserDefaultModel(value.trim());
+      },
+      () => { if (active) setUserDefaultModel(undefined); },
     );
     return () => { active = false; };
   }, [client, scope.signal, scope.scope, scopeController]);

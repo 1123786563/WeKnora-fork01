@@ -159,6 +159,62 @@ test('an agent model missing from the list stays unconfigured like Vue', () => {
   assert.equal(chip.isDefaultContext, false);
 });
 
+/*
+ * SP14 Task 4 — the user-default layer (Ruling P-3, plan A pure-frontend):
+ * the server-side preferences.default_model seeds the chip BETWEEN the agent
+ * binding and the tenant's first model. Priority: pick > agent binding >
+ * user default > models[0]. A default that no longer resolves in the list is
+ * a stale preference, not an explicit conversation intent — unlike a stale
+ * pick (未配置 pin above) it degrades to the first model instead of bricking
+ * the chip.
+ */
+test('the user default model resolves when no pick and no agent binding exist', () => {
+  const models = [
+    { id: 'first-model', name: 'first-model', type: 'KnowledgeQA' },
+    { id: 'glm-5.3', name: 'glm-5.3', display_name: 'GLM 5.3', type: 'KnowledgeQA' },
+  ];
+  const chip = resolveChatModelChip({ models, userDefaultModel: 'glm-5.3' });
+  assert.equal(chip.label, 'GLM 5.3');
+});
+
+test('an explicit persisted pick suppresses the user default', () => {
+  const models = [
+    { id: 'first-model', name: 'first-model', type: 'KnowledgeQA' },
+    { id: 'glm-5.3', name: 'glm-5.3', type: 'KnowledgeQA' },
+    { id: 'kimi-k2', name: 'kimi-k2', type: 'KnowledgeQA' },
+  ];
+  assert.equal(resolveChatModelChip({ models, userDefaultModel: 'glm-5.3', selectedModelId: 'kimi-k2' }).label, 'kimi-k2');
+});
+
+test('an agent binding suppresses the user default', () => {
+  const models = [
+    { id: 'first-model', name: 'first-model', type: 'KnowledgeQA' },
+    { id: 'glm-5.3', name: 'glm-5.3', type: 'KnowledgeQA' },
+    { id: 'agent-model', name: 'agent-model', display_name: 'Agent Model', type: 'KnowledgeQA' },
+  ];
+  assert.equal(resolveChatModelChip({ models, userDefaultModel: 'glm-5.3', agentModelId: 'agent-model' }).label, 'Agent Model');
+});
+
+test('without a user default the chip keeps the first-model fallback', () => {
+  const models = [
+    { id: 'first-model', name: 'first-model', type: 'KnowledgeQA' },
+    { id: 'glm-5.3', name: 'glm-5.3', type: 'KnowledgeQA' },
+  ];
+  assert.equal(resolveChatModelChip({ models }).label, 'first-model');
+  assert.equal(resolveChatModelChip({ models, userDefaultModel: '' }).label, 'first-model');
+  assert.equal(resolveChatModelChip({ models, userDefaultModel: '   ' }).label, 'first-model');
+});
+
+test('a user default missing from the list degrades to the first model, not 未配置', () => {
+  const models = [
+    { id: 'first-model', name: 'first-model', type: 'KnowledgeQA' },
+    { id: 'glm-5.3', name: 'glm-5.3', type: 'KnowledgeQA' },
+  ];
+  const chip = resolveChatModelChip({ models, userDefaultModel: 'removed-model' });
+  assert.equal(chip.label, 'first-model');
+  assert.equal(chip.context, '200K');
+});
+
 test('an empty model list shows the localized unconfigured fallback', () => {
   const chip = resolveChatModelChip({ models: [], notConfiguredLabel: 'Not configured' });
   assert.equal(chip.label, 'Not configured');

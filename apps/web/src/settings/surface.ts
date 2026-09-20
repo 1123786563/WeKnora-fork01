@@ -33,6 +33,7 @@ export function settingsCloseMode(search: string): SettingsCloseMode {
 // lines 3-6, SystemInfo.vue lines 3-6). Keys live in packages/i18n.
 const SECTION_HEADING_KEYS: Record<string, { title: string; description?: string }> = {
   general: { title: 'general.title', description: 'general.description' },
+  'chat-preferences': { title: 'chatPreferences.title', description: 'chatPreferences.description' },
   userprofile: { title: 'userProfile.title', description: 'userProfile.description' },
   tenant: { title: 'tenant.title', description: 'tenant.sectionDescription' },
   members: { title: 'tenantMember.title' },
@@ -79,6 +80,7 @@ export interface SettingsSectionMeta extends SettingsSection {
 
 const descriptions: Record<string, { title: string; description: string }> = {
   general: { title: 'General and preferences', description: 'Local display preferences are read from the authenticated user profile.' },
+  'chat-preferences': { title: 'Chat preferences', description: 'Per-user chat preferences such as the default conversation model, stored through /auth/me/preferences.' },
   tenant: { title: 'Tenant information', description: 'The active tenant identity and server-owned metadata.' },
   userprofile: { title: 'User profile', description: 'Authenticated user profile and account metadata.' },
   ollama: { title: 'Ollama', description: 'Local-model availability and the current model inventory.' },
@@ -183,17 +185,6 @@ export function settingsResourceRows(value: unknown, section: 'storage' | 'vecto
   return Array.isArray(candidate)
     ? candidate.filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object' && !Array.isArray(item))
     : [];
-}
-
-export function settingsResourceInput(name: string, type: string, configText: string): { name: string; type: string; config: Record<string, unknown> } {
-  const nextName = name.trim();
-  const nextType = type.trim();
-  if (!nextName) throw new Error('Resource name is required');
-  if (!nextType) throw new Error('Resource type is required');
-  let parsed: unknown;
-  try { parsed = JSON.parse(configText.trim() || '{}'); } catch { throw new Error('Resource config must be valid JSON'); }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Resource config must be a JSON object');
-  return { name: nextName, type: nextType, config: parsed as Record<string, unknown> };
 }
 
 type SettingsConfigSection = 'retrieval' | 'chathistory' | 'parser';

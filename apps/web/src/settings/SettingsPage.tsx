@@ -30,6 +30,8 @@ const SandboxSettingsPanel = lazy(() => import('./SandboxSettingsPanel.tsx').the
 const SkillSettingsPanel = lazy(() => import('./SkillSettingsPanel.tsx').then((m) => ({ default: m.SkillSettingsPanel })));
 const TenantMembersPanel = lazy(() => import('./TenantMembersPanel.tsx').then((m) => ({ default: m.TenantMembersPanel })));
 const GeneralPreferencesPanel = lazy(() => import('./GeneralPreferencesPanel.tsx').then((m) => ({ default: m.GeneralPreferencesPanel })));
+// SP14 Task 4 — 会话偏好分区（默认对话模型，user-scope preferences 读写）。
+const ChatPreferencesPanel = lazy(() => import('./ChatPreferencesPanel.tsx').then((m) => ({ default: m.ChatPreferencesPanel })));
 const UsagePanel = lazy(() => import('./UsagePanel.tsx').then((m) => ({ default: m.UsagePanel })));
 const QueryHistoryPanel = lazy(() => import('./QueryHistoryPanel.tsx').then((m) => ({ default: m.QueryHistoryPanel })));
 const TenantInfoSection = lazy(() => import('./TenantUserProfileSections.tsx').then((m) => ({ default: m.TenantInfoSection })));
@@ -85,6 +87,9 @@ const SETTINGS_SECTION_CAPABILITIES: Readonly<Record<string, string | undefined>
 export async function readSettingsSection(client: WeKnoraClient, key: string, tenantId: number): Promise<unknown> {
   switch (key) {
     case 'general': return client.settings.preferences.get();
+    // SP14 Task 4 — the chat-preferences panel echoes the user preferences
+    // payload (default_model) from /auth/me like the general section.
+    case 'chat-preferences': return client.settings.preferences.get();
     case 'tenant': return client.settings.tenant.get();
     case 'userprofile': return client.settings.profile.get();
     // Vue OllamaSettings keeps the page mounted when either probe fails —
@@ -341,6 +346,9 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     // SP14 Task 1 — general 分区传入 client：GeneralPreferencesPanel 顶部套餐
     // 卡片用它拉 client.commercial.summary()（失败静默隐藏整卡）。
     const generalPanel = key === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} client={client} /> : null;
+    // SP14 Task 4 — 会话偏好面板：壳层只递 preferences 回显载荷，保存走面板
+    // 自己的 client.settings.preferences.update（无整页刷新）。
+    const chatPreferencesPanel = key === 'chat-preferences' ? <ChatPreferencesPanel client={client} initialPreferences={sectionPayload} /> : null;
     const resourcePanel = key === 'storage' || key === 'vectorstore' || key === 'websearch'
       ? <ResourceSettingsPanel client={client} section={key} initialValue={sectionPayload} role={role} />
       : null;
@@ -439,7 +447,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
               <Button type="button" onClick={() => { void load(true); }}>{t('settings.storage.retry')}</Button>
             </div>
-          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
+          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
           {key === 'tenant' && role === 'owner' && !sectionDenied && !sectionError && !sectionLoading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(sectionPayload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
         </div>}
       </div>
@@ -510,7 +518,7 @@ import { formatMessage, type Locale } from '@weknora/i18n';
 
 
 const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: readonly string[] }> = [
-  { key: 'account', labelKey: 'settings.navGroups.account', sections: ['general', 'userprofile', 'mymemory', 'envvars', 'usage'] },
+  { key: 'account', labelKey: 'settings.navGroups.account', sections: ['general', 'chat-preferences', 'userprofile', 'mymemory', 'envvars', 'usage'] },
   { key: 'workspace', labelKey: 'settings.navGroups.workspace', sections: ['tenant', 'members', 'chathistory', 'memory'] },
   { key: 'models_runtime', labelKey: 'settings.navGroups.modelsRuntime', sections: ['models', 'ollama', 'weknoracloud'] },
   { key: 'integrations', labelKey: 'integrations.title', sections: INTEGRATION_SECTIONS.map((item) => `integration-${item.key}`) },
@@ -538,6 +546,7 @@ const NAV_HIDDEN_SECTIONS = new Set(['retrieval',
 // stay literal there too.
 const SECTION_LABEL_KEYS: Record<string, string> = {
   general: 'general.title',
+  'chat-preferences': 'chatPreferences.title',
   userprofile: 'userProfile.title',
   mymemory: 'memorySettings.title',
   envvars: 'envVarSettings.title',
@@ -595,6 +604,8 @@ function icon(paths: ReactNode): ReactNode {
 const SECTION_ICONS: Record<string, ReactNode> = {
   general: icon(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>),
   userprofile: icon(<><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>),
+  // SP14 Task 4 — 会话偏好：sliders（lucide sliders-horizontal 风格）。
+  'chat-preferences': icon(<><line x1="21" y1="4" x2="14" y2="4" /><line x1="10" y1="4" x2="3" y2="4" /><line x1="21" y1="12" x2="12" y2="12" /><line x1="8" y1="12" x2="3" y2="12" /><line x1="21" y1="20" x2="16" y2="20" /><line x1="12" y1="20" x2="3" y2="20" /><line x1="14" y1="2" x2="14" y2="6" /><line x1="8" y1="10" x2="8" y2="14" /><line x1="16" y1="18" x2="16" y2="22" /></>),
   mymemory: icon(<path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />),
   envvars: icon(<><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" /></>),
   usage: icon(<><path d="M3 3v18h18" /><path d="M7 15v-4M12 15V8M17 15v-7" /></>),

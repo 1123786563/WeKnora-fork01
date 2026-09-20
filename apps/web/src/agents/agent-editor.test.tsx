@@ -171,10 +171,19 @@ function makeClient(options: { createReject?: Error; initialSubagents?: string[]
           install: async () => ({ installs: {} }),
         },
       },
+      mcp: {
+        list: async () => [
+          { id: 'mcp-a', name: '服务A', enabled: true },
+          { id: 'mcp-b', name: '服务B', enabled: false },
+        ],
+      },
     },
     knowledgeBases: { list: async () => KBS },
     sandboxConfigurations: { list: async () => ({ items: SANDBOXES, workspaceScriptsDisabled: false }) },
-    settings: { webSearch: { providers: { list: async () => [] } } },
+    settings: {
+      webSearch: { providers: { list: async () => [] } },
+      storage: { legacy: { status: async () => ({ storage_engine_status: [{ name: 'local', available: true }, { name: 'minio', available: false }] }) } },
+    },
   };
   return { client: client as unknown as WeKnoraClient, requests, mbtiSubmits, subagentCalls };
 }
@@ -561,6 +570,14 @@ test('editor close control uses the Vue close accessible name', async () => {
 test('empty submit shows per-field required errors, jumps sections and fires no request', async () => {
   const { client, requests } = makeClient();
   const root = await mountModal({ client, mode: 'create' });
+  // R485 D3/D5: the create form opens with the rag-qa preset + default models
+  // prefilled — clear the seeded fields to drive the required-field path
+  await setValue(root, '[data-field="name"]', '');
+  await goto(root, 'prompts');
+  await setValue(root, '[data-field="system_prompt"]', '');
+  await goto(root, 'model');
+  await setValue(root, '[data-field="model_id"]', '');
+  await goto(root, 'basic');
   await click(root, '[data-editor-save]');
   const nameError = $('[data-field-error="name"]', root);
   assert.ok(nameError, 'name error rendered under the field');
@@ -769,4 +786,200 @@ test('skills section renders the manage-sandboxes link navigating to settings?sa
     link!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
   });
   assert.equal(window.location.pathname + window.location.search, '/platform/settings?section=sandbox');
+});
+
+// --- R485 D1: the three Vue sections the React rail omitted ------------------------------
+
+test('create rail registers suggestions/multimodal/mcp and the capability group (D1)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  const keys = $$(document.body, '[data-section-key]').map((el) => el.getAttribute('data-section-key'));
+  assert.ok(keys.includes('suggestions'), '问题推荐 nav item missing');
+  assert.ok(keys.includes('multimodal'), '附件上传 nav item missing');
+  assert.ok(keys.includes('mcp'), 'MCP 服务 nav item missing');
+  const bodyText = document.body.textContent ?? '';
+  assert.match(bodyText, /问题推荐/);
+  assert.match(bodyText, /附件上传/);
+  assert.match(bodyText, /MCP 服务/);
+});
+
+test('suggestions section renders starters + follow-ups tabs with the Vue rows (D1)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'suggestions');
+  const section = $('[data-editor-section="suggestions"]', root);
+  assert.ok(section, 'suggestions section missing');
+  const text = section!.textContent ?? '';
+  assert.match(text, /对话问题推荐/);
+  assert.match(text, /开场推荐/);
+  assert.match(text, /回答后推荐/);
+  assert.match(text, /展示开场问题/);
+  assert.match(text, /内容来源/);
+  // starters enabled by default -> mode select + count visible
+  const modeSelect = $('[data-field="question_suggestions.starters.mode"]', section) as HTMLSelectElement;
+  assert.ok(modeSelect, 'starters mode select missing');
+  assert.equal(modeSelect.value, 'hybrid');
+  // switch to the follow-ups tab (follow-ups disabled by default -> switch row only)
+  await click(section, '[data-suggestion-tab="followUps"]');
+  const followSection = $('[data-editor-section="suggestions"]', root)!;
+  const followText = followSection.textContent ?? '';
+  assert.match(followText, /生成回答后推荐/);
+  assert.equal(followText.includes('高级生成设置'), false, 'advanced rows hidden while follow-ups are off');
+  // enabling follow-ups reveals the model row + advanced generation block
+  await click(followSection, '[data-switch="question_suggestions.follow_ups.enabled"]');
+  const enabledText = $('[data-editor-section="suggestions"]', root)!.textContent ?? '';
+  assert.match(enabledText, /高级生成设置/);
+  assert.match(enabledText, /附加生成要求/);
+  assert.match(enabledText, /展示与兜底规则/);
+});
+
+test('multimodal section renders image/audio/timeout rows and gates on image_upload_enabled (D1)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'multimodal');
+  const section = $('[data-editor-section="multimodal"]', root);
+  assert.ok(section, 'multimodal section missing');
+  let text = section!.textContent ?? '';
+  assert.match(text, /附件上传/);
+  assert.match(text, /配置对话中图片、文档、音频等附件的上传、解析及对应模型/);
+  assert.match(text, /图片上传/);
+  assert.match(text, /语音上传/);
+  assert.match(text, /附件解析等待超时（秒）/);
+  // VLM row only after enabling image upload
+  assert.equal($('[data-field="vlm_model_id"]', section), null);
+  await click(section, '[data-switch="image_upload_enabled"]');
+  text = $('[data-editor-section="multimodal"]', root)!.textContent ?? '';
+  assert.match(text, /VLM 模型/);
+  assert.match(text, /附件图片理解 \/ 扫描件 OCR/);
+});
+
+test('mcp section renders scope radios, service checklist and auth timeout (D1)', async () => {
+  const { client } = makeClient();
+  const agent = {
+    ...EDIT_AGENT,
+    config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const, mcp_services: ['mcp-b'] },
+  };
+  const root = await mountModal({ client, mode: 'edit', agent });
+  await goto(root, 'mcp');
+  const section = $('[data-editor-section="mcp"]', root);
+  assert.ok(section, 'mcp section missing');
+  const text = section!.textContent ?? '';
+  assert.match(text, /选择 Agent 可以调用的 MCP 服务/);
+  assert.match(text, /全部/);
+  // scope=none by default -> auth timeout row hidden (Vue v-if mcpSelectionMode !== 'none')
+  assert.equal($('[data-field="mcp_auth_wait_timeout"]', section), null);
+  await checkRadio(section, 'input[name="mcp-mode"][value="selected"]');
+  const after = $('[data-editor-section="mcp"]', root)!;
+  assert.match(after.textContent ?? '', /授权等待超时（秒）/);
+  assert.ok($('[data-field="mcp_auth_wait_timeout"]', after), 'auth timeout visible once a scope is chosen');
+  const checklist = $('[data-field="mcp_services"]', after);
+  assert.ok(checklist, 'service checklist missing');
+  // enabled service + disabled ghost entries flow through mcpOptionRows
+  assert.match(checklist!.textContent ?? '', /服务A/);
+  assert.match(checklist!.textContent ?? '', /服务B \(已禁用\)/);
+});
+
+// --- R485 D3+D10: create opens with the rag-qa preset applied ---------------------------
+
+test('create mode prefills name/description/system prompt from the rag-qa preset (D3)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  const nameInput = $('[data-field="name"]', root) as HTMLInputElement;
+  assert.equal(nameInput.value, '我的RAG 问答');
+  const descInput = $('[data-field="description"]', root) as HTMLTextAreaElement;
+  assert.equal(descInput.value, '基于文档分块的检索式问答，适合未启用 Wiki 的文档 / FAQ 知识库。');
+  await goto(root, 'prompts');
+  const prompt = $('[data-field="system_prompt"]', root) as HTMLTextAreaElement;
+  assert.ok(prompt.value.startsWith('You are WeKnora'), 'system prompt body prefilled');
+});
+
+test('create mode seeds the four RAG tools into the effective-tools preview (D10)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'tools');
+  const section = $('[data-editor-section="tools"]', root)!;
+  assert.match(section.textContent!, /允许的工具/);
+  assert.match(section.textContent!, /选择 Agent 可以使用的工具/);
+  assert.match(section.textContent!, /最终启用的工具/);
+  // the four preset RAG tools are enabled (audit D10: React used to show the
+  // "degraded to plain model Q&A" empty state)
+  const checked = $$('[data-tool]', section).filter((el) => (el as HTMLInputElement).checked).map((el) => el.getAttribute('data-tool'));
+  assert.deepEqual(checked.sort(), ['get_document_info', 'grep_chunks', 'knowledge_search', 'list_knowledge_chunks']);
+  assert.equal(section.textContent!.includes('当前没有可用工具'), false, 'empty state must not show');
+});
+
+// --- R485 D2: agent type dropdown on the basic section ----------------------------------
+
+test('basic section offers the agent type dropdown in agent mode (D2)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  const section = $('[data-editor-section="basic"]', root)!;
+  assert.match(section.textContent!, /智能体类型/);
+  assert.match(section.textContent!, /选择一个预设会自动填充系统提示词、工具列表和推荐的知识库范围。/);
+  assert.match(section.textContent!, /基于文档分块的检索式问答/);
+  const select = $('[data-field="agent_type"]', section) as HTMLSelectElement;
+  assert.ok(select, 'agent type select missing');
+  assert.deepEqual($$(select, 'option').map((option) => option.value), ['rag-qa', 'wiki-qa', 'hybrid-rag-wiki', 'data-analysis', 'custom']);
+  assert.equal(select.value, 'rag-qa');
+});
+
+test('switching agent type applies the preset and refreshes system-generated fields (D2)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await setValue(root, '[data-field="agent_type"]', 'wiki-qa');
+  const nameInput = $('[data-field="name"]', root) as HTMLInputElement;
+  assert.equal(nameInput.value, '我的Wiki 问答');
+  await goto(root, 'tools');
+  const section = $('[data-editor-section="tools"]', root)!;
+  const checked = $$('[data-tool]', section).filter((el) => (el as HTMLInputElement).checked).map((el) => el.getAttribute('data-tool'));
+  assert.deepEqual(checked.sort(), ['wiki_flag_issue', 'wiki_read_page', 'wiki_read_source_doc', 'wiki_search']);
+  // user-edited names survive a type switch
+  await goto(root, 'basic');
+  await setValue(root, '[data-field="name"]', '我自己的名字');
+  await setValue(root, '[data-field="agent_type"]', 'rag-qa');
+  assert.equal(($('[data-field="name"]', root) as HTMLInputElement).value, '我自己的名字');
+});
+
+test('quick-answer mode hides the agent type dropdown (D2)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await checkRadio(root, 'input[name="agent-mode"][value="quick-answer"]');
+  assert.equal($('[data-field="agent_type"]', root), null, 'type dropdown is agent-mode only (Vue isAgentMode gate)');
+});
+
+// --- R485 D5+D6: creation-time model prefill + rerank required derivation ----------------
+
+test('create mode prefills chat/rerank models and rerank is required with a RAG KB (D5+D6)', async () => {
+  const { client } = makeClient();
+  const root = await mountModal({ client, mode: 'create' });
+  await goto(root, 'model');
+  const model = $('[data-field="model_id"]', root) as HTMLSelectElement;
+  assert.equal(model.value, 'm-chat', 'chat model prefilled (Vue applyDefaultModelsIfEmpty)');
+  const rerank = $('[data-field="rerank_model_id"]', root) as HTMLSelectElement;
+  assert.equal(rerank.value, 'm-rerank', 'rerank model prefilled');
+  // kb=all with kb-1 RAG -> required star on the rerank label, optional hint hidden
+  const section = $('[data-editor-section="model"]', root)!;
+  const rerankLabel = Array.from(section.querySelectorAll('label')).find((label) => label.textContent?.includes('ReRank 模型') ?? label.textContent?.includes('重排'));
+  assert.ok(rerankLabel, 'rerank label rendered');
+  assert.ok((rerankLabel?.textContent ?? '').includes('*'), 'required star rendered while a RAG KB is in scope');
+  assert.equal((section.textContent ?? '').includes('可不填'), false, 'optional hint hidden while required');
+});
+
+test('rerank stays optional when no RAG kb is in scope (D6)', async () => {
+  const { client } = makeClient();
+  // a wiki-only KB (no vector/keyword) keeps the section visible but rag-free
+  const wikiOnly = { id: 'kb-w', name: 'Wiki 库', type: 'document', knowledge_count: 3, indexing_strategy: { vector_enabled: false, keyword_enabled: false, wiki_enabled: true } };
+  const richClient = client as unknown as { knowledgeBases: { list: () => Promise<unknown[]> } };
+  richClient.knowledgeBases = { list: async () => [wikiOnly] };
+  const agent = {
+    ...EDIT_AGENT,
+    config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const, kb_selection_mode: 'selected' as const, knowledge_bases: ['kb-w'] },
+  };
+  const root = await mountModal({ client: richClient as unknown as WeKnoraClient, mode: 'edit', agent });
+  await goto(root, 'model');
+  const section = $('[data-editor-section="model"]', root)!;
+  const rerankLabel = Array.from(section.querySelectorAll('label')).find((label) => (label.textContent ?? '').includes('ReRank') || (label.textContent ?? '').includes('重排'));
+  assert.ok(rerankLabel, 'rerank label rendered');
+  assert.equal((rerankLabel?.textContent ?? '').includes('*'), false, 'no required star without a RAG KB');
+  assert.ok((section.textContent ?? '').length > 0);
 });

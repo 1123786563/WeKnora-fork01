@@ -25,6 +25,8 @@ export function settingsSectionsForRole(role: SettingsRole): readonly SettingsSe
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { key: 'general', viewId: 'GeneralSettings', apiDomain: 'preferences', scope: 'local', minRole: 'viewer', operations: ['read'], ported: true },
+  // SP14 Task 4 — 会话偏好（默认对话模型，Ruling P-3 用户默认层的前端面板）。
+  { key: 'chat-preferences', viewId: 'ChatPreferences', apiDomain: 'preferences', scope: 'user', minRole: 'viewer', operations: ['read', 'save'], ported: true },
   { key: 'tenant', viewId: 'TenantInfo', apiDomain: 'tenant', scope: 'tenant', minRole: 'viewer', operations: ['read', 'save'], ported: true },
   { key: 'userprofile', viewId: 'UserProfile', apiDomain: 'profile', scope: 'user', minRole: 'viewer', operations: ['read', 'save'], ported: true },
   { key: 'ollama', viewId: 'OllamaSettings', apiDomain: 'ollama', scope: 'tenant', minRole: 'admin', operations: ['read', 'test', 'save', 'unavailable'], ported: true },

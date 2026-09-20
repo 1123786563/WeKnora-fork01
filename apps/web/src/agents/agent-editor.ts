@@ -6,6 +6,29 @@
  */
 import { formatMessage, type Locale, type MessageValues } from '@weknora/i18n';
 import { agentEditorFallback } from './agent-editor-fallback.ts';
+import {
+  applyAgentTypePreset,
+  findAgentTypePreset,
+  presetDefaultDescription,
+  presetDefaultName,
+  type AgentTypePreset,
+} from './agent-type-presets.ts';
+
+// Re-exported as the module surface for the modal + tests (the preset catalog
+// is a static port of config/agent_type_presets.yaml, see the source file).
+export {
+  AGENT_TYPE_PRESETS,
+  agentTypePresetDescription,
+  agentTypePresetLabel,
+  applyAgentTypePreset,
+  findAgentTypePreset,
+  isDescriptionSystemGenerated,
+  isNameSystemGenerated,
+  presetDefaultDescription,
+  presetDefaultName,
+  type AgentTypePreset,
+  type AgentTypePresetConfig,
+} from './agent-type-presets.ts';
 
 export type Translate = (key: string, values?: Record<string, string | number>) => string;
 
@@ -103,6 +126,16 @@ export interface AgentConfigForm {
   rerank_top_k: number;
   rerank_threshold: number;
   question_suggestions: QuestionSuggestionsForm;
+  // 附件上传（multimodal 分区，AgentEditorModal.vue:2758-2771 defaultFormData）
+  image_upload_enabled: boolean;
+  vlm_model_id: string;
+  image_storage_provider: string;
+  attachment_image_understanding: boolean;
+  attachment_ocr_max_pages: number;
+  attachment_parse_wait_timeout_sec: number;
+  audio_upload_enabled: boolean;
+  asr_model_id: string;
+  chat_parser_engine_rules: unknown[];
   welcome_message: string;
   // Octop M1 persona (no Vue baseline); optional so legacy payloads stay valid
   persona_mbti?: string;
@@ -197,6 +230,16 @@ export function defaultAgentConfig(): AgentConfigForm {
         knowledge_fallback: true, allow_regenerate: false,
       },
     },
+    // 附件上传默认值（Vue defaultFormData 2758-2771：全部关闭/空/0）
+    image_upload_enabled: false,
+    vlm_model_id: '',
+    image_storage_provider: '',
+    attachment_image_understanding: false,
+    attachment_ocr_max_pages: 0,
+    attachment_parse_wait_timeout_sec: 0,
+    audio_upload_enabled: false,
+    asr_model_id: '',
+    chat_parser_engine_rules: [],
     welcome_message: '',
     // must exist in defaults or hydrateAgentForm drops them (trap at :199)
     persona_mbti: '',
@@ -238,6 +281,16 @@ export function hydrateAgentForm(agent: Record<string, unknown>): AgentEditorFor
   config.supported_file_types = asStringArray(stored.supported_file_types);
   // M3 delegation slugs — string-array like the tool/skill lists above
   config.subagents = asStringArray(stored.subagents);
+  // multimodal block (Vue:2758-2771 defaults; rules kept verbatim when present)
+  config.image_upload_enabled = asBool(stored.image_upload_enabled, false);
+  config.vlm_model_id = typeof stored.vlm_model_id === 'string' ? stored.vlm_model_id : '';
+  config.image_storage_provider = typeof stored.image_storage_provider === 'string' ? stored.image_storage_provider : '';
+  config.attachment_image_understanding = asBool(stored.attachment_image_understanding, false);
+  config.attachment_ocr_max_pages = asNumber(stored.attachment_ocr_max_pages, 0);
+  config.attachment_parse_wait_timeout_sec = asNumber(stored.attachment_parse_wait_timeout_sec, 0);
+  config.audio_upload_enabled = asBool(stored.audio_upload_enabled, false);
+  config.asr_model_id = typeof stored.asr_model_id === 'string' ? stored.asr_model_id : '';
+  config.chat_parser_engine_rules = Array.isArray(stored.chat_parser_engine_rules) ? stored.chat_parser_engine_rules : [];
   const waitTimeout = asNumber(stored.mcp_auth_wait_timeout, 0);
   config.mcp_auth_wait_timeout = waitTimeout <= 0 ? 600 : waitTimeout;
   config.max_completion_tokens = asNumber(stored.max_completion_tokens, 0);
@@ -320,8 +373,8 @@ export const agentModeOf = (config: Record<string, unknown> | undefined): AgentM
 // --- validation (AgentEditorModal.vue handleSave 4736-4799) ------------------------
 
 export type AgentSectionKey =
-  | 'basic' | 'prompts' | 'model' | 'conversation' | 'knowledge' | 'retrieval'
-  | 'websearch' | 'tools' | 'skills' | 'personalization' | 'subagents';
+  | 'basic' | 'prompts' | 'model' | 'conversation' | 'suggestions' | 'knowledge' | 'retrieval'
+  | 'websearch' | 'multimodal' | 'tools' | 'mcp' | 'skills' | 'personalization' | 'subagents';
 
 export type AgentFieldError =
   | 'name' | 'system_prompt' | 'context_template' | 'model_id'
@@ -399,6 +452,8 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     { key: 'basic', icon: 'info-circle', labelKey: 'agent.editor.basicInfo' },
     { key: 'prompts', icon: 'file-paste', labelKey: 'agent.editor.promptsConfig' },
     { key: 'model', icon: 'control-platform', labelKey: 'agent.editor.modelConfig' },
+    // R485 D1 — Vue navItems 2657-2684: suggestions rides the basic group
+    { key: 'suggestions', icon: 'help-circle', labelKey: 'agentEditor.questionSuggestions.navLabel' },
     { key: 'conversation', icon: 'chat', labelKey: 'agent.editor.conversationSettings' },
     { key: 'knowledge', icon: 'folder', labelKey: 'agent.editor.knowledgeConfig' },
   ];
@@ -406,6 +461,8 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     items.push({ key: 'retrieval', icon: 'search', labelKey: 'agent.editor.retrievalStrategy' });
   }
   items.push({ key: 'websearch', icon: 'internet', labelKey: 'agent.editor.webSearchConfig' });
+  // R485 D1 — multimodal is NOT agent-mode gated in Vue (navItems push is unconditional)
+  items.push({ key: 'multimodal', icon: 'attach', labelKey: 'agentEditor.imageUpload.navLabel' });
   if (options.isAgentMode) {
     // Octop M1 persona section (no Vue baseline). Persona renders only in the
     // smart-reasoning pipeline (capability assembly); quick-answer runs never
@@ -413,6 +470,8 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
     // instead of offering a control that silently does nothing.
     items.push({ key: 'personalization', icon: 'user', labelKey: 'agentEditor.personalization.title' });
     items.push({ key: 'tools', icon: 'tools', labelKey: 'agent.editor.toolsConfig' });
+    // R485 D1 — Vue places mcp between tools and skills in agent mode
+    items.push({ key: 'mcp', icon: 'server', labelKey: 'agentEditor.mcp.label' });
     items.push({ key: 'skills', icon: 'skills', labelKey: 'agent.editor.skillsConfig' });
     // Octop M3 delegation (no Vue baseline): sub-agent roles only register the
     // delegate tool in the smart-reasoning pipeline, so the same agent-mode
@@ -423,9 +482,11 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
   const pick = (keys: AgentSectionKey[]): AgentNavItem[] =>
     keys.map((key) => byKey.get(key)).filter((item): item is AgentNavItem => item !== undefined);
   return [
-    { key: 'basic', labelKey: 'agentEditor.navGroups.basic', items: pick(['basic', 'prompts', 'model', 'conversation', 'personalization']) },
+    // Vue navGroups 2687-2713: basic group picks suggestions after conversation
+    { key: 'basic', labelKey: 'agentEditor.navGroups.basic', items: pick(['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization']) },
     { key: 'knowledge', labelKey: 'agentEditor.navGroups.knowledge', items: pick(['knowledge', 'retrieval', 'websearch']) },
-    { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['tools', 'skills', 'subagents']) },
+    // Vue capability order: multimodal, tools, mcp, skills (subagents rides last)
+    { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['multimodal', 'tools', 'mcp', 'skills', 'subagents']) },
   ].filter((group) => group.items.length > 0);
 }
 
@@ -620,3 +681,84 @@ export function catalogSkillRows(catalog: SkillCatalogLike[], sandboxConfigId: s
 }
 
 export const isNamedSandboxBackend = (type: string): boolean => ['docker', 'e2b', 'cube'].includes(type);
+
+// --- create prefill (AgentEditorModal.vue 3514-3536 + D3/D10) ------------------------
+
+/** frontend/src/utils/modelDefaults.ts ModelDefaultCandidate (type optional to accept api-client rows). */
+export interface ModelDefaultCandidate { id?: string; type?: string; status?: string; is_default?: boolean }
+
+/**
+ * Pick a creation-time model: prefer the declared default, fall back to the
+ * first active model (frontend/src/utils/modelDefaults.ts selectInitialModelId).
+ */
+export function selectInitialModelId(models: readonly ModelDefaultCandidate[], modelType: string): string | null {
+  const active = models.filter((model) =>
+    Boolean(model.id?.trim()) && model.type === modelType && (!model.status || model.status === 'active'));
+  return active.find((model) => model.is_default)?.id?.trim() ?? active[0]?.id?.trim() ?? null;
+}
+
+/**
+ * The create form opens with the default agent_type preset applied so the
+ * visible defaults match the type dropdown from the first paint (Vue 3514-3536
+ * "否则用户在 modal 打开瞬间看到的默认表单和类型下拉显示的类型不一致").
+ * Smart-reasoning is the default agent_mode, so the default type 'rag-qa'
+ * seeds the system prompt, the 4 RAG tools, kb mode and the 我的<label> name.
+ * Models are prefilled when empty (Vue applyDefaultModelsIfEmpty 2854-2862, D5).
+ */
+export function seedCreateAgentForm(t: Translate, locale: Locale = 'zh-CN', models: readonly ModelDefaultCandidate[] = []): AgentEditorForm {
+  const form = defaultAgentForm();
+  if (form.config.agent_mode === 'smart-reasoning') {
+    const defaultTypeId = form.config.agent_type;
+    const preset = findAgentTypePreset(defaultTypeId);
+    if (defaultTypeId && defaultTypeId !== 'custom') {
+      applyAgentTypePreset(form, preset);
+    }
+    if (!form.name) form.name = presetDefaultName(preset, t, locale);
+    if (!form.description) form.description = presetDefaultDescription(preset, locale);
+  }
+  const chatModelId = selectInitialModelId(models, 'KnowledgeQA');
+  const rerankModelId = selectInitialModelId(models, 'Rerank');
+  if (!form.config.model_id && chatModelId) form.config.model_id = chatModelId;
+  if (!form.config.rerank_model_id && rerankModelId) form.config.rerank_model_id = rerankModelId;
+  return form;
+}
+
+/**
+ * Rerank is required only when a RAG-capable KB is reachable: under "all" any
+ * ragEnabled KB counts, under "selected" only the picked ones (Vue
+ * needsRerankModel computed 3373-3388, audit D6).
+ */
+export function needsRerankModel(kbMode: ScopeSelectionMode, kbOptions: readonly KbOption[], selectedIds: readonly string[]): boolean {
+  if (kbMode === 'none') return false;
+  if (kbMode === 'all') return kbOptions.some((kb) => kb.ragEnabled);
+  return kbOptions.some((kb) => selectedIds.includes(kb.value) && kb.ragEnabled);
+}
+
+// --- MCP service options (AgentEditorModal.vue mcpOptions 2039-2068) ------------------
+
+export interface McpServiceLike { id: string; name: string; enabled?: boolean }
+export interface McpOptionRow { label: string; value: string; disabled?: boolean }
+
+/**
+ * MCP select options: enabled services first, then selected-but-disabled ones
+ * flagged "(已禁用)", then ghost ids (selected service deleted elsewhere) shown
+ * as unavailable. Mirrors the Vue computed that keeps stale selections visible
+ * instead of silently dropping them.
+ */
+export function mcpOptionRows(services: McpServiceLike[], selectedIds: string[], t: Translate): McpOptionRow[] {
+  const serviceById = new Map(services.map((mcp) => [mcp.id, mcp]));
+  const selected = new Set(selectedIds);
+  const rows: McpOptionRow[] = [];
+  for (const mcp of services) {
+    if (mcp.enabled !== false) rows.push({ label: mcp.name, value: mcp.id });
+  }
+  for (const id of selected) {
+    const mcp = serviceById.get(id);
+    if (mcp && mcp.enabled === false) {
+      rows.push({ label: `${mcp.name} (${t('mcpSettings.disabled')})`, value: id, disabled: true });
+    } else if (!mcp) {
+      rows.push({ label: t('agentEditor.mcp.unavailableService'), value: id, disabled: true });
+    }
+  }
+  return rows;
+}

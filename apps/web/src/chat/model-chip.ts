@@ -116,26 +116,36 @@ export interface ChatModelChip {
  * Resolve the chip content the way the Vue new-conversation view does.
  *
  * Selection priority mirrors the Vue chat input chain
- * (frontend/src/components/Input-field.vue):
+ * (frontend/src/components/Input-field.vue) plus the SP14 user-default layer
+ * (Ruling P-3, plan A pure-frontend):
  * 1. the user's persisted pick (ensureModelSelection's readLastChatModelID
  *    branch) — an explicit pick that differs from the agent binding also wins
  *    over it (agent-model watch keep-pick branch, lines 1001-1024);
  * 2. the selected agent's config.model_id (agent-model watch binding);
- * 3. the first available chat model (ensureModelSelection fallback).
+ * 3. the user's server-side default model (preferences.default_model via
+ *    PUT /api/v1/auth/me/preferences) — the caller passes it in, so existing
+ *    call sites that omit userDefaultModel keep the pre-SP14 behavior;
+ * 4. the first available chat model (ensureModelSelection fallback).
  * A resolved id that is missing from the list renders 未配置 exactly like
- * the Vue find() miss (lines 1067-1078); the shared-agent
- * input.sharedAgentModelLabel variant has no React surface yet.
+ * the Vue find() miss (lines 1067-1078) — EXCEPT the user default, which is
+ * a stored preference rather than an explicit conversation intent: a default
+ * the tenant no longer lists degrades to the first model instead of bricking
+ * the chip with 未配置; the shared-agent input.sharedAgentModelLabel variant
+ * has no React surface yet.
  */
 export function resolveChatModelChip(options: {
   models: readonly ChatModelLike[];
   agentModelId?: unknown;
   /** The persisted in-session model pick (Vue readLastChatModelID). */
   selectedModelId?: unknown;
+  /** The user's server-side default model (SP14 preferences.default_model). */
+  userDefaultModel?: unknown;
   notConfiguredLabel?: string;
 }): ChatModelChip {
   const notConfiguredLabel = options.notConfiguredLabel ?? MODEL_CHIP_NOT_CONFIGURED['zh-CN'];
   const agentModelId = typeof options.agentModelId === 'string' ? options.agentModelId.trim() : '';
   const selectedModelId = typeof options.selectedModelId === 'string' ? options.selectedModelId.trim() : '';
+  const userDefaultModel = typeof options.userDefaultModel === 'string' ? options.userDefaultModel.trim() : '';
   const findById = (id: string) => options.models.find((model) => model.id === id);
   let selected: ChatModelLike | undefined;
   if (agentModelId) {
@@ -146,6 +156,11 @@ export function resolveChatModelChip(options: {
     // The stored last pick seeds the chip only when it still resolves; a
     // missing id stays 未配置 (Vue find() miss).
     selected = findById(selectedModelId);
+  } else if (userDefaultModel) {
+    // SP14 P-3 user-default layer: between the agent binding and the first
+    // model. Unlike a stale pick, a default that no longer resolves degrades
+    // to the first model (stored preference, not conversation intent).
+    selected = findById(userDefaultModel) ?? options.models[0];
   } else {
     // Vue ensureModelSelection (Input-field.vue:982-994): with no agent
     // binding and no stored pick the chip falls back to the first available

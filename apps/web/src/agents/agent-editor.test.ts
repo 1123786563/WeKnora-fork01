@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   AGENT_FILE_TYPE_OPTIONS,
+  AGENT_TYPE_PRESETS,
   agentModeOf,
+  agentTypePresetDescription,
+  agentTypePresetLabel,
   applyAgentModeSwitch,
+  applyAgentTypePreset,
   applyKbSelectionMode,
   applyScopeSelectionMode,
   buildAgentPayload,
@@ -12,13 +16,21 @@ import {
   defaultAgentForm,
   editorT,
   evaluateToolRequirement,
+  findAgentTypePreset,
   hydrateAgentForm,
   initKbSelectionMode,
   initScopeSelectionMode,
+  isNameSystemGenerated,
   kbOptionFromRecord,
+  makeEditorT,
+  mcpOptionRows,
+  needsRerankModel,
+  seedCreateAgentForm,
+  selectInitialModelId,
   TOOL_CATALOG,
   validateAgentForm,
   type AgentEditorForm,
+  type KbOption,
   type ToolCapabilityScope,
 } from './agent-editor.ts';
 import { agentEditorFallback } from './agent-editor-fallback.ts';
@@ -264,22 +276,24 @@ test('buildAgentPayload omits id in create mode', () => {
 
 test('nav groups follow the Vue section list and order for quick-answer without KB', () => {
   const groups = buildNavGroups({ isAgentMode: false, hasKnowledgeBase: false });
-  assert.deepEqual(groups.map((group) => group.key), ['basic', 'knowledge']);
+  assert.deepEqual(groups.map((group) => group.key), ['basic', 'knowledge', 'capability']);
   // quick-answer never renders persona (capability assembly is bypassed), so
   // the personalization section is gated by agent-mode like tools/skills
-  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation']);
+  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'suggestions']);
   assert.deepEqual(groups[1]!.items.map((item) => item.key), ['knowledge', 'websearch']);
+  // multimodal stays available in quick-answer (Vue pushes it unconditionally)
+  assert.deepEqual(groups[2]!.items.map((item) => item.key), ['multimodal']);
 });
 
 test('nav groups add retrieval with KB capability and tools/skills in agent mode', () => {
   const groups = buildNavGroups({ isAgentMode: true, hasKnowledgeBase: true });
   assert.deepEqual(groups.map((group) => group.key), ['basic', 'knowledge', 'capability']);
   // personalization (Octop M1, no Vue baseline) rides the basic group after
-  // conversation, offered only in smart-reasoning mode; subagents (Octop M3
+  // the Vue sections, offered only in smart-reasoning mode; subagents (Octop M3
   // delegation) rides the capability group under the same agent-mode gate
-  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'personalization']);
+  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization']);
   assert.deepEqual(groups[1]!.items.map((item) => item.key), ['knowledge', 'retrieval', 'websearch']);
-  assert.deepEqual(groups[2]!.items.map((item) => item.key), ['tools', 'skills', 'subagents']);
+  assert.deepEqual(groups[2]!.items.map((item) => item.key), ['multimodal', 'tools', 'mcp', 'skills', 'subagents']);
 });
 
 // --- tool requirement evaluation (frontend/src/utils/tool-capabilities.ts) -----------
@@ -402,4 +416,199 @@ test('AGENT_FILE_TYPE_OPTIONS mirror the Vue availableFileTypes list (D8)', () =
   for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
     assert.ok(agentEditorFallback[locale]?.['agentEditor.fileTypes.label'], 'fileTypes fallback missing for ' + locale);
   }
+});
+
+// --- R485 D1: nav rail carries the three missing Vue sections --------------------------
+// Vue AgentEditorModal.vue navItems 2657-2684 registers suggestions (basic group,
+// after conversation), multimodal + mcp (capability group; mcp gated by agent
+// mode like tools/skills). The React rail omitted all three (audit D1).
+test('nav groups register suggestions/multimodal/mcp like the Vue rail (D1)', () => {
+  const quick = buildNavGroups({ isAgentMode: false, hasKnowledgeBase: false });
+  assert.deepEqual(quick.map((group) => group.key), ['basic', 'knowledge', 'capability']);
+  assert.deepEqual(quick[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'suggestions']);
+  assert.deepEqual(quick[1]!.items.map((item) => item.key), ['knowledge', 'websearch']);
+  // multimodal is NOT gated by agent mode in Vue (navItems push is unconditional)
+  assert.deepEqual(quick[2]!.items.map((item) => item.key), ['multimodal']);
+
+  const agent = buildNavGroups({ isAgentMode: true, hasKnowledgeBase: true });
+  assert.deepEqual(agent[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization']);
+  assert.deepEqual(agent[1]!.items.map((item) => item.key), ['knowledge', 'retrieval', 'websearch']);
+  // Vue capability order: multimodal, tools, mcp, skills; subagents (Octop M3,
+  // no Vue baseline) rides last
+  assert.deepEqual(agent[2]!.items.map((item) => item.key), ['multimodal', 'tools', 'mcp', 'skills', 'subagents']);
+});
+
+// --- R485 D1: multimodal/attachment config fields mirror Vue defaultFormData ------------
+// Vue AgentEditorModal.vue:2758-2771 defaults the attachment block.
+test('default form carries the Vue multimodal/attachment defaults (D1)', () => {
+  const form = defaultAgentForm();
+  assert.equal(form.config.image_upload_enabled, false);
+  assert.equal(form.config.vlm_model_id, '');
+  assert.equal(form.config.image_storage_provider, '');
+  assert.equal(form.config.attachment_image_understanding, false);
+  assert.equal(form.config.attachment_ocr_max_pages, 0);
+  assert.equal(form.config.attachment_parse_wait_timeout_sec, 0);
+  assert.equal(form.config.audio_upload_enabled, false);
+  assert.equal(form.config.asr_model_id, '');
+  assert.deepEqual(form.config.chat_parser_engine_rules, []);
+});
+
+test('hydrateAgentForm keeps stored multimodal config over the defaults', () => {
+  const form = hydrateAgentForm({
+    id: 'a-9',
+    name: '多模态',
+    description: '',
+    is_builtin: false,
+    config: {
+      agent_mode: 'smart-reasoning',
+      image_upload_enabled: true,
+      vlm_model_id: 'm-vlm',
+      attachment_ocr_max_pages: 12,
+      audio_upload_enabled: true,
+      asr_model_id: 'm-asr',
+      attachment_parse_wait_timeout_sec: 120,
+      image_storage_provider: 'minio',
+      chat_parser_engine_rules: [{ extensions: ['.pdf'], engine: 'mineru' }],
+    },
+  });
+  assert.equal(form.config.image_upload_enabled, true);
+  assert.equal(form.config.vlm_model_id, 'm-vlm');
+  assert.equal(form.config.attachment_ocr_max_pages, 12);
+  assert.equal(form.config.audio_upload_enabled, true);
+  assert.equal(form.config.asr_model_id, 'm-asr');
+  assert.equal(form.config.attachment_parse_wait_timeout_sec, 120);
+  assert.equal(form.config.image_storage_provider, 'minio');
+  assert.deepEqual(form.config.chat_parser_engine_rules, [{ extensions: ['.pdf'], engine: 'mineru' }]);
+});
+
+// --- R485 D1: MCP service option rows (Vue mcpOptions 2039-2068) ------------------------
+test('mcpOptionRows flags enabled services, disabled selections and ghost ids (D1)', () => {
+  const t = makeEditorT('zh-CN');
+  const rows = mcpOptionRows(
+    [
+      { id: 'mcp-a', name: '服务A', enabled: true },
+      { id: 'mcp-b', name: '服务B', enabled: false },
+    ],
+    ['mcp-a', 'mcp-b', 'mcp-ghost'],
+    t,
+  );
+  assert.deepEqual(rows[0], { label: '服务A', value: 'mcp-a' });
+  assert.equal(rows[1]!.label, '服务B (已禁用)');
+  assert.equal(rows[1]!.disabled, true);
+  assert.equal(rows[2]!.label, '不可用服务');
+  assert.equal(rows[2]!.disabled, true);
+});
+
+// --- R485 D2: agent type preset options mirror config/agent_type_presets.yaml ----------
+test('agent type preset options mirror the shipped YAML catalog (D2)', () => {
+  assert.deepEqual(AGENT_TYPE_PRESETS.map((preset) => preset.id), ['rag-qa', 'wiki-qa', 'hybrid-rag-wiki', 'data-analysis', 'custom']);
+  assert.equal(agentTypePresetLabel(findAgentTypePreset('rag-qa')!, 'zh-CN'), 'RAG 问答');
+  assert.equal(agentTypePresetLabel(findAgentTypePreset('custom')!, 'zh-CN'), '自定义');
+  // en-US is absent from the YAML i18n maps -> falls back to the default block
+  assert.equal(agentTypePresetLabel(findAgentTypePreset('rag-qa')!, 'en-US'), 'RAG Q&A');
+  assert.equal(agentTypePresetDescription(findAgentTypePreset('rag-qa')!, 'zh-CN'), '基于文档分块的检索式问答，适合未启用 Wiki 的文档 / FAQ 知识库。');
+  assert.equal(findAgentTypePreset('custom')!.config, undefined, 'custom preset carries no auto-fill config');
+  assert.equal(findAgentTypePreset('nope'), null);
+});
+
+test('isNameSystemGenerated treats preset default names and blanks as safe to override', () => {
+  const t = makeEditorT('zh-CN');
+  assert.equal(isNameSystemGenerated('', t, 'zh-CN'), true);
+  assert.equal(isNameSystemGenerated('我的RAG 问答', t, 'zh-CN'), true);
+  assert.equal(isNameSystemGenerated('自己起的名字', t, 'zh-CN'), false);
+});
+
+// --- R485 D3+D10: create-mode rag-qa prefill (Vue 3514-3536) ----------------------------
+// Vue opens the create modal with the default agent_type ('rag-qa') preset
+// applied: name/description/system prompt/tools prefilled so the modal matches
+// the type dropdown from the first paint (audit D3), which also seeds the
+// effective-tools preview with 4 RAG tools (audit D10).
+test('seedCreateAgentForm applies the rag-qa preset to the create form (D3+D10)', () => {
+  const t = makeEditorT('zh-CN');
+  const form = seedCreateAgentForm(t);
+  assert.equal(form.config.agent_type, 'rag-qa');
+  assert.equal(form.name, '我的RAG 问答');
+  assert.equal(form.description, '基于文档分块的检索式问答，适合未启用 Wiki 的文档 / FAQ 知识库。');
+  assert.equal(form.config.system_prompt_id, 'progressive_rag_agent');
+  assert.ok(form.config.system_prompt.startsWith('You are WeKnora'), 'system prompt body must be resolved from the template');
+  assert.deepEqual(form.config.allowed_tools, ['knowledge_search', 'grep_chunks', 'list_knowledge_chunks', 'get_document_info']);
+  assert.equal(form.config.max_iterations, 30);
+  assert.equal(form.config.temperature, 0.7);
+  assert.equal(form.config.faq_priority_enabled, true);
+  assert.equal(form.config.retain_retrieval_history, false);
+  assert.equal(form.config.kb_selection_mode, 'all');
+});
+
+test('applyAgentTypePreset strong-syncs supported_file_types and kb mode across types (D2)', () => {
+  const form = defaultAgentForm();
+  applyAgentTypePreset(form, findAgentTypePreset('data-analysis')!);
+  assert.deepEqual(form.config.supported_file_types, ['csv', 'xlsx']);
+  assert.equal(form.config.web_search_enabled, false);
+  assert.equal(form.config.system_prompt_id, 'data_analyst');
+  assert.ok(form.config.system_prompt.includes('DuckDB'));
+  // switching back to rag-qa must clear the residue (Vue strong-sync comment)
+  applyAgentTypePreset(form, findAgentTypePreset('rag-qa')!);
+  assert.deepEqual(form.config.supported_file_types, []);
+  // wiki preset swaps the tool list + system prompt template
+  applyAgentTypePreset(form, findAgentTypePreset('wiki-qa')!);
+  assert.deepEqual(form.config.allowed_tools, ['wiki_search', 'wiki_read_page', 'wiki_read_source_doc', 'wiki_flag_issue']);
+  assert.equal(form.config.system_prompt_id, 'wiki_researcher');
+});
+
+// --- R485 D1/D2/D3: i18n fallback covers the new section keys ---------------------------
+test('fallback table carries the three-section + agent-type keys (D1/D2)', () => {
+  const t = makeEditorT('zh-CN');
+  assert.equal(t('agentEditor.questionSuggestions.navLabel'), '问题推荐');
+  assert.equal(t('agentEditor.imageUpload.navLabel'), '附件上传');
+  assert.equal(t('agentEditor.mcp.label'), 'MCP 服务');
+  assert.equal(t('agentEditor.agentType.label'), '智能体类型');
+  assert.equal(t('agentEditor.agentType.defaultNamePattern', { label: 'RAG 问答' }), '我的RAG 问答');
+  assert.equal(t('agentEditor.questionSuggestions.title'), '对话问题推荐');
+  assert.equal(t('agentEditor.imageUpload.sectionTitle'), '附件上传');
+  assert.equal(t('agentEditor.imageUpload.vlmModel'), 'VLM 模型');
+  assert.equal(t('agentEditor.audioUpload.label'), '语音上传');
+  assert.equal(t('agentEditor.chatParser.label'), '聊天附件解析策略');
+  assert.equal(t('agentEditor.mcp.authWaitTimeout'), '授权等待超时（秒）');
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    assert.ok(agentEditorFallback[locale]?.['agentEditor.questionSuggestions.navLabel'], 'suggestions nav fallback missing for ' + locale);
+    assert.ok(agentEditorFallback[locale]?.['agentEditor.imageUpload.navLabel'], 'multimodal nav fallback missing for ' + locale);
+    assert.ok(agentEditorFallback[locale]?.['agentEditor.mcp.label'], 'mcp nav fallback missing for ' + locale);
+    assert.ok(agentEditorFallback[locale]?.['agentEditor.agentType.label'], 'agentType fallback missing for ' + locale);
+  }
+});
+
+// --- R485 D5: creation-time model prefill (Vue applyDefaultModelsIfEmpty 2854-2862) ------
+test('selectInitialModelId prefers the declared default then the first active model (D5)', () => {
+  const models = [
+    { id: 'm1', type: 'KnowledgeQA' },
+    { id: 'm2', type: 'KnowledgeQA', is_default: true },
+    { id: 'm3', type: 'KnowledgeQA', is_default: true, status: 'inactive' },
+    { id: '', type: 'KnowledgeQA' },
+  ];
+  assert.equal(selectInitialModelId(models, 'KnowledgeQA'), 'm2');
+  assert.equal(selectInitialModelId(models, 'Rerank'), null);
+  assert.equal(selectInitialModelId([{ id: 'r1', type: 'Rerank' }], 'Rerank'), 'r1');
+});
+
+test('seedCreateAgentForm prefills empty chat/rerank models without clobbering set ones (D5)', () => {
+  const t = makeEditorT('zh-CN');
+  const models = [
+    { id: 'm-chat', type: 'KnowledgeQA' },
+    { id: 'm-rerank', type: 'Rerank' },
+  ];
+  const form = seedCreateAgentForm(t, 'zh-CN', models);
+  assert.equal(form.config.model_id, 'm-chat');
+  assert.equal(form.config.rerank_model_id, 'm-rerank');
+});
+
+// --- R485 D6: rerank required derivation (Vue needsRerankModel 3373-3388) ----------------
+test('needsRerankModel derives from the KB scope rag capability (D6)', () => {
+  const kbs: KbOption[] = [
+    { label: 'A', value: 'kb-1', type: 'document', count: 0, shared: false, ragEnabled: true, wikiEnabled: false },
+    { label: 'B', value: 'kb-2', type: 'document', count: 0, shared: false, ragEnabled: false, wikiEnabled: true },
+  ];
+  assert.equal(needsRerankModel('all', kbs, []), true, 'any RAG kb under all');
+  assert.equal(needsRerankModel('selected', kbs, ['kb-2']), false, 'selected scope has no RAG kb');
+  assert.equal(needsRerankModel('selected', kbs, ['kb-1', 'kb-2']), true, 'selected scope includes a RAG kb');
+  assert.equal(needsRerankModel('none', kbs, []), false, 'no kb scope -> never required');
 });
