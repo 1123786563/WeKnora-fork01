@@ -13,6 +13,7 @@
     "./chat/draft": "./src/chat/draft.ts",
     "./chat/message-extras": "./src/chat/message-extras.ts",
     "./chat/message-timestamps": "./src/chat/message-timestamps.ts",
+    "./chat/native": "./src/chat/native.ts",
     "./chat/reducer": "./src/chat/reducer.ts",
     "./chat/references": "./src/chat/references.ts",
     "./chat/session-grouping": "./src/chat/session-grouping.ts",
