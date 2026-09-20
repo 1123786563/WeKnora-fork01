@@ -720,3 +720,7 @@ export function parseKnowledgeSearchResponse(value: unknown): KnowledgeSearchRes
 export * from './analytics.ts';
 export * from './usage.ts';
 export * from './query-history.ts';
+export type { AgentVersion } from './agents/versions.ts';
+export { parseAgentVersion, parseAgentVersionListResponse } from './agents/versions.ts';
+export type { ReleaseSubmission, ReleaseReview, AgentRelease, TenantReleaseListing, ReleaseReviewResult } from './marketplace/tenant-releases.ts';
+export { parseReleaseSubmissionResponse, parseReleaseReviewResponse, parseReleaseSubmissionListResponse, parseTenantReleaseListResponse } from './marketplace/tenant-releases.ts';

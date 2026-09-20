@@ -15,7 +15,8 @@ import (
 // versionedSQLiteTables is the set of tables that SQLite migrations must
 // create to stay in sync with the versioned (PostgreSQL) migrations:
 // 000041 task queue, 000053 system settings, 000055 processing spans,
-// 000063 knowledge multi-tags, and 000086-000090 skill storage/catalog.
+// 000063 knowledge multi-tags, 000086-000090 skill storage/catalog and
+// 000099 the Agent domain's immutable agent versions.
 var versionedSQLiteTables = []string{
 	"task_pending_ops",
 	"task_dead_letters",
@@ -35,6 +36,11 @@ var versionedSQLiteTables = []string{
 	"mobile_notification_intents",
 	"mobile_notification_checkpoints",
 	"mobile_notification_provider_state",
+	"agent_versions",
+	"agent_marketplace_listings",
+	"agent_release_submissions",
+	"agent_release_reviews",
+	"agent_releases",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -89,7 +95,14 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	for _, table := range versionedSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "SQLite migrations must create table %s", table)
 	}
-	for _, index := range []string{"uq_mobile_devices_active_token", "idx_mobile_devices_owner"} {
+	for _, index := range []string{
+		"uq_mobile_devices_active_token", "idx_mobile_devices_owner",
+		// 000099: the (tenant, agent, version_number) scope guard that makes
+		// frozen agent version numbers collision-free.
+		"uq_agent_versions_scope", "uq_agent_versions_source_binding",
+		"uq_agent_marketplace_listing_scope", "uq_agent_release_review_decision",
+		"uq_agent_releases_number", "uq_agent_releases_semantic", "uq_agent_releases_digest",
+	} {
 		require.Truef(t, sqliteIndexExists(t, db, index), "SQLite migrations must create index %s", index)
 	}
 	for table, columns := range versionedSQLiteColumns {
@@ -149,7 +162,10 @@ func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
 	for _, table := range versionedSQLiteTables {
 		require.Truef(t, sqliteTableExists(t, db, table), "upgraded SQLite DB must have table %s", table)
 	}
-	for _, index := range []string{"uq_mobile_devices_active_token", "idx_mobile_devices_owner"} {
+	for _, index := range []string{
+		"uq_mobile_devices_active_token", "idx_mobile_devices_owner",
+		"uq_agent_versions_scope", "uq_agent_versions_source_binding", // 000099 twin of the PostgreSQL 000178 scope guard
+	} {
 		require.Truef(t, sqliteIndexExists(t, db, index), "upgraded SQLite DB must create index %s", index)
 	}
 	for table, columns := range versionedSQLiteColumns {

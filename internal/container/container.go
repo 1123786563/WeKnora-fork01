@@ -116,6 +116,28 @@ import (
 	wgrpc "github.com/weaviate/weaviate-go-client/v5/weaviate/grpc"
 )
 
+// tenantReleaseDependencyResolver fails closed until the referenced tenant
+// Skill/Subagent has a stable redistributable version source. It permits
+// dependency-free Agent Releases and never invents caller-controlled locks.
+type tenantReleaseDependencyResolver struct{}
+
+func (tenantReleaseDependencyResolver) Resolve(_ context.Context, _ uint64, version types.AgentVersionSnapshot) (types.DependencyLock, error) {
+	if version.Agent == nil {
+		return types.DependencyLock{}, fmt.Errorf("cannot resolve dependencies for an empty agent version")
+	}
+	if len(version.Agent.Config.SelectedSkills) > 0 || len(version.Agent.Config.Subagents) > 0 {
+		missing := make([]string, 0, len(version.Agent.Config.SelectedSkills)+len(version.Agent.Config.Subagents))
+		for _, id := range version.Agent.Config.SelectedSkills {
+			missing = append(missing, fmt.Sprintf("skill %q", id))
+		}
+		for _, id := range version.Agent.Config.Subagents {
+			missing = append(missing, fmt.Sprintf("subagent %q", id))
+		}
+		return types.DependencyLock{}, fmt.Errorf("missing immutable redistributable dependencies: %s", strings.Join(missing, ", "))
+	}
+	return types.DependencyLock{Dependencies: []types.AgentReleaseDependency{}}, nil
+}
+
 // BuildContainer constructs the dependency injection container
 // Registers all components, services, repositories and handlers needed by the application
 // Creates a fully configured application container with proper dependency resolution
@@ -264,6 +286,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewPublishedSkillRepository))
 	must(container.Provide(repository.NewPublishedExpertRepository))
 	must(container.Provide(repository.NewCustomAgentRepository))
+	must(container.Provide(repository.NewAgentVersionRepository))
+	must(container.Provide(repository.NewAgentMarketplaceRepository))
+	must(container.Provide(func(repo repository.AgentMarketplaceRepository) interfaces.AgentMarketplaceRepository { return repo }))
 	must(container.Provide(repository.NewOrganizationRepository))
 	must(container.Provide(repository.NewKBShareRepository))
 	must(container.Provide(repository.NewAgentShareRepository))
@@ -341,6 +366,15 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewMCPServiceService))
 	must(container.Provide(service.NewMCPToolApprovalService))
 	must(container.Provide(service.NewCustomAgentService))
+	must(container.Provide(func() interfaces.ReleaseDependencyResolver { return tenantReleaseDependencyResolver{} }))
+	must(container.Provide(func(agents interfaces.CustomAgentService, versions repository.AgentVersionRepository) interfaces.AgentVersionService {
+		return service.NewAgentVersionService(agents, versions)
+	}))
+	must(container.Provide(func(versions interfaces.AgentVersionService, resolver interfaces.ReleaseDependencyResolver, repo interfaces.AgentMarketplaceRepository) interfaces.AgentMarketplaceService {
+		return service.NewAgentMarketplaceService(versions, resolver, repo, filepath.Join(experts.MarketDataRoot(), "tenant-releases"))
+	}))
+	must(container.Provide(handler.NewAgentVersionHandler))
+	must(container.Provide(handler.NewAgentMarketplaceHandler))
 	must(container.Provide(service.NewUserResourceFavoriteService))
 	must(container.Provide(service.NewWikiPageService))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))

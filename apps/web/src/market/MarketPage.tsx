@@ -22,6 +22,8 @@ import type { MarketSkillSummary, SandboxConfigRecord, SkillCatalog, TenantPubli
 import { installProgressPercent, type SkillInstallProgressEvent } from '@weknora/domain/sandbox/skill-install';
 import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
+import { createAgentMarketplaceApi } from '../agent-marketplace/agent-marketplace-api.ts';
+import { TenantReleaseReview } from '../agent-marketplace/TenantReleaseReview.tsx';
 import { backendLabelKey, compactSkillText, isNamedSandboxBackend, sandboxTargetLine } from '../configuration/management.ts';
 
 /** Matches WebTenantRole (platform/scope-runtime.ts); admin affordances gate on admin|owner like SkillSettingsPanel.canEdit. */
@@ -140,6 +142,7 @@ export function MarketPage({ client, role }: MarketPageProps) {
   const t = useCallback((key: string, values?: Record<string, string | number>): string =>
     formatMessage(isLocale(locale) ? locale : 'en-US', key, values), [locale]);
   const isAdmin = role === 'admin' || role === 'owner';
+  const agentMarketplaceApi = useMemo(() => createAgentMarketplaceApi(client), [client]);
 
   const [tab, setTab] = useState<'market' | 'tenant'>('market');
   const [toast, setToast] = useState<ToastState>(null);
@@ -564,6 +567,7 @@ export function MarketPage({ client, role }: MarketPageProps) {
         </>
       ) : (
         <>
+          <TenantReleaseReview api={agentMarketplaceApi} role={role} />
           {tenantLoading ? <div className={MK_STATE} role="status">{t('common.loading')}</div> : null}
           {!tenantLoading && tenantError ? (
             <div className={MK_ERROR} role="alert">
