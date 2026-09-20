@@ -123,3 +123,10 @@ def test_evidence_wire_round_trip_preserves_absent_span() -> None:
     evidence = Evidence("e", "d", 1, "c", "h", "文本", None, None)
 
     assert evidence_from_wire(evidence_to_wire(evidence)) == evidence
+
+
+def test_access_scope_wire_round_trip_preserves_expiry() -> None:
+    from semantic_service.contracts import AccessScope, ScopeKey, access_scope_from_wire, access_scope_to_wire
+
+    scope = AccessScope(ScopeKey(1, "kb"), "user", "ref", "hash", 2, "2026-09-20T00:00:00Z", "semantic", "search", "budget")
+    assert access_scope_from_wire(access_scope_to_wire(scope)) == scope

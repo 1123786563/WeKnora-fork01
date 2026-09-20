@@ -198,6 +198,22 @@ def evidence_from_wire(wire) -> Evidence:
     return Evidence(wire.evidence_id, wire.document_id, wire.revision, wire.chunk_id, wire.content_hash, wire.quote, start_char, end_char)
 
 
+def access_scope_to_wire(value: AccessScope):
+    from semantic_service.proto import semantic_pb2
+
+    purposes = {"search": semantic_pb2.PURPOSE_SEARCH, "reason": semantic_pb2.PURPOSE_REASON, "index": semantic_pb2.PURPOSE_INDEX}
+    return semantic_pb2.AccessScope(scope=semantic_pb2.ScopeKey(tenant_id=value.scope.tenant_id, kb_id=value.scope.kb_id), subject_id=value.subject_id, scope_ref=value.scope_ref, scope_hash=value.scope_hash, permission_epoch=value.permission_epoch, expires_at=value.expires_at, audience=value.audience, purpose=purposes[value.purpose], budget_ref=value.budget_ref)
+
+
+def access_scope_from_wire(wire) -> AccessScope:
+    from semantic_service.proto import semantic_pb2
+
+    purposes = {semantic_pb2.PURPOSE_SEARCH: "search", semantic_pb2.PURPOSE_REASON: "reason", semantic_pb2.PURPOSE_INDEX: "index"}
+    if wire.purpose not in purposes:
+        raise ValueError("unknown access scope purpose")
+    return AccessScope(ScopeKey(wire.scope.tenant_id, wire.scope.kb_id), wire.subject_id, wire.scope_ref, wire.scope_hash, wire.permission_epoch, wire.expires_at, wire.audience, purposes[wire.purpose], wire.budget_ref)
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
