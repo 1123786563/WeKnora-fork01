@@ -838,6 +838,68 @@ func (r *knowledgeRepository) FindByDataSourceExternalID(
 	return &knowledge, nil
 }
 
+// defaultKnowledgeDatasourceBatchSize is the batch size the delete-source
+// cascade uses when the caller does not specify a limit. It matches the
+// existing batch-delete ceiling in internal/handler/knowledge.go.
+const defaultKnowledgeDatasourceBatchSize = 200
+
+// FindKnowledgeIDsByDataSourceID returns the ids of the live knowledge items
+// that one data source synced into one knowledge base, ordered by id
+// ascending. The cascade-delete pipeline drains in batches: fetch up to
+// limit ids, delete them, repeat until the query comes back empty — the
+// ascending order plus the deleted_at IS NULL predicate make each round skip
+// everything a previous round already removed.
+//
+// Like FindByMetadataKeyPrefix above, the JSON key is embedded as a SQL
+// literal (metadata->>'datasource_id'), NOT a bind parameter: PostgreSQL only
+// matches the expression index idx_knowledges_kb_metadata_datasource_id when
+// that exact literal expression appears in the query. SQLite (>= 3.38) also
+// understands ->>, so one predicate serves both tracks. Only the value stays
+// a bind parameter.
+func (r *knowledgeRepository) FindKnowledgeIDsByDataSourceID(
+	ctx context.Context,
+	tenantID uint64,
+	kbID, dataSourceID string,
+	limit int,
+) ([]string, error) {
+	if limit <= 0 {
+		limit = defaultKnowledgeDatasourceBatchSize
+	}
+	var ids []string
+	err := r.db.WithContext(ctx).
+		Model(&types.Knowledge{}).
+		Select("id").
+		Where("tenant_id = ? AND knowledge_base_id = ? AND deleted_at IS NULL", tenantID, kbID).
+		Where("metadata->>'datasource_id' = ?", dataSourceID).
+		Order("id ASC").
+		Limit(limit).
+		Pluck("id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// CountKnowledgeByDataSourceID counts the live knowledge items that one data
+// source synced into one knowledge base, scoped to the same
+// (tenant, knowledge base, data source) triple as FindKnowledgeIDsByDataSourceID.
+func (r *knowledgeRepository) CountKnowledgeByDataSourceID(
+	ctx context.Context,
+	tenantID uint64,
+	kbID, dataSourceID string,
+) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&types.Knowledge{}).
+		Where("tenant_id = ? AND knowledge_base_id = ? AND deleted_at IS NULL", tenantID, kbID).
+		Where("metadata->>'datasource_id' = ?", dataSourceID).
+		Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // HardDeleteKnowledge physically removes a knowledge row. Call it AFTER
 // DeleteKnowledge's soft-delete cascade so sync-internal deletions never
 // become tombstones that block a later re-sync of the same external item.

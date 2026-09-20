@@ -348,6 +348,21 @@ type KnowledgeRepository interface {
 	FindByDataSourceExternalID(
 		ctx context.Context, tenantID uint64, kbID, dataSourceID, externalID string,
 	) (*types.Knowledge, error)
+	// FindKnowledgeIDsByDataSourceID returns the ids of the live knowledge
+	// items one data source synced into one knowledge base, ordered by id
+	// ascending. The delete-source cascade drains in batches (fetch batch,
+	// delete, repeat), so the stable order plus the deleted_at IS NULL
+	// predicate make every round skip what earlier rounds already removed.
+	// limit <= 0 selects the default batch size of 200.
+	FindKnowledgeIDsByDataSourceID(
+		ctx context.Context, tenantID uint64, kbID, dataSourceID string, limit int,
+	) ([]string, error)
+	// CountKnowledgeByDataSourceID counts the live knowledge items one data
+	// source synced into one knowledge base — the document count shown in the
+	// delete-source confirmation dialog.
+	CountKnowledgeByDataSourceID(
+		ctx context.Context, tenantID uint64, kbID, dataSourceID string,
+	) (int64, error)
 	// HardDeleteKnowledge physically removes a row after DeleteKnowledge's soft-delete
 	// cascade. Sync-internal deletions use this so rows never become tombstones.
 	HardDeleteKnowledge(ctx context.Context, tenantID uint64, id string) error
