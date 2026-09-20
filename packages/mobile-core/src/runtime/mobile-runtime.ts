@@ -100,6 +100,8 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       if (!current(requestEpoch, deployment)) return state;
       const gate = clientGate(ports.clientVersion, capabilities);
       if (gate.mode !== 'full') return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
+      await ports.deploymentStore?.write(deployment);
+      if (!current(requestEpoch, deployment)) return state;
       revocableLease = new RuntimeScopeLease();
       lease = revocableLease as unknown as ScopeLease;
       return publish({ surface: 'authorized', deployment, identity: { userId: authenticatedUserId, activeTenantId } });
@@ -114,22 +116,24 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     activeDeployment = undefined;
     publish({ surface: 'deployment-login', reason: 'authentication-required' });
     if (deployment) await ports.credentialStore.clear(deployment.origin);
+    await ports.deploymentStore?.clear();
   };
 
   return {
     snapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     async boot(input?: DeploymentInput): Promise<RuntimeSnapshot> {
-      if (!input) return publish({ surface: 'deployment-login', reason: 'authentication-required' });
-      const deployment = normalizeDeployment(input);
-      const requestEpoch = begin(deployment);
       try {
+        const storedDeployment = input ?? await ports.deploymentStore?.read();
+        if (!storedDeployment) return publish({ surface: 'deployment-login', reason: 'authentication-required' });
+        const deployment = normalizeDeployment(storedDeployment);
+        const requestEpoch = begin(deployment);
         const credential = await ports.credentialStore.read(deployment.origin);
         if (!current(requestEpoch, deployment)) return state;
         if (!credential) return publish({ surface: 'deployment-login', deployment, reason: 'authentication-required' });
         return await authenticate(requestEpoch, deployment, credential);
       } catch {
-        return safe(requestEpoch, deployment, 'authentication-required');
+        return publish({ surface: 'deployment-login', reason: 'authentication-required' });
       }
     },
     async signIn(input): Promise<RuntimeSnapshot> {

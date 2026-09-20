@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createMobileRuntime } from './mobile-runtime.ts';
-import type { CredentialStore, MobileRuntimePorts, PendingOidc, PendingOidcStore, RuntimeRemote, StoredCredential } from './ports.ts';
+import type { CredentialStore, DeploymentStore, MobileRuntimePorts, PendingOidc, PendingOidcStore, RuntimeRemote, StoredCredential } from './ports.ts';
 import type { DeploymentInput } from './types.ts';
 
 const DEPLOYMENT: DeploymentInput = { origin: 'https://weknora.example.test', label: 'Test Deployment' };
@@ -22,6 +22,17 @@ function fakeStore(initial: Record<string, StoredCredential | undefined> = {}): 
     async read(deployment) { calls.push(`read:${deployment}`); return values.get(deployment); },
     async write(deployment, credential) { calls.push(`write:${deployment}`); values.set(deployment, credential); },
     async clear(deployment) { calls.push(`clear:${deployment}`); values.delete(deployment); },
+  };
+}
+
+function deploymentStore(initial?: DeploymentInput): DeploymentStore & { calls: string[] } {
+  let value = initial && { ...initial };
+  const calls: string[] = [];
+  return {
+    calls,
+    async read() { calls.push('read'); return value && { ...value }; },
+    async write(deployment) { calls.push(`write:${deployment.origin}`); value = { ...deployment }; },
+    async clear() { calls.push('clear'); value = undefined; },
   };
 }
 
@@ -64,6 +75,36 @@ test('boot restores Task 2 credentials before identity and capabilities', async 
   assert.deepEqual(store.calls, [`read:${DEPLOYMENT.origin}`]);
   assert.deepEqual(order, ['me:stored-access', 'capabilities:stored-access']);
   assert.deepEqual(runtime.snapshot(), { surface: 'authorized', deployment: DEPLOYMENT, identity: { userId: 'user-1', activeTenantId: 'tenant-1' } });
+});
+
+test('boot restores the persisted deployment and verifies stored credentials before authorizing', async () => {
+  const order: string[] = [];
+  const store = fakeStore({ [DEPLOYMENT.origin]: { token: 'stored-access', refreshToken: 'stored-refresh' } });
+  const deployments = deploymentStore(DEPLOYMENT);
+  const runtime = createMobileRuntime({
+    ...ports(store, () => remote({
+      me: async () => { order.push('me'); return { user: { id: 'user-1' }, tenant: { id: 'tenant-1' } }; },
+      deploymentCapabilities: async () => { order.push('capabilities'); return FULL_CAPABILITIES; },
+    })),
+    deploymentStore: deployments,
+  });
+
+  await runtime.boot();
+
+  assert.deepEqual(deployments.calls, ['read', `write:${DEPLOYMENT.origin}`]);
+  assert.deepEqual(store.calls, [`read:${DEPLOYMENT.origin}`]);
+  assert.deepEqual(order, ['me', 'capabilities']);
+  assert.equal(runtime.snapshot().surface, 'authorized');
+});
+
+test('authorized sign-in persists its deployment and sign-out clears it', async () => {
+  const deployments = deploymentStore();
+  const runtime = createMobileRuntime({ ...ports(), deploymentStore: deployments });
+
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  await runtime.signOut();
+
+  assert.deepEqual(deployments.calls, [`write:${DEPLOYMENT.origin}`, 'clear']);
 });
 
 test('Task 2 AuthSession token reaches /auth/me and capabilities bearer requests', async () => {

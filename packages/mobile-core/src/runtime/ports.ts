@@ -10,6 +10,13 @@ export interface CredentialStore {
   clear(deployment: string): Promise<void>;
 }
 
+/** Persists only the presentation-safe deployment selection, never credentials. */
+export interface DeploymentStore {
+  read(): Promise<{ origin: string; label?: string } | undefined>;
+  write(deployment: { origin: string; label: string }): Promise<void>;
+  clear(): Promise<void>;
+}
+
 /** Structural subset of `createMobileRuntimeRemote`; mobile-core remains adapter-independent. */
 export interface RuntimeRemote {
   passwordLogin(input: { email: string; password: string }): Promise<StoredCredential>;
@@ -47,6 +54,7 @@ export interface AppLifecyclePort {
 /** `remoteFor` receives a normalized HTTPS origin, binding transport and credential scope. */
 export interface MobileRuntimePorts {
   credentialStore: CredentialStore;
+  deploymentStore?: DeploymentStore;
   remoteFor(deployment: string): RuntimeRemote;
   clientVersion: number;
   pendingOidcStore?: PendingOidcStore;

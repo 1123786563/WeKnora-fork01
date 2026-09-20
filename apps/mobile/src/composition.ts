@@ -1,11 +1,13 @@
-import { createElement, useSyncExternalStore } from 'react';
+import { createElement, useEffect, useRef, useSyncExternalStore } from 'react';
 import { createWeKnoraClient } from '@weknora/api-client';
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createJsonTransport } from '@weknora/api-client/transport';
-import { createInMemoryCredentialStore, createMobileRuntime } from '@weknora/mobile-core';
+import { createMobileRuntime } from '@weknora/mobile-core';
 import type { MobileRuntime, RuntimeSnapshot } from '@weknora/mobile-core';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
 import { createNativeSecurePendingOidcStore } from './adapters/secure-store.ts';
+import { createNativeSecureCredentialStore } from './adapters/credential-store.ts';
+import { createNativeSecureDeploymentStore } from './adapters/deployment-store.ts';
 import { AuthorizedLandingScreen } from './screens/AuthorizedLandingScreen.tsx';
 import { DeploymentLoginScreen, validatedDeploymentOrigin } from './screens/DeploymentLoginScreen.tsx';
 import { UpgradeRequiredScreen } from './screens/UpgradeRequiredScreen.tsx';
@@ -23,7 +25,8 @@ export function createNativeMobileRuntime(): MobileRuntime {
   let runtime!: MobileRuntime;
   const browser = createNativeOidcBrowser(OIDC_REDIRECT_URI);
   runtime = createMobileRuntime({
-    credentialStore: createInMemoryCredentialStore(),
+    credentialStore: createNativeSecureCredentialStore(),
+    deploymentStore: createNativeSecureDeploymentStore(),
     clientVersion: 3,
     remoteFor(origin) {
       const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
@@ -66,9 +69,20 @@ function runtime(): MobileRuntime {
   return nativeRuntime;
 }
 
+/** Starts verified Runtime restoration once for an application lifetime. */
+export function bootRuntimeOnce(activeRuntime: { boot(): unknown }, booted: { current: boolean }): void {
+  if (booted.current) return;
+  booted.current = true;
+  void activeRuntime.boot();
+}
+
 /** Native application root; screens receive snapshots and callbacks only. */
 export function MobileApp() {
   const activeRuntime = runtime();
+  const booted = useRef(false);
+  useEffect(() => {
+    bootRuntimeOnce(activeRuntime, booted);
+  }, [activeRuntime]);
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
   return createElement(RuntimeSurface, {
     snapshot,

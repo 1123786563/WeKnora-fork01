@@ -62,10 +62,70 @@ upgrade snapshot to the restricted screen, rejects an authorized snapshot
 without an active Tenant, and reaches the authorized screen only when both
 identity and Tenant are present.
 
-## Scope and concern
+## Scope
 
-`createInMemoryCredentialStore` remains the available credential-store adapter
-at the approved Task 3 seam. Task 4 provides native secure storage only for
-short-lived pending OIDC state, which this composition uses. Persisting login
-credentials across app restart would require a separately approved native
-CredentialStore adapter rather than exposing tokens to a screen.
+Native composition now uses SecureStore-backed credential, active-deployment,
+and pending-OIDC adapters. The credential adapter remains below Runtime and
+screens continue to receive presentation-safe snapshots and callbacks only.
+
+## Review fix round 1
+
+The review correctly identified that the original native composition used the
+test-only in-memory credential adapter and did not start Runtime restoration.
+This round replaces that composition wiring and extends the Runtime seam.
+
+- Added `DeploymentStore` to the Runtime Ports. On an authorized handshake,
+  Runtime persists the normalized presentation-safe deployment; `boot()` reads
+  it when no explicit input is provided and then performs the normal
+  credential → identity → capabilities verification sequence. Sign-out clears
+  both the credential and deployment records.
+- Added OS-backed credential and deployment adapters. Credential values are
+  independently serialized under a key derived from their normalized HTTPS
+  origin. The deployment record contains only origin and label.
+- `MobileApp` calls Runtime `boot()` through a once-only startup guard. No
+  screen receives a credential, storage handle, remote client, or protocol
+  input.
+- The Node smoke harness now renders the native element tree with controlled
+  hooks. It presses the actual sign-in button, proves five invalid origin
+  forms do not invoke callbacks, proves a normalized valid origin does, and
+  inspects the restricted/authorized screen controls and text.
+
+### Fix-round RED
+
+```text
+pnpm exec tsx --test packages/mobile-core/src/runtime/mobile-runtime.test.ts
+# tests 12 / pass 10 / fail 2
+AssertionError: deployment-store calls were [] rather than
+['read', 'write:https://weknora.example.test']
+AssertionError: deployment-store calls were [] rather than
+['write:https://weknora.example.test', 'clear']
+
+pnpm exec tsx --test apps/mobile/src/app-smoke.test.tsx
+# tests 5 / pass 3 / fail 2
+TypeError: bootRuntimeOnce is not a function
+```
+
+### Fix-round GREEN
+
+```text
+pnpm --filter @weknora/mobile test
+# tests 9 / pass 9 / fail 0
+
+pnpm --filter @weknora/mobile typecheck
+# exit 0
+
+pnpm exec tsx --test packages/mobile-core/src/runtime/mobile-runtime.test.ts
+# tests 12 / pass 12 / fail 0
+
+pnpm --filter @weknora/mobile-core exec tsc --noEmit --strict --skipLibCheck \
+  --target ES2022 --lib ES2022,DOM --types node --module NodeNext \
+  --moduleResolution NodeNext --allowImportingTsExtensions src/index.ts \
+  src/runtime/mobile-runtime.test.ts
+# exit 0
+
+rg -n "@weknora/(api-client|contracts)" apps/mobile/src/screens
+# exit 1 (no forbidden Screen imports)
+
+git diff --check
+# exit 0
+```
