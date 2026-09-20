@@ -44,7 +44,7 @@
 - Create: `semantic/tests/test_operations.py`
 
 **Interfaces:**
-- `PostgresOperationStore(dsn: str, schema: str = "semantic_service")` owns a connection per call and the service schema; `migrate()` is safe on every startup and serializes concurrent migration attempts by advisory lock plus a service `schema_migrations` version row. If an existing legacy schema has `operations` but no version table, baseline it at version 1 and atomically run migration 2; never recreate/lose rows.
+- `PostgresOperationStore(dsn: str, schema: str = "semantic_service")` owns a connection per call and the service schema; `migrate()` is safe on every startup and serializes concurrent migration attempts by advisory lock plus a service `schema_migrations` version row. If an existing legacy schema has `operations` but no version table, baseline it at version 1 and atomically run migration 2; migration 2 must also tolerate the transitional v1 schema from the earlier remediation (which already has `stage` and the named uint64 fence constraint). Never recreate/lose rows.
 - `accept(request: ApplyRequest) -> Operation` deduplicates by both `(scope, idempotency_key)` and `(scope, document_id, revision, config_digest)`; a matching payload hash returns the existing operation, mismatched hash/identity raises `OperationPayloadConflict`.
 - `get(scope: ScopeKey, operation_id: str) -> Operation` is scope-bound; missing/wrong-scope IDs raise the same `OperationNotFound` result. `cancel` has the same scope-bound not-found behavior.
 - Internal `OperationPhase` contains the eight persisted phases from Global Constraints; C01 DTO conversion applies the projection described above.
@@ -227,6 +227,15 @@ def test_store_migration_upgrades_a_previously_created_operations_table(legacy_o
     assert restored.stage == "running"  # migration 2 backfills stage from legacy phase
     assert request_bytes_for_test(upgraded_store, operation_id) == apply_request_to_wire(apply_request).SerializeToString(deterministic=True)
 
+def test_store_migration_upgrades_transitional_v1_schema(transitional_v1_operation_schema, apply_request):
+    operation_id = transitional_v1_operation_schema.seed_versioned_v1_with_stage_and_fence(apply_request)
+    upgraded_store = transitional_v1_operation_schema.new_store()
+    upgraded_store.migrate()
+    restored = upgraded_store.get(apply_request.document.scope, operation_id)
+    assert restored.stage == "running"
+    assert request_bytes_for_test(upgraded_store, operation_id) == apply_request_to_wire(apply_request).SerializeToString(deterministic=True)
+    assert transitional_v1_operation_schema.schema_version() == 2
+
 def test_two_new_stores_can_migrate_the_same_empty_schema_concurrently(unmigrated_operation_schema):
     first, second = unmigrated_operation_schema.new_store(), unmigrated_operation_schema.new_store()
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -254,7 +263,7 @@ def test_cancel_at_uint64_max_does_not_overflow_or_leave_request_bytes(operation
                                 OperationPhase.RUNNING, OperationPhase.SUCCEEDED, "succeeded")
 ```
 
-The test module imports `dataclasses`, `threading`, `ThreadPoolExecutor`, `pytest`, `psycopg`, `psycopg.sql`, C01 `ApplyRequest`/`ScopeKey`/`apply_request_to_wire`/`UINT64_MAX`, and I01 store/phase/error types. `expire_lease_at_database_clock`, `request_bytes_for_test`, and `set_lease_token_for_test` are test-only helpers using a new psycopg connection plus `psycopg.sql.Identifier(store.schema)`; they never add test-only production APIs. `legacy_operation_schema` creates the schema using the original unversioned I01 operations table shape, seeds one running operation and its exact request bytes, then gives the test a new store. `unmigrated_operation_schema` creates only the schema and exposes two new store instances plus a version query. `operation_store_factory` creates a new store object using the same test DSN/schema. The normal store fixture opens real PostgreSQL, creates a unique schema, applies the production migrations, and drops only that schema in cleanup. It fails with a clear `SEMANTIC_TEST_POSTGRES_DSN is required` message if the DSN is absent.
+The test module imports `dataclasses`, `threading`, `ThreadPoolExecutor`, `pytest`, `psycopg`, `psycopg.sql`, C01 `ApplyRequest`/`ScopeKey`/`apply_request_to_wire`/`UINT64_MAX`, and I01 store/phase/error types. `expire_lease_at_database_clock`, `request_bytes_for_test`, and `set_lease_token_for_test` are test-only helpers using a new psycopg connection plus `psycopg.sql.Identifier(store.schema)`; they never add test-only production APIs. `legacy_operation_schema` creates the original unversioned I01 operations table, seeds one running operation and exact request bytes, then gives the test a new store. `transitional_v1_operation_schema` creates the exact previously versioned v1 schema with `stage`, the named uint64 fence constraint, version row 1, and a seeded operation/request. `unmigrated_operation_schema` creates only the schema and exposes two new store instances plus a version query. `operation_store_factory` creates a new store object using the same test DSN/schema. The normal store fixture opens real PostgreSQL, creates a unique schema, applies the production migrations, and drops only that schema in cleanup. It fails with a clear `SEMANTIC_TEST_POSTGRES_DSN is required` message if the DSN is absent.
 
 ```python
 def request_bytes_for_test(store, operation_id):

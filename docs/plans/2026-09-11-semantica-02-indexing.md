@@ -90,7 +90,7 @@ WHERE operation_id = :operation_id AND state = :expected
 - `internal/application/repository/semantic_outbox_test.go`：事务回滚与重复事件
 - `internal/database/semantic_migration_test.go`：PG/SQLite迁移合同
 
-**接口：** 定义 SemanticMutation{TenantID uint64, KBID,DocumentID,ContentHash string, ExpectedRevision uint64, Deleted bool, Payload []byte}；WithSemanticMutation(ctx,mutation,func(tx *gorm.DB)error)(revision uint64,err error)。业务资源修改、revision、outbox、删除屏障和epoch变更必须同事务，禁止另开隐含事务。ContentHash由Go业务层提供并原样保留；outbox payload hash仅针对payload bytes做SHA-256。
+**接口：** 定义 SemanticMutation{TenantID uint64, KBID,DocumentID,ContentHash,ConfigDigest string, ExpectedRevision uint64, Deleted bool, Payload []byte}；WithSemanticMutation(ctx,mutation,func(tx *gorm.DB)error)(revision uint64,err error)。业务资源修改、revision、outbox、删除屏障和epoch变更必须同事务，禁止另开隐含事务。ContentHash与ConfigDigest由Go业务层提供并原样保留；outbox事件身份覆盖tenant/KB/document/revision/config digest，payload hash仅针对payload bytes做SHA-256。
 
 - [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
