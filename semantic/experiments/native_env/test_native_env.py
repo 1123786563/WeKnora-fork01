@@ -22,7 +22,7 @@ class NativeEnvConfigTest(unittest.TestCase):
         compose = config.compose_document()
         self.assertEqual(compose["name"], "semantica-v03-native-case-a")
         self.assertEqual(compose["services"]["postgres"]["ports"], ["127.0.0.1:15432:5432"])
-        self.assertEqual(compose["services"]["neo4j"]["ports"], ["127.0.0.1:17687:7687", "127.0.0.1:17474:7474"])
+        self.assertEqual(compose["services"]["neo4j"]["ports"], ["127.0.0.1:18687:7687", "127.0.0.1:18474:7474"])
         self.assertIn("apoc", compose["services"]["neo4j"]["environment"]["NEO4J_PLUGINS"])
         self.assertTrue(all(name.startswith("semantica-v03-native-case-a-") for name in compose["volumes"]))
 

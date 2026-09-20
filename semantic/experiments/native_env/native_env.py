@@ -41,8 +41,8 @@ class NativeEnvConfig:
     app_url: str = "http://127.0.0.1:18081"
     postgres_port: int = 15432
     redis_port: int = 16379
-    neo4j_bolt_port: int = 17687
-    neo4j_http_port: int = 17474
+    neo4j_bolt_port: int = 18687
+    neo4j_http_port: int = 18474
     request_timeout_seconds: int = 45
     task_timeout_seconds: int = 240
     query_timeout_seconds: int = 60
