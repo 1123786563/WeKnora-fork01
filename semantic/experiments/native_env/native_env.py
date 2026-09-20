@@ -130,9 +130,9 @@ class NativeEnvClient:
     def __post_init__(self) -> None:
         self.app_url = _loopback_url(self.app_url)
 
-    def _request(self, path: str, payload: Mapping[str, Any], *, stream: bool = False) -> Any:
+    def _request(self, path: str, payload: Mapping[str, Any], *, method: str = "POST", stream: bool = False) -> Any:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        request = Request(self.app_url + path, body, method="POST", headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json", "Accept": "text/event-stream" if stream else "application/json"})
+        request = Request(self.app_url + path, body, method=method, headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json", "Accept": "text/event-stream" if stream else "application/json"})
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:  # noqa: S310 -- loopback is validated
                 raw = response.read().decode("utf-8")
@@ -156,6 +156,16 @@ class NativeEnvClient:
             except json.JSONDecodeError:
                 events.append({"type": "unparsed", "data": payload})
         return events
+
+    @staticmethod
+    def initialization_payload(model_id: str) -> dict[str, Any]:
+        return {"llmModelId": model_id, "nodeExtract": {"enabled": True,
+            "text": "提取软件依赖关系。", "tags": ["服务", "依赖"],
+            "nodes": [{"name": "服务"}],
+            "relations": [{"node1": "服务", "node2": "服务", "type": "depends_on"}]}}
+
+    def bind_graph_model(self, knowledge_base_id: str, model_id: str) -> dict[str, Any]:
+        return self._request(f"/api/v1/initialization/config/{knowledge_base_id}", self.initialization_payload(model_id), method="PUT")
 
     def query(self, case: Mapping[str, Any], allowed_document_ids: Sequence[str], *, session_id: str) -> dict[str, Any]:
         if not case.get("case_id") or not case.get("document_revision") or not case.get("question"):

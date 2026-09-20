@@ -43,6 +43,7 @@ class _Handler(BaseHTTPRequestHandler):
             payload = 'data: {"type":"reference","data":{"match_type":"graph","knowledge_id":"k-1","chunk_id":"c-2"}}\n\n'
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Content-Length", str(len(payload.encode())))
             self.end_headers()
             self.wfile.write(payload.encode())
             return
@@ -56,6 +57,12 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 class NativeEnvClientTest(unittest.TestCase):
+    def test_initialization_payload_preserves_enabled_graph_extract(self) -> None:
+        payload = NativeEnvClient.initialization_payload("model-1")
+        self.assertEqual(payload["llmModelId"], "model-1")
+        self.assertTrue(payload["nodeExtract"]["enabled"])
+        self.assertEqual(payload["nodeExtract"]["relations"][0]["type"], "depends_on")
+
     def test_query_preserves_graph_reference_and_evaluator_fields(self) -> None:
         server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
         thread = threading.Thread(target=server.serve_forever)

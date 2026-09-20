@@ -101,6 +101,7 @@ def up(config: NativeEnvConfig) -> int:
         "NEO4J_ENABLE": "true", "NEO4J_URI": f"neo4j://127.0.0.1:{config.neo4j_bolt_port}", "NEO4J_USERNAME": "neo4j", "NEO4J_PASSWORD": secrets_map["NATIVE_NEO4J_PASSWORD"],
         "OLLAMA_BASE_URL": config.ollama_url, "STORAGE_TYPE": "local", "LOCAL_STORAGE_BASE_DIR": str(paths.root / "storage"), "JWT_SECRET": secrets_map["NATIVE_JWT_SECRET"], "SYSTEM_AES_KEY": secrets_map["NATIVE_SYSTEM_AES_KEY"],
         "DISABLE_REGISTRATION": "false", "WEKNORA_AUTH_DEFAULT_TENANT_MODE": "create_personal", "AUTO_MIGRATE": "true",
+        "SSRF_WHITELIST_EXTRA": "127.0.0.1",
     })
     with paths.app_log.open("w", encoding="utf-8") as log:
         app = subprocess.Popen(["go", "run", "./cmd/server"], cwd=Path(__file__).parents[3], stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
