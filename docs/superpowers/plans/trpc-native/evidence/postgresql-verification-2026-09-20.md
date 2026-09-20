@@ -15,3 +15,5 @@ The PostgreSQL server accepted connections with `pg_isready`, and reported Postg
 ## Remaining limits
 
 The full repository suite is still outside this verification because it has a pre-existing duplicate-column migration failure in `TestArtifactVersionsMigrationDownIsReversible`. This report verifies the P1 native PostgreSQL paths above; it does not certify the full product or the P0 release gate.
+
+Additional lease/recovery command: `TRPC_TEST_POSTGRES_DSN=<isolated-local-dsn> GOWORK=off go test ./internal/application/repository ./internal/application/service -run 'TestNative(Lease|Recovery)|NativeLease|NativeRecovery' -count=1 -v` — PASS; all selected lease repository and recovery service tests passed.

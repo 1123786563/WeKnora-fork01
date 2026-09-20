@@ -57,7 +57,7 @@
         "internal/application/repository/native_session.go",
         "internal/application/repository/native_session_test.go"
       ],
-      "status": "in-progress"
+      "status": "passed"
     },
     {
       "id": "P1.4",
@@ -71,7 +71,7 @@
         "internal/application/repository/native_memory.go",
         "internal/application/repository/native_memory_test.go"
       ],
-      "status": "in-progress"
+      "status": "passed"
     },
     {
       "id": "P1.5",
@@ -86,7 +86,7 @@
         "internal/application/repository/native_events.go",
         "internal/application/repository/native_events_test.go"
       ],
-      "status": "blocked-design"
+      "status": "passed"
     },
     {
       "id": "P2.1",
@@ -113,7 +113,7 @@
         "internal/application/service/native_recovery.go",
         "internal/application/service/native_recovery_test.go"
       ],
-      "status": "blocked-design"
+      "status": "passed"
     },
     {
       "id": "P2.3",
