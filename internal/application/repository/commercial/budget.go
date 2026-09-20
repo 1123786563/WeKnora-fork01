@@ -17,12 +17,19 @@ var (
 	ErrTaskBudgetExpired         = errors.New("task_budget_expired")
 	ErrBudgetVerificationExpired = errors.New("budget_verification_expired")
 	ErrInsufficientBudget        = errors.New("insufficient_budget")
-	ErrTaskBudgetExhausted       = errors.New("task_budget_exhausted")
+	ErrTaskBudgetExhausted       = budgetErrorCode("task_budget_exhausted")
 	ErrBudgetLotsInsufficient    = errors.New("budget_lots_insufficient")
 	ErrReservationKeyConflict    = errors.New("reservation_key_conflict")
 	ErrStaleWatermark            = errors.New("stale_watermark")
 	ErrBudgetContention          = errors.New("budget_contention")
 )
+
+// budgetErrorCode keeps a stable code when a budget error crosses graph SDK
+// event boundaries, while remaining an errors.Is-compatible sentinel.
+type budgetErrorCode string
+
+func (e budgetErrorCode) Error() string     { return string(e) }
+func (e budgetErrorCode) ErrorCode() string { return string(e) }
 
 // errBudgetCASRetry is an internal sentinel: a guarded UPDATE lost the
 // version race (or hit a transient unique-index race), the whole

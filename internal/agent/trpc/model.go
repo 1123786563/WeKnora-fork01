@@ -291,7 +291,7 @@ func (m *existingModel) consumeStream(ctx context.Context, attempt attemptContex
 		}
 		response := &model.Response{
 			ID: attempt.id, Object: model.ObjectTypeError, Done: true,
-			Error: &model.ResponseError{Type: typ, Message: err.Error()},
+			Error: model.ResponseErrorFromError(err, typ),
 		}
 		// A cancellation never publishes a successful response or tool plan.
 		if ctx.Err() == nil {

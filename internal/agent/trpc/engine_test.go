@@ -3,10 +3,12 @@ package trpc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	"github.com/stretchr/testify/require"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -27,6 +29,15 @@ func TestGraphRunnerRejectsInvalidFence(t *testing.T) {
 	r := &GraphRunner{}
 	err := r.Run(context.Background(), agentruntime.Fence{})
 	require.Error(t, err)
+}
+
+func TestGraphExecutionErrorPreservesCodedCauseThroughWrapping(t *testing.T) {
+	code := repocommercial.ErrTaskBudgetExhausted.Error()
+	err := fmt.Errorf("runner returned: %w", graphExecutionError{
+		response: &model.ResponseError{Message: code, Code: &code},
+	})
+
+	require.ErrorIs(t, err, repocommercial.ErrTaskBudgetExhausted)
 }
 
 func TestGraphRunnerDeepCopiesInitialState(t *testing.T) {
