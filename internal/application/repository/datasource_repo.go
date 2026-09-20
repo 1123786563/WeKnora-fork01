@@ -222,6 +222,29 @@ func (r *DataSourceRepository) SaveAppDataSourceBinding(
 	return r.db.WithContext(ctx).Table("app_datasource_bindings").Create(row).Error
 }
 
+// IncrementAppDataSourceBindingAuthVersion atomically advances the binding's
+// auth version by one (SP2-b §6.3): a machine credential rotation switches the
+// token a sync executes under, and a persisted cursor is only valid for the
+// auth version it was produced with — the bump invalidates it so the next sync
+// runs a full reconciliation instead of resuming across the token switch. A
+// missing row affects nothing and returns nil: unbound (legacy) data sources
+// have no version to advance. Server-side `auth_version + 1` makes concurrent
+// rotations lose an increment at worst, never a read-modify-write clobber.
+func (r *DataSourceRepository) IncrementAppDataSourceBindingAuthVersion(
+	ctx context.Context, tenantID uint64, dataSourceID string,
+) error {
+	if dataSourceID == "" {
+		return errors.New("data source id is empty")
+	}
+	return r.db.WithContext(ctx).
+		Table("app_datasource_bindings").
+		Where("tenant_id = ? AND datasource_id = ?", tenantID, dataSourceID).
+		Updates(map[string]interface{}{
+			"auth_version": gorm.Expr("auth_version + 1"),
+			"updated_at":   time.Now().UTC(),
+		}).Error
+}
+
 // DeleteAppDataSourceBindingsByDataSource removes every binding row of one
 // data source (SP2-a Task 8 purge tail). Scoped to (tenant, data source) like
 // Find/SaveAppDataSourceBinding; a missing row is a no-op so the purge worker

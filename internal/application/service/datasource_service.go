@@ -557,6 +557,177 @@ func storedCredentialDecryptFailed(raw types.JSON, parsed *types.DataSourceConfi
 	return false
 }
 
+// credentialRefreshWindow is how close to expires_at a sync start proactively
+// rotates the token (SP2-b §6.3): inside the window the machine refresh
+// channel swaps the credential before the upstream can start rejecting it
+// mid-run.
+const credentialRefreshWindow = 5 * time.Minute
+
+// syncAuthVersionCursorKey is the reserved ConnectorCursor key carrying the
+// binding auth version a cursor was produced under. Reserved for the service:
+// connectors must not use it for their own state.
+const syncAuthVersionCursorKey = "_sync_auth_version"
+
+// dataSourceBindingAuthBumper is the optional repository surface the refresh
+// trigger uses to advance a binding's auth version after a persisted rotation.
+// A local type assertion (the same pattern as dataSourceBindingCleaner)
+// because the binding row is deliberately not part of
+// interfaces.DataSourceRepository.
+type dataSourceBindingAuthBumper interface {
+	IncrementAppDataSourceBindingAuthVersion(ctx context.Context, tenantID uint64, dataSourceID string) error
+}
+
+// maybeRefreshSyncCredentials runs the SP2-b §6.3 proactive credential refresh
+// at sync start (called right after ParseConfig):
+//
+//   - no expires_at (long-lived) or comfortably far from it → nothing to do;
+//   - near expiry (0 < remaining < credentialRefreshWindow) and the connector
+//     implements CredentialsRefresher → rotate through the refresher, write
+//     every returned key back via the machine channel, advance the binding
+//     auth version once (so stale cursors invalidate), merge the new values
+//     into config so THIS run executes on the new token, and continue. A
+//     failed refresh only logs a warning — the run finishes on the old
+//     credentials and the next sync retries the rotation;
+//   - already expired → same rotation attempt, but "expired and not refreshed"
+//     (no refresher, refresher error, or nothing persisted) returns a
+//     SyncPausedError(permission): the run pauses with a reauthorization hint
+//     instead of producing fetch-failure error noise.
+//
+// A refresher result whose every write-back is refused (e.g. the
+// anti-overwrite guard after a SYSTEM_AES_KEY rotation) persists nothing, so
+// no audit, no auth-version bump and — when the credential was already
+// expired — no pause on a token the connector just issued: the run continues
+// on the merged in-memory values and the next sync retries the persistence.
+// Partially persisted rotations merge only the persisted keys, keeping the
+// in-memory config consistent with storage (an unpersisted expires_at would
+// otherwise hide the next refresh trigger).
+func (s *DataSourceService) maybeRefreshSyncCredentials(
+	ctx context.Context, connector datasource.Connector, ds *types.DataSource, config *types.DataSourceConfig,
+) error {
+	if config == nil {
+		return nil
+	}
+	until, hasExpiry := types.CredentialsExpiry(config)
+	if !hasExpiry {
+		return nil // long-lived credential: nothing to rotate
+	}
+	now := time.Now().UTC()
+	expired := !until.After(now)
+	if !expired && until.Sub(now) > credentialRefreshWindow {
+		return nil // comfortably valid: no refresh needed yet
+	}
+	refresher, canRefresh := connector.(datasource.CredentialsRefresher)
+	if !canRefresh {
+		if expired {
+			return appconnector.NewSyncPausedError(appconnector.PauseReasonPermission,
+				"credentials expired and the connector cannot refresh them; reauthorize the data source")
+		}
+		return nil
+	}
+	updated, nextRefreshAt, err := refresher.RefreshCredentials(ctx, config)
+	if err != nil || len(updated) == 0 {
+		reason := "refresher returned no updated credentials"
+		if err != nil {
+			reason = err.Error()
+		}
+		if expired {
+			return appconnector.NewSyncPausedError(appconnector.PauseReasonPermission,
+				"credential refresh failed after expiry: "+reason)
+		}
+		logger.Warnf(ctx,
+			"credential refresh failed near expiry; continuing with previous credentials: ds=%s err=%s",
+			secutils.SanitizeForLog(ds.ID), reason)
+		return nil
+	}
+
+	// Rotate every returned key through the machine channel (guard, encrypted
+	// persistence, audit); merge into the in-memory config regardless so this
+	// run executes on the token the connector just issued.
+	persisted := 0
+	for key, value := range updated {
+		if werr := s.RefreshDataSourceCredential(ctx, ds.ID, key, value); werr != nil {
+			logger.Warnf(ctx, "credential write-back rejected at sync start: ds=%s field=%s err=%v",
+				secutils.SanitizeForLog(ds.ID), secutils.SanitizeForLog(key), werr)
+			continue
+		}
+		persisted++
+		config.Credentials[key] = value
+	}
+	// The stored row may have been rewritten by the write-back; re-read so the
+	// caller's ds snapshot cannot clobber the fresh blob on a later full-row
+	// Update (UpdateSyncState is column-scoped and never at risk).
+	if persisted > 0 {
+		if fresh, rerr := s.dsRepo.FindByID(ctx, ds.ID); rerr == nil && fresh != nil {
+			ds.Config = fresh.Config
+		}
+		// One bump per rotation, however many keys it touched: the cursor only
+		// needs to learn "the credential switched", not how many fields moved.
+		// A missing binding row (legacy data source) is a silent skip — the
+		// increment affects nothing.
+		if bumper, ok := s.dsRepo.(dataSourceBindingAuthBumper); ok {
+			if berr := bumper.IncrementAppDataSourceBindingAuthVersion(ctx, ds.TenantID, ds.ID); berr != nil {
+				logger.Warnf(ctx, "failed to advance binding auth version after credential refresh: ds=%s err=%v",
+					secutils.SanitizeForLog(ds.ID), berr)
+			}
+		} else {
+			logger.Warnf(ctx,
+				"data source repository cannot advance binding auth versions; auth version of ds=%s unchanged",
+				secutils.SanitizeForLog(ds.ID))
+		}
+		logger.Infof(ctx, "credentials auto-refreshed at sync start: ds=%s keys=%d next_refresh_at=%s",
+			secutils.SanitizeForLog(ds.ID), persisted, nextRefreshAt.Format(time.RFC3339))
+	} else {
+		logger.Warnf(ctx,
+			"credential refresh persisted nothing (write-back refused); running on in-memory values only: ds=%s",
+			secutils.SanitizeForLog(ds.ID))
+		// The connector issued a usable token; hand it to this run even though
+		// persistence was refused.
+		for key, value := range updated {
+			config.Credentials[key] = value
+		}
+	}
+	return nil
+}
+
+// cursorAuthVersionStale reports whether a persisted cursor was produced under
+// a different binding auth version than the current one (SP2-b §6.3). A cursor
+// stamped with version v is stale unless the binding's current version equals
+// v; an unstamped (pre-A07) cursor counts as version 0, stale exactly once a
+// binding exists. An unparseable stamp is conservatively stale — resuming on a
+// cursor of unknown provenance is the riskier branch.
+func cursorAuthVersionStale(cursor *types.SyncCursor, current int64) bool {
+	if cursor == nil {
+		return false
+	}
+	raw, ok := cursor.ConnectorCursor[syncAuthVersionCursorKey]
+	if !ok {
+		return current > 0
+	}
+	switch v := raw.(type) {
+	case float64: // shape after the JSON round-trip through ParseSyncCursor
+		return int64(v) != current
+	case int64:
+		return v != current
+	case int:
+		return int64(v) != current
+	default:
+		return true
+	}
+}
+
+// stampSyncAuthVersion records the binding auth version a cursor was produced
+// under, so the next run can tell whether it is still valid to resume
+// (cursorAuthVersionStale). No-op for a nil cursor or the legacy version 0.
+func stampSyncAuthVersion(cursor *types.SyncCursor, authVersion int64) {
+	if cursor == nil || authVersion <= 0 {
+		return
+	}
+	if cursor.ConnectorCursor == nil {
+		cursor.ConnectorCursor = map[string]interface{}{}
+	}
+	cursor.ConnectorCursor[syncAuthVersionCursorKey] = authVersion
+}
+
 // DeleteDataSource deletes a data source (soft delete). With
 // purgeDocuments=true (SP2-a Task 8) it appends one step at the end of the
 // existing sequence: enqueue the async datasource:purge task that drains every
@@ -1336,12 +1507,42 @@ func (s *DataSourceService) processSync(ctx context.Context, task *asynq.Task) e
 		return s.runScopedReindex(ctx, connector, ds, syncLog, config, &payload)
 	}
 
+	// SP2-b §6.3: proactive credential refresh at sync start, on the decrypted
+	// config and before any fetch. Deliberately after the scoped branch: a
+	// scoped reindex converges into its own run (Ruling P-4) and must neither
+	// rotate whole-source credentials nor pause on their expiry. An expired
+	// credential that cannot be refreshed pauses here with the A07 permission
+	// semantics — the same state machine as AuthorizeSyncExecution above: the
+	// log records the pause reason, the persisted cursor stays, the data
+	// source never flips to error and ProcessSync returns nil (no asynq noise).
+	if err := s.maybeRefreshSyncCredentials(ctx, connector, ds, config); err != nil {
+		logger.Warnf(ctx, "sync for ds=%s paused before fetch: %v", payload.DataSourceID, err)
+		syncLog.Status = types.SyncLogStatusFailed
+		syncLog.FinishedAt = timePtr(time.Now().UTC())
+		syncLog.ErrorMessage = err.Error()
+		_ = s.syncLogRepo.Update(ctx, syncLog)
+		var paused *appconnector.SyncPausedError
+		reason := ""
+		if errors.As(err, &paused) {
+			reason = paused.Reason
+		}
+		recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceSyncFailed,
+			"data_source", ds.ID, types.AuditOutcomeFailed,
+			map[string]any{"name": ds.Name, "type": ds.Type, "pause_reason": reason})
+		return nil
+	}
+
 	// Streaming path: connectors that support it interleave fetch→ingest→
 	// checkpoint so a large sync bounds memory and resumes after a timeout
 	// instead of restarting (Tencent/WeKnora#2136). Others fall back below.
 	if sc, ok := connector.(datasource.StreamingConnector); ok {
 		return s.processSyncStreaming(ctx, sc, ds, syncLog, config, payload, wasPaused)
 	}
+
+	// The binding auth version this run executes under (0 = legacy/unbound).
+	// Read AFTER the refresh trigger so a rotation performed above is visible
+	// here and to the streaming path below.
+	authVersion := s.currentSyncAuthVersion(ctx, ds)
 
 	// Fetch items based on sync mode
 	var items []types.FetchedItem
@@ -1362,6 +1563,14 @@ func (s *DataSourceService) processSync(ctx context.Context, task *asynq.Task) e
 	} else {
 		// Incremental sync
 		cursor, _ := ds.ParseSyncCursor()
+		// SP2-b §6.3: a cursor produced under a different binding auth version
+		// (credential rotation) must not be resumed across the token switch —
+		// drop it and let the connector walk everything (ForceFull semantics),
+		// so nothing changed under the old token slips through incrementally.
+		if cursorAuthVersionStale(cursor, authVersion) {
+			logger.Infof(ctx, "auth version changed, full reconciliation: ds=%s cursor_version_dropped", payload.DataSourceID)
+			cursor = nil
+		}
 		items, nextCursor, fetchErr = connector.FetchIncremental(ctx, config, cursor)
 		logger.Infof(ctx, "incremental sync fetched %d items", len(items))
 	}
@@ -1377,6 +1586,7 @@ func (s *DataSourceService) processSync(ctx context.Context, task *asynq.Task) e
 		// Persist connector cursor even when fetch failed so transient outages
 		// (e.g. RSS feed downtime) do not force a full re-ingest on recovery.
 		if nextCursor != nil {
+			stampSyncAuthVersion(nextCursor, authVersion)
 			if cursorJSON, cerr := nextCursor.ToJSON(); cerr == nil {
 				ds.LastSyncCursor = cursorJSON
 				if uerr := s.dsRepo.UpdateSyncState(ctx, ds); uerr != nil {
@@ -1467,6 +1677,10 @@ func (s *DataSourceService) processSync(ctx context.Context, task *asynq.Task) e
 
 	// Update cursor for next incremental sync
 	if nextCursor != nil {
+		// Stamp the auth version the cursor was produced under so the next
+		// run's staleness check (see the incremental branch above) can match
+		// it — the batch path has no Checkpoint hook to do this mid-run.
+		stampSyncAuthVersion(nextCursor, authVersion)
 		cursorJSON, _ := nextCursor.ToJSON()
 		ds.LastSyncCursor = cursorJSON
 	}
@@ -1911,12 +2125,13 @@ func (h *streamSyncHandler) Checkpoint(ctx context.Context, cursor *types.SyncCu
 		return nil
 	}
 	// The persisted cursor carries the binding auth version and lease fence so
-	// a resume can tell which credential version and worker produced it.
+	// a resume can tell which credential version and worker produced it
+	// (consumed by cursorAuthVersionStale). stampSyncAuthVersion skips the
+	// legacy version 0 without initializing the map, so the fence write below
+	// still needs its own nil guard.
+	stampSyncAuthVersion(cursor, h.authVersion)
 	if cursor.ConnectorCursor == nil {
 		cursor.ConnectorCursor = map[string]interface{}{}
-	}
-	if h.authVersion > 0 {
-		cursor.ConnectorCursor["_sync_auth_version"] = h.authVersion
 	}
 	cursor.ConnectorCursor["_sync_fence"] = h.workerFence
 	cursorJSON, err := cursor.ToJSON()
@@ -2047,6 +2262,18 @@ func (s *DataSourceService) processSyncStreaming(
 	// refuses advances from any earlier worker still draining a timed-out run.
 	workerFence := s.TakeSyncFence(ds.ID)
 	authVersion := s.currentSyncAuthVersion(ctx, ds)
+	// SP2-b §6.3: a cursor produced under a different binding auth version
+	// (credential rotation, including one performed by this run's refresh
+	// trigger) must not be resumed across the token switch — drop it so the
+	// stream walks everything from the beginning (the same ForceFull first-
+	// attempt semantics). The deletion baseline below is deliberately kept:
+	// reconciling deletions against the previous cursor is exactly what a full
+	// reconciliation wants.
+	if cursorAuthVersionStale(startCursor, authVersion) {
+		logger.Infof(ctx, "auth version changed, full reconciliation: ds=%s log=%s cursor_version_dropped",
+			payload.DataSourceID, syncLog.ID)
+		startCursor = nil
+	}
 	handler := &streamSyncHandler{
 		svc: s, ds: ds, tagIDs: autoTagIDs, result: result, syncLog: syncLog,
 		workerFence:  workerFence,
@@ -2096,8 +2323,11 @@ func (s *DataSourceService) processSyncStreaming(
 		return err
 	}
 
-	// Persist the final cursor for the next incremental sync.
+	// Persist the final cursor for the next incremental sync. Connectors that
+	// checkpoint mid-stream already carry the auth-version stamp; this also
+	// covers a final cursor the connector returned without a final Checkpoint.
 	if nextCursor != nil {
+		stampSyncAuthVersion(nextCursor, authVersion)
 		if cursorJSON, cerr := nextCursor.ToJSON(); cerr == nil {
 			ds.LastSyncCursor = cursorJSON
 		}

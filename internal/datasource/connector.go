@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"context"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -85,6 +86,29 @@ type TargetedFetcher interface {
 		config *types.DataSourceConfig,
 		externalID string,
 	) (*types.FetchedItem, error)
+}
+
+// CredentialsRefresher is optional (SP2-b §6.3). The sync-start trigger uses
+// it to proactively rotate expiring token credentials: when a data source's
+// stored credentials carry an expires_at inside the refresh window (or already
+// past it), the service asks the connector for a fresh set BEFORE fetching, so
+// the upstream never starts rejecting a token mid-run. Connectors that omit it
+// keep the previous behaviour — an already-expired credential pauses the sync
+// with a permission reauthorization hint instead (type assertion, same pattern
+// as FullSyncWithCursor / TargetedFetcher).
+//
+// The returned map carries ONLY the credential keys that changed (typically
+// access_token and expires_at). The service writes each one back through the
+// machine channel (single-key encrypted write with the anti-overwrite guard)
+// and merges them into the in-memory config so the current sync executes on
+// the new token. nextRefreshAt is the connector's hint for when the next
+// proactive refresh should run; the service treats it as informational and
+// re-derives the trigger from the stored expires_at on the next sync.
+type CredentialsRefresher interface {
+	RefreshCredentials(
+		ctx context.Context,
+		config *types.DataSourceConfig,
+	) (updated map[string]string, nextRefreshAt time.Time, err error)
 }
 
 // StreamHandler receives items and progress checkpoints emitted during a
