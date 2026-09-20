@@ -154,7 +154,7 @@ if context.time_remaining() is not None and context.time_remaining() <= 0:
 
 **接口：** 定义 validate_evidence(chunk:ChunkSnapshot,evidence:Evidence)->None；new_entity_id()->str 返回UUID；validate_assertion(assertion:Assertion,evidence_by_id:dict,premises_by_id:dict)->None。实体名称/别名以有来源assertion表达，object_id/value恰有一个。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_span_uses_unicode_codepoints():
@@ -167,13 +167,13 @@ def test_invalid_span_is_not_silently_repaired():
         validate_span("甲乙", 2, 1, "")
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 实现extract_quote(text,start,end)->str和validate_span；边界为Unicode codepoint半开区间，两端同时存在或同时为空；无位置quote须是原文子串**
+- [x] **3. 实现extract_quote(text,start,end)->str和validate_span；边界为Unicode codepoint半开区间，两端同时存在或同时为空；无位置quote须是原文子串**
 
-- [ ] **4. 将原始实体UUID、等价断言、来源事实、规则/模型推导分开；记录配置版本，校验跨scope引用与悬空premise/evidence**
+- [x] **4. 将原始实体UUID、等价断言、来源事实、规则/模型推导分开；记录配置版本，校验跨scope引用与悬空premise/evidence**
 
-- [ ] **5. 拒绝错误哈希、冲突object/value、循环推导DAG；同subject/predicate不同值保留冲突，不按最后写入覆盖**
+- [x] **5. 拒绝错误哈希、冲突object/value、循环推导DAG；同subject/predicate不同值保留冲突，不按最后写入覆盖**
 
 关键实现约束：
 
@@ -188,6 +188,6 @@ def validate_span(text, start, end, quote):
         raise ValueError("quote mismatch")
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py -q`，预期退出码 0；另完成：中文/emoji、空span、篡改quote、跨租户引用、证据缺失和冲突并存均有断言；为后续删除保留完整支持关系。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py -q`，预期退出码 0；另完成：中文/emoji、空span、篡改quote、跨租户引用、证据缺失和冲突并存均有断言；为后续删除保留完整支持关系。
 
-- [ ] **7. 留证与提交**。更新 `docs/plans/semantica/progress.md` 的 C03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c03 事实与证据校验模型`。
+- [x] **7. 留证与提交**。更新 `docs/plans/semantica/progress.md` 的 C03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c03 事实与证据校验模型`。

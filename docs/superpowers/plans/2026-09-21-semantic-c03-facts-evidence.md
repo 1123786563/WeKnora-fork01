@@ -282,5 +282,5 @@ Commit `feat(semantic): model scoped semantic facts and derivations` with only T
 
 - [x] Run: `uv run --locked --project semantic python -m pytest semantic/tests -q` — expected to pass all C02+C03 semantic service tests.
 - [x] Run: `git diff --check` — expected exit 0.
-- [ ] Request one fresh read-only review of the complete C03 range; fix Critical/Important findings with RED→GREEN tests and rerun the suite.
+- [x] Request one fresh read-only review of the complete C03 range; fix Critical/Important findings with RED→GREEN tests and rerun the suite.
 - [ ] Record exact base/head SHA, RED/GREEN commands, environment, review result, and limitations in `docs/plans/semantica/progress.md`; mark C03 `verified` only after review and tests pass.
