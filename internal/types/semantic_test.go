@@ -7,9 +7,16 @@ import (
 )
 
 func TestSemanticDeleteRequiresDeletedRevision(t *testing.T) {
-	_, err := SemanticDocumentRevisionFromWire(&semanticpb.DocumentRevision{Deleted: false})
+	_, err := SemanticDeleteDocumentRevisionFromWire(&semanticpb.DocumentRevision{Deleted: false})
 	if err == nil {
 		t.Fatal("expected delete revision validation error")
+	}
+}
+
+func TestSemanticApplyAllowsNonDeletedRevision(t *testing.T) {
+	revision, err := SemanticDocumentRevisionFromWire(&semanticpb.DocumentRevision{Scope: &semanticpb.ScopeKey{TenantId: 1, KbId: "kb"}, DocumentId: "doc", Revision: 1, ContentHash: "hash", Deleted: false})
+	if err != nil || revision.Deleted {
+		t.Fatalf("apply revision = %#v, %v", revision, err)
 	}
 }
 

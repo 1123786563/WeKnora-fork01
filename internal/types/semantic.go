@@ -23,10 +23,18 @@ func SemanticDocumentRevisionFromWire(wire *semanticpb.DocumentRevision) (Semant
 	if wire == nil || wire.Scope == nil || wire.Scope.KbId == "" || wire.DocumentId == "" || wire.Revision == 0 {
 		return SemanticDocumentRevision{}, fmt.Errorf("semantic document revision is incomplete")
 	}
-	if !wire.Deleted {
+	return SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, DocumentID: wire.DocumentId, Revision: wire.Revision, ContentHash: wire.ContentHash, Deleted: wire.Deleted}, nil
+}
+
+func SemanticDeleteDocumentRevisionFromWire(wire *semanticpb.DocumentRevision) (SemanticDocumentRevision, error) {
+	revision, err := SemanticDocumentRevisionFromWire(wire)
+	if err != nil {
+		return SemanticDocumentRevision{}, err
+	}
+	if !revision.Deleted {
 		return SemanticDocumentRevision{}, fmt.Errorf("semantic delete requires deleted=true")
 	}
-	return SemanticDocumentRevision{Scope: SemanticScopeKey{TenantID: wire.Scope.TenantId, KBID: wire.Scope.KbId}, DocumentID: wire.DocumentId, Revision: wire.Revision, ContentHash: wire.ContentHash, Deleted: wire.Deleted}, nil
+	return revision, nil
 }
 
 type SemanticRetrievalMode string
