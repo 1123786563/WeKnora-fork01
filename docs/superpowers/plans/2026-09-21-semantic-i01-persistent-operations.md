@@ -300,13 +300,13 @@ Expected: fail because `semantic_service.operations` and the store fixture do no
 
 Use one transaction per accept/claim/renew/transition/cancel; create the service schema under the migration account; keep the base `001_operations.sql` compatible with the immediately prior unversioned table; add `002_operation_stage.sql` to backfill stage and enforce the fencing-token bound. `migrate()` detects an existing operations table without `schema_migrations`, records it as v1, then atomically applies v2; for a fresh schema it applies v1 then v2. Keep `phase` and mutable `stage` separate from C01 `Operation.state`; store exact deterministic protobuf request bytes only while nonterminal. Use `NUMERIC(20,0)` for `tenant_id`, revision, and lease token with an upper-bound check at `18446744073709551615` so PostgreSQL can represent but never exceed the full uint64 contract.
 
-- [ ] **Step 4: Run GREEN and all service tests against the disposable PostgreSQL DSN**
+- [x] **Step 4: Run GREEN and all service tests against the disposable PostgreSQL DSN**
 
 Run: `uv run --locked --project semantic python -m pytest semantic/tests/test_operations.py -q`
 
 Expected: all real-PostgreSQL operation tests pass, including concurrency, fencing, cancel/publish, and store recreation/reclaim. Then run `uv run --locked --project semantic python -m pytest semantic/tests -q` with the same DSN; existing auth/contract tests continue to pass and no test silently skips the persistence fixture.
 
-- [ ] **Step 5: Commit Task I01**
+- [x] **Step 5: Commit Task I01**
 
 Commit `feat(semantic): i01 persistent operations and worker leases` with only I01 code/tests/dependency changes.
 
@@ -314,5 +314,5 @@ Commit `feat(semantic): i01 persistent operations and worker leases` with only I
 
 ## Final I01 Gate
 
-- [ ] Request an independent read-only review of the complete I01 range; fix Critical/Important findings with RED→GREEN behavior tests.
-- [ ] Record test DSN evidence layer as actual-runtime PostgreSQL; do not claim graph storage, model, or production readiness.
+- [x] Request an independent read-only review of the complete I01 range; fix Critical/Important findings with RED→GREEN behavior tests.
+- [x] Record test DSN evidence layer as actual-runtime PostgreSQL; do not claim graph storage, model, or production readiness.
