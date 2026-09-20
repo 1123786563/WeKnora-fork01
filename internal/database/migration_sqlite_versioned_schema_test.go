@@ -37,6 +37,10 @@ var versionedSQLiteTables = []string{
 	"mobile_notification_checkpoints",
 	"mobile_notification_provider_state",
 	"agent_versions",
+	"agent_marketplace_listings",
+	"agent_release_submissions",
+	"agent_release_reviews",
+	"agent_releases",
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the
@@ -96,6 +100,8 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 		// 000099: the (tenant, agent, version_number) scope guard that makes
 		// frozen agent version numbers collision-free.
 		"uq_agent_versions_scope",
+		"uq_agent_marketplace_listing_scope", "uq_agent_release_review_decision",
+		"uq_agent_releases_number", "uq_agent_releases_semantic", "uq_agent_releases_digest",
 	} {
 		require.Truef(t, sqliteIndexExists(t, db, index), "SQLite migrations must create index %s", index)
 	}

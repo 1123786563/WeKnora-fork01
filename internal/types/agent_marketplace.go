@@ -8,7 +8,8 @@ package types
 // metadata, the canonical Manifest document, the Dependency Lock and the
 // sanitized Release bundle produced by the exporter in
 // internal/agent/experts/agent_release.go. Persistence entities
-// (Submission/Review/Release/Listing rows) join this file in later tasks.
+// (Submission/Review/Release/Listing rows) are declared in
+// agent_marketplace_persistence.go.
 //
 // Domain invariants these types encode (docs/specs/
 // 2026-09-20-agent-marketplace-domain-model.md §5–§6, §11):
