@@ -476,6 +476,9 @@ func SemanticSearchRequestFromWire(wire *semanticpb.SearchRequest) (SemanticSear
 	if !ok {
 		return SemanticSearchRequest{}, fmt.Errorf("unsupported requested retrieval mode")
 	}
+	if (mode == SemanticRetrievalModeGraphRAG && scope.Purpose != "PURPOSE_SEARCH") || (mode == SemanticRetrievalModeReason && scope.Purpose != "PURPOSE_REASON") {
+		return SemanticSearchRequest{}, fmt.Errorf("semantic search request purpose is incompatible with requested mode")
+	}
 	if wire.Limits == nil {
 		return SemanticSearchRequest{}, fmt.Errorf("semantic query limits are required")
 	}
@@ -490,6 +493,9 @@ func SemanticSearchRequestToWire(value SemanticSearchRequest) (*semanticpb.Searc
 	}
 	if value.QueryID == "" || value.Query == "" {
 		return nil, fmt.Errorf("semantic search request is incomplete")
+	}
+	if (value.RequestedMode == SemanticRetrievalModeGraphRAG && value.AccessScope.Purpose != "PURPOSE_SEARCH") || (value.RequestedMode == SemanticRetrievalModeReason && value.AccessScope.Purpose != "PURPOSE_REASON") {
+		return nil, fmt.Errorf("semantic search request purpose is incompatible with requested mode")
 	}
 	return &semanticpb.SearchRequest{QueryId: value.QueryID, Query: value.Query, AccessScope: SemanticAccessScopeToWire(value.AccessScope), Limits: &semanticpb.QueryLimits{MaxHops: value.Limits.MaxHops, MaxNodes: value.Limits.MaxNodes, MaxEdges: value.Limits.MaxEdges, TopK: value.Limits.TopK, MaxTokens: value.Limits.MaxTokens, DeadlineMs: value.Limits.DeadlineMS}, RequestedMode: mode}, nil
 }
