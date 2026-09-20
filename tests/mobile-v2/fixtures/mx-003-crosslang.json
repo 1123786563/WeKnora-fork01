@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "comment": "MX-003 跨语言共享 fixture：Go internal/workbench 与 TS packages/contracts 必须消费同一份文件；禁止两端各自造数。",
+  "execution_unavailable_cancel": {
+    "schema_version": 1,
+    "run_id": "run-mx003",
+    "session_id": "session-mx003",
+    "revision": 12,
+    "driver": "platform",
+    "run_status": "running",
+    "execution_status": "executing",
+    "settlement_status": "pending",
+    "seq": 34,
+    "capabilities": {
+      "cancel": { "state": "unavailable", "reason": "driver reports cancel not supported" },
+      "steer": { "state": "supported", "reason": "" }
+    }
+  },
+  "events_valid": [
+    {
+      "schema_version": 1,
+      "run_id": "run-mx003",
+      "attempt_id": "attempt-1",
+      "seq": 7,
+      "type": "future.event",
+      "occurred_at": "2026-09-18T08:00:00Z",
+      "payload": { "keep": "unknown-type-payload-must-be-preserved" }
+    },
+    {
+      "schema_version": 1,
+      "run_id": "run-mx003",
+      "attempt_id": "attempt-1",
+      "seq": 8,
+      "type": "text.delta",
+      "occurred_at": "2026-09-18T08:00:01.250+08:00",
+      "payload": { "text": "偏移时间合法" }
+    }
+  ],
+  "events_invalid": [
+    {
+      "schema_version": 1,
+      "run_id": "run-mx003",
+      "attempt_id": "attempt-1",
+      "seq": 9007199254740992,
+      "type": "overflow.seq",
+      "occurred_at": "2026-09-18T08:00:00Z",
+      "payload": {}
+    },
+    {
+      "schema_version": 1,
+      "run_id": "",
+      "attempt_id": "attempt-1",
+      "seq": 9,
+      "type": "missing.run_id",
+      "occurred_at": "2026-09-18T08:00:00Z",
+      "payload": {}
+    },
+    {
+      "schema_version": 1,
+      "run_id": "run-mx003",
+      "attempt_id": "attempt-1",
+      "seq": 10,
+      "type": "array.payload",
+      "occurred_at": "2026-09-18T08:00:00Z",
+      "payload": [1, 2, 3]
+    },
+    {
+      "schema_version": 1,
+      "run_id": "run-mx003",
+      "attempt_id": "attempt-1",
+      "seq": 11,
+      "type": "bad.calendar",
+      "occurred_at": "2026-02-30T08:00:00Z",
+      "payload": {}
+    }
+  ],
+  "decisions_valid": [
+    {
+      "id": "interaction-1",
+      "decision_id": "decision-1",
+      "kind": "tool_approval",
+      "action": "approve",
+      "args_hash": "sha256:abcdef",
+      "expected_revision": 4
+    }
+  ],
+  "decisions_invalid": [
+    {
+      "id": "interaction-2",
+      "decision_id": "decision-2",
+      "kind": "budget",
+      "action": "approve",
+      "args_hash": "sha256:123456",
+      "expected_revision": 5
+    },
+    {
+      "id": "interaction-3",
+      "decision_id": "",
+      "kind": "tool_approval",
+      "action": "approve",
+      "args_hash": "sha256:777",
+      "expected_revision": 6
+    }
+  ],
+  "snapshot_go_shaped": {
+    "execution": {
+      "schema_version": 1,
+      "run_id": "run-mx003",
+      "session_id": "session-mx003",
+      "revision": 12,
+      "driver": "platform",
+      "run_status": "running",
+      "execution_status": "executing",
+      "settlement_status": "pending",
+      "seq": 34,
+      "capabilities": {
+        "cancel": { "state": "unavailable", "reason": "driver reports cancel not supported" }
+      }
+    },
+    "watermark": 34,
+    "incomplete": false,
+    "confirmed_watermark": 33,
+    "events": []
+  }
+}
