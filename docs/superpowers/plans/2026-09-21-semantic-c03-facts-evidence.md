@@ -1,6 +1,6 @@
 # Semantica C03 Facts and Evidence Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SKILL: Use superpowers:dispatching-parallel-agents for the two independent implementation tasks; steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add transport-neutral evidence validation and scoped fact/assertion models that preserve source provenance, conflicts, and acyclic derivations.
 
