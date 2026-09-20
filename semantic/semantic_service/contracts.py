@@ -36,6 +36,16 @@ class DocumentRevision:
             raise ValueError("semantic delete requires deleted=true")
 
 
+@dataclass(frozen=True)
+class DeleteDocumentRequest:
+    revision: DocumentRevision
+
+    @classmethod
+    def from_revision(cls, revision: DocumentRevision) -> "DeleteDocumentRequest":
+        revision.require_delete()
+        return cls(revision=revision)
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"

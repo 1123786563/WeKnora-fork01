@@ -35,3 +35,15 @@ def test_scope_and_revision_reject_uint64_overflow() -> None:
         pass
     else:
         raise AssertionError("expected revision uint64 validation")
+
+
+def test_delete_request_rejects_non_tombstone_revision() -> None:
+    from semantic_service.contracts import DeleteDocumentRequest, DocumentRevision, ScopeKey
+
+    revision = DocumentRevision(scope=ScopeKey(tenant_id=1, kb_id="kb"), document_id="doc", revision=1, content_hash="hash", deleted=False)
+    try:
+        DeleteDocumentRequest.from_revision(revision)
+    except ValueError as error:
+        assert "deleted" in str(error)
+    else:
+        raise AssertionError("expected delete boundary validation")
