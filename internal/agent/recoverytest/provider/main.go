@@ -45,8 +45,10 @@ import (
 )
 
 const (
-	recoveryOllamaModelEnv = "TRPC_RECOVERY_OLLAMA_MODEL"
-	recoveryOllamaPrompt   = "You are executing a deterministic recovery test. Before any answer, call the only available tool exactly once with JSON arguments {\"tick\":1}. After the tool result, give a concise non-empty final answer without another tool call. If the requested tool is unavailable, report the error instead of inventing a result."
+	recoveryOllamaModelEnv  = "TRPC_RECOVERY_OLLAMA_MODEL"
+	recoveryOllamaPrompt    = "You are executing a deterministic recovery test. Before any answer, call the only available tool exactly once with JSON arguments {\"tick\":1}. After the tool result, give a concise non-empty final answer without another tool call. If the requested tool is unavailable, report the error instead of inventing a result."
+	recoveryOllamaSeed      = 1
+	recoveryOllamaMaxTokens = 128
 )
 
 const (
@@ -487,7 +489,7 @@ func newRecoveryChat(toolName string) (chat.Chat, string, error) {
 func (c *recoveryContractChat) Chat(
 	ctx context.Context, messages []chat.Message, opts *chat.ChatOptions,
 ) (*types.ChatResponse, error) {
-	response, err := c.inner.Chat(ctx, messages, opts)
+	response, err := c.inner.Chat(ctx, messages, c.deterministicOptions(messages, opts))
 	if err != nil {
 		return nil, err
 	}
@@ -500,7 +502,7 @@ func (c *recoveryContractChat) Chat(
 func (c *recoveryContractChat) ChatStream(
 	ctx context.Context, messages []chat.Message, opts *chat.ChatOptions,
 ) (<-chan types.StreamResponse, error) {
-	stream, err := c.inner.ChatStream(ctx, messages, opts)
+	stream, err := c.inner.ChatStream(ctx, messages, c.deterministicOptions(messages, opts))
 	if err != nil {
 		return nil, err
 	}
@@ -534,6 +536,30 @@ func (c *recoveryContractChat) ChatStream(
 func (c *recoveryContractChat) GetModelName() string { return c.inner.GetModelName() }
 
 func (c *recoveryContractChat) GetModelID() string { return c.inner.GetModelID() }
+
+func (c *recoveryContractChat) deterministicOptions(messages []chat.Message, opts *chat.ChatOptions) *chat.ChatOptions {
+	normalized := chat.ChatOptions{}
+	if opts != nil {
+		normalized = *opts
+		normalized.Tools = append([]chat.Tool(nil), opts.Tools...)
+	}
+	thinking := false
+	normalized.Temperature = 0
+	normalized.TopP = 1
+	normalized.Seed = recoveryOllamaSeed
+	normalized.MaxTokens = recoveryOllamaMaxTokens
+	normalized.MaxCompletionTokens = 0
+	normalized.Thinking = &thinking
+	normalized.ToolChoice = "required"
+	for _, message := range messages {
+		if message.Role == "tool" {
+			normalized.ToolChoice = "none"
+			normalized.Tools = nil
+			break
+		}
+	}
+	return &normalized
+}
 
 func (c *recoveryContractChat) validate(messages []chat.Message, response *types.ChatResponse) error {
 	if response == nil {
