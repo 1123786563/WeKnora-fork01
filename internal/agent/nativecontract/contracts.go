@@ -177,6 +177,39 @@ type ToolPlan struct {
 	IdempotencyKey                             string
 	IdempotencyExpiresAt                       time.Time
 }
+
+// ToolDispatchRequest is the server-assembled, immutable input to the final
+// preflight immediately before a delegate may cause an external effect. It is
+// deliberately not derived from SDK tool metadata or client input.
+type ToolDispatchRequest struct {
+	Scope             Scope
+	Fence             Fence
+	Plan              ToolPlan
+	Attempt           Attempt
+	DecisionReference string
+}
+
+// ToolDispatchPreflight owns the last authorization boundary before a tool
+// delegate is invoked. Implementations fail closed. In particular, they must
+// recheck the live scope/grants and arrange a durable, atomic reservation and
+// decision-reference consumption before returning nil.
+type ToolDispatchPreflight interface {
+	Authorize(context.Context, ToolDispatchRequest) error
+}
+
+// ToolDispatchReservation is the durable part of ToolDispatchPreflight.
+// ReserveAndConsume must atomically recheck the fence, reserve budget, and
+// consume DecisionReference exactly once. P2.4 owns the decision store and
+// P2.5 owns budget persistence; this contract intentionally owns neither.
+type ToolDispatchReservation interface {
+	ReserveAndConsume(context.Context, ToolDispatchRequest) error
+}
+
+// ToolAttemptPreparer durably records the exact model-plan-bound tool attempt
+// before a decision reference or budget reservation can be consumed.
+type ToolAttemptPreparer interface {
+	PrepareToolAttempt(context.Context, Fence, Attempt, ToolPlan) (Attempt, error)
+}
 type UserDecision struct {
 	Reason, ResourceRef           string
 	Version                       int
@@ -299,23 +332,24 @@ type PendingDecisionService interface {
 }
 
 type ToolOutcome struct {
-	AttemptID       string          `json:"attempt_id"`
-	CallID          string          `json:"call_id"`
-	ProviderReceipt string          `json:"provider_receipt,omitempty"`
-	QueryAnchor     string          `json:"query_anchor,omitempty"`
-	ResultHash      string          `json:"result_hash"`
-	Effect          EffectState     `json:"effect"`
-	IsError         bool            `json:"is_error"`
-	Truncated       bool            `json:"truncated"`
-	Content         json.RawMessage `json:"content"`
-	Artifacts       []ArtifactRef   `json:"artifacts,omitempty"`
-	Failure         *Failure        `json:"failure,omitempty"`
+	AttemptID            string          `json:"attempt_id"`
+	CallID               string          `json:"call_id"`
+	SourceModelAttemptID string          `json:"source_model_attempt_id,omitempty"`
+	ProviderReceipt      string          `json:"provider_receipt,omitempty"`
+	QueryAnchor          string          `json:"query_anchor,omitempty"`
+	ResultHash           string          `json:"result_hash"`
+	Effect               EffectState     `json:"effect"`
+	IsError              bool            `json:"is_error"`
+	Truncated            bool            `json:"truncated"`
+	Content              json.RawMessage `json:"content"`
+	Artifacts            []ArtifactRef   `json:"artifacts,omitempty"`
+	Failure              *Failure        `json:"failure,omitempty"`
 }
 type ToolBoundary interface {
 	Plan(context.Context, Fence, ToolPlan) (ToolPlan, error)
 	Decide(context.Context, Scope, UserDecision) error
 	Wrap(context.Context, Scope, ToolIdentity, tool.Tool) (tool.Tool, error)
-	LookupResult(context.Context, Scope, RunIdentity, string) (ToolOutcome, error)
+	LookupResult(context.Context, Scope, RunIdentity, string, string) (ToolOutcome, error)
 }
 
 type ErrorCode string

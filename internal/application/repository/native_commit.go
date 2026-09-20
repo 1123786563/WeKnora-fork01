@@ -267,8 +267,11 @@ func appendStableInCommit(tx *gorm.DB, tenant uint64, append nativecontract.Sess
 
 func persistOutcomes(tx *gorm.DB, intent nativecontract.CommitIntent) error {
 	for _, outcome := range intent.Results {
-		if outcome.AttemptID == "" || outcome.CallID == "" || outcome.ResultHash == "" || !json.Valid(outcome.Content) {
+		if outcome.AttemptID == "" || outcome.CallID == "" || outcome.SourceModelAttemptID == "" || outcome.ResultHash == "" || !json.Valid(outcome.Content) {
 			return typedFailure(nativecontract.ErrInvalid, "tool result is incomplete")
+		}
+		if err := assertCommittedOutcomeSource(tx, intent.Fence.Run, outcome); err != nil {
+			return err
 		}
 		outcomeJSON, err := json.Marshal(outcome)
 		if err != nil {
@@ -291,6 +294,41 @@ func persistOutcomes(tx *gorm.DB, intent nativecontract.CommitIntent) error {
 		if stored != outcome.ResultHash {
 			return typedFailure(nativecontract.ErrConflict, "tool result payload changed")
 		}
+	}
+	return nil
+}
+
+// assertCommittedOutcomeSource keeps CommitIntent replay on the same durable
+// provenance rule as the journal: the executable tool call must resolve to
+// exactly one model call with matching immutable plan version and args hash.
+func assertCommittedOutcomeSource(tx *gorm.DB, run nativecontract.RunIdentity, outcome nativecontract.ToolOutcome) error {
+	var attempt struct {
+		Kind          string
+		LogicalCallID string
+	}
+	if err := tx.Table("native_agent_attempts").Select("kind, logical_call_id").Where("tenant_id=? AND run_id=? AND attempt_id=?", run.TenantID, run.RunID, outcome.AttemptID).Take(&attempt).Error; err != nil {
+		return typedFailure(nativecontract.ErrNotFound, "tool result executable attempt was not found")
+	}
+	if attempt.Kind != string(nativecontract.ToolAttempt) || attempt.LogicalCallID != outcome.CallID {
+		return typedFailure(nativecontract.ErrConflict, "tool result executable attempt identity changed")
+	}
+	var toolCall struct {
+		Version  int
+		ArgsHash string
+	}
+	if err := tx.Table("native_agent_tool_calls").Select("plan_version AS version, args_hash").Where("tenant_id=? AND run_id=? AND attempt_id=? AND call_id=?", run.TenantID, run.RunID, outcome.AttemptID, outcome.CallID).Take(&toolCall).Error; err != nil {
+		return typedFailure(nativecontract.ErrNotFound, "tool result source was not found")
+	}
+	modelCalls := tx.Table("native_agent_tool_calls AS calls").Joins("JOIN native_agent_attempts AS source ON source.tenant_id=calls.tenant_id AND source.run_id=calls.run_id AND source.attempt_id=calls.attempt_id AND source.kind='model'").Where("calls.tenant_id=? AND calls.run_id=? AND calls.call_id=? AND calls.plan_version=? AND calls.args_hash=?", run.TenantID, run.RunID, outcome.CallID, toolCall.Version, toolCall.ArgsHash)
+	var all, requested int64
+	if err := modelCalls.Count(&all).Error; err != nil {
+		return err
+	}
+	if err := modelCalls.Where("calls.attempt_id=?", outcome.SourceModelAttemptID).Count(&requested).Error; err != nil {
+		return err
+	}
+	if all != 1 || requested != 1 {
+		return typedFailure(nativecontract.ErrConflict, "tool result source model attempt is ambiguous")
 	}
 	return nil
 }

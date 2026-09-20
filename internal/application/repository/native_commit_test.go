@@ -32,6 +32,15 @@ func nativeCommitIntent(fence nativecontract.Fence, id, hash string) nativecontr
 	return nativecontract.CommitIntent{Version: 1, ID: id, PayloadHash: hash, Fence: fence}
 }
 
+func nativeCommitToolOutcome(t *testing.T, coordinator *NativeCommitCoordinator, fence nativecontract.Fence, modelAttemptID, toolAttemptID, callID, argsHash, resultHash string) nativecontract.ToolOutcome {
+	t.Helper()
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, lease_epoch, kind, attempt_number) VALUES (?, ?, ?, ?, 'model', ?)`, 1, "run-1", modelAttemptID, fence.Epoch, 1).Error)
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_tool_calls (tenant_id, run_id, attempt_id, call_id, plan_version, args_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", modelAttemptID, callID, 1, argsHash, fence.Epoch).Error)
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, lease_epoch, kind, logical_call_id, attempt_number) VALUES (?, ?, ?, ?, 'tool', ?, ?)`, 1, "run-1", toolAttemptID, fence.Epoch, callID, 2).Error)
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_tool_calls (tenant_id, run_id, attempt_id, call_id, plan_version, args_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", toolAttemptID, callID, 1, argsHash, fence.Epoch).Error)
+	return nativecontract.ToolOutcome{AttemptID: toolAttemptID, CallID: callID, SourceModelAttemptID: modelAttemptID, ResultHash: resultHash, Effect: nativecontract.EffectConfirmed, Content: []byte(`{}`)}
+}
+
 func failureCode(t *testing.T, err error) nativecontract.ErrorCode {
 	t.Helper()
 	var failure *nativecontract.Failure
@@ -69,6 +78,48 @@ func TestNativeBarrierRequiresAppliedIntent(t *testing.T) {
 	_, err := coordinator.Commit(ctx, nativeCommitIntent(fence, "intent-1", "hash-1"))
 	require.NoError(t, err)
 	require.NoError(t, coordinator.Barrier(ctx, fence, "intent-1"))
+}
+
+func TestNativeCommitRejectsOutcomeWithoutBoundSourceModelAttempt(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*nativecontract.ToolOutcome)
+		code   nativecontract.ErrorCode
+	}{
+		{"missing", func(outcome *nativecontract.ToolOutcome) { outcome.SourceModelAttemptID = "" }, nativecontract.ErrInvalid},
+		{"mismatched", func(outcome *nativecontract.ToolOutcome) { outcome.SourceModelAttemptID = "model-other" }, nativecontract.ErrConflict},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			coordinator, fence := nativeCommitFixture(t)
+			outcome := nativeCommitToolOutcome(t, coordinator, fence, "model-result", "attempt-result", "call-result", "args", "result")
+			tc.mutate(&outcome)
+			intent := nativeCommitIntent(fence, "intent-"+tc.name, "hash-"+tc.name)
+			intent.Results = []nativecontract.ToolOutcome{outcome}
+			_, err := coordinator.Commit(context.Background(), intent)
+			require.Equal(t, tc.code, failureCode(t, err))
+		})
+	}
+}
+
+func TestNativeCommitRejectsModelAttemptAsExecutableOutcomeAttempt(t *testing.T) {
+	coordinator, fence := nativeCommitFixture(t)
+	outcome := nativeCommitToolOutcome(t, coordinator, fence, "model-result", "attempt-result", "call-result", "args", "result")
+	outcome.AttemptID = "model-result"
+	intent := nativeCommitIntent(fence, "intent-model-as-tool", "hash-model-as-tool")
+	intent.Results = []nativecontract.ToolOutcome{outcome}
+	_, err := coordinator.Commit(context.Background(), intent)
+	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
+}
+
+func TestNativeCommitRejectsAmbiguousOutcomeSourceModelAttempt(t *testing.T) {
+	coordinator, fence := nativeCommitFixture(t)
+	outcome := nativeCommitToolOutcome(t, coordinator, fence, "model-result", "attempt-result", "call-result", "args", "result")
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, lease_epoch, kind, attempt_number) VALUES (?, ?, ?, ?, 'model', ?)`, 1, "run-1", "model-duplicate", fence.Epoch, 3).Error)
+	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_tool_calls (tenant_id, run_id, attempt_id, call_id, plan_version, args_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", "model-duplicate", "call-result", 1, "args", fence.Epoch).Error)
+	intent := nativeCommitIntent(fence, "intent-ambiguous-source", "hash-ambiguous-source")
+	intent.Results = []nativecontract.ToolOutcome{outcome}
+	_, err := coordinator.Commit(context.Background(), intent)
+	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
 }
 
 func TestNativeCommitReconcileRejectsStaleFence(t *testing.T) {
@@ -126,9 +177,7 @@ func TestNativeCommitPersistsPendingIntentAcrossDownstreamBarrierFailures(t *tes
 			name: "tool result", table: "native_agent_tool_results",
 			configure: func(coordinator *NativeCommitCoordinator, fence nativecontract.Fence) nativecontract.CommitIntent {
 				intent := nativeCommitIntent(fence, "intent-result", "hash-result")
-				require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, lease_epoch) VALUES (?, ?, ?, ?)`, 1, "run-1", "attempt-result", 7).Error)
-				require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_tool_calls (tenant_id, run_id, attempt_id, call_id, plan_version, args_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", "attempt-result", "call-result", 1, "args", 7).Error)
-				intent.Results = []nativecontract.ToolOutcome{{AttemptID: "attempt-result", CallID: "call-result", ResultHash: "result", Effect: nativecontract.EffectConfirmed, Content: []byte(`{}`)}}
+				intent.Results = []nativecontract.ToolOutcome{nativeCommitToolOutcome(t, coordinator, fence, "model-result", "attempt-result", "call-result", "args", "result")}
 				return intent
 			},
 		},
@@ -360,14 +409,9 @@ func TestNativeCommitCheckpointRequiresAndRecordsDurableToolReceipt(t *testing.T
 
 	// Tool-call identity is owned by the already durable P1.4 journal. Commit
 	// writes its actual result into that identity before it makes the checkpoint runnable.
-	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_attempts
-		(tenant_id, run_id, attempt_id, lease_epoch) VALUES (?, ?, ?, ?)`, 1, "run-1", "attempt-1", 7).Error)
-	require.NoError(t, coordinator.db.Exec(`INSERT INTO native_agent_tool_calls
-		(tenant_id, run_id, attempt_id, call_id, plan_version, args_hash, lease_epoch)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", "attempt-1", "call-1", 1, "args-1", 7).Error)
 	applied := nativeCommitIntent(fence, "intent-applied", "hash-applied")
 	applied.Checkpoint = checkpoint
-	applied.Results = []nativecontract.ToolOutcome{{AttemptID: "attempt-1", CallID: "call-1", ResultHash: "result-1", Effect: nativecontract.EffectConfirmed, Content: []byte(`{}`)}}
+	applied.Results = []nativecontract.ToolOutcome{nativeCommitToolOutcome(t, coordinator, fence, "model-1", "attempt-1", "call-1", "args-1", "result-1")}
 	_, err = coordinator.Commit(ctx, applied)
 	require.NoError(t, err)
 	var resultCalls string
