@@ -114,3 +114,42 @@ func TestNativePendingDecisionServiceRechecksDetailGrantsForReads(t *testing.T) 
 		})
 	}
 }
+
+func TestNativePendingDecisionServiceHidesForeignTenantAndSession(t *testing.T) {
+	for _, operation := range []struct {
+		name string
+		call func(*NativePendingDecisionService, nativecontract.Scope, nativecontract.PendingKey) error
+	}{
+		{"list", func(s *NativePendingDecisionService, scope nativecontract.Scope, key nativecontract.PendingKey) error {
+			_, err := s.List(context.Background(), scope, key.Run, "", 10)
+			return err
+		}},
+		{"get", func(s *NativePendingDecisionService, scope nativecontract.Scope, key nativecontract.PendingKey) error {
+			_, err := s.Get(context.Background(), scope, key)
+			return err
+		}},
+		{"resolve", func(s *NativePendingDecisionService, scope nativecontract.Scope, key nativecontract.PendingKey) error {
+			_, err := s.Resolve(context.Background(), scope, key, nativePendingServiceRequest())
+			return err
+		}},
+	} {
+		for _, foreign := range []struct {
+			name  string
+			scope nativecontract.Scope
+			key   func(nativecontract.PendingKey) nativecontract.PendingKey
+		}{
+			{"tenant", nativecontract.Scope{TenantID: 1, SessionOwnerID: "owner"}, func(key nativecontract.PendingKey) nativecontract.PendingKey { key.Run.TenantID = 2; return key }},
+			{"session", nativecontract.Scope{TenantID: 1, SessionOwnerID: "owner"}, func(key nativecontract.PendingKey) nativecontract.PendingKey {
+				key.Run.SessionID = "other-session"
+				return key
+			}},
+		} {
+			t.Run(operation.name+"/"+foreign.name, func(t *testing.T) {
+				svc, _, _, key := nativePendingServiceFixture(t, nil)
+				var failure *nativecontract.Failure
+				require.True(t, errors.As(operation.call(svc, foreign.scope, foreign.key(key)), &failure))
+				require.Equal(t, nativecontract.ErrNotFound, failure.Code)
+			})
+		}
+	}
+}

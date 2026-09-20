@@ -100,18 +100,28 @@ func TestNativePendingDecisionRepositoryScopesDetailsAndConsumesCASOnce(t *testi
 }
 
 func TestNativePendingDecisionRepositoryHoldsOAuthAndUnknownEffectsWithoutProviderAuthority(t *testing.T) {
-	for _, wait := range []nativecontract.WaitKind{nativecontract.WaitOAuth, nativecontract.WaitUnknown} {
-		t.Run(string(wait), func(t *testing.T) {
+	for _, item := range []struct {
+		name, externalState string
+		wait                nativecontract.WaitKind
+	}{
+		{"oauth", "", nativecontract.WaitOAuth},
+		{"unknown", "", nativecontract.WaitUnknown},
+		{"external-action", "pending", nativecontract.WaitApproval},
+	} {
+		t.Run(item.name, func(t *testing.T) {
 			repo, scope, key := nativePendingFixture(t)
 			detail := nativePendingDetail(key)
-			detail.WaitKind = wait
+			detail.WaitKind = item.wait
 			detail.AllowedActions = []nativecontract.DecisionAction{nativecontract.DecisionRetry, nativecontract.DecisionTerminate}
-			if wait == nativecontract.WaitOAuth {
+			if item.wait == nativecontract.WaitOAuth {
 				detail.OAuth = &nativecontract.PendingOAuth{ServiceID: "svc-1", State: "required"}
+			}
+			if item.externalState != "" {
+				detail.ExternalActionID, detail.ExternalActionState = "action-1", item.externalState
 			}
 			require.NoError(t, repo.Create(context.Background(), key.Run, detail))
 			_, err := repo.Resolve(context.Background(), scope, key, nativeResolveRequest())
-			if wait == nativecontract.WaitOAuth {
+			if item.wait == nativecontract.WaitOAuth || item.externalState != "" {
 				require.Equal(t, nativecontract.ErrStore, failureCode(t, err))
 			} else {
 				require.Equal(t, nativecontract.ErrUnknownEffect, failureCode(t, err))

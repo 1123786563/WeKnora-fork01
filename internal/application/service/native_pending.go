@@ -34,13 +34,16 @@ func (s *NativePendingDecisionService) List(ctx context.Context, scope nativecon
 		return nativecontract.PendingDecisionPage{}, err
 	}
 	if authoritative.TenantID != run.TenantID {
-		return nativecontract.PendingDecisionPage{}, nativePendingServiceFailure(nativecontract.ErrForbidden, "run is outside the current scope")
+		return nativecontract.PendingDecisionPage{}, nativePendingServiceFailure(nativecontract.ErrNotFound, "pending run was not found")
 	}
 	page, err := s.store.List(ctx, authoritative, run, cursor, limit)
 	if err != nil {
 		return nativecontract.PendingDecisionPage{}, err
 	}
 	for _, detail := range page.Items {
+		if !nativePendingDetailMatchesRun(detail, run) {
+			return nativecontract.PendingDecisionPage{}, nativePendingServiceFailure(nativecontract.ErrNotFound, "pending run was not found")
+		}
 		if _, err := s.recheckDetail(ctx, authoritative, detail, "view"); err != nil {
 			return nativecontract.PendingDecisionPage{}, err
 		}
@@ -54,11 +57,14 @@ func (s *NativePendingDecisionService) Get(ctx context.Context, scope nativecont
 		return nativecontract.PendingDecisionDetail{}, err
 	}
 	if authoritative.TenantID != key.Run.TenantID {
-		return nativecontract.PendingDecisionDetail{}, nativePendingServiceFailure(nativecontract.ErrForbidden, "pending decision is outside the current scope")
+		return nativecontract.PendingDecisionDetail{}, nativePendingServiceFailure(nativecontract.ErrNotFound, "pending decision was not found")
 	}
 	detail, err := s.store.Get(ctx, authoritative, key)
 	if err != nil {
 		return nativecontract.PendingDecisionDetail{}, err
+	}
+	if !nativePendingDetailMatchesKey(detail, key) {
+		return nativecontract.PendingDecisionDetail{}, nativePendingServiceFailure(nativecontract.ErrNotFound, "pending decision was not found")
 	}
 	if _, err := s.recheckDetail(ctx, authoritative, detail, "view"); err != nil {
 		return nativecontract.PendingDecisionDetail{}, err
@@ -82,11 +88,14 @@ func (s *NativePendingDecisionService) Resolve(ctx context.Context, scope native
 		return nativecontract.PendingResolution{}, err
 	}
 	if authoritative.TenantID != key.Run.TenantID {
-		return nativecontract.PendingResolution{}, nativePendingServiceFailure(nativecontract.ErrForbidden, "pending decision is outside the current scope")
+		return nativecontract.PendingResolution{}, nativePendingServiceFailure(nativecontract.ErrNotFound, "pending decision was not found")
 	}
 	detail, err := s.store.Get(ctx, authoritative, key)
 	if err != nil {
 		return nativecontract.PendingResolution{}, err
+	}
+	if !nativePendingDetailMatchesKey(detail, key) {
+		return nativecontract.PendingResolution{}, nativePendingServiceFailure(nativecontract.ErrNotFound, "pending decision was not found")
 	}
 	authoritative, err = s.recheckDetail(ctx, authoritative, detail, "resolve")
 	if err != nil {
@@ -131,6 +140,14 @@ func nativePendingDetailGrants(detail nativecontract.PendingDecisionDetail, acti
 		grants = append(grants, nativecontract.ResourceGrant{ResourceType: "native_pending_tool", ResourceID: service.ToolName, Action: action})
 	}
 	return grants
+}
+
+func nativePendingDetailMatchesRun(detail nativecontract.PendingDecisionDetail, run nativecontract.RunIdentity) bool {
+	return detail.RunID == run.RunID && detail.SessionID == run.SessionID
+}
+
+func nativePendingDetailMatchesKey(detail nativecontract.PendingDecisionDetail, key nativecontract.PendingKey) bool {
+	return detail.Ref.PendingID == key.PendingID && nativePendingDetailMatchesRun(detail, key.Run)
 }
 
 func nativePendingServiceFailure(code nativecontract.ErrorCode, message string) error {
