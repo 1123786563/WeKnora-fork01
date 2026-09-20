@@ -244,6 +244,67 @@ func TestTenantAgentMarketplaceLifecycleAndAuthorization(t *testing.T) {
 	require.Equal(t, http.StatusOK, catalogAfterReject.Code, catalogAfterReject.Body.String())
 	require.Contains(t, catalogAfterReject.Body.String(), *catalogBody.Data[0].CurrentReleaseID)
 
+	// A second approval appends Release 2 and advances only the Listing pointer.
+	listingID := storedRelease.ListingID
+	var listingBefore types.AgentMarketplaceListingEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, listingID).First(&listingBefore).Error)
+	firstReleaseID := storedRelease.ID
+	firstReleaseBytes := append([]byte(nil), fileBytes...)
+	thirdVersion := call(http.MethodPost, "/api/v1/agents/agent-owned/versions", "contributor", "contributor", nil)
+	require.Equal(t, http.StatusCreated, thirdVersion.Code, thirdVersion.Body.String())
+	var thirdVersionBody struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(thirdVersion.Body.Bytes(), &thirdVersionBody))
+	metadata["semantic_version"] = "3.0.0"
+	thirdSubmission := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions", "contributor", "contributor", map[string]any{"agent_version_id": thirdVersionBody.Data.ID, "metadata": metadata})
+	require.Equal(t, http.StatusCreated, thirdSubmission.Code, thirdSubmission.Body.String())
+	var thirdSubmissionBody struct {
+		Data struct {
+			ID           string `json:"id"`
+			BundleDigest string `json:"bundle_digest"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(thirdSubmission.Body.Bytes(), &thirdSubmissionBody))
+	thirdApproved := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions/"+thirdSubmissionBody.Data.ID+"/review", "admin", "reviewer-2", map[string]any{"expected_digest": thirdSubmissionBody.Data.BundleDigest, "decision": "approved"})
+	require.Equal(t, http.StatusOK, thirdApproved.Code, thirdApproved.Body.String())
+	var thirdResult struct {
+		Data struct {
+			Release *struct {
+				ID           string `json:"id"`
+				BundleDigest string `json:"bundle_digest"`
+			} `json:"release"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(thirdApproved.Body.Bytes(), &thirdResult))
+	require.NotNil(t, thirdResult.Data.Release)
+	require.NotEqual(t, firstReleaseID, thirdResult.Data.Release.ID)
+	secondRelease, err := marketRepo.GetRelease(context.Background(), 1, thirdResult.Data.Release.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, secondRelease.ReleaseNumber)
+	require.NotEqual(t, storedRelease.BundleDigest, secondRelease.BundleDigest)
+	firstReleaseAfterRepublish, err := marketRepo.GetRelease(context.Background(), 1, firstReleaseID)
+	require.NoError(t, err)
+	require.Equal(t, firstReleaseBytes, firstReleaseAfterRepublish.Bundle)
+	firstFileAfterRepublish, err := os.ReadFile(bundlePath)
+	require.NoError(t, err)
+	require.Equal(t, firstReleaseBytes, firstFileAfterRepublish)
+	require.Equal(t, storedRelease.BundleDigest, firstReleaseAfterRepublish.BundleDigest)
+	var listingAfter types.AgentMarketplaceListingEntity
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 1, listingID).First(&listingAfter).Error)
+	require.Equal(t, listingBefore.ID, listingAfter.ID)
+	require.Equal(t, listingBefore.TenantID, listingAfter.TenantID)
+	require.Equal(t, listingBefore.SourceAgentID, listingAfter.SourceAgentID)
+	require.Equal(t, listingBefore.DisplayName, listingAfter.DisplayName)
+	require.Equal(t, listingBefore.Summary, listingAfter.Summary)
+	require.Equal(t, listingBefore.State, listingAfter.State)
+	require.Equal(t, listingBefore.CreatedAt, listingAfter.CreatedAt)
+	require.NotEqual(t, listingBefore.CurrentReleaseID, listingAfter.CurrentReleaseID)
+	require.Equal(t, thirdResult.Data.Release.ID, *listingAfter.CurrentReleaseID)
+	t.Logf("republished immutable tenant release: release1_id=%s digest=%s bytes=%d; release2_id=%s digest=%s bytes=%d; listing_pointer=%s", firstReleaseID, storedRelease.BundleDigest, len(firstReleaseBytes), secondRelease.ID, secondRelease.BundleDigest, len(secondRelease.Bundle), *listingAfter.CurrentReleaseID)
+
 	badDTO := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions", "contributor", "contributor", map[string]any{"agent_version_id": frozenBody.Data.ID, "metadata": metadata, "unexpected": "reject"})
 	require.Equal(t, http.StatusBadRequest, badDTO.Code)
 	spoofedPrincipal := call(http.MethodPost, "/api/v1/marketplace/tenant/release-submissions", "contributor", "contributor", map[string]any{"agent_version_id": frozenBody.Data.ID, "metadata": metadata, "tenant_id": 999, "actor_id": "spoofed"})
