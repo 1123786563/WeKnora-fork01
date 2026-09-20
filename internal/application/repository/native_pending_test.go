@@ -3,12 +3,145 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"github.com/stretchr/testify/require"
 )
+
+// Multiple real transactions contend for the same run/pending pair. Mixed
+// lock orders previously leaked SQLite busy errors or PostgreSQL deadlocks.
+func TestNativePendingConcurrentCancelAndReservedResolution(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			repo, scope, key := nativePendingFixture(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			require.NoError(t, repo.Create(ctx, key.Run, nativePendingDetail(key)))
+			fence := nativecontract.Fence{Run: key.Run, Owner: "worker", Epoch: 1}
+			require.NoError(t, repo.db.Exec("UPDATE native_agent_runs SET lease_owner=?, lease_expires_at=?", fence.Owner, time.Now().Add(time.Hour)).Error)
+			reservation := NewInMemoryNativeToolDispatchReservation(NativeToolDispatchBudget{Root: key.Run, Available: 10})
+			reservation.SetLiveFence(fence)
+			dispatch := nativeUsageReservationRequest(fence, key.Run, 7)
+			var reserved atomic.Int32
+			start := make(chan struct{})
+			type result struct {
+				resolution nativecontract.PendingResolution
+				err        error
+			}
+			results := make(chan result, 12)
+			for i := 0; i < cap(results); i++ {
+				i := i
+				go func() {
+					<-start
+					req := nativeResolveRequest()
+					req.DecisionID = fmt.Sprintf("decision-%d", i)
+					if i%2 == 0 {
+						req.Action = nativecontract.DecisionTerminate
+						resolution, err := repo.Resolve(ctx, scope, key, req)
+						results <- result{resolution, err}
+					} else {
+						resolution, err := repo.ResolveReserved(ctx, scope, key, req, fence, func() error {
+							reserved.Add(1)
+							return reservation.ReserveAndConsume(ctx, dispatch)
+						})
+						results <- result{resolution, err}
+					}
+				}()
+			}
+			close(start)
+			var winner nativecontract.PendingResolution
+			success := 0
+			for i := 0; i < cap(results); i++ {
+				select {
+				case got := <-results:
+					if got.err == nil {
+						success++
+						winner = got.resolution
+						continue
+					}
+					var failure *nativecontract.Failure
+					require.ErrorAs(t, got.err, &failure, "transaction errors must be controlled, not deadlocks/busy failures")
+					require.Contains(t, []nativecontract.ErrorCode{nativecontract.ErrConflict, nativecontract.ErrLeaseLost}, failure.Code)
+				case <-ctx.Done():
+					t.Fatal("cancel/resolve transactions did not finish")
+				}
+			}
+			require.Equal(t, 1, success)
+			detail, err := repo.Get(ctx, scope, key)
+			require.NoError(t, err)
+			require.Equal(t, "2", detail.Ref.Revision)
+			require.Equal(t, "5", detail.RunRevision)
+			require.Equal(t, winner.Detail.ResolvedDecisionID, detail.ResolvedDecisionID)
+			remaining, _ := reservation.Remaining(key.Run)
+			if winner.RunStatus == nativecontract.RunCancelled {
+				require.Zero(t, reserved.Load())
+				require.EqualValues(t, 10, remaining)
+				_, err = repo.ResolveReserved(ctx, scope, key, nativeResolveRequest(), fence, func() error { t.Error("reservation after terminal cancellation"); return nil })
+				require.Equal(t, nativecontract.ErrLeaseLost, failureCode(t, err))
+			} else {
+				require.Equal(t, nativecontract.RunQueued, winner.RunStatus)
+				require.EqualValues(t, 1, reserved.Load())
+				require.EqualValues(t, 3, remaining)
+			}
+		})
+	}
+}
+
+// Reservation denial must not advance either durable revision. A retry with
+// the exact original decision must still be able to win the pending CAS.
+func TestNativePendingReservedResolutionFailureRemainsReusable(t *testing.T) {
+	repo, scope, key := nativePendingFixture(t)
+	ctx := context.Background()
+	require.NoError(t, repo.Create(ctx, key.Run, nativePendingDetail(key)))
+	fence := nativecontract.Fence{Run: key.Run, Owner: "worker", Epoch: 1}
+	require.NoError(t, repo.db.Exec("UPDATE native_agent_runs SET lease_owner=?, lease_expires_at=?", fence.Owner, time.Now().Add(time.Hour)).Error)
+	denied := errors.New("reservation denied")
+	_, err := repo.ResolveReserved(ctx, scope, key, nativeResolveRequest(), fence, func() error { return denied })
+	require.ErrorIs(t, err, denied)
+	detail, err := repo.Get(ctx, scope, key)
+	require.NoError(t, err)
+	require.Equal(t, nativecontract.PendingOpen, detail.Status)
+	require.Equal(t, "4", detail.RunRevision)
+	resolved, err := repo.ResolveReserved(ctx, scope, key, nativeResolveRequest(), fence, func() error { return nil })
+	require.NoError(t, err)
+	require.Equal(t, "2", resolved.Detail.Ref.Revision)
+	replay, err := repo.ResolveReserved(ctx, scope, key, nativeResolveRequest(), fence, func() error { return nil })
+	require.NoError(t, err)
+	require.Equal(t, resolved, replay)
+	changed := nativeResolveRequest()
+	changed.Reason = "different payload"
+	_, err = repo.ResolveReserved(ctx, scope, key, changed, fence, func() error { t.Fatal("changed decision reserved"); return nil })
+	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
+}
+
+func TestNativePendingReservedResolutionRejectsStaleFenceAndCancellation(t *testing.T) {
+	for _, cancel := range []bool{false, true} {
+		repo, scope, key := nativePendingFixture(t)
+		ctx := context.Background()
+		require.NoError(t, repo.Create(ctx, key.Run, nativePendingDetail(key)))
+		fence := nativecontract.Fence{Run: key.Run, Owner: "old-worker", Epoch: 1}
+		if cancel {
+			req := nativeResolveRequest()
+			req.Action = nativecontract.DecisionTerminate
+			_, err := repo.Resolve(ctx, scope, key, req)
+			require.NoError(t, err)
+		}
+		_, err := repo.ResolveReserved(ctx, scope, key, nativeResolveRequest(), fence, func() error { t.Fatal("invalid decision reserved"); return nil })
+		require.Error(t, err)
+		detail, err := repo.Get(ctx, scope, key)
+		require.NoError(t, err)
+		if cancel {
+			require.Equal(t, nativecontract.RunCancelled, detail.RunStatus)
+		} else {
+			require.Equal(t, nativecontract.PendingOpen, detail.Status)
+		}
+	}
+}
 
 func nativePendingFixture(t *testing.T) (*NativePendingDecisionRepository, nativecontract.Scope, nativecontract.PendingKey) {
 	t.Helper()

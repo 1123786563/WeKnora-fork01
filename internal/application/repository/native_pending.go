@@ -268,8 +268,27 @@ func validateNativePendingResolve(req nativecontract.ResolvePendingRequest, deta
 }
 
 func (r *NativePendingDecisionRepository) Resolve(ctx context.Context, scope nativecontract.Scope, key nativecontract.PendingKey, req nativecontract.ResolvePendingRequest) (nativecontract.PendingResolution, error) {
+	return r.resolve(ctx, scope, key, req, nil, nil)
+}
+
+// ResolveReserved serializes the live fence and pending CAS with cancellation.
+// reserve runs only for a validated decision, before consumption, and must be
+// idempotent for the complete request. A denied reservation rolls back all DB
+// mutations. A later DB failure retains the reservation conservatively; this
+// seam never dispatches work and requires reconciliation before production use.
+func (r *NativePendingDecisionRepository) ResolveReserved(ctx context.Context, scope nativecontract.Scope, key nativecontract.PendingKey, req nativecontract.ResolvePendingRequest, fence nativecontract.Fence, reserve func() error) (nativecontract.PendingResolution, error) {
+	if reserve == nil || fence.Run != key.Run || fence.Owner == "" || fence.Epoch <= 0 || req.Action != nativecontract.DecisionRetry {
+		return nativecontract.PendingResolution{}, nativePendingFailure(nativecontract.ErrInvalid, "reserved pending resolution is incomplete")
+	}
+	return r.resolve(ctx, scope, key, req, &fence, reserve)
+}
+
+func (r *NativePendingDecisionRepository) resolve(ctx context.Context, scope nativecontract.Scope, key nativecontract.PendingKey, req nativecontract.ResolvePendingRequest, fence *nativecontract.Fence, reserve func() error) (nativecontract.PendingResolution, error) {
 	if r == nil || r.db == nil {
 		return nativecontract.PendingResolution{}, nativePendingFailure(nativecontract.ErrStore, "pending decision store is unavailable")
+	}
+	if !validNativePendingKey(key) || scope.TenantID != key.Run.TenantID || scope.SessionOwnerID == "" {
+		return nativecontract.PendingResolution{}, nativePendingFailure(nativecontract.ErrNotFound, "pending run was not found")
 	}
 	hash, err := nativePendingDecisionHash(req)
 	if err != nil {
@@ -278,6 +297,26 @@ func (r *NativePendingDecisionRepository) Resolve(ctx context.Context, scope nat
 	var resolution nativecontract.PendingResolution
 	expired := false
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Every resolution, including cancellation, acquires the scoped run
+		// lock BEFORE reading/updating the pending row. Besides preventing a
+		// PostgreSQL lock inversion, making this the first statement avoids
+		// SQLite's deferred read-to-write transaction upgrade race.
+		lock := nativeLeaseScope(tx, key.Run).Where("owner_id=? AND session_id=?", scope.SessionOwnerID, key.Run.SessionID)
+		if fence != nil {
+			// Never trust a caller's lease deadline.
+			lease := NewNativeLeaseStore(tx)
+			lock = lock.Where("lease_owner=? AND lease_epoch=? AND status IN (?, ?) AND lease_expires_at IS NOT NULL AND "+lease.expirySQL()+" > "+lease.nowSQL(), fence.Owner, fence.Epoch, string(nativecontract.RunWaiting), string(nativecontract.RunQueued))
+		}
+		locked := lock.UpdateColumn("revision", gorm.Expr("revision"))
+		if locked.Error != nil {
+			return locked.Error
+		}
+		if locked.RowsAffected != 1 {
+			if fence != nil {
+				return nativePendingFailure(nativecontract.ErrLeaseLost, "pending resolution fence is stale")
+			}
+			return nativePendingFailure(nativecontract.ErrNotFound, "pending run was not found")
+		}
 		run, err := r.scopedRun(tx, scope, key.Run)
 		if err != nil {
 			return err
@@ -304,6 +343,11 @@ func (r *NativePendingDecisionRepository) Resolve(ctx context.Context, scope nat
 			if row.DecisionID != req.DecisionID || row.DecisionHash != hash {
 				return nativePendingFailure(nativecontract.ErrConflict, "decision ID was reused with a different payload")
 			}
+			if reserve != nil {
+				if err := reserve(); err != nil {
+					return err
+				}
+			}
 			resolution = nativecontract.PendingResolution{Detail: detail, RunStatus: detail.RunStatus, RunRevision: detail.RunRevision, ResumeState: nativePendingSavedResumeState(detail)}
 			return nil
 		}
@@ -322,6 +366,11 @@ func (r *NativePendingDecisionRepository) Resolve(ctx context.Context, scope nat
 		nextStatus, resume, err := nativePendingNextRun(detail, req.Action)
 		if err != nil {
 			return err
+		}
+		if reserve != nil {
+			if err := reserve(); err != nil {
+				return err
+			}
 		}
 		detail.Status, detail.ResolvedDecisionID, detail.ResolvedAction = nativecontract.PendingResolved, req.DecisionID, req.Action
 		now := time.Now().UTC()
