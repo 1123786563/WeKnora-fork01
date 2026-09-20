@@ -103,11 +103,15 @@ func (s *SemanticModelPolicyService) Put(ctx context.Context, scope SemanticMode
 	if s.model == nil || s.pricing == nil {
 		return nil, ErrSemanticModelPricingUnavailable
 	}
-	model, err := s.model.GetModelByID(types.WithExecutionTenant(ctx, scope.TenantID), input.ModelID)
+	// Resolution is source-owner scoped. WithExecutionTenant preserves the
+	// authenticated Caller, so pricing/model ownership cannot drift while the
+	// requester remains available for audit.
+	ownerCtx := types.WithExecutionTenant(ctx, scope.TenantID)
+	model, err := s.model.GetModelByID(ownerCtx, input.ModelID)
 	if err != nil || model == nil || model.TenantID != scope.TenantID || model.Type != types.ModelTypeKnowledgeQA || model.Status != types.ModelStatusActive {
 		return nil, ErrSemanticModelPolicyInvalid
 	}
-	pricing, err := s.pricing(ctx, scope.TenantID, model)
+	pricing, err := s.pricing(ownerCtx, scope.TenantID, model)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSemanticModelPricingUnavailable, err)
 	}

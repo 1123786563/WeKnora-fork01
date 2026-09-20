@@ -36,6 +36,7 @@ var (
 	ErrUnknownFunding       = errors.New("unknown_funding")
 	ErrInvalidUsageFact     = errors.New("invalid_usage_fact")
 	ErrUnknownDimensionRate = errors.New("unknown_dimension_rate")
+	ErrUsageChargeOverflow  = errors.New("usage_charge_overflow")
 )
 
 // BillableModel reports whether the MODEL dimension of a call is billable
@@ -172,11 +173,15 @@ func (p PriceVersionRates) ChargeForCall(fact UsageFact) (Credits, error) {
 		}
 		total.Add(total, charge)
 	}
-	return Credits(roundHalfAwayFromZero(total)), nil
+	rounded := roundHalfAwayFromZero(total)
+	if !rounded.IsInt64() {
+		return 0, ErrUsageChargeOverflow
+	}
+	return Credits(rounded.Int64()), nil
 }
 
 // roundHalfAwayFromZero rounds an exact rational to an integer once.
-func roundHalfAwayFromZero(r *big.Rat) int64 {
+func roundHalfAwayFromZero(r *big.Rat) *big.Int {
 	q, rem := new(big.Int).QuoRem(r.Num(), r.Denom(), new(big.Int))
 	twice := new(big.Int).Abs(rem)
 	twice.Lsh(twice, 1)
@@ -187,5 +192,5 @@ func roundHalfAwayFromZero(r *big.Rat) int64 {
 			q.Add(q, big.NewInt(1))
 		}
 	}
-	return q.Int64()
+	return q
 }

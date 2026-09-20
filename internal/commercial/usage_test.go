@@ -2,6 +2,7 @@ package commercial
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 )
@@ -15,6 +16,26 @@ func TestBYOKDoesNotChargeModelTokens(t *testing.T) {
 	}
 	if BillableModel("untrusted") {
 		t.Fatal("unknown funding treated as paid")
+	}
+}
+
+func TestPriceVersionRatesRejectsChargeOverflow(t *testing.T) {
+	rates := PriceVersionRates{Version: "pv-overflow", Rates: map[string]DimensionRate{
+		DimensionModel: {RateMicro: math.MaxInt64, Units: 1},
+	}}
+	fact := usageTestFact()
+	fact.PriceVersion = "pv-overflow"
+	fact.Dimensions = map[string]int64{DimensionModel: 1}
+	charge, err := rates.ChargeForCall(fact)
+	if err != nil {
+		t.Fatalf("largest representable charge rejected: %v", err)
+	}
+	if charge != Credits(math.MaxInt64) {
+		t.Fatalf("charge=%d want %d", charge, int64(math.MaxInt64))
+	}
+	fact.Dimensions = map[string]int64{DimensionModel: 2}
+	if _, err := rates.ChargeForCall(fact); err == nil {
+		t.Fatal("unrepresentable charge was truncated or wrapped")
 	}
 }
 

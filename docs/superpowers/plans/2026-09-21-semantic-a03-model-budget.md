@@ -44,6 +44,7 @@ Evidence pointers: the spec requires a KB administrator to select the pilot KB a
 - Create: `internal/application/repository/semantic_model_policy_test.go`
 - Create: `internal/application/service/semantic_model_policy.go`
 - Create: `internal/application/service/semantic_model_policy_test.go`
+- Modify: `internal/commercial/usage.go` and `internal/commercial/usage_test.go` to reject a fixed-point call charge that cannot fit the stored `int64` Credits amount
 - Create: `internal/handler/semantic_model_policy.go`
 - Create: `internal/handler/semantic_model_policy_test.go`
 - Modify: `internal/router/routes_knowledge.go`
@@ -61,11 +62,11 @@ Evidence pointers: the spec requires a KB administrator to select the pilot KB a
 
 - [ ] **Step 1: Write failing policy authorization and persistence tests**
 
-Test that an owner KB manager can persist/read and explicitly enable a valid model policy; policy defaults disabled. Another tenant, a viewer, a missing/deleted KB, a model outside the owner tenant, an unknown price version, an unresolved immutable rate version, or an unbounded/invalid per-call/per-task cap is rejected without writes. Platform-funded policy requires a positive task credit upper; BYOK policy still requires finite per-task call/token caps. Replacing/disabling policy must increment `policy_version` and preserve the previous version for audit. Use formal PostgreSQL/SQLite migrations, not GORM-only schema creation.
+Test that an owner KB manager can persist/read and explicitly enable a valid model policy; policy defaults disabled. Another tenant, a viewer, a missing/deleted KB, a model outside the owner tenant, an unknown price version, an unresolved immutable rate version, or an unbounded/invalid per-call/per-task cap is rejected without writes. Platform-funded policy requires a positive task credit upper; BYOK policy still requires finite per-task call/token caps. Replacing/disabling policy must increment `policy_version` and preserve the previous version for audit. A caller context whose requester tenant differs from the KB owner must still be switched to owner execution scope before either model or funding/pricing resolution. The exact maximum representable Credits charge must be accepted and a mathematically larger charge must return an error rather than wrap/truncate. Use formal PostgreSQL/SQLite migrations, not GORM-only schema creation.
 
 - [ ] **Step 2: Confirm RED**
 
-Run: `go test ./internal/application/repository ./internal/application/service ./internal/handler ./internal/router -run '^TestSemanticModelPolicy' -count=1`
+Run: `go test ./internal/application/repository ./internal/application/service ./internal/handler ./internal/router ./internal/commercial -run '^(TestSemanticModelPolicy|TestPriceVersionRatesRejectsChargeOverflow)$' -count=1`
 
 Expected: tests fail because no persisted Semantica model policy or management route exists.
 
@@ -75,7 +76,7 @@ Store only policy values and the immutable rate-version reference, never rate ed
 
 - [ ] **Step 4: Run GREEN**
 
-Run the Task 1 command again and both migration up/down/up tests. Expected: only authorized owner-side changes persist, policy version advances once, and stale/missing model or rate versions deny without changing the previous policy.
+Run the Task 1 command again and both migration up/down/up tests. Expected: only authorized owner-side changes persist, policy version advances once, stale/missing model or rate versions deny without changing the previous policy, the owner execution context reaches all owner model/pricing lookups, and unrepresentable Charges fail closed.
 
 ### Task 2: Add model capability issuance and the durable invocation ledger
 
