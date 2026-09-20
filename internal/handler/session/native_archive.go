@@ -84,11 +84,21 @@ func (h *NativeArchiveHandler) scope(c *gin.Context) (nativecontract.Scope, bool
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "code": nativecontract.ErrForbidden, "error": "archive access was revoked"})
 		return nativecontract.Scope{}, false
 	}
-	return scope, true
+	// Archive records are historical, but access is not historical.  Recheck
+	// immediately before each reader call so a membership/resource revocation
+	// between authentication and this endpoint cannot be used to enumerate an
+	// old session or artifact.  The tenant and session owner are immutable
+	// request bindings; only the resolver may refresh policy/grant metadata.
+	current, err := h.scopes.Recheck(c.Request.Context(), scope, nil)
+	if err != nil || current.TenantID != scope.TenantID || current.SessionOwnerID != scope.SessionOwnerID {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "code": nativecontract.ErrForbidden, "error": "archive access was revoked"})
+		return nativecontract.Scope{}, false
+	}
+	return current, true
 }
 
 func nativeArchiveHTTPQuery(c *gin.Context) (nativecontract.ArchiveQuery, error) {
-	query := nativecontract.ArchiveQuery{SessionID: strings.TrimSpace(c.Query("session_id")), Kind: strings.TrimSpace(c.Query("kind")), Cursor: strings.TrimSpace(c.Query("cursor")), Limit: 50}
+	query := nativecontract.ArchiveQuery{SessionID: strings.TrimSpace(c.Query("session_id")), Kind: strings.TrimSpace(c.Query("kind")), Cursor: strings.TrimSpace(c.Query("cursor")), Limit: nativeArchiveHTTPMaxLimit}
 	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil || limit < 1 {
@@ -115,7 +125,20 @@ func writeNativeArchiveFailure(c *gin.Context, err error) {
 			status = http.StatusNotFound
 		case nativecontract.ErrInvalid:
 			status = http.StatusBadRequest
+		case nativecontract.ErrArchiveReadOnly:
+			status = http.StatusConflict
 		}
 	}
 	c.AbortWithStatusJSON(status, gin.H{"success": false, "code": code, "error": err.Error()})
+}
+
+// RejectMutation is deliberately broad: every non-GET request in the archive
+// namespace receives the frozen wire error instead of accidentally growing a
+// write route as the old protocol evolves.
+func (h *NativeArchiveHandler) RejectMutation(c *gin.Context) {
+	writeNativeArchiveFailure(c, &nativecontract.Failure{
+		Code:    nativecontract.ErrArchiveReadOnly,
+		Message: "历史记录仅供查询",
+		Effect:  nativecontract.EffectNotDispatched,
+	})
 }

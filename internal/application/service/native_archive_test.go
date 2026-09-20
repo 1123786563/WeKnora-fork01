@@ -73,6 +73,20 @@ func TestNativeArchiveListRechecksCurrentScopeAndNormalizesPagination(t *testing
 	require.Equal(t, "session-1", store.listQuery.SessionID)
 }
 
+// The public contract calls 100 the default pagination bound.  Supplying no
+// limit must therefore be equivalent to asking for the maximum safe page,
+// rather than silently selecting a smaller, undocumented page size.
+func TestNativeArchiveListDefaultsPaginationToContractMaximum(t *testing.T) {
+	scopes := &nativeArchiveScopeFake{result: nativeArchiveScope()}
+	store := &nativeArchiveStoreFake{}
+	svc := NewNativeArchiveService(store, scopes)
+
+	_, err := svc.List(context.Background(), nativeArchiveScope(), nativecontract.ArchiveQuery{})
+
+	require.NoError(t, err)
+	require.Equal(t, 100, store.listQuery.Limit)
+}
+
 func TestNativeArchiveListHidesCrossSessionRecords(t *testing.T) {
 	store := &nativeArchiveStoreFake{listPage: nativecontract.ArchivePage{Records: []nativecontract.ArchiveRecord{{ID: "record-1", SessionID: "other-session", Kind: "message"}}}}
 	svc := NewNativeArchiveService(store, &nativeArchiveScopeFake{result: nativeArchiveScope()})

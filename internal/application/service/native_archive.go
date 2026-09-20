@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	nativeArchiveDefaultLimit = 50
+	nativeArchiveDefaultLimit = 100
 	nativeArchiveMaxLimit     = 100
 )
 

@@ -16,4 +16,10 @@ func RegisterNativeArchiveRoutes(r *gin.RouterGroup, h *session.NativeArchiveHan
 	archive.GET("/sessions", h.List)
 	archive.GET("/records/:id", h.GetRecord)
 	archive.GET("/artifacts/:id", h.GetArtifact)
+	// The archive namespace is immutable.  Catch every mutation verb rather
+	// than leaving legacy resume/continue/write paths to answer generic 404s.
+	archive.POST("/*path", h.RejectMutation)
+	archive.PUT("/*path", h.RejectMutation)
+	archive.PATCH("/*path", h.RejectMutation)
+	archive.DELETE("/*path", h.RejectMutation)
 }
