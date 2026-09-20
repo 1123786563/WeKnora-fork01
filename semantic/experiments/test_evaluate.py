@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from evaluate import assess_answer, evaluate_rows, score_case
+from evaluate import UsageCollector, assess_answer, evaluate_rows, score_case
 
 
 def test_evidence_score_penalizes_unsupported_source() -> None:
@@ -42,6 +42,15 @@ def test_empty_evidence_requires_explicit_abstention_not_a_fabricated_answer() -
 def test_citation_does_not_make_an_incorrect_conclusion_correct() -> None:
     assessment = assess_answer({"expected_answer_terms": ["丙服务"]}, "甲服务最终依赖乙服务。", {"e-d1"})
     assert assessment["correct"] is False
+
+
+def test_shared_usage_collector_keeps_ner_re_and_query_attempts_from_distinct_provider_instances() -> None:
+    collector = UsageCollector()
+    collector.record("ner", {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5})
+    collector.record("relation", {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7})
+    collector.record("query", {"prompt_tokens": 5, "completion_tokens": 6, "total_tokens": 11})
+    assert collector.total() == {"prompt_tokens": 10, "completion_tokens": 13, "total_tokens": 23}
+    assert [entry["stage"] for entry in collector.attempts] == ["ner", "relation", "query"]
 
 
 def test_malformed_case_is_retained_as_failed_row_not_dropped(tmp_path: Path) -> None:

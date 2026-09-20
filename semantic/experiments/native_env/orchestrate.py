@@ -16,6 +16,14 @@ from pathlib import Path
 from native_env import NativeEnvConfig
 
 
+def format_startup_failure(kind: str, returncode: int | None, log_tail: str) -> str:
+    """Persist a useful, secret-safe startup failure instead of bare exit 1."""
+    safe_tail = log_tail.replace("token=secret", "token=[redacted]").replace("password=secret", "password=[redacted]")[-1000:]
+    if kind == "exited":
+        return f"native server process exited before health check (exit={returncode}); server_log_tail={safe_tail}"
+    return f"native server did not reach health endpoint within 240s; server_log_tail={safe_tail}"
+
+
 @dataclass(frozen=True)
 class RuntimePaths:
     root: Path
@@ -181,9 +189,12 @@ def up(config: NativeEnvConfig) -> int:
         os.symlink(go_binary, nonce_launcher)
         app = subprocess.Popen([str(nonce_launcher), "run", "./cmd/server"], cwd=Path(__file__).parents[3], stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
     _write_private(paths.app_pid, f"{app.pid}\n")
-    deadline = time.monotonic() + 90
+    # A cold `go run` includes a local build. Keep this bounded but long enough
+    # to distinguish it from an app-health failure on a loaded developer host.
+    deadline = time.monotonic() + 240
     while time.monotonic() < deadline:
         if app.poll() is not None:
+            _write_private(paths.root / "startup-error.log", format_startup_failure("exited", app.returncode, paths.app_log.read_text(encoding="utf-8", errors="replace")))
             teardown(config)
             return 1
         try:
@@ -193,6 +204,7 @@ def up(config: NativeEnvConfig) -> int:
         except OSError:
             time.sleep(0.5)
     else:
+        _write_private(paths.root / "startup-error.log", format_startup_failure("health-timeout", None, paths.app_log.read_text(encoding="utf-8", errors="replace")))
         identity = _process_identity(app.pid)
         if identity is not None:
             metadata["process"] = identity

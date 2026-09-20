@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from native_env import NativeEnvConfig
-from orchestrate import _process_identity, ensure_not_live_run, paths_for, prepare_runtime, teardown
+from orchestrate import _process_identity, format_startup_failure, ensure_not_live_run, paths_for, prepare_runtime, teardown
 
 
 class PrepareRuntimeTest(unittest.TestCase):
@@ -61,6 +61,12 @@ class PrepareRuntimeTest(unittest.TestCase):
                 process.wait()
             self.assertIsNotNone(identity)
             self.assertEqual(identity["nonce"], nonce)
+
+    def test_startup_diagnostic_distinguishes_exit_from_health_timeout_without_runtime_secret(self) -> None:
+        self.assertIn("process exited", format_startup_failure("exited", 7, "token=secret"))
+        timeout = format_startup_failure("health-timeout", None, "password=secret")
+        self.assertIn("health endpoint", timeout)
+        self.assertNotIn("secret", timeout)
 
 
 if __name__ == "__main__":

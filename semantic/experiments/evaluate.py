@@ -26,6 +26,20 @@ GATEWAY = "http://127.0.0.1:18092"
 PROVIDER_NAME = "semantica-v03-go-loopback"
 
 
+class UsageCollector:
+    """One run-scoped ledger shared by every extractor-created provider."""
+    def __init__(self) -> None:
+        self.attempts: list[dict[str, Any]] = []
+
+    def record(self, stage: str, usage: Mapping[str, Any], **metadata: Any) -> None:
+        if usage.get("total_tokens") != usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0):
+            raise ValueError("inconsistent raw usage")
+        self.attempts.append({"stage": stage, "raw_usage": dict(usage), **metadata})
+
+    def total(self) -> dict[str, int]:
+        return {key: sum(int(entry["raw_usage"][key]) for entry in self.attempts if entry.get("raw_usage")) for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
+
+
 def score_case(expected_evidence: set[str], actual_evidence: set[str]) -> dict[str, float]:
     overlap = len(expected_evidence & actual_evidence)
     return {
@@ -103,6 +117,7 @@ class _V03Provider(BaseProvider):
     """Public Semantica provider registered against the fixed Go transport."""
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+        self.collector: UsageCollector | None = kwargs.pop("usage_collector", None)
         self.calls: list[dict[str, Any]] = []
 
     def generate(self, prompt: str, **kwargs: Any) -> str:
@@ -119,7 +134,11 @@ class _V03Provider(BaseProvider):
             raise RuntimeError("V03 gateway returned incomplete response or missing raw usage")
         if usage.get("total_tokens") != usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0):
             raise RuntimeError("V03 gateway returned inconsistent raw usage")
-        self.calls.append({"stage": kwargs.get("stage", "generate"), "status": "completed", "latency_ms": round((time.monotonic() - started) * 1000, 3), "raw_usage": dict(usage), "prompt_sha256": sha256(prompt.encode()).hexdigest()})
+        stage = kwargs.get("stage") or ("relation" if '"relations"' in prompt else "ner" if '"entities"' in prompt else "query")
+        attempt = {"stage": stage, "status": "completed", "latency_ms": round((time.monotonic() - started) * 1000, 3), "raw_usage": dict(usage), "prompt_sha256": sha256(prompt.encode()).hexdigest()}
+        self.calls.append(attempt)
+        if self.collector:
+            self.collector.record(stage, usage, status="completed", latency_ms=attempt["latency_ms"], prompt_sha256=attempt["prompt_sha256"])
         return str(payload.get("text", ""))
 
 
@@ -138,14 +157,15 @@ def _run_semantica(case: Mapping[str, Any]) -> dict[str, Any]:
     row = {"case_id": case["case_id"], "document_revision": case["document_revision"], "requested_mode": "semantica", "actual_mode": "semantica-llm-ner-re", "engine_version": version("semantica"), "model_version": "qwen2.5:0.5b", "expected_evidence": case["expected_evidence"], "allowed_evidence": case["allowed_evidence"], "evidence_ids": [], "attempts": [], "tokens": None, "error": None}
     try:
         _register_provider()
-        provider = _V03Provider()
+        collector = UsageCollector()
+        provider = _V03Provider(usage_collector=collector)
         entities: list[Any] = []
         relations: list[Any] = []
         for document in case["documents"]:
-            ner = NERExtractor(method="llm", provider=PROVIDER_NAME, llm_model="qwen2.5:0.5b", silent_fail=False, entity_types=["服务", "组件", "系统"])
+            ner = NERExtractor(method="llm", provider=PROVIDER_NAME, llm_model="qwen2.5:0.5b", silent_fail=False, entity_types=["服务", "组件", "系统"], usage_collector=collector)
             extracted = ner.extract(document["text"])
             entities.extend(extracted)
-            re = RelationExtractor(method="llm", provider=PROVIDER_NAME, llm_model="qwen2.5:0.5b", silent_fail=False, relation_types=["depends_on", "conflicts_with"])
+            re = RelationExtractor(method="llm", provider=PROVIDER_NAME, llm_model="qwen2.5:0.5b", silent_fail=False, relation_types=["depends_on", "conflicts_with"], usage_collector=collector)
             relations.extend(re.extract(document["text"], extracted))
         query_prompt = "只根据以下中文原文回答问题；逐字引用支持答案的原句。若证据不足，回答‘证据不足’。\n问题：" + case["question"] + "\n原文：\n" + "\n".join(document["text"] for document in case["documents"])
         answer = provider.generate(query_prompt, stage="query")
@@ -155,9 +175,8 @@ def _run_semantica(case: Mapping[str, Any]) -> dict[str, Any]:
         row["evidence_ids"] = sorted(_source_valid_evidence(case, answer))
         row.update(assess_answer(case, answer, set(row["evidence_ids"])))
         row["privacy_violation"] = bool(set(row["evidence_ids"]) - set(case["allowed_evidence"]))
-        row["attempts"] = provider.calls
-        usages = [attempt["raw_usage"] for attempt in provider.calls if attempt.get("raw_usage")]
-        row["tokens"] = {"prompt_tokens": sum(item["prompt_tokens"] for item in usages), "completion_tokens": sum(item["completion_tokens"] for item in usages), "total_tokens": sum(item["total_tokens"] for item in usages)} if usages else None
+        row["attempts"] = collector.attempts
+        row["tokens"] = collector.total() if collector.attempts else None
         row["status"] = "completed"
     except Exception as exc:
         row["status"] = "failed"; row["error"] = str(exc)
