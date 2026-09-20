@@ -41,7 +41,7 @@ def source_assertion(assertion_id="a1", scope=SCOPE, evidence_id="src-1", value=
 
 
 def rule_assertion(assertion_id="r1", scope=SCOPE, premise_id="p1"):
-    derivation = Derivation(conclusion_id=assertion_id, premise_ids=(premise_id,),
+    derivation = Derivation(scope=scope, conclusion_id=assertion_id, premise_ids=(premise_id,),
                             rule_id="depends_on_transitive", rule_version="v1")
     return make_assertion(assertion_id=assertion_id, scope=scope,
                           kind=AssertionKind.RULE_DERIVED, evidence_ids=(),
@@ -92,6 +92,26 @@ def test_subject_and_object_refs_must_share_assertion_scope():
         make_assertion(object_id=EntityRef(ENTITY_2, OTHER_SCOPE))
 
 
+def test_records_require_scope_keys_and_derivation_scope_matches():
+    evidence = Evidence("src-1", "doc-1", 1, "chunk-1", "opaque-hash", "claimed", None, None)
+    for record in (
+        lambda: Entity(ENTITY_1, None, "component"),
+        lambda: EntityRef(ENTITY_1, None),
+        lambda: ScopedEvidence(None, evidence),
+        lambda: make_assertion(scope=None),
+        lambda: Derivation(scope=None, conclusion_id="r1", premise_ids=("p1",),
+                           rule_id="rule", rule_version="v1"),
+    ):
+        with pytest.raises(ValueError):
+            record()
+
+    derivation = Derivation(scope=OTHER_SCOPE, conclusion_id="r1", premise_ids=("p1",),
+                            rule_id="rule", rule_version="v1")
+    with pytest.raises(ValueError):
+        make_assertion(assertion_id="r1", kind=AssertionKind.RULE_DERIVED,
+                       evidence_ids=(), derivation=derivation)
+
+
 def test_source_assertion_requires_resolvable_evidence():
     with pytest.raises(ValueError):
         validate_assertion(source_assertion(evidence_id="missing"), {}, {})
@@ -110,7 +130,7 @@ def test_rule_and_model_derivations_require_matching_version_pairs():
     premise = source_assertion(assertion_id="p1")
     rule = rule_assertion(assertion_id="r1", premise_id="p1")
     validate_assertion(rule, evidence_map("src-1"), {"p1": premise})
-    model_derivation = Derivation(conclusion_id="m1", premise_ids=("p1",),
+    model_derivation = Derivation(scope=SCOPE, conclusion_id="m1", premise_ids=("p1",),
                                  model_version="model-v1", prompt_version="prompt-v1")
     model = make_assertion(assertion_id="m1", kind=AssertionKind.MODEL_INFERRED,
                            evidence_ids=(), derivation=model_derivation)

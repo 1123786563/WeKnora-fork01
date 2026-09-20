@@ -27,6 +27,11 @@ def _canonical_uuid(value: object, name: str) -> None:
         raise ValueError(f"{name} must be a canonical UUID")
 
 
+def _scope_key(value: object, name: str = "scope") -> None:
+    if not isinstance(value, ScopeKey):
+        raise ValueError(f"{name} must be a ScopeKey")
+
+
 def new_entity_id() -> str:
     return str(uuid.uuid4())
 
@@ -38,6 +43,7 @@ class Entity:
     entity_type: str
 
     def __post_init__(self) -> None:
+        _scope_key(self.scope)
         _canonical_uuid(self.entity_id, "entity_id")
         _required_text(self.entity_type, "entity_type")
 
@@ -48,6 +54,7 @@ class EntityRef:
     scope: ScopeKey
 
     def __post_init__(self) -> None:
+        _scope_key(self.scope)
         _canonical_uuid(self.entity_id, "entity_id")
 
 
@@ -55,6 +62,11 @@ class EntityRef:
 class ScopedEvidence:
     scope: ScopeKey
     evidence: Evidence
+
+    def __post_init__(self) -> None:
+        _scope_key(self.scope)
+        if not isinstance(self.evidence, Evidence):
+            raise ValueError("evidence must be an Evidence record")
 
 
 class AssertionKind(str, Enum):
@@ -65,6 +77,7 @@ class AssertionKind(str, Enum):
 
 @dataclass(frozen=True)
 class Derivation:
+    scope: ScopeKey
     conclusion_id: str
     premise_ids: tuple[str, ...]
     rule_id: str | None = None
@@ -73,6 +86,7 @@ class Derivation:
     prompt_version: str | None = None
 
     def __post_init__(self) -> None:
+        _scope_key(self.scope)
         _required_text(self.conclusion_id, "conclusion_id")
         if not isinstance(self.premise_ids, tuple) or not self.premise_ids:
             raise ValueError("derivation requires premise IDs")
@@ -112,6 +126,11 @@ class Assertion:
     valid_until: datetime | None
 
     def __post_init__(self) -> None:
+        _scope_key(self.scope)
+        if not isinstance(self.subject, EntityRef):
+            raise ValueError("subject must be an EntityRef")
+        if self.object_id is not None and not isinstance(self.object_id, EntityRef):
+            raise ValueError("object_id must be an EntityRef")
         _required_text(self.assertion_id, "assertion_id")
         _required_text(self.predicate, "predicate")
         if not isinstance(self.kind, AssertionKind):
@@ -137,8 +156,12 @@ class Assertion:
         else:
             if self.evidence_ids or self.derivation is None:
                 raise ValueError("derived assertions require derivation and no direct evidence")
+            if not isinstance(self.derivation, Derivation):
+                raise ValueError("derivation must be a Derivation record")
             if self.derivation.conclusion_id != self.assertion_id:
                 raise ValueError("derivation conclusion must match assertion identity")
+            if self.derivation.scope != self.scope:
+                raise ValueError("derivation scope must match assertion scope")
             expects_rule = self.kind == AssertionKind.RULE_DERIVED
             if expects_rule != (self.derivation.rule_id is not None):
                 raise ValueError("derivation version pair must match assertion kind")
@@ -156,6 +179,11 @@ def validate_assertion(
     premises_by_id: Mapping[str, Assertion],
 ) -> None:
     """Validate all reachable support records and reject dangling or cyclic support."""
+    if not isinstance(assertion, Assertion):
+        raise ValueError("assertion must be an Assertion record")
+    if not isinstance(evidence_by_id, Mapping) or not isinstance(premises_by_id, Mapping):
+        raise ValueError("evidence and premise indexes must be mappings")
+    _scope_key(assertion.scope)
     if assertion.subject.scope != assertion.scope or (
         assertion.object_id is not None and assertion.object_id.scope != assertion.scope
     ):
@@ -165,6 +193,9 @@ def validate_assertion(
     validated: set[str] = set()
 
     def visit(current: Assertion) -> None:
+        if not isinstance(current, Assertion):
+            raise ValueError("premise must be an Assertion record")
+        _scope_key(current.scope)
         if current.assertion_id in visiting:
             raise ValueError("derivation support contains a cycle")
         if current.assertion_id in validated:
