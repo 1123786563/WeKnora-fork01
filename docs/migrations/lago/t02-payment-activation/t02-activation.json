@@ -1,0 +1,12 @@
+{
+  "contract_notes": [],
+  "evidence": {},
+  "expected": "gated subscription for customer B transitions to active exactly once: one succeeded provider payment with provider_payment_id, invoice finalized with a number and payment_status succeeded, entitlements 200 with the plan feature, total_paid == invoice total",
+  "observed": {
+    "blocked_reason": "requires provider-connected customer B and the lab plan"
+  },
+  "phase": "activate",
+  "recorded_at": "2026-09-20T18:02:18.324289+00:00",
+  "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
+  "status": "blocked-env"
+}

@@ -1,0 +1,12 @@
+{
+  "contract_notes": [],
+  "evidence": {},
+  "expected": "AddStripePaymentProvider via GraphQL; Stripe test customers with attached default payment methods; Lago customers linked with provider_customer_id and a Lago default payment method each",
+  "observed": {
+    "blocked_reason": "missing Stripe test key (set STRIPE_SECRET_KEY, sk_test_/rk_test_ only)"
+  },
+  "phase": "provider_setup",
+  "recorded_at": "2026-09-20T18:02:18.322999+00:00",
+  "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
+  "status": "blocked-env"
+}

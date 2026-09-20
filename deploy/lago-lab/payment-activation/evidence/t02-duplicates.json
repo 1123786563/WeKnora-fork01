@@ -1,0 +1,12 @@
+{
+  "contract_notes": [],
+  "evidence": {},
+  "expected": "re-POST subscription with same external_id -> 422 value_already_exist; retry_payment on the paid invoice -> not allowed; manual re-POST -> forbidden; final authoritative state byte-identical (one active subscription, one succeeded payment, invoice unchanged)",
+  "observed": {
+    "blocked_reason": "requires settled customer B state (activate phase did not succeed)"
+  },
+  "phase": "duplicates",
+  "recorded_at": "2026-09-20T18:02:18.324571+00:00",
+  "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
+  "status": "blocked-env"
+}
