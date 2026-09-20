@@ -63,3 +63,11 @@ def test_operation_ref_requires_scope_and_operation_id() -> None:
     from semantic_service.contracts import OperationRef, ScopeKey
 
     assert OperationRef(scope=ScopeKey(tenant_id=1, kb_id="kb"), operation_id="op").operation_id == "op"
+
+
+def test_operation_carries_scope_and_revision() -> None:
+    from semantic_service.contracts import Operation, ScopeKey
+
+    operation = Operation(operation_id="op", scope=ScopeKey(tenant_id=1, kb_id="kb"), document_id="doc", revision=1, state="running", stage="index")
+
+    assert operation.scope.kb_id == "kb" and operation.revision == 1

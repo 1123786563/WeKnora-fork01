@@ -92,6 +92,23 @@ class OperationRef:
             raise ValueError("operation_id is required with scope")
 
 
+@dataclass(frozen=True)
+class Operation:
+    operation_id: str
+    scope: ScopeKey
+    document_id: str
+    revision: int
+    state: str
+    stage: str
+    lease_token: int = 0
+    result_generation: str | None = None
+    error_code: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.operation_id or not self.document_id or not self.state or not self.stage or not 1 <= self.revision <= UINT64_MAX or not 0 <= self.lease_token <= UINT64_MAX:
+            raise ValueError("operation fields are invalid")
+
+
 class ReasonStatus(str, Enum):
     DERIVED = "derived"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
