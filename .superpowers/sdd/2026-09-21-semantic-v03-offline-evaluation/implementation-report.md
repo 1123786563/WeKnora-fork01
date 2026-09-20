@@ -47,3 +47,34 @@ The generated `/tmp/semantica-v03-synthetic-report.json` has `schema_version: 1`
 - No live-model evidence exists.
 - No authorized enterprise corpus, measured latency, measured token/cost data, thresholds, product-owner approval, production integration, or promotion evidence exists.
 - A full `semantic/experiments` suite is not used as V03 proof: the preflight ledger records that V02 real-storage tests require an unprovisioned `SEMANTICA_V02_NEO4J_PASSWORD` in this worktree. The scoped V03 suite above is the applicable verification.
+
+## Hard-gate correction round — 2026-09-21
+
+Approved correction plan `84b11b85` was cherry-picked as `e89cdb0ed` before this fix round. The review found three Important defects in the original evaluator: unexpected evidence did not independently fail the permission gate; the case's requested mode was not authoritative; and empty JSONL/run inputs were silently accepted.
+
+### RED → GREEN evidence
+
+After adding the approved assertions, the scoped command below exited 1 with `3 failed, 8 passed`:
+
+```sh
+uv run --locked --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q
+```
+
+The failures were exactly the intended defects: unsupported `e-hidden` returned `permission_leak=False`; a `graph_rag` case accepted an observation self-reporting `reason`; and empty case JSONL did not raise `ValueError`.
+
+The correction makes `permission_leak` true for any returned evidence outside immutable expected evidence, as well as forbidden evidence or access violations. `mode_match` now requires `case.requested_mode == observation.requested_mode == observation.actual_mode`. The scorer's `correct` result additionally requires complete expected-evidence recall and `answered` status for answerable cases. Loaders reject empty files and `evaluate_run` rejects an empty case/observation set.
+
+Fresh GREEN verification:
+
+```sh
+uv run --locked --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q
+# exit 0 — 11 passed in 0.02s
+
+uv run --locked --project semantic/experiments python semantic/experiments/evaluate.py \
+  --dataset semantic/experiments/fixtures/questions.jsonl \
+  --observations semantic/experiments/fixtures/evaluation-example-observations.jsonl \
+  --output /tmp/semantica-v03-synthetic-report.json
+# exit 0
+```
+
+The smoke report remains `synthetic_only: true`, `evidence_layer: "synthetic"`, with unavailable latency/token fields preserved as `null`; `acceptance-policy.json` remains `approved: false` and `proposed_thresholds: null`. This correction changes no V03 evidence layer or promotion status.

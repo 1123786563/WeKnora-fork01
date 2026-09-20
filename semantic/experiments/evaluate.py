@@ -30,8 +30,16 @@ def score_case(case: dict[str, object], observation: dict[str, object]) -> dict[
         if expected_evidence
         else 1.0
     )
-    permission_leak = bool(actual_evidence & forbidden_evidence) or bool(access_violations)
-    mode_match = observation["requested_mode"] == observation["actual_mode"]
+    unexpected_evidence = actual_evidence - expected_evidence
+    permission_leak = (
+        bool(unexpected_evidence)
+        or bool(actual_evidence & forbidden_evidence)
+        or bool(access_violations)
+    )
+    mode_match = (
+        case["requested_mode"] == observation["requested_mode"]
+        and case["requested_mode"] == observation["actual_mode"]
+    )
     unanswerable_correct = (
         case["answerable"] is False
         and observation["actual_status"] == "insufficient_evidence"
@@ -40,9 +48,14 @@ def score_case(case: dict[str, object], observation: dict[str, object]) -> dict[
     )
     correct = (
         actual_conclusions == expected_conclusions
+        and expected_evidence <= actual_evidence
         and not permission_leak
         and mode_match
-        and (case["answerable"] is True or unanswerable_correct)
+        and (
+            observation["actual_status"] == "answered"
+            if case["answerable"] is True
+            else unanswerable_correct
+        )
     )
 
     return {
@@ -137,6 +150,8 @@ def _read_jsonl(path: Path, required_fields: set[str], record_name: str) -> list
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as error:
         raise ValueError(f"cannot read {record_name} JSONL: {path}") from error
+    if not lines:
+        raise ValueError(f"{record_name} JSONL must contain at least one record")
     for line_number, line in enumerate(lines, start=1):
         if not line.strip():
             raise ValueError(f"{record_name} JSONL contains a blank line at {line_number}")
@@ -202,6 +217,8 @@ def evaluate_run(
     cases: list[dict[str, object]], observations: list[dict[str, object]]
 ) -> dict[str, object]:
     """Join an exact case/observation set and emit deterministic offline scores."""
+    if not cases or not observations:
+        raise ValueError("evaluation requires at least one case and one observation")
     _require_unique_case_ids(cases, "case")
     _require_unique_case_ids(observations, "observation")
     cases_by_id = {case["case_id"]: case for case in cases}
