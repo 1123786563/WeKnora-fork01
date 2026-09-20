@@ -25,11 +25,12 @@ test('M2: the rail carries the experts entry right after agents', () => {
     knowledgeBases: 'Knowledge Bases',
     agents: 'Agents',
     experts: 'Expert Templates',
+    market: 'Skills Market',
     organizations: 'Organizations',
     analytics: 'Analytics',
   });
   assert.deepEqual(items.map((item) => item.key), [
-    'newChat', 'knowledgeBases', 'agents', 'experts', 'organizations', 'analytics',
+    'newChat', 'knowledgeBases', 'agents', 'experts', 'market', 'organizations', 'analytics',
   ]);
   const experts = items.find((item) => item.key === 'experts');
   assert.ok(experts);
@@ -39,6 +40,26 @@ test('M2: the rail carries the experts entry right after agents', () => {
   assert.equal(experts.match('/platform/experts'), true);
   assert.equal(experts.match('/platform/experts/news-trend'), true);
   assert.equal(experts.match('/platform/agents'), false);
+});
+
+test('M4: the rail carries the skills-market entry right after experts', () => {
+  const items = buildNavItems((key) => key, {
+    newChat: 'New Chat',
+    knowledgeBases: 'Knowledge Bases',
+    agents: 'Agents',
+    experts: 'Expert Templates',
+    market: 'Skills Market',
+    organizations: 'Organizations',
+    analytics: 'Analytics',
+  });
+  const market = items.find((item) => item.key === 'market');
+  assert.ok(market);
+  assert.equal(market.href, '/platform/market');
+  assert.equal(market.label, 'Skills Market');
+  assert.ok(market.icon);
+  assert.equal(market.match('/platform/market'), true);
+  assert.equal(market.match('/platform/market/some-skill'), true);
+  assert.equal(market.match('/platform/experts'), false);
 });
 
 test('matches Vue TenantSelector visibility for ordinary multi-tenant members', () => {

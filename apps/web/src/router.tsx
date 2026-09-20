@@ -56,6 +56,8 @@ const BillingPage = lazy(() => import('./commercial/BillingPage.tsx').then((modu
 const CheckoutPage = lazy(() => import('./commercial/CheckoutPage.tsx').then((module) => ({ default: module.CheckoutPage })));
 const AdminCommercialPage = lazy(() => import('./commercial/AdminCommercialPage.tsx').then((module) => ({ default: module.AdminCommercialPage })));
 const ExpertsPage = lazy(() => import('./experts/ExpertsPage.tsx').then((module) => ({ default: module.ExpertsPage })));
+// Octop M4 — 技能市场页（/platform/market）。
+const MarketPage = lazy(() => import('./market/MarketPage.tsx').then((module) => ({ default: module.MarketPage })));
 const SettingsPage = lazy(() => import('./settings/SettingsPage.tsx').then((module) => ({ default: module.SettingsPage })));
 const KnowledgeGraphPage = lazy(() => import('./knowledge/KnowledgeGraphPage.tsx').then((module) => ({ default: module.KnowledgeGraphPage })));
 const KnowledgeBasesPage = lazy(() => import('./App.tsx').then((module) => ({ default: module.KnowledgeBasesPage })));
@@ -689,6 +691,21 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     ),
   });
 
+  // Octop M4 skills market; search/rankings and the tenant-internal listing
+  // are Viewer+ reads, market install / tenant install / publish stay Admin+
+  // server-side (routes_skill_market.go / routes_tenant_skill_market.go
+  // guards) — the page hides those affordances for non-admin roles
+  // (AnalyticsPage role-prop pattern).
+  const marketRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'market',
+    component: (): ReactNode => (
+      <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+        <MarketPage client={client} role={scopeRuntime.role()} />
+      </Suspense>
+    ),
+  });
+
   const devMarkdownRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'dev/markdown',
@@ -867,6 +884,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       chatSplatRoute,
       agentsRoute,
       expertsRoute,
+      marketRoute,
       configurationRoute,
       organizationsRoute,
       settingsRoute,

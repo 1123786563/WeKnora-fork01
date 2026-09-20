@@ -40,6 +40,7 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.equal(resolveRoute('/knowledgeBase/%E0%A4%A').kind, 'not-found');
   assert.deepEqual(resolveRoute('/platform/agents'), { kind: 'platform', path: '/platform/agents' });
   assert.deepEqual(resolveRoute('/platform/experts'), { kind: 'platform', path: '/platform/experts' });
+  assert.deepEqual(resolveRoute('/platform/market'), { kind: 'platform', path: '/platform/market' });
   assert.deepEqual(resolveRoute('/platform/apps'), { kind: 'apps', path: '/platform/apps', mode: 'catalog' });
   assert.deepEqual(resolveRoute('/platform/apps/connections'), { kind: 'apps', path: '/platform/apps/connections', mode: 'connections' });
   assert.deepEqual(resolveRoute('/platform/apps/authorization/attempt-1'), { kind: 'apps', path: '/platform/apps/authorization/attempt-1', mode: 'authorization', id: 'attempt-1' });

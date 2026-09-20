@@ -167,6 +167,12 @@ const ICONS = {
     'M12 3L13.7 7.8L18.5 9.5L13.7 11.2L12 16L10.3 11.2L5.5 9.5L10.3 7.8L12 3Z',
     'M18.5 14.5L19.4 16.6L21.5 17.5L19.4 18.4L18.5 20.5L17.6 18.4L15.5 17.5L17.6 16.6L18.5 14.5Z',
   ],
+  // M4 skills-market entry — shopping-bag glyph in the same 24×24 stroke
+  // geometry (the market = a bag of installable skills).
+  bag: [
+    'M6.3 8.2H17.7L18.9 19.1C19 20 18.3 20.8 17.4 20.8H6.6C5.7 20.8 5 20 5.1 19.1L6.3 8.2Z',
+    'M9 10.2V6.6C9 4.7 10.3 3.2 12 3.2C13.7 3.2 15 4.7 15 6.6V10.2',
+  ],
 };
 
 export function buildNavItems(t: (key: string) => string, labels: Record<string, string>): NavItem[] {
@@ -177,6 +183,11 @@ export function buildNavItems(t: (key: string) => string, labels: Record<string,
     // M2 expert templates — a creation surface next to agents; unconditional
     // (the GET /experts list is tenant-scoped, no admin gate).
     { key: 'experts', href: '/platform/experts', label: labels.experts, icon: <Icon path={ICONS.sparkles} />, match: (p: string) => p.startsWith('/platform/experts') },
+    // M4 skills market — remote SkillHub search/rankings plus the
+    // tenant-internal published list; visible to every member (Viewer+ reads
+    // — routes_skill_market.go / routes_tenant_skill_market.go), the Admin+
+    // install/publish affordances gate inside the page.
+    { key: 'market', href: '/platform/market', label: labels.market, icon: <Icon path={ICONS.bag} />, match: (p: string) => p.startsWith('/platform/market') },
     { key: 'organizations', href: '/platform/organizations', label: labels.organizations, icon: <Icon path={ICONS.users} />, match: (p: string) => p.startsWith('/platform/organizations') },
     { key: 'analytics', href: '/platform/analytics', label: labels.analytics, icon: <Icon path={ICONS.chart} />, match: (p: string) => p.startsWith('/platform/analytics') },
   ];
@@ -211,6 +222,9 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // scripts/parity/backfill-i18n-keys.mjs EXPERTS_VALUES — the Vue menu
     // table has no experts key).
     experts: formatMessage(locale, 'menu.experts'),
+    // M4 skills-market rail entry (menu.market, same script-owned registration
+    // via MARKET_VALUES — React-only surface, no Vue menu baseline).
+    market: formatMessage(locale, 'menu.market'),
     organizations: formatMessage(locale, 'menu.organizations'),
     // SP11 analytics dashboard (admin-only entry, gated below).
     analytics: formatMessage(locale, 'menu.analytics'),
