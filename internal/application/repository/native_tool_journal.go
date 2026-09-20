@@ -433,7 +433,7 @@ func (t *journalCallableTool) Call(ctx context.Context, args []byte) (any, error
 		return nil, err
 	}
 	sum := sha256.Sum256(content)
-	outcome := nativecontract.ToolOutcome{AttemptID: attempt.ID, CallID: t.dispatch.Plan.CallID, ResultHash: "sha256:" + hex.EncodeToString(sum[:]), Effect: nativecontract.EffectConfirmed, Content: content}
+	outcome := nativecontract.ToolOutcome{AttemptID: attempt.ID, CallID: t.dispatch.Plan.CallID, SourceModelAttemptID: t.dispatch.Plan.ModelAttemptID, ResultHash: "sha256:" + hex.EncodeToString(sum[:]), Effect: nativecontract.EffectConfirmed, Content: content}
 	intent := nativecontract.CommitIntent{Version: 1, ID: t.dispatch.CommitIntentID, PayloadHash: outcome.ResultHash, Fence: t.dispatch.Fence, Results: []nativecontract.ToolOutcome{outcome}}
 	if err := t.journal.recordOutcomeAndIntent(ctx, outcome, intent); err != nil {
 		_ = t.journal.Finish(ctx, t.dispatch.Fence, attempt.ID, nativecontract.EffectUnknown, &nativecontract.Failure{Code: nativecontract.ErrStore, Message: "tool result persistence failed", Effect: nativecontract.EffectUnknown})
@@ -493,7 +493,7 @@ func (j *NativeToolJournal) RecordOutcome(ctx context.Context, fence nativecontr
 	if j == nil || j.db == nil {
 		return toolJournalFailure(nativecontract.ErrStore, "tool journal is unavailable", nativecontract.EffectNotDispatched)
 	}
-	if outcome.AttemptID == "" || outcome.CallID == "" || outcome.ResultHash == "" || outcome.Effect != nativecontract.EffectConfirmed || !json.Valid(outcome.Content) {
+	if outcome.AttemptID == "" || outcome.CallID == "" || outcome.SourceModelAttemptID == "" || outcome.ResultHash == "" || outcome.Effect != nativecontract.EffectConfirmed || !json.Valid(outcome.Content) {
 		return toolJournalFailure(nativecontract.ErrInvalid, "confirmed tool outcome is incomplete", nativecontract.EffectNotDispatched)
 	}
 	payload, err := json.Marshal(outcome)
@@ -510,6 +510,9 @@ func (j *NativeToolJournal) RecordOutcome(ctx context.Context, fence nativecontr
 		}
 		if calls != 1 {
 			return toolJournalFailure(nativecontract.ErrNotFound, "tool attempt call was not found", nativecontract.EffectNotDispatched)
+		}
+		if err := j.assertOutcomeSource(tx, fence.Run, outcome); err != nil {
+			return err
 		}
 		failure := nullableFailure(outcome.Failure)
 		inserted := tx.Exec(`INSERT INTO native_agent_tool_results (tenant_id, run_id, attempt_id, call_id, result_hash, outcome, provider_receipt, query_anchor, effect_state, is_error, truncated, content, failure)
@@ -546,7 +549,7 @@ func (j *NativeToolJournal) recordOutcomeAndIntent(ctx context.Context, outcome 
 	if j == nil || j.db == nil {
 		return toolJournalFailure(nativecontract.ErrStore, "tool journal is unavailable", nativecontract.EffectNotDispatched)
 	}
-	if outcome.AttemptID == "" || outcome.CallID == "" || outcome.ResultHash == "" || outcome.Effect != nativecontract.EffectConfirmed || !json.Valid(outcome.Content) ||
+	if outcome.AttemptID == "" || outcome.CallID == "" || outcome.SourceModelAttemptID == "" || outcome.ResultHash == "" || outcome.Effect != nativecontract.EffectConfirmed || !json.Valid(outcome.Content) ||
 		intent.Version <= 0 || intent.ID == "" || intent.PayloadHash != outcome.ResultHash || !validToolFence(intent.Fence) ||
 		len(intent.Results) != 1 || intent.Results[0].AttemptID != outcome.AttemptID || intent.Results[0].CallID != outcome.CallID || intent.Results[0].ResultHash != outcome.ResultHash {
 		return toolJournalFailure(nativecontract.ErrInvalid, "tool outcome commit intent is incomplete", nativecontract.EffectNotDispatched)
@@ -569,6 +572,9 @@ func (j *NativeToolJournal) recordOutcomeAndIntent(ctx context.Context, outcome 
 		}
 		if calls != 1 {
 			return toolJournalFailure(nativecontract.ErrNotFound, "tool attempt call was not found", nativecontract.EffectNotDispatched)
+		}
+		if err := j.assertOutcomeSource(tx, intent.Fence.Run, outcome); err != nil {
+			return err
 		}
 		inserted := tx.Exec(`INSERT INTO native_agent_tool_results (tenant_id, run_id, attempt_id, call_id, result_hash, outcome, provider_receipt, query_anchor, effect_state, is_error, truncated, content, failure)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`, intent.Fence.Run.TenantID, intent.Fence.Run.RunID, outcome.AttemptID, outcome.CallID, outcome.ResultHash, string(payload), outcome.ProviderReceipt, outcome.QueryAnchor, string(outcome.Effect), outcome.IsError, outcome.Truncated, string(outcome.Content), nullableFailure(outcome.Failure))
@@ -609,6 +615,31 @@ func (j *NativeToolJournal) recordOutcomeAndIntent(ctx context.Context, outcome 
 	})
 }
 
+// assertOutcomeSource binds a result to the one model plan from which its
+// executable tool attempt was copied. Historical duplicate CallIDs with no
+// unique plan/hash provenance fail closed instead of cross-returning a result.
+func (j *NativeToolJournal) assertOutcomeSource(tx *gorm.DB, run nativecontract.RunIdentity, outcome nativecontract.ToolOutcome) error {
+	var toolCall struct {
+		Version  int
+		ArgsHash string
+	}
+	if err := tx.Table("native_agent_tool_calls").Select("plan_version AS version, args_hash").Where("tenant_id=? AND run_id=? AND attempt_id=? AND call_id=?", run.TenantID, run.RunID, outcome.AttemptID, outcome.CallID).Take(&toolCall).Error; err != nil {
+		return toolJournalFailure(nativecontract.ErrNotFound, "tool attempt source was not found", nativecontract.EffectNotDispatched)
+	}
+	modelCalls := tx.Table("native_agent_tool_calls AS calls").Joins("JOIN native_agent_attempts AS source ON source.tenant_id=calls.tenant_id AND source.run_id=calls.run_id AND source.attempt_id=calls.attempt_id AND source.kind='model'").Where("calls.tenant_id=? AND calls.run_id=? AND calls.call_id=? AND calls.plan_version=? AND calls.args_hash=?", run.TenantID, run.RunID, outcome.CallID, toolCall.Version, toolCall.ArgsHash)
+	var all, requested int64
+	if err := modelCalls.Count(&all).Error; err != nil {
+		return err
+	}
+	if err := modelCalls.Where("calls.attempt_id=?", outcome.SourceModelAttemptID).Count(&requested).Error; err != nil {
+		return err
+	}
+	if all != 1 || requested != 1 {
+		return toolJournalFailure(nativecontract.ErrConflict, "tool outcome source model attempt is ambiguous", nativecontract.EffectNotDispatched)
+	}
+	return nil
+}
+
 func (j *NativeToolJournal) LookupResult(ctx context.Context, scope nativecontract.Scope, run nativecontract.RunIdentity, modelAttemptID, callID string) (nativecontract.ToolOutcome, error) {
 	if j == nil || j.db == nil {
 		return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrStore, "tool journal is unavailable", nativecontract.EffectNotDispatched)
@@ -631,17 +662,18 @@ func (j *NativeToolJournal) LookupResult(ctx context.Context, scope nativecontra
 	if modelCalls != 1 {
 		return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrConflict, "model tool call is ambiguous", nativecontract.EffectNotDispatched)
 	}
-	var payload string
-	err := j.db.WithContext(ctx).Table("native_agent_tool_results").Select("outcome").Where("tenant_id=? AND run_id=? AND call_id=? AND effect_state=?", run.TenantID, run.RunID, callID, string(nativecontract.EffectConfirmed)).Order("created_at DESC").Limit(1).Row().Scan(&payload)
-	if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, sql.ErrNoRows) {
-		return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrNotFound, "confirmed tool result was not found", nativecontract.EffectNotDispatched)
-	}
-	if err != nil {
+	var payloads []string
+	if err := j.db.WithContext(ctx).Table("native_agent_tool_results").Where("tenant_id=? AND run_id=? AND call_id=? AND effect_state=?", run.TenantID, run.RunID, callID, string(nativecontract.EffectConfirmed)).Order("created_at DESC").Pluck("outcome", &payloads).Error; err != nil {
 		return nativecontract.ToolOutcome{}, err
 	}
-	var outcome nativecontract.ToolOutcome
-	if err := json.Unmarshal([]byte(payload), &outcome); err != nil {
-		return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrStore, "stored tool outcome is corrupt", nativecontract.EffectNotDispatched)
+	for _, payload := range payloads {
+		var outcome nativecontract.ToolOutcome
+		if err := json.Unmarshal([]byte(payload), &outcome); err != nil {
+			return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrStore, "stored tool outcome is corrupt", nativecontract.EffectNotDispatched)
+		}
+		if outcome.SourceModelAttemptID == modelAttemptID {
+			return outcome, nil
+		}
 	}
-	return outcome, nil
+	return nativecontract.ToolOutcome{}, toolJournalFailure(nativecontract.ErrNotFound, "confirmed tool result was not found for model attempt", nativecontract.EffectNotDispatched)
 }

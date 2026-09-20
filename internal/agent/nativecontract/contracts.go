@@ -332,17 +332,18 @@ type PendingDecisionService interface {
 }
 
 type ToolOutcome struct {
-	AttemptID       string          `json:"attempt_id"`
-	CallID          string          `json:"call_id"`
-	ProviderReceipt string          `json:"provider_receipt,omitempty"`
-	QueryAnchor     string          `json:"query_anchor,omitempty"`
-	ResultHash      string          `json:"result_hash"`
-	Effect          EffectState     `json:"effect"`
-	IsError         bool            `json:"is_error"`
-	Truncated       bool            `json:"truncated"`
-	Content         json.RawMessage `json:"content"`
-	Artifacts       []ArtifactRef   `json:"artifacts,omitempty"`
-	Failure         *Failure        `json:"failure,omitempty"`
+	AttemptID            string          `json:"attempt_id"`
+	CallID               string          `json:"call_id"`
+	SourceModelAttemptID string          `json:"source_model_attempt_id,omitempty"`
+	ProviderReceipt      string          `json:"provider_receipt,omitempty"`
+	QueryAnchor          string          `json:"query_anchor,omitempty"`
+	ResultHash           string          `json:"result_hash"`
+	Effect               EffectState     `json:"effect"`
+	IsError              bool            `json:"is_error"`
+	Truncated            bool            `json:"truncated"`
+	Content              json.RawMessage `json:"content"`
+	Artifacts            []ArtifactRef   `json:"artifacts,omitempty"`
+	Failure              *Failure        `json:"failure,omitempty"`
 }
 type ToolBoundary interface {
 	Plan(context.Context, Fence, ToolPlan) (ToolPlan, error)

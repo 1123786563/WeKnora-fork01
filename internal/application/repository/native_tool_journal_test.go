@@ -271,13 +271,40 @@ func TestNativeToolPlanRejectsDuplicateCallIDAcrossModelAttempts(t *testing.T) {
 	require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
 }
 
+func TestNativeToolLookupResultBindsHistoricalDuplicateCallIDsToSourceModelAttempt(t *testing.T) {
+	journal, fence := nativeToolJournalFixture(t)
+	ctx := context.Background()
+	require.NoError(t, journal.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, lease_epoch, kind, attempt_number) VALUES (?, ?, ?, ?, ?, ?)`, 1, "run-1", "model-2", 7, "model", 2).Error)
+	for _, row := range []struct {
+		model, tool, hash, result string
+		number                    int
+	}{
+		{"model-1", "tool-history-1", "args-history-1", "result-history-1", 3},
+		{"model-2", "tool-history-2", "args-history-2", "result-history-2", 4},
+	} {
+		require.NoError(t, journal.db.Exec(`INSERT INTO native_agent_tool_calls (tenant_id, run_id, attempt_id, call_id, plan_version, args_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", row.model, "call-history", 1, row.hash, 7).Error)
+		require.NoError(t, journal.db.Exec(`INSERT INTO native_agent_attempts (tenant_id, run_id, attempt_id, lease_epoch, kind, logical_call_id, attempt_number, effect_state, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", row.tool, 7, "tool", "call-history", row.number, "confirmed", "finished").Error)
+		require.NoError(t, journal.db.Exec(`INSERT INTO native_agent_tool_calls (tenant_id, run_id, attempt_id, call_id, plan_version, args_hash, lease_epoch) VALUES (?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", row.tool, "call-history", 1, row.hash, 7).Error)
+		outcome := nativecontract.ToolOutcome{AttemptID: row.tool, CallID: "call-history", SourceModelAttemptID: row.model, ResultHash: row.result, Effect: nativecontract.EffectConfirmed, Content: json.RawMessage(`{"ok":true}`)}
+		payload, err := json.Marshal(outcome)
+		require.NoError(t, err)
+		require.NoError(t, journal.db.Exec(`INSERT INTO native_agent_tool_results (tenant_id, run_id, attempt_id, call_id, result_hash, outcome, effect_state, is_error, truncated, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 1, "run-1", row.tool, "call-history", row.result, string(payload), "confirmed", false, false, string(outcome.Content)).Error)
+	}
+	first, err := journal.LookupResult(ctx, nativecontract.Scope{TenantID: 1}, fence.Run, "model-1", "call-history")
+	require.NoError(t, err)
+	require.Equal(t, "result-history-1", first.ResultHash)
+	second, err := journal.LookupResult(ctx, nativecontract.Scope{TenantID: 1}, fence.Run, "model-2", "call-history")
+	require.NoError(t, err)
+	require.Equal(t, "result-history-2", second.ResultHash)
+}
+
 func TestNativeToolConfirmedOutcomeIsImmutableAndVisibleOnlyInScope(t *testing.T) {
 	journal, fence := nativeToolJournalFixture(t)
 	ctx := context.Background()
 	require.NoError(t, func() error { _, err := journal.Plan(ctx, fence, nativeToolPlan()); return err }())
 	attempt, err := journal.Begin(ctx, fence, nativecontract.Attempt{ID: "tool-1", Run: fence.Run, Kind: nativecontract.ToolAttempt, LogicalCallID: "call-1", Number: 2, Epoch: fence.Epoch, StartedAt: time.Now()})
 	require.NoError(t, err)
-	outcome := nativecontract.ToolOutcome{AttemptID: attempt.ID, CallID: "call-1", ProviderReceipt: "receipt-1", ResultHash: "result-1", Effect: nativecontract.EffectConfirmed, Content: json.RawMessage(`{"ok":true}`)}
+	outcome := nativecontract.ToolOutcome{AttemptID: attempt.ID, CallID: "call-1", SourceModelAttemptID: "model-1", ProviderReceipt: "receipt-1", ResultHash: "result-1", Effect: nativecontract.EffectConfirmed, Content: json.RawMessage(`{"ok":true}`)}
 	require.NoError(t, journal.RecordOutcome(ctx, fence, outcome))
 	require.NoError(t, journal.RecordOutcome(ctx, fence, outcome))
 	changed := outcome
