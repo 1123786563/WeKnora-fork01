@@ -17,10 +17,10 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/storageurl"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
+	"github.com/Tencent/WeKnora/internal/modules/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
-	"github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/gin-gonic/gin"
 )
 

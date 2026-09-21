@@ -165,7 +165,7 @@ func openAdmissionConcurrencyDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../../"))
+	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../../../"))
 	dsn := "file:" + filepath.Join(t.TempDir(), "admission.db") + "?_foreign_keys=on&_busy_timeout=10000"
 	sqlDB, err := sql.Open("sqlite3", dsn)
 	require.NoError(t, err)

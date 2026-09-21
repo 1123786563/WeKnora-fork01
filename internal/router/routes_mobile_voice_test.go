@@ -10,7 +10,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
-	"github.com/Tencent/WeKnora/internal/voice"
+	"github.com/Tencent/WeKnora/internal/modules/workbench/voice"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )

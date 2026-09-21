@@ -21,7 +21,7 @@ type mx003Fixture struct {
 
 func loadMX003Fixture(t *testing.T) *mx003Fixture {
 	t.Helper()
-	raw, err := os.ReadFile("../../tests/mobile-v2/fixtures/mx-003-crosslang.json")
+	raw, err := os.ReadFile("../../../tests/mobile-v2/fixtures/mx-003-crosslang.json")
 	if err != nil {
 		t.Fatalf("read shared fixture: %v", err)
 	}
