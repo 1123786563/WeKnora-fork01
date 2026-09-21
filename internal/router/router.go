@@ -18,6 +18,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 
@@ -132,6 +133,11 @@ type RouterParams struct {
 	AppConnectionHandler   *handler.AppConnectionHandler
 	AppSyncHandler         *handler.AppSyncHandler
 	AppActionHandler       *handler.AppActionHandler
+	// QueryHistory is the conversation module's query-history feature
+	// (Wave 1, Task 10): the Admin+ audit snapshot and the async CSV
+	// export mount through it, replacing the legacy routing through
+	// SessionHandler for these endpoints.
+	QueryHistory *queryhistory.Module
 }
 
 // NewRouter 创建新的路由
@@ -375,7 +381,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)
 		RegisterMessageRoutes(v1, params.MessageHandler, rbacGuards)
 		RegisterFeedbackRoutes(v1, params.FeedbackHandler, rbacGuards)
-		RegisterQueryHistoryAdminRoutes(v1, params.SessionHandler, rbacGuards)
+		RegisterQueryHistoryAdminRoutes(v1, params.QueryHistory, rbacGuards)
 		RegisterAnalyticsRoutes(v1, params.AnalyticsHandler, rbacGuards)
 		RegisterUsageRoutes(v1, params.UsageHandler, rbacGuards)
 		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, rbacGuards)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -11,9 +12,11 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/bootstrap"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware/asynqdl"
+	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -46,11 +49,13 @@ type AsynqTaskParams struct {
 	WikiIngest           interfaces.TaskHandler `name:"wikiIngest"`
 	TemporaryDocument    interfaces.TemporaryDocumentService
 	MemoryService        interfaces.MemoryService
-	// QueryHistoryExport runs the Admin+ async query-history CSV export
-	// (SP13 Task 4) on the maintenance pool.
-	QueryHistoryExport *service.QueryHistoryExportService
-	DeadLetterRepo     interfaces.TaskDeadLetterRepository
-	SpanTracker        service.SpanTracker
+	// QueryHistory serves the Admin+ async query-history CSV export
+	// (SP13 Task 4) on the maintenance pool. Since Wave 1 Task 10 the
+	// worker registers through the conversation module's own assembly
+	// instead of the legacy export service.
+	QueryHistory      *queryhistory.Module
+	DeadLetterRepo    interfaces.TaskDeadLetterRepository
+	SpanTracker       service.SpanTracker
 }
 
 // defaultRedisOpTimeout is the previous hard-coded read timeout. The 100ms
@@ -228,7 +233,7 @@ func NewWikiAsynqServer(svc interfaces.SystemSettingService) *asynq.Server {
 	return newAsynqServer(concurrency, types.QueueWeightsForPool(types.WorkerPoolWiki))
 }
 
-func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
+func RunAsynqServer(params AsynqTaskParams) (*asynq.ServeMux, error) {
 	// Create a new mux and register all handlers
 	mux := asynq.NewServeMux()
 
@@ -322,8 +327,16 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	// Register long-term memory distillation handler
 	mux.HandleFunc(types.TypeMemoryExtract, params.MemoryService.Handle)
 
-	// Register the async query-history CSV export handler (maintenance pool).
-	mux.HandleFunc(types.TypeQueryHistoryExport, params.QueryHistoryExport.ProcessExport)
+	// Register the async query-history CSV export handler (maintenance
+	// pool) through the conversation module (Wave 1, Task 10). The
+	// duplicate-safe registry turns a double registration into a returned
+	// error — which FAILS STARTUP via the container's must(Invoke) —
+	// instead of the mux's silent last-wins overwrite; the handler still
+	// runs behind the mux middlewares above (dead-letter, background-task
+	// tagging, Langfuse).
+	if err := params.QueryHistory.RegisterWorkers(bootstrap.NewAsynqWorkerRegistry(mux)); err != nil {
+		return nil, fmt.Errorf("register query history export worker: %w", err)
+	}
 
 	// Run the same mux on every pool. Shared and dedicated servers intentionally
 	// overlap, but Redis dequeue is atomic, so each task still executes once.
@@ -340,7 +353,7 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	runPool("maintenance-pool", params.MaintenanceServer)
 	runPool("shared-pool", params.SharedServer)
 	runPool("wiki-pool", params.WikiServer)
-	return mux
+	return mux, nil
 }
 
 // deadLetterKnowledgePayload extracts only the field we need from any

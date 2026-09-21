@@ -2832,6 +2832,16 @@ assets:
     source: internal/models/vlm
     target: internal/modules/airesource
   - kind: package
+    id: pkg.internal.modules.conversation.queryhistory
+    owner: conversation
+    source: internal/modules/conversation/queryhistory
+    target: internal/modules/conversation/queryhistory
+  - kind: package
+    id: pkg.internal.modules.conversation.queryhistory.adapters
+    owner: conversation
+    source: internal/modules/conversation/queryhistory/adapters
+    target: internal/modules/conversation/queryhistory
+  - kind: package
     id: pkg.internal.modules.conversation.queryhistory.application
     owner: conversation
     source: internal/modules/conversation/queryhistory/application
@@ -2845,6 +2855,16 @@ assets:
     id: pkg.internal.modules.conversation.queryhistory.ports
     owner: conversation
     source: internal/modules/conversation/queryhistory/ports
+    target: internal/modules/conversation/queryhistory
+  - kind: package
+    id: pkg.internal.modules.conversation.queryhistory.testkit
+    owner: conversation
+    source: internal/modules/conversation/queryhistory/testkit
+    target: internal/modules/conversation/queryhistory
+  - kind: package
+    id: pkg.internal.modules.conversation.queryhistory.transport.http
+    owner: conversation
+    source: internal/modules/conversation/queryhistory/transport/http
     target: internal/modules/conversation/queryhistory
   - kind: package
     id: pkg.internal.notification

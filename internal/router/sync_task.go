@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/bootstrap"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -150,14 +150,18 @@ type SyncTaskParams struct {
 	WikiIngest           interfaces.TaskHandler `name:"wikiIngest"`
 	TemporaryDocument    interfaces.TemporaryDocumentService
 	MemoryService        interfaces.MemoryService
-	// QueryHistoryExport runs the Admin+ async query-history CSV export
+	// QueryHistory serves the Admin+ async query-history CSV export
 	// (SP13 Task 4); the Lite executor dispatches it inline like the rest.
-	QueryHistoryExport *service.QueryHistoryExportService
+	// Since Wave 1 Task 10 the worker registers through the conversation
+	// module's own assembly instead of the legacy export service.
+	QueryHistory *queryhistory.Module
 }
 
 // RegisterSyncHandlers registers all task handlers on the SyncTaskExecutor.
-// Used in Lite mode instead of RunAsynqServer.
-func RegisterSyncHandlers(params SyncTaskParams) {
+// Used in Lite mode instead of RunAsynqServer. A worker registration failure
+// is returned so the container's must(Invoke) fails startup — Lite mode must
+// not boot with a missing or duplicated worker.
+func RegisterSyncHandlers(params SyncTaskParams) error {
 	params.Executor.RegisterHandler(types.TypeChunkExtract, params.ChunkExtractor.Handle)
 	params.Executor.RegisterHandler(types.TypeDataTableSummary, params.DataTableSummary.Handle)
 	params.Executor.RegisterHandler(types.TypeDocumentProcess, params.KnowledgeService.ProcessDocument)
@@ -180,6 +184,14 @@ func RegisterSyncHandlers(params SyncTaskParams) {
 	params.Executor.RegisterHandler(types.TypeWikiIngest, params.WikiIngest.Handle)
 	params.Executor.RegisterHandler(types.TypeWikiFinalize, params.WikiIngest.Handle)
 	params.Executor.RegisterHandler(types.TypeMemoryExtract, params.MemoryService.Handle)
-	params.Executor.RegisterHandler(types.TypeQueryHistoryExport, params.QueryHistoryExport.ProcessExport)
+	// The conversation module's query-history export worker (Wave 1,
+	// Task 10) registers through the SAME module method the Redis path
+	// uses — the executor satisfies bootstrap.WorkerRegistry, so the
+	// duplicate-safe contract and the SkipRetry mapping are identical in
+	// both execution modes.
+	if err := params.QueryHistory.RegisterWorkers(params.Executor); err != nil {
+		return fmt.Errorf("register query history export worker: %w", err)
+	}
 	logger.Infof(context.Background(), "[SyncTask] All task handlers registered (Lite mode, no Redis)")
+	return nil
 }
