@@ -18,5 +18,5 @@ assets:
     id: pkg.internal.router
     owner: platform
     source: internal/router
-    target: internal/router
+    target: internal/platform/router
 temporary_exceptions: []

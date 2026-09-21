@@ -112,12 +112,13 @@ func checkWorkerParity(d *Discovery, add func(string, ...any)) {
 }
 
 // checkTargetPrefixes requires every manifest asset target to sit under its
-// owner's target prefix (a package may alternatively pin target == source
-// while awaiting its move).
+// owner's target prefix, unconditionally: an owner whose asset legitimately
+// stays where it is declares that location as one of its prefixes instead
+// of pinning target == source.
 func checkTargetPrefixes(m *Manifest, add func(string, ...any)) {
 	for _, a := range m.Assets {
 		prefixes := m.OwnerPrefixes(a.Owner)
-		ok := a.Target == a.Source
+		ok := false
 		for _, p := range prefixes {
 			if a.Target == p || strings.HasPrefix(a.Target, p+"/") {
 				ok = true
@@ -168,8 +169,10 @@ func checkDependencies(m *Manifest, d *Discovery, add func(string, ...any)) {
 		}
 		forbidden := false
 		switch {
-		case strings.Contains(e.Package, "/domain/"):
-			// Domain may import no other module at all.
+		case isDomainPackage(e.Package):
+			// Domain may import no other module at all. This covers both a
+			// nested domain package (.../domain/foo) and the domain root
+			// package itself (.../domain).
 			forbidden = true
 		case containsAnySegment(e.Path, forbiddenTargetSegments):
 			forbidden = true
@@ -209,6 +212,13 @@ func matchesException(m *Manifest, e ImportEdge) bool {
 
 func prefixMatches(dir, prefix string) bool {
 	return dir == prefix || strings.HasPrefix(dir, prefix+"/")
+}
+
+// isDomainPackage reports whether dir is a domain package: either a
+// subpackage inside a domain tree ("/domain/") or a domain root package
+// whose path ends with the segment itself ("/domain").
+func isDomainPackage(dir string) bool {
+	return strings.Contains(dir, "/domain/") || strings.HasSuffix(dir, "/domain")
 }
 
 func containsAnySegment(path string, segments []string) bool {

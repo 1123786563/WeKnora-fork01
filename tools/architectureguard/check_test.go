@@ -10,8 +10,9 @@ import (
 
 // violationsManifest pairs with writeViolationsRepo: every discovered asset
 // is owned except the route router.RegisterFooRoutes; task.type.foo breaks
-// Redis/Lite parity; module a imports module b's adapters package; one
-// temporary exception is expired at wave 2.
+// Redis/Lite parity; module a imports module b's adapters package; module
+// b's domain ROOT package imports module a's public root; one temporary
+// exception is expired at wave 2.
 const violationsManifest = `schema_version: 1
 scope:
   include: [internal]
@@ -56,12 +57,12 @@ assets:
     id: pkg.internal.router
     owner: platform
     source: internal/router
-    target: internal/router
+    target: internal/platform/router
   - kind: package
     id: pkg.internal.container
     owner: platform
     source: internal/container
-    target: internal/container
+    target: internal/platform/container
   - kind: package
     id: pkg.internal.legacy
     owner: b
@@ -82,6 +83,11 @@ assets:
     owner: b
     source: internal/modules/b/adapters
     target: internal/modules/b/adapters
+  - kind: package
+    id: pkg.internal.modules.b.domain
+    owner: b
+    source: internal/modules/b/domain
+    target: internal/modules/b/domain
 temporary_exceptions:
   - from: internal/modules/a
     to: internal/types
@@ -127,12 +133,12 @@ assets:
     id: pkg.internal.router
     owner: platform
     source: internal/router
-    target: internal/router
+    target: internal/platform/router
   - kind: package
     id: pkg.internal.container
     owner: platform
     source: internal/container
-    target: internal/container
+    target: internal/platform/container
   - kind: package
     id: pkg.internal.legacy
     owner: a
@@ -197,6 +203,12 @@ import _ "example.com/fixture/internal/modules/b/adapters"
 `)
 	write("internal/modules/b/b.go", "package b\n")
 	write("internal/modules/b/adapters/adapters.go", "package adapters\n")
+	// A domain ROOT package (path ends in /domain, no trailing segment):
+	// even importing another module's public root is forbidden from here.
+	write("internal/modules/b/domain/domain.go", `package domain
+
+import _ "example.com/fixture/internal/modules/a"
+`)
 	return root
 }
 
@@ -279,6 +291,7 @@ func TestDiscoverReturnsStableIDs(t *testing.T) {
 		"internal/modules/a",
 		"internal/modules/b",
 		"internal/modules/b/adapters",
+		"internal/modules/b/domain",
 		"internal/router",
 	}, first.Packages)
 
@@ -300,6 +313,7 @@ func TestCheckReportsUnownedRouteParityForbiddenImportAndExpiredException(t *tes
 	require.Equal(t, []string{
 		"expired exception: internal/modules/a -> internal/types remove_in_wave=1 current_wave=2",
 		"forbidden import: internal/modules/a -> internal/modules/b/adapters",
+		"forbidden import: internal/modules/b/domain -> internal/modules/a",
 		"unowned route: router.RegisterFooRoutes",
 		"worker parity mismatch: task.type.foo missing from lite",
 	}, violationLines(Check(m, d)))
@@ -315,6 +329,61 @@ func TestCheckPassesCleanRepository(t *testing.T) {
 	d, err := Discover(root)
 	require.NoError(t, err)
 	require.Empty(t, violationLines(Check(m, d)))
+}
+
+// TestCheckFlagsDomainRootImportingOtherModule proves the domain isolation
+// rule also covers a domain ROOT package (path ending in "/domain"): such a
+// package may not import even another module's public root package.
+func TestCheckFlagsDomainRootImportingOtherModule(t *testing.T) {
+	root := writeViolationsRepo(t)
+	manifestPath := writeManifest(t, root, violationsManifest)
+	m, err := LoadManifest(manifestPath)
+	require.NoError(t, err)
+	m.CurrentWave = 2
+
+	d, err := Discover(root)
+	require.NoError(t, err)
+
+	var domainEdges []ImportEdge
+	for _, e := range d.Imports {
+		if isDomainPackage(e.Package) {
+			domainEdges = append(domainEdges, e)
+		}
+	}
+	require.Len(t, domainEdges, 1)
+	require.Equal(t, "internal/modules/b/domain", domainEdges[0].Package)
+	require.Equal(t, "internal/modules/a", domainEdges[0].Path)
+
+	require.Contains(t, violationLines(Check(m, d)),
+		"forbidden import: internal/modules/b/domain -> internal/modules/a")
+}
+
+// TestCheckFlagsTargetPinnedToSourceOutsideOwnerPrefixes proves that
+// target == source is no longer an escape hatch: an asset whose target sits
+// outside its owner's prefixes is flagged even when the target equals the
+// source.
+func TestCheckFlagsTargetPinnedToSourceOutsideOwnerPrefixes(t *testing.T) {
+	root := writeCleanRepo(t)
+	manifestPath := writeManifest(t, root, cleanManifest)
+	m, err := LoadManifest(manifestPath)
+	require.NoError(t, err)
+	m.CurrentWave = 2
+
+	pinned := 0
+	for i := range m.Assets {
+		if m.Assets[i].ID == "pkg.internal.router" || m.Assets[i].ID == "pkg.internal.container" {
+			m.Assets[i].Target = m.Assets[i].Source
+			pinned++
+		}
+	}
+	require.Equal(t, 2, pinned)
+
+	d, err := Discover(root)
+	require.NoError(t, err)
+
+	lines := violationLines(Check(m, d))
+	require.Contains(t, lines, "invalid target: asset pkg.internal.router target internal/router outside owner platform prefixes")
+	require.Contains(t, lines, "invalid target: asset pkg.internal.container target internal/container outside owner platform prefixes")
 }
 
 func TestCheckReportsMissingRouteFromTestdataManifest(t *testing.T) {

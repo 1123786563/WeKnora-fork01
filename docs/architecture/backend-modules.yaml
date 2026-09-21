@@ -21,7 +21,7 @@ modules:
   - {id: policy, target_prefix: internal/modules/policy}
 platform:
   id: platform
-  target_prefixes: [internal/platform, internal/bootstrap]
+  target_prefixes: [internal/platform, internal/bootstrap, cmd/server]
 assets:
   - kind: route
     id: channels.im-routes
