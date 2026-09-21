@@ -1,296 +1,405 @@
-# 后端业务模块化整理设计
+# 全后端业务模块化改造设计
 
-> 状态：2026-09-21 设计已确认，待实施计划。本文只定义后端代码组织、依赖边界和渐进迁移策略，不授权实现。
+> 状态：2026-09-21 全量设计已确认，待书面审阅与实施计划。本 Spec 是覆盖服务端全部功能的架构总蓝图；每个业务模块仍须拆成独立纵向子项目实施。
 
 ## 1. 背景
 
-当前后端主要按技术层组织：请求入口位于 `internal/handler` 和 `internal/router`，业务编排位于 `internal/application/service`，数据访问位于 `internal/application/repository`，模型和接口集中在 `internal/types`，全部依赖再由 `internal/container` 统一装配。
+当前服务端按技术层组织：入口位于 `internal/handler` 和 `internal/router`，业务编排位于 `internal/application/service`，数据访问位于 `internal/application/repository`，模型和接口集中在 `internal/types`，依赖由 `internal/container` 统一装配。
 
-这种结构在功能数量较少时直观，但仓库已经超过该组织方式的舒适范围：
+该结构已经超出舒适范围：`internal/application` 约 943 个 Go 文件、29 万行，`internal/handler` 约 285 个文件、8.5 万行，`internal/agent` 约 294 个文件、7.2 万行；`container.go` 超过 2,500 行并了解大量业务细节；多个核心业务文件达到 2,000–4,000 行；服务端还有约 60 组 HTTP 路由以及大量 Worker、定时任务和启动钩子。
 
-- `internal/application/service` 约有 422 个 Go 文件；
-- `internal/handler` 约有 181 个 Go 文件；
-- `internal/application/repository` 约有 174 个 Go 文件；
-- `internal/container/container.go` 超过 2,500 行并集中了解大量业务细节；
-- 多个核心业务文件达到 2,000–4,000 行；
-- 修改一个业务功能通常需要跨 router、handler、service、repository、types 和 container 搜索。
+核心问题不是单纯文件过大，而是目录无法回答“功能在哪里、由谁拥有、可以依赖谁”。继续把新功能加入全局技术层会扩大隐式耦合、循环依赖和装配风险。
 
-问题不只是文件过大，而是目录不能回答“某项功能在哪里”。新增功能继续进入全局技术层后，业务边界会进一步模糊。
+## 2. 范围
 
-## 2. 目标与成功标准
+### 2.1 范围内
 
-目标是把 WeKnora 后端整理为按业务能力组织的模块化单体，使开发者可以从业务名称进入一个模块，并在该目录内找到入口、用例、业务规则、数据适配和测试。
+- `cmd/server` 启动的 HTTP 服务和后台 Worker；
+- 根 Go 模块 `internal/` 下全部业务、Agent 运行、执行环境、集成、商业治理和基础设施代码；
+- 路由、Worker、定时任务、生命周期钩子、数据模型和 migration 的所有权整理；
+- 单体内部的模块边界、装配方式、依赖规则与迁移策略；
+- 旧目录中业务代码迁入新模块后的清理。
 
-整理成功后应满足：
+### 2.2 范围外
 
-1. 一个业务能力的主要代码可在一个模块目录内理解；
-2. 顶层目录首先表达业务功能，而不是框架或技术层；
-3. 模块对外暴露少量稳定入口，其他模块不能直接引用其内部实现；
-4. 总路由和依赖容器只负责组合模块，不持续吸收模块内部细节；
-5. 迁移过程中现有 API、权限、数据、异步任务和运行行为保持兼容；
-6. 新增业务能力不再默认堆入全局 `handler`、`service`、`repository` 或 `types` 目录。
-
-## 3. 非目标
-
-本次整理不包含：
-
+- `cmd/desktop`、`docreader`、`client` Go SDK 及其他独立 SDK/契约模块；
 - 拆分微服务或新建独立部署单元；
-- 更换 Gin、GORM、dig、asynq 或现有数据库；
+- 更换 Gin、GORM、dig、asynq 或数据库；
 - 在目录迁移中重新设计产品行为；
 - 一次性移动整个后端；
-- 为追求形式统一而复制 Session、Tenant 等共享业务数据；
-- 仅根据文件行数机械拆分文件；
-- 顺带修复与模块边界无关的历史问题。
+- 仅按文件行数机械拆分代码。
 
-## 4. 目标架构
+## 3. 目标与成功标准
 
-后端保持单一进程和单一部署，通过业务模块表达代码边界：
+目标是把服务端整理为按业务能力组织的模块化单体。开发者应能从业务名称进入一个模块，并在该目录内找到入口、用例、业务规则、数据适配、Worker 和测试。
+
+1. 每项功能、路由、Worker 和业务表都有唯一所有者模块；
+2. 顶层目录首先表达业务功能，而不是框架或技术层；
+3. 每个模块只暴露少量稳定入口，其他模块不能引用其内部实现；
+4. 一份业务事实只有一个写入所有者，跨模块不共享 repository 或直接写表；
+5. 总路由和依赖容器只组合模块，不了解模块内部 handler/service/repository；
+6. 外部 API、权限、数据、异步任务和运行行为在兼容迁移中保持稳定；
+7. 新功能不再默认堆入全局 `handler`、`service`、`repository`、`types`、`common` 或 `utils`；
+8. 非法跨模块导入由自动化检查拒绝。
+
+## 4. 总体架构
 
 ```text
 internal/
-  bootstrap/                 # 进程级组合根和生命周期
-  platform/                  # 跨业务技术能力
-    config/
-    database/
-    logging/
-    queue/
-    storage/
+  bootstrap/                 # 进程组合根与生命周期
   modules/
-    queryhistory/            # 首个试点
-    knowledge/
-    agent/
-    tenant/
-    connector/
-    workbench/
-    commercial/
+    identity/                # 认证、Tenant、成员、RBAC
+    knowledge/               # 知识接入、处理、检索
+    conversation/            # Session、Message、Chat、审计
+    agentcatalog/            # Agent/Skill/市场定义与版本
+    agentruntime/            # Agent 执行、工具、记忆与恢复
+    workbench/               # Task、Timeline、Inbox、Artifact
+    craft/                   # 开发工作区、运行与制品
+    execution/               # Sandbox、Target、Terminal、Browser
+    datasource/              # 外部知识源与同步
+    appconnector/            # 应用安装、授权与动作
+    channels/                # IM、Embed 与外部身份映射
+    airesource/              # Model、MCP、Search、Vector、Storage 配置
+    commercial/              # 套餐、权益、预算、计量与支付
+    insights/                # Analytics、Evaluation 与投影
+    system/                  # 初始化、设置、部署能力与维护
+    policy/                  # 跨域门控执行
+  platform/
+    http/ persistence/ queue/ files/ observability/ runtime/
 ```
-
-`platform` 只承载无业务归属的技术能力。带有产品规则、租户语义或业务状态的代码不得因为被多个模块使用而自动进入 `platform`；应由拥有该概念的模块暴露端口。
 
 ### 4.1 模块内部结构
 
-模块使用统一但可按规模裁剪的结构：
-
 ```text
 internal/modules/<module>/
-  module.go                  # 构造、路由和 worker 装配入口
-  README.md                  # 职责、入口、依赖、数据、非职责
-  transport/
-    http/                    # Gin handler、请求和响应 DTO
-    trpc/                    # 仅模块确有 tRPC 入口时存在
-  application/              # 用例、事务边界和流程编排
-  domain/                   # 模块拥有的规则、状态和值对象
-  ports/                    # 模块需要的外部能力接口
-  adapters/                 # 数据库、队列、存储及旧代码适配
+  module.go                  # 构造、路由、Worker 和生命周期入口
+  README.md                  # 职责、非职责、公开接口、数据与依赖
+  transport/http/            # 协议入口；trpc 等按需增加
+  application/               # 用例、事务与流程编排
+  domain/                    # 模块拥有的规则、状态和值对象
+  ports/                     # 模块需要的外部能力接口
+  adapters/                  # DB、队列、文件、外部 SDK 和旧代码适配
 ```
 
-小模块不必创建空目录。只有存在相应职责时才增加目录；一致性来自依赖规则和命名语义，而不是空壳结构。
+小模块不创建空目录。结构一致性来自职责和依赖规则，而不是形式相同。
 
 ### 4.2 依赖方向
-
-正常调用方向为：
 
 ```text
 transport -> application -> domain
                      |
                      v
-                   ports <- adapters
+                   ports <- adapters -> platform
 ```
 
-约束如下：
+- domain 不依赖 Gin、GORM、Redis、asynq、外部 SDK 或其他模块实现；
+- application 只依赖本模块 domain、ports 和其他模块公开接口；
+- transport 只处理协议、认证上下文、输入输出和错误映射；
+- adapters 可调用 Platform 或迁移期旧代码；
+- 接口优先定义在使用方模块，不建立新的全局 interfaces 仓库；
+- 回流优先使用版本化事件或明确回调端口；
+- 禁止用全局注册表、service locator、复制模型或 `common/utils` 隐藏循环依赖。
 
-- `domain` 不依赖 Gin、GORM、Redis、asynq 或其他模块实现；
-- `application` 依赖本模块的 domain 和 ports，不直接依赖具体基础设施；
-- `transport` 负责协议解析、认证上下文提取、错误映射和响应转换，不承载业务规则；
-- `adapters` 实现 ports，可调用平台能力或迁移期旧 repository；
-- 模块间协作通过公开 application 接口、端口或领域事件完成；
-- 一个模块不得导入另一个模块的 transport、adapters 或未公开内部包；
-- 接口优先定义在使用方模块，而不是集中放入新的全局 interfaces 目录。
+### 4.3 模块装配
 
-### 4.3 模块装配接口
+模块按需暴露 `NewModule`、`RegisterRoutes`、`RegisterWorkers`、`Start` 和 `Stop`。具体 Go 签名由实施计划根据现有 RBAC、router、worker 和 ResourceCleaner seam 确定。
 
-每个包含入站接口或后台任务的模块通过 `module.go` 暴露最小组合面，概念上包括：
+bootstrap 只引用模块入口；同一路由、Worker 和钩子只注册一次；停止顺序必须可验证；不得以包级可变状态绕过依赖注入。
 
-```go
-func NewModule(deps Dependencies) (*Module, error)
-func (m *Module) RegisterRoutes(router RouteRegistrar, guards Guards)
-func (m *Module) RegisterWorkers(registry WorkerRegistry)
+## 5. 模块地图与所有权
+
+### 5.1 Identity
+
+负责认证、用户、Tenant、成员、邀请、API Key、Organization、RBAC 和治理审计。拥有 User、Tenant、TenantMember、Invitation、TenantAPIKey、Organization、授权事实和审计日志。公开主体解析、成员资格、授权决定和租户配置读口。其他模块不得直接查询成员表自行推导权限。
+
+### 5.2 Knowledge
+
+负责知识库、文档、Chunk/Revision、Tag、FAQ、Wiki、导入处理、语义索引、GraphRAG 和检索规则。向 Conversation、Agent Runtime、Craft 和 Data Source 提供知识访问、摄取、检索、引用和删除生命周期。向量数据库驱动由 AI Resource/Platform 适配，检索规则仍归 Knowledge。
+
+### 5.3 Conversation
+
+负责 Session、Message、Chat、Feedback、分享、建议、Query History、会话附件和临时文档。拥有相应写模型、分享令牌和导出任务。公开创建/继续会话、追加消息、审计读取、分享和会话事件。Memory 抽取规则归 Agent Runtime。
+
+### 5.4 Agent Catalog
+
+负责 Agent Definition/Version、Persona、Expert、Subagent、Skill、Marketplace、Favorite 和发布/引入治理。拥有 Release/Listing/Adoption/Variant、安装和发布记录。公开可用 Agent 解析、版本固定、能力声明、目录和安装治理；不拥有运行状态。
+
+### 5.5 Agent Runtime
+
+负责 Agent 执行引擎、Run/Attempt、工具、审批、Compaction、Memory、Model Context、Native/tRPC/OpenCode 协议和恢复。拥有运行上下文、工具状态、审批事实、Memory 和恢复状态。通过端口调用 Catalog、Knowledge、AI Resource、Execution、Commercial、Policy 和 App Connector。
+
+### 5.6 Workbench
+
+负责 Task 视图、Timeline、Inbox/Attention、通用 Artifact、通知和移动任务投影。拥有可重建的任务/时间线投影、通知投递状态和通用 Artifact 元数据；不接管 Conversation、Agent Run 或 Craft Run 的源记录。
+
+### 5.7 Craft
+
+负责开发工作区、会话/运行、Interaction、Snapshot、Artifact Version/Preview、用量视图、生命周期和 Scheduled Task。通过 Execution 获取环境，通过 Knowledge 获取上下文，通过 Commercial 做预算与计量，并向 Workbench 发布任务事件。
+
+### 5.8 Execution
+
+负责 Sandbox、Execution Target/Registration、Workspace Lease、Terminal、Browser Skill、环境变量和资源传输。拥有执行目标、注册、租约、Sandbox Config、终端票据、用户环境变量和浏览器会话。向 Agent Runtime 和 Craft 隐藏 Docker、E2B、Cube 和本地实现。
+
+### 5.9 Data Source
+
+负责外部知识源、连接器注册、同步、取消、重试、进度、凭据元数据和调度。拥有 DataSource、SyncLog/ItemError、cursor 和删除清理状态。抓取外部内容后调用 Knowledge 摄取接口，不直接写 Knowledge 表。
+
+### 5.10 App Connector
+
+负责应用目录、安装、OAuth、连接、授权、动作和同步，包括 Open Connector。拥有 AppVersion、Installation、Connection、OAuthBinding、Grant、Action/Approval 和回执。公开安装、连接、授权和动作接口。
+
+### 5.11 Channels
+
+负责 IM、Webhook、Embed Channel、外部身份/会话映射、入站标准化和出站投递。拥有 Channel、Binding、VisitorSession 和 Webhook 状态。经过验签与身份映射后调用 Conversation，不复制 Chat/Session 逻辑。
+
+### 5.12 AI Resource
+
+负责模型、Provider 凭据、MCP、Web Search、Vector Store、Storage Backend 和租户能力配置。公开按 Tenant 解析获准模型、工具、搜索、向量库和存储能力；底层密钥加密由 Platform 提供。
+
+### 5.13 Commercial
+
+负责套餐、权益、预算、Usage、账单、支付、履约和商业网关。拥有 BillingAccount、Plan/Version、Subscription、Entitlement、Budget/Reservation、UsageFact、Invoice/Order、PaymentFact。公开准入、预占、结算、计量、付款和履约接口。
+
+### 5.14 Insights
+
+负责 Analytics、Evaluation、运营指标、报表和可重建分析投影。拥有评测定义/运行和投影，不拥有 Feedback、Session、Usage 等源记录，只消费事件或受控读模型。
+
+### 5.15 System
+
+负责初始化、System Setting、部署能力、系统管理、健康信息和 housekeeping。拥有系统设置、初始化状态、能力描述和维护任务状态。System 不是业务 service facade。
+
+### 5.16 Policy
+
+负责统一执行跨域配额、限流、存储白名单和 capability gate。拥有评估器和短期执行状态，不接管业务表或业务规则。可组合 Identity、Commercial、System 的公开事实返回决定，但不写调用方业务状态。
+
+### 5.17 Platform
+
+Platform 不是业务模块。它拥有连接、migration runner、队列、blob、缓存/锁、加密封装、日志、指标、Tracing、配置和进程资源；不拥有 Tenant、Session、Agent、Knowledge、Task 或 Subscription，也不根据业务字段作授权决定。
+
+### 5.18 现有功能覆盖矩阵
+
+下表是当前代码族的目标归属。它用于保证所有服务端能力进入改造范围；Wave 0 必须把代码级清单逐项对照到此矩阵，并对任何遗漏或一对多归属提交设计修订。
+
+| 现有功能或代码族 | 目标所有者 | 边界说明 |
+|---|---|---|
+| auth、user、tenant、member、invitation、API key、organization、RBAC、audit log | Identity | HTTP 中间件是 Platform；授权事实与规则归 Identity |
+| knowledgebase、knowledge、chunk、tag、FAQ、Wiki、graph、retriever、semantic knowledge | Knowledge | 向量驱动配置归 AI Resource，检索策略归 Knowledge |
+| session、message、chat pipeline、feedback、share、suggestion、query history、temporary document | Conversation | Agent 执行调用 Agent Runtime；不在 Conversation 内复制运行引擎 |
+| custom agent、agent version、persona、expert、subagent catalog、skill、marketplace、favorite | Agent Catalog | 运行态、审批和工具调用归 Agent Runtime |
+| `internal/agent` engine/runtime/tools/native/trpc/compaction、memory、model context、运行审批 | Agent Runtime | Agent 定义读取 Agent Catalog；MCP 配置读取 AI Resource |
+| workbench routes/services、task/timeline 投影、inbox、artifact 汇总、notification、mobile voice/device | Workbench | 通用任务投影归 Workbench；Craft 专用源记录归 Craft |
+| craft workspace/session/run/interaction/snapshot/artifact preview/version/usage/scheduled task | Craft | Sandbox 和 Target 归 Execution；预算与计量归 Commercial |
+| sandbox、execution target/registration、workspace lease、terminal、browser skill、env var、resource transport | Execution | Docker/E2B/Cube 等驱动放在 adapters；通用 blob 存储归 Platform |
+| datasource service、connector registry、各知识源 connector、sync scheduler/log/retry/credential metadata | Data Source | 同步结果通过 Knowledge 摄取端口进入知识域 |
+| app connector installation/connection/OAuth/action/sync、Open Connector adapter/control | App Connector | Agent 工具只调用公开动作接口，不读取连接表 |
+| IM adapters、channel、embed、webhook、外部身份和会话绑定 | Channels | 标准化后调用 Identity 与 Conversation |
+| model/provider/credentials、MCP service/OAuth metadata、web search provider、vector store、storage backend | AI Resource | MCP 运行工具位于 Agent Runtime；资源定义与凭据归 AI Resource |
+| commercial domain/service/repository、payment、usage、benefit、budget、billing gateway | Commercial | 各模块只发布用量事实或调用准入/结算接口 |
+| analytics、evaluation、metric/report/export projections | Insights | 源记录仍由产生事实的业务模块拥有 |
+| initialization、system setting、deployment capability、health、housekeeping | System | config 读取和进程启动机制归 Platform/bootstrap |
+| rate limit、storage allowlist、embed/access policy、跨域 capability gate | Policy | 具体业务规则仍由业务所有者定义，Policy 负责一致执行 |
+| router 基座、middleware、container、database、config、logger、tracing、stream、queue、file service、cache/lock | Platform / Bootstrap | router/container 最终只装配模块；不得继续承载业务规则 |
+| common、utils、types、interfaces、event | 按所有权拆分 | 业务类型/接口/事件移入所有者或使用者模块；纯技术原语才能留在 Platform |
+
+同一现有目录可以被拆给多个目标模块，但同一个业务概念不能有多个写入所有者。特别是 `types`、`interfaces`、`common`、`utils` 和 `event` 不作为目标业务模块保留；其内容必须按语义逐项归属。
+
+## 6. 跨模块协作与主数据流
+
+允许同步公开用例、使用方定义的窄端口、版本化领域事件和明确用途的只读投影。禁止直接导入其他模块 repository、跨模块更新表、共享可变 domain struct、从下游同步反调上游。
+
+### 6.1 Chat / Agent
+
+```text
+Conversation -> Policy + Commercial -> Agent Runtime
+Agent Runtime -> Agent Catalog + Knowledge + AI Resource + Execution + App Connector
+Agent Runtime --events--> Conversation + Workbench + Commercial + Insights
 ```
 
-具体 Go 签名在实施计划中根据现有 router、RBAC 和 worker registry 接口确定，但必须保持以下原则：
+Conversation 先持久化输入和 turn 边界；计量、任务投影和分析消费结果事件，不进入核心执行事务。
 
-- bootstrap/container 只依赖模块入口；
-- 模块内部 handler、service 和 repository 不进入全局装配参数；
-- 同一路由和 worker 只能注册一次；
-- 不使用包级可变全局注册表绕过依赖注入。
+### 6.2 知识摄取
 
-## 5. 首个试点：Query History
+```text
+Data Source -> Knowledge -> AI Resource(Vector/Embedding)
+Knowledge --events--> Workbench + Insights
+```
 
-Query History 具备完整的路由、权限、隐私策略、快照、异步导出、持久化和测试链路，规模适中，适合验证目标结构。它当前分散于：
+Data Source 拥有同步状态，Knowledge 拥有文档与索引状态，双方不能直接更新对方表。
 
-- `internal/router/routes_query_history.go`；
-- `internal/handler/session/query_history_admin.go`；
-- `internal/application/service/query_history_policy.go`；
-- `internal/application/service/query_history_export.go`；
-- `internal/application/service/session.go` 中的审计快照逻辑；
-- `internal/application/repository/query_history_export.go`；
-- `internal/types/query_history.go`；
-- `internal/types/interfaces/query_history_export.go`；
-- container 和 worker router 中的注册代码。
+### 6.3 Craft
 
-### 5.1 试点职责
+```text
+Workbench -> Craft -> Execution + Knowledge + Commercial
+Craft --events--> Workbench + Insights
+```
 
-`internal/modules/queryhistory` 拥有：
+Workbench 是任务聚合入口，Craft 是开发工作权威。投影失败不回滚 Craft 状态。
 
-- Admin Query History HTTP 路由及其请求/响应转换；
-- 查询历史访问策略和匿名化规则；
-- 单会话审计快照用例；
-- CSV 导出提交、状态、下载和 worker 处理；
-- Query History 自己的导出任务、审计快照和策略领域概念；
-- 模块所需端口与适配器；
-- 模块装配入口和模块说明。
+### 6.4 IM / Embed
 
-### 5.2 试点不拥有的职责
+```text
+Channels -> Identity -> Conversation -> Agent Runtime
+Agent Runtime --result event--> Channels
+```
 
-第一阶段不迁移以下所有权：
+Channels 只负责协议、验签、身份映射和投递；统一会话行为仍由 Conversation 提供。
 
-- Session、Message 和 Feedback 的写模型仍归现有 Session 能力；
-- Tenant 的创建、更新和成员治理仍归 Tenant 能力；
-- 通用文件存储和异步队列仍是平台能力；
-- Query History 不复制 Session/Tenant repository，也不建立第二套数据模型真源。
+### 6.5 事件契约
 
-Query History 通过窄端口读取所需数据：
+- 包含稳定名称、schema 版本、Tenant、Actor、时间和幂等键；
+- 描述已发生事实，不伪装成隐藏同步命令；
+- 源事务通过 outbox 或等价机制保证事实与事件一致；
+- 消费失败不回滚源事务，采用幂等消费、重试和死信/告警；
+- Workbench 与 Insights 投影可从权威事件重建。
 
-- `AuditReader`：读取租户范围内的 session、message 和 feedback 审计视图；
-- `PolicyReader`：读取租户 Query History 策略；
-- `ExportJobStore`：持久化导出任务并查询聚合导出行；
-- `FileStore`：保存和读取 CSV；
-- `TaskQueue`：投递异步导出任务。
+## 7. 错误处理
 
-迁移期适配器允许委托现有 Session/Tenant repository。待其所属模块迁移后，只替换适配器，不改变 Query History application 层。
+domain/application 返回稳定领域错误，不构造 Gin 响应。transport 负责映射现有 HTTP/tRPC 状态与 AppError、记录安全字段、隐藏基础设施细节并保持跨租户防枚举。事件消费者区分可重试、永久失败和幂等重复。
 
-### 5.3 兼容契约
+迁移期间错误码、状态码和流式终止语义均是外部契约，不因目录整理改变。
 
-试点迁移不得改变：
+## 8. 首个试点：Conversation / Query History
 
-- `/api/v1/admin/sessions/:session_id/snapshot`；
-- `/api/v1/admin/sessions/export`；
-- `/api/v1/admin/sessions/export/:job_id/status`；
-- `/api/v1/admin/sessions/export/:job_id/download`；
-- Admin+ 和 API key full-access 权限要求；
-- disabled 模式返回 403；
-- anonymized 模式遮蔽用户标识；
-- 不存在与跨租户导出任务统一返回 404；
-- 非法参数返回 400，未知内部失败返回 500；
-- CSV 列名、列顺序、UTF-8 BOM 和下载文件名格式；
-- 导出任务 `pending -> running -> done|failed` 生命周期；
-- asynq 队列、重试上限、超时和完成后的幂等行为；
-- 现有数据库表名、字段和迁移历史。
+Query History 当前跨 router、session handler、service、repository、types、container 和 worker router，具备完整路由、权限、隐私策略、异步导出、持久化和测试链路，作为首个纵向切片。
 
-## 6. 错误处理
+```text
+internal/modules/conversation/queryhistory/
+  transport/http/
+  application/
+  domain/
+  ports/
+  adapters/
+```
 
-domain/application 返回稳定的领域错误，不直接构造 Gin 响应。transport 是 HTTP 映射的唯一位置，负责：
+它拥有审计访问策略、匿名化、快照、导出任务和 CSV Worker；Session/Message/Feedback 写模型仍由 Conversation 上层拥有。通过 `AuditReader`、`PolicyReader`、`ExportJobStore`、`FileStore`、`TaskQueue` 等窄端口协作。
 
-- 将领域错误映射为当前状态码与 AppError 响应；
-- 记录 tenant、session、job 等可安全记录的结构化字段；
-- 对外隐藏基础设施错误细节；
-- 保持现有跨租户防枚举语义。
+试点不得改变现有 Admin 路由、RBAC/API Key、403/404/400/500 映射、匿名化、CSV 列序/BOM/文件名、数据库表或 asynq 重试/幂等语义。
 
-异步 worker 将可重试基础设施失败返回给 asynq；不可恢复的非法 payload 使用现有 skip-retry 语义；任务状态更新失败必须记录，且不能把失败任务误报为完成。
+## 9. 全量迁移路线
 
-## 7. 渐进迁移策略
+这是架构项目群。每个模块形成独立纵向子项目，不能用一个超大 PR 完成。
 
-### 批次 1：建立守护规则
+### Wave 0：基线与守护
 
-- 记录模块目录、依赖方向、README 模板和命名约定；
-- 为跨模块非法导入增加可自动执行的检查；
-- 用特征测试锁定 Query History 当前 API、权限、隐私、CSV 和 worker 行为；
-- 记录基线测试中的既有失败，禁止通过删除或放宽断言掩盖。
+- 建立路由、Worker、定时任务、启动钩子、表和 migration 全量清单；
+- 记录当前所有者和目标模块；
+- 建立 README、port、event 和 Task Brief 模板；
+- 建立非法导入检查、契约特征测试和既有失败台账；
+- 记录 container/router 基线。
 
-### 批次 2：迁移 Query History
+### Wave 1：证明方法可行
 
-- 先建立 domain、ports 和 application 测试；
-- 建立旧 repository/platform 适配器；
-- 迁移 HTTP transport 与 worker；
-- 在组合根切换注册后删除旧的重复注册和失去职责的代码；
-- 每一步保持可编译，禁止新旧路径同时处理同一请求或任务。
+- 完成 Conversation/Query History 试点；
+- 定稿 Module、RouteRegistrar、WorkerRegistry 和 lifecycle 接口；
+- 建立 System/bootstrap 骨架，只分离装配职责；
+- 复盘试点，确认模板后再扩展。
 
-### 批次 3：瘦身组合根
+### Wave 2：底层边界
 
-- 让模块自行提供路由和 worker 注册入口；
-- 将 `internal/container` 收敛为跨模块组合与进程生命周期；
-- 将总 router 收敛为全局中间件、公共协议入口和模块挂载；
-- 不在此批次改变业务 API。
+- Platform：DB、Queue、File、Cache、Observability、Runtime；
+- Identity：Tenant、主体、成员、RBAC 与审计；
+- AI Resource：模型、MCP、搜索、向量库和存储配置；
+- Commercial：权益、预算、计量和支付；
+- Policy：组合公开事实执行门控。
 
-### 批次 4：迁移边界较清晰的业务域
+### Wave 3：核心能力
 
-按实际耦合审计结果逐个迁移 usage、commercial、app connector 和 workbench。每个域单独形成可合并批次，不以一次 PR 横跨所有域。
+- Knowledge：先拆接入、处理、FAQ/Wiki、检索等内部子模块；
+- Agent Catalog：统一定义、版本、Persona、Expert、Subagent、Skill 和市场；
+- Execution：统一 Sandbox、Target、Workspace、Terminal 和 Browser 门面。
 
-### 批次 5：迁移复杂核心域
+### Wave 4：外部集成
 
-knowledge、agent 和 session 最后处理。开始移动目录前，先分别识别域内子能力与所有权；例如 knowledge 至少需要区分接入、处理、FAQ/Wiki 和检索协作，避免把现有大 service 原样移动到一个新目录。
+- Data Source：同步状态机及 Knowledge 摄取端口；
+- App Connector：安装、授权、连接、动作和同步；
+- Channels：IM/Embed 标准化输入输出并隔离 SDK。
 
-隐藏复杂度若暴露新的领域或接口冲突，必须暂停该批迁移，更新 Spec/ADR 后再继续。
+### Wave 5：执行编排
 
-## 8. 测试与验证
+- Agent Runtime：Run、Tool、Approval、Memory、Recovery；
+- Conversation 剩余能力：Session、Message、Chat、Feedback、Share；
+- Insights：Analytics/Evaluation 转为事件和投影消费者。
 
-每个迁移批次必须提供以下证据：
+### Wave 6：用户工作聚合与收尾
 
-1. **特征测试**：迁移前锁定外部可观察行为；
-2. **domain/application 单元测试**：通过 fake ports 验证策略和用例，不依赖 Gin 或真实数据库；
-3. **adapter 测试**：验证租户隔离、not-found 语义、查询过滤和状态更新；
-4. **transport 测试**：验证路径、RBAC、输入校验、状态码和响应兼容；
-5. **装配测试**：验证模块可构建，路由和 worker 各注册一次；
-6. **回归测试**：至少运行变更相关包、`go test ./internal/...`、`go build ./...` 及变更范围 lint；
-7. **最终 diff 审查**：确认没有无关行为变化、数据库迁移或 API 漂移。
+- Workbench：Task、Timeline、Inbox、Artifact、Notification；
+- Craft：在 Execution/Knowledge/Commercial 稳定后收敛开发能力；
+- 删除已迁移的全局 handler/service/repository/types 路径；
+- 将 container/router 收敛为纯组合根；
+- 完成全仓依赖和所有权审计。
 
-对 Query History，特征测试至少覆盖：正常/匿名/禁用策略、跨租户防枚举、快照消息截断、导出过滤、CSV 列顺序、入队失败、worker 重试、完成幂等和文件下载。
+## 10. 单模块迁移循环
 
-## 9. 模块治理规则
+1. 盘点入口、规则、表、Worker、外部契约和测试；
+2. 明确 Task Brief、所有权、公开接口、事件和非目标；
+3. RED：增加特征测试和边界守护测试；
+4. GREEN：迁移 domain、application、ports、adapters 和 transport；
+5. 切换路由、Worker、定时任务和生命周期装配；
+6. 同批删除旧注册、重复类型和失去职责的代码；
+7. 运行目标测试、全量验证、独立 Review 和 diff 审查；
+8. 更新清单、README、ADR/Spec 和迁移台账。
 
-为防止新结构再次退化：
+## 11. 并行规则
 
-- 每个模块 README 必须记录职责、非职责、公开入口、依赖端口、拥有的数据和外部契约；
-- 新功能评审首先确定业务所有者模块；无法确定时先处理领域歧义，不默认放入 shared/common；
-- `platform`、`common`、`utils` 不得成为业务代码的兜底目录；
-- 超大文件是职责复核信号，但拆分必须依据用例或业务边界；
-- 模块公开 API 保持最小化，内部类型不为测试方便而导出；
-- 循环依赖不得通过全局变量、service locator 或复制接口解决；应重新确认所有权或引入明确端口/事件；
-- 迁移一项能力时同步迁移其测试，使测试位置也能表达功能归属。
+仅当接口/事件已冻结、所有权无争议、写文件/migration/装配点不重叠时并行。每条实现流使用独立 worktree；主集成流串行修改 bootstrap/container/router；Knowledge、Agent Runtime、Conversation、Craft 不同时修改同一核心 seam。共享 `git stash` 不作为协调机制。
 
-## 10. 风险与缓解
+## 12. 测试与验证门禁
 
-### 双重注册
+每批必须覆盖：
 
-新旧路由或 worker 并存可能造成 Gin 冲突或任务执行两次。每个切换步骤必须以装配测试验证单一注册，并在同一提交删除旧注册。
+1. 外部契约：API、错误、流、事件、任务名、CSV/文件格式；
+2. 安全：Tenant 隔离、RBAC、凭据、审批和 capability gate；
+3. 数据：表/migration 兼容、单写者、事务、幂等和回滚；
+4. 运行：启动、关闭、Worker、重试、清理、降级和资源释放；
+5. domain/application 单元测试；
+6. SQLite/PostgreSQL 适用范围内的 adapter 测试；
+7. transport 与装配测试；
+8. 目标包测试、`go test ./internal/...`、`go build ./...` 和变更范围 lint；
+9. Spec compliance、架构、安全和最终 diff 独立 Review。
 
-### 名义模块化
+既有失败在 Wave 0 建立可复现台账。不得删除或放宽测试制造绿色；无法区分既有失败与回归时停止迁移。
 
-只移动文件、继续跨模块调用内部 service，会得到新的目录但没有边界。导入检查、使用方定义端口和 README 所有权说明共同作为门禁。
+## 13. 模块治理规则
 
-### 共享模型复制
+- README 记录职责、非职责、公开入口、依赖端口、数据、事件和契约；
+- 新功能先确定业务所有者，无法确定时先解决领域歧义；
+- `platform/common/utils` 不作业务兜底目录；
+- 超大文件只作为职责复核信号；
+- 模块 API 最小化，不为测试方便导出内部类型；
+- migration 保持全局有序，并标明所有者模块；
+- 跨模块报表使用明确 projection，不允许任意 join 成为隐式依赖；
+- 迁移能力时同步迁移测试。
 
-Query History 需要 Session/Tenant 数据，但复制模型会形成双真源。试点必须使用读端口和适配器，明确保留写模型所有权。
+## 14. 风险与停止条件
 
-### 迁移范围失控
+- **名义模块化**：只移动文件但继续跨模块调用内部 service；由导入检查、ports 和单写者门禁阻止。
+- **双重注册/双写**：切换必须原子化，由装配测试和单写者测试证明。
+- **循环依赖**：重新确定所有权，或用结果事件/回调端口打断；不得用全局变量解决。
+- **范围失控**：外部行为、授权、数据语义或部署拓扑变化必须另立 Spec/Ticket。
+- **长期双结构**：每个子项目包含旧路径删除条件和迁移台账。
 
-复杂域可能诱发顺手重写。每批以兼容迁移为主；行为变化需要独立 Spec/Ticket，不与目录整理混合。
+与批准 Spec/ADR 冲突、需要改变外部语义、出现双写者/不可消除循环、基线无法区分回归、单模块仍大到无法理解时，停止当前批次并升级设计。
 
-### 长期双结构
+## 15. 完成标准
 
-迁移期新旧布局并存会增加认知负担。每批必须有完成条件和旧路径删除清单；新功能优先进入已建立边界的模块，未迁移域继续遵循原结构直到该域正式迁移。
+### 15.1 首阶段
 
-## 11. 验收标准
+- Wave 0 清单、契约基线、失败台账和依赖守护完成；
+- Query History 试点进入目标结构；
+- bootstrap 只引用试点模块入口；
+- 既有 API、权限、隐私、CSV、数据库和任务语义全部通过兼容测试；
+- 试点复盘确认模板可用于后续模块。
 
-架构整理的首阶段在满足以下条件时完成：
+### 15.2 全量
 
-- Query History 的 transport、application、domain、ports、adapters、装配和测试集中于其模块目录；
-- 开发者仅通过模块 README 和目录即可定位其 HTTP 入口、业务规则、数据来源及 worker；
-- bootstrap/container 和总 router 只引用 Query History 模块入口，不引用其内部 handler/service/repository；
-- Query History 的既有 API、权限、隐私、CSV、数据库和任务语义全部通过兼容测试；
-- 自动化依赖检查可以拒绝已定义的非法跨模块导入；
-- `go test ./internal/...`、`go build ./...` 和适用 lint 通过，或对迁移前已存在且未被修改掩盖的失败提供明确基线证据；
-- 最终 diff 不包含无关功能变更；
-- 试点复盘确认该结构适合作为后续模块模板后，才启动下一业务域迁移。
+- 16 个模块均有所有者、README、公开接口、事件和测试；
+- 所有路由、Worker、定时任务、钩子、表和 migration 有唯一归属；
+- 一份业务事实只有一个写入所有者；
+- container/router 只组合模块，不引用内部实现；
+- 非法跨模块导入由 CI 拒绝；
+- 全局旧技术层不再承载已迁移业务，不保留永久兼容壳；
+- Workbench/Insights 投影可从权威事实重建；
+- 全量测试、构建、lint、验收、Review 和 diff 均有证据；
+- `cmd/desktop`、`docreader`、`client`/SDK 未被意外改造。
 
-后续全仓整理完成的判定是：主要业务能力均有明确所有者模块，新增功能不再依赖扩大全局技术层，且复杂核心域已经按批准的子能力边界完成迁移。
+本 Spec 批准的是全后端目标架构与迁移项目群，不等于批准一次性实现。后续先为 Wave 0 与 Wave 1 编写实施计划，再逐模块形成独立 Task Brief 和执行计划。
