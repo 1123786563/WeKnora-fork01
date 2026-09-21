@@ -546,7 +546,9 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
         </EmptyState>
       </div>
     ) : empty ? (
-      <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
+      /* Vue SkillSettings.vue:1291-1294 — .empty-state padding 80px 0；React 的
+         t-empty 等效栈实测整体低 12px，顶部收敛到 68px 对齐（R5xx 清扫实测）。 */
+      <div className="flex flex-col items-center justify-center px-4 pb-20 pt-[68px] text-center">
         <EmptyState
           description={t('settings.skills.emptyDesc')}
           hint={skillConfigs.length === 0 ? t('settings.skills.emptyNoSandboxHint') : undefined}

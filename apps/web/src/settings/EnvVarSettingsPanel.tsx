@@ -150,8 +150,8 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       <div className="rounded-[10px] bg-[#f3f3f3] px-6 py-6 text-center">
-        <p className="m-0 mb-[4px] text-[14px] font-medium text-[rgba(0,0,0,0.6)]">{t('envVarSettings.noConfigTitle')}</p>
-        <p className="m-0 text-[13px] text-[rgba(0,0,0,0.4)]">{t('envVarSettings.noConfigDescription')}</p>
+        <p className="m-0 mb-[4px] text-[14px] font-medium leading-[normal] text-[rgba(0,0,0,0.6)]">{t('envVarSettings.noConfigTitle')}</p>
+        <p className="m-0 text-[13px] leading-[normal] text-[rgba(0,0,0,0.4)]">{t('envVarSettings.noConfigDescription')}</p>
       </div>
     </div>;
   }

@@ -214,6 +214,17 @@ export function RuntimeQueuesPanel({ client, payload, loading = false, error = n
     }, 5000);
     return () => window.clearInterval(timer);
   }, [autoRefresh, client]);
+  // Vue RuntimeQueues.vue load() stamps updatedAt on the FIRST fetch too
+  // (L912: resp.timestamp || Date.now()/1000) — not only on poll ticks. The
+  // prefetched payload stands in for that first load; without this the
+  // 队列明细 header hides its 更新于 line for the first 5s.
+  const viewForStamp = live ?? payload;
+  useEffect(() => {
+    if (!viewForStamp || updatedAt) return;
+    const ts = typeof (viewForStamp as unknown as Row).timestamp === 'number' ? (viewForStamp as unknown as Row).timestamp as number : 0;
+    setUpdatedAt(new Date((ts || Date.now() / 1000) * 1000).toLocaleTimeString('zh-CN', { hour12: false }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewForStamp]);
   const view = live ?? payload;
   if (loading && !view) return <section className="runtime-queues rq-loading" aria-live="polite">{[1, 2, 3].map((n) => <div key={n} className="rq-skeleton" />)}</section>;
   if (error) return <section className="runtime-queues" role="alert"><div className="rq-state rq-state--error"><div className="rq-state-icon"><ErrorIcon /></div><div className="rq-state-copy"><strong>{t('system.globalSettings.runtime.errors.generic')}</strong><span>{error}</span></div></div></section>;

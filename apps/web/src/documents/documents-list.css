@@ -622,18 +622,30 @@
   padding: 0 !important;
 }
 
-/* --- 详情抽屉区块节奏 + markdown 预览（对齐 Vue doc-content.vue） --------- */
+/* --- 详情抽屉区块节奏 + markdown 预览（对齐 Vue doc-content.vue） ---------
+   区块节奏由 TSX 的 flex-col gap-[14px] + section-title mb-1 承载
+   (doc-content.vue:2284 .setting-drawer__section padding 12/16 + gap 14，
+   title margin 0 0 4px)。 */
 .wk-document-detail-drawer h4 { font-size: 13px; line-height: 22px; }
-.wk-document-detail-drawer .wk-document-metadata-section h4 { margin-bottom: 18px; }
 .wk-document-detail-drawer dl.wk-document-metadata { row-gap: 10px; }
-.wk-document-detail-drawer section.py-4 { padding-top: 12px; padding-bottom: 16px; }
-/* preview-markdown：20px 24px 内边距，md h1 24px/33.6 m20 0 10 pb8，p m8 0。 */
+/* preview-markdown：20px 24px 内边距，md h1 24px/33.6 m20 0 10 pb8 + 底部
+   分隔线（document-preview.vue:1063 h1 border-bottom），h2 同款 20px，p m8 0。 */
 .wk-document-detail-drawer .wk-document-md-preview { padding: 20px 24px !important; }
 .wk-document-detail-drawer .wk-document-md-preview .md-content { font-size: 14px; line-height: 23.8px; }
 .wk-document-detail-drawer .wk-document-md-preview .md-content h1 {
   font-size: 24px;
   line-height: 33.6px;
+  font-weight: 600;
   margin: 20px 0 10px;
   padding: 0 0 8px;
+  border-bottom: 1px solid var(--td-component-stroke, #e7e7e7);
+}
+.wk-document-detail-drawer .wk-document-md-preview .md-content h2 {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  margin: 20px 0 10px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--td-component-stroke, #e7e7e7);
 }
 .wk-document-detail-drawer .wk-document-md-preview .md-content p { margin: 8px 0; line-height: 23.8px; }

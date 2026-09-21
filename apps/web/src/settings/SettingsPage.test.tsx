@@ -298,17 +298,17 @@ test('runtime queues section renders Vue overview, empty table and limiter state
     model_limiter_available: true, models: [{ model_id: 'm1', name: 'gpt-test', active: 1, waiting: 2, limit: 4 }], timestamp: 0,
   } }), '?section=runtime-queues', 'system-admin');
   const text = container.textContent ?? '';
-  assert.ok(text.includes('运行时队列'), 'the Vue runtime heading renders');
-  assert.ok(text.includes('活跃任务'), 'the summary metric renders');
+  assert.ok(text.includes('任务队列运行时'), 'the Vue runtime heading renders');
+  assert.ok(text.includes('运行中'), 'the summary metric renders');
   assert.ok(text.includes('document'), 'the queue row renders');
   assert.ok(text.includes('gpt-test'), 'the model limiter row renders');
   assert.equal(text.includes('尚未移植'), false, 'the generic placeholder is gone');
-  const activeButton = container.querySelector<HTMLButtonElement>('.wk-rq-count-button');
+  const activeButton = container.querySelector<HTMLButtonElement>('.rq-task-count');
   assert.ok(activeButton, 'non-empty task counts are interactive');
   await act(async () => activeButton?.click());
   await act(async () => {});
   assert.ok(container.querySelector('[role="dialog"]'), 'clicking a task count opens the Vue task drawer');
-  assert.ok(container.textContent?.includes('document:process'), 'the task drawer renders the loaded task');
+  assert.ok(container.textContent?.includes('文档解析'), 'the task drawer renders the loaded task type');
 });
 
 test('system-global section renders grouped editable settings instead of a generic placeholder', async () => {
@@ -349,13 +349,22 @@ test('platform API keys section renders the Vue table and one-time token surface
   const container = await mountPage(makeClient({ apiKeys: [{ id: 7, name: 'ops', api_key: 'wk-****', capabilities: ['system_runtime_read'], full_access: false, knowledge_base_ids: null, created_at: '2026-01-01T00:00:00Z' }] }), '?section=platform-api-keys', 'system-admin');
   assert.ok(container.textContent?.includes('平台 API Key'), 'the platform key heading renders');
   assert.ok(container.textContent?.includes('ops'), 'the existing key row renders');
-  const name = container.querySelector<HTMLInputElement>('[aria-label="密钥名称"]');
+  // Vue parity: creation lives behind the 创建平台 API Key outline button, which
+  // opens the drawer form (PlatformAPIKeys.vue openCreate).
+  const openCreate = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    .find((button) => button.textContent === '创建平台 API Key');
+  assert.ok(openCreate, 'the alert outline button opens the create drawer');
+  await act(async () => openCreate?.click());
+  // The settings shell itself is role="dialog" — scope to the create drawer.
+  const drawer = container.querySelector('.pak-drawer[role="dialog"]');
+  assert.ok(drawer, 'the Vue create drawer renders');
+  const name = drawer.querySelector<HTMLInputElement>('[aria-label="密钥名称"]');
   assert.ok(name);
   await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(name, 'new-key'); name.dispatchEvent(new dom.window.Event('input', { bubbles: true })); });
-  const capability = container.querySelector<HTMLInputElement>('.wk-api-key-capabilities input');
+  const capability = drawer.querySelector<HTMLInputElement>('.pak-cap-item input');
   assert.ok(capability);
   await act(async () => capability?.click());
-  const createButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '创建');
+  const createButton = Array.from(drawer.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '创建平台 API Key');
   assert.ok(createButton);
   await act(async () => createButton?.click());
   await act(async () => {});

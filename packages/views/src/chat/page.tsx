@@ -581,7 +581,7 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
           vertical kebab. */}
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
     </summary>
-    <div className="wk-chat-header-menu-list absolute left-0 top-full z-[30] mt-[2px] flex w-max min-w-[168px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
+    <div className="wk-chat-header-menu-list absolute left-0 top-full z-[30] flex w-max min-w-[160px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
       {headerDangerAction ? <div className="wk-chat-header-confirm" role="dialog" aria-label={headerDangerAction === 'clear' ? copy.clearMessages : copy.deleteSession}>
         <strong className="block px-[6px] text-[12px]">{headerDangerAction === 'clear' ? copy.clearConfirmTitle : copy.deleteConfirmTitle}</strong>
         <p className="m-0 px-[6px] py-[5px] text-[12px] text-[rgba(0,0,0,0.6)]">{headerDangerAction === 'clear' ? copy.clearConfirmBody : copy.deleteConfirmBody}</p>

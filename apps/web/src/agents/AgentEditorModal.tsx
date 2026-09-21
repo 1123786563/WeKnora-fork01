@@ -107,39 +107,230 @@ const missReasonKey = (missKind: string): string =>
     : missKind === 'needsKb' ? 'agentEditor.tools.requiresKb'
       : 'agentEditor.tools.requiresRagKb';
 
-// --- tiny form primitives (no UI library in the React client) -------------------------
-// agent-editor.css converted to utilities; var(--td-*) theme hooks kept verbatim
-// as arbitrary values (undefined in this client -> the fallback always applied).
-// wk-ae-input / wk-ae-textarea / wk-ae-select stay as anchors for the Row error variant.
-const FIELD_BASE = 'w-full rounded-md border border-[var(--td-component-stroke,#dcdcdc)] px-2.5 py-1.5 font-[family-name:inherit] text-[14px] text-inherit bg-[var(--td-bg-color-container,#fff)]';
-const FIELD_WIDE = 'max-w-[460px]';
-const FIELD_DISABLED_BG = 'disabled:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]';
-const FIELD_INPUT = `${FIELD_BASE} ${FIELD_WIDE} ${FIELD_DISABLED_BG}`;
-const FIELD_TEXTAREA = `${FIELD_BASE} ${FIELD_WIDE} resize-y ${FIELD_DISABLED_BG}`;
-const FIELD_SELECT = `${FIELD_BASE} ${FIELD_WIDE}`;
-const FIELD_NUMBER = `${FIELD_BASE} max-w-40`;
-const FIELD_TALL = 'min-h-[200px]';
-const ROW_ERROR_FIELDS = '[&_.wk-ae-input]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-textarea]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-select]:border-[var(--td-error-color,#d54941)]';
-const AE_BTN = 'cursor-pointer rounded-md px-4 py-1.5 text-[14px]';
+// --- TDesign icon replicas --------------------------------------------------------------
+// The Vue rail renders t-icon (tdesign-icons-vue-next) at 16px: transparent
+// fills + 1px currentColor strokes, strokeLinecap square. Paths below are
+// copied verbatim from the icon definitions (nav items, AgentEditorModal.vue:2659).
+const T_ICON_PATHS: Record<string, { fill?: string[]; stroke: Array<{ d: string; sw?: number }> }> = {
+  'info-circle': {
+    fill: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z'],
+    stroke: [
+      { d: 'M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z' },
+      { d: 'M12 16.5L12 11M12 7.5L11.9961 7.5L11.9961 7.49609L12 7.49609L12 7.5Z' },
+    ],
+  },
+  'file-paste': {
+    fill: ['M4 22H20V8H14V2H4V22Z'],
+    stroke: [
+      { d: 'M14 2V8H20M14 2H15L20 7V8M14 2H4V22H20V8' },
+      { d: 'M8.6 11H8V11.6M11.3999 11H11.9999V11.6M8 14.4004V15.0004H8.6M12 15H16V19H12V15Z' },
+    ],
+  },
+  'control-platform': {
+    fill: ['M12 2L21 7V17L12 22L3 17V7L12 2Z'],
+    stroke: [{ d: 'M12 12L20.5 7.5M12 12V21.5M12 12L3.5 7.5M12 2L21 7V17L12 22L3 17V7L12 2Z' }],
+  },
+  chat: {
+    fill: ['M2.5 3H21.5V17H6.5L2.5 20.5V3Z'],
+    stroke: [{ d: 'M2.5 3H21.5V17H6.5L2.5 20.5V3Z' }],
+  },
+  'help-circle': {
+    fill: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z'],
+    stroke: [
+      { d: 'M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z' },
+      { d: 'M12.0002 14.25V14C12.0002 12.8954 12.9877 12.0414 13.8553 11.3578C14.5525 10.8085 15.0002 9.95652 15.0002 9C15.0002 7.34315 13.657 6 12.0002 6C10.694 6 9.58273 6.83481 9.1709 8M12.0002 17.25H12.0041V17.2539H12.0002V17.25Z' },
+    ],
+  },
+  folder: {
+    fill: ['M2 3.5L9 3.5L11 6L22 6L22 20L2 20L2 3.5Z'],
+    stroke: [{ d: 'M2 3.5H9L11 6H22V20H2V3.5Z' }],
+  },
+  search: {
+    fill: ['M15.8033 15.8033C12.8744 18.7322 8.12563 18.7322 5.1967 15.8033C2.26777 12.8744 2.26777 8.12563 5.1967 5.1967C8.12563 2.26777 12.8744 2.26777 15.8033 5.1967C18.7322 8.12563 18.7322 12.8744 15.8033 15.8033Z'],
+    stroke: [
+      { d: 'M15.8027 15.8037L21.106 21.107' },
+      { d: 'M15.8033 15.8033C12.8744 18.7322 8.12563 18.7322 5.1967 15.8033C2.26777 12.8744 2.26777 8.12563 5.1967 5.1967C8.12563 2.26777 12.8744 2.26777 15.8033 5.1967C18.7322 8.12563 18.7322 12.8744 15.8033 15.8033Z' },
+    ],
+  },
+  internet: {
+    fill: [
+      'M12 2C6.47715 2 2 6.47715 2 12C2 17.5229 6.47715 22 12 22C17.5228 22 22 17.5229 22 12C22 6.47715 17.5228 2 12 2Z',
+      'M11.4987 21.9877C11.6646 21.9959 11.8315 22 11.9994 22C12.1673 22 12.3342 21.9959 12.5 21.9877C17.113 16.2216 17.1129 7.77835 12.4999 2.01231C12.3341 2.00414 12.1672 2 11.9994 2C11.8315 2 11.6646 2.00414 11.4988 2.01231C6.88584 7.77835 6.88581 16.2216 11.4987 21.9877Z',
+    ],
+    stroke: [
+      { d: 'M3 12H21M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5229 17.5228 22 12 22C6.47715 22 2 17.5229 2 12Z' },
+      { d: 'M11.4987 21.9877C11.6646 21.9959 11.8315 22 11.9994 22C12.1673 22 12.3342 21.9959 12.5 21.9877C17.113 16.2216 17.1129 7.77835 12.4999 2.01231C12.3341 2.00414 12.1672 2 11.9994 2C11.8315 2 11.6646 2.00414 11.4988 2.01231C6.88584 7.77835 6.88581 16.2216 11.4987 21.9877Z' },
+    ],
+  },
+  attach: {
+    stroke: [{ d: 'M20.5062 12.3131L12.728 20.0913C10.3848 22.4344 6.58586 22.4344 4.24271 20.0913C1.89957 17.7481 1.89956 13.9491 4.24271 11.606L12.0209 3.82782C13.583 2.26573 16.1156 2.26573 17.6777 3.82782C19.2398 5.38992 19.2398 7.92258 17.6777 9.48468L9.89957 17.2628C9.11852 18.0439 7.85219 18.0439 7.07114 17.2628C6.29009 16.4818 6.29009 15.2155 7.07114 14.4344L14.1422 7.36336' }],
+  },
+  tools: {
+    stroke: [{ d: 'M21.7607 16.8119L16.9063 11.9575C17.699 9.38593 17.0789 6.47326 15.0432 4.43757C12.8445 2.23891 9.62043 1.68993 6.91077 2.79202L6.91146 3.37691L11.1541 7.61955L7.61857 11.1551L3.37593 6.91244L2.79105 6.91175C1.68895 9.6214 2.23793 12.8455 4.43659 15.0442C6.47228 17.0799 9.38496 17.7 11.9565 16.9072L16.811 21.7617M15.75 15.7513L19.2855 19.2868' }],
+  },
+  server: {
+    fill: ['M21 14V21H3L3 14L21 14Z', 'M21 3V10L3 10L3 3L21 3Z'],
+    stroke: [
+      { d: 'M21 14V21H3L3 14L21 14Z' },
+      { d: 'M21 3V10L3 10L3 3L21 3Z' },
+      { d: 'M6.5 6.5H6.50391V6.50391H6.5V6.5Z' },
+      { d: 'M6.5 17.5H6.50391V17.5039H6.5V17.5Z' },
+    ],
+  },
+  'system-code': {
+    fill: ['M22 3H2V17H22V3Z'],
+    stroke: [
+      { d: 'M4 21H20M2 3H22V17H2V3Z' },
+      { d: 'M9 7.5L6.5 10L9 12.5M15 12.5L17.5 10L15 7.5' },
+    ],
+  },
+  // React-only nav rows (Octop persona / delegation, no Vue baseline): same
+  // 24px-grid stroke language so the rail rows keep a uniform rhythm.
+  user: {
+    stroke: [{ d: 'M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12ZM4 22V19C4 16.2386 6.23858 14 9 14H15C17.7614 14 20 16.2386 20 19V22' }],
+  },
+  'app-link': {
+    stroke: [{ d: 'M10 14C10 16.2091 11.7909 18 14 18H16C18.2091 18 20 16.2091 20 14C20 11.7909 18.2091 10 16 10H15M14 10C11.7909 10 10 8.20914 10 6C10 3.79086 11.7909 2 14 2H16C18.2091 2 20 3.79086 20 6M9 12H15M5 6C5 8.20914 6.79086 10 9 10H10M9 18C6.79086 18 5 16.2091 5 14' }],
+  },
+};
 
-function Row({ label, required = false, desc, hint, htmlFor, error, extra, children }: {
+function TIcon({ name, size = 16 }: { name: string; size?: number }) {
+  const def = T_ICON_PATHS[name] ?? T_ICON_PATHS['info-circle']!;
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" width={size} height={size} className="t-icon">
+      {(def.fill ?? []).map((d) => <path key={'f' + d.slice(0, 24)} fill="transparent" d={d} />)}
+      {def.stroke.map(({ d, sw }) => (
+        <path key={'s' + d.slice(0, 24)} stroke="currentColor" strokeWidth={sw ?? 1} strokeLinecap="square" d={d} />
+      ))}
+    </svg>
+  );
+}
+
+// Vue AgentAvatar (frontend/src/components/AgentAvatar.vue): 32px, 8px radius,
+// name-hashed gradient, first-letter label, twin sparkles. Ported 1:1 so the
+// 名称 row renders the same chip (create default 我的RAG 问答 -> gradient #6).
+const AVATAR_GRADIENTS = [
+  { from: '#667eea', to: '#764ba2' },
+  { from: '#4facfe', to: '#00f2fe' },
+  { from: '#43e97b', to: '#38f9d7' },
+  { from: '#11998e', to: '#38ef7d' },
+  { from: '#5ee7df', to: '#b490ca' },
+  { from: '#48c6ef', to: '#6f86d6' },
+  { from: '#a8edea', to: '#fed6e3' },
+  { from: '#667db6', to: '#0082c8' },
+  { from: '#36d1dc', to: '#5b86e5' },
+  { from: '#56ab2f', to: '#a8e063' },
+  { from: '#614385', to: '#516395' },
+  { from: '#02aab0', to: '#00cdac' },
+  { from: '#6a82fb', to: '#fc5c7d' },
+  { from: '#834d9b', to: '#d04ed6' },
+  { from: '#4776e6', to: '#8e54e9' },
+  { from: '#00b09b', to: '#96c93d' },
+];
+
+function avatarGradient(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    const char = name.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length]!;
+}
+
+function AgentAvatarChip({ name }: { name: string }) {
+  const g = avatarGradient(name || '?');
+  const letter = (() => {
+    const first = (name || '').trim().charAt(0);
+    if (!first) return '?';
+    return /[a-zA-Z]/.test(first) ? first.toUpperCase() : first;
+  })();
+  return (
+    <div
+      className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg shadow-[0px_3px_14px_2px_rgba(0,0,0,0.05),0px_8px_10px_1px_rgba(0,0,0,0.06),0px_5px_5px_-3px_rgba(0,0,0,0.1)]"
+      style={{ background: `linear-gradient(135deg, ${g.from} 0%, ${g.to} 100%)` }}
+      data-agent-avatar
+    >
+      <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.85]" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M24 5L24.4 6.6C24.45 6.85 24.65 7.05 24.9 7.1L26.5 7.5L24.9 7.9C24.65 7.95 24.45 8.15 24.4 8.4L24 10L23.6 8.4C23.55 8.15 23.35 7.95 23.1 7.9L21.5 7.5L23.1 7.1C23.35 7.05 23.55 6.85 23.6 6.6L24 5Z" fill="rgba(255,255,255,0.6)" />
+        <path d="M7 22L7.4 23.6C7.45 23.85 7.65 24.05 7.9 24.1L9.5 24.5L7.9 24.9C7.65 24.95 7.45 25.15 7.4 25.4L7 27L6.6 25.4C6.55 25.15 6.35 24.95 6.1 24.9L4.5 24.5L6.1 24.1C6.35 24.05 6.55 23.85 6.6 23.6L7 22Z" fill="rgba(255,255,255,0.5)" />
+      </svg>
+      <span
+        className="relative z-[1] text-[14px] font-semibold text-white"
+        style={{ textShadow: `0 1px 2px ${g.to}80, 0 0 8px ${g.from}30` }}
+      >{letter}</span>
+    </div>
+  );
+}
+
+// --- tiny form primitives (no UI library in the React client) -------------------------
+// Geometry mirrors the Vue editor (AgentEditorModal.vue 4844-5677): TDesign
+// inputs are 32px tall, 3px radius, #dcdcdc stroke, 14px/22px text — the
+// @weknora/ui primitives already ship that chrome (h-8 rounded-field border-
+// line-input px-2 leading-[22px]), so the classes here only pin the Vue font
+// size/colors. --td-* hooks stay for the error variant + theme overrides.
+const FIELD_INPUT = 'wk-ae-input box-border text-[14px]! text-inherit! bg-[var(--td-bg-color-container,#fff)] disabled:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]';
+const FIELD_TEXTAREA = 'wk-ae-textarea box-border py-[5px]! text-[14px]! text-inherit! leading-[22px] resize-none bg-[var(--td-bg-color-container,#fff)] disabled:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]';
+const FIELD_SELECT = 'wk-ae-select box-border text-[14px]! text-inherit!';
+const FIELD_NUMBER = 'wk-ae-input box-border text-[14px]! text-inherit! w-[120px] disabled:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]';
+const FIELD_TALL = 'min-h-[232px]'; // Vue autosize minRows:10 -> 10*22px + 12px padding
+const ROW_ERROR_FIELDS = '[&_.wk-ae-input]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-textarea]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-select]:border-[var(--td-error-color,#d54941)]';
+const AE_BTN = 'cursor-pointer rounded-[3px] px-4 py-[5px] text-[14px] leading-[20px]';
+
+// Vue light-theme tokens (frontend/src/assets/theme/theme.css): the editor
+// markup keeps var(--td-*) hooks verbatim, so mount the Vue values on the
+// overlay root — every descendant var() resolves green exactly like Vue.
+const VUE_THEME_VARS = {
+  '--td-brand-color': '#07c05f',
+  '--td-brand-color-hover': '#08dd6e',
+  '--td-brand-color-active': '#06b04d',
+  '--td-brand-color-light': '#e9f8ec',
+  '--td-brand-color-focus': 'rgba(7, 192, 95, 0.2)',
+  '--td-error-color': '#e34d59',
+  '--td-warning-color': '#ed7b2f',
+  '--td-warning-color-light': '#fef3e6',
+  '--td-success-color': '#00a870',
+  '--td-bg-color-container': '#ffffff',
+  '--td-bg-color-secondarycontainer': '#f3f3f3',
+  '--td-bg-color-container-hover': '#f3f3f3',
+  '--td-bg-color-settings-modal': '#f9f9f9',
+  '--td-component-stroke': '#e7e7e7',
+  '--td-component-border': '#dcdcdc',
+  '--td-text-color-primary': 'rgba(0, 0, 0, 0.9)',
+  '--td-text-color-secondary': 'rgba(0, 0, 0, 0.6)',
+  '--td-text-color-placeholder': 'rgba(0, 0, 0, 0.4)',
+  '--td-text-color-disabled': 'rgba(0, 0, 0, 0.26)',
+  '--td-text-color-anti': '#ffffff',
+} as React.CSSProperties;
+
+/**
+ * Vue setting-row (AgentEditorModal.vue 5218-5327): 16px vertical padding,
+ * hairline divider between rows, 42% label column + right-justified 58%
+ * control column, 15px/500 labels, 13px descriptions. `emphasize` renders the
+ * 智能体类型 treatment — a 3px brand bar + bold label (5241-5261).
+ */
+function Row({ label, required = false, desc, hint, htmlFor, error, extra, emphasize = false, children }: {
   label: string; required?: boolean; desc?: string; hint?: string; htmlFor?: string;
-  error?: string; extra?: React.ReactNode; children: React.ReactNode;
+  error?: string; extra?: React.ReactNode; emphasize?: boolean; children: React.ReactNode;
 }) {
   return (
-    <div className={`flex items-start gap-6${error ? ` ${ROW_ERROR_FIELDS}` : ''}`}>
-      <div className="w-[260px] shrink-0">
-        <label className="text-sm font-medium" htmlFor={htmlFor}>
+    <div
+      className={`relative box-border flex items-start justify-between gap-6 border-b border-[var(--td-component-stroke,#e7e7e7)] py-4 last:border-b-0${emphasize ? ' pl-3.5 before:absolute before:bottom-[18px] before:left-0 before:top-[18px] before:w-[3px] before:rounded-[2px] before:bg-[var(--td-brand-color,#0052d9)] before:content-[""]' : ''}${error ? ` ${ROW_ERROR_FIELDS}` : ''}`}
+    >
+      <div className="min-w-0 w-[42%] max-w-[42%] shrink-0">
+        <label className={`block mb-1 text-[15px] leading-[21px] font-medium text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]${emphasize ? ' font-semibold' : ''}`} htmlFor={htmlFor}>
           {label}
-          {required ? <span className="ml-1 text-[var(--td-error-color,#d54941)]" aria-hidden="true">*</span> : null}
+          {/* Vue template: `{{ label }} <span class="required">*</span>` — the
+              whitespace before the star is part of the baseline layout. */}
+          {required ? <span className="ml-[2px] text-[var(--td-error-color,#d54941)]" aria-hidden="true"> *</span> : null}
         </label>
-        {desc ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{desc}</p> : null}
-        {hint ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{hint}</p> : null}
+        {desc ? <p className="m-0 text-[13px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{desc}</p> : null}
+        {hint ? <p className="m-0 text-[13px] leading-[1.5] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{hint}</p> : null}
         {extra}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+      <div className="flex min-w-0 max-w-[58%] flex-1 basis-[58%] flex-col items-end justify-end overflow-hidden">
         {children}
-        {error ? <p className="m-0 mt-0.5 text-[12px] text-[var(--td-error-color,#d54941)]" data-field-error={htmlFor ? htmlFor.replace('wk-ae-', '').replace(/-/g, '_') : undefined}>{error}</p> : null}
+        {error ? <p className="m-0 mt-0.5 w-full text-[12px] text-[var(--td-error-color,#d54941)]" data-field-error={htmlFor ? htmlFor.replace('wk-ae-', '').replace(/-/g, '_') : undefined}>{error}</p> : null}
       </div>
     </div>
   );
@@ -178,7 +369,7 @@ function FileTypeMultiSelect({ selected, options, onChange, placeholderLabel, t 
         data-file-types-trigger
         aria-haspopup="listbox"
         aria-expanded={open ? 'true' : 'false'}
-        className={`flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] px-2.5 text-left text-[14px] ${selected.length === 0 ? 'text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]' : ''}`}
+        className={`flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-[3px] border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] px-2 text-left text-[14px] ${selected.length === 0 ? 'text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]' : ''}`}
         onClick={() => setOpen((current) => !current)}
       >
         <span className="truncate">{selectedLabels.length > 0 ? selectedLabels.join('、') : placeholderLabel}</span>
@@ -206,6 +397,8 @@ function FileTypeMultiSelect({ selected, options, onChange, placeholderLabel, t 
   );
 }
 
+// Vue t-switch default: 32x20 pill, 15px knob (AgentEditorModal.vue memory row
+// measured 32.4x20 with the knob parked 15px in when checked).
 function Switch({ checked, onChange, label, field }: { checked: boolean; onChange: (next: boolean) => void; label: string; field: string }) {
   return (
     <button
@@ -213,13 +406,15 @@ function Switch({ checked, onChange, label, field }: { checked: boolean; onChang
       role="switch"
       aria-checked={checked ? 'true' : 'false'}
       aria-label={label}
-      className={`relative h-[22px] w-10 cursor-pointer rounded-[11px] border-none transition-[background] duration-200 ease-[ease] ${checked ? 'bg-[var(--td-brand-color,#0052d9)]' : 'bg-[var(--td-bg-color-secondarycontainer,#c9c9c9)]'}`}
+      className={`relative h-5 w-8 cursor-pointer rounded-full border-none transition-[background] duration-200 ease-[ease] ${checked ? 'bg-[var(--td-brand-color,#0052d9)]' : 'bg-[var(--td-bg-color-secondarycontainer,#c9c9c9)]'}`}
       data-switch={field}
       onClick={() => onChange(!checked)}
-    ><span className={`absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white transition-[left] duration-200 ease-[ease] ${checked ? 'left-5' : 'left-[2px]'}`} /></button>
+    ><span className={`absolute top-[2.5px] h-[15px] w-[15px] rounded-full bg-white transition-[left] duration-200 ease-[ease] ${checked ? 'left-[15px]' : 'left-[2px]'}`} /></button>
   );
 }
 
+// Vue default t-radio (prompt/model/conversation sections): a bare dot + label,
+// no pill border; items sit inline with an 8px gap.
 function RadioGroup({ name, value, options, onChange }: {
   name: string;
   value: string;
@@ -227,9 +422,9 @@ function RadioGroup({ name, value, options, onChange }: {
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-2" role="radiogroup">
+    <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-2" role="radiogroup">
       {options.map((option) => (
-        <label key={option.value} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-[5px] text-[13px] [&>input]:accent-[var(--td-brand-color,#0052d9)] [&>input:disabled+span]:text-[var(--td-text-color-disabled,rgba(0,0,0,0.26))] ${option.value === value ? 'border-[var(--td-brand-color,#0052d9)] text-[var(--td-brand-color,#0052d9)]' : 'border-[var(--td-component-stroke,#dcdcdc)]'}`}>
+        <label key={option.value} className={`inline-flex cursor-pointer items-center gap-1.5 text-[14px] leading-[22px] ${option.value === value ? 'text-[var(--td-brand-color,#0052d9)]' : 'text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]'} [&>input:disabled+span]:text-[var(--td-text-color-disabled,rgba(0,0,0,0.26))]`}>
           <Radio
             name={name}
             value={option.value}
@@ -240,6 +435,42 @@ function RadioGroup({ name, value, options, onChange }: {
           <span>{option.label}</span>
         </label>
       ))}
+    </div>
+  );
+}
+
+// Vue 运行模式 uses t-radio-group > t-radio-button (AgentEditorModal.vue:106-113):
+// a joined segmented strip — 32px tall, 3px outer radius, unchecked = white with
+// a #dcdcdc stroke, checked = solid brand green with white text.
+function ModeSegmented({ value, options, onChange }: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="inline-flex" role="radiogroup" data-guide="agent-create-mode">
+      {options.map((option, index) => {
+        const active = option.value === value;
+        return (
+          <label
+            key={option.value}
+            className={`-ml-px box-border inline-flex h-8 cursor-pointer items-center border px-4 text-[14px] leading-[22px] first:ml-0 first:rounded-l-[3px] last:rounded-r-[3px] ${active
+              ? 'z-10 border-[var(--td-brand-color,#0052d9)] bg-[var(--td-brand-color,#0052d9)] text-white'
+              : 'border-[var(--td-component-border,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]'}`}
+            data-mode-option={option.value}
+          >
+            <input
+              className="sr-only"
+              type="radio"
+              name="agent-mode"
+              value={option.value}
+              checked={active}
+              onChange={() => onChange(option.value)}
+            />
+            <span>{option.label}</span>
+          </label>
+        );
+      })}
     </div>
   );
 }
@@ -722,19 +953,18 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     const editId = editorMode === 'edit' ? form.id : undefined;
     return (
       <section className="wk-ae-section" data-editor-section="basic">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agent.editor.basicInfo')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.basicInfoDesc')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.basicInfoDesc')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           {editId ? (
             <Row label={t('agent.editor.agentId')} desc={t('agent.editor.agentIdDesc')}>
               <code className="rounded-md bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] px-2 py-1 font-[family-name:monospace] text-[12px] [overflow-wrap:anywhere]" data-agent-id-copy title={editId}>{editId}</code>
             </Row>
           ) : null}
           <Row label={t('agent.editor.mode')} required desc={isAgentMode ? t('agent.editor.agentDesc') : t('agent.editor.normalDesc')}>
-            <RadioGroup
-              name="agent-mode"
+            <ModeSegmented
               value={form.config.agent_mode}
               options={[
                 { value: 'quick-answer', label: t('agent.type.normal') },
@@ -747,10 +977,21 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             // R485 D2 — Vue 118-135: agent type dropdown (smart-reasoning only),
             // preset description echoed under the label. R491 — options come
             // from the runtime type-presets fetch (static catalog on failure).
-            <Row label={t('agentEditor.agentType.label')} desc={t('agentEditor.agentType.desc')}>
+            // Vue renders this row as setting-row--emphasize (3px brand bar +
+            // bold label) with a 360px-capped select right-aligned.
+            <Row
+              label={t('agentEditor.agentType.label')}
+              desc={t('agentEditor.agentType.desc')}
+              emphasize
+              extra={activeAgentTypePreset ? (
+                <p className="m-0 mt-1 text-[12px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]" data-agent-type-desc>
+                  {agentTypePresetDescription(activeAgentTypePreset, locale)}
+                </p>
+              ) : null}
+            >
               <Select
                 data-field="agent_type"
-                className={`wk-ae-select ${FIELD_SELECT}`}
+                className={`wk-ae-select max-w-[360px] ${FIELD_SELECT}`}
                 value={form.config.agent_type || 'custom'}
                 disabled={form.is_builtin}
                 onChange={(event) => onAgentTypeChange(event.target.value)}
@@ -759,30 +1000,36 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                   <option key={preset.id} value={preset.id}>{agentTypePresetLabel(preset, locale)}</option>
                 ))}
               </Select>
-              {activeAgentTypePreset ? (
-                <p className="m-0 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]" data-agent-type-desc>
-                  {agentTypePresetDescription(activeAgentTypePreset, locale)}
-                </p>
-              ) : null}
             </Row>
           ) : null}
           <Row label={t('agent.editor.name')} required={!form.is_builtin} desc={t('agentEditor.desc.name')} htmlFor="wk-ae-name" error={errorMessage('name')}>
-            <Input
-              id="wk-ae-name"
-              data-field="name"
-              className={`wk-ae-input ${FIELD_INPUT}`}
-              value={form.name}
-              placeholder={t('agent.editor.namePlaceholder')}
-              disabled={form.is_builtin}
-              onChange={(event) => patch((draft) => { draft.name = event.target.value; })}
-            />
+            {/* Vue 148-157: avatar chip (AgentAvatar) + input share the control
+                column; builtin agents render a plain icon square instead. */}
+            <div className="flex w-full items-center gap-3" data-guide="agent-create-name">
+              {form.is_builtin ? (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">
+                  <TIcon name={isAgentMode ? 'control-platform' : 'chat'} size={24} />
+                </div>
+              ) : (
+                <AgentAvatarChip name={form.name || '?'} />
+              )}
+              <Input
+                id="wk-ae-name"
+                data-field="name"
+                className={`wk-ae-input min-w-0 flex-1 ${FIELD_INPUT}`}
+                value={form.name}
+                placeholder={t('agent.editor.namePlaceholder')}
+                disabled={form.is_builtin}
+                onChange={(event) => patch((draft) => { draft.name = event.target.value; })}
+              />
+            </div>
           </Row>
           <Row label={t('agent.editor.description')} desc={t('agentEditor.desc.description')} htmlFor="wk-ae-description">
             <Textarea
               id="wk-ae-description"
               data-field="description"
               className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
-              rows={3}
+              rows={2}
               value={form.description}
               placeholder={t('agent.editor.descriptionPlaceholder')}
               disabled={form.is_builtin}
@@ -890,11 +1137,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   function renderPrompts() {
     return (
       <section className="wk-ae-section" data-editor-section="prompts">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agent.editor.promptsConfig')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.promptsConfigDesc')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.promptsConfigDesc')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           <Row
             label={t('agent.editor.systemPrompt')}
             required={!form.is_builtin}
@@ -993,11 +1240,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   function renderModel() {
     return (
       <section className={`wk-ae-section ${highlightedField === 'summary_model' || highlightedField === 'rerank_model' ? 'ring-2 ring-[var(--td-brand-color,#0052d9)] ring-inset' : ''}`} data-editor-section="model" data-highlighted-field={highlightedField === 'summary_model' || highlightedField === 'rerank_model' ? highlightedField : undefined}>
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agent.editor.modelConfig')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.modelConfigDesc')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.modelConfigDesc')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           <Row label={t('agent.editor.model')} required desc={t('agentEditor.desc.model')} error={errorMessage('model_id')} htmlFor="wk-ae-model-id">
             <Select
               id="wk-ae-model-id"
@@ -1115,11 +1362,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   function renderConversation() {
     return (
       <section className="wk-ae-section" data-editor-section="conversation">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agent.editor.conversationSettings')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{isAgentMode ? t('agentEditor.desc.conversationSectionAgent') : t('agentEditor.desc.conversationSection')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{isAgentMode ? t('agentEditor.desc.conversationSectionAgent') : t('agentEditor.desc.conversationSection')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           {quickAnswer ? (
             <Row label={t('agent.editor.multiTurn')} desc={t('agentEditor.desc.multiTurn')}>
               <Switch field="multi_turn_enabled" label={t('agent.editor.multiTurn')} checked={form.config.multi_turn_enabled}
@@ -1154,11 +1401,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   function renderKnowledge() {
     return (
       <section className="wk-ae-section" data-editor-section="knowledge">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agent.editor.knowledgeConfig')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.knowledgeConfigDesc')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.knowledgeConfigDesc')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           <Row label={t('agent.editor.knowledgeBases')} desc={t('agentEditor.desc.kbScope')}>
             <RadioGroup
               name="kb-mode"
@@ -1211,11 +1458,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   function renderRetrieval() {
     return (
       <section className="wk-ae-section" data-editor-section="retrieval">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agent.editor.retrievalStrategy')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.desc.retrievalSection')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.desc.retrievalSection')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           {quickAnswer ? (
             <Row label={t('agent.editor.enableQueryExpansion')} desc={t('agentEditor.desc.queryExpansion')}>
               <Switch field="enable_query_expansion" label={t('agent.editor.enableQueryExpansion')} checked={form.config.enable_query_expansion}
@@ -1282,11 +1529,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   function renderWebSearch() {
     return (
       <section className="wk-ae-section" data-editor-section="websearch">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agent.editor.webSearchConfig')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.webSearchConfigDesc')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.webSearchConfigDesc')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           <Row label={t('agent.editor.webSearch')} desc={t('agentEditor.desc.webSearch')}>
             <Switch field="web_search_enabled" label={t('agent.editor.webSearch')} checked={form.config.web_search_enabled}
               onChange={(next) => patchConfig('web_search_enabled', next)} />
@@ -1329,9 +1576,9 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     const inactiveToolCount = evaluations.filter((item) => !item.ok).length;
     return (
       <section className={`wk-ae-section ${highlightedField === 'allowed_tools' ? 'ring-2 ring-[var(--td-brand-color,#0052d9)] ring-inset' : ''}`} data-editor-section="tools" data-highlighted-field={highlightedField === 'allowed_tools' ? 'allowed_tools' : undefined}>
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agent.editor.toolsConfig')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.toolsConfigDesc')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.toolsConfigDesc')}</p>
         </header>
         <p className="text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">
           {hasKnowledgeBase
@@ -1339,7 +1586,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             : t('agentEditor.tools.statusNoKb')}
           {inactiveToolCount > 0 ? ' · ' + t('agentEditor.tools.statusInactive', { count: inactiveToolCount }) : ''}
         </p>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           {/* R485 D10 — Vue 1163-1167: the allowed-tools block carries the
               「允许的工具」label + 「选择 Agent 可以使用的工具」desc and per-group
               counts, which the React port omitted. */}
@@ -1412,9 +1659,9 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     const followUps = qs.follow_ups;
     return (
       <section className="wk-ae-section" data-editor-section="suggestions">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agentEditor.questionSuggestions.title')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.questionSuggestions.description')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.questionSuggestions.description')}</p>
         </header>
         <div className="mb-3 flex gap-1" role="tablist" aria-label={t('agentEditor.questionSuggestions.title')}>
           {(['starters', 'followUps'] as const).map((tab) => (
@@ -1432,7 +1679,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
           ))}
         </div>
         {suggestionTab === 'starters' ? (
-          <div className="flex flex-col gap-[18px]">
+          <div className="flex flex-col">
             <Row label={t('agentEditor.questionSuggestions.enableStarters')} desc={t('agentEditor.questionSuggestions.enableStartersDesc')}>
               <Switch field="question_suggestions.starters.enabled" label={t('agentEditor.questionSuggestions.enableStarters')}
                 checked={starters.enabled}
@@ -1483,7 +1730,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             ) : null}
           </div>
         ) : (
-          <div className="flex flex-col gap-[18px]">
+          <div className="flex flex-col">
             <Row label={t('agentEditor.questionSuggestions.enableFollowUps')} desc={t('agentEditor.questionSuggestions.enableFollowUpsDesc')}>
               <Switch field="question_suggestions.follow_ups.enabled" label={t('agentEditor.questionSuggestions.enableFollowUps')}
                 checked={followUps.enabled}
@@ -1590,11 +1837,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     ];
     return (
       <section className="wk-ae-section" data-editor-section="multimodal">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agentEditor.imageUpload.sectionTitle')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.imageUpload.sectionDesc')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.imageUpload.sectionDesc')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           <Row label={t('agentEditor.imageUpload.label')} desc={t('agentEditor.imageUpload.desc')}>
             <Switch field="image_upload_enabled" label={t('agentEditor.imageUpload.label')} checked={form.config.image_upload_enabled}
               onChange={(next) => patchConfig('image_upload_enabled', next)} />
@@ -1684,11 +1931,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     const showServiceSelect = serviceRows.length > 0 || form.config.mcp_services.length > 0;
     return (
       <section className="wk-ae-section" data-editor-section="mcp">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agentEditor.mcp.label')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.mcp.desc')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.mcp.desc')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           <Row label={t('agentEditor.mcp.label')} desc={t('agentEditor.mcp.desc')}>
             <RadioGroup
               name="mcp-mode"
@@ -1741,11 +1988,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     const pendingRows = skillRows.filter((row) => !row.selectable);
     return (
       <section className="wk-ae-section" data-editor-section="skills">
-        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
+        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
           <h2>{t('agent.editor.skillsConfig')}</h2>
-          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.skillsConfigDesc')}</p>
+          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.skillsConfigDesc')}</p>
         </header>
-        <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col">
           <Row label={t('agent.editor.sandboxBackend')} desc={t('agent.editor.sandboxBackendHint')}>
             <Select data-field="sandbox_config_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.sandbox_config_id}
               onChange={(event) => patchConfig('sandbox_config_id', event.target.value)}>
@@ -1863,28 +2110,41 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[rgba(0,0,0,0.5)] backdrop-blur-[4px]" data-editor-overlay onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="relative flex h-[85vh] max-h-[780px] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-xl bg-[var(--td-bg-color-container,#fff)] text-[var(--td-text-color-primary,rgba(0,0,0,0.9))] shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-modal="true" aria-label={editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')} data-testid="agent-editor-modal">
-        <button type="button" className="absolute top-3 right-3 z-10 h-8 w-8 cursor-pointer rounded-md border-none bg-transparent text-[18px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]" aria-label={t('common.close')} onClick={onClose}>×</button>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[rgba(0,0,0,0.5)] backdrop-blur-[4px] [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale]" data-editor-overlay onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="relative flex h-[85vh] max-h-[750px] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-xl bg-[var(--td-bg-color-container,#fff)] text-[14px] text-[var(--td-text-color-primary,rgba(0,0,0,0.9))] shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-modal="true" aria-label={editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')} data-testid="agent-editor-modal" style={VUE_THEME_VARS}>
+        <button type="button" className="absolute top-4 right-4 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] transition-all duration-200 hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)] hover:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]" aria-label={t('common.close')} onClick={onClose}>
+          {/* Vue close-btn: 20x20 stroke-2 X (AgentEditorModal.vue:10-14) */}
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
         {initializing ? <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--td-bg-color-container,#fff)]" role="status">{t('common.loading')}</div> : null}
         <div className="flex h-full w-full overflow-hidden">
           <aside className="flex w-[208px] shrink-0 flex-col overflow-hidden border-r border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-settings-modal,#fafafa)]">
-            <h2 className="m-0 border-b border-[var(--td-component-stroke,#e7e7e7)] px-3.5 pt-4 pb-3 text-[16px] font-semibold" data-editor-title>
+            <h2 className="m-0 border-b border-[var(--td-component-stroke,#e7e7e7)] px-3.5 pt-4 pb-3 text-[16px] leading-[22px] font-semibold" data-editor-title>
               {editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')}
             </h2>
-            <nav className="flex-1 overflow-y-auto p-2" data-guide="agent-editor-sidebar">
-              {navGroups.map((group) => (
+            <nav className="flex-1 overflow-y-auto p-2 pb-3" data-guide="agent-editor-sidebar">
+              {navGroups.map((group, groupIndex) => (
                 <div key={group.key}>
-                  <p className="mx-1.5 mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t(group.labelKey)}</p>
+                  {/* Vue .nav-group-title (4945-4959): 12px/600 placeholder text,
+                      14px side padding; first group hugs the nav top (2px) while
+                      later groups breathe 8px above. */}
+                  <p className={`m-0 px-3.5 pb-[1px] text-[12px] leading-[18px] font-semibold tracking-[0.02em] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))] ${groupIndex === 0 ? 'pt-[2px]' : 'pt-2'}`}>{t(group.labelKey)}</p>
                   {group.items.map((item) => (
                     <button
                       key={item.key}
                       type="button"
-                      className={`mb-[2px] flex w-full cursor-pointer items-center rounded-md border-none bg-transparent px-3 py-[7px] text-left text-[14px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)] ${section === item.key ? 'bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] font-medium text-[var(--td-brand-color,#0052d9)]' : 'text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]'}`}
+                      className={`mb-[2px] flex h-8 w-full cursor-pointer items-center rounded-md border-none bg-transparent px-3 py-0 text-left text-[14px] leading-[20px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)] ${section === item.key ? 'bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] font-medium text-[var(--td-brand-color,#0052d9)]' : 'text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]'}`}
                       data-section-key={item.key}
+                      data-guide={`agent-editor-nav-${item.key}`}
                       onClick={() => setSection(item.key)}
                     >
-                      <span>{t(item.labelKey)}</span>
+                      {/* Vue 29: t-icon 16px + 9px gap, inherits row color */}
+                      <span className="mr-[9px] flex h-4 w-4 shrink-0 items-center justify-center [&_svg]:h-4 [&_svg]:w-4">
+                        <TIcon name={item.icon} />
+                      </span>
+                      <span className="flex-1">{t(item.labelKey)}</span>
                     </button>
                   ))}
                 </div>
@@ -1892,7 +2152,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             </nav>
           </aside>
           <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="flex-1 overflow-y-auto px-10 pt-7 pb-12">
               {renderSection()}
               {editorMode === 'edit' && form.id && !readOnly ? (
                 <div className="mt-8 border-t border-[var(--td-component-stroke,#e7e7e7)] pt-5">
@@ -1900,7 +2160,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                 </div>
               ) : null}
             </div>
-            <footer className="flex flex-col gap-1.5 border-t border-[var(--td-component-stroke,#e7e7e7)] px-6 py-2.5">
+            <footer className="flex flex-col gap-1.5 border-t border-[var(--td-component-stroke,#e7e7e7)] px-10 py-3">
               {/* R486 KB warn — Vue MessagePlugin.warning(kbIncompatibleWarn, 4000);
                   React has no global toast host here, so the warning rides the
                   modal footer as a polite status region (shell share-toast form). */}
@@ -1915,7 +2175,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
               ) : null}
               {saveError ? <p className="m-0 mt-0.5 text-[12px] text-[var(--td-error-color,#d54941)]" role="alert">{saveError}</p> : null}
               <div className="flex justify-end gap-2">
-                <button type="button" className={`${AE_BTN} border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] text-inherit hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]`} data-editor-cancel onClick={onClose}>{t('common.cancel')}</button>
+                <button type="button" className={`${AE_BTN} border border-[var(--td-component-border,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] text-inherit hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]`} data-editor-cancel onClick={onClose}>{t('common.cancel')}</button>
                 {!readOnly ? <button
                   type="button"
                   className={`${AE_BTN} border bg-[var(--td-brand-color,#0052d9)] border-[var(--td-brand-color,#0052d9)] text-white hover:bg-[var(--td-brand-color-hover,#266fe8)] disabled:cursor-not-allowed disabled:opacity-60`}

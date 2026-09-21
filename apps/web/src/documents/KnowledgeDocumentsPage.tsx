@@ -4246,7 +4246,7 @@ export function KnowledgeDocumentsPage({
                         <div className="wk-list-item-copy grid gap-[0.2rem] min-w-0">
                         <button
                           type="button"
-                          className="wk-row-file-name min-w-0 truncate border-0 bg-transparent cursor-pointer p-0 text-left text-ink [font:inherit] text-[14px] font-semibold hover:underline"
+                          className="wk-row-file-name min-w-0 truncate border-0 bg-transparent cursor-pointer p-0 text-left text-ink [font-family:inherit] text-[14px] font-semibold hover:underline"
                           title={displayName(document)}
                           onClick={(event) => { event.stopPropagation(); openDocumentDetail(document); }}
                         >

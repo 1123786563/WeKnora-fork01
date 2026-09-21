@@ -604,12 +604,15 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
 .kb-id-copy svg { width: 14px; height: 14px; }
 
 /* Vue disabled t-radio-group (edit mode): segmented buttons — checked
-   segment #8ce0af/white, disabled segment #eee at 26% text, radius 3. */
+   segment #8ce0af/white, disabled segment #eee at 26% text, radius 3.
+   theme.css .t-is-disabled puts opacity .6 on EVERY segment (checked one
+   included), which is why the Vue pair reads washed-out. */
 .kb-type-tabs {
   display: inline-flex;
   border-radius: 3px;
   overflow: hidden;
   font-size: 14px;
+  opacity: 0.6;
 }
 .kb-type-tab {
   display: inline-flex;
@@ -778,3 +781,6 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
 /* Locked (disabled+checked) indexing checkboxes render grey like the Vue
    t-checkbox is-disabled state, not brand green. */
 .indexing-checks.is-locked input[type='checkbox'] { accent-color: #dcdcdc; }
+/* Vue .indexing-check-item.is-disabled: opacity .7 + not-allowed on the whole
+   card (KnowledgeBaseEditorModal.vue:1937-1941) — not just the checkbox. */
+.indexing-checks.is-locked .indexing-check-item { opacity: 0.7; cursor: not-allowed; }

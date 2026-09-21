@@ -1268,11 +1268,13 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
             <div className="faq-import-header shrink-0 border-b border-[#e3e8f0] px-6 pb-4 pt-6"><h2 className="m-0 text-lg font-semibold leading-[25px] text-ink">{t('knowledgeEditor.faqImport.title')}</h2></div>
             {/* Vue FAQEntryManager.vue:4222 — form items are 24px apart
                 (import-form-item margin-bottom), not 20px. */}
-            <div className="faq-import-content flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6 pb-[35px]">
-              <div className="import-form-item flex flex-col gap-[2px]">
+            <div className="faq-import-content flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6 pb-9">
+              <div className="import-form-item flex flex-col gap-0">
                 {/* Vue import-form-label.required renders a red "*" via ::after
-                    (FAQEntryManager.vue:4290-4294). */}
-                <label className="import-form-label text-sm font-medium leading-[1.5] tracking-[-0.2px] text-ink">{t('knowledgeEditor.faqImport.modeLabel')}<span className="required-mark ml-1 font-semibold text-[#e34d59]">*</span></label>
+                    (FAQEntryManager.vue:4290-4294). Vue label line-height is
+                    `normal` → 20px at 14px (measured); 21px pushed the whole
+                    modal 1px taller. */}
+                <label className="import-form-label text-sm font-medium leading-[20px] tracking-[-0.2px] text-ink">{t('knowledgeEditor.faqImport.modeLabel')}<span className="required-mark ml-1 font-semibold text-[#e34d59]">*</span></label>
                 {/* Vue t-radio-group shrinks to content (measured w=207), so the
                     group must not stretch to the column width. Buttons are
                     t-radio-button: no visible dot, 4px/16px padding → 32px tall,
@@ -1302,16 +1304,20 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       border, min-height 120px, content centered both axes,
                       brand-green 32px icon, 4px icon/text gap. */}
                   <div
-                  className="file-upload-area relative flex h-[120px] cursor-pointer flex-col items-center justify-center gap-1 rounded-[8px] border-2 border-dashed border-[#e7e7e7] bg-[#f3f3f3] px-4 text-center hover:border-accent-deep"
+                  className="file-upload-area relative mr-[-4px] flex h-[120px] cursor-pointer flex-col items-center justify-center gap-3 rounded-[8px] border-2 border-dashed border-[#e7e7e7] bg-[#f3f3f3] text-center hover:border-accent-deep"
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) onImportFile(file); }}
                 >
+                  {/* Vue .file-upload-content: icon and text column 12px apart,
+                      the two text lines 4px apart (FAQEntryManager.vue:4365-4388). */}
                   <UploadIcon size={32} className="upload-icon text-[#07c05f]" />
-                  <span className="upload-primary-text break-all text-sm font-medium leading-[1.5] text-ink">{importFileName ?? t('knowledgeEditor.faqImport.clickToUpload')}</span>
-                  {importFileName ? null : <span className="upload-secondary-text text-xs leading-[18px] text-[rgba(0,0,0,0.6)]">{t('knowledgeEditor.faqImport.dragDropTip')}</span>}
+                  <span className="flex flex-col gap-1">
+                    <span className="upload-primary-text break-all text-sm font-medium leading-[20px] text-ink">{importFileName ?? t('knowledgeEditor.faqImport.clickToUpload')}</span>
+                    {importFileName ? null : <span className="upload-secondary-text text-xs leading-[18px] text-[rgba(0,0,0,0.6)]">{t('knowledgeEditor.faqImport.dragDropTip')}</span>}
+                  </span>
                   <input type="file" className="absolute inset-0 cursor-pointer opacity-0" accept=".json,.csv,.xlsx,.xls,application/json,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImportFile(file); event.target.value = ''; }} />
                 </div>
-                <p className="import-form-tip m-0 text-xs leading-[18px] text-[rgba(0,0,0,0.26)]">{t('knowledgeEditor.faqImport.fileTip')}</p>
+                <p className="import-form-tip m-0 mt-[-2px] text-xs leading-[18px] text-[rgba(0,0,0,0.26)]">{t('knowledgeEditor.faqImport.fileTip')}</p>
               </div>
               {message?.tone === 'error' || message?.tone === 'warning' ? <div className="faq-import-feedback mb-1" role="alert"><Status tone={message.tone}>{message.text}</Status></div> : null}
               {importPreview.length > 0 ? (

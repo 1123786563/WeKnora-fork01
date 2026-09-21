@@ -101,18 +101,20 @@ function rowText(row: ParserEngineRow, key: keyof ParserEngineRow): string {
 
 // Vue ParserEngineSettings.vue .engine-card--{name} .engine-card__badge palette:
 // builtin/weknoracloud green, simple gray, markitdown blue, mineru/paddleocr
-// purple; unknown engines fall back to the base blue wash.
+// purple; unknown engines fall back to the base blue. All badges sit on the
+// neutral secondarycontainer wash (--td-bg-color-secondarycontainer #f3f3f3) —
+// only the glyph color differs (ParserEngineSettings.vue:815-842).
 const BADGE_TONES: Record<string, { bg: string; fg: string }> = {
-  builtin: { bg: 'rgba(7, 192, 95, 0.12)', fg: '#07C05F' },
-  weknoracloud: { bg: 'rgba(7, 192, 95, 0.12)', fg: '#07C05F' },
-  simple: { bg: 'rgba(70, 70, 70, 0.1)', fg: '#464646' },
-  markitdown: { bg: 'rgba(0, 137, 255, 0.12)', fg: '#0089FF' },
-  mineru: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
-  mineru_cloud: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
-  paddleocr_vl: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
-  paddleocr_vl_cloud: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
+  builtin: { bg: '#f3f3f3', fg: '#07C05F' },
+  weknoracloud: { bg: '#f3f3f3', fg: '#07C05F' },
+  simple: { bg: '#f3f3f3', fg: '#464646' },
+  markitdown: { bg: '#f3f3f3', fg: '#0089FF' },
+  mineru: { bg: '#f3f3f3', fg: '#6235BB' },
+  mineru_cloud: { bg: '#f3f3f3', fg: '#6235BB' },
+  paddleocr_vl: { bg: '#f3f3f3', fg: '#6235BB' },
+  paddleocr_vl_cloud: { bg: '#f3f3f3', fg: '#6235BB' },
 };
-const BADGE_BASE = { bg: 'rgba(0, 82, 217, 0.1)', fg: '#0052D9' };
+const BADGE_BASE = { bg: '#f3f3f3', fg: '#0052D9' };
 
 export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient }) {
   // Stable translator: recreating it per render would re-trigger the load
@@ -303,7 +305,7 @@ export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient })
     {!loading ? <>
       {error ? <div className="mb-3 flex items-center gap-2"><Status tone="error">{error}</Status><Button type="button" size="small" onClick={() => { setError(null); void loadEngines(); void loadConfig(); void checkWkcStatus(); }}>{t('settings.parser.retry')}</Button></div> : null}
       {engines.length === 0 && !hasBuiltinEngine ? <Status>{t('settings.parser.noEngineDetected')}</Status> : null}
-      {(engines.length > 0 || hasBuiltinEngine) ? <div className="mt-6 grid grid-cols-1 gap-3 min-[900px]:grid-cols-2 min-[1400px]:grid-cols-3">
+      {(engines.length > 0 || hasBuiltinEngine) ? <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
         {!hasBuiltinEngine ? <EngineCard
           name="builtin" initial={initialOf('builtin')} title={displayOf('builtin')}
           desc={t('settings.parser.builtinDesc')}
@@ -385,15 +387,18 @@ function EngineCard({ name, initial, title, desc, statusLabel, statusTone, statu
         <h3 className="m-0 min-w-0 truncate text-[14px] font-semibold leading-[1.4] text-ink">{title}</h3>
         {/* Vue .engine-card__status: 11px/500, lh 16px, padding 1px 8px 1px 6px,
             radius 10px, neutral secondary-container background. */}
+        {/* Vue .engine-card__status: 11px/500, lh 16px, padding 1px 8px 1px 6px,
+            radius 10px, neutral secondary-container background; on=#067945
+            (success-7) with #00a870 dot, err=#C9353F (error-7) with #e34d59 dot. */}
         <span
-          className={`inline-flex shrink-0 items-center gap-[5px] rounded-[10px] py-[1px] pl-[6px] pr-[8px] text-[11px] font-medium leading-4 ${statusTone === 'on' ? 'bg-[rgba(7,192,95,0.1)] text-[#0a7f43]' : 'bg-[rgba(194,52,52,0.08)] text-[#c23434]'}`}
+          className={`inline-flex shrink-0 items-center gap-[5px] rounded-[10px] bg-[#f3f3f3] py-[1px] pl-[6px] pr-[8px] text-[11px] font-medium leading-4 ${statusTone === 'on' ? 'text-[#067945]' : 'text-[#c9353f]'}`}
           title={statusReason}
         >
-          <span className={`inline-block h-[6px] w-[6px] rounded-full ${statusTone === 'on' ? 'bg-[#0a7f43]' : 'bg-[#c23434]'}`} />
+          <span className={`inline-block h-[6px] w-[6px] rounded-full ${statusTone === 'on' ? 'bg-[#00a870]' : 'bg-[#e34d59]'}`} />
           {statusLabel}
         </span>
       </span>
-      <span className="mt-1 block text-[12px] leading-[1.5] text-muted">{desc}</span>
+      <span className="mt-1 block text-[12px] leading-[1.5] text-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{desc}</span>
     </span>
   </button>;
 }

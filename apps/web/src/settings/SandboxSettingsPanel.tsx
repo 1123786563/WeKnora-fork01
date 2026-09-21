@@ -1757,8 +1757,8 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           <div className="flex items-center gap-[6px]">
           <h2 className="m-0!">{t('settings.sandbox.title')}</h2>
           {/* Page hint popover (SandboxSettings.vue:8-19). */}
-          <details className="wk-sandbox-hint relative ml-[6px] inline-block align-middle">
-            <summary aria-label={t('settings.sandbox.pageHintTitle')}><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 8h.01M12 12v4" /></svg></summary>
+          <details className="wk-sandbox-hint relative inline-block align-middle">
+            <summary aria-label={t('settings.sandbox.pageHintTitle')} className="inline-flex items-center justify-center p-[2px] text-[rgba(0,0,0,0.4)] hover:text-[#07c05f]"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 8h.01M12 12v4" /></svg></summary>
             <div>
               <p className="m-0"><strong>{t('settings.sandbox.pageHintTitle')}</strong></p>
               <p className="wk-muted text-muted m-0">{t('settings.sandbox.pageHint')}</p>
@@ -1768,7 +1768,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           <p className="section-description m-0">{t('settings.sandbox.description')}</p>
         </div>
         <div className="wk-list-actions flex items-center justify-end gap-[0.5rem]">
-          <a className="inline-flex items-center gap-1 text-[13px] font-medium text-[#0a8f4c] no-underline hover:underline" href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 015.8 1c0 2-3 2.4-3 4M12 17h.01" /></svg>{t('settings.sandbox.viewClusterGuide')}</a>
+          <a className="inline-flex items-center gap-[5px] text-[14px] font-semibold text-[#07c05f] no-underline hover:underline" href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 015.8 1c0 2-3 2.4-3 4M12 17h.01" /></svg>{t('settings.sandbox.viewClusterGuide')}</a>
         </div>
         </div>
       </div>
@@ -1784,11 +1784,11 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           <div className="setting-control">
           {data?.workspaceScriptsDisabled ? (
             <button type="button" role="switch" aria-checked="false"
-              className="relative h-[22px] w-10 flex-none cursor-pointer rounded-[11px] border-none bg-[var(--wks-border-strong,#d9d9d9)] p-0 transition-[background] duration-200 ease-[ease] disabled:cursor-not-allowed disabled:opacity-60"
+              className="relative h-5 w-8 flex-none cursor-pointer rounded-[10px] border-none bg-[var(--wks-border-strong,#d9d9d9)] p-0 transition-[background] duration-200 ease-[ease] disabled:cursor-not-allowed disabled:opacity-60"
               disabled={busy}
               aria-label={t('settings.sandbox.scriptPolicyLabel')}
               onClick={() => void setScriptsDisabled(false)}>
-              <span className="absolute left-[2px] top-[2px] h-[18px] w-[18px] rounded-full bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[transform] duration-200 ease-[ease]" aria-hidden="true" />
+              <span className="absolute left-[2px] top-[2px] h-[15px] w-[15px] rounded-full bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[transform] duration-200 ease-[ease]" aria-hidden="true" />
             </button>
           ) : confirmingDisable ? (
             <div role="alertdialog" aria-label={t('settings.sandbox.disableScriptsConfirm')} data-confirm="disable-scripts"
@@ -1802,29 +1802,29 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
             </div>
           ) : (
             <button type="button" role="switch" aria-checked="true"
-              className="relative h-[22px] w-10 flex-none cursor-pointer rounded-[11px] border-none bg-[var(--wks-primary,#00a870)] p-0 transition-[background] duration-200 ease-[ease] disabled:cursor-not-allowed disabled:opacity-60"
+              className="relative h-5 w-8 flex-none cursor-pointer rounded-[10px] border-none bg-[var(--wks-primary,#00a870)] p-0 transition-[background] duration-200 ease-[ease] disabled:cursor-not-allowed disabled:opacity-60"
               disabled={busy}
               aria-label={t('settings.sandbox.scriptPolicyLabel')}
               onClick={() => setConfirmingDisable(true)}>
-              <span className="absolute left-[2px] top-[2px] h-[18px] w-[18px] translate-x-[18px] rounded-full bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[transform] duration-200 ease-[ease]" aria-hidden="true" />
+              <span className="absolute left-[2px] top-[2px] h-[15px] w-[15px] translate-x-[15px] rounded-full bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[transform] duration-200 ease-[ease]" aria-hidden="true" />
             </button>
           )}
           </div>
         </div>
       ) : null}
 
-      <nav className="wk-model-tabs flex flex-wrap gap-[0.35rem] border-b border-b-[#edf0f5]" aria-label={t('settings.sandbox.backendType')}>
-        <button type="button" className={filter === 'all' ? 'border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! [font-weight:650] is-active bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]' : 'text-[13px] bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]'} onClick={() => setFilter('all')}>{t('common.all')}({items.length})</button>
+      <nav className="wk-model-tabs mb-4 flex flex-wrap border-b border-b-[#e7e7e7]" aria-label={t('settings.sandbox.backendType')}>
+        <button type="button" className={filter === 'all' ? 'border-b-[#07c05f]! text-[13px] text-[#07c05f]! font-semibold is-active bg-transparent border-0 border-b-[3px] border-b-transparent text-[rgba(0,0,0,0.6)] cursor-pointer h-12 px-[0.75rem]' : 'text-[13px] bg-transparent border-0 border-b-[3px] border-b-transparent text-[rgba(0,0,0,0.6)] cursor-pointer h-12 px-[0.75rem]'} onClick={() => setFilter('all')}>{t('common.all')}({items.length})</button>
         {SANDBOX_BACKENDS.map((type) => (
-          <button type="button" key={type} className={filter === type ? 'border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! [font-weight:650] is-active bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]' : 'text-[13px] bg-transparent border-0 border-b-2 border-b-transparent text-[#506078] cursor-pointer px-[0.75rem] py-[0.65rem]'} onClick={() => setFilter(type)}>
+          <button type="button" key={type} className={filter === type ? 'border-b-[#07c05f]! text-[13px] text-[#07c05f]! font-semibold is-active bg-transparent border-0 border-b-[3px] border-b-transparent text-[rgba(0,0,0,0.6)] cursor-pointer h-12 px-[0.75rem]' : 'text-[13px] bg-transparent border-0 border-b-[3px] border-b-transparent text-[rgba(0,0,0,0.6)] cursor-pointer h-12 px-[0.75rem]'} onClick={() => setFilter(type)}>
             {backendLabel(type)}({countByType(type)})
           </button>
         ))}
       </nav>
 
       {items.length === 0 ? <div>
-        {canEdit ? <div className="wk-sandbox-grid wk-sandbox-grid--empty"><button type="button" className="flex h-full min-h-[92px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[rgba(120,135,155,0.45)] bg-transparent px-4 py-4 font-[inherit] text-[#7a879c] hover:border-[#0a8f4c] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#0a8f4c]" onClick={openCreate}>
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[#0a8f4c]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
+        {canEdit ? <div className="wk-sandbox-grid wk-sandbox-grid--empty"><button type="button" className="flex h-full min-h-[68px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[rgba(120,135,155,0.45)] bg-transparent pl-[12px] pr-[14px] py-[14px] font-[inherit] text-[rgba(0,0,0,0.4)] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f]" onClick={openCreate}>
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[#07c05f]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
           <span className="text-[13px] font-medium">{t('settings.sandbox.addConfig')}</span>
         </button></div> : null}
         <p className="mb-0 mt-4 text-[13px] text-[rgba(0,0,0,0.4)]">{t('settings.sandbox.noConfigs')}</p>

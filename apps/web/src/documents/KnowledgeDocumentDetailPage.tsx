@@ -40,12 +40,12 @@ function documentCanDownload(document: KnowledgeDocument): boolean {
   return document.source === 'file' || document.source === 'manual' || (!document.source && Boolean(document.file_name));
 }
 
-const DETAIL_COPY: Record<Locale, { load: string; bytes: string; status: string; source: string; folder: string; type: string; root: string; loading: string; retry: string; download: string; downloadFailed: string }> = {
-  'zh-CN': { load: '文档加载失败', bytes: '文档内容读取失败', status: '状态', source: '来源', folder: '文件夹', type: '类型', root: '根目录', loading: '正在加载预览…', retry: '重试预览', download: '下载', downloadFailed: '下载失败。' },
-  'en-US': { load: 'Unable to load document', bytes: 'Unable to load document bytes', status: 'Status', source: 'Source', folder: 'Folder', type: 'Type', root: 'Root', loading: 'Loading preview…', retry: 'Retry preview', download: 'Download', downloadFailed: 'Download failed.' },
-  'ja-JP': { load: 'ドキュメントを読み込めません', bytes: 'ドキュメント内容を読み込めません', status: '状態', source: 'ソース', folder: 'フォルダー', type: '種類', root: 'ルート', loading: 'プレビューを読み込み中…', retry: 'プレビューを再試行', download: 'ダウンロード', downloadFailed: 'ダウンロードに失敗しました。' },
-  'ko-KR': { load: '문서를 불러오지 못했습니다', bytes: '문서 내용을 불러오지 못했습니다', status: '상태', source: '소스', folder: '폴더', type: '유형', root: '루트', loading: '미리보기를 불러오는 중…', retry: '미리보기 다시 시도', download: '다운로드', downloadFailed: '다운로드하지 못했습니다.' },
-  'ru-RU': { load: 'Не удалось загрузить документ', bytes: 'Не удалось загрузить содержимое документа', status: 'Статус', source: 'Источник', folder: 'Папка', type: 'Тип', root: 'Корень', loading: 'Загрузка предпросмотра…', retry: 'Повторить предпросмотр', download: 'Скачать', downloadFailed: 'Не удалось скачать файл.' },
+const DETAIL_COPY: Record<Locale, { load: string; bytes: string; status: string; source: string; folder: string; type: string; root: string; loading: string; retry: string; download: string; downloadFailed: string; fullscreen: string; exitFullscreen: string }> = {
+  'zh-CN': { load: '文档加载失败', bytes: '文档内容读取失败', status: '状态', source: '来源', folder: '文件夹', type: '类型', root: '根目录', loading: '正在加载预览…', retry: '重试预览', download: '下载', downloadFailed: '下载失败。', fullscreen: '全屏', exitFullscreen: '退出全屏' },
+  'en-US': { load: 'Unable to load document', bytes: 'Unable to load document bytes', status: 'Status', source: 'Source', folder: 'Folder', type: 'Type', root: 'Root', loading: 'Loading preview…', retry: 'Retry preview', download: 'Download', downloadFailed: 'Download failed.', fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen' },
+  'ja-JP': { load: 'ドキュメントを読み込めません', bytes: 'ドキュメント内容を読み込めません', status: '状態', source: 'ソース', folder: 'フォルダー', type: '種類', root: 'ルート', loading: 'プレビューを読み込み中…', retry: 'プレビューを再試行', download: 'ダウンロード', downloadFailed: 'ダウンロードに失敗しました。', fullscreen: '全画面表示', exitFullscreen: '全画面表示を終了' },
+  'ko-KR': { load: '문서를 불러오지 못했습니다', bytes: '문서 내용을 불러오지 못했습니다', status: '상태', source: '소스', folder: '폴더', type: '유형', root: '루트', loading: '미리보기를 불러오는 중…', retry: '미리보기 다시 시도', download: '다운로드', downloadFailed: '다운로드하지 못했습니다.', fullscreen: '전체 화면', exitFullscreen: '전체 화면 종료' },
+  'ru-RU': { load: 'Не удалось загрузить документ', bytes: 'Не удалось загрузить содержимое документа', status: 'Статус', source: 'Источник', folder: 'Папка', type: 'Тип', root: 'Корень', loading: 'Загрузка предпросмотра…', retry: 'Повторить предпросмотр', download: 'Скачать', downloadFailed: 'Не удалось скачать файл.', fullscreen: 'На весь экран', exitFullscreen: 'Выйти из полноэкранного режима' },
 };
 
 type ContentView = 'preview' | 'merged' | 'chunks';
@@ -290,10 +290,10 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   // left, download / chart-line header actions at the right, then the drawer
   // close button. The Sheet close button follows the title node, so the
   // actions ride inside the title node's right group.
-  return <Sheet open onClose={onBack} closeLabel={t('common.close')} resizeLabel="Resize drawer" side="right" width="654px" resizable minWidth={480} maxWidth={1600} storageKey="weknora-doc-drawer-width" className="wk-document-detail-drawer [&header_h2]:w-full"
+  return <Sheet open onClose={onBack} closeLabel={t('common.close')} resizeLabel="Resize drawer" side="right" width="653px" resizable minWidth={480} maxWidth={1600} storageKey="weknora-doc-drawer-width" className="wk-document-detail-drawer [&header_h2]:w-full"
     headerIcon={<span className="doc-drawer-header-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#e9f8ec] text-[#07c05f]"><FileDetailIcon size={16} /></span>}
     title={<span className="doc-drawer-header-inner flex w-full min-w-0 items-center justify-between gap-2">
-      <span className="doc-drawer-header-title truncate text-[15px] font-medium text-[rgba(0,0,0,0.9)]">{detailTitle}</span>
+      <span className="doc-drawer-header-title truncate text-[15px] font-semibold text-[rgba(0,0,0,0.9)]">{detailTitle}</span>
       <span className="doc-drawer-header-actions flex shrink-0 items-center gap-1">
         {headerDownloadVisible ? <button type="button" className="header-action-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] hover:bg-hover-wash hover:text-[#07c05f]" aria-label={copy.download} title={copy.download} onClick={() => void downloadHeader()}>{headerDownloadState === 'loading' ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /> : <DownloadIcon size={16} />}</button> : null}
         {document ? <button type="button" className="header-action-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] hover:bg-hover-wash hover:text-[#07c05f]" aria-label={t('knowledgeBase.timeline.title')} title={t('knowledgeBase.timeline.title')} onClick={() => setTraceOpen(true)}><ChartLineIcon size={16} /></button> : null}
@@ -703,6 +703,18 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
   const [metadataDraft, setMetadataDraft] = useState<MetadataDraftRow[]>(() => metadataRowsFromObject(document.custom_metadata as Record<string, unknown> | undefined));
   const [detailsSaving, setDetailsSaving] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
+  // Vue document-preview.vue previewRoot: the inline (non-fullscreen) toolbar
+  // hosts the fullscreen toggle above the preview surface.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const togglePreviewFullscreen = () => {
+    const el = previewRef.current;
+    if (!el) return;
+    try {
+      const doc = window.document as Document & { fullscreenElement?: Element | null; exitFullscreen?: () => Promise<void> };
+      if (doc.fullscreenElement === el) void doc.exitFullscreen?.();
+      else void el.requestFullscreen?.();
+    } catch { /* embedded hosts may disallow the Fullscreen API (Vue:133-135) */ }
+  };
 
   useEffect(() => {
     // Vue fetches preview/audio content purely from type + extension
@@ -767,14 +779,17 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
   const contentLabel = document.type === 'url' ? t('knowledgeBase.webContent') : document.type === 'manual' ? t('knowledgeBase.documentContent') : t('knowledgeBase.fileContent');
   const customMetadata = (document.custom_metadata as Record<string, unknown> | undefined) ?? {};
   const hasCustomMetadata = Object.keys(customMetadata).length > 0;
-  const sectionTitleClass = 'm-0 flex items-center gap-2 text-[13px] font-semibold text-ink before:h-[14px] before:w-[3px] before:shrink-0 before:rounded-[2px] before:bg-primary before:content-[""]';
+  const sectionTitleClass = 'm-0 mb-1 flex items-center gap-2 text-[13px] font-semibold text-ink before:h-[14px] before:w-[3px] before:shrink-0 before:rounded-[2px] before:bg-primary before:content-[""]';
   const tabs = CONTENT_TABS[locale];
   return <>
     {detailsError ? <Status tone="error">{detailsError}</Status> : null}
-    {/* ── 基本信息 (Vue setting-drawer__section + doc-detail-rows) ── */}
-    <section className="wk-document-metadata-section border-b border-line-soft pb-4">
-      <h4 className={sectionTitleClass + ' mb-3'}>{t('knowledgeBase.detailSectionMeta')}</h4>
-      <dl className="wk-document-metadata m-0 flex flex-col gap-[10px] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dd]:text-[13px] [&_dt]:w-[72px] [&_dt]:shrink-0 [&_dt]:text-[12px] [&_dt]:leading-[1.6] [&_dt]:text-muted">
+    {/* ── 基本信息 (Vue setting-drawer__section + doc-detail-rows) ──
+        Vue section: padding 12px 0 16px, flex-column gap 14px, first-child
+        padding-top 0 (doc-content.vue:2284-2299); the measured Vue rhythm
+        leaves ~19px under the dl before the section border. */}
+    <section className="wk-document-metadata-section flex flex-col gap-[14px] border-b border-line-soft pb-[19px]">
+      <h4 className={sectionTitleClass}>{t('knowledgeBase.detailSectionMeta')}</h4>
+      <dl className="wk-document-metadata m-0 flex flex-col gap-[10px] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dd]:text-[13px] [&_dd]:leading-[1.6] [&_dt]:w-[72px] [&_dt]:shrink-0 [&_dt]:text-[12px] [&_dt]:leading-[1.6] [&_dt]:text-muted">
         {documentTime ? <div className="doc-detail-row flex items-start gap-3"><dt>{timeLabel}</dt><dd>{formatDetailTime(documentTime)}</dd></div> : null}
         <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.infoCard.type')}</dt><dd>{/* Vue doc-content.vue:1648 t-tag variant="light" — 浅灰底无边框，非描边盒。 */}
 <span className="doc-type-tag inline-flex rounded-[3px] bg-surface-muted px-[6px] py-0 text-[12px] leading-[20px] text-[rgba(0,0,0,0.9)]">{typeLabel}</span></dd></div>
@@ -783,19 +798,19 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
       </dl>
     </section>
     {/* ── 自定义元数据 (Vue metadata-section) ── */}
-    <section className="border-b border-line-soft py-4" aria-label={t('knowledgeBase.customMetadata')}>
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <section className="flex flex-col gap-[14px] border-b border-line-soft pt-3 pb-4" aria-label={t('knowledgeBase.customMetadata')}>
+      <div className="flex items-center justify-between gap-2">
         <h4 className={sectionTitleClass}>{t('knowledgeBase.customMetadata')}<InfoOutlineIcon size={14} className="text-muted" /></h4>
         {canEdit && !metadataEditing ? <IconActionButton label={t('common.edit')} onClick={() => { setDetailsError(null); const rows = metadataRowsFromObject(document.custom_metadata as Record<string, unknown> | undefined); setMetadataDraft(rows.length ? rows : [metadataRow()]); setMetadataEditing(true); }}><EditIcon size={15} /></IconActionButton> : null}
       </div>
       {metadataEditing ? <MetadataEditor rows={metadataDraft} saving={detailsSaving} onChange={setMetadataDraft} onCancel={() => { setMetadataEditing(false); setDetailsError(null); }} onSave={(value) => void saveDetails({ custom_metadata: value })} />
       : hasCustomMetadata ? <div className="metadata-grid grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">{Object.entries(customMetadata).map(([key, value]) => <div key={key} className="metadata-item flex min-w-0 flex-col rounded-[6px] bg-surface-muted px-2 py-1"><span className="metadata-item-key truncate text-[12px] text-muted">{key}</span><span className="metadata-item-value truncate text-[13px] text-ink">{formatMetadataValue(value)}</span></div>)}</div>
-      : canEdit ? <button type="button" className="metadata-empty-action flex w-fit cursor-pointer items-center gap-[5px] border-0 bg-transparent p-0 text-[13px] text-muted hover:text-[#07c05f]" onClick={() => { setDetailsError(null); setMetadataDraft([metadataRow()]); setMetadataEditing(true); }}><PlusIcon size={15} /><span>{t('knowledgeBase.addMetadataField')}</span></button>
+      : canEdit ? <button type="button" className="metadata-empty-action flex min-h-[28px] w-fit cursor-pointer items-center gap-[5px] rounded-[4px] border-0 bg-transparent px-1 py-0 text-[12px] text-muted hover:bg-[#e9f8ec] hover:text-[#07c05f]" onClick={() => { setDetailsError(null); setMetadataDraft([metadataRow()]); setMetadataEditing(true); }}><PlusIcon size={15} /><span>{t('knowledgeBase.addMetadataField')}</span></button>
       : <span className="text-[13px] text-muted">{t('knowledgeBase.noCustomMetadata')}</span>}
     </section>
     {/* ── 摘要 (Vue summary-section) ── */}
-    <section className="border-b border-line-soft py-4" aria-label={t('knowledgeBase.documentSummary')}>
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <section className="flex flex-col gap-[14px] border-b border-line-soft pt-4 pb-[21px]" aria-label={t('knowledgeBase.documentSummary')}>
+      <div className="flex items-center justify-between gap-2">
         <h4 className={sectionTitleClass}>{t('knowledgeBase.documentSummary')}</h4>
         {canEdit && !summaryEditing ? <span className="flex items-center gap-1">
           <IconActionButton label={t('common.edit')} onClick={() => { setSummaryDraft(String(document.description || '')); setSummaryEditing(true); }}><EditIcon size={15} /></IconActionButton>
@@ -804,25 +819,25 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
       </div>
       {summaryEditing ? <><textarea value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} className="min-h-[100px] w-full rounded-control border border-line-soft p-2" /><div className="mt-2 flex gap-2"><Button type="button" loading={detailsSaving} onClick={() => void saveDetails({ description: summaryDraft })}>{t('common.save')}</Button><Button type="button" onClick={() => setSummaryEditing(false)}>{t('common.cancel')}</Button></div></>
       : summaryDraft ? <p className="m-0 whitespace-pre-wrap text-[13px] text-ink">{summaryDraft}</p>
-      : <div className="summary_loading flex min-h-[42px] items-center gap-2 rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-surface px-3 py-3 text-[13px] text-muted">
+      : <div className="summary_loading box-border flex min-h-[67px] items-center gap-2 rounded-[6px] border border-dashed border-[var(--wk-border,#e4e7ec)] bg-surface p-3 text-[13px] text-muted">
           <FileUnknownIcon size={18} className="shrink-0" />
           <span>{t('knowledgeBase.noDocumentSummary')}</span>
-          {canEdit ? <button type="button" aria-label={t('knowledgeBase.generateSummary')} className="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[13px] text-muted hover:text-[#07c05f]"><RefreshIcon size={14} /><span>{t('knowledgeBase.generateSummary')}</span></button> : null}
+          {canEdit ? <button type="button" aria-label={t('knowledgeBase.generateSummary')} className="flex cursor-pointer items-center gap-[8px] border-0 bg-transparent pl-[7px] pr-0 py-0 text-[12px] leading-[20px] text-muted hover:text-[#07c05f]"><RefreshIcon size={14} /><span>{t('knowledgeBase.generateSummary')}</span></button> : null}
         </div>}
     </section>
-    {/* ── 文件内容 (Vue doc-content-section) ── */}
-    <section className="doc-content-section pt-3">
-      <div className="doc-content-section-head mb-3 flex flex-wrap items-center justify-between gap-3">
+    {/* ── 文件内容 (Vue doc-content-section: last section — gap 12px, no bottom border/padding) ── */}
+    <section className="doc-content-section flex flex-col gap-3 pt-3">
+      <div className="doc-content-section-head flex flex-wrap items-center justify-between gap-3">
         <div className="doc-content-section-head-left flex min-w-0 flex-1 items-center gap-2">
           <h4 className={sectionTitleClass}>{contentLabel}</h4>
         </div>
         <div className="view-mode-buttons flex items-center gap-2">
-          {canPreviewDocument(document) ? <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'preview' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('preview')}>{tabs.preview}</button> : null}
+          {canPreviewDocument(document) ? <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[3px] px-[7px] py-0 text-[12px] leading-[20px] ' + (contentView === 'preview' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('preview')}>{tabs.preview}</button> : null}
           {/* Vue doc-content.vue:1821-1830 — the 全文 tab renders ONLY when
               the document is not previewable (canPreview() false branch);
               previewable documents show 预览 + 查看分块 only. */}
-          {!canPreviewDocument(document) ? <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'merged' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('merged')}>{tabs.merged}</button> : null}
-          <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'chunks' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('chunks')}>{tabs.chunks}</button>
+          {!canPreviewDocument(document) ? <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[3px] px-[7px] py-0 text-[12px] leading-[20px] ' + (contentView === 'merged' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('merged')}>{tabs.merged}</button> : null}
+          <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[3px] px-[7px] py-0 text-[12px] leading-[20px] ' + (contentView === 'chunks' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('chunks')}>{tabs.chunks}</button>
         </div>
       </div>
       {/* Vue pins an embedded audio player above the content views for audio
@@ -830,8 +845,19 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
           preview tab; the blob is already fetched by the preview effect. */}
       {inlineKind === 'audio' && previewState.status === 'blob' ? <div className="wk-document-audio-player mb-3 border-b border-line-soft pb-3"><DocumentPreviewContent kind="audio" url={previewState.url} fileName={model.fileName} /></div> : null}
       {contentView === 'preview' ? (previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? (inlineKind === 'markdown'
-          ? <div className='wk-document-md-preview rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-surface p-4'><DocumentMarkdownBody markdown={previewState.text} labels={MERMAID_VIEWER_COPY[locale]} className='md-content min-w-0 text-[14px] leading-[1.6] text-ink [overflow-wrap:anywhere]' /></div>
-          : <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} mermaidLabels={MERMAID_VIEWER_COPY[locale]} />) : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
+        // Vue document-preview.vue:484 + :497-505 — the preview mounts inside
+        // .document-preview (min-height 200px) with an inline toolbar row
+        // (fullscreen toggle, right-aligned) above the .preview-markdown card
+        // (radius 6, padding 20px 24px, max-height calc(100vh - 200px)).
+        ? <div ref={previewRef} className="document-preview relative min-h-[200px]" aria-label={model.fileName}>
+            {/* Vue preview-toolbar (inline): a bordered row ~38px tall with the
+                fullscreen toggle right-aligned, 8px above the preview card. */}
+            <div className="preview-toolbar-actions mt-[10px] mb-2 flex h-[38px] items-center justify-end border-b border-[var(--wk-border,#e7e7e7)] bg-surface">
+              <button type="button" className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:bg-[#e9f8ec] hover:text-[#07c05f]" aria-label={copy.fullscreen} title={copy.fullscreen} onClick={togglePreviewFullscreen}><FullscreenIcon size={15} /></button>
+            </div>
+            <div className='wk-document-md-preview max-h-[calc(100vh-200px)] overflow-auto rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-surface'><DocumentMarkdownBody markdown={previewState.text} labels={MERMAID_VIEWER_COPY[locale]} className='md-content min-w-0 text-[14px] leading-[1.7] text-ink [overflow-wrap:anywhere]' /></div>
+          </div>
+        : <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} mermaidLabels={MERMAID_VIEWER_COPY[locale]} />) : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
     </section>
     <DocumentChunks client={client} document={document} canEdit={canEdit} view={contentView} parentContextCache={parentContextCache} />
   </>;
@@ -843,30 +869,31 @@ function formatMetadataValue(value: unknown): string {
   return String(value);
 }
 
-/** Vue doc-content icon-action-btn: small square text button with tooltip copy. */
+/** Vue doc-content icon-action-btn: 28x28 square text button with tooltip copy
+    (doc-content.vue:2176-2188); hover goes brand green on brand-light wash. */
 function IconActionButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" aria-label={label} title={label} className="icon-action-btn inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-muted hover:bg-hover-wash hover:text-ink" onClick={onClick}>{children}</button>;
+  return <button type="button" aria-label={label} title={label} className="icon-action-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] hover:bg-[#e9f8ec] hover:text-[#07c05f]" onClick={onClick}>{children}</button>;
 }
 
 /** Vue header doc icon (doc-drawer-header-icon): green file glyph on the light brand wash. */
 function FileDetailIcon({ size = 16 }: { size?: number }) {
-  return <Icon stroke={size}><path d="M6 2.5h7l4.5 4.5v13a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 20V4A1.5 1.5 0 016 2.5z" /><path d="M13 2.5V7h4.5" /></Icon>;
+  return <Icon size={size}><path d="M6 2.5h7l4.5 4.5v13a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 20V4A1.5 1.5 0 016 2.5z" /><path d="M13 2.5V7h4.5" /></Icon>;
 }
 
 function EditIcon({ size = 15 }: { size?: number }) {
-  return <Icon stroke={size}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 013 3L8 18l-4 1 1-4z" /></Icon>;
+  return <Icon size={size}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 013 3L8 18l-4 1 1-4z" /></Icon>;
 }
 
 function DownloadIcon({ size = 16 }: { size?: number }) {
-  return <Icon stroke={size}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></Icon>;
+  return <Icon size={size}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></Icon>;
 }
 
 function ChartLineIcon({ size = 16 }: { size?: number }) {
-  return <Icon stroke={size}><path d="M3 3v18h18" /><path d="M7 14l4-4 3 3 5-6" /></Icon>;
+  return <Icon size={size}><path d="M3 3v18h18" /><path d="M7 14l4-4 3 3 5-6" /></Icon>;
 }
 
 function RefreshIcon({ size = 15 }: { size?: number }) {
-  return <Icon stroke={size}><path d="M21 4v6h-6" /><path d="M3 20v-6h6" /><path d="M21 10a9 9 0 00-15-5.5L3 7" /><path d="M3 14a9 9 0 0015 5.5L21 17" /></Icon>;
+  return <Icon size={size}><path d="M21 4v6h-6" /><path d="M3 20v-6h6" /><path d="M21 10a9 9 0 00-15-5.5L3 7" /><path d="M3 14a9 9 0 0015 5.5L21 17" /></Icon>;
 }
 
 function InfoOutlineIcon({ size = 14, className }: { size?: number; className?: string }) {
@@ -874,11 +901,16 @@ function InfoOutlineIcon({ size = 14, className }: { size?: number; className?: 
 }
 
 function PlusIcon({ size = 15 }: { size?: number }) {
-  return <Icon stroke={size}><path d="M12 5v14M5 12h14" /></Icon>;
+  return <Icon size={size}><path d="M12 5v14M5 12h14" /></Icon>;
 }
 
 function FileUnknownIcon({ size = 18, className }: { size?: number; className?: string }) {
   return <Icon size={size} className={className}><path d="M6 2.5h7l4.5 4.5v13a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 20V4A1.5 1.5 0 016 2.5z" /><path d="M13 2.5V7h4.5" /><path d="M9.5 13a2.5 2.5 0 114 2c-.8.6-1.5 1-1.5 2" /><path d="M12 19.5h.01" /></Icon>;
+}
+
+// Vue 全屏/收起 preview-toolbar 按钮（document-preview.vue:497-505 t-icon fullscreen）。
+function FullscreenIcon({ size = 15 }: { size?: number }) {
+  return <Icon size={size}><path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3" /></Icon>;
 }
 
 function Icon({ size = 16, stroke, className, children }: { size?: number; stroke?: number; className?: string; children: React.ReactNode }) {

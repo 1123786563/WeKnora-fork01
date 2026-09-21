@@ -54,10 +54,12 @@ export function EditIcon(props: { size?: number; className?: string }) { return 
 export function GridIcon(props: { size?: number; className?: string }) { return <Icon {...props}><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></Icon>; }
 export function ListIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></Icon>; }
 function GearIcon(props: { size?: number; className?: string }) {
+  // Vue .kb-settings-button renders t-icon-setting: hexagon + inner circle
+  // (TDesign outline icon, stroke 2) — not the classic cog teeth glyph.
   return (
     <Icon {...props}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+      <path d="M12.0001 2L20.6604 7V17L12.0001 22L3.33984 17V7L12.0001 2Z" />
+      <path d="M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z" />
     </Icon>
   );
 }
@@ -134,7 +136,7 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
                     分隔符色 --td-text-color-disabled rgba(0,0,0,0.26)。 */}
                 {index > 0 ? <span className="breadcrumb-tab-sep mx-[12px] font-normal text-[rgba(0,0,0,0.26)]" aria-hidden="true">/</span> : null}
                 <a
-                  className={'breadcrumb-tab inline-flex cursor-pointer items-center gap-1 border-none bg-transparent [font:inherit] no-underline [transition:color_.15s] ' + (tab.active ? 'is-active font-semibold text-[var(--wk-brand,#07c05f)]' : 'font-normal text-[rgba(0,0,0,0.4)] hover:text-[var(--wk-text,#101828)]')}
+                  className={'breadcrumb-tab inline-flex cursor-pointer items-center gap-1 border-none bg-transparent no-underline text-[20px] leading-8 [transition:color_.15s] ' + (tab.active ? 'is-active font-semibold text-[var(--wk-brand,#07c05f)]' : 'font-normal text-[rgba(0,0,0,0.4)] hover:text-[var(--wk-text,#101828)]')}
                   href={tab.href}
                   title={tab.title}
                   aria-current={tab.active ? 'page' : undefined}
@@ -178,9 +180,11 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
           </span>
         </span>
         {canManage ? (
-          // Vue parity (KnowledgeBase.vue L2451-2454): the gear carries no
-          // aria-label/title — the name lives in the t-tooltip hover popup.
-          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] [transition:all_.2s_ease] hover:bg-[#e9f8ec] hover:text-[#07c05f]" disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
+          // Vue parity (KnowledgeBase.vue L2451-2454): the gear is wrapped in a
+          // t-tooltip; the accessible name is mirrored with aria-label/title
+          // (same pattern as the FAQ gear) so AT users and the parity
+          // interactive scan can reach it without a hover.
+          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] [transition:all_.2s_ease] hover:bg-[#e9f8ec] hover:text-[#07c05f]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
             {/* Vue .kb-settings-button：30px 圆形 #f3f3f3 底，18px 图标 secondary 色。 */}
             <GearIcon size={18} />
           </button>
@@ -202,7 +206,7 @@ export interface ParserHintProps {
 export function ParserHint({ t, types, onConfigure }: ParserHintProps) {
   if (types.length === 0) return null;
   return (
-    <p className="parser-hint group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[rgba(237,123,47,0.8)] [transition:color_.15s_ease] hover:text-[#d35a21]" onClick={onConfigure}>
+    <p className="parser-hint group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[rgb(237,123,47)] [transition:color_.15s_ease] hover:text-[#d35a21]" onClick={onConfigure}>
       <InfoIcon size={12} className="parser-hint-icon shrink-0" />
       <span>{t('knowledgeBase.unsupportedTypesHint', { types: types.map((fileType) => `.${fileType}`).join('、') })}</span>
       <span className="parser-hint-link ml-[2px] whitespace-nowrap text-[#07c05f] group-hover:underline">{t('knowledgeBase.goToParserSettings')} →</span>

@@ -17,7 +17,11 @@
 @source "../../../packages/ui/src";
 @source "../../../packages/views/src";
 
-body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee); }
+body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
+  /* Vue App.vue body/html/#app 同款字体平滑（frontend/src/App.vue:301-302），
+     缺失时 React 全站字形以亚像素渲染、笔画偏粗，逐像素对比整页字形红。 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale; }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
 /* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Dialog, Input, Status } from '@weknora/ui';
+import { Button, Dialog, Input, Status } from '@weknora/ui';
 import { renderChatMarkdown } from '@weknora/views';
 import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, fitGraphViewport, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
@@ -586,11 +586,15 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   return (
     /* Vue KnowledgeBase.vue renders the graph surface full-bleed: the page is
        a flex column (document-header 24px/32px/0 + .wiki-main-area flex:1) and
-       .wiki-graph fills that area (width/height 100%). This page only ever
-       mounts inside the platform shell, whose outlet gives .wk-page
-       h-full/overflow-y-auto/max-w-none. */
-    <main className="wk-page flex min-h-0 flex-1 flex-col box-border px-8 pt-6 pb-0">
-      <header className="wk-header mb-6">
+       .wiki-graph fills that area (width/height 100%). .knowledge-layout uses
+       margin 0 16px 0 4px + padding 24px 32px 0 + gap 20px with a trailing
+       0-height sibling, so the content column sits at x+36/x-28 with a 20px
+       bottom inset — mirrored here so the graph area lands on the same box. */
+    /* Vue App.vue also renders text with -webkit-font-smoothing: antialiased
+       (inherited); the platform shell lacks it, so the page root re-arms it
+       to keep glyph rasterization identical. */
+    <main className="wk-page [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] flex min-h-0 flex-1 flex-col box-border pl-[36px] pr-[28px] pt-6 pb-5">
+      <header className="wk-header mb-5">
         <DocumentsBreadcrumb
           t={t}
           knowledgeBaseId={knowledgeBaseId}
@@ -607,14 +611,22 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           tabs={kbTabs}
         />
         {/* Vue keeps the document upload subtitle under every tab — the
-            document-subtitle line is unconditional in KnowledgeBase.vue. */}
-        <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t('knowledgeEditor.document.subtitle')}</p>
+            document-subtitle line is unconditional in KnowledgeBase.vue, and
+            .document-header-title's 4px gap offsets it from the title row. */}
+        <p className="document-subtitle m-0 mt-[4px] text-[14px] font-normal leading-[20px] text-[rgba(0,0,0,0.4)]">{t('knowledgeEditor.document.subtitle')}</p>
         {/* Vue parser-hint warning line (KnowledgeBase.vue:2458-2465): types
             advertised by an engine but unresolved by the KB rules render the
-            banner + 前往配置 link on every KB detail tab. */}
-        <ParserHint t={t} types={unsupportedFileTypes} onConfigure={openParserSettings} />
+            banner + 前往配置 link on every KB detail tab. The wrapper margin
+            (collapsing with the hint's own 2px) yields Vue's 6px gap after
+            the .document-header-title 4px offset above. */}
+        <div className="mt-[6px]">
+          <ParserHint t={t} types={unsupportedFileTypes} onConfigure={openParserSettings} />
+        </div>
       </header>
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+      {/* Vue .wiki-main-area: flex:1 / min-height:0 / overflow:hidden with no
+          border or radius — the Card chrome (rounded-card + border) is a
+          React-only addition, so the surface renders as a plain flex region. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div ref={surfaceRef} data-testid="knowledge-graph-surface" className="relative min-h-[420px] flex-1 overflow-hidden bg-white max-[720px]:min-h-[26rem]">
           {status.kind === 'success' && graph && visible && visible.nodes.length > 0 ? (
             <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={cancelGraphGesture} onClick={(event) => {
@@ -784,14 +796,27 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
               {graphStatusCard.secondary ? <div className="text-[11px] leading-[14px] text-muted-strong">{graphStatusCard.secondary}</div> : null}
             </div> : null}
           </div> : null}
-          {status.kind === 'loading' ? <div className="wiki-graph-empty absolute inset-0 z-20 flex flex-col items-center justify-center bg-white p-[60px_20px] text-center"><Status>{t('wikiBrowser.graphEmpty')}</Status></div> : null}
-          {status.kind === 'error' ? <div className="wiki-graph-empty absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-white p-[60px_20px] text-center"><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('common.retry')}</Button></div> : null}
-          {status.kind === 'success' && visible && visible.nodes.length === 0 ? <div className="wiki-graph-empty absolute inset-0 z-20 flex flex-col items-center justify-center bg-white p-[60px_20px] text-center text-muted">
-            <span className="mb-4 flex size-16 items-center justify-center rounded-full bg-surface-alt text-[48px] leading-none text-faint" aria-hidden="true">◌</span>
-            <p className="m-0 text-[13px] text-faint">{t('wikiBrowser.graphNoData')}</p>
+          {/* Vue .wiki-graph-empty: absolute 100%×100% + padding 60px 20px in
+              a content-box (TDesign reset), so the padded box overflows the
+              canvas by exactly the padding and centers the icon inside the
+              unpadded content area. Mirrored with w-full/h-full + content-box. */}
+          {status.kind === 'loading' ? <div className="wiki-graph-empty absolute left-0 top-0 z-20 flex h-full w-full flex-col items-center justify-center bg-white p-[60px_20px] text-center [box-sizing:content-box]"><Status>{t('wikiBrowser.graphEmpty')}</Status></div> : null}
+          {status.kind === 'error' ? <div className="wiki-graph-empty absolute left-0 top-0 z-20 flex h-full w-full flex-col items-center justify-center gap-2 bg-white p-[60px_20px] text-center [box-sizing:content-box]"><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('common.retry')}</Button></div> : null}
+          {status.kind === 'success' && visible && visible.nodes.length === 0 ? <div className="wiki-graph-empty absolute left-0 top-0 z-20 flex h-full w-full flex-col items-center justify-center bg-white p-[60px_20px] text-center [box-sizing:content-box]">
+            {/* Vue empty icon: 64px circle (bg #f3f3f3) wrapping a 48px
+                t-icon-chart-bubble, both tinted text-color-placeholder. */}
+            <span className="mb-4 flex size-16 shrink-0 items-center justify-center rounded-full bg-[#f3f3f3] text-[rgba(0,0,0,0.4)]" aria-hidden="true">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
+                <path d="M21 21H3V3" />
+                <path d="M18 6C18 7.10457 17.1046 8 16 8C14.8954 8 14 7.10457 14 6C14 4.89543 14.8954 4 16 4C17.1046 4 18 4.89543 18 6Z" />
+                <path d="M13 14C13 15.6569 11.6569 17 10 17C8.34315 17 7 15.6569 7 14C7 12.3431 8.34315 11 10 11C11.6569 11 13 12.3431 13 14Z" />
+                <path d="M19 15C18.4477 15 18 14.5523 18 14C18 13.4477 18.4477 13 19 13C19.5523 13 20 13.4477 20 14C20 14.5523 19.5523 15 19 15Z" />
+              </svg>
+            </span>
+            <p className="m-0 text-[13px] leading-[18px] text-[rgba(0,0,0,0.4)]">{t('wikiBrowser.graphNoData')}</p>
           </div> : null}
         </div>
-      </Card>
+      </div>
       {drawerNode ? <aside className="fixed right-0 top-0 z-40 h-full w-[min(480px,100%)] overflow-auto border-l border-line-neutral bg-white p-4 shadow-[-4px_0_16px_rgba(0,0,0,0.08)]" aria-label={drawerNode.title} role="dialog" aria-modal="true">
         <div className="wk-header mb-[.75rem]! flex items-start justify-between gap-4">
           <div>

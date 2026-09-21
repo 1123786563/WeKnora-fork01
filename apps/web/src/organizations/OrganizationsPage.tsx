@@ -23,11 +23,11 @@ import emptyIllustration from './empty-organizations.svg';
 const ORG_CARD = 'group relative box-border flex h-[136px] min-h-[136px] cursor-pointer flex-col overflow-hidden rounded-[8px] border border-[#e7e7ea] bg-surface px-[14px] py-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] [transition:border-color_.25s_ease,box-shadow_.25s_ease,transform_.2s_ease] hover:border-[rgba(7,192,95,0.5)] hover:shadow-[0_6px_20px_rgba(7,192,95,0.12)] before:pointer-events-none before:absolute before:top-0 before:right-0 before:z-0 before:h-[80px] before:w-[120px] before:bg-[radial-gradient(ellipse_60%_50%_at_100%_0%,rgba(7,192,95,0.06)_0%,transparent_70%)] before:content-[""]';
 const ORG_SKEL_BLOCK = 'animate-[orgSkelPulse_1.4s_ease-in-out_infinite] rounded-[6px] bg-[linear-gradient(90deg,#f2f2f3_25%,#e9e9ec_37%,#f2f2f3_63%)] [background-size:400%_100%]';
 const ORG_CARD_WRAP = 'grid grid-cols-1 gap-[12px] animate-[orgContentFadeIn_0.32s_ease-out] min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6';
-const ORG_BTN = 'box-border inline-flex min-h-[32px] cursor-pointer items-center justify-center gap-0 rounded-[3px] border px-[15px] py-0 font-[inherit] text-[14px] font-medium [transition:all_.2s_ease] disabled:cursor-not-allowed disabled:opacity-55';
+const ORG_BTN = 'box-border inline-flex min-h-[32px] cursor-pointer items-center justify-center gap-0 rounded-[3px] border px-4 py-0 font-[inherit] text-[14px] font-medium [transition:all_.2s_ease] disabled:cursor-not-allowed disabled:opacity-55';
 const ORG_BTN_PRIMARY = ORG_BTN + ' border-0 bg-accent text-white shadow-[0_2px_8px_rgba(7,192,95,0.25)] hover:shadow-[0_4px_14px_rgba(7,192,95,0.35)]';
 const ORG_BTN_OUTLINE = ORG_BTN + ' border-[rgba(7,192,95,0.5)] bg-surface text-accent hover:border-accent hover:bg-accent-wash';
 const ORG_BTN_NEUTRAL = ORG_BTN + ' border-[#e7e7ea] bg-surface text-[rgba(23,26,29,0.92)] hover:border-[#c9c9cf]';
-const ORG_FIELD = 'box-border w-full rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[6px] font-[inherit] text-[14px] text-[rgba(23,26,29,0.92)] focus:border-accent focus:outline-none';
+const ORG_FIELD = 'box-border w-full rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[6px] font-[inherit] text-[14px]! text-[rgba(23,26,29,0.92)] focus:border-accent focus:outline-none';
 const ORG_MEMBER_ROW = 'flex items-center justify-between gap-[12px] border-b border-[#e7e7ea] py-[10px] last:border-b-0';
 const ORG_MEMBER_COPY = 'flex min-w-0 flex-col gap-[2px]';
 const ORG_ROW_ACTIONS = 'flex shrink-0 items-center gap-[8px]';
@@ -239,6 +239,66 @@ const IconOrgCreate = ({ size = 16 }: { size?: number }) => (
     <path d="M10 10C8.8 7.5 7.8 3.8 4.8 3.8C2.2 3.8 0.8 6.8 0.8 10C0.8 13.2 2.2 16.2 4.8 16.2C7.8 16.2 8.8 12.5 10 10C11.2 7.5 12.5 5.5 14.5 5.5C16.5 5.5 18 7.5 18 10C18 12.5 16.5 14.5 14.5 14.5C12.5 14.5 11.2 12.5 10 10Z" stroke="#07C05F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
   </svg>
 );
+
+/* Settings-modal nav icons — t-icon replicas (tdesign-icons-vue-next): 24px
+ * grid, transparent fills, 1px currentColor strokes with square caps. Path
+ * data copied verbatim so the modal rail matches the Vue drawer pixel-for-
+ * pixel (OrganizationSettingsModal.vue navItems L993-1027). */
+const ORG_NAV_ICON_PATHS: Record<string, { fill?: string[]; stroke: string[] }> = {
+  'info-circle': {
+    fill: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z'],
+    stroke: [
+      'M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z',
+      'M12 16.5L12 11M12 7.5L11.9961 7.5L11.9961 7.49609L12 7.49609L12 7.5Z',
+    ],
+  },
+  'user-safety': {
+    fill: [
+      'M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z',
+      'M15.5 14.5C17.8954 14.5 20.1046 14.5 22.5 14.5V19.1336C22.5 19.8089 22.1592 20.4387 21.5938 20.808L19 22.5024L16.4062 20.808C15.8408 20.4387 15.5 19.8089 15.5 19.1336V14.5Z',
+    ],
+    stroke: [
+      'M11.5 15H8C5.23858 15 3 17.2386 3 20V21H11.5508M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z',
+      'M15.5 14.5C17.8954 14.5 20.1046 14.5 22.5 14.5V19.1336C22.5 19.8089 22.1592 20.4387 21.5938 20.808L19 22.5024L16.4062 20.808C15.8408 20.4387 15.5 19.8089 15.5 19.1336V14.5Z',
+    ],
+  },
+  user: {
+    stroke: ['M11.5 15H8C5.23858 15 3 17.2386 3 20V21H16M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z'],
+  },
+  'user-add': {
+    fill: ['M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z'],
+    stroke: [
+      'M11 15H8C5.23858 15 3 17.2386 3 20V21H11.0508M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z',
+      'M18 14V18M18 18V22M18 18H14M18 18H22',
+    ],
+  },
+  'folder-open': {
+    fill: ['M22 10L22 20L2 20L2 7.5L9 7.5L11 10L18 10L22 10Z'],
+    stroke: ['M22 10V20L2 20L2 7.5H9L11 10H22Z', 'M22 6L13 6L11 3.5L2 3.5'],
+  },
+  'control-platform': {
+    fill: ['M12 2L21 7V17L12 22L3 17V7L12 2Z'],
+    stroke: ['M12 12L20.5 7.5M12 12V21.5M12 12L3.5 7.5M12 2L21 7V17L12 22L3 17V7L12 2Z'],
+  },
+};
+function OrgNavIcon({ name }: { name: string }) {
+  const def = ORG_NAV_ICON_PATHS[name] ?? ORG_NAV_ICON_PATHS['info-circle']!;
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" width={16} height={16}>
+      {(def.fill ?? []).map((d) => <path key={'f' + d.slice(0, 24)} fill="transparent" d={d} />)}
+      {def.stroke.map((d) => <path key={'s' + d.slice(0, 24)} stroke="currentColor" strokeWidth={1} strokeLinecap="square" d={d} />)}
+    </svg>
+  );
+}
+/* Vue navItems icon per section key (OrganizationSettingsModal.vue L993-1010). */
+const ORG_NAV_ICON_BY_KEY: Record<string, string> = {
+  basic: 'info-circle',
+  permissions: 'user-safety',
+  members: 'user',
+  joinRequests: 'user-add',
+  sharedKb: 'folder-open',
+  sharedAgents: 'control-platform',
+};
 
 /* SpaceAvatar ported from frontend/src/components/SpaceAvatar.vue. */
 const AVATAR_GRADIENTS: Array<[string, string]> = [
@@ -1178,20 +1238,25 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
             <button type="button" className={ORG_CLOSE_BTN} aria-label={t(locale, 'common.close')} onClick={closeSettings}><IconClose /></button>
             <div className="flex min-h-0 flex-1">
               {settingsMode === 'create' || (settingsMode === 'edit' && settingsOrg) ? (
-                <nav className="box-border w-[208px] shrink-0 overflow-y-auto border-r border-[#e7e7ea] bg-[#f9f9f9] px-2 py-2 max-[720px]:hidden">
-                  <h2 className="m-0 mb-[12px] ml-[6px] text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}</h2>
+                <nav className="box-border w-[208px] shrink-0 overflow-y-auto border-r border-[#e7e7e7] bg-[#f9f9f9] px-2 pt-2 pb-3 max-[720px]:hidden">
+                  {/* Vue sidebar-header (L1976-1987): 16/14/12 padding + hairline
+                      bottom border; the title row spans the full 208px rail. */}
+                  <h2 className="m-0 -mx-2 border-b border-[#e7e7e7] px-3.5 pb-3 pt-2 text-[16px] font-semibold leading-[22px] text-[rgba(0,0,0,0.9)]">{t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}</h2>
                   {/* R487 K1 — Vue navGroups (L1028-1058): the navigation
                       renders as TITLED groups (基础 / 成员与协作 / 共享资源),
                       create mode keeps the single 基础 group; group titles and
                       items flatten into the nav as siblings (Vue v-for) and
-                      badges mirror Vue L30-33. */}
-                  {organizationSettingsNavGroups(settingsMode, settingsCanManage).flatMap((group) => [
-                    <div key={group.key + '-title'} className="px-[10px] pb-[2px] pt-[6px] text-[12px] font-semibold tracking-[0.02em] text-[rgba(23,26,29,0.4)]">{t(locale, group.titleKey)}</div>,
+                      badges mirror Vue L30-33. Row metrics = Vue .nav-item
+                      (L2012-2035): 32px rows, 14px text, 6px radius, active
+                      gray-1 pill with brand text. */}
+                  {organizationSettingsNavGroups(settingsMode, settingsCanManage).flatMap((group, groupIndex) => [
+                    <div key={group.key + '-title'} className={'px-[6px] pb-[1px] text-[12px] font-semibold leading-[18px] tracking-[0.02em] text-[rgba(0,0,0,0.4)] ' + (groupIndex === 0 ? 'pt-[10px]' : 'pt-2')}>{t(locale, group.titleKey)}</div>,
                     ...group.items.filter((key) => settingsNavLabels[key]).map((key) => {
                       const badge = settingsNavBadges[key];
                       const showBadge = badge !== undefined && (settingsNavBadgeAlways.has(key) || badge > 0);
                       return (
-                        <button key={key} type="button" className={'flex w-full cursor-pointer items-center gap-[8px] rounded-[8px] border-0 px-[10px] py-[9px] text-left font-[inherit] text-[13px] ' + (settingsSection === key ? 'bg-accent-wash font-medium text-accent' : 'bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5]')} onClick={() => setSettingsSection(key)}>
+                        <button key={key} type="button" className={'mb-[2px] flex h-8 w-full cursor-pointer items-center rounded-md border-0 px-3 py-0 text-left font-[inherit] text-[14px] leading-[20px] ' + (settingsSection === key ? 'bg-[#f3f3f3] font-medium text-accent' : 'bg-transparent text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]')} onClick={() => setSettingsSection(key)}>
+                          <span className="mr-[9px] flex h-4 w-4 shrink-0 items-center justify-center [&_svg]:h-4 [&_svg]:w-4"><OrgNavIcon name={ORG_NAV_ICON_BY_KEY[key] ?? 'info-circle'} /></span>
                           <span className="min-w-0 flex-1 truncate">{t(locale, settingsNavLabels[key])}</span>
                           {showBadge ? <span data-nav-badge className={'inline-flex h-[16px] min-w-[16px] shrink-0 items-center justify-center rounded-[8px] px-[4px] text-[11px] font-medium leading-none ' + (key === 'requests' ? 'bg-[rgba(250,173,20,0.14)] text-[#faad14]' : 'bg-accent-wash text-accent')}>{badge}</span> : null}
                         </button>
@@ -1216,20 +1281,33 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                   {showSettingsRoleHint ? <div className="mb-[16px] flex items-center gap-[8px] rounded-[8px] bg-[rgba(46,109,230,0.06)] px-[12px] py-[10px] text-[13px] text-[rgba(23,26,29,0.7)]"><IconInfoCircle size={18} /><span>{writeGuardTitle}</span></div> : null}
                   {settingsMode === 'create' && settingsSection === 'basic' ? (
                     <form id="organization-create-form" onSubmit={submitCreate}>
-                      <h2 className="m-0 mb-2 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.basicTitle')}</h2>
-                      <p className="m-0 mb-6 text-[14px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.basicDesc')}</p>
-                      <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6 max-[720px]:grid-cols-1">
-                        <div><label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.nameTip')}</p></div>
-                        <div className="flex min-w-0 items-center gap-3"><div className="relative flex shrink-0 flex-col items-center gap-1"><button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)} disabled={!settingsCanManage}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button><span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.avatar')}</span>{avatarPickerOpen ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}</div><Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required placeholder={t(locale, 'organization.namePlaceholder')} /></div>
+                      {/* Vue section-header (L2115-2140): 20px/600 title, 14px
+                          description at 8px, block closes with 20px. */}
+                      <h2 className="m-0 ml-px text-[20px] font-semibold leading-[28px] text-[rgba(0,0,0,0.9)]">{t(locale, 'organization.editor.basicTitle')}</h2>
+                      <p className="m-0 mb-5 ml-px mt-2 text-[14px] leading-[21px] text-[rgba(0,0,0,0.6)]">{t(locale, 'organization.editor.basicDesc')}</p>
+                      {/* Vue setting-row (L2173-2216): 16px vertical padding
+                          (first row pt-0), hairline divider, 42% label column +
+                          right-justified control column. */}
+                      <div className="flex items-start justify-between gap-6 border-b border-[#e7e7e7] pt-0 pb-4">
+                        <div className="ml-px min-w-0 w-[42%] max-w-[42%] shrink-0">
+                          <label className="mb-1 block text-[15px] font-medium leading-[21px] text-[rgba(0,0,0,0.9)]" htmlFor="organization-name">{t(locale, 'organization.name')} <span aria-hidden="true" className="ml-[2px] text-[#e34d59]">*</span></label>
+                          <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t(locale, 'organization.editor.nameTip')}</p>
+                        </div>
+                        <div className="flex min-w-0 max-w-[58%] flex-1 basis-[58%] items-start justify-end overflow-hidden">
+                          <div className="flex w-full min-w-0 items-center gap-3"><div className="relative flex shrink-0 flex-col items-center gap-1 p-1"><button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)} disabled={!settingsCanManage}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button><span className="text-[11px] leading-[1.2] text-[rgba(0,0,0,0.4)]">{t(locale, 'organization.avatar')}</span>{avatarPickerOpen ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}</div><Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[32px] w-auto flex-1'} value={formName} onChange={(event) => setFormName(event.target.value)} required placeholder={t(locale, 'organization.namePlaceholder')} /></div>
+                        </div>
                       </div>
-                      <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6 max-[720px]:grid-cols-1">
-                        <div><label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.descriptionTip')}</p></div>
+                      <div className="flex items-start justify-between gap-6 border-0 pt-4 pb-4">
+                        <div className="ml-px min-w-0 w-[42%] max-w-[42%] shrink-0">
+                          <label className="mb-1 block text-[15px] font-medium leading-[21px] text-[rgba(0,0,0,0.9)]" htmlFor="organization-description">{t(locale, 'organization.description')}</label>
+                          <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t(locale, 'organization.editor.descriptionTip')}</p>
+                        </div>
                         {/* R484 G4 D6 — Vue t-textarea :maxlength="500" shows
                             the TDesign 0/500 counter (OrganizationSettingsModal
                             line 102). */}
-                        <div className="min-w-0">
-                          <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} />
-                          <p className="m-0 mt-1 text-right text-[12px] text-[rgba(23,26,29,0.4)]">{formDescription.length}/500</p>
+                        <div className="min-w-0 max-w-[58%] flex-1 basis-[58%]">
+                          <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[80px] resize-none'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} />
+                          <p className="m-0 mt-1 text-right text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)]">{formDescription.length}/500</p>
                         </div>
                       </div>
                     </form>
@@ -1580,7 +1658,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                     </>
                   ) : null}
                 </div>
-                <div className="flex justify-end gap-[12px] border-t border-[#e7e7ea] px-[24px] pt-[12px] pb-[16px]">
+                <div className="flex justify-end gap-[12px] border-t border-[#e7e7ea] px-[40px] pt-[12px] pb-[12px]">
                   <button type="button" className={ORG_BTN_NEUTRAL} onClick={closeSettings}>{t(locale, 'common.cancel')}</button>
                   {/* R484 G4 D6 — Vue create-mode confirm reads common.create
                       (OrganizationSettingsModal.vue line 809), not the modal

@@ -181,12 +181,14 @@ const AUDIT_COLUMNS: Array<{ key: string; label: string; width?: number; minWidt
 ];
 // Vue t-pagination default: borderless numbers, radius 3px, 24px box; current =
 // brand #07c05f fill + white text; hover = brand text on transparent.
-const PAGER_BTN = 'inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent px-[0.3rem] py-0 font-normal text-[rgb(0_0_0/90%)] [font:inherit]';
+const PAGER_BTN = 'inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent px-1 py-0 font-normal text-[rgb(0_0_0/90%)] [font:inherit]';
 // wk-tag base + tone variants — Vue t-tag default variant="dark": solid theme
 // color fill + white text (owner=primary #07c05f, admin=warning, contributor/
 // accepted=success #00a870), small size = height 20px, radius 3px, padding 0 7px.
-// Vue t-tag size-s：padding 0 4px + 1px 透明边框，lh 20px（实测）
-const WK_TAG_BASE = 'inline-flex h-5 items-center rounded-[3px] border border-solid border-transparent text-xs font-normal leading-[20px] px-[4px] whitespace-nowrap ';
+// Vue t-tag size-s：padding 0 4px + 1px 透明边框，lh 20px（实测）；box-border
+// 使 h-5=20px 含边框（全局无 border-box reset）；相对 baseline 悬挂，
+// +0.3px 使文字 Range 与 Vue t-tag 文字 y 对齐（邀请行 -0.19 / 成员行 +0.41）。
+const WK_TAG_BASE = 'relative top-[0.3px] inline-flex box-border h-5 items-center rounded-[3px] border border-solid border-transparent text-xs font-normal leading-[20px] px-[4px] whitespace-nowrap align-middle ';
 function wkTag(tone: 'primary' | 'success' | 'warning' | 'danger' | 'default'): string {
   switch (tone) {
     case 'primary': return WK_TAG_BASE + 'bg-[#07c05f] text-white';
@@ -286,11 +288,11 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
     else setJump(String(page));
   }
 
-  // Vue t-pagination 实测：外框 padding 10px 14px，整体色 rgba(0,0,0,0.6)，
-  // 每页选择框 88x24，跳至区 #f3f3f3 圆角 3 内嵌 48x20 输入框。
+  // Vue t-pagination 实测：内容行高 24px、上下 padding 10px（border-t +
+  // 灰底区 294~337），邀请表 pager 透出 shell 灰底、成员表白底。
   return <div className="data-table-shell__pager flex flex-wrap items-center justify-end gap-2 border-t border-[var(--wk-border,#dce3ed)] box-border py-[0.625rem] px-[0.875rem] text-xs text-[rgba(0,0,0,0.6)] max-[720px]:justify-start">
-    <span className="mr-auto">{tr('tenantMembersPanel.pager.total', { total })}</span>
-    <Select className="w-[88px]! h-6! min-h-6! py-0! mr-2!" value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
+    <span className="mr-auto leading-[20px]">{tr('tenantMembersPanel.pager.total', { total })}</span>
+    <Select className="w-[88px]! h-6! min-h-6! py-0! mr-2! text-xs!" value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
       {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{tr('tenantMembersPanel.pager.sizePerPage', { size })}</option>)}
     </Select>
     <button type="button" className={PAGER_BTN + ' disabled:text-[rgb(0_0_0/26%)] disabled:cursor-not-allowed disabled:opacity-50 enabled:hover:text-accent'} aria-label={tr('common.previous')} disabled={page <= 1} onClick={() => onPage(page - 1)}><Icon name="chevron-left" size={16} /></button>
@@ -298,7 +300,7 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
       ? <span key={'e' + index} className="wk-pager__ellipsis">…</span>
       : <button key={entry} type="button" className={PAGER_BTN + " aria-[current=page]:bg-accent aria-[current=page]:text-white [&:not([aria-current='page']):hover]:text-accent"} aria-current={entry === page ? 'page' : undefined} onClick={() => onPage(entry)}>{entry}</button>)}
     <button type="button" className={PAGER_BTN + ' disabled:text-[rgb(0_0_0/26%)] disabled:cursor-not-allowed disabled:opacity-50 enabled:hover:text-accent'} aria-label={tr('common.next')} disabled={page >= maxPage} onClick={() => onPage(page + 1)}><Icon name="chevron-right" size={16} /></button>
-    <span className="inline-flex h-6 w-[128px] items-center gap-2 rounded-[3px] bg-[#f3f3f3] pl-2">
+    <span className="inline-flex h-6 w-[123px] items-center gap-2 rounded-[3px] bg-[#f3f3f3] pl-2">
       {tr('tenantMembersPanel.pager.jumper')}
       <Input className="h-5! min-h-5! w-12! rounded-[3px]! border-[#dcdcdc]! px-2! text-center! text-[12px]! text-[rgba(0,0,0,0.9)]!" type="text" inputMode="numeric" value={jump}
         onChange={(event) => setJump(event.target.value)}
@@ -700,7 +702,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
             {/* Vue TenantMembers.vue L45-50: the audit entry sits in the
                 title cluster right after the (i) trigger, not right-aligned. */}
             {canViewAudit ? <Button type="button" variant="text" className="h-6! min-h-6! rounded-[3px]! px-[7px] py-0 text-[12px] leading-[20px]! text-[rgba(0,0,0,0.9)]! hover:text-primary!" onClick={openAuditDrawer}>
-              <Icon name="history" size={16} /> {tr('tenantMember.audit.tabLabel')}
+              <Icon name="history" size={16} /> <span className="leading-[20px]">{tr('tenantMember.audit.tabLabel')}</span>
             </Button> : null}
           </div>
         </div>
@@ -715,7 +717,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
 
     <div className="flex flex-col gap-5">
       {canManage ? <div className="pending-invitations-section">
-        <div className="mb-[11px] flex flex-col gap-1">
+        <div className="mb-[10px] flex flex-col gap-1">
           <div className="inline-flex items-center gap-2">
             <span className="text-sm font-semibold text-[rgba(0,0,0,0.9)]">{tr('tenantInvitation.pendingSectionTitle')}</span>
             <span className="members-list-count-badge inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full bg-[#f3f3f3] px-[7px] text-xs font-semibold leading-none text-[rgba(0,0,0,0.9)]">{invitationsTotal}</span>
@@ -746,11 +748,11 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                         <td className={TD}>
                           <div className="member-cell flex flex-col gap-[2px] min-w-0 py-[2px]">
                             {isShareLink ? <>
-                              <span className="inline-flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[rgba(0,0,0,0.9)]"><Icon name="link" size={14} /> {tr('tenantInvitation.shareLink.cellTitle')}</span>
-                              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-[1.35] text-[rgba(0,0,0,0.6)]">{(invitation.accepted_count ?? 0) > 0 ? tr('tenantInvitation.shareLink.cellAccepted', { count: invitation.accepted_count ?? 0 }) : tr('tenantInvitation.shareLink.cellEmpty')}</span>
+                              <span className="inline-flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-[22px] text-[rgba(0,0,0,0.9)]"><Icon name="link" size={14} /> {tr('tenantInvitation.shareLink.cellTitle')}</span>
+                              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-[17px] text-[rgba(0,0,0,0.6)]">{(invitation.accepted_count ?? 0) > 0 ? tr('tenantInvitation.shareLink.cellAccepted', { count: invitation.accepted_count ?? 0 }) : tr('tenantInvitation.shareLink.cellEmpty')}</span>
                             </> : <>
-                              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[rgba(0,0,0,0.9)]">{inviteePrimary(invitation)}</span>
-                              {invitation.invitee_email && invitation.invitee_name ? <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-[1.35] text-[rgba(0,0,0,0.6)]">{invitation.invitee_email}</span> : null}
+                              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-[22px] text-[rgba(0,0,0,0.9)]">{inviteePrimary(invitation)}</span>
+                              {invitation.invitee_email && invitation.invitee_name ? <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-[17px] text-[rgba(0,0,0,0.6)]">{invitation.invitee_email}</span> : null}
                             </>}
                           </div>
                         </td>
@@ -760,9 +762,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                         <td className={TD}><span className={invitationStatusClass(invitation.status)}>{statusLabel}</span></td>
                         <td className={TD}>
                           <div className="inline-flex items-center gap-0">
-                            {invitation.status === 'pending' && invitation.invite_url ? <Button type="button" className="h-6! w-6! min-h-6! min-w-6! bg-transparent! border-transparent! shadow-none!" aria-label={tr('tenantInvitation.copyLink')} title={tr('tenantInvitation.copyLink')} onClick={() => void copyText(invitation.invite_url ?? '')}><Icon name="copy" /></Button> : null}
+                            {invitation.status === 'pending' && invitation.invite_url ? <Button type="button" className="h-6! w-6! min-h-6! min-w-6! bg-transparent! border-transparent! shadow-none! p-0! text-[rgba(0,0,0,0.9)]!" aria-label={tr('tenantInvitation.copyLink')} title={tr('tenantInvitation.copyLink')} onClick={() => void copyText(invitation.invite_url ?? '')}><Icon name="copy" /></Button> : null}
                             {invitation.status === 'pending' ? <span className="relative inline-flex">
-                              <Button type="button" className="h-6! w-6! min-h-6! min-w-6! bg-transparent! border-transparent! shadow-none! text-[#b3352f]! hover:bg-[rgba(227,77,89,0.08)]!" aria-label={tr('tenantInvitation.revoke.button')} title={tr('tenantInvitation.revoke.button')} onClick={() => setRevokeConfirmKey(revokeConfirmKey === invitation.id ? null : invitation.id)}><Icon name="close" /></Button>
+                              <Button type="button" className="h-6! w-6! min-h-6! min-w-6! bg-transparent! border-transparent! shadow-none! p-0! text-[#e34d59]! hover:bg-[rgba(227,77,89,0.08)]!" aria-label={tr('tenantInvitation.revoke.button')} title={tr('tenantInvitation.revoke.button')} onClick={() => setRevokeConfirmKey(revokeConfirmKey === invitation.id ? null : invitation.id)}><Icon name="close" /></Button>
                               {revokeConfirmKey === invitation.id ? <div className="absolute left-0 top-[calc(100%_+_0.3rem)] z-[25] box-border w-max max-w-[16rem] rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-[0.65rem] py-[0.55rem] text-xs text-[rgba(0,0,0,0.9)] shadow-[0_10px_28px_rgb(23_32_51/18%)]" role="alertdialog" aria-label={tr('tenantInvitation.revoke.button')}>
                                 <p className="m-0 mb-[0.45rem]">{isShareLink ? tr('tenantInvitation.shareLink.revokeConfirm') : tr('tenantInvitation.revoke.confirmBody', { email: invitation.invitee_email || invitation.invitee_user_id })}</p>
                                 <div className="flex justify-end gap-[0.4rem]">
@@ -783,15 +785,18 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
             </div>}
       </div> : null}
 
-      <div className="members-list-wrap mt-[3px]">
-        <div className="members-list-header mb-[8px] flex flex-wrap items-center justify-between gap-3 px-[0.125rem]">
+      {/* mt 4.3px：邀请 shell 底（gap-5=20px 上邻）到列表头 y363.3 的 Vue 实测链距 */}
+      <div className="members-list-wrap mt-[4.3px]">
+        <div className="members-list-header mb-[10px] flex flex-wrap items-center justify-between gap-3 px-[0.125rem]">
           <div className="inline-flex min-w-0 items-center gap-2">
-            <span className="members-list-title text-sm font-semibold text-[rgba(0,0,0,0.9)]">{tr('tenantMember.listTitle')}</span>
+            <span className="members-list-title text-sm font-semibold leading-[normal] text-[rgba(0,0,0,0.9)]">{tr('tenantMember.listTitle')}</span>
             <span className="members-list-count-badge inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full bg-[#f3f3f3] px-[7px] text-xs font-semibold leading-none text-[rgba(0,0,0,0.9)]">{total}</span>
           </div>
           <div className="m-0 inline-flex min-w-0 flex-[0_1_auto] items-center gap-2 max-[720px]:flex-wrap max-[720px]:w-full max-[720px]:justify-start">
-            <form className="relative w-[196px]" role="search" onSubmit={search}>
-              <span className="pointer-events-none absolute left-[0.45rem] top-1/2 inline-flex -translate-y-1/2 items-center justify-center text-[rgba(0,0,0,0.4)]"><Icon name="search" /></span>
+            {/* flex：input 换成 flex item，避免 inline-block baseline descent 把
+                form 撑到 25.5px（Vue 列表头行高 24px） */}
+            <form className="relative flex w-[196px]" role="search" onSubmit={search}>
+              <span className="pointer-events-none absolute left-[0.55rem] top-1/2 inline-flex -translate-y-1/2 items-center justify-center text-[rgba(0,0,0,0.4)]"><Icon name="search" /></span>
               <Input type="search" className="w-full h-6! min-h-6! rounded-[3px]! border-[#dcdcdc]! px-[1.9rem]! py-0! text-[12px]! text-[rgba(0,0,0,0.9)]! focus-visible:[outline:var(--wk-focus-ring,3px_solid_rgb(46_109_230/35%))] focus-visible:outline-offset-2" aria-label={tr('tenantMember.searchPlaceholder')} placeholder={tr('tenantMember.searchPlaceholder')} value={query} onChange={(event) => setQuery(event.target.value)} />
               {query ? <button type="button" className="absolute right-[0.35rem] top-1/2 inline-flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)]" aria-label={tr('tenantMembersPanel.clearSearch')} onClick={clearSearch}><Icon name="close" size={12} /></button> : null}
             </form>
@@ -828,8 +833,8 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                       return <tr key={member.user_id} className={TR_HOVER + (isSelf ? ' bg-[#f3f3f3]' : '')}>
                         <td className={TD}>
                           <div className="member-cell flex flex-col gap-[2px] min-w-0 py-[2px]">
-                            <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-[rgba(0,0,0,0.9)]">{memberPrimary(member)}</span>
-                            {memberSecondary(member) ? <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-[1.35] text-[rgba(0,0,0,0.6)]">{memberSecondary(member)}</span> : null}
+                            <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-[22px] text-[rgba(0,0,0,0.9)]">{memberPrimary(member)}</span>
+                            {memberSecondary(member) ? <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-[17px] text-[rgba(0,0,0,0.6)]">{memberSecondary(member)}</span> : null}
                           </div>
                         </td>
                         <td className={TD}>
@@ -844,7 +849,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                         <td className={TD}>{formatDate(member.joined_at, locale)}</td>
                         <td className={TD}>
                           {canManage && !isSelf ? <span className="relative inline-flex">
-                            <Button type="button" className="h-6! w-6! min-h-6! min-w-6! bg-transparent! border-transparent! shadow-none! text-[#b3352f]! hover:bg-[rgba(227,77,89,0.08)]!" aria-label={tr('tenantMember.remove.button')} title={tr('tenantMember.remove.button')}
+                            <Button type="button" className="h-6! w-6! min-h-6! min-w-6! bg-transparent! border-transparent! shadow-none! p-0! text-[#e34d59]! hover:bg-[rgba(227,77,89,0.08)]!" aria-label={tr('tenantMember.remove.button')} title={tr('tenantMember.remove.button')}
                               onClick={() => setRemoveConfirmKey(removeConfirmKey === member.user_id ? null : member.user_id)}>
                               <Icon name="user-clear" />
                             </Button>

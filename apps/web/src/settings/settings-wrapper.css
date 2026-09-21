@@ -141,15 +141,55 @@
 .wk-settings-section .setting-control--model select { max-width: 280px; width: 280px; }
 
 /* Item F4: chathistory stats section (ChathistorySettings.vue lines 35-55) */
-.stats-section { margin-top: 20px; }
-.stats-title { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+/* Item F4 remainder, re-aligned to ChatHistorySettings.vue:259-336 (R5xx sweep):
+   stats-section margin-top 32 + padding-top 24 + #e7e7e7 top border; title
+   16px/600 mb-16; cards/empty use --td-bg-color-secondarycontainer #f3f3f3,
+   radius 8; empty padding 24, title 14px/500 secondary mb-4, desc 13px
+   placeholder. */
+.stats-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid #e7e7e7; }
+.stats-title { font-size: 16px; font-weight: 600; color: rgba(0, 0, 0, 0.9); margin: 0 0 16px; }
 .stats-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
-.stat-card { background: #fff; border: 1px solid rgba(120, 135, 155, 0.3); border-radius: 10px; padding: 16px; text-align: center; }
-.stat-value { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 600; }
-.stat-label { color: #5c6b83; font-size: 12px; margin-top: 4px; }
-.stats-empty { background: rgba(127, 142, 166, 0.06); border: 1px dashed rgba(120, 135, 155, 0.35); border-radius: 10px; padding: 28px 16px; text-align: center; }
-.stats-empty-title { font-weight: 600; margin: 0 0 6px; }
-.stats-empty-desc { color: #5c6b83; font-size: 13px; margin: 0; }
+.stat-card { background: #f3f3f3; border: 0; border-radius: 8px; padding: 20px; text-align: center; }
+.stat-value { font-size: 28px; font-variant-numeric: tabular-nums; font-weight: 700; color: #07c05f; }
+.stat-label { color: rgba(0, 0, 0, 0.6); font-size: 13px; margin-top: 4px; }
+.stats-empty { background: #f3f3f3; border: 0; border-radius: 8px; padding: 24px; text-align: center; }
+.stats-empty-title { font-size: 14px; font-weight: 500; color: rgba(0, 0, 0, 0.6); margin: 0 0 4px; }
+.stats-empty-desc { color: rgba(0, 0, 0, 0.4); font-size: 13px; margin: 0; }
+
+/* —— R5xx settings 面板清扫切片 —————————————————————————————————————— */
+
+/* ParserEngineSettings.vue 卡片走 TDesign 中性灰 token（--td-text-color-*
+   rgba(0,0,0,.9/.6/.4)、--td-component-stroke #e7e7e7、
+   --td-bg-color-secondarycontainer #f3f3f3），而 React 全局 --color-* 系
+   蓝-gray（#172033/#66758b/#edf0f5），是 parser 面板全文本/边线泛红的根因。
+   仅在面板子树重映射（同 .runtime-queues 先例）。 */
+.parser-engine-settings {
+  --color-ink: rgba(0, 0, 0, 0.9);
+  --color-ink-strong: rgba(0, 0, 0, 0.9);
+  --color-muted: rgba(0, 0, 0, 0.6);
+  --color-muted-strong: rgba(0, 0, 0, 0.9);
+  --color-faint: rgba(0, 0, 0, 0.4);
+  --color-line-soft: #e7e7e7;
+  --color-surface-wash: #f3f3f3;
+}
+
+/* OllamaSettings.vue:422-438 — setting-control 列宽固定 360px（min=max），
+   info 列 padding-right 32px、desc line-height 1.6；地址输入与警告 alert
+   同列等宽（Vue 实测 alert 与输入框同为 757→1116px）。 */
+.wk-settings-ollama .setting-control { min-width: 360px; max-width: 360px; }
+.wk-settings-ollama .setting-info { padding-right: 32px; }
+.wk-settings-ollama .setting-info .desc { line-height: 1.6; }
+
+/* ChatHistorySettings.vue 的行不在 620px 窄表单里：settings-group 全宽
+   （启用开关右缘贴面板右缘 x≈1116，分割线全宽），行间距由 20px 行内边距
+   提供（Vue .settings-group gap 0，无表单 grid gap）。 */
+.wk-chathistory-settings .wk-settings-editor { max-width: none; gap: 0; margin-bottom: 0; }
+
+/* SystemAuditLog.vue:627-650 — 面板自持 section-header，下边距 20px（非
+   共享的 32px），无分割线；刷新按钮 20×20、图标 12px、占位色。 */
+.wk-system-audit .section-header { margin-bottom: 20px; }
+.wk-system-audit .wk-audit-refresh { width: 20px; height: 20px; font-size: 12px; color: rgba(0, 0, 0, 0.4); }
+.wk-system-audit .wk-audit-empty { min-height: 280px; }
 
 /* Vue RuntimeQueues.vue (frontend/src/views/system/RuntimeQueues.vue) — rq-* slice.
    Vue td tokens mapped: --td-text-color-primary→--color-ink, secondary→--color-muted,
@@ -157,6 +197,16 @@
    bg-color-container→--color-surface, bg-color-secondarycontainer→--color-surface-muted,
    success→--color-success, warning→--color-warning, error→--color-danger-strong. */
 .runtime-queues { color: var(--color-ink); }
+/* 像素级 token 对齐：Vue RuntimeQueues.vue 用的是 TDesign 原值
+   --td-text-color-primary rgba(0,0,0,.9) / secondary rgba(0,0,0,.6) /
+   placeholder rgba(0,0,0,.4)，而 React 的 --color-ink/#172033、
+   --color-muted/#66758b、--color-faint/#98a2b8 在 b 通道差 25-40，
+   是 queues 全页文本泛红的根因。仅在 .runtime-queues 子树重映射。 */
+.runtime-queues {
+  --color-ink: rgba(0, 0, 0, 0.9);
+  --color-muted: rgba(0, 0, 0, 0.6);
+  --color-faint: rgba(0, 0, 0, 0.4);
+}
 .rq-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
 .rq-header h2 { margin: 0 0 8px; color: var(--color-ink); font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
 .rq-header .section-description { max-width: 560px; margin: 0; color: var(--color-muted); font-size: 14px; line-height: 1.6; text-wrap: pretty; }
@@ -297,19 +347,32 @@
    old registry copy for runtime-queues; suppress it only when this panel's own
    header is present (SettingsPage.tsx is out of this agent's scope). */
 .wk-settings-section:has(.runtime-queues) > .wk-settings-panel-heading { display: none; }
-/* TenantMembers.vue t-table medium geometry: header cells ~47px, body rows
-   ~69px (td 56px base + cell padding). The React tables carry element
-   utilities that came out ~14px/9px short, so the whole list below the first
-   row drifted. Scoped to the members section. */
-[data-testid="tenant-members-settings"] .data-table-shell thead th { height: 47px; padding-top: 0; padding-bottom: 0; }
-[data-testid="tenant-members-settings"] .data-table-shell tbody td { height: 69px; padding-top: 0; padding-bottom: 0; }
+/* TenantMembers.vue t-table 几何与 tdesign 线色（headless+像素实测）：
+   - 外框 #e7e7e7（--td-component-stroke），行线 #dcdcdc（--td-component-border）
+     由 td border-bottom 提供（tdesign 模式），pager border-top #e7e7e7。
+   - 邀请表壳 .pending-invitations-table 整体 #f3f3f3
+     （--td-bg-color-secondarycontainer），表格区被白底 table 盖住、pager 区
+     透明露灰（y294~337 实测灰带）。
+   - 邀请表 th 47px 含 1px 底线（内容中心 y200.1、底线渲染 y223）；成员表
+     th 46px（内容中心 y421.3、底线 y443）。邀请 td 68.9px（行底线 y292 与
+     pager 顶线 y293 双线，同 Vue）；成员 td 68.5px 无底线（Vue isSelf 灰行
+     无可见行线，仅 pager 顶线 y513）。Scoped to the members section. */
+[data-testid="tenant-members-settings"] .data-table-shell { border-color: #e7e7e7; }
+[data-testid="tenant-members-settings"] .data-table-shell table { background: #fff; }
+[data-testid="tenant-members-settings"] .pending-invitations-section .data-table-shell { background: #f3f3f3; }
+[data-testid="tenant-members-settings"] .data-table-shell thead th { height: 46px; border-bottom: 1px solid #dcdcdc; padding-top: 0; padding-bottom: 0; }
+[data-testid="tenant-members-settings"] .members-list-wrap .data-table-shell thead th { border-bottom: 0; }
+[data-testid="tenant-members-settings"] .data-table-shell tbody td { height: 68.9px; border-top: 0; border-bottom: 1px solid #dcdcdc; padding-top: 0; padding-bottom: 0; }
+[data-testid="tenant-members-settings"] .members-list-wrap .data-table-shell tbody td { height: 69px; border-bottom: 0; }
+[data-testid="tenant-members-settings"] .members-list-wrap .data-table-shell__pager { padding-top: 9px; }
+[data-testid="tenant-members-settings"] .data-table-shell__pager { border-top-color: #e7e7e7; }
 
 /* Vue PlatformAPIKeys.vue — pak-* slice (platform-api-keys section). */
 .platform-api-keys { width: 100%; }
 /* Vue .platform-api-keys .section-header keeps the scoped 20px margin and
    the t-alert carries 16px/24px padding. */
 .wk-settings-section .platform-api-keys .section-header { margin-bottom: 20px; }
-.pak-security-alert { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding: 16px 24px; border-radius: 6px; background: #fef3e6; }
+.pak-security-alert { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 16px 24px; border-radius: 6px; background: #f9e0c7; }
 .pak-security-alert__icon { display: grid; flex-shrink: 0; place-items: center; color: #ed7b2f; }
 /* Vue t-alert message: 14px/22px secondary text. */
 .pak-security-alert__text { flex: 1; min-width: 0; margin: 0; color: rgba(0, 0, 0, 0.6); font-size: 14px; line-height: 22px; }
@@ -363,9 +426,19 @@
 /* EnvVarSettings.vue 覆盖：header margin-bottom 24px，desc margin 8px 0 0 / lh1.6 */
 .wk-settings-section:has(.env-settings) .section-header { margin-bottom: 24px; }
 .wk-settings-section:has(.env-settings) .section-header .section-description { margin: 8px 0 0; line-height: 1.6; }
+/* EnvVarSettings.vue scoped h2 { margin: 0 }：tsx 上的 m-0 会被上方共享
+   .section-header h2 的 margin 0 0 8px 以更高优先级压掉，导致 desc 下移 8px。 */
+.wk-settings-section:has(.env-settings) .section-header h2 { margin: 0; }
 /* SandboxSettings.vue 覆盖：header margin-bottom 20px，desc lh1.6 */
 .wk-settings-section .wk-sandbox-settings .section-header { margin-bottom: 20px; }
 .wk-settings-section .wk-sandbox-settings .section-header .section-description { line-height: 1.6; }
+/* SandboxSettings.vue scoped .setting-row：padding 0 0 16px + margin-bottom 8px
+   （wrapper 共享 20px 上下 padding 是 TenantInfo 系的），setting-info 不限宽、
+   label 14px（共享规则 15px），setting-control 无 280px min-width。 */
+.wk-settings-section .wk-sandbox-settings .setting-row { gap: 24px; padding: 0 0 16px; margin-bottom: 8px; }
+.wk-settings-section .wk-sandbox-settings .setting-info { max-width: none; }
+.wk-settings-section .wk-sandbox-settings .setting-info label { font-size: 14px; }
+.wk-settings-section .wk-sandbox-settings .setting-control { min-width: 0; }
 /* OllamaSettings.vue .setting-control：360px 定宽右对齐纵向栈（输入框+告警） */
 .wk-settings-section .wk-settings-ollama .setting-control { flex-direction: column; align-items: flex-end; min-width: 360px; max-width: 360px; }
 .wk-settings-section .wk-settings-ollama .setting-control .t-input-wrap { width: 100%; }
@@ -375,3 +448,67 @@
 .wk-sandbox-settings .wk-sandbox-grid--empty { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 /* ModelSettings.vue section-header：mb28，容器自带 grid gap-4(16px)，补差 12px */
 .wk-settings-section [data-testid="model-settings"] .section-header { margin-bottom: 12px; }
+/* ModelSettings.vue .section-description：line-height 1.6（wrapper 共享规则是 1.5，
+   22px vs 21px 会把 hint/tabs/卡片链整体抬高 1px） */
+.wk-settings-section [data-testid="model-settings"] .section-header .section-description { line-height: 1.6; }
+
+/* ==== B 组深修（settings-vectorstore/storage/websearch — ResourceSettingsPanel）
+   Vue 三个资源面板（VectorStore/StorageBackend/WebSearchSettings.vue）都自持
+   section-header（无底部分隔线；desc 14px lh1.6；vectorstore mb32，其余 mb28，
+   list-section-title 16px/600 mb16）。 ==== */
+.wk-settings-section:has(.wk-settings-resource) > .wk-settings-panel-heading { display: none; }
+.wk-settings-section .wk-settings-resource .section-header { margin-bottom: 28px; }
+.wk-settings-section .wk-settings-resource .section-header .section-description { line-height: 1.6; }
+.wk-settings-section .wk-settings-resource[data-resource-section="vectorstore"] .section-header { margin-bottom: 32px; }
+.wk-settings-section .wk-settings-resource[data-resource-section="vectorstore"] .section-header .section-description { line-height: 1.5; }
+.wk-settings-section .wk-settings-resource .list-section-title { margin: 0 0 16px; color: rgba(0, 0, 0, 0.9); font-size: 16px; font-weight: 600; line-height: normal; }
+
+/* ==== C 组深修（settings-runtime-queues 细节）
+   1) rq-auto-refresh 文本行高：Vue span 继承 normal（13px→18px），React body 1.5
+      抬到 20px 使标签文本整体偏 1px；2) 开关轨道几何对齐 Vue t-switch size=small
+      （轨道 26x16、旋钮 12x12、checked 左偏移 12px），替换原 scale:0.81 近似；
+      3) 运行概览标题行高 normal（20px）。 ==== */
+.rq-auto-refresh { line-height: normal; }
+.rq-auto-refresh-switch { width: 26px !important; height: 16px !important; scale: none; }
+.rq-auto-refresh-switch > span { width: 12px !important; height: 12px !important; margin-left: 2px; transform: translateX(0); }
+.rq-auto-refresh-switch[data-state="checked"] > span { transform: translateX(10px); }
+.rq-overview-title { line-height: normal; }
+
+/* Vue PlatformAPIKeys.vue t-alert：warning 图标 22px（非 16），图标-文案间距 8px；
+   t-button size=small：padding 0 7px（轨道宽 132px）、图标-文案间距 8px；
+   operation 列右缘距 alert 内容右缘 ~38px。 */
+.pak-security-alert__icon svg { width: 22px; height: 22px; }
+.pak-security-alert { gap: 8px; }
+.pak-outline-btn { gap: 8px; padding: 0 7px; }
+.pak-outline-btn svg { width: 14px; height: 14px; }
+/* Vue t-alert 的 message 列 547px 恰好容纳单行文案（操作列右缘 1092）；
+   React 字形略宽 ~6px，锁定单行避免 alert 折行抬高整卡。 */
+.pak-security-alert .pak-outline-btn { margin-right: 38px; }
+.pak-security-alert__text { white-space: nowrap; }
+
+/* ==== D 组深修（全 settings 文本渲染对齐）
+   Vue App.vue:301 在 body 全局启用灰阶字体平滑（-webkit-font-smoothing:
+   antialiased + -moz-osx-font-smoothing: grayscale），React 默认 subpixel 使
+   每个字形边缘像素差异超容差 —— 是所有 settings 页面整段文本泛红的系统性根因。
+   仿 knowledge-list.css 的 kb-list-page 先例，仅在设置抽屉根上继承启用。 ==== */
+.wk-settings-drawer-root {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Vue drawer never paints the programmatic-open focus ring (SettingsPage
+   focuses the close button on mount); outlines appear once the user actually
+   navigates with the keyboard (html.wk-kbd-nav is toggled by a Tab listener). */
+html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
+/* Vue t-switch is a 32x20 track with a 15px knob (TenantInfo rows measured
+   32.4x20); the shared Switch primitive ships 40x20. Row value clusters also
+   carry the Vue 8px control gap + 24px square edit button (TenantInfo.vue
+   .setting-control gap / t-button size=small square). */
+.wk-settings-section button[role='switch'] { width: 32px; }
+.wk-settings-section button[role='switch'] > span { width: 15px; height: 15px; margin-left: 2px; }
+.wk-settings-section button[role='switch'][data-state='checked'] > span { transform: translateX(13px); }
+.wk-settings-section .setting-control { gap: 8px; }
+.wk-settings-section .edit-btn { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; padding: 0; }
+/* Vue App.vue:301 enables grayscale font smoothing app-wide; without it every
+   glyph in the drawer rasterizes subpixel and ghosts against the baseline. */
+.wk-settings-drawer-root { color: rgba(0, 0, 0, 0.9); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }

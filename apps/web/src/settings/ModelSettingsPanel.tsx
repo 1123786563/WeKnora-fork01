@@ -6,6 +6,7 @@ import type {
   WeKnoraClient,
 } from "@weknora/api-client";
 import { Button, Card, Input, NumberInput, Status, Switch } from "@weknora/ui";
+import { roleAtLeast } from "@weknora/views/settings/registry";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
 import { ModelOptionSelect } from "./ModelOptionSelect.tsx";
 import { ModelUsageNotice } from "../configuration/ModelUsageNotice.tsx";
@@ -143,7 +144,11 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
   const [credentialValues, setCredentialValues] = useState<{ apiKey: string; appSecret: string }>({ apiKey: "", appSecret: "" });
   const [credentialBusy, setCredentialBusy] = useState(false);
   const downloadTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const canCreate = role === "admin" || role === "owner";
+  // Vue authStore.hasRole('admin') (ModelSettings.vue L49/129) — a system
+  // admin outranks owner in SettingsRole ranking, so roleAtLeast keeps the
+  // add-model card + 模型测试 entry visible when the router folds the
+  // is_system_admin session to 'system-admin'.
+  const canCreate = roleAtLeast(role, "admin");
   const visible = useMemo(
     () =>
       filter === "all"
@@ -914,40 +919,40 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
   return (
     <section className="grid gap-4" data-testid="model-settings">
       {/* Vue ModelSettings.vue section-header: mb28, h2 20/600 mb8 normal,
-          desc 14px lh1.6 secondary — shared .section-header CSS matches. */}
+          desc 14px lh1.6 secondary; the builtin-models-hint box lives INSIDE
+          the header (mt12, pad 10/12, radius 6) so the mb28 → tabs chain
+          lands on Vue's t-tabs y=245.5. */}
       <div className="section-header">
         <div className="flex items-center justify-between gap-5 max-[720px]:flex-col max-[720px]:items-start">
         <div>
-          <h2 className="m-0!">{t("modelSettings.title")}</h2>
+          <h2>{t("modelSettings.title")}</h2>
           <p className="section-description m-0">{t("modelSettings.description")}</p>
         </div>
         {canCreate ? (
-          <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent px-0 py-1 font-[inherit] text-sm font-semibold text-[#0a8f4c] hover:text-[#067a3f] focus-visible:text-[#067a3f]" onClick={() => setDebugOpen(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M8 5v14l11-7z" />
-            </svg>
+          <button type="button" className="inline-flex cursor-pointer items-center gap-2 border-0 bg-transparent px-0 py-[6px] font-[inherit] text-sm font-semibold text-[#07c05f] hover:text-[#06b04d] focus-visible:text-[#06b04d]" onClick={() => setDebugOpen(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M10 8.8v6.4l5.4-3.2z" fill="currentColor" /></svg>
             {t("modelSettings.actions.debugModel")}
           </button>
         ) : null}
         </div>
-      </div>
-      <div className="rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-3 py-[10px]" role="note">
-        <p className="m-0 mb-1 text-xs font-medium tracking-[0.02em] text-[rgba(0,0,0,0.4)]"><strong>{t("modelSettings.builtinModels.title")}</strong></p>
-        <p className="m-0 mb-[6px] text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">
-          {t(role === "system-admin" ? "modelSettings.builtinModels.descriptionAdmin" : "modelSettings.builtinModels.description")}
-        </p>
-        <a className="inline-flex items-center gap-1 text-[13px] text-[var(--wk-brand,#07c05f)] no-underline hover:underline" href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
-          {t("modelSettings.builtinModels.viewGuide")}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7" /><path d="M14 10a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7" /></svg>
-        </a>
+        <div className="mt-3 rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-3 py-[10px] leading-[18px]" role="note">
+          <p className="m-0 mb-1 text-xs font-medium leading-[17px] tracking-[0.02em] text-[rgba(0,0,0,0.4)]"><strong>{t("modelSettings.builtinModels.title")}</strong></p>
+          <p className="m-0 mb-[6px] text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">
+            {t(role === "system-admin" ? "modelSettings.builtinModels.descriptionAdmin" : "modelSettings.builtinModels.description")}
+          </p>
+          <a className="inline-flex items-center gap-1 align-top text-[13px] leading-[18px] text-[var(--wk-brand,#07c05f)] no-underline hover:underline" href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
+            {t("modelSettings.builtinModels.viewGuide")}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7" /><path d="M14 10a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7" /></svg>
+          </a>
+        </div>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {usageConflict ? <ModelUsageNotice modelName={usageConflict.modelName} details={usageConflict.details} onClose={() => setUsageConflict(null)} /> : null}
-      <nav className="wk-model-tabs flex flex-wrap gap-[.35rem] border-b border-b-[#edf0f5]" aria-label={t("model.editor.typeLabel")}>
+      <nav className="wk-model-tabs flex flex-wrap gap-0 border-b border-b-[#e7e7e7]" aria-label={t("model.editor.typeLabel")}>
         <button
           type="button"
-          className={filter === "all" ? "cursor-pointer border-0 border-b-2 border-b-[#0a8f4c]! bg-transparent px-[.75rem] py-[.65rem] text-[13px] text-[#506078] text-[#0a8f4c]! [font-weight:650] is-active" : "cursor-pointer border-0 border-b-2 border-b-transparent bg-transparent px-[.75rem] py-[.65rem] text-[13px] text-[#506078]"}
+          className={filter === "all" ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! [font-weight:650] is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
           onClick={() => setFilter("all")}
         >
           {t("common.all")}({models.length})
@@ -956,7 +961,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           <button
             type="button"
             key={type}
-            className={filter === type ? "cursor-pointer border-0 border-b-2 border-b-[#0a8f4c]! bg-transparent px-[.75rem] py-[.65rem] text-[13px] text-[#506078] text-[#0a8f4c]! [font-weight:650] is-active" : "cursor-pointer border-0 border-b-2 border-b-transparent bg-transparent px-[.75rem] py-[.65rem] text-[13px] text-[#506078]"}
+            className={filter === type ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! [font-weight:650] is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
             onClick={() => setFilter(type)}
           >
             {typeLabelOf(type)}({models.filter((item) => modelType(item) === type).length})
@@ -966,7 +971,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       {!canCreate && visible.length === 0 ? (
         <Status>{emptyHint}</Status>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))]! gap-3!">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))]! gap-3!">
           {visible.map((model) => {
             const type = modelType(model);
             const modelParams = params(model);
@@ -984,8 +989,8 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
             return (
               <div
                 key={model.id}
-                className={"wk-vmodel-card group/card relative box-border flex min-w-0 items-start gap-3 rounded-[10px] border border-[rgba(120,135,155,0.3)] px-4 py-[14px] transition-[border-color,box-shadow] duration-[180ms] ease-[ease]"
-                  + (builtin ? " bg-[rgba(127,142,166,0.06)] hover:border-[rgba(120,135,155,0.3)] hover:shadow-none" : " bg-white")
+                className={"wk-vmodel-card group/card relative box-border flex min-w-0 items-start gap-3 rounded-[10px] border border-[#e7e7e7] px-4 py-[14px] transition-[border-color,box-shadow] duration-[180ms] ease-[ease]"
+                  + (builtin ? " bg-[#f3f3f3] hover:border-[#e7e7e7] hover:shadow-none" : " bg-white")
                   + (canEdit ? " cursor-pointer" : "")
                   + (canEdit && !builtin ? " hover:border-[rgba(7,192,95,0.65)] hover:shadow-[0_4px_14px_rgba(15,23,42,0.08)] hover:outline-none focus-visible:border-[rgba(7,192,95,0.65)] focus-visible:shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus-visible:outline-none" : "")}
                 onClick={canEdit ? () => openEdit(model) : undefined}
@@ -1040,7 +1045,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       </div>
                     ) : null}
                   </div>
-                  <p className="m-0 truncate text-xs leading-[1.5] text-[#5c6b83]">
+                  <p className="m-0 mt-[2px] truncate text-xs leading-[1.5] text-[#5c6b83]">
                     <span>{vendorLabel(model)}</span>
                     {type === "embedding" && typeof dimension === "number" ? (
                       <>
@@ -1076,9 +1081,9 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
             );
           })}
           {canCreate ? (
-            <button type="button" className="flex min-h-[68px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[rgba(120,135,155,0.45)] bg-transparent px-4 py-[14px] font-[inherit] text-[#7a879c] hover:border-[#0a8f4c] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#0a8f4c] focus-visible:border-[#0a8f4c] focus-visible:bg-[rgba(7,192,95,0.06)] focus-visible:text-[#0a8f4c]" onClick={openAdd}>
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
-              <span className="text-[13px] font-medium">{t("modelSettings.actions.addModel")}</span>
+            <button type="button" className="flex min-h-[68px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[#e7e7e7] bg-transparent px-4 py-[14px] font-[inherit] text-[rgba(0,0,0,0.4)] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f] focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,0.06)] focus-visible:text-[#07c05f]" onClick={openAdd}>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[#07c05f]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
+              <span className="text-[13px] font-medium leading-[18px]">{t("modelSettings.actions.addModel")}</span>
             </button>
           ) : null}
         </div>

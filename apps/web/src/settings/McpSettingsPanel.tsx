@@ -934,9 +934,9 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     );
   return (
     <section className="grid gap-4" data-testid="mcp-settings">
-      <div className="wk-mcp-page-header flex items-start justify-between gap-4 mb-7 max-[720px]:flex-col">
+      <div className="wk-mcp-page-header flex items-start justify-between gap-4 mb-3 max-[720px]:flex-col">
         <div>
-          <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[1.2] text-[rgb(0_0_0_/_90%)]">{t("mcpSettings.title")}</h2>
+          <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal] text-[rgb(0_0_0_/_90%)]">{t("mcpSettings.title")}</h2>
           <p className="wk-muted m-0 text-[14px] leading-[1.6] text-[rgb(0_0_0_/_60%)]">
             {t("mcpSettings.description")}
           </p>
@@ -987,7 +987,9 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
               </div>
             </article>
           ))}
-          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#dce3ed] border-dashed bg-transparent p-3 text-center text-[#66758b] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f5f8] text-[#66758b]" aria-hidden="true"><McpCardIcon name="add" size={18} /></span><span className="text-[13px] font-medium leading-[1.4]">{t("mcpSettings.addService")}</span></button> : null}
+          {/* Vue McpSettings.vue:308-334 — add 卡为 --td-component-stroke #e7e7e7
+              虚线、占位色文字 rgba(0,0,0,.4)；图标块 #f3f3f3 底 + secondary 色。 */}
+          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#e7e7e7] border-dashed bg-transparent p-3 text-center text-[rgba(0,0,0,0.4)] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f3f3] text-[rgba(0,0,0,0.6)]" aria-hidden="true"><McpCardIcon name="add" size={18} /></span><span className="text-[13px] font-medium leading-[1.4]">{t("mcpSettings.addService")}</span></button> : null}
         </div>
       )}
       {draft ? (

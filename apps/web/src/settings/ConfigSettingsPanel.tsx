@@ -169,7 +169,11 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
   // Vue ChatHistorySettings.vue renders the enable row + stats directly on the
   // panel background — no outer card (only retrieval/parser keep it).
   const Shell: typeof Card | typeof Fragment = section === 'chathistory' ? Fragment : Card;
-  return (
+  // ChathistorySettings.vue rows sit on the full-width settings-group (the
+  // enable switch hugs the panel's right edge); the .wk-chathistory-settings
+  // root lets settings-wrapper.css drop the shared 620px form cap and grid
+  // gap for this section only.
+  const content = (
     <>
     <Shell>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}{/* R490 B6 — Vue RetrievalSettings.vue:3-6 section-header: the h2 title plus
     the 配置知识库搜索和消息搜索的全局检索参数 description under it. */}
@@ -227,11 +231,13 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
         <label>Access Token<Input type="password" autoComplete="new-password" value={String(values.paddleocr_vl_cloud_token)} onChange={(event) => setValue('paddleocr_vl_cloud_token', event.target.value)} /></label>
         <label>Model<Select data-testid="paddleocr-vl-cloud-model" value={String(values.paddleocr_vl_cloud_model)} onChange={(event) => setValue('paddleocr_vl_cloud_model', event.target.value)}><option value="PaddleOCR-VL-1.6">PaddleOCR-VL-1.6</option><option value="PaddleOCR-VL-1.5">PaddleOCR-VL-1.5</option></Select></label>
         <div className="flex flex-wrap gap-4">{parserToggle('paddleocr_vl_cloud_use_seal_recognition', t('settings.parser.sealRecognition'))}{parserToggle('paddleocr_vl_cloud_use_chart_recognition', t('settings.parser.chartRecognition'))}</div>
-      </section><p className="wk-muted text-muted">{parserCopy}</p></>}<div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">{/* R490 B6 — Vue RetrievalSettings saves debounced exactly like
+      </section><p className="wk-muted text-muted">{parserCopy}</p></>}{/* R490 B6 — Vue RetrievalSettings saves debounced exactly like
           ChatHistorySettings (RetrievalSettings.vue handleParamChange →
           debouncedSave), so neither surface renders a save button; only the
-          parser section keeps its explicit 保存 + test-connection footer. */}
-          {section === 'parser' ? <Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button> : null}{section === 'parser' ? <Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button> : null}</div></form></Shell>
+          parser section keeps its explicit 保存 + test-connection footer.
+          R5xx 清扫：chathistory/retrieval 不再渲染空的操作行——空的 12px
+          margin 会让 stats-section 整体下移（Vue 无此行）。 */}
+          {section === 'parser' ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button><Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button></div> : null}</form></Shell>
     {section === 'chathistory' ? (
       <div className="stats-section mt-5" data-testid="chat-history-stats">
         <h3 className="stats-title m-0 mb-3 text-[15px] font-semibold">{t('chatHistorySettings.statsTitle')}</h3>
@@ -252,4 +258,7 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
     ) : null}
     </>
   );
+  return section === 'chathistory'
+    ? <div className="wk-chathistory-settings">{content}</div>
+    : content;
 }

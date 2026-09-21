@@ -5,6 +5,7 @@ import type { ChunkingPreviewResult, WeKnoraClient } from '@weknora/api-client';
 import { GraphSettings, type GraphExtractConfig } from './GraphSettings.tsx';
 import { DataSourcesPage } from '../data-sources/DataSourcesPage.tsx';
 import { KnowledgeBaseActivityPanel } from '../knowledge-bases/KnowledgeBaseActivityPanel.tsx';
+import { TDesignNavIcon } from '../knowledge-bases/kb-list-icons.tsx';
 import { KBShareSettingsSection } from './KBShareSettingsSection.tsx';
 import {
   QUESTION_COUNT_RANGE,
@@ -994,7 +995,16 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                       aria-current={activeSection === item.key ? 'page' : undefined}
                       onClick={() => setActiveSection(item.key)}
                     >
-                      <span className="wkbs-nav-icon">{KNOWLEDGE_SETTINGS_NAV_ICONS[item.key]}</span>
+                      <span className="wkbs-nav-icon">
+                        {/* Vue KnowledgeBaseEditorModal.vue:604-632 navItems icon 字段：
+                            详情页设置弹窗与列表页编辑器共用同一 t-icon 字形，像素 diff
+                            下近似 stroke 版每个图标整块红 —— 优先走 TDesign 官方 path。 */}
+                        {(() => {
+                          const tdesignNames: Record<string, string> = { basic: 'info-circle', models: 'control-platform', vectorStore: 'data-base', faq: 'help-circle', parser: 'file-search', chunking: 'file-copy', multimodal: 'image', asr: 'sound', graph: 'chart-bubble', advanced: 'setting', storage: 'cloud', share: 'share', activity: 'history' };
+                          const tdIcon = tdesignNames[item.key] ? <TDesignNavIcon name={tdesignNames[item.key]} size={16} /> : null;
+                          return tdIcon ?? KNOWLEDGE_SETTINGS_NAV_ICONS[item.key];
+                        })()}
+                      </span>
                       <span className="wkbs-nav-label">{t(item.labelKey)}</span>
                       {item.badge ? <span className="wkbs-nav-badge">{item.badge}</span> : null}
                     </button>

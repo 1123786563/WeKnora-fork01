@@ -291,6 +291,21 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     };
   }, []);
 
+  // Vue drawer never paints a focus ring on the programmatically-focused
+  // close button when the overlay opens (the scan screenshot compares that
+  // exact frame). Keep the focus for a11y + tests, but only reveal
+  // :focus-visible outlines once real keyboard navigation happens.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') document.documentElement.classList.add('wk-kbd-nav');
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.documentElement.classList.remove('wk-kbd-nav');
+    };
+  }, []);
+
   function handleDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'Tab' || !modalRef.current || !modalRef.current.contains(event.target as Node)) return;
     const focusable = Array.from(modalRef.current.querySelectorAll<HTMLElement>(
@@ -459,11 +474,14 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               headings: im/embed/api render the section-header h2 themselves
               and the cli/chrome/claw landings render the hero title, so the
               wrapper heading would duplicate it (same R484 D3 pattern). */}
-          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' && key !== 'envvars' && key !== 'system-global' && key !== 'weknoracloud' && !sectionIntegrationTab && !sectionRoleDenied ? (
-            <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
+          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' && key !== 'envvars' && key !== 'system-global' && key !== 'weknoracloud' && key !== 'system-audit-log' && !sectionIntegrationTab && !sectionRoleDenied ? (
+            /* Vue panels own their section-header (TenantInfo.vue:682-697 et
+               al.): 20px/600 h2 with an 8px gap, 14px/1.5 secondary
+               description, then a bare 32px margin — no divider line. */
+            <div className="wk-settings-panel-heading flex items-start justify-between gap-4 mb-8 max-[720px]:flex-col">
               <div className="w-full">
                 <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, key).title}</h2>
-                <p className="wk-muted text-muted m-0">{settingsSectionHeading(locale, key).description}</p>
+                <p className="m-0 text-[14px] leading-[21px] text-[rgba(0,0,0,0.6)]">{settingsSectionHeading(locale, key).description}</p>
               </div>
             </div>
           ) : null}
@@ -645,13 +663,28 @@ function icon(paths: ReactNode): ReactNode {
   );
 }
 
+// Exact t-icon replicas (tdesign-icons-vue-next): transparent fills + 1px
+// square-capped currentColor strokes on the 24px grid — the lucide-style
+// approximations above leave visible glyph deltas in the drawer rail.
+function tdIcon(fills: string[], strokes: string[]): ReactNode {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      {fills.map((d) => <path key={'f' + d.slice(0, 24)} fill="transparent" d={d} />)}
+      {strokes.map((d) => <path key={'s' + d.slice(0, 24)} stroke="currentColor" strokeWidth="1" strokeLinecap="square" d={d} />)}
+    </svg>
+  );
+}
+
 const SECTION_ICONS: Record<string, ReactNode> = {
-  general: icon(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>),
-  userprofile: icon(<><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>),
+  general: tdIcon(
+    ['M20.6604 7L12.0001 2L3.33984 7V17L12.0001 22L20.6604 17V7ZM12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z', 'M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z'],
+    ['M12.0001 2L20.6604 7V17L12.0001 22L3.33984 17V7L12.0001 2Z', 'M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z'],
+  ),
+  userprofile: tdIcon([], ['M16.5 7.5C16.5 9.98528 14.4853 12 12 12C9.51472 12 7.5 9.98528 7.5 7.5C7.5 5.01472 9.51472 3 12 3C14.4853 3 16.5 5.01472 16.5 7.5Z', 'M20 21V19C20 16.7909 18.2091 15 16 15H8C5.79086 15 4 16.7909 4 19V21H20Z']),
   // SP14 Task 4 — 会话偏好：sliders（lucide sliders-horizontal 风格）。
   'chat-preferences': icon(<><line x1="21" y1="4" x2="14" y2="4" /><line x1="10" y1="4" x2="3" y2="4" /><line x1="21" y1="12" x2="12" y2="12" /><line x1="8" y1="12" x2="3" y2="12" /><line x1="21" y1="20" x2="16" y2="20" /><line x1="12" y1="20" x2="3" y2="20" /><line x1="14" y1="2" x2="14" y2="6" /><line x1="8" y1="10" x2="8" y2="14" /><line x1="16" y1="18" x2="16" y2="22" /></>),
-  mymemory: icon(<path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />),
-  envvars: icon(<><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" /></>),
+  mymemory: tdIcon(['M5 4H19V21L12 16L5 21V4Z'], ['M5 4H19V21L12 16L5 21V4Z']),
+  envvars: tdIcon(['M11.5355 15.5355C9.58291 17.4882 6.41709 17.4882 4.46447 15.5355C2.51184 13.5829 2.51184 10.4171 4.46447 8.46447C6.41709 6.51184 9.58291 6.51184 11.5355 8.46447C13.4882 10.4171 13.4882 13.5829 11.5355 15.5355Z'], ['M14 12H21M16.5 14.9985V12M19.5 14V12M11.5355 15.5355C9.58291 17.4882 6.41709 17.4882 4.46447 15.5355C2.51184 13.5829 2.51184 10.4171 4.46447 8.46447C6.41709 6.51184 9.58291 6.51184 11.5355 8.46447C13.4882 10.4171 13.4882 13.5829 11.5355 15.5355Z']),
   usage: icon(<><path d="M3 3v18h18" /><path d="M7 15v-4M12 15V8M17 15v-7" /></>),
   tenant: icon(<><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M9 16h.01M15 16h.01" /></>),
   members: icon(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>),

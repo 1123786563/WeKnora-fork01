@@ -79,12 +79,14 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
   download: <><polyline points='5 7.5, 8 10.5, 11 7.5' /><line x1='8' y1='3' x2='8' y2='10.5' /><line x1='3.5' y1='12.75' x2='12.5' y2='12.75' /></>,
   swap: <><polyline points='9.5 2.5, 11.5 4.5, 9.5 6.5' /><line x1='11.5' y1='4.5' x2='3' y2='4.5' /><polyline points='6.5 13.5, 4.5 11.5, 6.5 9.5' /><line x1='4.5' y1='11.5' x2='13' y2='11.5' /></>,
   delete: <><line x1='3' y1='4.5' x2='13' y2='4.5' /><polyline points='6.5 4.5, 6.5 3, 9.5 3, 9.5 4.5' /><path d='M4.5 4.5l.7 8.5h5.6l.7-8.5' /><line x1='6.7' y1='6.8' x2='6.7' y2='10.6' /><line x1='9.3' y1='6.8' x2='9.3' y2='10.6' /></>,
-  'check-circle': <><circle cx='8' cy='8' r='6.25' /><polyline points='5.3 8.2, 7.1 10, 10.7 6.2' /></>,
-  'help-circle': <><circle cx='8' cy='8' r='6.25' /><path d='M6.3 6.4a1.75 1.75 0 1 1 2.55 1.95c-.6.35-.85.7-.85 1.35' /><line x1='8' y1='11.1' x2='8' y2='11.3' /></>,
-  'chart-bubble': <><circle cx='5.5' cy='10' r='2.75' /><circle cx='10.5' cy='5.5' r='3' /></>,
-  file: <><path d='M4 2.5h4.75L12 5.75V13.5H4z' /><polyline points='8.75 2.5, 8.75 5.75, 12 5.75' /></>,
-  history: <><circle cx='8' cy='8' r='6.25' /><polyline points='8 4.6, 8 8, 10.4 9.4' /></>,
-  folder: <path d='M2.5 4h4.25L8.25 5.6H13.5V12.5H2.5z' />,
+  // Tab icons use exact tdesign-icon path data (24px grid) so the rail glyphs
+  // match the Vue t-icon raster; Icon renders them with viewBox 24 at 14px.
+  'check-circle': <TDFallbackPaths name='check-circle' />,
+  'help-circle': <TDFallbackPaths name='help-circle' />,
+  'chart-bubble': <TDFallbackPaths name='chart-bubble' />,
+  file: <TDFallbackPaths name='file' />,
+  history: <TDFallbackPaths name='history' />,
+  folder: <TDFallbackPaths name='folder' />,
   check: <polyline points='3.5 8.5, 6.5 11.5, 12.5 4.5' />,
   close: <><line x1='4' y1='4' x2='12' y2='12' /><line x1='12' y1='4' x2='4' y2='12' /></>,
   edit: <path d='M3 13l.8-3.1L10.6 3.1l2.3 2.3L6.1 12.2z' />,
@@ -92,9 +94,49 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
   jump: <><path d='M6.5 3.5h6v6' /><line x1='12.5' y1='3.5' x2='5.5' y2='10.5' /></>,
 };
 
-function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
+// tdesign-icons-vue-next path data (transparent fills + 1px square strokes).
+const TD_TAB_PATHS: Record<string, { fills: string[]; strokes: string[] }> = {
+  'check-circle': {
+    fills: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z'],
+    strokes: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z', 'M16.5 9L10.5 15L7.5 12'],
+  },
+  'help-circle': {
+    fills: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z'],
+    strokes: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z', 'M12.0002 14.25V14C12.0002 12.8954 12.9877 12.0414 13.8553 11.3578C14.5525 10.8085 15.0002 9.95652 15.0002 9C15.0002 7.34315 13.657 6 12.0002 6C10.694 6 9.58273 6.83481 9.1709 8M12.0002 17.25H12.0041V17.2539H12.0002V17.25Z'],
+  },
+  'chart-bubble': {
+    fills: [],
+    strokes: ['M13 14C13 15.6569 11.6569 17 10 17C8.34315 17 7 15.6569 7 14C7 12.3431 8.34315 11 10 11C11.6569 11 13 12.3431 13 14Z', 'M18 6C18 7.10457 17.1046 8 16 8C14.8954 8 14 7.10457 14 6C14 4.89543 14.8954 4 16 4C17.1046 4 18 4.89543 18 6Z', 'M19 15C18.4477 15 18 14.5523 18 14C18 13.4477 18.4477 13 19 13C19.5523 13 20 13.4477 20 14C20 14.5523 19.5523 15 19 15Z', 'M21 21H3V3'],
+  },
+  file: {
+    fills: ['M4 22H20V8H14V2H4V22Z'],
+    strokes: ['M14 2V8H20M14 2H15L20 7V8M14 2H4V22H20V8'],
+  },
+  history: {
+    fills: [],
+    strokes: ['M2.552 13C3.0517 17.7767 7.09104 21.5 12 21.5C17.2467 21.5 21.5 17.2467 21.5 12C21.5 6.7533 17.2467 2.5 12 2.5C10.3719 2.5 8.8394 2.90957 7.5 3.63131C5.69871 4.60193 4.24661 6.13714 3.38065 8M12 7V12L14.5 14.5M2.5 3.5V8.5H7.5'],
+  },
+  folder: {
+    fills: ['M2 3.5L9 3.5L11 6L22 6L22 20L2 20L2 3.5Z'],
+    strokes: ['M2 3.5H9L11 6H22V20H2V3.5Z'],
+  },
+};
+
+function TDFallbackPaths({ name }: { name: string }) {
+  const def = TD_TAB_PATHS[name];
+  if (!def) return null;
   return (
-    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
+    <>
+      {def.fills.map((d) => <path key={'f' + d.slice(0, 24)} fill='transparent' d={d} />)}
+      {def.strokes.map((d) => <path key={'s' + d.slice(0, 24)} stroke='currentColor' strokeWidth='1.3' strokeLinecap='square' d={d} />)}
+    </>
+  );
+}
+
+function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
+  const isTd = name in TD_TAB_PATHS;
+  return (
+    <svg width={size} height={size} viewBox={isTd ? '0 0 24 24' : '0 0 16 16'} fill='none' stroke='currentColor' strokeWidth={isTd ? 1 : 1.5} strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
       {ICON_PATHS[name]}
     </svg>
   );
@@ -741,8 +783,8 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
     if (listIsEmpty) {
       return (
         <div className='py-8 text-center'>
-          <p className='mb-1 mt-0 text-[14px] font-medium text-[rgba(0,0,0,0.6)]'>{emptyTitle}</p>
-          <p className='m-0 text-[13px] text-[rgba(0,0,0,0.4)]'>{emptyDescription}</p>
+          <p className='mb-1 mt-0 text-[14px] font-medium leading-[normal] text-[rgba(0,0,0,0.6)]'>{emptyTitle}</p>
+          <p className='m-0 text-[13px] leading-[normal] text-[rgba(0,0,0,0.4)]'>{emptyDescription}</p>
         </div>
       );
     }
@@ -755,7 +797,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
     <div className='w-full text-[rgba(0,0,0,0.9)]'>
       <div className='mb-6'>
         <div className='inline-flex items-center gap-2'>
-          <h2 className='m-0 text-[20px] font-semibold text-[rgba(0,0,0,0.9)]'>{t('memorySettings.title')}</h2>
+          <h2 className='m-0 text-[20px] font-semibold leading-[28px] text-[rgba(0,0,0,0.9)]'>{t('memorySettings.title')}</h2>
           <span className='relative inline-flex'>
             <button
               type='button'
@@ -791,15 +833,15 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       </div>
 
       {settings !== null && !workspaceEnabled ? (
-        <div className='mb-4 flex items-center gap-2 rounded-card bg-[#fef3e6] px-4 py-3 text-[13px] text-[rgba(0,0,0,0.9)]' role='status'>
-          <Icon name='info-circle' />
+        <div className='mb-4 flex items-center gap-2 rounded-card bg-[#fef3e6] px-4 py-3 text-[13px] leading-[normal] text-[rgba(0,0,0,0.9)]' role='status'>
+          <Icon name='info-circle' size={13} />
           <span>{t('memorySettings.workspaceDisabled')}</span>
         </div>
       ) : null}
 
       <div className='flex items-start justify-between border-b border-line-neutral py-5 max-[720px]:flex-col max-[720px]:gap-2'>
         <div className='max-w-[65%] flex-1 pr-6 max-[720px]:max-w-full max-[720px]:pr-0'>
-          <label className='mb-1 block text-[15px] font-medium text-[rgba(0,0,0,0.9)]'>{t('memorySettings.enableLabel')}</label>
+          <label className='mb-1 block text-[15px] font-medium leading-[normal] text-[rgba(0,0,0,0.9)]'>{t('memorySettings.enableLabel')}</label>
           <p className='m-0 text-[13px] leading-normal text-[rgba(0,0,0,0.6)]'>{t('memorySettings.enableDescription')}</p>
           {enabled && workspaceEnabled ? <p className='m-0 text-[13px] leading-normal text-[rgba(0,0,0,0.6)]'>{t('memorySettings.agentDisabledHint')}</p> : null}
         </div>
@@ -819,13 +861,13 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       <div className='mt-7'>
         <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
           <div className='flex items-baseline gap-2'>
-            <h3 className='m-0 text-[16px] font-semibold text-[rgba(0,0,0,0.9)]'>{t('memorySettings.listTitle')}</h3>
-            <span className='text-[13px] text-[rgba(0,0,0,0.4)]'>{t('memorySettings.listCount', { count: totalAll })}</span>
+            <h3 className='m-0 text-[16px] font-semibold leading-[normal] text-[rgba(0,0,0,0.9)]'>{t('memorySettings.listTitle')}</h3>
+            <span className='text-[13px] leading-[normal] text-[rgba(0,0,0,0.4)]'>{t('memorySettings.listCount', { count: totalAll })}</span>
           </div>
-          <div className='flex flex-wrap items-center gap-1'>
+          <div className='flex h-6 flex-wrap items-center gap-1'>
             <span className='relative inline-flex' ref={addAnchorRef}>
-              <Button type='button' className='min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[7px] py-0 text-[13px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' disabled={!canWrite} onClick={() => { if (!addVisible) setDraftContent(''); setAddVisible(!addVisible); }}>
-                <Icon name='add' />
+              <Button type='button' className='h-6 min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[8px] py-0 text-[12px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' disabled={!canWrite} onClick={() => { if (!addVisible) setDraftContent(''); setAddVisible(!addVisible); }}>
+                <Icon name='add' size={12} />
                 {t('memorySettings.add')}
               </Button>
               {addVisible ? (
@@ -858,8 +900,8 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                 </div>
               ) : null}
             </span>
-            <Button type='button' className='min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[7px] py-0 text-[13px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' onClick={() => void handleExport()}>
-              <Icon name='download' />
+            <Button type='button' className='h-6 min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[8px] py-0 text-[12px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' onClick={() => void handleExport()}>
+              <Icon name='download' size={12} />
               {t('memorySettings.export')}
             </Button>
             <Popconfirm
@@ -874,8 +916,8 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
               onCancel={() => setConfirmKey(null)}
               onConfirm={() => void handleConsolidate()}
             >
-              <Button type='button' className='min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[7px] py-0 text-[13px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' loading={consolidating} disabled={!canWrite || totalAll === 0}>
-                <Icon name='swap' />
+              <Button type='button' className='h-6 min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[8px] py-0 text-[12px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' loading={consolidating} disabled={!canWrite || totalAll === 0}>
+                <Icon name='swap' size={12} />
                 {t('memorySettings.consolidate')}
               </Button>
             </Popconfirm>
@@ -891,8 +933,8 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                 onCancel={() => setConfirmKey(null)}
                 onConfirm={() => void handleClear()}
               >
-                <Button type='button' className='min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[7px] py-0 text-[13px] text-[#e34d59] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[#c9353f] disabled:cursor-not-allowed disabled:opacity-40' disabled={totalAll === 0 && trackingCount === 0 && documentCount === 0}>
-                  <Icon name='delete' />
+                <Button type='button' className='h-6 min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[8px] py-0 text-[12px] text-[#e34d59] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[#c9353f] disabled:cursor-not-allowed disabled:opacity-40' disabled={totalAll === 0 && trackingCount === 0 && documentCount === 0}>
+                  <Icon name='delete' size={12} />
                   {t('memorySettings.clear')}
                 </Button>
               </Popconfirm>
@@ -902,7 +944,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
 
         <div className='flex items-center overflow-x-auto border-b border-line-neutral' role='tablist' aria-label={t('memorySettings.listTitle')}>
           {allTabs.map((value) => (
-            <button key={value} type='button' role='tab' aria-selected={value === tab} className='m-0 inline-flex cursor-pointer items-center gap-[5px] whitespace-nowrap rounded-none border-0 border-b-2 border-b-transparent bg-transparent px-3 py-2 text-[13px] text-[rgba(0,0,0,0.6)] transition-[color,border-color] duration-200 ease-[ease] first:pl-0 hover:text-[rgba(0,0,0,0.9)] focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent/20 aria-selected:border-b-accent aria-selected:font-medium aria-selected:text-accent' onClick={() => void handleTabChange(value)}>
+            <button key={value} type='button' role='tab' aria-selected={value === tab} className='m-0 inline-flex h-12 cursor-pointer items-center gap-[5px] whitespace-nowrap rounded-none border-0 border-b-2 border-b-transparent bg-transparent px-3 py-0 text-[13px] text-[rgba(0,0,0,0.6)] transition-[color,border-color] duration-200 ease-[ease] first:pl-0 hover:text-[rgba(0,0,0,0.9)] focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent/20 aria-selected:border-b-accent aria-selected:text-accent' onClick={() => void handleTabChange(value)}>
               <Icon name={TAB_ICONS[value]} size={14} />
               <span>{tabLabel(value)}</span>
             </button>

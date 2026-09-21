@@ -825,8 +825,12 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // analytics or experts entry on any surface, so both sidebar links drop
     // to keep the two rails byte-identical; the SP11 /platform/analytics and
     // M2 /platform/experts routes stay reachable by URL — restore by removing
-    // the clause below.
-    () => navItems.filter((item) => (item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)) && item.key !== 'analytics' && item.key !== 'experts'),
+    // the clause below. Round-23 parity (2026-09-21, user-authorized): the
+    // skills-market entry leaves the rail too — Vue's rail (stores/menu.ts)
+    // has no market link, and the extra 38px row pushed the session list
+    // ~40px down on every page. The /platform/market route and its page stay
+    // reachable by URL; only the sidebar entry is removed.
+    () => navItems.filter((item) => (item.key !== 'organizations' || (canSeeOrganizations && !isLiteEdition)) && item.key !== 'analytics' && item.key !== 'experts' && item.key !== 'market'),
     [navItems, canSeeOrganizations, isLiteEdition],
   );
 
@@ -863,9 +867,12 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // (+ collapsed state swaps width/padding values rather than layering overrides).
     <div className="flex items-stretch w-full h-screen min-w-[600px] bg-white">
       <aside className={collapsed
-        ? 'box-border flex flex-col min-w-[60px] w-[60px] pt-[8px] px-[3px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'
-        : 'box-border flex flex-col min-w-[260px] w-[260px] pt-[8px] px-[6px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'}>
-        <div className="flex items-center justify-between h-[42px] shrink-0 pr-[10px] pl-[14px]">
+        // Vue .aside_box: bg --td-bg-color-sidebar #f9f9f9, border --td-component-stroke #e7e7e7.
+        ? 'box-border flex flex-col min-w-[60px] w-[60px] pt-[8px] px-[3px] pb-[6px] bg-[#f9f9f9] border-r border-[#e7e7e7] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'
+        : 'box-border flex flex-col min-w-[260px] w-[260px] pt-[8px] px-[6px] pb-[6px] bg-[#f9f9f9] border-r border-[#e7e7e7] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'}>
+        {/* Vue .logo_row is a 50px strip (menu.vue:1241); the 42px box lifted
+            every nav item 2px and the session list with it. */}
+        <div className="flex items-center justify-between h-[50px] shrink-0 pr-[10px] pl-[14px]">
                 <a className="flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora" onClick={(event) => {
                   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                   event.preventDefault();
@@ -880,13 +887,16 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
           </a>
           {!collapsed && (
             <div className="flex shrink-0 items-center gap-1">
-              <button type="button" className="inline-flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-[#66758b] transition-colors hover:bg-[#eceff4]" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={t('menu.search')}>
+              {/* Vue .header-icon-btn (menu.vue:1844): 26px/6px radius, icon
+                  color --td-text-color-secondary rgba(0,0,0,0.6), hover bg
+                  --td-bg-color-container-hover #f3f3f3. */}
+              <button type="button" className="inline-flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-[rgba(0,0,0,0.6)] transition-colors hover:bg-[#f3f3f3]" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={t('menu.search')}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
                   <circle cx="11" cy="11" r="6.5" />
                   <path d="m16 16 4.5 4.5" />
                 </svg>
               </button>
-              <button type="button" className="inline-flex items-center justify-center w-[18px] h-[18px] border-none rounded-[4px] bg-transparent text-[#66758b] cursor-pointer hover:bg-[#eceff4]" onClick={toggleCollapsed} aria-label={t('menu.collapseSidebar')} title={t('menu.collapseSidebar')}>
+              <button type="button" className="inline-flex items-center justify-center w-[18px] h-[18px] border-none rounded-[4px] bg-transparent text-[rgba(0,0,0,0.6)] cursor-pointer hover:bg-[#f3f3f3]" onClick={toggleCollapsed} aria-label={t('menu.collapseSidebar')} title={t('menu.collapseSidebar')}>
               <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
                 <rect x="1.5" y="1.5" width="17" height="17" rx="3" />
                 <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" />
@@ -900,7 +910,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
         {/* .plat-shell__item + --collapsed descendant override → utilities
             (collapsed form: centered, 4px side margins, 9px/0 padding). */}
         {collapsed && (
-          <button type="button" className="plat-shell__toggle-item flex items-center justify-center gap-[8px] mx-[4px] py-[9px] px-0 rounded-[8px] no-underline text-[#3d4a5c] text-[14px] whitespace-nowrap hover:bg-[#eceff4]" onClick={toggleCollapsed} aria-label={t('menu.expandSidebar')} title={t('menu.expandSidebar')}>
+          <button type="button" className="plat-shell__toggle-item flex items-center justify-center gap-[8px] mx-[4px] py-[9px] px-0 rounded-[8px] no-underline text-[rgba(0,0,0,0.6)] text-[14px] whitespace-nowrap hover:bg-[#f3f3f3]" onClick={toggleCollapsed} aria-label={t('menu.expandSidebar')} title={t('menu.expandSidebar')}>
             <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
               <rect x="1.5" y="1.5" width="17" height="17" rx="3" />
               <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" />
@@ -912,7 +922,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
         {/* Vue menu.vue keeps the global search entry available in the
             collapsed rail (the expanded logo row is not mounted there). */}
         {collapsed && (
-          <button type="button" className="mx-[4px] flex h-[38px] items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[#3d4a5c] hover:bg-[#eceff4]" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={`${t('menu.search')} ${platformModKeyLabel(navigator.platform)}K`}>
+          <button type="button" className="mx-[4px] flex h-[38px] items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] hover:bg-[#f3f3f3]" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={`${t('menu.search')} ${platformModKeyLabel(navigator.platform)}K`}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
               <circle cx="11" cy="11" r="6.5" />
               <path d="m16 16 4.5 4.5" />
@@ -925,7 +935,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
             descendant override become state-swapped utilities keyed off
             active/collapsed (aria-current="page" already marks the active
             entry for semantics). --inset-x inlined: pl-[14px]. */}
-        <div className="flex-1 min-h-0 overflow-y-auto pt-[6px]" onScroll={onSessionsScroll}>
+        <div className="flex-1 min-h-0 overflow-y-auto" onScroll={onSessionsScroll}>
           <nav className="flex flex-col gap-[2px]" aria-label="Platform">
             {visibleNavItems.map((item) => {
               const active = item.match(pathname);
@@ -936,13 +946,18 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   navigate(item.href);
                 }} className={(collapsed
                   ? 'justify-center mx-[4px] px-0 '
-                  : 'mx-0 px-[14px] ')
-                  + 'box-border flex h-[38px] items-center gap-[8px] rounded-[4px] py-[8px] no-underline text-[14px] font-semibold whitespace-nowrap '
+                  : 'mx-0 pl-[14px] pr-[10px] ')
+                  // Vue .menu_item: h38, py8, radius 4; .menu_title: 14px/20px
+                  // w600 --td-text-color-primary rgba(0,0,0,0.9); active bg
+                  // --td-bg-color-secondarycontainer #f3f3f3 + brand text;
+                  // hover bg --td-bg-color-container-hover #f3f3f3.
+                  + 'box-border flex h-[38px] items-center gap-[8px] rounded-[4px] py-[8px] no-underline text-[14px] font-semibold leading-[20px] whitespace-nowrap '
                   + (active
                     ? 'bg-[#f3f3f3] hover:bg-[#f3f3f3] text-[#07c05f]'
-                    : 'text-[#3d4a5c] hover:bg-[#eceff4]')}
+                    : 'text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]')}
                   aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined} data-guide={item.guide}>
-                  <span className="inline-flex shrink-0">{item.icon}</span>
+                  {/* Vue .menu_icon color --td-text-color-secondary. */}
+                  <span className="inline-flex shrink-0 text-[rgba(0,0,0,0.6)]">{item.icon}</span>
                   {!collapsed && <span className="overflow-hidden text-ellipsis">{item.label}</span>}
                   {/* Vue menu.vue:93-98 — amber pending-join pill on the
                       organizations entry, expanded rail only, raw count. */}
@@ -961,12 +976,18 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               sidebar on every protected page; collapsed sidebars hide it.
               Keep the region label semantic-only; Vue renders dates and rows
               here without a visible 我的对话 heading. */}
-          {/* .plat-shell__sessions / __sessions-title → utilities. The
-              shell-context group-list indent (padding 0 6px on the session
-              <ul>) rides along as an arbitrary-variant utility so the
-              fallback chat sidebar (outside the shell) keeps its flush list. */}
+          {/* .plat-shell__sessions / __sessions-title → utilities. Vue
+              .submenu has no top divider (padding-top 3px only → pt-[5px]
+              lands the first timeline header at Vue's y). Descendant
+              overrides snap the shared SessionSidebarList h3/rows onto the
+              Vue menu.vue styles: timeline_header is 11px w600
+              rgba(0,0,0,0.26), no tracking/case, zero margins; the session
+              row button is full-width (x6 w247) with Vue's 14px/10px side
+              padding (plus 24px reserved on the right for the in-flow
+              .menu-more-wrap ellipsis button the absolute React details
+              doesn't reserve), 6px vertical padding and 20px line-height. */}
           {!collapsed && (
-            <nav className="mb-[4px] pt-[7px] border-t border-[#e7ebf0] [&_h3]:mt-0 [&_ul]:px-[6px] [&_li>button]:py-[7px]" aria-label={labels.myChats}>
+            <nav className="mb-[4px] pt-[5px] [&_h3]:mt-0 [&_h3]:mb-0 [&_h3]:font-semibold [&_h3]:text-[rgba(0,0,0,0.26)] [&_h3]:tracking-normal [&_h3]:normal-case [&_li>button]:py-[6px] [&_li>button]:pl-[14px] [&_li>button]:pr-[34px] [&_li>button]:leading-[20px]" aria-label={labels.myChats}>
               {sessionsLoadError && !sessionsLoading ? <p className="mx-[14px] my-2 text-xs text-[#b42318]" role="status">
                 {labels.sessionLoadError}{' '}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-[#07c05f] underline" onClick={retryShellSessions}>{t('common.retry')}</button>
               </p> : null}
@@ -1000,7 +1021,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
             button); the py-4 box made it 56px and lifted it 6px off the bottom. */}
         <div className="shrink-0 px-[2px] py-[1px]">
           <div ref={userMenuRef} className="relative">
-            <button type="button" className="flex items-center gap-[6px] w-full px-[6px] py-[8px] border-none rounded-[8px] bg-transparent cursor-pointer text-left hover:bg-[#eceff4]" aria-haspopup="menu" aria-expanded={menuOpen}
+            <button type="button" className="flex items-center gap-[6px] w-full px-[6px] py-[8px] border-none rounded-[8px] bg-transparent cursor-pointer text-left hover:bg-[#f3f3f3]" aria-haspopup="menu" aria-expanded={menuOpen}
               data-guide="user-menu"
               onClick={() => setMenuOpen((open) => !open)}>
               <span className="inline-flex items-center justify-center w-[24px] h-[24px] rounded-full overflow-hidden shrink-0 bg-[linear-gradient(135deg,#2e6de6_0%,#1f56c2_100%)]" aria-hidden="true">
@@ -1011,21 +1032,24 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               {!collapsed && (
                 <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
                   {showTenantIdentityLine ? <>
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold tracking-[-0.01em] text-[#1f2733]">{user.tenantName || user.name || '—'}</span>
-                    <span className="flex min-w-0 items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35] text-[#66758b]">
+                    {/* Vue UserMenu .user-tenant-name / .user-meta colors are
+                        the td tokens: primary rgba(0,0,0,0.9) and secondary
+                        rgba(0,0,0,0.6). */}
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold tracking-[-0.01em] text-[rgba(0,0,0,0.9)]">{user.tenantName || user.name || '—'}</span>
+                    <span className="flex min-w-0 items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35] text-[rgba(0,0,0,0.6)]">
                       {user.name && user.name !== user.tenantName ? <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{user.name}</span> : null}
                       {user.name && user.name !== user.tenantName && roleLabel ? <span aria-hidden="true" className="text-[#8b97a8]">·</span> : null}
                       {roleLabel ? <span className="shrink-0">{roleLabel}</span> : null}
                     </span>
                   </> : <>
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium text-[#1f2733]">{user.name || '—'}</span>
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[#66758b]">{user.email}</span>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium text-[rgba(0,0,0,0.9)]">{user.name || '—'}</span>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[rgba(0,0,0,0.6)]">{user.email}</span>
                   </>}
                 </span>
               )}
             </button>
             {menuOpen && (
-              <div className="absolute bottom-[calc(100%_+_6px)] left-[-4px] right-[-5px] bg-white border border-[#e7ebf0] rounded-[8px] shadow-[0_4px_20px_rgba(0,0,0,0.12)] overflow-hidden z-[1000]" role="menu">
+              <div className="absolute bottom-[calc(100%_+_6px)] left-[-6px] right-[-7px] bg-white border border-[#e7ebf0] rounded-[8px] shadow-[0_4px_20px_rgba(0,0,0,0.12)] overflow-hidden z-[1000]" role="menu">
                 {/* Vue UserMenu.vue:44-56 — the dropdown opens with an account
                     card (24px avatar at margin-left -4px, nickname row with a
                     20px help-circle button that re-opens the welcome tour by
@@ -1087,7 +1111,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{membership.tenantName}</span><span className="shrink-0 text-[11px] text-[#8b97a8]">{membership.tenantId === activeTenantId ? '当前' : membership.role}</span>
                   </button>)}
                 </div> : null}
-                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=userprofile"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false))}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></svg>
@@ -1096,25 +1120,25 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 {/* R450-A2 — Vue UserMenu.vue:81 gates the 「空间设置」
                     quick link with !isLiteMode; lite deployments have no
                     tenant surface to manage. */}
-                {!isLiteEdition && <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {!isLiteEdition && <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=tenant"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=tenant', () => setMenuOpen(false))}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3.5" /><path d="M12 3.5v5M12 15.5v5M3.5 12h5M15.5 12h5" /></svg>
                   {labels.workspaceSettings}
                 </a>}
-                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=members"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=members', () => setMenuOpen(false))}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="9" cy="8.5" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><circle cx="16.5" cy="9.5" r="2.5" /><path d="M15.5 14.2A5 5 0 0 1 20.5 19" /></svg>
                   {labels.membersSettings}
                 </a> : null}
-                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=models"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=models', () => setMenuOpen(false))}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><path d="M4 8h16M4 16h16" /><circle cx="9" cy="8" r="2" /><circle cx="15" cy="16" r="2" /></svg>
                   {labels.modelsSettings}
                 </a> : null}
-                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=skills"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=skills', () => setMenuOpen(false))}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><path d="M8.5 7 4 12l4.5 5" /><path d="M15.5 7 20 12l-4.5 5" /></svg>
@@ -1127,7 +1151,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     renders for every role so viewer-only users keep a path to
                     the read-only rosters and model lists. */}
                 <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
-                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings"
                   onClick={(event) => handleInternalLink(event, '/platform/settings', () => setMenuOpen(false))}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="12" cy="12" r="3" /><path d="M12 2.8 13 5.6a6.6 6.6 0 0 1 2.2 1.3l2.9-.9 1.6 2.8-2.1 2.1a6.9 6.9 0 0 1 0 2.2l2.1 2.1-1.6 2.8-2.9-.9a6.6 6.6 0 0 1-2.2 1.3l-1 2.8h-2l-1-2.8a6.6 6.6 0 0 1-2.2-1.3l-2.9.9-1.6-2.8 2.1-2.1a6.9 6.9 0 0 1 0-2.2L4.3 8.8l1.6-2.8 2.9.9A6.6 6.6 0 0 1 11 5.6l1-2.8z" /></svg>
@@ -1139,14 +1163,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     the settings modal opened at the system-global group
                     (?section=system-global). UI gating only; the server-side
                     RequireSystemAdmin middleware is the real boundary. */}
-                {user.isSystemAdmin ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                {user.isSystemAdmin ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=system-global"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=system-global', () => setMenuOpen(false))}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><rect x="3" y="4" width="18" height="7" rx="1.5" /><rect x="3" y="13" width="18" height="7" rx="1.5" /><path d="M7 7.5h.01M7 16.5h.01" /></svg>
                   {labels.systemAdministration}
                 </a> : null}
                 <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
-                <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="https://github.com/Tencent/WeKnora/tree/main/docs" target="_blank" rel="noreferrer"
                   onClick={() => setMenuOpen(false)}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -1163,7 +1187,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     </svg>
                   </span>
                 </a>
-                <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="https://github.com/Tencent/WeKnora" target="_blank" rel="noreferrer" title={labels.githubStarTip}
                   onClick={() => setMenuOpen(false)}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -1188,7 +1212,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     clears the weknora_lite_mode key). */}
                 {!isLiteEdition && <>
                   <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
-                  <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
+                  <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#d54941] no-underline hover:bg-[#fbe9e8]"
                     onClick={() => { setMenuOpen(false); void runShellLogout(onLogout); }}>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0"><path d="M14 4h4a1.5 1.5 0 0 1 1.5 1.5v13A1.5 1.5 0 0 1 18 20h-4" /><path d="M10 8l-4 4 4 4" /><path d="M6 12h9" /></svg>
                     {t('auth.logout')}

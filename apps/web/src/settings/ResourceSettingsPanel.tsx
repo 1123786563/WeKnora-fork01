@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Input, Select, Sheet, Status, Switch } from '@weknora/ui';
-import { settingsResourceRows } from './surface.ts';
+import { settingsResourceRows, settingsSectionHeading } from './surface.ts';
 import { providerLogo } from './providerLogos.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 import {
@@ -620,7 +620,9 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
       return copy.localLabel;
     }
     if (section === 'vectorstore') {
-      const endpoint = config.endpoint;
+      // Vue getStoreEndpoint reads connection_config.addr || .host
+      // (VectorStoreSettings.vue L505-508) — endpoint is not consulted.
+      const endpoint = config.addr || config.host;
       return typeof endpoint === 'string' ? endpoint : '';
     }
     return rowText(row, 'description');
@@ -632,17 +634,16 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
   // the provider type's display name from /web-search-providers/types.
   const providerTypeLabel = (providerId: string) => providerTypes.find((entry) => entry.id === providerId)?.name || providerId;
   // Vue VectorStoreSettings marks .env-sourced stores with a DEFAULT pill.
+  // Vue .store-card__pill: no border, warning-tint bg/text (L1019-1028).
   const envPill = (row: ResourceRow) => row.source === 'env' ? (
-    <span className="shrink-0 rounded-[4px] border border-[#e4e7ec] bg-[#f6f8fa] px-[6px] py-[2px] text-[11px] leading-[16px] text-[#66758b]">{t('vectorStoreSettings.envTag')}</span>
+    <span className="shrink-0 rounded-[3px] bg-[#fef3e6] px-[6px] py-px text-[11px] font-medium leading-4 text-[#b85c00]">{t('vectorStoreSettings.envTag')}</span>
   ) : null;
   // vectorstore/websearch panels keep an inner list title (storesTitle /
   // providersTitle); storage's card grid sits directly under the section
-  // description in Vue.
+  // header in Vue. Vue has no refresh affordance on these lists — the
+  // heading is a plain .list-section-title (16px/600, mb 16).
   const innerListTitle = section === 'storage' ? null : (
-    <div className="wk-settings-panel-heading flex items-center justify-between gap-4 pb-2 pt-1">
-      <h3 className="m-0 text-[15px] font-semibold text-[#101828]">{t(keys.list)}</h3>
-      <Button type="button" disabled={busy} aria-label={t('common.refresh')} title={t('common.refresh')} onClick={() => void refresh()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg></Button>
-    </div>
+    <h3 className="list-section-title m-0">{t(keys.list)}</h3>
   );
 
   // -------------------------------------------------------------------------
@@ -902,11 +903,19 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     </>
   );
 
-  return <div className="wk-settings-resource">
+  return <div className="wk-settings-resource" data-resource-section={section}>
+    {/* Vue 三个资源面板各自渲染 section-header（VectorStoreSettings.vue L3-6 /
+        StorageBackendSettings.vue L3-11 / WebSearchSettings.vue L2-8）— 壳层
+        wrapper heading 由 settings-wrapper.css :has(.wk-settings-resource) 隐藏，
+        文案沿用 settingsSectionHeading（与壳层 heading 完全一致）。 */}
+    <header className="section-header">
+      <h2>{settingsSectionHeading(locale, section).title}</h2>
+      {settingsSectionHeading(locale, section).description ? <p className="section-description">{settingsSectionHeading(locale, section).description}</p> : null}
+    </header>
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
     {innerListTitle}
-    <div className="backend-grid grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
+    <div className="backend-grid grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
       {rows.map((row, index) => {
         const id = rowId(row);
         const provider = rowText(row, 'provider') || rowText(row, 'type') || rowText(row, 'engine_type');
@@ -919,39 +928,40 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
           key={id || index}
           role="button"
           tabIndex={0}
-          className="backend-card flex cursor-pointer items-start gap-3 rounded-[10px] border border-[#e4e7ec] bg-white p-4 transition-shadow hover:shadow-[0_4px_14px_rgba(0,0,0,0.07)]"
+          className={(section === 'vectorstore' && row.source === 'env' ? "backend-card flex cursor-pointer items-start gap-3 rounded-[10px] border border-[#e7e7e7] bg-[#f3f3f3] "
+            : "backend-card flex cursor-pointer items-start gap-3 rounded-[10px] border border-[#e7e7e7] bg-white ") + (section === 'storage' ? "px-4 py-[14px]" : "py-[14px] pr-[14px] pl-3") + " transition-shadow hover:shadow-[0_4px_14px_rgba(0,0,0,0.07)]"}
           onClick={() => edit(row)}
           onKeyDown={(event) => { if (event.key === 'Enter') edit(row); }}
         >
           {logo ? (
-            <div className="backend-card__badge inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-[rgba(0,0,0,0.06)] bg-white" style={{ color: brand.color }} aria-label={provider}>
+            <div className="backend-card__badge mt-px inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-white shadow-[inset_0_0_0_1px_#e7e7e7]" style={{ color: brand.color }} aria-label={provider}>
               {logo.mode === 'color'
                 ? <img src={logo.url} alt="" className="h-6 w-6 object-contain" />
                 : <span style={monoLogoMask(logo.url)} aria-hidden="true" />}
             </div>
           ) : (
-            <div className="backend-card__badge inline-flex h-10 w-10 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]" style={{ backgroundColor: brand.bg, color: brand.color }} aria-label={provider}>{providerInitial(provider || nameValue)}</div>
+            <div className="backend-card__badge mt-px inline-flex h-9 w-9 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]" style={{ backgroundColor: brand.bg, color: brand.color }} aria-label={provider}>{providerInitial(provider || nameValue)}</div>
           )}
           <div className="min-w-0 flex-1">
-            <div className="backend-card__header flex items-center gap-2">
-              <h3 className="backend-card__title m-0 min-w-0 truncate text-[15px] font-semibold text-[#101828]" title={nameValue}>{nameValue}</h3>
+            <div className="backend-card__header flex items-center gap-1.5">
+              <h3 className="backend-card__title m-0 min-w-0 max-w-full truncate text-sm font-semibold leading-[24px] text-[#101828]" title={nameValue}>{nameValue}</h3>
               {section !== 'storage' && row.source === 'env' ? envPill(row) : null}
-              {isDefault ? <span className="shrink-0 rounded-[4px] bg-[#e8f8f2] px-[6px] py-[2px] text-[11px] leading-[16px] text-[#0a7f43]">{copy.defaultLabel}</span> : null}
+              {isDefault ? <span className="shrink-0 rounded-[4px] bg-[rgba(7,192,95,0.1)] px-[5px] py-[2px] text-[12px] leading-[16px] text-[#07c05f]">{copy.defaultLabel}</span> : null}
             </div>
-            <p className="backend-card__subtitle m-0 mt-1 flex items-center truncate text-[13px] text-muted">
-              <span>{provider ? (section === 'websearch' ? providerTypeLabel(provider) : providerLabel(provider)) : copy.typeUnavailable}</span>
-              {meta ? <><span className="mx-[4px]">·</span><span className="truncate">{meta}</span></> : null}
+            <p className={`backend-card__subtitle m-0 flex items-center truncate text-xs text-muted ${section === 'storage' ? 'mt-[4px] leading-[18px]' : 'mt-1 leading-[1.4]'}`}>
+              <span className="font-medium">{provider ? (section === 'websearch' ? providerTypeLabel(provider) : providerLabel(provider)) : copy.typeUnavailable}</span>
+              {meta ? <><span className="mx-[4px] text-[#97a3b6]">·</span><span className="truncate">{meta}</span></> : null}
             </p>
           </div>
         </article>;
       })}
       <button
         type="button"
-        className="backend-card backend-card--add flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[#c7cdd6] bg-surface text-[#07c05f] transition-colors hover:bg-[#f6f8fa]"
+        className={`backend-card backend-card--add flex min-h-[68px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[#e7e7e7] bg-transparent text-[rgba(0,0,0,0.4)] transition-colors hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f] ${section === 'storage' ? 'px-4 py-[14px]' : 'py-[14px] pr-[14px] pl-3'}`}
         onClick={openCreate}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
-        <span className="text-[13px]">{t(keys.add)}</span>
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[#07c05f]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg></span>
+        <span className="text-[13px] font-medium leading-[18px]">{t(keys.add)}</span>
       </button>
     </div>
     {/* Vue WebSearchSettings L13: the empty-state hint only renders for

@@ -198,6 +198,11 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [editedNames, setEditedNames] = useState<Record<string, string>>({});
+  // Vue IntegrationSettingsSection keeps one shared filterAgentId ref bound to
+  // both IMChannelPanel and AgentEmbedChannelPanel (v-model:filter-agent-id);
+  // the panel filters its channel list by resource.agent_id.
+  const [imAgentFilter, setImAgentFilter] = useState('');
+  const [embedAgentFilter, setEmbedAgentFilter] = useState('');
   const [principalMode, setPrincipalMode] = useState<APIPrincipalConfig['mode']>(actions.principal?.mode ?? 'tenant');
   const [requireDirectHeader, setRequireDirectHeader] = useState(actions.principal?.require_direct_header ?? false);
   const [hmacSecret, setHmacSecret] = useState('');
@@ -487,7 +492,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
         to outrank the global unlayered h1 rule still in styles.css. Vue settings
         embeds the section inside .content-wrapper--full (30px 34px 40px), so the
         embedded mode drops the route-shell paddings. */}
-    <main className={'mx-auto max-w-[1040px]' + (embedded ? '' : ' px-[1rem] py-[2rem]')}>
+    <main className={'mx-auto max-w-[1040px] [-webkit-font-smoothing:antialiased]' + (embedded ? '' : ' px-[1rem] py-[2rem]')}>
       {!embedded ? <><header className="flex items-start justify-between gap-[1rem] mb-[1.25rem]">
         <div><h1 className="m-0!">{t('integrations.title')}</h1><p className="wk-muted text-muted">{t('integrations.agentEditor.desc')}</p></div>
         {onReload ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onReload}>{t('common.retry')}</button> : null}
@@ -506,7 +511,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
             <h2 className="m-0 mb-[6px] text-[rgba(0,0,0,0.9)] text-[18px] font-semibold leading-[1.35]">{copy.heading}</h2>
             <p className="m-0 text-[13px] leading-[1.6] text-[rgba(0,0,0,0.6)]">
               {copy.description}
-              {copy.docLinkLabel && copy.docUrl ? <a className="ml-[6px] inline-flex items-center gap-[3px] text-[#07c05f] no-underline hover:underline" href={copy.docUrl} target="_blank" rel="noreferrer noopener">{copy.docLinkLabel}<svg className="text-[13px]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg></a> : null}
+              {copy.docLinkLabel && copy.docUrl ? <a className="ml-[6px] inline-flex items-center gap-[3px] text-[#07c05f] no-underline hover:underline" href={copy.docUrl} target="_blank" rel="noreferrer noopener">{copy.docLinkLabel}<LandingIcon name="url" size={13} /></a> : null}
             </p>
           </div> : null}
         {loading ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.loading')}</p> : null}
@@ -515,7 +520,15 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           variant={tab}
           copy={copy}
           locale={locale}
-          items={tab === 'im' ? imChannels : embedChannels}
+          // Vue IMChannelPanel/AgentEmbedChannelPanel filter channels by the
+          // selected bound agent (channels computed on filterAgentId).
+          items={(tab === 'im' ? imChannels : embedChannels).filter((item) => {
+            const filter = tab === 'im' ? imAgentFilter : embedAgentFilter;
+            return !filter || item.agent_id === filter;
+          })}
+          agents={agents}
+          agentFilter={tab === 'im' ? imAgentFilter : embedAgentFilter}
+          onAgentFilter={tab === 'im' ? setImAgentFilter : setEmbedAgentFilter}
           showCreate={tab === 'im' ? imWizardOpen : embedWizardOpen}
           onToggleCreate={() => (tab === 'im' ? (imWizardOpen ? closeImWizard() : openImCreate()) : (embedWizardOpen ? closeEmbedWizard() : openEmbedCreate()))}
           canEdit={canEdit}
@@ -691,10 +704,14 @@ interface ChannelListCopy {
 // background and hover state are per-variant so no two utilities of the same
 // property compete on one element. max-[720px] carries the old
 // @media (max-width: 720px) card wrap.
-const CHANNEL_CARD_CLASS = 'relative flex items-center gap-3 box-border min-h-14 px-3 py-[10px] rounded-[10px] border border-[#e7e7e7] text-left [font:inherit] transition-[border-color,box-shadow] duration-[180ms] ease-[ease] max-[720px]:items-start max-[720px]:flex-wrap';
+// Vue channel-panel-list.less: .channel-card min-height is the static
+// calc(20px + 14px*1.4 + 4px + 12px*1.4) = 60.4px two-line body, so the add
+// tile matches the existing channel cards even in an empty list.
+const CHANNEL_CARD_CLASS = 'relative flex items-center gap-3 box-border min-h-[60.4px] px-3 py-[10px] rounded-[10px] border border-[#e7e7e7] text-left [font:inherit] transition-[border-color,box-shadow] duration-[180ms] ease-[ease] max-[720px]:items-start max-[720px]:flex-wrap';
 const CHANNEL_CARD_CLICKABLE_CLASS = CHANNEL_CARD_CLASS + ' w-full cursor-pointer bg-surface text-[color:inherit] hover:border-[#08dd6e] hover:shadow-[0_4px_14px_rgba(15,23,42,0.06)] hover:outline-none focus-visible:border-[#07c05f] focus-visible:shadow-[0_4px_14px_rgba(15,23,42,0.06)] focus-visible:outline-none';
 const CHANNEL_CARD_STATIC_CLASS = CHANNEL_CARD_CLASS + ' bg-surface text-[color:inherit]';
-const CHANNEL_CARD_ADD_CLASS = CHANNEL_CARD_CLASS + ' w-full cursor-pointer border-dashed bg-transparent text-[#98a2b3] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f] hover:shadow-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,0.06)] focus-visible:text-[#07c05f] focus-visible:shadow-none';
+// Vue .channel-card--add inherits --td-text-color-placeholder rgba(0,0,0,0.4).
+const CHANNEL_CARD_ADD_CLASS = CHANNEL_CARD_CLASS + ' w-full cursor-pointer border-dashed bg-transparent text-[rgba(0,0,0,0.4)] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f] hover:shadow-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,0.06)] focus-visible:text-[#07c05f] focus-visible:shadow-none';
 const CHANNEL_BADGE_CLASS = 'flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg';
 const CHANNEL_BADGE_STATIC_CLASS = CHANNEL_BADGE_CLASS + ' bg-hover-wash text-[12px] font-semibold text-muted-strong';
 const CHANNEL_BADGE_ADD_CLASS = CHANNEL_BADGE_CLASS + ' bg-[rgba(7,192,95,0.1)] text-[20px] font-normal text-[#07c05f]';
@@ -819,11 +836,64 @@ const EMBED_PREVIEW_FRAME_CLASS =
 const EMBED_PREVIEW_LAUNCHER_CLASS =
   'absolute bottom-[20px] right-[20px] h-[48px] w-[48px] cursor-pointer rounded-full border-0 text-[22px] text-white shadow-[0_4px_16px_rgba(0,0,0,.18)]';
 
-function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCreate, canEdit, busy, t, renamingId, renameValue, onRenameValue, onStartRename, onSaveRename, onCancelRename, onOpenCard, onToggle, onDelete, imCreateSlot, embedCreateSlot }: {
+// Vue IntegrationsAgentFilter.vue ported: a small filter icon + chevron button
+// (18px tall, 6px radius) that opens a dropdown of bound agents; picking one
+// filters the channel list (the panel-level filter state). The button keeps
+// the Vue geometry: 14px filter icon, 12px chevron, 4px gap, padding
+// 2px 6px 2px 4px, placeholder color rgba(0,0,0,0.4).
+function AgentFilterButton({ agents, value, locale, onPick }: { agents: readonly IntegrationAgentOption[]; value: string; locale: Locale; onPick: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDocClick = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+  const selectedName = agents.find((agent) => agent.id === value)?.name || '';
+  const label = selectedName
+    ? integrationsT(locale, 'integrations.filterByAgentWithName', { name: selectedName })
+    : integrationsT(locale, 'integrations.filterByAgent');
+  return <span className="relative inline-flex shrink-0" ref={rootRef}>
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      aria-haspopup="listbox"
+      aria-expanded={open}
+      className={'flex cursor-pointer items-center gap-[4px] rounded-[6px] border-0 bg-transparent px-[4px] py-[2px] pr-[6px] [font:inherit] [transition:background_.2s_ease,color_.2s_ease] ' + (value ? 'bg-[#f3f3f3] text-[#07c05f]' : 'text-[rgba(0,0,0,0.4)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.6)]')}
+      onClick={() => setOpen((current) => !current)}
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M19.5 4H4.5L10.5 12.5V20H13.5V12.5L19.5 4Z" /></svg>
+      {selectedName ? <span className="max-w-[150px] truncate text-[12px] leading-[14px]">{selectedName}</span> : null}
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M17.5 9.5L12 15L6.5 9.5" /></svg>
+    </button>
+    {open ? <div role="listbox" aria-label={label} className="absolute top-[calc(100%+4px)] left-0 z-[30] max-h-[280px] min-w-[160px] max-w-[240px] overflow-auto rounded-[6px] border border-solid border-[#e7e7e7] bg-surface py-[4px] shadow-[0_4px_16px_rgba(15,23,42,0.12)]">
+      {[{ id: '', name: integrationsT(locale, 'integrations.filterAllAgents') }, ...agents].map((agent) => (
+        <button
+          type="button"
+          role="option"
+          key={agent.id || '__all__'}
+          aria-selected={agent.id === value}
+          className={'block w-full cursor-pointer border-0 bg-transparent px-[10px] py-[6px] text-left text-[13px] leading-[18px] [font:inherit] hover:bg-[#f3f3f3] ' + (agent.id === value ? 'text-[#07c05f]' : 'text-[rgba(0,0,0,0.9)]')}
+          onClick={() => { onPick(agent.id); setOpen(false); }}
+        >{agent.name}</button>
+      ))}
+    </div> : null}
+  </span>;
+}
+
+function ChannelListPanel({ variant, copy, locale, items, agents, agentFilter, onAgentFilter, showCreate, onToggleCreate, canEdit, busy, t, renamingId, renameValue, onRenameValue, onStartRename, onSaveRename, onCancelRename, onOpenCard, onToggle, onDelete, imCreateSlot, embedCreateSlot }: {
   variant: 'im' | 'embed';
   copy: ChannelListCopy;
   locale: Locale;
   items: readonly IntegrationResource[];
+  /** Vue IntegrationsAgentFilter options (bound-agent dropdown). */
+  agents?: readonly IntegrationAgentOption[];
+  agentFilter?: string;
+  onAgentFilter?: (id: string) => void;
   showCreate: boolean;
   onToggleCreate: () => void;
   canEdit: boolean;
@@ -842,9 +912,21 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
   embedCreateSlot?: React.ReactNode;
 }) {
   return <div className="wk-channels-section">
+    {/* Vue channel-panel-list.less .channels-header: 8px gap, 12px bottom
+        margin; the agent filter (IntegrationsAgentFilter) sits between the
+        title and the count pill. leading values reproduce the Vue `normal`
+        line boxes (14px→20px title, 12px→15px pill). */}
     <div className="mb-3 flex items-center gap-2">
-      <span className="text-[14px] font-medium text-[rgba(0,0,0,0.9)]">{copy.channelsTitle}</span>
-      <span className="rounded-[10px] bg-[#f3f3f3] px-2 py-0.5 text-[12px] text-[rgba(0,0,0,0.26)]">{items.length}</span>
+      <span className="text-[14px] font-medium leading-[20px] text-[rgba(0,0,0,0.9)]">{copy.channelsTitle}</span>
+      {/* Vue renders IntegrationsAgentFilter unconditionally (an empty agent
+          list just leaves the 全部智能体-only dropdown). */}
+      {onAgentFilter ? <AgentFilterButton
+        agents={agents ?? []}
+        value={agentFilter ?? ''}
+        locale={locale}
+        onPick={onAgentFilter}
+      /> : null}
+      <span className="rounded-[10px] bg-[#f3f3f3] px-2 py-0.5 text-[12px] leading-[15px] text-[rgba(0,0,0,0.26)]">{items.length}</span>
     </div>
     {/* Vue IMChannelPanel/AgentEmbedChannelPanel: the empty description is a
         viewer-only branch — admins see the bare grid with the add tile. */}
@@ -1616,8 +1698,9 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
     ? 'linear-gradient(135deg, rgba(232,93,42,0.12) 0%, rgba(232,93,42,0.05) 45%, #ffffff 72%)'
     : 'linear-gradient(135deg, rgba(7,192,95,0.10) 0%, rgba(7,192,95,0.04) 42%, #ffffff 72%)';
   const heroInsetShadow = isClaw ? 'inset 0 1px 0 rgba(232,93,42,0.10)' : 'inset 0 1px 0 rgba(7,192,95,0.08)';
-  // .ext-cta border: color-mix(brand 28%, --td-component-stroke #e7e7e7).
-  const ctaBorder = isClaw ? '#e9b49c' : '#a8dcc0';
+  // .ext-cta border: color-mix(brand 28%, --td-component-stroke #e7e7e7)
+  // = rgb(231,190,174) for claw / rgb(168,220,193) for chrome.
+  const ctaBorder = isClaw ? '#e7beae' : '#a8dcc1';
   const envExample = `export WEKNORA_BASE_URL="${apiBaseDisplay || 'https://your-server.com/api/v1'}"\nexport WEKNORA_API_KEY="sk-your-api-key"`;
   // Vue IntegrationLandingLayout: hero, external CTA, constrained two-column
   // content and footer metadata are part of the page contract, not decoration.
@@ -1626,19 +1709,23 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
       <div className="min-w-0 flex-1">
         <h2 className="m-0 mb-1 text-[16px] font-semibold leading-[1.35] text-[rgba(0,0,0,0.9)]">{t(`integrations.${tab}.title`)}</h2>
         <p className="m-0 text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">{t(`integrations.${tab}.subtitle`)}</p>
-        {tab === 'chrome' ? <div className="mt-2 flex flex-wrap gap-1.5">{['research', 'learning', 'tech', 'work'].map((key) => <span key={key} className="rounded-[4px] border border-[#ececec] bg-[rgba(255,255,255,0.7)] px-2 py-0.5 text-[11px] leading-[1.45] text-[rgba(0,0,0,0.6)]">{t(`integrations.chrome.scenarios.${key}`)}</span>)}</div> : null}
+        {tab === 'chrome' ? <div className="mt-2 flex flex-wrap gap-1.5">{['research', 'learning', 'tech', 'work'].map((key) => <span key={key} className="rounded-[4px] border border-[rgba(231,231,231,0.8)] bg-[rgba(255,255,255,0.7)] px-2 py-0.5 text-[11px] leading-[1.45] text-[rgba(0,0,0,0.6)]">{t(`integrations.chrome.scenarios.${key}`)}</span>)}</div> : null}
         {/* Vue ext-cta is a <button style="font: inherit">; Tailwind preflight
-            would otherwise leave the label/hint on the UA button font (Arial). */}
+            would otherwise leave the label/hint on the UA button font (Arial).
+            The body column carries Vue's gap:1px + justify-center. */}
         <button type="button" className="ext-cta mt-[14px] flex min-h-[52px] w-full items-center gap-3 rounded-[8px] border border-dashed bg-[rgba(255,255,255,0.55)] px-3 py-[10px] text-left text-[rgba(0,0,0,0.9)] [font-family:inherit]" style={{ borderColor: ctaBorder }} onClick={openExternal}>
-          <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[8px] text-[17px] leading-[17px]" style={{ background: isClaw ? 'rgba(232,93,42,0.12)' : 'rgba(7,192,95,0.1)', color: brandDark }}>{tab === 'cli' ? <LandingIcon name="code" /> : tab === 'chrome' ? <LandingIcon name="extension" /> : '🦞'}</span>
-          <span className="flex min-w-0 flex-1 flex-col"><span className="text-[13px] font-semibold leading-[1.35]">{cta.label}</span><span className="text-[11px] leading-[1.4] text-[rgba(0,0,0,0.4)]">{cta.hint}</span></span>
-          <span aria-hidden="true" className="flex size-[30px] items-center justify-center rounded-[7px] text-[15px] text-[rgba(0,0,0,0.6)]" style={{ background: isClaw ? 'rgba(232,93,42,0.1)' : 'rgba(7,192,95,0.08)' }}>↗</span>
+          <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[8px] text-[14px] leading-[0]" style={{ background: isClaw ? 'rgba(232,93,42,0.12)' : 'rgba(7,192,95,0.1)', color: brandDark }}>{tab === 'cli' ? <LandingIcon name="code" size={14} /> : tab === 'chrome' ? <LandingIcon name="extension" size={18} /> : <span aria-hidden="true" className="block text-[17px] leading-[17px]">🦞</span>}</span>
+          <span className="flex min-w-0 flex-1 flex-col justify-center gap-[1px]"><span className="text-[13px] font-semibold leading-[1.35]">{cta.label}</span><span className="text-[11px] leading-[1.4] text-[rgba(0,0,0,0.4)]">{cta.hint}</span></span>
+          <span aria-hidden="true" className="flex size-[30px] items-center justify-center rounded-[7px] text-[14px]" style={{ background: isClaw ? 'rgba(232,93,42,0.1)' : 'rgba(7,192,95,0.08)', color: isClaw ? '#c44d1f' : 'rgba(0,0,0,0.6)' }}><JumpIcon /></span>
         </button>
       </div>
     </header>
     <div className="grid items-stretch gap-[14px] min-[821px]:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
       <div className="flex min-w-0"><div className="flex w-full flex-col rounded-[10px] border border-[#e7e7e7] bg-surface p-[2px_16px_14px] box-border">
-    {tab === 'cli' ? <section className="flex flex-col gap-3 border-b border-[#e7e7e7] pb-[14px] pt-[10px]">
+    {/* Vue .setting-drawer__section: padding 12px 0 14px, first-child pt 10,
+        last-child pb 10 + border-bottom none. Each landing panel mounts a
+        single section, so it renders 10px/10px with no divider. */}
+    {tab === 'cli' ? <section className="flex flex-col gap-3 pb-[10px] pt-[10px]">
       <LandingSectionHead label={t('integrations.cli.quickstart')} />
       {/* Vue landing-steps/landing-step: 9px row padding with row dividers. */}
       <ol className="m-0 flex list-none flex-col p-0">
@@ -1662,11 +1749,11 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
       <p className="wk-muted text-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.mcpDesc')}</p>
       <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}>⧉</button></div>
     </section> : null}
-    {tab === 'chrome' ? <section className="flex flex-col gap-3 border-b border-[#e7e7e7] pb-[14px] pt-[10px]">
+    {tab === 'chrome' ? <section className="flex flex-col gap-3 pb-[10px] pt-[10px]">
       <LandingSectionHead label={t('integrations.chrome.capabilitiesTitle')} count={chromeCapabilities.length} />
       <div className="grid grid-cols-2 gap-[10px]">
         {chromeCapabilities.map((key) => <div key={key} className="flex flex-col gap-2 rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3] p-3">
-          <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[7px] bg-surface text-[#07c05f]"><LandingIcon name={key} /></span>
+          <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[7px] bg-surface text-[#07c05f]"><LandingIcon name={key} size={14} /></span>
           <h5 className="m-0 text-[13px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.chrome.capabilities.' + key + '.title')}</h5>
           <p className="m-0 text-[12px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.chrome.capabilities.' + key + '.desc')}</p>
         </div>)}
@@ -1684,11 +1771,11 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
         </li>)}
       </ol>
     </section> : null}
-    {tab === 'claw' ? <section className="flex flex-col gap-3 border-b border-[#e7e7e7] pb-[14px] pt-[10px]">
+    {tab === 'claw' ? <section className="flex flex-col gap-3 pb-[10px] pt-[10px]">
       <LandingSectionHead label={t('integrations.claw.capabilitiesTitle')} count={clawCapabilities.length} accent={accent} />
       <div className="grid grid-cols-2 gap-[10px]">
         {clawCapabilities.map((key, index) => <div key={key} className={'flex flex-col gap-2 rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3] p-3' + (isClaw && index === clawCapabilities.length - 1 && clawCapabilities.length % 2 === 1 ? ' col-span-2' : '')}>
-          <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[7px] bg-surface" style={accent ? { color: accent, background: 'rgba(232,93,42,0.1)' } : undefined}><LandingIcon name={key} /></span>
+          <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[7px] bg-surface" style={accent ? { color: accent, background: 'rgba(232,93,42,0.1)' } : undefined}><LandingIcon name={key} size={14} /></span>
           <h5 className="m-0 text-[13px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.claw.capabilities.' + key + '.title')}</h5>
           <p className="m-0 text-[12px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.claw.capabilities.' + key + '.desc')}</p>
         </div>)}
@@ -1711,10 +1798,10 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
         {tab === 'cli' ? <>
           <section className="flex flex-col gap-3 border-b border-[#e7e7e7] pb-[14px] pt-[10px]"><LandingSectionHead label={t('integrations.cli.commandsTitle')} /><p className="m-0 text-[12px] leading-[1.55] text-[rgba(0,0,0,0.4)]">{t('integrations.cli.commandsDesc')}</p><LandingCodeToolbar code={'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'} copyLabel={t('integrations.cli.copy')} onCopy={() => copy('weknora doc upload')} /></section>
           <section className="flex flex-col gap-3 pb-[10px] pt-[12px]"><LandingSectionHead label={t('integrations.cli.mcpTitle')} /><p className="m-0 text-[12px] leading-[1.55] text-[rgba(0,0,0,0.4)]">{t('integrations.cli.mcpDesc')}</p><LandingCodeToolbar code={JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)} copyLabel={t('integrations.cli.copy')} onCopy={() => copy('mcp')} /></section>
-        </> : tab === 'chrome' ? <section className="flex flex-col gap-3 pb-[10px] pt-[12px]"><LandingSectionHead label={t('integrations.chrome.stepsTitle')} /><ol className="m-0 flex list-none flex-col p-0">{chromeSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(7,192,95,0.12)] text-[11px] font-semibold text-[#07c05f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.chrome.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.chrome.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-control border border-solid border-line-control! bg-surface mt-[6px]! px-[0.6rem]! py-0! text-[12px]! text-[rgba(0,0,0,0.9)] [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiSettings}>{t('integrations.chrome.openApiSettings')}</button> : null}{key === 'connect' ? <div className="mt-2 flex items-center gap-1"><input readOnly value={apiBaseDisplay} aria-label={apiBaseDisplay} className="min-w-0 flex-1 rounded-[6px] border border-solid border-[#dcdcdc] bg-surface px-2 py-[5px] text-[rgba(0,0,0,0.9)] [font:12px_ui-monospace,_SFMono-Regular,_Menlo,_monospace]" /><button className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-solid border-transparent bg-transparent text-[rgba(0,0,0,0.6)] [font:inherit] hover:bg-hover-wash" type="button" title={t('integrations.chrome.copy')} aria-label={t('integrations.chrome.copy')} onClick={() => copy(apiBaseDisplay)}>⧉</button></div> : null}</div></li>)}</ol></section> : <section className="flex flex-col gap-3 pb-[10px] pt-[12px]"><LandingSectionHead label={t('integrations.claw.stepsTitle')} accent={accent} /><ol className="m-0 flex list-none flex-col p-0">{clawSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(232,93,42,.14)] text-[11px] font-semibold text-[#c44d1f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.claw.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.claw.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-control border border-solid bg-surface mt-[6px]! px-[0.6rem]! py-0! text-[12px]! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55!" style={accent ? { color: accent, borderColor: 'rgba(232,93,42,0.38)' } : undefined} type="button" onClick={onOpenApiSettings}>{t('integrations.claw.openApiSettings')}</button> : null}{key === 'env' ? <div className="mt-2"><LandingCodeToolbar code={envExample} copyLabel={t('integrations.claw.copy')} accent={accent} onCopy={() => copy(envExample)} /></div> : null}{key === 'install' ? <div className="mt-2"><LandingCodeToolbar code={'openclaw skills install @lyingbug/weknora'} copyLabel={t('integrations.claw.copy')} accent={accent} onCopy={() => copy('openclaw skills install @lyingbug/weknora')} /></div> : null}</div></li>)}</ol></section>}
+        </> : tab === 'chrome' ? <section className="flex flex-col gap-3 pb-[10px] pt-[10px]"><LandingSectionHead label={t('integrations.chrome.stepsTitle')} /><ol className="m-0 flex list-none flex-col p-0">{chromeSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(7,192,95,0.12)] text-[11px] font-semibold text-[#07c05f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.chrome.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.chrome.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-[3px]! border border-solid border-[#dcdcdc]! bg-surface mt-[8px]! px-[7px]! py-0! text-[12px]! text-[rgba(0,0,0,0.9)]! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiSettings}>{t('integrations.chrome.openApiSettings')}</button> : null}{key === 'connect' ? <div className="mt-2 flex items-center gap-1"><input readOnly value={apiBaseDisplay} aria-label={apiBaseDisplay} className="h-[30px] min-w-0 flex-1 rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[8px] py-0 text-[14px] text-[rgba(0,0,0,0.9)]" /><button className="flex h-6 w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border border-solid border-transparent bg-transparent text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-hover-wash" type="button" title={t('integrations.chrome.copy')} aria-label={t('integrations.chrome.copy')} onClick={() => copy(apiBaseDisplay)}><CopyIcon /></button></div> : null}</div></li>)}</ol></section> : <section className="flex flex-col gap-3 pb-[10px] pt-[10px]"><LandingSectionHead label={t('integrations.claw.stepsTitle')} accent={accent} /><ol className="m-0 flex list-none flex-col p-0">{clawSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(232,93,42,.14)] text-[11px] font-semibold text-[#c44d1f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.claw.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.claw.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-[3px]! border border-solid bg-surface mt-[8px]! px-[7px]! py-0! text-[12px]! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55!" style={{ color: 'rgba(0, 0, 0, 0.9)', borderColor: '#dcdcdc' }} type="button" onClick={onOpenApiSettings}>{t('integrations.claw.openApiSettings')}</button> : null}{key === 'env' ? <div className="mt-2"><LandingCodeToolbar code={envExample} copyLabel={t('integrations.claw.copy')} onCopy={() => copy(envExample)} /></div> : null}{key === 'install' ? <div className="mt-2"><LandingCodeToolbar code={'openclaw skills install @lyingbug/weknora'} copyLabel={t('integrations.claw.copy')} onCopy={() => copy('openclaw skills install @lyingbug/weknora')} /></div> : null}</div></li>)}</ol></section>}
       </div></aside>
     </div>
-    {tab === 'chrome' ? <footer className="text-[11px] leading-[16px] text-[rgba(0,0,0,0.4)]">{t('integrations.chrome.storeMeta')}</footer> : tab === 'claw' ? <footer className="rounded-[8px] border bg-[#f2eae7] px-3 py-[10px] text-[12px] text-[rgba(0,0,0,0.6)]" style={{ borderColor: '#e6cabd' }}><p className="m-0 mb-1 leading-[1.55]">{t('integrations.claw.ecosystemNote')}</p><span className="block text-right text-[11px] leading-[16px] text-[rgba(148,58,23,0.73)]">{t('integrations.claw.hubMeta')}</span></footer> : null}
+    {tab === 'chrome' ? <footer className="text-[11px] leading-[16px] text-[rgba(0,0,0,0.4)]">{t('integrations.chrome.storeMeta')}</footer> : tab === 'claw' ? <footer className="rounded-[8px] border bg-[#f2eae7] px-3 py-[10px] text-[12px] text-[rgba(0,0,0,0.6)]" style={{ borderColor: '#e6cabd' }}><p className="m-0 mb-1 leading-[1.55]">{t('integrations.claw.ecosystemNote')}</p><span className="block text-right text-[11px] leading-[13px] text-[rgba(148,58,23,0.73)]">{t('integrations.claw.hubMeta')}</span></footer> : null}
   </div>;
 }
 
@@ -1722,12 +1809,13 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
 // bar (3x14, @claw-accent for claw) + label + optional section-head-extra
 // count pill pushed to the right edge. leading-[18px] reproduces the Vue
 // line-height: normal box (Tailwind's 1.5 layer default made it 20px and
-// pushed every step row below down 2px).
+// pushed every step row below down 2px); the count pill is a 13px line box
+// (1px 7px padding → 15px tall, same as Vue).
 function LandingSectionHead({ label, count, accent }: { label: string; count?: number; accent?: string }) {
   return <h4 className="m-0 flex items-center gap-2 text-[13px] font-semibold leading-[18px] text-[rgba(0,0,0,0.9)]">
     <span aria-hidden="true" className="shrink-0 rounded-[2px]" style={{ width: 3, height: 14, background: accent || '#07c05f' }} />
     <span className="min-w-0 leading-[18px]">{label}</span>
-    {typeof count === 'number' ? <span className="ml-auto rounded-[10px] bg-[#f3f3f3] px-[7px] py-px text-[11px] font-medium text-[rgba(0,0,0,0.26)]" style={accent ? { color: accent, background: 'rgba(232,93,42,0.12)' } : undefined}>{count}</span> : null}
+    {typeof count === 'number' ? <span className="ml-auto rounded-[10px] px-[7px] py-px text-[11px] font-medium leading-[13px]" style={accent ? { color: accent, background: '#f2e0db' } : { color: 'rgba(0,0,0,0.26)', background: '#f3f3f3' }}>{count}</span> : null}
   </h4>;
 }
 
@@ -1735,31 +1823,48 @@ function LandingSectionHead({ label, count, accent }: { label: string; count?: n
 // button on the right (not the dark bg-ink playground style). The Vue copy
 // button computes to 24x24 (t-button small) with 4px side margins — the
 // earlier size-8 left the mono pre 8px narrower than the Vue line measure.
-function LandingCodeToolbar({ code, copyLabel, accent, onCopy }: { code: string; copyLabel: string; accent?: string; onCopy(): void }) {
+// Vue keeps the TDesign default text color rgba(0,0,0,0.9) on the copy icon
+// (the claw :deep text-variant recolor does not reach it) with a 3px radius.
+function LandingCodeToolbar({ code, copyLabel, onCopy }: { code: string; copyLabel: string; onCopy(): void }) {
   return <div className="flex items-center overflow-hidden rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3]">
     <pre className="m-0 min-w-0 flex-1 overflow-x-auto whitespace-pre px-3 py-[10px] text-left text-[rgba(0,0,0,0.9)] [font:11px/1.55_ui-monospace,_SFMono-Regular,_Menlo,_monospace]">{code}</pre>
-    <button className="mx-1 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-solid border-transparent bg-transparent text-[rgba(0,0,0,0.6)] [font:inherit] hover:bg-hover-wash" type="button" title={copyLabel} aria-label={copyLabel} style={accent ? { color: accent } : undefined} onClick={onCopy}>⧉</button>
+    <button className="mx-1 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[3px] border border-solid border-transparent bg-transparent text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-hover-wash" type="button" title={copyLabel} aria-label={copyLabel} onClick={onCopy}><CopyIcon /></button>
   </div>;
 }
 
-// Line icons matching the Vue t-icon names (ClawSkillLanding.vue L122-128,
-// ChromeExtensionLanding.vue L108-113), rendered at 16px stroke style.
+// Line icons lifted verbatim from the TDesign icon set (tdesign-icons-vue-next
+// esm/components/*.js): the Vue landings render t-icon upload/link/edit/search/
+// view-list (ClawSkillLanding.vue L122-128) and chat-bubble/file-copy/edit/
+// jump (ChromeExtensionLanding.vue L108-113) at 14px inside the capability
+// cards, 1em=14px in the CTA badge (18px for the chrome extension icon), so the
+// svg size follows the call site. TDesign defaults: strokeWidth 2, square caps.
 const LANDING_ICON_PATHS: Record<string, React.ReactNode> = {
   upload: <><path d="M12 15V4" /><path d="M7.5 8 12 3.5 16.5 8" /><path d="M4.5 19.5h15" /></>,
-  url: <><path d="M10.5 13.5a4 4 0 0 1 0-5.66l2.5-2.5a4 4 0 0 1 5.66 5.66l-1.25 1.25" /><path d="M13.5 10.5a4 4 0 0 1 0 5.66l-2.5 2.5a4 4 0 0 1-5.66-5.66l1.25-1.25" /></>,
-  manual: <><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z" /><path d="M14.5 6.5l3 3" /></>,
-  search: <><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></>,
-  browse: <><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h10" /></>,
-  qa: <><path d="M4 5h16v11H10l-6 4.5V5z" /></>,
-  code: <><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" /></>,
-  extension: <><path d="M10 4.5a2 2 0 1 1 4 0V6h3a1 1 0 0 1 1 1v3h1.5a2 2 0 1 1 0 4H18v3a1 1 0 0 1-1 1h-3v-1.5a2 2 0 1 0-4 0V18H7a1 1 0 0 1-1-1v-3H4.5a2 2 0 1 1 0-4H6V7a1 1 0 0 1 1-1h3z" /></>,
+  url: <path d="M11.6762 6.99023L13.9998 4.6666C15.4726 3.19382 17.8604 3.19382 19.3332 4.6666C20.806 6.13938 20.806 8.52723 19.3332 10L17.0096 12.3236M6.98974 11.6766L4.66611 14.0003C3.19333 15.4731 3.19333 17.8609 4.66611 19.3337C6.13889 20.8065 8.52675 20.8065 9.99953 19.3337L12.3232 17.0101M13.9985 9.99989L9.99847 14" />,
+  manual: <path d="M14.1048 6.00427L4.78744 15.3216L3.99805 20.0001L8.67652 19.2107L17.9939 9.89336M14.1048 6.00427L17.9939 9.89336M14.1048 6.00427L17.1615 2.94727L21.0506 6.83635L17.9939 9.89336" />,
+  search: <><path d="M15.8033 15.8033C12.8744 18.7322 8.12563 18.7322 5.1967 15.8033C2.26777 12.8744 2.26777 8.12563 5.1967 5.1967C8.12563 2.26777 12.8744 2.26777 15.8033 5.1967C18.7322 8.12563 18.7322 12.8744 15.8033 15.8033Z" /><path d="M15.8027 15.8037L21.106 21.107" /></>,
+  browse: <><path d="M3 5H21M3 12H21M3 19H21" /></>,
+  qa: <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 14.6624 3.04042 17.0817 4.73686 18.8737L3 22H12Z" />,
+  code: <><path d="M5.53553 15.5355L2 12L5.53553 8.46448M18.4644 15.5355L21.9999 12L18.4644 8.46448" /><path d="M14 4.00049L10 20.0005" /></>,
+  extension: <path d="M9 4C9 2.89543 9.89543 2 11 2C12.1046 2 13 2.89543 13 4V5H19V11H20C21.1046 11 22 11.8954 22 13C22 14.1046 21.1046 15 20 15H19V21H14.4646C14.2219 19.3039 12.7632 18 11 18C9.23676 18 7.77806 19.3039 7.53544 21H3V16.4646C4.69615 16.2219 6 14.7632 6 13C6 11.2368 4.69615 9.77806 3 9.53544V5H9V4Z" />,
   clip: <><rect x="8" y="8" width="12" height="12" rx="1.5" /><path d="M16 4H5.5A1.5 1.5 0 0 0 4 5.5V16" /></>,
-  notes: <><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z" /><path d="M14.5 6.5l3 3" /></>,
-  shortcuts: <><path d="M6 18 18 6" /><path d="M9.5 6H18v8.5" /></>,
+  notes: <path d="M14.1048 6.00427L4.78744 15.3216L3.99805 20.0001L8.67652 19.2107L17.9939 9.89336M14.1048 6.00427L17.9939 9.89336M14.1048 6.00427L17.1615 2.94727L21.0506 6.83635L17.9939 9.89336" />,
+  shortcuts: <path d="M9 4L4 4L4 20L20 20L20 15M19.25 4.75L12 12M14 4H20L20 10" />,
 };
 
-function LandingIcon({ name }: { name: string }) {
-  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{LANDING_ICON_PATHS[name] ?? null}</svg>;
+function LandingIcon({ name, size = 14 }: { name: string; size?: number }) {
+  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">{LANDING_ICON_PATHS[name] ?? null}</svg>;
+}
+
+// Vue t-icon "file-copy" (TDesign path, 16px) used by every code-toolbar copy
+// button and the connect-row copy control.
+function CopyIcon() {
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M14 2V8H20M14 2H15L20 7V8M14 2H7V18H20V8" /><path d="M3 6L3 22H14" /></svg>;
+}
+
+// Vue t-icon "jump" (TDesign path) in the ext-cta arrow wrap (1em = 14px).
+function JumpIcon() {
+  return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M9 4L4 4L4 20L20 20L20 15" /><path d="M19.25 4.75L12 12M14 4H20L20 10" /></svg>;
 }
 
 function copyButtonForExternal(t: Translator, key: string, copy: (value: string) => void, value: string) {
