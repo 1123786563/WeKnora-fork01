@@ -1,6 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+/**
+ * agents 列表页 —— TDesign 同构迁移（Task 9 pilot）。
+ *
+ * 事实源：frontend/src/views/agent/AgentList.vue（template/DOM/类名 1:1 复刻）
+ * + frontend/src/components/{ListSpaceSidebar,AgentAvatar,SpaceAvatar,
+ * ResourceOriginBadge}.vue。组件从 tdesign-react 具名导入（playbook §1），
+ * 图标用 tdesign-icons-react 的 Icon（= Vue 端 `Icon as TIcon`，本地 sprite
+ * `<use>` 渲染，与 Vue 端同源同字形）；样式平移在 agents.td.css。
+ * 纯逻辑仍在 list.ts / state.ts / api.ts（本文件不重复实现）。
+ * wk-* / data-* 测试 hook 按迁移前锚点保留（playbook §2.4）。
+ */
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { AgentConfiguration, WeKnoraClient } from '@weknora/api-client';
-import { Status } from '@weknora/ui';
+import { Button, Dialog, Loading, Popup, Skeleton, Tag, Tooltip } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
+import { MessagePlugin } from 'tdesign-react';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
 import { navigate } from '../platform/navigation.ts';
@@ -9,6 +22,10 @@ import {
   markContextualGuideDone,
   openContextualGuide,
 } from '@weknora/views/guides/contextual-guides';
+import './agents.td.css';
+/* agents.css 只剩 configuration/ConfigurationPage 仍在消费的共享段
+ * （wk-agent-section-header / count，CSS retention criteria），随本页模块
+ * 一并加载，待 configuration 域迁移时清理（playbook §4.3）。 */
 import './agents.css';
 import { AgentEditorModal } from './AgentEditorModal.tsx';
 import { makeEditorT } from './agent-editor.ts';
@@ -24,8 +41,8 @@ import {
   cardActions,
   chatNavigationPath,
   cornerBadge,
-  featureBadges,
   expertSourceId,
+  featureBadges,
   hydratePinnedCards,
   kbScope,
   mcpScope,
@@ -105,56 +122,27 @@ export async function loadAgentsPageData(client: WeKnoraClient): Promise<AgentsP
   };
 }
 
-// --- icons (inline SVG; no TDesign in the React client) -----------------------
+// --- 图片资源（Vue @/assets/img 内联副本；src URL 不参与像素对比） --------------
 
-/* Icon path data lifted verbatim from the TDesign sprite the Vue client ships
- * (svg <symbol id="t-icon-*" viewBox="0 0 24 24">), so stroke geometry, 2px
- * stroke width and square line caps match the Vue baseline glyph-for-glyph.
- * The leading fill="transparent" hit-area paths are dropped; only the stroked
- * layer renders. 'star-filled' is TDesign's solid glyph (fill, no stroke). */
-const ICON_PATHS: Record<string, React.ReactNode> = {
-  layers: <path d="M4.5 6.125 12 3l7.5 3.125L12 9.25 4.5 6.125ZM3 11.5l9 3.877 9-3.877m0 6-9 3.877L3 17.5" stroke="currentColor" strokeWidth="2" />,
-  star: <path d="m12 3.676 2.187 6.29 6.658.136-5.307 4.024 1.928 6.374L12 16.696 6.534 20.5l1.928-6.374-5.307-4.024 6.659-.136L12 3.676Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  'star-filled': <path d="m12.001.63 2.903 8.35 8.839.181-7.045 5.341 2.56 8.462L12 17.914l-7.256 5.05 2.56-8.462L.26 9.161l8.839-.18L12 .63Z" fill="currentColor" />,
-  history: <path d="M2.552 13c.5 4.777 4.539 8.5 9.448 8.5a9.5 9.5 0 0 0 0-19c-1.628 0-3.16.41-4.5 1.131A9.54 9.54 0 0 0 3.38 8M12 7v5l2.5 2.5m-12-11v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  // TDesign system-sum: the Vue workspace rail glyph (four-petal sum shape).
-  workspace: <g stroke="currentColor" strokeWidth="2"><path d="M15.244 15.404c-4.836 4.836-10.28 7.231-12.161 5.35-1.88-1.88.515-7.324 5.35-12.16 4.836-4.836 10.281-7.232 12.162-5.351 1.88 1.88-.515 7.325-5.351 12.161Z" /><path d="M8.434 15.404c4.836 4.836 10.28 7.231 12.161 5.35 1.88-1.88-.515-7.324-5.35-12.16C10.408 3.758 4.963 1.362 3.082 3.243c-1.88 1.88.515 7.325 5.351 12.161Z" /><path d="M12 12h.004v.004H12V12Z" /></g>,
-  app: <g stroke="currentColor" strokeWidth="2"><path d="M3 3h7v7H3V3ZM14 14h7v7h-7v-7ZM3 14h7v7H3v-7Z" /><path d="M21.5 6.5a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" /></g>,
-  user: <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M16.5 7.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2h16Z" /></g>,
-  usergroup: <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM5 19a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2H5v-2Z" /><path d="M7 4a4 4 0 1 0 0 8 6 6 0 0 0-6 6v3m22 0v-3a6 6 0 0 0-6-6 4 4 0 0 0 0-8" /></g>,
-  'usergroup-add': <path d="M9 4a4 4 0 1 0 0 8 6 6 0 0 0-6 6v3m11-6h-2a4 4 0 0 0-4 4v2h6m5-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM20 15v3m0 0v3m0-3h-3m3 0h3" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  share: <><circle cx="6" cy="12" r="2.5" /><circle cx="17" cy="6" r="2.5" /><circle cx="17" cy="18" r="2.5" /><path d="m8.3 10.8 6.4-3.6M8.3 13.2l6.4 3.6" /></>,
-  // TDesign control-platform.svg: the Vue smart-reasoning avatar is a
-  // faceted cube, not the generic radial control glyph.
-  'control-platform': <path d="m12 12 8.5-4.5M12 12v9.5m0-9.5L3.5 7.5M12 2l9 5v10l-9 5-9-5V7l9-5Z" stroke="currentColor" strokeWidth="2" />,
-  chat: <path d="M2.5 4h19v15h-15l-4 3V4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  folder: <path d="M2 3.5h7L11 6h11v14H2V3.5Z" stroke="currentColor" strokeWidth="2" />,
-  extension: <path d="M9 4a2 2 0 1 1 4 0v1h6v6h1a2 2 0 1 1 0 4h-1v6h-4.535a3.501 3.501 0 0 0-6.93 0H3v-4.535a3.5 3.5 0 0 0 0-6.93V5h6V4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  // TDesign chat-bubble: the multi-turn badge is a ROUND speech bubble.
-  'chat-bubble': <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12a9.966 9.966 0 0 0 2.737 6.874L3 22h9Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  edit: <path d="m14.105 6.004-9.318 9.318L3.998 20l4.679-.79 9.317-9.317m-3.89-3.889 3.89 3.89m-3.89-3.89 3.058-3.057 3.889 3.89-3.057 3.056M17.994 9.893l3.057-3.057-3.89-3.889-3.057 3.057z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  'file-copy': <><path d="M14 2v6h6m-6-6h1l5 5v1m-6-6H7v16h13V8" stroke="currentColor" strokeWidth="2" /><path d="M3 6v16h11" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></>,
-  poweroff: <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M7 5.125a8.5 8.5 0 1 0 10 0M12 3v8" /></g>,
-  delete: <path d="M21 5H3m2 0h14l-.5 17h-13L5 5Zm3.5-3h7v3h-7V2ZM12 9v9" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  close: <path d="M16.95 7.05 12 12m0 0-4.95 4.95M12 12l4.95 4.95M12 12 7.05 7.05" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  'chevron-right': <path d="M9.5 17.5 15 12 9.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  'chevron-down': <path d="M17.5 9.5 12 15 6.5 9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
-  'lock-on': <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M4.5 11h15v10h-15V11ZM7 7a5 5 0 0 1 10 0v4H7V7Z" /><path d="M10 16h4" /></g>,
-  browse: <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M12 4C6.869 4 2.523 7.36 1.042 12c1.48 4.64 5.827 8 10.958 8 5.13 0 9.477-3.36 10.957-8C21.477 7.36 17.131 4 12 4Z" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" /></g>,
-  'edit-1': <path d="m13 6.5-10 10V21h4.5l10-10M13 6.5l4.5 4.5M13 6.5l4-4L21.5 7l-4 4" stroke="currentColor" strokeWidth="2" />,
-};
-
-function Icon({ name, size = 16 }: { name: string; size?: number }) {
+/* frontend/src/assets/img/more.png —— 卡片三点按钮（32×32 PNG）。 */
+const MORE_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgBAMAAACBVGfHAAAAD1BMVEUAAAAwMTMwMDMwMjIwMTPbLw9bAAAABHRSTlMA3llYOk1BewAAABxJREFUKM9jGGnAUAiJAAERRwSBXUBRCIkYYQAAnNMDYY7Uun8AAAAASUVORK5CYII=';
+/* frontend/src/assets/img/circle.png —— 删除确认弹窗警示图（48×48 PNG）。 */
+const CIRCLE_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAACXBIWXMAACE4AAAhOAFFljFgAAAABGdBTUEAALGPC/xhBQAAAPZQTFRFAAAA91BQ+lBQ9FBQ/1BQ/FBQ+FBQ/FJS+lBQ91BQ/FFR/FBQ+VBQ+FBQ+lNT+FBQ+1JS+VBQ+lBQ+FBQ/FBQ+VBQ91BQ+lNT+1FR+1BQ+FBQ+VFR+VBQ+lFR+VFR91BQ+lFR+VFR+FFR+1JS+1FR+VFR+VBQ+lBQ+FBQ+VFR+FFR+1FR+lFR+lBQ+lFR+lBQ+lFR+VFR+VBQ+lFR+lJS+lFR+VFR+lFR+VFR+lFR+VFR+lFR+VFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR+VFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR8WpGUQAAAFF0Uk5TAAQFBQcJCRISEhcXFxcZGRwcJCQqKysxMjIyOTk8PEBDQ0NGR0dHS0tOYGp/f4CAg4ODh42VlZycn5+mp62ur7O0tbi/wc7V2Njc3+bt8fT4NJ1opQAAAAFiS0dEUg1gLZAAAAFuSURBVHjaxdXJUsJAFIXhAwYNIjIGEQQBB1AQFQWR2TDEgQTu+7+MVUmFSpoMDRu+/V91e3MahxGKJCUpGQmCi1B9ncwXirKYjxu3AnyclD40slD7BREeLmSVGMthGm7OP1fkYN2Ow1H2i1xM89gWqGjkSisHwKr8kIfvMhh5jTxpWdjEp+RDjsGqQ3ZPQIPserDIrP2DVQ4b4RH5BySLMBWXPIFagmlAPAF1AYOg8gWaAMMd8QVUhaHJG7xAFxzzBpOQHpzNeYP5qR6kFrzBIqkHksIbKNLOwc4n7ffo0IQ3GAeha9GWWbM5oy0NGGrE6QYGQSMu6mY4u8SlD1NJJcavovwRY1mASZSJ8SBJj8QYitjIsaOaAa7ZiU3DoucftGEVY456q9ffmUFOwCbrN5VX+48x/9yz8lNyIV/CUaKzJgerXgxuMqMlMVQ5Bw/h4kAlC61bEuFDuH8eGx/7pFUTwOUompKkVPQYB/EPlK2oyxaXjlIAAAAASUVORK5CYII=';
+/* frontend/src/assets/img/organization-green.svg —— 共享来源空间徽标（20×20）。 */
+function OrgGreenIcon() {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      aria-hidden="true" className="wk-agent-icon">{ICON_PATHS[name] ?? null}</svg>
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10 10C8.8 7.5 7.8 3.8 4.8 3.8C2.2 3.8 0.8 6.8 0.8 10C0.8 13.2 2.2 16.2 4.8 16.2C7.8 16.2 8.8 12.5 10 10C11.2 7.5 12.5 5.5 14.5 5.5C16.5 5.5 18 7.5 18 10C18 12.5 16.5 14.5 14.5 14.5C12.5 14.5 11.2 12.5 10 10Z" stroke="#07C05F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
   );
 }
+/* frontend/src/assets/img/upload.svg —— 空状态插画（162×162，10KB；内联副本）。 */
+const UPLOAD_SVG = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYyIiBoZWlnaHQ9IjE2MiIgdmlld0JveD0iMCAwIDE2MiAxNjIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGZpbHRlcj0idXJsKCNmaWx0ZXIwX2RfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNMzYuODc1IDc4TDIwIDExMS43NVYxMzMuMDQ3QzIwIDE0MC43NiAyNi4yNTI2IDE0Ny4wMTMgMzMuOTY1NSAxNDcuMDEzSDgwLjc1SDEyNy41MzRDMTM1LjI0NyAxNDcuMDEzIDE0MS41IDE0MC43NiAxNDEuNSAxMzMuMDQ3VjExMS43NUwxMjQuNjI1IDc4SDgwLjc1SDM2Ljg3NVoiIGZpbGw9InVybCgjcGFpbnQwX2xpbmVhcl82MDIyXzUxNzMxKSIvPgo8L2c+CjxwYXRoIGQ9Ik0zNy4xMjUgMTExLjM3NVY3Ny42MjVMMjAuMjUgMTExLjM3NUgzNy4xMjVaIiBmaWxsPSJ1cmwoI3BhaW50MV9saW5lYXJfNjAyMl81MTczMSkiLz4KPHBhdGggZD0iTTEyNSAxMTEuNzVWNzhMMTQxLjg3NSAxMTEuNzVIMTI1WiIgZmlsbD0idXJsKCNwYWludDJfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxwYXRoIGQ9Ik03Ny45ODY0IDEwOC42MjdMNjYuMjc0IDkzLjc0MzZDNjUuNDAyOSA5Mi42MzY1IDY2LjE5MTUgOTEuMDEyNSA2Ny42MDAyIDkxLjAxMjVINzIuNjM1QzczLjU2NyA5MS4wMTI1IDc0LjMyOTIgOTAuMjYyNSA3NC4yMDExIDg5LjMzOTRDNzIuNjc1NCA3OC4zNTAzIDU2Ljg4MDUgNTkuNDM1NSAzMy4xMDA3IDUwLjg1NDlDMzIuMTcyOSA1MC41MjAxIDMyLjQwNjcgNDguOTM3NSAzMy4zOTMgNDguOTM3NUgxMjUuMjMyQzEyNi4yMTggNDguOTM3NSAxMjYuNDUyIDUwLjUyMDEgMTI1LjUyNCA1MC44NTQ5QzEwMS43NDQgNTkuNDM1NSA4NS45NDk2IDc4LjM1MDMgODQuNDIzOSA4OS4zMzk0Qzg0LjI5NTcgOTAuMjYyNSA4NS4wNTggOTEuMDEyNSA4NS45OSA5MS4wMTI1SDkxLjAyNDhDOTIuNDMzNSA5MS4wMTI1IDkzLjIyMjEgOTIuNjM2NSA5Mi4zNTEgOTMuNzQzNkw4MC42Mzg2IDEwOC42MjdDNzkuOTYzIDEwOS40ODYgNzguNjYyIDEwOS40ODYgNzcuOTg2NCAxMDguNjI3WiIgZmlsbD0idXJsKCNwYWludDNfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNjcuNjA0IDExMS4zNzVIMjAuMjVWMTMzLjEzOEMyMC4yNSAxNDAuNTk0IDI2LjI5NDIgMTQ2LjYzOCAzMy43NSAxNDYuNjM4SDEyOC4yNUMxMzUuNzA2IDE0Ni42MzggMTQxLjc1IDE0MC41OTQgMTQxLjc1IDEzMy4xMzhWMTExLjM3NUg5NC4zOTUxQzkzLjU2NDcgMTE4LjAzNCA4Ny44ODM5IDEyMy4xODggODAuOTk5NSAxMjMuMTg4Qzc0LjExNTIgMTIzLjE4OCA2OC40MzQ0IDExOC4wMzQgNjcuNjA0IDExMS4zNzVaIiBmaWxsPSJ1cmwoI3BhaW50NF9saW5lYXJfNjAyMl81MTczMSkiLz4KPHBhdGggZD0iTTQ2LjkzNjYgMTguNTQzNkM0Ni43NDA4IDE4LjE0MTEgNDYuNzEyOSAxNy42Nzc0IDQ2Ljg1OTEgMTcuMjU0NEw0OS4xMTAyIDEwLjczNzVDNDkuODcxIDguNTM1MiA1Mi4yNzI5IDcuMzY2NjEgNTQuNDc1MiA4LjEyNzM0TDY4LjgzMDQgMTMuMDg2MUM3MS4wMzI2IDEzLjg0NjggNzIuMjAxMiAxNi4yNDg4IDcxLjQ0MDUgMTguNDUxMUw2Ny41ODM3IDI5LjYxNjJDNjYuODIyOSAzMS44MTg1IDY0LjQyMSAzMi45ODcxIDYyLjIxODcgMzIuMjI2M0w1Mi41MTE3IDI4Ljg3MzJDNTIuMDg4NyAyOC43MjcxIDUxLjc0MTEgMjguNDE4OSA1MS41NDUzIDI4LjAxNjVMNDYuOTM2NiAxOC41NDM2WiIgZmlsbD0idXJsKCNwYWludDVfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxtYXNrIGlkPSJtYXNrMF82MDIyXzUxNzMxIiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSI0NiIgeT0iNyIgd2lkdGg9IjI2IiBoZWlnaHQ9IjI2Ij4KPHBhdGggZD0iTTQ2LjkzNjYgMTguNTQzNkM0Ni43NDA4IDE4LjE0MTEgNDYuNzEyOSAxNy42Nzc0IDQ2Ljg1OTEgMTcuMjU0NEw0OS4xMTAyIDEwLjczNzVDNDkuODcxIDguNTM1MiA1Mi4yNzI5IDcuMzY2NjEgNTQuNDc1MiA4LjEyNzM0TDY4LjgzMDQgMTMuMDg2MUM3MS4wMzI2IDEzLjg0NjggNzIuMjAxMiAxNi4yNDg4IDcxLjQ0MDUgMTguNDUxMUw2Ny41ODM3IDI5LjYxNjJDNjYuODIyOSAzMS44MTg1IDY0LjQyMSAzMi45ODcxIDYyLjIxODcgMzIuMjI2M0w1Mi41MTE3IDI4Ljg3MzJDNTIuMDg4NyAyOC43MjcxIDUxLjc0MTEgMjguNDE4OSA1MS41NDUzIDI4LjAxNjVMNDYuOTM2NiAxOC41NDM2WiIgZmlsbD0iI0Q5RDlEOSIvPgo8L21hc2s+CjxnIG1hc2s9InVybCgjbWFzazBfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNNDMuODc2IDI1Ljg5MDFMNDYuNjMwOCAxNy45MTVMNTEuNDE1OSAxOS41NjhDNTMuMTc3NyAyMC4xNzY1IDU0LjExMjYgMjIuMDk4MSA1My41MDQgMjMuODU5OUw1MS44NTExIDI4LjY0NUw0My44NzYgMjUuODkwMVoiIGZpbGw9IiNCNUVDQ0YiLz4KPC9nPgo8cGF0aCBkPSJNODkuNTU3MiAxNi40Mzg1Qzg5LjY2NjUgMTYuMTE4MSA4OS44OTg3IDE1Ljg1NDMgOTAuMjAyNSAxNS43MDUxTDk0Ljg4MzIgMTMuNDA2NkM5Ni40NjQ5IDEyLjYyOTkgOTguMzc2OCAxMy4yODI1IDk5LjE1MzUgMTQuODY0MkwxMDQuMjE3IDI1LjE3NDZDMTA0Ljk5MyAyNi43NTYzIDEwNC4zNDEgMjguNjY4MiAxMDIuNzU5IDI5LjQ0NUw5NC43Mzk4IDMzLjM4MjlDOTMuMTU4MSAzNC4xNTk2IDkxLjI0NjIgMzMuNTA3MSA5MC40Njk1IDMxLjkyNTNMODcuMDQ1OCAyNC45NTM1Qzg2Ljg5NjYgMjQuNjQ5NiA4Ni44NzQyIDI0LjI5OSA4Ni45ODM2IDIzLjk3ODZMODkuNTU3MiAxNi40Mzg1WiIgZmlsbD0idXJsKCNwYWludDZfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxtYXNrIGlkPSJtYXNrMV82MDIyXzUxNzMxIiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSI4NiIgeT0iMTMiIHdpZHRoPSIxOSIgaGVpZ2h0PSIyMSI+CjxwYXRoIGQ9Ik04OS41NTcyIDE2LjQzODVDODkuNjY2NSAxNi4xMTgxIDg5Ljg5ODcgMTUuODU0MyA5MC4yMDI1IDE1LjcwNTFMOTQuODgzMiAxMy40MDY2Qzk2LjQ2NDkgMTIuNjI5OSA5OC4zNzY4IDEzLjI4MjUgOTkuMTUzNSAxNC44NjQyTDEwNC4yMTcgMjUuMTc0NkMxMDQuOTkzIDI2Ljc1NjMgMTA0LjM0MSAyOC42NjgyIDEwMi43NTkgMjkuNDQ1TDk0LjczOTggMzMuMzgyOUM5My4xNTgxIDM0LjE1OTYgOTEuMjQ2MiAzMy41MDcxIDkwLjQ2OTUgMzEuOTI1M0w4Ny4wNDU4IDI0Ljk1MzVDODYuODk2NiAyNC42NDk2IDg2Ljg3NDIgMjQuMjk5IDg2Ljk4MzYgMjMuOTc4Nkw4OS41NTcyIDE2LjQzODVaIiBmaWxsPSIjRDlEOUQ5Ii8+CjwvbWFzaz4KPGcgbWFzaz0idXJsKCNtYXNrMV82MDIyXzUxNzMxKSI+CjxwYXRoIGQ9Ik04NCAxOC43NTFMODkuNzI4IDE1LjkzODJMOTEuNDE1NyAxOS4zNzVDOTIuMDM3MSAyMC42NDAzIDkxLjUxNSAyMi4xNjk5IDkwLjI0OTYgMjIuNzkxM0w4Ni44MTI4IDI0LjQ3OUw4NCAxOC43NTFaIiBmaWxsPSIjRTdFN0U3Ii8+CjwvZz4KPHBhdGggZD0iTTQ2LjM3MzQgNTcuMjI4OUM0Ni4yNTAyIDU3LjYxMjUgNDUuOTc5NiA1Ny45MzE1IDQ1LjYyMTMgNTguMTE1N0w0MC4xMDAxIDYwLjk1MzJDMzguMjM0NCA2MS45MTIxIDM1Ljk0NDUgNjEuMTc2OSAzNC45ODU3IDU5LjMxMTFMMjguNzM1NCA0Ny4xNDk0QzI3Ljc3NjYgNDUuMjgzNiAyOC41MTE4IDQyLjk5MzggMzAuMzc3NSA0Mi4wMzQ5TDM5LjgzNjYgMzcuMTczNkM0MS43MDI0IDM2LjIxNDggNDMuOTkyMiAzNi45NSA0NC45NTExIDM4LjgxNTdMNDkuMTc3NSA0Ny4wMzk1QzQ5LjM2MTcgNDcuMzk3OSA0OS4zOTU5IDQ3LjgxNDcgNDkuMjcyOCA0OC4xOTg0TDQ2LjM3MzQgNTcuMjI4OVoiIGZpbGw9InVybCgjcGFpbnQ3X2xpbmVhcl82MDIyXzUxNzMxKSIvPgo8bWFzayBpZD0ibWFzazJfNjAyMl81MTczMSIgc3R5bGU9Im1hc2stdHlwZTphbHBoYSIgbWFza1VuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeD0iMjgiIHk9IjM2IiB3aWR0aD0iMjIiIGhlaWdodD0iMjYiPgo8cGF0aCBkPSJNNDYuMzczNCA1Ny4yMjg5QzQ2LjI1MDIgNTcuNjEyNSA0NS45Nzk2IDU3LjkzMTUgNDUuNjIxMyA1OC4xMTU3TDQwLjEwMDEgNjAuOTUzMkMzOC4yMzQ0IDYxLjkxMjEgMzUuOTQ0NSA2MS4xNzY5IDM0Ljk4NTcgNTkuMzExMUwyOC43MzU0IDQ3LjE0OTRDMjcuNzc2NiA0NS4yODM2IDI4LjUxMTggNDIuOTkzOCAzMC4zNzc1IDQyLjAzNDlMMzkuODM2NiAzNy4xNzM2QzQxLjcwMjQgMzYuMjE0OCA0My45OTIyIDM2Ljk1IDQ0Ljk1MTEgMzguODE1N0w0OS4xNzc1IDQ3LjAzOTVDNDkuMzYxNyA0Ny4zOTc5IDQ5LjM5NTkgNDcuODE0NyA0OS4yNzI4IDQ4LjE5ODRMNDYuMzczNCA1Ny4yMjg5WiIgZmlsbD0iI0Q5RDlEOSIvPgo8L21hc2s+CjxnIG1hc2s9InVybCgjbWFzazJfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNNTIuOTM3NSA1NC4zNTU3TDQ2LjE4MSA1Ny44MjgxTDQ0LjA5NzYgNTMuNzc0MkM0My4zMzA1IDUyLjI4MTYgNDMuOTE4NiA1MC40NDk3IDQ1LjQxMTIgNDkuNjgyNkw0OS40NjUxIDQ3LjU5OTJMNTIuOTM3NSA1NC4zNTU3WiIgZmlsbD0iI0U3RTdFNyIvPgo8L2c+CjxwYXRoIGQ9Ik0xMjAuODggMzcuMzg5MkMxMjEuMjAzIDM3LjQ3NTggMTIxLjQ3OSAzNy42ODcyIDEyMS42NDYgMzcuOTc2OUwxMjQuMjIzIDQyLjQzOTlDMTI1LjA5MyA0My45NDgxIDEyNC41NzcgNDUuODc2NiAxMjMuMDY5IDQ2Ljc0NzRMMTEzLjIzOCA1Mi40MjMzQzExMS43MjkgNTMuMjk0IDEwOS44MDEgNTIuNzc3MyAxMDguOTMgNTEuMjY5MUwxMDQuNTE1IDQzLjYyMjhDMTAzLjY0NSA0Mi4xMTQ2IDEwNC4xNjEgNDAuMTg2MSAxMDUuNjcgMzkuMzE1M0wxMTIuMzE3IDM1LjQ3NzNDMTEyLjYwNyAzNS4zMSAxMTIuOTUxIDM1LjI2NDcgMTEzLjI3NCAzNS4zNTEzTDEyMC44OCAzNy4zODkyWiIgZmlsbD0idXJsKCNwYWludDhfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxtYXNrIGlkPSJtYXNrM182MDIyXzUxNzMxIiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSIxMDQiIHk9IjM1IiB3aWR0aD0iMjEiIGhlaWdodD0iMTgiPgo8cGF0aCBkPSJNMTIwLjg4IDM3LjM4OTJDMTIxLjIwMyAzNy40NzU4IDEyMS40NzkgMzcuNjg3MiAxMjEuNjQ2IDM3Ljk3NjlMMTI0LjIyMyA0Mi40Mzk5QzEyNS4wOTMgNDMuOTQ4MSAxMjQuNTc3IDQ1Ljg3NjYgMTIzLjA2OSA0Ni43NDc0TDExMy4yMzggNTIuNDIzM0MxMTEuNzI5IDUzLjI5NCAxMDkuODAxIDUyLjc3NzMgMTA4LjkzIDUxLjI2OTFMMTA0LjUxNSA0My42MjI4QzEwMy42NDUgNDIuMTE0NiAxMDQuMTYxIDQwLjE4NjEgMTA1LjY3IDM5LjMxNTNMMTEyLjMxNyAzNS40NzczQzExMi42MDcgMzUuMzEgMTEyLjk1MSAzNS4yNjQ3IDExMy4yNzQgMzUuMzUxM0wxMjAuODggMzcuMzg5MloiIGZpbGw9IiNEOUQ5RDkiLz4KPC9tYXNrPgo8ZyBtYXNrPSJ1cmwoI21hc2szXzYwMjJfNTE3MzEpIj4KPHBhdGggZD0iTTExOC4yMzEgMzIuMDYyN0wxMjEuMzg1IDM3LjUyNDRMMTE4LjEwOCAzOS40MTY0QzExNi45MDEgNDAuMTEzIDExNS4zNTggMzkuNjk5NiAxMTQuNjYyIDM4LjQ5M0wxMTIuNzcgMzUuMjE2TDExOC4yMzEgMzIuMDYyN1oiIGZpbGw9IiNCNUVDQ0YiLz4KPC9nPgo8cGF0aCBkPSJNNzMuMzQ4MyA0NS4wOTg0QzczLjM0NzggNDQuODQ2OCA3My40NDczIDQ0LjYwNTMgNzMuNjI0OCA0NC40MjdMNzYuMzYwMyA0MS42ODA1Qzc3LjI4NDcgNDAuNzUyNCA3OC43ODY0IDQwLjc0OTQgNzkuNzE0NSA0MS42NzM4TDg1Ljc2NDMgNDcuNjk5M0M4Ni42OTI0IDQ4LjYyMzcgODYuNjk1NSA1MC4xMjU1IDg1Ljc3MTEgNTEuMDUzNkw4MS4wODQ1IDU1Ljc1OUM4MC4xNjAxIDU2LjY4NzEgNzguNjU4NCA1Ni42OTAxIDc3LjczMDMgNTUuNzY1N0w3My42Mzk0IDUxLjY5MTJDNzMuNDYxMSA1MS41MTM3IDczLjM2MDcgNTEuMjcyNiA3My4zNjAyIDUxLjAyMUw3My4zNDgzIDQ1LjA5ODRaIiBmaWxsPSJ1cmwoI3BhaW50OV9saW5lYXJfNjAyMl81MTczMSkiLz4KPG1hc2sgaWQ9Im1hc2s0XzYwMjJfNTE3MzEiIHN0eWxlPSJtYXNrLXR5cGU6YWxwaGEiIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiIHg9IjczIiB5PSI0MCIgd2lkdGg9IjE0IiBoZWlnaHQ9IjE3Ij4KPHBhdGggZD0iTTczLjM0ODMgNDUuMDk4NEM3My4zNDc4IDQ0Ljg0NjggNzMuNDQ3MyA0NC42MDUzIDczLjYyNDggNDQuNDI3TDc2LjM2MDMgNDEuNjgwNUM3Ny4yODQ3IDQwLjc1MjQgNzguNzg2NCA0MC43NDk0IDc5LjcxNDUgNDEuNjczOEw4NS43NjQzIDQ3LjY5OTNDODYuNjkyNCA0OC42MjM3IDg2LjY5NTUgNTAuMTI1NSA4NS43NzExIDUxLjA1MzZMODEuMDg0NSA1NS43NTlDODAuMTYwMSA1Ni42ODcxIDc4LjY1ODQgNTYuNjkwMSA3Ny43MzAzIDU1Ljc2NTdMNzMuNjM5NCA1MS42OTEyQzczLjQ2MTEgNTEuNTEzNyA3My4zNjA3IDUxLjI3MjYgNzMuMzYwMiA1MS4wMjFMNzMuMzQ4MyA0NS4wOTg0WiIgZmlsbD0iI0Q5RDlEOSIvPgo8L21hc2s+CjxnIG1hc2s9InVybCgjbWFzazRfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNNzAgNDguMDY2NEw3My4zNDc1IDQ0LjcwNTRMNzUuMzY0MSA0Ni43MTM5Qzc2LjEwNjYgNDcuNDUzNCA3Ni4xMDkgNDguNjU0OCA3NS4zNjk1IDQ5LjM5NzNMNzMuMzYxIDUxLjQxMzlMNzAgNDguMDY2NFoiIGZpbGw9IiMwN0MwNUYiLz4KPC9nPgo8cGF0aCBkPSJNMTA2LjEzOCAxMjAuMTAzQzEwNi4xMzggMTE4Ljk0NiAxMDcuMDc2IDExOC4wMDkgMTA4LjIzMyAxMTguMDA5SDExMy44MTlDMTE0Ljk3NiAxMTguMDA5IDExNS45MTQgMTE4Ljk0NiAxMTUuOTE0IDEyMC4xMDNWMTIwLjEwM0MxMTUuOTE0IDEyMS4yNiAxMTQuOTc2IDEyMi4xOTggMTEzLjgxOSAxMjIuMTk4SDEwOC4yMzNDMTA3LjA3NiAxMjIuMTk4IDEwNi4xMzggMTIxLjI2IDEwNi4xMzggMTIwLjEwM1YxMjAuMTAzWiIgZmlsbD0iIzE0ODVFRSIvPgo8cGF0aCBkPSJNMTIyLjg5NiAxMjAuMTAzQzEyMi44OTYgMTE4Ljk0NiAxMjMuODM0IDExOC4wMDkgMTI0Ljk5MSAxMTguMDA5SDEzMC41NzhDMTMxLjczNCAxMTguMDA5IDEzMi42NzIgMTE4Ljk0NiAxMzIuNjcyIDEyMC4xMDNWMTIwLjEwM0MxMzIuNjcyIDEyMS4yNiAxMzEuNzM0IDEyMi4xOTggMTMwLjU3OCAxMjIuMTk4SDEyNC45OTFDMTIzLjgzNCAxMjIuMTk4IDEyMi44OTYgMTIxLjI2IDEyMi44OTYgMTIwLjEwM1YxMjAuMTAzWiIgZmlsbD0iIzA3QzA1RiIvPgo8cmVjdCB4PSIxMDYuMTM4IiB5PSIxMTcuMzEiIHdpZHRoPSI5Ljc3NTg2IiBoZWlnaHQ9IjQuMTg5NjYiIHJ4PSIyLjA5NDgzIiBmaWxsPSIjNDM5REYxIi8+CjxyZWN0IHg9IjEyMi44OTYiIHk9IjExNy4zMSIgd2lkdGg9IjkuNzc1ODYiIGhlaWdodD0iNC4xODk2NiIgcng9IjIuMDk0ODMiIGZpbGw9IiMzOUNEODAiLz4KPGRlZnM+CjxmaWx0ZXIgaWQ9ImZpbHRlcjBfZF82MDIyXzUxNzMxIiB4PSIxNC40MTM4IiB5PSI3NS4yMDY5IiB3aWR0aD0iMTMyLjY3MiIgaGVpZ2h0PSI4MC4xODU0IiBmaWx0ZXJVbml0cz0idXNlclNwYWNlT25Vc2UiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+CjxmZUZsb29kIGZsb29kLW9wYWNpdHk9IjAiIHJlc3VsdD0iQmFja2dyb3VuZEltYWdlRml4Ii8+CjxmZUNvbG9yTWF0cml4IGluPSJTb3VyY2VBbHBoYSIgdHlwZT0ibWF0cml4IiB2YWx1ZXM9IjAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDEyNyAwIiByZXN1bHQ9ImhhcmRBbHBoYSIvPgo8ZmVPZmZzZXQgZHk9IjIuNzkzMSIvPgo8ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIyLjc5MzEiLz4KPGZlQ29tcG9zaXRlIGluMj0iaGFyZEFscGhhIiBvcGVyYXRvcj0ib3V0Ii8+CjxmZUNvbG9yTWF0cml4IHR5cGU9Im1hdHJpeCIgdmFsdWVzPSIwIDAgMCAwIDAuMTkyNjkxIDAgMCAwIDAgMC4xOTI2OTEgMCAwIDAgMCAwLjE5MjY5MSAwIDAgMCAwLjEgMCIvPgo8ZmVCbGVuZCBtb2RlPSJub3JtYWwiIGluMj0iQmFja2dyb3VuZEltYWdlRml4IiByZXN1bHQ9ImVmZmVjdDFfZHJvcFNoYWRvd182MDIyXzUxNzMxIi8+CjxmZUJsZW5kIG1vZGU9Im5vcm1hbCIgaW49IlNvdXJjZUdyYXBoaWMiIGluMj0iZWZmZWN0MV9kcm9wU2hhZG93XzYwMjJfNTE3MzEiIHJlc3VsdD0ic2hhcGUiLz4KPC9maWx0ZXI+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQwX2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iODAuNzUiIHkxPSI3OCIgeDI9IjgwLjc1IiB5Mj0iMTMyIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiNFNEY5RUUiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjOUVERUJEIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQxX2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iMjguNjg3NSIgeTE9Ijc3LjYyNSIgeDI9IjI4LjY4NzUiIHkyPSIxMTEuMzc1IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiNEQkZBRTkiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMkNEODdFIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQyX2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iMTMzLjQzOCIgeTE9Ijc4IiB4Mj0iMTMzLjQzOCIgeTI9IjExMS43NSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjREJGQUU5Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzJDRDg3RSIvPgo8L2xpbmVhckdyYWRpZW50Pgo8bGluZWFyR3JhZGllbnQgaWQ9InBhaW50M19saW5lYXJfNjAyMl81MTczMSIgeDE9Ijc5LjMxMjUiIHkxPSIxMDYuMzEyIiB4Mj0iNzkuMzEyNSIgeTI9IjQ4LjkzNzUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KPHN0b3Agc3RvcC1jb2xvcj0iIzgzQzFGQSIvPgo8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM4M0MxRkEiIHN0b3Atb3BhY2l0eT0iMCIvPgo8L2xpbmVhckdyYWRpZW50Pgo8bGluZWFyR3JhZGllbnQgaWQ9InBhaW50NF9saW5lYXJfNjAyMl81MTczMSIgeDE9IjgxIiB5MT0iMTExLjM3NSIgeDI9IjgxIiB5Mj0iMTQ2LjYzOCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjRjNGRkY3Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0id2hpdGUiLz4KPC9saW5lYXJHcmFkaWVudD4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDVfbGluZWFyXzYwMjJfNTE3MzEiIHgxPSI0Ny4xODE4IiB5MT0iMTYuMzIiIHgyPSI2OS41MTIxIiB5Mj0iMjQuMDMzNiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjMDdDMDVGIi8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzA3QzA1RiIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQ2X2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iOTAuODczNiIgeTE9IjE1LjM3NTYiIHgyPSI5OC43NDk0IiB5Mj0iMzEuNDEzOSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjQzVDNUM1Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI0M1QzVDNSIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQ3X2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iNDQuODI5NyIgeTE9IjU4LjUyMjUiIHgyPSIzNS4xMDcxIiB5Mj0iMzkuNjA0MyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjQzVDNUM1Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI0M1QzVDNSIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQ4X2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iMTIxLjczMiIgeTE9IjM4LjEyNjIiIHgyPSIxMDUuOTc0IiB5Mj0iNDUuODI0NCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjNTRFODlBIi8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzA3QzA1RiIgc3RvcC1vcGFjaXR5PSIwLjEiLz4KPC9saW5lYXJHcmFkaWVudD4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDlfbGluZWFyXzYwMjJfNTE3MzEiIHgxPSI3My42NTYyIiB5MT0iNDQuMzk1NSIgeDI9IjgyLjI0NDYiIHkyPSI1NC4zNzMxIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiM2RUUxQTUiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNkVFMUE1IiBzdG9wLW9wYWNpdHk9IjAiLz4KPC9saW5lYXJHcmFkaWVudD4KPC9kZWZzPgo8L3N2Zz4K';
 
-/** Three-star sparkles decoration, ported from the Vue header create button. */
-function SparklesIcon({ size = 19 }: { size?: number }) {
+/* 三星闪光装饰（Vue 模板内联 svg，AgentList.vue:15-31）。 */
+function SparklesIcon({ size }: { size: number }) {
   return (
-    <svg className="animate-[wk-agent-twinkle_2s_ease-in-out_infinite]" width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className="sparkles-icon" width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" fill="currentColor" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M15.5 4L15.8 5.2C15.85 5.45 16.05 5.65 16.3 5.7L17.5 6L16.3 6.3C16.05 6.35 15.85 6.55 15.8 6.8L15.5 8L15.2 6.8C15.15 6.55 14.95 6.35 14.7 6.3L13.5 6L14.7 5.7C14.95 5.65 15.15 5.45 15.2 5.2L15.5 4Z" fill="currentColor" stroke="currentColor" strokeWidth="0.6" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M4.5 13L4.8 14.2C4.85 14.45 5.05 14.65 5.3 14.7L6.5 15L5.3 15.3C5.05 15.35 4.85 15.55 4.8 15.8L4.5 17L4.2 15.8C4.15 15.55 3.95 15.35 3.7 15.3L2.5 15L3.7 14.7C3.95 14.65 4.15 14.45 4.2 14.2L4.5 13Z" fill="currentColor" stroke="currentColor" strokeWidth="0.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -162,65 +150,122 @@ function SparklesIcon({ size = 19 }: { size?: number }) {
   );
 }
 
-/** AgentAvatar.vue port: gradient tile + initial (emoji avatars render as-is). */
-function AgentAvatar({ agent }: { agent: AgentCardModel }) {
-  if (agent.is_builtin) {
-    const smart = agent.config?.agent_mode === 'smart-reasoning';
-    // Vue .builtin-avatar: gradient tint backgrounds, icon color = brand
-    // (green) for the agent facet / brand-active for quick-answer.
-    return (
-      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${smart ? 'bg-[linear-gradient(135deg,rgba(124,77,255,0.15)_0%,rgba(124,77,255,0.08)_100%)] text-[#07c05f]' : 'bg-[linear-gradient(135deg,rgba(7,192,95,0.15)_0%,rgba(7,192,95,0.08)_100%)] text-[#06b04d]'}`}>
-        <Icon name={smart ? 'control-platform' : 'chat'} size={18} />
-      </span>
-    );
-  }
-  if (agent.avatar) return <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f3f3f3] text-[18px] leading-none">{agent.avatar}</span>;
-  const gradient = avatarGradient(agent.name || '');
+/* 卡片装饰双星（Vue 模板内联 svg，AgentList.vue:163-178）。 */
+function CardDecoration() {
   return (
-    <span
-      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center overflow-hidden rounded-[5px] text-[11px] font-semibold text-white"
-      style={{ background: `linear-gradient(135deg, ${gradient.from} 0%, ${gradient.to} 100%)` }}
-    >{avatarLetter(agent.name || '')}</span>
+    <div className="card-decoration" aria-hidden="true">
+      <svg className="star-icon" width="24" height="24" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15" />
+      </svg>
+      <svg className="star-icon small" width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15" />
+      </svg>
+    </div>
   );
 }
 
-const FEATURE_BADGE_ICONS: Record<string, string> = {
-  modeNormal: 'chat',
-  modePlain: 'chat',
-  modeAgent: 'control-platform',
-  knowledge: 'folder',
-  mcp: 'extension',
-  multiTurn: 'chat-bubble',
-};
-
-// agents.css .wk-agent-feature-badge.badge-* tones as utilities (static map).
-// Colors read off the live Vue page (AgentList.vue): mode/knowledge/multiTurn
-// icons ride the brand greens, webSearch the warning orange, mcp the error red.
-const FEATURE_BADGE_TONES: Record<string, string> = {
-  modeNormal: 'bg-[rgba(7,192,95,0.08)] text-[#06b04d]',
-  knowledge: 'bg-[rgba(7,192,95,0.08)] text-[#06b04d]',
-  modeAgent: 'bg-[rgba(124,77,255,0.08)] text-[#07c05f]',
-  webSearch: 'bg-[rgba(255,152,0,0.08)] text-[#ed7b2f]',
-  mcp: 'bg-[rgba(236,72,153,0.08)] text-[#e34d59]',
-  multiTurn: 'bg-[rgba(59,130,246,0.08)] text-[#07c05f]',
-};
-
-function FeatureBadgeSvg({ badge }: { badge: string }) {
-  if (badge === 'webSearch') {
-    return (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" />
-        <ellipse cx="8" cy="8" rx="2.5" ry="6" stroke="currentColor" strokeWidth="1.2" fill="none" />
-        <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.2" />
-        <line x1="2" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.2" />
-      </svg>
-    );
-  }
-  const modeBadge = badge === 'modeNormal' || badge === 'modeAgent' || badge === 'modePlain';
-  return <Icon name={FEATURE_BADGE_ICONS[badge] ?? 'chat'} size={modeBadge ? 14 : 16} />;
+/* 网络搜索能力徽章内联 svg（AgentList.vue:266-271）。 */
+function WebSearchBadgeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" />
+      <ellipse cx="8" cy="8" rx="2.5" ry="6" stroke="currentColor" strokeWidth="1.2" fill="none" />
+      <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.2" />
+      <line x1="2" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
 }
 
-// --- rail (ListSpaceSidebar.vue resource-mode strip + expanded panel) ----------
+// --- AgentAvatar.vue 端口（name 哈希渐变 + 首字母 + 双星装饰） ---------------------
+
+export function AgentAvatar({ name, size = 'medium' }: { name: string; size?: 'small' | 'medium' | 'large' }) {
+  const g = avatarGradient(name || '');
+  return (
+    <div
+      className={`agent-avatar${size === 'small' ? ' agent-avatar-small' : size === 'large' ? ' agent-avatar-large' : ''}`}
+      style={{ background: `linear-gradient(135deg, ${g.from} 0%, ${g.to} 100%)` }}
+    >
+      <svg className="agent-sparkles" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M24 5L24.4 6.6C24.45 6.85 24.65 7.05 24.9 7.1L26.5 7.5L24.9 7.9C24.65 7.95 24.45 8.15 24.4 8.4L24 10L23.6 8.4C23.55 8.15 23.35 7.95 23.1 7.9L21.5 7.5L23.1 7.1C23.35 7.05 23.55 6.85 23.6 6.6L24 5Z" fill="rgba(255,255,255,0.6)" />
+        <path d="M7 22L7.4 23.6C7.45 23.85 7.65 24.05 7.9 24.1L9.5 24.5L7.9 24.9C7.65 24.95 7.45 25.15 7.4 25.4L7 27L6.6 25.4C6.55 25.15 6.35 24.95 6.1 24.9L4.5 24.5L6.1 24.1C6.35 24.05 6.55 23.85 6.6 23.6L7 22Z" fill="rgba(255,255,255,0.5)" />
+      </svg>
+      <span className="agent-avatar-letter" style={{ textShadow: `0 1px 2px ${g.to}80, 0 0 8px ${g.from}30` }}>{avatarLetter(name || '')}</span>
+    </div>
+  );
+}
+
+// --- SpaceAvatar.vue 端口（ListSpaceSidebar 组织条目用） ---------------------------
+
+const SPACE_GRADIENTS: ReadonlyArray<{ from: string; to: string }> = [
+  { from: '#07c05f', to: '#059669' },
+  { from: '#11998e', to: '#38ef7d' },
+  { from: '#43e97b', to: '#38f9d7' },
+  { from: '#02aab0', to: '#00cdac' },
+  { from: '#36d1dc', to: '#5b86e5' },
+  { from: '#4facfe', to: '#00f2fe' },
+  { from: '#667eea', to: '#764ba2' },
+  { from: '#4776e6', to: '#8e54e9' },
+  { from: '#56ab2f', to: '#a8e063' },
+  { from: '#00b09b', to: '#96c93d' },
+  { from: '#5ee7df', to: '#b490ca' },
+  { from: '#614385', to: '#516395' },
+];
+
+function spaceGradient(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    const char = name.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return SPACE_GRADIENTS[Math.abs(hash) % SPACE_GRADIENTS.length]!;
+}
+
+export function SpaceAvatar({ name, size = 'medium' }: { name: string; size?: 'small' | 'medium' | 'large' }) {
+  const g = spaceGradient(name || '');
+  const first = (name || '').trim().charAt(0);
+  const letter = !first ? '?' : /[a-zA-Z]/.test(first) ? first.toUpperCase() : first;
+  return (
+    <div
+      className={`space-avatar${size === 'small' ? ' space-avatar-small' : size === 'large' ? ' space-avatar-large' : ''}`}
+      style={{ background: `linear-gradient(135deg, ${g.from} 0%, ${g.to} 100%)` }}
+    >
+      <svg className="space-avatar-decoration" viewBox="0 0 56 40" preserveAspectRatio="xMaxYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="10" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
+        <circle cx="28" cy="8" r="5" stroke="currentColor" strokeWidth="1.8" fill="none" opacity="0.7" />
+        <circle cx="46" cy="14" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
+        <path d="M14 13 L24 10 M32 10 L42 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.4" />
+        <circle cx="28" cy="28" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" opacity="0.35" />
+        <path d="M28 14 L28 22 M20 18 L26 24 M36 18 L30 24" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.3" />
+      </svg>
+      <span className="space-avatar-letter" style={{ textShadow: `0 1px 2px ${g.to}80, 0 0 8px ${g.from}30` }}>{letter}</span>
+    </div>
+  );
+}
+
+// --- ResourceOriginBadge.vue 端口 ---------------------------------------------------
+
+const ORIGIN_ICON: Record<string, string> = { mine: 'user', tenant: 'usergroup', creator: 'user', space: 'building', shared: 'share' };
+
+export function ResourceOriginBadge({ variant, creatorName, tenantName }: {
+  variant: 'mine' | 'tenant' | 'creator' | 'space' | 'shared';
+  creatorName?: string;
+  tenantName?: string;
+}) {
+  const text = variant === 'mine' ? formatMessage('zh-CN', 'resourceOrigin.mine')
+    : variant === 'creator' ? (creatorName || formatMessage('zh-CN', 'resourceOrigin.tenant'))
+      : variant === 'space' ? (tenantName || formatMessage('zh-CN', 'resourceOrigin.space'))
+        : variant === 'shared' ? (tenantName || formatMessage('zh-CN', 'resourceOrigin.shared'))
+          : (tenantName || formatMessage('zh-CN', 'resourceOrigin.tenant'));
+  return (
+    <span className={`resource-origin-badge origin-${variant}`}>
+      <TIcon name={ORIGIN_ICON[variant] ?? 'usergroup'} size="12px" className="badge-icon" />
+      <span className="badge-text">{text}</span>
+    </span>
+  );
+}
+
+// --- 左侧空间栏（ListSpaceSidebar.vue collapsed 条带 1:1） -------------------------
 
 export interface AgentRailItem {
   key: string;
@@ -231,35 +276,61 @@ export interface AgentRailItem {
   active: boolean;
 }
 
+const RAIL_ICON_NAME: Record<AgentRailItem['icon'], string> = {
+  layers: 'layers',
+  star: 'star',
+  history: 'history',
+  /* Vue workspace 条目是 t-icon system-sum（ListSpaceSidebar.vue:31）。 */
+  workspace: 'system-sum',
+  space: 'layers',
+};
+
+/* ListSpaceSidebar truncateLabel：折叠条标签 ~4 个 CJK 字符宽度。 */
+function truncateLabel(text: string, max = 4): string {
+  return !text ? '' : text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
 export function AgentRail({ t, items, onSelect }: { t: Translate; items: AgentRailItem[]; onSelect: (key: string) => void }) {
-  // Vue .icon-strip: 56px column, 4px gaps, no x-padding; .icon-item-labeled
-  // is a fixed 46px column (5px auto-inset) — active tile is the neutral
-  // #f3f3f3 with brand-green content, hover is the same grey.
+  const tooltipText = (name: string, count?: number) => (count === undefined ? name : `${name} (${count})`);
+  const orgItems = items.filter((item) => item.icon === 'space');
+  const baseItems = items.filter((item) => item.icon !== 'space');
   return (
-    <nav className="flex w-14 min-h-0 shrink-0 flex-col items-center gap-1 overflow-y-auto box-border shadow-[inset_-1px_0_0_#e7e7e7] pt-3 pb-[6px]" aria-label={t('agent.title')}>
-      {items.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          data-space-key={item.key}
-          className={`flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-lg border-none px-0 pt-[5px] pb-[2px] transition-[background] duration-150 ease-[ease] hover:bg-[#f3f3f3]${item.active ? ' bg-[#f3f3f3] text-[#07c05f]' : ' bg-transparent text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)]'}`}
-          aria-current={item.active ? 'true' : undefined}
-          title={`${item.label}${item.count === undefined ? '' : ` (${item.count})`}`}
-          onClick={() => onSelect(item.key)}
-        >
-          <span className="inline-flex items-center justify-center">
-            {item.icon === 'space'
-              ? <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-[5px] bg-[linear-gradient(135deg,#667eea_0%,#764ba2_100%)] text-[10px] font-semibold text-white">{avatarLetter(item.avatarName ?? item.label)}</span>
-              : <Icon name={item.icon === 'workspace' ? 'workspace' : item.icon} size={16} />}
-          </span>
-          <span className="max-w-[52px] truncate text-[11px] leading-[1.25]">{item.label}</span>
-        </button>
-      ))}
-    </nav>
+    <div className="list-space-sidebar">
+      <div className="icon-strip">
+        {baseItems.map((item) => (
+          <Tooltip key={item.key} content={tooltipText(item.label, item.count)} placement="right" showArrow={false}>
+            <div
+              className={`icon-item-labeled${item.key === 'mine' ? ' workspace-item' : ''}${item.active ? ' active' : ''}`}
+              data-space-key={item.key}
+              onClick={() => onSelect(item.key)}
+            >
+              <TIcon name={RAIL_ICON_NAME[item.icon]} size="16px" />
+              <span className="icon-label">{item.label}</span>
+            </div>
+          </Tooltip>
+        ))}
+        {orgItems.length > 0 ? <div className="icon-strip-divider" /> : null}
+        {orgItems.map((item) => (
+          <Tooltip key={item.key} content={tooltipText(item.label, item.count)} placement="right" showArrow={false}>
+            <div
+              className={`icon-item-labeled${item.active ? ' active' : ''}`}
+              data-space-key={item.key}
+              onClick={() => onSelect(item.key)}
+            >
+              <SpaceAvatar name={item.avatarName ?? item.label} size="small" />
+              <span className="icon-label">{truncateLabel(item.label)}</span>
+            </div>
+          </Tooltip>
+        ))}
+      </div>
+      <div className="resize-handle" aria-hidden="true">
+        <div className="resize-handle-line" />
+      </div>
+    </div>
   );
 }
 
-// --- section header -------------------------------------------------------------
+// --- 分组标题（.agent-section-header） ----------------------------------------------
 
 const SECTION_SUBICONS: Partial<Record<string, string>> = { sharedEditable: 'edit-1', sharedReadonly: 'browse' };
 
@@ -268,25 +339,28 @@ function AgentSectionHeader({ section, t, viewer, collapsed, onToggle }: {
 }) {
   const subIcon = SECTION_SUBICONS[section.key];
   return (
-    <button
-      type="button"
-      className="wk-agent-section-header"
+    <div
+      className="agent-section-header"
+      role="button"
+      tabIndex={0}
       data-agent-section={section.key}
-      aria-expanded={!collapsed}
       onClick={() => onToggle(section.key)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') { event.preventDefault(); onToggle(section.key); }
+        if (event.key === ' ') { event.preventDefault(); onToggle(section.key); }
+      }}
     >
-      <Icon name={SECTION_ICON_KEYS[section.key]} size={14} />
-      {subIcon ? <span className="-ml-1 inline-flex opacity-75"><Icon name={subIcon} size={12} /></span> : null}
+      <TIcon name={SECTION_ICON_KEYS[section.key]} size="14px" />
+      {subIcon ? <TIcon name={subIcon} size="12px" className="agent-section-subicon" /> : null}
       <span>{t(agentSectionLabelKey(section.key, viewer))}</span>
-      <span className="wk-agent-section-count">{section.count}</span>
-      <span className="ml-1 inline-flex opacity-70" data-agent-section-toggle={section.key} aria-hidden="true">
-        <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={14} />
-      </span>
-    </button>
+      <span className="agent-section-count">{section.count}</span>
+      {/* Vue：t-icon 直接携带 agent-section-toggle 类（无包装 span，避免多余行框） */}
+      <TIcon className="agent-section-toggle" name={collapsed ? 'chevron-right' : 'chevron-down'} size="14px" data-agent-section-toggle={section.key} />
+    </div>
   );
 }
 
-// --- card -------------------------------------------------------------------------
+// --- 卡片 ----------------------------------------------------------------------------
 
 const ACTION_META: Record<AgentCardAction, { icon: string; labelKey: string }> = {
   edit: { icon: 'edit', labelKey: 'common.edit' },
@@ -295,115 +369,152 @@ const ACTION_META: Record<AgentCardAction, { icon: string; labelKey: string }> =
   delete: { icon: 'delete', labelKey: 'common.delete' },
 };
 
-export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onToggleFavorite, onToggleMenu, onMenuAction }: {
+function featureBadgeIcon(badge: string): { icon: string; size: string } | null {
+  if (badge === 'webSearch') return null;
+  const modeBadge = badge === 'modeNormal' || badge === 'modeAgent' || badge === 'modePlain';
+  const icon = badge === 'modeAgent' ? 'control-platform' : badge === 'knowledge' ? 'folder'
+    : badge === 'mcp' ? 'extension' : badge === 'multiTurn' ? 'chat-bubble' : 'chat';
+  return { icon, size: modeBadge ? '14px' : '16px' };
+}
+
+export function AgentCard({ agent, t, viewer, favorited, menuOpen, hidden = false, onOpen, onToggleFavorite, onToggleMenu, onMenuAction }: {
   agent: AgentCardModel;
   t: Translate;
   viewer: AgentViewer;
   favorited: boolean;
   menuOpen: boolean;
+  /** Vue v-show="!isAgentRowHidden(agent)"：折叠组保留 DOM 仅隐藏（§3.2）。 */
+  hidden?: boolean;
   onOpen: (agent: AgentCardModel) => void;
   onToggleFavorite: (id: string) => void;
   onToggleMenu: (id: string | null) => void;
   onMenuAction: (action: AgentCardAction, agent: AgentCardModel) => void;
 }) {
-  const mode = agent.config?.agent_mode === 'smart-reasoning' ? 'agent' : 'normal';
+  /* Vue :class 绑定逐字复刻：mode class 只在值精确匹配时出现（builtin 快速问答
+   * 的 agent_mode 为空串 → 无 mode class → 白底）。 */
+  const rawMode = agent.config?.agent_mode;
+  const mode = rawMode === 'smart-reasoning' ? 'agent' : 'normal';
+  const modeClass = rawMode === 'quick-answer' ? ' agent-mode-normal' : rawMode === 'smart-reasoning' ? ' agent-mode-agent' : '';
   const badges = featureBadges(agent);
   const expertBadgeId = expertSourceId(agent.config);
   const actions = cardActions(agent, viewer);
   const badge = cornerBadge(agent, viewer.userId);
   const modeTitleKey = agent.config?.agent_mode === 'smart-reasoning' ? 'agent.mode.agent' : 'agent.mode.normal';
-  const modeTone = mode === 'agent'
-    ? 'bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(124,77,255,0.04)_100%)] hover:bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(124,77,255,0.08)_100%)] hover:shadow-[0_4px_12px_rgba(124,77,255,0.12)]'
-    : 'bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(7,192,95,0.04)_100%)] hover:bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(7,192,95,0.08)_100%)] hover:shadow-[0_4px_12px_rgba(7,192,95,0.12)]';
+  /* 空间视角卡片（sharedByMe / 空间 tab）右下只有徽章，无来源 pill（Vue :546-635）。 */
+  const showSourcePill = !agent.isMine && !agent.sharedByMe;
   return (
-    <article
-      className={`wk-agent-card agent-mode-${mode}${agent.isMine ? '' : ' wk-agent-card-shared'} group/card relative flex h-[136px] min-h-[136px] cursor-pointer flex-col overflow-hidden box-border rounded-lg border border-[#e7e7e7] px-3.5 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms] ease-[ease] hover:border-[#07c05f] ${modeTone}`}
+    <div
+      className={`agent-card${agent.is_builtin ? ' is-builtin' : ''}${modeClass}${agent.isMine ? '' : ' shared-agent-card'} wk-agent-card`}
       data-agent-id={agent.id}
+      style={hidden ? { display: 'none' } : undefined}
       onClick={() => onOpen(agent)}
     >
-      <div className={`pointer-events-none absolute top-3 right-11 z-0 flex items-start gap-1 transition-[color] duration-[250ms] ease-[ease] ${mode === 'agent' ? 'text-[rgba(124,77,255,0.35)]' : 'text-[rgba(7,192,95,0.35)]'}`} aria-hidden="true">
-        <svg className="opacity-90" width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15" /></svg>
-        <svg className="mt-[10px] opacity-70" width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15" /></svg>
-      </div>
+      <CardDecoration />
       <button
         type="button"
-        className={`absolute top-0 right-0 z-[3] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-[rgba(0,0,0,0.6)] transition-[opacity,background,color] duration-150 ease-[ease] hover:bg-[#f3f3f3] hover:text-[#e37318] ${favorited ? 'opacity-100 text-[#e37318]' : 'opacity-0 group-hover/card:opacity-100'}`}
+        className={`agent-favorite-star${favorited ? ' is-favorited' : ''}`}
         aria-pressed={favorited ? 'true' : 'false'}
         aria-label={t('common.favorite')}
         onClick={(event) => { event.stopPropagation(); onToggleFavorite(agent.id); }}
       >
-        <Icon name={favorited ? 'star-filled' : 'star'} size={14} />
+        <TIcon name={favorited ? 'star-filled' : 'star'} size="14px" />
       </button>
-      <div className="relative z-[1] mb-1.5 flex items-center justify-between gap-1">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <AgentAvatar agent={agent} />
-          <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[rgba(0,0,0,0.9)]" title={agent.name}>{agent.name}</span>
+      <div className="card-header">
+        <div className="card-header-left">
+          {agent.is_builtin ? (
+            <div className={`builtin-avatar ${mode === 'agent' ? 'agent' : 'normal'}`}>
+              <TIcon name={mode === 'agent' ? 'control-platform' : 'chat'} size="18px" />
+            </div>
+          ) : agent.avatar ? (
+            <div className="builtin-avatar agent-emoji">{agent.avatar}</div>
+          ) : (
+            <AgentAvatar name={agent.name} size="small" />
+          )}
+          <span className="card-title" title={agent.name}>{agent.name}</span>
         </div>
         {actions.length > 0 ? (
-          <div className="wk-agent-card-more-wrap">
-            <button
-              type="button"
-              className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-lg border-none bg-transparent transition-all duration-200 ease-[ease] group-hover/card:opacity-60 hover:bg-[#f3f3f3] hover:opacity-100 ${menuOpen ? 'bg-[#f3f3f3] opacity-100' : 'opacity-0'}`}
+          <Popup
+            visible={menuOpen}
+            trigger="hover"
+            overlayClassName="card-more-popup"
+            destroyOnClose
+            placement="bottom-right"
+            onVisibleChange={(visible) => { if (!visible) onToggleMenu(null); }}
+            content={(
+              <div className="popup-menu">
+                {actions.map((action) => (
+                  <div
+                    key={action}
+                    className={`popup-menu-item${action === 'delete' ? ' delete' : ''}`}
+                    data-action={action}
+                    onClick={() => onMenuAction(action, agent)}
+                  >
+                    <TIcon className="menu-icon" name={ACTION_META[action]!.icon} />
+                    <span>{t(action === 'toggle' && agent.disabledByMe ? 'agent.enable' : ACTION_META[action]!.labelKey)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          >
+            <div
+              className={`more-wrap${menuOpen ? ' active-more' : ''}`}
               aria-label={t('agent.manageAgents')}
               aria-haspopup="menu"
               aria-expanded={menuOpen ? 'true' : 'false'}
               onClick={(event) => { event.stopPropagation(); onToggleMenu(menuOpen ? null : agent.id); }}
             >
-              <span className="h-[3px] w-[3px] rounded-full bg-current" /><span className="h-[3px] w-[3px] rounded-full bg-current" /><span className="h-[3px] w-[3px] rounded-full bg-current" />
-            </button>
-            {menuOpen ? (
-              <div className="absolute top-[30px] right-0 z-20 flex min-w-32 flex-col rounded-md bg-[var(--wk-bg,#fff)] p-1 shadow-[0_4px_16px_rgba(0,0,0,0.14)]" role="menu" onClick={(event) => event.stopPropagation()}>
-                {actions.map((action) => (
-                  <button
-                    key={action}
-                    type="button"
-                    role="menuitem"
-                    data-action={action}
-                    className={`flex cursor-pointer items-center gap-2 rounded border-none px-2.5 py-[7px] text-left text-[13px] text-inherit hover:bg-[rgba(127,127,127,0.1)]${action === 'delete' ? ' text-[#d54941]' : ''}`}
-                    onClick={() => onMenuAction(action, agent)}
+              <img className="more-icon" src={MORE_PNG} alt="" />
+            </div>
+          </Popup>
+        ) : null}
+      </div>
+      <div className="card-content">
+        <div className="card-description">{agent.description || t('agent.noDescription')}</div>
+      </div>
+      <div className="card-bottom">
+        <div className="bottom-left">
+          <div className="feature-badges">
+            {agent.disabledByMe ? <Tag theme="default" size="small" className="disabled-badge">{t('agent.disabled')}</Tag> : null}
+            {badges.map((key) => {
+              const iconDef = featureBadgeIcon(key);
+              const badgeTitle = key === 'modeNormal' || key === 'modeAgent' || key === 'modePlain' ? t(modeTitleKey) : t(FEATURE_BADGE_TITLE_KEYS[key]!);
+              return (
+                <Tooltip key={key} content={badgeTitle} placement="top">
+                  <div
+                    className={`feature-badge${key === 'modeNormal' ? ' mode-normal' : key === 'modeAgent' ? ' mode-agent' : key === 'webSearch' ? ' web-search' : key === 'knowledge' ? ' knowledge' : key === 'mcp' ? ' mcp' : key === 'multiTurn' ? ' multi-turn' : ''}`}
+                    data-feature-badge={key}
                   >
-                    <Icon name={ACTION_META[action]!.icon} size={14} />
-                    <span>{t(action === 'toggle' && agent.disabledByMe ? 'agent.enable' : ACTION_META[action]!.labelKey)}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
+                    {iconDef ? <TIcon name={iconDef.icon} size={iconDef.size} /> : <WebSearchBadgeIcon />}
+                  </div>
+                </Tooltip>
+              );
+            })}
           </div>
-        ) : null}
-      </div>
-      <div className="relative z-[1] mb-1.5 flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
-        <div className="line-clamp-2 overflow-hidden text-[12px] font-normal leading-[17px] text-[rgba(0,0,0,0.6)]">{agent.description || t('agent.noDescription')}</div>
-      </div>
-      <div className="relative z-[1] mt-auto flex items-center justify-between border-t-[0.5px] border-t-[#e7e7e7] pt-1.5">
-        <div className="flex items-center gap-1">
-          {agent.disabledByMe ? <span className="inline-flex items-center rounded bg-[rgba(127,127,127,0.12)] px-1.5 py-[2px] text-[11px]">{t('agent.disabled')}</span> : null}
-          {expertBadgeId ? (
-            // Octop M2 provenance: read-only label naming the expert template
-            // the agent was instantiated from (config.expert_source).
-            <span className="inline-flex items-center rounded bg-[rgba(124,77,255,0.08)] px-1.5 py-[2px] text-[11px] font-medium text-[#7c4dff]" data-agent-expert-badge>{t('experts.badge', { expertId: expertBadgeId })}</span>
-          ) : null}
-          {badges.map((key) => (
-            <span key={key} className={`flex h-[22px] w-[22px] items-center justify-center rounded-[5px] transition-[background] duration-200 ease-[ease] ${FEATURE_BADGE_TONES[key] ?? ''}`} title={key === 'modeNormal' || key === 'modeAgent' || key === 'modePlain' ? t(modeTitleKey) : t(FEATURE_BADGE_TITLE_KEYS[key]!)}>
-              <FeatureBadgeSvg badge={key} />
-            </span>
-          ))}
         </div>
-        {!agent.isMine && !agent.sharedByMe ? (
-          // Org source pill only on "all"-view shared cards; the Vue space-tab
-          // card (AgentList.vue:546-635) ends with the feature badges alone.
-          <span className="wk-agent-card-source inline-flex shrink-0 items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[10px] bg-[rgba(127,127,127,0.1)] px-2 py-[2px] text-[11px] font-medium"><Icon name="usergroup" size={12} />{agent.orgName}</span>
+        {showSourcePill ? (
+          <div className="card-bottom-source wk-agent-card-source">
+            <OrgGreenIcon />
+            <span className="org-source-text">{agent.orgName}</span>
+          </div>
         ) : badge ? (
-          <span className="inline-flex shrink-0 items-center gap-[3px] rounded-[10px] bg-[rgba(127,127,127,0.1)] px-2 py-[2px] text-[11px] font-medium">
-            {badge.kind === 'builtin' ? <Icon name="lock-on" size={12} /> : null}
-            <span>{badge.kind === 'builtin' ? t('agent.builtin') : badge.name}</span>
-          </span>
+          badge.kind === 'builtin' ? (
+            <div className="builtin-badge">
+              <TIcon name="lock-on" size="12px" />
+              <span>{t('agent.builtin')}</span>
+            </div>
+          ) : (
+            <ResourceOriginBadge variant="creator" creatorName={badge.name} />
+          )
+        ) : expertBadgeId ? (
+          /* Octop M2 溯源徽章（React 侧增量，Vue 无对应分支；样式走平移 CSS 同款 pill） */
+          <div className="builtin-badge" data-agent-expert-badge>{t('experts.badge', { expertId: expertBadgeId })}</div>
         ) : null}
       </div>
-    </article>
+    </div>
   );
 }
 
-// --- detail drawer (AgentList.vue shared-detail-drawer + editable basics) --------
+// --- 共享详情抽屉（AgentList.vue shared-detail-drawer unscoped 块 1:1） ---------------
 
 function scopeText(scope: ReturnType<typeof kbScope>, t: Translate, allKey: string, selectedKey: string, noneKey: string): string {
   if (scope.kind === 'all') return t(allKey);
@@ -419,55 +530,100 @@ export function AgentDetailDrawer({ kind, agent, t, onClose, onUseInChat }: {
   onUseInChat: (agent: AgentCardModel) => void;
 }) {
   const config = agent.config;
+  const usesKb = config ? config.kb_selection_mode !== 'none' && config.kb_selection_mode !== undefined : false;
   return (
-    <div className="fixed inset-0 z-[1000] flex justify-end bg-[rgba(0,0,0,0.4)]" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <aside className="flex h-full w-[360px] max-w-[90vw] flex-col bg-[var(--wk-bg,#fff)] shadow-[-4px_0_24px_rgba(0,0,0,0.12)]" role="dialog" aria-label={t('agent.detail.title')}>
-        <div className="flex shrink-0 items-center justify-between border-b border-[rgba(127,127,127,0.2)] px-6 py-5">
-          <h3 className="m-0 text-[18px] font-semibold">{t('agent.detail.title')}</h3>
-          <button type="button" className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-none bg-[rgba(127,127,127,0.1)]" aria-label={t('common.cancel')} onClick={onClose}><Icon name="close" size={16} /></button>
+    <div className="shared-detail-drawer-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="shared-detail-drawer">
+        <div className="shared-detail-drawer-header">
+          <h3 className="shared-detail-drawer-title">{t('agent.detail.title')}</h3>
+          <button type="button" className="shared-detail-drawer-close" aria-label={t('general.close')} onClick={onClose}>
+            <TIcon name="close" />
+          </button>
         </div>
-        <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">
-          <div className="flex flex-col gap-1.5"><span className="text-[12px] leading-[1.4] opacity-65">{t('agent.title')}</span><span className="break-words text-[14px] leading-[1.5]">{agent.name}</span></div>
-          <div className="flex flex-col gap-1.5"><span className="text-[12px] leading-[1.4] opacity-65">{t('agent.noDescription')}</span><span className="break-words text-[14px] leading-[1.5]">{agent.description || t('agent.noDescription')}</span></div>
-          <div className="flex flex-col gap-1.5"><span className="text-[12px] leading-[1.4] opacity-65">{t('agent.shareScope.title')}</span><span className="flex flex-col gap-2 break-words text-[14px] leading-[1.5]">
-            <span>{t('agent.shareScope.knowledgeBase')}: {scopeText(kbScope(config), t, 'agent.shareScope.kbAll', 'agent.shareScope.kbSelected', 'agent.shareScope.kbNone')}</span>
-            <span>{t('agent.shareScope.chatModel')}: {config?.model_id ? t('agent.shareScope.modelConfigured') : t('agent.shareScope.modelNotSet')}</span>
-            <span>{t('agent.shareScope.webSearch')}: {config?.web_search_enabled ? t('agent.shareScope.enabled') : t('agent.shareScope.disabled')}</span>
-            <span>{t('agent.shareScope.mcp')}: {scopeText(mcpScope(config), t, 'agent.shareScope.mcpAll', 'agent.shareScope.mcpSelected', 'agent.shareScope.mcpNone')}</span>
-          </span></div>
+        <div className="shared-detail-drawer-body">
+          <div className="shared-detail-row">
+            <span className="shared-detail-label">{t('agent.editor.name')}</span>
+            <span className="shared-detail-value">{agent.name}</span>
+          </div>
+          <div className="shared-detail-row">
+            <span className="shared-detail-label">{t('knowledgeList.detail.sourceOrg')}</span>
+            <span className="shared-detail-value shared-detail-org">
+              <OrgGreenIcon />
+              <span>{agent.orgName}</span>
+            </span>
+          </div>
+          <div className="shared-detail-row">
+            <span className="shared-detail-label">{t('knowledgeList.detail.myPermission')}</span>
+            <span className="shared-detail-value">{t('organization.share.permissionReadonly')}</span>
+          </div>
+          {config ? (
+            <>
+              <div className="shared-detail-section-title">{t('agent.shareScope.title')}</div>
+              <div className="shared-detail-row">
+                <span className="shared-detail-label">{t('agent.shareScope.knowledgeBase')}</span>
+                <span className="shared-detail-value">{scopeText(kbScope(config), t, 'agent.shareScope.kbAll', 'agent.shareScope.kbSelected', 'agent.shareScope.kbNone')}</span>
+              </div>
+              <div className="shared-detail-row">
+                <span className="shared-detail-label">{t('agent.shareScope.chatModel')}</span>
+                <span className="shared-detail-value">{config.model_id ? t('agent.shareScope.modelConfigured') : t('agent.shareScope.modelNotSet')}</span>
+              </div>
+              {usesKb ? (
+                <div className="shared-detail-row">
+                  <span className="shared-detail-label">{t('agent.shareScope.rerankModel')}</span>
+                  <span className="shared-detail-value">{config.rerank_model_id ? t('agent.shareScope.modelConfigured') : t('agent.shareScope.modelNotSet')}</span>
+                </div>
+              ) : null}
+              <div className="shared-detail-row">
+                <span className="shared-detail-label">{t('agent.shareScope.webSearch')}</span>
+                <span className="shared-detail-value">{config.web_search_enabled ? t('agent.shareScope.enabled') : t('agent.shareScope.disabled')}</span>
+              </div>
+              <div className="shared-detail-row">
+                <span className="shared-detail-label">{t('agent.shareScope.mcp')}</span>
+                <span className="shared-detail-value">{scopeText(mcpScope(config), t, 'agent.shareScope.mcpAll', 'agent.shareScope.mcpSelected', 'agent.shareScope.mcpNone')}</span>
+              </div>
+            </>
+          ) : null}
         </div>
-        <div className="flex shrink-0 justify-end gap-2.5 border-t border-[rgba(127,127,127,0.2)] bg-[var(--wk-bg,#fff)] px-6 py-4">
-          <button type="button" className="inline-flex w-full cursor-pointer items-center justify-center rounded-md border-none bg-[#07c05f] px-[18px] py-2 text-[14px] text-white transition-[background] duration-200 ease-[ease] hover:bg-[#06b04d] disabled:cursor-default disabled:opacity-60" onClick={() => onUseInChat(agent)}>{t('agent.detail.useInChat')}</button>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-// --- delete confirm dialog (AgentList.vue del-agent-dialog) -----------------------
-
-export function AgentDeleteDialog({ agent, t, busy, onConfirm, onCancel }: {
-  agent: AgentCardModel | null; t: Translate; busy: boolean; onConfirm: () => void; onCancel: () => void;
-}) {
-  if (!agent) return null;
-  return (
-    <div className="fixed inset-0 z-[1100] flex items-start justify-center bg-[rgba(0,0,0,0.4)] pt-[40vh]" onClick={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
-      <div className="w-[400px] max-w-[90vw] rounded-md bg-[var(--wk-bg,#fff)] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.18)]" role="alertdialog" aria-label={t('agent.delete.confirmTitle')}>
-        <div className="mb-2 flex items-center">
-          <span className="mr-2 inline-flex text-[#d54941]" aria-hidden="true"><Icon name="delete" size={18} /></span>
-          <span className="text-[16px] font-semibold leading-6">{t('agent.delete.confirmTitle')}</span>
-        </div>
-        <p className="m-0 mb-[21px] ml-[29px] text-[14px] leading-[22px] opacity-70">{t('agent.delete.confirmMessage', { name: agent.name })}</p>
-        <div className="flex justify-end gap-10">
-          <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-[14px] text-inherit" onClick={onCancel}>{t('common.cancel')}</button>
-          <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-[14px] text-[#d54941]" disabled={busy} onClick={onConfirm}>{busy ? t('common.loading') : t('agent.delete.confirmButton')}</button>
+        <div className="shared-detail-drawer-footer">
+          <Button theme="primary" block onClick={() => onUseInChat(agent)}>{t('agent.detail.useInChat')}</Button>
         </div>
       </div>
     </div>
   );
 }
 
-// --- page view ------------------------------------------------------------------------
+// --- 删除确认（AgentList.vue del-agent-dialog 1:1） -----------------------------------
+
+export function AgentDeleteDialog({ agent, t, busy, onConfirm, onCancel }: {
+  agent: AgentCardModel | null; t: Translate; busy: boolean; onConfirm: () => void; onCancel: () => void;
+}) {
+  return (
+    <Dialog
+      visible={agent !== null}
+      dialogClassName="del-agent-dialog"
+      closeBtn={false}
+      cancelBtn={null}
+      confirmBtn={null}
+      onClose={onCancel}
+    >
+      {agent ? (
+        <div className="circle-wrap">
+          <div className="dialog-header">
+            <img className="circle-img" src={CIRCLE_PNG} alt="" />
+            <span className="circle-title">{t('agent.delete.confirmTitle')}</span>
+          </div>
+          <span className="del-circle-txt">{t('agent.delete.confirmMessage', { name: agent.name })}</span>
+          <div className="circle-btn">
+            <span className="circle-btn-txt" onClick={onCancel}>{t('common.cancel')}</span>
+            <span className="circle-btn-txt confirm" onClick={() => { if (!busy) onConfirm(); }}>{busy ? t('common.loading') : t('agent.delete.confirmButton')}</span>
+          </div>
+        </div>
+      ) : null}
+    </Dialog>
+  );
+}
+
+// --- 页面视图 --------------------------------------------------------------------------
 
 export interface AgentsPageViewProps {
   t: Translate;
@@ -507,40 +663,67 @@ export interface AgentsPageViewProps {
   onToggleSection: (key: string) => void;
 }
 
+/* 骨架屏（Vue t-skeleton rowCol 三段，AgentList.vue:44-60）。 */
+function SkeletonCards() {
+  return (
+    <div className="agent-card-wrap" aria-busy="true">
+      {Array.from({ length: 6 }, (_, index) => (
+        <div className="agent-card agent-card-skeleton" key={`skel-${index}`}>
+          <div className="card-header">
+            <div className="card-header-left">
+              <Skeleton animation="gradient" rowCol={[[{ width: '32px', height: '32px', type: 'circle' }, { width: '40%', height: '18px' }]]} />
+            </div>
+          </div>
+          <div className="card-content">
+            <Skeleton animation="gradient" rowCol={[{ width: '100%', height: '14px' }, { width: '70%', height: '14px' }]} />
+          </div>
+          <div className="card-bottom">
+            <Skeleton animation="gradient" rowCol={[[{ width: '60px', height: '22px', type: 'rect' }, { width: '60px', height: '22px', type: 'rect' }]]} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EmptyState({ t, space, canCreate, onCreate }: { t: Translate; space: string; canCreate: boolean; onCreate: () => void }) {
   if (space === 'favorites') {
     return (
-      <div className="col-span-full flex flex-1 flex-col items-center justify-center px-5 py-[60px]">
-        <span className="mb-5 opacity-40"><Icon name="star" size={48} /></span>
-        <span className="mb-2 text-[16px] font-semibold leading-[26px] opacity-60">{t('agent.empty.favoritesTitle')}</span>
-        <span className="text-[14px] leading-[22px] opacity-45">{t('agent.empty.favoritesDescription')}</span>
+      <div className="empty-state">
+        <TIcon name="star" size="48px" className="empty-icon" />
+        <span className="empty-txt">{t('agent.empty.favoritesTitle')}</span>
+        <span className="empty-desc">{t('agent.empty.favoritesDescription')}</span>
       </div>
     );
   }
   if (space === 'recents') {
     return (
-      <div className="col-span-full flex flex-1 flex-col items-center justify-center px-5 py-[60px]">
-        <span className="mb-5 opacity-40"><Icon name="history" size={48} /></span>
-        <span className="mb-2 text-[16px] font-semibold leading-[26px] opacity-60">{t('agent.empty.recentsTitle')}</span>
-        <span className="text-[14px] leading-[22px] opacity-45">{t('agent.empty.recentsDescription')}</span>
+      <div className="empty-state">
+        <TIcon name="history" size="48px" className="empty-icon" />
+        <span className="empty-txt">{t('agent.empty.recentsTitle')}</span>
+        <span className="empty-desc">{t('agent.empty.recentsDescription')}</span>
       </div>
     );
   }
   if (space === 'all' || space === 'mine') {
     return (
-      <div className="col-span-full flex flex-1 flex-col items-center justify-center px-5 py-[60px]">
-        <span className="mb-2 text-[16px] font-semibold leading-[26px] opacity-60">{t('agent.empty.title')}</span>
-        <span className="text-[14px] leading-[22px] opacity-45">{t('agent.empty.description')}</span>
+      <div className="empty-state">
+        <img className="empty-img" src={UPLOAD_SVG} alt="" />
+        <span className="empty-txt">{t('agent.empty.title')}</span>
+        <span className="empty-desc">{t('agent.empty.description')}</span>
         {canCreate ? (
-          <button type="button" className="wk-agent-empty-btn relative mt-5 inline-flex cursor-pointer items-center gap-1.5 overflow-hidden rounded-md border-none bg-[#07c05f] px-4 py-[7px] text-[14px] text-white transition-[background] duration-200 ease-[ease] hover:bg-[#06b04d]" data-guide="agent-list-create" onClick={onCreate}><SparklesIcon size={18} /><span>{t('agent.createAgent')}</span></button>
+          <Button className="agent-create-btn empty-state-btn" data-guide="agent-list-create" onClick={onCreate} icon={<span className="btn-icon-wrapper"><SparklesIcon size={18} /></span>}>
+            <span>{t('agent.createAgent')}</span>
+          </Button>
         ) : null}
       </div>
     );
   }
   return (
-    <div className="col-span-full flex flex-1 flex-col items-center justify-center px-5 py-[60px]">
-      <span className="mb-2 text-[16px] font-semibold leading-[26px] opacity-60">{t('agent.empty.sharedTitle')}</span>
-      <span className="text-[14px] leading-[22px] opacity-45">{t('agent.empty.sharedDescription')}</span>
+    <div className="empty-state">
+      <img className="empty-img" src={UPLOAD_SVG} alt="" />
+      <span className="empty-txt">{t('agent.empty.sharedTitle')}</span>
+      <span className="empty-desc">{t('agent.empty.sharedDescription')}</span>
     </div>
   );
 }
@@ -553,13 +736,15 @@ function AgentSection({ section, t, viewer, collapsed, onToggle, cardProps }: {
   return (
     <>
       <AgentSectionHeader section={section} t={t} viewer={viewer} collapsed={collapsed} onToggle={onToggle} />
-      {collapsed ? null : section.cards.map((agent) => <AgentCard key={agent.id} {...cardProps(agent)} />)}
+      {section.cards.map((agent) => (
+        <AgentCard key={agent.id} {...cardProps(agent)} hidden={collapsed} />
+      ))}
     </>
   );
 }
 
 export function AgentsPageView(props: AgentsPageViewProps) {
-  const { t, editorT, viewer, loading, space, spaceLoading, rail, sections, flatCards, isSectioned, favorites, openMenuId, error, notice, drawer, editor, deleteTarget, deleting, collapsedSections, canCreate } = props;
+  const { t, editorT, viewer, loading, space, spaceLoading, rail, sections, flatCards, isSectioned, favorites, openMenuId, drawer, editor, deleteTarget, deleting, collapsedSections, canCreate } = props;
   const cardProps = (agent: AgentCardModel) => ({
     agent, t, viewer,
     favorited: favorites.has(agent.id),
@@ -570,47 +755,60 @@ export function AgentsPageView(props: AgentsPageViewProps) {
     onMenuAction: props.onMenuAction,
   });
   const hasCards = isSectioned ? sections.length > 0 : flatCards.length > 0;
+  const showSkeleton = loading && flatCards.length === 0 && sections.length === 0;
   return (
-    <main className="relative m-0 flex h-full min-h-0 flex-1 box-border [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale]">
+    <div className="agent-list-container">
       <AgentRail t={t} items={rail} onSelect={props.onSpaceChange} />
-      <div className="flex min-w-0 flex-1 flex-col pt-5 pl-7">
-        <header className="mb-4 flex items-center justify-between pr-7 [&_h2]:m-0 [&_h2]:text-[24px] [&_h2]:font-semibold [&_h2]:leading-8">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <h2>{t('agent.title')}</h2>
+      <div className="agent-list-content">
+        <div className="header" style={{ '--wails-draggable': 'drag' } as CSSProperties}>
+          <div className="header-title" style={{ '--wails-draggable': 'drag' } as CSSProperties}>
+            <div className="title-row" style={{ '--wails-draggable': 'drag' } as CSSProperties}>
+              <h2 style={{ '--wails-draggable': 'drag' } as CSSProperties}>{t('agent.title')}</h2>
               {canCreate ? (
-                <button type="button" className="inline-flex h-7 w-7 min-w-7 cursor-pointer items-center justify-center rounded-md border border-[#e7e7e7] bg-[#f3f3f3] p-0 text-[#07c05f] transition-[background,border-color,color] duration-200 ease-[ease] hover:text-[#06b04d]" data-guide="agent-list-create" title={t('agent.createAgent')} aria-label={t('agent.createAgent')} onClick={props.onCreate}><SparklesIcon /></button>
+                <Tooltip content={t('agent.createAgent')} placement="bottom">
+                  <Button
+                    variant="text"
+                    theme="default"
+                    size="small"
+                    className="header-action-btn"
+                    data-guide="agent-list-create"
+                    style={{ '--wails-draggable': 'no-drag' } as CSSProperties}
+                    onClick={props.onCreate}
+                    icon={<span className="btn-icon-wrapper"><SparklesIcon size={19} /></span>}
+                  />
+                </Tooltip>
               ) : null}
             </div>
-            <p className="m-0 text-[14px] font-normal leading-5 opacity-65">{t('agent.subtitle')}</p>
+            <p className="header-subtitle" style={{ '--wails-draggable': 'drag' } as CSSProperties}>{t('agent.subtitle')}</p>
           </div>
-        </header>
-        {notice ? <Status tone="success">{notice}</Status> : null}
-        {loading ? <div className="grid min-w-0 flex-1 content-start gap-3 overflow-y-auto pr-7 pb-2 grid-cols-1 min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6" aria-busy="true">{Array.from({ length: 6 }, (_, index) => <div className="h-[136px] animate-[wk-agent-shimmer_1.2s_ease_infinite] rounded-lg border border-[rgba(127,127,127,0.18)] bg-[linear-gradient(90deg,rgba(127,127,127,0.06)_25%,rgba(127,127,127,0.12)_37%,rgba(127,127,127,0.06)_63%)] bg-[length:400%_100%]" key={index} />)}</div> : null}
-        {spaceLoading ? (
-          <div className="flex min-w-0 flex-1 items-center justify-center" role="status" aria-label={t('common.loading')} data-agent-space-loading="true">
-            <span className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(127,127,127,0.25)] border-t-[#07c05f]" aria-hidden="true" />
-          </div>
-        ) : null}
-        {!loading && !spaceLoading && hasCards ? (
-          <div className="grid min-w-0 flex-1 content-start gap-3 overflow-y-auto pr-7 pb-2 grid-cols-1 min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6">
-            {isSectioned
-              ? sections.map((section) => (
+        </div>
+        <div className="agent-list-main">
+          {showSkeleton ? <SkeletonCards /> : null}
+          {!loading && !spaceLoading && hasCards ? (
+            <div className="agent-card-wrap">
+              {isSectioned
+                ? sections.map((section) => (
                   <AgentSection key={section.key} section={section} t={t} viewer={viewer} collapsed={collapsedSections.has(section.key)} onToggle={props.onToggleSection} cardProps={cardProps} />
-              ))
-              : flatCards.map((agent) => <AgentCard key={agent.id} {...cardProps(agent)} />)}
-          </div>
-        ) : null}
-        {!loading && !spaceLoading && !hasCards ? <EmptyState t={t} space={space} canCreate={canCreate} onCreate={props.onCreate} /> : null}
+                ))
+                : flatCards.map((agent) => <AgentCard key={agent.id} {...cardProps(agent)} />)}
+            </div>
+          ) : null}
+          {spaceLoading ? (
+            <div className="agent-list-main-loading" data-agent-space-loading="true">
+              <Loading size="medium" text="" />
+            </div>
+          ) : null}
+          {!loading && !spaceLoading && !hasCards ? <EmptyState t={t} space={space} canCreate={canCreate} onCreate={props.onCreate} /> : null}
+        </div>
       </div>
       {drawer ? <AgentDetailDrawer kind={drawer.kind} agent={drawer.agent} t={t} onClose={props.onCloseDrawer} onUseInChat={props.onUseInChat} /> : null}
       {editor ? <AgentEditorModal open mode={editor.mode} agent={editor.agent} initialSection={editor.initialSection} initialHighlightField={editor.initialHighlight} readOnly={editor.readOnly} client={props.client} t={editorT} onClose={props.onCloseEditor} onSaved={props.onEditorSaved} /> : null}
       <AgentDeleteDialog agent={deleteTarget} t={t} busy={deleting} onConfirm={props.onDeleteConfirm} onCancel={props.onDeleteCancel} />
-    </main>
+    </div>
   );
 }
 
-// --- space URL state (Vue useListUrlState ?scope=) ------------------------------------
+// --- 空间 URL 状态（Vue useListUrlState ?scope=） ------------------------------------
 
 const RESERVED_SCOPES = new Set(['all', 'mine', 'favorites', 'recents']);
 
@@ -678,7 +876,6 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   const [spaceItems, setSpaceItems] = useState<Array<Record<string, unknown>>>([]);
   const [spaceLoading, setSpaceLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [space, setSpaceState] = useState<string>(() => (typeof window === 'undefined' ? 'all' : readSpaceFromUrl() ?? ''));
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
@@ -789,11 +986,13 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     if (action === 'edit') { setEditor({ mode: 'edit', agent }); return; }
     if (action === 'delete') { setDeleteTarget(agent); return; }
     if (action === 'copy') {
-      void client.configuration.agents.copy(agent.id).then(() => { setNotice(t('agent.messages.copied')); reload(); }).catch(() => setNotice(t('agent.messages.copyFailed')));
+      void client.configuration.agents.copy(agent.id).then(() => { void MessagePlugin.success(t('agent.messages.copied')); reload(); }).catch(() => { void MessagePlugin.error(t('agent.messages.copyFailed')); });
       return;
     }
     if (action === 'toggle') {
-      void client.identity.organizations.agentShares.setDisabledByMe(agent.id, !agent.disabledByMe).then(() => { setNotice(t(agent.disabledByMe ? 'agent.messages.enabled' : 'agent.messages.disabled')); reload(); }).catch(() => setNotice(t('agent.messages.saveFailed')));
+      void client.identity.organizations.agentShares.setDisabledByMe(agent.id, !agent.disabledByMe)
+        .then(() => { void MessagePlugin.success(t(agent.disabledByMe ? 'agent.messages.enabled' : 'agent.messages.disabled')); reload(); })
+        .catch(() => { void MessagePlugin.error(t('agent.messages.saveFailed')); });
     }
   }, [client, reload, t]);
 
@@ -802,9 +1001,9 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     // warns and opens the models settings section instead; the tenantModels
     // (agent) tour re-arms there via the queued intent.
     if (modelsReady === false) {
-      setNotice(contextualGuideMessage(locale, 'contextualGuide.tenantModels.needChatModelFirst'));
+      void MessagePlugin.warning(contextualGuideMessage(locale, 'contextualGuide.tenantModels.needChatModelFirst'));
       openContextualGuide('tenantModels', { variant: 'agent' });
-    navigate('/platform/settings?section=models');
+      navigate('/platform/settings?section=models');
       return;
     }
     // Vue AgentList.vue:1603 + AgentCreateContextualGuide :when="create" —
@@ -818,15 +1017,19 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     // Vue AgentEditorModal.vue:4825 — a successful create retires agentCreate.
     if (mode === 'create') markContextualGuideDone(window.localStorage, 'agentCreate');
     // create stays open inside the modal (post-create session); refresh the list either way
-    setNotice(t(mode === 'create' ? 'agent.messages.created' : 'agent.messages.updated'));
+    void MessagePlugin.success(t(mode === 'create' ? 'agent.messages.created' : 'agent.messages.updated'));
     reload();
   }, [reload, t]);
 
   const onDeleteConfirm = useCallback(() => {
     if (!deleteTarget || deleting) return;
     setDeleting(true);
-    void client.configuration.agents.remove(deleteTarget.id).then(() => { setDeleting(false); setDeleteTarget(null); setNotice(t('agent.messages.deleted')); reload(); })
-      .catch(() => { setDeleting(false); setNotice(t('agent.messages.deleteFailed')); });
+    void client.configuration.agents.remove(deleteTarget.id).then(() => {
+      setDeleting(false); setDeleteTarget(null);
+      void MessagePlugin.success(t('agent.messages.deleted'));
+      reload();
+    })
+      .catch(() => { setDeleting(false); void MessagePlugin.error(t('agent.messages.deleteFailed')); });
   }, [client, deleteTarget, deleting, reload, t]);
 
   const onUseInChat = useCallback((agent: AgentCardModel) => {
@@ -930,7 +1133,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       favorites={favorites}
       openMenuId={openMenuId}
       error={loadError}
-      notice={notice}
+      notice={null}
       drawer={drawer}
       editor={editor}
       deleteTarget={deleteTarget}

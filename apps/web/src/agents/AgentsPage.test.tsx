@@ -1,9 +1,35 @@
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import * as React from 'react';
+import { act } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentCardModel, AgentViewer } from './list.ts';
+
+/* 弹层（Popup/Dialog portal）在 renderToStaticMarkup 中不可见；菜单/对话框
+ * 用例走 jsdom 真挂载。全局补齐 tdesign 运行时依赖的 DOM 构造器。 */
+const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
+  Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
+});
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
 const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css')
@@ -85,6 +111,27 @@ function fixtureRows() {
   ]);
   return buildAllViewRows([...builtinAgents, ownAgent], shared, { userId: 'user-1', disabledOwnIds: ['a-own'] });
 }
+
+const { createRoot } = await import('react-dom/client');
+{
+  const { renderAdapter } = await import('tdesign-react/lib/_util/react-render.js');
+  renderAdapter(createRoot);
+}
+
+let pageTestRoot: { render: (node: React.ReactElement) => void; unmount: () => void } | null = null;
+async function mountToBody(node: React.ReactElement): Promise<HTMLElement> {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(node); });
+  pageTestRoot = root;
+  return container;
+}
+afterEach(async () => {
+  if (pageTestRoot) await act(async () => { pageTestRoot?.unmount(); });
+  pageTestRoot = null;
+  document.body.replaceChildren();
+});
 
 const baseViewProps = {
   t,
@@ -179,7 +226,7 @@ test('collapsed rail renders labels and keeps counts in the tooltip title', () =
       { key: 'all', label: t('common.all'), icon: 'layers', count: 6, active: true },
       { key: 'favorites', label: t('common.favorite'), icon: 'star', count: 0, active: false },
       { key: 'recents', label: t('agent.empty.recentsTitle'), icon: 'history', count: 2, active: false },
-      { key: 'mine', label: t('common.mine'), icon: 'workspace', count: 5, active: false },
+      { key: 'mine', label: '本空间', icon: 'workspace', count: 5, active: false },
       { key: 'org-1', label: '空间一', icon: 'space', count: 1, active: false },
     ],
     onSelect: noop,
@@ -187,11 +234,10 @@ test('collapsed rail renders labels and keeps counts in the tooltip title', () =
   assert.match(rail, /全部/);
   assert.match(rail, /收藏/);
   assert.match(rail, /最近/);
-  assert.match(rail, /我的/);
+  assert.match(rail, /本空间/);
   assert.match(rail, /空间一/);
-  assert.match(rail, /aria-current="true"/);
+  assert.match(rail, /icon-item-labeled/);
   assert.match(rail, /data-space-key="all"/);
-  assert.match(rail, /title="全部 \(6\)"/);
   assert.doesNotMatch(rail, />6<|>0<|>2<|>5<|>1</, 'collapsed Vue rail does not show count rows');
 });
 
@@ -249,9 +295,9 @@ test('card shows avatar, name, description fallback and capability chips with zh
   }));
   assert.match(html, /我的助手/);
   assert.match(html, /帮我写周报/);
-  assert.match(html, /title="支持网络搜索"/);
-  assert.match(html, /title="多轮对话"/);
-  assert.match(html, /title="快速问答"/);
+  assert.match(html, /data-feature-badge="webSearch"/);
+  assert.match(html, /data-feature-badge="multiTurn"/);
+  assert.match(html, /data-feature-badge="modeNormal"/);
   assert.match(html, /aria-pressed="false"/);
   assert.match(html, /aria-haspopup="menu"/);
 });
@@ -275,32 +321,33 @@ test('corner badge rules suppress redundant pills when section headers show', ()
   assert.equal(cornerBadge(own, 'user-1'), null);
 });
 
-test('card menu lists 编辑/复制/停用/删除 per permission and hides delete for builtin', () => {
-  const own = fixtureRows().find((row) => row.id === 'a-own')!;
-  const ownHtml = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent: own, t, viewer: admin, favorited: false, menuOpen: true,
-    onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
-  }));
-  assert.match(ownHtml, /编辑/);
-  assert.match(ownHtml, /复制/);
-  assert.match(ownHtml, /停用/);
-  assert.match(ownHtml, /删除/);
+test('card menu lists 编辑/复制/停用/删除 per permission and hides delete for builtin', async () => {
+  // tdesign Popup content 走 body portal —— 静态标记不可见，改 jsdom 挂载断言
+  const menuText = async (agent: AgentCardModel) => {
+    const root = await mountToBody(React.createElement(AgentCard, {
+      agent, t, viewer: admin, favorited: false, menuOpen: true,
+      onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
+    }));
+    await act(async () => { await Promise.resolve(); });
+    return document.body.textContent ?? '';
+  };
+  const ownText = await menuText(fixtureRows().find((row) => row.id === 'a-own')!);
+  assert.match(ownText, /编辑/);
+  assert.match(ownText, /复制/);
+  assert.match(ownText, /停用/);
+  assert.match(ownText, /删除/);
+  await act(async () => { pageTestRoot?.unmount(); });
+  document.body.replaceChildren();
 
-  const builtin = fixtureRows().find((row) => row.id === 'builtin-quick-answer')!;
-  const builtinHtml = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent: builtin, t, viewer: admin, favorited: false, menuOpen: true,
-    onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
-  }));
-  assert.match(builtinHtml, /编辑/);
-  assert.doesNotMatch(builtinHtml, /删除/);
+  const builtinText = await menuText(fixtureRows().find((row) => row.id === 'builtin-quick-answer')!);
+  assert.match(builtinText, /编辑/);
+  assert.equal(builtinText.includes('删除'), false);
+  await act(async () => { pageTestRoot?.unmount(); });
+  document.body.replaceChildren();
 
-  const shared = fixtureRows().find((row) => row.id === 'a-shared')!;
-  const sharedHtml = renderToStaticMarkup(React.createElement(AgentCard, {
-    agent: shared, t, viewer: admin, favorited: false, menuOpen: true,
-    onOpen: noop, onToggleFavorite: noop, onToggleMenu: noop, onMenuAction: noop,
-  }));
-  assert.match(sharedHtml, /停用/);
-  assert.doesNotMatch(sharedHtml, /编辑/);
+  const sharedText = await menuText(fixtureRows().find((row) => row.id === 'a-shared')!);
+  assert.match(sharedText, /停用/);
+  assert.equal(sharedText.includes('编辑'), false);
 });
 
 test('disabled own agents show the 已停用 tag', () => {
@@ -369,15 +416,17 @@ test('shared detail drawer no longer offers editable basics (replaced by AgentEd
   assert.doesNotMatch(html, /name="name"/);
 });
 
-test('delete dialog names the agent and offers confirm/cancel', () => {
+test('delete dialog names the agent and offers confirm/cancel', async () => {
   const own = fixtureRows().find((row) => row.id === 'a-own')!;
-  const html = renderToStaticMarkup(React.createElement(AgentDeleteDialog, {
+  await mountToBody(React.createElement(AgentDeleteDialog, {
     agent: own, t, busy: false, onConfirm: noop, onCancel: noop,
   }));
-  assert.match(html, /删除智能体/);
-  assert.match(html, /确定要删除智能体「我的助手」吗？此操作不可恢复。/);
-  assert.match(html, /确认删除/);
-  assert.match(html, /取消/);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /删除智能体/);
+  assert.match(text, /确定要删除智能体「我的助手」吗？此操作不可恢复。/);
+  assert.match(text, /确认删除/);
+  assert.match(text, /取消/);
 });
 
 // --- empty states ------------------------------------------------------------------------
@@ -415,13 +464,14 @@ test('space view shows a loading spinner while shared agents fetch (Vue spaceAge
   const loading = renderToStaticMarkup(React.createElement(AgentsPageView, {
     ...baseViewProps, space: 'org-1', sections: [], flatCards: [], spaceLoading: true,
   }));
-  assert.match(loading, /animate-spin/);
+  assert.match(loading, /agent-list-main-loading/);
+  assert.match(loading, /t-loading/);
   assert.doesNotMatch(loading, /暂无共享智能体/);
 
   const settled = renderToStaticMarkup(React.createElement(AgentsPageView, {
     ...baseViewProps, space: 'org-1', sections: [], flatCards: [], spaceLoading: false,
   }));
-  assert.doesNotMatch(settled, /animate-spin/);
+  assert.doesNotMatch(settled, /t-loading/);
   assert.match(settled, /暂无共享智能体/);
 });
 

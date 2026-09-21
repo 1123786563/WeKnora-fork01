@@ -7,8 +7,12 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
-    <!-- 离线部署兼容：本地加载 tdesign-icons SVG sprite（同 Vue 端版本，保证 name 图标同源渲染） -->
-    <script src="/tdesign-icons/0.4.1/fonts/index.js"></script>
+    <!-- 离线部署兼容：本地加载 tdesign-icons SVG sprite（保证 name 图标同源渲染）。
+         0.4.5 先于 0.4.1：Vue 端 tdesign-icons-vue-next 的 svg-sprite Icon 在运行时
+         实际加载的是 CDN 0.4.5 图形（agents 页 <use> 按 id 先到先得命中 0.4.5 变体），
+         React 离线守卫拦掉了 CDN，这里以本地 0.4.5 镜像替换原 0.4.1（注入脚本按
+         firstChild 前插，多版本并存时后插入者反居首），与 Vue 端渲染的 glyph 对齐。 -->
+    <script src="/tdesign-icons/0.4.5/fonts/index.js"></script>
     <div id="root"></div>
     <script src="/config.js"></script>
     <script>

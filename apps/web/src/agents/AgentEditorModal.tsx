@@ -1,23 +1,39 @@
 /**
  * React port of frontend/src/views/agent/AgentEditorModal.vue (Vue baseline).
- * Behaviour parity notes cite the Vue source per block; the pure logic lives
- * in agent-editor.ts and agent-type-presets.ts. Stage scope: create/edit
- * shell + grouped rail, basic info (incl. agent type presets), prompts (with
- * the R486 placeholder tag strip + builtin template controls), model config,
- * conversation, question suggestions, personalization (MBTI persona),
- * knowledge (file-types dropdown multi-select), retrieval (tenant-configured
- * create defaults), web search, attachment upload (with the embedded chat
- * parser rules editor), tools, MCP services and skills. R491 — the agent
- * type presets, prompt template list and placeholder hints are fetched at
- * runtime (agents/type-presets, tenants/kv/prompt-templates,
- * agents/placeholders) exactly like the Vue editorResources store, with the
- * vendored static catalogs as the failed-fetch fallback. Out of scope
- * (recorded gaps): intent prompts, the `{{` caret autocomplete popup,
- * share settings and the normal-mode (quick-answer) template pickers.
+ * TDesign 同构迁移（Task 9 pilot）：DOM/类名按 Vue template 1:1 复刻
+ * （settings-overlay / settings-modal / setting-row / setting-info /
+ * setting-control …，样式平移在 agents.td.css），表单控件全部换 tdesign-react
+ * 具名组件，图标用 tdesign-icons-react 的 Icon（= Vue `Icon as TIcon`，本地
+ * sprite `<use>` 渲染）。纯逻辑仍在 agent-editor.ts / agent-type-presets.ts /
+ * agent-editor-resources.ts。wk-* / data-* 测试 hook 按迁移前锚点保留。
+ *
+ * Stage scope notes（迁移前注释保留）：create/edit shell + grouped rail、
+ * basic info（含 agent type presets）、prompts（R486 占位符标签条 + 模板控件）、
+ * model config、conversation、question suggestions、personalization（MBTI）、
+ * knowledge、retrieval（租户默认值）、web search、attachment upload（嵌入式
+ * chat parser 规则）、tools、MCP、skills。R491 —— presets / 模板 / 占位符
+ * 走运行时拉取（agents/type-presets 等），失败回退 vendored 静态目录。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
-import { Checkbox, Input, Radio, Range, Select, Textarea } from '@weknora/ui';
+import {
+  Button,
+  Checkbox,
+  Input,
+  InputNumber,
+  Loading,
+  Radio,
+  RadioGroup,
+  Select,
+  Slider,
+  Switch,
+  Tabs,
+  Textarea,
+  Tooltip,
+  MessagePlugin,
+} from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import {
   AGENT_FILE_TYPE_OPTIONS,
   agentTypePresetDescription,
@@ -107,108 +123,15 @@ const missReasonKey = (missKind: string): string =>
     : missKind === 'needsKb' ? 'agentEditor.tools.requiresKb'
       : 'agentEditor.tools.requiresRagKb';
 
-// --- TDesign icon replicas --------------------------------------------------------------
-// The Vue rail renders t-icon (tdesign-icons-vue-next) at 16px: transparent
-// fills + 1px currentColor strokes, strokeLinecap square. Paths below are
-// copied verbatim from the icon definitions (nav items, AgentEditorModal.vue:2659).
-const T_ICON_PATHS: Record<string, { fill?: string[]; stroke: Array<{ d: string; sw?: number }> }> = {
-  'info-circle': {
-    fill: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z'],
-    stroke: [
-      { d: 'M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z' },
-      { d: 'M12 16.5L12 11M12 7.5L11.9961 7.5L11.9961 7.49609L12 7.49609L12 7.5Z' },
-    ],
-  },
-  'file-paste': {
-    fill: ['M4 22H20V8H14V2H4V22Z'],
-    stroke: [
-      { d: 'M14 2V8H20M14 2H15L20 7V8M14 2H4V22H20V8' },
-      { d: 'M8.6 11H8V11.6M11.3999 11H11.9999V11.6M8 14.4004V15.0004H8.6M12 15H16V19H12V15Z' },
-    ],
-  },
-  'control-platform': {
-    fill: ['M12 2L21 7V17L12 22L3 17V7L12 2Z'],
-    stroke: [{ d: 'M12 12L20.5 7.5M12 12V21.5M12 12L3.5 7.5M12 2L21 7V17L12 22L3 17V7L12 2Z' }],
-  },
-  chat: {
-    fill: ['M2.5 3H21.5V17H6.5L2.5 20.5V3Z'],
-    stroke: [{ d: 'M2.5 3H21.5V17H6.5L2.5 20.5V3Z' }],
-  },
-  'help-circle': {
-    fill: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z'],
-    stroke: [
-      { d: 'M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z' },
-      { d: 'M12.0002 14.25V14C12.0002 12.8954 12.9877 12.0414 13.8553 11.3578C14.5525 10.8085 15.0002 9.95652 15.0002 9C15.0002 7.34315 13.657 6 12.0002 6C10.694 6 9.58273 6.83481 9.1709 8M12.0002 17.25H12.0041V17.2539H12.0002V17.25Z' },
-    ],
-  },
-  folder: {
-    fill: ['M2 3.5L9 3.5L11 6L22 6L22 20L2 20L2 3.5Z'],
-    stroke: [{ d: 'M2 3.5H9L11 6H22V20H2V3.5Z' }],
-  },
-  search: {
-    fill: ['M15.8033 15.8033C12.8744 18.7322 8.12563 18.7322 5.1967 15.8033C2.26777 12.8744 2.26777 8.12563 5.1967 5.1967C8.12563 2.26777 12.8744 2.26777 15.8033 5.1967C18.7322 8.12563 18.7322 12.8744 15.8033 15.8033Z'],
-    stroke: [
-      { d: 'M15.8027 15.8037L21.106 21.107' },
-      { d: 'M15.8033 15.8033C12.8744 18.7322 8.12563 18.7322 5.1967 15.8033C2.26777 12.8744 2.26777 8.12563 5.1967 5.1967C8.12563 2.26777 12.8744 2.26777 15.8033 5.1967C18.7322 8.12563 18.7322 12.8744 15.8033 15.8033Z' },
-    ],
-  },
-  internet: {
-    fill: [
-      'M12 2C6.47715 2 2 6.47715 2 12C2 17.5229 6.47715 22 12 22C17.5228 22 22 17.5229 22 12C22 6.47715 17.5228 2 12 2Z',
-      'M11.4987 21.9877C11.6646 21.9959 11.8315 22 11.9994 22C12.1673 22 12.3342 21.9959 12.5 21.9877C17.113 16.2216 17.1129 7.77835 12.4999 2.01231C12.3341 2.00414 12.1672 2 11.9994 2C11.8315 2 11.6646 2.00414 11.4988 2.01231C6.88584 7.77835 6.88581 16.2216 11.4987 21.9877Z',
-    ],
-    stroke: [
-      { d: 'M3 12H21M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5229 17.5228 22 12 22C6.47715 22 2 17.5229 2 12Z' },
-      { d: 'M11.4987 21.9877C11.6646 21.9959 11.8315 22 11.9994 22C12.1673 22 12.3342 21.9959 12.5 21.9877C17.113 16.2216 17.1129 7.77835 12.4999 2.01231C12.3341 2.00414 12.1672 2 11.9994 2C11.8315 2 11.6646 2.00414 11.4988 2.01231C6.88584 7.77835 6.88581 16.2216 11.4987 21.9877Z' },
-    ],
-  },
-  attach: {
-    stroke: [{ d: 'M20.5062 12.3131L12.728 20.0913C10.3848 22.4344 6.58586 22.4344 4.24271 20.0913C1.89957 17.7481 1.89956 13.9491 4.24271 11.606L12.0209 3.82782C13.583 2.26573 16.1156 2.26573 17.6777 3.82782C19.2398 5.38992 19.2398 7.92258 17.6777 9.48468L9.89957 17.2628C9.11852 18.0439 7.85219 18.0439 7.07114 17.2628C6.29009 16.4818 6.29009 15.2155 7.07114 14.4344L14.1422 7.36336' }],
-  },
-  tools: {
-    stroke: [{ d: 'M21.7607 16.8119L16.9063 11.9575C17.699 9.38593 17.0789 6.47326 15.0432 4.43757C12.8445 2.23891 9.62043 1.68993 6.91077 2.79202L6.91146 3.37691L11.1541 7.61955L7.61857 11.1551L3.37593 6.91244L2.79105 6.91175C1.68895 9.6214 2.23793 12.8455 4.43659 15.0442C6.47228 17.0799 9.38496 17.7 11.9565 16.9072L16.811 21.7617M15.75 15.7513L19.2855 19.2868' }],
-  },
-  server: {
-    fill: ['M21 14V21H3L3 14L21 14Z', 'M21 3V10L3 10L3 3L21 3Z'],
-    stroke: [
-      { d: 'M21 14V21H3L3 14L21 14Z' },
-      { d: 'M21 3V10L3 10L3 3L21 3Z' },
-      { d: 'M6.5 6.5H6.50391V6.50391H6.5V6.5Z' },
-      { d: 'M6.5 17.5H6.50391V17.5039H6.5V17.5Z' },
-    ],
-  },
-  'system-code': {
-    fill: ['M22 3H2V17H22V3Z'],
-    stroke: [
-      { d: 'M4 21H20M2 3H22V17H2V3Z' },
-      { d: 'M9 7.5L6.5 10L9 12.5M15 12.5L17.5 10L15 7.5' },
-    ],
-  },
-  // React-only nav rows (Octop persona / delegation, no Vue baseline): same
-  // 24px-grid stroke language so the rail rows keep a uniform rhythm.
-  user: {
-    stroke: [{ d: 'M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12ZM4 22V19C4 16.2386 6.23858 14 9 14H15C17.7614 14 20 16.2386 20 19V22' }],
-  },
-  'app-link': {
-    stroke: [{ d: 'M10 14C10 16.2091 11.7909 18 14 18H16C18.2091 18 20 16.2091 20 14C20 11.7909 18.2091 10 16 10H15M14 10C11.7909 10 10 8.20914 10 6C10 3.79086 11.7909 2 14 2H16C18.2091 2 20 3.79086 20 6M9 12H15M5 6C5 8.20914 6.79086 10 9 10H10M9 18C6.79086 18 5 16.2091 5 14' }],
-  },
-};
-
-function TIcon({ name, size = 16 }: { name: string; size?: number }) {
-  const def = T_ICON_PATHS[name] ?? T_ICON_PATHS['info-circle']!;
-  return (
-    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" width={size} height={size} className="t-icon">
-      {(def.fill ?? []).map((d) => <path key={'f' + d.slice(0, 24)} fill="transparent" d={d} />)}
-      {def.stroke.map(({ d, sw }) => (
-        <path key={'s' + d.slice(0, 24)} stroke="currentColor" strokeWidth={sw ?? 1} strokeLinecap="square" d={d} />
-      ))}
-    </svg>
-  );
+/** Vue navItems SKILL_ICON = 'system-code'（types/mention.ts）；React 侧
+ * buildNavGroups 的 'skills' 图标名在 tdesign sprite 无对应 symbol，视图层
+ * 校正为 Vue 同名图标。 */
+function navIconName(icon: string): string {
+  return icon === 'skills' ? 'system-code' : icon;
 }
 
-// Vue AgentAvatar (frontend/src/components/AgentAvatar.vue): 32px, 8px radius,
-// name-hashed gradient, first-letter label, twin sparkles. Ported 1:1 so the
-// 名称 row renders the same chip (create default 我的RAG 问答 -> gradient #6).
+// --- AgentAvatar.vue 端口（编辑器内局部副本，避免与 AgentsPage 循环依赖） -------
+
 const AVATAR_GRADIENTS = [
   { from: '#667eea', to: '#764ba2' },
   { from: '#4facfe', to: '#00f2fe' },
@@ -247,243 +170,85 @@ function AgentAvatarChip({ name }: { name: string }) {
   })();
   return (
     <div
-      className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg shadow-[0px_3px_14px_2px_rgba(0,0,0,0.05),0px_8px_10px_1px_rgba(0,0,0,0.06),0px_5px_5px_-3px_rgba(0,0,0,0.1)]"
+      className="agent-avatar"
       style={{ background: `linear-gradient(135deg, ${g.from} 0%, ${g.to} 100%)` }}
       data-agent-avatar
     >
-      <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.85]" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <svg className="agent-sparkles" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <path d="M24 5L24.4 6.6C24.45 6.85 24.65 7.05 24.9 7.1L26.5 7.5L24.9 7.9C24.65 7.95 24.45 8.15 24.4 8.4L24 10L23.6 8.4C23.55 8.15 23.35 7.95 23.1 7.9L21.5 7.5L23.1 7.1C23.35 7.05 23.55 6.85 23.6 6.6L24 5Z" fill="rgba(255,255,255,0.6)" />
         <path d="M7 22L7.4 23.6C7.45 23.85 7.65 24.05 7.9 24.1L9.5 24.5L7.9 24.9C7.65 24.95 7.45 25.15 7.4 25.4L7 27L6.6 25.4C6.55 25.15 6.35 24.95 6.1 24.9L4.5 24.5L6.1 24.1C6.35 24.05 6.55 23.85 6.6 23.6L7 22Z" fill="rgba(255,255,255,0.5)" />
       </svg>
-      <span
-        className="relative z-[1] text-[14px] font-semibold text-white"
-        style={{ textShadow: `0 1px 2px ${g.to}80, 0 0 8px ${g.from}30` }}
-      >{letter}</span>
+      <span className="agent-avatar-letter" style={{ textShadow: `0 1px 2px ${g.to}80, 0 0 8px ${g.from}30` }}>{letter}</span>
     </div>
   );
 }
 
-// --- tiny form primitives (no UI library in the React client) -------------------------
-// Geometry mirrors the Vue editor (AgentEditorModal.vue 4844-5677): TDesign
-// inputs are 32px tall, 3px radius, #dcdcdc stroke, 14px/22px text — the
-// @weknora/ui primitives already ship that chrome (h-8 rounded-field border-
-// line-input px-2 leading-[22px]), so the classes here only pin the Vue font
-// size/colors. --td-* hooks stay for the error variant + theme overrides.
-const FIELD_INPUT = 'wk-ae-input box-border text-[14px]! text-inherit! bg-[var(--td-bg-color-container,#fff)] disabled:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]';
-const FIELD_TEXTAREA = 'wk-ae-textarea box-border py-[5px]! text-[14px]! text-inherit! leading-[22px] resize-none bg-[var(--td-bg-color-container,#fff)] disabled:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]';
-const FIELD_SELECT = 'wk-ae-select box-border text-[14px]! text-inherit!';
-const FIELD_NUMBER = 'wk-ae-input box-border text-[14px]! text-inherit! w-[120px] disabled:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]';
-const FIELD_TALL = 'min-h-[232px]'; // Vue autosize minRows:10 -> 10*22px + 12px padding
-const ROW_ERROR_FIELDS = '[&_.wk-ae-input]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-textarea]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-select]:border-[var(--td-error-color,#d54941)]';
-const AE_BTN = 'cursor-pointer rounded-[3px] px-4 py-[5px] text-[14px] leading-[20px]';
+// --- Vue setting-row 结构（AgentEditorModal.vue 5218-5381 平移 CSS 配套） --------
 
-// Vue light-theme tokens (frontend/src/assets/theme/theme.css): the editor
-// markup keeps var(--td-*) hooks verbatim, so mount the Vue values on the
-// overlay root — every descendant var() resolves green exactly like Vue.
-const VUE_THEME_VARS = {
-  '--td-brand-color': '#07c05f',
-  '--td-brand-color-hover': '#08dd6e',
-  '--td-brand-color-active': '#06b04d',
-  '--td-brand-color-light': '#e9f8ec',
-  '--td-brand-color-focus': 'rgba(7, 192, 95, 0.2)',
-  '--td-error-color': '#e34d59',
-  '--td-warning-color': '#ed7b2f',
-  '--td-warning-color-light': '#fef3e6',
-  '--td-success-color': '#00a870',
-  '--td-bg-color-container': '#ffffff',
-  '--td-bg-color-secondarycontainer': '#f3f3f3',
-  '--td-bg-color-container-hover': '#f3f3f3',
-  '--td-bg-color-settings-modal': '#f9f9f9',
-  '--td-component-stroke': '#e7e7e7',
-  '--td-component-border': '#dcdcdc',
-  '--td-text-color-primary': 'rgba(0, 0, 0, 0.9)',
-  '--td-text-color-secondary': 'rgba(0, 0, 0, 0.6)',
-  '--td-text-color-placeholder': 'rgba(0, 0, 0, 0.4)',
-  '--td-text-color-disabled': 'rgba(0, 0, 0, 0.26)',
-  '--td-text-color-anti': '#ffffff',
-} as React.CSSProperties;
-
-/**
- * Vue setting-row (AgentEditorModal.vue 5218-5327): 16px vertical padding,
- * hairline divider between rows, 42% label column + right-justified 58%
- * control column, 15px/500 labels, 13px descriptions. `emphasize` renders the
- * 智能体类型 treatment — a 3px brand bar + bold label (5241-5261).
- */
-function Row({ label, required = false, desc, hint, htmlFor, error, extra, emphasize = false, children }: {
-  label: string; required?: boolean; desc?: string; hint?: string; htmlFor?: string;
-  error?: string; extra?: React.ReactNode; emphasize?: boolean; children: React.ReactNode;
+function Row({ label, required = false, desc, hint, descHint, htmlFor, error, extra, emphasize = false, vertical = false, highlight = false, dataGuide, dataAgentField, children }: {
+  label?: string; required?: boolean; desc?: React.ReactNode; hint?: string; descHint?: string; htmlFor?: string;
+  error?: string; extra?: React.ReactNode; emphasize?: boolean; vertical?: boolean; highlight?: boolean;
+  dataGuide?: string; dataAgentField?: string; children: React.ReactNode;
 }) {
   return (
     <div
-      className={`relative box-border flex items-start justify-between gap-6 border-b border-[var(--td-component-stroke,#e7e7e7)] py-4 last:border-b-0${emphasize ? ' pl-3.5 before:absolute before:bottom-[18px] before:left-0 before:top-[18px] before:w-[3px] before:rounded-[2px] before:bg-[var(--td-brand-color,#0052d9)] before:content-[""]' : ''}${error ? ` ${ROW_ERROR_FIELDS}` : ''}`}
+      className={[
+        'setting-row',
+        vertical ? 'setting-row-vertical' : '',
+        emphasize ? 'setting-row--emphasize' : '',
+        highlight ? 'setting-row--field-highlight' : '',
+      ].filter(Boolean).join(' ')}
+      data-guide={dataGuide}
+      data-agent-field={dataAgentField}
     >
-      <div className="min-w-0 w-[42%] max-w-[42%] shrink-0">
-        <label className={`block mb-1 text-[15px] leading-[21px] font-medium text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]${emphasize ? ' font-semibold' : ''}`} htmlFor={htmlFor}>
+      <div className="setting-info">
+        {label ? (
+        <label htmlFor={htmlFor}>
           {label}
-          {/* Vue template: `{{ label }} <span class="required">*</span>` — the
-              whitespace before the star is part of the baseline layout. */}
-          {required ? <span className="ml-[2px] text-[var(--td-error-color,#d54941)]" aria-hidden="true"> *</span> : null}
+          {/* Vue template: `{{ label }} <span class="required">*</span>` —— 空格是
+              文本节点、星号独占 span；空格位置影响后续字形亚像素相位。 */}
+          {required ? <> <span className="required" aria-hidden="true">*</span></> : null}
         </label>
-        {desc ? <p className="m-0 text-[13px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{desc}</p> : null}
-        {hint ? <p className="m-0 text-[13px] leading-[1.5] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{hint}</p> : null}
+        ) : null}
+        {desc ? <p className="desc">{desc}{hint ? <><br /><span className="hint">{hint}</span></> : null}</p> : null}
+        {descHint ? <p className="desc-hint">{descHint}</p> : null}
         {extra}
       </div>
-      <div className="flex min-w-0 max-w-[58%] flex-1 basis-[58%] flex-col items-end justify-end overflow-hidden">
+      <div className="setting-control">
         {children}
-        {error ? <p className="m-0 mt-0.5 w-full text-[12px] text-[var(--td-error-color,#d54941)]" data-field-error={htmlFor ? htmlFor.replace('wk-ae-', '').replace(/-/g, '_') : undefined}>{error}</p> : null}
+        {error ? <p className="field-error" data-field-error={htmlFor ? htmlFor.replace('wk-ae-', '').replace(/-/g, '_') : undefined}>{error}</p> : null}
       </div>
     </div>
   );
 }
 
-/**
- * R486 P3-2 — the supported-file-types control as a dropdown multi-select,
- * mirroring the Vue t-select multiple (AgentEditorModal.vue:1529-1536): a
- * single trigger showing the joined labels (placeholder 全部类型 when empty)
- * that opens a checkbox panel; the selected set semantics are unchanged and
- * write straight back to config.supported_file_types.
- */
-function FileTypeMultiSelect({ selected, options, onChange, placeholderLabel, t }: {
-  selected: string[];
-  options: typeof AGENT_FILE_TYPE_OPTIONS;
-  onChange: (next: string[]) => void;
-  placeholderLabel: string;
-  t: Translate;
+/** Vue slider-wrapper：t-slider + 数值（AgentEditorModal.vue:609-613）。 */
+function SliderRow({ value, min, max, step, ariaLabel, display, onChange }: {
+  value: number; min: number; max: number; step: number; ariaLabel: string; display: string; onChange: (next: number) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('click', onDocClick);
-    return () => document.removeEventListener('click', onDocClick);
-  }, [open]);
-  const optionLabel = (option: typeof options[number]) => (option.labelKey ? t(option.labelKey) : option.label);
-  const selectedLabels = options.filter((option) => selected.includes(option.value)).map(optionLabel);
   return (
-    <div className="relative w-full max-w-[460px]" ref={rootRef} data-field-group="supported_file_types">
-      <button
-        type="button"
-        data-file-types-trigger
-        aria-haspopup="listbox"
-        aria-expanded={open ? 'true' : 'false'}
-        className={`flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-[3px] border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] px-2 text-left text-[14px] ${selected.length === 0 ? 'text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]' : ''}`}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className="truncate">{selectedLabels.length > 0 ? selectedLabels.join('、') : placeholderLabel}</span>
-        <span aria-hidden="true" className="text-[10px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">▾</span>
-      </button>
-      {open ? (
-        <div className="absolute top-[calc(100%+4px)] left-0 z-30 w-full rounded-md border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-container,#fff)] p-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="listbox" data-file-types-panel>
-          {options.map((option) => (
-            <label key={option.value} title={t(option.descriptionKey)} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]">
-              <Checkbox
-                data-file-type={option.value}
-                checked={selected.includes(option.value)}
-                onChange={(event) => {
-                  const set = new Set(selected);
-                  if (event.target.checked) set.add(option.value); else set.delete(option.value);
-                  onChange([...set]);
-                }}
-              />
-              <span>{optionLabel(option)}</span>
-            </label>
-          ))}
-        </div>
-      ) : null}
+    <div className="slider-wrapper">
+      <Slider value={value} min={min} max={max} step={step} aria-label={ariaLabel} onChange={(next) => onChange(Number(next))} />
+      <span className="slider-value">{display}</span>
     </div>
   );
 }
 
-// Vue t-switch default: 32x20 pill, 15px knob (AgentEditorModal.vue memory row
-// measured 32.4x20 with the knob parked 15px in when checked).
-function Switch({ checked, onChange, label, field }: { checked: boolean; onChange: (next: boolean) => void; label: string; field: string }) {
+/** section-header（Vue 5154-5185）。 */
+function SectionHeader({ title, desc, compact = false }: { title: string; desc: string; compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="section-header section-header--compact">
+        <h2>{title}</h2>
+        <p className="section-description">{desc}</p>
+      </div>
+    );
+  }
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked ? 'true' : 'false'}
-      aria-label={label}
-      className={`relative h-5 w-8 cursor-pointer rounded-full border-none transition-[background] duration-200 ease-[ease] ${checked ? 'bg-[var(--td-brand-color,#0052d9)]' : 'bg-[var(--td-bg-color-secondarycontainer,#c9c9c9)]'}`}
-      data-switch={field}
-      onClick={() => onChange(!checked)}
-    ><span className={`absolute top-[2.5px] h-[15px] w-[15px] rounded-full bg-white transition-[left] duration-200 ease-[ease] ${checked ? 'left-[15px]' : 'left-[2px]'}`} /></button>
-  );
-}
-
-// Vue default t-radio (prompt/model/conversation sections): a bare dot + label,
-// no pill border; items sit inline with an 8px gap.
-function RadioGroup({ name, value, options, onChange }: {
-  name: string;
-  value: string;
-  options: Array<{ value: string; label: string; disabled?: boolean }>;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-2" role="radiogroup">
-      {options.map((option) => (
-        <label key={option.value} className={`inline-flex cursor-pointer items-center gap-1.5 text-[14px] leading-[22px] ${option.value === value ? 'text-[var(--td-brand-color,#0052d9)]' : 'text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]'} [&>input:disabled+span]:text-[var(--td-text-color-disabled,rgba(0,0,0,0.26))]`}>
-          <Radio
-            name={name}
-            value={option.value}
-            checked={option.value === value}
-            disabled={option.disabled === true}
-            onChange={() => onChange(option.value)}
-          />
-          <span>{option.label}</span>
-        </label>
-      ))}
+    <div className="section-header">
+      <div className="section-header-title"><h2>{title}</h2></div>
+      <p className="section-description">{desc}</p>
     </div>
-  );
-}
-
-// Vue 运行模式 uses t-radio-group > t-radio-button (AgentEditorModal.vue:106-113):
-// a joined segmented strip — 32px tall, 3px outer radius, unchecked = white with
-// a #dcdcdc stroke, checked = solid brand green with white text.
-function ModeSegmented({ value, options, onChange }: {
-  value: string;
-  options: Array<{ value: string; label: string }>;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="inline-flex" role="radiogroup" data-guide="agent-create-mode">
-      {options.map((option, index) => {
-        const active = option.value === value;
-        return (
-          <label
-            key={option.value}
-            className={`-ml-px box-border inline-flex h-8 cursor-pointer items-center border px-4 text-[14px] leading-[22px] first:ml-0 first:rounded-l-[3px] last:rounded-r-[3px] ${active
-              ? 'z-10 border-[var(--td-brand-color,#0052d9)] bg-[var(--td-brand-color,#0052d9)] text-white'
-              : 'border-[var(--td-component-border,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]'}`}
-            data-mode-option={option.value}
-          >
-            <input
-              className="sr-only"
-              type="radio"
-              name="agent-mode"
-              value={option.value}
-              checked={active}
-              onChange={() => onChange(option.value)}
-            />
-            <span>{option.label}</span>
-          </label>
-        );
-      })}
-    </div>
-  );
-}
-
-function Slider({ value, min, max, step, ariaLabel, onChange }: {
-  value: number; min: number; max: number; step: number; ariaLabel: string; onChange: (next: number) => void;
-}) {
-  return (
-    <span className="inline-flex items-center gap-2.5 [&>input]:w-60">
-      <Range min={min} max={max} step={step} value={value} aria-label={ariaLabel}
-        onChange={(event) => onChange(Number(event.target.value))} />
-      <span className="min-w-8 text-[13px]">{value}</span>
-    </span>
   );
 }
 
@@ -512,9 +277,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   const [suggestionTab, setSuggestionTab] = useState<'starters' | 'followUps'>('starters');
   // R486 D4 — 使用模板 popup (Vue PromptTemplateSelector popupVisible)
   const [templatePanelOpen, setTemplatePanelOpen] = useState(false);
-  // R486 KB warn — agent-type switch KB-conflict toast (Vue MessagePlugin.warning
-  // with a 4000ms duration; React renders it in-modal as a status region)
-  const [kbWarn, setKbWarn] = useState<string | null>(null);
+  // R486 KB warn — agent-type switch KB-conflict toast（Vue MessagePlugin.warning 4000ms）
   const kbWarnTimer = useRef<number | null>(null);
   // R491 — runtime editor catalogs (Vue editorResources prefetchAgentEditorDeps:
   // type-presets / prompt-templates / placeholders). null until the fetch
@@ -523,9 +286,10 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   const [runtimeResources, setRuntimeResources] = useState<AgentEditorRuntimeData | null>(null);
   const resources = useMemo(() => resolveAgentEditorResources(runtimeResources, locale), [runtimeResources, locale]);
   const marketplaceApi = useMemo(() => createAgentMarketplaceApi(client), [client]);
-  // R486 D4 — caret insert targets (Vue promptTextareaRef / contextTemplateTextareaRef)
-  const systemPromptRef = useRef<HTMLTextAreaElement | null>(null);
-  const contextTemplateRef = useRef<HTMLTextAreaElement | null>(null);
+  // R486 D4 — caret insert targets (Vue promptTextareaRef / contextTemplateTextareaRef;
+  // tdesign Textarea ref 暴露 { textareaElement })
+  const systemPromptNodeRef = useRef<{ textareaElement: HTMLTextAreaElement | null } | null>(null);
+  const contextTemplateNodeRef = useRef<{ textareaElement: HTMLTextAreaElement | null } | null>(null);
   const formRef = useRef(form);
   formRef.current = form;
 
@@ -559,7 +323,6 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     setPostCreate(false);
     setSuggestionTab('starters');
     setTemplatePanelOpen(false);
-    setKbWarn(null);
     void (async () => {
       const next: EditorDeps = { ...EMPTY_DEPS };
       const [models, kbs, sandboxes, catalog, providers, mcpServices, storageStatus, parserEngines, retrievalConfig, editorResources] = await Promise.allSettled([
@@ -691,7 +454,8 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   // splice the full {{name}} token at the textarea caret and park the caret
   // after it.
   const insertPromptPlaceholder = useCallback((field: 'system_prompt' | 'context_template', name: string) => {
-    const textarea = field === 'system_prompt' ? systemPromptRef.current : contextTemplateRef.current;
+    const node = field === 'system_prompt' ? systemPromptNodeRef.current : contextTemplateNodeRef.current;
+    const textarea = node?.textareaElement ?? null;
     const value = field === 'system_prompt' ? formRef.current.config.system_prompt : formRef.current.config.context_template;
     const caret = textarea ? textarea.selectionStart : value.length;
     const next = insertPlaceholderAtCursor(value, caret, name);
@@ -798,7 +562,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   // name/description refresh (user-edited values survive), preset application,
   // KB-mode sync (the Vue watch clears the explicit list on all/none), and a
   // soft warning when the post-switch preset/mode disables selected KBs
-  // (MessagePlugin.warning kbIncompatibleWarn, 4000ms — rendered in-modal).
+  // (MessagePlugin.warning kbIncompatibleWarn, 4000ms).
   const onAgentTypeChange = useCallback((value: string) => {
     const current = formRef.current;
     const canOverrideName = isNameSystemGenerated(current.name, t, locale, resources.typePresets);
@@ -831,10 +595,8 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     const count = incompatibleSelectedKbCount(nextMode, draft.config.knowledge_bases, deps.kbOptions, value === 'custom' ? null : preset, draft.config.agent_mode);
     if (kbWarnTimer.current !== null) window.clearTimeout(kbWarnTimer.current);
     if (count > 0) {
-      setKbWarn(t('agentEditor.agentType.kbIncompatibleWarn', { count }));
-      kbWarnTimer.current = window.setTimeout(() => setKbWarn(null), 4000);
-    } else {
-      setKbWarn(null);
+      void MessagePlugin.warning(t('agentEditor.agentType.kbIncompatibleWarn', { count }));
+      kbWarnTimer.current = window.setTimeout(() => { /* 4s 后自然消失（MessagePlugin 自身超时） */ }, 4000);
     }
   }, [t, locale, deps.kbOptions, resources.typePresets, resources.promptTemplates]);
 
@@ -925,163 +687,36 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   const rerankModels = deps.models.filter((model) => String(model.type ?? '') === 'Rerank');
   const rewriteActive = quickAnswer && form.config.multi_turn_enabled && form.config.enable_rewrite;
   const showFallback = quickAnswer && hasKnowledgeBase;
-  const myKbs = deps.kbOptions.filter((kb) => !kb.shared);
-  const sharedKbs = deps.kbOptions.filter((kb) => kb.shared);
   const hasSandbox = !!form.config.sandbox_config_id;
   const saveLabel = editorMode === 'create' ? t('agent.editor.buttons.create') : t('agent.editor.buttons.saveAndClose');
-
-  const renderKbCheckbox = (kb: KbOption) => {
-    const checked = form.config.knowledge_bases.includes(kb.value);
-    return (
-      <label key={kb.value} className="flex items-center gap-2 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1.5 text-[13px]">
-        <Checkbox
-          data-kb-id={kb.value}
-          checked={checked}
-          onChange={(event) => patch((draft) => {
-            const set = new Set(draft.config.knowledge_bases);
-            if (event.target.checked) set.add(kb.value); else set.delete(kb.value);
-            draft.config.knowledge_bases = [...set];
-          })}
-        />
-        <span className="wk-ae-kb-name">{kb.label}</span>
-        <span className="ml-auto text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{kb.type === 'faq' ? 'FAQ' : kb.ragEnabled ? 'RAG' : ''}{kb.wikiEnabled ? ' · Wiki' : ''} · {kb.count}</span>
-      </label>
-    );
-  };
-
-  function renderBasic() {
-    const editId = editorMode === 'edit' ? form.id : undefined;
-    return (
-      <section className="wk-ae-section" data-editor-section="basic">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agent.editor.basicInfo')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.basicInfoDesc')}</p>
-        </header>
-        <div className="flex flex-col">
-          {editId ? (
-            <Row label={t('agent.editor.agentId')} desc={t('agent.editor.agentIdDesc')}>
-              <code className="rounded-md bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] px-2 py-1 font-[family-name:monospace] text-[12px] [overflow-wrap:anywhere]" data-agent-id-copy title={editId}>{editId}</code>
-            </Row>
-          ) : null}
-          <Row label={t('agent.editor.mode')} required desc={isAgentMode ? t('agent.editor.agentDesc') : t('agent.editor.normalDesc')}>
-            <ModeSegmented
-              value={form.config.agent_mode}
-              options={[
-                { value: 'quick-answer', label: t('agent.type.normal') },
-                { value: 'smart-reasoning', label: t('agent.type.agent') },
-              ]}
-              onChange={(value) => onAgentModeChange(value as 'quick-answer' | 'smart-reasoning')}
-            />
-          </Row>
-          {isAgentMode && resources.typePresets.length > 0 ? (
-            // R485 D2 — Vue 118-135: agent type dropdown (smart-reasoning only),
-            // preset description echoed under the label. R491 — options come
-            // from the runtime type-presets fetch (static catalog on failure).
-            // Vue renders this row as setting-row--emphasize (3px brand bar +
-            // bold label) with a 360px-capped select right-aligned.
-            // The preset desc (.agent-type-preset-desc) is 13px with no top
-            // gap — the .desc block above carries the spacing.
-            <Row
-              label={t('agentEditor.agentType.label')}
-              desc={t('agentEditor.agentType.desc')}
-              emphasize
-              extra={activeAgentTypePreset ? (
-                <p className="m-0 text-[13px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]" data-agent-type-desc>
-                  {agentTypePresetDescription(activeAgentTypePreset, locale)}
-                </p>
-              ) : null}
-            >
-              <Select
-                data-field="agent_type"
-                className={`wk-ae-select max-w-[360px] ${FIELD_SELECT}`}
-                value={form.config.agent_type || 'custom'}
-                disabled={form.is_builtin}
-                onChange={(event) => onAgentTypeChange(event.target.value)}
-              >
-                {resources.typePresets.map((preset) => (
-                  <option key={preset.id} value={preset.id}>{agentTypePresetLabel(preset, locale)}</option>
-                ))}
-              </Select>
-            </Row>
-          ) : null}
-          <Row label={t('agent.editor.name')} required={!form.is_builtin} desc={t('agentEditor.desc.name')} htmlFor="wk-ae-name" error={errorMessage('name')}>
-            {/* Vue 148-157: avatar chip (AgentAvatar) + input share the control
-                column; builtin agents render a plain icon square instead. */}
-            <div className="flex w-full items-center gap-3" data-guide="agent-create-name">
-              {form.is_builtin ? (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">
-                  <TIcon name={isAgentMode ? 'control-platform' : 'chat'} size={24} />
-                </div>
-              ) : (
-                <AgentAvatarChip name={form.name || '?'} />
-              )}
-              <Input
-                id="wk-ae-name"
-                data-field="name"
-                className={`wk-ae-input min-w-0 flex-1 ${FIELD_INPUT}`}
-                value={form.name}
-                placeholder={t('agent.editor.namePlaceholder')}
-                disabled={form.is_builtin}
-                onChange={(event) => patch((draft) => { draft.name = event.target.value; })}
-              />
-            </div>
-          </Row>
-          <Row label={t('agent.editor.description')} desc={t('agentEditor.desc.description')} htmlFor="wk-ae-description">
-            <Textarea
-              id="wk-ae-description"
-              data-field="description"
-              className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
-              rows={2}
-              value={form.description}
-              placeholder={t('agent.editor.descriptionPlaceholder')}
-              disabled={form.is_builtin}
-              onChange={(event) => patch((draft) => { draft.description = event.target.value; })}
-            />
-          </Row>
-          <Row label={t('agent.editor.memoryEnabled')} desc={t('agentEditor.desc.memoryEnabled')}>
-            <Switch field="memory_enabled" label={t('agent.editor.memoryEnabled')} checked={form.config.memory_enabled}
-              onChange={(next) => patchConfig('memory_enabled', next)} />
-          </Row>
-        </div>
-      </section>
-    );
-  }
 
   // R486 D4 — the placeholder tag strip Vue renders under each prompt desc
   // (AgentEditorModal.vue:221-231): 可用变量 label, one {{name}} chip per
   // definition (tooltip = description + click-to-insert) and the hint.
-  // R491 — the definitions come from GET /agents/placeholders with the
-  // vendored catalogue as the failed-fetch fallback (Vue: fetched only).
   const renderPlaceholderTags = (field: 'agent_system_prompt' | 'system_prompt' | 'context_template', target: 'system_prompt' | 'context_template', tagBlock: string) => (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1" data-placeholder-tags={tagBlock}>
-      <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.placeholders.available')}</span>
+    <div className="placeholder-tags" data-placeholder-tags={tagBlock}>
+      <span className="placeholder-label">{t('agentEditor.placeholders.available')}</span>
       {promptPlaceholdersFor(field, resources.placeholders).map((def) => (
-        <button
-          key={def.name}
-          type="button"
-          data-placeholder-tag={def.name}
-          title={`${def.description}${t('agentEditor.placeholders.clickToInsert')}`}
-          className="cursor-pointer rounded border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] px-1.5 py-[1px] font-[family-name:monospace] text-[11px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:border-[var(--td-brand-color,#0052d9)] hover:text-[var(--td-brand-color,#0052d9)]"
-          onClick={() => insertPromptPlaceholder(target, def.name)}
-        >{`{{${def.name}}}`}</button>
+        <Tooltip key={def.name} content={`${def.description}${t('agentEditor.placeholders.clickToInsert')}`} placement="top">
+          <span
+            className="placeholder-tag"
+            data-placeholder-tag={def.name}
+            onClick={() => insertPromptPlaceholder(target, def.name)}
+          >{`{{${def.name}}}`}</span>
+        </Tooltip>
       ))}
-      <span className="text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agentEditor.placeholders.hint')}</span>
+      <span className="placeholder-hint">{t('agentEditor.placeholders.hint')}</span>
     </div>
   );
 
-  // R486 D4 — PromptTemplateSelector corner controls (frontend/src/components/
-  // PromptTemplateSelector.vue): 恢复默认 + 使用模板 popup. R491 — the list
-  // is fetched from GET /tenants/kv/prompt-templates (agent_system_prompt
-  // section; backend single-language name/description strings rendered
-  // verbatim like Vue), with the vendored builtin list as the failed-fetch
-  // fallback. The normal-mode system/context template bodies still have no
-  // React picker, so the controls stay agent-mode only (R486 gap).
+  // R486 D4 — PromptTemplateSelector corner controls（Vue 组件为 body 弹层，
+  // 此处保留 React 版下拉；类名走 agents.td.css 的 wk-ae-tpl 段）。
   const renderTemplateControls = () => (
-    <div className="relative flex items-center gap-1.5 self-end">
+    <div className="wk-ae-tpl-controls" data-template-controls>
       <button
         type="button"
         data-prompt-reset-default
-        className="flex cursor-pointer items-center gap-1 rounded-md border-none bg-transparent px-1.5 py-[3px] text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))] hover:text-[var(--td-brand-color,#0052d9)]"
+        className="wk-ae-tpl-reset"
         onClick={() => {
           const template = resolveAgentSystemPromptResetTemplate(form.config.agent_type, resources.typePresets, resources.promptTemplates);
           if (!template) return;
@@ -1091,27 +726,27 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
           });
         }}
       >⟲ {t('promptTemplate.resetDefault')}</button>
-      <div className="relative">
+      <div className="wk-ae-tpl-wrap">
         <button
           type="button"
           data-prompt-template-toggle
           aria-haspopup="listbox"
           aria-expanded={templatePanelOpen ? 'true' : 'false'}
-          className="flex cursor-pointer items-center gap-1 rounded-md border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] px-2 py-[3px] text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:border-[var(--td-brand-color,#0052d9)] hover:text-[var(--td-brand-color,#0052d9)]"
+          className="wk-ae-tpl-toggle"
           onClick={() => setTemplatePanelOpen((current) => !current)}
         >▦ {t('promptTemplate.useTemplate')}</button>
         {templatePanelOpen ? (
-          <div className="absolute right-0 bottom-[calc(100%+4px)] z-30 w-[420px] rounded-md border border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-container,#fff)] p-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="listbox" data-prompt-template-panel>
-            <p className="m-0 border-b border-[var(--td-component-stroke,#e7e7e7)] px-3 py-2 text-[13px] font-medium">{t('promptTemplate.selectTemplate')}</p>
-            <div className="max-h-[320px] overflow-y-auto p-1">
+          <div className="wk-ae-tpl-panel" role="listbox" data-prompt-template-panel>
+            <p className="wk-ae-tpl-panel-title">{t('promptTemplate.selectTemplate')}</p>
+            <div className="wk-ae-tpl-panel-body">
               {resources.promptTemplates.length === 0 ? (
-                <p className="m-0 px-3 py-6 text-center text-[13px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('promptTemplate.noTemplates')}</p>
+                <p className="wk-ae-tpl-empty">{t('promptTemplate.noTemplates')}</p>
               ) : resources.promptTemplates.map((template) => (
                 <button
                   key={template.id}
                   type="button"
                   data-prompt-template={template.id}
-                  className="mb-1 flex w-full cursor-pointer flex-col items-start gap-1 rounded-md border-none bg-transparent px-3 py-2.5 text-left last:mb-0 hover:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]"
+                  className="wk-ae-tpl-item"
                   onClick={() => {
                     // Vue handleSystemPromptTemplateSelect (4683-4686): the
                     // selection replaces the body only; system_prompt_id is
@@ -1120,13 +755,11 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                     setTemplatePanelOpen(false);
                   }}
                 >
-                  <span className="flex items-center gap-2 text-[13px] font-medium">
+                  <span className="wk-ae-tpl-item-name">
                     {template.name}
-                    {template.default ? (
-                      <span className="rounded bg-[var(--td-warning-color-light,#fdf1e3)] px-1.5 py-[1px] text-[11px] font-medium text-[var(--td-warning-color,#e37318)]" data-template-default>{t('promptTemplate.default')}</span>
-                    ) : null}
+                    {template.default ? <span className="wk-ae-tpl-default" data-template-default>{t('promptTemplate.default')}</span> : null}
                   </span>
-                  <span className="text-left text-[12px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{template.description}</span>
+                  <span className="wk-ae-tpl-item-desc">{template.description}</span>
                 </button>
               ))}
             </div>
@@ -1136,180 +769,303 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     </div>
   );
 
-  function renderPrompts() {
+  function renderBasic() {
+    const editId = editorMode === 'edit' ? form.id : undefined;
     return (
-      <section className="wk-ae-section" data-editor-section="prompts">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agent.editor.promptsConfig')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.promptsConfigDesc')}</p>
-        </header>
-        <div className="flex flex-col">
-          <Row
-            label={t('agent.editor.systemPrompt')}
-            required={!form.is_builtin}
-            desc={t('agentEditor.desc.systemPrompt')}
-            htmlFor="wk-ae-system-prompt"
-            error={errorMessage('system_prompt')}
-            extra={renderPlaceholderTags(isAgentMode ? 'agent_system_prompt' : 'system_prompt', 'system_prompt', 'system')}
-          >
-            {isAgentMode ? renderTemplateControls() : null}
+      <div className="section" data-editor-section="basic">
+        <SectionHeader title={t('agent.editor.basicInfo')} desc={t('agent.editor.basicInfoDesc')} />
+        <div className="settings-group">
+          {editId ? (
+            <Row label={t('agent.editor.agentId')} desc={t('agent.editor.agentIdDesc')}>
+              <div className="agent-id-field">
+                <code className="agent-id-value" title={editId} data-agent-id-copy>{editId}</code>
+                <Tooltip content={t('common.copy')} placement="top">
+                  <Button theme="default" size="small" variant="text" className="agent-id-copy" onClick={() => { void navigator.clipboard?.writeText(editId); }}>
+                    <TIcon name="file-copy" />
+                  </Button>
+                </Tooltip>
+              </div>
+            </Row>
+          ) : null}
+          <Row label={t('agent.editor.mode')} required desc={isAgentMode ? t('agent.editor.agentDesc') : t('agent.editor.normalDesc')}>
+            <RadioGroup value={form.config.agent_mode} disabled={form.is_builtin} onChange={(value) => onAgentModeChange(value as 'quick-answer' | 'smart-reasoning')} data-guide="agent-create-mode">
+              <Radio.Button value="quick-answer">{t('agent.type.normal')}</Radio.Button>
+              <Radio.Button value="smart-reasoning">{t('agent.type.agent')}</Radio.Button>
+            </RadioGroup>
+          </Row>
+          {isAgentMode && resources.typePresets.length > 0 ? (
+            // R485 D2 — Vue 118-137: agent type dropdown (smart-reasoning only),
+            // setting-row--emphasize（3px 品牌条 + 加粗 label），preset 描述
+            // echo 在 .agent-type-preset-desc；选项双行（agent-type-popup 弹层）。
+            <Row
+              label={t('agentEditor.agentType.label')}
+              desc={t('agentEditor.agentType.desc')}
+              emphasize
+              dataGuide="agent-create-agent-type"
+              extra={activeAgentTypePreset ? (
+                <p className="desc agent-type-preset-desc" data-agent-type-desc>{agentTypePresetDescription(activeAgentTypePreset, locale)}</p>
+              ) : null}
+            >
+              <Select
+                data-field="agent_type"
+                className="agent-type-select"
+                value={form.config.agent_type || 'custom'}
+                disabled={form.is_builtin}
+                placeholder={t('agentEditor.agentType.label')}
+                popupProps={{ overlayClassName: 'agent-type-popup' } as never}
+                onChange={(value) => onAgentTypeChange(String(value))}
+              >
+                {resources.typePresets.map((preset) => (
+                  <Select.Option key={preset.id} value={preset.id} label={agentTypePresetLabel(preset, locale)} title={agentTypePresetLabel(preset, locale)} disabled={preset.id === form.config.agent_type}>
+                    <div className="agent-type-option">
+                      <span className="agent-type-option-label">{agentTypePresetLabel(preset, locale)}</span>
+                      <span className="agent-type-option-desc">{agentTypePresetDescription(preset, locale)}</span>
+                    </div>
+                  </Select.Option>
+                ))}
+              </Select>
+            </Row>
+          ) : null}
+          <Row label={t('agent.editor.name')} required={!form.is_builtin} desc={t('agentEditor.desc.name')} htmlFor="wk-ae-name" error={errorMessage('name')}>
+            {/* Vue 148-157: avatar chip (AgentAvatar) + input share the control
+                column; builtin agents render a plain icon square instead. */}
+            <div className="name-input-wrapper" data-guide="agent-create-name">
+              {form.is_builtin ? (
+                <div className={`builtin-avatar ${isAgentMode ? 'agent' : 'normal'}`}>
+                  <TIcon name={isAgentMode ? 'control-platform' : 'chat'} size="24px" />
+                </div>
+              ) : (
+                <AgentAvatarChip name={form.name || '?'} />
+              )}
+              <Input
+                data-field="name"
+                className="name-input"
+                value={form.name}
+                placeholder={t('agent.editor.namePlaceholder')}
+                disabled={form.is_builtin}
+                onChange={(value) => patch((draft) => { draft.name = String(value); })}
+              />
+            </div>
+          </Row>
+          <Row label={t('agent.editor.description')} desc={t('agentEditor.desc.description')} htmlFor="wk-ae-description">
             <Textarea
-              id="wk-ae-system-prompt"
-              data-field="system_prompt"
-              className={`wk-ae-textarea ${FIELD_TEXTAREA} ${FIELD_TALL}`}
-              rows={10}
-              value={form.config.system_prompt}
+              data-field="description"
+              value={form.description}
+              placeholder={t('agent.editor.descriptionPlaceholder')}
+              autosize={{ minRows: 2, maxRows: 4 }}
               disabled={form.is_builtin}
-              ref={systemPromptRef}
-              onChange={(event) => patchConfig('system_prompt', event.target.value)}
+              onChange={(value) => patch((draft) => { draft.description = String(value); })}
             />
           </Row>
-          {quickAnswer ? (
-            <Row
-              label={t('agent.editor.contextTemplate')}
-              required={!form.is_builtin}
-              desc={t('agentEditor.desc.contextTemplate')}
-              htmlFor="wk-ae-context-template"
-              error={errorMessage('context_template')}
-              extra={renderPlaceholderTags('context_template', 'context_template', 'context')}
-            >
-              <Textarea
-                id="wk-ae-context-template"
-                data-field="context_template"
-                className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
-                rows={8}
-                value={form.config.context_template}
-                disabled={form.is_builtin}
-                ref={contextTemplateRef}
-                onChange={(event) => patchConfig('context_template', event.target.value)}
-              />
-            </Row>
-          ) : null}
-          {rewriteActive ? (
-            <Row label={t('agent.editor.rewritePromptUser')} desc={t('agentEditor.desc.rewriteUserPrompt')} htmlFor="wk-ae-rewrite-user" error={errorMessage('rewrite_prompt_user')}>
-              <Textarea
-                id="wk-ae-rewrite-user"
-                data-field="rewrite_prompt_user"
-                className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
-                rows={4}
-                value={form.config.rewrite_prompt_user}
-                onChange={(event) => patchConfig('rewrite_prompt_user', event.target.value)}
-              />
-            </Row>
-          ) : null}
-          {showFallback ? (
-            <Row label={t('agent.editor.fallbackStrategy')} desc={t('agentEditor.desc.fallbackStrategy')}>
-              <RadioGroup
-                name="fallback-strategy"
-                value={form.config.fallback_strategy}
-                options={[
-                  { value: 'fixed', label: t('agentEditor.fallback.fixed') },
-                  { value: 'model', label: t('agentEditor.fallback.model') },
-                ]}
-                onChange={(value) => patchConfig('fallback_strategy', value as 'fixed' | 'model')}
-              />
-            </Row>
-          ) : null}
-          {showFallback && form.config.fallback_strategy === 'fixed' ? (
-            <Row label={t('agent.editor.fallbackResponse')} desc={t('agentEditor.desc.fallbackResponse')} htmlFor="wk-ae-fallback-response">
-              <Textarea
-                id="wk-ae-fallback-response"
-                data-field="fallback_response"
-                className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
-                rows={3}
-                value={form.config.fallback_response}
-                onChange={(event) => patchConfig('fallback_response', event.target.value)}
-              />
-            </Row>
-          ) : null}
-          {showFallback && form.config.fallback_strategy === 'model' ? (
-            <Row label={t('agent.editor.fallbackPrompt')} desc={t('agentEditor.desc.fallbackPrompt')} htmlFor="wk-ae-fallback-prompt" error={errorMessage('fallback_prompt')}>
-              <Textarea
-                id="wk-ae-fallback-prompt"
-                data-field="fallback_prompt"
-                className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
-                rows={4}
-                value={form.config.fallback_prompt}
-                onChange={(event) => patchConfig('fallback_prompt', event.target.value)}
-              />
-            </Row>
-          ) : null}
+          <Row label={t('agent.editor.memoryEnabled')} desc={t('agentEditor.desc.memoryEnabled')}>
+            <Switch data-switch="memory_enabled" value={form.config.memory_enabled} onChange={(value) => patchConfig('memory_enabled', value === true)} />
+          </Row>
         </div>
-      </section>
+      </div>
+    );
+  }
+
+  function renderPrompts() {
+    return (
+      <div className="section section--prompts" data-editor-section="prompts">
+        <div className="prompts-panel">
+          <div className="prompts-panel__header">
+            <SectionHeader compact title={t('agent.editor.promptsConfig')} desc={t('agent.editor.promptsConfigDesc')} />
+          </div>
+          <div className="prompts-panel__body">
+            <div className="settings-group">
+              <Row
+                label={t('agent.editor.systemPrompt')}
+                required={!form.is_builtin}
+                desc={`${t('agentEditor.desc.systemPrompt')}${form.is_builtin ? t('agentEditor.desc.leaveEmptyDefault') : ''}`}
+                vertical
+                htmlFor="wk-ae-system-prompt"
+                error={errorMessage('system_prompt')}
+                extra={renderPlaceholderTags(isAgentMode ? 'agent_system_prompt' : 'system_prompt', 'system_prompt', 'system')}
+              >
+                <div className="setting-control-full" style={{ position: 'relative' } as CSSProperties}>
+                  <div className="textarea-with-template">
+                    {isAgentMode ? renderTemplateControls() : null}
+                    <Textarea
+                      data-field="system_prompt"
+                      ref={systemPromptNodeRef as never}
+                      className="system-prompt-textarea"
+                      value={form.config.system_prompt}
+                      disabled={form.is_builtin}
+                      autosize={{ minRows: 10, maxRows: 25 }}
+                      onChange={(value) => patchConfig('system_prompt', String(value))}
+                    />
+                  </div>
+                </div>
+              </Row>
+              {quickAnswer ? (
+                <Row
+                  label={t('agent.editor.contextTemplate')}
+                  required={!form.is_builtin}
+                  desc={`${t('agentEditor.desc.contextTemplate')}${form.is_builtin ? t('agentEditor.desc.leaveEmptyDefault') : ''}`}
+                  vertical
+                  htmlFor="wk-ae-context-template"
+                  error={errorMessage('context_template')}
+                  extra={renderPlaceholderTags('context_template', 'context_template', 'context')}
+                >
+                  <div className="setting-control-full" style={{ position: 'relative' } as CSSProperties}>
+                    <div className="textarea-with-template">
+                      <Textarea
+                        data-field="context_template"
+                        ref={contextTemplateNodeRef as never}
+                        className="system-prompt-textarea"
+                        value={form.config.context_template}
+                        disabled={form.is_builtin}
+                        autosize={{ minRows: 8, maxRows: 20 }}
+                        onChange={(value) => patchConfig('context_template', String(value))}
+                      />
+                    </div>
+                  </div>
+                </Row>
+              ) : null}
+              {rewriteActive ? (
+                <Row label={t('agent.editor.rewritePromptUser')} desc={t('agentEditor.desc.rewriteUserPrompt')} htmlFor="wk-ae-rewrite-user" error={errorMessage('rewrite_prompt_user')} vertical>
+                  <div className="setting-control-full">
+                    <div className="textarea-with-template">
+                      <Textarea
+                        data-field="rewrite_prompt_user"
+                        value={form.config.rewrite_prompt_user}
+                        autosize={{ minRows: 4, maxRows: 10 }}
+                        onChange={(value) => patchConfig('rewrite_prompt_user', String(value))}
+                      />
+                    </div>
+                  </div>
+                </Row>
+              ) : null}
+              {showFallback ? (
+                <Row label={t('agent.editor.fallbackStrategy')} desc={t('agentEditor.desc.fallbackStrategy')}>
+                  <RadioGroup value={form.config.fallback_strategy} onChange={(value) => patchConfig('fallback_strategy', value as 'fixed' | 'model')}>
+                    <Radio.Button value="fixed">{t('agentEditor.fallback.fixed')}</Radio.Button>
+                    <Radio.Button value="model">{t('agentEditor.fallback.model')}</Radio.Button>
+                  </RadioGroup>
+                </Row>
+              ) : null}
+              {showFallback && form.config.fallback_strategy === 'fixed' ? (
+                <Row label={t('agent.editor.fallbackResponse')} desc={t('agentEditor.desc.fallbackResponse')} htmlFor="wk-ae-fallback-response" vertical>
+                  <div className="setting-control-full">
+                    <div className="textarea-with-template">
+                      <Textarea
+                        data-field="fallback_response"
+                        value={form.config.fallback_response}
+                        autosize={{ minRows: 2, maxRows: 6 }}
+                        onChange={(value) => patchConfig('fallback_response', String(value))}
+                      />
+                    </div>
+                  </div>
+                </Row>
+              ) : null}
+              {showFallback && form.config.fallback_strategy === 'model' ? (
+                <Row label={t('agent.editor.fallbackPrompt')} desc={t('agentEditor.desc.fallbackPrompt')} htmlFor="wk-ae-fallback-prompt" error={errorMessage('fallback_prompt')} vertical>
+                  <div className="setting-control-full" style={{ position: 'relative' } as CSSProperties}>
+                    <div className="textarea-with-template">
+                      <Textarea
+                        data-field="fallback_prompt"
+                        value={form.config.fallback_prompt}
+                        autosize={{ minRows: 4, maxRows: 10 }}
+                        onChange={(value) => patchConfig('fallback_prompt', String(value))}
+                      />
+                    </div>
+                  </div>
+                </Row>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
   function renderModel() {
     return (
-      <section className={`wk-ae-section ${highlightedField === 'summary_model' || highlightedField === 'rerank_model' ? 'ring-2 ring-[var(--td-brand-color,#0052d9)] ring-inset' : ''}`} data-editor-section="model" data-highlighted-field={highlightedField === 'summary_model' || highlightedField === 'rerank_model' ? highlightedField : undefined}>
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agent.editor.modelConfig')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.modelConfigDesc')}</p>
-        </header>
-        <div className="flex flex-col">
-          <Row label={t('agent.editor.model')} required desc={t('agentEditor.desc.model')} error={errorMessage('model_id')} htmlFor="wk-ae-model-id">
+      <div className="section" data-editor-section="model" data-highlighted-field={highlightedField === 'summary_model' || highlightedField === 'rerank_model' ? highlightedField : undefined}>
+        <SectionHeader title={t('agent.editor.modelConfig')} desc={t('agent.editor.modelConfigDesc')} />
+        <div className="settings-group">
+          <Row
+            label={t('agent.editor.model')}
+            required
+            desc={t('agentEditor.desc.model')}
+            htmlFor="wk-ae-model-id"
+            error={errorMessage('model_id')}
+            dataGuide="agent-create-model"
+            dataAgentField="summary_model"
+            highlight={highlightedField === 'summary_model'}
+          >
             <Select
-              id="wk-ae-model-id"
               data-field="model_id"
-              className={`wk-ae-select ${FIELD_SELECT}`}
+              className="wk-ae-sel-model"
               value={form.config.model_id}
-              onChange={(event) => patchConfig('model_id', event.target.value)}
+              clearable
+              placeholder={t('agent.editor.modelPlaceholder')}
+              onChange={(value) => patchConfig('model_id', String(value ?? ''))}
             >
-              <option value="">{t('agent.editor.modelPlaceholder')}</option>
-              {chatModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+              {chatModels.map((model) => <Select.Option key={model.id} value={model.id} label={model.name} title={model.name} />)}
             </Select>
           </Row>
           <Row label={t('agent.editor.temperature')} desc={t('agentEditor.desc.temperature')}>
-            <Slider ariaLabel={t('agent.editor.temperature')} min={0} max={1} step={0.1} value={form.config.temperature}
-              onChange={(next) => patchConfig('temperature', next)} />
+            <SliderRow ariaLabel={t('agent.editor.temperature')} min={0} max={1} step={0.1} value={form.config.temperature}
+              display={`${form.config.temperature}`} onChange={(next) => patchConfig('temperature', next)} />
           </Row>
           <Row label={t('agent.editor.maxCompletionTokens')} desc={isAgentMode ? t('agentEditor.desc.maxTokensAgent') : t('agentEditor.desc.maxTokens')}>
-            <RadioGroup
-              name="max-tokens-mode"
-              value={maxTokensMode}
-              options={[
-                { value: 'default', label: t('agent.editor.maxCompletionTokensDefault') },
-                { value: 'custom', label: t('agent.editor.maxCompletionTokensCustom') },
-              ]}
-              onChange={(value) => {
-                setMaxTokensMode(value as 'default' | 'custom');
-                patchConfig('max_completion_tokens', value === 'custom' ? 2048 : 0);
-              }}
-            />
-            {maxTokensMode === 'custom' ? (
-              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={100} max={100000} step={100}
-                data-field="max_completion_tokens"
-                value={form.config.max_completion_tokens}
-                onChange={(event) => patchConfig('max_completion_tokens', Number(event.target.value) || 0)} />
-            ) : null}
+            <div className="max-tokens-control">
+              <RadioGroup
+                value={maxTokensMode}
+                onChange={(value) => {
+                  setMaxTokensMode(value as 'default' | 'custom');
+                  patchConfig('max_completion_tokens', value === 'custom' ? 2048 : 0);
+                }}
+              >
+                <Radio.Button value="default">{t('agent.editor.maxCompletionTokensDefault')}</Radio.Button>
+                <Radio.Button value="custom">{t('agent.editor.maxCompletionTokensCustom')}</Radio.Button>
+              </RadioGroup>
+              {maxTokensMode === 'default' ? (
+                /* Vue effectiveDefaultMaxCompletionTokens（2345-2347 常量：
+                 * quick-answer 2048 / smart-reasoning 4096 / 沙箱写入 24576）。 */
+                <span className="max-tokens-value">{isAgentMode ? (form.config.sandbox_config_id ? 24576 : 4096) : 2048}</span>
+              ) : (
+                <InputNumber
+                  className="wk-ae-num-max_completion_tokens"
+                  inputProps={{ "data-field": "max_completion_tokens" } as never}
+                  theme="column"
+                  min={100}
+                  max={100000}
+                  step={100}
+                  value={form.config.max_completion_tokens}
+                  onChange={(value) => patchConfig('max_completion_tokens', Number(value) || 0)}
+                />
+              )}
+            </div>
           </Row>
           <Row label={t('agent.editor.thinking')} desc={t('agentEditor.desc.thinking')}>
-            <Switch field="thinking" label={t('agent.editor.thinking')} checked={form.config.thinking}
-              onChange={(next) => patchConfig('thinking', next)} />
+            <Switch data-switch="thinking" value={form.config.thinking} onChange={(value) => patchConfig('thinking', value === true)} />
           </Row>
           <Row label={t('agent.editor.citationEnabled')} desc={t('agent.editor.citationEnabledDesc')}>
-            <Switch field="citation_enabled" label={t('agent.editor.citationEnabled')} checked={form.config.citation_enabled}
-              onChange={(next) => patchConfig('citation_enabled', next)} />
+            <Switch data-switch="citation_enabled" value={form.config.citation_enabled} onChange={(value) => patchConfig('citation_enabled', value === true)} />
           </Row>
           {hasKnowledgeBase ? (
-            // R485 D6 — Vue 671-684: the rerank row is required (star, no
+            // R485 D6 — Vue 671-689: the rerank row is required (star, no
             // optional hint, no clear option) while a RAG KB is in scope.
             <Row
               label={t('agent.editor.rerankModel')}
               desc={t('agent.editor.rerankModelDesc')}
               required={rerankRequired}
               hint={rerankRequired ? undefined : t('agent.editor.rerankModelOptionalHint')}
-              htmlFor="wk-ae-rerank-id"
+              dataAgentField="rerank_model"
+              highlight={highlightedField === 'rerank_model'}
             >
               <Select
-                id="wk-ae-rerank-id"
                 data-field="rerank_model_id"
-                className={`wk-ae-select ${FIELD_SELECT}`}
+                className="wk-ae-sel-rerank"
                 value={form.config.rerank_model_id}
-                onChange={(event) => patchConfig('rerank_model_id', event.target.value)}
+                clearable={!rerankRequired}
+                placeholder={t('agent.editor.rerankModelPlaceholder')}
+                onChange={(value) => patchConfig('rerank_model_id', String(value ?? ''))}
               >
-                {rerankRequired ? null : <option value="">{t('agent.editor.rerankModelPlaceholder')}</option>}
-                {rerankModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+                {rerankModels.map((model) => <Select.Option key={model.id} value={model.id} label={model.name} title={model.name} />)}
               </Select>
             </Row>
           ) : null}
@@ -1317,512 +1073,59 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             <Row label={t('agent.editor.queryUnderstandModel')} desc={t('agentEditor.desc.queryUnderstandModel')}>
               <Select
                 data-field="query_understand_model_id"
-                className={`wk-ae-select ${FIELD_SELECT}`}
+                className="wk-ae-sel-query-understand"
                 value={form.config.query_understand_model_id}
-                onChange={(event) => patchConfig('query_understand_model_id', event.target.value)}
+                clearable
+                placeholder={t('agent.editor.queryUnderstandModelPlaceholder')}
+                onChange={(value) => patchConfig('query_understand_model_id', String(value ?? ''))}
               >
-                <option value="">{t('agent.editor.queryUnderstandModelPlaceholder')}</option>
-                {chatModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+                {chatModels.map((model) => <Select.Option key={model.id} value={model.id} label={model.name} title={model.name} />)}
               </Select>
             </Row>
           ) : null}
           {isAgentMode ? (
             <Row label={t('agent.editor.maxIterations')} desc={t('agentEditor.desc.maxIterations')}>
-              <RadioGroup
-                name="max-iterations-mode"
-                value={maxIterationsMode}
-                options={[
-                  { value: 'limit', label: t('agent.editor.maxIterationsLimit') },
-                  { value: 'unlimited', label: t('agent.editor.maxIterationsUnlimited') },
-                ]}
-                onChange={(value) => {
-                  setMaxIterationsMode(value as 'limit' | 'unlimited');
-                  patchConfig('max_iterations', value === 'unlimited' ? -1 : 10);
-                }}
-              />
-              {maxIterationsMode === 'limit' ? (
-                <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={2} max={50}
-                  data-field="max_iterations"
-                  value={form.config.max_iterations}
-                  onChange={(event) => patchConfig('max_iterations', Number(event.target.value) || 1)} />
-              ) : null}
-            </Row>
-          ) : null}
-          {isAgentMode ? (
-            <Row label={t('agentEditor.llmCallTimeout.label')} desc={t('agentEditor.llmCallTimeout.desc')} hint={t('agentEditor.llmCallTimeout.hint')}>
-              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={0} max={3600}
-                data-field="llm_call_timeout"
-                value={form.config.llm_call_timeout}
-                onChange={(event) => patchConfig('llm_call_timeout', Number(event.target.value) || 0)} />
-            </Row>
-          ) : null}
-        </div>
-      </section>
-    );
-  }
-
-  function renderConversation() {
-    return (
-      <section className="wk-ae-section" data-editor-section="conversation">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agent.editor.conversationSettings')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{isAgentMode ? t('agentEditor.desc.conversationSectionAgent') : t('agentEditor.desc.conversationSection')}</p>
-        </header>
-        <div className="flex flex-col">
-          {quickAnswer ? (
-            <Row label={t('agent.editor.multiTurn')} desc={t('agentEditor.desc.multiTurn')}>
-              <Switch field="multi_turn_enabled" label={t('agent.editor.multiTurn')} checked={form.config.multi_turn_enabled}
-                onChange={(next) => patchConfig('multi_turn_enabled', next)} />
-            </Row>
-          ) : null}
-          {form.config.multi_turn_enabled || isAgentMode ? (
-            <Row label={t('agent.editor.historyTurns')} desc={t('agentEditor.desc.historyRounds')}>
-              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={100}
-                data-field="history_turns"
-                value={form.config.history_turns}
-                onChange={(event) => patchConfig('history_turns', Number(event.target.value) || 1)} />
-            </Row>
-          ) : null}
-          {isAgentMode && hasKnowledgeBase ? (
-            <Row label={t('agent.editor.retainRetrievalHistory')} desc={t('agentEditor.desc.retainRetrievalHistory')}>
-              <Switch field="retain_retrieval_history" label={t('agent.editor.retainRetrievalHistory')} checked={form.config.retain_retrieval_history}
-                onChange={(next) => patchConfig('retain_retrieval_history', next)} />
-            </Row>
-          ) : null}
-          {quickAnswer && form.config.multi_turn_enabled ? (
-            <Row label={t('agent.editor.enableRewrite')} desc={t('agentEditor.desc.rewrite')}>
-              <Switch field="enable_rewrite" label={t('agent.editor.enableRewrite')} checked={form.config.enable_rewrite}
-                onChange={(next) => patchConfig('enable_rewrite', next)} />
-            </Row>
-          ) : null}
-        </div>
-      </section>
-    );
-  }
-
-  function renderKnowledge() {
-    return (
-      <section className="wk-ae-section" data-editor-section="knowledge">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agent.editor.knowledgeConfig')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.knowledgeConfigDesc')}</p>
-        </header>
-        <div className="flex flex-col">
-          <Row label={t('agent.editor.knowledgeBases')} desc={t('agentEditor.desc.kbScope')}>
-            <RadioGroup
-              name="kb-mode"
-              value={kbMode}
-              options={[
-                { value: 'all', label: t('agent.editor.allKnowledgeBases') },
-                { value: 'selected', label: t('agent.editor.selectedKnowledgeBases') },
-                { value: 'none', label: t('agent.editor.noKnowledgeBase') },
-              ]}
-              onChange={(value) => onKbModeChange(value as ScopeSelectionMode)}
-            />
-          </Row>
-          {kbMode === 'selected' ? (
-            <Row label={t('agent.editor.selectKnowledgeBases')} desc={t('agent.editor.selectKnowledgeBasesDesc')}>
-              <div className="flex w-full max-w-[460px] flex-col gap-1">
-                {myKbs.length > 0 ? <p className="mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.myKnowledgeBases')}</p> : null}
-                {myKbs.map(renderKbCheckbox)}
-                {sharedKbs.length > 0 ? <p className="mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.sharedKnowledgeBases')}</p> : null}
-                {sharedKbs.map(renderKbCheckbox)}
+              <div className="max-tokens-control">
+                <RadioGroup
+                  value={maxIterationsMode}
+                  onChange={(value) => {
+                    setMaxIterationsMode(value as 'limit' | 'unlimited');
+                    patchConfig('max_iterations', value === 'unlimited' ? -1 : 10);
+                  }}
+                >
+                  <Radio.Button value="limit">{t('agent.editor.maxIterationsLimit')}</Radio.Button>
+                  <Radio.Button value="unlimited">{t('agent.editor.maxIterationsUnlimited')}</Radio.Button>
+                </RadioGroup>
+                {maxIterationsMode === 'limit' ? (
+                  <InputNumber
+                    className="wk-ae-num-max_iterations"
+                    inputProps={{ "data-field": "max_iterations" } as never}
+                    theme="column"
+                    min={2}
+                    max={50}
+                    value={form.config.max_iterations}
+                    onChange={(value) => patchConfig('max_iterations', Number(value) || 1)}
+                  />
+                ) : null}
               </div>
             </Row>
           ) : null}
-          {hasKnowledgeBase ? (
-            // R486 P3-2 — Vue AgentEditorModal.vue:1529-1536: 支持的文件类型 is
-            // a t-select multiple (placeholder 全部类型, min-collapsed-num 3);
-            // the dropdown multi-select keeps the selected-set semantics and
-            // writes back config.supported_file_types unchanged.
-            <Row label={t('agentEditor.fileTypes.label')} desc={t('agentEditor.fileTypes.desc')}>
-              <FileTypeMultiSelect
-                selected={form.config.supported_file_types}
-                options={AGENT_FILE_TYPE_OPTIONS}
-                placeholderLabel={t('agentEditor.fileTypes.allTypes')}
-                t={t}
-                onChange={(next) => patchConfig('supported_file_types', next)}
+          {isAgentMode ? (
+            <Row label={t('agentEditor.llmCallTimeout.label')} desc={t('agentEditor.llmCallTimeout.desc')} descHint={t('agentEditor.llmCallTimeout.hint')}>
+              <InputNumber
+                className="wk-ae-num-llm_call_timeout"
+                inputProps={{ "data-field": "llm_call_timeout" } as never}
+                theme="column"
+                min={0}
+                max={3600}
+                value={form.config.llm_call_timeout}
+                placeholder={t('agentEditor.llmCallTimeout.placeholder')}
+                onChange={(value) => patchConfig('llm_call_timeout', Number(value) || 0)}
               />
             </Row>
           ) : null}
-          {hasKnowledgeBase ? (
-            <Row label={t('agent.editor.retrieveKBOnlyWhenMentioned')} desc={t('agent.editor.retrieveKBOnlyWhenMentionedDesc')}>
-              <Switch field="retrieve_kb_only_when_mentioned" label={t('agent.editor.retrieveKBOnlyWhenMentioned')}
-                checked={form.config.retrieve_kb_only_when_mentioned}
-                onChange={(next) => patchConfig('retrieve_kb_only_when_mentioned', next)} />
-            </Row>
-          ) : null}
         </div>
-      </section>
-    );
-  }
-
-  function renderRetrieval() {
-    return (
-      <section className="wk-ae-section" data-editor-section="retrieval">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agent.editor.retrievalStrategy')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.desc.retrievalSection')}</p>
-        </header>
-        <div className="flex flex-col">
-          {quickAnswer ? (
-            <Row label={t('agent.editor.enableQueryExpansion')} desc={t('agentEditor.desc.queryExpansion')}>
-              <Switch field="enable_query_expansion" label={t('agent.editor.enableQueryExpansion')} checked={form.config.enable_query_expansion}
-                onChange={(next) => patchConfig('enable_query_expansion', next)} />
-            </Row>
-          ) : null}
-          <Row label={t('agent.editor.embeddingTopK')} desc={t('agentEditor.desc.embeddingTopK')}>
-            <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={50} data-field="embedding_top_k"
-              value={form.config.embedding_top_k}
-              onChange={(event) => patchConfig('embedding_top_k', Number(event.target.value) || 1)} />
-          </Row>
-          <Row label={t('agent.editor.keywordThreshold')} desc={t('agentEditor.desc.keywordThreshold')}>
-            <Slider ariaLabel={t('agent.editor.keywordThreshold')} min={0} max={1} step={0.01} value={form.config.keyword_threshold}
-              onChange={(next) => patchConfig('keyword_threshold', next)} />
-          </Row>
-          <Row label={t('agent.editor.vectorThreshold')} desc={t('agentEditor.desc.vectorThreshold')}>
-            <Slider ariaLabel={t('agent.editor.vectorThreshold')} min={0} max={1} step={0.01} value={form.config.vector_threshold}
-              onChange={(next) => patchConfig('vector_threshold', next)} />
-          </Row>
-          {form.config.rerank_model_id ? (
-            <>
-              <Row label={t('agent.editor.rerankTopK')} desc={t('agentEditor.desc.rerankTopK')}>
-                <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={20} data-field="rerank_top_k"
-                  value={form.config.rerank_top_k}
-                  onChange={(event) => patchConfig('rerank_top_k', Number(event.target.value) || 1)} />
-              </Row>
-              <Row label={t('agent.editor.rerankThreshold')} desc={t('agentEditor.desc.rerankThreshold')}>
-                <Slider ariaLabel={t('agent.editor.rerankThreshold')} min={-10} max={10} step={0.01} value={form.config.rerank_threshold}
-                  onChange={(next) => patchConfig('rerank_threshold', next)} />
-              </Row>
-            </>
-          ) : null}
-          {hasFaqKnowledgeBase ? (
-            <>
-              <Row label={t('agentEditor.faq.enableLabel')} desc={t('agentEditor.faq.enableDesc')}>
-                <Switch field="faq_priority_enabled" label={t('agentEditor.faq.enableLabel')} checked={form.config.faq_priority_enabled}
-                  onChange={(next) => patchConfig('faq_priority_enabled', next)} />
-              </Row>
-              {form.config.faq_priority_enabled ? (
-                <>
-                  <Row label={t('agentEditor.faq.thresholdLabel')} desc={t('agentEditor.faq.thresholdDesc')}>
-                    <Slider ariaLabel={t('agentEditor.faq.thresholdLabel')} min={0.7} max={1} step={0.05} value={form.config.faq_direct_answer_threshold}
-                      onChange={(next) => patchConfig('faq_direct_answer_threshold', next)} />
-                  </Row>
-                  <Row label={t('agentEditor.faq.boostLabel')} desc={t('agentEditor.faq.boostDesc')}>
-                    <Slider ariaLabel={t('agentEditor.faq.boostLabel')} min={1} max={2} step={0.1} value={form.config.faq_score_boost}
-                      onChange={(next) => patchConfig('faq_score_boost', next)} />
-                  </Row>
-                </>
-              ) : null}
-            </>
-          ) : null}
-          {quickAnswer ? (
-            <Row label={t('agentEditor.dataAnalysis.enableLabel')} desc={t('agentEditor.dataAnalysis.enableDesc')}>
-              <Switch field="data_analysis_enabled" label={t('agentEditor.dataAnalysis.enableLabel')} checked={form.config.data_analysis_enabled}
-                onChange={(next) => patchConfig('data_analysis_enabled', next)} />
-            </Row>
-          ) : null}
-        </div>
-      </section>
-    );
-  }
-
-  function renderWebSearch() {
-    return (
-      <section className="wk-ae-section" data-editor-section="websearch">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agent.editor.webSearchConfig')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.webSearchConfigDesc')}</p>
-        </header>
-        <div className="flex flex-col">
-          <Row label={t('agent.editor.webSearch')} desc={t('agentEditor.desc.webSearch')}>
-            <Switch field="web_search_enabled" label={t('agent.editor.webSearch')} checked={form.config.web_search_enabled}
-              onChange={(next) => patchConfig('web_search_enabled', next)} />
-          </Row>
-          {form.config.web_search_enabled ? (
-            <>
-              <Row label={t('agent.editor.webSearchProvider')} desc={t('agentEditor.desc.webSearchProvider')}>
-                <Select data-field="web_search_provider_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.web_search_provider_id}
-                  onChange={(event) => patchConfig('web_search_provider_id', event.target.value)}>
-                  <option value="">{t('agent.editor.webSearchProviderPlaceholder')}</option>
-                  {deps.providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>{provider.name}{provider.is_default ? ' · ' + t('common.default') : ''}</option>
-                  ))}
-                </Select>
-              </Row>
-              <Row label={t('agent.editor.webSearchMaxResults')} desc={t('agentEditor.desc.webSearchMaxResults')}>
-                <Slider ariaLabel={t('agent.editor.webSearchMaxResults')} min={1} max={10} step={1} value={form.config.web_search_max_results}
-                  onChange={(next) => patchConfig('web_search_max_results', next)} />
-              </Row>
-              <Row label={t('agent.editor.webFetchEnabled')} desc={t('agentEditor.desc.webFetchEnabled')}>
-                <Switch field="web_fetch_enabled" label={t('agent.editor.webFetchEnabled')} checked={form.config.web_fetch_enabled}
-                  onChange={(next) => patchConfig('web_fetch_enabled', next)} />
-              </Row>
-              {form.config.web_fetch_enabled ? (
-                <Row label={t('agent.editor.webFetchTopN')} desc={t('agentEditor.desc.webFetchTopN')}>
-                  <Slider ariaLabel={t('agent.editor.webFetchTopN')} min={1} max={10} step={1} value={form.config.web_fetch_top_n}
-                    onChange={(next) => patchConfig('web_fetch_top_n', next)} />
-                </Row>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-      </section>
-    );
-  }
-
-  function renderTools() {
-    const activeTools = TOOL_CATALOG.filter((tool) => form.config.allowed_tools.includes(tool.value));
-    const evaluations = activeTools.map((tool) => ({ tool, ...evaluateTool(tool) }));
-    const inactiveToolCount = evaluations.filter((item) => !item.ok).length;
-    return (
-      <section className={`wk-ae-section ${highlightedField === 'allowed_tools' ? 'ring-2 ring-[var(--td-brand-color,#0052d9)] ring-inset' : ''}`} data-editor-section="tools" data-highlighted-field={highlightedField === 'allowed_tools' ? 'allowed_tools' : undefined}>
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agent.editor.toolsConfig')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.toolsConfigDesc')}</p>
-        </header>
-        <p className="text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">
-          {hasKnowledgeBase
-            ? t('agentEditor.tools.kbMetricRag') + ' · ' + t('agentEditor.tools.kbMetricWiki')
-            : t('agentEditor.tools.statusNoKb')}
-          {inactiveToolCount > 0 ? ' · ' + t('agentEditor.tools.statusInactive', { count: inactiveToolCount }) : ''}
-        </p>
-        <div className="flex flex-col">
-          {/* R485 D10 — Vue 1163-1167: the allowed-tools block carries the
-              「允许的工具」label + 「选择 Agent 可以使用的工具」desc and per-group
-              counts, which the React port omitted. */}
-          <Row label={t('agent.editor.allowedTools')} desc={t('agentEditor.desc.selectTools')}>
-            <div className="flex w-full flex-col gap-3" data-agent-field="allowed_tools">
-              {TOOL_GROUPS.map((group) => {
-                const tools = TOOL_CATALOG.filter((tool) => tool.group === group.key);
-                if (tools.length === 0) return null;
-                return (
-                  <div key={group.key} className="wk-ae-tool-group">
-                    <p className="mb-1.5 mt-1 flex items-center gap-1.5 text-[13px] font-semibold">
-                      <span className="inline-block h-3 w-[3px] rounded bg-[var(--td-brand-color,#0052d9)]" aria-hidden="true" />
-                      <span>{t(group.labelKey)}</span>
-                      <span className="text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{tools.length}</span>
-                      {group.key === 'wiki_edit' ? <span className="font-normal text-[var(--td-warning-color,#e37318)]">{t('agentEditor.tools.writeWarning')}</span> : null}
-                    </p>
-                    <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2">
-                      {tools.map((tool) => {
-                        const evaluation = evaluateTool(tool);
-                        const checked = form.config.allowed_tools.includes(tool.value);
-                        return (
-                          <label key={tool.value} className={`flex cursor-pointer flex-col gap-0.5 rounded-lg border px-2.5 py-2 text-[13px] ${evaluation.ok ? '' : 'cursor-not-allowed opacity-55'} ${tool.danger ? 'border-[var(--td-warning-color,#e37318)]' : 'border-[var(--td-component-stroke,#e7e7e7)]'}`}>
-                            <Checkbox
-                              data-tool={tool.value}
-                              checked={checked}
-                              disabled={!evaluation.ok}
-                              onChange={(event) => {
-                                const next = event.target.checked;
-                                patch((draft) => {
-                                  const set = new Set(draft.config.allowed_tools);
-                                  if (next) set.add(tool.value); else set.delete(tool.value);
-                                  draft.config.allowed_tools = [...set];
-                                });
-                              }}
-                            />
-                            <span className="font-medium">{t(tool.labelKey)}{tool.danger ? ' · ' + t('agentEditor.tools.dangerTag') : ''}</span>
-                            <span className="text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t(tool.descriptionKey)}</span>
-                            {!evaluation.ok ? <span className="text-[12px] text-[var(--td-warning-color,#e37318)]">{t(missReasonKey(evaluation.missKind))}</span> : null}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Row>
-          <Row label={t('agentEditor.tools.effectiveLabel')} desc={t('agentEditor.tools.effectiveDesc')}>
-            <div className="flex flex-wrap gap-1.5">
-              {evaluations.length === 0 && !form.config.web_search_enabled ? <span className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.tools.effectiveEmpty')}</span> : null}
-              {evaluations.map(({ tool, ok }) => (
-                <span key={tool.value} className={ok ? 'rounded-[10px] bg-[var(--td-brand-color-light,#ecf2fe)] px-2.5 py-[2px] text-[12px] text-[var(--td-brand-color,#0052d9)]' : 'rounded-[10px] bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] px-2.5 py-[2px] text-[12px] text-[var(--td-text-color-disabled,rgba(0,0,0,0.26))]'}>{t(tool.labelKey)}</span>
-              ))}
-              {form.config.web_search_enabled ? (
-                <>
-                  <span className="rounded-[10px] bg-[var(--td-brand-color-light,#ecf2fe)] px-2.5 py-[2px] text-[12px] text-[var(--td-brand-color,#0052d9)]">{t('agentEditor.tools.webSearch')}</span>
-                  <span className="rounded-[10px] bg-[var(--td-brand-color-light,#ecf2fe)] px-2.5 py-[2px] text-[12px] text-[var(--td-brand-color,#0052d9)]">{t('agentEditor.tools.webFetch')}</span>
-                </>
-              ) : null}
-            </div>
-          </Row>
-        </div>
-      </section>
-    );
-  }
-
-  function renderSuggestions() {
-    const qs = form.config.question_suggestions;
-    const starters = qs.starters;
-    const followUps = qs.follow_ups;
-    return (
-      <section className="wk-ae-section" data-editor-section="suggestions">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agentEditor.questionSuggestions.title')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.questionSuggestions.description')}</p>
-        </header>
-        <div className="mb-3 flex gap-1" role="tablist" aria-label={t('agentEditor.questionSuggestions.title')}>
-          {(['starters', 'followUps'] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              role="tab"
-              data-suggestion-tab={tab}
-              aria-selected={suggestionTab === tab ? 'true' : 'false'}
-              className={`cursor-pointer rounded-t-md border-b-2 px-4 py-1.5 text-[14px] ${suggestionTab === tab ? 'border-[var(--td-brand-color,#0052d9)] font-medium text-[var(--td-brand-color,#0052d9)]' : 'border-transparent text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]'}`}
-              onClick={() => setSuggestionTab(tab)}
-            >
-              {t(tab === 'starters' ? 'agentEditor.questionSuggestions.startersTitle' : 'agentEditor.questionSuggestions.followUpsTitle')}
-            </button>
-          ))}
-        </div>
-        {suggestionTab === 'starters' ? (
-          <div className="flex flex-col">
-            <Row label={t('agentEditor.questionSuggestions.enableStarters')} desc={t('agentEditor.questionSuggestions.enableStartersDesc')}>
-              <Switch field="question_suggestions.starters.enabled" label={t('agentEditor.questionSuggestions.enableStarters')}
-                checked={starters.enabled}
-                onChange={(next) => patchQs((draft) => { draft.starters.enabled = next; })} />
-            </Row>
-            {starters.enabled ? (
-              <Row label={t('agentEditor.questionSuggestions.sourceMode')}>
-                <Select data-field="question_suggestions.starters.mode" className={`wk-ae-select ${FIELD_SELECT}`} value={starters.mode}
-                  onChange={(event) => patchQs((draft) => { draft.starters.mode = event.target.value as typeof draft.starters.mode; })}>
-                  <option value="curated">{t('agentEditor.questionSuggestions.modeCurated')}</option>
-                  <option value="knowledge">{t('agentEditor.questionSuggestions.modeKnowledge')}</option>
-                  <option value="hybrid">{t('agentEditor.questionSuggestions.modeHybrid')}</option>
-                </Select>
-              </Row>
-            ) : null}
-            {starters.enabled ? (
-              <Row label={t('agentEditor.questionSuggestions.count')}>
-                <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={8}
-                  data-field="question_suggestions.starters.count"
-                  value={starters.count}
-                  onChange={(event) => patchQs((draft) => { draft.starters.count = Number(event.target.value) || 1; })} />
-              </Row>
-            ) : null}
-            {starters.enabled && (starters.mode === 'curated' || starters.mode === 'hybrid') ? (
-              <Row
-                label={t('agentEditor.questionSuggestions.curatedItems') + ` ${starters.items.length}/8`}
-                desc={t('agentEditor.questionSuggestions.curatedItemsDesc')}
-              >
-                <div className="flex w-full max-w-[560px] flex-col gap-1.5" data-field-group="question_suggestions.starters.items">
-                  {starters.items.map((item, index) => (
-                    <div key={index} className="flex items-center gap-1.5">
-                      <Input className={`wk-ae-input w-full`} maxLength={200} value={item}
-                        data-starter-index={index}
-                        onChange={(event) => patchQs((draft) => { draft.starters.items[index] = event.target.value; })} />
-                      <button type="button" aria-label={t('common.delete')} className="cursor-pointer border-0 bg-transparent p-1 text-[var(--td-error-color,#d54941)]"
-                        data-remove-starter={index}
-                        onClick={() => patchQs((draft) => { draft.starters.items.splice(index, 1); })}>×</button>
-                    </div>
-                  ))}
-                  <button type="button" disabled={starters.items.length >= 8}
-                    className="w-fit cursor-pointer rounded-md border border-dashed border-[var(--td-component-stroke,#dcdcdc)] px-3 py-1.5 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
-                    data-add-starter
-                    onClick={() => patchQs((draft) => { if (draft.starters.items.length < 8) draft.starters.items.push(''); })}>
-                    {t('agentEditor.questionSuggestions.addItem')}
-                  </button>
-                </div>
-              </Row>
-            ) : null}
-          </div>
-        ) : (
-          <div className="flex flex-col">
-            <Row label={t('agentEditor.questionSuggestions.enableFollowUps')} desc={t('agentEditor.questionSuggestions.enableFollowUpsDesc')}>
-              <Switch field="question_suggestions.follow_ups.enabled" label={t('agentEditor.questionSuggestions.enableFollowUps')}
-                checked={followUps.enabled}
-                onChange={(next) => patchQs((draft) => { draft.follow_ups.enabled = next; })} />
-            </Row>
-            {followUps.enabled ? (
-              <>
-                <Row label={t('agentEditor.questionSuggestions.sourceMode')}>
-                  <Select data-field="question_suggestions.follow_ups.mode" className={`wk-ae-select ${FIELD_SELECT}`} value={followUps.mode}
-                    onChange={(event) => patchQs((draft) => { draft.follow_ups.mode = event.target.value as typeof draft.follow_ups.mode; })}>
-                    <option value="generated">{t('agentEditor.questionSuggestions.modeGenerated')}</option>
-                    <option value="knowledge">{t('agentEditor.questionSuggestions.modeKnowledge')}</option>
-                    <option value="hybrid">{t('agentEditor.questionSuggestions.modeHybrid')}</option>
-                  </Select>
-                </Row>
-                <Row label={t('agentEditor.questionSuggestions.count')}>
-                  <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={5}
-                    data-field="question_suggestions.follow_ups.count"
-                    value={followUps.count}
-                    onChange={(event) => patchQs((draft) => { draft.follow_ups.count = Number(event.target.value) || 1; })} />
-                </Row>
-                {followUps.mode !== 'knowledge' ? (
-                  <Row label={t('agentEditor.questionSuggestions.model')} desc={t('agentEditor.questionSuggestions.modelDesc')}>
-                    <Select data-field="question_suggestions.follow_ups.model_id" className={`wk-ae-select ${FIELD_SELECT}`} value={followUps.model_id}
-                      onChange={(event) => patchQs((draft) => { draft.follow_ups.model_id = event.target.value; })}>
-                      <option value="">{t('agentEditor.modelPlaceholder')}</option>
-                      {chatModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-                    </Select>
-                  </Row>
-                ) : null}
-                <div className="my-1 flex items-center gap-2 text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">
-                  <span className="h-px flex-1 bg-[var(--td-component-stroke,#e7e7e7)]" />
-                  <span>{t('agentEditor.questionSuggestions.advancedSettings')}</span>
-                  <span className="h-px flex-1 bg-[var(--td-component-stroke,#e7e7e7)]" />
-                </div>
-                <Row label={t('agentEditor.questionSuggestions.contextTurns')}>
-                  <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={5}
-                    data-field="question_suggestions.follow_ups.max_context_turns"
-                    value={followUps.max_context_turns}
-                    onChange={(event) => patchQs((draft) => { draft.follow_ups.max_context_turns = Number(event.target.value) || 1; })} />
-                </Row>
-                <Row label={t('agentEditor.questionSuggestions.categories')}>
-                  <div className="flex flex-wrap gap-3" data-field-group="question_suggestions.follow_ups.categories">
-                    {(['clarify', 'deepen', 'action'] as const).map((category) => (
-                      <label key={category} className="inline-flex cursor-pointer items-center gap-1.5 text-[13px] [&>input]:accent-[var(--td-brand-color,#0052d9)]">
-                        <Checkbox
-                          data-category={category}
-                          checked={followUps.categories.includes(category)}
-                          onChange={(event) => patchQs((draft) => {
-                            const set = new Set(draft.follow_ups.categories);
-                            if (event.target.checked) set.add(category); else set.delete(category);
-                            draft.follow_ups.categories = [...set];
-                          })}
-                        />
-                        <span>{t(`agentEditor.questionSuggestions.category${category === 'clarify' ? 'Clarify' : category === 'deepen' ? 'Deepen' : 'Action'}`)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </Row>
-                <Row label={t('agentEditor.questionSuggestions.instruction')}>
-                  <Textarea className={`wk-ae-textarea ${FIELD_TEXTAREA}`} rows={3} maxLength={2000}
-                    data-field="question_suggestions.follow_ups.additional_instruction"
-                    value={followUps.additional_instruction}
-                    placeholder={t('agentEditor.questionSuggestions.instructionPlaceholder')}
-                    onChange={(event) => patchQs((draft) => { draft.follow_ups.additional_instruction = event.target.value; })} />
-                </Row>
-                <Row label={t('agentEditor.questionSuggestions.displayRules')}>
-                  <div className="flex w-full max-w-[560px] flex-col gap-1.5">
-                    {([
-                      ['suppress_on_fallback', 'suppressFallback'],
-                      ['suppress_when_answer_asks_question', 'suppressQuestion'],
-                      ['knowledge_fallback', 'knowledgeFallback'],
-                      ['allow_regenerate', 'allowRegenerate'],
-                    ] as const).map(([field, labelKey]) => (
-                      <label key={field} className="inline-flex cursor-pointer items-center gap-1.5 text-[13px] [&>input]:accent-[var(--td-brand-color,#0052d9)]">
-                        <Checkbox
-                          data-display-rule={field}
-                          checked={followUps[field] === true}
-                          onChange={(event) => patchQs((draft) => { (draft.follow_ups[field] as boolean) = event.target.checked; })}
-                        />
-                        <span>{t(`agentEditor.questionSuggestions.${labelKey}`)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </Row>
-              </>
-            ) : null}
-          </div>
-        )}
-      </section>
+      </div>
     );
   }
 
@@ -1838,93 +1141,447 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
       { value: 'oss', label: t('agentEditor.imageUpload.engineOss'), ...(deps.storageStatus.oss === false ? { disabled: true } : {}) },
     ];
     return (
-      <section className="wk-ae-section" data-editor-section="multimodal">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agentEditor.imageUpload.sectionTitle')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.imageUpload.sectionDesc')}</p>
-        </header>
-        <div className="flex flex-col">
-          <Row label={t('agentEditor.imageUpload.label')} desc={t('agentEditor.imageUpload.desc')}>
-            <Switch field="image_upload_enabled" label={t('agentEditor.imageUpload.label')} checked={form.config.image_upload_enabled}
-              onChange={(next) => patchConfig('image_upload_enabled', next)} />
+      <div className="section" data-editor-section="multimodal">
+        <SectionHeader title={t('agentEditor.imageUpload.sectionTitle')} desc={t('agentEditor.imageUpload.sectionDesc')} />
+        <div className="settings-group">
+          <Row label={t('agentEditor.imageUpload.label')} desc={t('agentEditor.imageUpload.desc')} dataGuide="agent-create-multimodal">
+            <Switch data-switch="image_upload_enabled" value={form.config.image_upload_enabled} onChange={(value) => patchConfig('image_upload_enabled', value === true)} />
           </Row>
           {form.config.image_upload_enabled ? (
             <Row label={t('agentEditor.imageUpload.vlmModel')} required desc={t('agentEditor.imageUpload.vlmModelDesc')}>
-              <Select data-field="vlm_model_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.vlm_model_id}
-                onChange={(event) => patchConfig('vlm_model_id', event.target.value)}>
-                <option value="">{t('agentEditor.imageUpload.vlmModelPlaceholder')}</option>
-                {vlmModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+              <Select
+                data-field="vlm_model_id"
+                className="wk-ae-sel-vlm"
+                value={form.config.vlm_model_id}
+                clearable
+                placeholder={t('agentEditor.imageUpload.vlmModelPlaceholder')}
+                onChange={(value) => patchConfig('vlm_model_id', String(value ?? ''))}
+              >
+                {vlmModels.map((model) => <Select.Option key={model.id} value={model.id} label={model.name} title={model.name} />)}
               </Select>
             </Row>
           ) : null}
           {form.config.image_upload_enabled ? (
             <Row label={t('agentEditor.imageUpload.imageUnderstandingLabel')} desc={t('agentEditor.imageUpload.imageUnderstandingDesc')}>
-              <Switch field="attachment_image_understanding" label={t('agentEditor.imageUpload.imageUnderstandingLabel')} checked={form.config.attachment_image_understanding}
-                onChange={(next) => patchConfig('attachment_image_understanding', next)} />
+              <Switch data-switch="attachment_image_understanding" value={form.config.attachment_image_understanding} onChange={(value) => patchConfig('attachment_image_understanding', value === true)} />
             </Row>
           ) : null}
           {form.config.image_upload_enabled && form.config.attachment_image_understanding ? (
-            <Row label={t('agentEditor.imageUpload.ocrMaxPagesLabel')} desc={t('agentEditor.imageUpload.ocrMaxPagesDesc') + '（' + t('agentEditor.imageUpload.useGlobalDefault') + '）'}>
-              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={0} max={64} step={1}
-                data-field="attachment_ocr_max_pages"
+            <Row label={t('agentEditor.imageUpload.ocrMaxPagesLabel')} desc={t('agentEditor.imageUpload.ocrMaxPagesDesc')}>
+              <InputNumber
+                className="wk-ae-num-attachment_ocr_max_pages"
+                inputProps={{ "data-field": "attachment_ocr_max_pages" } as never}
+                theme="normal"
+                min={0}
+                max={64}
+                step={1}
+                style={{ width: '160px' } as CSSProperties}
                 value={form.config.attachment_ocr_max_pages}
-                onChange={(event) => patchConfig('attachment_ocr_max_pages', Number(event.target.value) || 0)} />
+                placeholder={t('agentEditor.imageUpload.useGlobalDefault')}
+                onChange={(value) => patchConfig('attachment_ocr_max_pages', Number(value) || 0)}
+              />
             </Row>
           ) : null}
           {form.config.image_upload_enabled ? (
             <Row label={t('agentEditor.imageUpload.storageProvider')} desc={t('agentEditor.imageUpload.storageProviderDesc')}>
-              <Select data-field="image_storage_provider" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.image_storage_provider}
-                onChange={(event) => patchConfig('image_storage_provider', event.target.value)}>
-                <option value="">{t('agentEditor.imageUpload.storageDefault')}</option>
-                {storageOptions.map((option) => (
-                  <option key={option.value} value={option.value} disabled={option.disabled}>
-                    {option.label}{option.disabled ? ' · ' + t('agentEditor.imageUpload.notConfigured') : ''}
-                  </option>
-                ))}
-              </Select>
-              <button type="button" data-go-storage-settings
-                className="mt-1 cursor-pointer border-0 bg-transparent p-0 text-[12px] text-[var(--td-brand-color,#0052d9)] hover:underline"
-                onClick={() => navigate('/platform/settings?section=storage')}>
-                {t('agentEditor.imageUpload.goStorageSettings')}
-              </button>
+              <div className="setting-control" style={{ flexDirection: 'column', alignItems: 'flex-end' } as CSSProperties}>
+                <Select
+                  data-field="image_storage_provider"
+                  className="wk-ae-sel-storage"
+                  style={{ width: '280px' } as CSSProperties}
+                  value={form.config.image_storage_provider}
+                  clearable
+                  placeholder={t('agentEditor.imageUpload.storageProviderPlaceholder')}
+                  onChange={(value) => patchConfig('image_storage_provider', String(value ?? ''))}
+                >
+                  <Select.Option value="" label={t('agentEditor.imageUpload.storageDefault')} />
+                  {storageOptions.map((option) => (
+                    <Select.Option key={option.value} value={option.value} label={option.label} disabled={option.disabled}>
+                      <span className="select-option-with-tag">
+                        <span>{option.label}</span>
+                      </span>
+                    </Select.Option>
+                  ))}
+                </Select>
+                <a href="javascript:void(0)" className="go-settings-link" data-go-storage-settings onClick={(event) => { event.preventDefault(); navigate('/platform/settings?section=storage'); }}>
+                  {t('agentEditor.imageUpload.goStorageSettings')}
+                </a>
+              </div>
             </Row>
           ) : null}
           <Row label={t('agentEditor.audioUpload.label')} desc={t('agentEditor.audioUpload.desc')}>
-            <Switch field="audio_upload_enabled" label={t('agentEditor.audioUpload.label')} checked={form.config.audio_upload_enabled}
-              onChange={(next) => patchConfig('audio_upload_enabled', next)} />
+            <Switch data-switch="audio_upload_enabled" value={form.config.audio_upload_enabled} onChange={(value) => patchConfig('audio_upload_enabled', value === true)} />
           </Row>
           {form.config.audio_upload_enabled ? (
             <Row label={t('agentEditor.audioUpload.asrModel')} desc={t('agentEditor.audioUpload.asrModelDesc')}>
-              <Select data-field="asr_model_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.asr_model_id}
-                onChange={(event) => patchConfig('asr_model_id', event.target.value)}>
-                <option value="">{t('agentEditor.audioUpload.asrModelPlaceholder')}</option>
-                {asrModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+              <Select
+                data-field="asr_model_id"
+                className="wk-ae-sel-asr"
+                value={form.config.asr_model_id}
+                clearable
+                placeholder={t('agentEditor.audioUpload.asrModelPlaceholder')}
+                onChange={(value) => patchConfig('asr_model_id', String(value ?? ''))}
+              >
+                {asrModels.map((model) => <Select.Option key={model.id} value={model.id} label={model.name} title={model.name} />)}
               </Select>
             </Row>
           ) : null}
           <Row label={t('agentEditor.chatParser.waitTimeoutLabel')} desc={t('agentEditor.chatParser.waitTimeoutDesc')}>
-            <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={0} max={600} step={10}
-              data-field="attachment_parse_wait_timeout_sec"
+            <InputNumber
+              className="wk-ae-num-attachment_parse_wait_timeout_sec"
+              inputProps={{ "data-field": "attachment_parse_wait_timeout_sec" } as never}
+              theme="normal"
+              min={0}
+              max={600}
+              step={10}
+              style={{ width: '160px' } as CSSProperties}
               value={form.config.attachment_parse_wait_timeout_sec}
-              onChange={(event) => patchConfig('attachment_parse_wait_timeout_sec', Number(event.target.value) || 0)} />
+              placeholder={t('agentEditor.imageUpload.useGlobalDefault')}
+              onChange={(value) => patchConfig('attachment_parse_wait_timeout_sec', Number(value) || 0)}
+            />
           </Row>
-          {/* R486 — Vue 869-878 <KBParserSettings embedded>: per-file-type
-              parser engine rows for chat attachments (CHAT_PARSER_EXTENSIONS
-              families only), reusing the knowledge-settings rule math. */}
-          <div className="rounded-lg border border-[var(--td-component-stroke,#e7e7e7)] p-3" data-parser-policy-block>
-            <p className="m-0 text-[13px] font-medium">{t('agentEditor.chatParser.label')}</p>
-            <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.chatParser.desc')}</p>
-            <div className="mt-2">
-              <AgentParserRules
-                engines={deps.parserEngines}
-                rules={Array.isArray(form.config.chat_parser_engine_rules) ? form.config.chat_parser_engine_rules as ParserEngineRule[] : []}
-                onChange={(rules) => patchConfig('chat_parser_engine_rules', rules)}
-                t={t}
-              />
+          {/* R486 — Vue 867-878 <KBParserSettings embedded>：chat 附件解析规则。 */}
+          <div className="parser-policy-block" data-parser-policy-block>
+            <div className="parser-policy-block__header">
+              <label>{t('agentEditor.chatParser.label')}</label>
+              <p className="desc">{t('agentEditor.chatParser.desc')}</p>
             </div>
+            <AgentParserRules
+              engines={deps.parserEngines}
+              rules={Array.isArray(form.config.chat_parser_engine_rules) ? form.config.chat_parser_engine_rules as ParserEngineRule[] : []}
+              onChange={(rules) => patchConfig('chat_parser_engine_rules', rules)}
+              t={t}
+            />
           </div>
         </div>
-      </section>
+      </div>
+    );
+  }
+
+  function renderConversation() {
+    return (
+      <div className="section" data-editor-section="conversation">
+        <SectionHeader title={t('agent.editor.conversationSettings')} desc={isAgentMode ? t('agentEditor.desc.conversationSectionAgent') : t('agentEditor.desc.conversationSection')} />
+        <div className="settings-group">
+          {quickAnswer ? (
+            <Row label={t('agent.editor.multiTurn')} desc={t('agentEditor.desc.multiTurn')}>
+              <Switch data-switch="multi_turn_enabled" value={form.config.multi_turn_enabled} onChange={(value) => patchConfig('multi_turn_enabled', value === true)} />
+            </Row>
+          ) : null}
+          {form.config.multi_turn_enabled || isAgentMode ? (
+            <Row label={t('agent.editor.historyTurns')} desc={t('agentEditor.desc.historyRounds')}>
+              <InputNumber
+                className="wk-ae-num-history_turns"
+                inputProps={{ "data-field": "history_turns" } as never}
+                theme="column"
+                min={1}
+                max={100}
+                value={form.config.history_turns}
+                onChange={(value) => patchConfig('history_turns', Number(value) || 1)}
+              />
+            </Row>
+          ) : null}
+          {isAgentMode && hasKnowledgeBase ? (
+            <Row label={t('agent.editor.retainRetrievalHistory')} desc={t('agentEditor.desc.retainRetrievalHistory')}>
+              <Switch data-switch="retain_retrieval_history" value={form.config.retain_retrieval_history} onChange={(value) => patchConfig('retain_retrieval_history', value === true)} />
+            </Row>
+          ) : null}
+          {quickAnswer && form.config.multi_turn_enabled ? (
+            <Row label={t('agent.editor.enableRewrite')} desc={t('agentEditor.desc.rewrite')}>
+              <Switch data-switch="enable_rewrite" value={form.config.enable_rewrite} onChange={(value) => patchConfig('enable_rewrite', value === true)} />
+            </Row>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  function renderSuggestions() {
+    const qs = form.config.question_suggestions;
+    const starters = qs.starters;
+    const followUps = qs.follow_ups;
+    return (
+      <div className="section" data-editor-section="suggestions">
+        <SectionHeader title={t('agentEditor.questionSuggestions.title')} desc={t('agentEditor.questionSuggestions.description')} />
+        {/* Vue 948-953：t-tabs 只做导航（内容自渲染在下方，t-tabs__content 隐藏）。 */}
+        <Tabs value={suggestionTab} onChange={(value) => setSuggestionTab(value as 'starters' | 'followUps')} className="suggestion-tabs">
+          <Tabs.TabPanel value="starters" label={t('agentEditor.questionSuggestions.startersTitle')} />
+          <Tabs.TabPanel value="followUps" label={t('agentEditor.questionSuggestions.followUpsTitle')} />
+        </Tabs>
+        <div className="settings-group" style={suggestionTab === 'starters' ? undefined : { display: 'none' }}>
+          <Row label={t('agentEditor.questionSuggestions.enableStarters')} desc={t('agentEditor.questionSuggestions.enableStartersDesc')}>
+            <Switch
+              data-switch="question_suggestions.starters.enabled"
+              value={starters.enabled}
+              onChange={(value) => patchQs((draft) => { draft.starters.enabled = value === true; })}
+            />
+          </Row>
+          {starters.enabled ? (
+            <Row label={t('agentEditor.questionSuggestions.sourceMode')}>
+              <Select
+                data-field="question_suggestions.starters.mode"
+                className="wk-ae-sel-starters-mode"
+                value={starters.mode}
+                onChange={(value) => patchQs((draft) => { draft.starters.mode = String(value) as typeof draft.starters.mode; })}
+                options={[
+                  { label: t('agentEditor.questionSuggestions.modeCurated'), value: 'curated', title: t('agentEditor.questionSuggestions.modeCurated') },
+                  { label: t('agentEditor.questionSuggestions.modeKnowledge'), value: 'knowledge', title: t('agentEditor.questionSuggestions.modeKnowledge') },
+                  { label: t('agentEditor.questionSuggestions.modeHybrid'), value: 'hybrid', title: t('agentEditor.questionSuggestions.modeHybrid') },
+                ]}
+              />
+            </Row>
+          ) : null}
+          {starters.enabled ? (
+            <Row label={t('agentEditor.questionSuggestions.count')}>
+              <InputNumber
+                className="wk-ae-num-question_suggestions.starters.count"
+                inputProps={{ "data-field": "question_suggestions.starters.count" } as never}
+                theme="column"
+                min={1}
+                max={8}
+                value={starters.count}
+                onChange={(value) => patchQs((draft) => { draft.starters.count = Number(value) || 1; })}
+              />
+            </Row>
+          ) : null}
+          {starters.enabled && (starters.mode === 'curated' || starters.mode === 'hybrid') ? (
+            <Row label={t('agentEditor.questionSuggestions.curatedItems')} desc={t('agentEditor.questionSuggestions.curatedItemsDesc')} vertical>
+              <div className="setting-control-full">
+                <div className="suggested-prompts-list" data-field-group="question_suggestions.starters.items">
+                  {starters.items.map((item, index) => (
+                    <div className="prompt-item" key={index}>
+                      <Input
+                        data-starter-index={index}
+                        maxlength={200}
+                        value={item}
+                        onChange={(value) => patchQs((draft) => { draft.starters.items[index] = String(value); })}
+                      />
+                      <Button variant="text" theme="danger" shape="square" aria-label={t('common.delete')} data-remove-starter={index} onClick={() => patchQs((draft) => { draft.starters.items.splice(index, 1); })}>
+                        <TIcon name="delete" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button variant="dashed" disabled={starters.items.length >= 8} data-add-starter icon={<TIcon name="add" />} onClick={() => patchQs((draft) => { if (draft.starters.items.length < 8) draft.starters.items.push(''); })}>
+                    {t('agentEditor.questionSuggestions.addItem')}
+                  </Button>
+                </div>
+              </div>
+            </Row>
+          ) : null}
+        </div>
+        <div className="settings-group" style={suggestionTab === 'followUps' ? undefined : { display: 'none' }}>
+          <Row label={t('agentEditor.questionSuggestions.enableFollowUps')} desc={t('agentEditor.questionSuggestions.enableFollowUpsDesc')}>
+            <Switch
+              data-switch="question_suggestions.follow_ups.enabled"
+              value={followUps.enabled}
+              onChange={(value) => patchQs((draft) => { draft.follow_ups.enabled = value === true; })}
+            />
+          </Row>
+          {followUps.enabled ? (
+            <>
+              <Row label={t('agentEditor.questionSuggestions.sourceMode')}>
+                <Select
+                  data-field="question_suggestions.follow_ups.mode"
+                  className="wk-ae-sel-followups-mode"
+                  value={followUps.mode}
+                  onChange={(value) => patchQs((draft) => { draft.follow_ups.mode = String(value) as typeof draft.follow_ups.mode; })}
+                  options={[
+                    { label: t('agentEditor.questionSuggestions.modeGenerated'), value: 'generated', title: t('agentEditor.questionSuggestions.modeGenerated') },
+                    { label: t('agentEditor.questionSuggestions.modeKnowledge'), value: 'knowledge', title: t('agentEditor.questionSuggestions.modeKnowledge') },
+                    { label: t('agentEditor.questionSuggestions.modeHybrid'), value: 'hybrid', title: t('agentEditor.questionSuggestions.modeHybrid') },
+                  ]}
+                />
+              </Row>
+              <Row label={t('agentEditor.questionSuggestions.count')}>
+                <InputNumber
+                  className="wk-ae-num-question_suggestions.follow_ups.count"
+                  inputProps={{ "data-field": "question_suggestions.follow_ups.count" } as never}
+                  theme="column"
+                  min={1}
+                  max={5}
+                  value={followUps.count}
+                  onChange={(value) => patchQs((draft) => { draft.follow_ups.count = Number(value) || 1; })}
+                />
+              </Row>
+              {followUps.mode !== 'knowledge' ? (
+                <Row label={t('agentEditor.questionSuggestions.model')} desc={t('agentEditor.questionSuggestions.modelDesc')}>
+                  <Select
+                    data-field="question_suggestions.follow_ups.model_id"
+                    className="wk-ae-sel-followups-model"
+                    value={followUps.model_id}
+                    clearable
+                    placeholder={t('agentEditor.modelPlaceholder')}
+                    onChange={(value) => patchQs((draft) => { draft.follow_ups.model_id = String(value ?? ''); })}
+                  >
+                    {chatModels.map((model) => <Select.Option key={model.id} value={model.id} label={model.name} title={model.name} />)}
+                  </Select>
+                </Row>
+              ) : null}
+              <div className="suggestion-advanced-divider"><span>{t('agentEditor.questionSuggestions.advancedSettings')}</span></div>
+              <Row label={t('agentEditor.questionSuggestions.contextTurns')}>
+                <InputNumber
+                  className="wk-ae-num-question_suggestions.follow_ups.max_context_turns"
+                  inputProps={{ "data-field": "question_suggestions.follow_ups.max_context_turns" } as never}
+                  theme="column"
+                  min={1}
+                  max={5}
+                  value={followUps.max_context_turns}
+                  onChange={(value) => patchQs((draft) => { draft.follow_ups.max_context_turns = Number(value) || 1; })}
+                />
+              </Row>
+              <Row label={t('agentEditor.questionSuggestions.categories')} vertical>
+                <div className="setting-control-full">
+                  <Checkbox.Group
+                    data-field-group="question_suggestions.follow_ups.categories"
+                    value={followUps.categories}
+                    onChange={(values) => patchQs((draft) => { draft.follow_ups.categories = (values as string[]).map(String); })}
+                  >
+                    <Checkbox value="clarify" data-category="clarify">{t('agentEditor.questionSuggestions.categoryClarify')}</Checkbox>
+                    <Checkbox value="deepen" data-category="deepen">{t('agentEditor.questionSuggestions.categoryDeepen')}</Checkbox>
+                    <Checkbox value="action" data-category="action">{t('agentEditor.questionSuggestions.categoryAction')}</Checkbox>
+                  </Checkbox.Group>
+                </div>
+              </Row>
+              <Row label={t('agentEditor.questionSuggestions.instruction')} vertical>
+                <div className="setting-control-full">
+                  <Textarea
+                    data-field="question_suggestions.follow_ups.additional_instruction"
+                    value={followUps.additional_instruction}
+                    placeholder={t('agentEditor.questionSuggestions.instructionPlaceholder')}
+                    maxlength={2000}
+                    autosize={{ minRows: 3, maxRows: 8 }}
+                    onChange={(value) => patchQs((draft) => { draft.follow_ups.additional_instruction = String(value); })}
+                  />
+                </div>
+              </Row>
+              <Row label={t('agentEditor.questionSuggestions.displayRules')} vertical>
+                <div className="setting-control-full">
+                  <div className="suggestion-checkboxes">
+                    <Checkbox data-display-rule="suppress_on_fallback" checked={followUps.suppress_on_fallback === true} onChange={(checked) => patchQs((draft) => { draft.follow_ups.suppress_on_fallback = checked === true; })}>{t('agentEditor.questionSuggestions.suppressFallback')}</Checkbox>
+                    <Checkbox data-display-rule="suppress_when_answer_asks_question" checked={followUps.suppress_when_answer_asks_question === true} onChange={(checked) => patchQs((draft) => { draft.follow_ups.suppress_when_answer_asks_question = checked === true; })}>{t('agentEditor.questionSuggestions.suppressQuestion')}</Checkbox>
+                    <Checkbox data-display-rule="knowledge_fallback" checked={followUps.knowledge_fallback === true} onChange={(checked) => patchQs((draft) => { draft.follow_ups.knowledge_fallback = checked === true; })}>{t('agentEditor.questionSuggestions.knowledgeFallback')}</Checkbox>
+                    <Checkbox data-display-rule="allow_regenerate" checked={followUps.allow_regenerate === true} onChange={(checked) => patchQs((draft) => { draft.follow_ups.allow_regenerate = checked === true; })}>{t('agentEditor.questionSuggestions.allowRegenerate')}</Checkbox>
+                  </div>
+                </div>
+              </Row>
+            </>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  function renderTools() {
+    const activeTools = TOOL_CATALOG.filter((tool) => form.config.allowed_tools.includes(tool.value));
+    const evaluations = activeTools.map((tool) => ({ tool, ...evaluateTool(tool) }));
+    const inactiveToolCount = evaluations.filter((item) => !item.ok).length;
+    return (
+      <div className="section" data-editor-section="tools" data-highlighted-field={highlightedField === 'allowed_tools' ? 'allowed_tools' : undefined}>
+        <SectionHeader title={t('agent.editor.toolsConfig')} desc={t('agent.editor.toolsConfigDesc')} />
+        {/* 合并面板：能力状态（Vue tools-overview 1132-1154）。 */}
+        <div className="tools-overview">
+          <div className="tools-overview-row">
+            <div className="tools-status-chip">
+              <TIcon name="folder" />
+              {hasKnowledgeBase ? (
+                <>
+                  <span className="tools-status-metric">
+                    <strong>{deps.kbOptions.filter((kb) => kb.ragEnabled).length}</strong> {t('agentEditor.tools.kbMetricRag')}
+                  </span>
+                  <span className="tools-status-sep">·</span>
+                  <span className="tools-status-metric">
+                    <strong>{deps.kbOptions.filter((kb) => kb.wikiEnabled).length}</strong> {t('agentEditor.tools.kbMetricWiki')}
+                  </span>
+                </>
+              ) : (
+                <span>{t('agentEditor.tools.statusNoKb')}</span>
+              )}
+            </div>
+            {inactiveToolCount > 0 ? (
+              <div className="tools-status-chip tools-status-chip--warn">
+                <TIcon name="error-circle" />
+                <span>{t('agentEditor.tools.statusInactive', { count: inactiveToolCount })}</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="settings-group">
+          {/* R485 D10 — Vue 1158-1201: the allowed-tools block renders per-group
+              section headers + a two-column grid of tool cards（t-checkbox 卡片）。 */}
+          <Row label={t('agent.editor.allowedTools')} desc={t('agentEditor.desc.selectTools')} vertical dataAgentField="allowed_tools" highlight={highlightedField === 'allowed_tools'}>
+            <div className="setting-control-full">
+              <Checkbox.Group
+                className="tool-groups"
+                value={form.config.allowed_tools}
+                onChange={(values) => patchConfig('allowed_tools', (values as string[]).map(String))}
+              >
+                {TOOL_GROUPS.map((group) => {
+                  const tools = TOOL_CATALOG.filter((tool) => tool.group === group.key);
+                  if (tools.length === 0) return null;
+                  return (
+                    <section key={group.key} className={`tool-group tool-group--${group.key}`}>
+                      <header className="tool-group-header">
+                        <span className="tool-group-bar" />
+                        <span className="tool-group-title">{t(group.labelKey)}</span>
+                        <span className="tool-group-count">{tools.length}</span>
+                        {group.key === 'wiki_edit' ? (
+                          <span className="tool-group-warning">
+                            <TIcon name="error-circle" />
+                            {t('agentEditor.tools.writeWarning')}
+                          </span>
+                        ) : null}
+                      </header>
+                      <div className="tool-grid">
+                        {tools.map((tool) => {
+                          const evaluation = evaluateTool(tool);
+                          return (
+                            <Checkbox
+                              key={tool.value}
+                              value={tool.value}
+                              data-tool={tool.value}
+                              disabled={!evaluation.ok}
+                              className={`tool-card${!evaluation.ok ? ' tool-card--disabled' : ''}${tool.danger ? ' tool-card--danger' : ''}`}
+                            >
+                              <div className="tool-card-body">
+                                <div className="tool-card-head">
+                                  <span className="tool-card-name">{t(tool.labelKey)}</span>
+                                  {tool.danger ? <span className="tool-card-badge">{t('agentEditor.tools.dangerTag')}</span> : null}
+                                </div>
+                                <span className="tool-card-desc">{t(tool.descriptionKey)}</span>
+                                {!evaluation.ok ? <span className="tool-card-hint">{t(missReasonKey(evaluation.missKind))}</span> : null}
+                              </div>
+                            </Checkbox>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  );
+                })}
+              </Checkbox.Group>
+            </div>
+          </Row>
+          <Row label={t('agentEditor.tools.effectiveLabel')} desc={t('agentEditor.tools.effectiveDesc')} vertical>
+            <div className="setting-control-full">
+              <div className="effective-tools">
+                {evaluations.length === 0 && !form.config.web_search_enabled ? (
+                  <div className="effective-tools-empty">{t('agentEditor.tools.effectiveEmpty')}</div>
+                ) : evaluations.map(({ tool, ok, missKind }) => (
+                  <span key={tool.value} className={`effective-chip${ok ? '' : ' effective-chip--inactive'}`} title={ok ? '' : t(missReasonKey(missKind))}>
+                    <span className="effective-chip-label">{t(tool.labelKey)}</span>
+                    {!ok ? <span className="effective-chip-reason">{t(missReasonKey(missKind))}</span> : null}
+                  </span>
+                ))}
+                {form.config.web_search_enabled ? (
+                  <>
+                    <span className="effective-chip"><span className="effective-chip-label">{t('agentEditor.tools.webSearch')}</span></span>
+                    <span className="effective-chip"><span className="effective-chip-label">{t('agentEditor.tools.webFetch')}</span></span>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </Row>
+        </div>
+      </div>
     );
   }
 
@@ -1932,56 +1589,49 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     const serviceRows = mcpOptionRows(deps.mcpServices, form.config.mcp_services, t);
     const showServiceSelect = serviceRows.length > 0 || form.config.mcp_services.length > 0;
     return (
-      <section className="wk-ae-section" data-editor-section="mcp">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agentEditor.mcp.label')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.mcp.desc')}</p>
-        </header>
-        <div className="flex flex-col">
+      <div className="section" data-editor-section="mcp">
+        <SectionHeader title={t('agentEditor.mcp.label')} desc={t('agentEditor.mcp.desc')} />
+        <div className="settings-group">
           <Row label={t('agentEditor.mcp.label')} desc={t('agentEditor.mcp.desc')}>
-            <RadioGroup
-              name="mcp-mode"
-              value={mcpMode}
-              options={[
-                { value: 'all', label: t('agentEditor.selection.all') },
-                { value: 'selected', label: t('agentEditor.selection.selected') },
-                { value: 'none', label: t('agentEditor.selection.disabled') },
-              ]}
-              onChange={(value) => onScopeModeChange('mcp', value as ScopeSelectionMode)}
-            />
+            <RadioGroup name="mcp-mode" value={mcpMode} onChange={(value) => onScopeModeChange('mcp', value as ScopeSelectionMode)}>
+              <Radio.Button value="all">{t('agentEditor.selection.all')}</Radio.Button>
+              <Radio.Button value="selected">{t('agentEditor.selection.selected')}</Radio.Button>
+              <Radio.Button value="none">{t('agentEditor.selection.disabled')}</Radio.Button>
+            </RadioGroup>
           </Row>
           {mcpMode === 'selected' && showServiceSelect ? (
             <Row label={t('agentEditor.mcp.selectLabel')} desc={t('agentEditor.mcp.selectDesc')}>
-              <div className="flex w-full max-w-[460px] flex-col gap-1" data-field="mcp_services">
+              <Select
+                data-field="mcp_services"
+                className="wk-ae-sel-mcp"
+                multiple
+                filterable
+                value={form.config.mcp_services}
+                placeholder={t('agentEditor.mcp.selectPlaceholder')}
+                onChange={(values) => patchConfig('mcp_services', (values as string[]).map(String))}
+              >
                 {serviceRows.map((row) => (
-                  <label key={row.value} className={`flex items-center gap-2 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1.5 text-[13px] ${row.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
-                    <Checkbox
-                      data-mcp-service={row.value}
-                      checked={form.config.mcp_services.includes(row.value)}
-                      disabled={row.disabled}
-                      onChange={(event) => patch((draft) => {
-                        const set = new Set(draft.config.mcp_services);
-                        if (event.target.checked) set.add(row.value); else set.delete(row.value);
-                        draft.config.mcp_services = [...set];
-                      })}
-                    />
-                    <span>{row.label}</span>
-                  </label>
+                  <Select.Option key={row.value} value={row.value} label={row.label} title={row.label} disabled={row.disabled} data-mcp-service={row.value} />
                 ))}
-              </div>
+              </Select>
             </Row>
           ) : null}
           {mcpMode !== 'none' ? (
             <Row label={t('agentEditor.mcp.authWaitTimeout')} desc={t('agentEditor.mcp.authWaitTimeoutDesc')}>
-              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={5} max={3600}
-                data-field="mcp_auth_wait_timeout"
+              <InputNumber
+                className="wk-ae-num-mcp_auth_wait_timeout"
+                inputProps={{ "data-field": "mcp_auth_wait_timeout" } as never}
+                theme="column"
+                min={5}
+                max={3600}
                 value={form.config.mcp_auth_wait_timeout}
                 placeholder={t('agentEditor.mcp.authWaitTimeoutPlaceholder')}
-                onChange={(event) => patchConfig('mcp_auth_wait_timeout', Number(event.target.value) || 0)} />
+                onChange={(value) => patchConfig('mcp_auth_wait_timeout', Number(value) || 0)}
+              />
             </Row>
           ) : null}
         </div>
-      </section>
+      </div>
     );
   }
 
@@ -1989,58 +1639,275 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     const readyRows = skillRows.filter((row) => row.selectable);
     const pendingRows = skillRows.filter((row) => !row.selectable);
     return (
-      <section className="wk-ae-section" data-editor-section="skills">
-        <header className="mb-5 [&_h2]:m-0 [&_h2]:mb-[6px] [&_h2]:text-[20px] [&_h2]:leading-[28px] [&_h2]:font-semibold [&_h2]:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]">
-          <h2>{t('agent.editor.skillsConfig')}</h2>
-          <p className="m-0 text-[14px] leading-[21px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.skillsConfigDesc')}</p>
-        </header>
-        <div className="flex flex-col">
+      <div className="section" data-editor-section="skills">
+        <SectionHeader title={t('agent.editor.skillsConfig')} desc={t('agent.editor.skillsConfigDesc')} />
+        <div className="settings-group">
           <Row label={t('agent.editor.sandboxBackend')} desc={t('agent.editor.sandboxBackendHint')}>
-            <Select data-field="sandbox_config_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.sandbox_config_id}
-              onChange={(event) => patchConfig('sandbox_config_id', event.target.value)}>
-              <option value="">{t('agent.editor.sandboxBackendDefault')}</option>
-              {sandboxOptions.map((cfg) => <option key={cfg.id} value={cfg.id}>{cfg.name}</option>)}
-            </Select>
-            {/* R484 D11 — Vue AgentEditorModal.vue:1323-1331 sandbox-select-links:
-                管理沙箱 jumps to the settings sandbox section (uiStore.openSettings('sandbox')). */}
-            <button type="button" data-go-sandbox-settings
-              className="mt-1 cursor-pointer border-0 bg-transparent p-0 text-[12px] text-[var(--td-brand-color,#0052d9)] hover:underline"
-              onClick={() => navigate('/platform/settings?section=sandbox')}>
-              {t('agent.editor.goSandboxSettings')}
-            </button>
-            {sandboxOptions.length === 0 ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.sandboxNoConfigs')}</p> : null}
+            <div className="sandbox-select-control">
+              <Select
+                data-field="sandbox_config_id"
+                className="sandbox-config-select"
+                value={form.config.sandbox_config_id}
+                placeholder={t('agent.editor.sandboxBackendDefault')}
+                filterable
+                popupProps={{ overlayClassName: 'sandbox-config-select-popup' } as never}
+                onChange={(value) => patchConfig('sandbox_config_id', String(value ?? ''))}
+              >
+                <Select.Option value="" label={t('agent.editor.sandboxBackendDefault')} />
+                {sandboxOptions.map((cfg) => <Select.Option key={cfg.id} value={cfg.id} label={cfg.name} />)}
+              </Select>
+              {/* R484 D11 — Vue 1320-1338 sandbox-select-links：管理沙箱跳转。 */}
+              <div className="sandbox-select-links">
+                <a href="javascript:void(0)" className="go-settings-link" data-go-sandbox-settings onClick={(event) => { event.preventDefault(); navigate('/platform/settings?section=sandbox'); }}>
+                  {t('agent.editor.goSandboxSettings')}
+                </a>
+              </div>
+              {sandboxOptions.length === 0 ? <p className="desc empty-hint">{t('agent.editor.sandboxNoConfigs')}</p> : null}
+            </div>
           </Row>
           <Row label={t('agent.editor.skillsSelection')} desc={t('agent.editor.skillsSelectionDesc')}>
-            <RadioGroup
-              name="skills-mode"
-              value={skillsMode}
-              options={[
-                { value: 'all', label: t('agent.editor.skillsAll'), disabled: !hasSandbox && namedSandboxes.length !== 1 },
-                { value: 'selected', label: t('agent.editor.skillsSelected'), disabled: !hasSandbox && namedSandboxes.length !== 1 },
-                { value: 'none', label: t('agent.editor.skillsNone') },
-              ]}
-              onChange={(value) => onScopeModeChange('skills', value as ScopeSelectionMode)}
-            />
-            {!hasSandbox ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agent.editor.skillsNeedSandbox')}</p> : null}
+            <div className="sandbox-select-control">
+              <RadioGroup name="skills-mode" value={skillsMode} onChange={(value) => onScopeModeChange('skills', value as ScopeSelectionMode)}>
+                <Radio.Button value="all" disabled={!hasSandbox && namedSandboxes.length !== 1}>{t('agent.editor.skillsAll')}</Radio.Button>
+                <Radio.Button value="selected" disabled={!hasSandbox && namedSandboxes.length !== 1}>{t('agent.editor.skillsSelected')}</Radio.Button>
+                <Radio.Button value="none">{t('agent.editor.skillsNone')}</Radio.Button>
+              </RadioGroup>
+              {!hasSandbox && sandboxOptions.length > 1 ? <p className="desc empty-hint">{t('agent.editor.skillsNeedSandbox')}</p> : null}
+            </div>
           </Row>
           {skillsMode !== 'none' && hasSandbox && skillRows.length > 0 ? (
-            <div className="flex w-full flex-col gap-1">
-              {readyRows.length > 0 ? (
-                <div className="wk-ae-skill-group">
-                  <p className="mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.skillsGroupAvailable')}</p>
-                  {readyRows.map(renderSkillRow)}
-                </div>
-              ) : null}
-              {pendingRows.length > 0 ? (
-                <div className="wk-ae-skill-group">
-                  <p className="mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.skillsGroupUnavailable')}</p>
-                  {pendingRows.map(renderSkillRow)}
-                </div>
-              ) : null}
-            </div>
+            <Row vertical>
+              <div className="setting-control-full">
+                <Checkbox.Group className="skill-pick-list" value={form.config.selected_skills} onChange={(values) => patchConfig('selected_skills', (values as string[]).map(String))}>
+                  {readyRows.length > 0 ? (
+                    <section className="skill-pick-group">
+                      <header className="skill-pick-group__header">
+                        <span className="skill-pick-group__bar" />
+                        <span className="skill-pick-group__title">{t('agent.editor.skillsGroupAvailable')}</span>
+                        <span className="skill-pick-group__count">{readyRows.length}</span>
+                      </header>
+                      {readyRows.map(renderSkillRow)}
+                    </section>
+                  ) : null}
+                  {pendingRows.length > 0 ? (
+                    <section className="skill-pick-group skill-pick-group--pending">
+                      <header className="skill-pick-group__header">
+                        <span className="skill-pick-group__bar" />
+                        <span className="skill-pick-group__title">{t('agent.editor.skillsGroupUnavailable')}</span>
+                        <span className="skill-pick-group__count">{pendingRows.length}</span>
+                      </header>
+                      {pendingRows.map(renderSkillRow)}
+                    </section>
+                  ) : null}
+                </Checkbox.Group>
+              </div>
+            </Row>
           ) : null}
         </div>
-      </section>
+      </div>
+    );
+  }
+
+  function renderKnowledge() {
+    const myKbs = deps.kbOptions.filter((kb) => !kb.shared);
+    const sharedKbs = deps.kbOptions.filter((kb) => kb.shared);
+    return (
+      <div className="section" data-editor-section="knowledge">
+        <SectionHeader title={t('agent.editor.knowledgeConfig')} desc={t('agent.editor.knowledgeConfigDesc')} />
+        <div className="settings-group">
+          <Row label={t('agent.editor.knowledgeBases')} desc={t('agentEditor.desc.kbScope')} dataGuide="agent-create-knowledge">
+            <RadioGroup name="kb-mode" value={kbMode} onChange={(value) => onKbModeChange(value as ScopeSelectionMode)}>
+              <Radio.Button value="all">{t('agent.editor.allKnowledgeBases')}</Radio.Button>
+              <Radio.Button value="selected">{t('agent.editor.selectedKnowledgeBases')}</Radio.Button>
+              <Radio.Button value="none">{t('agent.editor.noKnowledgeBase')}</Radio.Button>
+            </RadioGroup>
+          </Row>
+          {kbMode === 'selected' ? (
+            <Row label={t('agent.editor.selectKnowledgeBases')} desc={t('agent.editor.selectKnowledgeBasesDesc')}>
+              <Select
+                data-field="knowledge_bases"
+                className="wk-ae-sel-kbs"
+                multiple
+                filterable
+                minCollapsedNum={3}
+                value={form.config.knowledge_bases}
+                placeholder={t('agent.editor.selectKnowledgeBases')}
+                onChange={(values) => patchConfig('knowledge_bases', (values as string[]).map(String))}
+              >
+                {/* tdesign 内部按数组遍历 children（null 项会 crash）——条件组用展开拼数组 */}
+                {[
+                  ...(myKbs.length > 0
+                    ? [<Select.OptionGroup key="mine" label={t('agent.editor.myKnowledgeBases')}>{myKbs.map(renderKbOption)}</Select.OptionGroup>]
+                    : []),
+                  ...(sharedKbs.length > 0
+                    ? [<Select.OptionGroup key="shared" label={t('agent.editor.sharedKnowledgeBases')}>{sharedKbs.map(renderKbOption)}</Select.OptionGroup>]
+                    : []),
+                ]}
+              </Select>
+            </Row>
+          ) : null}
+          {hasKnowledgeBase ? (
+            // R486 P3-2 — Vue 1529-1536: 支持的文件类型（t-select multiple，全部类型占位）。
+            <Row label={t('agentEditor.fileTypes.label')} desc={t('agentEditor.fileTypes.desc')}>
+              <Select
+                data-field="supported_file_types"
+                className="wk-ae-sel-file-types"
+                multiple
+                clearable
+                minCollapsedNum={3}
+                value={form.config.supported_file_types}
+                placeholder={t('agentEditor.fileTypes.allTypes')}
+                onChange={(values) => patchConfig('supported_file_types', (values as string[]).map(String))}
+              >
+                {AGENT_FILE_TYPE_OPTIONS.map((option) => (
+                  <Select.Option
+                    key={option.value}
+                    value={option.value}
+                    label={option.labelKey ? t(option.labelKey) : option.label}
+                    title={option.labelKey ? t(option.labelKey) : option.label}
+                    data-file-type={option.value}
+                  />
+                ))}
+              </Select>
+            </Row>
+          ) : null}
+          {hasKnowledgeBase ? (
+            <Row label={t('agent.editor.retrieveKBOnlyWhenMentioned')} desc={t('agent.editor.retrieveKBOnlyWhenMentionedDesc')}>
+              <Switch data-switch="retrieve_kb_only_when_mentioned" value={form.config.retrieve_kb_only_when_mentioned} onChange={(value) => patchConfig('retrieve_kb_only_when_mentioned', value === true)} />
+            </Row>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  /** Vue 1486-1517 kb-option-item：图标 + 名称 + RAG/Wiki 标签 + 数量。 */
+  function renderKbOption(kb: KbOption) {
+    return (
+      <Select.Option key={kb.value} value={kb.value} label={kb.label} title={kb.label} data-kb-id={kb.value}>
+        <div className="kb-option-item">
+          <span className={`kb-option-icon ${kb.type === 'faq' ? 'faq-icon' : 'doc-icon'}`}>
+            <TIcon name={kb.type === 'faq' ? 'chat-bubble-help' : 'folder'} />
+          </span>
+          <span className="kb-option-label">{kb.label}</span>
+          {kb.ragEnabled ? <span className="kb-option-tag tag-rag">RAG</span> : null}
+          {kb.wikiEnabled ? <span className="kb-option-tag tag-wiki">Wiki</span> : null}
+          {kb.shared && kb.orgName ? <span className="kb-option-org">{kb.orgName}</span> : null}
+          <span className="kb-option-count">{kb.count || 0}</span>
+        </div>
+      </Select.Option>
+    );
+  }
+
+  function renderWebSearch() {
+    return (
+      <div className="section" data-editor-section="websearch">
+        <SectionHeader title={t('agent.editor.webSearchConfig')} desc={t('agent.editor.webSearchConfigDesc')} />
+        <div className="settings-group">
+          <Row label={t('agent.editor.webSearch')} desc={t('agentEditor.desc.webSearch')}>
+            <Switch data-switch="web_search_enabled" value={form.config.web_search_enabled} onChange={(value) => patchConfig('web_search_enabled', value === true)} />
+          </Row>
+          {form.config.web_search_enabled ? (
+            <Row label={t('agent.editor.webSearchProvider')} desc={t('agentEditor.desc.webSearchProvider')}>
+              <Select
+                data-field="web_search_provider_id"
+                className="wk-ae-sel-provider"
+                style={{ width: '240px' } as CSSProperties}
+                value={form.config.web_search_provider_id}
+                clearable
+                placeholder={t('agent.editor.webSearchProviderPlaceholder')}
+                onChange={(value) => patchConfig('web_search_provider_id', String(value ?? ''))}
+              >
+                {deps.providers.map((provider) => (
+                  <Select.Option key={provider.id} value={provider.id} label={provider.name} title={provider.name}>
+                    <span>{provider.name}</span>
+                  </Select.Option>
+                ))}
+              </Select>
+            </Row>
+          ) : null}
+          {form.config.web_search_enabled ? (
+            <Row label={t('agent.editor.webSearchMaxResults')} desc={t('agentEditor.desc.webSearchMaxResults')}>
+              <SliderRow ariaLabel={t('agent.editor.webSearchMaxResults')} min={1} max={10} step={1} value={form.config.web_search_max_results}
+                display={`${form.config.web_search_max_results}`} onChange={(next) => patchConfig('web_search_max_results', next)} />
+            </Row>
+          ) : null}
+          {form.config.web_search_enabled ? (
+            <Row label={t('agent.editor.webFetchEnabled')} desc={t('agentEditor.desc.webFetchEnabled')}>
+              <Switch data-switch="web_fetch_enabled" value={form.config.web_fetch_enabled} onChange={(value) => patchConfig('web_fetch_enabled', value === true)} />
+            </Row>
+          ) : null}
+          {form.config.web_search_enabled && form.config.web_fetch_enabled ? (
+            <Row label={t('agent.editor.webFetchTopN')} desc={t('agentEditor.desc.webFetchTopN')}>
+              <SliderRow ariaLabel={t('agent.editor.webFetchTopN')} min={1} max={10} step={1} value={form.config.web_fetch_top_n}
+                display={`${form.config.web_fetch_top_n}`} onChange={(next) => patchConfig('web_fetch_top_n', next)} />
+            </Row>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  function renderRetrieval() {
+    return (
+      <div className="section" data-editor-section="retrieval">
+        <SectionHeader title={t('agent.editor.retrievalStrategy')} desc={t('agentEditor.desc.retrievalSection')} />
+        <div className="settings-group">
+          {quickAnswer ? (
+            <Row label={t('agent.editor.enableQueryExpansion')} desc={t('agentEditor.desc.queryExpansion')}>
+              <Switch data-switch="enable_query_expansion" value={form.config.enable_query_expansion} onChange={(value) => patchConfig('enable_query_expansion', value === true)} />
+            </Row>
+          ) : null}
+          <Row label={t('agent.editor.embeddingTopK')} desc={t('agentEditor.desc.embeddingTopK')}>
+            <InputNumber className="wk-ae-num-embedding_top_k" inputProps={{ "data-field": "embedding_top_k" } as never} theme="column" min={1} max={50} value={form.config.embedding_top_k}
+              onChange={(value) => patchConfig('embedding_top_k', Number(value) || 1)} />
+          </Row>
+          <Row label={t('agent.editor.keywordThreshold')} desc={t('agentEditor.desc.keywordThreshold')}>
+            <SliderRow ariaLabel={t('agent.editor.keywordThreshold')} min={0} max={1} step={0.01} value={form.config.keyword_threshold}
+              display={form.config.keyword_threshold.toFixed(2)} onChange={(next) => patchConfig('keyword_threshold', next)} />
+          </Row>
+          <Row label={t('agent.editor.vectorThreshold')} desc={t('agentEditor.desc.vectorThreshold')}>
+            <SliderRow ariaLabel={t('agent.editor.vectorThreshold')} min={0} max={1} step={0.01} value={form.config.vector_threshold}
+              display={form.config.vector_threshold.toFixed(2)} onChange={(next) => patchConfig('vector_threshold', next)} />
+          </Row>
+          {form.config.rerank_model_id ? (
+            <>
+              <Row label={t('agent.editor.rerankTopK')} desc={t('agentEditor.desc.rerankTopK')}>
+                <InputNumber className="wk-ae-num-rerank_top_k" inputProps={{ "data-field": "rerank_top_k" } as never} theme="column" min={1} max={20} value={form.config.rerank_top_k}
+                  onChange={(value) => patchConfig('rerank_top_k', Number(value) || 1)} />
+              </Row>
+              <Row label={t('agent.editor.rerankThreshold')} desc={t('agentEditor.desc.rerankThreshold')}>
+                <SliderRow ariaLabel={t('agent.editor.rerankThreshold')} min={-10} max={10} step={0.01} value={form.config.rerank_threshold}
+                  display={form.config.rerank_threshold.toFixed(1)} onChange={(next) => patchConfig('rerank_threshold', next)} />
+              </Row>
+            </>
+          ) : null}
+          {hasFaqKnowledgeBase ? (
+            <>
+              <Row label={t('agentEditor.faq.enableLabel')} desc={t('agentEditor.faq.enableDesc')}>
+                <Switch data-switch="faq_priority_enabled" value={form.config.faq_priority_enabled} onChange={(value) => patchConfig('faq_priority_enabled', value === true)} />
+              </Row>
+              {form.config.faq_priority_enabled ? (
+                <>
+                  <Row label={t('agentEditor.faq.thresholdLabel')} desc={t('agentEditor.faq.thresholdDesc')}>
+                    <SliderRow ariaLabel={t('agentEditor.faq.thresholdLabel')} min={0.7} max={1} step={0.05} value={form.config.faq_direct_answer_threshold}
+                      display={form.config.faq_direct_answer_threshold.toFixed(2)} onChange={(next) => patchConfig('faq_direct_answer_threshold', next)} />
+                  </Row>
+                  <Row label={t('agentEditor.faq.boostLabel')} desc={t('agentEditor.faq.boostDesc')}>
+                    <SliderRow ariaLabel={t('agentEditor.faq.boostLabel')} min={1} max={2} step={0.1} value={form.config.faq_score_boost}
+                      display={`${form.config.faq_score_boost.toFixed(1)}x`} onChange={(next) => patchConfig('faq_score_boost', next)} />
+                  </Row>
+                </>
+              ) : null}
+            </>
+          ) : null}
+          {quickAnswer ? (
+            <Row label={t('agentEditor.dataAnalysis.enableLabel')} desc={t('agentEditor.dataAnalysis.enableDesc')}>
+              <Switch data-switch="data_analysis_enabled" value={form.config.data_analysis_enabled} onChange={(value) => patchConfig('data_analysis_enabled', value === true)} />
+            </Row>
+          ) : null}
+        </div>
+      </div>
     );
   }
 
@@ -2055,40 +1922,41 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
   }
 
   function renderSkillRow(row: ReturnType<typeof catalogSkillRows>[number]) {
-    const checked = form.config.selected_skills.includes(row.name);
-    const selectable = row.selectable;
     const busy = row.installStatus === 'installing' || row.installStatus === 'removing';
     const canInstall = !busy && (!row.installed || row.installStatus === 'failed')
       && hasSandbox && namedSandboxes.some((cfg) => cfg.id === form.config.sandbox_config_id);
     return (
-      <div key={row.id} className={`flex items-center gap-2 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1.5 text-[13px]${selectable ? '' : ' opacity-70'}`} data-skill-row={row.id}>
+      <article
+        key={row.id}
+        className={`skill-pick skill-pick--${row.selectable ? 'ready' : 'pending'}`}
+        data-skill-row={row.id}
+      >
         {skillsMode === 'selected' ? (
-          <Checkbox
-            data-skill-id={row.id}
-            checked={checked}
-            disabled={!selectable}
-            onChange={(event) => {
-              const next = event.target.checked;
-              patch((draft) => {
-                const set = new Set(draft.config.selected_skills);
-                if (next) set.add(row.name); else set.delete(row.name);
-                draft.config.selected_skills = [...set];
-              });
-            }}
-          />
+          <Checkbox className="skill-pick__check" value={row.name} disabled={!row.selectable} data-skill-id={row.id} />
         ) : null}
-        <span className="font-medium">{row.name}</span>
-        {row.description ? <span className="text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{row.description}</span> : null}
-        {!selectable ? (
-          <span className="ml-auto text-[12px] text-[var(--td-warning-color,#e37318)]">{row.installed ? row.installStatus : t('agent.editor.skillNotInstalled')}</span>
-        ) : null}
+        <div className="skill-pick__badge" aria-hidden="true"><TIcon name="system-code" size="16px" /></div>
+        <div className="skill-pick__body">
+          <div className="skill-pick__title-row">
+            <span className="skill-name" title={row.name}>{row.name}</span>
+            {!row.selectable ? (
+              <span className={`skill-pick__hint${busy ? ' skill-pick__hint--busy' : ''}`}>
+                <TIcon name={busy ? 'loading' : 'info-circle'} size="14px" />
+                {row.installed ? row.installStatus : t('agent.editor.skillNotInstalled')}
+              </span>
+            ) : null}
+          </div>
+          {row.description ? <p className="skill-desc" title={row.description}>{row.description}</p> : null}
+        </div>
         {canInstall ? (
-          <button type="button" className="cursor-pointer rounded-md border border-[var(--td-brand-color,#0052d9)] bg-[var(--td-bg-color-container,#fff)] px-2.5 py-[2px] text-[12px] text-[var(--td-brand-color,#0052d9)] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]" disabled={installingId !== ''}
-            onClick={() => void installSkill(row.id)}>
-            {installingId === row.id ? t('common.loading') : t('agent.editor.installShort')}
-          </button>
+          <Button size="small" variant="text" theme="primary" loading={installingId === row.id} title={t('agent.editor.installToThisSandbox')} data-skill-install={row.id} onClick={() => void installSkill(row.id)}>
+            {t('agent.editor.installShort')}
+          </Button>
+        ) : busy ? (
+          <Button size="small" variant="text" theme="primary" title={t('agent.editor.viewInstallProgress')} onClick={() => navigate('/platform/settings?section=skills')}>
+            {t('agent.editor.viewInstallProgress')}
+          </Button>
         ) : null}
-      </div>
+      </article>
     );
   }
 
@@ -2111,85 +1979,89 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[rgba(0,0,0,0.5)] backdrop-blur-[4px] [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale]" data-editor-overlay onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="relative flex h-[85vh] max-h-[750px] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-xl bg-[var(--td-bg-color-container,#fff)] text-[14px] text-[var(--td-text-color-primary,rgba(0,0,0,0.9))] shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-modal="true" aria-label={editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')} data-testid="agent-editor-modal" style={VUE_THEME_VARS}>
-        <button type="button" className="absolute top-4 right-4 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] transition-all duration-200 hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)] hover:text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]" aria-label={t('common.close')} onClick={onClose}>
-          {/* Vue close-btn: 20x20 stroke-2 X (AgentEditorModal.vue:10-14) */}
+  /* Vue <Teleport to="body">：overlay 挂 body，脱离 shell 的层叠/合成上下文。 */
+  return createPortal(
+    <div className="settings-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} data-editor-overlay>
+      <div className="settings-modal" role="dialog" aria-modal="true" aria-label={editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')} data-testid="agent-editor-modal">
+        {initializing ? (
+          <div className="editor-initializing" role="status" aria-label={t('common.loading')}>
+            <Loading size="medium" text={t('common.loading')} />
+          </div>
+        ) : null}
+        {/* 关闭按钮（Vue close-btn：20×20 stroke-2 X） */}
+        <button className="close-btn" aria-label={t('common.close')} onClick={onClose}>
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </button>
-        {initializing ? <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--td-bg-color-container,#fff)]" role="status">{t('common.loading')}</div> : null}
-        <div className="flex h-full w-full overflow-hidden">
-          <aside className="flex w-[208px] shrink-0 flex-col overflow-hidden border-r border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-settings-modal,#fafafa)]">
-            <h2 className="m-0 border-b border-[var(--td-component-stroke,#e7e7e7)] px-3.5 pt-4 pb-3 text-[16px] leading-[22px] font-semibold" data-editor-title>
-              {editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')}
-            </h2>
-            <nav className="flex-1 overflow-y-auto p-2 pb-3" data-guide="agent-editor-sidebar">
-              {navGroups.map((group, groupIndex) => (
-                <div key={group.key}>
-                  {/* Vue .nav-group-title (4945-4959): 12px/600 placeholder text,
-                      14px side padding; first group hugs the nav top (2px) while
-                      later groups breathe 8px above. */}
-                  <p className={`m-0 px-3.5 pb-[1px] text-[12px] leading-[18px] font-semibold tracking-[0.02em] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))] ${groupIndex === 0 ? 'pt-[2px]' : 'pt-2'}`}>{t(group.labelKey)}</p>
+        <div className="settings-container">
+          {/* 左侧导航 */}
+          <div className="settings-sidebar">
+            <div className="sidebar-header">
+              <h2 className="sidebar-title">{editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')}</h2>
+            </div>
+            <nav className="settings-nav" data-guide="agent-editor-sidebar">
+              {/* Vue template v-for 无包装层：group title / nav-item 是 .settings-nav
+                  直接子元素（.nav-group-title:first/:not(:first-child) 依赖该结构） */}
+              {navGroups.map((group) => (
+                <React.Fragment key={group.key}>
+                  <div className="nav-group-title">{t(group.labelKey)}</div>
                   {group.items.map((item) => (
-                    <button
+                    <div
                       key={item.key}
-                      type="button"
-                      className={`mb-[2px] flex h-8 w-full cursor-pointer items-center rounded-md border-none bg-transparent px-3 py-0 text-left text-[14px] leading-[20px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)] ${section === item.key ? 'bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] font-medium text-[var(--td-brand-color,#0052d9)]' : 'text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]'}`}
-                      data-section-key={item.key}
+                      className={`nav-item${section === item.key ? ' active' : ''}`}
                       data-guide={`agent-editor-nav-${item.key}`}
+                      data-section-key={item.key}
                       onClick={() => setSection(item.key)}
                     >
-                      {/* Vue 29: t-icon 16px + 9px gap, inherits row color */}
-                      <span className="mr-[9px] flex h-4 w-4 shrink-0 items-center justify-center [&_svg]:h-4 [&_svg]:w-4">
-                        <TIcon name={item.icon} />
-                      </span>
-                      <span className="flex-1">{t(item.labelKey)}</span>
-                    </button>
+                      <TIcon name={navIconName(item.icon)} className="nav-icon" />
+                      <span className="nav-label">{t(item.labelKey)}</span>
+                    </div>
                   ))}
-                </div>
+                </React.Fragment>
               ))}
             </nav>
-          </aside>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex-1 overflow-y-auto px-10 pt-7 pb-12">
+          </div>
+          {/* 右侧内容区域 */}
+          <div className="settings-content">
+            <div className={`content-wrapper${section === 'prompts' ? ' content-wrapper--prompts' : ''}`}>
               {renderSection()}
               {editorMode === 'edit' && form.id && !readOnly ? (
-                <div className="mt-8 border-t border-[var(--td-component-stroke,#e7e7e7)] pt-5">
+                <div className="wk-ae-version-actions">
                   <AgentVersionActions api={marketplaceApi} agentId={form.id} agentName={form.name} />
                 </div>
               ) : null}
             </div>
-            <footer className="flex flex-col gap-1.5 border-t border-[var(--td-component-stroke,#e7e7e7)] px-10 py-3">
-              {/* R486 KB warn — Vue MessagePlugin.warning(kbIncompatibleWarn, 4000);
-                  React has no global toast host here, so the warning rides the
-                  modal footer as a polite status region (shell share-toast form). */}
-              {kbWarn ? (
-                <p className="m-0 text-[12px] text-[var(--td-warning-color,#e37318)]" role="status" data-agent-type-warn>{kbWarn}</p>
-              ) : null}
+            {/* 底部操作栏 */}
+            <div className="settings-footer">
               {postCreate ? (
-                <p className="m-0 text-[12px] text-[var(--td-success-color,#2ba471)]" data-post-create>
-                  <strong>{t('agent.editor.postCreateHint.title')}</strong>
-                  {t('agent.editor.postCreateHint.footer')}
+                <p className="settings-footer-note" data-post-create>
+                  <TIcon name="check-circle-filled" className="settings-footer-note__icon" />
+                  <span>
+                    <strong>{t('agent.editor.postCreateHint.title')}</strong>
+                    {t('agent.editor.postCreateHint.footer')}
+                  </span>
                 </p>
               ) : null}
-              {saveError ? <p className="m-0 mt-0.5 text-[12px] text-[var(--td-error-color,#d54941)]" role="alert">{saveError}</p> : null}
-              <div className="flex justify-end gap-2">
-                <button type="button" className={`${AE_BTN} border border-[var(--td-component-border,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] text-inherit hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]`} data-editor-cancel onClick={onClose}>{t('common.cancel')}</button>
-                {!readOnly ? <button
-                  type="button"
-                  className={`${AE_BTN} border bg-[var(--td-brand-color,#0052d9)] border-[var(--td-brand-color,#0052d9)] text-white hover:bg-[var(--td-brand-color-hover,#266fe8)] disabled:cursor-not-allowed disabled:opacity-60`}
-                  data-editor-save
-                  disabled={readOnly || saving || initializing}
-                  onClick={() => void handleSave()}
-                >{saving ? t('common.loading') : saveLabel}</button> : null}
+              {saveError ? <p className="footer-note" data-tone="error" role="alert">{saveError}</p> : null}
+              <div className="settings-footer-actions">
+                <Button variant="outline" data-editor-cancel onClick={onClose}>{readOnly ? t('common.close') : t('common.cancel')}</Button>
+                {!readOnly ? (
+                  <Button
+                    theme="primary"
+                    data-guide="agent-create-submit"
+                    data-editor-save
+                    loading={saving}
+                    disabled={initializing}
+                    onClick={() => void handleSave()}
+                  >{saveLabel}</Button>
+                ) : null}
               </div>
-            </footer>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

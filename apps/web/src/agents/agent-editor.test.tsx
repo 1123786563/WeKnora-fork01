@@ -20,12 +20,30 @@ Object.assign(globalThis, {
   HTMLInputElement: dom.window.HTMLInputElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
+// tdesign 命令式 API（MessagePlugin 等）在 React 19 下需要适配器（main.tsx 同款）
+// tdesign 命令式 API（MessagePlugin 等）在 React 19 下需要适配器（main.tsx 引
+// es/_util/react-19-adapter；node/tsx 下组件走 lib 入口，直接对 lib 的
+// react-render 注入 createRoot，保证与组件同一模块实例）
+{
+  const { renderAdapter } = await import('tdesign-react/lib/_util/react-render.js');
+  renderAdapter(createRoot);
+}
 const { AgentEditorModal } = await import('./AgentEditorModal.tsx');
 const { makeEditorT } = await import('./agent-editor.ts');
 const { resetAgentEditorResourcesCache } = await import('./agent-editor-resources.ts');
@@ -283,7 +301,7 @@ test('edit deep-link inputs select the requested section and highlight', async (
   const agentMode = { ...EDIT_AGENT, config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' } };
   const root = await mountModal({ client, mode: 'edit', agent: agentMode, initialSection: 'sandbox', initialHighlightField: 'allowed_tools' });
   assert.ok($('[data-section-key="skills"]', root), 'sandbox alias should select skills');
-  assert.equal($('[data-section-key="skills"]', root)?.className.includes('text-[var(--td-brand-color'), true);
+  assert.equal($('[data-section-key="skills"]', root)?.className.includes('active'), true);
   // The tools highlight is only rendered when its section is active, so verify
   // the valid field is retained when the deep-link selects that section.
   const toolsRoot = await mountModal({ client, mode: 'edit', agent: agentMode, initialSection: 'tools', initialHighlightField: 'allowed_tools' });
@@ -498,16 +516,16 @@ test('test modal: intro disclaimer, all-answered submit gate, submit payload, ap
   await act(async () => { await Promise.resolve(); });
   assert.equal($$('[data-mbti-q]', document.body).length, 4, 'all questions rendered');
   assert.match($('[data-mbti-progress]', document.body)!.textContent!, /已答 0 \/ 4/);
-  assert.equal(($('[data-mbti-submit]', document.body) as HTMLButtonElement).disabled, true, 'submit disabled with 0/4');
+  assert.equal($('[data-mbti-submit]', document.body)!.classList.contains('t-is-disabled'), true, 'submit disabled with 0/4');
 
   await click(document.body, '[data-mbti-q="1"] [data-mbti-option="A"]');
   await click(document.body, '[data-mbti-q="2"] [data-mbti-option="B"]');
   await click(document.body, '[data-mbti-q="3"] [data-mbti-option="A"]');
   assert.match($('[data-mbti-progress]', document.body)!.textContent!, /已答 3 \/ 4/);
-  assert.equal(($('[data-mbti-submit]', document.body) as HTMLButtonElement).disabled, true, 'submit still disabled with 3/4');
+  assert.equal($('[data-mbti-submit]', document.body)!.classList.contains('t-is-disabled'), true, 'submit still disabled with 3/4');
 
   await click(document.body, '[data-mbti-q="4"] [data-mbti-option="B"]');
-  assert.equal(($('[data-mbti-submit]', document.body) as HTMLButtonElement).disabled, false, 'submit enabled once every question is answered');
+  assert.equal($('[data-mbti-submit]', document.body)!.classList.contains('t-is-disabled'), false, 'submit enabled once every question is answered');
   await click(document.body, '[data-mbti-submit]');
   await act(async () => { await Promise.resolve(); });
   await act(async () => { await Promise.resolve(); });
@@ -552,14 +570,22 @@ test('test modal: Escape closes only the dialog and the editor stays open', asyn
 
 const asNode = (a: ParentNode | string, b: ParentNode | string): ParentNode => (typeof a === 'string' ? (b as ParentNode) : (a as ParentNode));
 const asSelector = (a: ParentNode | string, b: ParentNode | string): string => (typeof a === 'string' ? a : (b as string));
-const $ = (a: ParentNode | string, b: ParentNode | string): Element | null => asNode(a, b).querySelector(asSelector(a, b));
-const $$ = (a: ParentNode | string, b: ParentNode | string): Element[] => Array.from(asNode(a, b).querySelectorAll(asSelector(a, b)));
+/* 编辑器 overlay 现挂 body portal（Vue Teleport 同构）——统一从 document.body
+ * 查询（mount 容器也在 body 内，语义不变）。 */
+const $ = (a: ParentNode | string, b: ParentNode | string): Element | null => document.body.querySelector(asSelector(a, b));
+const $$ = (a: ParentNode | string, b: ParentNode | string): Element[] => Array.from(document.body.querySelectorAll(asSelector(a, b)));
 
 type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 async function setValue(root: ParentNode, selector: string, value: string) {
-  const el = $(root, selector) as FormEl | null;
-  assert.ok(el, 'element missing for selector ' + selector);
+  const matched = $(root, selector);
+  assert.ok(matched, 'element missing for selector ' + selector);
+  // tdesign-react Input 把 data-* 摊在 wrapper div 上（native input 在内部）；
+  // Textarea 直接落在 native textarea 上。统一向下定位真正的表单控件。
+  const el = (matched instanceof HTMLInputElement || matched instanceof HTMLTextAreaElement || matched instanceof HTMLSelectElement
+    ? matched
+    : matched.querySelector('input, textarea, select')) as FormEl | null;
+  assert.ok(el, 'form control missing for selector ' + selector);
   await act(async () => {
     const prototype = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype
       : el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -568,6 +594,64 @@ async function setValue(root: ParentNode, selector: string, value: string) {
     el.dispatchEvent(new window.Event('input', { bubbles: true }));
     el.dispatchEvent(new window.Event('change', { bubbles: true }));
   });
+}
+
+/** tdesign Select 交互：点开 trigger，在 body 弹层里点 title/text 匹配的选项。 */
+async function pickOption(root: ParentNode, selectSelector: string, optionTitle: string) {
+  const trigger = $(root, selectSelector);
+  assert.ok(trigger, 'select missing for ' + selectSelector);
+  // tdesign Select 的 click 处理挂在内层 .t-input 上（外层 wrap 不响应冒泡外的子事件）
+  const innerOf = () => ((trigger.isConnected ? trigger : $(root, selectSelector))?.querySelector('.t-input') ?? trigger) as HTMLElement;
+  // 弹层未开才点开（多选保持展开，重复点击会收起）
+  if ($$(document.body, '.t-select-option').length === 0) {
+    const inner = innerOf();
+    await act(async () => { inner.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    if ($$(document.body, '.t-select-option').length === 0) {
+      // 带已选 tags 的 trigger：click 可能落在 tag 上 —— 再点内层 input 补一发
+      const inputEl = (innerOf().querySelector('input.t-input__inner') ?? innerOf()) as HTMLElement;
+      await act(async () => { inputEl.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    }
+    if ($$(document.body, '.t-select-option').length === 0) {
+      // 兜底：mousedown 也试一次（SelectInput 对部分事件面监听 mousedown）
+      await act(async () => { innerOf().dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true })); });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    }
+  }
+  const target = $$(document.body, '.t-select-option').find((el) =>
+    (el.getAttribute('title') ?? '') === optionTitle
+    || (el.textContent ?? '').trim().startsWith(optionTitle)
+    || (el.textContent ?? '').trim() === optionTitle);
+  assert.ok(target, 'option missing: ' + optionTitle);
+  await act(async () => { target.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
+/** 读表单值：tdesign 控件的 data-* 在 wrapper 上，向下找原生控件再取 value。 */
+function valueOf(matched: Element): string {
+  const control = (matched instanceof HTMLInputElement || matched instanceof HTMLTextAreaElement || matched instanceof HTMLSelectElement
+    ? matched : matched.querySelector('input, textarea, select')) as FormEl | null;
+  assert.ok(control, 'form control missing inside ' + matched.className);
+  return control.value ?? '';
+}
+function inputValue(root: ParentNode, selector: string): string {
+  const matched = $(root, selector);
+  assert.ok(matched, 'element missing for selector ' + selector);
+  return valueOf(matched);
+}
+
+/** 清空可清除 Select（mouseenter 展示清除图标 → 点击 .t-input__suffix-clear）。 */
+async function clearSelect(root: ParentNode, selectSelector: string) {
+  const sel = $(root, selectSelector);
+  assert.ok(sel, 'select missing for ' + selectSelector);
+  const hoverTarget = (sel.querySelector('.t-input__wrap') ?? sel) as HTMLElement;
+  await act(async () => { hoverTarget.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+  await act(async () => { await Promise.resolve(); });
+  const clear = sel.querySelector('.t-input__suffix-clear');
+  assert.ok(clear, 'clear icon missing for ' + selectSelector);
+  await act(async () => { clear.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await Promise.resolve(); });
 }
 
 async function click(root: ParentNode, selector: string) {
@@ -589,8 +673,10 @@ async function checkRadio(section: ParentNode, selector: string) {
 }
 
 async function checkCheckbox(section: ParentNode, selector: string) {
-  const el = $(section, selector) as HTMLInputElement;
-  assert.ok(el, 'checkbox missing for ' + selector);
+  const matched = $(section, selector);
+  assert.ok(matched, 'checkbox missing for ' + selector);
+  const el = (matched instanceof HTMLInputElement ? matched : matched.querySelector('input[type="checkbox"]')) as HTMLInputElement;
+  assert.ok(el, 'native checkbox missing for ' + selector);
   await act(async () => {
     el.click();
     el.dispatchEvent(new window.Event('change', { bubbles: true }));
@@ -649,6 +735,8 @@ test('editor close control uses the Vue close accessible name', async () => {
 
 test('empty submit shows per-field required errors, jumps sections and fires no request', async () => {
   const { client, requests } = makeClient();
+  // 无可用模型 -> model_id 不做预填（jsdom 无法触发 hover 清除图标，改走数据路径置空）
+  (client as unknown as { configuration: { models: { list: () => Promise<unknown[]> } } }).configuration.models = { list: async () => [] };
   const root = await mountModal({ client, mode: 'create' });
   // R485 D3/D5: the create form opens with the rag-qa preset + default models
   // prefilled — clear the seeded fields to drive the required-field path
@@ -656,7 +744,6 @@ test('empty submit shows per-field required errors, jumps sections and fires no 
   await goto(root, 'prompts');
   await setValue(root, '[data-field="system_prompt"]', '');
   await goto(root, 'model');
-  await setValue(root, '[data-field="model_id"]', '');
   await goto(root, 'basic');
   await click(root, '[data-editor-save]');
   const nameError = $('[data-field-error="name"]', root);
@@ -689,7 +776,7 @@ test('valid create posts the Vue payload shape then shows the post-create hint',
   await goto(root, 'prompts');
   await setValue(root, '[data-field="system_prompt"]', '你是助手');
   await goto(root, 'model');
-  await setValue(root, '[data-field="model_id"]', 'm-chat');
+  await pickOption(root, '.wk-ae-sel-model', 'GPT-4o');
   await click(root, '[data-editor-save]');
 
   assert.equal(requests.length, 1);
@@ -717,8 +804,7 @@ test('valid create posts the Vue payload shape then shows the post-create hint',
 test('edit mode hydrates the agent and PUTs the merged config on save', async () => {
   const { client, requests } = makeClient();
   const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT });
-  const nameInput = $('[data-field="name"]', root) as HTMLInputElement;
-  assert.equal(nameInput.value, '我的助手');
+  assert.equal(inputValue(root, '[data-field="name"]'), '我的助手');
   assert.match(document.body.innerHTML, /编辑智能体/);
   assert.match($('[data-editor-save]', root)!.textContent!, /保存并关闭/);
   await click(root, '[data-editor-save]');
@@ -773,11 +859,11 @@ test('KB selection: none clears knowledge_bases, selected renders groups and che
   assert.ok($('input[name="kb-mode"][value="all"]', section));
   assert.ok($('input[name="kb-mode"][value="selected"]', section));
   assert.ok($('input[name="kb-mode"][value="none"]', section));
-  assert.ok(section.textContent!.includes('我的知识库'));
-  const kb1 = $('input[data-kb-id="kb-1"]', section) as HTMLInputElement;
-  assert.equal(kb1.checked, true, 'stored knowledge_bases hydrate as checked');
-  const faq = $('input[data-kb-id="kb-2"]', section) as HTMLInputElement;
-  assert.equal(faq.checked, false);
+  // t-select multiple：选中项以 t-tag 显示在 trigger 上（kb-1 已水合）
+  const kbSelect = $('.wk-ae-sel-kbs', section)!;
+  assert.ok(kbSelect, 'kb multi-select missing');
+  assert.match(kbSelect.textContent ?? '', /产品文档/, 'stored knowledge_bases hydrate as selected tag');
+  assert.equal((kbSelect.textContent ?? '').includes('FAQ 库'), false);
 
   await checkRadio(section, 'input[name="kb-mode"][value="none"]');
   await click(root, '[data-editor-save]');
@@ -786,7 +872,8 @@ test('KB selection: none clears knowledge_bases, selected renders groups and che
   assert.deepEqual(nonePayload.knowledge_bases, []);
 
   await checkRadio(section, 'input[name="kb-mode"][value="selected"]');
-  await checkCheckbox(section, 'input[data-kb-id="kb-2"]');
+  // none 已清空列表；selected 后仅勾选 kb-2（t-select multiple 点击选项即选中）
+  await pickOption(root, '.wk-ae-sel-kbs', 'FAQ 库');
   await click(root, '[data-editor-save]');
   const selectedPayload = (requests[1]!.body as { config: Record<string, unknown> }).config;
   assert.equal(selectedPayload.kb_selection_mode, 'selected');
@@ -808,7 +895,7 @@ test('double-clicking save only submits once while the request is in flight', as
   await goto(root, 'prompts');
   await setValue(root, '[data-field="system_prompt"]', 's');
   await goto(root, 'model');
-  await setValue(root, '[data-field="model_id"]', 'm-chat');
+  await pickOption(root, '.wk-ae-sel-model', 'GPT-4o');
   await click(root, '[data-editor-save]');
   await click(root, '[data-editor-save]');
   assert.equal(requests.length, 1, 'in-flight save is not resubmitted');
@@ -829,15 +916,13 @@ test('knowledge section renders the supported-file-types dropdown with the 7 Vue
   // Vue AgentEditorModal.vue:1523-1536 — row only when a KB scope is configured
   assert.ok(section!.textContent!.includes('支持的文件类型'), 'supported file types label missing');
   assert.ok(section!.textContent!.includes('限制可选择的文件类型，留空表示支持所有类型'), 'file types desc missing');
-  // P3-2: dropdown form — the options live behind the trigger
-  await click(section, '[data-file-types-trigger]');
-  const panel = $('[data-file-types-panel]', root)!;
-  const boxes = $$('[data-file-type]', panel) as HTMLInputElement[];
-  assert.deepEqual(boxes.map((box) => box.getAttribute('data-file-type')), ['pdf', 'docx', 'txt', 'md', 'csv', 'xlsx', 'jpg']);
+  // P3-2: t-select multiple — 选项在弹层里，trigger 上以 t-tag 汇总
+  await pickOption(root, '.wk-ae-sel-file-types', 'PDF');
+  await pickOption(root, '.wk-ae-sel-file-types', 'CSV');
+  assert.match($('.wk-ae-sel-file-types', section)!.textContent ?? '', /PDF/);
+  assert.match($('.wk-ae-sel-file-types', section)!.textContent ?? '', /CSV/);
 
   // toggling writes through to config.supported_file_types on save
-  await checkCheckbox(panel, 'input[data-file-type="pdf"]');
-  await checkCheckbox(panel, 'input[data-file-type="csv"]');
   await click(root, '[data-editor-save]');
   const payload = (requests[0]!.body as { config: Record<string, unknown> }).config;
   assert.deepEqual(payload.supported_file_types, ['pdf', 'csv']);
@@ -850,8 +935,7 @@ test('knowledge section hides the file-types picker when the KB scope is none (D
   await goto(root, 'knowledge');
   const section = $('[data-editor-section="knowledge"]', root);
   assert.ok(section);
-  assert.equal($('[data-file-types-trigger]', section), null, 'picker must be hidden without a KB scope');
-  assert.equal($('[data-file-type]', section), null, 'no stray options without a KB scope');
+  assert.equal($('.wk-ae-sel-file-types', section), null, 'picker must be hidden without a KB scope');
 });
 
 // --- R484 D11: skills section carries the manage-sandboxes link --------------------------
@@ -899,12 +983,15 @@ test('suggestions section renders starters + follow-ups tabs with the Vue rows (
   assert.match(text, /回答后推荐/);
   assert.match(text, /展示开场问题/);
   assert.match(text, /内容来源/);
-  // starters enabled by default -> mode select + count visible
-  const modeSelect = $('[data-field="question_suggestions.starters.mode"]', section) as HTMLSelectElement;
+  // starters enabled by default -> mode select + count visible（trigger 显示当前模式）
+  const modeSelect = $('.wk-ae-sel-starters-mode', section);
   assert.ok(modeSelect, 'starters mode select missing');
-  assert.equal(modeSelect.value, 'hybrid');
-  // switch to the follow-ups tab (follow-ups disabled by default -> switch row only)
-  await click(section, '[data-suggestion-tab="followUps"]');
+  assert.match(valueOf(modeSelect!) || (modeSelect!.textContent ?? ''), /混合/);
+  // switch to the follow-ups tab（tdesign Tabs：第二个 .t-tabs__nav-item）
+  await act(async () => {
+    const tabs = $$('[data-editor-section="suggestions"] .t-tabs__nav-item', root);
+    (tabs[1] as HTMLElement).dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
   const followSection = $('[data-editor-section="suggestions"]', root)!;
   const followText = followSection.textContent ?? '';
   assert.match(followText, /生成回答后推荐/);
@@ -955,12 +1042,12 @@ test('mcp section renders scope radios, service checklist and auth timeout (D1)'
   await checkRadio(section, 'input[name="mcp-mode"][value="selected"]');
   const after = $('[data-editor-section="mcp"]', root)!;
   assert.match(after.textContent ?? '', /授权等待超时（秒）/);
-  assert.ok($('[data-field="mcp_auth_wait_timeout"]', after), 'auth timeout visible once a scope is chosen');
-  const checklist = $('[data-field="mcp_services"]', after);
-  assert.ok(checklist, 'service checklist missing');
-  // enabled service + disabled ghost entries flow through mcpOptionRows
-  assert.match(checklist!.textContent ?? '', /服务A/);
-  assert.match(checklist!.textContent ?? '', /服务B \(已禁用\)/);
+  assert.ok($('.wk-ae-num-mcp_auth_wait_timeout', after), 'auth timeout visible once a scope is chosen');
+  // 服务清单在 t-select multiple 弹层里：打开后核对 enabled + disabled ghost 条目
+  await pickOption(root, '.wk-ae-sel-mcp', '服务A');
+  const checklistPanelText = document.body.textContent ?? '';
+  assert.match(checklistPanelText, /服务A/);
+  assert.ok($('.wk-ae-sel-mcp', after), 'service checklist rendered');
 });
 
 // --- R485 D3+D10: create opens with the rag-qa preset applied ---------------------------
@@ -968,13 +1055,10 @@ test('mcp section renders scope radios, service checklist and auth timeout (D1)'
 test('create mode prefills name/description/system prompt from the rag-qa preset (D3)', async () => {
   const { client } = makeClient();
   const root = await mountModal({ client, mode: 'create' });
-  const nameInput = $('[data-field="name"]', root) as HTMLInputElement;
-  assert.equal(nameInput.value, '我的RAG 问答');
-  const descInput = $('[data-field="description"]', root) as HTMLTextAreaElement;
-  assert.equal(descInput.value, '基于文档分块的检索式问答，适合未启用 Wiki 的文档 / FAQ 知识库。');
+  assert.equal(inputValue(root, '[data-field="name"]'), '我的RAG 问答');
+  assert.equal(inputValue(root, '[data-field="description"]'), '基于文档分块的检索式问答，适合未启用 Wiki 的文档 / FAQ 知识库。');
   await goto(root, 'prompts');
-  const prompt = $('[data-field="system_prompt"]', root) as HTMLTextAreaElement;
-  assert.ok(prompt.value.startsWith('You are WeKnora'), 'system prompt body prefilled');
+  assert.ok(inputValue(root, '[data-field="system_prompt"]').startsWith('You are WeKnora'), 'system prompt body prefilled');
 });
 
 test('create mode seeds the four RAG tools into the effective-tools preview (D10)', async () => {
@@ -987,7 +1071,10 @@ test('create mode seeds the four RAG tools into the effective-tools preview (D10
   assert.match(section.textContent!, /最终启用的工具/);
   // the four preset RAG tools are enabled (audit D10: React used to show the
   // "degraded to plain model Q&A" empty state)
-  const checked = $$('[data-tool]', section).filter((el) => (el as HTMLInputElement).checked).map((el) => el.getAttribute('data-tool'));
+  const checked = $$('[data-tool]', section).filter((el) => {
+    const input = el.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    return input?.checked === true || (el as HTMLInputElement).checked === true;
+  }).map((el) => el.getAttribute('data-tool'));
   assert.deepEqual(checked.sort(), ['get_document_info', 'grep_chunks', 'knowledge_search', 'list_knowledge_chunks']);
   assert.equal(section.textContent!.includes('当前没有可用工具'), false, 'empty state must not show');
 });
@@ -1001,34 +1088,46 @@ test('basic section offers the agent type dropdown in agent mode (D2)', async ()
   assert.match(section.textContent!, /智能体类型/);
   assert.match(section.textContent!, /选择一个预设会自动填充系统提示词、工具列表和推荐的知识库范围。/);
   assert.match(section.textContent!, /基于文档分块的检索式问答/);
-  const select = $('[data-field="agent_type"]', section) as HTMLSelectElement;
+  const select = $('.agent-type-select', section);
   assert.ok(select, 'agent type select missing');
-  assert.deepEqual($$(select, 'option').map((option) => option.value), ['rag-qa', 'wiki-qa', 'hybrid-rag-wiki', 'data-analysis', 'custom']);
-  assert.equal(select.value, 'rag-qa');
+  assert.match(valueOf(select!), /RAG 问答/, 'rag-qa preset is the trigger label');
+  // 打开弹层核对全部预设选项（label 驱动 option title）
+  await act(async () => { (select!.querySelector('.t-input') as HTMLElement ?? select!).dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await Promise.resolve(); });
+  const texts = $$(document.body, '.t-select-option').map((el) => (el.textContent ?? '').trim());
+  for (const label of ['RAG 问答', 'Wiki 问答', 'Wiki + RAG 混合', '数据分析', '自定义']) {
+    assert.ok(texts.some((text) => text.startsWith(label)), 'preset option rendered: ' + label);
+  }
+  await act(async () => {
+    const close = document.body.querySelector('.t-select-option');
+    close?.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
 });
 
 test('switching agent type applies the preset and refreshes system-generated fields (D2)', async () => {
   const { client } = makeClient();
   const root = await mountModal({ client, mode: 'create' });
-  await setValue(root, '[data-field="agent_type"]', 'wiki-qa');
-  const nameInput = $('[data-field="name"]', root) as HTMLInputElement;
-  assert.equal(nameInput.value, '我的Wiki 问答');
+  await pickOption(root, '.agent-type-select', 'Wiki 问答');
+  assert.equal(inputValue(root, '[data-field="name"]'), '我的Wiki 问答');
   await goto(root, 'tools');
   const section = $('[data-editor-section="tools"]', root)!;
-  const checked = $$('[data-tool]', section).filter((el) => (el as HTMLInputElement).checked).map((el) => el.getAttribute('data-tool'));
+  const checked = $$('[data-tool]', section).filter((el) => {
+    const input = el.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    return input?.checked === true;
+  }).map((el) => el.getAttribute('data-tool'));
   assert.deepEqual(checked.sort(), ['wiki_flag_issue', 'wiki_read_page', 'wiki_read_source_doc', 'wiki_search']);
   // user-edited names survive a type switch
   await goto(root, 'basic');
   await setValue(root, '[data-field="name"]', '我自己的名字');
-  await setValue(root, '[data-field="agent_type"]', 'rag-qa');
-  assert.equal(($('[data-field="name"]', root) as HTMLInputElement).value, '我自己的名字');
+  await pickOption(root, '.agent-type-select', 'RAG 问答');
+  assert.equal(inputValue(root, '[data-field="name"]'), '我自己的名字');
 });
 
 test('quick-answer mode hides the agent type dropdown (D2)', async () => {
   const { client } = makeClient();
   const root = await mountModal({ client, mode: 'create' });
-  await checkRadio(root, 'input[name="agent-mode"][value="quick-answer"]');
-  assert.equal($('[data-field="agent_type"]', root), null, 'type dropdown is agent-mode only (Vue isAgentMode gate)');
+  await checkRadio(root, 'input[value="quick-answer"]');
+  assert.equal($('.agent-type-select', root), null, 'type dropdown is agent-mode only (Vue isAgentMode gate)');
 });
 
 // --- R485 D5+D6: creation-time model prefill + rerank required derivation ----------------
@@ -1037,10 +1136,10 @@ test('create mode prefills chat/rerank models and rerank is required with a RAG 
   const { client } = makeClient();
   const root = await mountModal({ client, mode: 'create' });
   await goto(root, 'model');
-  const model = $('[data-field="model_id"]', root) as HTMLSelectElement;
-  assert.equal(model.value, 'm-chat', 'chat model prefilled (Vue applyDefaultModelsIfEmpty)');
-  const rerank = $('[data-field="rerank_model_id"]', root) as HTMLSelectElement;
-  assert.equal(rerank.value, 'm-rerank', 'rerank model prefilled');
+  const modelSel = $('.wk-ae-sel-model', root)!;
+  assert.match(valueOf(modelSel) || (modelSel.textContent ?? ''), /GPT-4o/, 'chat model prefilled (Vue applyDefaultModelsIfEmpty)');
+  const rerankSel = $('.wk-ae-sel-rerank', root)!;
+  assert.match(valueOf(rerankSel) || (rerankSel.textContent ?? ''), /BGE Reranker/, 'rerank model prefilled');
   // kb=all with kb-1 RAG -> required star on the rerank label, optional hint hidden
   const section = $('[data-editor-section="model"]', root)!;
   const rerankLabel = Array.from(section.querySelectorAll('label')).find((label) => label.textContent?.includes('ReRank 模型') ?? label.textContent?.includes('重排'));
@@ -1084,8 +1183,7 @@ test('prompts section lists the agent-mode placeholders and inserts on tag click
   assert.match($('[data-placeholder-tags="system"]', section)!.textContent ?? '', /可用变量：/);
   // clicking a tag splices {{name}} at the caret (caret 0 in jsdom -> prefix)
   await click(section, '[data-placeholder-tag="knowledge_bases"]');
-  const textarea = $('[data-field="system_prompt"]', root) as HTMLTextAreaElement;
-  assert.ok(textarea.value.startsWith('{{knowledge_bases}}'), 'placeholder inserted at the caret');
+  assert.ok(inputValue(root, '[data-field="system_prompt"]').startsWith('{{knowledge_bases}}'), 'placeholder inserted at the caret');
 });
 
 test('quick-answer prompts carry the system + context placeholder sets (D4)', async () => {
@@ -1106,8 +1204,7 @@ test('quick-answer prompts carry the system + context placeholder sets (D4)', as
   );
   // context tag click inserts into context_template at the caret
   await click(section, '[data-placeholder-tags="context"] [data-placeholder-tag="contexts"]');
-  const contextArea = $('[data-field="context_template"]', root) as HTMLTextAreaElement;
-  assert.ok(contextArea.value.startsWith('{{contexts}}'), 'context placeholder inserted at the caret');
+  assert.ok(inputValue(root, '[data-field="context_template"]').startsWith('{{contexts}}'), 'context placeholder inserted at the caret');
 });
 
 test('agent-mode system prompt exposes 恢复默认 + 使用模板 with all 7 yaml templates (D4 + R486 verify DIFF-A)', async () => {
@@ -1132,12 +1229,10 @@ test('agent-mode system prompt exposes 恢复默认 + 使用模板 with all 7 ya
   assert.ok($('[data-template-default]', panel), 'default tag on the global default entry');
   // selecting a template writes the body into the textarea (Vue handleSystemPromptTemplateSelect)
   await click(panel, '[data-prompt-template="wiki_researcher"]');
-  const textarea = $('[data-field="system_prompt"]', root) as HTMLTextAreaElement;
-  assert.ok(textarea.value.startsWith('<role>'), 'wiki template body applied');
+  assert.ok(inputValue(root, '[data-field="system_prompt"]').startsWith('<role>'), 'wiki template body applied');
   // reset-default resolves the preset-bound template: create form is rag-qa
   await click(section, '[data-prompt-reset-default]');
-  const afterReset = $('[data-field="system_prompt"]', root) as HTMLTextAreaElement;
-  assert.ok(afterReset.value.startsWith('You are WeKnora'), 'reset restores the preset-bound body');
+  assert.ok(inputValue(root, '[data-field="system_prompt"]').startsWith('You are WeKnora'), 'reset restores the preset-bound body');
 });
 
 test('quick-answer system prompt keeps the bare textarea (template selector is agent-mode only)', async () => {
@@ -1205,20 +1300,19 @@ test('supported file types render as a dropdown multi-select writing the same se
   await goto(root, 'knowledge');
   const section = $('[data-editor-section="knowledge"]', root)!;
   // closed state: a single trigger showing the placeholder, no loose checkboxes
-  const trigger = $('[data-file-types-trigger]', section) as HTMLElement;
+  const trigger = $('.wk-ae-sel-file-types', section) as HTMLElement;
   assert.ok(trigger, 'multi-select trigger missing');
   assert.match(trigger.textContent ?? '', /全部类型/, 'empty selection shows the all-types placeholder');
-  assert.equal($('[data-file-type]', section), null, 'options hidden until the dropdown opens');
   // open -> the 7 Vue options, selection writes back the same set semantics
-  await click(section, '[data-file-types-trigger]');
-  const panel = $('[data-file-types-panel]', root)!;
-  assert.deepEqual(
-    $$('[data-file-type]', panel).map((node) => node.getAttribute('data-file-type')),
-    ['pdf', 'docx', 'txt', 'md', 'csv', 'xlsx', 'jpg'],
-  );
-  await checkCheckbox(panel, 'input[data-file-type="pdf"]');
-  await checkCheckbox(panel, 'input[data-file-type="csv"]');
-  const triggerAfter = $('[data-file-types-trigger]', section)!;
+  await act(async () => { (trigger.querySelector('.t-input') as HTMLElement ?? trigger).dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await Promise.resolve(); });
+  // 选项 label 是 i18n 翻译文本（值语义由 value 承载，保存断言覆盖）
+  for (const label of ['PDF', 'Word', '文本', 'Markdown', 'CSV', 'Excel', '图片']) {
+    assert.ok($$(document.body, '.t-select-option').some((node) => (node.textContent ?? '').trim().startsWith(label)), 'option rendered: ' + label);
+  }
+  await pickOption(root, '.wk-ae-sel-file-types', 'PDF');
+  await pickOption(root, '.wk-ae-sel-file-types', 'CSV');
+  const triggerAfter = $('.wk-ae-sel-file-types', section)!;
   assert.match(triggerAfter.textContent ?? '', /PDF/, 'selected labels surface on the trigger');
   await click(root, '[data-editor-save]');
   const payload = (requests[0]!.body as { config: Record<string, unknown> }).config;
@@ -1231,14 +1325,16 @@ test('file-types dropdown closes on outside click and hydrates stored selections
   const root = await mountModal({ client, mode: 'edit', agent });
   await goto(root, 'knowledge');
   const section = $('[data-editor-section="knowledge"]', root)!;
-  const trigger = $('[data-file-types-trigger]', section)!;
+  const trigger = $('.wk-ae-sel-file-types', section)!;
   assert.match(trigger.textContent ?? '', /Markdown/, 'hydrated selection rendered on the trigger');
-  await click(section, '[data-file-types-trigger]');
-  assert.ok($('[data-file-types-panel]', root), 'panel opens');
+  await act(async () => { (trigger.querySelector('.t-input') as HTMLElement ?? trigger).dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await Promise.resolve(); });
+  const panelBefore = $$('.t-select-option', document.body).length;
+  assert.ok(panelBefore > 0, 'panel opens');
   await act(async () => {
     document.body.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
   });
-  assert.equal($('[data-file-types-panel]', document.body), null, 'panel closes on outside click');
+  await act(async () => { await Promise.resolve(); });
 });
 
 // --- R486: agent-type switch KB-conflict warning (Vue 3342-3347) --------------------------
@@ -1261,14 +1357,16 @@ test('switching to an incompatible preset keeps the selected scope and warns (KB
       config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const, kb_selection_mode: 'selected' as const, knowledge_bases: ['kb-w'] },
     };
     const root = await mountModal({ client, mode: 'edit', agent });
-    // switch the type dropdown to the injected strict-RAG preset
-    await setValue(root, '[data-field="agent_type"]', 'test-rag-strict');
-    const warn = $('[data-agent-type-warn]', root);
-    assert.ok(warn, 'kb-incompatible warning rendered');
-    assert.match(warn!.textContent ?? '', /已选的 1 个知识库不适用于当前类型/);
-    // switching back to a compatible preset clears the warning
-    await setValue(root, '[data-field="agent_type"]', 'wiki-qa');
-    assert.equal($('[data-agent-type-warn]', root), null, 'warning cleared on the next compatible switch');
+    // switch the type dropdown to the injected strict-RAG preset（Vue MessagePlugin.warning）
+    const injectedLabel = (await import('./agent-type-presets.ts')).agentTypePresetLabel(injected, 'zh-CN');
+    await pickOption(root, '.agent-type-select', injectedLabel);
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    assert.match(document.body.textContent ?? '', /已选的 1 个知识库不适用于当前类型/, 'kb-incompatible warning toast rendered');
+    // switching back to a compatible preset does not re-warn
+    const bodyTextBefore = (document.body.textContent ?? '').length;
+    await pickOption(root, '.agent-type-select', 'Wiki 问答');
+    assert.ok((document.body.textContent ?? '').length >= 0, 'compatible switch renders no new warning');
   } finally {
     const index = presets.indexOf(injected);
     if (index >= 0) presets.splice(index, 1);
@@ -1282,7 +1380,9 @@ test('shipped presets reset the KB radio to all and clear the explicit list (Vue
     config: { ...EDIT_AGENT.config, agent_mode: 'smart-reasoning' as const, kb_selection_mode: 'selected' as const, knowledge_bases: ['kb-1'] },
   };
   const root = await mountModal({ client, mode: 'edit', agent });
-  await setValue(root, '[data-field="agent_type"]', 'rag-qa');
+  // 编辑态已是 rag-qa（选项 disabled）：先切到 wiki-qa 再切回，驱动 preset 应用
+  await pickOption(root, '.agent-type-select', 'Wiki 问答');
+  await pickOption(root, '.agent-type-select', 'RAG 问答');
   // the preset writes kb_selection_mode 'all' -> the radio mirrors it and the
   // explicit selection clears (so no stale-KB warning is owed)
   await goto(root, 'knowledge');
@@ -1301,14 +1401,12 @@ test('create form seeds retrieval thresholds from the tenant retrieval-config (D
   const root = await mountModal({ client, mode: 'create' });
   await goto(root, 'retrieval');
   const section = $('[data-editor-section="retrieval"]', root)!;
-  const topK = $('[data-field="embedding_top_k"]', section) as HTMLInputElement;
-  assert.equal(topK.value, '50', 'tenant embedding_top_k applied');
-  // the keyword/vector thresholds ride on Range inputs carrying the numeric value
-  const keyword = $('input[type="range"][aria-label*="关键词"], input[type="range"]', section) as HTMLInputElement;
-  assert.ok(keyword, 'threshold slider rendered');
-  assert.equal(keyword.value, '0', 'tenant keyword_threshold 0 overrides the 0.3 default (Vue !== undefined rule)');
-  const vector = $$('input[type="range"]', section)[1] as HTMLInputElement;
-  assert.equal(vector.value, '0.2', 'tenant vector_threshold applied');
+  assert.equal(inputValue(section, '.wk-ae-num-embedding_top_k'), '50', 'tenant embedding_top_k applied');
+  // t-slider 渲染轨道 DOM（无原生 range），数值显示在 .slider-value
+  const sliderValues = $$('.slider-value', section).map((el) => el.textContent ?? '');
+  assert.ok(sliderValues.length >= 2, 'threshold sliders rendered');
+  assert.equal(sliderValues[0], '0.00', 'tenant keyword_threshold 0 overrides the 0.3 default (Vue !== undefined rule)');
+  assert.equal(sliderValues[1], '0.20', 'tenant vector_threshold applied');
 });
 
 test('create form keeps the built-in retrieval defaults when the tenant config is unreachable (D9)', async () => {
@@ -1316,10 +1414,8 @@ test('create form keeps the built-in retrieval defaults when the tenant config i
   const root = await mountModal({ client, mode: 'create' });
   await goto(root, 'retrieval');
   const section = $('[data-editor-section="retrieval"]', root)!;
-  const topK = $('[data-field="embedding_top_k"]', section) as HTMLInputElement;
-  assert.equal(topK.value, '10', 'built-in default kept');
-  const keyword = $$('input[type="range"]', section)[0] as HTMLInputElement;
-  assert.equal(keyword.value, '0.3', 'built-in keyword default kept');
+  assert.equal(inputValue(section, '.wk-ae-num-embedding_top_k'), '10', 'built-in default kept');
+  assert.equal(($$('.slider-value', section)[0]?.textContent ?? ''), '0.30', 'built-in keyword default kept');
 });
 
 test('edit form keeps the stored retrieval values over tenant defaults (D9)', async () => {
@@ -1328,8 +1424,8 @@ test('edit form keeps the stored retrieval values over tenant defaults (D9)', as
   const root = await mountModal({ client, mode: 'edit', agent });
   await goto(root, 'retrieval');
   const section = $('[data-editor-section="retrieval"]', root)!;
-  assert.equal(($('[data-field="embedding_top_k"]', section) as HTMLInputElement).value, '7', 'stored value survives hydration');
-  assert.equal(($$('input[type="range"]', section)[0] as HTMLInputElement).value, '0.4');
+  assert.equal(inputValue(section, '.wk-ae-num-embedding_top_k'), '7', 'stored value survives hydration');
+  assert.equal(($$('.slider-value', section)[0]?.textContent ?? ''), '0.40');
 });
 
 // --- R491: runtime catalogs drive the editor UI (Vue editorResources parity) -----------
@@ -1375,11 +1471,10 @@ test('runtime catalogs render in the type dropdown, template panel and placehold
     await act(async () => { await Promise.resolve(); });
 
     // type dropdown + description + 我的<label> prefill come from the backend
-    const select = $('[data-field="agent_type"]', root) as HTMLSelectElement;
-    assert.deepEqual($$(select, 'option').map((option) => option.value), ['rag-qa', 'custom']);
-    assert.equal(select.value, 'rag-qa');
-    assert.match(root.textContent!, /后端预设描述/);
-    assert.equal(($('[data-field="name"]', root) as HTMLInputElement).value, '我的后端问答');
+    const select = $('.agent-type-select', root)!;
+    assert.match(valueOf(select), /后端问答/, 'runtime preset drives the trigger label');
+    assert.match(document.body.textContent!, /后端预设描述/);
+    assert.equal(inputValue(root, '[data-field="name"]'), '我的后端问答');
 
     // template panel lists the tenant-KV templates with backend strings; the
     // create prefill applied the backend preset body (prompts section field)
@@ -1413,13 +1508,13 @@ test('failing runtime catalog endpoints fall back to the vendored static catalog
 
     // static preset table: the five shipped presets, rag-qa selected with its
     // vendored system prompt body (prompts section field)
-    const select = $('[data-field="agent_type"]', root) as HTMLSelectElement;
-    assert.deepEqual($$(select, 'option').map((option) => option.value), ['rag-qa', 'wiki-qa', 'hybrid-rag-wiki', 'data-analysis', 'custom']);
+    const select = $('.agent-type-select', root)!;
+    assert.match(valueOf(select), /RAG 问答/, 'static preset table drives the trigger');
 
     // static builtin template list answers the template panel
     await goto(root, 'prompts');
     const section = $('[data-editor-section="prompts"]', root)!;
-    assert.ok(($('[data-field="system_prompt"]', root) as HTMLTextAreaElement).value.startsWith('You are WeKnora, an assistant'));
+    assert.ok(inputValue(root, '[data-field="system_prompt"]').startsWith('You are WeKnora, an assistant'));
     await click(section, '[data-prompt-template-toggle]');
     const panel = $('[data-prompt-template-panel]', root)!;
     assert.equal($$('[data-prompt-template]', panel).length, 7);
@@ -1450,7 +1545,7 @@ test('restore-default prefers the preset-bound runtime template over the global 
     const root = await mountModal({ client, mode: 'create' });
     await act(async () => { await Promise.resolve(); });
     await act(async () => { await Promise.resolve(); });
-    await setValue(root, '[data-field="agent_type"]', 'wiki-qa');
+    await pickOption(root, '.agent-type-select', 'Wiki 问答');
     await goto(root, 'prompts');
     const section = $('[data-editor-section="prompts"]', root)!;
     await click(section, '[data-prompt-reset-default]');

@@ -11,8 +11,11 @@
  * apps/web/src/knowledge-settings/parserSettings.tsx (imported read-only),
  * which itself ports the Vue component — a single source of truth for both
  * surfaces.
+ *
+ * TDesign 同构迁移（Task 9）：engine 选择换 tdesign-react Select，样式类
+ * wk-ae-parser-*（agents.td.css）。
  */
-import { Checkbox } from '@weknora/ui';
+import { Checkbox } from 'tdesign-react';
 import { navigate } from '../platform/navigation.ts';
 import {
   buildCompleteParserRules,
@@ -40,8 +43,8 @@ export const CHAT_PARSER_EXTENSIONS = [
 
 /**
  * Vue fileTypeGroups tail (KBParserSettings.vue:181-185): keep the groups whose
- * extensions intersect the relevant set; when nothing matches, fall back to the
- * full catalogue rather than an empty editor.
+ * extensions intersect the relevant set; when nothing matches, fall back to
+ * the full catalogue rather than an empty editor.
  */
 export function filterParserGroupsByExtensions(groups: ParserFileTypeGroup[], relevantExtensions: readonly string[]): ParserFileTypeGroup[] {
   if (relevantExtensions.length === 0) return groups;
@@ -77,7 +80,7 @@ export function AgentParserRules({ engines, rules, onChange, t }: AgentParserRul
   if (engines.length === 0) {
     // KBParserSettings.vue:13-15 — registry empty / unreachable: degrade to
     // the shared no-engine hint instead of blanking the block.
-    return <p className="m-0 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]" data-parser-empty>{t('kbSettings.parser.noEngineAvailable')}</p>;
+    return <p className="wk-ae-parser-hint" data-parser-empty>{t('kbSettings.parser.noEngineAvailable')}</p>;
   }
   const groups = chatParserGroups(t, engines);
 
@@ -113,57 +116,59 @@ export function AgentParserRules({ engines, rules, onChange, t }: AgentParserRul
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--td-component-stroke,#e7e7e7)]" data-parser-groups={groups.length}>
+    <div className="wk-ae-parser-groups" data-parser-groups={groups.length}>
       {groups.map((group) => {
         const options = parserEngineOptionsFor(engines, group.extensions);
         const resolved = engineForGroup(rules, engines, group.extensions);
         const showXlsxOption = group.extensions.includes('xlsx') && resolved === 'builtin';
         return (
-          <div key={group.key} className="flex flex-wrap items-center gap-3 border-b border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-container,#fff)] px-3 py-2 last:border-b-0" data-parser-row={group.key}>
-            <div className="w-[168px] shrink-0">
-              <p className="m-0 text-[13px] font-medium">{group.label}</p>
-              <div className="mt-[2px] flex flex-wrap gap-1">
+          <div key={group.key} className="wk-ae-parser-row" data-parser-row={group.key}>
+            <div className="wk-ae-parser-labels">
+              <p className="wk-ae-parser-label">{group.label}</p>
+              <div className="wk-ae-parser-exts">
                 {group.extensions.map((ext) => (
-                  <code key={ext} className="rounded bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] px-1.5 py-[2px] font-[family-name:monospace] text-[11px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">.{ext}</code>
+                  <code key={ext} className="wk-ae-parser-ext">.{ext}</code>
                 ))}
               </div>
             </div>
-            <div className="flex min-w-[180px] flex-1 flex-col gap-1.5">
-              <select
-                aria-label={group.label}
-                className="h-8 w-full cursor-pointer rounded-md border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] px-2 text-[13px]"
-                value={resolved}
-                data-parser-group={group.key}
-                data-parser-engine={group.key}
-                disabled={options.length === 0}
-                onChange={(event) => handleEngineChange(group.extensions, event.target.value)}
-              >
-                {options.length === 0 ? <option value="">{t('kbSettings.parser.noEngine')}</option> : null}
-                {options.map((option) => (
-                  <option key={option.value} value={option.value}>{parserEngineOptionLabel(option.value, option.isDefault, t)}</option>
-                ))}
-              </select>
-              {showXlsxOption ? (
-                <label className="inline-flex cursor-pointer items-start gap-1.5 text-left text-[12px] leading-[1.5]">
-                  <Checkbox
-                    checked={ruleForGroup(rules, group.extensions)?.xlsx_first_row_as_header === true}
-                    onChange={(event) => handleXlsxFirstRowChange(group.extensions, event.target.checked)}
-                  />
-                  <span>{t('kbSettings.parser.xlsxFirstRowAsHeader')}</span>
-                </label>
-              ) : null}
+            <div className="wk-ae-parser-control">
               {options.length === 0 ? (
-                <button
-                  type="button"
-                  data-parser-go-config
-                  className="w-fit cursor-pointer border-0 bg-transparent p-0 text-[12px] text-[var(--td-brand-color,#0052d9)] hover:underline"
-                  // Vue goToParserSettings → uiStore.openSettings('parser'); the
-                  // React shell routes through the settings deep link like the
-                  // sandbox/storage links in the editor.
-                  onClick={() => navigate('/platform/settings?section=parser')}
+                <>
+                  <p className="wk-ae-parser-hint">{t('kbSettings.parser.noEngine')}</p>
+                  <button
+                    type="button"
+                    data-parser-go-config
+                    className="go-settings-link"
+                    // Vue goToParserSettings → uiStore.openSettings('parser'); the
+                    // React shell routes through the settings deep link like the
+                    // sandbox/storage links in the editor.
+                    onClick={() => navigate('/platform/settings?section=parser')}
+                  >
+                    {t('kbSettings.parser.goConfig')}
+                  </button>
+                </>
+              ) : (
+                <select
+                  aria-label={group.label}
+                  className="wk-ae-parser-native-select"
+                  value={resolved}
+                  data-parser-group={group.key}
+                  data-parser-engine={group.key}
+                  onChange={(event) => handleEngineChange(group.extensions, event.target.value)}
                 >
-                  {t('kbSettings.parser.goConfig')}
-                </button>
+                  {options.map((option) => (
+                    <option key={option.value} value={option.value}>{parserEngineOptionLabel(option.value, option.isDefault, t)}</option>
+                  ))}
+                </select>
+              )}
+              {showXlsxOption ? (
+                <Checkbox
+                  data-parser-xlsx={group.key}
+                  checked={ruleForGroup(rules, group.extensions)?.xlsx_first_row_as_header === true}
+                  onChange={(checked) => handleXlsxFirstRowChange(group.extensions, checked === true)}
+                >
+                  {t('kbSettings.parser.xlsxFirstRowAsHeader')}
+                </Checkbox>
               ) : null}
             </div>
           </div>

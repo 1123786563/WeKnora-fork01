@@ -57,7 +57,7 @@
 
 ### 2.1 提取与落位
 
-1. 每个 SFC 的 `<style>` 块全部提取到页面同目录的 `<Page>.css`（如 `apps/web/src/agents/AgentsPage.tdesign.css`，文件名以 pilot 定稿后回填本节），在页面 tsx 顶部 `import './<Page>.css'`（对照现状 `AgentsPage.tsx:12` 的 `import './agents.css'`）。
+1. 每个 SFC 的 `<style>` 块全部提取到页面同目录的 `<Page>.td.css`（pilot 定稿：`apps/web/src/agents/agents.td.css`，页面 tsx 顶部 `import './agents.td.css'`）。弹层 portal 到 body 的组件样式（Dialog 内容、unscoped 块）也在同一文件，以弹层类名限定作用域。
 2. `<style scoped lang="less">` 与 `<style lang="less">`（无 scoped）**分开处理**，见 2.2 / 2.5。
 
 ### 2.2 scoped → 显式根类前缀
@@ -100,7 +100,13 @@ Vue（AgentList.vue:1663-1690）              → React CSS
 - 类名本身已带页面语义前缀的，**原样平移、不加根类前缀**（scoped 前缀反而会让规则命不中 body 下的 portal DOM）。
 - 若类名有全局冲突风险（无页面前缀的通用名），平移时保留在一个文件但在规则上方注释"来自 <Page>.vue unscoped 块，服务于 body 弹层"。
 
-### 2.6 布局值归并
+### 2.6 布局值归并（pilot 实证补充）
+
+- **行高继承差**：React 端页面渲染在 PlatformShell 内（继承 21px 行高），Vue 端页面直挂 #app（body `line-height: normal`）。页面根（`.agent-list-container`）与 body 弹层根（`.settings-overlay`）需显式 `line-height: normal` 对齐 Vue 继承链，否则 nav/label 全线 +1px/行漂移。
+- **Vue Teleport ↔ React createPortal**：弹层组件（编辑器 overlay）用 `createPortal(…, document.body)` 复刻 Vue `<Teleport to="body">` 的层叠/合成上下文，脱离 shell 的行高与渲染上下文（pilot 实证）。
+- **共享组件的散装规则**：Vue `theme.css` 除 token 外还有全局组件规则（如 t-radio-button 选中态品牌色块）；React 侧 tdesign-theme.css 只平移了 token。页面迁移时把这类规则按页面作用域平移（agents.td.css §9），Phase 4 归全局。
+
+### 2.6 布局值归并（原文）
 
 React 页面 tsx 中由 Tailwind utilities 承载的布局/视觉值，**不逐条翻译**——按第 4 节删除；页面布局以 Vue 端 style 块值为准写入本 CSS。Vue 端没有的值（React 多出的间距等）一律不保留。
 
@@ -178,4 +184,9 @@ React JSX 逐节点对照 Vue template：**标签、类名顺序、条件渲染�
 | 4 | Dialog 关闭态挂载 | 不渲染 DOM | 挂载 `display:none` 的 `.t-dialog__ctx` | 库行为不可消除；不可见，扫描豁免（task-2-report.md:44） |
 | 5 | Tabs 面板容器 | `.t-tabs__content.t-is-top` 包裹层存在 | `.t-tab-panel` 直挂 | 库行为不可消除；pilot 重点关注面板区间距/下边线（task-2-report.md:46，以 pilot 实证回填） |
 | 6 | Button class 属性顺序 | `--theme-primary --variant-base` | `--variant-base --theme-primary` | 无需补齐：class 顺序不影响渲染与选择器匹配；禁止页面代码硬编码完整 class 串断言顺序（task-2-report.md:45） |
+| 7 | Button disabled 根标签 | 无 tag 且 disabled 时渲染 `<div class="t-button t-is-disabled">` | 始终渲染 `<button disabled>` | 库行为；样式经 `.t-is-disabled` 类等价（测试断言走 classList 而非 .disabled 属性）；扫描零视觉差（pilot 实证） |
+| 8 | Select 根元素属性透传 | 根 div 只取 className/style/onMouseEnter/Leave，`data-*` 等其余 props 丢弃 | t-select 未知 attrs 透传到根 | React 侧测试钩子改用语义 `className`（如 `.wk-ae-sel-model`）；InputNumber 经 `inputProps` 送到内层 t-input wrapper；Option 的额外 props 也不透传（li 无 title/data-*），弹层断言走 textContent（pilot 实证） |
+| 9 | Select children 中的 null 项 | 内部按数组遍历 children 建立 value→option 映射，遇 `null` 项直接 crash（`handlerElement` 读 `null.type`） | 容忍 null | React 侧条件 OptionGroup 必须用数组展开拼装（`[...(cond ? [<OptionGroup/>] : [])]`），不得写 `cond ? <OptionGroup/> : null`（pilot 实证） |
+| 10 | svg-sprite Icon 的 glyph 版本 | 本地 sprite（守卫拦 CDN）；`<use xlink:href>` | 运行时 svg-sprite Icon 实际加载 CDN 0.4.5，注入脚本按 body firstChild 前插使其 `use` 命中 0.4.5 变体 glyph | React 端 index.html 本地镜像 0.4.5 并只保留该版本（多版本并存时后插入者居首、先被 `use` 命中）；两端 glyph 需同版本（pilot 实证：chat 等 glyph 0.4.1↔0.4.5 几何不同） |
+| 11 | label 必填星号的亚像素相位 | — | `{{ label }} <span class="required">*</span>`：空格是文本节点、星号独占 span | 空格放 span 内会使星号 glyph 落在不同亚像素相位（LCD AA 权重 ±5 灰阶，逐像素超容差 8）；React 侧 JSX 须 `{label}{' '}<span className="required">*</span>`（pilot 实证） |
 |   | （pilot 回填区） | | | |
