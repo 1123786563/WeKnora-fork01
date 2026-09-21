@@ -1,3 +1,6 @@
+/* TDesign 同构迁移：与 Vue 端 frontend/src/main.ts:8 全量引入一致，unlayered 且最先加载 */
+@import "tdesign-react/dist/tdesign.css";
+
 /* Tailwind v4 composition (mirrors tailwindcss/index.css minus preflight —
    see docs/plans/tailwind-shadcn-migration.md for the preflight decision). */
 @layer theme, base, components, utilities;
