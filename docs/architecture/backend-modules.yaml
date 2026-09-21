@@ -21,7 +21,7 @@ modules:
   - {id: policy, target_prefix: internal/modules/policy}
 platform:
   id: platform
-  target_prefixes: [internal/platform, internal/bootstrap]
+  target_prefixes: [internal/platform, internal/bootstrap, cmd/server]
 assets:
   - kind: route
     id: channels.im-routes
@@ -2517,6 +2517,11 @@ assets:
     source: internal/browserskill
     target: internal/modules/execution
   - kind: package
+    id: pkg.internal.bootstrap
+    owner: platform
+    source: internal/bootstrap
+    target: internal/bootstrap
+  - kind: package
     id: pkg.internal.commercial
     owner: commercial
     source: internal/commercial
@@ -2826,6 +2831,21 @@ assets:
     owner: airesource
     source: internal/models/vlm
     target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.modules.conversation.queryhistory.application
+    owner: conversation
+    source: internal/modules/conversation/queryhistory/application
+    target: internal/modules/conversation/queryhistory
+  - kind: package
+    id: pkg.internal.modules.conversation.queryhistory.domain
+    owner: conversation
+    source: internal/modules/conversation/queryhistory/domain
+    target: internal/modules/conversation/queryhistory
+  - kind: package
+    id: pkg.internal.modules.conversation.queryhistory.ports
+    owner: conversation
+    source: internal/modules/conversation/queryhistory/ports
+    target: internal/modules/conversation/queryhistory
   - kind: package
     id: pkg.internal.notification
     owner: workbench

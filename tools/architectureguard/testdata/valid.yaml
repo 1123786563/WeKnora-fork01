@@ -1,0 +1,44 @@
+schema_version: 1
+scope:
+  include: [internal]
+  exclude: [internal/debug]
+modules:
+  - {id: alpha, target_prefix: internal/modules/alpha}
+  - {id: beta, target_prefix: internal/modules/beta}
+platform:
+  id: platform
+  target_prefixes: [internal/platform]
+assets:
+  - kind: route
+    id: alpha.hello-routes
+    owner: alpha
+    source: internal/router/routes.go
+    symbol: RegisterHelloRoutes
+    target: internal/modules/alpha/transport/http
+  - kind: worker
+    id: alpha.greet
+    owner: alpha
+    source: internal/router/task.go
+    task_type: TypeGreet
+    target: internal/modules/alpha/application
+  - kind: lifecycle
+    id: alpha.boot
+    owner: alpha
+    source: internal/container/container.go
+    symbol: registerBoot
+    target: internal/modules/alpha
+  - kind: migration
+    id: migration.versioned.000001_init
+    owner: platform
+    source: migrations/versioned/000001_init.up.sql
+    target: internal/platform/migrations
+  - kind: package
+    id: pkg.internal.platform
+    owner: platform
+    source: internal/platform
+    target: internal/platform
+temporary_exceptions:
+  - from: internal/modules/beta/legacy
+    to: internal/application/repository
+    reason: legacy persistence adapter during migration
+    remove_in_wave: 5

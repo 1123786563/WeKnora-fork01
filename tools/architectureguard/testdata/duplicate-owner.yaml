@@ -1,0 +1,23 @@
+schema_version: 1
+scope:
+  include: [internal]
+  exclude: []
+modules:
+  - {id: alpha, target_prefix: internal/modules/alpha}
+platform:
+  id: platform
+  target_prefixes: [internal/platform]
+assets:
+  - kind: route
+    id: alpha.hello-routes
+    owner: alpha
+    source: internal/router/routes.go
+    symbol: RegisterHelloRoutes
+    target: internal/modules/alpha/transport/http
+  - kind: route
+    id: alpha.hello-routes
+    owner: alpha
+    source: internal/router/routes.go
+    symbol: RegisterHelloRoutesDuplicate
+    target: internal/modules/alpha/transport/http
+temporary_exceptions: []
