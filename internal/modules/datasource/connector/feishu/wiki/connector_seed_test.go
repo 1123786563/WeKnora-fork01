@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/datasource/connector/feishu/core"
+	"github.com/Tencent/WeKnora/internal/modules/datasource/connector/feishu/core"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 

@@ -13,8 +13,8 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/Tencent/WeKnora/internal/datasource"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/datasource"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 

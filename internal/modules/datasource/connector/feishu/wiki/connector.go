@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/datasource"
-	"github.com/Tencent/WeKnora/internal/datasource/connector/feishu/core"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/datasource"
+	"github.com/Tencent/WeKnora/internal/modules/datasource/connector/feishu/core"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
