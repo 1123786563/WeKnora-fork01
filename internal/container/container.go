@@ -49,7 +49,7 @@ import (
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/application/service"
-	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
+	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
