@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/skills"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
 // Metadata snapshots detect outputs without parsing arbitrary commands or stdout.

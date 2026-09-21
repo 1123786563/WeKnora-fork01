@@ -13,8 +13,8 @@ import (
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/craft"
-	"github.com/Tencent/WeKnora/internal/execution"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/execution"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"gorm.io/gorm"
 )
 

@@ -40,7 +40,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/metrics"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

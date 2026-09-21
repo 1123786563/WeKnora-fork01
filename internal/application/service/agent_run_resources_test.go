@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"testing"
 )
 
