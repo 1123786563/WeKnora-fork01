@@ -1,5 +1,7 @@
 # Backend Modularization Wave 0–1 Implementation Plan
 
+> **SUPERSEDED:** Replaced by `docs/plans/2026-09-21-backend-modularization-foundation-pass-a.md` after approval of the two-pass Move First / Refactor Second Spec at commit `f81f132ca`. Do not execute this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Establish enforceable backend-module ownership and migrate Conversation/Query History as the first behavior-compatible vertical module.
