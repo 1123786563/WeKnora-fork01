@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/searchutil"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 
 	"github.com/Tencent/WeKnora/internal/types"
