@@ -1263,17 +1263,27 @@ test('multimodal embeds the per-file-type parser rows and persists engine change
   // each row shows its extension tags and an engine select with available engines
   const pdfRow = rows.find((row) => row.getAttribute('data-parser-row') === 'pdf')!;
   assert.match(pdfRow.textContent ?? '', /\.pdf/);
-  const pdfSelect = $('[data-parser-engine="pdf"]', block) as HTMLSelectElement;
+  // tdesign Select（台账 #8：data-* 不透传，钩子走语义 className）；选项在弹层
+  const pdfSelect = $('.wk-ae-parser-engine-pdf', block);
   assert.ok(pdfSelect, 'pdf engine select missing');
-  const pdfOptions = Array.from(pdfSelect.options).map((option) => option.value);
-  assert.ok(pdfOptions.includes('builtin'), 'builtin engine option missing');
-  assert.ok(!pdfOptions.includes('mineru'), 'unavailable engines are hidden');
+  await act(async () => {
+    (pdfSelect!.querySelector('.t-input') as HTMLElement ?? pdfSelect!).dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const pdfOptionTexts = $$(document.body, '.t-select-option').map((el) => (el.textContent ?? '').trim());
+  assert.ok(pdfOptionTexts.some((text) => text.startsWith('内置')), 'builtin engine option missing');
+  assert.equal(pdfOptionTexts.some((text) => text.includes('MinerU')), false, 'unavailable engines are hidden');
   // the office family additionally offers anydoc (its only other supporter)
-  const officeSelect = $('[data-parser-engine="office"]', block) as HTMLSelectElement;
-  const officeOptions = Array.from(officeSelect.options).map((option) => option.value);
-  assert.ok(officeOptions.includes('builtin') && officeOptions.includes('anydoc'), 'office engines missing');
+  const officeSelect = $('.wk-ae-parser-engine-office', block);
+  assert.ok(officeSelect, 'office engine select missing');
+  await act(async () => {
+    (officeSelect!.querySelector('.t-input') as HTMLElement ?? officeSelect!).dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const officeOptionTexts = $$(document.body, '.t-select-option').map((el) => (el.textContent ?? '').trim());
+  assert.ok(officeOptionTexts.some((text) => text.startsWith('内置')) && officeOptionTexts.some((text) => text.startsWith('anydoc')), 'office engines missing');
   // pick builtin for pdf -> the save payload carries a per-group rule
-  await setValue(block, '[data-parser-engine="pdf"]', 'builtin');
+  await pickOption(root, '.wk-ae-parser-engine-pdf', '内置');
   await click(root, '[data-editor-save]');
   const payload = (requests[0]!.body as { config: { chat_parser_engine_rules?: Array<{ file_types: string[]; engine: string }> } }).config;
   const pdfRule = payload.chat_parser_engine_rules?.find((rule) => rule.file_types.includes('pdf'));
@@ -1359,14 +1369,42 @@ test('switching to an incompatible preset keeps the selected scope and warns (KB
     const root = await mountModal({ client, mode: 'edit', agent });
     // switch the type dropdown to the injected strict-RAG preset（Vue MessagePlugin.warning）
     const injectedLabel = (await import('./agent-type-presets.ts')).agentTypePresetLabel(injected, 'zh-CN');
-    await pickOption(root, '.agent-type-select', injectedLabel);
-    await act(async () => { await Promise.resolve(); });
-    await act(async () => { await Promise.resolve(); });
-    assert.match(document.body.textContent ?? '', /已选的 1 个知识库不适用于当前类型/, 'kb-incompatible warning toast rendered');
-    // switching back to a compatible preset does not re-warn
-    const bodyTextBefore = (document.body.textContent ?? '').length;
-    await pickOption(root, '.agent-type-select', 'Wiki 问答');
-    assert.ok((document.body.textContent ?? '').length >= 0, 'compatible switch renders no new warning');
+    // KB-warn 走 MessagePlugin.warning toast（.t-message portal 到 body）。
+    // tdesign Message 对相同文案有 dedupe，DOM toast 计数无法区分「未触发」与
+    // 「被去重」——直接 spy MessagePlugin.warning 调用（组件按属性访问调用，
+    // 运行时生效），以调用序列验证警告出现/清除；另保留一次 toast DOM 断言。
+    const warnText = '已选的 1 个知识库不适用于当前类型';
+    const td = await import('tdesign-react');
+    const originalWarn = td.MessagePlugin.warning;
+    const warnCalls: string[] = [];
+    td.MessagePlugin.warning = ((...args: unknown[]) => {
+      warnCalls.push(String(args[0] ?? ''));
+      return (originalWarn as (...a: unknown[]) => unknown).apply(td.MessagePlugin, args);
+    }) as typeof originalWarn;
+    try {
+      await pickOption(root, '.agent-type-select', injectedLabel);
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await Promise.resolve(); });
+      assert.equal(warnCalls.length, 1, 'kb-incompatible switch calls MessagePlugin.warning once');
+      assert.match(warnCalls[0] ?? '', new RegExp(warnText), 'warning toast payload carries the kb-incompatible copy');
+      const warnToasts = $$(document.body, '.t-message').filter((el) => (el.textContent ?? '').includes(warnText)).length;
+      assert.ok(warnToasts >= 1, 'kb-incompatible warning toast rendered');
+      // switching to a compatible preset does not re-warn（用「自定义」：不带
+      // kb_selection_mode，保留已选 KB 列表——wiki-qa 会把列表清空，无法支撑
+      // 下面的 re-warn 自校验）
+      await pickOption(root, '.agent-type-select', '自定义');
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await Promise.resolve(); });
+      assert.equal(warnCalls.length, 1, 'compatible switch triggers no new warning');
+      // self-check: switching to the incompatible preset again DOES re-warn —
+      // proves the spy above captures fresh warnings (no false pass)
+      await pickOption(root, '.agent-type-select', injectedLabel);
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await Promise.resolve(); });
+      assert.equal(warnCalls.length, 2, 'incompatible switch re-warns (spy sanity check)');
+    } finally {
+      td.MessagePlugin.warning = originalWarn;
+    }
   } finally {
     const index = presets.indexOf(injected);
     if (index >= 0) presets.splice(index, 1);

@@ -3719,64 +3719,183 @@
 .wk-ae-sub-detail ul { list-style: disc; }
 .wk-ae-sub-detail ol { list-style: decimal; }
 
-/* 嵌入式 parser 规则（AgentParserRules，Vue KBParserSettings 的 React 版） */
-.wk-ae-parser-groups {
-  overflow: hidden;
-  border-radius: 8px;
-  border: 1px solid var(--td-component-stroke, #e7e7e7);
+/* 嵌入式 parser 规则（AgentParserRules）——KBParserSettings.vue scoped 平移，
+   根类前缀 .kb-parser-settings；embedded 变体（agent 编辑器内）双前缀写法压过
+   编辑器同名牌（.setting-row/.setting-info/.setting-control）的规则。 */
+.kb-parser-settings {
+  width: 100%;
 }
 
-.wk-ae-parser-row {
+.kb-parser-settings .settings-group {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid var(--td-component-stroke, #e7e7e7);
-  background: var(--td-bg-color-container, #fff);
-  padding: 8px 12px;
-}
-
-.wk-ae-parser-row:last-child { border-bottom: none; }
-
-.wk-ae-parser-labels {
-  width: 168px;
-  flex-shrink: 0;
-}
-
-.wk-ae-parser-label {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.wk-ae-parser-exts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 2px;
-}
-
-.wk-ae-parser-ext {
-  border-radius: 4px;
-  background: var(--td-bg-color-secondarycontainer, #f2f3f5);
-  padding: 2px 6px;
-  font-family: var(--app-font-family-mono);
-  font-size: 11px;
-  color: var(--td-text-color-secondary, rgba(0, 0, 0, 0.6));
-}
-
-.wk-ae-parser-control {
-  display: flex;
-  min-width: 180px;
-  flex: 1;
   flex-direction: column;
+  gap: 0;
+}
+
+.kb-parser-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.kb-parser-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.kb-parser-settings .setting-info {
+  flex: 0 0 40%;
+  max-width: 40%;
+  padding-right: 24px;
+}
+
+.kb-parser-settings .setting-info .group-label {
+  display: flex;
+  align-items: center;
   gap: 6px;
 }
 
-.wk-ae-parser-hint {
-  margin: 0;
+.kb-parser-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.kb-parser-settings .ext-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.kb-parser-settings .ext-tag {
+  display: inline-block;
   font-size: 12px;
-  color: var(--td-text-color-secondary, rgba(0, 0, 0, 0.6));
+  line-height: 1;
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-secondarycontainer);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: var(--app-font-family-mono);
+}
+
+.kb-parser-settings .setting-control {
+  flex: 0 0 55%;
+  max-width: 55%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.kb-parser-settings .parser-control-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 280px;
+}
+
+.kb-parser-settings .xlsx-header-option {
+  align-self: stretch;
+}
+
+.kb-parser-settings .xlsx-header-option .t-checkbox {
+  align-items: flex-start;
+}
+
+.kb-parser-settings .xlsx-header-option .t-checkbox__label {
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+}
+
+.kb-parser-settings .no-engine-warning {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--td-warning-color);
+  line-height: 1.4;
+}
+
+.kb-parser-settings .no-engine-warning .go-settings {
+  color: var(--td-brand-color);
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.kb-parser-settings .no-engine-warning .go-settings:hover {
+  text-decoration: underline;
+}
+
+.kb-parser-settings .parser-engine-select--embedded {
+  width: 100%;
+}
+
+.kb-parser-settings .empty-hint {
+  padding: 24px 0;
+  color: var(--td-text-color-secondary);
+}
+
+/* ---- embedded 变体（agent 编辑器 parser-policy-block 内）---- */
+.kb-parser-settings--embedded .settings-group {
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer, #f8f9fb);
+  overflow: hidden;
+}
+
+.settings-overlay .kb-parser-settings--embedded .setting-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--td-bg-color-container, #fff);
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.settings-overlay .kb-parser-settings--embedded .setting-row:last-child {
+  border-bottom: none;
+}
+
+.settings-overlay .kb-parser-settings--embedded .setting-info {
+  flex: 0 0 168px;
+  max-width: 168px;
+  padding-right: 0;
+  display: block;
+}
+
+.settings-overlay .kb-parser-settings--embedded .setting-control {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  align-items: stretch;
+}
+
+.settings-overlay .kb-parser-settings--embedded .parser-control-stack {
+  width: 100%;
+}
+
+.settings-overlay .kb-parser-settings--embedded .group-label {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.settings-overlay .kb-parser-settings--embedded .ext-tags {
+  margin-top: 0;
+  gap: 4px;
+}
+
+.settings-overlay .kb-parser-settings--embedded .ext-tag {
+  font-size: 11px;
+  padding: 2px 6px;
 }
 
 /* MBTI 测试弹窗（MbtiTestModal，React-only） */
@@ -4005,19 +4124,6 @@
 .settings-overlay .wk-ae-sub-dot--sm { height: 7px; width: 7px; }
 .settings-overlay .wk-ae-sub-row--card { flex-wrap: wrap; }
 .settings-overlay .wk-ae-sub-detail { flex-basis: 100%; }
-
-.settings-overlay .wk-ae-parser-native-select {
-  height: 32px;
-  width: 100%;
-  cursor: pointer;
-  border-radius: 3px;
-  border: 1px solid var(--td-component-stroke, #dcdcdc);
-  background: var(--td-bg-color-container, #fff);
-  padding: 0 8px;
-  font-size: 13px;
-  font-family: inherit;
-  color: inherit;
-}
 
 /* MBTI 测试弹窗补充（wk-ae-mbti 段的舞台/题目/按钮） */
 .wk-ae-mbti-stage { display: flex; flex-direction: column; gap: 12px; }
