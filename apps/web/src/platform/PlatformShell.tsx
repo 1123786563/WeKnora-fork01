@@ -101,10 +101,51 @@ interface NavItem {
   label: string;
   /** NAV_ICON_URLS key — the <img> asset pair (default/-green) per Vue menu.vue getIcon. */
   icon: string;
+  /**
+   * React-only rail entries (experts / market / analytics) have no Vue menu
+   * asset to mirror — they keep their own inline svg glyphs here instead of
+   * borrowing another entry's <img> (which would erase their visual
+   * identity). Rendered when set; otherwise the Vue <img> pair is used.
+   */
+  iconNode?: ReactNode;
   match: (pathname: string) => boolean;
   /** Anchor for the welcome-tour spotlight (Vue menu.vue data-guide attrs). */
   guide?: string;
 }
+
+// React-only rail glyphs (pre-Task-9.5 geometry, restored): 24×24 stroke
+// drawings in the same visual family as the platform rail — these have no
+// Vue asset counterpart and must not fall back to a Vue entry's icon.
+function ReactOnlyNavIcon({ paths }: { paths: string[] }): ReactNode {
+  return (
+    <svg className="plat-shell__icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths.map((d, index) => <path key={`${d}-${index}`} d={d} />)}
+    </svg>
+  );
+}
+
+const REACT_ONLY_NAV_ICONS = {
+  // SP11 analytics entry — bar-chart glyph (stroke = currentColor).
+  chart: [
+    'M5 20V11',
+    'M12 20V5',
+    'M19 20V14',
+    'M3.5 20H20.5',
+  ],
+  // M2 experts entry — sparkles glyph (experts = preset templates that
+  // "spark" a new agent).
+  sparkles: [
+    'M12 3L13.7 7.8L18.5 9.5L13.7 11.2L12 16L10.3 11.2L5.5 9.5L10.3 7.8L12 3Z',
+    'M18.5 14.5L19.4 16.6L21.5 17.5L19.4 18.4L18.5 20.5L17.6 18.4L15.5 17.5L17.6 16.6L18.5 14.5Z',
+  ],
+  // M4 skills-market entry — shopping-bag glyph (the market = a bag of
+  // installable skills).
+  bag: [
+    'M6.3 8.2H17.7L18.9 19.1C19 20 18.3 20.8 17.4 20.8H6.6C5.7 20.8 5 20 5.1 19.1L6.3 8.2Z',
+    'M9 10.2V6.6C9 4.7 10.3 3.2 12 3.2C13.7 3.2 15 4.7 15 6.6V10.2',
+  ],
+};
 
 // Vue menu.vue:300-304 — platform-aware modifier label for shortcut hints
 // (⌘ on Apple platforms, Ctrl+ elsewhere). Groundwork for the logo-row ⌘K
@@ -158,15 +199,19 @@ export function buildNavItems(t: (key: string) => string, labels: Record<string,
     { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: 'knowledge-bases', match: KB_ACTIVE, guide: 'nav-knowledge-bases' },
     { key: 'agents', href: '/platform/agents', label: labels.agents, icon: 'agents', match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
     // M2 expert templates — a creation surface next to agents; unconditional
-    // (the GET /experts list is tenant-scoped, no admin gate).
-    { key: 'experts', href: '/platform/experts', label: labels.experts, icon: 'creatChat', match: (p: string) => p.startsWith('/platform/experts') },
+    // (the GET /experts list is tenant-scoped, no admin gate). React-only
+    // entry: no Vue asset counterpart, keeps its own sparkles glyph.
+    { key: 'experts', href: '/platform/experts', label: labels.experts, icon: 'experts', iconNode: <ReactOnlyNavIcon paths={REACT_ONLY_NAV_ICONS.sparkles} />, match: (p: string) => p.startsWith('/platform/experts') },
     // M4 skills market — remote SkillHub search/rankings plus the
     // tenant-internal published list; visible to every member (Viewer+ reads
     // — routes_skill_market.go / routes_tenant_skill_market.go), the Admin+
-    // install/publish affordances gate inside the page.
-    { key: 'market', href: '/platform/market', label: labels.market, icon: 'creatChat', match: (p: string) => p.startsWith('/platform/market') },
+    // install/publish affordances gate inside the page. React-only entry:
+    // no Vue asset counterpart, keeps its own bag glyph.
+    { key: 'market', href: '/platform/market', label: labels.market, icon: 'market', iconNode: <ReactOnlyNavIcon paths={REACT_ONLY_NAV_ICONS.bag} />, match: (p: string) => p.startsWith('/platform/market') },
     { key: 'organizations', href: '/platform/organizations', label: labels.organizations, icon: 'organizations', match: (p: string) => p.startsWith('/platform/organizations'), guide: 'nav-organizations' },
-    { key: 'analytics', href: '/platform/analytics', label: labels.analytics, icon: 'creatChat', match: (p: string) => p.startsWith('/platform/analytics') },
+    // SP11 analytics — React-only entry: no Vue asset counterpart, keeps its
+    // own bar-chart glyph.
+    { key: 'analytics', href: '/platform/analytics', label: labels.analytics, icon: 'analytics', iconNode: <ReactOnlyNavIcon paths={REACT_ONLY_NAV_ICONS.chart} />, match: (p: string) => p.startsWith('/platform/analytics') },
   ];
 }
 
@@ -932,7 +977,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               // 会话详情页给 menu_item_c_active（无底色、文字主色），本区首页给
               // menu_item_active（底色 + 品牌色）。
               const chatDetailActive = item.key === 'newChat' && /^\/platform\/chat\//.test(pathname);
-              const iconPair = NAV_ICON_URLS[item.icon] ?? NAV_ICON_URLS.creatChat!;
+              const iconPair = NAV_ICON_URLS[item.icon];
               return (
                 <div key={item.key} className={item.key === 'newChat' && !collapsed ? 'menu_box menu_box--sticky' : 'menu_box'}>
                   <a href={item.href} onClick={(event) => {
@@ -947,7 +992,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     data-guide={item.guide}>
                     <span className="menu_item-box">
                       <span className="menu_icon">
-                        <img className="icon" src={active ? iconPair.active : iconPair.default} alt="" />
+                        {item.iconNode ?? <img className="icon" src={iconPair ? (active ? iconPair.active : iconPair.default) : ''} alt="" />}
                       </span>
                       {!collapsed ? <>
                         <span className="menu_title" title={item.label}>{item.label}</span>

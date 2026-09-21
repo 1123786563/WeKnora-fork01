@@ -44,6 +44,7 @@ const {
   AgentDeleteDialog,
   AgentDetailDrawer,
   AgentRail,
+  AgentsPage,
   AgentsPageView,
   hasAgentChatModel,
   loadAgentsPageData,
@@ -55,6 +56,8 @@ const {
   buildSpaceViewRows,
   cornerBadge,
   expertSourceId,
+  favoritesStorageKey,
+  readFavoriteIds,
   sectionize,
   sharedAgentsFromRecords,
 } = await import('./list.ts');
@@ -168,6 +171,114 @@ const baseViewProps = {
   onDeleteCancel: noop,
   onToggleSection: noop,
 };
+
+// --- favorites write path (Task 9.5 fix round 1: DB hydrate + write-through) ----
+// Vue useResourcePins parity: hydrate from GET /user/favorites?type=agent,
+// optimistic toggle via POST/DELETE, rollback on failure. These mount the full
+// AgentsPage with a spy client.userFavorites — view-level assertions cannot
+// cover the network call sequence or the rollback path.
+
+function favoritesSpyClient(options?: {
+  favoriteRows?: Array<{ resource_id: string }>;
+  addError?: Error;
+  removeError?: Error;
+}) {
+  const calls: Array<{ op: 'list' | 'add' | 'remove'; type: string; id?: string }> = [];
+  const client = {
+    auth: {
+      me: async () => ({
+        user: { id: 'user-1', username: 'tester', email: '', avatar: '' },
+        tenant: { id: 1, name: 'Home' },
+        memberships: [{ tenant_id: 1, tenant_name: 'Home', role: 'owner' }],
+      }),
+    },
+    configuration: {
+      agents: { listWithState: async () => ({ items: [{ id: 'a-own', name: '我的助手', is_builtin: false, created_by: 'user-1', config: { agent_mode: 'quick-answer' } }], disabledOwnAgentIds: [] }) },
+      models: { list: async () => [] },
+    },
+    identity: {
+      organizations: {
+        list: async () => ({ items: [], total: 0 }),
+        agentShares: { listShared: async () => [], setDisabledByMe: noop },
+      },
+    },
+    userFavorites: {
+      list: async (type: string) => { calls.push({ op: 'list', type }); return options?.favoriteRows ?? []; },
+      add: async (type: string, id: string) => { calls.push({ op: 'add', type, id }); if (options?.addError) throw options.addError; },
+      remove: async (type: string, id: string) => { calls.push({ op: 'remove', type, id }); if (options?.removeError) throw options.removeError; },
+    },
+  };
+  return { client, calls };
+}
+
+const starOf = (agentId: string) => document.querySelector(`[data-agent-id="${agentId}"] .agent-favorite-star`) as HTMLElement | null;
+const isFavorited = (agentId: string) => Boolean(starOf(agentId)?.classList.contains('is-favorited'));
+// AgentsPage without an explicit tenantId hydrates under the null tenant segment.
+const mirrorIds = () => readFavoriteIds(window.localStorage, 'user-1', null);
+const settlePage = (ms = 15) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+
+test('favorites hydrate from the DB list and render the star state', async () => {
+  window.localStorage.clear();
+  const { client, calls } = favoritesSpyClient({ favoriteRows: [{ resource_id: 'a-own' }] });
+  await mountToBody(React.createElement(AgentsPage, { client: client as never }));
+  await settlePage(30);
+  assert.deepEqual(calls.filter((c) => c.op === 'list'), [{ op: 'list', type: 'agent' }], 'GET /user/favorites?type=agent fires once');
+  assert.ok(isFavorited('a-own'), 'the DB-favorited agent renders is-favorited');
+  assert.deepEqual(mirrorIds(), ['a-own'], 'localStorage mirrors the DB set');
+});
+
+test('toggling the star writes through to add/remove with the right arguments', async () => {
+  window.localStorage.clear();
+  const { client, calls } = favoritesSpyClient({ favoriteRows: [{ resource_id: 'a-own' }] });
+  await mountToBody(React.createElement(AgentsPage, { client: client as never }));
+  await settlePage(30);
+  // Unfavorite → DELETE /user/favorites/agent/a-own.
+  await act(async () => { starOf('a-own')?.click(); });
+  assert.deepEqual(calls.filter((c) => c.op !== 'list'), [{ op: 'remove', type: 'agent', id: 'a-own' }]);
+  assert.equal(isFavorited('a-own'), false, 'optimistic unfavorite clears the star');
+  assert.deepEqual(mirrorIds(), [], 'localStorage mirrors the removal');
+  // Favorite again → POST /user/favorites {type:'agent', id}.
+  await act(async () => { starOf('a-own')?.click(); });
+  assert.deepEqual(calls.filter((c) => c.op !== 'list'), [
+    { op: 'remove', type: 'agent', id: 'a-own' },
+    { op: 'add', type: 'agent', id: 'a-own' },
+  ]);
+  assert.ok(isFavorited('a-own'), 'favorite restores the star');
+});
+
+test('a failed unfavorite rolls the star back (Vue useResourcePins semantics)', async () => {
+  window.localStorage.clear();
+  const { client, calls } = favoritesSpyClient({ favoriteRows: [{ resource_id: 'a-own' }], removeError: new Error('boom') });
+  await mountToBody(React.createElement(AgentsPage, { client: client as never }));
+  await settlePage(30);
+  await act(async () => { starOf('a-own')?.click(); });
+  await settlePage(10);
+  assert.deepEqual(calls.filter((c) => c.op !== 'list'), [{ op: 'remove', type: 'agent', id: 'a-own' }]);
+  assert.ok(isFavorited('a-own'), 'remove failure rolls the optimistic unfavorite back');
+  assert.deepEqual(mirrorIds(), ['a-own'], 'localStorage mirrors the rollback');
+});
+
+test('a rapid second click inside one batch dispatches add after remove, not add twice', async () => {
+  // Important-1 regression: the decision used to be captured as a setFavorites
+  // updater side effect, which React only pre-evaluates when the fiber lanes
+  // are empty — the second click in the same batch read a stale wasFavorited
+  // (unfavorite dispatched add) and the DB kept the row after refresh.
+  window.localStorage.clear();
+  const { client, calls } = favoritesSpyClient({ favoriteRows: [{ resource_id: 'a-own' }] });
+  await mountToBody(React.createElement(AgentsPage, { client: client as never }));
+  await settlePage(30);
+  assert.ok(isFavorited('a-own'), 'precondition: DB-favorited');
+  await act(async () => {
+    starOf('a-own')?.click(); // unfavorite
+    starOf('a-own')?.click(); // favorite again — same batch, no commit between
+  });
+  await settlePage(10);
+  assert.deepEqual(calls.filter((c) => c.op !== 'list'), [
+    { op: 'remove', type: 'agent', id: 'a-own' },
+    { op: 'add', type: 'agent', id: 'a-own' },
+  ], 'second click reads the ref-mirrored set: remove then add, never add+add');
+  assert.ok(isFavorited('a-own'), 'net state stays favorited');
+});
 
 // --- data loading (mocked client) ----------------------------------------------
 

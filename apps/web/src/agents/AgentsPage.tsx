@@ -9,7 +9,7 @@
  * 纯逻辑仍在 list.ts / state.ts / api.ts（本文件不重复实现）。
  * wk-* / data-* 测试 hook 按迁移前锚点保留（playbook §2.4）。
  */
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { AgentConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { Button, Dialog, Loading, Popup, Skeleton, Tag, Tooltip } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
@@ -879,6 +879,11 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const [space, setSpaceState] = useState<string>(() => (typeof window === 'undefined' ? 'all' : readSpaceFromUrl() ?? ''));
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
+  // Latest-value mirror of the favorites state: toggleFavorite must read the
+  // CURRENT set synchronously (see its comment); every setFavorites site in
+  // this component keeps the ref in the same tick.
+  const favoritesRef = useRef<ReadonlySet<string>>(favorites);
+  favoritesRef.current = favorites;
   const [recents, setRecents] = useState<PinEntry[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
@@ -907,7 +912,9 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
         isContributor: role === 'owner' || role === 'admin' || role === 'contributor' || me.user?.is_system_admin === true,
       });
       setViewerReady(true);
-      setFavorites(new Set(readFavoriteIds(window.localStorage, userId, tenantKey)));
+      const seed = new Set(readFavoriteIds(window.localStorage, userId, tenantKey));
+      favoritesRef.current = seed;
+      setFavorites(seed);
       setRecents(readAgentRecents(window.localStorage, userId, tenantKey));
       const favoritesApi = (client as unknown as {
         userFavorites?: { list?: (type: 'agent') => Promise<Array<{ resource_id: string }>> };
@@ -917,6 +924,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
         void listFavorites('agent').then((rows) => {
           if (!active) return;
           const ids = rows.map((row) => row.resource_id).filter(Boolean);
+          favoritesRef.current = new Set(ids);
           setFavorites(new Set(ids));
           writeFavoriteIds(window.localStorage, userId, tenantKey, ids);
         }).catch(() => { /* keep the localStorage snapshot on probe failure */ });
@@ -980,24 +988,28 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     // Vue useResourcePins.toggleFavorite: optimistic flip, then the DB call
     // (POST /user/favorites | DELETE /user/favorites/agent/:id); a failure
     // rolls the star back. localStorage mirrors the last-known set.
+    //
+    // The decision reads favoritesRef (latest-value mirror), NOT a
+    // setFavorites updater side effect: React only pre-evaluates queued
+    // updaters when the fiber lanes are empty, so a second click on the same
+    // star inside one batch could read a stale wasFavorited and dispatch
+    // add where remove was meant (UI unfavored, DB still favorited — the
+    // star would flip back after reload).
+    const wasFavorited = favoritesRef.current.has(id);
+    const next = new Set(toggleFavoriteId([...favoritesRef.current], id));
+    favoritesRef.current = next;
+    writeFavoriteIds(window.localStorage, viewer.userId, tenantKey, [...next]);
+    setFavorites(next);
     const favoritesApi = (client as unknown as {
       userFavorites?: { add?: (type: 'agent', id: string) => Promise<void>; remove?: (type: 'agent', id: string) => Promise<void> };
     }).userFavorites;
-    let wasFavorited = false;
-    setFavorites((current) => {
-      wasFavorited = current.has(id);
-      const next = new Set(toggleFavoriteId([...current], id));
-      writeFavoriteIds(window.localStorage, viewer.userId, tenantKey, [...next]);
-      return next;
-    });
     const persist = wasFavorited ? favoritesApi?.remove?.('agent', id) : favoritesApi?.add?.('agent', id);
     if (!persist) return;
     void persist.catch(() => {
-      setFavorites((current) => {
-        const rollback = new Set(toggleFavoriteId([...current], id));
-        writeFavoriteIds(window.localStorage, viewer.userId, tenantKey, [...rollback]);
-        return rollback;
-      });
+      const rollback = new Set(toggleFavoriteId([...favoritesRef.current], id));
+      favoritesRef.current = rollback;
+      writeFavoriteIds(window.localStorage, viewer.userId, tenantKey, [...rollback]);
+      setFavorites(rollback);
     });
   }, [client, tenantKey, viewer.userId]);
 
