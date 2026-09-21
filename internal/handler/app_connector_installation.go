@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
-	appconnectorrepo "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
