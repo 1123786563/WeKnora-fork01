@@ -21,18 +21,39 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/knowledge-bases' });
+/* tdesign 运行时依赖的 DOM 构造器全局补齐（pilot agents 同款）。
+ * renderAdapter 注入 createRoot，保证 MessagePlugin 等命令式 API 与组件同一
+ * React 实例（main.tsx 同款 react-19 adapter，node/tsx 下直接注入）。 */
 Object.assign(globalThis, {
   React,
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
   IS_REACT_ACT_ENVIRONMENT: true,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' });
 
 const { createRoot } = await import('react-dom/client');
+/* tdesign 命令式 API（MessagePlugin）的 React19 render adapter（main.tsx 同款）。 */
+{
+  const { renderAdapter } = await import('tdesign-react/lib/_util/react-render.js');
+  renderAdapter(createRoot);
+}
 const { KnowledgeBasesPage } = await import('../App.tsx');
 
 let mountedRoot: Root | undefined;
@@ -126,17 +147,18 @@ test('(a) shared cards carry the info-circle 查看详情 entry; owned cards do 
   const ownedCard = container.querySelector('[data-kb-id="kb-mine"]');
   assert.ok(sharedCard, 'shared card renders');
   assert.ok(ownedCard, 'owned card renders');
-  const trigger = sharedCard.querySelector('.kb-shared-detail-trigger');
-  assert.ok(trigger, 'shared card has the .kb-shared-detail-trigger entry (KnowledgeBaseList.vue:312)');
+  /* Task 11a：触发器是 Vue .shared-detail-trigger（t-tooltip content 无原生
+     title），图标是 t-icon sprite（use href）。 */
+  const trigger = sharedCard.querySelector('.shared-detail-trigger');
+  assert.ok(trigger, 'shared card has the .shared-detail-trigger entry (KnowledgeBaseList.vue:312)');
   assert.equal(trigger.getAttribute('aria-label'), '查看详情', 'trigger aria-label = knowledgeList.menu.viewDetails');
-  assert.equal(trigger.getAttribute('title'), '查看详情', 'trigger tooltip = knowledgeList.menu.viewDetails');
-  assert.ok(trigger.querySelector('svg[data-kb-icon="info-circle"]'), 'trigger uses the info-circle icon');
-  assert.equal(ownedCard.querySelector('.kb-shared-detail-trigger'), null, 'owned card must not offer the entry');
+  assert.ok(trigger.querySelector('use[href="#t-icon-info-circle"]'), 'trigger uses the info-circle t-icon');
+  assert.equal(ownedCard.querySelector('.shared-detail-trigger'), null, 'owned card must not offer the entry');
   // R445 item 1 — Vue shared card header (KnowledgeBaseList.vue:304-315) has
   // ONLY the 查看详情 trigger: no three-dot settings menu on non-own cards.
   // Boolean form: feeding a live jsdom Element to assert.equal's diff OOMs the runner.
-  assert.ok(!sharedCard.querySelector('.kb-list-card-more'), 'shared card must not offer the three-dot 设置 entry');
-  assert.ok(ownedCard.querySelector('.kb-list-card-more'), 'owned card keeps the three-dot menu control');
+  assert.ok(!sharedCard.querySelector('.more-wrap'), 'shared card must not offer the three-dot 设置 entry');
+  assert.ok(ownedCard.querySelector('.more-wrap'), 'owned card keeps the three-dot menu control');
   // The trigger must not navigate: card click opens the KB; trigger stops propagation.
   await click(trigger);
   await act(async () => {});
@@ -147,20 +169,20 @@ test('(a) shared cards carry the info-circle 查看详情 entry; owned cards do 
 // count renders '-' (`kb.knowledge_count || '-'`); own cards keep `|| 0`.
 test('(a) shared card badge shows - for an empty count like Vue', async () => {
   const container = await mountPage(makeClient({ shared: directShareRows() }));
-  const emptyShared = container.querySelector('[data-kb-id="kb-shared-3"] .kb-list-badge-count');
+  const emptyShared = container.querySelector('[data-kb-id="kb-shared-3"] .badge-count');
   assert.equal(emptyShared?.textContent, '-', 'shared card with knowledge_count 0 renders - (KnowledgeBaseList.vue:336)');
-  const populatedShared = container.querySelector('[data-kb-id="kb-shared-1"] .kb-list-badge-count');
+  const populatedShared = container.querySelector('[data-kb-id="kb-shared-1"] .badge-count');
   assert.equal(populatedShared?.textContent, '4', 'shared card with a real count keeps the number');
-  const owned = container.querySelector('[data-kb-id="kb-mine"] .kb-list-badge-count');
+  const owned = container.querySelector('[data-kb-id="kb-mine"] .badge-count');
   assert.equal(owned?.textContent, '2', 'owned card keeps the numeric count');
 });
 
 test('(b) drawer mirrors the Vue fields for a directly shared KB', async () => {
   const container = await mountPage(makeClient({ shared: directShareRows() }));
   assert.equal(document.querySelector('.kb-shared-detail-drawer'), null, 'drawer closed initially');
-  await click(container.querySelector('[data-kb-id="kb-shared-1"] .kb-shared-detail-trigger')!);
-  const drawer = document.querySelector('.kb-shared-detail-drawer');
-  assert.ok(drawer, 'drawer opens (KnowledgeBaseList.vue:712 shared-detail-drawer)');
+  await click(container.querySelector('[data-kb-id="kb-shared-1"] .shared-detail-trigger')!);
+  const drawer = document.querySelector('.shared-detail-drawer');
+  assert.ok(drawer, 'drawer opens (KnowledgeBaseList.vue:712 shared-detail-drawer, createPortal body)');
   assert.equal(drawer.getAttribute('role'), 'dialog', 'drawer is a dialog');
   const text = drawer.textContent ?? '';
   assert.ok(text.includes('共享知识库'), 'title = knowledgeList.detail.title');
@@ -173,8 +195,8 @@ test('(b) drawer mirrors the Vue fields for a directly shared KB', async () => {
   assert.ok(text.includes('共享时间'), 'row label knowledgeList.detail.sharedAt');
   assert.ok(text.includes(expectedDateString('2026-01-01T00:00:00Z')), 'shared_at rendered as Vue formatStringDate');
   assert.ok(text.includes('我的权限'), 'row label knowledgeList.detail.myPermission');
-  const tag = drawer.querySelector('.kb-shared-detail-permission');
-  assert.ok(tag, 'permission rendered as a tag');
+  const tag = drawer.querySelector('.t-tag');
+  assert.ok(tag, 'permission rendered as a t-tag');
   assert.equal(tag.textContent, '编辑', 'permission tag text = organization.role.editor');
   // Agent-only rows must not appear for a direct share.
   assert.equal(text.includes('智能体知识库策略'), false, 'agentKbStrategy row hidden without source_from_agent');
@@ -183,18 +205,18 @@ test('(b) drawer mirrors the Vue fields for a directly shared KB', async () => {
   const goBtn = Array.from(drawer.querySelectorAll('button')).find((b) => (b.textContent ?? '').includes('进入知识库'));
   assert.ok(closeBtn, 'footer 关闭 button (common.close)');
   assert.ok(goBtn, 'footer 进入知识库 button (knowledgeList.detail.goToKb)');
-  assert.ok(goBtn.querySelector('svg[data-kb-icon="browse"]'), 'go button carries the browse icon (Vue t-icon browse)');
+  assert.ok(goBtn.querySelector('use[href="#t-icon-browse"]'), 'go button carries the browse t-icon');
   // R445 item 4 — Vue header close (KnowledgeBaseList.vue:713-716) is the ×
   // icon button with aria-label $t('general.close') = 「关闭设置」.
-  const headerClose = Array.from(drawer.querySelectorAll('header button, button')).find((b) => (b.textContent ?? '').trim() === '×');
-  assert.ok(headerClose, 'header × close button renders');
+  const headerClose = drawer.querySelector('.shared-detail-drawer-close');
+  assert.ok(headerClose, 'header × close button renders (.shared-detail-drawer-close)');
   assert.equal(headerClose.getAttribute('aria-label'), '关闭设置', 'header close aria-label = general.close (关闭设置)');
 });
 
 test('(b) viewer permission renders the read-only role label', async () => {
   const container = await mountPage(makeClient({ shared: directShareRows() }));
-  await click(container.querySelector('[data-kb-id="kb-shared-2"] .kb-shared-detail-trigger')!);
-  const tag = document.querySelector('.kb-shared-detail-drawer .kb-shared-detail-permission');
+  await click(container.querySelector('[data-kb-id="kb-shared-2"] .shared-detail-trigger')!);
+  const tag = document.querySelector('.shared-detail-drawer .t-tag');
   assert.equal(tag?.textContent, '只读', 'organization.role.viewer');
 });
 
@@ -209,8 +231,8 @@ test('(b) agent-carried share switches source rows to the agent variant', async 
       }),
     ],
   }));
-  await click(container.querySelector('[data-kb-id="kb-agent"] .kb-shared-detail-trigger')!);
-  const drawer = document.querySelector('.kb-shared-detail-drawer');
+  await click(container.querySelector('[data-kb-id="kb-agent"] .shared-detail-trigger')!);
+  const drawer = document.querySelector('.shared-detail-drawer');
   assert.ok(drawer, 'drawer opens for agent-carried shares');
   const text = drawer.textContent ?? '';
   assert.ok(text.includes('智能体可访问（通过共享智能体可见）'), 'sourceTypeAgent copy');
@@ -223,28 +245,38 @@ test('(b) agent-carried share switches source rows to the agent variant', async 
 
 test('(c) 进入知识库 navigates to the KB detail route and closes the drawer', async () => {
   const container = await mountPage(makeClient({ shared: directShareRows() }));
-  await click(container.querySelector('[data-kb-id="kb-shared-1"] .kb-shared-detail-trigger')!);
-  const drawer = document.querySelector('.kb-shared-detail-drawer');
+  await click(container.querySelector('[data-kb-id="kb-shared-1"] .shared-detail-trigger')!);
+  const drawer = document.querySelector('.shared-detail-drawer');
   const goBtn = Array.from(drawer!.querySelectorAll('button')).find((b) => (b.textContent ?? '').includes('进入知识库'))!;
   await click(goBtn);
   assert.equal(dom.window.location.pathname, '/platform/knowledge-bases/kb-shared-1', 'navigates like Vue goToSharedKbFromPanel');
-  assert.equal(document.querySelector('.kb-shared-detail-drawer'), null, 'drawer closes after navigation');
+  assert.equal(document.querySelector('.shared-detail-drawer'), null, 'drawer closes after navigation');
 });
 
-test('(d) Esc and the footer 关闭 button close the drawer', async () => {
+test('(d) the overlay backdrop, header × and the footer 关闭 button close the drawer', async () => {
   const container = await mountPage(makeClient({ shared: directShareRows() }));
-  await click(container.querySelector('[data-kb-id="kb-shared-1"] .kb-shared-detail-trigger')!);
-  assert.ok(document.querySelector('.kb-shared-detail-drawer'), 'open');
+  await click(container.querySelector('[data-kb-id="kb-shared-1"] .shared-detail-trigger')!);
+  assert.ok(document.querySelector('.shared-detail-drawer'), 'open');
 
+  /* Vue 关闭语义（KnowledgeBaseList.vue:713-714 closeSharedDetailPanel 三入口）：
+     overlay click.self / header × / footer 关闭。旧 Sheet 的 Esc 行为随旧栈废弃。 */
+  const overlay = document.querySelector('.shared-detail-drawer-overlay')!;
   await act(async () => {
-    document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    overlay.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
   });
-  assert.equal(document.querySelector('.kb-shared-detail-drawer'), null, 'Esc closes');
+  await act(async () => {});
+  assert.equal(document.querySelector('.shared-detail-drawer'), null, 'overlay backdrop click closes');
 
-  await click(container.querySelector('[data-kb-id="kb-shared-2"] .kb-shared-detail-trigger')!);
-  const drawer = document.querySelector('.kb-shared-detail-drawer');
+  await click(container.querySelector('[data-kb-id="kb-shared-2"] .shared-detail-trigger')!);
+  const drawer = document.querySelector('.shared-detail-drawer');
   assert.ok(drawer, 'reopens for the second share');
-  const closeBtn = Array.from(drawer!.querySelectorAll('button')).find((b) => b.textContent === '关闭')!;
+  await click(drawer!.querySelector('.shared-detail-drawer-close')!);
+  assert.equal(document.querySelector('.shared-detail-drawer'), null, 'header × closes');
+
+  await click(container.querySelector('[data-kb-id="kb-shared-1"] .shared-detail-trigger')!);
+  const drawer2 = document.querySelector('.shared-detail-drawer');
+  assert.ok(drawer2, 'reopens for the footer check');
+  const closeBtn = Array.from(drawer2!.querySelectorAll('button')).find((b) => b.textContent === '关闭')!;
   await click(closeBtn);
-  assert.equal(document.querySelector('.kb-shared-detail-drawer'), null, 'footer 关闭 closes');
+  assert.equal(document.querySelector('.shared-detail-drawer'), null, 'footer 关闭 closes');
 });

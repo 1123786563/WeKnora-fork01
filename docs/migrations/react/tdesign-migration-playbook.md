@@ -189,4 +189,5 @@ React JSX 逐节点对照 Vue template：**标签、类名顺序、条件渲染�
 | 9 | Select children 中的 null 项 | 内部按数组遍历 children 建立 value→option 映射，遇 `null` 项直接 crash（`handlerElement` 读 `null.type`） | 容忍 null | React 侧条件 OptionGroup 必须用数组展开拼装（`[...(cond ? [<OptionGroup/>] : [])]`），不得写 `cond ? <OptionGroup/> : null`（pilot 实证） |
 | 10 | svg-sprite Icon 的 glyph 版本 | 本地 sprite（守卫拦 CDN）；`<use xlink:href>` | 运行时 svg-sprite Icon 实际加载 CDN 0.4.5，注入脚本按 body firstChild 前插使其 `use` 命中 0.4.5 变体 glyph | React 端 index.html 本地镜像 0.4.5 并只保留该版本（多版本并存时后插入者居首、先被 `use` 命中）；两端 glyph 需同版本（pilot 实证：chat 等 glyph 0.4.1↔0.4.5 几何不同） |
 | 11 | label 必填星号的亚像素相位 | — | `{{ label }} <span class="required">*</span>`：空格是文本节点、星号独占 span | 空格放 span 内会使星号 glyph 落在不同亚像素相位（LCD AA 权重 ±5 灰阶，逐像素超容差 8）；React 侧 JSX 须 `{label}{' '}<span className="required">*</span>`（pilot 实证） |
+| 12 | Input/Textarea 的 maxlength 原生属性 | JS 截断（`limitUnicodeMaxLength`），textarea/input 元素**不带** maxlength 属性 | 渲染原生 `maxlength` 属性（KnowledgeBaseEditorModal DOM 实测） | 行为等价（两端输入都截到上限），无视觉差异、无需补齐；测试断言走计数器（`.t-textarea__limit`）或 JS 截断行为，不依赖原生属性（kb-list 实证） |
 |   | （pilot 回填区） | | | |

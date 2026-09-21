@@ -36,13 +36,29 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/knowledge-bases' });
+/* tdesign 运行时依赖的 DOM 构造器全局补齐（pilot agents 同款）。
+ * renderAdapter 注入 createRoot，保证 MessagePlugin 等命令式 API 与组件同一
+ * React 实例（main.tsx 同款 react-19 adapter，node/tsx 下直接注入）。 */
 Object.assign(globalThis, {
   React,
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
   IS_REACT_ACT_ENVIRONMENT: true,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 (globalThis as { CustomEvent?: unknown }).CustomEvent = dom.window.CustomEvent;
@@ -53,6 +69,11 @@ const openCalls: Array<string | undefined> = [];
 dom.window.open = ((url?: string) => { openCalls.push(url); return null; }) as typeof dom.window.open;
 
 const { createRoot } = await import('react-dom/client');
+/* tdesign 命令式 API（MessagePlugin）的 React19 render adapter（main.tsx 同款）。 */
+{
+  const { renderAdapter } = await import('tdesign-react/lib/_util/react-render.js');
+  renderAdapter(createRoot);
+}
 const { KnowledgeBasesPage } = await import('../App.tsx');
 const { KBShareSettingsSection } = await import('../knowledge-settings/KBShareSettingsSection.tsx');
 const { DataSourcesPage } = await import('../data-sources/DataSourcesPage.tsx');
@@ -127,15 +148,16 @@ async function mountEditDrawer(client: WeKnoraClient, section?: string): Promise
     mountedRoot?.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
   });
   await act(async () => {});
+  /* Task 11a：三点菜单是 t-popup（.more-wrap 触发，内容 portal 到 body）。 */
   await act(async () => {
-    document.body.querySelector<HTMLButtonElement>('.kb-list-card-more')?.click();
+    document.body.querySelector<HTMLElement>('.kb-card .more-wrap')?.click();
   });
   await act(async () => {});
-  const settingsItem = Array.from(document.body.querySelectorAll('[role="menuitem"]'))
+  const settingsItem = Array.from(document.body.querySelectorAll('.card-more-popup .popup-menu-item'))
     .find((el) => (el.textContent ?? '') === '设置');
   assert.ok(settingsItem, 'card settings menu item rendered');
   await act(async () => {
-    (settingsItem as HTMLButtonElement).click();
+    (settingsItem as HTMLElement).click();
   });
   await act(async () => {});
   if (section) {
@@ -154,10 +176,13 @@ test('A1: the drawer chunking section mounts the shared Vue form — test trigge
   await mountEditDrawer(makeClient(), 'chunking');
   const drawer = document.body.querySelector('.wk-kb-editor-dialog');
   assert.ok(drawer, 'editor drawer rendered');
+  /* Task 11a：section 壳是 Vue v-show（DOM 常驻）——查询收敛到 chunking 段。 */
+  const section = drawer.querySelector('[data-editor-section="chunking"]');
+  assert.ok(section, 'chunking section shell rendered');
   // Bare number inputs are gone (the old implementation had 5+ type=number fields).
-  assert.equal(drawer.querySelectorAll('input[type="number"]').length, 0, 'no bare number inputs on the collapsed section');
+  assert.equal(section.querySelectorAll('input[type="number"]').length, 0, 'no bare number inputs on the collapsed section');
   // Strategy select: placeholder + the four Vue strategies.
-  const strategySelect = drawer.querySelector<HTMLSelectElement>('select[aria-label="分块策略"]');
+  const strategySelect = section.querySelector<HTMLSelectElement>('select[aria-label="分块策略"]');
   assert.ok(strategySelect, 'strategy select rendered');
   assert.deepEqual(
     Array.from(strategySelect.querySelectorAll('option')).map((option) => option.textContent),
@@ -165,39 +190,39 @@ test('A1: the drawer chunking section mounts the shared Vue form — test trigge
     'strategy options mirror Vue (placeholder + auto/heading/heuristic/legacy)',
   );
   // Test trigger sits under the strategy picker (Vue strategy-control column).
-  const debugTrigger = drawer.querySelector<HTMLButtonElement>('.kb-chunking-debug-trigger');
+  const debugTrigger = section.querySelector<HTMLButtonElement>('.kb-chunking-debug-trigger');
   assert.ok(debugTrigger, '测试分块效果 trigger rendered');
   assert.match(debugTrigger.textContent ?? '', /测试分块效果/);
   // Size slider: 100-4000 range + live value display "512 字符".
-  const sizeSlider = drawer.querySelector<HTMLInputElement>('input[type="range"][aria-label="分块大小"]');
+  const sizeSlider = section.querySelector<HTMLInputElement>('input[type="range"][aria-label="分块大小"]');
   assert.ok(sizeSlider, 'chunk-size range slider rendered');
   assert.equal(sizeSlider.min, '100');
   assert.equal(sizeSlider.max, '4000');
   assert.equal(sizeSlider.value, '512', 'hydrated chunk size');
-  assert.match(drawerText(), /512 字符/, 'live value display renders the character suffix');
+  assert.match(section.textContent ?? '', /512 字符/, 'live value display renders the character suffix');
   // Overlap slider 0-500 with the 80-character display.
-  const overlapSlider = drawer.querySelector<HTMLInputElement>('input[type="range"][aria-label="分块重叠"]');
+  const overlapSlider = section.querySelector<HTMLInputElement>('input[type="range"][aria-label="分块重叠"]');
   assert.ok(overlapSlider, 'chunk-overlap range slider rendered');
   assert.equal(overlapSlider.max, '500');
-  assert.match(drawerText(), /80 字符/, 'overlap value display renders');
+  assert.match(section.textContent ?? '', /80 字符/, 'overlap value display renders');
   // Separator chips field with the hydrated separators.
-  assert.ok(drawer.querySelector('.kb-separator-box input'), 'separator chips input rendered');
-  assert.ok(drawer.querySelectorAll('.kb-separator-chip').length >= 2, 'hydrated separators render as chips');
+  assert.ok(section.querySelector('.kb-separator-box input'), 'separator chips input rendered');
+  assert.ok(section.querySelectorAll('.kb-separator-chip').length >= 2, 'hydrated separators render as chips');
   // Parent-child toggle renders as a checkbox row (not a bare number pair).
-  assert.ok(drawer.querySelector<HTMLInputElement>('input[type="checkbox"][aria-label="父子分块"]'), 'parent-child switch rendered');
+  assert.ok(section.querySelector<HTMLInputElement>('input[type="checkbox"][aria-label="父子分块"]'), 'parent-child switch rendered');
   // Collapsed advanced toggle.
-  const advancedToggle = Array.from(drawer.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('高级选项'));
+  const advancedToggle = Array.from(section.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('高级选项'));
   assert.ok(advancedToggle, '高级选项 fold toggle rendered');
   await act(async () => { advancedToggle?.click(); });
   await act(async () => {});
-  assert.ok(drawer.querySelector('input[type="number"][aria-label="每块 Token 上限"]'), 'token-limit input appears after expanding 高级选项');
+  assert.ok(section.querySelector('input[type="number"][aria-label="每块 Token 上限"]'), 'token-limit input appears after expanding 高级选项');
 });
 
 test('A2: the drawer storage section mirrors KBStorageSettings — tagged options, no bare list, migrate hint and the 管理存储实例 entry', async () => {
   await mountEditDrawer(makeClient(), 'storage');
   const drawer = document.body.querySelector('.wk-kb-editor-dialog');
   assert.ok(drawer, 'editor drawer rendered');
-  const select = drawer.querySelector<HTMLSelectElement>('select[aria-label="存储实例"]');
+  const select = drawer.querySelector<HTMLSelectElement>('[data-editor-section="storage"] select[aria-label="存储实例"]');
   assert.ok(select, 'storage instance select rendered');
   const options = Array.from(select.querySelectorAll('option'));
   // The inactive row is filtered (Vue filters status === 'active') and the
@@ -224,7 +249,7 @@ test('A2: the drawer storage section mirrors KBStorageSettings — tagged option
 test('A2 (no files): the storage select stays enabled and shows the selected instance endpoint hint', async () => {
   await mountEditDrawer(makeClient({ fileTotal: 0 }), 'storage');
   const drawer = document.body.querySelector('.wk-kb-editor-dialog');
-  const select = drawer?.querySelector<HTMLSelectElement>('select[aria-label="存储实例"]');
+  const select = drawer?.querySelector<HTMLSelectElement>('[data-editor-section="storage"] select[aria-label="存储实例"]');
   assert.ok(select);
   assert.equal(select.disabled, false, 'Vue only locks the select while the KB has files');
   assert.ok(drawer?.querySelector('[data-storage-instance-hint]'), 'selected instance endpoint hint renders');
@@ -253,13 +278,16 @@ test('A4: an edit-mode KB with files disables the indexing checks and renders th
   await mountEditDrawer(makeClient());
   const drawer = document.body.querySelector('.wk-kb-editor-dialog');
   assert.ok(drawer, 'editor drawer rendered (basic section is the default)');
-  const tip = drawer.querySelector('[data-indexing-locked-tip]');
+  const tip = drawer.querySelector('[data-editor-section="basic"] [data-indexing-locked-tip]');
   assert.ok(tip, 'lockedTip renders below the indexing cards');
   assert.match(tip?.textContent ?? '', /知识库已有内容，索引策略暂不支持调整/);
-  const fieldset = drawer.querySelector('fieldset[data-guide="kb-create-indexing"]');
-  const checks = Array.from(fieldset?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? []);
+  /* Task 11a：索引策略双卡是 .indexing-checks > .indexing-check-item（Vue DOM），
+     内部 t-checkbox（label.t-checkbox > input）。 */
+  const checksWrap = drawer.querySelector('[data-editor-section="basic"] [data-guide="kb-create-indexing"]');
+  const checks = Array.from(checksWrap?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? []);
   assert.equal(checks.length, 2);
   assert.equal(checks.every((check) => check.disabled), true, 'both indexing checks disabled (Vue isIndexingLocked)');
+  assert.equal(checksWrap?.querySelectorAll('.indexing-check-item.is-disabled').length, 2, 'cards carry the is-disabled state class');
 });
 
 test('A5: the graph section renders the disabled warning with the 如何启用知识图谱？ guide link', async () => {
@@ -279,9 +307,12 @@ test('A6: the advanced section carries the table-metadata textarea with the live
   await mountEditDrawer(makeClient(), 'advanced');
   const drawer = document.body.querySelector('.wk-kb-editor-dialog');
   assert.ok(drawer, 'editor drawer rendered');
-  const textarea = Array.from(drawer.querySelectorAll('textarea')).find((node) => node.getAttribute('maxlength') === '4000');
+  /* v-show 段常驻 DOM——收敛到 advanced 段（tdesign 段内的 textarea 走
+     maxlength 属性，留守段 WkTextarea 仍带原生 maxlength）。 */
+  const advancedSection = drawer.querySelector('[data-editor-section="advanced"]');
+  const textarea = Array.from(advancedSection?.querySelectorAll('textarea') ?? []).find((node) => node.getAttribute('maxlength') === '4000');
   assert.ok(textarea, 'table-metadata textarea (maxlength 4000) rendered on the ADVANCED section');
-  const counter = drawer.querySelector('[data-table-metadata-count]');
+  const counter = advancedSection?.querySelector('[data-table-metadata-count]');
   assert.ok(counter, '0/4000 limit counter rendered (TDesign .t-textarea__limit)');
   assert.equal(counter.textContent, '0/4000');
   const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')?.set;
