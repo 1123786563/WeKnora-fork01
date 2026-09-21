@@ -22,26 +22,28 @@ export interface PaletteRetrievalSettingsProps {
 export function PaletteRetrievalSettings({ client, locale }: PaletteRetrievalSettingsProps): React.ReactNode {
   const [value, setValue] = useState<unknown>(null);
   const [models, setModels] = useState<readonly SettingsModelOption[]>([]);
-  const [error, setError] = useState('');
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
+    // R481-A3 — Vue contract (GlobalCommandPalette.vue boot prefetch): a failed
+    // retrieval-config fetch is silently swallowed and the drawer then renders
+    // the DEFAULT-value form. Degrade to initialValue=null (→ ConfigSettingsPanel
+    // default form) with no error UI and no retry; a failed model list falls
+    // back to [] exactly as before.
     void Promise.all([
-      client.settings.retrieval.get(),
+      client.settings.retrieval.get().catch(() => null),
       client.configuration.models.list().catch(() => [] as readonly SettingsModelOption[]),
     ]).then(([config, modelList]) => {
       if (!active) return;
       setValue(config);
       setModels(Array.isArray(modelList) ? modelList : []);
-    }).catch((reason: unknown) => {
-      if (!active) return;
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setLoaded(true);
     });
     return () => { active = false; };
   }, [client]);
 
-  if (error) return <p className="m-0 text-xs text-[#b42318]">{error}</p>;
-  if (value === null) return <p className="m-0 text-xs text-[#8a94a3]">{formatMessage(locale, 'common.loading')}</p>;
+  if (!loaded) return <p className="m-0 text-xs text-[#8a94a3]">{formatMessage(locale, 'common.loading')}</p>;
   return (
     <Suspense fallback={<p className="m-0 text-xs text-[#8a94a3]">{formatMessage(locale, 'common.loading')}</p>}>
       <ConfigSettingsPanel client={client} section="retrieval" initialValue={value} models={models} />

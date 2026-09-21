@@ -155,3 +155,112 @@ test('parser keeps its explicit save button', async () => {
 
   assert.ok(container.querySelector('[data-testid="config-save"]'), 'parser section still saves explicitly');
 });
+
+/*
+ * R479 A3 — R021 错误路径交互锚定（Vue 契约）。
+ *
+ * - ChatHistorySettings.vue:171-174 保存失败：errorMessage = error?.message ||
+ *   'Unknown error'，MessagePlugin.error(saveFailed 模板插值)。React 以面板内
+ *   <Status tone="error"> 呈现同一条消息链（settings 域 R471/R472 口径），且
+ *   Vue 失败后草稿保留 → React 表单值/开关同样保持可编辑。
+ * - ParserEngineSettings.vue:667 check 失败：checkMessage = e?.message ||
+ *   checkFailed（行内 footer 消息，非 toast）→ React 同为行内。
+ */
+
+test('chat history save failure surfaces the backend message and keeps the form editable (R021)', async () => {
+  const calls: number[] = [];
+  const client = {
+    settings: { chatHistory: { config: { update: async () => { calls.push(calls.length); throw new Error('upstream down'); } } } },
+  } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(
+    <ConfigSettingsPanel
+      client={client}
+      section="chathistory"
+      initialValue={{ enabled: false, embedding_model_id: '' }}
+      models={[{ id: 'embed-1', name: 'Embedding' }]}
+    />,
+  ));
+
+  const toggle = container.querySelector('button[role="switch"]') as HTMLButtonElement | null;
+  assert.ok(toggle, 'expected the enable switch');
+  assert.equal(toggle.getAttribute('aria-checked'), 'false');
+  // Toggling marks the form dirty and arms the Vue 500ms debounced save.
+  await act(async () => { toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 550)); });
+
+  assert.equal(calls.length, 1, 'the debounced save should have fired once');
+  assert.match(container.textContent ?? '', /upstream down/, 'the backend message is surfaced');
+  // UI stays intact: the switch reflects the draft change and remains operable.
+  const toggleAfter = container.querySelector('button[role="switch"]') as HTMLButtonElement | null;
+  assert.ok(toggleAfter, 'the switch must stay rendered after a failed save');
+  assert.equal(toggleAfter.getAttribute('aria-checked'), 'true', 'the draft change is retained like the Vue draft model');
+});
+
+test('parser connection-check failure falls back to the localized checkFailed message (R021)', async () => {
+  const client = {
+    settings: { parser: { config: { update: async (body: Record<string, unknown>) => body }, check: async () => { throw 'probe rejected'; } } },
+  } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ConfigSettingsPanel client={client} section="parser" initialValue={{}} />));
+
+  const checkButton = [...container.querySelectorAll('button')].find((button) => button.textContent === '测试连接');
+  assert.ok(checkButton, 'expected the parser test-connection button');
+  await act(async () => { checkButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { await Promise.resolve(); });
+
+  assert.match(container.textContent ?? '', /检测失败/, 'non-Error rejections fall back to settings.parser.checkFailed');
+});
+
+test('parser form save failure surfaces the backend error and keeps controls rendered (R021)', async () => {
+  const client = {
+    settings: { parser: { config: { update: async () => { throw new Error('bad payload'); } }, check: async () => ({ connected: true }) } },
+  } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ConfigSettingsPanel client={client} section="parser" initialValue={{}} />));
+
+  const endpointHost = container.querySelector('[data-testid="mineru-endpoint"]');
+  assert.ok(endpointHost, 'expected the mineru endpoint field');
+  const endpoint = (endpointHost.tagName === 'INPUT' ? endpointHost : endpointHost.querySelector('input')) as HTMLInputElement | null;
+  assert.ok(endpoint, 'expected an input inside the mineru endpoint field');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(endpoint, 'http://mineru.local');
+    endpoint.dispatchEvent(new window.Event('input', { bubbles: true }));
+  });
+  const save = container.querySelector('[data-testid="config-save"]') as HTMLButtonElement | null;
+  assert.ok(save, 'expected the save button');
+  await act(async () => { save.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { await Promise.resolve(); });
+
+  assert.match(container.textContent ?? '', /bad payload/, 'the backend message is surfaced on the inline status');
+  assert.ok(container.querySelector('[data-testid="mineru-model"]'), 'form controls stay rendered after a failed save');
+});
+
+/*
+ * R481-A3 — 锁行为：上游 retrieval-config 加载失败时（设置页深链
+ * ?section=retrieval 静默化后 payload=null，或抽屉降级），面板必须把
+ * initialValue=null 渲染为 Vue RetrievalSettings 的默认值表单：
+ * embedding_top_k=50、vector_threshold=0.15、keyword_threshold=0.3、
+ * rerank_top_k=10、rerank_threshold=0.2、rerank_model_id=''，无异常。
+ */
+test('retrieval section renders the Vue default form when initialValue is null (R480/R481)', async () => {
+  const client = { settings: { retrieval: { update: async (body: Record<string, unknown>) => body } } } as unknown as WeKnoraClient;
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={null} models={[]} />));
+
+  const text = container.textContent ?? '';
+  assert.match(text, /向量检索数量 \(Top K\)/, 'the default retrieval form renders');
+  const outputs = [...container.querySelectorAll('output')].map((node) => node.textContent);
+  assert.deepEqual(outputs, ['50', '0.15', '0.30', '10', '0.20'], 'sliders fall back to the Vue defaults (Top K 50, thresholds 0.15/0.30/10/0.20)');
+  const rerankInput = container.querySelector('input:not([type="range"])') as HTMLInputElement | null;
+  assert.ok(rerankInput, 'models=[] renders the rerank model as a text input');
+  assert.equal(rerankInput.value, '', 'rerank model defaults to empty');
+});

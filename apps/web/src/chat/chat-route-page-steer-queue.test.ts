@@ -403,3 +403,15 @@ test('ChatRoutePage wires the Vue inject optimistic preview into the steer pipel
   assert.match(source, /clearSteerPreviewPending\(/, 'an already_injected receipt settles the optimistic row');
   assert.match(source, /discardSteerPreviews\(/, 'the degrade-to-send / stop paths discard the optimistic rows');
 });
+
+/*
+ * R477-A2 — Vue surfaces both steer attachment warnings through
+ * MessagePlugin.warning (toasts), not an inline error. ChatRoutePage must
+ * wire the SteerComposer warning channel onto the agent toast (the same
+ * channel the R476 steer notices use) so the carrier matches Vue.
+ */
+test('ChatRoutePage routes the steer attachment warnings onto the toast channel', () => {
+  const source = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /onSteerWarning=\{showAgentToast\}/, 'the SteerComposer warning channel feeds the agent toast');
+  assert.doesNotMatch(source, /steerAttachmentsBlocked/, 'the R476 composite key is fully retired');
+});

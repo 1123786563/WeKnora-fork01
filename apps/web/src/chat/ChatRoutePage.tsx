@@ -1,17 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, ModelConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { ApiError } from '@weknora/api-client';
-import type { ChatStreamEvent, FeedbackRating } from '@weknora/contracts';
+import type { ChatStreamEvent } from '@weknora/contracts';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
-import { installChatImageErrorWatcher } from '@weknora/views/chat/markdown';
-import { getAgentNotReadyReasonKeys } from '@weknora/views/chat/agent-readiness';
-import { agentNotReadyLabels } from '@weknora/views/chat/agent-selector';
-// R484 D15 — Vue agentWebSearch.ts readiness gates for the composer globe toggle.
-import { isAgentWebSearchReady, isTenantWebSearchReady } from '@weknora/views/chat/web-search';
 import { resolveForkAffordance, stashForkLanding, takeForkLanding } from '@weknora/views/chat/fork-point';
 import { resolveChatCopy } from '@weknora/views/chat/chat-copy';
 import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
@@ -19,12 +14,7 @@ import type { ChatMentionView, ChatSubmission } from '@weknora/views/chat/compos
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
 import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
-// R490 B1 — Vue Input-field.vue agent-scoped KB filter for the @ mention popup.
-import { deriveKbFilterForAgent, isKbModelReady, mergeSharedKbsForMention, resolveMentionAgentKbScope } from './mention-agent-filter.ts';
-// R490 B3 — Vue botmsg handleAddToKnowledge: prefilled manual-editor dialog.
-import { BookmarkAnswerDialog, buildManualBookmarkContent, formatManualBookmarkTitle, manualEditorStrings } from './BookmarkAnswerDialog.tsx';
-import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip, resolveChatModelOptions } from './model-chip.ts';
-import { buildHeaderUtilityItems } from './header-menu-actions.ts';
+import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip } from './model-chip.ts';
 import { readStoredLocale } from '../i18n.ts';
 import { resolveChatAttachmentValidationMessage } from './attachment-messages.ts';
 import { resolveChatSessionSourceOptions } from './session-source-options.ts';
@@ -59,8 +49,6 @@ import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicatio
 import { prepareSendRun } from './send-run.ts';
 import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution, extractApprovalTiming, withApprovalTiming, type ApprovalTiming } from './approval-state.ts';
 import { chatClearConfirmation } from './clear-confirmation.ts';
-// SP13 Task 8 — 会话分享弹窗（侧栏 ⋯ 菜单「分享」→ mint 只读链接）。
-import { SessionShareDialog } from './SessionShareDialog.tsx';
 import { clearPrefillParamsFromUrl, readPrefillKbIds, readPrefillQuery } from './prefill-query.ts';
 import './chat.css';
 
@@ -94,15 +82,6 @@ function readStoredChatModelId(scope: ReturnType<ScopeController['current']>['sc
   try { return window.localStorage.getItem(chatModelStorageKey(scope))?.trim() ?? ''; } catch { return ''; }
 }
 
-// R484 D15 — per-browser web-search toggle persistence (Vue keeps it in the
-// settings store; the tenant KV write there is admin-gated and not ported).
-const WEB_SEARCH_ENABLED_KEY = 'weknora:web-search-enabled';
-
-/** Selected agent row, or undefined for the built-in quick-answer default. */
-function selectedAgentIdRefForWebSearch(agents: readonly AgentConfiguration[], selectedAgentId: string): AgentConfiguration | undefined {
-  return selectedAgentId ? agents.find((item) => item.id === selectedAgentId) : undefined;
-}
-
 export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowledgeBaseId, canViewChannelSessions = false }: ChatRoutePageProps) {
   const scope = scopeController.current();
   const copy = resolveChatCopy(readStoredLocale());
@@ -128,11 +107,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // Vue readLastChatModelID: the chip resolves the user's *explicit* pick, not
   // the synthetic first-model default the loader seeds selectedModelId with.
   const [userModelPick, setUserModelPick] = useState(() => readStoredChatModelId(scope.scope));
-  // SP14 Task 4 — 用户默认模型（Ruling P-3 方案 A）：server-side
-  // preferences.default_model，拉取一次；失败/未设静默保持 undefined（芯片
-  // 与发送链维持 models[0] 兜底）。模型解析链变为 pick > 助手绑定 >
-  // 用户默认 > models[0]。
-  const [userDefaultModel, setUserDefaultModel] = useState<string | undefined>(undefined);
   // Empty-state suggested questions (creatChat view) come from the selected
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
@@ -214,42 +188,18 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     models: chatModels,
     agentModelId,
     selectedModelId: userModelPick,
-    // SP14 P-3 user-default layer: only reaches the chip when neither an
-    // explicit pick nor an agent binding exists (model-chip.ts priority).
-    userDefaultModel,
     notConfiguredLabel: MODEL_CHIP_NOT_CONFIGURED[readStoredLocale()] ?? MODEL_CHIP_NOT_CONFIGURED['zh-CN'],
-  }), [agentModelId, chatModels, userModelPick, userDefaultModel]);
+  }), [agentModelId, chatModels, userModelPick]);
   const modelChipLabel = modelChip.label;
   const modelChipContext = modelChip.context;
   const modelChipIsDefault = modelChip.isDefaultContext;
-  // R483 D13 — resolveChatModelOptions applies the Vue display_name || name
-  // fallback: a model whose display_name is an empty string (the live
-  // builtin-llm-mock row) must still yield a dropdown option instead of
-  // degrading the chip to the disabled variant.
-  const modelOptions = useMemo(() => resolveChatModelOptions(chatModels), [chatModels]);
-  // R483 D16 — Vue ChatHeader utility actions (ChatHeader.vue:61-78): copy
-  // session id / copy link / copy as Markdown / open in new window. The
-  // header menu only mounts with an open session, so the items resolve the
-  // selected row (title fallback mirrors Vue menu.newSession) and reuse the
-  // composer toast surface for the Vue MessagePlugin feedback.
-  const headerUtilityItems = useMemo(() => {
-    if (!selectedSessionId) return undefined;
-    const session = sessions.find((item) => item.id === selectedSessionId);
-    return buildHeaderUtilityItems({
-      locale: readStoredLocale(),
-      sessionId: selectedSessionId,
-      sessionTitle: session?.title || copy.newSession,
-      currentUrl: new URL(String(window.location)),
-      loadMessagesPage: (beforeTime, limit) => client.sessions.messages(selectedSessionId, { beforeTime, limit, signal: scope.signal }),
-      toast: showAgentToast,
-      openWindow: (url) => { window.open(url, '_blank', 'noopener,noreferrer'); },
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, scope.signal, scope.scope, selectedSessionId, sessions]);
-  // Vue parity (Input-field.vue handleModelChange): localStorage only ever
-  // records the user's *explicit* pick. The loader-seeded first-model fallback
-  // (models-load effect) stays in memory only — writing it here would turn a
-  // synthetic default into a durable "user choice" the next mount inherits.
+  const modelOptions = useMemo(() => chatModels
+    .map((model) => ({ id: String(model.id ?? '').trim(), name: String(model.display_name ?? model.name ?? model.id ?? '').trim() }))
+    .filter((model) => model.id.length > 0 && model.name.length > 0), [chatModels]);
+  useEffect(() => {
+    if (!selectedModelId) return;
+    try { window.localStorage.setItem(chatModelStorageKey(scope.scope), selectedModelId); } catch { /* storage may be unavailable */ }
+  }, [scope.scope, selectedModelId]);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   // R473-A2 — Vue steerQueue ref parity: queued after-messages shown as
@@ -271,53 +221,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const suggestionForMessage = useRef<string | null>(null);
   const impressionForSuggestion = useRef<string | null>(null);
   const [error, setError] = useState<string | undefined>();
-  // SP11 message feedback (like/dislike): the pressed state per message,
-  // hydrated from client.chat.feedback.mine on session load.
-  const [ratings, setRatings] = useState<Record<string, FeedbackRating>>({});
   const [agentModels, setAgentModels] = useState<Array<{ id: string; type?: string }>>([]);
-  // R484 D15 — Vue settingsStore.isWebSearchEnabled + chatResources.webSearchProviders
-  // (Input-field.vue showWebSearchButton / isWebSearchConfigured / toggleWebSearch).
-  // The toggle persists per browser like the per-user chat-model pick; the Vue
-  // store's tenant KV write is admin-gated and not ported.
-  const [webSearchProviders, setWebSearchProviders] = useState<Array<{ id: string; is_default?: boolean }>>([]);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(() => {
-    try { return window.localStorage.getItem(WEB_SEARCH_ENABLED_KEY) === '1'; } catch { return false; }
-  });
-  // R484 D15 — Vue Input-field.vue isWebSearchConfigured / showWebSearchButton:
-  // an agent selection gates on its own engine readiness (isAgentWebSearchReady),
-  // the default quick-answer on the tenant default engine (isTenantWebSearchReady).
-  // The React composer shows the globe only when the gate passes, matching the
-  // Vue computed pair (readiness unknown → hidden until providers resolve).
-  const webSearchConfigured = useMemo(() => {
-    const agent = selectedAgentIdRefForWebSearch(agents, selectedAgentId);
-    return agent
-      ? isAgentWebSearchReady(agent.config as Record<string, unknown> | undefined, webSearchProviders)
-      : isTenantWebSearchReady(webSearchProviders);
-  }, [agents, selectedAgentId, webSearchProviders]);
-  const webSearchVisible = webSearchConfigured;
-  function toggleWebSearch(): void {
-    // Vue toggleWebSearch (Input-field.vue:2504-2541): agent-disabled wins,
-    // an unconfigured engine prompts instead of flipping, otherwise the store
-    // toggle flips with a toast. The not-configured prompt is plain text here
-    // (the React toast surface has no link affordance).
-    const agent = selectedAgentIdRefForWebSearch(agents, selectedAgentId);
-    if (agent && (agent.config as Record<string, unknown> | undefined)?.web_search_enabled !== true) {
-      showAgentToast(copy.webSearchDisabledByAgent);
-      return;
-    }
-    if (!webSearchConfigured) {
-      showAgentToast(copy.webSearchNotConfiguredToast);
-      return;
-    }
-    const next = !webSearchEnabled;
-    setWebSearchEnabled(next);
-    try { window.localStorage.setItem(WEB_SEARCH_ENABLED_KEY, next ? '1' : '0'); } catch { /* storage may be unavailable */ }
-    showAgentToast(next ? copy.webSearchEnabledToast : copy.webSearchDisabledToast);
-  }
   const [agentToast, setAgentToast] = useState<string | null>(null);
   const agentToastTimer = useRef<number | null>(null);
-  // SP13 Task 8 — 侧栏分享入口打开的会话（null = 关窗）；弹窗自己 mint token。
-  const [shareSessionId, setShareSessionId] = useState<string | null>(null);
   useEffect(() => () => { if (agentToastTimer.current !== null) window.clearTimeout(agentToastTimer.current); }, []);
   const [terminal, setTerminal] = useState<WebTerminalSnapshot>({ status: 'idle', output: '' });
   const terminalController = useRef<WebTerminalController | null>(null);
@@ -330,11 +236,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // from a previous tenant/client must not repopulate the next tenant's
   // picker, and a scope teardown must release the in-flight guard so the next
   // scope can issue a fresh request.
-  // Vue renders transcript images through t-image whose error state shows the
-  // 图片无法显示 placeholder + 预览 trigger; the capture-phase watcher swaps
-  // failed content images to that fallback (install is idempotent).
-  useEffect(() => { installChatImageErrorWatcher(); }, []);
-
   useEffect(() => {
     const generation = ++mentionGenerationRef.current;
     mentionLoadedRef.current = false;
@@ -351,14 +252,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setMentionLoading(false);
     };
   }, [client, scope.scope]);
-
-  // R490 B1 — Vue Input-field.vue watches selectedAgentId / agent KB config
-  // and re-resolves the @ list under the new agent. Reset the loaded cache so
-  // the next popup open re-runs the agent compatibility filter (the chips and
-  // any open popup are left alone; only the cache is invalidated).
-  useEffect(() => {
-    mentionLoadedRef.current = false;
-  }, [selectedAgentId, agents]);
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
@@ -454,32 +347,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     return () => { active = false; };
   }, [client, scope.signal, scope.scope, scopeController]);
 
-  // R484 D15 — Vue Input-field.vue loadWebSearchConfig
-  // (chatResources.ensureWebSearchProviders): fetch the tenant engines once;
-  // a stale enabled toggle whose engine disappeared is turned off like Vue's
-  // `!isWebSearchConfigured && isWebSearchEnabled → toggleWebSearch(false)`.
-  useEffect(() => {
-    let active = true;
-    void client.settings.webSearch.providers.list(scope.signal).then(
-      (result) => {
-        if (!active || !scopeController.isCurrent(scope.scope)) return;
-        const providers = (Array.isArray(result) ? result : []).map((provider) => ({
-          id: String(provider.id ?? ''),
-          is_default: provider.is_default === true,
-        }));
-        setWebSearchProviders(providers);
-        const agent = selectedAgentIdRefForWebSearch(agents, selectedAgentId);
-        const configured = agent
-          ? isAgentWebSearchReady(agent.config as Record<string, unknown> | undefined, providers)
-          : isTenantWebSearchReady(providers);
-        if (!configured) setWebSearchEnabled(false);
-      },
-      () => { if (active) setWebSearchProviders([]); },
-    );
-    return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, scope.scope, scopeController, selectedAgentId]);
-
   // Vue AttachmentUpload discovers additional parser-supported extensions at
   // runtime. Keep the static baseline if this optional capability is offline.
   useEffect(() => {
@@ -511,42 +378,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           setAgentModels(result.map((model) => ({ id: String(model.id), type: typeof model.type === 'string' ? model.type : undefined })));
           const models = listChatModels(result);
           setChatModels(models);
-          // Vue ensureModelSelection seeding: an explicit pick that still
-          // resolves keeps winning; otherwise the synthetic (memory-only)
-          // default seeds from the user's server-side default (SP14 P-3)
-          // before the tenant's first chat model. The pick layer (localStorage
-          // persistence in onModelChange) is untouched — a synthetic seed is
-          // never written there.
-          const explicitPick = readStoredChatModelId(scope.scope);
-          if (explicitPick && models.some((model) => String(model.id) === explicitPick)) {
-            setSelectedModelId(explicitPick);
-          } else {
-            setSelectedModelId(userDefaultModel && models.some((model) => String(model.id) === userDefaultModel)
-              ? userDefaultModel
-              : String(models[0]?.id ?? ''));
-          }
+          setSelectedModelId((current) => current && models.some((model) => String(model.id) === current) ? current : String(models[0]?.id ?? ''));
         }
       },
       () => { if (active) setChatModels([]); },
-    );
-    return () => { active = false; };
-    // userDefaultModel re-runs the seeding so a preference that arrives after
-    // the list still lands (the effect body only re-reads, never refetches
-    // unless the scope changed).
-  }, [client, scope.signal, scope.scope, scopeController, userDefaultModel]);
-
-  // SP14 Task 4 — pull the user's default chat model once (PUT-backed
-  // preferences from the 会话偏好 settings section). A failed read leaves the
-  // chip on the first-model fallback; only a non-empty string counts.
-  useEffect(() => {
-    let active = true;
-    void client.settings.preferences.get(scope.signal).then(
-      (preferences) => {
-        if (!active || !scopeController.isCurrent(scope.scope)) return;
-        const value = preferences?.default_model;
-        if (typeof value === 'string' && value.trim()) setUserDefaultModel(value.trim());
-      },
-      () => { if (active) setUserDefaultModel(undefined); },
     );
     return () => { active = false; };
   }, [client, scope.signal, scope.scope, scopeController]);
@@ -560,7 +395,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       suggestionForMessage.current = null;
       impressionForSuggestion.current = null;
       applySteerQueue(clearSteerQueue);
-      setRatings({});
       return;
     }
     // Vue chat/index.vue session switch: the queue belongs to the previous
@@ -572,27 +406,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     impressionForSuggestion.current = null;
     setLoadingMessages(true);
     setError(undefined);
-    setRatings({});
     setStreamState(initialChatStreamState());
     void client.sessions.messages(selectedSessionId, { limit: 50, signal: scope.signal }).then(
       (result) => {
         if (active && scopeController.isCurrent(scope.scope)) {
           setMessages(appendMessages([], result));
           setHasMoreMessages(hasOlderMessages(result, 50));
-          // SP11 feedback echo: hydrate my persisted like/dislike after the
-          // history lands. Isolated on purpose (async IIFE + catch-all) so an
-          // echo failure — or a host client without the feedback API — can
-          // neither skip the suggestion loader nor reject unhandled.
-          void (async () => {
-            try {
-              const mine = await client.chat.feedback.mine(selectedSessionId, scope.signal);
-              if (active && scopeController.isCurrent(scope.scope)) {
-                setRatings(Object.fromEntries(mine.items
-                  .filter((entry) => entry.rating === 'like' || entry.rating === 'dislike')
-                  .map((entry) => [entry.message_id, entry.rating] as const)));
-              }
-            } catch { /* echo failure must never block the chat */ }
-          })();
           const assistant = result.filter((message) => message.role === 'assistant' && message.is_completed).at(-1);
           if (assistant) {
             suggestionForMessage.current = assistant.id;
@@ -663,9 +482,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
         if (signal?.aborted || !scopeController.isCurrent(scope.scope) || selectedSessionIdRef.current !== sessionId) return;
         current = await client.chat.suggestions.get(sessionId, messageId, signal);
-        // Vue answer-toolbar parity: while suggestions generate, the loading
-        // label shows on the just-finished turn's toolbar.
-        if (current.status === 'generating' && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) setSuggestions(current);
       }
       if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId && suggestionForMessage.current === messageId) {
         setSuggestions(current.status === 'ready' ? current : undefined);
@@ -933,51 +749,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (agentToastTimer.current !== null) window.clearTimeout(agentToastTimer.current);
     agentToastTimer.current = window.setTimeout(() => setAgentToast(null), 2400);
   }
-
-  // SP11 message feedback (Task 8): optimistic pressed-state with symmetric
-  // rollback when the persisted rating call fails (transient toast, no banner).
-  const ratingOf = useCallback((messageId: string): FeedbackRating | undefined => ratings[messageId], [ratings]);
-  // R490 B3 — Vue botmsg.vue handleAddToKnowledge: the answer toolbar's
-  // 添加到知识库 opens the manual editor prefilled from the paired
-  // question/answer; an empty answer warns and does not open.
-  const [bookmarkTarget, setBookmarkTarget] = useState<{ title: string; content: string } | null>(null);
-  const onBookmarkMessage = useCallback((messageId: string): void => {
-    const index = messages.findIndex((message) => message.id === messageId);
-    if (index < 0) return;
-    const answer = (messages[index]?.content ?? '').trim();
-    if (!answer) {
-      showAgentToast(copy.bookmarkEmptyContentWarning);
-      return;
-    }
-    const question = messages.slice(0, index).reverse().find((message) => message.role === 'user')?.content ?? '';
-    setBookmarkTarget({
-      title: formatManualBookmarkTitle(question.trim(), copy.bookmarkSessionExcerpt),
-      content: buildManualBookmarkContent(answer, copy.bookmarkNoAnswerContent),
-    });
-  }, [messages, copy]);
-
-  const onRateMessage = useCallback(async (messageId: string, rating: FeedbackRating): Promise<void> => {    setRatings((prev) => ({ ...prev, [messageId]: rating }));
-    const sessionId = selectedSessionId;
-    if (!sessionId) return;
-    try {
-      await client.chat.feedback.submit(sessionId, messageId, rating);
-    } catch {
-      setRatings((prev) => { const next = { ...prev }; delete next[messageId]; return next; });
-      showAgentToast(copy.operationFailed);
-    }
-  }, [client, selectedSessionId]);
-  const onRemoveRating = useCallback(async (messageId: string): Promise<void> => {
-    const previous = ratings[messageId];
-    setRatings((prev) => { const next = { ...prev }; delete next[messageId]; return next; });
-    const sessionId = selectedSessionId;
-    if (!sessionId) return;
-    try {
-      await client.chat.feedback.remove(sessionId, messageId);
-    } catch {
-      if (previous) setRatings((prev) => ({ ...prev, [messageId]: previous }));
-      showAgentToast(copy.operationFailed);
-    }
-  }, [client, ratings, selectedSessionId]);
 
   /** SPA navigation to the agents page (manage entry / configure jump). */
   function navigateToAgentsPage(query?: string) {
@@ -1452,27 +1223,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     mentionLoadingRef.current = true;
     setMentionLoading(true);
     setMentionError(undefined);
-    // R490 B1 — Vue Input-field.vue 1288-1399: the @ popup scopes KBs by the
-    // selected agent. The '' selection falls back to the builtin quick-answer
-    // agent, mirroring the agent-not-ready gate below and Vue's
-    // BUILTIN_QUICK_ANSWER_ID fallback.
-    const mentionAgent = agents.find((item) => item.id === selectedAgentId)
-      ?? (selectedAgentId === '' ? agents.find((item) => item.is_builtin === true && item.id === 'builtin-quick-answer') : undefined);
-    const mentionScope = resolveMentionAgentKbScope(
-      mentionAgent?.config as Record<string, unknown> | undefined,
-      // Rows are threaded through below once the list resolves; the file gate
-      // and capability filter only need the agent config up front.
-      [],
-    );
-    const documentSearch = mentionScope.shouldLoadFiles && client.knowledge.documents?.search
-      ? client.knowledge.documents.search({
-        recent: true,
-        offset: 0,
-        limit: 20,
-        ...(mentionScope.fileTypes.length > 0 ? { file_types: mentionScope.fileTypes } : {}),
-      })
+    const documentSearch = client.knowledge.documents?.search
+      ? client.knowledge.documents.search({ recent: true, offset: 0, limit: 20 })
       : Promise.resolve({ data: [] } as any);
-    const hasDocumentSearch = mentionScope.shouldLoadFiles && typeof client.knowledge.documents?.search === 'function';
+    const hasDocumentSearch = typeof client.knowledge.documents?.search === 'function';
     const mcpList = client.configuration?.mcp?.list
       ? client.configuration.mcp.list()
       : Promise.resolve([] as any[]);
@@ -1481,17 +1235,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       ? client.configuration.skills.list()
       : Promise.resolve([] as any[]);
     const hasSkillList = typeof client.configuration?.skills?.list === 'function';
-    // R490 B1 — orgStore.sharedKnowledgeBases (Input-field.vue 1278): the
-    // shared rows merge into the @ list; a failure degrades to no shares.
-    const sharedList = client.identity?.organizations?.knowledgeBaseShares?.listShared
-      ? client.identity.organizations.knowledgeBaseShares.listShared().catch(() => [])
-      : Promise.resolve([] as unknown[]);
     void Promise.allSettled([
       client.knowledgeBases.list({ creator: 'all' }),
       documentSearch,
       mcpList,
       skillList,
-      sharedList,
     ]).then(
       async (results) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
@@ -1505,58 +1253,33 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           return;
         }
         const kbValues = results[0].status === 'fulfilled' ? results[0].value : [];
-        // R490 B1 — mirror the Vue @ list base (Input-field.vue 1240-1284 +
-        // chatResources.validKnowledgeBases): own KBs must pass the
-        // isKbModelReady initialization filter (summary LLM configured,
-        // embedding model bound for chunk indexing), then writable-shared KBs
-        // merge after them (deduped by id, shares bypass the readiness gate).
-        const sharedValues = results[4] && results[4].status === 'fulfilled' ? results[4].value : [];
-        const mentionBaseKbs = mergeSharedKbsForMention(
-          kbValues.filter((item) => isKbModelReady(item as Record<string, unknown>)),
-          (Array.isArray(sharedValues) ? sharedValues : []) as Record<string, unknown>[],
-        );
-        // R490 B1 — resolveMentionAgentKbScope applies the Vue pass:
-        // 'none' empties, 'selected' narrows to the configured ids, 'all'
-        // keeps only agent-compatible KBs (mode + tool-derived capabilities).
-        const agentScope = resolveMentionAgentKbScope(mentionAgent?.config as Record<string, unknown> | undefined, mentionBaseKbs);
-        const scopedKbs = agentScope.scopedKbs;
-        const kbItems = scopedKbs.map((item) => ({
-          id: String(item.id),
-          name: String(item.name),
+        const kbItems = kbValues.map((item) => ({
+          id: item.id,
+          name: item.name,
           type: 'kb' as const,
           kbType: item.type === 'faq' ? 'faq' as const : 'document' as const,
         }));
-        const tagResults = await Promise.allSettled(scopedKbs.map((item) => client.knowledge.documents.tags(String(item.id), { page_size: 200 })));
+        const tagResults = await Promise.allSettled(kbValues.map((item) => client.knowledge.documents.tags(item.id, { page_size: 200 })));
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
         const tagItems = tagResults.flatMap((result, index) => {
           if (result.status !== 'fulfilled') return [];
-          const kb = scopedKbs[index];
+          const kb = kbValues[index];
           return result.value.map((tag: any) => ({
             id: String(tag.id),
             name: String(tag.name ?? tag.label ?? tag.id),
             type: 'tag' as const,
-            kbId: kb ? String(kb.id) : undefined,
-            kbName: kb ? String(kb.name) : undefined,
+            kbId: kb?.id,
+            kbName: kb?.name,
           }));
         });
-        // R490 B1 — Vue filters searched files to the same agent KB scope
-        // (mentionAllowedKbIds; Input-field.vue 1426-1436): a file whose KB is
-        // not in scope is dropped, and files do not load at all when the agent
-        // disables KBs or no tool consumes file ids.
-        const fileRecords = agentScope.shouldLoadFiles && results[1].status === 'fulfilled' ? results[1].value.data : [];
-        const scopedFileRecords = agentScope.allowedKbIds
-          ? (Array.isArray(fileRecords) ? fileRecords : []).filter((item: any) => {
-            const kbId = item.knowledge_base_id ?? item.kb_id;
-            return kbId != null && agentScope.allowedKbIds?.has(String(kbId));
-          })
-          : (Array.isArray(fileRecords) ? fileRecords : []);
-        const fileItems = scopedFileRecords.map((item: any) => ({
+        const fileResult = results[1].status === 'fulfilled' ? results[1].value.data : [];
+        const fileItems = Array.isArray(fileResult) ? fileResult.map((item: any) => ({
           id: String(item.id),
           name: String(item.title ?? item.file_name ?? item.id),
           type: 'file' as const,
           kbId: item.knowledge_base_id ?? item.kb_id,
           kbName: item.knowledge_base_name ?? '',
-        }));
+        })) : [];
         const mcpItems = results[2].status === 'fulfilled' ? results[2].value.map((item: any) => ({
           id: item.id,
           name: item.name,
@@ -1585,23 +1308,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setMentionLoading(false);
     });
   }
-
-  // R490 B1 — Vue mentionEmptyHint (Input-field.vue 433-441): when the agent
-  // capability filter empties the @ list with no search term, show the
-  // dedicated hint instead of the generic empty label. The query/empty-list
-  // checks ride on the composer side, mirroring the Vue computed.
-  const mentionNoCompatibleKbHint = useMemo(() => {
-    if (mentionOptions.length !== 0) return undefined;
-    const agent = agents.find((item) => item.id === selectedAgentId)
-      ?? (selectedAgentId === '' ? agents.find((item) => item.is_builtin === true && item.id === 'builtin-quick-answer') : undefined);
-    const config = agent?.config as Record<string, unknown> | undefined;
-    if (!config) return undefined;
-    const kbMode = String(config.kb_selection_mode ?? '') || 'all';
-    if (kbMode !== 'all') return undefined;
-    const agentMode = typeof config.agent_mode === 'string' ? config.agent_mode : '';
-    const allowedTools = Array.isArray(config.allowed_tools) ? config.allowed_tools.map((tool) => String(tool)) : [];
-    return deriveKbFilterForAgent(agentMode, allowedTools) ? copy.mentionNoCompatibleKbForAgent : undefined;
-  }, [mentionOptions, agents, selectedAgentId, copy]);
 
   function selectMention(item: ChatMentionView): void {
     setMentionedItems((current) => current.some((selected) => selected.id === item.id) ? current : [...current, item]);
@@ -1731,23 +1437,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   async function send(submission: ChatSubmission): Promise<void> {
     if (sendInFlightRef.current) throw new Error('A chat request is already running.');
-    // Vue Input-field.vue createSession: a send is blocked with a toast when
-    // the selected agent — or the default 快速问答 when none is selected — is
-    // missing required model configuration.
-    const gateAgent = agents.find((item) => item.id === selectedAgentId)
-      ?? (selectedAgentId === '' ? agents.find((item) => item.is_builtin === true && item.id === 'builtin-quick-answer') : undefined);
-    if (gateAgent) {
-      const gateConfig = gateAgent.config as Record<string, unknown> | undefined;
-      const notReadyKeys = getAgentNotReadyReasonKeys(gateConfig, agentModels, { isAgentMode: String(gateConfig?.agent_mode ?? '') === 'smart-reasoning' });
-      if (notReadyKeys.length > 0) {
-        const displayName = selectedAgentId === '' && gateAgent.is_builtin === true ? copy.quickAnswer : gateAgent.name;
-        showAgentToast(copy.agentNotReadyDetail
-          .replace('{agentName}', displayName)
-          .replace('{reasons}', agentNotReadyLabels(copy, notReadyKeys).join('、')));
-        return;
-      }
-    }
-    sendInFlightRef.current = true;
     sendInFlightRef.current = true;
     // R466-A2: the ?q= prefill is consumed once its query is sent — strip it
     // from the URL (replaceState) even if the turn later fails, mirroring the
@@ -1786,7 +1475,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         ...(item.kbName || item.type === 'kb' ? { kb_name: item.kbName ?? item.name } : {}),
         ...(item.skillName ? { skill_name: item.skillName } : {}),
       }));
-      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds, streamMentions, submission.modelId ?? selectedModelId, webSearchEnabled && webSearchConfigured), signal: runController.signal };
+      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds, streamMentions, submission.modelId ?? selectedModelId), signal: runController.signal };
       // Track the newest SSE event id so a mid-flight transport failure can
       // resume exactly once with the Last-Event-ID header before the error
       // surfaces (Vue parity: EventSource-style automatic reconnection).
@@ -1802,20 +1491,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           await client.chat.stream(retry, feedWithLastEventId(feed, lastEventId));
         } catch (retryCause) {
           if (runController.signal.aborted) return;
-          // Vue parity (chat/index.vue onerror → MessagePlugin.error): a failed
-          // stream surfaces as a transient toast and ends the turn — the
-          // transcript keeps the user message without a persistent inline
-          // error row, so the failure is not re-thrown into the failed-send
-          // pending row.
-          const toastMessage = isChatStreamApplicationError(retryCause)
-            ? retryCause.message
-            : streamFailureMessage(retryCause, copy.streamFailed);
-          if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
-            showAgentToast(toastMessage);
-            setStreamState((current) => ({ ...current, phase: 'error', artifactsPending: false }));
-            streamStateRef.current = { ...streamStateRef.current, phase: 'error', artifactsPending: false };
+          if (!isChatStreamApplicationError(retryCause) && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
+            setStreamState((current) => ({ ...current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false }));
+            streamStateRef.current = { ...streamStateRef.current, phase: 'error', error: streamFailureMessage(retryCause, copy.streamFailed), artifactsPending: false };
           }
-          return;
+          // Application errors keep the server-provided message (Vue renders
+          // the SSE error event content); transport errors carry the copy.
+          throw isChatStreamApplicationError(retryCause) ? retryCause : new Error(streamFailureMessage(retryCause, copy.streamFailed));
         }
       }
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
@@ -1849,16 +1531,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         {agentToast}
       </div>
     ) : null}
-    {shareSessionId ? (
-      <SessionShareDialog
-        client={client}
-        sessionId={shareSessionId}
-        sessionTitle={sessions.find((session) => session.id === shareSessionId)?.title}
-        locale={readStoredLocale()}
-        onClose={() => setShareSessionId(null)}
-        onToast={showAgentToast}
-      />
-    ) : null}
     <ChatPage
     sessions={sessions}
     selectedSessionId={selectedSessionId}
@@ -1879,7 +1551,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     mentionedItems={mentionedItems}
     mentionLoading={mentionLoading}
     mentionError={mentionError}
-    mentionEmptyHint={mentionNoCompatibleKbHint}
     onMentionOpen={loadMentionOptions}
     onMentionSelect={selectMention}
     onMentionRemove={removeMention}
@@ -1908,25 +1579,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     modelContextIsDefault={modelChipIsDefault}
     modelOptions={modelOptions}
     selectedModelId={selectedModelId}
-    webSearchVisible={webSearchVisible}
-    webSearchConfigured={webSearchConfigured}
-    webSearchEnabled={webSearchEnabled}
-    onWebSearchToggle={toggleWebSearch}
-    onModelChange={(modelId) => {
-      // Vue handleModelChange order: persist the explicit pick first, then
-      // update the in-memory selection states.
-      try { window.localStorage.setItem(chatModelStorageKey(scope.scope), modelId); } catch { /* storage may be unavailable */ }
-      setUserModelPick(modelId);
-      setSelectedModelId(modelId);
-    }}
-    headerUtilityItems={headerUtilityItems}
+    onModelChange={(modelId) => { setUserModelPick(modelId); setSelectedModelId(modelId); }}
     starterQuestions={starterQuestions}
     onForkMessage={forkAtMessage}
     canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}
-    onRateMessage={onRateMessage}
-    onBookmark={onBookmarkMessage}
-    onRemoveRating={onRemoveRating}
-    ratingOf={ratingOf}
     starterQuestionsLoading={starterQuestionsLoading}
     onRefreshStarterQuestions={refreshStarterQuestions}
     onStarterQuestionClick={(question) => updateDraft(question)}
@@ -1946,6 +1602,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
      * (SteerComposer onSteer(content, mentionedItems, delivery)); steer()
      * keeps retrySteerId third (host-internal retries), so adapt here. */
     onSteer={(content, selectedMentions, delivery) => steer(content, selectedMentions ?? mentionedItems, undefined, delivery)}
+    /* R477-A2 — Vue toasts both steer attachment warnings
+     * (input.messages.steerAttachmentPending / steerHasAttachments) via
+     * MessagePlugin.warning; route them onto the agent toast channel the
+     * R476 steer notices already use. */
+    onSteerWarning={showAgentToast}
     steerQueue={steerQueueChips(steerQueue)}
     onSteerPromote={(steerId) => { void promoteSteer(steerId); }}
     onSteerRemove={(steerId) => { void removeSteer(steerId); }}
@@ -1953,7 +1614,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onRenameSession={renameSession}
     onToggleSessionPin={toggleSessionPin}
     onDeleteSession={deleteSession}
-    onShareSession={setShareSessionId}
     sessionGroups={sessionGroups(sessions, new Date(), sessionGroupMode)}
     sessionSource={sessionSource}
     sessionSourceOptions={resolveChatSessionSourceOptions(readStoredLocale(), canViewChannelSessions)}
@@ -1991,18 +1651,6 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     canSteer={Boolean(selectedAgentId)}
     onStopStream={() => void stopStream()}
     send={send}
-    />
-    {bookmarkTarget ? (
-      <BookmarkAnswerDialog
-        client={client}
-        copy={copy}
-        open
-        locale={readStoredLocale()}
-        initialTitle={bookmarkTarget.title}
-        initialContent={bookmarkTarget.content}
-        onClose={() => setBookmarkTarget(null)}
-        onSaved={(status) => showAgentToast(status === 'publish' ? manualEditorStrings(readStoredLocale()).publishedToast : copy.bookmarkDraftSaved)}
-      />
-    ) : null}
+  />
   </>;
 }

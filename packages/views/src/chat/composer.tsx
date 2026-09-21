@@ -94,6 +94,46 @@ export function resolveSteerInjectAction(input: {
   return first ? { kind: 'promote', steerId: first.steerId } : undefined;
 }
 
+/*
+ * R477-A2 — Vue Input-field.vue steer-path attachment gates, in Vue order:
+ *   1. uploadedAttachments.some(item => item.status === 'uploading')
+ *        → MessagePlugin.warning(input.messages.steerAttachmentPending)
+ *   2. uploadedAttachments.length || uploadedImages.length
+ *        → MessagePlugin.warning(input.messages.steerHasAttachments)
+ * The React composer keeps one unified attachment list, so gate 2 is any
+ * entry; gate 1 wins whenever an upload is still in flight. Returns the
+ * copy key to toast (Vue carrier), or null when the steer may proceed.
+ *
+ * R478-A1 — pending mapping: Vue has no 'pending' attachment state.
+ * AttachmentUpload.vue addFiles pushes
+ * `status: props.sessionId ? 'uploading' : 'local'`, and a steer turn
+ * always runs inside a session — a picked-but-not-yet-uploaded file is
+ * 'uploading' from the very first tick (the HTTP request starts right
+ * after). The React lazy upload parks that same "picked, upload not
+ * started/finished, no attachmentId yet" window in 'pending', so by the
+ * Vue contract it belongs to gate 1 (attachment not uploaded yet), never
+ * to gate 2 (attachments on a running answer).
+ */
+export type SteerAttachmentWarning = 'steerAttachmentPending' | 'steerHasAttachments';
+
+export function resolveSteerAttachmentWarning(attachments: readonly ChatAttachmentView[]): SteerAttachmentWarning | null {
+  if (attachments.some((item) => item.status === 'uploading' || item.status === 'pending')) return 'steerAttachmentPending';
+  if (attachments.length > 0) return 'steerHasAttachments';
+  return null;
+}
+
+/*
+ * R478-A1 — Vue Input-field.vue steer submit failure fallback (handleSteerMsg
+ * catch): the server-provided Error message wins, the scenario copy
+ * input.messages.steerFailed is the fallback — the send path's sendFailed
+ * must never leak into the steer path. Extracted from SteerComposer.submit
+ * (page.tsx) so tests pin the contract on behavior instead of a fixed-width
+ * source window.
+ */
+export function resolveSteerSubmitFailure(copy: ChatCopyTable, cause: unknown): string {
+  return cause instanceof Error && cause.message ? cause.message : copy.steerFailed;
+}
+
 export interface ChatComposerProps {
   draft: string;
   /**

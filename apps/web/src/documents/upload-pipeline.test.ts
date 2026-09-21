@@ -310,6 +310,22 @@ test('dialog state seeds from knowledge base defaults like Vue initFromKbInfo', 
   assert.equal(uploadConfirmStateFromKb(null).chunkSize, 512);
 });
 
+// R478 A2: question generation silent-skip predicate mirrors the backend
+// NeedsEmbeddingModel gate (VectorEnabled || KeywordEnabled,
+// internal/types/indexing_strategy.go L33-36). Wiki-only KBs are skipped by
+// the backend with no feedback; any retriever on (or strategy unknown) is not.
+test('question generation skip flag mirrors the backend embedding-model gate', () => {
+  const wikiOnly = uploadConfirmStateFromKb({ indexing_strategy: { vector_enabled: false, keyword_enabled: false, wiki_enabled: true, graph_enabled: false } });
+  assert.equal(wikiOnly.questionGenerationSkipped, true);
+  const keywordOnly = uploadConfirmStateFromKb({ indexing_strategy: { vector_enabled: false, keyword_enabled: true, wiki_enabled: false, graph_enabled: false } });
+  assert.equal(keywordOnly.questionGenerationSkipped, false, 'keyword-only still needs embeddings, so no skip');
+  const vector = uploadConfirmStateFromKb({ indexing_strategy: { vector_enabled: true, keyword_enabled: false } });
+  assert.equal(vector.questionGenerationSkipped, false);
+  const unknown = uploadConfirmStateFromKb({ chunking_config: { chunk_size: 512 } });
+  assert.equal(unknown.questionGenerationSkipped, false, 'missing strategy must not trigger the hint');
+  assert.equal(uploadConfirmStateFromKb(null).questionGenerationSkipped, false);
+});
+
 // R475 A1 (R474 A4 P2 root cause): live KBs store chunk_size/chunk_overlap = 0
 // ("not customized"). Vue initFromKbInfo (UploadConfirmDialog.vue L1096-1101)
 // seeds with `kb.chunking_config?.chunk_size || 512` — the falsy 0 falls back

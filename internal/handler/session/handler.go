@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/browserskill"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
@@ -66,6 +67,9 @@ type Handler struct {
 	// deleted (O03 integration wiring). Nil (craft not assembled) keeps the
 	// unchanged deletion flow.
 	craftTombstoner CraftSessionTombstoner
+	// browserSkill is the local-browser gateway (A13). Nil-safe by design:
+	// every browserskill.go handler treats the nil manager as disabled.
+	browserSkill *browserskill.Manager
 	// usageRecorder accumulates each finished chat turn's token usage into
 	// the user's daily bucket (SP12). Nil (tests) skips accounting.
 	usageRecorder interfaces.UsageRecorderService
@@ -161,6 +165,8 @@ func NewHandler(
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
 	terminalService *service.SandboxTerminalService,
+	// browserSkill is the local-browser gateway (A13); nil-safe (see field).
+	browserSkill *browserskill.Manager,
 	// usageRecorder writes each finished chat turn's terminal token usage
 	// into the user's user_usage daily bucket (SP12).
 	usageRecorder interfaces.UsageRecorderService,
@@ -193,6 +199,7 @@ func NewHandler(
 		userService:           userService,
 		memberService:         memberService,
 		terminalService:       terminalService,
+		browserSkill:          browserSkill,
 		usageRecorder:         usageRecorder,
 		queryHistoryExport:    queryHistoryExport,
 		attachmentProcessor: NewAttachmentProcessor(
@@ -585,6 +592,8 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 		return
 	}
 
+	h.browserSkill.Forget(browserSkillScope(ctx), []string{id})
+
 	// Return success message
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -691,6 +700,7 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 			c.Error(errors.NewInternalServerError(err.Error()))
 			return
 		}
+		h.browserSkill.ForgetAll(browserSkillScope(ctx))
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "All sessions deleted successfully",
@@ -738,6 +748,7 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 		c.Error(errors.NewInternalServerError(err.Error()))
 		return
 	}
+	h.browserSkill.Forget(browserSkillScope(ctx), sanitizedIDs)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

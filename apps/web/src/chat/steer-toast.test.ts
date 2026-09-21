@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { resolveChatCopy } from '@weknora/views';
+import { resolveSteerSubmitFailure } from '@weknora/views/chat/composer';
 
 import { steerFailureCopy, steerNoticeCopy } from './steer-toast.ts';
 
@@ -77,10 +78,29 @@ test('ChatRoutePage steer handlers dispatch scenario notices instead of operatio
   assert.match(steerChain, /status === 'already_injected'[\s\S]{0,400}steerNoticeCopy\(copy, 'alreadyInjected'\)/, 'remove already_injected answers toast the info notice');
 });
 
-test('the steer composer surfaces the Vue steerFailed fallback, not sendFailed', () => {
+/*
+ * R478-A1 — the steer submit contract is pinned on an exported pure
+ * function (explicit anchor) instead of the former 900-char source-window
+ * regex, which silently depended on how much code sat between the submit
+ * signature and its finally block (R476 was once over-matched that way).
+ * resolveSteerSubmitFailure is the Vue Input-field.vue steer submit
+ * fallback: the server Error message wins, input.messages.steerFailed is
+ * the fallback — the send path's sendFailed must never leak in.
+ */
+test('the steer composer submit failure fallback resolves to steerFailed, not sendFailed', () => {
+  const copy = resolveChatCopy('zh-CN');
+  assert.equal(resolveSteerSubmitFailure(copy, new Error('网络中断')), '网络中断', 'the server-provided Error message wins');
+  assert.equal(resolveSteerSubmitFailure(copy, 'plain string'), copy.steerFailed, 'a non-Error rejection degrades to the scenario copy');
+  assert.equal(resolveSteerSubmitFailure(copy, undefined), copy.steerFailed);
+  assert.equal(resolveSteerSubmitFailure(copy, new Error('')), copy.steerFailed, 'an empty Error message degrades too');
+  assert.equal(resolveSteerSubmitFailure(copy, null), '追加失败，请重试', 'the fallback is input.messages.steerFailed');
+  assert.notEqual(copy.steerFailed, copy.sendFailed, 'the two copy keys are distinct, so the fallback cannot pass as sendFailed by accident');
+});
+
+test('the SteerComposer submit wires the exported steer gates (line anchors, no source windows)', () => {
   const pageSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
-  const steerSubmit = pageSource.match(/async function submit\(event\?: React\.FormEvent<HTMLFormElement>, delivery[\s\S]{0,900}?finally \{ setBusy\(false\); \}/);
-  assert.ok(steerSubmit, 'steer composer submit handler found');
-  assert.match(steerSubmit[0], /copy\.steerFailed/, 'a rejected steer enqueue falls back to input.messages.steerFailed');
-  assert.doesNotMatch(steerSubmit[0], /sendFailed/, 'the steer path no longer borrows the send failure copy');
+  // R478-A1: single-line wiring anchors only — same pattern as the
+  // ChatRoutePage assertions above; no fixed-width character windows.
+  assert.match(pageSource, /resolveSteerAttachmentWarning\(attachments\)/, 'the attachment warning gate is the shared exported predicate');
+  assert.match(pageSource, /resolveSteerSubmitFailure\(copy, cause\)/, 'a rejected steer enqueue falls back through the shared exported predicate');
 });

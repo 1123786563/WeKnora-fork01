@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Input, Select, Status } from '@weknora/ui';
+import { MAX_ENV_VALUE_BYTES, isValidEnvValueLength } from '../configuration/management.ts';
 import { envVarRemove, envVarSet, type EnvVarScope } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
@@ -73,6 +74,11 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
 
   function setVariable(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Vue rejectBadValue guard (EnvVarSettings.vue:485-495): reject an empty or
+    // oversized value before any API call. The native `required` attribute only
+    // guards interactive submissions; programmatic paths must be stopped here.
+    if (!value) { setNotice(null); setError(t('envVarSettings.valueRequired')); return; }
+    if (!isValidEnvValueLength(value)) { setNotice(null); setError(t('envVarSettings.valueTooLong', { max: MAX_ENV_VALUE_BYTES })); return; }
     let mutation;
     try { mutation = envVarSet(scope, scopeId, name, value); }
     catch (reason) { setError(errorText(reason, t('envVarSettings.valueRequired'))); return; }

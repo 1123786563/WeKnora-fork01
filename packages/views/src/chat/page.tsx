@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatMessage, ChatSession, FeedbackRating, MessageSuggestionSet } from '@weknora/contracts';
+import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
-import { ChatComposer, isSteerInjectShortcut, resolveSteerInjectAction, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
+import { ChatComposer, isSteerInjectShortcut, resolveSteerAttachmentWarning, resolveSteerInjectAction, resolveSteerSubmitFailure, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
 import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
@@ -112,9 +112,6 @@ export interface ChatPageProps {
   mentionedItems?: readonly ChatMentionView[];
   mentionLoading?: boolean;
   mentionError?: string;
-  /** R490 B1 — Vue mentionEmptyHint: agent-compatibility empty state of the
-   *  @ popup, shown instead of the generic empty label. */
-  mentionEmptyHint?: string;
   onMentionOpen?(): void;
   onMentionSelect?(item: ChatMentionView): void;
   onMentionRemove?(id: string): void;
@@ -145,6 +142,12 @@ export interface ChatPageProps {
    * (default, plain Enter) queues it as a follow-up.
    */
   onSteer?(content: string, mentionedItems?: readonly ChatMentionView[], delivery?: 'after' | 'inject'): Promise<void>;
+  /**
+   * R477-A2 — toast channel for the two steer attachment warnings
+   * (steerAttachmentPending / steerHasAttachments). Vue carries both via
+   * MessagePlugin.warning; hosts with a toast surface pass it through.
+   */
+  onSteerWarning?(message: string): void;
   /** R473-A2 — queued steer chips shown by the composer (Vue .steer-queue). */
   steerQueue?: readonly ChatSteerQueueChip[];
   /** Vue promote-steer (inject a queued after-message now). */
@@ -169,11 +172,6 @@ export interface ChatPageProps {
   onRenameSession?(sessionId: string, title?: string): Promise<void>;
   onToggleSessionPin?(sessionId: string, pinned: boolean): Promise<void>;
   onDeleteSession?(sessionId: string): Promise<void>;
-  /**
-   * SP13 Task 8 — 侧栏 ⋯ 菜单「分享」入口（能力开关：缺省即隐藏）。宿主负责
-   * mint 分享 token（client.queryHistory.share）并渲染分享窗。
-   */
-  onShareSession?(sessionId: string): void;
   sessionGroups?: readonly { key: string; label?: string; items: readonly ChatSession[] }[];
   sessionSource?: string;
   sessionSourceOptions?: readonly { value: string; label: string }[];
@@ -196,12 +194,6 @@ export interface ChatPageProps {
   onCitationClick?(citationId: string): void;
   /** Host-owned Vue botmsg knowledge-base action; absent means unavailable. */
   onBookmark?(messageId: string): void | Promise<void>;
-  /** SP11 message feedback (like/dislike on assistant bubbles); absent hides the pair. */
-  onRateMessage?(messageId: string, rating: FeedbackRating): void;
-  /** SP11 toggle-off: clears the persisted rating for a message. */
-  onRemoveRating?(messageId: string): void;
-  /** SP11 current rating lookup for the pressed (aria-pressed) state. */
-  ratingOf?(messageId: string): FeedbackRating | undefined;
   /** Vue usermsg/botmsg 分叉 entry (A11 phase 4). */
   onForkMessage?(messageId: string): void;
   canForkMessage?(messageId: string): boolean;
@@ -223,23 +215,6 @@ export interface ChatPageProps {
   modelOptions?: readonly { id: string; name: string }[];
   selectedModelId?: string;
   onModelChange?(modelId: string): void;
-  /**
-   * R484 D15 — Vue Input-field.vue web-search toggle, forwarded to the
-   * composer globe button. Visibility gates on readiness (tenant default
-   * engine, or the selected agent's engine); the host owns the toggle.
-   */
-  webSearchVisible?: boolean;
-  webSearchConfigured?: boolean;
-  webSearchEnabled?: boolean;
-  onWebSearchToggle?(): void;
-  /**
-   * R483 D16 — Vue ChatHeader utility block rendered between 修改标题 and
-   * 清空消息 (ChatHeader.vue:61-77): copy session id / copy link / copy as
-   * Markdown / open in new window, framed by the two Vue menu dividers.
-   * Hosts own the actions (clipboard, window.open, message paging); labels
-   * arrive pre-localized so the shared copy table stays untouched.
-   */
-  headerUtilityItems?: readonly { id: string; label: string; onActivate(): void }[];
 }
 
 export function messageReferenceValues(messages: readonly ChatMessage[]): unknown[] {
@@ -322,7 +297,7 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
   </section>;
 }
 
-function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mentionOptions = [], mentionedItems = [], attachments = [], onMentionOpen, onMentionSelect, onMentionRemove }: {
+function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mentionOptions = [], mentionedItems = [], attachments = [], onSteerWarning, onMentionOpen, onMentionSelect, onMentionRemove }: {
   copy: ChatCopyTable;
   onSteer: (content: string, mentionedItems: readonly ChatMentionView[], delivery?: 'after' | 'inject') => Promise<void>;
   /** R474-A2 — the ⌘Enter/Alt+Enter inject shortcut promotes the first queued chip when the steer draft is empty (Vue injectCurrentInput). */
@@ -331,6 +306,12 @@ function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mention
   mentionOptions?: readonly ChatMentionView[];
   mentionedItems?: readonly ChatMentionView[];
   attachments?: readonly ChatAttachmentView[];
+  /**
+   * R477-A2 — the two steer attachment warnings travel as toasts in Vue
+   * (Input-field.vue MessagePlugin.warning). Hosts that own a toast channel
+   * pass it here; without one the message degrades to the inline alert.
+   */
+  onSteerWarning?(message: string): void;
   onMentionOpen?(): void;
   onMentionSelect?(item: ChatMentionView): void;
   onMentionRemove?(id: string): void;
@@ -346,14 +327,15 @@ function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mention
     event?.preventDefault();
     const content = draft.trim();
     if (!content) return;
-    if (attachments.length > 0) {
-      setError(copy.steerAttachmentsBlocked);
-      return;
-    }
+    // R477-A2 — the two Vue steer attachment warnings gate the path (see
+    // resolveSteerAttachmentWarning); hosts own the toast carrier.
+    const attachmentWarning = resolveSteerAttachmentWarning(attachments);
+    if (attachmentWarning) { const message = copy[attachmentWarning]; onSteerWarning ? onSteerWarning(message) : setError(message); return; }
     setBusy(true); setError(null);
-    // R476-A2 — a rejected enqueue surfaces input.messages.steerFailed (Vue
-    // handleSteerMsg catch toasts the scenario copy, not the send fallback).
-    try { await onSteer(content, mentionedItems, delivery); setDraft(''); } catch (cause) { setError(cause instanceof Error && cause.message ? cause.message : copy.steerFailed); } finally { setBusy(false); }
+    // R476-A2/R478-A1 — a rejected enqueue surfaces input.messages.steerFailed
+    // (Vue handleSteerMsg catch toasts the scenario copy, not the send
+    // fallback); the fallback contract lives in the exported predicate.
+    try { await onSteer(content, mentionedItems, delivery); setDraft(''); } catch (cause) { setError(resolveSteerSubmitFailure(copy, cause)); } finally { setBusy(false); }
   }
 
   /*
@@ -463,7 +445,7 @@ function TerminalPanel(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'ter
   </section>;
 }
 
-function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'selectedSessionId' | 'onRenameSession' | 'onToggleSessionPin' | 'onDeleteSession' | 'onClearSession' | 'sessions' | 'headerUtilityItems'>) {
+function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'selectedSessionId' | 'onRenameSession' | 'onToggleSessionPin' | 'onDeleteSession' | 'onClearSession' | 'sessions'>) {
   const copy = props.copy;
   const session = props.sessions.find((item) => item.id === props.selectedSessionId) ?? null;
   const [renameOpen, setRenameOpen] = useState(false);
@@ -546,9 +528,7 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
   return <>
     <details ref={renameDetailsRef} className="wk-chat-header-menu relative">
     <summary ref={renameTriggerRef} aria-label={copy.moreActions} title={copy.moreActions} className="inline-flex h-[24px] w-[24px] cursor-pointer list-none items-center justify-center rounded-[5px] border-0 text-[rgba(0,0,0,0.26)] transition-[background-color,color] duration-[150ms] ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)] [&::-webkit-details-marker]:hidden">
-      {/* Vue uses the horizontal ellipsis (t-icon-ellipsis) here, not the
-          vertical kebab. */}
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="8" cy="13" r="1.4" /></svg>
     </summary>
     <div className="wk-chat-header-menu-list absolute left-0 top-full z-[30] mt-[2px] flex min-w-[132px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
       {headerDangerAction ? <div className="wk-chat-header-confirm" role="dialog" aria-label={headerDangerAction === 'clear' ? copy.clearMessages : copy.deleteSession}>
@@ -559,15 +539,6 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
       </div> : <>
         {props.onToggleSessionPin ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? copy.unpin : copy.pin}</button> : null}
         {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={openRename}>{copy.renameSession}</button> : null}
-        {/* R483 D16 — Vue ChatHeader utility block (ChatHeader.vue:61-78):
-            copyId / copyLink / copyMarkdown / openNewWindow framed by the two
-            Vue dividers between 修改标题 and 清空消息. Each activation closes
-            the popup like the Vue onMenuAction menuVisible = false. */}
-        {props.headerUtilityItems && props.headerUtilityItems.length > 0 ? <>
-          <div className="wk-chat-header-menu-divider m-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
-          {props.headerUtilityItems.map((item) => <button key={item.id} type="button" role="menuitem" data-menu-action={item.id} className={menuItem} onClick={() => { item.onActivate(); renameDetailsRef.current?.removeAttribute('open'); }}>{item.label}</button>)}
-          <div className="wk-chat-header-menu-divider m-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
-        </> : null}
         {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => { setHeaderDangerAction('clear'); setHeaderDangerError(null); }}>{copy.clearMessages}</button> : null}
         {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => { setHeaderDangerAction('delete'); setHeaderDangerError(null); }}>{copy.deleteSession}</button> : null}
       </>}
@@ -602,9 +573,6 @@ export function ChatPage(props: ChatPageProps) {
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
   // Vue sandbox panel: closed until the header toggle opens it.
   const [terminalOpen, setTerminalOpen] = useState(props.terminalOpen ?? false);
-  // Vue chat references live behind the collapsed 检索完成 summary
-  // (ChatReferencesDrawer); the shared panel stays closed until that opens it.
-  const [referencesOpen, setReferencesOpen] = useState(false);
   const references = useMemo(() => [...messageReferenceValues(props.messages), ...(props.stream?.references ?? [])], [props.messages, props.stream?.references]);
 
   useEffect(() => { setActiveCitationId(null); }, [props.selectedSessionId]);
@@ -664,7 +632,6 @@ export function ChatPage(props: ChatPageProps) {
       onTogglePin={props.onToggleSessionPin}
       onClear={props.onClearSession}
       onDelete={props.onDeleteSession}
-      onShareSession={props.onShareSession}
       groups={props.sessionGroups}
       source={props.sessionSource}
       sourceOptions={props.sessionSourceOptions}
@@ -677,11 +644,8 @@ export function ChatPage(props: ChatPageProps) {
       pageCount={props.sessionPageCount}
       onPageChange={props.onSessionPageChange}
     />
-    <section className="wk-chat-main relative flex min-h-0 min-w-0 flex-col" aria-label={copy.streamStatus}>
-      {/* Vue chat-header floats at x272 with only the titles' own 8px inset
-          (title text x280) and the sandbox toggle right edge at x1266 — the
-          former px-12 shifted both by 12px. */}
-      {props.selectedSessionId ? <header className="wk-chat-header pointer-events-none absolute inset-x-[12px] top-0 z-[6] flex shrink-0 items-center justify-between gap-[8px] border-b-0 bg-transparent pl-0 pr-0 pt-[10px] pb-0">
+    <section className="wk-chat-main flex min-h-0 min-w-0 flex-col" aria-label={copy.streamStatus}>
+      {props.selectedSessionId ? <header className="wk-chat-header pointer-events-none absolute inset-x-[12px] top-0 z-[6] flex shrink-0 items-center justify-between gap-[8px] border-b-0 bg-transparent px-[12px] pt-[10px] pb-0">
         <div className="wk-chat-header-titles pointer-events-auto inline-flex items-center gap-[2px] max-w-[min(320px,100%)] rounded-[8px] bg-[rgba(255,255,255,0.88)] p-[2px] pl-[8px] backdrop-blur-[8px]">
           <h1 title={headerTitle} className="m-0 min-w-0 cursor-default overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium leading-[20px] text-[rgba(0,0,0,0.6)]">{headerTitle}</h1>
           <ChatHeaderMenu
@@ -692,7 +656,6 @@ export function ChatPage(props: ChatPageProps) {
             onToggleSessionPin={props.onToggleSessionPin}
             onDeleteSession={props.onDeleteSession}
             onClearSession={props.onClearSession}
-            headerUtilityItems={props.headerUtilityItems}
           />
         </div>
         <div className="wk-chat-header-actions pointer-events-auto inline-flex items-center gap-[8px] rounded-[8px] bg-[rgba(255,255,255,0.88)] p-[2px] backdrop-blur-[8px]">
@@ -705,17 +668,13 @@ export function ChatPage(props: ChatPageProps) {
             </button> : null}
           </div>
         </header> : null}
-      <div className={props.selectedSessionId ? 'wk-chat-conversation flex min-h-0 flex-1 flex-col pl-[20px] pr-0 pb-[20px] pt-0' : 'wk-chat-conversation wk-chat-conversation--empty flex min-h-0 flex-1 flex-col justify-center px-[16px] pb-0 pt-0'}>
+      <div className={props.selectedSessionId ? 'wk-chat-conversation flex min-h-0 flex-1 flex-col px-[16px] pb-[12px] pt-0' : 'wk-chat-conversation wk-chat-conversation--empty flex min-h-0 flex-1 flex-col justify-center px-[16px] pb-0 pt-0'}>
         {/* Vue creatChat.vue: the welcome heading is always part of the empty
             state; suggested-question cards load per selected agent. The empty
             view centers the welcome+composer cluster (.dialogue-wrap) and must
             not render the flex:1 message scroll that pins the composer down. */}
-        {/* Vue creatChat.vue .dialogue-answers: welcome → composer gap is
-            48.8px (welcome bottom 293.2 to composer top 342 in the centered
-            212px cluster); the 56px padding made the whole cluster sit 3.6px
-            high and the composer 3.6px low. */}
         {!props.selectedSessionId ? (
-      <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading mx-auto w-full max-w-[960px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none' : 'wk-chat-starters mx-auto w-full max-w-[960px] px-0 pt-0 pb-[48.8px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none'} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
+          <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading mx-auto w-full max-w-[960px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none' : 'wk-chat-starters mx-auto w-full max-w-[960px] px-0 pt-0 pb-[56px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none'} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
             {/* Empty-view starters always sit inside .wk-chat-conversation--empty,
                 whose padding override (0 0 24px) replaces the base 48px padding. */}
             <h1 className="wk-chat-welcome m-0 text-center text-[28px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{copy.createChatTitle}</h1>
@@ -753,7 +712,7 @@ export function ChatPage(props: ChatPageProps) {
         ) : null}
         <ChatActionCards {...props} copy={copy} />
         {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
-        {referencesOpen && references.length > 0 ? <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} copy={copy} /> : null}
+        <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} copy={copy} />
         {props.error ? <p role="alert">{props.error}</p> : null}
         {props.loadingMessages ? <p role="status">{copy.loadingMessages}</p> : null}
         {/* Vue creatChat.vue renders no message list in the empty new-chat
@@ -774,12 +733,7 @@ export function ChatPage(props: ChatPageProps) {
           onRefreshSuggestions={props.onRefreshSuggestions}
           onDismissSuggestions={props.onDismissSuggestions}
           onCitationClick={activateCitation}
-          onToggleReferences={() => setReferencesOpen((open) => !open)}
-          referencesOpen={referencesOpen}
           onBookmark={props.onBookmark}
-          onRateMessage={props.onRateMessage}
-          onRemoveRating={props.onRemoveRating}
-          ratingOf={props.ratingOf}
           onForkMessage={props.onForkMessage}
           canForkMessage={props.canForkMessage}
           onArtifactDownload={props.onArtifactDownload}
@@ -789,7 +743,7 @@ export function ChatPage(props: ChatPageProps) {
             actually running (Vue canSteer); when idle the main composer handles
             the message (a steer would 409), and a quick-answer turn has no
             steer affordance at all — stop is the only action. */}
-        {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
+        {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onSteerWarning={props.onSteerWarning} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
         {/* Vue isReplying (Input-field.vue) flips true when a turn is
             dispatched, not when the first SSE event arrives; the composer's
             stop swap must cover the pre-stream send window too. */}
@@ -808,7 +762,6 @@ export function ChatPage(props: ChatPageProps) {
           mentionedItems={props.mentionedItems}
           mentionLoading={props.mentionLoading}
           mentionError={props.mentionError}
-          mentionEmptyHint={props.mentionEmptyHint}
           onMentionOpen={props.onMentionOpen}
           onMentionSelect={props.onMentionSelect}
           onMentionRemove={props.onMentionRemove}
@@ -825,10 +778,6 @@ export function ChatPage(props: ChatPageProps) {
           modelOptions={props.modelOptions}
           selectedModelId={props.selectedModelId}
           onModelChange={props.onModelChange}
-          webSearchVisible={props.webSearchVisible}
-          webSearchConfigured={props.webSearchConfigured}
-          webSearchEnabled={props.webSearchEnabled}
-          onWebSearchToggle={props.onWebSearchToggle}
           streaming={streaming || sending}
           canSteer={canSteer}
           onStop={props.onStopStream}

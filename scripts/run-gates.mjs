@@ -8,6 +8,8 @@
  *      v26 fully green) — auto re-execs through a >=26 binary when needed.
  *   2. four gates: test:shared -> typecheck:shared -> test:web -> typecheck:web
  *   3. integrity: check:integrity
+ *   4. build: build:web (R477 A1: appended so a full gates run also proves the
+ *      production web bundle builds under node >=26)
  *
  * Node >=26 discovery order: $WEKNORA_NODE_BIN, homebrew node, nvm versions.
  * On re-exec only a temp shim dir containing a `node` symlink is prepended to
@@ -28,6 +30,7 @@ const GATES = [
   ["test:web", "pnpm run test:web"],
   ["typecheck:web", "pnpm run typecheck:web"],
   ["check:integrity", "pnpm run check:integrity"],
+  ["build:web", "pnpm run build:web"],
 ];
 
 function majorOf(version) {
