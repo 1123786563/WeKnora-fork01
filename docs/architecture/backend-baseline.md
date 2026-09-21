@@ -247,9 +247,9 @@ no packages. These probe modules are outside `scope.include` of the inventory.
 | worker | 23 | 23 distinct task types registered in `internal/router/task.go` (`mux.HandleFunc`) and the same 23 in `internal/router/sync_task.go` (`SyncTaskExecutor.RegisterHandler`); one worker asset per task type, source recorded as `internal/router/task.go` |
 | lifecycle | 58 | 58 `container.Invoke` calls under `internal/container` (47 named functions + 11 inline closures) |
 | migration | 267 | 173 `.up/.down` pairs in `migrations/versioned` (PostgreSQL) + 94 pairs in `migrations/sqlite` (SQLite) |
-| package | 128 | 127 packages from `go list ./internal/...` + `cmd/server` (per `scope.include`) |
+| package | 129 | 127 packages from `go list ./internal/...` + `cmd/server` (per `scope.include`) |
 
-Assets by owner: knowledge 76, conversation 52, airesource 48, agentruntime 43,
+Assets by owner: knowledge 76, conversation 53, airesource 48, agentruntime 43,
 execution 40, commercial 39, craft 38, agentcatalog 37, platform 33,
 workbench 30, appconnector 26, channels 23, identity 23, datasource 21,
 policy 7, system 7, insights 5.
