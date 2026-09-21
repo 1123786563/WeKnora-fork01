@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
-	appconnectorrepo "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -48,7 +48,7 @@ const (
 // primary key — not an AutoMigrate approximation.
 func ocCatalogMigrationSQL(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile("../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
+	raw, err := os.ReadFile("../../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

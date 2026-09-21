@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
-	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	commsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/commercial"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

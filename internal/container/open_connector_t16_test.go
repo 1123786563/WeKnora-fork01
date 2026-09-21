@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/config"
-	"github.com/Tencent/WeKnora/internal/connectorcontrol"
+	"github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol"
 )
 
 // ocT16KeyFile provisions a perm-enforced sink key file for wiring tests.

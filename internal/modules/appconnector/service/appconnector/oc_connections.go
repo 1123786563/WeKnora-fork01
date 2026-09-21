@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"

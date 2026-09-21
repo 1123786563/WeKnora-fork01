@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
-	repoapp "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	repoapp "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
@@ -31,7 +31,7 @@ import (
 // two workers serialize the way lite-mode production would.
 func newWorkerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	raw, err := os.ReadFile("../../migrations/sqlite/000041_open_connector_bindings.up.sql")
+	raw, err := os.ReadFile("../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

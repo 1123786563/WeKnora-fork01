@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
-	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
 	mcprepo "github.com/Tencent/WeKnora/internal/application/repository"
-	appconnectorrepo "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 )

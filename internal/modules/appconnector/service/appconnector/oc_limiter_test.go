@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
-	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	"github.com/Tencent/WeKnora/internal/commercial"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -25,7 +25,7 @@ import (
 
 func ocLimiterMigrationSQL(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile("../../../../migrations/sqlite/000043_open_connector_dispatch.up.sql")
+	raw, err := os.ReadFile("../../../../../migrations/sqlite/000043_open_connector_dispatch.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func ocLimiterDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&repoappconn.ActionRow{}, &repoappconn.ApprovalRow{}, &repoappconn.AppVersion{}, &repoappconn.InstallationRow{}, &repoappconn.ConnectionRow{}); err != nil {
 		t.Fatal(err)
 	}
-	bindings, err := os.ReadFile("../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
+	bindings, err := os.ReadFile("../../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	repoapp "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	repoapp "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"

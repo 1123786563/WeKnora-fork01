@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"gorm.io/gorm"

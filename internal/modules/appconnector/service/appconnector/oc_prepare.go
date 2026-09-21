@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 
 	"github.com/google/uuid"
 	"github.com/santhosh-tekuri/jsonschema/v6"

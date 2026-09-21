@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
-	appconnectorrepo "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	appconnectorrepo "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	"github.com/Tencent/WeKnora/internal/types"
 
 	"gorm.io/driver/sqlite"

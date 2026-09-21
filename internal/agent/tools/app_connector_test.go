@@ -10,7 +10,7 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

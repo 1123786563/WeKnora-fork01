@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/appconnector/openconnector"
+	"github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector"
 )
 
 // Admin wire facts are FROZEN by the T01 runtime-evidence contract

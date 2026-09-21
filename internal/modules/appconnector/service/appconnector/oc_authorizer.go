@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 
 	"gorm.io/gorm"
 )

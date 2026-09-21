@@ -11,7 +11,7 @@ import (
 	"errors"
 	"time"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 )
 
 // CredentialResolver resolves the decrypted credential for a connection at

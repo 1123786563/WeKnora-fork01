@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -27,7 +27,7 @@ import (
 // (runtime_id, key), check constraints and all.
 func ocDispatchMigrationSQL(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile("../../../../migrations/sqlite/000043_open_connector_dispatch.up.sql")
+	raw, err := os.ReadFile("../../../../../migrations/sqlite/000043_open_connector_dispatch.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

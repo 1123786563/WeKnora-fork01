@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 )
 
 var (

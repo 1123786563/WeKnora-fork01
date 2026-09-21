@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -19,7 +19,7 @@ import (
 // approximation.
 func ocMigrationSQL(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile("../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
+	raw, err := os.ReadFile("../../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

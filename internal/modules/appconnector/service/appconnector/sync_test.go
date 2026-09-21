@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/appconnector"
 	service "github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/modules/appconnector"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/hibiken/asynq"
 )

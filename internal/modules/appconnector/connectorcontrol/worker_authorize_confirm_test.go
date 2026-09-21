@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
-	repoapp "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	repoapp "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"gorm.io/gorm"
 )
 

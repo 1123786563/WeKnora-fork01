@@ -31,7 +31,7 @@ import (
 	"fmt"
 	"time"
 
-	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
+	appconnector "github.com/Tencent/WeKnora/internal/modules/appconnector"
 
 	"gorm.io/gorm"
 )

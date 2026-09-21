@@ -11,9 +11,9 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	"github.com/Tencent/WeKnora/internal/types"
 
 	"gorm.io/driver/sqlite"
@@ -59,8 +59,8 @@ func openToolBindingDB(t *testing.T) *gorm.DB {
 	// definition tables the catalog chain reads, 000044 the tool binding
 	// table under test.
 	for _, migration := range []string{
-		"../../../../migrations/sqlite/000041_open_connector_bindings.up.sql",
-		"../../../../migrations/sqlite/000044_open_connector_tool_bindings.up.sql",
+		"../../../../../migrations/sqlite/000041_open_connector_bindings.up.sql",
+		"../../../../../migrations/sqlite/000044_open_connector_tool_bindings.up.sql",
 	} {
 		raw, err := os.ReadFile(migration)
 		if err != nil {

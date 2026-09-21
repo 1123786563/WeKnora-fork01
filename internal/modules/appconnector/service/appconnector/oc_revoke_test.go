@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	appconn "github.com/Tencent/WeKnora/internal/appconnector"
-	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
-	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
-	cc "github.com/Tencent/WeKnora/internal/connectorcontrol"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	cc "github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol"
+	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/types"
 
 	"gorm.io/driver/sqlite"
@@ -366,7 +366,7 @@ func TestOCRevokeConfirmEnqueueFailureFailsAttempt(t *testing.T) {
 // sqlite with the REAL production migration applied.
 func ocRevokeWorkerDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	raw, err := os.ReadFile("../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
+	raw, err := os.ReadFile("../../../../../migrations/sqlite/000041_open_connector_bindings.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
