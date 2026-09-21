@@ -1,0 +1,24 @@
+{
+  "contract_notes": [],
+  "evidence": {
+    "codes": {
+      "feature": "weknora-t02-e8ae6c00-65dd-40a1-82fd-e8b34b8043db-feature",
+      "plan": "weknora-t02-e8ae6c00-65dd-40a1-82fd-e8b34b8043db-plan"
+    }
+  },
+  "expected": "feature + plan created (monthly, pay_in_advance, amount_cents>0) and the plan entitlement attached, each 2xx",
+  "observed": {
+    "entitlement_attach_status": 200,
+    "feature_code": "weknora-t02-e8ae6c00-65dd-40a1-82fd-e8b34b8043db-feature",
+    "feature_create_status": 200,
+    "plan_amount_cents": 5000,
+    "plan_code": "weknora-t02-e8ae6c00-65dd-40a1-82fd-e8b34b8043db-plan",
+    "plan_create_status": 200,
+    "plan_interval": "monthly",
+    "plan_pay_in_advance": true
+  },
+  "phase": "setup",
+  "recorded_at": "2026-09-20T18:02:18.322440+00:00",
+  "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
+  "status": "pass"
+}

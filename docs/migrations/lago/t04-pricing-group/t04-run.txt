@@ -1,0 +1,26 @@
+2026-09-20T17:44:37.702489+00:00 [setup] lago.sh init generated fresh secrets
+2026-09-20T17:45:16.108969+00:00 [setup] lago.sh up completed (containers healthy)
+2026-09-20T17:45:16.376776+00:00 [setup] status overall=ready
+2026-09-20T17:45:16.519477+00:00 [setup] fail: metric weknora-t04-21acca42-e816-484f-9c02-959cbca28238-model-units rejected: HTTP 422
+2026-09-20T17:46:11.569686+00:00 [setup] lago.sh up completed (containers healthy)
+2026-09-20T17:46:11.761760+00:00 [setup] status overall=ready
+2026-09-20T17:46:11.843972+00:00 [setup] fail: plan rejected: HTTP 404
+2026-09-20T17:47:55.887098+00:00 [setup] lago.sh up completed (containers healthy)
+2026-09-20T17:47:56.319772+00:00 [setup] status overall=ready
+2026-09-20T17:47:58.880466+00:00 [setup] created run weknora-t04-6f1bf338-75de-4918-9a39-c605472d6bd4 with 65 task subscriptions
+2026-09-20T17:47:58.880528+00:00 [setup] objects active=65/65
+2026-09-20T17:53:11.400924+00:00 [acceptance] accepted=0/15 snapshotA0_rated=False t1=timeout latency=None
+2026-09-20T17:54:52.048793+00:00 [setup] lago.sh up completed (containers healthy)
+2026-09-20T17:54:52.246489+00:00 [setup] status overall=ready
+2026-09-20T17:54:53.886558+00:00 [setup] created run weknora-t04-0602b7bf-7220-4c10-b44d-678d9f59fda9 with 65 task subscriptions
+2026-09-20T17:54:53.886736+00:00 [setup] objects active=65/65
+2026-09-20T18:00:06.262848+00:00 [acceptance] accepted=15/15 snapshotA0_rated=False t1=timeout latency=None
+2026-09-20T18:01:51.693113+00:00 [setup] lago.sh up completed (containers healthy)
+2026-09-20T18:01:51.880065+00:00 [setup] status overall=ready
+2026-09-20T18:01:53.999329+00:00 [setup] created run weknora-t04-8ed2a126-05ba-441e-bc04-2a39e99226f7 with 65 task subscriptions
+2026-09-20T18:01:53.999390+00:00 [setup] objects active=65/65
+2026-09-20T18:02:00.513196+00:00 [acceptance] accepted=15/15 snapshotA0_rated=False t1=set latency=0.11202
+2026-09-20T18:02:12.475415+00:00 [idempotency] dup=422 conflict=422 preserved=True drift_free=True
+2026-09-20T18:02:24.715550+00:00 [load] accepted=1280/1280 window=1.134s eps=1128.4940335286158
+2026-09-20T18:02:31.968826+00:00 [reconcile] resolved=64/64 unresolved=0 p50=6.678 p95=6.893 verdict=pass
+2026-09-20T18:02:53.848883+00:00 [teardown] down rc=0 volumes_preserved=['weknora-lago-76_lago_postgres_data', 'weknora-lago-76_lago_redis_data', 'weknora-lago-76_lago_storage_data']

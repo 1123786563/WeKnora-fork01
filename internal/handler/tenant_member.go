@@ -11,6 +11,7 @@ import (
 
 	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	commercial "github.com/Tencent/WeKnora/internal/commercial"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -35,6 +36,17 @@ import (
 type TenantMemberHandler struct {
 	memberService interfaces.TenantMemberService
 	userService   interfaces.UserService
+	// quotaGuard is the T08 (#80) commercial growth gate on the members
+	// dimension; nil (not wired) means no commercial limits exist — adds
+	// pass (blocked-env posture). Removals/decrements are always allowed.
+	quotaGuard commercial.ResourceQuotaGuard
+}
+
+// SetQuotaGuard wires the commercial growth gate (injection point for the
+// container, #80). Until it is called the handler fails OPEN — member adds
+// are never blocked by commercial limits that were never projected.
+func (h *TenantMemberHandler) SetQuotaGuard(g commercial.ResourceQuotaGuard) {
+	h.quotaGuard = g
 }
 
 // NewTenantMemberHandler wires the dependencies. PR 1 already provides
@@ -237,7 +249,17 @@ func (h *TenantMemberHandler) AddMember(c *gin.Context) {
 
 	// Add the member and write the 201 / mapped-error response through the
 	// shared helper (also used by the invitation auto-accept path).
-	addMemberAndRespond(c, ctx, h.memberService, user, tenantID, req.Role, invitedBy)
+	addMemberAndRespond(c, ctx, h.memberService, h.quotaGuard, user, tenantID, req.Role, invitedBy)
+}
+
+// releaseMemberSlot best-effort decrements the members counter after a
+// successful removal (delta <= 0 always passes; errors are ignored — the
+// projection refresh re-syncs the counter from observed occupancy anyway).
+func (h *TenantMemberHandler) releaseMemberSlot(ctx context.Context, tenantID uint64) {
+	if h == nil || h.quotaGuard == nil {
+		return
+	}
+	_, _ = h.quotaGuard.ReserveGrowth(ctx, tenantID, "members", -1)
 }
 
 func writeAddMemberError(
@@ -288,15 +310,43 @@ func writeAddMemberSuccess(c *gin.Context, user *types.User, member *types.Tenan
 // always writes exactly one response, so the caller MUST return right after.
 // Shared by TenantMemberHandler.AddMember and the auto-accept branch of
 // TenantInvitationHandler.CreateInvitation so the mapping never drifts.
+//
+// T08 (#80): a non-nil quotaGuard reserves ONE members slot through the
+// counter CAS BEFORE the insert (two concurrent adds at the boundary admit
+// exactly the allowed number); a refused reservation answers the closed
+// quota_exceeded token, an insert failure after a successful reservation
+// runs the compensating decrement. 超限状态 keeps removals/list/updates
+// open — only growth is gated.
 func addMemberAndRespond(
 	c *gin.Context,
 	ctx context.Context,
 	memberService interfaces.TenantMemberService,
+	quotaGuard commercial.ResourceQuotaGuard,
 	user *types.User,
 	tenantID uint64,
 	role types.TenantRole,
 	invitedBy *string,
 ) {
+	if quotaGuard != nil {
+		release, err := quotaGuard.ReserveGrowth(ctx, tenantID, "members", 1)
+		if err != nil {
+			if errors.Is(err, commercial.ErrQuotaGrowthRefused) {
+				c.Error(apperrors.NewValidationError("quota_exceeded: member limit reached"))
+				return
+			}
+			logger.Errorf(ctx, "member quota reserve failed: tenant=%d err=%v", tenantID, err)
+			c.Error(apperrors.NewInternalServerError("failed to add member"))
+			return
+		}
+		member, err := memberService.AddMember(ctx, user.ID, tenantID, role, invitedBy)
+		if err != nil {
+			release() // compensating decrement: the slot is not consumed
+			writeAddMemberError(c, ctx, user, tenantID, err)
+			return
+		}
+		writeAddMemberSuccess(c, user, member)
+		return
+	}
 	member, err := memberService.AddMember(ctx, user.ID, tenantID, role, invitedBy)
 	if err != nil {
 		writeAddMemberError(c, ctx, user, tenantID, err)
@@ -395,6 +445,7 @@ func (h *TenantMemberHandler) RemoveMember(c *gin.Context) {
 		}
 		return
 	}
+	h.releaseMemberSlot(ctx, tenantID)
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }

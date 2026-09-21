@@ -451,6 +451,22 @@ func (s *knowledgeService) executeKnowledgeDelete(plan *knowledgeDeletePlan, sin
 	}
 	logger.Infof(ctx, "Marked %d knowledge entries as deleting", len(knowledgeList))
 
+	// T08 (#80): release the deleted rows' observed bytes from the storage
+	// counter — best-effort: a negative delta always passes and errors are
+	// ignored (cleanup never blocks; the projection refresh re-syncs the
+	// counter from tenants.storage_used anyway).
+	if tenantID, ok := types.TenantIDFromContext(ctx); ok {
+		var released int64
+		for _, knowledge := range knowledgeList {
+			if knowledge.StorageSize > 0 {
+				released += knowledge.StorageSize
+			}
+		}
+		if released > 0 {
+			s.decreaseStorageUsage(ctx, tenantID, released)
+		}
+	}
+
 	// Best-effort dequeue of downstream tasks for in-flight entries.
 	// Workers also check deletion state; this avoids waking them unnecessarily.
 	// The loop is per-knowledge because

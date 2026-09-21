@@ -89,6 +89,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/im/wechat"
 	"github.com/Tencent/WeKnora/internal/im/wecom"
 	"github.com/Tencent/WeKnora/internal/im/yunzhijia"
+	commercialplatform "github.com/Tencent/WeKnora/internal/infrastructure/commercialplatform"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	ommeter "github.com/Tencent/WeKnora/internal/infrastructure/openmeter"
 	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
@@ -822,6 +823,68 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewEmbedChannelHandler))
 	must(container.Provide(handler.NewWeKnoraCloudHandler))
 	must(container.Provide(handler.NewCommercialHandler))
+	// T05 Commercial Platform seam (#77): the deep provider-neutral port
+	// behind the frozen commercial.CommercialPlatform interface (readiness
+	// snapshot first; command/reconcile families stay frozen and fail
+	// closed). Registered NEXT TO the commercial handler on purpose — away
+	// from the pre-craft-Invoke provider block around the OpenMeter gateway
+	// (see the ordering comment there): nothing inside the craft runtime
+	// resolves this interface, so a later registration cannot strand the
+	// craft Invoke. Adapter selection is env-driven
+	// (WEKNORA_COMMERCIAL_PLATFORM_*): unset stays legal as blocked-env and
+	// the readiness read fails closed; an unknown provider fails startup
+	// instead of silently falling back. The legacy OpenMeter gateway above
+	// keeps its own registration untouched (removal is #105).
+	must(container.Provide(commercialplatform.NewPlatformFromEnv, dig.As(new(domain.CommercialPlatform))))
+	must(container.Invoke(func(h *handler.CommercialHandler, p domain.CommercialPlatform) {
+		h.SetCommercialPlatform(p)
+	}))
+	// T06 (#78) billing account service: the lazy ensure-on-first-billing-
+	// access flow behind GET /commercial/account (tenant → exactly one
+	// authority customer under the deterministic identity). Placed IMMEDIATELY
+	// after the platform Invoke above, on purpose — the same ordering-trap
+	// rule applies: away from the pre-craft-Invoke provider block (see the
+	// comment there). The service consumes the same seam registration; a
+	// pending account never blocks space functions (fail-closed posture).
+	must(container.Provide(commercialsvc.NewBillingAccountService))
+	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.BillingAccountService) {
+		h.SetBillingAccountService(s)
+	}))
+	// T07 (#79): the plan-version lifecycle service (draft → six-axis
+	// validate → idempotent publish through the seam above). Registered in
+	// the SAME block, away from the pre-craft-Invoke provider block around
+	// the OpenMeter gateway (the ordering trap documented there). A nil
+	// platform from empty env stays legal: drafts and validation work,
+	// publish fails closed unconfigured (blocked-env).
+	must(container.Provide(commercialsvc.NewPlanVersionService))
+	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.PlanVersionService) {
+		h.SetPlanVersionService(s)
+	}))
+	// T08 (#80): the lazy Base-Plan benefits chain (seed → account →
+	// subscription → monthly credits → projection) behind the benefits
+	// section of GET /commercial/account, plus the commercial growth gate
+	// (ResourceQuotaGuard) wired into the member and knowledge growth
+	// paths. Registered in the SAME block, away from the pre-craft-Invoke
+	// provider block (the ordering trap documented there). The guard is
+	// fail-open BY CONSTRUCTION: quotas bite only where a projection wrote
+	// a hard_limit — an unprojected dimension (blocked-env, Lago outage,
+	// unconfigured platform) carries NULL limits and every reserve passes;
+	// a pending chain never locks a space out of its own functions.
+	must(container.Provide(commercialsvc.NewBenefitsService))
+	must(container.Invoke(func(
+		h *handler.CommercialHandler,
+		benefits *commercialsvc.BenefitsService,
+		memberHandler *handler.TenantMemberHandler,
+		knowledgeSvc interfaces.KnowledgeService,
+		db *gorm.DB,
+	) {
+		h.SetBenefitsService(benefits)
+		guard := commercialsvc.NewQuotaGuard(db)
+		memberHandler.SetQuotaGuard(guard)
+		if ks, ok := knowledgeSvc.(service.QuotaGuardSetter); ok && ks != nil {
+			ks.SetResourceQuotaGuard(guard)
+		}
+	}))
 	// W04/A02/A07/A03 app-connector HTTP surface: four single-lifecycle
 	// handlers (installations, connections incl. OAuth, sync status,
 	// actions), each owning its routes and write gate.

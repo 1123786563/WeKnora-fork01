@@ -138,6 +138,17 @@ func (s *CatalogStore) LatestPublishedPlan(ctx context.Context, planKey string) 
 	return row, err
 }
 
+// ListPublished returns every published catalog row ordered by (plan_key,
+// version) — the T07 publish-validation feed for the currently-published
+// tier prices (additive read, #79).
+func (s *CatalogStore) ListPublished(ctx context.Context) ([]PlanRow, error) {
+	var rows []PlanRow
+	err := s.db.WithContext(ctx).
+		Where("state = ?", domain.PlanStatePublished).
+		Order("plan_key, version").Find(&rows).Error
+	return rows, err
+}
+
 // GetPlan returns the stored definition row for a plan version.
 func (s *CatalogStore) GetPlan(ctx context.Context, planKey string, version int64) (PlanRow, error) {
 	var row PlanRow

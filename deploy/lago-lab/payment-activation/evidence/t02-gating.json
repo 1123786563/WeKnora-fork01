@@ -1,0 +1,12 @@
+{
+  "contract_notes": [],
+  "evidence": {},
+  "expected": "subscription created with activation_rules payment/timeout_hours=0 is immediately incomplete; entitlements endpoint 404; gating invoice open/pending with no number; at most one non-succeeded payment; state stable across the auth-challenge window",
+  "observed": {
+    "blocked_reason": "requires provider-connected customer A and the lab plan (provider setup did not run or did not succeed)"
+  },
+  "phase": "gate",
+  "recorded_at": "2026-09-20T18:02:18.323499+00:00",
+  "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
+  "status": "blocked-env"
+}

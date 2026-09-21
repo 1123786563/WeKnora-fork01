@@ -17,6 +17,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	werrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
+	commercial "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -70,6 +71,10 @@ type knowledgeService struct {
 	kbShareService  interfaces.KBShareService
 	imageResolver   *docparser.ImageResolver
 	taskPendingRepo interfaces.TaskPendingOpsRepository
+	// quotaGuard is the T08 (#80) commercial storage growth gate; nil (not
+	// wired) means no commercial limits exist — creates pass (blocked-env
+	// posture). Read/export/clean paths NEVER consult the gate.
+	quotaGuard commercial.ResourceQuotaGuard
 
 	// In-memory fallbacks for Lite mode (no Redis)
 	memFAQProgress      sync.Map // taskID -> *types.FAQImportProgress

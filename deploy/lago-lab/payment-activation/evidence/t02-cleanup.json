@@ -1,0 +1,26 @@
+{
+  "contract_notes": [],
+  "evidence": {},
+  "expected": "every lab object created this run is deleted; failures reported distinctly",
+  "observed": {
+    "cleanup_failures": [],
+    "objects": [
+      {
+        "http_status": 200,
+        "id": "weknora-t02-e8ae6c00-65dd-40a1-82fd-e8b34b8043db-plan",
+        "object": "plan",
+        "outcome": "deleted"
+      },
+      {
+        "http_status": 200,
+        "id": "weknora-t02-e8ae6c00-65dd-40a1-82fd-e8b34b8043db-feature",
+        "object": "feature",
+        "outcome": "deleted"
+      }
+    ]
+  },
+  "phase": "cleanup",
+  "recorded_at": "2026-09-20T18:02:18.358285+00:00",
+  "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
+  "status": "pass"
+}

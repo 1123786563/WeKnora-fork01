@@ -29,6 +29,19 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		commercialGroup.GET("/plans", commercialHandler.Plans)
 		commercialGroup.GET("/usage", commercialHandler.Usage)
 		commercialGroup.GET("/orders", commercialHandler.Orders)
+		// T05: the one protected, read-only Billing API operation through the
+		// frozen Commercial Platform seam — the billing authority's
+		// readiness/version snapshot, answered in closed product vocabulary.
+		// The capability gate above applies; as a GET it bypasses the
+		// billing-role write gate by design (it is a read). The handler fails
+		// closed when no platform is wired (unavailable/unconfigured).
+		commercialGroup.GET("/platform/readiness", commercialHandler.PlatformReadiness)
+		// T06 (#78): the caller space's billing account status. This GET is
+		// the documented LAZY ENSURE trigger (first billing access): an
+		// idempotent, authority-failure-safe establish of the space's
+		// Billing Account, answered in the closed linked|pending envelope —
+		// no provider identifier ever crosses.
+		commercialGroup.GET("/account", commercialHandler.AccountStatus)
 		// P02: quote and order pipeline. The billing gate and capability
 		// checks above apply; tenant comes exclusively from the authenticated
 		// context. Checkout names the channel provider explicitly.
@@ -59,6 +72,25 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 	r.POST("/admin/refunds/:id/review",
 		commercialHandler.RequirePlatformRefundReviewer(),
 		commercialHandler.AdminReviewRefund)
+
+	// T07 (#79): platform plan-version admin surface. Catalog operations
+	// are cross-space, so the endpoints hang DIRECTLY on the parent group
+	// behind their OWN platform-operator gate — the exact refund-review
+	// precedent: a platform API key (scope.IsPlatform) or the explicit
+	// plan_publish grant at platform scope (tenant_id=0). A space owner,
+	// Admin or billing grantee is 403; drafts are never reachable through
+	// tenant authority. Responses are closed WeKnora vocabulary only: the
+	// external plan code lives in commercial_plan_publications and never
+	// crosses this API (ADR-0014).
+	planAdmin := r.Group("/admin/plans", commercialHandler.RequirePlatformPlanPublisher())
+	{
+		planAdmin.POST("/drafts", commercialHandler.CreatePlanDraft)
+		planAdmin.PATCH("/drafts/:key/:version", commercialHandler.UpdatePlanDraft)
+		planAdmin.POST("/drafts/:key/:version/validate", commercialHandler.ValidatePlanDraft)
+		planAdmin.POST("/drafts/:key/:version/publish", commercialHandler.PublishPlanVersion)
+		planAdmin.GET("/versions", commercialHandler.ListPlanVersions)
+		planAdmin.GET("/versions/:key/:version", commercialHandler.GetPlanVersion)
+	}
 
 	// Provider payment callbacks: publicly reachable and authenticated by
 	// provider signature verification instead of session/API-key. They hang

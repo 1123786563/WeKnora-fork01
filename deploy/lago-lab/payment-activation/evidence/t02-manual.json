@@ -1,0 +1,12 @@
+{
+  "contract_notes": [],
+  "evidence": {},
+  "expected": "POST /api/v1/payments {invoice_id, amount_cents, reference, paid_at} against the open gating invoice is forbidden on Community (Premium-gated) and leaves invoice + subscription state unchanged",
+  "observed": {
+    "blocked_reason": "requires customer A gating invoice (gate phase did not produce one)"
+  },
+  "phase": "manual",
+  "recorded_at": "2026-09-20T18:02:18.323950+00:00",
+  "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
+  "status": "blocked-env"
+}
