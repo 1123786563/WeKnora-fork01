@@ -222,20 +222,55 @@ func (v *Verifier) VerifyManifest(m *MoveManifest) []Diagnostic {
 		return "", fmt.Errorf("%s 内没有任何 .go 文件", rel)
 	}
 
+	// goPackageListed 报告 rel 是否是现存的 Go 包：注入 GoList 时以 go list 为准；
+	// 未注入时退化为文件系统检查。
+	// pattern 用 "./"+rel 在主模块内解析（裸 internal/... 会被 go 当作 std 路径）。
+	// 字面量单路径 pattern 至多产出一个对象：Error == nil 即存在；带 Error 或没有
+	// 输出即不存在。（不能按 Dir 对齐 —— Root 为相对路径时 rooted(rel) 与 go list
+	// 输出的绝对 Dir 恒不相等。）
+	goPackageListed := func(rel string) (bool, string) {
+		if v.GoList == nil {
+			if _, ok := dirHasGo(rel); ok {
+				return true, ""
+			}
+			return false, "目录不存在或不含 .go 文件"
+		}
+		pkgs, err := v.GoList(v.Root, "./"+rel)
+		if err != nil {
+			return false, fmt.Sprintf("go list %s 失败: %v", rel, err)
+		}
+		for _, p := range pkgs {
+			if p.Error == nil {
+				return true, ""
+			}
+			return false, fmt.Sprintf("go list 报错: %s", p.Error.Err)
+		}
+		return false, "go list 未找到该包"
+	}
+
+	// 搬迁已执行（集成后旧别名路径被删除）时 from 目录不复存在：此时放行的唯一条件是
+	// to 侧已是现存 Go 包（校验转查 to 侧）；from 缺失且 to 也缺失仍是错误。
 	for _, mp := range m.MovePackages {
-		if _, ok := dirHasGo(mp.From); !ok {
-			d("source-package", "源目录 not found 或不含 .go 文件: %s", mp.From)
+		if _, ok := dirHasGo(mp.From); ok {
+			if _, err := singlePackageClause(mp.From); err != nil {
+				d("source-package", "%v（整体搬移要求 package 子句唯一）", err)
+			}
 			continue
 		}
-		if _, err := singlePackageClause(mp.From); err != nil {
-			d("source-package", "%v（整体搬移要求 package 子句唯一）", err)
+		if ok, why := goPackageListed(mp.To); !ok {
+			d("source-package", "源目录 not found 或不含 .go 文件: %s，且搬迁目标 %s 不是现存 Go 包（%s）",
+				mp.From, mp.To, why)
 		}
 	}
 
 	// --- partial-move：from/... 下每个子包都必须自身是本 manifest 的一个 from
 	// （manifest 约定整棵搬迁树逐包声明，保证每个旧 import path 都有别名）---
+	// 仅在 from 仍存在（搬前状态）时适用；from 已删除（搬迁已执行）时跳过。
 	if v.GoList != nil {
 		for _, mp := range m.MovePackages {
+			if _, ok := dirHasGo(mp.From); !ok {
+				continue
+			}
 			subPkgs, err := v.GoList(v.Root, mp.From+"/...")
 			if err != nil {
 				d("partial-move", "go list %s/... 失败: %v", mp.From, err)

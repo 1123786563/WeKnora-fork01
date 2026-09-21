@@ -155,16 +155,48 @@ func TestVerifyRejectsAliasOldImportPathNotEqualFrom(t *testing.T) {
 	}
 }
 
-func TestVerifyRejectsMissingSourceDir(t *testing.T) {
+// TestVerifyAcceptsAlreadyExecutedMove 覆盖集成后状态（IA1 别名删除后）：
+// from 目录已随旧别名路径一起被删除，to 侧已是现存 Go 包 —— 校验应转查 to 侧
+// （go list 确认 to 存在）并通过；partial-move 约束只针对仍存在的 from，不再误报。
+func TestVerifyAcceptsAlreadyExecutedMove(t *testing.T) {
+	root := t.TempDir()
+	files := demoFixtureFiles()
+	delete(files, "internal/demo/demo.go") // from 目录整体删除（搬迁已执行）
+	writeTree(t, root, files)
+	gpkgs := demoGoPackages(root)
+	// to 侧是现存 Go 包（go list 以 "./"+import path 在主模块内解析，按 Dir 对齐）
+	gpkgs["./internal/modules/demo"] = []GoPackage{
+		{ImportPath: "example.com/m/internal/modules/demo", Dir: filepath.Join(root, "internal/modules/demo"), Name: "demo"},
+	}
+	// 若 partial-move 仍对已删除的 from 生效，这个未声明的子包会被误报 ——
+	// 用于证明 partial-move 检查在 from 缺失时被跳过。
+	gpkgs["internal/demo/..."] = append(gpkgs["internal/demo/..."],
+		GoPackage{ImportPath: "internal/demo/sub", Dir: filepath.Join(root, "internal/demo/sub"), Name: "sub"})
+	v := &Verifier{Root: root, GoList: fakeGoList(gpkgs)}
+	m := loadDemoManifest(t)
+
+	ds := SortDiagnostics(v.VerifyManifest(m))
+	if len(ds) != 0 {
+		t.Fatalf("from 已删除且 to 是现存 Go 包（搬迁已执行）应通过校验，得到:\n%s", joinDiagnostics(ds))
+	}
+}
+
+// TestVerifyRejectsMissingSourceAndTarget：from 缺失且 to 侧也不是现存 Go 包 ——
+// 既非搬前（from 应在）也非搬后（to 应在），必须报告 source-package 错误。
+func TestVerifyRejectsMissingSourceAndTarget(t *testing.T) {
 	v, root := newDemoVerifier(t)
 	m := loadDemoManifest(t)
 	if err := os.RemoveAll(filepath.Join(root, "internal", "demo")); err != nil {
 		t.Fatal(err)
 	}
+	// to 侧只剩非 Go 文件（README.md 保留以满足 module_files 检查），不再构成 Go 包
+	if err := os.Remove(filepath.Join(root, "internal", "modules", "demo", "module.go")); err != nil {
+		t.Fatal(err)
+	}
 
 	ds := SortDiagnostics(v.VerifyManifest(m))
-	if !hasDiagnostic(ds, "source-package", "not found") && !hasDiagnostic(ds, "source-package", "internal/demo") {
-		t.Fatalf("源目录缺失应报告 source-package 诊断，得到:\n%s", joinDiagnostics(ds))
+	if !hasDiagnostic(ds, "source-package", "internal/demo") {
+		t.Fatalf("from 缺失且 to 非现存 Go 包应报告 source-package 诊断，得到:\n%s", joinDiagnostics(ds))
 	}
 }
 
