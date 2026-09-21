@@ -107,8 +107,9 @@ var importExceptions = []importException{
 	{
 		ImporterFile: "internal/modules/appconnector/service/appconnector/oc_recovery.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial",
-		Reason:       "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，oc_recovery 直接消费 commercial service），Pass A 不改边界",
-		PassBTask:    "B-appconnector",
+		Reason: "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，" +
+			"oc_recovery 直接消费 commercial service），Pass A 不改边界",
+		PassBTask: "B-appconnector",
 	},
 	{
 		ImporterFile: "internal/modules/appconnector/adapter.go",

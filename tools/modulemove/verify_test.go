@@ -166,7 +166,11 @@ func TestVerifyAcceptsAlreadyExecutedMove(t *testing.T) {
 	gpkgs := demoGoPackages(root)
 	// to 侧是现存 Go 包（go list 以 "./"+import path 在主模块内解析，按 Dir 对齐）
 	gpkgs["./internal/modules/demo"] = []GoPackage{
-		{ImportPath: "example.com/m/internal/modules/demo", Dir: filepath.Join(root, "internal/modules/demo"), Name: "demo"},
+		{
+			ImportPath: "example.com/m/internal/modules/demo",
+			Dir:        filepath.Join(root, "internal/modules/demo"),
+			Name:       "demo",
+		},
 	}
 	// 若 partial-move 仍对已删除的 from 生效，这个未声明的子包会被误报 ——
 	// 用于证明 partial-move 检查在 from 缺失时被跳过。

@@ -239,13 +239,13 @@ func (v *Verifier) VerifyManifest(m *MoveManifest) []Diagnostic {
 		if err != nil {
 			return false, fmt.Sprintf("go list %s 失败: %v", rel, err)
 		}
-		for _, p := range pkgs {
-			if p.Error == nil {
-				return true, ""
-			}
-			return false, fmt.Sprintf("go list 报错: %s", p.Error.Err)
+		if len(pkgs) == 0 {
+			return false, "go list 未找到该包"
 		}
-		return false, "go list 未找到该包"
+		if pkgs[0].Error == nil {
+			return true, ""
+		}
+		return false, fmt.Sprintf("go list 报错: %s", pkgs[0].Error.Err)
 	}
 
 	// 搬迁已执行（集成后旧别名路径被删除）时 from 目录不复存在：此时放行的唯一条件是

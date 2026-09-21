@@ -598,7 +598,7 @@ func TestCommercialWriteEndpointsServeEnvelope(t *testing.T) {
 	// Scheduled plan change (downgrade): envelope over the change view.
 	if err := db.Exec(`INSERT INTO commercial_subscriptions
 		(id, tenant_id, plan_key, plan_version, plan_snapshot_json, anchor, paid_until, version)
-		VALUES ('sub-101', 101, 'pro', 3, '` + string(proDef) + `', '2026-01-01 00:00:00', '2027-01-01 00:00:00', 1)`).Error; err != nil {
+		VALUES ('sub-101', 101, 'pro', 3, '` + string(proDef) + `', '2026-01-01 00:00:00', '2027-01-01 00:00:00', 1)`).Error; err != nil { //nolint:lll // 预存长 SQL 行，Pass A import 修复使其进入 lint 范围；B-commercial
 		t.Fatalf("seed subscription: %v", err)
 	}
 	w, body = serveJSONWith(t, db, owner, http.MethodPost, "/api/v1/commercial/quotes", `{"plan_key":"lite"}`)
