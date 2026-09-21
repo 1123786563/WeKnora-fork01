@@ -1,0 +1,1556 @@
+/* platform-shell.td.css — Shell 层 TDesign 同构平移（Task 9.5）
+ *
+ * 事实源（Vue 端，只读）：
+ *   frontend/src/components/menu.vue             <style scoped> + <style>（dark-mode/popconfirm）
+ *   frontend/src/components/SessionSidebarRow.vue <style scoped> + <style>（session-action-menu 弹层）
+ *   frontend/src/components/UserMenu.vue          <style scoped>（user-menu/dropdown 全套）
+ *
+ * 平移规则（playbook §2）：类名不改；scoped 块以 SFC 根类（.aside_box /
+ * .submenu_item / .user-menu）为前缀展开；less 嵌套展平；:deep() 去壳保留位置；
+ * unscoped 块原样平移（dark-mode、body 弹层）。
+ *
+ * React 侧标签差异归一（§0）：Vue 用 div/@click 的交互件（.menu_item、
+ * .user-button、.header-icon-btn、.sidebar-toggle）React 保留语义化
+ * button/a/h3/ul/li 以维持测试锚点与可访问性，以下归一化把 UA 默认样式
+ * （button 边框/字体、a 下划线、h3 margin、ul/li list-style、summary marker）
+ * 清零，使渲染结果与 Vue div 逐像素一致。
+ */
+
+/* ============ §0 标签归一化（React-only，Vue 为 div） ============ */
+.aside_box a.menu_item,
+.aside_box a.logo_box,
+.user-menu a.menu-item,
+.user-menu button.menu-item {
+  text-decoration: none;
+  color: inherit;
+}
+.aside_box button,
+.user-menu button,
+.aside_box summary {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  box-sizing: border-box;
+}
+.aside_box ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.aside_box h3.timeline_header {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/* ============ §1 menu.vue scoped（根类 .aside_box 前缀） ============ */
+
+.aside_box {
+  /* 侧栏水平栅格：图标列与文案列统一对齐（Logo / 菜单 / 会话分组 / 会话行） */
+  --sidebar-inset-x: 14px;
+  --sidebar-icon-size: 18px;
+  --sidebar-channel-icon: 14px;
+  --sidebar-icon-gap: 8px;
+  --sidebar-text-inset: calc(var(--sidebar-inset-x) + var(--sidebar-icon-size) + var(--sidebar-icon-gap)); /* 40px */
+
+  /* 行高继承差归并（playbook §2.6）：Vue html 无显式 line-height（normal），
+     React Tailwind preflight 置 html 1.5——未带显式行高的文本（user-name/
+     user-email/lite-badge 等）每行 +4px 撑高容器。显式行高的规则
+     （menu_title 20px / timeline_header 16px / submenu_item 20px …）不受影响。 */
+  line-height: normal;
+
+  min-width: 260px;
+  width: 260px;
+  padding: 8px 6px 6px;
+  background: var(--td-bg-color-sidebar);
+  box-sizing: border-box;
+  /* Avoid 100vh because <html> carries a `zoom` multiplier for font-size
+     control; 100vh is evaluated against the unscaled viewport and then
+     scaled, so at "large" the sidebar would extend past the window. The
+     ancestor chain (html/body/#app/.main) is already height: 100%. */
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--td-component-stroke);
+  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.02);
+  transition: width 0.25s ease, min-width 0.25s ease;
+  position: relative;
+}
+
+/* macOS Wails 桌面：红绿灯位于 HiddenInset 标题栏区域，需让出顶部空间 */
+html.wails-desktop .aside_box {
+  padding-top: 30px;
+}
+
+.aside_box--collapsed {
+  min-width: 60px;
+  width: 60px;
+  padding: 8px 3px 6px;
+  overflow: visible;
+}
+.aside_box--collapsed .menu_item {
+  justify-content: center;
+  padding: 9px 0;
+}
+.aside_box--collapsed .menu_item .menu_item-box {
+  justify-content: center;
+  width: auto;
+}
+.aside_box--collapsed .menu_item .menu_icon {
+  margin-right: 0;
+}
+.aside_box--collapsed .menu_bottom {
+  align-items: center;
+}
+.aside_box--collapsed .menu_top {
+  margin-right: 0;
+  padding-right: 0;
+}
+
+.aside_box .logo_row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 50px;
+  flex-shrink: 0;
+  padding: 0 10px 0 var(--sidebar-inset-x);
+}
+
+.aside_box .sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--td-text-color-secondary);
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+  box-sizing: border-box;
+}
+.aside_box .sidebar-toggle:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.aside_box .sidebar-drag-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 10;
+}
+.aside_box .sidebar-drag-handle:hover {
+  background: var(--td-brand-color-light);
+}
+
+.aside_box .logo_box {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.aside_box .logo_box .logo {
+  width: 128px;
+  height: auto;
+}
+.aside_box .logo_box .lite-badge {
+  margin-left: 2px;
+  align-self: flex-start;
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--td-text-color-placeholder);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.aside_box .logo_img {
+  margin-left: 24px;
+  width: 30px;
+  height: 30px;
+  margin-right: 7.25px;
+}
+
+.aside_box .logo_txt {
+  transform: rotate(0.049deg);
+  color: var(--td-text-color-primary);
+  font-family: "TencentSans";
+  font-size: 24.12px;
+  font-style: normal;
+  font-weight: W7;
+  line-height: 21.7px;
+}
+
+.aside_box .menu_top {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  /* 抵消 .aside_box 的右内边距，让滚动条贴近面板右缘；
+     等量 padding 补回，保证列表文字位置不变。 */
+  margin-right: -4px;
+  padding-right: 4px;
+
+  /* Claude 风格细滚动条：默认透明，悬浮时显示一条圆角细灰条 */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s ease;
+}
+.aside_box .menu_top::-webkit-scrollbar {
+  width: 6px;
+}
+.aside_box .menu_top::-webkit-scrollbar-track {
+  background: transparent;
+}
+.aside_box .menu_top::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+.aside_box .menu_top:hover {
+  scrollbar-color: var(--td-scrollbar-color, rgba(0, 0, 0, 0.18)) transparent;
+}
+.aside_box .menu_top:hover::-webkit-scrollbar-thumb {
+  background-color: var(--td-scrollbar-color, rgba(0, 0, 0, 0.18));
+}
+.aside_box .menu_top::-webkit-scrollbar-thumb:hover {
+  background-color: var(--td-scrollbar-hover-color, rgba(0, 0, 0, 0.32));
+}
+
+.aside_box .menu_bottom {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.aside_box .menu_box {
+  display: flex;
+  flex-direction: column;
+}
+/* 「新对话」吸顶：作为滚动容器(.menu_top)的直接子级，滚动时钉在顶部，
+   知识库/智能体/共享空间及历史列表一起从其下方滚走。背景遮挡滚动内容。 */
+.aside_box .menu_box--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--td-bg-color-sidebar);
+}
+
+.aside_box .upload-file-wrap {
+  padding: 6px;
+  border-radius: 3px;
+  height: 32px;
+  width: 32px;
+  box-sizing: border-box;
+}
+.aside_box .upload-file-wrap:hover {
+  background-color: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+}
+.aside_box .upload-file-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--td-text-color-secondary);
+}
+.aside_box .active-upload {
+  color: var(--td-brand-color);
+}
+
+.aside_box .menu_item_active {
+  border-radius: 4px;
+  background: var(--td-bg-color-secondarycontainer) !important;
+}
+.aside_box .menu_item_active .menu_icon,
+.aside_box .menu_item_active .menu_title {
+  color: var(--td-brand-color) !important;
+}
+
+.aside_box .menu_item_c_active .menu_icon,
+.aside_box .menu_item_c_active .menu_title {
+  color: var(--td-text-color-primary);
+}
+
+.aside_box .menu_p {
+  height: 46px;
+  padding: 3px 0;
+  box-sizing: border-box;
+}
+
+.aside_box .menu_item {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  padding: 8px 10px 8px var(--sidebar-inset-x);
+  box-sizing: border-box;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+.aside_box .menu_item .menu_item-box {
+  display: flex;
+  align-items: center;
+}
+.aside_box .menu_item:hover {
+  border-radius: 4px;
+  background: var(--td-bg-color-container-hover);
+}
+.aside_box .menu_item:hover .menu_icon,
+.aside_box .menu_item:hover .menu_title {
+  color: var(--td-text-color-primary);
+}
+
+.aside_box .menu_icon {
+  display: flex;
+  flex: 0 0 var(--sidebar-icon-size);
+  width: var(--sidebar-icon-size);
+  margin-right: var(--sidebar-icon-gap);
+  color: var(--td-text-color-secondary);
+}
+.aside_box .menu_icon .icon {
+  width: 18px;
+  height: 18px;
+  overflow: hidden;
+}
+
+.aside_box .menu_title {
+  color: var(--td-text-color-primary);
+  text-overflow: ellipsis;
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 20px;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 120px;
+  flex: 1;
+}
+
+.aside_box .submenu {
+  position: relative;
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-style: normal;
+  min-width: 0;
+  padding-top: 3px;
+}
+
+.aside_box .submenu_pin_icon {
+  color: inherit;
+  font-size: 12px;
+  margin-right: 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.aside_box .submenu_source_icon {
+  width: 14px;
+  height: 14px;
+  margin-right: 0px;
+  vertical-align: middle;
+  object-fit: contain;
+  flex-shrink: 0;
+  /* 默认淡化处理，避免未选中状态下彩色图标与灰色标题不协调；
+     悬浮或选中时恢复彩色，交互时才引人注意。 */
+  filter: grayscale(1);
+  opacity: 0.55;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+.aside_box .submenu_item:hover .submenu_source_icon,
+.aside_box .submenu_item_active .submenu_source_icon {
+  filter: none;
+  opacity: 1;
+}
+
+/* 列表行统一栅格：左缘 inset-x + 图标槽 18px + 间距 8px → 文案列与主菜单文字对齐 */
+.aside_box .session-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sidebar-icon-gap);
+  padding: 0 10px 0 var(--sidebar-inset-x);
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.aside_box .session-list-row__icon {
+  flex: 0 0 var(--sidebar-icon-size);
+  width: var(--sidebar-icon-size);
+  height: var(--sidebar-icon-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.aside_box .session-list-row__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 聊天区分组标题 / 会话行：与「聊天」节标题同列左对齐，不再预留图标槽 */
+.aside_box .session-list-row--flat {
+  padding-left: var(--sidebar-inset-x);
+  gap: 0;
+}
+
+.aside_box .session-list-loading {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  color: var(--td-text-color-placeholder);
+}
+
+.aside_box .timeline_header {
+  font-family: var(--app-font-family);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--td-text-color-disabled);
+  padding-top: 4px;
+  padding-bottom: 1px;
+  margin-top: 0;
+  line-height: 16px;
+  user-select: none;
+}
+
+.aside_box .timeline_header-label {
+  white-space: nowrap;
+}
+
+/* Stable filter control: always mounted and absolutely pinned to the list's
+   top-right so it visually sits on the first row (e.g. beside "近30天") and
+   never jumps when switching session type reloads a bucket. */
+.aside_box .session-list-scope-header {
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  max-width: calc(100% - var(--sidebar-inset-x) - 10px);
+}
+.aside_box .session-list-scope-header .session-source-filter--inline {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.aside_box .submenu:hover .session-list-scope-header .session-source-filter--inline,
+.aside_box .session-list-scope-header:hover .session-source-filter--inline,
+.aside_box .session-list-scope-header:focus-within .session-source-filter--inline,
+.aside_box .session-list-scope-header .session-source-filter--inline.session-source-filter--emphasized {
+  opacity: 1;
+}
+
+.aside_box .submenu_item_p {
+  padding: 0;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+}
+.aside_box .submenu_item_p.session-chat-row .session-list-row {
+  min-height: 30px;
+  border-radius: 6px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.aside_box .submenu_item_p.session-chat-row:hover .session-list-row {
+  background: var(--td-bg-color-container-hover);
+}
+.aside_box .submenu_item_p.session-chat-row:hover .session-list-row .menu-more {
+  color: var(--td-text-color-primary);
+}
+.aside_box .submenu_item_p.session-chat-row:hover .session-list-row .menu-more-wrap {
+  opacity: 1;
+}
+.aside_box .submenu_item_p.session-chat-row--active .session-list-row {
+  background: var(--td-bg-color-container-hover);
+}
+.aside_box .submenu_item_p.session-chat-row--active .session-list-row .submenu_item {
+  color: var(--td-brand-color);
+}
+.aside_box .submenu_item_p.session-chat-row--active .session-list-row .menu-more {
+  color: var(--td-text-color-primary);
+}
+.aside_box .submenu_item_p.session-chat-row--active .session-list-row .menu-more-wrap {
+  opacity: 1;
+}
+.aside_box .submenu_item_p.session-chat-row--selected .session-list-row {
+  background: rgba(7, 192, 95, 0.05);
+}
+
+/* SessionSidebarRow 为子组件，Vue 以 :deep 穿透；React 平铺等价 */
+.aside_box .submenu_item {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  color: var(--td-text-color-primary);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 20px;
+  height: 100%;
+  width: 100%;
+  padding: 6px 0;
+  position: relative;
+  min-width: 0;
+  background: transparent;
+}
+.aside_box .submenu_item .submenu_title {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.aside_box .submenu_item .session-running-indicator {
+  flex: 0 0 16px;
+  flex-shrink: 0;
+}
+.aside_box .submenu_item .submenu_title-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.aside_box .submenu_item .menu-more-wrap {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+.aside_box .submenu_item .menu-more {
+  display: inline-block;
+  font-weight: bold;
+  color: var(--td-brand-color);
+}
+.aside_box .submenu_item .submenu_title--batch {
+  margin-left: 4px;
+}
+.aside_box .submenu_item.submenu_item_batch {
+  padding-left: 0;
+}
+
+.aside_box .submenu_item_batch {
+  cursor: pointer;
+  user-select: none;
+}
+
+.aside_box .batch-checkbox {
+  flex-shrink: 0;
+}
+
+/* ---- menu.vue scoped 顶层规则（无 .aside_box 嵌套，平铺原样） ---- */
+
+.batch-inline-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-top: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+}
+.batch-inline-footer .batch-footer-left {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+}
+.batch-inline-footer .batch-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 知识库下拉菜单样式（当前模板未挂载，随源平移） */
+.kb-dropdown-icon {
+  margin-left: auto;
+  color: var(--td-text-color-secondary);
+  transition: transform 0.3s ease, color 0.2s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+.kb-dropdown-icon.rotate-180 {
+  transform: rotate(180deg);
+}
+.kb-dropdown-icon:hover {
+  color: var(--td-brand-color);
+}
+.kb-dropdown-icon.active {
+  color: var(--td-brand-color);
+}
+.kb-dropdown-icon.active:hover {
+  color: var(--td-brand-color-active);
+}
+.kb-dropdown-icon svg {
+  width: 12px;
+  height: 12px;
+  transition: inherit;
+}
+.kb-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--td-bg-color-container);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 6px;
+  box-shadow: var(--td-shadow-2);
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.kb-dropdown-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+}
+.kb-dropdown-item:hover {
+  background-color: var(--td-bg-color-container-hover);
+}
+.kb-dropdown-item.active {
+  background-color: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+.kb-dropdown-item:first-child {
+  border-radius: 6px 6px 0 0;
+}
+.kb-dropdown-item:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+.menu_item-box {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  position: relative;
+}
+
+/* Empty state when there are no sessions. */
+.submenu_empty {
+  padding: 24px 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+  user-select: none;
+}
+
+/* 顶部 logo_row 右侧的图标按钮组（搜索 + 折叠），与折叠按钮风格一致 */
+.logo_actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.header-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--td-text-color-secondary);
+  transition: background-color 0.2s ease;
+  box-sizing: border-box;
+}
+.header-icon-btn:hover {
+  background: var(--td-bg-color-container-hover);
+}
+.header-icon-btn .header-icon-img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* 深色 tooltip 内容：标签 + 浅灰快捷键内联 */
+.cmdk-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.cmdk-tip .cmdk-tip-label {
+  font-size: 13px;
+}
+.cmdk-tip .cmdk-tip-keys {
+  font-size: 13px;
+  opacity: 0.6;
+  letter-spacing: 0.5px;
+}
+
+.menu-pending-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 9px;
+  background: rgba(250, 173, 20, 0.2);
+  color: var(--td-warning-color);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.menu_box {
+  position: relative;
+}
+
+/* ============ §2 menu.vue unscoped（dark mode / popconfirm，原样平移） ============ */
+
+/* Dark mode: invert dark logo to light */
+html[theme-mode="dark"] .aside_box .logo_box .logo {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Dark mode: 滚动条在深色背景下需要更亮的颜色才看得见 */
+html[theme-mode="dark"] .aside_box .menu_top:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+html[theme-mode="dark"] .aside_box .menu_top:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+html[theme-mode="dark"] .aside_box .menu_top::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.38);
+}
+
+/* Dark mode: invert the top search icon button image to match text color */
+html[theme-mode="dark"] .aside_box .header-icon-img {
+  filter: invert(1);
+  opacity: 0.55;
+}
+html[theme-mode="dark"] .aside_box .header-icon-btn:hover .header-icon-img {
+  opacity: 0.9;
+}
+
+/* Dark mode: make SVG icons match text color (loaded via <img>, currentColor won't work) */
+html[theme-mode="dark"] .aside_box .menu_icon img.icon {
+  filter: invert(1);
+  opacity: 0.55;
+}
+html[theme-mode="dark"] .aside_box .menu_item:hover .menu_icon img.icon {
+  opacity: 0.9;
+}
+html[theme-mode="dark"] .aside_box .menu_item_c_active .menu_icon img.icon {
+  opacity: 0.9;
+}
+html[theme-mode="dark"] .aside_box .menu_item_active .menu_icon img.icon {
+  filter: none;
+  opacity: 1;
+}
+
+/* 退出登录确认框样式 */
+.t-popconfirm .t-popconfirm__content {
+  background: var(--td-bg-color-container);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 6px;
+  box-shadow: var(--td-shadow-3);
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  max-width: 200px;
+}
+.t-popconfirm .t-popconfirm__arrow {
+  border-bottom-color: var(--td-component-stroke);
+}
+.t-popconfirm .t-popconfirm__arrow::after {
+  border-bottom-color: var(--td-bg-color-container);
+}
+.t-popconfirm .t-popconfirm__buttons {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.t-popconfirm .t-button--variant-outline {
+  border-color: var(--td-component-border);
+  color: var(--td-text-color-secondary);
+}
+.t-popconfirm .t-button--theme-danger {
+  background-color: var(--td-error-color);
+  border-color: var(--td-error-color);
+}
+.t-popconfirm .t-button--theme-danger:hover {
+  background-color: var(--td-error-color);
+  border-color: var(--td-error-color);
+}
+
+/* ============ §3 SessionSidebarRow.vue scoped（.submenu_item 前缀） ============ */
+
+.aside_box .submenu_item {
+  position: relative;
+}
+
+.session-running-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  color: var(--td-brand-color);
+}
+
+.session-running-indicator__spinner {
+  display: block;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--td-component-stroke);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: session-running-spin 0.8s linear infinite;
+}
+
+@keyframes session-running-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-running-indicator__spinner {
+    animation: none;
+  }
+}
+
+.session-row-menu-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.session-title-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.session-title-edit__input {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--td-brand-color);
+  border-radius: 5px;
+  color: var(--td-text-color-primary);
+  background: var(--td-bg-color-container);
+  font-size: 14px;
+  line-height: 24px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--td-brand-color-light);
+  box-sizing: border-box;
+}
+
+.menu-more-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.menu-more-wrap:hover {
+  background: var(--td-bg-color-container-hover);
+}
+
+/* 合成 owner（api_external_user / api_tenant_key）会话的"提问人"徽标。 */
+.session-owner-tag {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  max-width: 108px;
+  height: 16px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 15px;
+  font-weight: 400;
+  border-radius: 4px;
+}
+.session-owner-tag--user {
+  color: var(--td-brand-color);
+  background: var(--td-brand-color-light);
+  border: 0.5px solid var(--td-brand-color-light-active);
+}
+.session-owner-tag--key {
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-container-hover);
+  border: 0.5px solid var(--td-component-stroke);
+}
+
+/* ============ §4 SessionSidebarRow.vue unscoped（body 弹层，原样平移） ============ */
+
+.session-action-menu-popup {
+  z-index: 3000 !important;
+}
+.session-action-menu-popup .t-popup__content {
+  padding: 4px !important;
+  margin-top: 2px !important;
+  min-width: 160px !important;
+  width: max-content !important;
+  border-radius: 8px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 6px rgba(0, 0, 0, 0.08) !important;
+  overflow: hidden;
+}
+.session-action-menu-popup.is-confirm .t-popup__content {
+  padding: 12px !important;
+  width: 260px !important;
+  min-width: 260px !important;
+}
+
+.session-action-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 152px;
+}
+
+.session-action-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--td-text-color-primary);
+  background: transparent;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  white-space: nowrap;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.session-action-menu__item:hover {
+  background: var(--td-bg-color-container-hover);
+}
+.session-action-menu__item.is-danger {
+  color: var(--td-error-color-6);
+}
+.session-action-menu__item.is-danger .session-action-menu__icon {
+  color: var(--td-error-color-6);
+}
+.session-action-menu__item.is-danger:hover {
+  background: var(--td-error-color-1);
+}
+
+.session-action-menu__icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--td-text-color-secondary);
+}
+.session-action-menu__icon .t-icon {
+  font-size: 16px;
+}
+
+.session-action-menu__divider {
+  height: 1px;
+  margin: 2px 6px;
+  background: var(--td-component-stroke);
+}
+
+.session-action-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 236px;
+}
+.session-action-confirm__title {
+  margin: 0;
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+.session-action-confirm__body {
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.session-action-confirm__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+.session-action-confirm__btn {
+  min-width: 60px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0.5px solid var(--td-component-stroke);
+  border-radius: 6px;
+  color: var(--td-text-color-primary);
+  background: var(--td-bg-color-container);
+  font-size: 14px;
+  line-height: 28px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.session-action-confirm__btn:hover:not(:disabled) {
+  background: var(--td-bg-color-container-hover);
+}
+.session-action-confirm__btn.is-danger {
+  border-color: transparent;
+  color: #fff;
+  background: var(--td-error-color-6);
+}
+.session-action-confirm__btn.is-danger:hover:not(:disabled) {
+  background: var(--td-error-color-5);
+}
+
+:root[theme-mode='dark'] .session-action-menu-popup .t-popup__content {
+  background: rgba(36, 36, 36, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 2px 6px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* ---- React 侧 details 承载 ⋯ 菜单（Vue 为 t-popup portal）：
+   挂载几何与 .menu-more-wrap 对齐，展开面板复刻 popup 内容框样式 ---- */
+.aside_box details.session-row-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+.aside_box details.session-row-menu > summary {
+  list-style: none;
+}
+.aside_box details.session-row-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.aside_box details.session-row-menu[open] > summary {
+  opacity: 1;
+}
+.aside_box details.session-row-menu > .session-action-menu-panel {
+  position: absolute;
+  right: 0;
+  top: 26px;
+  z-index: 30;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--td-bg-color-container);
+  border: 0.5px solid var(--td-component-stroke);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* ============ §5 UserMenu.vue scoped（.user-menu 前缀） ============ */
+
+.user-menu {
+  position: relative;
+  width: 100%;
+}
+.user-menu--collapsed .user-button {
+  justify-content: center;
+  padding: 6px 3px;
+  gap: 0;
+}
+.user-menu--collapsed .user-dropdown {
+  left: calc(100% + 8px);
+  bottom: 0;
+  right: auto;
+  /* 与展开侧栏时下拉可视宽度对齐（aside 宽 260px） */
+  min-width: 260px;
+}
+
+.user-menu .user-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+.user-menu .user-button:hover {
+  background: var(--td-bg-color-container-hover);
+}
+.user-menu .user-button:active {
+  transform: scale(0.98);
+}
+
+.user-menu .user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--td-brand-color) 0%, var(--td-brand-color-active) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.2s ease, height 0.2s ease;
+}
+.user-menu .user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.user-menu .user-avatar .avatar-placeholder {
+  color: var(--td-text-color-anti);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.user-menu .user-info {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+}
+.user-menu .user-info .user-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu .user-info .user-email {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu .user-info .user-tenant-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--td-text-color-primary);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu .user-info .user-tenant-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--td-text-color-secondary);
+}
+.user-menu .user-info .user-tenant-meta .user-tenant-meta-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-menu .user-info .user-tenant-meta .user-tenant-meta-sep {
+  flex-shrink: 0;
+  color: var(--td-text-color-placeholder);
+}
+.user-menu .user-info .user-tenant-meta .user-tenant-meta-icon {
+  flex-shrink: 0;
+  color: inherit;
+}
+.user-menu .user-info .user-tenant-meta .user-tenant-meta-role {
+  flex-shrink: 0;
+}
+
+.user-menu .dropdown-icon {
+  font-size: 16px;
+  color: var(--td-text-color-secondary);
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.user-menu .user-dropdown {
+  position: absolute;
+  bottom: 100%;
+  /* 相对 .user-menu：左右由 left/right 拉宽；右缘用正值内缩，避免与侧栏内容区右边界完全重合 */
+  left: -4px;
+  right: -5px;
+  margin-bottom: 6px;
+  background: var(--td-bg-color-container);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--td-component-stroke);
+  overflow: hidden;
+  z-index: 1000;
+}
+
+/* 下拉顶部 — 账号区：24px 头像中心与下方 16px 菜单图标中心同竖线；
+   margin-left −4px、gap 6px 保持昵称起点与菜单文案对齐（12 + 24 + 6 − 4 = 38） */
+.user-menu .dropdown-user-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  min-width: 0;
+}
+.user-menu .dropdown-user-header.is-clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.user-menu .dropdown-user-header.is-clickable:hover,
+.user-menu .dropdown-user-header.is-clickable:focus-visible {
+  background: var(--td-bg-color-container-hover);
+  outline: none;
+}
+.user-menu .dropdown-user-header .dropdown-user-avatar {
+  width: 24px;
+  height: 24px;
+  margin-left: -4px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--td-brand-color) 0%, var(--td-brand-color-active) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.user-menu .dropdown-user-header .dropdown-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.user-menu .dropdown-user-header .dropdown-user-avatar .dropdown-user-avatar-placeholder {
+  color: var(--td-text-color-anti);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+.user-menu .dropdown-user-header .dropdown-user-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  justify-content: center;
+}
+.user-menu .dropdown-user-header .dropdown-user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.user-menu .dropdown-user-header .dropdown-user-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu .dropdown-user-header .dropdown-user-email {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--td-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu .dropdown-user-header .dropdown-guide-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.user-menu .dropdown-user-header .dropdown-guide-btn:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-secondary);
+}
+
+/* 下拉 — 当前工作区：与下方 .menu-item 同款对齐（左 16px 图标槽 + 文案列 + 右侧操作图标） */
+.user-menu .dropdown-tenant-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--td-component-stroke);
+  background: transparent;
+  transition: background 0.15s ease;
+  min-width: 0;
+}
+.user-menu .dropdown-tenant-panel > .menu-icon {
+  font-size: 16px;
+  color: var(--td-text-color-secondary);
+  flex-shrink: 0;
+}
+.user-menu .dropdown-tenant-panel.is-clickable {
+  cursor: pointer;
+}
+.user-menu .dropdown-tenant-panel.is-clickable:hover,
+.user-menu .dropdown-tenant-panel.is-clickable.is-open {
+  background: var(--td-bg-color-container-hover);
+}
+.user-menu .dropdown-tenant-panel.is-clickable:hover .dropdown-tenant-panel-trail,
+.user-menu .dropdown-tenant-panel.is-clickable.is-open .dropdown-tenant-panel-trail {
+  color: var(--td-text-color-secondary);
+}
+.user-menu .dropdown-tenant-panel .dropdown-tenant-panel-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.user-menu .dropdown-tenant-panel .dropdown-tenant-panel-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu .dropdown-tenant-panel .dropdown-tenant-panel-trail {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--td-text-color-placeholder);
+  transition: color 0.15s ease;
+}
+.user-menu .dropdown-tenant-panel .dropdown-tenant-panel-role {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--td-text-color-secondary);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu .dropdown-tenant-panel .dropdown-tenant-panel-role .dropdown-tenant-panel-role-icon {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.user-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+}
+.user-menu .menu-item:hover {
+  background: var(--td-bg-color-container-hover);
+}
+.user-menu .menu-item.danger {
+  color: var(--td-error-color);
+}
+.user-menu .menu-item.danger:hover {
+  background: var(--td-error-color-light);
+}
+.user-menu .menu-item.danger .menu-icon {
+  color: var(--td-error-color);
+}
+/* 包含右弹子菜单的菜单项（React 侧未挂载该形态，随源平移） */
+.user-menu .menu-item--submenu {
+  position: relative;
+}
+.user-menu .menu-item--submenu .menu-item-label {
+  flex: 1;
+}
+.user-menu .menu-item--submenu .menu-chevron {
+  font-size: 16px;
+  color: var(--td-text-color-placeholder);
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.user-menu .menu-item--submenu.is-open {
+  background: var(--td-bg-color-container-hover);
+}
+.user-menu .menu-item--submenu.is-open .menu-chevron {
+  color: var(--td-text-color-secondary);
+}
+
+.user-menu .menu-item .menu-icon {
+  font-size: 16px;
+  color: var(--td-text-color-secondary);
+}
+.user-menu .menu-item .menu-icon.svg-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.user-menu .menu-item .menu-icon--emoji {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.user-menu .menu-item .menu-text-with-icon {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  min-width: 0;
+}
+.user-menu .menu-item .menu-text-with-icon > span:first-of-type {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu .menu-item .menu-new-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+  letter-spacing: 0.02em;
+}
+
+.user-menu .menu-item .menu-github-star-icon {
+  flex-shrink: 0;
+  color: var(--td-warning-color);
+}
+
+.user-menu .menu-item .menu-external-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--td-text-color-disabled);
+  flex-shrink: 0;
+  transition: color 0.2s ease;
+  pointer-events: none;
+}
+.user-menu .menu-item:hover .menu-external-icon {
+  color: var(--td-brand-color);
+}
+
+.user-menu .menu-divider {
+  height: 1px;
+  background: var(--td-component-stroke);
+  margin: 3px 0;
+}
+
+/* 紧跟账号/空间区块后的分隔线：略收紧与上方的留白 */
+.user-menu .dropdown-user-header + .menu-divider,
+.user-menu .dropdown-tenant-panel + .menu-divider {
+  margin-top: 1px;
+}
+
+/* 下拉动画（Vue Transition name="dropdown"；React 静态渲染，保留类名供后续动画对齐） */
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.dropdown-enter-to,
+.dropdown-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ============ §6 React 侧承载差异补充（非 Vue 源，几何已与 Vue 对齐） ============ */
+
+/* 用户菜单内租户切换列表（React 为下拉内 listbox；Vue 为 body 浮层，
+   扫描态不出现，保留 React 结构、对齐视觉基线） */
+.user-menu .tenant-submenu-inline {
+  max-height: 180px;
+  overflow-y: auto;
+  border-top: 1px solid var(--td-component-stroke);
+  padding: 6px 8px;
+}
+.user-menu .tenant-submenu-inline [role='option'] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 7px 4px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--td-text-color-primary);
+  cursor: pointer;
+}
+.user-menu .tenant-submenu-inline [role='option']:hover {
+  background: var(--td-bg-color-container-hover);
+}
+.user-menu .tenant-submenu-inline [role='option']:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.user-menu .tenant-submenu-inline [role='option'] .tenant-submenu-role {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--td-text-color-placeholder);
+}

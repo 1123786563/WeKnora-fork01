@@ -418,6 +418,22 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     queryHistory,
     embed,
     sessions,
+    // Per-user starred resources (DB-backed; Vue frontend/src/api/user-favorites.ts,
+    // migration 000047 + internal/handler/user_resource_favorite.go). The backend
+    // scopes rows to the active (user, tenant) pair from the auth context, so no
+    // user_id/tenant_id parameters cross the wire.
+    userFavorites: {
+      list: async (type: 'kb' | 'agent'): Promise<Array<{ resource_id: string; resource_type: string; created_at?: string }>> => {
+        const body = await request({ method: 'GET', path: `/api/v1/user/favorites?type=${encodeURIComponent(type)}` }) as { success?: boolean; data?: Array<{ resource_id: string; resource_type: string; created_at?: string }> } | null;
+        return body?.data ?? [];
+      },
+      add: async (type: 'kb' | 'agent', id: string): Promise<void> => {
+        await request({ method: 'POST', path: '/api/v1/user/favorites', body: { type, id } });
+      },
+      remove: async (type: 'kb' | 'agent', id: string): Promise<void> => {
+        await request({ method: 'DELETE', path: `/api/v1/user/favorites/${encodeURIComponent(type)}/${encodeURIComponent(id)}` });
+      },
+    },
     sandbox: { issueTicket: sandbox.issueTicket, skills: sandboxSkills },
     sandboxConfigurations,
     configuration,

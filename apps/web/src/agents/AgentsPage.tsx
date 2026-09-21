@@ -890,6 +890,10 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   const tenantKey = tenantId === undefined || tenantId === null ? null : String(tenantId);
 
   // Viewer + per-(user, tenant) pins hydrate (App.tsx membershipRole pattern).
+  // Task 9.5 — favorites are DB-backed like Vue useResourcePins (GET
+  // /user/favorites?type=agent is the source of truth; localStorage only
+  // mirrors the last-known set). Bare test fakes without the userFavorites
+  // namespace keep the localStorage read so existing mounts still hydrate.
   useEffect(() => {
     let active = true;
     setViewerReady(false);
@@ -905,6 +909,18 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       setViewerReady(true);
       setFavorites(new Set(readFavoriteIds(window.localStorage, userId, tenantKey)));
       setRecents(readAgentRecents(window.localStorage, userId, tenantKey));
+      const favoritesApi = (client as unknown as {
+        userFavorites?: { list?: (type: 'agent') => Promise<Array<{ resource_id: string }>> };
+      }).userFavorites;
+      const listFavorites = favoritesApi?.list?.bind(favoritesApi);
+      if (listFavorites) {
+        void listFavorites('agent').then((rows) => {
+          if (!active) return;
+          const ids = rows.map((row) => row.resource_id).filter(Boolean);
+          setFavorites(new Set(ids));
+          writeFavoriteIds(window.localStorage, userId, tenantKey, ids);
+        }).catch(() => { /* keep the localStorage snapshot on probe failure */ });
+      }
     }).catch(() => {
       // Deep-link consumption waits for an authoritative permission result;
       // a failed identity lookup must not accidentally grant an edit surface.
@@ -961,12 +977,29 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   const reload = useCallback(() => setReloadToken((value) => value + 1), []);
 
   const toggleFavorite = useCallback((id: string) => {
+    // Vue useResourcePins.toggleFavorite: optimistic flip, then the DB call
+    // (POST /user/favorites | DELETE /user/favorites/agent/:id); a failure
+    // rolls the star back. localStorage mirrors the last-known set.
+    const favoritesApi = (client as unknown as {
+      userFavorites?: { add?: (type: 'agent', id: string) => Promise<void>; remove?: (type: 'agent', id: string) => Promise<void> };
+    }).userFavorites;
+    let wasFavorited = false;
     setFavorites((current) => {
+      wasFavorited = current.has(id);
       const next = new Set(toggleFavoriteId([...current], id));
       writeFavoriteIds(window.localStorage, viewer.userId, tenantKey, [...next]);
       return next;
     });
-  }, [tenantKey, viewer.userId]);
+    const persist = wasFavorited ? favoritesApi?.remove?.('agent', id) : favoritesApi?.add?.('agent', id);
+    if (!persist) return;
+    void persist.catch(() => {
+      setFavorites((current) => {
+        const rollback = new Set(toggleFavoriteId([...current], id));
+        writeFavoriteIds(window.localStorage, viewer.userId, tenantKey, [...rollback]);
+        return rollback;
+      });
+    });
+  }, [client, tenantKey, viewer.userId]);
 
   const openCard = useCallback((agent: AgentCardModel) => {
     setOpenMenuId(null);
