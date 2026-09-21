@@ -1,6 +1,6 @@
-# 全后端业务模块化改造设计
+# 全后端两遍式业务模块化迁移设计
 
-> 状态：2026-09-21 全量设计已确认，待书面审阅与实施计划。本 Spec 是覆盖服务端全部功能的架构总蓝图；每个业务模块仍须拆成独立纵向子项目实施。
+> 状态：2026-09-21 两遍迁移、任务级并行和持续验证设计已确认，待书面审阅与新版实施计划。本 Spec 覆盖服务端全部功能；每个业务模块仍须拆成独立纵向子项目实施。
 
 ## 1. 背景
 
@@ -106,6 +106,36 @@ transport -> application -> domain
 
 bootstrap 只引用模块入口；同一路由、Worker 和钩子只注册一次；停止顺序必须可验证；不得以包级可变状态绕过依赖注入。
 
+### 4.4 两遍迁移模型
+
+完整迁移分为两个可独立验收、系统始终可运行的阶段。
+
+**Pass A — Move First（功能归位）**：先让所有生产代码和测试按业务功能集中，快速获得可导航结构；保留模块内部原有 handler/service/repository 组织，不在移动提交中改变业务逻辑。
+
+```text
+internal/modules/knowledge/
+  README.md
+  module.go
+  legacy/
+    handler/
+    service/
+    repository/
+    types/
+```
+
+Pass A 只允许 `git mv`、package/import 修复、模块装配接线和必要的无逻辑兼容别名。禁止修改 API、SQL、状态机、权限、错误、重试、schema 或业务规则。新功能从 Pass A 起不得继续进入旧横向业务目录。
+
+**Pass B — Refactor Second（边界收紧）**：在代码归位后，逐模块把 legacy 拆成 transport/application/domain/ports/adapters，建立单写者、公开端口和事件回流，最后删除 legacy、兼容别名和临时导入例外。
+
+单模块轨迹固定为：
+
+```text
+基线 → 纯移动 → package/import 修复 → module.go 接线
+    → domain/ports/adapters 整理 → legacy/例外删除
+```
+
+不复制第二份业务实现。确需过渡时只能保留无业务逻辑的薄别名或 adapter，并记录删除阶段。
+
 ## 5. 模块地图与所有权
 
 ### 5.1 Identity
@@ -178,7 +208,7 @@ Platform 不是业务模块。它拥有连接、migration runner、队列、blob
 
 ### 5.18 现有功能覆盖矩阵
 
-下表是当前代码族的目标归属。它用于保证所有服务端能力进入改造范围；Wave 0 必须把代码级清单逐项对照到此矩阵，并对任何遗漏或一对多归属提交设计修订。
+下表是当前代码族的目标归属。它用于保证所有服务端能力进入改造范围；F0 必须把代码级清单逐项对照到此矩阵，并对任何遗漏或一对多归属提交设计修订。
 
 | 现有功能或代码族 | 目标所有者 | 边界说明 |
 |---|---|---|
@@ -275,131 +305,211 @@ internal/modules/conversation/queryhistory/
 
 试点不得改变现有 Admin 路由、RBAC/API Key、403/404/400/500 映射、匿名化、CSV 列序/BOM/文件名、数据库表或 asynq 重试/幂等语义。
 
-## 9. 全量迁移路线
+## 9. 并行 Code Agent 组织
 
-这是架构项目群。每个模块形成独立纵向子项目，不能用一个超大 PR 完成。
+完整迁移使用最多七个并发角色，但只允许四条模块写入流：
 
-### Wave 0：基线与守护
+| 角色 | 数量 | 权限与职责 |
+|---|---:|---|
+| Coordinator / Integrator | 1 | 冻结接口、分配所有权、串行修改共享装配点、合并 Worktree、处理冲突 |
+| Module Implementer | 4 | 每个 Agent 独占一个模块或子域 Worktree，移动代码与测试、修复 import、提交 `module.go` 和迁移报告 |
+| Reviewer | 1 | 只读审查纯移动、Spec、边界、安全和 diff，不写生产代码 |
+| Verifier | 1 | 运行测试、构建、lint、架构守护和差分门禁，维护基线证据 |
 
-- 建立路由、Worker、定时任务、启动钩子、表和 migration 全量清单；
-- 记录当前所有者和目标模块；
-- 建立 README、port、event 和 Task Brief 模板；
-- 建立非法导入检查、契约特征测试和既有失败台账；
-- 记录 container/router 基线。
+模块 Agent 可以修改自己的 `internal/modules/<module>`、随模块移动的测试、README、迁移台账和 Integration Brief。只有 Integrator 可以修改：
 
-### Wave 1：证明方法可行
+- `internal/router/router.go`；
+- `internal/container/container.go`；
+- 全局 Worker/生命周期注册；
+- migration 编号和共享 schema 入口；
+- `go.mod`、`go.sum`；
+- 跨模块公共接口、事件契约和所有权清单。
 
-- 完成 Conversation/Query History 试点；
-- 定稿 Module、RouteRegistrar、WorkerRegistry 和 lifecycle 接口；
-- 建立 System/bootstrap 骨架，只分离装配职责；
-- 复盘试点，确认模板后再扩展。
+每条实现流使用独立 Git Worktree。共享 `git stash` 不作为协调状态。子 Agent 上下文只包含 Spec、当前 Task Brief、所有权文件和前置接口，不复制整个父会话。
 
-### Wave 2：底层边界
+任务只有在接口/事件已冻结、`OWNED_FILES` 清单不相交、没有同一业务表或 migration 的并发写入、并且目标测试不依赖另一未合并分支时才允许并行；任一条件不满足即改为串行。
 
-- Platform：DB、Queue、File、Cache、Observability、Runtime；
-- Identity：Tenant、主体、成员、RBAC 与审计；
-- AI Resource：模型、MCP、搜索、向量库和存储配置；
-- Commercial：权益、预算、计量和支付；
-- Policy：组合公开事实执行门控。
+## 10. Pass A 任务级并行与串行图
 
-### Wave 3：核心能力
+### 10.1 Foundation：F0 → F1 → F2 必须串行
 
-- Knowledge：先拆接入、处理、FAQ/Wiki、检索等内部子模块；
-- Agent Catalog：统一定义、版本、Persona、Expert、Subagent、Skill 和市场；
-- Execution：统一 Sandbox、Target、Workspace、Terminal 和 Browser 门面。
+- **F0 基线与全量清单**：测试基线、功能/路由/Worker/表/migration 所有权；
+- **F1 模块模板**：README、`module.go`、legacy、MOVE-MANIFEST 和 Integration Brief 格式；
+- **F2 装配契约与 CI 守护**：Route/Worker/Lifecycle contract、非法导入和唯一注册检查。
 
-### Wave 4：外部集成
+三项必须串行，因为所有模块 Agent 都依赖同一套目录、接口、基线和所有权规则。
 
-- Data Source：同步状态机及 Knowledge 摄取端口；
-- App Connector：安装、授权、连接、动作和同步；
-- Channels：IM/Embed 标准化输入输出并隔离 SDK。
+### 10.2 Parallel Group A1：四项可以并行
 
-### Wave 5：执行编排
+- **A1 App Connector 归位**；
+- **A2 Commercial 归位**；
+- **A3 Data Source 归位**；
+- **A4 Channels/IM/Embed 归位**。
 
-- Agent Runtime：Run、Tool、Approval、Memory、Recovery；
-- Conversation 剩余能力：Session、Message、Chat、Feedback、Share；
-- Insights：Analytics/Evaluation 转为事件和投影消费者。
+四者文件和主要业务状态不重叠。模块 Agent 不修改共享 router/container。
 
-### Wave 6：用户工作聚合与收尾
+### 10.3 IA1 Integration Barrier：必须串行
 
-- Workbench：Task、Timeline、Inbox、Artifact、Notification；
-- Craft：在 Execution/Knowledge/Commercial 稳定后收敛开发能力；
-- 删除已迁移的全局 handler/service/repository/types 路径；
-- 将 container/router 收敛为纯组合根；
-- 完成全仓依赖和所有权审计。
+Integrator 逐个接入 A1–A4 的 `module.go`，每接一个模块运行装配测试，最后运行批次回归。未通过 IA1 不启动 Parallel Group A2。
 
-## 10. 单模块迁移循环
+### 10.4 Parallel Group A2：四项可以并行
 
-1. 盘点入口、规则、表、Worker、外部契约和测试；
-2. 明确 Task Brief、所有权、公开接口、事件和非目标；
-3. RED：增加特征测试和边界守护测试；
-4. GREEN：迁移 domain、application、ports、adapters 和 transport；
-5. 切换路由、Worker、定时任务和生命周期装配；
-6. 同批删除旧注册、重复类型和失去职责的代码；
-7. 运行目标测试、全量验证、独立 Review 和 diff 审查；
-8. 更新清单、README、ADR/Spec 和迁移台账。
+- **A5 Execution/Sandbox 归位**；
+- **A6 AI Resource 归位**；
+- **A7 Agent Catalog 归位**；
+- **A8 System + Policy 归位**。
 
-## 11. 并行规则
+### 10.5 IA2 Integration Barrier：必须串行
 
-仅当接口/事件已冻结、所有权无争议、写文件/migration/装配点不重叠时并行。每条实现流使用独立 worktree；主集成流串行修改 bootstrap/container/router；Knowledge、Agent Runtime、Conversation、Craft 不同时修改同一核心 seam。共享 `git stash` 不作为协调机制。
+Integrator 接线并冻结 Execution、AI Resource、Agent Catalog、Policy 的公开入口，验证 A1/A2 两批不存在循环 import。
 
-## 12. 测试与验证门禁
+### 10.6 Parallel Group A3：可以并行移动，必须串行接入
 
-每批必须覆盖：
+- **A9 Knowledge 归位**：按 ingest、process、wiki/faq、retrieval 四个子清单；
+- **A10 Conversation 归位**：Session、Message、Feedback、Query History；
+- **A11 Agent Runtime 归位**：Engine、Tool、Memory、Native/tRPC、Model Context。
 
-1. 外部契约：API、错误、流、事件、任务名、CSV/文件格式；
-2. 安全：Tenant 隔离、RBAC、凭据、审批和 capability gate；
-3. 数据：表/migration 兼容、单写者、事务、幂等和回滚；
-4. 运行：启动、关闭、Worker、重试、清理、降级和资源释放；
-5. domain/application 单元测试；
-6. SQLite/PostgreSQL 适用范围内的 adapter 测试；
-7. transport 与装配测试；
-8. 目标包测试、`go test ./internal/...`、`go build ./...` 和变更范围 lint；
-9. Spec compliance、架构、安全和最终 diff 独立 Review。
+A9–A11 可以同时做纯移动，但 A11 不得自行改变 Knowledge/Conversation 接口。IA3 的生产接入顺序固定为 **Knowledge → Conversation → Agent Runtime**，每一步构建和测试通过后才接下一项。
 
-既有失败在 Wave 0 建立可复现台账。不得删除或放宽测试制造绿色；无法区分既有失败与回归时停止迁移。
+### 10.7 Parallel Group A4：三项可以并行
 
-## 13. 模块治理规则
+- **A12 Workbench 归位**；
+- **A13 Craft 归位**；
+- **A14 Insights 归位**。
 
-- README 记录职责、非职责、公开入口、依赖端口、数据、事件和契约；
+前置条件是 IA3 完成、Conversation/Agent Runtime 入口稳定。A12/A13 在开工前冻结共享 Task/Artifact 契约。
+
+### 10.8 IA4 Pass A 完成屏障：必须串行
+
+Integrator 串行接入 A12–A14，执行全量构建/测试、旧横向目录残留扫描、路由/Worker 唯一注册检查和 Pass A 验收。
+
+## 11. Pass B 任务级并行与串行图
+
+- **B0 必须串行**：冻结 Identity、Capability、Usage、Execution、Knowledge、Conversation 和 Task/Artifact 公共端口与事件版本；
+- **B1 可以并行**：Identity、AI Resource、Commercial、Execution；随后 **IB1 串行集成**；
+- **B2 可以并行**：Knowledge、Agent Catalog、Data Source、App Connector；随后 **IB2 串行集成**；
+- **B3 可以并行**：Agent Runtime、Channels、Insights；Conversation 可在 Agent Runtime 调用接口冻结后并行；随后 **IB3 串行集成**；
+- **B4 可以并行**：Workbench 与 Craft 在 Task/Artifact 契约冻结后分别整理；System/Policy 可处理不重叠的治理代码；
+- **B5 必须串行**：删除 legacy、compat alias 和临时例外，收敛 router/container，运行全仓回归和最终 Review。
+
+任何阶段中，公共接口/事件变更、router/container 接线、migration 编号、共享表变更、跨模块 legacy 删除、批次全量测试和最终合并必须串行。
+
+## 12. 单模块交付包与迁移循环
+
+每个 Module Agent 必须交付：
+
+1. 范围内代码提交；
+2. MOVE-MANIFEST：旧路径、新路径、文件所有者和临时例外；
+3. Integration Brief：路由、provider、Worker、生命周期和配置接线说明；
+4. Test Evidence：迁移前后命令、结果和基线比较；
+5. Review Report：纯移动、行为兼容、安全与 diff 结论。
+
+Pass A 循环：目标测试基线 → `git mv` 生产代码和测试 → package/import 修复 → 目标/依赖测试 → `module.go` → Review → Integrator 接线。
+
+Pass B 循环：特征测试 → domain/application/ports/adapters → 高风险差分 → 装配切换 → legacy 删除 → 模块/消费者/全量测试 → 独立 Review。
+
+## 13. 提交隔离和回滚
+
+提交按目的隔离：
+
+- **M1 Baseline**：只增加测试、清单和证据；
+- **M2 Move**：纯 rename，不改函数体；
+- **M3 Compile**：只修 package/import 和无逻辑兼容别名；
+- **M4 Integrate**：只切换 router/container/Worker/lifecycle 装配；
+- **M5 Refactor**：整理模块边界，仍不改变外部行为；
+- 业务修复必须另立 Ticket，不混入迁移提交。
+
+切换失败时先回退 M4；M2/M3 的新路径可以保留为未接线代码。Pass A 不修改 schema，回滚不需要数据修复。Pass B 的 schema 任务必须单独设计向前兼容 migration、回填、验证和回滚/roll-forward 策略。
+
+禁止复制并长期保留两份实现或双写。兼容别名只能委托一个真源，必须标注删除批次。
+
+## 14. 持续测试与差分门禁
+
+### 14.1 模块级测试梯度
+
+每个 Agent 执行：
+
+1. **T0 迁移前**：记录基线 SHA、目标测试和结果；
+2. **T1 纯移动后**：运行目标包测试和编译；
+3. **T2 Import 修复后**：运行直接依赖消费者测试；
+4. **T3 module.go 后**：运行装配和唯一注册测试；
+5. **T4 Review 前**：运行 diff 范围检查和架构守护。
+
+出现新失败即停止继续移动，定位本批次第一个破坏提交。
+
+### 14.2 纯移动验证
+
+纯移动要求迁移前后同一测试集合结果一致，`git diff --summary` 能识别 rename，除 package/import/接线外无函数体变化，不新增数据库写入、goroutine 或全局状态。纯目录移动不为每个文件建立差分框架。
+
+### 14.3 高风险差分验证
+
+以下行为必须用相同输入运行新旧实现，比较输出、错误、数据库结果、任务参数和副作用：
+
+- Tenant/RBAC、凭据和审批；
+- HTTP/流式响应/错误码；
+- Worker 状态机、重试和幂等；
+- 支付、预算、Usage 和履约；
+- Session/Message；
+- Knowledge 删除和索引；
+- Craft 生命周期与 Artifact。
+
+差分失败只能修正新实现；没有独立批准的行为变更时不得修改期望值迎合新结果。
+
+### 14.4 Integration Barrier 验证
+
+每个 IA/IB 固定执行：本批模块测试 → 直接消费者及 router/container 测试 → 架构守护 → `go build ./...` → `go test ./internal/...` → 变更范围 lint。全部通过后更新批次基线并放行下一组。
+
+既有失败必须在 F0 建立可复现台账。环境缺失或 opt-in 测试 Skip 记录为 `blocked-env`，不能算 PASS；无法区分既有失败与回归时停止集成。
+
+## 15. 模块治理规则
+
+- README 记录职责、非职责、公开入口、依赖端口、拥有数据、事件和临时 legacy；
 - 新功能先确定业务所有者，无法确定时先解决领域歧义；
 - `platform/common/utils` 不作业务兜底目录；
-- 超大文件只作为职责复核信号；
 - 模块 API 最小化，不为测试方便导出内部类型；
-- migration 保持全局有序，并标明所有者模块；
-- 跨模块报表使用明确 projection，不允许任意 join 成为隐式依赖；
-- 迁移能力时同步迁移测试。
+- migration 保持全局有序并标明所有者；
+- 跨模块报表使用明确 projection，不允许任意 join 形成隐式依赖；
+- 架构例外必须是精确路径、说明原因和删除批次，禁止 broad wildcard；
+- Pass A 后 CI 拒绝在旧横向业务目录新增生产文件。
 
-## 14. 风险与停止条件
+## 16. 风险与停止条件
 
-- **名义模块化**：只移动文件但继续跨模块调用内部 service；由导入检查、ports 和单写者门禁阻止。
-- **双重注册/双写**：切换必须原子化，由装配测试和单写者测试证明。
-- **循环依赖**：重新确定所有权，或用结果事件/回调端口打断；不得用全局变量解决。
-- **范围失控**：外部行为、授权、数据语义或部署拓扑变化必须另立 Spec/Ticket。
-- **长期双结构**：每个子项目包含旧路径删除条件和迁移台账。
+- **移动时顺便重构**：失去失败定位能力；由提交隔离和函数体 diff 检查阻止；
+- **共享文件冲突**：并行收益被 merge 消耗；由 Integrator 单写 router/container/migration 阻止；
+- **名义模块化永久化**：legacy 不再清理；每个模块必须有 Pass B Task 和删除标准；
+- **双注册/双写**：切换必须原子化并由唯一注册/单写者测试证明；
+- **循环依赖**：重新确定所有权或用结果事件/回调端口打断，不用全局变量解决；
+- **主线持续冲突**：以模块所有权和短生命周期 Worktree 降低；共享 seam 变更由 Coordinator 重新基线。
 
 与批准 Spec/ADR 冲突、需要改变外部语义、出现双写者/不可消除循环、基线无法区分回归、单模块仍大到无法理解时，停止当前批次并升级设计。
 
-## 15. 完成标准
+## 17. 完成标准
 
-### 15.1 首阶段
+### 17.1 Pass A 完成
 
-- Wave 0 清单、契约基线、失败台账和依赖守护完成；
-- Query History 试点进入目标结构；
-- bootstrap 只引用试点模块入口；
-- 既有 API、权限、隐私、CSV、数据库和任务语义全部通过兼容测试；
-- 试点复盘确认模板可用于后续模块。
+- 16 个模块均有所有者、README、`module.go`、代码地图和迁移台账；
+- 所有服务端生产文件与测试都有目标模块归属；
+- 天然成块代码已经物理归位，剩余 legacy 有精确清单；
+- router/container/Worker 按模块注册且不存在重复；
+- 新业务代码不再进入旧横向业务目录；
+- 所有 Integration Barrier 的构建、测试、架构守护和 Review 不劣于基线；
+- `cmd/desktop`、`docreader`、`client`/SDK 未被改造。
 
-### 15.2 全量
+Pass A 不声称完成单写者、全部 ports/events 或旧类型拆除。
 
-- 16 个模块均有所有者、README、公开接口、事件和测试；
-- 所有路由、Worker、定时任务、钩子、表和 migration 有唯一归属；
-- 一份业务事实只有一个写入所有者；
-- container/router 只组合模块，不引用内部实现；
-- 非法跨模块导入由 CI 拒绝；
-- 全局旧技术层不再承载已迁移业务，不保留永久兼容壳；
-- Workbench/Insights 投影可从权威事实重建；
-- 全量测试、构建、lint、验收、Review 和 diff 均有证据；
-- `cmd/desktop`、`docreader`、`client`/SDK 未被意外改造。
+### 17.2 Pass B / 全量完成
 
-本 Spec 批准的是全后端目标架构与迁移项目群，不等于批准一次性实现。后续先为 Wave 0 与 Wave 1 编写实施计划，再逐模块形成独立 Task Brief 和执行计划。
+- 16 个模块均完成公开端口、数据所有权和单写者边界；
+- 业务规则离开 legacy handler/service/repository；
+- 跨模块协作只使用公开 API、使用方 port 或版本化事件；
+- 临时 alias、import 例外和 legacy 清零；
+- container/router 只组合模块，不引用模块内部实现；
+- Workbench/Insights 投影可由权威事实重建；
+- 全量测试、构建、lint、差分、验收、Review 和最终 diff 均有证据；
+- 所有路由、Worker、钩子、表和 migration 有唯一归属。
+
+## 18. 计划与时间边界
+
+完整项目按 F、A1–A14、IA1–IA4、B0–B5、IB1–IB3 拆成独立 Task Brief。目标周期为 14–16 周，计划区间 12–20 周；时间假设是四条模块实现流持续可用、一个 Integrator 单写共享点、Reviewer/Verifier 不与实现争抢文件。接口返工、基线不稳定或主线高频修改会延长周期。
+
+本 Spec 批准两遍目标架构和任务依赖，不授权一次性大爆炸重构。书面批准后应废止原 Wave 0–1 计划，重新编写 Foundation + Pass A 的详细实施计划；Pass B 在 Pass A 验收和接口复盘后分批规划。
