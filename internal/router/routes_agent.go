@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/Tencent/WeKnora/internal/embedpolicy"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/modules/policy/embedpolicy"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 

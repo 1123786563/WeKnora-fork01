@@ -28,7 +28,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/Tencent/WeKnora/internal/ipclass"
+	"github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
 )
 
 // ErrUnsafeOutboundURL is returned for any endpoint that uses an unsupported
