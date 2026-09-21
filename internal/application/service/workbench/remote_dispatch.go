@@ -7,7 +7,7 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // RemoteDispatcher is the narrow worker seam around the Paseo bridge. The

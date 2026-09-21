@@ -8,8 +8,8 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/handler"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/voice"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -28,7 +28,9 @@ func (routesVoiceStore) MarkVoiceSessionUnknown(context.Context, uint64, string)
 func (routesVoiceStore) PendingUnknownVoiceSession(context.Context, uint64, string) (bool, error) {
 	return false, nil
 }
-func (routesVoiceStore) RecordVoiceSessionUsage(context.Context, uint64, string, int64) error { return nil }
+func (routesVoiceStore) RecordVoiceSessionUsage(context.Context, uint64, string, int64) error {
+	return nil
+}
 func (routesVoiceStore) CloseVoiceSessionWithUsage(context.Context, uint64, string, int64, time.Time) (bool, error) {
 	return true, nil
 }

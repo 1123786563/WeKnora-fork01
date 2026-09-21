@@ -61,13 +61,13 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/container"
 	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	"github.com/Tencent/WeKnora/internal/modules/appconnector/connectorcontrol"
 	"github.com/Tencent/WeKnora/internal/modules/appconnector/openconnector"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 
 	"gorm.io/driver/postgres"

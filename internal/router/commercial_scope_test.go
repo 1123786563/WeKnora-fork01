@@ -11,10 +11,10 @@ import (
 	"sync"
 	"testing"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
-	"github.com/Tencent/WeKnora/internal/payment"
 	"github.com/Tencent/WeKnora/internal/handler"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
@@ -251,10 +251,10 @@ func TestCommercialSummaryUsageEnvelope(t *testing.T) {
 		Version     int64  `json:"version"`
 	}
 	type summaryRow struct {
-		TenantID        uint64  `json:"tenant_id"`
-		Subscription    *subRow `json:"subscription"`
-		BaseTier        bool    `json:"base_tier"`
-		BaseTierKey     string  `json:"base_tier_key"`
+		TenantID         uint64  `json:"tenant_id"`
+		Subscription     *subRow `json:"subscription"`
+		BaseTier         bool    `json:"base_tier"`
+		BaseTierKey      string  `json:"base_tier_key"`
 		CanManageBilling bool    `json:"can_manage_billing"`
 	}
 	type usageRow struct {
@@ -388,7 +388,7 @@ func (p *scopeStubProvider) Create(context.Context, payment.OrderRequest) (payme
 func (p *scopeStubProvider) Query(context.Context, string) (payment.AttemptResult, error) {
 	return payment.AttemptResult{}, errors.New("query not wired")
 }
-func (p *scopeStubProvider) Close(context.Context, string) error          { return nil }
+func (p *scopeStubProvider) Close(context.Context, string) error { return nil }
 func (p *scopeStubProvider) Verify(context.Context, http.Header, []byte) (commercial.PaymentFact, error) {
 	return commercial.PaymentFact{}, nil
 }
@@ -598,7 +598,7 @@ func TestCommercialWriteEndpointsServeEnvelope(t *testing.T) {
 	// Scheduled plan change (downgrade): envelope over the change view.
 	if err := db.Exec(`INSERT INTO commercial_subscriptions
 		(id, tenant_id, plan_key, plan_version, plan_snapshot_json, anchor, paid_until, version)
-		VALUES ('sub-101', 101, 'pro', 3, '`+string(proDef)+`', '2026-01-01 00:00:00', '2027-01-01 00:00:00', 1)`).Error; err != nil {
+		VALUES ('sub-101', 101, 'pro', 3, '` + string(proDef) + `', '2026-01-01 00:00:00', '2027-01-01 00:00:00', 1)`).Error; err != nil {
 		t.Fatalf("seed subscription: %v", err)
 	}
 	w, body = serveJSONWith(t, db, owner, http.MethodPost, "/api/v1/commercial/quotes", `{"plan_key":"lite"}`)

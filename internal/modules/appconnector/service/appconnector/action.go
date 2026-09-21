@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/commercial"
 	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/google/uuid"
 )
 

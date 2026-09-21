@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // ---- Step 1 (brief, verbatim) ----

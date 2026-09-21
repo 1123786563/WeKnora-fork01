@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/handler"
-	commercialplatform "github.com/Tencent/WeKnora/internal/infrastructure/commercialplatform"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
+	commercialplatform "github.com/Tencent/WeKnora/internal/modules/commercial/commercialplatform"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"

@@ -3,7 +3,7 @@ package workbench
 import (
 	"context"
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	"testing"
 	"time"
 )

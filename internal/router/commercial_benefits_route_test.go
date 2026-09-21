@@ -9,11 +9,11 @@ import (
 
 	"context"
 
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/handler"
-	commercialplatform "github.com/Tencent/WeKnora/internal/infrastructure/commercialplatform"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
+	commercialplatform "github.com/Tencent/WeKnora/internal/modules/commercial/commercialplatform"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"github.com/gin-gonic/gin"
 
 	"gorm.io/driver/sqlite"
@@ -176,7 +176,7 @@ func TestAccountBenefitsProviderNeutrality(t *testing.T) {
 		"weknora-tenant-303-sub", // external subscription identity
 		"lago",                   // provider vocabulary
 		"http://", "https://",    // URLs
-		"invalid_request_error",  // raw provider error text
+		"invalid_request_error", // raw provider error text
 	} {
 		if strings.Contains(body, leak) {
 			t.Fatalf("benefits answer leaks %q: %s", leak, body)

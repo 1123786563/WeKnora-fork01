@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // TestUsageKeyCountsPhysicalAttempts is the O01 RED-first contract test: the
