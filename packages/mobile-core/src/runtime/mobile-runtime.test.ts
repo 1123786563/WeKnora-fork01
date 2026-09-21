@@ -454,7 +454,7 @@ test('a failed refresh remains on the fail-closed authentication surface', async
   assert.deepEqual(await store.read(DEPLOYMENT.origin), { token: 'expired-access', refreshToken: 'refresh-1' });
 });
 
-test('OIDC persists the verifier and server state before browser launch then a fresh Runtime consumes them once', async () => {
+test('OIDC persists the verifier and server state before browser launch then a fresh Runtime consumes them once without duplicate delivery revoking authorization', async () => {
   const pending = pendingStore();
   const browserCalls: string[] = [];
   const exchangeCalls: Array<{ code: string; state: string; redirectUri: string; codeVerifier: string }> = [];
@@ -492,9 +492,13 @@ test('OIDC persists the verifier and server state before browser launch then a f
   assert.deepEqual(exchangeCalls, [{ code: 'code-1', state: 'server-state', redirectUri: 'weknora://oidc', codeVerifier: persistedVerifier }]);
   assert.deepEqual(store.calls, [`write:${DEPLOYMENT.origin}`]);
   assert.equal(resumed.snapshot().surface, 'authorized');
+  const authorizedSnapshot = resumed.snapshot();
+  const authorizedLease = resumed.scopeLease();
   await resumed.completeOidc('weknora://oidc?code=code-1&state=server-state');
   assert.equal(exchangeCalls.length, 1);
-  assert.equal(resumed.snapshot().surface, 'upgrade-required');
+  assert.deepEqual(pending.calls, ['save', 'consume']);
+  assert.equal(resumed.snapshot(), authorizedSnapshot);
+  assert.equal(resumed.scopeLease(), authorizedLease);
 });
 
 test('concurrent native callbacks claim one persisted handoff and exchange it once', async () => {
