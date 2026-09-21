@@ -23,20 +23,20 @@
 | Redis/Lite worker | 23 任务类型 + 6 池 / 23 | 同 | ✅ 集合一致（guard 双侧计数） |
 | container.Invoke hooks | 58 | 58 | ✅ |
 | migrations | 537 文件（270 assets） | 537，git diff 零变更 | ✅ |
-| 生产包 | 128（cmd/server + internal） | 128（全数迁移/索引，无增删） | ✅ |
+| 生产包 | 128（cmd/server + internal） | 139（F0 128 包全数迁移/索引 + 16 新模块根包 + internal/bootstrap，均有归属） | ✅ |
 | 测试 | 118 ok + 2 flaky 注册 | 119 ok / 0 FAIL | ✅ 优于基线 |
 
 ## 3. Pass A 期间新增的治理资产
 
 - `tools/modulemove`（严格 manifest 校验 + 已集成搬迁语义）与 `tools/architectureguard`（资产发现/唯一注册/跨模块禁导入/legacy 新文件拒绝），Make 目标 `verify-module-moves`、`check-backend-architecture`。
-- guard 精确路径 import 例外共 **106 条**在册（a1:4 / a2:6+1 / a3:76+1 / a4:18），全部绑定 Pass B 任务（B-appconnector/B-airesource/B-channels/B-execution/B-knowledge/B-conversation/B-agentruntime/B-workbench/B-craft），无通配。
+- guard 精确路径 import 例外共 **105 条**在册（a1:4 / a2:6 / a3:77 含 IA3 集成 1 条 / a4:18），全部绑定 Pass B 任务（B-appconnector/B-airesource/B-channels/B-execution/B-knowledge/B-conversation/B-agentruntime/B-workbench/B-craft），无通配。
 - 冻结契约：docs/architecture/frozen-entrypoints-batch-a2.md（A9–A14 消费面）。
 - Pass B 简报：docs/architecture/passb/（knowledge×4、conversation×2、agentruntime×4、workbench/craft/insights 各 1 + manifests 内 alias_obligations/legacy_files 义务）。
 
 ## 4. 在册债务与遗留（Pass B 输入）
 
 - 13 条 moved 文件 lint 债（internal/modules/agentruntime/**，lll/revive/unused，预存显形；裁定不加 nolint 以保 R100 证据链）→ B-agentruntime。
-- 预存横向耦合 106 条（见 §3）→ 对应模块 Pass B 边界收紧时改走公开门面后删除例外。
+- 预存横向耦合 105 条（见 §3）→ 对应模块 Pass B 边界收紧时改走公开门面后删除例外。
 - A2 payment `TestProvidersFromEnvRejectsPartialAlipay`（map 序断言）→ B-commercial 修测试。
 - system housekeeping hook 实现文件归 knowledge → B-knowledge/B-system 协调。
 - 各模块 legacy_files（396 条）→ 对应 B-<module> 拆分。
