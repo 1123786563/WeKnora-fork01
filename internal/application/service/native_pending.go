@@ -101,12 +101,12 @@ type NativePendingDecisionStore interface {
 }
 
 // NativePendingDecisionService authenticates each read and one-time decision
-// against current server authority. It intentionally has no OAuth callback
-// completion path: only a future provider-bound callback verifier may make a
-// pending OAuth request authorized.
+// against current server authority. OAuth authority is absent by default;
+// callback proof alone never resolves a pending decision.
 type NativePendingDecisionService struct {
 	store  NativePendingDecisionStore
 	scopes nativecontract.ScopeResolver
+	oauth  *NativePendingOAuthAuthority
 }
 
 func NewNativePendingDecisionService(store NativePendingDecisionStore, scopes nativecontract.ScopeResolver) *NativePendingDecisionService {
@@ -157,14 +157,13 @@ func (s *NativePendingDecisionService) Get(ctx context.Context, scope nativecont
 	return detail, nil
 }
 
-// BeginOAuth refuses to manufacture either an authorization URL or a completed
-// callback. A provider-bound implementation must validate state, principal,
-// service installation, and callback receipt before it can replace this seam.
-func (s *NativePendingDecisionService) BeginOAuth(ctx context.Context, scope nativecontract.Scope, key nativecontract.PendingKey, _ nativecontract.OAuthStartRequest) (nativecontract.OAuthStartResult, error) {
-	if _, err := s.Get(ctx, scope, key); err != nil {
+// BeginOAuth remains unavailable unless an authority is explicitly injected.
+func (s *NativePendingDecisionService) BeginOAuth(ctx context.Context, scope nativecontract.Scope, key nativecontract.PendingKey, req nativecontract.OAuthStartRequest) (nativecontract.OAuthStartResult, error) {
+	detail, authoritative, err := s.oauthDetail(ctx, scope, key)
+	if err != nil {
 		return nativecontract.OAuthStartResult{}, err
 	}
-	return nativecontract.OAuthStartResult{}, nativePendingServiceFailure(nativecontract.ErrStore, "OAuth callback authority is unavailable")
+	return s.oauth.begin(ctx, authoritative, key, detail, req)
 }
 
 func (s *NativePendingDecisionService) Resolve(ctx context.Context, scope nativecontract.Scope, key nativecontract.PendingKey, req nativecontract.ResolvePendingRequest) (nativecontract.PendingResolution, error) {
