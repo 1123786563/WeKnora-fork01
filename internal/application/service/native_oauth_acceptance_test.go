@@ -151,6 +151,20 @@ func TestNativeOAuthAcceptanceCancelDuringProof(t *testing.T) {
 			require.Equal(t, "2", detail.Ref.Revision)
 			require.Equal(t, "5", detail.RunRevision)
 			require.Equal(t, nativecontract.RunCancelled, detail.RunStatus)
+			reservation := repository.NewInMemoryNativeToolDispatchReservation(repository.NativeToolDispatchBudget{Root: key.Run, Available: 10})
+			dispatch := nativePendingDispatch(key, scope)
+			reservation.SetLiveFence(dispatch.Fence)
+			identity, err := NewNativePendingConsumptionCoordinator(s, reservation).ResolveAndReserve(ctx, scope, key, nativePendingServiceRequest(), dispatch)
+			var failure *nativecontract.Failure
+			require.ErrorAs(t, err, &failure)
+			require.Equal(t, nativecontract.ErrLeaseLost, failure.Code)
+			require.Equal(t, nativecontract.EffectNotDispatched, failure.Effect)
+			require.Equal(t, NativeResolvedPendingIdentity{}, identity)
+			remaining, found := reservation.Remaining(key.Run)
+			require.True(t, found)
+			// A hold atomically deducts its positive quote, so the full balance
+			// proves cancellation never reached reservation consumption.
+			require.EqualValues(t, 10, remaining)
 			request.DecisionID = "second-terminal-decision"
 			_, err = s.Resolve(ctx, scope, key, request)
 			require.Error(t, err, "exactly one terminal decision may commit")
