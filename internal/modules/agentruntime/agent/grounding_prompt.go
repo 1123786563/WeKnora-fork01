@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/agent/tools"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 )
 
 // formatGroundingGuidance applies to every agent template, including saved and

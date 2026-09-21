@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 )
 
 const notificationConsumerName = "mobile-notification-projector"

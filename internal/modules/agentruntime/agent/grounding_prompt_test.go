@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
 func TestGroundingGuidanceSurvivesTemplateSelection(t *testing.T) {
-	data, err := os.ReadFile("../../config/prompt_templates/agent_system_prompt.yaml")
+	data, err := os.ReadFile("../../../../config/prompt_templates/agent_system_prompt.yaml")
 	require.NoError(t, err)
 	var file struct {
 		Templates []config.PromptTemplate `yaml:"templates"`

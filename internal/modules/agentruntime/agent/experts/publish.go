@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/agent/persona"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/persona"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

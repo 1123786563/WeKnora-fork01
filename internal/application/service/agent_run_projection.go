@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 )
 
 // EventsAfter filters an already ordered event page for a reconnecting client.

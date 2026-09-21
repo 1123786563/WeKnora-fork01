@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modelcontext"
+	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"golang.org/x/sync/errgroup"

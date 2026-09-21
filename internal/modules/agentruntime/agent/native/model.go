@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"github.com/Tencent/WeKnora/internal/types"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	modelopenai "trpc.group/trpc-go/trpc-agent-go/model/openai"

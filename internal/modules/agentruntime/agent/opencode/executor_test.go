@@ -11,23 +11,23 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/craft"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 )
 
 // runtimeFake is an httptest OpenCode runtime speaking the locked 1.18.4
 // protocol shapes. It records prompt/subscription order, serves a
 // test-driven message snapshot, and streams frames pushed by the test.
 type runtimeFake struct {
-	mu            sync.Mutex
-	prompts       int
-	promptAt      time.Time
-	eventsAt      time.Time
-	promptID      string
-	hijackPrompt  bool
+	mu           sync.Mutex
+	prompts      int
+	promptAt     time.Time
+	eventsAt     time.Time
+	promptID     string
+	hijackPrompt bool
 	// CFT-S02-T015 fault injection: hangs GET /message until the request
 	// context ends (a read timeout against a live serve).
-	hangMessages bool
+	hangMessages  bool
 	status        string
 	aborts        int
 	events        chan string
@@ -165,7 +165,8 @@ func (f *runtimeFake) setStatus(status string) {
 	f.mu.Unlock()
 }
 
-func (f *runtimeFake) cutStream() {	f.mu.Lock()
+func (f *runtimeFake) cutStream() {
+	f.mu.Lock()
 	close(f.cut)
 	f.cut = make(chan struct{})
 	f.mu.Unlock()
@@ -232,7 +233,8 @@ func (s *memStore) lastPreparedPromptID() string {
 	return ""
 }
 
-func (s *memStore) GetTask(ctx context.Context, scope craft.Scope, taskID string) (craft.Task, error) {	return craft.Task{}, craft.ErrNotFound
+func (s *memStore) GetTask(ctx context.Context, scope craft.Scope, taskID string) (craft.Task, error) {
+	return craft.Task{}, craft.ErrNotFound
 }
 
 func (s *memStore) SaveResult(ctx context.Context, fence agentruntime.Fence, result craft.Result) error {

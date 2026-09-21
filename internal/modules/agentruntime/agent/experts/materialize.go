@@ -22,7 +22,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/Tencent/WeKnora/internal/agent/skills/skillhub"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills/skillhub"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

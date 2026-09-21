@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	"testing"
 
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"

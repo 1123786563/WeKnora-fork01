@@ -14,12 +14,12 @@ import (
 
 	"github.com/google/uuid"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/agent/tools"
-	trpcagent "github.com/Tencent/WeKnora/internal/agent/trpc"
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+	trpcagent "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/trpc"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"

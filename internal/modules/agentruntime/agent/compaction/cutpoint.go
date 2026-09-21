@@ -1,7 +1,7 @@
 package compaction
 
 import (
-	agenttoken "github.com/Tencent/WeKnora/internal/agent/token"
+	agenttoken "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/token"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 )
 

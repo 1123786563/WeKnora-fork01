@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/approval"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/event"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
@@ -35,7 +35,7 @@ func registryJournalDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agent
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	require.NoError(t, db.Exec(`CREATE TABLE sessions (id TEXT, tenant_id INTEGER, user_id TEXT, deleted_at DATETIME);
 		INSERT INTO sessions VALUES ('s1',1,'u1',NULL);`).Error)
-	migration, err := os.ReadFile("../../../migrations/sqlite/000014_agent_runs.up.sql")
+	migration, err := os.ReadFile("../../../../../migrations/sqlite/000014_agent_runs.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(migration)).Error)
 	// The production store reads the post-rebuild agent_runs shape; the
@@ -44,7 +44,7 @@ func registryJournalDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agent
 	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN driver VARCHAR(16) NOT NULL DEFAULT 'platform'").Error)
 	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN target_id VARCHAR(512) NOT NULL DEFAULT ''").Error)
 	require.NoError(t, db.Exec("ALTER TABLE agent_runs ADD COLUMN budget_ref VARCHAR(512) NOT NULL DEFAULT ''").Error)
-	versions, err := os.ReadFile("../../../migrations/sqlite/000015_agent_tool_plan_versions.up.sql")
+	versions, err := os.ReadFile("../../../../../migrations/sqlite/000015_agent_tool_plan_versions.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(versions)).Error)
 	require.NoError(t, db.Exec(`UPDATE sessions SET engine_type='trpc', active_agent_run_id='r1';`).Error)

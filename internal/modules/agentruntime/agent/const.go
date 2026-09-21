@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/compaction"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/compaction"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 )

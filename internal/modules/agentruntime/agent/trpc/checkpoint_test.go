@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -30,7 +30,7 @@ func checkpointDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agentrunti
 	// Minimal admission fixtures; the checkpoint/journal tables are the exact production migration.
 	require.NoError(t, db.Exec(`CREATE TABLE sessions (id TEXT, tenant_id INTEGER, user_id TEXT, deleted_at DATETIME);
 		INSERT INTO sessions VALUES ('s1',1,'u1',NULL); INSERT INTO sessions VALUES ('s2',1,'u1',NULL);`).Error)
-	raw, err := os.ReadFile("../../../migrations/sqlite/000014_agent_runs.up.sql")
+	raw, err := os.ReadFile("../../../../../migrations/sqlite/000014_agent_runs.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(raw)).Error)
 	// The production store reads the post-rebuild agent_runs shape; the

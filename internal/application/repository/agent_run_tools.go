@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"gorm.io/gorm"
 )
 

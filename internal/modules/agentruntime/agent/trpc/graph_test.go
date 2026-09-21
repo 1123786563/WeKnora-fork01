@@ -11,7 +11,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/graph"
 	"trpc.group/trpc-go/trpc-agent-go/session/noop"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"

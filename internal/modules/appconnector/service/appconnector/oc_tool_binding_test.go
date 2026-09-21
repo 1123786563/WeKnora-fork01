@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	"github.com/Tencent/WeKnora/internal/types"

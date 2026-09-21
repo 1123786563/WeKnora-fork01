@@ -19,7 +19,7 @@ import (
 // from this package directory (internal/agent/experts).
 func pilotRoot(t *testing.T) string {
 	t.Helper()
-	return filepath.Join("..", "..", "..", "config", "experts")
+	return filepath.Join("..", "..", "..", "..", "..", "config", "experts")
 }
 
 // scanPilots scans config/experts and returns the experts keyed by ID,

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/graphagent"

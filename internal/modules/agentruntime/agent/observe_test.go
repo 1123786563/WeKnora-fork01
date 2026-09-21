@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	agenttoken "github.com/Tencent/WeKnora/internal/agent/token"
-	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
-	"github.com/Tencent/WeKnora/internal/modelcontext"
+	agenttoken "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/token"
+	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/assert"

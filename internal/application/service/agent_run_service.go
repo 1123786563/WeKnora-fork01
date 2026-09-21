@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 )
 
 // AgentRunService admits durable tRPC runs. The admission payload is copied

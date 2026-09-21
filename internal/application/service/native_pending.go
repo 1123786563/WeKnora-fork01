@@ -6,7 +6,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 )
 
 // NativeResolvedPendingIdentity is the typed result of the decision CAS. It is

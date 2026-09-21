@@ -29,7 +29,7 @@ func loadWireFixture(t *testing.T) wireFixture {
 	if !ok {
 		t.Fatal("resolve wire fixture path")
 	}
-	contents, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "..", "tests", "native-agent", "wire-v1.json"))
+	contents, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "..", "..", "..", "tests", "native-agent", "wire-v1.json"))
 	if err != nil {
 		t.Fatalf("read wire fixture: %v", err)
 	}
