@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/mcp"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 )
 
 // testBase64PNG is a minimal valid base64-encoded 1x1 red PNG for testing.

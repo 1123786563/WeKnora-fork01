@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	internalmcp "github.com/Tencent/WeKnora/internal/mcp"
+	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 	sdkmcp "github.com/mark3labs/mcp-go/mcp"
