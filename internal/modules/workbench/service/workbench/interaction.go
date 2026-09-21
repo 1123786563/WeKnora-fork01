@@ -13,9 +13,9 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	workbench "github.com/Tencent/WeKnora/internal/modules/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	workbench "github.com/Tencent/WeKnora/internal/workbench"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

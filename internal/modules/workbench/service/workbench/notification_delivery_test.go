@@ -13,7 +13,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
-	pushnotification "github.com/Tencent/WeKnora/internal/notification"
+	pushnotification "github.com/Tencent/WeKnora/internal/modules/workbench/notification"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )

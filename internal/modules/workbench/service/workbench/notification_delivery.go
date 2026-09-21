@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	pushnotification "github.com/Tencent/WeKnora/internal/notification"
+	pushnotification "github.com/Tencent/WeKnora/internal/modules/workbench/notification"
 )
 
 // NotificationProvider is the final push vendor boundary. Implementations

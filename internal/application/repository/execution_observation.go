@@ -10,7 +10,7 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/workbench"
+	"github.com/Tencent/WeKnora/internal/modules/workbench"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

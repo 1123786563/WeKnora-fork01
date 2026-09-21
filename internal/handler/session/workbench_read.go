@@ -15,8 +15,8 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/gin-gonic/gin"
 )
 
