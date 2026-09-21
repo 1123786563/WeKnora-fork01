@@ -181,54 +181,6 @@ func (r *sessionRepository) GetPagedByTenantID(
 	return sessions, total, nil
 }
 
-// applySessionAuditFilters carries the SessionListQuery predicates shared by
-// the paged audit listing (QueryPaged) and the async CSV export
-// (ExportSessionRows): tenant + soft-delete scope, per-user ownership, the
-// skill-maintenance exclusion, title keyword, the created_at window, and the
-// feedback rating drill-down. Callers add their own source/agent restrictions
-// and joins on top.
-func applySessionAuditFilters(db *gorm.DB, q *types.SessionListQuery, isPostgres bool) *gorm.DB {
-	titleLikeExpr := "LOWER(s.title) LIKE LOWER(?)"
-	if isPostgres {
-		titleLikeExpr = "s.title ILIKE ?"
-	}
-	db = db.Where("s.tenant_id = ? AND s.deleted_at IS NULL", q.TenantID)
-	if q.UserID != "" {
-		db = db.Where("(s.user_id = ? OR s.user_id IS NULL OR s.user_id = '')", q.UserID)
-	}
-	// Skill image maintenance runs in a real session so its transcript can
-	// be read back, but it is not a conversation. Excluding it here rather
-	// than in applySource is deliberate: a source branch only covers its
-	// own bucket, and this row must be absent from all of them, including
-	// the unfiltered listing.
-	db = db.Where(
-		"(s.description IS NULL OR s.description NOT LIKE ?)",
-		types.SkillMaintenanceSessionMarker+"%",
-	)
-	if kw := strings.TrimSpace(q.Keyword); kw != "" {
-		db = db.Where(titleLikeExpr, "%"+escapeLikeKeyword(kw)+"%")
-	}
-	// Audit-listing window over created_at, half-open [StartTime, EndTime).
-	// Zero values leave the corresponding side of the range open.
-	if !q.StartTime.IsZero() {
-		db = db.Where("s.created_at >= ?", q.StartTime)
-	}
-	if !q.EndTime.IsZero() {
-		db = db.Where("s.created_at < ?", q.EndTime)
-	}
-	// Feedback drill-down: a session qualifies when any of its messages
-	// carries a rating row. The tenant predicate inside EXISTS keeps a
-	// same-id feedback row from another tenant from ever matching.
-	switch strings.ToLower(strings.TrimSpace(q.FeedbackRating)) {
-	case types.FeedbackRatingLike, types.FeedbackRatingDislike:
-		db = db.Where(
-			"EXISTS (SELECT 1 FROM message_feedback f WHERE f.session_id = s.id AND f.tenant_id = s.tenant_id AND f.rating = ?)",
-			strings.ToLower(strings.TrimSpace(q.FeedbackRating)),
-		)
-	}
-	return db
-}
-
 // QueryPaged lists sessions for tenant/user with keyword/source/agent filters,
 // pin-aware ordering, and IM origin fields from a LEFT JOIN.
 func (r *sessionRepository) QueryPaged(
