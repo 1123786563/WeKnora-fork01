@@ -1,0 +1,450 @@
+{
+  "stamp": "2026-09-21T16:03:34.210Z",
+  "raw": {
+    "spike-tdesign": {
+      "diff_pct": 2.542,
+      "diff_pixels": 23431,
+      "bbox": [
+        24,
+        24,
+        910,
+        475
+      ],
+      "bands_pct": [
+        5.43,
+        0.64,
+        0.3,
+        5.46,
+        0.08,
+        0.5,
+        7.74,
+        10.36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": [
+        {
+          "cell": "0,0",
+          "pct": 18.4
+        },
+        {
+          "cell": "0,1",
+          "pct": 12.7
+        },
+        {
+          "cell": "1,0",
+          "pct": 2.9
+        },
+        {
+          "cell": "2,0",
+          "pct": 28
+        },
+        {
+          "cell": "2,1",
+          "pct": 1.3
+        },
+        {
+          "cell": "3,2",
+          "pct": 1.1
+        },
+        {
+          "cell": "3,5",
+          "pct": 1.2
+        },
+        {
+          "cell": "4,0",
+          "pct": 30.3
+        },
+        {
+          "cell": "4,1",
+          "pct": 35.5
+        },
+        {
+          "cell": "4,2",
+          "pct": 17.3
+        },
+        {
+          "cell": "4,5",
+          "pct": 1.5
+        },
+        {
+          "cell": "5,0",
+          "pct": 3.6
+        },
+        {
+          "cell": "5,1",
+          "pct": 4
+        },
+        {
+          "cell": "5,2",
+          "pct": 4.3
+        }
+      ]
+    },
+    "spike-tdesign-dialog": {
+      "diff_pct": 2.914,
+      "diff_pixels": 26857,
+      "bbox": [
+        24,
+        24,
+        910,
+        475
+      ],
+      "bands_pct": [
+        5.18,
+        0.54,
+        0.25,
+        6.4,
+        1.12,
+        4.82,
+        7.5,
+        9.15,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": [
+        {
+          "cell": "0,0",
+          "pct": 17.7
+        },
+        {
+          "cell": "0,1",
+          "pct": 11.8
+        },
+        {
+          "cell": "1,0",
+          "pct": 2.4
+        },
+        {
+          "cell": "2,0",
+          "pct": 27.6
+        },
+        {
+          "cell": "2,1",
+          "pct": 1.3
+        },
+        {
+          "cell": "2,2",
+          "pct": 3.2
+        },
+        {
+          "cell": "2,3",
+          "pct": 7.1
+        },
+        {
+          "cell": "3,4",
+          "pct": 15.6
+        },
+        {
+          "cell": "3,5",
+          "pct": 10.7
+        },
+        {
+          "cell": "4,0",
+          "pct": 30
+        },
+        {
+          "cell": "4,1",
+          "pct": 35.3
+        },
+        {
+          "cell": "4,2",
+          "pct": 16.8
+        },
+        {
+          "cell": "5,0",
+          "pct": 1.6
+        },
+        {
+          "cell": "5,1",
+          "pct": 2.1
+        },
+        {
+          "cell": "5,2",
+          "pct": 2.1
+        }
+      ]
+    },
+    "icons": {
+      "bbox": {
+        "vue": {
+          "x": 24,
+          "y": 453,
+          "width": 1232,
+          "height": 23.78125
+        },
+        "react": {
+          "x": 24,
+          "y": 453,
+          "width": 1232,
+          "height": 23.78125
+        }
+      },
+      "diff": {
+        "diff_pct": 5.814,
+        "diff_pixels": 1719,
+        "bbox": [
+          3,
+          5,
+          398,
+          22
+        ],
+        "bands_pct": [
+          0,
+          0,
+          2.19,
+          8.56,
+          7.75,
+          7.67,
+          8.2,
+          7.55,
+          8.2,
+          6.09,
+          11.36,
+          2.19
+        ],
+        "hot_cells": [
+          {
+            "cell": "1,0",
+            "pct": 2.8
+          },
+          {
+            "cell": "1,1",
+            "pct": 3.2
+          },
+          {
+            "cell": "1,2",
+            "pct": 5.6
+          },
+          {
+            "cell": "2,0",
+            "pct": 24.5
+          },
+          {
+            "cell": "2,1",
+            "pct": 16.7
+          },
+          {
+            "cell": "2,2",
+            "pct": 26.6
+          },
+          {
+            "cell": "3,0",
+            "pct": 22.1
+          },
+          {
+            "cell": "3,1",
+            "pct": 19.3
+          },
+          {
+            "cell": "3,2",
+            "pct": 18.8
+          },
+          {
+            "cell": "4,0",
+            "pct": 27.9
+          },
+          {
+            "cell": "4,1",
+            "pct": 18.2
+          },
+          {
+            "cell": "4,2",
+            "pct": 19.5
+          },
+          {
+            "cell": "5,0",
+            "pct": 26.4
+          },
+          {
+            "cell": "5,1",
+            "pct": 19.9
+          },
+          {
+            "cell": "5,2",
+            "pct": 15.8
+          },
+          {
+            "cell": "6,0",
+            "pct": 18.8
+          },
+          {
+            "cell": "6,1",
+            "pct": 23.8
+          },
+          {
+            "cell": "6,2",
+            "pct": 16.5
+          },
+          {
+            "cell": "7,0",
+            "pct": 12.1
+          },
+          {
+            "cell": "7,1",
+            "pct": 15.6
+          },
+          {
+            "cell": "7,2",
+            "pct": 18
+          }
+        ]
+      },
+      "counts": {
+        "vue": 20,
+        "react": 20
+      }
+    }
+  },
+  "normalized": {
+    "spike-tdesign": {
+      "diff_pct": 0,
+      "diff_pixels": 4,
+      "bbox": [
+        56,
+        469,
+        57,
+        470
+      ],
+      "bands_pct": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.01,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": []
+    },
+    "spike-tdesign-dialog": {
+      "diff_pct": 0.199,
+      "diff_pixels": 1836,
+      "bbox": [
+        57,
+        299,
+        778,
+        470
+      ],
+      "bands_pct": [
+        0,
+        0,
+        0,
+        0,
+        0.07,
+        2.32,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": [
+        {
+          "cell": "3,4",
+          "pct": 12.7
+        }
+      ]
+    },
+    "icons": {
+      "diff_pct": 0.014,
+      "diff_pixels": 4,
+      "bbox": [
+        32,
+        16,
+        33,
+        17
+      ],
+      "bands_pct": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.16,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": []
+    }
+  },
+  "runtime": {
+    "dialog_visible": {
+      "vue": true,
+      "react": true
+    },
+    "vue": {
+      "message_shown": true,
+      "notification_shown": true
+    },
+    "react": {
+      "message_shown": true,
+      "notification_shown": true
+    }
+  },
+  "contextProbe": {
+    "vue": {
+      "body": {
+        "font": "-apple-system, \"system-ui\", \"Segoe UI\", Roboto, \"Helvetica Neue\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+        "size": "14px",
+        "color": "rgba(0, 0, 0, 0.9)"
+      },
+      "primaryBtnBg": "rgb(7, 192, 95)",
+      "iconColor": "rgba(0, 0, 0, 0.9)"
+    },
+    "react": {
+      "body": {
+        "font": "-apple-system, \"system-ui\", \"Segoe UI\", Roboto, \"Helvetica Neue\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 32, 51)"
+      },
+      "primaryBtnBg": null,
+      "iconColor": null
+    },
+    "reactNormalized": {
+      "body": {
+        "font": "-apple-system, \"system-ui\", \"Segoe UI\", Roboto, \"Helvetica Neue\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+        "size": "14px",
+        "color": "rgba(0, 0, 0, 0.9)"
+      },
+      "primaryBtnBg": "rgb(7, 192, 95)",
+      "iconColor": "rgba(0, 0, 0, 0.9)"
+    }
+  },
+  "errors": [
+    {
+      "tag": "react",
+      "kind": "http403",
+      "text": "http://localhost:5175/api/v1/auth/auto-setup"
+    },
+    {
+      "tag": "react",
+      "kind": "console",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "tag": "vue",
+      "kind": "http403",
+      "text": "http://localhost:5174/api/v1/auth/auto-setup"
+    },
+    {
+      "tag": "vue",
+      "kind": "console",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    }
+  ]
+}
