@@ -8,7 +8,6 @@ import (
 	"sync"
 	"testing"
 
-	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
@@ -17,6 +16,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
 	internalmcp "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

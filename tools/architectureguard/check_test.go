@@ -403,7 +403,8 @@ import _ "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approva
 	if !hasCheck(rep.Diagnostics, "forbidden-import",
 		`admission.go 导入了模块 commercial 的内部包 `+
 			`"github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"`) {
-		t.Fatalf("未列入豁免的 admission.go 指向 commercial/service 的导入必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+		t.Fatalf("未列入豁免的 admission.go 指向 commercial/service 的导入必须照常报告:\n%s",
+			joinChecks(rep.Diagnostics))
 	}
 	if !hasCheck(rep.Diagnostics, "forbidden-import", "neighbor.go") {
 		t.Fatalf("未列入豁免的相邻文件必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))

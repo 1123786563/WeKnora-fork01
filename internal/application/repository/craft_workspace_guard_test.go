@@ -132,7 +132,7 @@ func TestCraftWorkspaceGuardReadDoesNotHoldWriteSlot(t *testing.T) {
 	require.NoError(t, idErr)
 	published, err := versions.Publish(ctx, ws.Scope, craft.Version{
 		ID: craft.VersionID(ws.ID, "r-guard-r", digest), WorkspaceID: ws.ID, RunID: "r-guard-r", Kind: "web",
-		Files:  []craft.File{{Path: "index.html", Ref: "resource://g", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", MIME: "text/html", Bytes: 10}},
+		Files:  []craft.File{{Path: "index.html", Ref: "resource://g", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", MIME: "text/html", Bytes: 10}}, //nolint:lll // 预存长测试数据行
 		Checks: []craft.Check{{Name: "build", Status: "passed"}},
 	})
 	require.NoError(t, err)
