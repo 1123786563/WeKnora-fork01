@@ -115,6 +115,7 @@ func NewDurableTaskBudget(db *gorm.DB) *DurableTaskBudget {
 	}
 	return &DurableTaskBudget{store: repocommercial.NewBudgetStore(db)}
 }
+
 func (b *DurableTaskBudget) Ensure(_ context.Context, tenant uint64, owner, requestID string, _ int64, _ time.Time) (string, error) {
 	if b == nil || b.store == nil || tenant == 0 || owner == "" || requestID == "" {
 		return "", ErrBudgetDenied
@@ -306,8 +307,10 @@ func (a *AdmissionCoordinator) Start(ctx context.Context, in StartInput) (agentr
 		in.TargetID = "platform"
 	}
 	hash := requestHash(in)
-	req := repository.WorkbenchRequest{TenantID: tenant, ActorID: actor, RequestID: in.RequestID, RequestHash: hash,
-		SessionID: in.SessionID, AgentID: in.AgentID, TargetID: in.TargetID, WorkspaceRef: in.WorkspaceRef, Text: in.Text, BudgetUpper: in.BudgetUpper}
+	req := repository.WorkbenchRequest{
+		TenantID: tenant, ActorID: actor, RequestID: in.RequestID, RequestHash: hash,
+		SessionID: in.SessionID, AgentID: in.AgentID, TargetID: in.TargetID, WorkspaceRef: in.WorkspaceRef, Text: in.Text, BudgetUpper: in.BudgetUpper, //nolint:lll // 预存长行,import 修复入 range
+	}
 	if err := a.requests.CreatePending(ctx, req); err != nil {
 		existing, getErr := a.requests.Get(ctx, tenant, actor, in.RequestID)
 		if getErr != nil {

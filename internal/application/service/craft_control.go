@@ -481,8 +481,10 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 		stored, err := s.store.GetTask(detachCtx, req.Scope, req.TaskID)
 		if err != nil {
 			if errors.Is(err, craft.ErrNotFound) {
-				return CraftStopStatus{Phase: "stopping",
-					Note: "cancel intent recorded; the delegation record is unavailable for abort"}, nil
+				return CraftStopStatus{
+					Phase: "stopping",
+					Note:  "cancel intent recorded; the delegation record is unavailable for abort",
+				}, nil
 			}
 			return CraftStopStatus{}, err
 		}
@@ -496,13 +498,17 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 		}
 	}
 	if exec == nil || task.ID == "" {
-		return CraftStopStatus{Phase: "stopping",
-			Note: "cancel intent recorded; no executor is available to abort the sub-execution"}, nil
+		return CraftStopStatus{
+			Phase: "stopping",
+			Note:  "cancel intent recorded; no executor is available to abort the sub-execution",
+		}, nil
 	}
 	observation, err := exec.Observe(detachCtx, task)
 	if err != nil {
-		return CraftStopStatus{Phase: "stopping",
-			Note: fmt.Sprintf("cancel intent recorded and abort requested; remote state unverified: %v%s", err, abortNote)}, nil
+		return CraftStopStatus{
+			Phase: "stopping",
+			Note:  fmt.Sprintf("cancel intent recorded and abort requested; remote state unverified: %v%s", err, abortNote), //nolint:lll // 预存长行,import 修复入 range
+		}, nil
 	}
 	// The completion may have landed inside the abort window.
 	if s.store != nil {
@@ -514,13 +520,18 @@ func (s *CraftControlService) Stop(ctx context.Context, req CraftStopRequest) (C
 		}
 	}
 	if opencode.Completed(observation) {
-		return CraftStopStatus{Phase: "completed",
-			Note: "the sub-execution completed normally; the cancellation raced and lost"}, nil
+		return CraftStopStatus{
+			Phase: "completed",
+			Note:  "the sub-execution completed normally; the cancellation raced and lost",
+		}, nil
 	}
 	phase := craft.StopStatus(true, observation)
 	if phase == "stopping" {
-		return CraftStopStatus{Phase: phase,
-			Note: "cancel intent recorded and abort requested; the runtime has not confirmed the abort yet" + abortNote}, nil
+		return CraftStopStatus{
+			Phase: phase,
+			Note: "cancel intent recorded and abort requested; the runtime has not confirmed the abort yet" +
+				abortNote,
+		}, nil
 	}
 	return CraftStopStatus{Phase: phase}, nil
 }

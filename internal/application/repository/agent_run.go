@@ -393,10 +393,12 @@ func (s *AgentRunStore) ClaimDriver(
 		if provider == "" {
 			provider = driver
 		}
-		fence = agentruntime.Fence{RunKey: key, Owner: owner, Epoch: row.Epoch, TargetID: row.TargetID, WorkspaceRef: workspace, Prompt: prompt, Provider: provider,
+		fence = agentruntime.Fence{
+			RunKey: key, Owner: owner, Epoch: row.Epoch, TargetID: row.TargetID, WorkspaceRef: workspace, Prompt: prompt, Provider: provider, //nolint:lll // 预存长行,import 修复入 range
 			ParentRunID: snapshot.ParentRunID, UsageCredentialVersion: snapshot.CredentialVersion, UsageSource: snapshot.UsageSource, UsageFunding: snapshot.UsageFunding,
 			UsageService: snapshot.UsageService, UsagePriceVersion: snapshot.PriceVersion, UsageUpper: snapshot.UsageUpper,
-			UsageRevision: snapshot.UsageRevision, UsageStatus: snapshot.UsageStatus, UsageDimensions: snapshot.UsageDimensions}
+			UsageRevision: snapshot.UsageRevision, UsageStatus: snapshot.UsageStatus, UsageDimensions: snapshot.UsageDimensions, //nolint:lll // 预存长行,import 修复入 range
+		}
 		return nil
 	})
 	return fence, err

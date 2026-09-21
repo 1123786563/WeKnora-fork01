@@ -44,9 +44,11 @@ func (s *nativePendingReservedFake) ResolveReserved(_ context.Context, _ nativec
 
 func nativePendingDispatch(key nativecontract.PendingKey, scope nativecontract.Scope) nativecontract.ToolDispatchRequest {
 	fence := nativecontract.Fence{Run: key.Run, Owner: "worker", Epoch: 1}
-	return nativecontract.ToolDispatchRequest{Scope: scope, Fence: fence,
+	return nativecontract.ToolDispatchRequest{
+		Scope: scope, Fence: fence,
 		Plan:    nativecontract.ToolPlan{Run: key.Run, Version: 2, CallID: "call-1", ArgsHash: "args-v1", Tool: nativecontract.ToolIdentity{Name: "create", ServiceID: "svc-1", InstallationID: "install-1", SchemaHash: "schema-v1"}},
-		Attempt: nativecontract.Attempt{ID: "attempt", Run: key.Run, Kind: nativecontract.ToolAttempt, Epoch: 1, LogicalCallID: "call-1"}, Funding: nativecontract.FundingBinding{BudgetRootRunID: key.Run.RunID}, ReservationUnits: 7}
+		Attempt: nativecontract.Attempt{ID: "attempt", Run: key.Run, Kind: nativecontract.ToolAttempt, Epoch: 1, LogicalCallID: "call-1"}, Funding: nativecontract.FundingBinding{BudgetRootRunID: key.Run.RunID}, ReservationUnits: 7, //nolint:lll // 预存长行,import 修复入 range
+	}
 }
 
 // Corrupt store receipts must never mint a typed result for another call,
@@ -190,9 +192,11 @@ func TestNativePendingCoordinatorReservesBeforeConsumption(t *testing.T) {
 	fence := nativecontract.Fence{Run: key.Run, Owner: "worker", Epoch: 1}
 	reservation.SetLiveFence(fence)
 	coordinator := NewNativePendingConsumptionCoordinator(base, reservation)
-	dispatch := nativecontract.ToolDispatchRequest{Scope: scope, Fence: fence,
+	dispatch := nativecontract.ToolDispatchRequest{
+		Scope: scope, Fence: fence,
 		Plan:    nativecontract.ToolPlan{Run: key.Run, Version: 2, CallID: "call-1", ArgsHash: "args-v1", Tool: nativecontract.ToolIdentity{Name: "create", ServiceID: "svc-1", InstallationID: "install-1", SchemaHash: "schema-v1"}},
-		Attempt: nativecontract.Attempt{ID: "attempt", Run: key.Run, Kind: nativecontract.ToolAttempt, Epoch: 1, LogicalCallID: "call-1"}, Funding: nativecontract.FundingBinding{BudgetRootRunID: key.Run.RunID}, ReservationUnits: 7}
+		Attempt: nativecontract.Attempt{ID: "attempt", Run: key.Run, Kind: nativecontract.ToolAttempt, Epoch: 1, LogicalCallID: "call-1"}, Funding: nativecontract.FundingBinding{BudgetRootRunID: key.Run.RunID}, ReservationUnits: 7, //nolint:lll // 预存长行,import 修复入 range
+	}
 	_, err := coordinator.ResolveAndReserve(context.Background(), scope, key, nativePendingServiceRequest(), dispatch)
 	require.Error(t, err)
 	require.Zero(t, store.consumed)
@@ -228,6 +232,7 @@ type nativePendingScopeResolverFake struct {
 func (f *nativePendingScopeResolverFake) Resolve(context.Context) (nativecontract.Scope, error) {
 	return f.result, f.err
 }
+
 func (f *nativePendingScopeResolverFake) Recheck(_ context.Context, _ nativecontract.Scope, grants []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -245,9 +250,11 @@ type nativePendingStoreFake struct {
 func (s nativePendingStoreFake) List(_ context.Context, _ nativecontract.Scope, _ nativecontract.RunIdentity, _ string, _ int) (nativecontract.PendingDecisionPage, error) {
 	return nativecontract.PendingDecisionPage{Items: []nativecontract.PendingDecisionDetail{s.detail}}, nil
 }
+
 func (s nativePendingStoreFake) Get(_ context.Context, _ nativecontract.Scope, _ nativecontract.PendingKey) (nativecontract.PendingDecisionDetail, error) {
 	return s.detail, nil
 }
+
 func (s nativePendingStoreFake) Resolve(_ context.Context, _ nativecontract.Scope, _ nativecontract.PendingKey, _ nativecontract.ResolvePendingRequest) (nativecontract.PendingResolution, error) {
 	return nativecontract.PendingResolution{Detail: s.detail}, nil
 }

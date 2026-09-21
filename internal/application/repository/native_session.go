@@ -19,17 +19,23 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-var ErrNativeSessionConflict = errors.New("native session stable event conflict")
-var ErrNativeSessionRetention = errors.New("native session has retained recovery runs")
+// Errors returned by the native session store when a stable event conflicts
+// or runs are still retained for recovery.
+var (
+	ErrNativeSessionConflict  = errors.New("native session stable event conflict")
+	ErrNativeSessionRetention = errors.New("native session has retained recovery runs")
+)
 
 // NativeSessionStore is the business-database persistence boundary for the
 // native facade. It writes only the P1 native namespace, never legacy history.
-type NativeSessionStore struct{ db *gorm.DB }
-type NativeSessionSummary struct {
-	Text           string `json:"text"`
-	ThroughEventID string `json:"through_event_id"`
-	Revision       int64  `json:"revision"`
-}
+type (
+	NativeSessionStore   struct{ db *gorm.DB }
+	NativeSessionSummary struct {
+		Text           string `json:"text"`
+		ThroughEventID string `json:"through_event_id"`
+		Revision       int64  `json:"revision"`
+	}
+)
 
 func NewNativeSessionStore(db *gorm.DB) *NativeSessionStore { return &NativeSessionStore{db: db} }
 
@@ -134,6 +140,7 @@ func (s *NativeSessionStore) Delete(ctx context.Context, key session.Key) error 
 		return tx.Exec("DELETE FROM native_agent_sessions WHERE tenant_id = ? AND owner_id = ? AND session_id = ?", tenant, key.UserID, key.SessionID).Error
 	})
 }
+
 func (s *NativeSessionStore) UpdateState(ctx context.Context, key session.Key, state session.StateMap) error {
 	tenant, err := nativeSessionTenant(key)
 	if err != nil {
@@ -141,6 +148,7 @@ func (s *NativeSessionStore) UpdateState(ctx context.Context, key session.Key, s
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.saveState(ctx, tx, tenant, key, state) })
 }
+
 func (s *NativeSessionStore) SaveSummary(ctx context.Context, key session.Key, filter string, summary NativeSessionSummary) error {
 	payload, err := json.Marshal(summary)
 	if err != nil {
@@ -148,6 +156,7 @@ func (s *NativeSessionStore) SaveSummary(ctx context.Context, key session.Key, f
 	}
 	return s.UpdateState(ctx, key, session.StateMap{"summary/" + filter: payload})
 }
+
 func (s *NativeSessionStore) Summary(ctx context.Context, key session.Key, filter string) (NativeSessionSummary, bool, error) {
 	got, err := s.Get(ctx, key)
 	if err != nil {
@@ -163,6 +172,7 @@ func (s *NativeSessionStore) Summary(ctx context.Context, key session.Key, filte
 	}
 	return summary, true, nil
 }
+
 func (s *NativeSessionStore) UpdateAppState(ctx context.Context, app string, state session.StateMap) error {
 	tenant, err := nativeUserTenant(session.UserKey{AppName: app, UserID: "app"})
 	if err != nil {
@@ -171,6 +181,7 @@ func (s *NativeSessionStore) UpdateAppState(ctx context.Context, app string, sta
 	key := session.Key{AppName: app, UserID: "__native_app__", SessionID: "__native_app_state__"}
 	return s.ensureAndState(ctx, tenant, key, state)
 }
+
 func (s *NativeSessionStore) AppState(ctx context.Context, app string) (session.StateMap, error) {
 	key := session.Key{AppName: app, UserID: "__native_app__", SessionID: "__native_app_state__"}
 	tenant, err := nativeSessionTenant(key)
@@ -179,9 +190,11 @@ func (s *NativeSessionStore) AppState(ctx context.Context, app string) (session.
 	}
 	return s.loadState(ctx, tenant, key)
 }
+
 func (s *NativeSessionStore) DeleteAppState(ctx context.Context, app, name string) error {
 	return s.deleteStateKey(ctx, session.Key{AppName: app, UserID: "__native_app__", SessionID: "__native_app_state__"}, name)
 }
+
 func (s *NativeSessionStore) UpdateUserState(ctx context.Context, key session.UserKey, state session.StateMap) error {
 	tenant, err := nativeUserTenant(key)
 	if err != nil {
@@ -207,6 +220,7 @@ func (s *NativeSessionStore) UpdateUserState(ctx context.Context, key session.Us
 		return nil
 	})
 }
+
 func (s *NativeSessionStore) UserState(ctx context.Context, key session.UserKey) (session.StateMap, error) {
 	tenant, err := nativeUserTenant(key)
 	if err != nil {
@@ -233,6 +247,7 @@ func (s *NativeSessionStore) UserState(ctx context.Context, key session.UserKey)
 	}
 	return out, nil
 }
+
 func (s *NativeSessionStore) DeleteUserState(ctx context.Context, key session.UserKey, name string) error {
 	tenant, err := nativeUserTenant(key)
 	if err != nil {
@@ -244,6 +259,7 @@ func (s *NativeSessionStore) DeleteUserState(ctx context.Context, key session.Us
 	}
 	return s.db.WithContext(ctx).Exec("DELETE FROM native_user_state WHERE tenant_id = ? AND owner_id = ? AND state_key = ?", tenant, owner, name).Error
 }
+
 func nativeOwnerID(encoded string) (string, error) {
 	const prefix = "owner/"
 	if !strings.HasPrefix(encoded, prefix) {
@@ -255,6 +271,7 @@ func nativeOwnerID(encoded string) (string, error) {
 	}
 	return string(raw), nil
 }
+
 func (s *NativeSessionStore) ensureAndState(ctx context.Context, tenant uint64, key session.Key, state session.StateMap) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("INSERT INTO native_agent_tenants (tenant_id) VALUES (?) ON CONFLICT DO NOTHING", tenant).Error; err != nil {
@@ -266,6 +283,7 @@ func (s *NativeSessionStore) ensureAndState(ctx context.Context, tenant uint64, 
 		return s.saveState(ctx, tx, tenant, key, state)
 	})
 }
+
 func (s *NativeSessionStore) deleteStateKey(ctx context.Context, key session.Key, name string) error {
 	tenant, err := nativeSessionTenant(key)
 	if err != nil {
@@ -364,6 +382,7 @@ func (s *NativeSessionStore) saveState(ctx context.Context, tx *gorm.DB, tenant 
 	}
 	return nil
 }
+
 func (s *NativeSessionStore) loadState(ctx context.Context, tenant uint64, key session.Key) (session.StateMap, error) {
 	var rows []struct {
 		Key   string `gorm:"column:state_key"`
@@ -382,12 +401,14 @@ func (s *NativeSessionStore) loadState(ctx context.Context, tenant uint64, key s
 	}
 	return out, nil
 }
+
 func nativeSessionTenant(key session.Key) (uint64, error) {
 	if err := key.CheckSessionKey(); err != nil {
 		return 0, err
 	}
 	return nativeUserTenant(session.UserKey{AppName: key.AppName, UserID: key.UserID})
 }
+
 func nativeUserTenant(key session.UserKey) (uint64, error) {
 	if err := key.CheckUserKey(); err != nil {
 		return 0, err
