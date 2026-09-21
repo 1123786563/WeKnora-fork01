@@ -1,5 +1,5 @@
 import type { ApiKey, WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Checkbox, Input, Status } from '@weknora/ui';
+import { Button, Checkbox, Input } from '@weknora/ui';
 import { useEffect, useState } from 'react';
 import { shouldShowSwaggerDocs, swaggerDocsUrl } from '@weknora/views/integrations/swagger';
 import { resolveApiBaseUrl } from '../platform/api-base.ts';
@@ -24,7 +24,7 @@ const CAPABILITY_DESCRIPTIONS: Record<string, Record<string, string>> = {
   'ru-RU': { system_tenants_read: 'Доступ только для чтения ко всем рабочим пространствам', system_tenants_manage: 'Создание, изменение и удаление рабочих пространств', system_settings_read: 'Чтение системных настроек платформы', system_settings_manage: 'Изменение системных настроек платформы', system_runtime_read: 'Просмотр очередей среды выполнения и состояний задач', system_runtime_manage: 'Управление средой выполнения (отмена задач и т. п.)', system_audit_read: 'Чтение журнала аудита системы' },
 };
 const COPY: Record<string, Record<string, string>> = {
-  'zh-CN': { title: '平台 API 密钥', description: '创建和撤销 system-admin 使用的 API 密钥。', createTitle: '创建 API 密钥', name: '密钥名称', create: '创建', creating: '创建中...', validation: '请填写名称并至少选择一个权限', failed: '创建失败', created: '密钥已创建，请立即复制保存', copy: '复制密钥', copied: '已复制', copyFailed: '复制失败，请手动选择密钥', close: '关闭', empty: '暂无平台 API 密钥', revoke: '撤销', revoked: '已撤销', revokeFailed: '撤销失败', never: '从未使用', nameHead: '名称', keyHead: '密钥', permissionsHead: '权限', lastUsedHead: '最近使用', createdHead: '创建时间', actionHead: '操作', apiDocs: 'API 文档' },
+  'zh-CN': { title: '平台 API Key', description: '为跨空间自动化创建平台级凭据；调用空间接口时通过 X-Tenant-ID 指定目标空间。', securityNotice: '平台 API Key 默认可选择任意空间。请只授予必要能力；密钥明文仅在创建时显示一次。', createTitle: '创建 API 密钥', name: '密钥名称', create: '创建平台 API Key', creating: '创建中...', validation: '请填写名称并至少选择一个权限', failed: '创建失败', created: '密钥已创建，请立即复制保存', copy: '复制密钥', copied: '已复制', copyFailed: '复制失败，请手动选择密钥', close: '关闭', empty: '暂无平台 API Key', revoke: '删除', revoked: '已撤销', revokeFailed: '撤销失败', never: '从未使用', nameHead: '名称', keyHead: '密钥', permissionsHead: '权限', lastUsedHead: '最近使用', createdHead: '创建时间', actionHead: '操作', apiDocs: 'API 文档' },
   'en-US': { title: 'Platform API keys', description: 'Create and revoke API keys for system administrators.', createTitle: 'Create API key', name: 'Key name', create: 'Create', creating: 'Creating...', validation: 'Enter a name and select at least one permission', failed: 'Creation failed', created: 'Key created. Copy and save it now.', copy: 'Copy key', copied: 'Copied', copyFailed: 'Copy failed; select the key manually', close: 'Close', empty: 'No platform API keys', revoke: 'Revoke', revoked: 'Revoked', revokeFailed: 'Revocation failed', never: 'Never used', nameHead: 'Name', keyHead: 'Key', permissionsHead: 'Permissions', lastUsedHead: 'Last used', createdHead: 'Created', actionHead: 'Actions', apiDocs: 'API docs' },
   'ja-JP': { title: 'プラットフォーム API キー', description: 'system-admin 用の API キーを作成・取り消しします。', createTitle: 'API キーを作成', name: 'キー名', create: '作成', creating: '作成中...', validation: '名前を入力し、権限を1つ以上選択してください', failed: '作成に失敗しました', created: 'キーを作成しました。今すぐコピーして保存してください。', copy: 'キーをコピー', copied: 'コピーしました', copyFailed: 'コピーに失敗しました。手動で選択してください', close: '閉じる', empty: 'プラットフォーム API キーはありません', revoke: '取り消す', revoked: '取り消しました', revokeFailed: '取り消しに失敗しました', never: '未使用', nameHead: '名前', keyHead: 'キー', permissionsHead: '権限', lastUsedHead: '最終使用', createdHead: '作成日時', actionHead: '操作', apiDocs: 'API ドキュメント' },
   'ko-KR': { title: '플랫폼 API 키', description: 'system-admin용 API 키를 생성하고 취소합니다.', createTitle: 'API 키 생성', name: '키 이름', create: '생성', creating: '생성 중...', validation: '이름을 입력하고 권한을 하나 이상 선택하세요', failed: '생성 실패', created: '키가 생성되었습니다. 지금 복사해 저장하세요.', copy: '키 복사', copied: '복사됨', copyFailed: '복사 실패: 키를 수동으로 선택하세요', close: '닫기', empty: '플랫폼 API 키가 없습니다', revoke: '취소', revoked: '취소됨', revokeFailed: '취소 실패', never: '사용 안 함', nameHead: '이름', keyHead: '키', permissionsHead: '권한', lastUsedHead: '최근 사용', createdHead: '생성 시간', actionHead: '작업', apiDocs: 'API 문서' },
@@ -73,6 +73,64 @@ export function PlatformApiKeysPanel({ client, initialKeys }: { client: WeKnoraC
     catch { setCopied(false); setMessage(copy.copyFailed); }
   }
   const toggle = (value: string) => setSelected((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
-  const title = t('platformApiKeys.title') === 'platformApiKeys.title' ? copy.title : t('platformApiKeys.title');
-  return <section className="wk-platform-api-keys grid gap-4"><header className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col"><div><h2 className="m-0">{title}</h2><p className="m-0">{copy.description}</p></div>{swaggerEnabled ? <a className="shrink-0 whitespace-nowrap rounded-[4px] border border-solid border-[#dcdcdc] px-[0.85rem] py-[0.45rem] text-[13px] text-[#1f2733] [font:inherit] no-underline hover:border-[#2563eb]" href={swaggerDocsUrl(resolveApiBaseUrl())} target="_blank" rel="noreferrer">{copy.apiDocs}</a> : null}</header><Card className="wk-api-key-create"><strong className="text-sm font-semibold text-[#1f2733]">{copy.createTitle}</strong><div className="wk-api-key-create-row mt-3 flex gap-2"><Input aria-label={copy.name} placeholder={copy.name} className="h-8 min-w-0 flex-1 rounded-[4px] border border-[#dcdcdc] px-2 text-[13px]" value={name} onChange={(event) => setName(event.target.value)} disabled={creating} /><Button type="button" onClick={() => void create()} disabled={creating}>{creating ? copy.creating : copy.create}</Button></div><div className="wk-api-key-capabilities mt-3 flex flex-wrap gap-x-4 gap-y-2">{capabilities.map((value) => <label className="text-xs" key={value} title={capabilityDescriptions[value] ?? ''}><Checkbox checked={selected.includes(value)} onChange={() => toggle(value)} disabled={creating} />{capabilityLabels[value] ?? value}<span className="mt-[0.15rem] block text-[11px] leading-[1.45] font-normal text-[#8a94a6]">{capabilityDescriptions[value] ?? ''}</span></label>)}</div></Card>{message ? <p className="wk-api-key-message m-0 text-[13px] text-[#c23434]" role="status">{message}</p> : null}{token ? <Card className="wk-api-key-token grid gap-2" role="alert"><strong className="text-sm font-semibold text-[#1f2733]">{copy.created}</strong><code className="bg-[rgba(120,135,155,0.1)] px-2 py-2 [overflow-wrap:anywhere]">{token}</code><div className="flex gap-2"><Button type="button" onClick={() => void copyToken()}>{copied ? copy.copied : copy.copy}</Button><Button type="button" onClick={() => setToken(null)}>{copy.close}</Button></div></Card> : null}<Card className="wk-api-key-list">{keys.length === 0 ? <Status>{copy.empty}</Status> : <div className="wk-api-key-table-wrap overflow-x-auto"><table className="w-full min-w-[680px] border-collapse text-xs [&_th]:border-b [&_th]:border-[rgba(120,135,155,0.18)] [&_th]:px-2 [&_th]:py-3 [&_th]:text-left [&_td]:border-b [&_td]:border-[rgba(120,135,155,0.18)] [&_td]:px-2 [&_td]:py-3 [&_td]:text-left [&_thead_th]:font-medium [&_thead_th]:text-[#5c6b83]"><thead><tr><th>{copy.nameHead}</th><th>{copy.keyHead}</th><th>{copy.permissionsHead}</th><th>{copy.lastUsedHead}</th><th>{copy.createdHead}</th><th>{copy.actionHead}</th></tr></thead><tbody>{keys.map((key) => { const keyCapabilities = key.capabilities ?? []; return <tr key={key.id}><th>{key.name}</th><td><code>{key.api_key}</code></td><td>{keyCapabilities.slice(0, 4).map((capability) => capabilityLabels[capability] ?? capability).join('、')}{keyCapabilities.length > 4 ? ` +${keyCapabilities.length - 4}` : ''}</td><td>{date(key.last_used_at, locale, copy.never)}</td><td>{date(key.created_at, locale, copy.never)}</td><td><Button type="button" className="wk-api-key-revoke" onClick={() => void revoke(key)}>{copy.revoke}</Button></td></tr>; })}</tbody></table></div>}</Card></section>;
+  const title = copy.title;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const openCreate = () => { setName(''); setSelected([]); setDrawerOpen(true); };
+  async function createAndClose() {
+    await create();
+    if (!message) setDrawerOpen(false);
+  }
+  return <section className="platform-api-keys">
+    <header className="section-header">
+      <h2>{title}</h2>
+      <p className="section-description">{copy.description}</p>
+    </header>
+    <div className="pak-security-alert" role="status">
+      <span className="pak-security-alert__icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16h.01" /></svg></span>
+      <p className="pak-security-alert__text">{copy.securityNotice}</p>
+      <button type="button" className="pak-outline-btn" onClick={openCreate}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>{copy.create}</button>
+    </div>
+    {message ? <p className="wk-api-key-message m-0 mb-3 text-[13px] text-[#c23434]" role="status">{message}</p> : null}
+    {token ? <div className="pak-token-card" role="alert"><strong className="text-sm font-semibold text-[#1f2733]">{copy.created}</strong><code className="bg-[rgba(120,135,155,0.1)] px-2 py-2 [overflow-wrap:anywhere]">{token}</code><div className="flex gap-2"><Button type="button" onClick={() => void copyToken()}>{copied ? copy.copied : copy.copy}</Button><Button type="button" onClick={() => setToken(null)}>{copy.close}</Button></div></div> : null}
+    <section className="pak-keys-section">
+      {keys.length === 0 ? <div className="pak-keys-state pak-keys-state--empty">
+        <span>{copy.empty}</span>
+        <button type="button" className="pak-outline-btn" onClick={openCreate}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>{copy.create}</button>
+      </div> : <div className="pak-table-wrap"><table className="pak-table">
+        <thead><tr><th>{copy.nameHead}</th><th>{copy.keyHead}</th><th>{copy.permissionsHead}</th><th>{copy.lastUsedHead}</th><th>{copy.createdHead}</th><th className="pak-table__actions">{copy.actionHead}</th></tr></thead>
+        <tbody>{keys.map((key) => { const keyCapabilities = key.capabilities ?? []; return <tr key={key.id}>
+          <td><span className="pak-key-name">{key.name}</span></td>
+          <td><code className="pak-key-fingerprint">{key.api_key}</code></td>
+          <td><div className="pak-chips">{keyCapabilities.slice(0, 4).map((capability) => <span className="pak-chip" key={capability}>{capabilityLabels[capability] ?? capability}</span>)}{keyCapabilities.length > 4 ? <span className="pak-chip pak-chip--more">+{keyCapabilities.length - 4}</span> : null}</div></td>
+          <td>{date(key.last_used_at, locale, copy.never)}</td>
+          <td>{date(key.created_at, locale, copy.never)}</td>
+          <td className="pak-table__actions"><button type="button" className="pak-icon-btn" title={copy.revoke} aria-label={copy.revoke} onClick={() => void revoke(key)}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg></button></td>
+        </tr>; })}</tbody>
+      </table></div>}
+    </section>
+    {swaggerEnabled ? <a className="pak-docs-link" href={swaggerDocsUrl(resolveApiBaseUrl())} target="_blank" rel="noreferrer">{copy.apiDocs}</a> : null}
+    {drawerOpen ? <div className="pak-drawer" role="dialog" aria-modal="true" aria-label={copy.createTitle}>
+      <div className="rq-drawer-backdrop" onClick={() => setDrawerOpen(false)} />
+      <div className="pak-drawer-panel">
+        <header className="rq-drawer-head">
+          <div>
+            <h3>{copy.createTitle}</h3>
+            <p>{copy.description}</p>
+          </div>
+          <button type="button" aria-label={copy.close} onClick={() => setDrawerOpen(false)}>×</button>
+        </header>
+        <label className="pak-field"><span>{copy.name}</span><Input value={name} onChange={(event) => setName(event.target.value)} disabled={creating} aria-label={copy.name} /></label>
+        <div className="pak-field"><span>{copy.permissionsHead}</span>
+          <div className="pak-cap-group">
+            <div className="pak-cap-group__title">平台控制面</div>
+            <div className="pak-cap-items">{capabilities.map((value) => <label key={value} className="pak-cap-item"><Checkbox checked={selected.includes(value)} onChange={() => toggle(value)} disabled={creating} />{capabilityLabels[value] ?? value}<span className="block text-[11px] leading-[1.45] font-normal text-[#8a94a6]">{capabilityDescriptions[value] ?? ''}</span></label>)}</div>
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" onClick={() => setDrawerOpen(false)}>{copy.close}</Button>
+          <Button type="button" loading={creating} onClick={() => void createAndClose()}>{creating ? copy.creating : copy.create}</Button>
+        </div>
+      </div>
+    </div> : null}
+  </section>;
 }

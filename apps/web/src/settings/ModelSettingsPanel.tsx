@@ -913,10 +913,13 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
 
   return (
     <section className="grid gap-4" data-testid="model-settings">
-      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 max-[720px]:flex-col">
+      {/* Vue ModelSettings.vue section-header: mb28, h2 20/600 mb8 normal,
+          desc 14px lh1.6 secondary — shared .section-header CSS matches. */}
+      <div className="section-header">
+        <div className="flex items-center justify-between gap-5 max-[720px]:flex-col max-[720px]:items-start">
         <div>
-          <h2 className="mt-0! mb-2! text-[20px] font-semibold leading-[1.4]">{t("modelSettings.title")}</h2>
-          <p className="wk-muted text-muted m-0 text-[14px] leading-[1.6]">{t("modelSettings.description")}</p>
+          <h2 className="m-0!">{t("modelSettings.title")}</h2>
+          <p className="section-description m-0">{t("modelSettings.description")}</p>
         </div>
         {canCreate ? (
           <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent px-0 py-1 font-[inherit] text-sm font-semibold text-[#0a8f4c] hover:text-[#067a3f] focus-visible:text-[#067a3f]" onClick={() => setDebugOpen(true)}>
@@ -926,14 +929,16 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
             {t("modelSettings.actions.debugModel")}
           </button>
         ) : null}
+        </div>
       </div>
       <div className="rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-3 py-[10px]" role="note">
         <p className="m-0 mb-1 text-xs font-medium tracking-[0.02em] text-[rgba(0,0,0,0.4)]"><strong>{t("modelSettings.builtinModels.title")}</strong></p>
         <p className="m-0 mb-[6px] text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">
           {t(role === "system-admin" ? "modelSettings.builtinModels.descriptionAdmin" : "modelSettings.builtinModels.description")}
         </p>
-        <a className="text-[13px]" href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
+        <a className="inline-flex items-center gap-1 text-[13px] text-[var(--wk-brand,#07c05f)] no-underline hover:underline" href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
           {t("modelSettings.builtinModels.viewGuide")}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7" /><path d="M14 10a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7" /></svg>
         </a>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}

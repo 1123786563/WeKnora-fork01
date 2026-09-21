@@ -167,3 +167,473 @@
     min-width: 220px;
   }
 }
+
+/* --- 批量条（ix-kb-batch parity） ----------------------------------------
+   Vue 权威：DocumentBatchBar.vue <style> + .doc-batch-bar-anchor
+   (KnowledgeBase.vue:3550-3563)。批量工具栏悬浮在列表区底部居中
+   （max-width 920px 白卡片、1px 边框、8px 圆角、下投影），不再作为
+   内联块挤占列表高度。React 页面无绝对定位的滚动宿主，等价用
+   fixed 贴底（1280x720 视口下与 Vue 截图几何一致）。 */
+.doc-batch-bar-anchor {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.doc-batch-bar-anchor > * {
+  pointer-events: auto;
+}
+
+.doc-batch-bar-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: 920px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-component, #e7e7e7);
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.doc-batch-bar-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.doc-batch-bar-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary, rgba(0, 0, 0, 0.6));
+  white-space: nowrap;
+}
+
+.doc-batch-bar-clear {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-text-secondary, rgba(0, 0, 0, 0.6));
+  cursor: pointer;
+}
+
+.doc-batch-bar-clear:hover {
+  color: var(--color-brand, #07c05f);
+}
+
+.doc-batch-bar-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- 列表视图行（ix-kb-listview parity） ---------------------------------
+   Vue 权威：DocumentListView.vue。行内勾选框常驻（canEdit||canDownload），
+   文件名 28px 图标包裹 + 单行省略（.row-file-name 14px/600），状态列是
+   light-outline 小标签（.row-status-tag），大小/更新时间为右对齐等宽字。 */
+.wk-row-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--color-surface-muted, #f3f3f3);
+  color: var(--color-muted, #66758b);
+}
+
+.wk-document-list li > p[role="status"],
+.wk-document-list li > p[role="alert"] {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 20px;
+  margin: 0;
+  padding: 0 4px;
+  border: 1px solid var(--color-line, #dce3ed);
+  border-radius: 3px;
+  background: var(--color-surface-muted, #f3f3f3);
+  color: var(--color-text-secondary, rgba(0, 0, 0, 0.6));
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.wk-document-list li > p.text-danger {
+  border-color: #e34d59;
+  background: #fdecee;
+  color: #e34d59;
+}
+
+/* Vue .row-status-tag 内置 t-icon-close-circle（失败态 ⊗ 前缀，DocumentListView.vue）。 */
+.wk-document-list li > p.text-danger::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-right: 2px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9 9l6 6M15 9l-6 6'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9 9l6 6M15 9l-6 6'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+
+.wk-document-list li > p.text-success-text {
+  border-color: var(--color-success-line, #8ce0af);
+  background: var(--color-brand-light, #e9f8ec);
+  color: var(--color-accent-deep, #00a870);
+}
+
+.wk-document-list li > p.text-warning-text {
+  border-color: var(--color-warning-line, #fedf89);
+  background: var(--color-warning-wash, #fffaeb);
+  color: var(--color-warning-strong, #b54708);
+}
+
+/* --- 知识库设置弹窗（ix-kb-settings parity） ------------------------------
+   Vue 权威：KnowledgeBaseEditorModal（t-dialog，无独立标题栏——标题
+   「编辑知识库」在侧栏顶部，关闭 × 在弹窗右上角）。React 宿主 Dialog 的
+   「设置」标题与内层 .wkbs-modal 的固定 85vh 高度叠加导致双标题 +
+   730px 内容溢出 612px 视口、footer(取消/保存并关闭)被挤出首屏。 */
+.wk-kb-settings-dialog {
+  overflow: hidden;
+  padding-bottom: 0.5rem;
+}
+
+.wk-kb-settings-dialog .wk-dialog-header {
+  padding: 0;
+}
+
+/* 标题由内层侧栏（.wkbs-sidebar-title）承担，如 Vue。 */
+.wk-kb-settings-dialog .wk-dialog-header h2 {
+  display: none;
+}
+
+.wk-kb-settings-dialog .wk-dialog-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+/* 内层 modal 已是 Vue 1000px 版式；宽度铺满弹窗、高度改为跟随内容并
+   受弹窗剩余高度约束，footer(取消/保存并关闭)回到首屏内。 */
+.wk-kb-settings-dialog .wkbs-modal {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 文档详情抽屉头部（ix-kb-doc-detail）：Sheet 的 h2 需撑满整行，
+   下载/解析进度按钮组才能像 Vue doc-content.vue 头部一样贴右。 */
+.wk-document-detail-drawer header h2 {
+  width: 100%;
+  min-width: 0;
+}
+
+/* --- 遮罩浓度（全状态 parity） --------------------------------------------
+   Vue 权威（截图取样）：t-dialog 遮罩 rgba(0,0,0,.53)（255→121），
+   t-drawer 遮罩 rgba(0,0,0,.6)（255→102）。React 的 --color-overlay
+   (rgb(23 32 51 / 45%)) 偏蓝偏浅，导致弹窗/抽屉态画面整体色偏。 */
+.wk-dialog-backdrop {
+  background: rgba(0, 0, 0, 0.53);
+}
+
+.wk-overlay {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+/* --- 设置弹窗补充（Vue 编辑器弹窗形态，DOM 实测 2026-09-21） ---
+   Vue .settings-modal：无标题栏，关闭 × 悬浮在弹窗右上 20px（32x32、
+   #f3f3f3 底、radius 6）；弹窗内边距 0，wkbs-modal 铺满整个面板。 */
+.wk-kb-settings-dialog {
+  position: relative;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 12px;
+}
+.wk-kb-settings-dialog .wk-dialog-header {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 5;
+  justify-content: flex-end;
+  padding: 0;
+}
+.wk-kb-settings-dialog .wk-dialog-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0;
+  border-radius: 6px;
+  background: var(--wk-color-surface-hover, #f3f3f3);
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 20px;
+  line-height: 1;
+}
+.wk-kb-settings-dialog .wk-dialog-body {
+  margin-top: 0 !important;
+  height: 100%;
+  overflow: hidden;
+}
+/* KnowledgeSettingsPage 的 aria 宿主 <section> 占满 body，让 wkbs-modal
+   的 height:100% 生效（Vue .settings-modal 铺满 612px 面板）。 */
+.wk-kb-settings-dialog .wk-dialog-body > section {
+  height: 100%;
+}
+
+/* Vue .settings-sidebar：#f9f9f9 灰面板底 + 右分隔线（实测 rgb(249,249,249)）。 */
+.wk-kb-settings-dialog .wkbs-sidebar {
+  background: var(--wk-color-settings-panel, #f9f9f9);
+}
+
+/* Vue .nav-item 高 32px（line-height 20px + 上下 6px padding）。 */
+.wk-kb-settings-dialog .wkbs-nav-item { line-height: 20px; }
+
+/* Vue basic 区表单为「标签在上、控件在下」的堆叠行（无 label 左列）。
+   EditorSettingRow 是 inline style 的 40%/55% 左右分栏，这里按 Vue 权威
+   压成纵向堆叠（attribute 选择器命中其 inline style 特征串）。 */
+.wk-kb-settings-dialog div[style*="border-bottom: 1px solid #dce3ed"][style*="justify-content: space-between"] {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  border-bottom: 0 !important;
+  padding: 0 0 0.65rem !important;
+}
+
+.wk-kb-settings-dialog div[style*="flex: 0 1 40%"],
+.wk-kb-settings-dialog div[style*="flex: 0 1 55%"] {
+  flex: 1 1 100% !important;
+  min-width: 0 !important;
+}
+
+/* --- 列表容器/表头（DocumentListView.vue .doc-list-view/.doc-list-header） */
+.wk-document-list {
+  border: 1px solid var(--color-component, #e7e7e7);
+  border-radius: 9px;
+  background: var(--color-surface, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.wk-document-list .wk-document-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  box-sizing: border-box;
+  height: 40px;
+  /* Vue 表头色 rgba 黑 60%（React token #66758b 偏蓝） */
+  color: rgba(0, 0, 0, 0.6);
+  /* Vue .doc-list-header padding: 0 16px（py-2 会让 sticky 表头 57px 高，
+     整个列表体下移 ~16px — ix-kb-listview 残差主因）。 */
+  padding: 0 16px;
+  border-bottom-color: #e7e7e8;
+  background: var(--color-surface-muted, #f3f3f3);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Vue .cell p 0 8px 同样作用于表头格（文本起点 x365/x662/...） */
+.wk-document-list .wk-document-list-header > [role="columnheader"] {
+  padding: 0 8px;
+}
+
+.wk-document-list .wk-document-list-header > [role="columnheader"]:first-child {
+  padding: 0;
+}
+
+.wk-document-list .wk-document-list-header > [role="columnheader"]:last-child {
+  padding-right: 0;
+}
+
+/* --- 列表视图行几何（Vue DocumentListView.vue .doc-list-row / .cell） ----- */
+/* Vue .doc-list-row min-height 60px + padding 0 16px + border #e7e7e8；
+   React 行的 py-[0.9rem] 使行高 57.8 且勾选框/文本不居中。 */
+.wk-document-list li[data-select-id],
+.wk-document-list li.wk-document-list-folder {
+  box-sizing: border-box;
+  min-height: 60px;
+  padding-top: 0;
+  padding-bottom: 0;
+  /* 行类上的 Tailwind gap-4 会在 grid 模式下变成 16px 列距（表头无），
+     列格从第 2 列起整体右漂 — Vue .doc-list-row column-gap: 0。 */
+  column-gap: 0;
+  border-bottom-color: #e7e7e8;
+}
+
+/* Vue .cell：每格左右 8px 内边距（首格无左、末格无右），内容起点/右对齐
+   尺寸与 Vue 逐像素对齐（文件名 x365、状态徽标 x957、时间右缘 1177）。 */
+.wk-document-list li[data-select-id] > * {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.wk-document-list li[data-select-id] > *:first-child {
+  padding-left: 0;
+}
+
+.wk-document-list li[data-select-id] > *:last-child {
+  padding-right: 0;
+}
+
+.wk-document-list li[data-select-id] > input[type="checkbox"] {
+  padding: 0;
+  justify-self: center;
+}
+
+/* 状态徽标：grid 拉伸会把 p 撑满整格（96px 色块），Vue t-tag 是内联小标签。 */
+.wk-document-list li[data-select-id] > p[role="status"],
+.wk-document-list li[data-select-id] > p[role="alert"] {
+  justify-self: start;
+}
+
+.wk-document-list li[data-select-id] > .wk-row-actions {
+  justify-self: end;
+  padding-right: 0;
+}
+
+/* 大小/更新时间列：Vue .cell-size/.cell-time 右对齐；行内 font-mono 是
+   Tailwind 等宽字（Vue .row-mono 用应用字体 + tabular-nums），日期/大小
+   文本宽度因此差 ~10px。 */
+.wk-document-list li[data-select-id] > span.font-mono {
+  text-align: right;
+  font-family: var(--wk-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Vue .row-tag-add：虚线胶囊 + 标签（11px/40% 黑），React 原为裸文本按钮。 */
+.wk-document-list .wk-row-tag-add {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px dashed #e7e7e7;
+  border-radius: 999px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-document-list .wk-row-tag-add:hover {
+  border-color: var(--color-brand, #07c05f);
+  color: var(--color-brand, #07c05f);
+}
+
+/* --- 批量条按钮（Vue DocumentBatchBar t-button size=small） ----------------
+   h24 / 12px / 3px 圆角 / 0 7px；禁用态 TDesign 特定配色（非 opacity）。 */
+.doc-batch-bar-actions .wk-button-size-small {
+  height: 24px;
+  min-height: 24px;
+  padding: 0 7px;
+  /* Vue t-button 图标-文字间距 8px（82→86 / 94→98 逐钮对齐） */
+  gap: 8px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+
+.doc-batch-bar-actions .wk-button-size-small:disabled {
+  opacity: 1;
+  background: #eeeeee;
+  border-color: #dcdcdc;
+  color: rgba(0, 0, 0, 0.26);
+}
+
+.doc-batch-bar-actions button.bg-accent:disabled {
+  background: #8ce0af;
+  border-color: #8ce0af;
+  color: #fff;
+}
+
+.doc-batch-bar-actions button[class*="color-error"]:disabled {
+  background: #eeeeee;
+  border-color: #f8b9be;
+  color: #f8b9be;
+}
+
+/* 行尾 ⋯ 菜单：Vue .row-more-btn 默认隐藏，hover/选中才出现。 */
+.wk-document-list .wk-row-actions {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.wk-document-list li:hover .wk-row-actions {
+  opacity: 1;
+}
+
+/* --- 批量条位置：悬浮于内容列（x296 宽 956；Vue .doc-batch-bar-anchor
+       padding 0 16px + .doc-batch-bar margin auto + padding 0 4px → 内卡片
+       x318 宽 912、底边 688）--- */
+@media (min-width: 1024px) {
+  .doc-batch-bar-anchor {
+    left: 296px;
+    right: 28px;
+    bottom: 32px;
+    padding: 0 20px;
+  }
+
+  .doc-batch-bar-anchor .doc-batch-bar-inner {
+    max-width: 912px;
+  }
+}
+
+/* Sheet（packages/ui）的 Tailwind 遮罩类背景 → Vue t-drawer 黑 60%。 */
+.bg-\[rgb\(23_32_51_\/_0\.45\)\] {
+  background: rgba(0, 0, 0, 0.6) !important;
+}
+
+/* --- 文档详情抽屉内边距（ix-kb-doc-detail，DOM 实测 2026-09-21） ----------
+   Vue doc-content.vue：header 14px 18px（高 61），body 16px 18px →
+   内容列 x644 宽 618。React 的 div.mt-1.px-5 + main.px-5.pb-5 双层
+   20px 内边距把内容压到 x665 宽 574（差 44px），整列文本全部错位。 */
+.wk-document-detail-drawer > header {
+  padding: 14px 18px !important;
+}
+.wk-document-detail-drawer header h2 {
+  font-size: 15px;
+  line-height: 21px;
+}
+.wk-document-detail-drawer .mt-1.flex-1 {
+  margin-top: 0 !important;
+  padding: 16px 18px 18px !important;
+}
+.wk-document-detail-drawer .wk-document-detail-page {
+  padding: 0 !important;
+}
+
+/* --- 详情抽屉区块节奏 + markdown 预览（对齐 Vue doc-content.vue） --------- */
+.wk-document-detail-drawer h4 { font-size: 13px; line-height: 22px; }
+.wk-document-detail-drawer .wk-document-metadata-section h4 { margin-bottom: 18px; }
+.wk-document-detail-drawer dl.wk-document-metadata { row-gap: 10px; }
+.wk-document-detail-drawer section.py-4 { padding-top: 12px; padding-bottom: 16px; }
+/* preview-markdown：20px 24px 内边距，md h1 24px/33.6 m20 0 10 pb8，p m8 0。 */
+.wk-document-detail-drawer .wk-document-md-preview { padding: 20px 24px !important; }
+.wk-document-detail-drawer .wk-document-md-preview .md-content { font-size: 14px; line-height: 23.8px; }
+.wk-document-detail-drawer .wk-document-md-preview .md-content h1 {
+  font-size: 24px;
+  line-height: 33.6px;
+  margin: 20px 0 10px;
+  padding: 0 0 8px;
+}
+.wk-document-detail-drawer .wk-document-md-preview .md-content p { margin: 8px 0; line-height: 23.8px; }

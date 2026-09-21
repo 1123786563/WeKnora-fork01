@@ -1057,16 +1057,16 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     {activeTagIds.length > 0 ? <span role="button" tabIndex={0} className="faq-tag-filter-clear inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded-full text-faint hover:text-ink" aria-label={t('common.clear')} onClick={(event) => { event.stopPropagation(); setTagPanelOpen(false); onClearTagFilter(); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); setTagPanelOpen(false); onClearTagFilter(); } }}><CloseIcon size={13} /></span> : <TIcon size={16} className="faq-tag-filter-trigger__caret shrink-0 text-faint"><path d={TChevrons.down} /></TIcon>}
                   </span>
                 </button>
-                <span className="faq-menu faq-tag-filter-panel absolute top-[calc(100%+6px)] left-0 right-auto z-[210] flex w-[260px] min-w-[260px] flex-col gap-2 rounded-lg border border-[#e3e8f0] bg-surface p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" hidden={!tagPanelOpen}>
-                  <span className="tag-filter-panel__header flex items-center gap-1 px-1.5 py-1 text-[13px] font-semibold leading-[1.5] text-ink">
+                <span className="faq-menu faq-tag-filter-panel absolute top-[calc(100%+9px)] left-auto right-0 z-[210] flex w-[320px] min-w-[320px] box-border flex-col gap-2.5 rounded-[6px] border-0 bg-surface p-[12px_14px] shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" hidden={!tagPanelOpen}>
+                  <span className="tag-filter-panel__header flex items-center gap-1 p-0 text-sm font-normal leading-[22px] text-ink">
                     <span>{t('knowledgeBase.tagFilterTitle')}</span>
                     <span className="tag-filter-panel__count font-normal text-faint">({tags.length})</span>
                   </span>
-                  <label className="tag-search-bar relative block px-1.5">
-                    <SearchIcon size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-                    <Input className="h-8 w-full pl-8 text-xs" value={tagSearchQuery} placeholder={t('knowledgeBase.tagSearchPlaceholder')} aria-label={t('knowledgeBase.tagSearchPlaceholder')} onChange={(event) => setTagSearchQuery(event.target.value)} />
+                  <label className="tag-search-bar relative block p-0">
+                    <SearchIcon size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+                    <Input className="tag-search-input h-8 w-full pl-8 text-sm" value={tagSearchQuery} placeholder={t('knowledgeBase.tagSearchPlaceholder')} aria-label={t('knowledgeBase.tagSearchPlaceholder')} onChange={(event) => setTagSearchQuery(event.target.value)} />
                   </label>
-                  <span className="faq-tag-filter-chips flex max-h-[260px] flex-wrap gap-1.5 overflow-auto px-1 pt-0.5 pb-1.5">
+                  <span className="faq-tag-filter-chips flex max-h-[260px] flex-wrap gap-1.5 overflow-auto p-0">
                     {visibleTags.map((tag) => (
                       <button key={tag.id} type="button" className={'faq-tag-filter-chip inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-[3px] text-xs leading-[1.5] font-[inherit] hover:border-accent-deep ' + (activeTagIds.includes(tag.id) ? 'active border-accent-deep bg-[rgba(0,168,112,0.08)] text-accent-deep' : 'border-[#e3e8f0] bg-surface text-ink')} title={tag.name + ' (' + (tag.chunk_count || 0) + ')'} onClick={() => onToggleTag(tag.id)}>
                         <span className="tag-filter-chip__label">{tag.name}</span>
@@ -1075,7 +1075,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     ))}
                     {visibleTags.length === 0 ? <span className="tag-empty-state p-1.5 text-[13px] leading-[1.5] text-faint">{t('knowledgeBase.tagEmptyResult')}</span> : null}
                   </span>
-                  {canContribute ? <button type="button" className="tag-filter-panel__manage self-start cursor-pointer border-0 bg-transparent px-1.5 py-0.5 text-xs leading-[1.5] text-accent-deep font-[inherit] hover:underline" onClick={onOpenTagManage}>{t('knowledgeBase.tagManageLink')}</button> : null}
+                  {canContribute ? <button type="button" className="tag-filter-panel__manage self-stretch cursor-pointer border-0 bg-transparent px-2 pt-[10px] pb-0 text-left text-xs leading-[1.5] text-ink font-[inherit] hover:underline" onClick={onOpenTagManage}>{t('knowledgeBase.tagManageLink')}</button> : null}
                 </span>
               </span>
             </div>
@@ -1264,25 +1264,33 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
       {importOpen ? (
         <section className="faq-import-overlay fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-5 [backdrop-filter:blur(4px)]" role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faqImport.title')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseImport(); }}>
           <div className="faq-import-modal relative flex max-h-[90vh] w-full max-w-[600px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_6px_28px_rgba(15,23,42,0.08)]">
-            <button type="button" className="faq-modal-close absolute right-[18px] top-[18px] z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-surface-alt text-muted hover:text-ink" aria-label={t('common.close')} onClick={onCloseImport}><CloseIcon size={16} /></button>
-            <div className="faq-import-header shrink-0 border-b border-[#e3e8f0] px-6 pb-4 pt-6"><h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faqImport.title')}</h2></div>
-            <div className="faq-import-content flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
-              <div className="import-form-item flex flex-col gap-2.5">
-                <label className="import-form-label text-sm font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faqImport.modeLabel')}</label>
-                <div className="import-radio-group inline-flex gap-0" role="radiogroup" aria-label={t('knowledgeEditor.faqImport.modeLabel')}>
-                  <label className={'import-radio-button inline-flex cursor-pointer select-none items-center gap-1.5 border bg-surface px-4 py-[7px] text-sm leading-[1.5] first:rounded-l-lg last:rounded-r-lg last:border-l-0 ' + (importMode === 'append' ? 'is-active border-accent-deep bg-[rgba(0,168,112,0.06)] text-accent-deep' : 'border-[#e3e8f0] text-muted')}>
-                    <Radio name="faq-import-mode" className="m-0 accent-accent-deep" value="append" checked={importMode === 'append'} onChange={() => onImportModeChange('append')} /> {t('knowledgeEditor.faqImport.appendMode')}
+            <button type="button" className="faq-modal-close absolute right-[20px] top-[20px] z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-surface-alt text-muted hover:text-ink" aria-label={t('common.close')} onClick={onCloseImport}><CloseIcon size={16} /></button>
+            <div className="faq-import-header shrink-0 border-b border-[#e3e8f0] px-6 pb-4 pt-6"><h2 className="m-0 text-lg font-semibold leading-[25px] text-ink">{t('knowledgeEditor.faqImport.title')}</h2></div>
+            {/* Vue FAQEntryManager.vue:4222 — form items are 24px apart
+                (import-form-item margin-bottom), not 20px. */}
+            <div className="faq-import-content flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6 pb-[35px]">
+              <div className="import-form-item flex flex-col gap-[2px]">
+                {/* Vue import-form-label.required renders a red "*" via ::after
+                    (FAQEntryManager.vue:4290-4294). */}
+                <label className="import-form-label text-sm font-medium leading-[1.5] tracking-[-0.2px] text-ink">{t('knowledgeEditor.faqImport.modeLabel')}<span className="required-mark ml-1 font-semibold text-[#e34d59]">*</span></label>
+                {/* Vue t-radio-group shrinks to content (measured w=207), so the
+                    group must not stretch to the column width. Buttons are
+                    t-radio-button: no visible dot, 4px/16px padding → 32px tall,
+                    checked = solid brand green with white text. */}
+                <div className="import-radio-group inline-flex self-start gap-0" role="radiogroup" aria-label={t('knowledgeEditor.faqImport.modeLabel')}>
+                  <label className={'import-radio-button inline-flex cursor-pointer select-none items-center gap-1.5 border px-4 py-[4px] text-sm leading-[22px] first:rounded-l-[3px] last:rounded-r-[3px] ' + (importMode === 'append' ? 'is-active border-[#07c05f] bg-[#07c05f] text-white' : 'border-[#e7e7e7] bg-surface text-ink')}>
+                    <Radio name="faq-import-mode" className="sr-only m-0" value="append" checked={importMode === 'append'} onChange={() => onImportModeChange('append')} /> {t('knowledgeEditor.faqImport.appendMode')}
                   </label>
-                  <label className={'import-radio-button inline-flex cursor-pointer select-none items-center gap-1.5 border bg-surface px-4 py-[7px] text-sm leading-[1.5] first:rounded-l-lg last:rounded-r-lg last:border-l-0 ' + (importMode === 'replace' ? 'is-active border-accent-deep bg-[rgba(0,168,112,0.06)] text-accent-deep' : 'border-[#e3e8f0] text-muted')}>
-                    <Radio name="faq-import-mode" className="m-0 accent-accent-deep" value="replace" checked={importMode === 'replace'} onChange={() => onImportModeChange('replace')} /> {t('knowledgeEditor.faqImport.replaceMode')}
+                  <label className={'import-radio-button inline-flex cursor-pointer select-none items-center gap-1.5 border px-4 py-[4px] text-sm leading-[22px] first:rounded-l-[3px] last:rounded-r-[3px] ' + (importMode === 'replace' ? 'is-active border-[#07c05f] bg-[#07c05f] text-white' : 'border-[#e7e7e7] bg-surface text-ink')}>
+                    <Radio name="faq-import-mode" className="sr-only m-0" value="replace" checked={importMode === 'replace'} onChange={() => onImportModeChange('replace')} /> {t('knowledgeEditor.faqImport.replaceMode')}
                   </label>
                 </div>
               </div>
               <div className="import-form-item flex flex-col gap-2.5">
                 <div className="file-label-row flex items-center justify-between gap-2">
-                  <label className="import-form-label text-sm font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faqImport.fileLabel')}</label>
+                  <label className="import-form-label text-sm font-medium leading-[1.5] tracking-[-0.2px] text-ink">{t('knowledgeEditor.faqImport.fileLabel')}<span className="required-mark ml-1 font-semibold text-[#e34d59]">*</span></label>
                   <span className="faq-example-menu-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setExampleMenuOpen(false))}>
-                    <button type="button" className="download-example-btn inline-flex cursor-pointer items-center gap-1 rounded-md border border-line-control bg-surface px-2 py-1 text-xs leading-[1.5] text-muted hover:border-accent-deep hover:text-accent-deep" aria-haspopup="menu" aria-expanded={exampleMenuOpen} onClick={() => setExampleMenuOpen((open) => !open)}><DownloadIcon size={14} />{t('knowledgeEditor.faqImport.downloadExample')}</button>
+                    <button type="button" className="download-example-btn inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-line-control bg-surface px-[14px] py-0 text-[13px] font-medium leading-none text-ink hover:border-accent-deep hover:text-accent-deep" aria-haspopup="menu" aria-expanded={exampleMenuOpen} onClick={() => setExampleMenuOpen((open) => !open)}><DownloadIcon size={14} />{t('knowledgeEditor.faqImport.downloadExample')}</button>
                     <span className="faq-menu absolute top-[calc(100%+6px)] right-0 z-[210] flex min-w-[180px] flex-col rounded-lg border border-[#e3e8f0] bg-surface p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" role="menu" hidden={!exampleMenuOpen}>
                       <button type="button" role="menuitem" className="faq-menu-item w-full cursor-pointer rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm text-ink hover:bg-surface-alt" onClick={() => { setExampleMenuOpen(false); onDownloadExample('json'); }}>{t('knowledgeEditor.faqImport.downloadExampleJSON')}</button>
                       <button type="button" role="menuitem" className="faq-menu-item w-full cursor-pointer rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm text-ink hover:bg-surface-alt" onClick={() => { setExampleMenuOpen(false); onDownloadExample('csv'); }}>{t('knowledgeEditor.faqImport.downloadExampleCSV')}</button>
@@ -1290,17 +1298,20 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     </span>
                   </span>
                 </div>
-                <div
-                  className="file-upload-area relative flex cursor-pointer flex-col items-center gap-2 rounded-[10px] border border-dashed border-[#cdd6e2] bg-[#fafbfd] px-4 py-7 text-center hover:border-accent-deep"
+                  {/* Vue .file-upload-area (FAQEntryManager.vue:4339): 2px dashed
+                      border, min-height 120px, content centered both axes,
+                      brand-green 32px icon, 4px icon/text gap. */}
+                  <div
+                  className="file-upload-area relative flex h-[120px] cursor-pointer flex-col items-center justify-center gap-1 rounded-[8px] border-2 border-dashed border-[#e7e7e7] bg-[#f3f3f3] px-4 text-center hover:border-accent-deep"
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) onImportFile(file); }}
                 >
-                  <UploadIcon size={28} className="upload-icon text-faint" />
-                  <span className="upload-primary-text break-all text-sm leading-[1.5] text-ink">{importFileName ?? t('knowledgeEditor.faqImport.clickToUpload')}</span>
-                  {importFileName ? null : <span className="upload-secondary-text text-xs leading-[1.5] text-faint">{t('knowledgeEditor.faqImport.dragDropTip')}</span>}
+                  <UploadIcon size={32} className="upload-icon text-[#07c05f]" />
+                  <span className="upload-primary-text break-all text-sm font-medium leading-[1.5] text-ink">{importFileName ?? t('knowledgeEditor.faqImport.clickToUpload')}</span>
+                  {importFileName ? null : <span className="upload-secondary-text text-xs leading-[18px] text-[rgba(0,0,0,0.6)]">{t('knowledgeEditor.faqImport.dragDropTip')}</span>}
                   <input type="file" className="absolute inset-0 cursor-pointer opacity-0" accept=".json,.csv,.xlsx,.xls,application/json,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImportFile(file); event.target.value = ''; }} />
                 </div>
-                <p className="import-form-tip m-0 text-xs leading-[1.6] text-faint">{t('knowledgeEditor.faqImport.fileTip')}</p>
+                <p className="import-form-tip m-0 text-xs leading-[18px] text-[rgba(0,0,0,0.26)]">{t('knowledgeEditor.faqImport.fileTip')}</p>
               </div>
               {message?.tone === 'error' || message?.tone === 'warning' ? <div className="faq-import-feedback mb-1" role="alert"><Status tone={message.tone}>{message.text}</Status></div> : null}
               {importPreview.length > 0 ? (
@@ -1321,9 +1332,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 </div>
               ) : null}
             </div>
-            <div className="faq-import-footer flex flex-none justify-end gap-2.5 border-t border-[#e3e8f0] px-6 py-4">
+            <div className="faq-import-footer flex flex-none justify-end gap-3 border-t border-[#e3e8f0] px-6 py-4">
               <Button type="button" onClick={onCloseImport}>{t('common.cancel')}</Button>
-              <Button type="button" loading={importBusy} disabled={importBusy} onClick={onImportConfirm}>{t('knowledgeEditor.faqImport.importButton')}</Button>
+              {/* Vue footer import button is t-button theme="primary" (FAQEntryManager.vue:670-676). */}
+              <Button type="button" variant="primary" loading={importBusy} disabled={importBusy} onClick={onImportConfirm}>{t('knowledgeEditor.faqImport.importButton')}</Button>
             </div>
           </div>
         </section>
@@ -1530,9 +1542,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
       {searchMounted ? (
         <section className={`faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/60 p-0 ${searchOpen ? 'faq-drawer-overlay-enter' : 'faq-drawer-overlay-exit'}`} role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faq.searchTestTitle')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseSearchTest(); }}>
           <aside className={`faq-editor-drawer faq-search-drawer flex h-full w-[420px] max-w-[92vw] flex-col overflow-hidden bg-surface shadow-[-8px_0_28px_rgba(15,23,42,0.16)] max-md:w-screen max-md:max-w-[100vw] ${searchOpen ? 'faq-drawer-panel-enter' : 'faq-drawer-panel-exit'}`}>
-            <div className="faq-editor-header flex items-center justify-between border-b border-[#e3e8f0] px-5 py-[18px]">
+            <div className="faq-editor-header flex items-center justify-between border-b border-[#e3e8f0] px-6 py-5">
               <h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faq.searchTestTitle')}</h2>
-              <button type="button" className="faq-modal-close static z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-surface-alt text-muted hover:text-ink" aria-label={t('common.close')} onClick={onCloseSearchTest}><CloseIcon size={16} /></button>
+              {/* Vue t-drawer__close-btn：24x24 裸 ×，无灰底盒子。 */}
+              <button type="button" className="faq-modal-close static z-10 -mr-3 flex h-6 w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent text-ink hover:text-ink" aria-label={t('common.close')} onClick={onCloseSearchTest}><CloseIcon size={16} /></button>
             </div>
             <div className="faq-editor-form-body min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-5">
               {message?.tone === 'error' ? <div className="faq-editor-error mb-2.5" role="alert"><Status tone="error">{message.text}</Status></div> : null}
@@ -1545,7 +1558,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
               <div className="settings-group flex flex-col gap-0">
                 <div className="setting-row search-first-row flex flex-col gap-3 border-b border-[#e3e8f0] pb-4">
                   <div className="setting-info mb-2 flex flex-col">
-                    <label className="mb-1 block text-sm font-medium leading-[1.4] text-ink" htmlFor="faq-search-query">{t('knowledgeEditor.faq.queryLabel')}</label>
+                    <label className="mb-1 block text-sm font-medium leading-[22px] text-ink" htmlFor="faq-search-query">{t('knowledgeEditor.faq.queryLabel')}</label>
                     <p className="desc m-0 text-xs leading-[1.4] text-muted">{t('knowledgeEditor.faq.queryPlaceholder')}</p>
                   </div>
                   <div className="setting-control flex flex-col gap-2">
@@ -1561,7 +1574,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 </div>
                 <div className="setting-row flex flex-col gap-3 border-b border-[#e3e8f0] py-4">
                   <div className="setting-info mb-2 flex flex-col">
-                    <label className="mb-1 block text-sm font-medium leading-[1.4] text-ink" htmlFor="faq-search-threshold">{t('knowledgeEditor.faq.similarityThresholdLabel')}</label>
+                    <label className="mb-1 block text-sm font-medium leading-[22px] text-ink" htmlFor="faq-search-threshold">{t('knowledgeEditor.faq.similarityThresholdLabel')}</label>
                     <p className="desc m-0 text-xs leading-[1.4] text-muted">{t('knowledgeEditor.faq.vectorThresholdDesc')}</p>
                   </div>
                   <div className="setting-control flex flex-col gap-2">
@@ -1574,13 +1587,13 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                         value={searchForm.vectorThreshold}
                         onChange={(event) => onSearchFormChange({ vectorThreshold: Number(event.target.value) })}
                       />
-                      <div className="slider-value min-w-[50px] rounded-md bg-surface px-2 py-1 text-right text-sm font-medium leading-[1.4] text-ink tabular-nums">{searchForm.vectorThreshold.toFixed(2)}</div>
+                      <div className="slider-value min-w-[50px] rounded-md bg-surface px-2 py-[5px] text-right text-sm font-medium leading-5 text-ink tabular-nums">{searchForm.vectorThreshold.toFixed(2)}</div>
                     </div>
                   </div>
                 </div>
                 <div className="setting-row flex flex-col gap-3 border-b border-[#e3e8f0] py-4">
                   <div className="setting-info mb-2 flex flex-col">
-                    <label className="mb-1 block text-sm font-medium leading-[1.4] text-ink" htmlFor="faq-search-match-count">{t('knowledgeEditor.faq.matchCountLabel')}</label>
+                    <label className="mb-1 block text-sm font-medium leading-[22px] text-ink" htmlFor="faq-search-match-count">{t('knowledgeEditor.faq.matchCountLabel')}</label>
                     <p className="desc m-0 text-xs leading-[1.4] text-muted">{t('knowledgeEditor.faq.matchCountDesc')}</p>
                   </div>
                   <div className="setting-control flex flex-col gap-2">
@@ -1593,13 +1606,13 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                         value={searchForm.matchCount}
                         onChange={(event) => onSearchFormChange({ matchCount: Number(event.target.value) })}
                       />
-                      <div className="slider-value min-w-[50px] rounded-md bg-surface px-2 py-1 text-right text-sm font-medium leading-[1.4] text-ink tabular-nums">{searchForm.matchCount}</div>
+                      <div className="slider-value min-w-[50px] rounded-md bg-surface px-2 py-[5px] text-right text-sm font-medium leading-5 text-ink tabular-nums">{searchForm.matchCount}</div>
                     </div>
                   </div>
                 </div>
                 <div className="setting-row flex flex-col gap-3 pt-4">
                   <div className="setting-control flex flex-col gap-2">
-                    <Button type="button" variant="primary" className="search-button h-9 w-full justify-center rounded-lg" loading={searching} onClick={runSearchTest}>
+                    <Button type="button" variant="primary" className="search-button h-9 w-full justify-center rounded-[3px]" loading={searching} onClick={runSearchTest}>
                       {searching ? t('knowledgeEditor.faq.searching') : t('knowledgeEditor.faq.searchButton')}
                     </Button>
                   </div>

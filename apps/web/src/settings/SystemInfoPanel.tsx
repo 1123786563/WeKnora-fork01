@@ -14,6 +14,12 @@ export function SystemInfoPanel({ payload, locale }: { payload: unknown; locale:
   const t = (key: string) => formatMessage(locale, key);
   return (
     <div className="system-info" data-testid="system-info-panel">
+      {/* Vue SystemInfo.vue:3-7 — the panel owns its section-header (no
+          divider); the SettingsPage wrapper heading is suppressed via CSS. */}
+      <div className="section-header">
+        <h2>{t('system.title')}</h2>
+        <p className="section-description">{t('system.sectionDescription')}</p>
+      </div>
       <div className="settings-group">
         {rows.map((row) => (
           <div className="setting-row" key={row.labelKey}>
@@ -24,8 +30,10 @@ export function SystemInfoPanel({ payload, locale }: { payload: unknown; locale:
             <div className="setting-control">
               <span className="info-value">
                 {row.value}
+                {/* Vue SystemInfo.vue:36-45 — edition tag sits between the
+                    version and the commit id, with margin-left 8px. */}
+                {row.tag ? <span className={'wk-tag wk-tag--' + (row.tagTone ?? 'default') + ' ml-[8px]! inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]' + (row.tagTone === 'warning' ? ' text-[#b45309]! bg-[#fffaeb]! border border-solid border-[#fedf89]' : '')}>{row.tag}</span> : null}
                 {row.commit ? <span className="commit-info"> ({row.commit})</span> : null}
-                {row.tag ? <span className={'wk-tag wk-tag--' + (row.tagTone ?? 'default') + ' inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]' + (row.tagTone === 'warning' ? ' text-[#b45309]! bg-[#fffaeb]! border border-solid border-[#fedf89]' : '')}>{row.tag}</span> : null}
               </span>
             </div>
           </div>

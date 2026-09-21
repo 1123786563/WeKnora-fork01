@@ -3452,6 +3452,10 @@ export function KnowledgeDocumentsPage({
   }
 
   // Audit must-fix #1: cancel parse for every selected in-flight document.
+  // (kept as the batch-bar parity slice dropped the dedicated 停止解析 button —
+  // Vue DocumentBatchBar has no batch cancel-parse action; per-doc 停止解析
+  // stays on the row menu / processing timeline.)
+  void cancelSelectedParse;
   async function cancelSelectedParse() {
     if (!selected.size) return;
     setMutationError(null);
@@ -3997,86 +4001,101 @@ export function KnowledgeDocumentsPage({
                 ) : null}
               </div>
             </div>
-            {canContribute && (batchMode || selected.size > 0) ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              <label className="wk-select-all inline-flex items-center gap-1 whitespace-nowrap">
-                <Checkbox
-                  type="checkbox"
-                  checked={allOnPageSelected}
-                  disabled={items.length === 0}
-                  onChange={toggleAllOnPage}
-                  aria-label={t("knowledgeBase.selectAll")}
-                />
-                {t("knowledgeBase.selectAll")}
-              </label>
-              <span className="mr-auto text-[0.85rem] text-muted">
-                {t("knowledgeBase.documents.selectedOnPage", {
-                  count: selectedOnPage,
-                })}
-                {selected.size > selectedOnPage
-                  ? ` · ${t("knowledgeBase.documents.selectedTotal", { count: selected.size })}`
-                  : ""}
-              </span>
-              {/* Vue DocumentBatchBar: 取消选择 keeps batch mode escapable. */}
-              <Button
-                type="button"
-                onClick={() => { setSelected(new Set()); setBatchMode(false); }}
+            {/* Vue DocumentBatchBar (DocumentBatchBar.vue) + .doc-batch-bar-anchor
+                (KnowledgeBase.vue:2779/3550): the batch toolbar floats at the
+                bottom of the list area (centered, max-width 920px white card) —
+                NOT an inline block above the results. Left: 已选 N 项 +
+                全选已加载/取消选择 text buttons; right: 批量下载(primary) /
+                重建知识 / 批量打标签 / 移动到目录 / 批量删除. */}
+            {(canDownload || canContribute) && (batchMode || selected.size > 0) ? (
+              <div
+                className="doc-batch-bar-anchor"
+                role="region"
+                aria-label={t("knowledgeBase.selectedCount", { count: selected.size })}
               >
-                {t("knowledgeBase.clearSelection")}
-              </Button>
-              {/* Vue DocumentBatchBar primary action: 批量下载 (download stays
-                  available to contributors even without mutate rights). */}
-              <Button
-                type="button"
-                variant="primary"
-                disabled={!selected.size || batchDownloading}
-                onClick={() => void handleBatchDownload()}
-              >
-                {t(batchDownloading ? "knowledgeBase.batchDownloading" : "knowledgeBase.batchDownload")}
-              </Button>
-              {canContribute ? (
-                <>
-                  <Button
-                    type="button"
-                    disabled={!selected.size}
-                    onClick={() => void reparseSelected()}
-                  >
-                    {t("knowledgeBase.documents.reparse")}
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={!selected.size}
-                    onClick={() => {
-                      setMoving(true);
-                      setMoveTarget(folderPath ?? "");
-                    }}
-                  >
-                    {t("knowledgeBase.documents.move")}
-                  </Button>
-                  {/* Vue DocumentBatchBar 批量打标签 → BatchTagDialog (L2164-2167). */}
-                  <Button
-                    type="button"
-                    disabled={!selected.size}
-                    onClick={() => setTagDialog({ mode: "batch" })}
-                  >
-                    {tt("knowledgeBase.batchTag")}
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={!selected.size}
-                    onClick={() => setConfirmingDelete(true)}
-                  >
-                    {t("knowledgeBase.documents.delete")}
-                  </Button>
-                </>
-              ) : null}
-              <Button
-                type="button"
-                disabled={!selected.size}
-                onClick={() => void cancelSelectedParse()}
-              >
-                {t("knowledgeBase.documents.cancelParse")}
-              </Button>
-            </div> : null}
+                <div className="doc-batch-bar-inner">
+                  <div className="doc-batch-bar-left">
+                    <span className="doc-batch-bar-count">
+                      {t("knowledgeBase.selectedCount", { count: selected.size })}
+                    </span>
+                    {/* Vue knowledgeBase.selectLoaded (zh-CN.ts:6750 全选已加载);
+                        the key is absent from the React catalog so the literal
+                        travels with the Vue authority comment (same precedent
+                        as the literal "Wiki" tab). */}
+                    <button type="button" className="doc-batch-bar-clear" onClick={toggleAllOnPage}>
+                      全选已加载
+                    </button>
+                    <button
+                      type="button"
+                      className="doc-batch-bar-clear"
+                      onClick={() => { setSelected(new Set()); setBatchMode(false); }}
+                    >
+                      {t("knowledgeBase.clearSelection")}
+                    </button>
+                  </div>
+                  <div className="doc-batch-bar-actions">
+                    {/* Vue DocumentBatchBar 每个按钮带 14px t-icon（download/refresh/
+                        discount/folder/delete），此处补齐（ix-kb-batch 残差）。 */}
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="primary"
+                      disabled={!selected.size || batchDownloading}
+                      onClick={() => void handleBatchDownload()}
+                    >
+                      <Icon size={14}><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /></Icon>
+                      {t(batchDownloading ? "knowledgeBase.batchDownloading" : "knowledgeBase.batchDownload")}
+                    </Button>
+                    {canContribute ? (
+                      <>
+                        <Button
+                          type="button"
+                          size="small"
+                          disabled={!selected.size}
+                          onClick={() => void reparseSelected()}
+                        >
+                          <Icon size={14}><path d="M21 12a9 9 0 11-2.64-6.36" /><path d="M21 3v6h-6" /></Icon>
+                          {t("knowledgeBase.rebuildDocument")}
+                        </Button>
+                        {/* Vue DocumentBatchBar 批量打标签 → BatchTagDialog (L2164-2167). */}
+                        <Button
+                          type="button"
+                          size="small"
+                          disabled={!selected.size}
+                          onClick={() => setTagDialog({ mode: "batch" })}
+                        >
+                          <Icon size={14}><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" /><circle cx="7" cy="7" r="1.5" /></Icon>
+                          {tt("knowledgeBase.batchTag")}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="small"
+                          disabled={!selected.size}
+                          onClick={() => {
+                            setMoving(true);
+                            setMoveTarget(folderPath ?? "");
+                          }}
+                        >
+                          <Icon size={14}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></Icon>
+                          {t("knowledgeBase.moveToFolder.action")}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="default"
+                          className="border-[var(--color-error,#e34d59)]! text-[var(--color-error,#e34d59)]!"
+                          disabled={!selected.size}
+                          onClick={() => setConfirmingDelete(true)}
+                        >
+                          <Icon size={14}><path d="M3 6h18" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></Icon>
+                          {t("knowledgeBase.batchDelete")}
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {moving && canContribute ? (
               <div
                 className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"
@@ -4179,8 +4198,8 @@ export function KnowledgeDocumentsPage({
                 className={`wk-list wk-document-list relative m-0 list-none p-0${marquee.visible ? " is-marquee-active cursor-crosshair" : ""}`}
                 onMouseDown={marquee.onMouseDown}
               >
-                <li className="wk-document-list-header hidden grid-cols-[28px_minmax(220px,2fr)_minmax(110px,1fr)_minmax(110px,1fr)_90px_120px_150px_40px] items-center gap-3 border-b border-line-soft px-2 py-2 text-[12px] font-medium text-muted lg:grid" role="row">
-                  <span role="columnheader" />
+                <li className="wk-document-list-header hidden grid-cols-[44px_minmax(260px,2.6fr)_minmax(100px,0.9fr)_minmax(96px,0.8fr)_96px_minmax(96px,0.7fr)_140px_48px] items-center border-b border-line-soft px-2 py-2 text-[12px] font-medium text-muted lg:px-4 lg:grid" role="row">
+                  <span role="columnheader" className="flex justify-center">{(canContribute || canDownload) ? <Checkbox type="checkbox" checked={allOnPageSelected} disabled={items.length === 0} onChange={toggleAllOnPage} aria-label={t("knowledgeBase.selectAll")} /> : null}</span>
                   <span role="columnheader">{t("knowledgeBase.columnName")}</span>
                   <span role="columnheader">{t("knowledgeBase.columnTag")}</span>
                   <span role="columnheader">{t("knowledgeBase.columnSource")}</span>
@@ -4193,7 +4212,7 @@ export function KnowledgeDocumentsPage({
                     already lists the same folders, so the list skips duplicate
                     sub-folder rows (tree closed keeps the navigable rows). */}
                 {!showFolderTree ? folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? "")).map((folder) => (
-                  <li key={`folder-${folder.path}`} className="wk-document-list-folder flex cursor-pointer items-center gap-3 border-b border-line-soft px-2 py-3 text-[13px] hover:bg-surface-wash lg:grid lg:grid-cols-[28px_minmax(220px,2fr)_minmax(110px,1fr)_minmax(110px,1fr)_90px_120px_150px_40px]" role="row" title={folder.path} onClick={() => setFolderPath(folder.path)}>
+                  <li key={`folder-${folder.path}`} className="wk-document-list-folder flex cursor-pointer items-center border-b border-line-soft px-2 py-3 text-[13px] hover:bg-surface-wash lg:grid lg:grid-cols-[44px_minmax(260px,2.6fr)_minmax(100px,0.9fr)_minmax(96px,0.8fr)_96px_minmax(96px,0.7fr)_140px_48px] lg:px-4" role="row" title={folder.path} onClick={() => setFolderPath(folder.path)}>
                     <span aria-hidden="true" />
                     <span className="flex min-w-0 items-center gap-2 font-medium text-primary-deep"><FolderIcon size={16} /><span className="truncate">{folder.name}</span></span>
                     <span />
@@ -4211,8 +4230,8 @@ export function KnowledgeDocumentsPage({
                   const status = documentStatus(document, t);
                   const actions = documentRowActions(document.parse_status);
                   return (
-                    <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft px-2 py-[0.9rem] hover:bg-surface-wash lg:grid lg:grid-cols-[28px_minmax(220px,2fr)_minmax(110px,1fr)_minmax(110px,1fr)_90px_120px_150px_40px]" onClick={() => openDocumentDetail(document)}>
-                      {canContribute && batchMode ? <Checkbox
+                    <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft px-2 py-[0.9rem] hover:bg-surface-wash lg:grid lg:grid-cols-[44px_minmax(260px,2.6fr)_minmax(100px,0.9fr)_minmax(96px,0.8fr)_96px_minmax(96px,0.7fr)_140px_48px] lg:px-4" onClick={() => openDocumentDetail(document)}>
+                      {(canContribute || canDownload) ? <Checkbox
                           type="checkbox"
                           aria-label={t("knowledgeBase.documents.select", {
                             name: displayName(document),
@@ -4220,18 +4239,24 @@ export function KnowledgeDocumentsPage({
                           checked={selected.has(document.id)}
                           onChange={(event) => toggleSelected(document.id, (event.nativeEvent as MouseEvent).shiftKey)}
                         /> : null}
-                      <div className="wk-list-item-copy grid gap-[0.2rem] min-w-0">
+                      {/* Vue .cell-name: 28px file-icon wrap + single-line
+                          .row-file-name (14px/600, ellipsis, primary text). */}
+                      <div className="flex min-w-0 items-center gap-[10px]">
+                        <span className="wk-row-file-icon shrink-0" aria-hidden="true"><FileIcon size={16} /></span>
+                        <div className="wk-list-item-copy grid gap-[0.2rem] min-w-0">
                         <button
                           type="button"
-                          className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline"
+                          className="wk-row-file-name min-w-0 truncate border-0 bg-transparent cursor-pointer p-0 text-left text-ink [font:inherit] text-[14px] font-semibold hover:underline"
+                          title={displayName(document)}
                           onClick={(event) => { event.stopPropagation(); openDocumentDetail(document); }}
                         >
                           {displayName(document)}
                         </button>
                         {document.folder_path ? <button type="button" className="flex min-w-0 items-center gap-1 border-0 bg-transparent p-0 text-left font-mono text-[0.8rem] text-muted hover:underline" onClick={(event) => { event.stopPropagation(); setFolderPath(document.folder_path); }}><FolderIcon size={12} /><span className="truncate">{document.folder_path}</span></button> : null}
                       </div>
-                      <span className="hidden min-w-0 lg:block">{documentTags(document).length > 0 ? <button type="button" className="border-0 bg-transparent p-0" onClick={(event) => { event.stopPropagation(); if (canContribute) setTagDialog({ mode: "single", document }); }}><DocumentTagChips tags={documentTags(document)} /></button> : canContribute ? <button type="button" className="border-0 bg-transparent p-0 text-[12px] text-muted" onClick={(event) => { event.stopPropagation(); setTagDialog({ mode: "single", document }); }}>+ {tt("knowledgeBase.tagLabel")}</button> : null}</span>
-                      <span className="hidden items-center gap-1 text-[12px] text-muted lg:flex"><LinkIcon size={13} />{documentSourceLabel(document, t)}</span>
+                      </div>
+                      <span className="hidden min-w-0 lg:block">{documentTags(document).length > 0 ? <button type="button" className="border-0 bg-transparent p-0" onClick={(event) => { event.stopPropagation(); if (canContribute) setTagDialog({ mode: "single", document }); }}><DocumentTagChips tags={documentTags(document)} /></button> : canContribute ? <button type="button" className="wk-row-tag-add border-0 bg-transparent p-0 text-[12px] text-muted" onClick={(event) => { event.stopPropagation(); setTagDialog({ mode: "single", document }); }}>+ {tt("knowledgeBase.tagLabel")}</button> : null}</span>
+                      <span className="hidden items-center gap-1 text-[12px] text-muted lg:flex"><Icon size={13}><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /><path d="M12 15V3" /><path d="M7 8l5-5 5 5" /></Icon>{documentSourceLabel(document, t)}</span>
                       <span className="hidden font-mono text-[12px] text-muted lg:block">{documentFileSizeLabel(document.file_size)}</span>
                       <Status tone={status.tone}>{status.label}</Status>
                       <span className="hidden font-mono text-[12px] text-muted lg:block">{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
@@ -4777,7 +4802,7 @@ export function KnowledgeDocumentsPage({
           title={t("knowledgeBase.settings")}
           closeLabel={t("common.close")}
           onClose={() => setKbSettingsOpen(false)}
-          className="h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
+          className="wk-kb-settings-dialog h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
         >
           {/* R484: the Vue settings footer 取消 (handleClose) discards the
               drafts and closes the drawer — onClose wires that close. */}

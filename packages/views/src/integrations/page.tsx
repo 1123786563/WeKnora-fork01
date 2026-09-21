@@ -484,8 +484,10 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
     <>
     {/* Former .wk-integrations-page/.wk-integrations-header (apps/web styles.css
         181-183) as Tailwind utilities; the h1 margin uses the important suffix
-        to outrank the global unlayered h1 rule still in styles.css. */}
-    <main className="mx-auto max-w-[1040px] px-[1rem] py-[2rem]">
+        to outrank the global unlayered h1 rule still in styles.css. Vue settings
+        embeds the section inside .content-wrapper--full (30px 34px 40px), so the
+        embedded mode drops the route-shell paddings. */}
+    <main className={'mx-auto max-w-[1040px]' + (embedded ? '' : ' px-[1rem] py-[2rem]')}>
       {!embedded ? <><header className="flex items-start justify-between gap-[1rem] mb-[1.25rem]">
         <div><h1 className="m-0!">{t('integrations.title')}</h1><p className="wk-muted text-muted">{t('integrations.agentEditor.desc')}</p></div>
         {onReload ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onReload}>{t('common.retry')}</button> : null}
@@ -497,17 +499,16 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           Vue IntegrationSettingsSection.vue renders the section-header card only
           for im/embed/api; the cli/chrome/claw landings mount bare inside
           .integrations-settings__body--landing (max-width 760px, no card). */}
-        <section className={section.external ? 'min-w-0' : 'border border-solid border-line rounded-[10px] bg-surface p-[1.25rem]'}>
-        {!section.external ? <div className="flex items-start justify-between gap-[1rem] border-b border-solid border-[#eef1f5] pb-[1rem] mb-[1rem]">
-          <div className="wk-int-section-heading">
-            <h2 className="m-0 mb-[6px] text-ink text-[18px] font-semibold leading-[1.35]">{copy.heading}</h2>
-            <p className="m-0 text-muted-strong text-[13px] leading-[1.6]">
+        <section className="min-w-0">
+        {/* Vue IntegrationSettingsSection.vue renders the section header bare on
+            the body (no card / divider / role pill): h2 18px + 13px description. */}
+        {!section.external ? <div className="wk-int-section-heading mb-[18px]">
+            <h2 className="m-0 mb-[6px] text-[rgba(0,0,0,0.9)] text-[18px] font-semibold leading-[1.35]">{copy.heading}</h2>
+            <p className="m-0 text-[13px] leading-[1.6] text-[rgba(0,0,0,0.6)]">
               {copy.description}
-              {copy.docLinkLabel && copy.docUrl ? <a className={INT_DOC_LINK_CLASS} href={copy.docUrl} target="_blank" rel="noreferrer noopener">{copy.docLinkLabel}<span className="text-[12px]" aria-hidden="true">↗</span></a> : null}
+              {copy.docLinkLabel && copy.docUrl ? <a className="ml-[6px] inline-flex items-center gap-[3px] text-[#07c05f] no-underline hover:underline" href={copy.docUrl} target="_blank" rel="noreferrer noopener">{copy.docLinkLabel}<svg className="text-[13px]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg></a> : null}
             </p>
-          </div>
-          {section.minRole === 'owner' ? <span className="rounded-pill px-[.55rem] py-[.2rem] text-[.8rem] text-[#6941c6] bg-[#f4f3ff]">Owner</span> : null}
-        </div> : null}
+          </div> : null}
         {loading ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.loading')}</p> : null}
         {error || localError ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{error || localError}</p> : null}
         {!loading && !error && (tab === 'im' || tab === 'embed') ? <ChannelListPanel
@@ -690,17 +691,17 @@ interface ChannelListCopy {
 // background and hover state are per-variant so no two utilities of the same
 // property compete on one element. max-[720px] carries the old
 // @media (max-width: 720px) card wrap.
-const CHANNEL_CARD_CLASS = 'relative flex items-center gap-3 box-border min-h-14 px-3 py-[10px] rounded-[10px] border border-line text-left [font:inherit] transition-[border-color,box-shadow] duration-[180ms] ease-[ease] max-[720px]:items-start max-[720px]:flex-wrap';
-const CHANNEL_CARD_CLICKABLE_CLASS = CHANNEL_CARD_CLASS + ' w-full cursor-pointer bg-surface text-[color:inherit] hover:border-[#7ea4f2] hover:shadow-[0_4px_14px_rgba(15,23,42,0.06)] hover:outline-none focus-visible:border-[#7ea4f2] focus-visible:shadow-[0_4px_14px_rgba(15,23,42,0.06)] focus-visible:outline-none';
+const CHANNEL_CARD_CLASS = 'relative flex items-center gap-3 box-border min-h-14 px-3 py-[10px] rounded-[10px] border border-[#e7e7e7] text-left [font:inherit] transition-[border-color,box-shadow] duration-[180ms] ease-[ease] max-[720px]:items-start max-[720px]:flex-wrap';
+const CHANNEL_CARD_CLICKABLE_CLASS = CHANNEL_CARD_CLASS + ' w-full cursor-pointer bg-surface text-[color:inherit] hover:border-[#08dd6e] hover:shadow-[0_4px_14px_rgba(15,23,42,0.06)] hover:outline-none focus-visible:border-[#07c05f] focus-visible:shadow-[0_4px_14px_rgba(15,23,42,0.06)] focus-visible:outline-none';
 const CHANNEL_CARD_STATIC_CLASS = CHANNEL_CARD_CLASS + ' bg-surface text-[color:inherit]';
-const CHANNEL_CARD_ADD_CLASS = CHANNEL_CARD_CLASS + ' w-full cursor-pointer border-dashed bg-transparent text-[#98a2b3] hover:border-primary hover:bg-[rgba(46,109,230,0.06)] hover:text-primary hover:shadow-none focus-visible:border-primary focus-visible:bg-[rgba(46,109,230,0.06)] focus-visible:text-primary focus-visible:shadow-none';
+const CHANNEL_CARD_ADD_CLASS = CHANNEL_CARD_CLASS + ' w-full cursor-pointer border-dashed bg-transparent text-[#98a2b3] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f] hover:shadow-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,0.06)] focus-visible:text-[#07c05f] focus-visible:shadow-none';
 const CHANNEL_BADGE_CLASS = 'flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg';
 const CHANNEL_BADGE_STATIC_CLASS = CHANNEL_BADGE_CLASS + ' bg-hover-wash text-[12px] font-semibold text-muted-strong';
-const CHANNEL_BADGE_ADD_CLASS = CHANNEL_BADGE_CLASS + ' bg-[rgba(46,109,230,0.1)] text-[20px] font-normal text-primary';
+const CHANNEL_BADGE_ADD_CLASS = CHANNEL_BADGE_CLASS + ' bg-[rgba(7,192,95,0.1)] text-[20px] font-normal text-[#07c05f]';
 const CHANNEL_CARD_BODY_CLASS = 'min-w-0 flex-1';
 const CHANNEL_CARD_HEADER_CLASS = 'flex min-w-0 items-center gap-1.5';
 const CHANNEL_CARD_TITLE_CLASS = 'm-0 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap leading-[1.4]';
-const CHANNEL_CARD_TITLE_STATIC_CLASS = CHANNEL_CARD_TITLE_CLASS + ' text-[14px] font-semibold text-ink';
+const CHANNEL_CARD_TITLE_STATIC_CLASS = CHANNEL_CARD_TITLE_CLASS + ' text-[14px] font-semibold text-[rgba(0,0,0,0.9)]';
 const CHANNEL_CARD_TITLE_ADD_CLASS = CHANNEL_CARD_TITLE_CLASS + ' text-[13px] font-medium text-[color:inherit]';
 const CHANNEL_CARD_AGENT_CLASS = 'mt-1 block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.4] text-[#98a2b3]';
 const CHANNEL_CARD_ACTIONS_CLASS = 'ml-auto flex shrink-0 items-center gap-0.5';
@@ -714,7 +715,7 @@ const CHANNEL_CARD_ACTIONS_CLASS = 'ml-auto flex shrink-0 items-center gap-0.5';
 const INT_TAB_CLASS =
   'cursor-pointer rounded-pill border border-solid border-line bg-surface px-[.75rem] py-[.5rem] text-muted-strong';
 const INT_TAB_ACTIVE_CLASS = INT_TAB_CLASS + ' border-primary bg-surface-wash text-primary-deep';
-const INT_DOC_LINK_CLASS = 'inline-flex items-center gap-[3px] ml-[6px] text-primary no-underline hover:underline';
+const INT_DOC_LINK_CLASS = 'inline-flex items-center gap-[3px] ml-[6px] text-[#07c05f] no-underline hover:underline';
 const CODE_TOOLBAR_CLASS = 'relative';
 const CODE_TOOLBAR_PRE_CLASS = 'm-0 overflow-x-auto rounded-card bg-ink px-[.8rem] py-[.7rem] pr-[2.6rem] text-[#edf2ff] [font:.78rem/1.5_ui-monospace,_monospace]';
 const CODE_TOOLBAR_BUTTON_CLASS = 'absolute top-[.35rem] right-[.35rem] text-[#9fb4d8]!';
@@ -842,8 +843,8 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
 }) {
   return <div className="wk-channels-section">
     <div className="mb-3 flex items-center gap-2">
-      <span className="text-[14px] font-medium text-ink">{copy.channelsTitle}</span>
-      <span className="rounded-[10px] bg-hover-wash px-2 py-0.5 text-[12px] text-[#98a2b3]">{items.length}</span>
+      <span className="text-[14px] font-medium text-[rgba(0,0,0,0.9)]">{copy.channelsTitle}</span>
+      <span className="rounded-[10px] bg-[#f3f3f3] px-2 py-0.5 text-[12px] text-[rgba(0,0,0,0.26)]">{items.length}</span>
     </div>
     {/* Vue IMChannelPanel/AgentEmbedChannelPanel: the empty description is a
         viewer-only branch — admins see the bare grid with the add tile. */}
@@ -1604,126 +1605,140 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
   const clawSteps = ['api', 'env', 'install', 'verify'] as const;
   const openExternal = () => { if (externalUrl) window.open(externalUrl, '_blank', 'noopener,noreferrer'); };
   const isClaw = tab === 'claw';
+  // Vue integration-landing.less: brand = --td-brand-color #07c05f; claw swaps
+  // in @claw-accent #e85d2a / @claw-accent-dark #c44d1f.
   const accent = isClaw ? '#c44d1f' : undefined;
-  // Vue integration-landing.less landing-hero background (135deg brand tint
-  // fading to the container background); claw swaps the brand for @claw-accent.
+  const brand = isClaw ? '#e85d2a' : '#07c05f';
+  const brandDark = accent ?? '#07c05f';
+  // Vue landing-hero background (135deg brand tint fading to the container) +
+  // the inset top highlight.
   const heroBackground = isClaw
     ? 'linear-gradient(135deg, rgba(232,93,42,0.12) 0%, rgba(232,93,42,0.05) 45%, #ffffff 72%)'
-    : 'linear-gradient(135deg, rgba(46,109,230,0.10) 0%, rgba(46,109,230,0.04) 42%, #ffffff 72%)';
+    : 'linear-gradient(135deg, rgba(7,192,95,0.10) 0%, rgba(7,192,95,0.04) 42%, #ffffff 72%)';
+  const heroInsetShadow = isClaw ? 'inset 0 1px 0 rgba(232,93,42,0.10)' : 'inset 0 1px 0 rgba(7,192,95,0.08)';
+  // .ext-cta border: color-mix(brand 28%, --td-component-stroke #e7e7e7).
+  const ctaBorder = isClaw ? '#e9b49c' : '#a8dcc0';
   const envExample = `export WEKNORA_BASE_URL="${apiBaseDisplay || 'https://your-server.com/api/v1'}"\nexport WEKNORA_API_KEY="sk-your-api-key"`;
   // Vue IntegrationLandingLayout: hero, external CTA, constrained two-column
   // content and footer metadata are part of the page contract, not decoration.
   return <div className={'integration-landing grid max-w-[760px] gap-[14px]' + (tab === 'claw' ? ' integration-landing--claw' : '')}>
-    <header className="landing-hero flex items-start gap-4 rounded-[10px] border border-line px-[18px] py-4" style={{ background: heroBackground }}>
+    <header className="landing-hero flex items-start gap-4 rounded-[10px] border border-[#e7e7e7] px-[18px] py-4" style={{ background: heroBackground, boxShadow: heroInsetShadow }}>
       <div className="min-w-0 flex-1">
-        <h2 className="m-0 mb-1 text-[16px] font-semibold leading-[1.35] text-ink">{t(`integrations.${tab}.title`)}</h2>
-        <p className="m-0 text-[13px] leading-[1.55] text-muted">{t(`integrations.${tab}.subtitle`)}</p>
-        {tab === 'chrome' ? <div className="mt-2 flex flex-wrap gap-1.5">{['research', 'learning', 'tech', 'work'].map((key) => <span key={key} className="rounded-[4px] border border-line bg-surface px-2 py-0.5 text-[11px] leading-[1.45] text-muted">{t(`integrations.chrome.scenarios.${key}`)}</span>)}</div> : null}
-        <button type="button" className="ext-cta mt-[14px] flex min-h-[52px] w-full items-center gap-3 rounded-[8px] border border-dashed bg-surface px-3 py-[10px] text-left text-ink" style={isClaw ? { borderColor: 'rgba(232,93,42,0.3)' } : undefined} onClick={openExternal}>
-          <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[8px] bg-surface-wash text-primary" style={accent ? { background: 'rgba(232,93,42,0.12)', color: accent } : undefined}>{tab === 'cli' ? '⌘' : tab === 'chrome' ? '▣' : '🦞'}</span>
-          <span className="flex min-w-0 flex-1 flex-col"><span className="text-[13px] font-semibold leading-[1.35]">{cta.label}</span><span className="text-[11px] leading-[1.4] text-muted">{cta.hint}</span></span>
-          <span aria-hidden="true" className="flex size-[30px] items-center justify-center rounded-[7px] bg-surface-wash text-muted" style={accent ? { background: 'rgba(232,93,42,0.1)', color: accent } : undefined}>↗</span>
+        <h2 className="m-0 mb-1 text-[16px] font-semibold leading-[1.35] text-[rgba(0,0,0,0.9)]">{t(`integrations.${tab}.title`)}</h2>
+        <p className="m-0 text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">{t(`integrations.${tab}.subtitle`)}</p>
+        {tab === 'chrome' ? <div className="mt-2 flex flex-wrap gap-1.5">{['research', 'learning', 'tech', 'work'].map((key) => <span key={key} className="rounded-[4px] border border-[#ececec] bg-[rgba(255,255,255,0.7)] px-2 py-0.5 text-[11px] leading-[1.45] text-[rgba(0,0,0,0.6)]">{t(`integrations.chrome.scenarios.${key}`)}</span>)}</div> : null}
+        {/* Vue ext-cta is a <button style="font: inherit">; Tailwind preflight
+            would otherwise leave the label/hint on the UA button font (Arial). */}
+        <button type="button" className="ext-cta mt-[14px] flex min-h-[52px] w-full items-center gap-3 rounded-[8px] border border-dashed bg-[rgba(255,255,255,0.55)] px-3 py-[10px] text-left text-[rgba(0,0,0,0.9)] [font-family:inherit]" style={{ borderColor: ctaBorder }} onClick={openExternal}>
+          <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[8px] text-[17px] leading-[17px]" style={{ background: isClaw ? 'rgba(232,93,42,0.12)' : 'rgba(7,192,95,0.1)', color: brandDark }}>{tab === 'cli' ? <LandingIcon name="code" /> : tab === 'chrome' ? <LandingIcon name="extension" /> : '🦞'}</span>
+          <span className="flex min-w-0 flex-1 flex-col"><span className="text-[13px] font-semibold leading-[1.35]">{cta.label}</span><span className="text-[11px] leading-[1.4] text-[rgba(0,0,0,0.4)]">{cta.hint}</span></span>
+          <span aria-hidden="true" className="flex size-[30px] items-center justify-center rounded-[7px] text-[15px] text-[rgba(0,0,0,0.6)]" style={{ background: isClaw ? 'rgba(232,93,42,0.1)' : 'rgba(7,192,95,0.08)' }}>↗</span>
         </button>
       </div>
     </header>
     <div className="grid items-stretch gap-[14px] min-[821px]:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
-      <div className="flex min-w-0"><div className="flex w-full flex-col rounded-[10px] border border-line bg-surface px-4 pb-[14px] pt-0">
-    {tab === 'cli' ? <section className="border-b border-line py-3">
+      <div className="flex min-w-0"><div className="flex w-full flex-col rounded-[10px] border border-[#e7e7e7] bg-surface p-[2px_16px_14px] box-border">
+    {tab === 'cli' ? <section className="flex flex-col gap-3 border-b border-[#e7e7e7] pb-[14px] pt-[10px]">
       <LandingSectionHead label={t('integrations.cli.quickstart')} />
-      <ol className="m-0 list-none grid gap-[0.9rem] p-0">
-        {cliSteps.map((step, index) => <li key={step.key} className="flex gap-[10px]">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[12px] font-semibold text-primary">{index + 1}</span>
+      {/* Vue landing-steps/landing-step: 9px row padding with row dividers. */}
+      <ol className="m-0 flex list-none flex-col p-0">
+        {cliSteps.map((step, index) => <li key={step.key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0">
+          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(7,192,95,0.12)] text-[11px] font-semibold text-[#07c05f]">{index + 1}</span>
           <div className="wk-landing-step-body min-w-0 flex-1">
-            <div className="text-[12px] font-semibold leading-[1.4] text-ink">{step.title}</div>
-            <p className="m-0 mt-[0.2rem] mb-[0.5rem] text-[11px] leading-[1.5] text-muted-strong">{step.desc}</p>
-            <LandingCodeToolbar code={step.command} copyLabel={t('integrations.cli.copy')} onCopy={() => copy(step.command)} />
+            <div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{step.title}</div>
+            <p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{step.desc}</p>
+            <div className="mt-2"><LandingCodeToolbar code={step.command} copyLabel={t('integrations.cli.copy')} onCopy={() => copy(step.command)} /></div>
           </div>
         </li>)}
       </ol>
     </section> : null}
     {false && tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
-      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.commandsTitle')}</h4>
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-[rgba(0,0,0,0.9)]">{t('integrations.cli.commandsTitle')}</h4>
       <p className="wk-muted text-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.commandsDesc')}</p>
       <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('weknora doc upload')}>⧉</button></div>
     </section> : null}
     {false && tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
-      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.mcpTitle')}</h4>
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-[rgba(0,0,0,0.9)]">{t('integrations.cli.mcpTitle')}</h4>
       <p className="wk-muted text-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.mcpDesc')}</p>
       <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}>⧉</button></div>
     </section> : null}
-    {tab === 'chrome' ? <section className="border-b border-line py-3">
+    {tab === 'chrome' ? <section className="flex flex-col gap-3 border-b border-[#e7e7e7] pb-[14px] pt-[10px]">
       <LandingSectionHead label={t('integrations.chrome.capabilitiesTitle')} count={chromeCapabilities.length} />
       <div className="grid grid-cols-2 gap-[10px]">
-        {chromeCapabilities.map((key) => <div key={key} className="flex flex-col gap-2 rounded-[8px] border border-line bg-surface-wash p-3">
-          <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[7px] bg-surface text-primary"><LandingIcon name={key} /></span>
-          <h5 className="m-0 text-[13px] font-semibold leading-[1.4] text-ink">{t('integrations.chrome.capabilities.' + key + '.title')}</h5>
-          <p className="m-0 text-[12px] leading-[1.5] text-muted-strong">{t('integrations.chrome.capabilities.' + key + '.desc')}</p>
+        {chromeCapabilities.map((key) => <div key={key} className="flex flex-col gap-2 rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3] p-3">
+          <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[7px] bg-surface text-[#07c05f]"><LandingIcon name={key} /></span>
+          <h5 className="m-0 text-[13px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.chrome.capabilities.' + key + '.title')}</h5>
+          <p className="m-0 text-[12px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.chrome.capabilities.' + key + '.desc')}</p>
         </div>)}
       </div>
     </section> : null}
     {false && tab === 'chrome' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
-      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.chrome.stepsTitle')}</h4>
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-[rgba(0,0,0,0.9)]">{t('integrations.chrome.stepsTitle')}</h4>
       <ol className="m-0 list-none grid gap-[0.9rem] p-0">
         {chromeSteps.map((key, index) => <li key={key} className="flex gap-[10px]">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[12px] font-semibold text-primary">{index + 1}</span>
           <div className="wk-landing-step-body">
-            <div className="text-[14px] font-semibold text-ink">{t('integrations.chrome.steps.' + key + '.title')}</div>
+            <div className="text-[14px] font-semibold text-[rgba(0,0,0,0.9)]">{t('integrations.chrome.steps.' + key + '.title')}</div>
             <p className="m-0 mt-[0.2rem] mb-[0.5rem] text-[13px] leading-[1.6] text-muted-strong">{t('integrations.chrome.steps.' + key + '.desc')}</p>
           </div>
         </li>)}
       </ol>
     </section> : null}
-    {tab === 'claw' ? <section className="border-b border-line py-3">
+    {tab === 'claw' ? <section className="flex flex-col gap-3 border-b border-[#e7e7e7] pb-[14px] pt-[10px]">
       <LandingSectionHead label={t('integrations.claw.capabilitiesTitle')} count={clawCapabilities.length} accent={accent} />
       <div className="grid grid-cols-2 gap-[10px]">
-        {clawCapabilities.map((key, index) => <div key={key} className={'flex flex-col gap-2 rounded-[8px] border border-line bg-surface-wash p-3' + (isClaw && index === clawCapabilities.length - 1 && clawCapabilities.length % 2 === 1 ? ' col-span-2' : '')}>
+        {clawCapabilities.map((key, index) => <div key={key} className={'flex flex-col gap-2 rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3] p-3' + (isClaw && index === clawCapabilities.length - 1 && clawCapabilities.length % 2 === 1 ? ' col-span-2' : '')}>
           <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[7px] bg-surface" style={accent ? { color: accent, background: 'rgba(232,93,42,0.1)' } : undefined}><LandingIcon name={key} /></span>
-          <h5 className="m-0 text-[13px] font-semibold leading-[1.4] text-ink">{t('integrations.claw.capabilities.' + key + '.title')}</h5>
-          <p className="m-0 text-[12px] leading-[1.5] text-muted-strong">{t('integrations.claw.capabilities.' + key + '.desc')}</p>
+          <h5 className="m-0 text-[13px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.claw.capabilities.' + key + '.title')}</h5>
+          <p className="m-0 text-[12px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.claw.capabilities.' + key + '.desc')}</p>
         </div>)}
       </div>
     </section> : null}
     {false && tab === 'claw' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
-      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.claw.stepsTitle')}</h4>
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-[rgba(0,0,0,0.9)]">{t('integrations.claw.stepsTitle')}</h4>
       <ol className="m-0 list-none grid gap-[0.9rem] p-0">
         {clawSteps.map((key, index) => <li key={key} className="flex gap-[10px]">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[12px] font-semibold text-primary">{index + 1}</span>
           <div className="wk-landing-step-body">
-            <div className="text-[14px] font-semibold text-ink">{t('integrations.claw.steps.' + key + '.title')}</div>
+            <div className="text-[14px] font-semibold text-[rgba(0,0,0,0.9)]">{t('integrations.claw.steps.' + key + '.title')}</div>
             <p className="m-0 mt-[0.2rem] mb-[0.5rem] text-[13px] leading-[1.6] text-muted-strong">{t('integrations.claw.steps.' + key + '.desc')}</p>
           </div>
         </li>)}
       </ol>
     </section> : null}
       </div></div>
-      <aside className="flex min-w-0"><div className="flex w-full flex-col rounded-[10px] border border-line bg-surface px-4 pb-[14px] pt-0">
+      <aside className="flex min-w-0"><div className="flex w-full flex-col rounded-[10px] border border-[#e7e7e7] bg-surface p-[2px_16px_14px] box-border">
         {tab === 'cli' ? <>
-          <section className="border-b border-line py-3"><LandingSectionHead label={t('integrations.cli.commandsTitle')} /><p className="m-0 mb-3 text-[12px] leading-[1.55] text-muted">{t('integrations.cli.commandsDesc')}</p><LandingCodeToolbar code={'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'} copyLabel={t('integrations.cli.copy')} onCopy={() => copy('weknora doc upload')} /></section>
-          <section className="py-3"><LandingSectionHead label={t('integrations.cli.mcpTitle')} /><p className="m-0 mb-3 text-[12px] leading-[1.55] text-muted">{t('integrations.cli.mcpDesc')}</p><LandingCodeToolbar code={JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)} copyLabel={t('integrations.cli.copy')} onCopy={() => copy('mcp')} /></section>
-        </> : tab === 'chrome' ? <section className="py-3"><LandingSectionHead label={t('integrations.chrome.stepsTitle')} /><ol className="m-0 grid list-none p-0">{chromeSteps.map((key, index) => <li key={key} className="flex gap-[10px] border-b border-line py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[11px] font-semibold text-primary">{index + 1}</span><div className="min-w-0 flex-1"><div className="text-[12px] font-semibold leading-[1.4] text-ink">{t('integrations.chrome.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-muted-strong">{t('integrations.chrome.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface mt-[6px]! px-[0.6rem]! py-[0.3rem]! text-[12px]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiSettings}>{t('integrations.chrome.openApiSettings')}</button> : null}{key === 'connect' ? <div className="mt-2 flex items-center gap-1"><input readOnly value={apiBaseUrl} aria-label={apiBaseUrl} className="min-w-0 flex-1 rounded-[6px] border border-solid border-line-control bg-surface px-2 py-[5px] text-ink [font:12px_ui-monospace,_SFMono-Regular,_Menlo,_monospace]" /><button className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-solid border-transparent bg-transparent text-muted-strong [font:inherit] hover:bg-hover-wash" type="button" title={t('integrations.chrome.copy')} aria-label={t('integrations.chrome.copy')} onClick={() => copy(apiBaseUrl)}>⧉</button></div> : null}</div></li>)}</ol></section> : <section className="py-3"><LandingSectionHead label={t('integrations.claw.stepsTitle')} accent={accent} /><ol className="m-0 grid list-none p-0">{clawSteps.map((key, index) => <li key={key} className="flex gap-[10px] border-b border-line py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(232,93,42,.14)] text-[11px] font-semibold text-[#c44d1f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="text-[12px] font-semibold leading-[1.4] text-ink">{t('integrations.claw.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-muted-strong">{t('integrations.claw.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button cursor-pointer rounded-control border border-solid bg-surface mt-[6px]! px-[0.6rem]! py-[0.3rem]! text-[12px]! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55!" style={accent ? { color: accent, borderColor: 'rgba(232,93,42,0.38)' } : undefined} type="button" onClick={onOpenApiSettings}>{t('integrations.claw.openApiSettings')}</button> : null}{key === 'env' ? <div className="mt-2"><LandingCodeToolbar code={envExample} copyLabel={t('integrations.claw.copy')} accent={accent} onCopy={() => copy(envExample)} /></div> : null}{key === 'install' ? <div className="mt-2"><LandingCodeToolbar code={'openclaw skills install @lyingbug/weknora'} copyLabel={t('integrations.claw.copy')} accent={accent} onCopy={() => copy('openclaw skills install @lyingbug/weknora')} /></div> : null}</div></li>)}</ol></section>}
+          <section className="flex flex-col gap-3 border-b border-[#e7e7e7] pb-[14px] pt-[10px]"><LandingSectionHead label={t('integrations.cli.commandsTitle')} /><p className="m-0 text-[12px] leading-[1.55] text-[rgba(0,0,0,0.4)]">{t('integrations.cli.commandsDesc')}</p><LandingCodeToolbar code={'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'} copyLabel={t('integrations.cli.copy')} onCopy={() => copy('weknora doc upload')} /></section>
+          <section className="flex flex-col gap-3 pb-[10px] pt-[12px]"><LandingSectionHead label={t('integrations.cli.mcpTitle')} /><p className="m-0 text-[12px] leading-[1.55] text-[rgba(0,0,0,0.4)]">{t('integrations.cli.mcpDesc')}</p><LandingCodeToolbar code={JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)} copyLabel={t('integrations.cli.copy')} onCopy={() => copy('mcp')} /></section>
+        </> : tab === 'chrome' ? <section className="flex flex-col gap-3 pb-[10px] pt-[12px]"><LandingSectionHead label={t('integrations.chrome.stepsTitle')} /><ol className="m-0 flex list-none flex-col p-0">{chromeSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(7,192,95,0.12)] text-[11px] font-semibold text-[#07c05f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.chrome.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.chrome.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-control border border-solid border-line-control! bg-surface mt-[6px]! px-[0.6rem]! py-0! text-[12px]! text-[rgba(0,0,0,0.9)] [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiSettings}>{t('integrations.chrome.openApiSettings')}</button> : null}{key === 'connect' ? <div className="mt-2 flex items-center gap-1"><input readOnly value={apiBaseDisplay} aria-label={apiBaseDisplay} className="min-w-0 flex-1 rounded-[6px] border border-solid border-[#dcdcdc] bg-surface px-2 py-[5px] text-[rgba(0,0,0,0.9)] [font:12px_ui-monospace,_SFMono-Regular,_Menlo,_monospace]" /><button className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-solid border-transparent bg-transparent text-[rgba(0,0,0,0.6)] [font:inherit] hover:bg-hover-wash" type="button" title={t('integrations.chrome.copy')} aria-label={t('integrations.chrome.copy')} onClick={() => copy(apiBaseDisplay)}>⧉</button></div> : null}</div></li>)}</ol></section> : <section className="flex flex-col gap-3 pb-[10px] pt-[12px]"><LandingSectionHead label={t('integrations.claw.stepsTitle')} accent={accent} /><ol className="m-0 flex list-none flex-col p-0">{clawSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(232,93,42,.14)] text-[11px] font-semibold text-[#c44d1f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.claw.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.claw.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-control border border-solid bg-surface mt-[6px]! px-[0.6rem]! py-0! text-[12px]! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55!" style={accent ? { color: accent, borderColor: 'rgba(232,93,42,0.38)' } : undefined} type="button" onClick={onOpenApiSettings}>{t('integrations.claw.openApiSettings')}</button> : null}{key === 'env' ? <div className="mt-2"><LandingCodeToolbar code={envExample} copyLabel={t('integrations.claw.copy')} accent={accent} onCopy={() => copy(envExample)} /></div> : null}{key === 'install' ? <div className="mt-2"><LandingCodeToolbar code={'openclaw skills install @lyingbug/weknora'} copyLabel={t('integrations.claw.copy')} accent={accent} onCopy={() => copy('openclaw skills install @lyingbug/weknora')} /></div> : null}</div></li>)}</ol></section>}
       </div></aside>
     </div>
-    {tab === 'chrome' ? <footer className="text-[11px] text-muted">{t('integrations.chrome.storeMeta')}</footer> : tab === 'claw' ? <footer className="rounded-[8px] border border-line bg-surface-wash px-3 py-[10px] text-[12px] text-muted"><p className="m-0 mb-1">{t('integrations.claw.ecosystemNote')}</p><span className="text-[11px]">{t('integrations.claw.hubMeta')}</span></footer> : null}
+    {tab === 'chrome' ? <footer className="text-[11px] leading-[16px] text-[rgba(0,0,0,0.4)]">{t('integrations.chrome.storeMeta')}</footer> : tab === 'claw' ? <footer className="rounded-[8px] border bg-[#f2eae7] px-3 py-[10px] text-[12px] text-[rgba(0,0,0,0.6)]" style={{ borderColor: '#e6cabd' }}><p className="m-0 mb-1 leading-[1.55]">{t('integrations.claw.ecosystemNote')}</p><span className="block text-right text-[11px] leading-[16px] text-[rgba(148,58,23,0.73)]">{t('integrations.claw.hubMeta')}</span></footer> : null}
   </div>;
 }
 
 // Vue integration-landing.less .setting-drawer__section-title: brand color
 // bar (3x14, @claw-accent for claw) + label + optional section-head-extra
-// count pill pushed to the right edge.
+// count pill pushed to the right edge. leading-[18px] reproduces the Vue
+// line-height: normal box (Tailwind's 1.5 layer default made it 20px and
+// pushed every step row below down 2px).
 function LandingSectionHead({ label, count, accent }: { label: string; count?: number; accent?: string }) {
-  return <h4 className="m-0 mb-[0.6rem] flex items-center gap-2 text-[13px] font-semibold text-ink">
-    <span aria-hidden="true" className="shrink-0 rounded-[2px]" style={{ width: 3, height: 14, background: accent || '#2e6de6' }} />
-    <span className="min-w-0">{label}</span>
-    {typeof count === 'number' ? <span className="ml-auto rounded-[10px] bg-surface-wash px-[7px] py-px text-[11px] font-medium text-muted" style={accent ? { color: accent, background: 'rgba(232,93,42,0.12)' } : undefined}>{count}</span> : null}
+  return <h4 className="m-0 flex items-center gap-2 text-[13px] font-semibold leading-[18px] text-[rgba(0,0,0,0.9)]">
+    <span aria-hidden="true" className="shrink-0 rounded-[2px]" style={{ width: 3, height: 14, background: accent || '#07c05f' }} />
+    <span className="min-w-0 leading-[18px]">{label}</span>
+    {typeof count === 'number' ? <span className="ml-auto rounded-[10px] bg-[#f3f3f3] px-[7px] py-px text-[11px] font-medium text-[rgba(0,0,0,0.26)]" style={accent ? { color: accent, background: 'rgba(232,93,42,0.12)' } : undefined}>{count}</span> : null}
   </h4>;
 }
 
 // Vue .code-toolbar: light bordered strip, mono pre on the left, square copy
-// button on the right (not the dark bg-ink playground style).
+// button on the right (not the dark bg-ink playground style). The Vue copy
+// button computes to 24x24 (t-button small) with 4px side margins — the
+// earlier size-8 left the mono pre 8px narrower than the Vue line measure.
 function LandingCodeToolbar({ code, copyLabel, accent, onCopy }: { code: string; copyLabel: string; accent?: string; onCopy(): void }) {
-  return <div className="flex items-center overflow-hidden rounded-[8px] border border-line bg-surface-wash">
-    <pre className="m-0 min-w-0 flex-1 overflow-x-auto whitespace-pre px-3 py-[10px] text-left text-ink [font:11px/1.55_ui-monospace,_SFMono-Regular,_Menlo,_monospace]">{code}</pre>
-    <button className="mx-1 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-solid border-transparent bg-transparent text-muted-strong [font:inherit] hover:bg-hover-wash" type="button" title={copyLabel} aria-label={copyLabel} style={accent ? { color: accent } : undefined} onClick={onCopy}>⧉</button>
+  return <div className="flex items-center overflow-hidden rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3]">
+    <pre className="m-0 min-w-0 flex-1 overflow-x-auto whitespace-pre px-3 py-[10px] text-left text-[rgba(0,0,0,0.9)] [font:11px/1.55_ui-monospace,_SFMono-Regular,_Menlo,_monospace]">{code}</pre>
+    <button className="mx-1 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-solid border-transparent bg-transparent text-[rgba(0,0,0,0.6)] [font:inherit] hover:bg-hover-wash" type="button" title={copyLabel} aria-label={copyLabel} style={accent ? { color: accent } : undefined} onClick={onCopy}>⧉</button>
   </div>;
 }
 
@@ -1736,6 +1751,8 @@ const LANDING_ICON_PATHS: Record<string, React.ReactNode> = {
   search: <><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></>,
   browse: <><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h10" /></>,
   qa: <><path d="M4 5h16v11H10l-6 4.5V5z" /></>,
+  code: <><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" /></>,
+  extension: <><path d="M10 4.5a2 2 0 1 1 4 0V6h3a1 1 0 0 1 1 1v3h1.5a2 2 0 1 1 0 4H18v3a1 1 0 0 1-1 1h-3v-1.5a2 2 0 1 0-4 0V18H7a1 1 0 0 1-1-1v-3H4.5a2 2 0 1 1 0-4H6V7a1 1 0 0 1 1-1h3z" /></>,
   clip: <><rect x="8" y="8" width="12" height="12" rx="1.5" /><path d="M16 4H5.5A1.5 1.5 0 0 0 4 5.5V16" /></>,
   notes: <><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z" /><path d="M14.5 6.5l3 3" /></>,
   shortcuts: <><path d="M6 18 18 6" /><path d="M9.5 6H18v8.5" /></>,

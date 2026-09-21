@@ -529,3 +529,243 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* --- Vue KnowledgeBaseEditorModal basic-section parity (measured 2026-09-21)
+   .wk-muted was deleted from styles.css but knowledge-settings consumers still
+   emit the class; Vue form tips are 12-14px rgba(0,0,0,.4). */
+.wk-muted { color: var(--wk-color-text-placeholder, rgba(0, 0, 0, 0.4)); }
+
+/* Vue .form-item: stacked label → tip → control, 16px between items. */
+.kb-form-item { margin: 0 0 16px; }
+.kb-form-item:last-child { margin-bottom: 0; }
+.kb-form-label {
+  display: block;
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 21px;
+  font-weight: 500;
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+}
+.kb-form-required { color: var(--wk-color-error, #e34d59); }
+.kb-form-tip {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--wk-color-text-placeholder, rgba(0, 0, 0, 0.4));
+}
+
+/* Vue .kb-id-field: 502px grey box, copy button inside on the right. */
+.kb-id-field {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 502px;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 6px 8px 6px 12px;
+  background: var(--wk-color-surface-hover, #f3f3f3);
+  border: 1px solid var(--wk-color-component, #e7e7e7);
+  border-radius: 6px;
+}
+.kb-id-value {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-id-copy {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 24px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--wk-color-text-secondary, rgba(0, 0, 0, 0.6));
+}
+.kb-id-copy:hover { background: var(--wk-color-surface-active, #e7e7e7); }
+.kb-id-copy svg { width: 14px; height: 14px; }
+
+/* Vue disabled t-radio-group (edit mode): segmented buttons — checked
+   segment #8ce0af/white, disabled segment #eee at 26% text, radius 3. */
+.kb-type-tabs {
+  display: inline-flex;
+  border-radius: 3px;
+  overflow: hidden;
+  font-size: 14px;
+}
+.kb-type-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 16px;
+  height: 32px;
+  box-sizing: border-box;
+  cursor: default;
+  user-select: none;
+}
+.kb-type-tab + .kb-type-tab { border-left: 1px solid var(--wk-color-border, #dcdcdc); }
+.kb-type-tab input[type='radio'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.kb-type-tab.is-checked {
+  background: #8ce0af;
+  border-color: #8ce0af;
+  color: #fff;
+}
+.kb-type-tab.is-disabled {
+  background: #eee;
+  color: var(--wk-color-text-disabled, rgba(0, 0, 0, 0.26));
+}
+
+/* Vue .indexing-checks: 2-col card grid, 12px gap, 10px above. */
+.indexing-checks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+.indexing-check-item {
+  display: block;
+  padding: 12px 14px;
+  border: 1px solid var(--wk-color-component, #e7e7e7);
+  border-radius: 8px;
+  background: var(--wk-color-surface, #fff);
+  cursor: pointer;
+}
+.indexing-check-item.is-checked {
+  border-color: var(--wk-color-brand, #07c05f);
+  background: #e9f8ec;
+}
+.indexing-check-item.is-disabled { cursor: default; }
+.indexing-check-head { display: flex; align-items: center; gap: 8px; }
+.indexing-check-head input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--wk-color-brand, #07c05f);
+}
+.indexing-check-label {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.kb-editor-new-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--wk-color-brand-light, #e9f8ec);
+  color: var(--wk-color-brand, #07c05f);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.4px;
+}
+.indexing-check-desc {
+  display: block;
+  margin-top: 6px;
+  padding-left: 24px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-color-text-placeholder, rgba(0, 0, 0, 0.4));
+}
+
+/* Vue .form-tip.locked-tip: 12px orange below the cards. */
+.kb-locked-tip {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--wk-color-warning, #ed7b2f);
+}
+
+/* Vue t-input / t-textarea (32px, #dcdcdc, radius 3) + n/200 counter. */
+.kb-text-input {
+  width: 100%;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--wk-color-border, #dcdcdc);
+  border-radius: 3px;
+  background: var(--wk-color-surface, #fff);
+  font: inherit;
+  font-size: 14px;
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+}
+.kb-text-input:focus { outline: none; border-color: var(--wk-color-brand, #07c05f); }
+.kb-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--wk-color-border, #dcdcdc);
+  border-radius: 3px;
+  background: var(--wk-color-surface, #fff);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+  resize: vertical;
+}
+.kb-textarea:focus { outline: none; border-color: var(--wk-color-brand, #07c05f); }
+.kb-textarea-info { display: flex; justify-content: flex-end; }
+.kb-desc-count {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--wk-color-text-placeholder, rgba(0, 0, 0, 0.4));
+}
+
+/* Vue .settings-footer: pinned bar under the scroll area, border-top
+   #e7e7e7, 12px 40px padding, right-aligned actions. */
+.wkbs-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 40px;
+  border-top: 1px solid var(--wk-color-component, #e7e7e7);
+  background: var(--wk-color-surface, #fff);
+}
+.wkbs-footer-actions { display: flex; align-items: center; gap: 12px; }
+.wkbs-footer .wkbs-btn-cancel,
+.wkbs-footer .wkbs-btn-save {
+  height: 32px;
+  padding: 0 15px;
+  border-radius: 3px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.wkbs-footer .wkbs-btn-cancel {
+  border: 1px solid var(--wk-color-border, #dcdcdc);
+  background: var(--wk-color-surface, #fff);
+  color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
+}
+.wkbs-footer .wkbs-btn-save {
+  border: 1px solid var(--wk-color-brand, #07c05f);
+  background: var(--wk-color-brand, #07c05f);
+  color: #fff;
+}
+
+/* Vue line-height tighten: sidebar-title lh22 (header 51px), nav group title
+   lh17 (21px tall) so nav item strides match Vue 34px. */
+.wkbs-sidebar-title { line-height: 22px; }
+.wkbs-nav-group-title { line-height: 17px; }
+/* Locked (disabled+checked) indexing checkboxes render grey like the Vue
+   t-checkbox is-disabled state, not brand green. */
+.indexing-checks.is-locked input[type='checkbox'] { accent-color: #dcdcdc; }

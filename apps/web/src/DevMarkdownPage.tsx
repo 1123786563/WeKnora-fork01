@@ -251,50 +251,165 @@ export function shouldRenderCustomMarkdown(markdown: string): boolean {
   return markdown.trim().length > 0;
 }
 
-// Scoped mirror of the Vue page's styles (MarkdownTestPage.vue <style> block).
+// Scoped mirror of the Vue page's styles (MarkdownTestPage.vue <style> block,
+// which mixes in chat-markdown.less). Values below are the resolved TDesign
+// token values measured off the Vue page (--td-brand-color #07c05f,
+// --td-component-stroke #e7e7e7, --td-bg-color-secondarycontainer #f3f3f3,
+// --td-text-color-primary rgba(0,0,0,.9), secondary rgba(0,0,0,.6)).
 // Kept inline because the node test runner imports this module and cannot
-// parse CSS files; the chat typography itself comes from the globally loaded
-// chat.css via the `wk-chat-message-content` class.
+// parse CSS files.
 const PAGE_CSS = `
-.markdown-test-page { max-width: 860px; margin: 0 auto; padding: 32px 24px; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 14px; color: rgba(0,0,0,0.9); }
-.markdown-test-page .page-title { font-size: 24px; font-weight: 700; margin: 16px 0 4px; }
-.markdown-test-page .page-desc { color: #666; font-size: 14px; margin: 14px 0 32px; }
-.markdown-test-page .test-section { margin-bottom: 36px; border-bottom: 1px solid #e5e5e5; padding-bottom: 24px; }
-.markdown-test-page .test-section h2 { font-size: 18px; font-weight: 600; margin: 15px 0 12px; }
-.markdown-test-page .test-hint { font-size: 13px; color: #999; margin: 13px 0 8px; }
+.markdown-test-page { max-width: 860px; margin: 0 auto; padding: 32px 24px; box-sizing: content-box; font-family: -apple-system, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 14px; color: rgba(0,0,0,0.9); -webkit-font-smoothing: antialiased; }
+.markdown-test-page .page-title { font-size: 24px; font-weight: 700; margin: 0.67em 0 4px; }
+.markdown-test-page .page-desc { color: rgba(0,0,0,0.6); font-size: 14px; margin: 14px 0 32px; }
+.markdown-test-page .test-section { margin-bottom: 36px; border-bottom: 1px solid #e7e7e7; padding-bottom: 24px; }
+.markdown-test-page .test-section h2 { font-size: 18px; font-weight: 600; margin: 0.83em 0 12px; }
+.markdown-test-page .test-hint { font-size: 13px; color: rgba(0,0,0,0.6); margin: 13px 0 8px; }
 .markdown-test-page .test-case { margin: 12px 0; }
-.markdown-test-page .test-raw { background: #f5f5f5; padding: 6px 10px; border-radius: 4px; margin-bottom: 6px; font-size: 13px; overflow-x: auto; }
+.markdown-test-page .test-raw { background: #f3f3f3; padding: 6px 10px; border-radius: 4px; margin-bottom: 6px; font-size: 13px; overflow-x: auto; }
 .markdown-test-page .test-raw code { white-space: pre-wrap; word-break: break-all; }
-.markdown-test-page .test-rendered { padding: 8px 12px; border: 1px solid #e5e5e5; border-radius: 6px; background: #fff; }
+.markdown-test-page .test-rendered { padding: 8px 12px; border: 1px solid #e7e7e7; border-radius: 6px; background: #fff; font-size: 16px; line-height: 1.625; letter-spacing: normal; color: rgba(0,0,0,0.9); }
 .markdown-test-page .stream-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.markdown-test-page .btn { padding: 4px 16px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 13px; }
+.markdown-test-page .btn { padding: 4px 16px; border: 1px solid #e7e7e7; border-radius: 4px; background: #fff; cursor: pointer; font-size: 13px; }
 .markdown-test-page .btn:hover { background: #f0f0f0; }
 .markdown-test-page .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .markdown-test-page .speed-label { font-size: 13px; display: flex; align-items: center; gap: 6px; }
 .markdown-test-page .speed-label input[type="range"] { width: 120px; }
-.markdown-test-page .custom-textarea { width: 100%; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; border: 1px solid #ccc; border-radius: 6px; resize: vertical; box-sizing: border-box; margin-bottom: 12px; }
+.markdown-test-page .custom-textarea { width: 100%; padding: 10px; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 13px; border: 1px solid #e7e7e7; border-radius: 6px; resize: vertical; box-sizing: border-box; margin-bottom: 12px; }
 .markdown-test-page .shimmer-demo { display: flex; flex-direction: column; gap: 14px; }
 .markdown-test-page .shimmer-demo .action-name { font-size: 14px; line-height: 1.55; color: rgba(0,0,0,0.6); }
-.markdown-test-page .wk-chat-message-content > :first-child { margin-top: 0; }
-.markdown-test-page .wk-chat-message-content > :last-child { margin-bottom: 0; }
+/* ---- chat answer typography (chat-markdown-typography mixin) ---- */
+/* No blanket > :first-child / > :last-child resets: the Vue mixin keeps
+   list/table/blockquote outer margins on the container box. */
+.markdown-test-page .wk-chat-message-content p { margin: 0 0 0.25em; line-height: 1.625; }
+.markdown-test-page .wk-chat-message-content p + p { margin-top: 0.75em; }
+.markdown-test-page .wk-chat-message-content p:last-child { margin-bottom: 0; }
+.markdown-test-page .wk-chat-message-content p + ul,
+.markdown-test-page .wk-chat-message-content p + ol,
+.markdown-test-page .wk-chat-message-content ul + p,
+.markdown-test-page .wk-chat-message-content ol + p,
+.markdown-test-page .wk-chat-message-content blockquote + p,
+.markdown-test-page .wk-chat-message-content p + blockquote { margin-top: 0.75em; }
 .markdown-test-page .wk-chat-message-content strong { font-weight: 600; }
-.markdown-test-page .wk-chat-message-content code { background: rgba(0,0,0,0.05); border-radius: 3px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85em; padding: 2px 5px; }
-.markdown-test-page .wk-chat-message-content pre code { background: transparent; padding: 0; font-size: 1em; }
-.markdown-test-page .wk-chat-message-content blockquote { border-left: 3px solid rgba(0,0,0,0.12); color: rgba(0,0,0,0.66); margin: 8px 0; padding: 2px 0 2px 12px; }
-.markdown-test-page .wk-chat-message-content blockquote blockquote { border-left-color: rgba(0,0,0,0.08); }
-.markdown-test-page .wk-chat-message-content kbd { background: #f5f5f5; border: 1px solid #d9d9d9; border-bottom-width: 2px; border-radius: 4px; font-family: inherit; font-size: 0.85em; padding: 1px 6px; }
-.markdown-test-page .wk-chat-message-content input[type="checkbox"] { display: none; }
-.markdown-test-page .wk-chat-message-content ul { padding-left: 22px; }
-.markdown-test-page .wk-chat-message-content ol { padding-left: 22px; }
-.markdown-test-page .wk-chat-message-content pre { overflow-x: auto; padding: .7rem; background: #f6f8fb; border-radius: 6px; }
-.markdown-test-page .wk-chat-message-content table { border-collapse: collapse; display: block; max-width: 100%; overflow-x: auto; }
-.markdown-test-page .wk-chat-message-content th, .markdown-test-page .wk-chat-message-content td { border: 1px solid #dce3ed; padding: .35rem .55rem; text-align: left; }
+.markdown-test-page .wk-chat-message-content em { font-style: italic; }
+.markdown-test-page .wk-chat-message-content del { text-decoration: line-through; opacity: 0.72; }
+.markdown-test-page .wk-chat-message-content kbd { display: inline-block; padding: 0.15em 0.45em; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.8125em; font-weight: 500; line-height: 1.4; color: rgba(0,0,0,0.9); background: #f3f3f3; border: 1px solid #e7e7e7; border-radius: 5px; box-shadow: 0 1px 0 rgba(0,0,0,0.08); }
+.markdown-test-page .wk-chat-message-content code:not(pre code) { background: rgba(0,0,0,0.072); padding: 0.15em 0.3em; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.875em; font-weight: 500; }
+.markdown-test-page .wk-chat-message-content pre { margin: 0.75em 0; padding: 14px 16px; border: 1px solid #e7e7e7; border-radius: 8px; background: color-mix(in srgb, #f3f3f3 88%, #fff); overflow-x: auto; line-height: 1.55; font-size: 13px; }
+.markdown-test-page .wk-chat-message-content pre code { background: none; padding: 0; border-radius: 0; font-size: inherit; font-weight: 400; white-space: pre; display: block; }
+.markdown-test-page .wk-chat-message-content .chat-code-block { margin: 0.75em 0; border: 1px solid #e7e7e7; border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+.markdown-test-page .wk-chat-message-content .chat-code-block__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; padding: 6px 10px 6px 12px; background: #f3f3f3; border-bottom: 1px solid #e7e7e7; }
+.markdown-test-page .wk-chat-message-content .chat-code-block__lang { font-size: 12px; font-weight: 600; line-height: 1.2; color: rgba(0,0,0,0.6); letter-spacing: 0.02em; }
+.markdown-test-page .wk-chat-message-content .chat-code-block__copy { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 4px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: rgba(0,0,0,0.6); font-size: 12px; font-weight: 500; line-height: 1; cursor: pointer; }
+.markdown-test-page .wk-chat-message-content .chat-code-block__pre { margin: 0; padding: 14px 16px; border: 0; border-radius: 0; background: color-mix(in srgb, #f3f3f3 88%, #fff); }
+.markdown-test-page .wk-chat-message-content h1 { font-size: 1.5em; font-weight: 600; margin: 0 0 0.375em; line-height: 1.333; }
+.markdown-test-page .wk-chat-message-content h2 { font-size: 1.25em; font-weight: 600; margin: 1em 0 0.25em; line-height: 1.4; }
+.markdown-test-page .wk-chat-message-content h3 { font-size: 1.125em; font-weight: 600; margin: 0.875em 0 0.25em; line-height: 1.556; }
+.markdown-test-page .wk-chat-message-content h4 { font-size: 1em; font-weight: 600; margin: 1em 0 0; line-height: 1.5; }
+.markdown-test-page .wk-chat-message-content h1:first-child,
+.markdown-test-page .wk-chat-message-content h2:first-child,
+.markdown-test-page .wk-chat-message-content h3:first-child,
+.markdown-test-page .wk-chat-message-content h4:first-child { margin-top: 0; }
+.markdown-test-page .wk-chat-message-content a { color: #07c05f; text-decoration: underline; text-decoration-color: rgba(7,192,95,0.45); text-underline-offset: 0.18em; }
+.markdown-test-page .wk-chat-message-content ul,
+.markdown-test-page .wk-chat-message-content ol { margin: 0.35em 0 0.75em !important; padding-left: 1.625em; }
+.markdown-test-page .wk-chat-message-content ul { list-style-type: disc; list-style-position: outside; }
+.markdown-test-page .wk-chat-message-content ol { list-style-type: decimal; list-style-position: outside; }
+.markdown-test-page .wk-chat-message-content ul ul,
+.markdown-test-page .wk-chat-message-content ol ol,
+.markdown-test-page .wk-chat-message-content ul ol,
+.markdown-test-page .wk-chat-message-content ol ul { margin: 0.25em 0 0 !important; padding-left: 1.25em; }
+.markdown-test-page .wk-chat-message-content li { margin: 0; line-height: 1.625; padding-left: 0.375em; }
+.markdown-test-page .wk-chat-message-content li + li { margin-top: 0.375em; }
+.markdown-test-page .wk-chat-message-content li::marker { font-weight: 700; color: rgba(0,0,0,0.9); }
+.markdown-test-page .wk-chat-message-content li input[type="checkbox"] { display: none; }
+.markdown-test-page .wk-chat-message-content blockquote { border-left: 2px solid #e7e7e7; padding: 0.5em 0 0.5em 1.25em; margin: 0.5em 0 0.75em; color: rgba(0,0,0,0.6); font-weight: 400; font-style: normal; line-height: 1.5; }
+.markdown-test-page .wk-chat-message-content blockquote blockquote { margin-top: 0.35em; margin-bottom: 0; border-left-color: #e7e7e7; }
+.markdown-test-page .wk-chat-message-content blockquote p { line-height: 1.5; }
+.markdown-test-page .wk-chat-message-content .chat-markdown-table { width: fit-content; max-width: 100%; margin: 0.875em 0 1em; overflow-x: auto; border: 1px solid #e7e7e7; border-radius: 8px; background: #fff; -webkit-overflow-scrolling: touch; }
+.markdown-test-page .wk-chat-message-content table { word-break: initial; border-collapse: separate; border-spacing: 0; display: table; font-size: 14px; line-height: 1.55; width: max-content; min-width: 0; }
+.markdown-test-page .wk-chat-message-content table thead { background-color: color-mix(in srgb, #f3f3f3 75%, #fff); }
+.markdown-test-page .wk-chat-message-content table tbody tr:nth-child(2n) { background-color: color-mix(in srgb, #f3f3f3 45%, transparent); }
+.markdown-test-page .wk-chat-message-content table tr th { font-weight: 600; border: 0; border-right: 1px solid #e7e7e7; border-bottom: 1px solid #e7e7e7; background-color: color-mix(in srgb, #f3f3f3 75%, #fff); text-align: left; padding: 8px 12px; white-space: nowrap; }
+.markdown-test-page .wk-chat-message-content table tr td { border: 0; border-right: 1px solid #e7e7e7; border-bottom: 1px solid #e7e7e7; text-align: left; padding: 8px 12px; vertical-align: top; }
+.markdown-test-page .wk-chat-message-content table tr th:last-child,
+.markdown-test-page .wk-chat-message-content table tr td:last-child { border-right: 0; }
+.markdown-test-page .wk-chat-message-content table tbody tr:last-child td { border-bottom: 0; }
+.markdown-test-page .wk-chat-message-content table th[align='center'],
+.markdown-test-page .wk-chat-message-content table td[align='center'] { text-align: center; }
 .markdown-test-page .wk-chat-message-content .wk-chat-citation { background: #eef5ff; border: 1px solid #b9d1f2; border-radius: 999px; color: #245a9b; cursor: pointer; margin: 0 .15rem; padding: .1rem .45rem; }
-.markdown-test-page .wk-chat-message-content .wk-chat-mermaid { border: 1px solid #dce3ed; border-radius: 6px; margin: .6rem 0; max-width: 100%; overflow: auto; padding: .5rem; }
-.markdown-test-page .wk-chat-message-content .wk-chat-mermaid svg { height: auto; max-width: 100%; }
 .markdown-test-page .wk-chat-message-content .math-inline, .markdown-test-page .wk-chat-message-content .math-block { font-family: Georgia, serif; }
 .markdown-test-page .wk-chat-message-content .math-block { overflow-x: auto; padding: .4rem 0; }
+/* ---- mermaid block chrome (chat-mermaid-block) ---- */
+.markdown-test-page .wk-chat-message-content .chat-mermaid-block { margin: 0.75em 0; border: 1px solid #e7e7e7; border-radius: 10px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.markdown-test-page .wk-chat-message-content .chat-mermaid-block__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 6px 10px 6px 12px; background: #f3f3f3; border-bottom: 1px solid #e7e7e7; }
+.markdown-test-page .wk-chat-message-content .chat-mermaid-block__badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(0,0,0,0.6); }
+.markdown-test-page .wk-chat-message-content .chat-mermaid-block__expand { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin: 0; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: rgba(0,0,0,0.6); cursor: pointer; }
+.markdown-test-page .wk-chat-message-content .chat-mermaid-block .wk-chat-mermaid { border: 0; border-radius: 0; margin: 0; padding: 20px 16px 18px; text-align: center; }
+.markdown-test-page .wk-chat-message-content .chat-mermaid-block svg { max-width: 100%; height: auto; }
 `;
+
+const COPY_ICON = '<svg class="chat-code-block__copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const EXPAND_ICON = '<svg class="chat-mermaid-block__expand-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+
+// markdownEnhancements.formatCodeLang label table (Vue side).
+const LANG_LABELS: Record<string, string> = {
+  ts: 'TypeScript', typescript: 'TypeScript', py: 'Python', python: 'Python',
+  go: 'Go', rust: 'Rust', java: 'Java', kotlin: 'Kotlin', swift: 'Swift',
+  rb: 'Ruby', ruby: 'Ruby', php: 'PHP', cs: 'C#', cpp: 'C++', c: 'C',
+  sql: 'SQL', bash: 'Bash', sh: 'Shell', shell: 'Shell', json: 'JSON',
+  yaml: 'YAML', yml: 'YAML', xml: 'XML', html: 'HTML', css: 'CSS',
+  markdown: 'Markdown', md: 'Markdown',
+};
+
+function formatCodeLang(lang: string): string {
+  const normalized = (lang || 'Code').trim();
+  if (!normalized) return 'Code';
+  const key = normalized.toLowerCase();
+  return LANG_LABELS[key] || normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+// The Vue dev page renders fenced code through markdownEnhancements as a
+// .chat-code-block card (language header + copy button). Mirror that chrome
+// here with plain DOM wrapping so the parity scan compares like with like.
+function wrapCodeBlocksWithChrome(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('pre > code[class*="language-"]').forEach((code) => {
+    const pre = code.parentElement;
+    if (!pre || pre.closest('.chat-code-block') || pre.hasAttribute('data-markdown-diagram')) return;
+    const langMatch = [...code.classList].find((cls) => cls.startsWith('language-'));
+    const block = document.createElement('div');
+    block.className = 'chat-code-block';
+    block.innerHTML = `<div class="chat-code-block__header"><span class="chat-code-block__lang">${formatCodeLang(langMatch?.slice('language-'.length) || '')}</span><div class="chat-code-block__actions"><button type="button" class="chat-code-block__copy" aria-label="复制代码" title="复制代码">${COPY_ICON}<span class="chat-code-block__copy-text">复制代码</span></button></div></div>`;
+    pre.parentNode.insertBefore(block, pre);
+    block.appendChild(pre);
+    pre.classList.add('chat-code-block__pre');
+  });
+}
+
+// Vue enhanceMarkdownContainer upgrades hydrated mermaid figures with the
+// .chat-mermaid-block header chrome (图表 badge + 全屏查看 trigger).
+function wrapMermaidFiguresWithChrome(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('.wk-chat-mermaid').forEach((figure) => {
+    if (figure.closest('.chat-mermaid-block')) return;
+    const block = document.createElement('div');
+    block.className = 'chat-mermaid-block';
+    block.innerHTML = `<div class="chat-mermaid-block__header"><span class="chat-mermaid-block__badge">图表</span><div class="chat-mermaid-block__actions"><button type="button" class="chat-mermaid-block__expand" aria-label="全屏查看" title="全屏查看">${EXPAND_ICON}</button></div></div>`;
+    figure.parentNode?.insertBefore(block, figure);
+    block.appendChild(figure);
+  });
+}
+
+// Vue renderer wraps markdown tables in a .chat-markdown-table card that
+// carries the border/radius; the <table> itself is borderless.
+function wrapTablesWithChrome(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('.test-rendered table').forEach((table) => {
+    if (table.closest('.chat-markdown-table')) return;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chat-markdown-table';
+    table.parentNode?.insertBefore(wrapper, table);
+    wrapper.appendChild(table);
+  });
+}
 
 function Rendered(props: { html: string }): ReactNode {
   return (
@@ -353,31 +468,60 @@ export function DevMarkdownPage() {
   }, []);
 
   // Vue imports katex/dist/katex.min.css for the formula face; load it at
-  // runtime so the node test runner (which imports this module) is unaffected.
+  // runtime via a <link> so the node test runner (which imports this module)
+  // is unaffected and Vite resolves the asset URL.
   useEffect(() => {
     let disposed = false;
-    void import('katex/dist/katex.min.css').catch(() => {
-      // Formulas degrade to plain spans when the stylesheet is unavailable.
-    });
+    void (async () => {
+      try {
+        const mod = await import('katex/dist/katex.min.css?url');
+        if (disposed || document.querySelector('link[data-wk-katex-css]')) return;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = mod.default;
+        link.setAttribute('data-wk-katex-css', '');
+        document.head.appendChild(link);
+      } catch {
+        // Formulas degrade to plain spans when the stylesheet is unavailable.
+      }
+    })();
     return () => { disposed = true; };
   }, []);
 
-  // Hydrate mermaid diagrams (static sections + streaming + custom editor).
+  // Hydrate mermaid diagrams (static sections + streaming + custom editor) and
+  // apply the Vue-side code-block / mermaid-block chrome.
   useEffect(() => {
     const root = rootRef.current;
-    if (!root || typeof window === 'undefined' || !root.querySelector('[data-markdown-diagram="mermaid"]')) return;
+    if (!root || typeof window === 'undefined') return;
+    wrapCodeBlocksWithChrome(root);
+    wrapTablesWithChrome(root);
+    if (!root.querySelector('[data-markdown-diagram="mermaid"]')) return;
     let disposed = false;
     void (async () => {
       if (disposed) return;
       await hydrateMermaidBlocksWithBrowserDefaults(root, 'wk-dev-mermaid');
+      if (!disposed) wrapMermaidFiguresWithChrome(root);
     })().catch(() => {
       // Keep the escaped code block visible when the optional renderer fails.
     });
     return () => { disposed = true; };
   }, [streamBuffer, customInput]);
 
+  // Copy button behavior for the code-block chrome (chatMarkdownRenderer parity).
+  const handleRootClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const btn = (event.target as HTMLElement).closest?.('.chat-code-block__copy');
+    if (!btn) return;
+    const code = btn.closest('.chat-code-block')?.querySelector('code')?.textContent ?? '';
+    const label = btn.querySelector('.chat-code-block__copy-text');
+    void navigator.clipboard?.writeText(code).then(() => {
+      if (!label) return;
+      label.textContent = '已复制';
+      window.setTimeout(() => { label.textContent = '复制代码'; }, 2000);
+    }).catch(() => {});
+  };
+
   return (
-    <div ref={rootRef} className="markdown-test-page">
+    <div ref={rootRef} className="markdown-test-page" onClick={handleRootClick}>
       <style>{PAGE_CSS}</style>
       <h1 className="page-title">Markdown Rendering Test</h1>
       <p className="page-desc">

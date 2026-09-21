@@ -114,8 +114,10 @@ async function openUserMenu() {
 }
 
 async function toggleTenantSubmenu() {
+  // Vue UserMenu.vue:75 renders the trail as an icon-only swap glyph titled
+  // 切换空间; the shell mirrors that (aria-label/title, no visible text).
   const toggle = Array.from(document.querySelectorAll('button[aria-expanded]'))
-    .find((b) => b.textContent?.includes('切换空间')) as HTMLButtonElement | undefined;
+    .find((b) => b.getAttribute('aria-label')?.includes('切换空间') || b.textContent?.includes('切换空间')) as HTMLButtonElement | undefined;
   assert.ok(toggle, 'tenant submenu toggle exists');
   await act(async () => toggle.click());
   await settle(20);

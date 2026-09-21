@@ -316,7 +316,7 @@ function navIcon(paths: ReactNode): ReactNode {
   );
 }
 
-const KNOWLEDGE_SETTINGS_NAV_ICONS: Record<KnowledgeSettingsSectionKey, ReactNode> = {
+export const KNOWLEDGE_SETTINGS_NAV_ICONS: Record<KnowledgeSettingsSectionKey, ReactNode> = {
   basic: navIcon(<><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M12 11v5" /></>),
   models: navIcon(<><rect x="5" y="5" width="14" height="14" rx="2" /><rect x="9.5" y="9.5" width="5" height="5" /><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" /></>),
   vectorStore: navIcon(<><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5" /><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" /></>),
@@ -955,12 +955,11 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
     if (!navKeys.includes(activeSection)) setActiveSection(navKeys[0] ?? 'basic');
   }, [activeSection, navKeys]);
 
-  const CardComponent = ui?.Card ?? 'section';
   const ButtonComponent = ui?.Button ?? 'button';
   const StatusComponent = ui?.Status ?? 'p';
 
   return (
-    <CardComponent aria-label={`Knowledge settings for ${currentKnowledgeBase.name}`}>
+    <section aria-label={`Knowledge settings for ${currentKnowledgeBase.name}`}>
       {/* Vue KnowledgeBaseEditorModal .settings-modal frame (1000x750) */}
       <div
         className="wkbs-modal"
@@ -1003,8 +1002,10 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                   {/* Vue section-header: one section-title + section-description
                       per tab (KnowledgeBaseEditorModal.vue basic header / each
                       settings component's own h2-h3 header). No eyebrow line. */}
-                  <h3 id="knowledge-settings-section-title" style={{ margin: '0 0 0.2rem', fontSize: '1.4rem' }}>{t(active.labelKey)}</h3>
-                  <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{t(active.descriptionKey)}</p>
+                  {/* Vue .section-title 20px/600 mb6 + .section-desc 14px muted
+                      (KnowledgeBaseEditorModal.vue .section-header). */}
+                  <h3 id="knowledge-settings-section-title" style={{ margin: '0 0 6px', fontSize: '20px', lineHeight: '28px', fontWeight: 600, color: 'rgba(0, 0, 0, 0.9)' }}>{t(active.labelKey)}</h3>
+                  <p className="wk-muted" style={{ margin: '0 0 16px', fontSize: '14px', lineHeight: '22px' }}>{t(active.descriptionKey)}</p>
                 </>
               ) : null}
               {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key as keyof KnowledgeSettingsSummary]} section={active.key} graphExtract={graphExtract} modelId={editorPayload.llmModelId} client={client} knowledgeBase={currentKnowledgeBase} knowledgeBaseId={currentKnowledgeBase.id} knowledgeBaseName={currentKnowledgeBase.name} canManage={knowledgeSettingsCanEdit(role)} editorOptions={editorOptions} parserEngineRules={parserEngineRules} indexingLocked={indexingLocked} onParserEngineRules={setParserEngineRules} t={t} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} editorPayload={editorPayload} editorDraft={editorDraft} onDraftChange={setEditorDraft} /> : isPortedKnowledgeSettingsSection(activeSection) ? <StatusComponent>No settings available.</StatusComponent> : (
@@ -1012,13 +1013,16 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                 // it yet — surface the shared notice instead of a fabricated editor.
                 <StatusComponent>{t('settings.notYetPorted')}</StatusComponent>
               )}
-              {canSave ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '1.25rem', borderTop: '1px solid #dce3ed', paddingTop: '1rem' }}>
-                  {/* Vue settings-footer-actions: 取消 discards the drafts
-                      (handleClose) and 保存并关闭 submits (saveButtonLabel in
-                      edit mode). */}
+            </div>
+            {canSave ? (
+              <div className="wkbs-footer">
+                {/* Vue settings-footer-actions: 取消 discards the drafts
+                    (handleClose) and 保存并关闭 submits (saveButtonLabel in
+                    edit mode). */}
+                <div className="wkbs-footer-actions">
                   <ButtonComponent
                     type="button"
+                    className="wkbs-btn-cancel"
                     disabled={saveState.status === 'saving'}
                     aria-label={t('common.cancel')}
                     onClick={handleCancel}
@@ -1027,6 +1031,7 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                   </ButtonComponent>
                   <ButtonComponent
                     type="button"
+                    className="wkbs-btn-save"
                     disabled={saveState.status === 'saving'}
                     aria-busy={saveState.status === 'saving'}
                     aria-label={t('knowledgeEditor.buttons.saveAndClose')}
@@ -1038,12 +1043,12 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                     <span role="status" aria-live="polite" style={{ color: saveState.status === 'error' ? '#b42318' : '#067647', fontWeight: 600 }}>{saveState.message}</span>
                   ) : null}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </section>
         </div>
       </div>
-    </CardComponent>
+    </section>
   );
 }
 
@@ -1262,6 +1267,22 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
     : granularity === 'exhaustive'
       ? 'knowledgeEditor.wiki.granularityExhaustiveHint'
       : 'knowledgeEditor.wiki.granularityStandardHint';
+  // Vue .form-item stacked row: 15px/500 label (mb 8), 12px muted tip
+  // (margin 6px 0 12px), control below, 16px gap between items
+  // (KnowledgeBaseEditorModal.vue .form-item / .form-label / .form-tip).
+  // `tipAfter` mirrors the type row where Vue renders .form-tip BELOW the
+  // radio-group control (label → control → tip), unlike the other rows.
+  const formItem = (labelKey: string, tipKey: string | null, control: ReactNode, options?: { required?: boolean; className?: string; tipAfter?: boolean }) => (
+    <div className={options?.className ? `kb-form-item ${options.className}` : 'kb-form-item'}>
+      <label className="kb-form-label">
+        {t(labelKey)}
+        {options?.required ? <span className="kb-form-required" aria-hidden="true"> *</span> : null}
+      </label>
+      {tipKey && !options?.tipAfter ? <p className="kb-form-tip">{t(tipKey)}</p> : null}
+      {control}
+      {tipKey && options?.tipAfter ? <p className="kb-form-tip" style={{ margin: '6px 0 0' }}>{t(tipKey)}</p> : null}
+    </div>
+  );
   const radio = (groupKey: string, labelKey: string, checked: boolean, onChange: () => void, disabled?: boolean) => (
     <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginRight: '1rem' }}>
       <input type="radio" name={groupKey} aria-label={t(labelKey)} checked={checked} disabled={disabled} onChange={onChange} />
@@ -1271,45 +1292,48 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
   return (
     <div>
       {knowledgeBase.id ? (
-        <EditorSettingRow
-          label={t('knowledgeEditor.basic.kbId')}
-          description={t('knowledgeEditor.basic.kbIdDesc')}
-          control={(
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-              <code style={{ background: '#f3f5f9', borderRadius: 6, padding: '0.15rem 0.5rem' }}>{knowledgeBase.id}</code>
-              <button
-                type="button"
-                aria-label={t('common.copy')}
-                title={t('common.copy')}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '0.15rem', color: 'inherit' }}
-                onClick={copyKbId}
-              >
-                {navIcon(<><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>)}
-              </button>
-            </span>
-          )}
-        />
-      ) : null}
-      <EditorSettingRow
-        label={t('knowledgeEditor.basic.typeLabel')}
-        required
-        description={t('knowledgeEditor.basic.typeDescription')}
-        control={(
-          <div role="radiogroup" aria-label={t('knowledgeEditor.basic.typeLabel')}>
-            {radio('kbType', 'knowledgeEditor.basic.typeDocument', knowledgeBase.type?.toLowerCase() !== 'faq', () => undefined, true)}
-            {radio('kbType', 'knowledgeEditor.basic.typeFAQ', knowledgeBase.type?.toLowerCase() === 'faq', () => undefined, true)}
+        formItem('knowledgeEditor.basic.kbId', 'knowledgeEditor.basic.kbIdDesc', (
+          // Vue .kb-id-field: 502px box, #f3f3f3 bg, #e7e7e7 border, radius 6,
+          // copy button inside on the right (KnowledgeBaseEditorModal.vue).
+          <div className="kb-id-field">
+            <code className="kb-id-value">{knowledgeBase.id}</code>
+            <button
+              type="button"
+              className="kb-id-copy"
+              aria-label={t('common.copy')}
+              title={t('common.copy')}
+              onClick={copyKbId}
+            >
+              {navIcon(<><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>)}
+            </button>
           </div>
-        )}
-      />
+        ))
+      ) : null}
+      {formItem('knowledgeEditor.basic.typeLabel', 'knowledgeEditor.basic.typeDescription', (
+        // Vue disabled t-radio-group rendered as segmented buttons: checked
+        // segment #8ce0af/white, disabled segment #eee/26% (edit mode). The
+        // real radio inputs stay for the test/aria contract, visually hidden.
+        <div className="kb-type-tabs" role="radiogroup" aria-label={t('knowledgeEditor.basic.typeLabel')}>
+          <label className={`kb-type-tab${knowledgeBase.type?.toLowerCase() !== 'faq' ? ' is-checked' : ' is-disabled'}`}>
+            <input type="radio" name="kbType" aria-label={t('knowledgeEditor.basic.typeDocument')} checked={knowledgeBase.type?.toLowerCase() !== 'faq'} disabled onChange={() => undefined} />
+            {t('knowledgeEditor.basic.typeDocument')}
+          </label>
+          <label className={`kb-type-tab${knowledgeBase.type?.toLowerCase() === 'faq' ? ' is-checked' : ' is-disabled'}`}>
+            <input type="radio" name="kbType" aria-label={t('knowledgeEditor.basic.typeFAQ')} checked={knowledgeBase.type?.toLowerCase() === 'faq'} disabled onChange={() => undefined} />
+            {t('knowledgeEditor.basic.typeFAQ')}
+          </label>
+        </div>
+      ), { required: true, tipAfter: true })}
       {knowledgeBase.type?.toLowerCase() !== 'faq' ? (
         <>
-          <EditorSettingRow
-            label={t('knowledgeEditor.indexing.title')}
-            required
-            description={t('knowledgeEditor.indexing.description')}
-            control={(
-              <div style={{ display: 'grid', gap: '0.5rem' }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', ...(indexingLocked ? { opacity: 0.6 } : {}) }}>
+          {formItem('knowledgeEditor.indexing.title', 'knowledgeEditor.indexing.description', (
+            <>
+            {/* Vue .indexing-checks: two bordered cards in a 2-col grid; the
+                checked card gets the brand border + #e9f8ec fill; while the KB
+                has files both disable and the orange lockedTip renders below. */}
+            <div className={`indexing-checks${indexingLocked ? ' is-locked' : ''}`}>
+              <label className={`indexing-check-item${indexing.vectorEnabled ? ' is-checked' : ' is-disabled'}`}>
+                <span className="indexing-check-head">
                   <input
                     type="checkbox"
                     aria-label={t('knowledgeEditor.indexing.searchTitle')}
@@ -1321,10 +1345,12 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
                       setIndexing({ vectorEnabled: event.target.checked, keywordEnabled: event.target.checked });
                     }}
                   />
-                  {t('knowledgeEditor.indexing.searchTitle')}
-                </label>
-                <p className="wk-muted" style={{ margin: 0, fontSize: '0.85rem' }}>{t('knowledgeEditor.indexing.searchDesc')}</p>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', ...(indexingLocked ? { opacity: 0.6 } : {}) }}>
+                  <span className="indexing-check-label">{t('knowledgeEditor.indexing.searchTitle')}</span>
+                </span>
+                <span className="indexing-check-desc">{t('knowledgeEditor.indexing.searchDesc')}</span>
+              </label>
+              <label className={`indexing-check-item${indexing.wikiEnabled ? ' is-checked' : ' is-disabled'}`}>
+                <span className="indexing-check-head">
                   <input
                     type="checkbox"
                     aria-label={t('knowledgeEditor.indexing.wikiTitle')}
@@ -1336,15 +1362,21 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
                       setIndexing({ wikiEnabled: event.target.checked });
                     }}
                   />
-                  {t('knowledgeEditor.indexing.wikiTitle')}
-                </label>
-                <p className="wk-muted" style={{ margin: 0, fontSize: '0.85rem' }}>{t('knowledgeEditor.indexing.wikiDesc')}</p>
-                {indexingLocked ? (
-                  <p className="wk-muted" data-indexing-locked-tip="" style={{ margin: 0, fontSize: '0.85rem' }}>{t('knowledgeEditor.indexing.lockedTip')}</p>
-                ) : null}
-              </div>
-            )}
-          />
+                  <span className="indexing-check-label">
+                    {t('knowledgeEditor.indexing.wikiTitle')}
+                    <span className="kb-editor-new-badge" aria-hidden="true">NEW</span>
+                  </span>
+                </span>
+                <span className="indexing-check-desc">{t('knowledgeEditor.indexing.wikiDesc')}</span>
+              </label>
+            </div>
+            {/* Vue renders the orange lockedTip inside the same .form-item
+                (below the cards) so the 16px item gap follows it. */}
+            {indexingLocked ? (
+              <p className="kb-locked-tip" data-indexing-locked-tip="">{t('knowledgeEditor.indexing.lockedTip')}</p>
+            ) : null}
+            </>
+          ), { required: true })}
           {indexing.wikiEnabled ? (
             <>
               <EditorSettingRow
@@ -1391,23 +1423,23 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
           ) : null}
         </>
       ) : null}
-      <EditorSettingRow
-        label={t('knowledgeEditor.basic.nameLabel')}
-        required
-        control={(
-          <input
-            aria-label={t('knowledgeEditor.basic.nameLabel')}
-            maxLength={50}
-            placeholder={t('knowledgeEditor.basic.namePlaceholder')}
-            value={name}
-            onChange={(event) => onDraftChange({ ...editorDraft, name: event.target.value })}
-          />
-        )}
-      />
-      <EditorSettingRow
-        label={t('knowledgeEditor.basic.descriptionLabel')}
-        control={(
+      {formItem('knowledgeEditor.basic.nameLabel', null, (
+        // Vue t-input: 32px high, #dcdcdc border, radius 3, full width.
+        <input
+          className="kb-text-input"
+          aria-label={t('knowledgeEditor.basic.nameLabel')}
+          maxLength={50}
+          placeholder={t('knowledgeEditor.basic.namePlaceholder')}
+          value={name}
+          onChange={(event) => onDraftChange({ ...editorDraft, name: event.target.value })}
+        />
+      ), { required: true })}
+      {formItem('knowledgeEditor.basic.descriptionLabel', null, (
+        <>
+          {/* Vue t-textarea: rows=3, #dcdcdc border, radius 3, with the
+              12px right-aligned "n/200" t-textarea__limit counter below. */}
           <textarea
+            className="kb-textarea"
             aria-label={t('knowledgeEditor.basic.descriptionLabel')}
             maxLength={200}
             rows={3}
@@ -1415,8 +1447,9 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
             value={description}
             onChange={(event) => onDraftChange({ ...editorDraft, description: event.target.value })}
           />
-        )}
-      />
+          <div className="kb-textarea-info"><span className="kb-desc-count" aria-live="polite">{description.length}/200</span></div>
+        </>
+      ))}
     </div>
   );
 }

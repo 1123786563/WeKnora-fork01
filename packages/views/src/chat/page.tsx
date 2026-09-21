@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { ChatMessage, ChatSession, FeedbackRating, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
 import { ChatComposer, isSteerInjectShortcut, resolveSteerAttachmentWarning, resolveSteerInjectAction, resolveSteerSubmitFailure, shouldSubmitFromKeyboard, type ChatAttachmentView, type ChatMentionView, type ChatSteerQueueChip, type ChatSubmission } from './composer.tsx';
@@ -554,8 +555,25 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
       setHeaderDangerBusy(false);
     }
   };
-  /* .wk-chat-header-menu / -list → utilities (Vue ChatHeader ⋯ menu). */
-  const menuItem = 'min-h-[30px] cursor-pointer whitespace-nowrap rounded-[5px] border-0 bg-transparent px-[10px] py-0 text-left text-[13px] leading-[20px] text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]';
+  /* .wk-chat-header-menu / -list → utilities (Vue ChatHeader ⋯ menu).
+     Geometry + per-item leading icons mirror Vue ChatHeader.vue:505-643:
+     popup min-width 168 / width max-content, item min-height 32 / px 12 /
+     font 14 / gap 8 with a 16px secondary-coloured t-icon, divider
+     margin 2px 6px. */
+  const menuItem = 'flex min-h-[32px] cursor-pointer items-center gap-[8px] whitespace-nowrap rounded-[5px] border-0 bg-transparent px-[12px] py-0 text-left text-[14px] leading-[20px] text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]';
+  const menuIcon = 'shrink-0 text-[rgba(0,0,0,0.4)]';
+  const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  const menuSvg = (path: ReactNode) => <svg width="16" height="16" viewBox="0 0 16 16" {...stroke} aria-hidden="true" className={menuIcon}>{path}</svg>;
+  const headerMenuIcons: Record<string, ReactNode> = {
+    pin: menuSvg(<><path d="M9.7 2.3l4 4-2.6.9-1.7 1.7-.4 2.9-1.8-1.8-3.7 3.7-.7-.7L6.5 9.3 4.7 7.5l2.9-.4L9.3 5.5z" /><line x1="2.5" y1="13.5" x2="6.3" y2="9.7" /></>),
+    rename: menuSvg(<path d="M11.3 2.2l2.5 2.5L5.2 13.3l-3.2.7.7-3.2 8.6-8.6z" />),
+    copySessionId: menuSvg(<><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" /></>),
+    copyLink: menuSvg(<><path d="M6.5 9.5l3-3" /><path d="M7.5 4.5l1.2-1.2a2.5 2.5 0 0 1 3.5 3.5L11 8" /><path d="M8.5 11.5l-1.2 1.2a2.5 2.5 0 0 1-3.5-3.5L5 8" /></>),
+    copyMarkdown: menuSvg(<><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" /><path d="M4 10V6l2 2 2-2v4" /><path d="M11 6v4m0 0l-1.5-1.5M11 10l1.5-1.5" /></>),
+    openNewWindow: menuSvg(<><path d="M1.5 8a6.5 6.5 0 1 1 1.9 4.6" /><path d="M1.5 12.5V8.5h4" /><path d="M8 5.5V8l2 2" /></>),
+    clear: menuSvg(<><path d="M8 2v2.5" /><path d="M3.5 6.5h9l-.8 2.2a2 2 0 0 1-1.9 1.3H6.2a2 2 0 0 1-1.9-1.3z" /><path d="M5.5 10v3.5M10.5 10v3.5" /></>),
+    delete: menuSvg(<><path d="M2.5 4h11" /><path d="M5.5 4V2.5h5V4" /><path d="M4 4l.7 9a1.5 1.5 0 0 0 1.5 1.4h3.6a1.5 1.5 0 0 0 1.5-1.4L12 4" /><path d="M6.5 7v4.5M9.5 7v4.5" /></>),
+  };
   return <>
     <details ref={renameDetailsRef} className="wk-chat-header-menu relative">
     <summary ref={renameTriggerRef} aria-label={copy.moreActions} title={copy.moreActions} className="inline-flex h-[24px] w-[24px] cursor-pointer list-none items-center justify-center rounded-[5px] border-0 text-[rgba(0,0,0,0.26)] transition-[background-color,color] duration-[150ms] ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)] [&::-webkit-details-marker]:hidden">
@@ -563,26 +581,26 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
           vertical kebab. */}
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
     </summary>
-    <div className="wk-chat-header-menu-list absolute left-0 top-full z-[30] mt-[2px] flex min-w-[132px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
+    <div className="wk-chat-header-menu-list absolute left-0 top-full z-[30] mt-[2px] flex w-max min-w-[168px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
       {headerDangerAction ? <div className="wk-chat-header-confirm" role="dialog" aria-label={headerDangerAction === 'clear' ? copy.clearMessages : copy.deleteSession}>
         <strong className="block px-[6px] text-[12px]">{headerDangerAction === 'clear' ? copy.clearConfirmTitle : copy.deleteConfirmTitle}</strong>
         <p className="m-0 px-[6px] py-[5px] text-[12px] text-[rgba(0,0,0,0.6)]">{headerDangerAction === 'clear' ? copy.clearConfirmBody : copy.deleteConfirmBody}</p>
         {headerDangerError ? <p role="alert" className="m-0 px-[6px] pb-[4px] text-[11px] text-[#e34d59]">{headerDangerError}</p> : null}
         <div className="flex justify-end gap-[4px] px-[6px]"><button type="button" className="min-h-[28px] border-0 bg-transparent px-[7px] text-[12px]" onClick={() => setHeaderDangerAction(null)} disabled={headerDangerBusy}>{copy.renameCancel}</button><button type="button" className="min-h-[28px] rounded-[5px] border-0 bg-[#e34d59] px-[7px] text-[12px] text-white" onClick={() => void submitHeaderDangerAction()} disabled={headerDangerBusy}>{headerDangerAction === 'clear' ? copy.clearConfirmAction : copy.deleteConfirmAction}</button></div>
       </div> : <>
-        {props.onToggleSessionPin ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? copy.unpin : copy.pin}</button> : null}
-        {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={openRename}>{copy.renameSession}</button> : null}
+        {props.onToggleSessionPin ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{headerMenuIcons.pin}{pinned ? copy.unpin : copy.pin}</button> : null}
+        {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={openRename}>{headerMenuIcons.rename}{copy.renameSession}</button> : null}
         {/* R483 D16 — Vue ChatHeader utility block (ChatHeader.vue:61-78):
             copyId / copyLink / copyMarkdown / openNewWindow framed by the two
             Vue dividers between 修改标题 and 清空消息. Each activation closes
             the popup like the Vue onMenuAction menuVisible = false. */}
         {props.headerUtilityItems && props.headerUtilityItems.length > 0 ? <>
-          <div className="wk-chat-header-menu-divider m-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
-          {props.headerUtilityItems.map((item) => <button key={item.id} type="button" role="menuitem" data-menu-action={item.id} className={menuItem} onClick={() => { item.onActivate(); renameDetailsRef.current?.removeAttribute('open'); }}>{item.label}</button>)}
-          <div className="wk-chat-header-menu-divider m-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
+          <div className="wk-chat-header-menu-divider mx-[6px] my-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
+          {props.headerUtilityItems.map((item) => <button key={item.id} type="button" role="menuitem" data-menu-action={item.id} className={menuItem} onClick={() => { item.onActivate(); renameDetailsRef.current?.removeAttribute('open'); }}>{headerMenuIcons[item.id]}{item.label}</button>)}
+          <div className="wk-chat-header-menu-divider mx-[6px] my-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
         </> : null}
-        {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => { setHeaderDangerAction('clear'); setHeaderDangerError(null); }}>{copy.clearMessages}</button> : null}
-        {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => { setHeaderDangerAction('delete'); setHeaderDangerError(null); }}>{copy.deleteSession}</button> : null}
+        {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => { setHeaderDangerAction('clear'); setHeaderDangerError(null); }}>{headerMenuIcons.clear}{copy.clearMessages}</button> : null}
+        {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => { setHeaderDangerAction('delete'); setHeaderDangerError(null); }}>{headerMenuIcons.delete}{copy.deleteSession}</button> : null}
       </>}
     </div>
     </details>

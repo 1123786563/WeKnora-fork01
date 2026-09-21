@@ -18,7 +18,11 @@
 // headless shell（apps/web 的 node_modules 曾被并行会话清空过）。
 let chromium;
 try {
-  ({ chromium } = await import('/Users/wuyongjun/trea/WeKnora-fork01/apps/web/node_modules/@playwright/test/index.js'));
+  // CJS require 最确定：ESM import 该包的命名导出探测在重装后间歇失败
+  const { createRequire } = await import('node:module');
+  const requireFromWeb = createRequire('/Users/wuyongjun/trea/WeKnora-fork01/apps/web/package.json');
+  chromium = requireFromWeb('@playwright/test').chromium;
+  if (!chromium) throw new Error('no chromium export');
 } catch {
   const { chromium: coreChromium } = await import('playwright-core');
   const headlessShell = process.env.HOME +
@@ -312,6 +316,9 @@ async function main() {
         for (const [tag, page, base] of [['vue', vuePage, VUE], ['react', reactPage, REACT]]) {
           const active = p.auth === false ? anonPages[tag] : page;
           await active.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
+          // dev server 首次编译/HMR full-reload 会打断首帧；等网络空闲再走 settle，
+          // 否则首页截图会踩到 Loading（R5xx chat 页间歇 93% 假阳性的根因）。
+          await active.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
           await active.waitForTimeout(p.settle ?? 2400);
           if (p.actions) {
             for (const action of p.actions) {

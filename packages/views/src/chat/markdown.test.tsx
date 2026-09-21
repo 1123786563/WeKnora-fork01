@@ -97,6 +97,14 @@ test('raw <img> tags are whitelisted with safe-src enforcement', () => {
   assert.doesNotMatch(html, /<div onclick/);
 });
 
+test('raw <kbd> hints are whitelisted like the Vue DOMPurify html profile', () => {
+  const html = renderChatMarkdown('按 <kbd>⌘</kbd> + <kbd>K</kbd>');
+  assert.match(html, /<kbd>⌘<\/kbd> \+ <kbd>K<\/kbd>/);
+  // Attribute-bearing variants stay escaped.
+  const evil = renderChatMarkdown('<kbd onclick="alert(1)">x</kbd>');
+  assert.doesNotMatch(evil, /<kbd onclick/);
+});
+
 test('raw images inside fenced code blocks are not whitelisted', () => {
   const html = renderChatMarkdown('```\n<img src="https://example.com/b.png">\n```');
   assert.match(html, /&lt;img src=&quot;https:\/\/example\.com\/b\.png&quot;&gt;/);

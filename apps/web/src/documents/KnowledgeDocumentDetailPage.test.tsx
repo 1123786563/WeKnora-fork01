@@ -546,7 +546,7 @@ test('merged view keeps the Vue chunk pagination so multi-page documents merge p
   };
   const container = await mountDetail(client);
   const body = () => container.ownerDocument.body;
-  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '全文')!.click(); });
+  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '查看分块')!.click(); });
   assert.ok(body().textContent?.includes('Page one chunk'));
   const nav = () => body().querySelector('nav[aria-label="查看分块"]');
   assert.ok(nav(), 'Vue renders the chunk pagination for the merged view too (viewMode merged || chunks)');
@@ -568,7 +568,7 @@ test('chunk page transitions follow the Vue form: pagination and header stay, co
   };
   const container = await mountDetail(client);
   const body = () => container.ownerDocument.body;
-  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '全文')!.click(); });
+  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '查看分块')!.click(); });
   assert.ok(body().textContent?.includes('Page one chunk'));
   const nav = () => body().querySelector('nav[aria-label="查看分块"]');
   assert.ok(nav());
@@ -597,7 +597,7 @@ test('a failed page transition stays on the loaded page with the old content lik
   };
   const container = await mountDetail(client);
   const body = () => container.ownerDocument.body;
-  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '全文')!.click(); });
+  await act(async () => { Array.from(body().querySelectorAll('button')).find((button) => button.textContent === '查看分块')!.click(); });
   const nav = () => body().querySelector('nav[aria-label="查看分块"]');
   await act(async () => { Array.from(nav()!.querySelectorAll('button')).at(-1)!.click(); });
   await act(async () => {});
@@ -654,16 +654,17 @@ test('document content exposes Vue preview, merged and chunks tabs and merges ch
 
   const buttons = () => Array.from(container.ownerDocument.body.querySelectorAll('button'));
   assert.ok(buttons().some((button) => button.textContent === '预览'));
-  assert.ok(buttons().some((button) => button.textContent === '全文'));
+  // Vue doc-content.vue:1826 — 全文 renders only when canPreview() is false;
+  // a previewable md document shows 预览 + 查看分块 only.
+  assert.equal(buttons().some((button) => button.textContent === '全文'), false);
   assert.ok(buttons().some((button) => button.textContent === '查看分块'));
-  const merged = buttons().find((button) => button.textContent === '全文');
-  await act(async () => { merged!.click(); });
+  const chunks = buttons().find((button) => button.textContent === '查看分块');
+  await act(async () => { chunks!.click(); });
   assert.ok(container.ownerDocument.body.textContent?.includes('First'));
-  assert.ok(container.ownerDocument.body.textContent?.indexOf('First')! < container.ownerDocument.body.textContent?.indexOf('Second')!);
-  const mergedSurface = container.ownerDocument.body.querySelector('.wk-document-merged');
-  assert.ok(mergedSurface?.querySelector('h1'), 'Vue renders merged Markdown headings instead of exposing raw markers');
-  assert.ok(mergedSurface?.querySelector('ul'), 'Vue renders merged Markdown lists instead of plain text');
-  assert.match(mergedSurface?.className ?? '', /bg-surface-muted/, 'merged code blocks use the project surface token');
+  assert.ok(container.ownerDocument.body.textContent?.includes('Second'));
+  // Merged-view Markdown rendering (h1/ul/mermaid) is covered by the
+  // manual-document test below — a previewable md document never reaches the
+  // merged tab now that the Vue :1826 tab gate is honored.
 });
 
 test('completed Excel detail opens the Vue-style inline worksheet preview', async () => {

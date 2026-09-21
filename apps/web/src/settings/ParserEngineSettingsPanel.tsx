@@ -275,17 +275,20 @@ export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient })
   const drawerFileTypes = Array.isArray(drawerEngine?.FileTypes) ? (drawerEngine?.FileTypes as unknown[]).map((ft) => String(ft)) : [];
   const needsTestButton = Boolean(drawerEngine) && (CONFIGURABLE_ENGINES.has(drawerName) || drawerName === 'builtin');
 
-  return <div data-testid="parser-engine-settings">
-    <Card>
-      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
-        <div><h3>{t('settings.parser.title')}</h3><p className="wk-muted text-muted m-0">{t('settings.parser.description')}</p></div>
-      </div>
-      {loading ? <Status>{t('settings.parser.loading', { defaultValue: '' }) || t('common.loading')}</Status> : null}
-    </Card>
-    {!loading ? <Card>
+  return <div className="parser-engine-settings" data-testid="parser-engine-settings">
+    {/* Vue ParserEngineSettings.vue:3-9 — the panel owns its section-header
+        (h2 + description, no divider, margin-bottom 28px); the SettingsPage
+        wrapper heading is suppressed via CSS while this panel is mounted.
+        There is no outer card around the grid. */}
+    <div className="section-header">
+      <h2>{t('settings.parser.title')}</h2>
+      <p className="section-description">{t('settings.parser.description')}</p>
+    </div>
+    {loading ? <Status>{t('settings.parser.loading', { defaultValue: '' }) || t('common.loading')}</Status> : null}
+    {!loading ? <>
       {error ? <div className="mb-3 flex items-center gap-2"><Status tone="error">{error}</Status><Button type="button" size="small" onClick={() => { setError(null); void loadEngines(); void loadConfig(); void checkWkcStatus(); }}>{t('settings.parser.retry')}</Button></div> : null}
       {engines.length === 0 && !hasBuiltinEngine ? <Status>{t('settings.parser.noEngineDetected')}</Status> : null}
-      {(engines.length > 0 || hasBuiltinEngine) ? <div className="grid grid-cols-1 gap-3 min-[900px]:grid-cols-2 min-[1400px]:grid-cols-3">
+      {(engines.length > 0 || hasBuiltinEngine) ? <div className="mt-6 grid grid-cols-1 gap-3 min-[900px]:grid-cols-2 min-[1400px]:grid-cols-3">
         {!hasBuiltinEngine ? <EngineCard
           name="builtin" initial={initialOf('builtin')} title={displayOf('builtin')}
           desc={t('settings.parser.builtinDesc')}
@@ -312,7 +315,7 @@ export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient })
           />;
         })}
       </div> : null}
-    </Card> : null}
+    </> : null}
     {drawerEngine ? <EngineDrawer
       name={drawerName}
       initial={initialOf(drawerName)}
@@ -352,10 +355,10 @@ function EngineCard({ name, initial, title, desc, statusLabel, statusTone, statu
   return <button
     type="button"
     data-testid={`parser-engine-card-${name}`}
-    className={`group flex w-full cursor-pointer items-start gap-3 rounded-[10px] border bg-surface p-4 text-left [font:inherit] [transition:border-color_.2s_ease,box-shadow_.2s_ease] ${active ? 'border-accent shadow-[0_0_0_1px_var(--wk-brand,#0052d9)]' : 'border-line-soft hover:border-accent/50 hover:shadow-[0_4px_14px_rgba(15,23,42,0.07)]'}`}
+    className={`group flex w-full cursor-pointer items-start gap-3 rounded-[10px] border bg-surface py-[14px] pr-[14px] pl-3 text-left [font:inherit] [transition:border-color_.2s_ease,box-shadow_.2s_ease] ${active ? 'border-accent shadow-[0_0_0_1px_var(--wk-brand,#0052d9)]' : 'border-line-soft hover:border-accent/50 hover:shadow-[0_4px_14px_rgba(15,23,42,0.07)]'}`}
     onClick={onClick}
   >
-    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-surface-wash text-[15px] font-semibold text-accent" aria-hidden="true">{initial}</span>
+    <span className="mt-px inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-surface-wash text-[15px] font-semibold tracking-[0.02em] text-accent" aria-hidden="true">{initial}</span>
     <span className="min-w-0 flex-1">
       <span className="flex items-center justify-between gap-2">
         <h3 className="m-0 min-w-0 truncate text-[14px] font-semibold text-ink">{title}</h3>
@@ -367,7 +370,7 @@ function EngineCard({ name, initial, title, desc, statusLabel, statusTone, statu
           {statusLabel}
         </span>
       </span>
-      <span className="mt-1 block text-[12px] leading-[1.6] text-muted">{desc}</span>
+      <span className="mt-1 block text-[12px] leading-[1.5] text-muted">{desc}</span>
     </span>
   </button>;
 }

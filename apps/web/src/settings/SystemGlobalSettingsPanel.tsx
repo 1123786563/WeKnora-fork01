@@ -62,7 +62,9 @@ function TagInput({ values, placeholder, ariaLabel, disabled, onCommit }: { valu
   const [draft, setDraft] = useState('');
   const commit = (next: string[]) => { setDraft(''); onCommit(next); };
   const addDraft = () => { const value = draft.trim(); if (!value) return; if (values.includes(value)) { setDraft(''); return; } commit([...values, value]); };
-  return <div className={`wk-tag-input flex w-full max-w-[320px] flex-wrap items-center gap-1.5 rounded-[3px] border border-line-input bg-surface px-2 py-1 ${disabled ? 'opacity-60' : ''}`}>
+  // Vue .setting-input--wide is 320px total; the app's box-sizing is
+  // content-box, so 302px + 16px padding + 2px border lands on 320px.
+  return <div className={`wk-tag-input flex w-[302px] max-w-full flex-wrap items-center gap-1.5 rounded-[3px] border border-line-input bg-surface px-2 py-[5px] ${disabled ? 'opacity-60' : ''}`}>
     {values.map((value) => <span key={value} className="wk-tag-input-tag inline-flex items-center gap-1 rounded-pill bg-surface-wash px-2 py-px text-xs text-ink">
       {value}
       <button type="button" aria-label={`${ariaLabel} ${value}`} disabled={disabled} className="cursor-pointer border-0 bg-transparent p-0 text-xs text-muted hover:text-danger" onClick={() => commit(values.filter((item) => item !== value))}>×</button>
@@ -78,6 +80,37 @@ function TagInput({ values, placeholder, ariaLabel, disabled, onCommit }: { valu
       onBlur={addDraft}
     />
   </div>;
+}
+
+/** Vue t-popup hover hint (SystemSettings.vue:38-52) — info-circle trigger
+ * whose bottom-start popover carries the priority tiers. */
+function PriorityHint({ locale }: { locale: ReturnType<typeof useSettingsLocale> }) {
+  const t = (key: string) => formatMessage(locale, key);
+  const [open, setOpen] = useState(false);
+  return <span className="relative inline-flex">
+    <button
+      type="button"
+      className="wk-system-global-hint-trigger inline-flex cursor-help items-center justify-center rounded-[4px] border-0 bg-transparent p-[2px] leading-none text-muted/60"
+      aria-label={t('system.globalSettings.priorityHint.disclosure')}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 16v-4M12 8h.01" />
+      </svg>
+    </button>
+    {open ? <div className="wk-system-global-hint-popover absolute left-0 top-full z-20 mt-1 w-max max-w-[420px] rounded-lg border border-line-soft bg-surface px-4 py-3 shadow-[0_6px_30px_rgba(0,0,0,0.12)]" role="tooltip">
+      <p className="m-0 mb-2 text-[13px] font-semibold text-ink">{t('system.globalSettings.priorityHint.disclosure')}</p>
+      <ul className="m-0 list-disc pl-[18px] text-[12px] leading-[1.6] text-muted [&>li+li]:mt-1">
+        <li>{t('system.globalSettings.priorityHint.tier1')}</li>
+        <li>{t('system.globalSettings.priorityHint.tier2')}</li>
+        <li>{t('system.globalSettings.priorityHint.tier3')}</li>
+      </ul>
+    </div> : null}
+  </span>;
 }
 
 export function SystemGlobalSettingsPanel({ client, initialSettings }: { client: WeKnoraClient; initialSettings: SystemSetting[] }) {
@@ -363,63 +396,72 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
   // ---- render ---------------------------------------------------------------
   const cancelLabel = t('system.globalSettings.confirm.cancelBtn');
   return <section className="wk-system-global grid gap-4" aria-label={t('system.globalSettings.title')}>
-    <header className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
-      <div className="w-full">
-        <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{t('system.globalSettings.title')}</h2>
-        <p className="wk-muted text-muted m-0">{t('system.globalSettings.description')}</p>
-        <details className="mt-1.5 text-[12px] text-muted">
-          <summary className="wk-system-global-priority-summary cursor-pointer list-none text-muted hover:text-accent" aria-label={t('system.globalSettings.priorityHint.disclosure')} role="button">{t('system.globalSettings.priorityHint.disclosure')}</summary>
-          <ul className="wk-system-global-priority-list m-1 mb-0 list-disc pl-4 text-[12px] leading-relaxed">
-            <li>{t('system.globalSettings.priorityHint.tier1')}</li>
-            <li>{t('system.globalSettings.priorityHint.tier2')}</li>
-            <li>{t('system.globalSettings.priorityHint.tier3')}</li>
-          </ul>
-        </details>
+    {/* Vue SystemSettings.vue:34-57 section-header — titlewrap (h2 + hover
+        hint trigger) then description; NO bottom border (unlike the shared
+        wk-settings-panel-heading), margin-bottom 24px. */}
+    <header className="wk-settings-panel-heading mb-2">
+      {/* outer section grid gap-4 adds 16px → header→tabs spacing totals
+          the Vue .section-header margin-bottom 24px */}
+      <div className="flex items-center gap-1.5">
+        <h2 className="m-0 text-[20px] font-semibold leading-[normal]">{t('system.globalSettings.title')}</h2>
+        <PriorityHint locale={locale} />
       </div>
+      <p className="wk-muted text-muted m-0 mt-2 text-[14px] leading-[1.5]">{t('system.globalSettings.description')}</p>
     </header>
     {message ? <p className={`wk-system-global-message m-0 text-[13px] ${messageTone === 'success' ? 'text-[#0a8f4c]' : 'text-[#b23b34]'}`} role="status">{message}</p> : null}
     {confirm ? <ConfirmInline state={confirm} cancelLabel={cancelLabel} /> : null}
     {settings.length === 0 ? <Card><Status>{t('system.globalSettings.empty')}</Status></Card> : <>
-      <div className="wk-system-global-tabs flex overflow-x-auto gap-1 border-b border-[rgba(120,135,155,0.22)]" role="tablist" aria-label={t('system.globalSettings.title')}>
-        {tabs.map((key) => <button key={key} type="button" role="tab" aria-selected={section === key} className={`cursor-pointer whitespace-nowrap border-0 border-b-2 bg-transparent px-3 py-[9px] font-[inherit] text-[#5c6b83] transition-colors ${section === key ? 'is-active border-b-[#0a8f4c] font-semibold text-[#0a8f4c]' : 'border-b-transparent'}`} onClick={() => setSection(key)}>{t(`system.globalSettings.sections.${key}.tab`, { count: key === 'other' ? unknownSettings.length : sectionCount(key) })}</button>)}
+      {/* Vue .settings-section-tabs: 1px bottom line via box-shadow (not a
+          border) so the row keeps the t-tabs 48px height. */}
+      <div className="wk-system-global-tabs mb-[2px] flex overflow-x-auto gap-1 shadow-[0_1px_0_0_rgba(120,135,155,0.22)]" role="tablist" aria-label={t('system.globalSettings.title')}>
+        {/* Vue t-tabs nav-item: 48px tall, 16px horizontal padding */}
+        {tabs.map((key) => <button key={key} type="button" role="tab" aria-selected={section === key} className={`cursor-pointer whitespace-nowrap border-0 border-b-2 bg-transparent px-4 py-[13px] text-[14px] font-[inherit] text-[#5c6b83] transition-colors ${section === key ? 'is-active border-b-[#0a8f4c] font-semibold text-[#0a8f4c]' : 'border-b-transparent'}`} onClick={() => setSection(key)}>{t(`system.globalSettings.sections.${key}.tab`, { count: key === 'other' ? unknownSettings.length : sectionCount(key) })}</button>)}
       </div>
-      <div className="wk-system-global-section grid gap-3" aria-label={t(`system.globalSettings.sections.${section}.title`)}>
+      <div className="wk-system-global-section grid" aria-label={t(`system.globalSettings.sections.${section}.title`)}>
         <div className="wk-system-global-intro flex items-start justify-between gap-4 border-b border-line-soft pb-3 text-[13px] text-muted">
           <p className="m-0">{t(`system.globalSettings.sections.${section}.description`)}</p>
           {section === 'runtime' ? <Badge tone="warning">{t('system.globalSettings.sections.runtime.restartHint')}</Badge> : null}
         </div>
-        {section === 'runtime' ? <div className="wk-system-global-runtime-header grid grid-cols-[minmax(0,1fr)_210px] gap-6 rounded-t-lg border border-line-soft border-b-0 bg-surface-alt px-4 py-2 text-xs font-medium text-muted" aria-hidden="true">
+        {section === 'runtime' ? <div className="wk-system-global-runtime-header grid grid-cols-[minmax(0,1fr)_280px] gap-6 rounded-t-lg border border-line-soft border-b-0 bg-surface-alt px-4 py-2 text-xs font-medium text-muted" aria-hidden="true">
           <span>{t('system.globalSettings.runtimeTable.setting')}</span>
           <span className="text-right">{t('system.globalSettings.runtimeTable.value')}</span>
         </div> : null}
-        <div className={`wk-system-global-rows grid gap-2.5 ${section === 'runtime' ? 'wk-system-global-rows--runtime' : ''}`}>
+        <div className={`wk-system-global-rows grid ${section === 'runtime' ? 'wk-system-global-rows--runtime' : ''}`}>
           {section === 'access' ? <>
-            <div className="wk-system-global-row wk-system-global-row--admins grid grid-cols-[minmax(0,1fr)_minmax(280px,340px)] items-start gap-6 border-b border-line-soft pb-4">
-              <div className="min-w-0">
-                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 text-[15px] font-medium text-ink">{t('system.globalSettings.admins.label')}<Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge></div>
+            <div className="wk-system-global-row wk-system-global-row--admins flex items-start justify-between border-b border-line-soft py-5 last:border-b-0">
+              <div className="min-w-0 flex-1 max-w-[65%] pr-6">
+                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 leading-[21px] text-[15px] font-medium text-ink">{t('system.globalSettings.admins.label')}<Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge></div>
                 <p className="wk-muted m-0 text-[13px] leading-normal text-muted">{t('system.globalSettings.admins.description')}</p>
               </div>
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex min-w-[280px] flex-col items-end gap-1.5">
                 <TagInput values={adminEmails} placeholder={t('system.globalSettings.admins.placeholder')} ariaLabel={t('system.globalSettings.admins.label')} disabled={adminBusy} onCommit={onAdminsCommit} />
                 {adminBusy ? <span className="text-xs text-muted" role="status">{t('system.globalSettings.saving')}</span> : null}
               </div>
             </div>
-            <div className="wk-system-global-row wk-system-global-row--password-reset grid grid-cols-[minmax(0,1fr)_minmax(280px,340px)] items-start gap-6 border-b border-line-soft pb-4">
-              <div className="min-w-0">
-                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 text-[15px] font-medium text-ink">{t('system.globalSettings.passwordReset.label')}<Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge></div>
+            <div className="wk-system-global-row wk-system-global-row--password-reset flex items-start justify-between border-b border-line-soft py-5 last:border-b-0">
+              <div className="min-w-0 flex-1 max-w-[65%] pr-6">
+                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 leading-[21px] text-[15px] font-medium text-ink">{t('system.globalSettings.passwordReset.label')}<Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge></div>
                 <p className="wk-muted m-0 text-[13px] leading-normal text-muted">{t('system.globalSettings.passwordReset.description')}</p>
               </div>
-              <div className="flex justify-end">
-                <button type="button" className="wk-password-reset-trigger cursor-pointer rounded-[6px] border border-transparent bg-[rgba(213,73,65,0.08)] px-3 py-1.5 text-[13px] text-danger hover:bg-[rgba(213,73,65,0.14)]" onClick={() => setResetPasswordVisible(true)}>{t('system.globalSettings.passwordReset.action')}</button>
+              <div className="flex min-w-[280px] justify-end">
+                <button type="button" className="wk-password-reset-trigger inline-flex min-w-[112px] cursor-pointer items-center justify-center gap-1.5 rounded-[6px] border border-transparent bg-[rgba(213,73,65,0.08)] px-3 text-[13px] leading-[30px] text-danger hover:bg-[rgba(213,73,65,0.14)]" onClick={() => setResetPasswordVisible(true)}>
+                  {/* t-icon lock-on */}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+                  {t('system.globalSettings.passwordReset.action')}
+                </button>
               </div>
             </div>
-            <div className="wk-system-global-row wk-system-global-row--create-user grid grid-cols-[minmax(0,1fr)_minmax(280px,340px)] items-start gap-6 border-b border-line-soft pb-4">
-              <div className="min-w-0">
-                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 text-[15px] font-medium text-ink">{t('system.globalSettings.createUser.label')}<Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge></div>
+            <div className="wk-system-global-row wk-system-global-row--create-user flex items-start justify-between border-b border-line-soft py-5 last:border-b-0">
+              <div className="min-w-0 flex-1 max-w-[65%] pr-6">
+                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 leading-[21px] text-[15px] font-medium text-ink">{t('system.globalSettings.createUser.label')}<Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge></div>
                 <p className="wk-muted m-0 text-[13px] leading-normal text-muted">{t('system.globalSettings.createUser.description')}</p>
               </div>
-              <div className="flex justify-end">
-                <button type="button" className="wk-create-user-trigger cursor-pointer rounded-[6px] border border-accent bg-transparent px-3 py-1.5 text-[13px] text-accent hover:bg-accent/10" onClick={() => setCreateUserVisible(true)}>{t('system.globalSettings.createUser.action')}</button>
+              <div className="flex min-w-[280px] justify-end">
+                <button type="button" className="wk-create-user-trigger inline-flex min-w-[112px] cursor-pointer items-center justify-center gap-1.5 rounded-[6px] border border-accent bg-transparent px-3 text-[13px] leading-[30px] text-accent hover:bg-accent/10" onClick={() => setCreateUserVisible(true)}>
+                  {/* t-icon user-add */}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M19 8v6M22 11h-6" /></svg>
+                  {t('system.globalSettings.createUser.action')}
+                </button>
               </div>
             </div>
           </> : null}
@@ -428,19 +470,19 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
             const enums = Array.isArray(item.enum) ? item.enum : [];
             const itemSaving = savingKey === item.key;
             const dirty = isDirty(item);
-            return <div key={item.key} className={`wk-system-global-row grid items-start gap-6 border-b border-line-soft pb-4 ${section === 'runtime' ? 'grid-cols-[minmax(0,1fr)_210px] bg-surface px-4' : 'grid-cols-[minmax(0,1fr)_minmax(280px,340px)]'}`}>
-              <div className="wk-system-global-info min-w-0">
-                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 text-[15px] font-medium text-ink">
+            return <div key={item.key} className={`wk-system-global-row items-start gap-6 border-b border-line-soft last:border-b-0 ${section === 'runtime' ? 'grid grid-cols-[minmax(0,1fr)_280px] bg-surface px-4 py-3.5' : 'flex justify-between py-5'}`}>
+              <div className={`wk-system-global-info min-w-0 ${section === 'runtime' ? '' : 'flex-1 max-w-[65%] pr-6'}`}>
+                <div className={`wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 leading-[21px] font-medium text-ink ${section === 'runtime' ? 'text-[14px]' : 'text-[15px]'}`}>
                   {keyLabel(item.key)}
                   {item.requires_restart ? <Badge tone="warning">{t('system.globalSettings.badgeRequiresRestart')}</Badge> : null}
                   {item.is_secret ? <Badge tone="primary">{t('system.globalSettings.badgeSecret')}</Badge> : null}
                   {HIGH_IMPACT_KEYS.has(item.key) ? <Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge> : null}
                   {hasOverride(item) ? <Badge tone="success" title={t('system.globalSettings.badgeOverrideTooltip')}>{t('system.globalSettings.badgeOverride')}</Badge> : null}
                 </div>
-                {keyDescription(item) ? <p className="wk-muted m-0 max-w-[480px] text-[13px] leading-normal text-muted">{keyDescription(item)}</p> : null}
+                {keyDescription(item) ? <p className={`wk-muted m-0 text-muted leading-normal ${section === 'runtime' ? 'max-w-[620px] text-[12px]' : 'max-w-[480px] text-[13px]'}`}>{keyDescription(item)}</p> : null}
                 {modifiedMeta(item) ? <p className="m-0 mt-1.5 text-xs text-muted/70">{modifiedMeta(item)}</p> : null}
               </div>
-              <div className="wk-system-global-control flex flex-col items-end gap-2">
+              <div className="wk-system-global-control flex min-w-[280px] flex-col items-end gap-1.5">
                 <div className="flex w-full items-center justify-end gap-2">
                   {item.value_type === 'bool'
                     ? <Switch checked={current === true} disabled={itemSaving} aria-label={keyLabel(item.key)} onCheckedChange={(checked) => requestPersist(item, checked)} />

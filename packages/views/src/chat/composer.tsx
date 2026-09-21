@@ -402,8 +402,10 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
       />
       {/* Vue .answers-input control row: 9px under the textarea, 13px to the
           shell bottom edge — the 8/12 pair left the whole composer 10px low
-          and 2px short (y576 h124 on the Vue side). */}
-      <div className="wk-chat-control-bar relative mx-[16px] mb-[13px] mt-0 flex flex-wrap items-center justify-between gap-[8px] pt-[9px]">
+          and 2px short (y576 h124 on the Vue side). With the 30px agent chip
+          the row is 38px tall in Vue (8px top pad) and the shell closes with
+          12px + border, keeping the shell y576 h124 exactly. */}
+      <div className="wk-chat-control-bar relative mx-[16px] mb-[12px] mt-0 flex flex-wrap items-center justify-between gap-[8px] pt-[8px]">
         <div className="wk-chat-control-left flex min-w-0 flex-1 flex-wrap items-center gap-[8px]">
           {agents && onAgentChange ? (() => {
             const currentAgent = agents.find((agent) => agent.id === selectedAgentId);
@@ -419,9 +421,10 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
                 aria-expanded={agentPanelOpen}
                 disabled={disabled}
                 onClick={() => setAgentPanelOpen((open) => !open)}
-                className="wk-chat-agent-chip relative inline-flex h-[28px] cursor-pointer items-center gap-[2px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-0 text-[13px] font-medium text-[rgba(0,0,0,0.6)] hover:bg-[#f7f7f7] disabled:cursor-not-allowed disabled:opacity-50"
+                className="wk-chat-agent-chip relative inline-flex h-[30px] cursor-pointer items-center gap-[4px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[10px] py-0 text-[13px] font-medium text-[rgba(0,0,0,0.6)] hover:bg-[#f7f7f7] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap">{chipLabel}</span>
+                {/* Vue .agent-mode-text: margin 0 4px, on top of the control-btn flex gap 4 */}
+                <span className="mx-[4px] max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap">{chipLabel}</span>
                 <svg className="shrink-0 text-[rgba(0,0,0,0.26)]" width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
               </button>
               {panelOpen && agentChipRef.current ? <AgentSelectorPanel
@@ -486,7 +489,7 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
             </svg>
           </button>
           <div className="relative">
-          <button type="button" data-guide="chat-kb-mention" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.mentionKnowledge} aria-expanded={mentionOpen} aria-controls="wk-chat-mention-listbox" disabled={disabled} title={t.mentionKnowledge} onClick={toggleMentions}>
+          <button type="button" data-guide="chat-kb-mention" className="wk-chat-control-icon flex h-[28px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.mentionKnowledge} aria-expanded={mentionOpen} aria-controls="wk-chat-mention-listbox" disabled={disabled} title={t.mentionKnowledge} onClick={toggleMentions}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <circle cx="10" cy="10" r="3.5" stroke="currentColor" strokeWidth="1.8" />
               <path d="M13.5 10V11.5C13.5 12.163 13.7634 12.7989 14.2322 13.2678C14.7011 13.7366 15.337 14 16 14C16.663 14 17.2989 13.7366 17.7678 13.2678C18.2366 12.7989 18.5 12.163 18.5 11.5V10C18.5 7.74566 17.6045 5.58365 16.0104 3.98959C14.4163 2.39553 12.2543 1.5 10 1.5C7.74566 1.5 5.58365 2.39553 3.98959 3.98959C2.39553 5.58365 1.5 7.74566 1.5 10C1.5 12.2543 2.39553 14.4163 3.98959 16.0104C5.58365 17.6045 7.74566 18.5 10 18.5H12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -501,14 +504,19 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
             </div> : <p className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{mentionQuery ? t.mentionNoResults : (mentionEmptyHint ?? t.mentionNoAvailable)}</p>}
           </div> : null}
           </div>
+          {/* Vue Input-field.vue:2787-2795 — the model chip lives at the right
+              edge of control-left (.model-display margin-left:auto), NOT in
+              control-right; keeping it there shifts it ~8px left to x≈1022. */}
+          <div className="wk-chat-model-display ml-auto flex shrink-0 items-center">
+            {modelOptions.length > 0 && onModelChange ? <label className="wk-chat-model-chip relative flex h-[22px] min-w-[100px] items-center gap-[6px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-[2px] text-left"><span className="hidden" aria-hidden="true">{t.modelChip}</span><select aria-label={t.modelChip} value={selectedModelId ?? modelOptions[0]?.id ?? ''} onChange={(event) => onModelChange(event.target.value)} className="h-full w-[118px] min-w-0 cursor-pointer appearance-none border-0 bg-transparent text-[12px] font-medium text-[rgba(0,0,0,0.6)] outline-none">{modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>{modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default pointer-events-none shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)] opacity-85' : 'wk-chat-model-ctx pointer-events-none shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)]'}>{modelContext}</span> : null}<svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.26)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg></label> : <button type="button" className="wk-chat-model-chip flex h-[22px] min-w-[100px] cursor-not-allowed items-center gap-[6px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-[2px] text-left opacity-75" disabled aria-disabled="true" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
+              <span className="wk-chat-model-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium text-[rgba(0,0,0,0.6)]">{modelLabel ?? t.modelChip}</span>
+              {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)] opacity-85' : 'wk-chat-model-ctx shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)]'}>{modelContext}</span> : null}
+              <svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.26)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
+            </button>}
+          </div>
         </div>
         <div className="wk-chat-control-right flex items-center gap-[8px]">
-          {modelOptions.length > 0 && onModelChange ? <label className="wk-chat-model-chip relative flex h-[22px] min-w-[100px] items-center gap-[4px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-[2px] text-left"><span className="hidden" aria-hidden="true">{t.modelChip}</span><select aria-label={t.modelChip} value={selectedModelId ?? modelOptions[0]?.id ?? ''} onChange={(event) => onModelChange(event.target.value)} className="h-full min-w-0 flex-1 cursor-pointer appearance-none border-0 bg-transparent text-[13px] font-medium text-[rgba(0,0,0,0.6)] outline-none">{modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>{modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default pointer-events-none shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)] opacity-85' : 'wk-chat-model-ctx pointer-events-none shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)]'}>{modelContext}</span> : null}<svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.26)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg></label> : <button type="button" className="wk-chat-model-chip flex h-[22px] min-w-[100px] cursor-not-allowed items-center gap-[6px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-[2px] text-left opacity-75" disabled aria-disabled="true" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
-            <span className="wk-chat-model-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium text-[rgba(0,0,0,0.6)]">{modelLabel ?? t.modelChip}</span>
-            {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)] opacity-85' : 'wk-chat-model-ctx shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)]'}>{modelContext}</span> : null}
-            <svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.26)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
-          </button>}
-          {showStop && onStop ? <button type="button" className="wk-chat-stop wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#06b04d] disabled:cursor-not-allowed disabled:bg-[#e8f8f2] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>
+          {showStop && onStop ?<button type="button" className="wk-chat-stop wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#06b04d] disabled:cursor-not-allowed disabled:bg-[#e8f8f2] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><rect x="2.5" y="2.5" width="9" height="9" rx="1.5" /></svg>
           </button> : (() => {
             // Vue steer-mode labelling: while replying on a steer-capable turn

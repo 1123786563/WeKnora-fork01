@@ -72,6 +72,7 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
     return !(initial.has_models === true && initial.needs_reinit !== true);
   });
   const [existingKinds, setExistingKinds] = useState<Set<WkcModelKind>>(new Set());
+  const [secretVisible, setSecretVisible] = useState(false);
   const [addingModels, setAddingModels] = useState(false);
   const [addingKind, setAddingKind] = useState<WkcModelKind | null>(null);
   const [confirmAdd, setConfirmAdd] = useState<WkcModelKind[] | null>(null);
@@ -179,41 +180,44 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
         models box with row separators, gray usage hint box. */}
     <div>
       <div className="mb-6">
-        <h2 className="m-0 mb-2 text-[20px] font-semibold text-ink">{t('settings.weknoraCloud.title')}</h2>
-        <p className="m-0 mb-[10px] text-[14px] leading-[1.5] text-muted-strong">{t('settings.weknoraCloud.description')}{' '}
-          <a className="text-primary hover:underline" href="https://developers.weixin.qq.com/doc/aispeech/knowledge/atomic_capability/atomic_interface.html" target="_blank" rel="noopener noreferrer">{t('settings.weknoraCloud.viewDocs')} <span className="text-[12px]" aria-hidden="true">⧉</span></a>
+        <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[23px] text-[rgba(0,0,0,0.9)]">{t('settings.weknoraCloud.title')}</h2>
+        <p className="m-0 mb-[10px] text-[14px] leading-[20px] text-[rgba(0,0,0,0.6)]">{t('settings.weknoraCloud.description')}{' '}
+          <a className="inline-flex items-center gap-[3px] text-[#07c05f] hover:underline" href="https://developers.weixin.qq.com/doc/aispeech/knowledge/atomic_capability/atomic_interface.html" target="_blank" rel="noopener noreferrer">{t('settings.weknoraCloud.viewDocs')}<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg></a>
         </p>
       </div>
-      {credentialState === 'unconfigured' ? <div className="mb-5 flex items-center gap-2 rounded-[6px] border border-line bg-surface-wash px-[14px] py-[10px] text-[13px] text-muted-strong"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg><span>{t('settings.weknoraCloud.unconfigured')}</span></div>
+      {credentialState === 'unconfigured' ? <div className="mb-5 flex items-center gap-2 rounded-[6px] border border-[#e7e7e7] bg-[#f3f3f3] px-[14px] py-[10px] text-[13px] leading-[18px] text-[rgba(0,0,0,0.6)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg><span>{t('settings.weknoraCloud.unconfigured')}</span></div>
         : credentialState === 'expired' ? <div className="mb-5 flex items-start gap-2 rounded-[6px] border border-[#fed7aa] border-l-[3px] border-l-[#f97316] bg-[#fff7ed] px-4 py-3 text-[13px] text-[#9a3412]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="1.8" className="mt-[2px] shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg><span><strong>{t('settings.weknoraCloud.expired')}</strong><br />{typeof status.reason === 'string' && status.reason ? status.reason : t('settings.weknoraCloud.expiredDefault')}</span></div>
         : <div className="mb-5 flex items-center justify-between gap-3 text-[13px] text-muted-strong"><span className="flex items-center gap-2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--wks-brand, #0a7f43)" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M8 12l3 3 5-6" /></svg><span className="flex-1">{t('settings.weknoraCloud.configured')}</span></span>{!formExpanded ? <Button type="button" size="small" onClick={() => setFormExpanded(true)}>{t('settings.weknoraCloud.reconfigure')}</Button> : null}</div>}
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {formExpanded ? <div className="mb-6 grid">
-        <div className="flex items-center justify-between gap-4 border-b border-line py-4 max-[720px]:flex-col max-[720px]:items-start">
-          <div className="min-w-0 flex-1"><label className="mb-1 block text-[14px] font-medium text-ink">{t('settings.weknoraCloud.appIdLabel')}</label><p className="m-0 text-[13px] leading-[1.5] text-muted-strong">{t('settings.weknoraCloud.appIdDesc')}</p></div>
+        <div className="flex items-center justify-between gap-4 border-b border-[#e7e7e7] py-4 max-[720px]:flex-col max-[720px]:items-start">
+          <div className="min-w-0 flex-1"><label className="mb-1 block text-[14px] font-medium leading-[17px] text-[rgba(0,0,0,0.9)]">{t('settings.weknoraCloud.appIdLabel')}</label><p className="m-0 text-[13px] leading-[19.5px] text-[rgba(0,0,0,0.6)]">{t('settings.weknoraCloud.appIdDesc')}</p></div>
           <span className="block w-[280px] shrink-0"><Input className="w-full" autoComplete="off" placeholder={t('settings.weknoraCloud.appIdPlaceholder')} value={appId} onChange={(event) => setAppId(event.target.value)} /></span>
         </div>
-        <div className="flex items-center justify-between gap-4 border-b border-line py-4 max-[720px]:flex-col max-[720px]:items-start">
-          <div className="min-w-0 flex-1"><label className="mb-1 block text-[14px] font-medium text-ink">{t('settings.weknoraCloud.appSecretLabel')}</label><p className="m-0 text-[13px] leading-[1.5] text-muted-strong">{t('settings.weknoraCloud.appSecretDesc')}</p></div>
-          <span className="block w-[280px] shrink-0"><Input className="w-full" type="password" autoComplete="new-password" placeholder={t('settings.weknoraCloud.appSecretPlaceholder')} value={appSecret} onChange={(event) => setAppSecret(event.target.value)} /></span>
+        <div className="flex items-center justify-between gap-4 border-b border-[#e7e7e7] py-4 max-[720px]:flex-col max-[720px]:items-start">
+          <div className="min-w-0 flex-1"><label className="mb-1 block text-[14px] font-medium leading-[17px] text-[rgba(0,0,0,0.9)]">{t('settings.weknoraCloud.appSecretLabel')}</label><p className="m-0 text-[13px] leading-[19.5px] text-[rgba(0,0,0,0.6)]">{t('settings.weknoraCloud.appSecretDesc')}</p></div>
+          {/* Vue t-input type="password" carries the built-in browse-off eye
+              suffix; reproduce the toggle with an overlaid button. */}
+          <span className="relative block w-[280px] shrink-0"><Input className="w-full" type={secretVisible ? 'text' : 'password'} autoComplete="new-password" placeholder={t('settings.weknoraCloud.appSecretPlaceholder')} value={appSecret} onChange={(event) => setAppSecret(event.target.value)} /><button type="button" aria-label={secretVisible ? '隐藏' : '显示'} title={secretVisible ? '隐藏' : '显示'} className="absolute right-[9px] top-1/2 z-[1] flex h-[24px] w-[24px] -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[#98a2b3] hover:text-[rgba(0,0,0,0.9)]" onClick={() => setSecretVisible((visible) => !visible)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{secretVisible ? <><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" /><circle cx="12" cy="12" r="2.6" /></> : <><path d="M2 12s3.5-6.5 10-6.5c2 0 3.8.6 5.3 1.5M22 12s-3.5 6.5-10 6.5c-2 0-3.8-.6-5.3-1.5" /><path d="M4 20 20 4" /></>}</svg></button></span>
         </div>
-        <div className="flex items-center justify-between gap-3 pt-5">
-          <p className="m-0 text-[13px] text-muted-strong">{t('settings.weknoraCloud.saveHint')}</p>
-          <Button type="button" loading={saving} disabled={!appId.trim() || !appSecret.trim()} onClick={() => void save()}>{t('settings.weknoraCloud.saveBtn')}</Button>
+        {/* Vue action-row keeps the 16px bottom padding of .setting-row. */}
+        <div className="flex items-center justify-between gap-3 pt-5 pb-4">
+          <p className="m-0 text-[13px] text-[rgba(0,0,0,0.6)]">{t('settings.weknoraCloud.saveHint')}</p>
+          <Button type="button" variant="primary" loading={saving} disabled={!appId.trim() || !appSecret.trim()} onClick={() => void save()}>{t('settings.weknoraCloud.saveBtn')}</Button>
         </div>
       </div> : null}
     </div>
-    <section className={`mb-6 rounded-[8px] border border-line bg-surface p-4 ${credentialState !== 'configured' ? 'bg-surface-wash' : ''}`}>
+    <section className={`mb-6 rounded-[8px] border border-[#e7e7e7] p-4 ${credentialState !== 'configured' ? 'bg-[#f3f3f3]' : 'bg-surface'}`}>
       <div className="mb-[14px]">
-        <h3 className="m-0 mb-[6px] text-[15px] font-semibold text-ink">{t('settings.weknoraCloud.modelsSection.title')}</h3>
-        <p className="m-0 text-[13px] leading-[1.55] text-muted-strong">{credentialState === 'configured' ? t('settings.weknoraCloud.modelsSection.descReady') : t('settings.weknoraCloud.modelsSection.descPending')}</p>
+        <h3 className="m-0 mb-[6px] text-[15px] font-semibold leading-[21px] text-[rgba(0,0,0,0.9)]">{t('settings.weknoraCloud.modelsSection.title')}</h3>
+        <p className="m-0 text-[13px] leading-[20.15px] text-[rgba(0,0,0,0.6)]">{credentialState === 'configured' ? t('settings.weknoraCloud.modelsSection.descReady') : t('settings.weknoraCloud.modelsSection.descPending')}</p>
       </div>
       <div className="grid">
-        {WKC_MODEL_KINDS.map((kind) => <div key={kind} className={`flex items-center justify-between gap-3 border-b border-line py-3 first:pt-1 last:border-b-0 last:pb-0 ${credentialState !== 'configured' ? 'opacity-90' : ''}`}>
+        {WKC_MODEL_KINDS.map((kind) => <div key={kind} className={`flex items-center justify-between gap-3 border-b border-[#e7e7e7] py-3 first:pt-1 last:border-b-0 last:pb-0 ${credentialState !== 'configured' ? 'opacity-90' : ''}`}>
           <div className="flex min-w-0 items-center gap-[10px]">
-            <span className="min-w-[88px] text-[14px] font-medium text-ink">{kindLabel(kind)}</span>
-            <code className="rounded-[4px] bg-surface-wash px-[6px] py-0.5 font-mono text-[12px] text-muted">{WKC_MODEL_NAME_BY_KIND[kind]}</code>
+            <span className="min-w-[88px] text-[14px] font-medium text-[rgba(0,0,0,0.9)]">{kindLabel(kind)}</span>
+            <code className="rounded-[4px] bg-[#f3f3f3] px-[6px] py-0.5 [font-family:monospace] text-[12px] text-[rgba(0,0,0,0.6)]">{WKC_MODEL_NAME_BY_KIND[kind]}</code>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {credentialState === 'configured' && existingKinds.has(kind) ? <Status tone="success">{t('settings.weknoraCloud.modelsSection.statusAdded')}</Status>
@@ -228,12 +232,12 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
                     </span>
                   </span> : null}
                 </span>)
-              : <span className="text-[12px] text-muted">{t('settings.weknoraCloud.modelsSection.statusPending')}</span>}
+              : <span className="text-[12px] leading-[15px] text-[rgba(0,0,0,0.4)]">{t('settings.weknoraCloud.modelsSection.statusPending')}</span>}
           </div>
         </div>)}
       </div>
       {credentialState === 'configured' && missingKinds.length > 1 ? (
-        <div className="mt-[14px] border-t border-dashed border-line pt-[14px]">
+        <div className="mt-[14px] border-t border-dashed border-[#e7e7e7] pt-[14px]">
           <span className="relative inline-flex">
             <Button type="button" loading={addingModels && !addingKind} disabled={addingModels && !!addingKind} onClick={() => setConfirmAdd([...missingKinds])}>{t('settings.weknoraCloud.modelsSection.addAllBtn', { count: missingKinds.length })}</Button>
             {confirmAdd && confirmAdd.length > 1 ? <span className="absolute right-0 top-full z-[60] mt-[6px] flex w-[260px] flex-col gap-2 rounded-[8px] border border-[#e7e7ea] bg-white p-3 text-[13px] shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
@@ -247,9 +251,9 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
         </div>
       ) : credentialState === 'configured' && missingKinds.length === 0 ? <p className="mb-0 mt-[14px] flex items-center gap-1.5 text-[13px] text-[#0a7f43]"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M8 12l3 3 5-6" /></svg>{t('settings.weknoraCloud.modelsSection.allReady')}</p> : null}
     </section>
-    <div className="rounded-[8px] border border-line bg-surface-wash px-4 py-[14px]">
-      <p className="m-0 mb-2 text-[13px] font-medium text-muted">{t('settings.weknoraCloud.usageTitle')}</p>
-      <p className="mb-0 mt-0 text-[13px] leading-[1.8] text-muted-strong">{t('settings.weknoraCloud.usageSteps').split('\n').map((line, index) => <span key={index} className="block">{line}</span>)}</p>
+    <div className="rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3] px-4 py-[14px]">
+      <p className="m-0 mb-2 text-[13px] font-medium text-[rgba(0,0,0,0.4)]">{t('settings.weknoraCloud.usageTitle')}</p>
+      <p className="mb-0 mt-0 text-[13px] leading-[1.8] text-[rgba(0,0,0,0.6)]">{t('settings.weknoraCloud.usageSteps').split('\n').map((line, index) => <span key={index} className="block">{line}</span>)}</p>
     </div>
   </div>;
 }

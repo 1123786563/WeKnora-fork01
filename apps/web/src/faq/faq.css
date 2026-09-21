@@ -84,3 +84,47 @@
   width: 16px; height: 16px; border-radius: 50%;
   background: #fff; border: 2px solid #00a870; box-sizing: border-box;
 }
+
+/* ---- ix-faq-tagfilter：Vue tag-filter-panel（FAQEntryManager.vue）形态 ---- */
+/* 触发器：Vue 灰底 #f3f3f3、3px 圆角（React rounded-lg #e8ecf3 是 KB 域形态） */
+.faq-tag-filter-trigger { border-radius: 3px; background: #f3f3f3; }
+.faq-tag-filter-trigger:hover { background: #f3f3f3; }
+/* 面板内搜索框：Vue t-input 灰底无边框 14px */
+/* Vue tag-search-bar：灰底胶囊包住搜索 icon，input 本体透明 */
+.tag-search-bar { background: #f3f3f3; border-radius: 6px; }
+.tag-search-bar .tag-search-input {
+  background: transparent;
+  border-color: transparent;
+  font-size: 14px;
+  font-family: inherit;
+}
+.tag-filter-panel__count { font-size: 12px; }
+.tag-search-bar .tag-search-input::placeholder { color: rgba(0, 0, 0, 0.4); }
+/* 标签 chip：Vue 11px / 60% 黑 / #e8e8e8 边，计数 10px 40% 黑 */
+.faq-tag-filter-chip {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.6);
+  border-color: #e8e8e8;
+}
+.faq-tag-filter-chip .faq-tag-filter-chip__count { font-size: 10px; color: rgba(0, 0, 0, 0.4); }
+/* 管理标签…：Vue 黑色文本 + 底部 1px #e7e7e7 上分隔线（footer p 10 0 0） */
+.tag-filter-panel__manage { color: rgba(0, 0, 0, 0.9) !important; border-top: 1px solid #e7e7e7; }
+
+/* ---- ix-faq-retrieval / ix-faq-import：TDesign 按钮形态（h32 已对齐，
+      Vue radius 3px + padding 0 15px；取消钮 #dcdcdc 边）---- */
+.faq-search-drawer .wk-button-size-medium,
+.faq-search-drawer .search-button,
+.faq-import-modal .faq-import-footer .wk-button-size-medium {
+  border-radius: 3px;
+  padding-left: 15px;
+  padding-right: 15px;
+}
+.faq-search-drawer .wk-button-size-medium { border-color: #dcdcdc; }
+.faq-search-drawer .wk-button-size-medium[class*="bg-accent"],
+.faq-search-drawer .search-button[class*="bg-accent"] { border-color: #07c05f; }
+/* Vue 查询内容输入框 t-input h34 */
+.faq-search-drawer .full-width-input { min-height: 34px; }
+/* 导入弹窗「下载示例文件」：Vue 1px #e7e7e7 边 */
+.faq-import-modal .download-example-btn { border-color: #e7e7e7; }

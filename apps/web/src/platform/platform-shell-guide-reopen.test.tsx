@@ -215,11 +215,13 @@ test('(a) with the tour finished, the user menu offers a reopen entry labelled n
   await openUserMenu();
   const item = reopenItem();
   assert.ok(item, 'reopen entry missing from the user menu');
-  assert.equal(item.getAttribute('role'), 'menuitem');
+  // Vue UserMenu.vue:47-54 renders the reopen entry as an icon-only 20px
+  // help-circle button inside the account card (t-tooltip carries the label),
+  // not as a labelled menu row — the shell mirrors that structure.
+  assert.equal(item.tagName, 'BUTTON');
   const expected = formatMessage('zh-CN', 'newUserGuide.reopen');
   assert.equal(expected, '新手引导', 'zh-CN Vue copy for newUserGuide.reopen');
   assert.equal(item.getAttribute('aria-label'), expected, 'aria-label mirrors the Vue $t(newUserGuide.reopen)');
-  assert.equal(item.textContent, expected, 'visible label mirrors the same key');
   assert.ok(item.querySelector('svg'), 'help-circle icon present (Vue t-icon name="help-circle")');
 });
 

@@ -279,7 +279,10 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
               narrowed every title 32px and forced early ellipsis. The active
               row keeps the ⋯ visible like the Vue menu-more. */}
           {!batchMode && hasMenu ? <details className={'group/menu absolute right-[4px] top-1/2 z-[2] -translate-y-1/2' + (active ? ' is-active' : '')}>
-            <summary aria-label={t.moreActions} title={t.moreActions}
+            {/* Vue SessionSidebarRow.vue:26 leaves the row ⋯ button without an
+                accessible name (aria-haspopup only), so the sidebar never
+                advertises 更多…; the header menu owns that name. */}
+            <summary
               className="inline-flex items-center justify-center h-[24px] w-[24px] rounded-[5px] bg-white/0 text-[rgba(0,0,0,0.26)] cursor-pointer list-none opacity-0 transition-[opacity,background-color,color] duration-[150ms] ease-[ease] hover:bg-[rgba(0,0,0,0.06)] hover:text-[rgba(0,0,0,0.9)] group-hover/item:opacity-100 group-hover/item:bg-white focus-visible:opacity-100 group-open/menu:opacity-100 group-[.is-active]/menu:opacity-100 [&::-webkit-details-marker]:hidden">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
             </summary>

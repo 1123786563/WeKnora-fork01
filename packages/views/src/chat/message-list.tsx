@@ -362,7 +362,9 @@ function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage; onT
           trailing 14px chevron, 22px tall. */}
       <button type='button' className='wk-chat-retrieval-summary inline-flex h-[22px] cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-0 py-[2px] text-[14px] leading-[22px] text-[rgba(0,0,0,0.6)] transition-[color,background] duration-200 ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]' aria-expanded={props.referencesOpen === true} onClick={() => props.onToggleReferences?.()}>
         <span>{props.copy.searchDone}</span>
-        {docCount > 0 ? <span>{formatChatCopy(props.copy, 'referencesDocCount', { count: docCount })}</span> : null}
+        {/* Vue .tree-root-reference is inline-flex gap-6 with a 3px ::before
+            dot (RagPipelineProgress.vue:647-661) — adds 9px to the span. */}
+        {docCount > 0 ? <span className='inline-flex items-center gap-[6px]'><span aria-hidden='true' className='h-[3px] w-[3px] shrink-0 rounded-full bg-current opacity-[0.65]'></span>{formatChatCopy(props.copy, 'referencesDocCount', { count: docCount })}</span> : null}
         <svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true' className='shrink-0'><path d='M6 3.5L10.5 8L6 12.5' /></svg>
       </button>
     </section>;

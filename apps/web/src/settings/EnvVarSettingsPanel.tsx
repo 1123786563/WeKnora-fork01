@@ -102,7 +102,7 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
   // its h2 + help popup + description (the settings shell heading is skipped
   // for envvars) so the hint entry matches the Vue baseline in every state,
   // including the noConfig notice below.
-  const sectionHeader = <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
+  const sectionHeader = <div className="section-header">
     <div className="relative w-full">
       <div className="flex items-center gap-[6px]">
         <h2 className="m-0 text-[20px] font-semibold leading-[normal] text-[#27364d]">{t('envVarSettings.title')}</h2>
@@ -139,23 +139,24 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
           ) : null}
         </span>
       </div>
-      <p className="wk-muted text-muted m-0 mt-2">{t('envVarSettings.description')}</p>
+      <p className="section-description m-0">{t('envVarSettings.description')}</p>
     </div>
   </div>;
 
   if (sandboxes !== null && sandboxes.length === 0) {
-    return <Card data-testid="envvar-panel">
+    // Vue EnvVarSettings.vue .env-empty: gray fill, no border, no card.
+    return <div className="env-settings" data-testid="envvar-panel">
       {sectionHeader}
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
-      <div className="py-6 text-center">
-        <p className="m-0 text-[15px] font-semibold text-[#27364d]">{t('envVarSettings.noConfigTitle')}</p>
-        <p className="m-0 mt-2 text-[13px] text-muted-strong">{t('envVarSettings.noConfigDescription')}</p>
+      <div className="rounded-[10px] bg-[#f3f3f3] px-6 py-6 text-center">
+        <p className="m-0 mb-[4px] text-[14px] font-medium text-[rgba(0,0,0,0.6)]">{t('envVarSettings.noConfigTitle')}</p>
+        <p className="m-0 text-[13px] text-[rgba(0,0,0,0.4)]">{t('envVarSettings.noConfigDescription')}</p>
       </div>
-    </Card>;
+    </div>;
   }
 
-  return <Card data-testid="envvar-panel">
+  return <Card className="env-settings" data-testid="envvar-panel">
     {sectionHeader}
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}

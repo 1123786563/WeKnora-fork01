@@ -1026,26 +1026,71 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
             </button>
             {menuOpen && (
               <div className="absolute bottom-[calc(100%_+_6px)] left-[-4px] right-[-5px] bg-white border border-[#e7ebf0] rounded-[8px] shadow-[0_4px_20px_rgba(0,0,0,0.12)] overflow-hidden z-[1000]" role="menu">
-                {/* Vue UserMenu.vue:45-50,501-504 — a help-circle entry labelled
-                    $t('newUserGuide.reopen') re-opens the welcome tour by
-                    dispatching weknora:open-new-user-guide; the NewUserGuide
-                    host opens on that event even when the done-key is '1',
-                    so the tour replays without touching the stored key. */}
-                <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  data-testid="plat-shell-guide-reopen"
-                  aria-label={labels.reopenGuide}
-                  onClick={() => { setMenuOpen(false); openNewUserGuide(); }}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M9.4 9.4a2.6 2.6 0 1 1 3.7 2.4c-.8.4-1.1.9-1.1 1.7" />
-                    <line x1="12" y1="16.6" x2="12" y2="16.7" />
+                {/* Vue UserMenu.vue:44-56 — the dropdown opens with an account
+                    card (24px avatar at margin-left -4px, nickname row with a
+                    20px help-circle button that re-opens the welcome tour by
+                    dispatching weknora:open-new-user-guide, email below), then
+                    the current-tenant panel row. The whole card is clickable
+                    and lands on userprofile like handleQuickNav. */}
+                <div role="button" tabIndex={0} className="flex min-w-0 cursor-pointer items-center gap-[6px] px-[12px] py-[9px] transition-colors hover:bg-[#f2f5f9]"
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false))}
+                  onKeyDown={(event) => { if (event.key === 'Enter') handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false)); }}>
+                  <span className="inline-flex h-[24px] w-[24px] shrink-0 -ml-[4px] items-center justify-center overflow-hidden rounded-full bg-[linear-gradient(135deg,#2e6de6_0%,#1f56c2_100%)]" aria-hidden="true">
+                    {user.avatar ? <img src={user.avatar} alt="" className="h-full w-full object-cover" onError={(event) => { const img = event.currentTarget; if (!img.dataset.faviconFallback) { img.dataset.faviconFallback = '1'; img.src = '/favicon.ico'; } }} /> : <span className="text-[12px] font-semibold leading-[1] text-white">{initial}</span>}
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="flex min-w-0 items-center gap-[2px]">
+                      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium leading-[1.35] text-[#1f2733]">{user.name || '—'}</span>
+                      <button type="button" data-testid="plat-shell-guide-reopen" aria-label={labels.reopenGuide} title={labels.reopenGuide}
+                        className="inline-flex h-[20px] w-[20px] shrink-0 cursor-pointer items-center justify-center rounded-[4px] border-none bg-transparent p-0 text-[#8b97a8] transition-colors hover:bg-[#e7ebf0] hover:text-[#66758b]"
+                        onClick={(event) => { event.stopPropagation(); setMenuOpen(false); openNewUserGuide(); }}>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                          strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <circle cx="12" cy="12" r="9" />
+                          <path d="M9.4 9.4a2.6 2.6 0 1 1 3.7 2.4c-.8.4-1.1.9-1.1 1.7" />
+                          <line x1="12" y1="16.6" x2="12" y2="16.7" />
+                        </svg>
+                      </button>
+                    </span>
+                    {user.email ? <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35] text-[#66758b]">{user.email}</span> : null}
+                  </span>
+                </div>
+                {/* Vue UserMenu.vue:59-63 — current tenant panel row between the
+                    account card and the quick links: leading system-sum icon,
+                    tenant name + role line, trailing swap glyph, top border. */}
+                {/* Vue UserMenu.vue:59 renders the panel whenever !isLiteMode;
+                    only the trailing swap glyph is gated on switchability
+                    (showTenantSwitcher). role="group" keeps the switcher
+                    tests' [role="group"] > button handle on the swap toggle. */}
+                {!isLiteEdition ? <div role="group" aria-label={t('tenant.switcher.menuLabel')} className="flex min-w-0 items-center gap-[10px] border-t border-[#e7ebf0] px-[12px] py-[9px] transition-colors hover:bg-[#f2f5f9]">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]">
+                    <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+                    <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+                    <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+                    <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
                   </svg>
-                  {labels.reopenGuide}
-                </button>
+                  <span className="flex min-w-0 flex-1 flex-col gap-[1px]">
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium leading-[1.35] text-[#1f2733]">{user.tenantName || user.name || '—'}</span>
+                    {roleLabel ? <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35] text-[#66758b]">{roleLabel}</span> : null}
+                  </span>
+                  {tenantSwitcherVisible ? <button type="button" aria-label={t('tenant.switcher.menuLabel')} title={t('tenant.switcher.menuLabel')} aria-expanded={tenantMenuOpen}
+                    className="inline-flex shrink-0 cursor-pointer items-center justify-center border-none bg-transparent p-0 text-[#8b97a8] transition-colors hover:text-[#66758b]"
+                    onClick={toggleTenantSubmenu}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4 7h13m0 0-3-3m3 3-3 3" />
+                      <path d="M20 17H7m0 0 3-3m-3 3 3 3" />
+                    </svg>
+                  </button> : null}
+                </div> : null}
+                {tenantMenuOpen ? <div role="listbox" aria-label={t('tenant.switcher.menuLabel')} className="max-h-[180px] overflow-y-auto border-t border-[#eef1f5] px-[8px] py-[6px]">
+                  {user.memberships.map((membership) => <button key={membership.tenantId} type="button" role="option" aria-selected={membership.tenantId === activeTenantId} disabled={tenantSwitchPending !== null} className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[7px] text-left text-[13px] text-[#1f2733] cursor-pointer hover:bg-[#f2f5f9] disabled:cursor-wait disabled:opacity-60" onClick={() => void switchTenant(membership.tenantId)}>
+                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{membership.tenantName}</span><span className="shrink-0 text-[11px] text-[#8b97a8]">{membership.tenantId === activeTenantId ? '当前' : membership.role}</span>
+                  </button>)}
+                </div> : null}
                 <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=userprofile"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false))}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></svg>
                   {labels.personalSettings}
                 </a>
                 {/* R450-A2 — Vue UserMenu.vue:81 gates the 「空间设置」
@@ -1054,31 +1099,25 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 {!isLiteEdition && <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=tenant"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=tenant', () => setMenuOpen(false))}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3.5" /><path d="M12 3.5v5M12 15.5v5M3.5 12h5M15.5 12h5" /></svg>
                   {labels.workspaceSettings}
                 </a>}
-                {tenantSwitcherVisible ? <div className="border-t border-[#eef1f5] px-[8px] py-[6px]" role="group" aria-label={t('tenant.switcher.menuLabel')}>
-                  <button type="button" className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[5px] text-left text-[12px] font-semibold text-[#66758b] cursor-pointer" aria-expanded={tenantMenuOpen} onClick={toggleTenantSubmenu}>
-                    <span>{t('tenant.switcher.menuLabel')}</span><span aria-hidden="true">{tenantMenuOpen ? '⌃' : '⌄'}</span>
-                  </button>
-                  {tenantMenuOpen ? <div role="listbox" aria-label={t('tenant.switcher.menuLabel')} className="mt-[2px] max-h-[180px] overflow-y-auto">
-                    {user.memberships.map((membership) => <button key={membership.tenantId} type="button" role="option" aria-selected={membership.tenantId === activeTenantId} disabled={tenantSwitchPending !== null} className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[7px] text-left text-[13px] text-[#1f2733] cursor-pointer hover:bg-[#f2f5f9] disabled:cursor-wait disabled:opacity-60" onClick={() => void switchTenant(membership.tenantId)}>
-                      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{membership.tenantName}</span><span className="shrink-0 text-[11px] text-[#8b97a8]">{membership.tenantId === activeTenantId ? '当前' : membership.role}</span>
-                    </button>)}
-                  </div> : null}
-                </div> : null}
                 {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=members"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=members', () => setMenuOpen(false))}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="9" cy="8.5" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><circle cx="16.5" cy="9.5" r="2.5" /><path d="M15.5 14.2A5 5 0 0 1 20.5 19" /></svg>
                   {labels.membersSettings}
                 </a> : null}
                 {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=models"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=models', () => setMenuOpen(false))}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><path d="M4 8h16M4 16h16" /><circle cx="9" cy="8" r="2" /><circle cx="15" cy="16" r="2" /></svg>
                   {labels.modelsSettings}
                 </a> : null}
                 {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=skills"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=skills', () => setMenuOpen(false))}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><path d="M8.5 7 4 12l4.5 5" /><path d="M15.5 7 20 12l-4.5 5" /></svg>
                   {labels.skillsSettings}
                 </a> : null}
                 {/* Vue UserMenu.vue:96-100 — a divider closes the section
@@ -1091,6 +1130,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings"
                   onClick={(event) => handleInternalLink(event, '/platform/settings', () => setMenuOpen(false))}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="12" cy="12" r="3" /><path d="M12 2.8 13 5.6a6.6 6.6 0 0 1 2.2 1.3l2.9-.9 1.6 2.8-2.1 2.1a6.9 6.9 0 0 1 0 2.2l2.1 2.1-1.6 2.8-2.9-.9a6.6 6.6 0 0 1-2.2 1.3l-1 2.8h-2l-1-2.8a6.6 6.6 0 0 1-2.2-1.3l-2.9.9-1.6-2.8 2.1-2.1a6.9 6.9 0 0 1 0-2.2L4.3 8.8l1.6-2.8 2.9.9A6.6 6.6 0 0 1 11 5.6l1-2.8z" /></svg>
                   {labels.allSettings}
                 </a>
                 {/* R449-A2 — Vue UserMenu.vue:104-113 renders 「系统管理」 only
@@ -1102,6 +1142,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 {user.isSystemAdmin ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=system-global"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=system-global', () => setMenuOpen(false))}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><rect x="3" y="4" width="18" height="7" rx="1.5" /><rect x="3" y="13" width="18" height="7" rx="1.5" /><path d="M7 7.5h.01M7 16.5h.01" /></svg>
                   {labels.systemAdministration}
                 </a> : null}
                 <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
@@ -1116,7 +1157,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   </svg>
                   <span className="flex min-w-0 flex-1 items-center justify-between gap-[10px]">
                     <span>{labels.helpAndDocs}</span>
-                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true" className="shrink-0 text-[rgba(0,0,0,0.26)]">
                       <path d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Z" />
                       <path d="M10 1.333h4a.667.667 0 0 1 .667.667v4a.667.667 0 0 1-1.334 0V3.609L8.138 8.805a.667.667 0 1 1-.943-.943l5.195-5.195H10a.667.667 0 1 1 0-1.334Z" />
                     </svg>
@@ -1131,11 +1172,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   <span className="flex min-w-0 flex-1 items-center justify-between gap-[10px]">
                     <span className="flex min-w-0 items-center gap-[6px]">
                       <span>{labels.github}</span>
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true" className="shrink-0 text-[#e37318]">
                         <path d="m12 2.4 2.98 6.04 6.66.97-4.82 4.7 1.14 6.63L12 17.63l-5.96 3.14 1.14-6.63-4.82-4.7 6.66-.97L12 2.4Z" />
                       </svg>
                     </span>
-                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true" className="shrink-0 text-[rgba(0,0,0,0.26)]">
                       <path d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Z" />
                       <path d="M10 1.333h4a.667.667 0 0 1 .667.667v4a.667.667 0 0 1-1.334 0V3.609L8.138 8.805a.667.667 0 1 1-.943-.943l5.195-5.195H10a.667.667 0 1 1 0-1.334Z" />
                     </svg>
@@ -1149,6 +1190,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
                   <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
                     onClick={() => { setMenuOpen(false); void runShellLogout(onLogout); }}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0"><path d="M14 4h4a1.5 1.5 0 0 1 1.5 1.5v13A1.5 1.5 0 0 1 18 20h-4" /><path d="M10 8l-4 4 4 4" /><path d="M6 12h9" /></svg>
                     {t('auth.logout')}
                   </button>
                 </>}

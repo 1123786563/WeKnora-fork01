@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Card, Input, Range, Select, Status, Switch } from '@weknora/ui';
@@ -166,9 +166,12 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
     </label>;
   };
 
+  // Vue ChatHistorySettings.vue renders the enable row + stats directly on the
+  // panel background — no outer card (only retrieval/parser keep it).
+  const Shell: typeof Card | typeof Fragment = section === 'chathistory' ? Fragment : Card;
   return (
     <>
-    <Card>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}{/* R490 B6 — Vue RetrievalSettings.vue:3-6 section-header: the h2 title plus
+    <Shell>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}{/* R490 B6 — Vue RetrievalSettings.vue:3-6 section-header: the h2 title plus
     the 配置知识库搜索和消息搜索的全局检索参数 description under it. */}
     {section === 'retrieval' ? <div className="section-header mb-2 grid gap-1">
       <h2 className="m-0 text-base font-semibold text-ink">{t('retrievalSettings.title')}</h2>
@@ -228,7 +231,7 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
           ChatHistorySettings (RetrievalSettings.vue handleParamChange →
           debouncedSave), so neither surface renders a save button; only the
           parser section keeps its explicit 保存 + test-connection footer. */}
-          {section === 'parser' ? <Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button> : null}{section === 'parser' ? <Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button> : null}</div></form></Card>
+          {section === 'parser' ? <Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button> : null}{section === 'parser' ? <Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button> : null}</div></form></Shell>
     {section === 'chathistory' ? (
       <div className="stats-section mt-5" data-testid="chat-history-stats">
         <h3 className="stats-title m-0 mb-3 text-[15px] font-semibold">{t('chatHistorySettings.statsTitle')}</h3>
@@ -240,9 +243,9 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
             </div>
           </div>
         ) : (
-          <div className="stats-empty rounded-[10px] border border-dashed border-[rgba(120,135,155,0.35)] bg-[rgba(127,142,166,0.06)] px-4 py-7 text-center">
-            <p className="stats-empty-title m-0 mb-1.5 font-semibold">{t('chatHistorySettings.statsNotConfigured')}</p>
-            <p className="stats-empty-desc m-0 text-[13px] text-[#5c6b83]">{t('chatHistorySettings.statsNotConfiguredDesc')}</p>
+          <div className="stats-empty rounded-[10px] bg-[#f3f3f3] px-4 py-6 text-center [border:0]">
+            <p className="stats-empty-title m-0 mb-1 font-medium">{t('chatHistorySettings.statsNotConfigured')}</p>
+            <p className="stats-empty-desc m-0 text-[13px] text-[rgba(0,0,0,0.4)]">{t('chatHistorySettings.statsNotConfiguredDesc')}</p>
           </div>
         )}
       </div>

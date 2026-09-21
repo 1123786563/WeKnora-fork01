@@ -507,16 +507,22 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           </button>
           <div className="wks-container">
             <nav aria-label="Settings sections" className="wks-sidebar">
-              <div className="wks-sidebar-header"><h2 className="wks-sidebar-title">{t('general.settings')}</h2></div>
+              <div className="wks-sidebar-header"><h2 className="wks-sidebar-title leading-[22px]">{t('general.settings')}</h2></div>
               <div className="wks-nav">
                 {settingsNavGroups(locale, visibleSections.map((item) => item.key)).map((group) => (
                   <div key={group.key}>
-                    <div className="wks-nav-group-title">{group.label}</div>
+                    <div className="wks-nav-group-title leading-[17px]">{group.label}</div>
                     {group.items.map((item) => (
+                      // leading-[20px] reproduces Vue .nav-item line-height
+                      // normal (20px @14px) — tailwind's 1.5 layer default made
+                      // rows 1px taller and accumulated drift.
                       <button
                         key={item.key}
                         type="button"
-                        className={`wks-nav-item focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/35${item.key === selectedKey ? ' is-active' : ''}`}
+                        // Vue .nav-item heights are label-line-driven: pure
+                        // latin/emoji label rows are 29px, CJK rows 32px.
+                        data-nav-icon-size={NAV_LATIN_LABEL_SECTIONS.has(item.key) ? '17' : undefined}
+                        className={`wks-nav-item leading-[20px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/35${item.key === selectedKey ? ' is-active' : ''}`}
                         aria-current={item.key === selectedKey ? 'page' : undefined}
                         onClick={() => select(item.key)}
                       >
@@ -551,7 +557,7 @@ import { formatMessage, type Locale } from '@weknora/i18n';
 
 
 const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: readonly string[] }> = [
-  { key: 'account', labelKey: 'settings.navGroups.account', sections: ['general', 'chat-preferences', 'userprofile', 'mymemory', 'envvars', 'usage'] },
+  { key: 'account', labelKey: 'settings.navGroups.account', sections: ['general', 'userprofile', 'mymemory', 'envvars', 'usage'] },
   { key: 'workspace', labelKey: 'settings.navGroups.workspace', sections: ['tenant', 'members', 'chathistory', 'memory'] },
   { key: 'models_runtime', labelKey: 'settings.navGroups.modelsRuntime', sections: ['models', 'ollama', 'weknoracloud'] },
   { key: 'integrations', labelKey: 'integrations.title', sections: INTEGRATION_SECTIONS.map((item) => `integration-${item.key}`) },
@@ -565,6 +571,11 @@ const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: r
 // readable for historical URLs while avoiding a navigation-only fallback item
 // that has no Vue counterpart.
 const NAV_HIDDEN_SECTIONS = new Set(['retrieval',
+  // R-parity (2026-09-21): SP14's 会话偏好 has no Vue Settings.vue navItems
+  // counterpart (Vue navGroups account = general/userprofile/mymemory/envvars),
+  // so it joins retrieval as nav-hidden while ?section=chat-preferences and
+  // the panel stay reachable for direct URLs.
+  'chat-preferences',
   // Round-22 parity (2026-09-19): SP12's 用量统计 section has no Vue
   // counterpart in Settings.vue navItems, so it joins retrieval as nav-hidden
   // while ?section=usage and the panel stay reachable for direct URLs.
@@ -628,7 +639,7 @@ export function settingsSectionLabel(locale: Locale, key: string): string {
 // used by Settings.vue (setting / user / usergroup / key / chat / server / …).
 function icon(paths: ReactNode): ReactNode {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {paths}
     </svg>
   );
@@ -692,6 +703,11 @@ const SECTION_ICONS: Record<string, ReactNode> = {
 };
 
 const FALLBACK_ICON = icon(<circle cx="12" cy="12" r="9" />);
+
+// Vue .nav-item heights follow the label line box: pure latin/emoji labels
+// (Ollama, WeKnora Cloud, CLI, 🦞Claw Skill) get the smaller latin line box and
+// a 29px row, while CJK labels render with CJK font metrics and a 32px row.
+const NAV_LATIN_LABEL_SECTIONS = new Set(['ollama', 'weknoracloud', 'integration-cli', 'integration-claw']);
 
 export function settingsNavGroups(locale: Locale, visibleKeys: readonly string[]): SettingsNavGroupView[] {
   const navKeys = visibleKeys.filter((key) => !NAV_HIDDEN_SECTIONS.has(key));

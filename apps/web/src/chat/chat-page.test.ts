@@ -784,7 +784,7 @@ test('chat header menu renders the Vue utility block between rename and clear wi
   // Scope the order check to the header menu list: the sidebar row menus
   // carry the same 置顶/修改标题/清空消息 labels earlier in the DOM.
   const menuStart = html.indexOf('wk-chat-header-menu-list');
-  const menuHtml = html.slice(menuStart, menuStart + 3000);
+  const menuHtml = html.slice(menuStart, menuStart + 6000);
   // Vue menu order: pin | rename | copyId | copyLink | copyMarkdown | openNewWindow | clear | delete.
   const vueOrder = ['置顶', '修改标题', '复制会话 ID', '复制对话链接', '复制为 Markdown', '在新窗口中打开', '清空消息', '删除对话'];
   const order = vueOrder.map((text) => menuHtml.indexOf(text));

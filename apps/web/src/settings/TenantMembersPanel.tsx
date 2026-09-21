@@ -156,7 +156,8 @@ function formatDate(value: string | undefined, locale: string): string {
 }
 
 // Tailwind recipes migrated 1:1 from TenantMembersPanel.css (file deleted).
-const TBL = 'w-full border-collapse text-[0.8125rem]';
+/* Vue t-table 默认 table-layout: fixed —— 列宽严格按 width 生效，成员列吃掉余量 */
+const TBL = 'w-full table-fixed border-collapse text-[0.8125rem]';
 const TH = 'bg-[var(--wk-canvas,#f7f9fc)] py-2 px-3 text-left text-xs font-semibold whitespace-nowrap text-[var(--wk-muted,#66758b)]';
 const TD = 'border-t border-[var(--wk-border,#dce3ed)] py-[0.55rem] px-3 align-middle text-[var(--wk-text,#172033)]';
 const TR_HOVER = 'hover:bg-[rgb(46_109_230/4%)]';
@@ -175,16 +176,17 @@ const AUDIT_COLUMNS: Array<{ key: string; label: string; width?: number; minWidt
 // Vue t-pagination default: borderless numbers, radius 3px, 24px box; current =
 // brand #07c05f fill + white text; hover = brand text on transparent.
 const PAGER_BTN = 'inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent px-[0.3rem] py-0 font-normal text-[rgb(0_0_0/90%)] [font:inherit]';
-// wk-tag base + tone variants (owner=primary green, admin=warning,
-// contributor=success, viewer/expired mapping per invitationStatusTheme).
-const WK_TAG_BASE = 'inline-flex items-center rounded-[4px] border text-xs font-semibold leading-[1.4] py-[0.05rem] px-[0.45rem] whitespace-nowrap ';
+// wk-tag base + tone variants — Vue t-tag default variant="dark": solid theme
+// color fill + white text (owner=primary #07c05f, admin=warning, contributor/
+// accepted=success #00a870), small size = height 20px, radius 3px, padding 0 7px.
+const WK_TAG_BASE = 'inline-flex h-5 items-center rounded-[3px] border-0 text-xs font-normal leading-none px-[7px] whitespace-nowrap ';
 function wkTag(tone: 'primary' | 'success' | 'warning' | 'danger' | 'default'): string {
   switch (tone) {
-    case 'primary': return WK_TAG_BASE + 'border-[rgb(46_140_90/35%)] bg-[rgb(46_140_90/12%)] text-[#1f7a4d]';
-    case 'success': return WK_TAG_BASE + 'border-[rgb(46_140_90/30%)] bg-[rgb(46_140_90/10%)] text-[#1f7a4d]';
-    case 'warning': return WK_TAG_BASE + 'border-[rgb(214_158_46/40%)] bg-[rgb(214_158_46/14%)] text-[#9a6b12]';
-    case 'danger': return WK_TAG_BASE + 'border-[rgb(217_83_79/35%)] bg-[rgb(217_83_79/12%)] text-[#b3352f]';
-    default: return WK_TAG_BASE + 'border-transparent bg-[var(--wk-canvas,#f7f9fc)] text-[var(--wk-muted,#66758b)]';
+    case 'primary': return WK_TAG_BASE + 'bg-[#07c05f] text-white';
+    case 'success': return WK_TAG_BASE + 'bg-[#00a870] text-white';
+    case 'warning': return WK_TAG_BASE + 'bg-[#ed7b2f] text-white';
+    case 'danger': return WK_TAG_BASE + 'bg-[#e34d59] text-white';
+    default: return WK_TAG_BASE + 'bg-[var(--wk-canvas,#f3f3f3)] text-[var(--wk-text,rgba(0,0,0,0.9))]';
   }
 }
 
@@ -277,9 +279,9 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
     else setJump(String(page));
   }
 
-  return <div className="data-table-shell__pager flex flex-wrap items-center justify-end gap-[0.4rem] border-t border-[var(--wk-border,#dce3ed)] box-border py-[0.4rem] px-[0.6rem] text-xs text-[var(--wk-muted,#66758b)] max-[720px]:justify-start">
+  return <div className="data-table-shell__pager flex flex-wrap items-center justify-end gap-[0.4rem] border-t border-[var(--wk-border,#dce3ed)] box-border py-[0.3rem] px-[0.6rem] text-xs text-[var(--wk-muted,#66758b)] max-[720px]:justify-start">
     <span className="mr-auto">{tr('tenantMembersPanel.pager.total', { total })}</span>
-    <Select className="w-auto!" value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
+    <Select className="w-auto! h-6! py-0!" value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
       {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{tr('tenantMembersPanel.pager.sizePerPage', { size })}</option>)}
     </Select>
     <button type="button" className={PAGER_BTN + ' disabled:text-[rgb(0_0_0/26%)] disabled:cursor-not-allowed disabled:opacity-50 enabled:hover:text-accent'} aria-label={tr('common.previous')} disabled={page <= 1} onClick={() => onPage(page - 1)}>‹</button>
@@ -656,8 +658,8 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
 
   const maxMembersPage = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
 
-  return <section className="flex w-full flex-col gap-4" data-testid="tenant-members-settings">
-    <div className="mb-8 flex flex-col gap-1.5">
+  return <section className="flex w-full flex-col gap-5" data-testid="tenant-members-settings">
+    <div className="flex flex-col gap-1.5">
       <div className="section-header-row flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="m-0! text-[20px] font-semibold leading-[25px] tracking-[-0.02em] text-[var(--wk-text,#172033)]">{tr('tenantMember.title')}</h2>
@@ -694,9 +696,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
           </div>
         </div>
       </div>
-      <p className="m-0 text-[14px] leading-[1.5] text-[var(--wk-muted,#66758b)] opacity-75">
+      <p className="m-0 text-[13px] leading-[1.55] text-[var(--wk-muted,#66758b)]">
         {tr('tenantMember.sectionDescription')}{' '}
-        <a className="inline-flex items-center gap-[0.2rem] text-primary no-underline hover:underline" href={RBAC_DOC_URL} target="_blank" rel="noopener noreferrer">
+        <a className="inline-flex items-center gap-[0.2rem] text-[var(--wk-brand,#07c05f)] no-underline hover:underline" href={RBAC_DOC_URL} target="_blank" rel="noopener noreferrer">
           {tr('tenantMember.learnRbacGuide')} <Icon name="link" size={12} />
         </a>
       </p>
@@ -704,10 +706,10 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
 
     <div className="flex flex-col gap-5">
       {canManage ? <div className="pending-invitations-section">
-        <div className="mb-2 flex flex-wrap items-start justify-between gap-x-3 gap-y-[0.375rem]">
+        <div className="mb-2 flex flex-col gap-1">
           <div className="inline-flex items-center gap-2">
             <span className="text-sm [font-weight:650] text-[var(--wk-text,#172033)]">{tr('tenantInvitation.pendingSectionTitle')}</span>
-            <span className="members-list-count-badge inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-canvas,#f7f9fc)] px-[0.4rem] text-xs [font-weight:650] leading-none text-[var(--wk-text,#172033)]">{invitationsTotal}</span>
+            <span className="members-list-count-badge inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full bg-[var(--wk-canvas,#f3f3f3)] px-[7px] text-xs [font-weight:650] leading-none text-[var(--wk-text,#172033)]">{invitationsTotal}</span>
           </div>
           <span className="text-xs text-[var(--wk-muted,#66758b)]">{tr('tenantInvitation.pendingSectionDesc', { days: INVITATION_TTL_DAYS })}</span>
         </div>
@@ -718,12 +720,12 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
               <div className="overflow-x-auto">
                 <table className={TBL}>
                   <thead><tr>
-                    <th className={TH}>{tr('tenantInvitation.columns.invitee')}</th>
-                    <th className={TH}>{tr('tenantInvitation.columns.role')}</th>
-                    <th className={TH}>{tr('tenantInvitation.columns.inviter')}</th>
-                    <th className={TH}>{tr('tenantInvitation.columns.expiresAt')}</th>
-                    <th className={TH}>{tr('tenantInvitation.columns.status')}</th>
-                    <th className={TH}>{tr('tenantInvitation.columns.operations')}</th>
+                    <th className={TH + ' min-w-[130px]'}>{tr('tenantInvitation.columns.invitee')}</th>
+                    <th className={TH + ' w-[86px]'}>{tr('tenantInvitation.columns.role')}</th>
+                    <th className={TH + ' min-w-[130px]'}>{tr('tenantInvitation.columns.inviter')}</th>
+                    <th className={TH + ' w-[136px]'}>{tr('tenantInvitation.columns.expiresAt')}</th>
+                    <th className={TH + ' w-[76px]'}>{tr('tenantInvitation.columns.status')}</th>
+                    <th className={TH + ' w-[96px]'}>{tr('tenantInvitation.columns.operations')}</th>
                   </tr></thead>
                   <tbody>
                     {invitations.map((invitation) => {
@@ -749,9 +751,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                         <td className={TD}><span className={invitationStatusClass(invitation.status)}>{statusLabel}</span></td>
                         <td className={TD}>
                           <div className="inline-flex items-center gap-1">
-                            {invitation.status === 'pending' && invitation.invite_url ? <Button type="button" aria-label={tr('tenantInvitation.copyLink')} title={tr('tenantInvitation.copyLink')} onClick={() => void copyText(invitation.invite_url ?? '')}><Icon name="copy" /></Button> : null}
+                            {invitation.status === 'pending' && invitation.invite_url ? <Button type="button" className="h-7! w-7! bg-transparent! border-transparent! shadow-none!" aria-label={tr('tenantInvitation.copyLink')} title={tr('tenantInvitation.copyLink')} onClick={() => void copyText(invitation.invite_url ?? '')}><Icon name="copy" /></Button> : null}
                             {invitation.status === 'pending' ? <span className="relative inline-flex">
-                              <Button type="button" className="text-[#b3352f]! hover:border-[rgb(217_83_79/45%)]!" aria-label={tr('tenantInvitation.revoke.button')} title={tr('tenantInvitation.revoke.button')} onClick={() => setRevokeConfirmKey(revokeConfirmKey === invitation.id ? null : invitation.id)}><Icon name="close" /></Button>
+                              <Button type="button" className="h-7! w-7! bg-transparent! border-transparent! shadow-none! text-[#b3352f]! hover:bg-[rgba(227,77,89,0.08)]!" aria-label={tr('tenantInvitation.revoke.button')} title={tr('tenantInvitation.revoke.button')} onClick={() => setRevokeConfirmKey(revokeConfirmKey === invitation.id ? null : invitation.id)}><Icon name="close" /></Button>
                               {revokeConfirmKey === invitation.id ? <div className="absolute left-0 top-[calc(100%_+_0.3rem)] z-[25] box-border w-max max-w-[16rem] rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-[0.65rem] py-[0.55rem] text-xs text-[var(--wk-text,#172033)] shadow-[0_10px_28px_rgb(23_32_51/18%)]" role="alertdialog" aria-label={tr('tenantInvitation.revoke.button')}>
                                 <p className="m-0 mb-[0.45rem]">{isShareLink ? tr('tenantInvitation.shareLink.revokeConfirm') : tr('tenantInvitation.revoke.confirmBody', { email: invitation.invitee_email || invitation.invitee_user_id })}</p>
                                 <div className="flex justify-end gap-[0.4rem]">
@@ -776,7 +778,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         <div className="members-list-header flex flex-wrap items-center justify-between gap-3 px-[0.125rem]">
           <div className="inline-flex min-w-0 items-center gap-2">
             <span className="members-list-title text-sm [font-weight:650] text-[var(--wk-text,#172033)]">{tr('tenantMember.listTitle')}</span>
-            <span className="members-list-count-badge inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-canvas,#f7f9fc)] px-[0.4rem] text-xs [font-weight:650] leading-none text-[var(--wk-text,#172033)]">{total}</span>
+            <span className="members-list-count-badge inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full bg-[var(--wk-canvas,#f3f3f3)] px-[7px] text-xs [font-weight:650] leading-none text-[var(--wk-text,#172033)]">{total}</span>
           </div>
           <div className="m-0 inline-flex min-w-0 flex-[0_1_auto] items-center gap-2 max-[720px]:flex-wrap max-[720px]:w-full max-[720px]:justify-start">
             <form className="relative min-w-40 w-56 flex-[0_1_14rem] max-[720px]:min-w-0 max-[720px]:w-full max-[720px]:flex-[1_1_100%]" role="search" onSubmit={search}>
@@ -806,10 +808,10 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
               <div className="overflow-x-auto">
                 <table className={TBL}>
                   <thead><tr>
-                    <th className={TH}>{tr('tenantMember.columns.member')}</th>
-                    <th className={TH}>{tr('tenantMember.columns.role')}</th>
-                    <th className={TH}>{tr('tenantMember.columns.joinedAt')}</th>
-                    <th className={TH}>{tr('tenantMember.columns.operations')}</th>
+                    <th className={TH + ' min-w-[132px]'}>{tr('tenantMember.columns.member')}</th>
+                    <th className={TH + ' w-[104px]'}>{tr('tenantMember.columns.role')}</th>
+                    <th className={TH + ' w-[130px]'}>{tr('tenantMember.columns.joinedAt')}</th>
+                    <th className={TH + ' w-[64px]'}>{tr('tenantMember.columns.operations')}</th>
                   </tr></thead>
                   <tbody>
                     {members.map((member) => {
@@ -833,7 +835,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                         <td className={TD}>{formatDate(member.joined_at, locale)}</td>
                         <td className={TD}>
                           {canManage && !isSelf ? <span className="relative inline-flex">
-                            <Button type="button" className="text-[#b3352f]! hover:border-[rgb(217_83_79/45%)]!" aria-label={tr('tenantMember.remove.button')} title={tr('tenantMember.remove.button')}
+                            <Button type="button" className="h-7! w-7! bg-transparent! border-transparent! shadow-none! text-[#b3352f]! hover:bg-[rgba(227,77,89,0.08)]!" aria-label={tr('tenantMember.remove.button')} title={tr('tenantMember.remove.button')}
                               onClick={() => setRemoveConfirmKey(removeConfirmKey === member.user_id ? null : member.user_id)}>
                               <Icon name="user-clear" />
                             </Button>

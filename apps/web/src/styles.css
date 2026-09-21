@@ -248,6 +248,26 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee); }
   color: inherit;
 }
 
+/* Settings.vue .nav-icon-emoji (Claw Skill nav row): the raw emoji span is
+   clamped to a 14px line so it cannot inflate the fixed-height nav row. */
+.nav-icon-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Settings.vue .nav-item: 32px rows for CJK labels (20px CJK line + 6px×2
+   padding); without a pinned height the button line box rounds a pixel taller
+   and the sidebar drifts ~1px per row versus the Vue drawer. Pure latin/emoji
+   labels (Ollama, WeKnora Cloud, CLI, Claw) use the smaller latin line box:
+   29px rows in Vue. */
+.wks-nav-item {
+  height: 32px;
+}
+
+.wks-nav-item[data-nav-icon-size="17"] {
+  height: 29px;
+}
+
 .wks-nav-label { flex: 1; }
 
 /* Right content column */

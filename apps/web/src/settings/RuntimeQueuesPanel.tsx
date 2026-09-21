@@ -1,125 +1,475 @@
 import type { RuntimeQueues, WeKnoraClient } from '@weknora/api-client';
-import { Card, Status } from '@weknora/ui';
-import { settingsT, useSettingsLocale } from './PortedSectionsPanel.tsx';
-import { useRef, useState } from 'react';
+import { Status, Switch } from '@weknora/ui';
+import { useSettingsLocale } from './PortedSectionsPanel.tsx';
+import { useEffect, useRef, useState } from 'react';
 
 type Row = Record<string, unknown>;
-const runtimeFallbacks: Record<string, string> = {
-  'system.globalSettings.runtime.title': '运行时队列',
-  'system.globalSettings.runtime.description': '查看任务队列、工作池和模型限流状态。',
-  'system.globalSettings.runtime.summary.title': '队列概览',
-  'system.globalSettings.runtime.summary.active': '活跃任务',
-  'system.globalSettings.runtime.summary.pending': '等待任务',
-  'system.globalSettings.runtime.summary.retry': '重试',
-  'system.globalSettings.runtime.summary.archived': '失败归档',
-  'system.globalSettings.runtime.poolsTitle': '工作池',
-  'system.globalSettings.runtime.poolsDescription': '按工作池查看并发和排队情况。',
-  'system.globalSettings.runtime.detailsTitle': '队列详情',
-  'system.globalSettings.runtime.detailsDescription': '查看各队列任务状态和延迟。',
-  'system.globalSettings.runtime.unavailableTitle': '运行时不可用',
-  'system.globalSettings.runtime.unavailable': '当前部署未启用运行时队列。',
-  'system.globalSettings.runtime.empty': '暂无队列数据。',
-  'system.globalSettings.runtime.models.title': '模型限流',
-  'system.globalSettings.runtime.models.description': '查看模型并发使用和等待状态。',
-  'system.globalSettings.runtime.models.disabled': '模型限流未启用。',
-  'system.globalSettings.runtime.models.empty': '暂无模型限流数据。',
-  'system.globalSettings.runtime.models.columns.waiting': '等待',
-  'system.globalSettings.runtime.status.paused': '已暂停',
-  'system.globalSettings.runtime.status.actionRequired': '需处理',
-  'system.globalSettings.runtime.status.retrying': '重试中',
-  'system.globalSettings.runtime.status.working': '运行中',
-  'system.globalSettings.runtime.status.waiting': '等待中',
-  'system.globalSettings.runtime.status.idle': '空闲',
-};
-const runtimeLocaleFallbacks: Record<string, Record<string, string>> = {
-  'en-US': {
-    'system.globalSettings.runtime.title': 'Runtime queues', 'system.globalSettings.runtime.description': 'View task queues, worker pools and model limiter status.', 'system.globalSettings.runtime.summary.title': 'Queue overview', 'system.globalSettings.runtime.summary.active': 'Active tasks', 'system.globalSettings.runtime.summary.pending': 'Pending tasks', 'system.globalSettings.runtime.summary.retry': 'Retries', 'system.globalSettings.runtime.summary.archived': 'Failed archive', 'system.globalSettings.runtime.poolsTitle': 'Worker pools', 'system.globalSettings.runtime.poolsDescription': 'View concurrency and queueing by worker pool.', 'system.globalSettings.runtime.detailsTitle': 'Queue details', 'system.globalSettings.runtime.detailsDescription': 'View task status and latency for each queue.', 'system.globalSettings.runtime.unavailableTitle': 'Runtime unavailable', 'system.globalSettings.runtime.unavailable': 'Runtime queues are not enabled in this deployment.', 'system.globalSettings.runtime.empty': 'No queue data.', 'system.globalSettings.runtime.models.title': 'Model limiter', 'system.globalSettings.runtime.models.description': 'View model concurrency and waiting status.', 'system.globalSettings.runtime.models.disabled': 'Model limiter is not enabled.', 'system.globalSettings.runtime.models.empty': 'No model limiter data.', 'system.globalSettings.runtime.models.columns.waiting': 'Waiting', 'system.globalSettings.runtime.status.paused': 'Paused', 'system.globalSettings.runtime.status.actionRequired': 'Action required', 'system.globalSettings.runtime.status.retrying': 'Retrying', 'system.globalSettings.runtime.status.working': 'Running', 'system.globalSettings.runtime.status.waiting': 'Waiting', 'system.globalSettings.runtime.status.idle': 'Idle',
-  },
-  'ja-JP': {
-    'system.globalSettings.runtime.title': 'ランタイムキュー', 'system.globalSettings.runtime.description': 'タスクキュー、ワーカープール、モデル制限の状態を確認します。', 'system.globalSettings.runtime.summary.title': 'キュー概要', 'system.globalSettings.runtime.summary.active': '実行中のタスク', 'system.globalSettings.runtime.summary.pending': '待機中のタスク', 'system.globalSettings.runtime.summary.retry': '再試行', 'system.globalSettings.runtime.summary.archived': '失敗アーカイブ', 'system.globalSettings.runtime.poolsTitle': 'ワーカープール', 'system.globalSettings.runtime.poolsDescription': 'プールごとの同時実行数と待機状況を確認します。', 'system.globalSettings.runtime.detailsTitle': 'キュー詳細', 'system.globalSettings.runtime.detailsDescription': '各キューのタスク状態と遅延を確認します。', 'system.globalSettings.runtime.unavailableTitle': 'ランタイムを利用できません', 'system.globalSettings.runtime.unavailable': 'この環境ではランタイムキューが有効になっていません。', 'system.globalSettings.runtime.empty': 'キューデータはありません。', 'system.globalSettings.runtime.models.title': 'モデル制限', 'system.globalSettings.runtime.models.description': 'モデルの同時実行数と待機状態を確認します。', 'system.globalSettings.runtime.models.disabled': 'モデル制限は有効になっていません。', 'system.globalSettings.runtime.models.empty': 'モデル制限データはありません。', 'system.globalSettings.runtime.models.columns.waiting': '待機', 'system.globalSettings.runtime.status.paused': '一時停止', 'system.globalSettings.runtime.status.actionRequired': '要対応', 'system.globalSettings.runtime.status.retrying': '再試行中', 'system.globalSettings.runtime.status.working': '実行中', 'system.globalSettings.runtime.status.waiting': '待機中', 'system.globalSettings.runtime.status.idle': 'アイドル',
-  },
-  'ko-KR': {
-    'system.globalSettings.runtime.title': '런타임 큐', 'system.globalSettings.runtime.description': '작업 큐, 워커 풀 및 모델 제한 상태를 확인합니다.', 'system.globalSettings.runtime.summary.title': '큐 개요', 'system.globalSettings.runtime.summary.active': '활성 작업', 'system.globalSettings.runtime.summary.pending': '대기 작업', 'system.globalSettings.runtime.summary.retry': '재시도', 'system.globalSettings.runtime.summary.archived': '실패 보관', 'system.globalSettings.runtime.poolsTitle': '워커 풀', 'system.globalSettings.runtime.poolsDescription': '워커 풀별 동시성과 대기 상태를 확인합니다.', 'system.globalSettings.runtime.detailsTitle': '큐 세부 정보', 'system.globalSettings.runtime.detailsDescription': '큐별 작업 상태와 지연 시간을 확인합니다.', 'system.globalSettings.runtime.unavailableTitle': '런타임을 사용할 수 없음', 'system.globalSettings.runtime.unavailable': '이 배포에서는 런타임 큐가 활성화되지 않았습니다.', 'system.globalSettings.runtime.empty': '큐 데이터가 없습니다.', 'system.globalSettings.runtime.models.title': '모델 제한', 'system.globalSettings.runtime.models.description': '모델 동시 사용량과 대기 상태를 확인합니다.', 'system.globalSettings.runtime.models.disabled': '모델 제한이 활성화되지 않았습니다.', 'system.globalSettings.runtime.models.empty': '모델 제한 데이터가 없습니다.', 'system.globalSettings.runtime.models.columns.waiting': '대기', 'system.globalSettings.runtime.status.paused': '일시 중지', 'system.globalSettings.runtime.status.actionRequired': '처리 필요', 'system.globalSettings.runtime.status.retrying': '재시도 중', 'system.globalSettings.runtime.status.working': '실행 중', 'system.globalSettings.runtime.status.waiting': '대기 중', 'system.globalSettings.runtime.status.idle': '유휴',
-  },
-  'ru-RU': {
-    'system.globalSettings.runtime.title': 'Очереди среды выполнения', 'system.globalSettings.runtime.description': 'Просмотр очередей задач, пулов работников и ограничений моделей.', 'system.globalSettings.runtime.summary.title': 'Обзор очередей', 'system.globalSettings.runtime.summary.active': 'Активные задачи', 'system.globalSettings.runtime.summary.pending': 'Ожидающие задачи', 'system.globalSettings.runtime.summary.retry': 'Повторы', 'system.globalSettings.runtime.summary.archived': 'Архив ошибок', 'system.globalSettings.runtime.poolsTitle': 'Пулы работников', 'system.globalSettings.runtime.poolsDescription': 'Просмотр параллелизма и очереди по пулу.', 'system.globalSettings.runtime.detailsTitle': 'Подробности очередей', 'system.globalSettings.runtime.detailsDescription': 'Просмотр состояния задач и задержки каждой очереди.', 'system.globalSettings.runtime.unavailableTitle': 'Среда выполнения недоступна', 'system.globalSettings.runtime.unavailable': 'В этом развертывании очереди среды выполнения не включены.', 'system.globalSettings.runtime.empty': 'Данных очередей нет.', 'system.globalSettings.runtime.models.title': 'Ограничение моделей', 'system.globalSettings.runtime.models.description': 'Просмотр параллельного использования моделей и ожидания.', 'system.globalSettings.runtime.models.disabled': 'Ограничение моделей не включено.', 'system.globalSettings.runtime.models.empty': 'Данных ограничений моделей нет.', 'system.globalSettings.runtime.models.columns.waiting': 'Ожидание', 'system.globalSettings.runtime.status.paused': 'Приостановлено', 'system.globalSettings.runtime.status.actionRequired': 'Требуется действие', 'system.globalSettings.runtime.status.retrying': 'Повтор', 'system.globalSettings.runtime.status.working': 'Выполняется', 'system.globalSettings.runtime.status.waiting': 'Ожидание', 'system.globalSettings.runtime.status.idle': 'Простой',
-  },
-};
-const drawerCopy: Record<string, { detail: string; close: string; loading: string; empty: string; unavailable: string; failed: string }> = {
-  'zh-CN': { detail: '任务详情', close: '关闭', loading: '加载中...', empty: '暂无任务', unavailable: '运行时队列不可用。', failed: '任务加载失败。' },
-  'en-US': { detail: 'Task details', close: 'Close', loading: 'Loading...', empty: 'No tasks', unavailable: 'Runtime queue unavailable.', failed: 'Failed to load tasks.' },
-  'ja-JP': { detail: 'タスク詳細', close: '閉じる', loading: '読み込み中...', empty: 'タスクはありません', unavailable: 'ランタイムキューを利用できません。', failed: 'タスクの読み込みに失敗しました。' },
-  'ko-KR': { detail: '작업 세부 정보', close: '닫기', loading: '로드 중...', empty: '작업이 없습니다', unavailable: '런타임 큐를 사용할 수 없습니다.', failed: '작업을 불러오지 못했습니다.' },
-  'ru-RU': { detail: 'Подробности задачи', close: 'Закрыть', loading: 'Загрузка...', empty: 'Задач нет', unavailable: 'Очередь среды выполнения недоступна.', failed: 'Не удалось загрузить задачи.' },
-};
-function fallbackRuntimeText(key: string, values?: Record<string, string | number>, locale = 'zh-CN'): string {
-  let value = runtimeLocaleFallbacks[locale]?.[key] ?? runtimeFallbacks[key] ?? key.split('.').pop() ?? key;
-  for (const [name, replacement] of Object.entries(values ?? {})) value = value.replace(`{${name}}`, String(replacement));
-  return value;
-}
 const numberOf = (row: Row, key: string) => typeof row[key] === 'number' ? row[key] as number : 0;
 const stringOf = (row: Row, key: string) => typeof row[key] === 'string' ? row[key] as string : '';
-const percent = (active: number, limit: number) => limit > 0 ? Math.min(100, Math.round(active / limit * 100)) : 0;
-const runtimeText = (t: ReturnType<typeof settingsT>, key: string, fallback: string, values?: Record<string, string | number>, locale = 'zh-CN') => {
-  const value = t(key, values);
-  return value === key ? fallbackRuntimeText(key, values, locale) : value;
-};
 
-function queueStatus(row: Row, t: ReturnType<typeof settingsT>): string {
-  if (row.paused === true) return t('system.globalSettings.runtime.status.paused');
-  if (numberOf(row, 'archived') > 0) return t('system.globalSettings.runtime.status.actionRequired');
-  if (numberOf(row, 'retry') > 0) return t('system.globalSettings.runtime.status.retrying');
-  if (numberOf(row, 'active') > 0) return t('system.globalSettings.runtime.status.working');
-  if (numberOf(row, 'pending') > 0 || numberOf(row, 'scheduled') > 0) return t('system.globalSettings.runtime.status.waiting');
-  return t('system.globalSettings.runtime.status.idle');
-}
+// zh-CN copy mirrors frontend/src/views/system/RuntimeQueues.vue (system.globalSettings.runtime.*).
+const runtimeCopy: Record<string, string> = {
+  'title': '任务队列运行时',
+  'description': '后台任务队列的实时负载，以及各独立 worker 池的每实例并发配置。支持查看任务明细和安全管理，每 5 秒自动刷新。',
+  'refresh': '刷新',
+  'autoRefresh': '自动刷新（每 5 秒）',
+  'loading': '加载中...',
+  'retry': '重试',
+  'unavailableTitle': '任务队列不可用',
+  'unavailable': '当前部署未启用 Redis / asynq 队列（Lite 模式），无队列可展示。',
+  'empty': '暂无队列数据',
+  'detailsTitle': '队列明细',
+  'detailsDescription': '各处理通道的实时负载与等待情况。“最终失败”表示任务超过重试上限，已停止自动执行。',
+  'poolsTitle': 'Worker 池',
+  'poolsDescription': '各阶段拥有保底容量，核心解析与内容富化还可借用共享弹性池。',
+  'perInstance': '卡片主值为集群运行中/容量',
+  'poolConfigured': '单实例配置 {value}',
+  'poolInstances': '{value} 个实例',
+  'poolUtilization': '利用率 {value}%',
+  'queueCount': '{value} 个队列',
+  'weightShort': '权重 {value}',
+  'footnote': '卡片主值为集群运行中/实时容量；单实例配置修改后需重启。共享弹性池只消费核心解析和内容富化队列。',
+  'updatedAt': '更新于 {value}',
+  'models.title': '模型并发占用',
+  'models.description': '观察后台任务实际进入模型服务时的并发占用；上方是任务调度，这里是模型服务限流，两者处于不同处理阶段。',
+  'models.scope': '占用为集群全局 · 等待为当前实例',
+  'models.disabled': '模型后台并发治理未启用。可在全局设置中配置模型默认并发上限。',
+  'models.empty': '暂无模型调用数据；模型首次执行后台任务后会出现在这里。',
+  'models.backgroundOnly': '仅统计后台任务，不包含交互式对话',
+  'models.status.queued': '限流中',
+  'models.status.full': '已满载',
+  'models.columns.model': '模型 ID',
+  'models.columns.active': '调用中',
+  'models.columns.waiting': '限流等待',
+  'models.columns.usage': '并发用量',
+  'failedNotice.title': '{count} 个任务待处理',
+  'failedNotice.description': '点击下方表中红色「最终失败」数字查看原因，修复后可手动重试。',
+  'status.working': '处理中',
+  'status.waiting': '等待中',
+  'status.idle': '空闲',
+  'status.actionRequired': '需处理',
+  'status.retrying': '重试中',
+  'status.paused': '已暂停',
+  'columns.queue': '队列',
+  'columns.active': '运行中',
+  'columns.pending': '排队',
+  'columns.scheduled': '定时',
+  'columns.retry': '重试',
+  'columns.archived': '最终失败',
+  'columns.completed': '已完成',
+  'columns.latency': '最早等待',
+  'columns.status': '状态',
+  'summary.title': '运行概览',
+  'summary.active': '运行中',
+  'summary.pending': '排队中',
+  'summary.retry': '重试中',
+  'summary.archived': '最终失败',
+  'pools.core': '核心解析',
+  'pools.postprocess': '后处理编排',
+  'pools.enrichment': '内容富化',
+  'pools.maintenance': '维护与同步',
+  'pools.shared': '共享弹性',
+  'pools.wiki': 'Wiki 池',
+  'poolDescriptions.core': '文档解析与手工重解析的保底容量',
+  'poolDescriptions.postprocess': '解析完成后的收尾与富化扇出',
+  'poolDescriptions.enrichment': '摘要、图片、图谱与问题生成',
+  'poolDescriptions.maintenance': '数据源同步、批处理与删除清理',
+  'poolDescriptions.shared': '由核心解析与内容富化按积压借用',
+  'poolDescriptions.wiki': 'Wiki 内容生成与全局收尾',
+  'queueNames.default': '文档解析',
+  'queueNames.chat_attachment': '对话附件解析',
+  'queueNames.postprocess': '后处理编排',
+  'queueNames.summary': '摘要生成',
+  'queueNames.sync': '数据源同步',
+  'queueNames.low': '维护与批处理',
+  'queueNames.multimodal': '多模态处理',
+  'queueNames.graph': '图谱抽取',
+  'queueNames.question': '问题生成',
+  'queueNames.wiki': 'Wiki 处理',
+  'queueDescriptions.default': '文档解析、手工重解析',
+  'queueDescriptions.chat_attachment': '会话内上传附件解析',
+  'queueDescriptions.postprocess': '解析收尾、富化扇出',
+  'queueDescriptions.summary': '文档摘要、表格摘要',
+  'queueDescriptions.sync': '手动与定时同步',
+  'queueDescriptions.low': 'FAQ 导入、批量重解析、删除清理',
+  'queueDescriptions.multimodal': '图片 OCR、视觉描述',
+  'queueDescriptions.graph': '分块图谱抽取',
+  'queueDescriptions.question': '分块问题生成',
+  'queueDescriptions.wiki': '内容生成、索引收尾',
+  'errors.generic': '获取队列状态失败',
+  'tasks.title': '任务明细 · {queue}',
+  'tasks.description': '查看各状态任务及其安全管理动作。定时、重试任务按最近执行时间优先，其余状态按时间倒序。',
+  'tasks.listTitle': '{state}任务',
+  'tasks.unavailable': '当前部署不支持查看任务明细',
+  'tasks.empty': '这个队列当前没有{state}任务',
+  'tasks.loadError': '获取任务明细失败',
+  'tasks.loadMore': '加载更多',
+  'tasks.loadedSummary': '已加载 {count} 条，继续下滑或点击加载',
+  'tasks.loadedAll': '已全部加载，共 {count} 条',
+  'tasks.loadingMore': '正在加载更多…',
+  'tasks.attempts': '执行 {current}/{max}',
+  'tasks.unknownTarget': '未识别到关联对象',
+  'tasks.knowledgeBaseLabel': '知识库 ID',
+  'tasks.knowledgeLabel': '文档 ID',
+  'tasks.taskIDLabel': '业务任务 ID',
+  'tasks.tenantLabel': '空间 ID',
+  'tasks.sourceLabel': '来源 ID',
+  'tasks.targetLabel': '目标 ID',
+  'tasks.sourceKBLabel': '来源知识库',
+  'tasks.targetKBLabel': '目标知识库',
+  'tasks.dataSourceLabel': '数据源 ID',
+  'tasks.syncLogLabel': '同步记录 ID',
+  'tasks.knowledgeCountLabel': '文档数量',
+  'tasks.enqueuedAt': '入队时间',
+  'tasks.startedAt': '开始时间',
+  'tasks.nextProcessAt': '下次执行',
+  'tasks.lastFailedAt': '最后失败',
+  'tasks.completedAt': '完成时间',
+  'tasks.deadline': '执行截止',
+  'tasks.worker': '执行实例',
+  'tasks.health': '运行健康',
+  'tasks.orphaned': '执行实例已失联，等待恢复',
+  'tasks.cancel': '终止任务',
+  'tasks.runNow': '立即执行',
+  'tasks.deleteRecord': '清除记录',
+  'tasks.purgeArchived': '清除全部失败任务',
+  'tasks.stateFilter': '按任务状态筛选',
+  'tasks.states.active': '运行中',
+  'tasks.states.pending': '排队中',
+  'tasks.states.scheduled': '定时执行',
+  'tasks.states.retry': '重试中',
+  'tasks.states.archived': '最终失败',
+  'tasks.states.completed': '已完成',
+  'tasks.guides.active': '运行中任务可查看执行实例、开始时间和截止时间。只有具备完整业务取消语义的任务才允许终止。',
+  'tasks.guides.pending': '排队任务尚未被 worker 领取。终止操作会同步更新业务状态，而不是只删除 Redis 记录。',
+  'tasks.guides.scheduled': '定时任务可提前立即执行；支持业务取消的文档任务也可以安全终止。',
+  'tasks.guides.retry': '请结合最后错误、重试次数和下次执行时间判断是否立即执行或终止。',
+  'tasks.guides.archived': '请先修复失败原因再立即执行。清除记录不会完成原业务任务。',
+  'tasks.guides.completed': '这里只展示设置了结果保留时间的近期完成任务，不提供管理动作。',
+  'tasks.taskTypes.documentProcess': '文档解析',
+  'tasks.taskTypes.manualProcess': '手工重新处理',
+  'tasks.taskTypes.temporaryDocumentProcess': '聊天附件解析',
+  'tasks.taskTypes.postProcess': '文档后处理',
+  'tasks.taskTypes.summary': '摘要生成',
+  'tasks.taskTypes.tableSummary': '表格摘要生成',
+  'tasks.taskTypes.question': '问题生成',
+  'tasks.taskTypes.multimodal': '图片多模态处理',
+  'tasks.taskTypes.graph': '知识图谱抽取',
+  'tasks.taskTypes.sync': '数据源同步',
+  'tasks.taskTypes.faqImport': 'FAQ 导入',
+  'tasks.taskTypes.batchReparse': '批量重新解析',
+  'tasks.taskTypes.batchDelete': '批量删除',
+  'tasks.taskTypes.move': '文档移动',
+  'tasks.taskTypes.indexDelete': '索引删除',
+  'tasks.taskTypes.kbClone': '知识库复制',
+  'tasks.taskTypes.kbDelete': '知识库删除',
+  'tasks.taskTypes.wikiIngest': 'Wiki 内容生成',
+  'tasks.taskTypes.wikiFinalize': 'Wiki 收尾处理',
+};
+const TASK_STATES = ['active', 'pending', 'scheduled', 'retry', 'archived', 'completed'] as const;
+type TaskState = (typeof TASK_STATES)[number];
+const taskTypeKeys: Record<string, string> = {
+  'document:process': 'documentProcess',
+  'manual:process': 'manualProcess',
+  'temporary_document:process': 'temporaryDocumentProcess',
+  'knowledge:post_process': 'postProcess',
+  'summary:generation': 'summary',
+  'datatable:summary': 'tableSummary',
+  'question:generation': 'question',
+  'image:multimodal': 'multimodal',
+  'chunk:extract': 'graph',
+  'datasource:sync': 'sync',
+  'faq:import': 'faqImport',
+  'knowledge:list_reparse': 'batchReparse',
+  'knowledge:list_delete': 'batchDelete',
+  'knowledge:move': 'move',
+  'index:delete': 'indexDelete',
+  'kb:clone': 'kbClone',
+  'kb:delete': 'kbDelete',
+  'wiki:ingest': 'wikiIngest',
+  'wiki:finalize': 'wikiFinalize',
+};
 
 export function RuntimeQueuesPanel({ client, payload, loading = false, error = null }: { client: WeKnoraClient; payload: RuntimeQueues | null; loading?: boolean; error?: string | null }) {
   const locale = useSettingsLocale();
-  const baseT = settingsT(locale);
-  const drawer = drawerCopy[locale] ?? drawerCopy['zh-CN'];
-  const t: ReturnType<typeof settingsT> = (key, values) => {
-    const value = baseT(key, values);
-    return value === key && key.startsWith('system.globalSettings.runtime.') ? fallbackRuntimeText(key, values, locale) : value;
+  const t = (key: string, values?: Record<string, string | number>): string => {
+    const suffix = key.startsWith('system.globalSettings.runtime.') ? key.slice('system.globalSettings.runtime.'.length) : key;
+    const template = runtimeCopy[suffix] ?? key;
+    return Object.entries(values ?? {}).reduce((acc, [name, replacement]) => acc.replace(new RegExp(`\\{${name}\\}`, 'g'), String(replacement)), template);
   };
-  const [taskDrawer, setTaskDrawer] = useState<{ queue: string; state: string; tasks: Row[]; loading: boolean; error: string | null } | null>(null);
-  const taskRequestGeneration = useRef(0);
-  if (loading && !payload) return <section className="wk-runtime-queues grid gap-4" aria-live="polite"><div className="wk-rq-skeleton h-[84px] rounded-lg bg-[linear-gradient(90deg,rgba(120,135,155,0.08),rgba(120,135,155,0.18),rgba(120,135,155,0.08))]" /><div className="wk-rq-skeleton h-[84px] rounded-lg bg-[linear-gradient(90deg,rgba(120,135,155,0.08),rgba(120,135,155,0.18),rgba(120,135,155,0.08))]" /><div className="wk-rq-skeleton h-[84px] rounded-lg bg-[linear-gradient(90deg,rgba(120,135,155,0.08),rgba(120,135,155,0.18),rgba(120,135,155,0.08))]" /></section>;
-  if (error) return <section className="wk-runtime-queues" role="alert"><Card><Status tone="error">{t('system.globalSettings.runtime.errors.generic')}</Status><p className="wk-muted text-muted">{error}</p></Card></section>;
-  if (!payload || (!payload.available && !payload.model_limiter_available)) return <section className="wk-runtime-queues"><Card><Status>{t('system.globalSettings.runtime.unavailableTitle')}</Status><p className="wk-muted text-muted">{t('system.globalSettings.runtime.unavailable')}</p></Card></section>;
-  const queues = payload.queues as Row[];
-  const pools = payload.pools as Row[];
-  const models = payload.models as Row[];
-  async function openTasks(row: Row, state: string) {
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [live, setLive] = useState<RuntimeQueues | null>(payload);
+  const [updatedAt, setUpdatedAt] = useState('');
+  const liveRef = useRef(payload);
+  const [taskDrawer, setTaskDrawer] = useState<{ queue: Row; state: TaskState; tasks: Row[]; loading: boolean; error: string | null } | null>(null);
+  const requestGeneration = useRef(0);
+  useEffect(() => { liveRef.current = payload; setLive(payload); }, [payload]);
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const timer = window.setInterval(() => {
+      void client.administration.runtime.queues().then((next) => {
+        if (next.available || next.model_limiter_available) { liveRef.current = next; setLive(next); }
+        setUpdatedAt(new Date((next.timestamp || Date.now() / 1000) * 1000).toLocaleTimeString('zh-CN', { hour12: false }));
+      }).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh, client]);
+  const view = live ?? payload;
+  if (loading && !view) return <section className="runtime-queues rq-loading" aria-live="polite">{[1, 2, 3].map((n) => <div key={n} className="rq-skeleton" />)}</section>;
+  if (error) return <section className="runtime-queues" role="alert"><div className="rq-state rq-state--error"><div className="rq-state-icon"><ErrorIcon /></div><div className="rq-state-copy"><strong>{t('system.globalSettings.runtime.errors.generic')}</strong><span>{error}</span></div></div></section>;
+  if (!view || (!view.available && !view.model_limiter_available)) return <section className="runtime-queues"><div className="rq-state"><div className="rq-state-icon"><InfoIcon /></div><div className="rq-state-copy"><strong>{t('system.globalSettings.runtime.unavailableTitle')}</strong><span>{t('system.globalSettings.runtime.unavailable')}</span></div></div></section>;
+  const queues = view.queues as Row[];
+  const pools = view.pools as Row[];
+  const models = view.models as Row[];
+  const totalActive = queues.reduce((sum, row) => sum + numberOf(row, 'active'), 0);
+  const totalPending = queues.reduce((sum, row) => sum + numberOf(row, 'pending'), 0);
+  const totalRetry = queues.reduce((sum, row) => sum + numberOf(row, 'retry'), 0);
+  const totalArchived = queues.reduce((sum, row) => sum + numberOf(row, 'archived'), 0);
+  const poolLabel = (name: string) => t(`system.globalSettings.runtime.pools.${name}`) === `system.globalSettings.runtime.pools.${name}` ? name : t(`system.globalSettings.runtime.pools.${name}`);
+  const poolDescription = (name: string) => t(`system.globalSettings.runtime.poolDescriptions.${name}`) === `system.globalSettings.runtime.poolDescriptions.${name}` ? name : t(`system.globalSettings.runtime.poolDescriptions.${name}`);
+  const queueLabel = (name: string) => { const key = `system.globalSettings.runtime.queueNames.${name}`; return t(key) === key ? name : t(key); };
+  const queueDescription = (name: string) => { const key = `system.globalSettings.runtime.queueDescriptions.${name}`; return t(key) === key ? name : t(key); };
+  const poolQueueCount = (pool: string) => numberOf(pools.find((item) => item.name === pool) ?? {}, 'queue_count');
+  const queueMeta = (row: Row) => {
+    const scope = queueDescription(stringOf(row, 'name'));
+    const pool = stringOf(row, 'pool');
+    return poolQueueCount(pool) > 1 ? `${scope} · ${t('system.globalSettings.runtime.weightShort', { value: numberOf(row, 'weight') })}` : scope;
+  };
+  const formatLatency = (ms: number) => {
+    if (!ms || ms <= 0) return '—';
+    if (ms < 1000) return `${ms} ms`;
+    const s = ms / 1000;
+    if (s < 60) return `${s.toFixed(1)} s`;
+    const m = Math.floor(s / 60);
+    return `${m}m ${Math.round(s % 60)}s`;
+  };
+  const queueState = (row: Row): { label: string; tone: string } => {
+    if (row.paused === true) return { label: t('system.globalSettings.runtime.status.paused'), tone: 'paused' };
+    if (numberOf(row, 'archived') > 0) return { label: t('system.globalSettings.runtime.status.actionRequired'), tone: 'danger' };
+    if (numberOf(row, 'retry') > 0) return { label: t('system.globalSettings.runtime.status.retrying'), tone: 'attention' };
+    if (numberOf(row, 'active') > 0) return { label: t('system.globalSettings.runtime.status.working'), tone: 'working' };
+    if (numberOf(row, 'pending') > 0 || numberOf(row, 'scheduled') > 0) return { label: t('system.globalSettings.runtime.status.waiting'), tone: 'waiting' };
+    return { label: t('system.globalSettings.runtime.status.idle'), tone: 'idle' };
+  };
+  const modelState = (row: Row): { label: string; tone: string } => {
+    if (numberOf(row, 'waiting') > 0) return { label: t('system.globalSettings.runtime.models.status.queued'), tone: 'attention' };
+    if (numberOf(row, 'active') >= numberOf(row, 'limit')) return { label: t('system.globalSettings.runtime.models.status.full'), tone: 'waiting' };
+    if (numberOf(row, 'active') > 0) return { label: t('system.globalSettings.runtime.status.working'), tone: 'working' };
+    return { label: t('system.globalSettings.runtime.status.idle'), tone: 'idle' };
+  };
+  const modelUsage = (row: Row) => numberOf(row, 'limit') > 0 ? Math.min(100, Math.round(numberOf(row, 'active') / numberOf(row, 'limit') * 100)) : 0;
+  const taskButton = (row: Row, state: TaskState, extraClass: string) => numberOf(row, state) > 0
+    ? <button type="button" className={`rq-task-count ${extraClass}`} onClick={() => void openTasks(row, state)}>{numberOf(row, state)}<ChevronIcon /></button>
+    : <span className="rq-number">0</span>;
+  async function openTasks(row: Row, state: TaskState) {
     const queue = stringOf(row, 'name');
-    if (!queue || numberOf(row, state) <= 0) return;
-    const generation = ++taskRequestGeneration.current;
-    setTaskDrawer({ queue, state, tasks: [], loading: true, error: null });
+    if (!queue) return;
+    const generation = ++requestGeneration.current;
+    setTaskDrawer({ queue: row, state, tasks: [], loading: true, error: null });
     try {
       const result = await client.administration.runtime.tasks.list(queue, state, { pageSize: 20 });
-      if (generation !== taskRequestGeneration.current) return;
-      setTaskDrawer({ queue, state, tasks: result.tasks as Row[], loading: false, error: result.available ? null : drawer.unavailable });
+      if (generation !== requestGeneration.current) return;
+      setTaskDrawer({ queue: row, state, tasks: (result.tasks ?? []) as Row[], loading: false, error: result.available ? null : t('system.globalSettings.runtime.tasks.unavailable') });
     } catch (reason) {
-      if (generation !== taskRequestGeneration.current) return;
-      setTaskDrawer({ queue, state, tasks: [], loading: false, error: reason instanceof Error ? reason.message : drawer.failed });
+      if (generation !== requestGeneration.current) return;
+      setTaskDrawer({ queue: row, state, tasks: [], loading: false, error: reason instanceof Error ? reason.message : t('system.globalSettings.runtime.tasks.loadError') });
     }
   }
-  const taskButton = (row: Row, state: string) => numberOf(row, state) > 0
-    ? <button type="button" className="wk-rq-count-button cursor-pointer border-0 bg-transparent p-1.5 font-[inherit] text-[#0a8f4c] underline hover:text-[#067a3f] focus-visible:text-[#067a3f]" onClick={() => void openTasks(row, state)}>{numberOf(row, state)}</button>
-    : <span>0</span>;
-  const active = queues.reduce((sum, row) => sum + numberOf(row, 'active'), 0);
-  const pending = queues.reduce((sum, row) => sum + numberOf(row, 'pending'), 0);
-  const retry = queues.reduce((sum, row) => sum + numberOf(row, 'retry'), 0);
-  const archived = queues.reduce((sum, row) => sum + numberOf(row, 'archived'), 0);
-  const title = runtimeText(t, 'system.globalSettings.runtime.title', '运行时队列');
-  return <section className="wk-runtime-queues grid gap-4 [&_h3]:m-0 [&_h3]:mb-2 [&_h3]:text-base" aria-label={title}>
-    <header className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col"><h2>{title}</h2><p>{runtimeText(t, 'system.globalSettings.runtime.description', '查看任务队列、工作池和模型限流状态。')}</p></header>
-    {payload.available ? <>
-      <Card className="wk-rq-overview bg-[rgba(7,192,95,0.04)]"><h3>{runtimeText(t, 'system.globalSettings.runtime.summary.title', '队列概览')}</h3><div className="wk-rq-metrics grid grid-cols-4 gap-3 max-[720px]:grid-cols-2"><strong className="text-2xl text-[#118053]">{active}<span className="mt-[3px] block text-xs font-normal text-[#5c6b83]">{runtimeText(t, 'system.globalSettings.runtime.summary.active', '活跃任务')}</span></strong><strong className="text-2xl text-[#118053]">{pending}<span className="mt-[3px] block text-xs font-normal text-[#5c6b83]">{runtimeText(t, 'system.globalSettings.runtime.summary.pending', '等待任务')}</span></strong><strong className={`text-2xl ${retry > 0 ? 'text-[#b26a08]' : 'text-[#118053]'}`}>{retry}<span className="mt-[3px] block text-xs font-normal text-[#5c6b83]">{runtimeText(t, 'system.globalSettings.runtime.summary.retry', '重试')}</span></strong><strong className={`text-2xl ${archived > 0 ? 'text-[#c23434]' : 'text-[#118053]'}`}>{archived}<span className="mt-[3px] block text-xs font-normal text-[#5c6b83]">{runtimeText(t, 'system.globalSettings.runtime.summary.archived', '失败归档')}</span></strong></div></Card>
-      <Card><h3>{t('system.globalSettings.runtime.poolsTitle')}</h3><p className="wk-muted text-muted">{t('system.globalSettings.runtime.poolsDescription')}</p><div className="wk-rq-pools grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2.5">{pools.map((row, index) => <div className="wk-rq-pool grid grid-cols-[1fr_auto] gap-1.5 rounded-lg border border-[rgba(120,135,155,0.24)] p-3" key={stringOf(row, 'name') || String(index)}><strong>{stringOf(row, 'name') || '—'}</strong><b>{numberOf(row, 'instances') > 0 ? `${numberOf(row, 'active')}/${numberOf(row, 'cluster_capacity')}` : numberOf(row, 'concurrency')}</b><span>{t('system.globalSettings.runtime.queueCount', { value: numberOf(row, 'queue_count') })}</span></div>)}</div></Card>
-      <Card><h3>{t('system.globalSettings.runtime.detailsTitle')}</h3><p className="wk-muted text-muted">{t('system.globalSettings.runtime.detailsDescription')}</p>{queues.length === 0 ? <Status>{t('system.globalSettings.runtime.empty')}</Status> : <div className="wk-rq-table-wrap overflow-x-auto"><table className="wk-rq-table w-full min-w-[700px] border-collapse text-[13px] [&_th]:border-b [&_th]:border-[rgba(120,135,155,0.18)] [&_th]:px-2.5 [&_th]:py-3 [&_th]:text-left [&_th]:whitespace-nowrap [&_td]:border-b [&_td]:border-[rgba(120,135,155,0.18)] [&_td]:px-2.5 [&_td]:py-3 [&_td]:text-left [&_td]:whitespace-nowrap [&_thead_th]:text-xs [&_thead_th]:font-medium [&_thead_th]:text-[#5c6b83] [&_tbody_th]:font-semibold"><thead><tr>{['queue','active','pending','retry','archived','completed','latency','status'].map((key) => <th key={key}>{runtimeText(t, `system.globalSettings.runtime.columns.${key}`, key)}</th>)}</tr></thead><tbody>{queues.map((row, index) => <tr key={stringOf(row, 'name') || String(index)}><th>{stringOf(row, 'name') || '—'}</th><td>{taskButton(row, 'active')}</td><td>{taskButton(row, 'pending')}</td><td>{taskButton(row, 'retry')}</td><td>{taskButton(row, 'archived')}</td><td>{taskButton(row, 'completed')}</td><td>{numberOf(row, 'latency_ms') || '—'}</td><td>{queueStatus(row, t)}</td></tr>)}</tbody></table></div>}</Card>
+  const taskQueueName = taskDrawer ? stringOf(taskDrawer.queue, 'name') : '';
+  const taskStateCount = (state: TaskState) => taskDrawer ? numberOf(taskDrawer.queue, state) : 0;
+  const runtimeTaskMeta = (task: Row): Array<{ key: string; label: string; value: string }> => {
+    const refs: Array<{ key: string; label: string; value: string }> = [];
+    const push = (key: string, label: string, value: unknown) => { if (value !== undefined && value !== null && value !== '' && value !== 0) refs.push({ key, label, value: String(value) }); };
+    push('kb', t('system.globalSettings.runtime.tasks.knowledgeBaseLabel'), stringOf(task, 'knowledge_base_id'));
+    push('knowledge', t('system.globalSettings.runtime.tasks.knowledgeLabel'), stringOf(task, 'knowledge_id'));
+    push('task', t('system.globalSettings.runtime.tasks.taskIDLabel'), stringOf(task, 'task_id'));
+    push('source', t('system.globalSettings.runtime.tasks.sourceLabel'), stringOf(task, 'source_id'));
+    push('target', t('system.globalSettings.runtime.tasks.targetLabel'), stringOf(task, 'target_id'));
+    push('source-kb', t('system.globalSettings.runtime.tasks.sourceKBLabel'), stringOf(task, 'source_kb_id'));
+    push('target-kb', t('system.globalSettings.runtime.tasks.targetKBLabel'), stringOf(task, 'target_kb_id'));
+    push('datasource', t('system.globalSettings.runtime.tasks.dataSourceLabel'), stringOf(task, 'data_source_id'));
+    push('sync-log', t('system.globalSettings.runtime.tasks.syncLogLabel'), stringOf(task, 'sync_log_id'));
+    push('knowledge-count', t('system.globalSettings.runtime.tasks.knowledgeCountLabel'), numberOf(task, 'knowledge_count'));
+    push('tenant', t('system.globalSettings.runtime.tasks.tenantLabel'), stringOf(task, 'tenant_id'));
+    const time = (value: string) => { const date = new Date(value); return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('zh-CN', { hour12: false }); };
+    if (stringOf(task, 'enqueued_at')) refs.push({ key: 'enqueued', label: t('system.globalSettings.runtime.tasks.enqueuedAt'), value: time(stringOf(task, 'enqueued_at')) });
+    if (stringOf(task, 'started_at')) refs.push({ key: 'started', label: t('system.globalSettings.runtime.tasks.startedAt'), value: time(stringOf(task, 'started_at')) });
+    if (stringOf(task, 'next_process_at')) refs.push({ key: 'next', label: t('system.globalSettings.runtime.tasks.nextProcessAt'), value: time(stringOf(task, 'next_process_at')) });
+    if (stringOf(task, 'last_failed_at')) refs.push({ key: 'failed', label: t('system.globalSettings.runtime.tasks.lastFailedAt'), value: time(stringOf(task, 'last_failed_at')) });
+    if (stringOf(task, 'completed_at')) refs.push({ key: 'completed', label: t('system.globalSettings.runtime.tasks.completedAt'), value: time(stringOf(task, 'completed_at')) });
+    if (stringOf(task, 'deadline')) refs.push({ key: 'deadline', label: t('system.globalSettings.runtime.tasks.deadline'), value: time(stringOf(task, 'deadline')) });
+    push('worker', t('system.globalSettings.runtime.tasks.worker'), stringOf(task, 'worker'));
+    if (task.is_orphaned) refs.push({ key: 'orphaned', label: t('system.globalSettings.runtime.tasks.health'), value: t('system.globalSettings.runtime.tasks.orphaned') });
+    return refs;
+  };
+  const taskTypeLabel = (type: string) => { const key = taskTypeKeys[type]; return key ? t(`system.globalSettings.runtime.tasks.taskTypes.${key}`) : type; };
+  return <section className="runtime-queues" aria-label={t('system.globalSettings.runtime.title')}>
+    <header className="rq-header">
+      <div className="rq-title-block">
+        <h2>{t('system.globalSettings.runtime.title')}</h2>
+        <p className="section-description">{t('system.globalSettings.runtime.description')}</p>
+      </div>
+      <div className="rq-actions">
+        <label className="rq-auto-refresh">
+          <span className={autoRefresh ? 'rq-live-dot rq-live-dot--active' : 'rq-live-dot'} />
+          <span>{t('system.globalSettings.runtime.autoRefresh')}</span>
+          <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="rq-auto-refresh-switch" aria-label={t('system.globalSettings.runtime.autoRefresh')} />
+        </label>
+        <button type="button" className="rq-refresh" aria-label={t('system.globalSettings.runtime.refresh')} title={t('system.globalSettings.runtime.refresh')} onClick={() => {
+          void client.administration.runtime.queues().then((next) => { liveRef.current = next; setLive(next); setUpdatedAt(new Date((next.timestamp || Date.now() / 1000) * 1000).toLocaleTimeString('zh-CN', { hour12: false })); }).catch(() => undefined);
+        }}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg></button>
+      </div>
+    </header>
+    {view.available ? <>
+      <section className="rq-overview" aria-label={t('system.globalSettings.runtime.summary.title')}>
+        <div className="rq-overview-title">
+          <span className="rq-overview-mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M3 3v16a2 2 0 002 2h16" /><path d="M7 16l4-6 4 3 5-8" /></svg></span>
+          <span>{t('system.globalSettings.runtime.summary.title')}</span>
+        </div>
+        <div className="rq-overview-metrics">
+          <div className="rq-metric rq-metric--active"><span className="rq-metric-label">{t('system.globalSettings.runtime.summary.active')}</span><strong className="rq-metric-value">{totalActive}</strong></div>
+          <div className="rq-metric"><span className="rq-metric-label">{t('system.globalSettings.runtime.summary.pending')}</span><strong className="rq-metric-value">{totalPending}</strong></div>
+          <div className={totalRetry > 0 ? 'rq-metric rq-metric--warning' : 'rq-metric'}><span className="rq-metric-label">{t('system.globalSettings.runtime.summary.retry')}</span><strong className="rq-metric-value">{totalRetry}</strong></div>
+          <div className={totalArchived > 0 ? 'rq-metric rq-metric--danger' : 'rq-metric'}><span className="rq-metric-label">{t('system.globalSettings.runtime.summary.archived')}</span><strong className="rq-metric-value">{totalArchived}</strong></div>
+        </div>
+      </section>
+      <section className="rq-pools">
+        <div className="rq-pools-header">
+          <div>
+            <h3 className="rq-section-title">{t('system.globalSettings.runtime.poolsTitle')}</h3>
+            <p>{t('system.globalSettings.runtime.poolsDescription')}</p>
+          </div>
+          <span className="rq-pools-note">{t('system.globalSettings.runtime.perInstance')}</span>
+        </div>
+        <div className="rq-pool-grid">
+          {pools.map((pool, index) => <div className="rq-pool-card" key={stringOf(pool, 'name') || String(index)}>
+            <div className="rq-pool-topline">
+              <span className="rq-pool-name">{poolLabel(stringOf(pool, 'name'))}</span>
+              <strong className="rq-pool-value">{numberOf(pool, 'instances') > 0 ? `${numberOf(pool, 'active')}/${numberOf(pool, 'cluster_capacity')}` : numberOf(pool, 'concurrency')}</strong>
+            </div>
+            <p className="rq-pool-desc">
+              {poolDescription(stringOf(pool, 'name'))}
+              <span className="rq-pool-meta">
+                {t('system.globalSettings.runtime.poolConfigured', { value: numberOf(pool, 'concurrency') })}
+                {numberOf(pool, 'instances') > 0 ? <> · {t('system.globalSettings.runtime.poolInstances', { value: numberOf(pool, 'instances') })} · {t('system.globalSettings.runtime.poolUtilization', { value: Math.round(Math.max(0, Math.min(1, typeof pool.utilization === 'number' ? pool.utilization : 0)) * 100) })}</> : null}
+                {' · '}{t('system.globalSettings.runtime.queueCount', { value: numberOf(pool, 'queue_count') })}
+              </span>
+            </p>
+          </div>)}
+        </div>
+      </section>
+      <section className="rq-details">
+        <div className="rq-details-header">
+          <div>
+            <h3 className="rq-section-title">{t('system.globalSettings.runtime.detailsTitle')}</h3>
+            <p>{t('system.globalSettings.runtime.detailsDescription')}</p>
+          </div>
+          {updatedAt ? <span className="rq-updated-at"><ClockIcon />{t('system.globalSettings.runtime.updatedAt', { value: updatedAt })}</span> : null}
+        </div>
+        {totalArchived > 0 ? <div className="rq-failed-notice" role="status">
+          <span className="rq-failed-notice__icon" aria-hidden="true"><ErrorIcon /></span>
+          <div className="rq-failed-notice__text">
+            <p className="rq-failed-notice__title">{t('system.globalSettings.runtime.failedNotice.title', { count: totalArchived })}</p>
+            <p className="rq-failed-notice__desc">{t('system.globalSettings.runtime.failedNotice.description')}</p>
+          </div>
+        </div> : null}
+        {queues.length === 0 ? <div className="rq-empty"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h16M4 10h16M4 14h10" /></svg><span>{t('system.globalSettings.runtime.empty')}</span></div> : <div className="rq-table-shell">
+          <table className="rq-table">
+            <thead><tr>{['queue', 'active', 'pending', 'retry', 'archived', 'completed', 'latency_ms', 'status'].map((key) => <th key={key} className={['active', 'pending', 'retry', 'archived', 'completed', 'latency_ms'].includes(key) ? 'rq-align-center' : undefined}>{t(`system.globalSettings.runtime.columns.${key === 'latency_ms' ? 'latency' : key}`)}</th>)}</tr></thead>
+            <tbody>{queues.map((row, index) => <tr key={stringOf(row, 'name') || String(index)}>
+              <td className="rq-queue-cell-td"><div className="rq-queue-cell"><span className="rq-queue-name">{queueLabel(stringOf(row, 'name'))}</span><span className="rq-queue-meta">{queueMeta(row)}</span></div></td>
+              <td className="rq-align-center">{taskButton(row, 'active', 'rq-task-count--active')}</td>
+              <td className="rq-align-center"><div className="rq-backlog">{taskButton(row, 'pending', '')}{numberOf(row, 'scheduled') > 0 ? <button type="button" className="rq-scheduled-count" onClick={() => void openTasks(row, 'scheduled')}>+{numberOf(row, 'scheduled')} {t('system.globalSettings.runtime.columns.scheduled')}</button> : null}</div></td>
+              <td className="rq-align-center">{taskButton(row, 'retry', 'rq-task-count--warning')}</td>
+              <td className="rq-align-center">{taskButton(row, 'archived', 'rq-failed-count')}</td>
+              <td className="rq-align-center">{taskButton(row, 'completed', 'rq-task-count--completed')}</td>
+              <td className="rq-align-center"><span className="rq-latency">{formatLatency(numberOf(row, 'latency_ms'))}</span></td>
+              <td><span className={`rq-status rq-status--${queueState(row).tone}`}><i />{queueState(row).label}</span></td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
+      </section>
     </> : null}
-    <Card><h3>{t('system.globalSettings.runtime.models.title')}</h3><p className="wk-muted text-muted">{t('system.globalSettings.runtime.models.description')}</p>{!payload.model_limiter_available ? <Status>{t('system.globalSettings.runtime.models.disabled')}</Status> : models.length === 0 ? <Status>{t('system.globalSettings.runtime.models.empty')}</Status> : <div className="wk-rq-models grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2.5">{models.map((row, index) => { const current = numberOf(row, 'active'); const limit = numberOf(row, 'limit'); return <div className="wk-rq-model grid grid-cols-[1fr_auto] gap-1.5 rounded-lg border border-[rgba(120,135,155,0.24)] p-3" key={stringOf(row, 'model_id') || String(index)}><div><strong>{stringOf(row, 'name') || stringOf(row, 'model_id') || '—'}</strong><span>{current} / {limit}</span></div><progress max={100} value={percent(current, limit)} /><small>{numberOf(row, 'waiting')} {t('system.globalSettings.runtime.models.columns.waiting')}</small></div>; })}</div>}</Card>
-    {taskDrawer ? <div className="wk-rq-task-drawer fixed bottom-0 right-0 top-0 z-[3200] w-[min(720px,100vw)] max-w-[720px] overflow-y-auto border-l border-[rgba(120,135,155,0.25)] bg-white p-6 shadow-[-8px_0_24px_rgba(23,32,51,0.14)]" role="dialog" aria-modal="true" aria-label={`${taskDrawer.queue} ${taskDrawer.state}`}><div className="wk-rq-task-drawer__head mb-5 flex items-start justify-between"><div><h3>{taskDrawer.queue}</h3><p className="wk-muted text-muted">{taskDrawer.state} · {drawer.detail}</p></div><button type="button" aria-label={drawer.close} className="cursor-pointer border-0 bg-transparent text-2xl leading-none" onClick={() => { taskRequestGeneration.current += 1; setTaskDrawer(null); }}>×</button></div>{taskDrawer.loading ? <Status>{drawer.loading}</Status> : taskDrawer.error ? <Status tone="error">{taskDrawer.error}</Status> : taskDrawer.tasks.length === 0 ? <Status>{drawer.empty}</Status> : <ul className="wk-list m-0 list-none p-0">{taskDrawer.tasks.map((task, index) => <li key={stringOf(task, 'id') || String(index)} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{stringOf(task, 'type') || '—'}</strong><span className="font-mono text-[0.8rem] text-muted">{stringOf(task, 'state') || taskDrawer.state}</span>{stringOf(task, 'last_error') ? <small>{stringOf(task, 'last_error')}</small> : null}</div></li>)}</ul>}</div> : null}
+    <section className="rq-details rq-models">
+      <div className="rq-details-header">
+        <div>
+          <h3 className="rq-section-title">{t('system.globalSettings.runtime.models.title')}</h3>
+          <p>{t('system.globalSettings.runtime.models.description')}</p>
+        </div>
+        <span className="rq-pools-note">{t('system.globalSettings.runtime.models.scope')}</span>
+      </div>
+      {!view.model_limiter_available ? <div className="rq-empty"><InfoIcon size={28} /><span>{t('system.globalSettings.runtime.models.disabled')}</span></div>
+        : models.length === 0 ? <div className="rq-empty"><ServerIcon /><span>{t('system.globalSettings.runtime.models.empty')}</span></div>
+          : <div className="rq-table-shell">
+            <table className="rq-table">
+              <thead><tr><th>{t('system.globalSettings.runtime.models.columns.model')}</th><th className="rq-align-center">{t('system.globalSettings.runtime.models.columns.active')}</th><th className="rq-align-center">{t('system.globalSettings.runtime.models.columns.waiting')}</th><th>{t('system.globalSettings.runtime.models.columns.usage')}</th><th>{t('system.globalSettings.runtime.columns.status')}</th></tr></thead>
+              <tbody>{models.map((row, index) => <tr key={stringOf(row, 'model_id') || String(index)}>
+                <td><div className="rq-queue-cell"><span className="rq-queue-name">{stringOf(row, 'name') || stringOf(row, 'model_id')}</span><span className="rq-queue-meta">{stringOf(row, 'name') ? stringOf(row, 'model_id') : t('system.globalSettings.runtime.models.backgroundOnly')}</span></div></td>
+                <td className="rq-align-center"><span className={numberOf(row, 'active') > 0 ? 'rq-number rq-number--active' : 'rq-number'}>{numberOf(row, 'active')}</span></td>
+                <td className="rq-align-center"><span className={numberOf(row, 'waiting') > 0 ? 'rq-number rq-number--warning' : 'rq-number'}>{numberOf(row, 'waiting')}</span></td>
+                <td><div className="rq-model-usage"><progress max={100} value={modelUsage(row)} /><span>{numberOf(row, 'active')} / {numberOf(row, 'limit')}</span></div></td>
+                <td><span className={`rq-status rq-status--${modelState(row).tone}`}><i />{modelState(row).label}</span></td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
+    </section>
+    <p className="rq-footnote">{t('system.globalSettings.runtime.footnote')}</p>
+    {taskDrawer ? <div className="rq-failed-drawer" role="dialog" aria-modal="true" aria-label={t('system.globalSettings.runtime.tasks.title', { queue: queueLabel(taskQueueName) })}>
+      <div className="rq-drawer-backdrop" onClick={() => { requestGeneration.current += 1; setTaskDrawer(null); }} />
+      <div className="rq-drawer-panel">
+        <header className="rq-drawer-head">
+          <div>
+            <h3>{t('system.globalSettings.runtime.tasks.title', { queue: queueLabel(taskQueueName) })}</h3>
+            <p>{t('system.globalSettings.runtime.tasks.description')}</p>
+          </div>
+          <button type="button" aria-label="关闭" onClick={() => { requestGeneration.current += 1; setTaskDrawer(null); }}>×</button>
+        </header>
+        <div className="rq-task-state-filter" role="tablist" aria-label={t('system.globalSettings.runtime.tasks.stateFilter')}>
+          {TASK_STATES.map((state) => <button key={state} type="button" role="tab" className={taskDrawer.state === state ? 'rq-task-state-option is-active' : 'rq-task-state-option'} aria-selected={taskDrawer.state === state} onClick={() => { if (taskDrawer.state !== state) void openTasks(taskDrawer.queue, state); }}>
+            <span className="rq-task-state-option__label">{t(`system.globalSettings.runtime.tasks.states.${state}`)}</span>
+            <span className={taskStateCount(state) > 0 ? 'rq-task-state-option__count has-value' : 'rq-task-state-option__count'}>{taskStateCount(state)}</span>
+          </button>)}
+        </div>
+        <p className="rq-failed-guide-desc">{t(`system.globalSettings.runtime.tasks.guides.${taskDrawer.state}`)}</p>
+        <div className="rq-failed-section-head">
+          <h4>{t('system.globalSettings.runtime.tasks.listTitle', { state: t(`system.globalSettings.runtime.tasks.states.${taskDrawer.state}`) })}</h4>
+        </div>
+        {taskDrawer.loading ? <Status>{t('system.globalSettings.runtime.loading')}</Status>
+          : taskDrawer.error ? <Status tone="error">{taskDrawer.error}</Status>
+            : taskDrawer.tasks.length === 0 ? <Status>{t('system.globalSettings.runtime.tasks.empty', { state: t(`system.globalSettings.runtime.tasks.states.${taskDrawer.state}`) })}</Status>
+              : <div className="rq-failed-list-panel">
+                {taskDrawer.tasks.map((task, index) => <article key={stringOf(task, 'id') || String(index)} className="rq-failed-row">
+                  <div className="rq-failed-row-content">
+                    <div className="rq-failed-row-summary">
+                      <span className="rq-failed-row-type">{taskTypeLabel(stringOf(task, 'type'))}</span>
+                      <span className="rq-failed-row-sep" aria-hidden="true">·</span>
+                      <span className={`rq-task-state-pill rq-task-state-pill--${stringOf(task, 'state') || taskDrawer.state}`}>{t(`system.globalSettings.runtime.tasks.states.${stringOf(task, 'state') || taskDrawer.state}`)}</span>
+                      <span className="rq-failed-row-sep" aria-hidden="true">·</span>
+                      <span className="rq-failed-row-stat">{t('system.globalSettings.runtime.tasks.attempts', { current: numberOf(task, 'retried') + 1, max: numberOf(task, 'max_retry') + 1 })}</span>
+                    </div>
+                    {runtimeTaskMeta(task).length > 0 ? <dl className="rq-failed-row-refs">{runtimeTaskMeta(task).map((ref) => <div key={ref.key} className="rq-failed-ref"><dt>{ref.label}</dt><dd title={ref.value}>{ref.value}</dd></div>)}</dl>
+                      : <p className="rq-failed-row-unknown">{t('system.globalSettings.runtime.tasks.unknownTarget')}</p>}
+                    {stringOf(task, 'last_error') ? <p className="rq-failed-row-error">{stringOf(task, 'last_error')}</p> : null}
+                  </div>
+                </article>)}
+              </div>}
+      </div>
+    </div> : null}
   </section>;
+}
+
+function ChevronIcon() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6" /></svg>;
+}
+function ClockIcon() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>;
+}
+function InfoIcon({ size = 24 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M12 11v5" /></svg>;
+}
+function ErrorIcon({ size = 24 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16h.01" /></svg>;
+}
+function ServerIcon() {
+  return <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="7" rx="1" /><rect x="3" y="13" width="18" height="7" rx="1" /><path d="M7 7.5h.01M7 16.5h.01" /></svg>;
 }

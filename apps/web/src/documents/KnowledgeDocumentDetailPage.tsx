@@ -776,7 +776,8 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
       <h4 className={sectionTitleClass + ' mb-3'}>{t('knowledgeBase.detailSectionMeta')}</h4>
       <dl className="wk-document-metadata m-0 flex flex-col gap-[10px] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dd]:text-[13px] [&_dt]:w-[72px] [&_dt]:shrink-0 [&_dt]:text-[12px] [&_dt]:leading-[1.6] [&_dt]:text-muted">
         {documentTime ? <div className="doc-detail-row flex items-start gap-3"><dt>{timeLabel}</dt><dd>{formatDetailTime(documentTime)}</dd></div> : null}
-        <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.infoCard.type')}</dt><dd><span className="doc-type-tag inline-flex rounded-[3px] border border-[var(--wk-border,#e4e7ec)] px-[6px] py-0 text-[12px] leading-[20px] text-ink">{typeLabel}</span></dd></div>
+        <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.infoCard.type')}</dt><dd>{/* Vue doc-content.vue:1648 t-tag variant="light" — 浅灰底无边框，非描边盒。 */}
+<span className="doc-type-tag inline-flex rounded-[3px] bg-surface-muted px-[6px] py-0 text-[12px] leading-[20px] text-[rgba(0,0,0,0.9)]">{typeLabel}</span></dd></div>
         {document.channel && document.channel !== 'web' ? <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.infoCard.source')}</dt><dd>{String(document.channel)}</dd></div> : null}
         {rawTags.length > 0 ? <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.tagLabel')}</dt><dd className="flex flex-wrap gap-1">{rawTags.map((tag) => <span key={String(tag.id ?? tag.name)} className="doc-tag-chip rounded-full border border-line-soft px-2 py-0.5 text-[11px] text-muted">{tag.name}</span>)}</dd></div> : null}
       </dl>
@@ -817,7 +818,10 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
         </div>
         <div className="view-mode-buttons flex items-center gap-2">
           {canPreviewDocument(document) ? <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'preview' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('preview')}>{tabs.preview}</button> : null}
-          <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'merged' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('merged')}>{tabs.merged}</button>
+          {/* Vue doc-content.vue:1821-1830 — the 全文 tab renders ONLY when
+              the document is not previewable (canPreview() false branch);
+              previewable documents show 预览 + 查看分块 only. */}
+          {!canPreviewDocument(document) ? <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'merged' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('merged')}>{tabs.merged}</button> : null}
           <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'chunks' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('chunks')}>{tabs.chunks}</button>
         </div>
       </div>

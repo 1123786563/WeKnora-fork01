@@ -51,21 +51,45 @@ function preserveCitations(markdown: string): { source: string; replacements: Ma
   return { source, replacements };
 }
 
-function restoreCitations(html: string, replacements: Map<string, string>): string {
-  if (!replacements.size) return html;
-  const parts = html.split(/(<code\b[^>]*>[\s\S]*?<\/code>)/gi);
-  for (let index = 0; index < parts.length; index += 2) {
-    for (const [token, replacement] of replacements) parts[index] = parts[index]!.split(token).join(replacement);
+const MATH_DISPLAY_RE = /\$\$([\s\S]+?)\$\$/g;
+const MATH_INLINE_RE = /\$([^$\n]+)\$/g;
+
+/**
+ * Preserve math BEFORE the markdown parse: post-parse extraction mangles TeX
+ * (marked folds `\\` escapes), which breaks pmatrix/bmatrix blocks. Mirrors
+ * Vue markedKatex tokenizing math ahead of HTML escaping. Fenced and inline
+ * code spans are left untouched.
+ */
+function preserveMath(markdown: string): { source: string; replacements: Map<string, string> } {
+  const replacements = new Map<string, string>();
+  let index = 0;
+  let source = markdown;
+  for (const [re, display] of [[MATH_DISPLAY_RE, true], [MATH_INLINE_RE, false]] as const) {
+    const current = source;
+    source = current.replace(re, (match, expression: string, offset: number) => {
+      if (insideCodeSpan(current, offset)) return match;
+      const token = `WEKNORA_MATH_${index++}_TOKEN`;
+      replacements.set(token, renderMath(expression, display));
+      return token;
+    });
   }
-  return parts.join('');
+  return { source, replacements };
 }
 
-function restoreMath(html: string): string {
+/** True when `offset` sits inside an odd number of backtick runs (inline code). */
+function insideCodeSpan(markdown: string, offset: number): boolean {
+  const before = markdown.slice(0, offset);
+  const fences = (before.match(/```/g) || []).length;
+  if (fences % 2 === 1) return true;
+  return ((before.match(/`/g) || []).length - (before.match(/```/g) || []).length * 3) % 2 === 1;
+}
+
+/** Restores preserved tokens outside pre blocks / code spans. */
+function restorePreserved(html: string, replacements: Map<string, string>): string {
+  if (!replacements.size) return html;
   const parts = html.split(/(<pre\b[\s\S]*?<\/pre>|<code\b[^>]*>[\s\S]*?<\/code>)/gi);
   for (let index = 0; index < parts.length; index += 2) {
-    parts[index] = parts[index]!
-      .replace(/\$\$([\s\S]+?)\$\$/g, (_match, expression: string) => renderMath(expression, true))
-      .replace(/\$([^$\n]+)\$/g, (_match, expression: string) => renderMath(expression, false));
+    for (const [token, replacement] of replacements) parts[index] = parts[index]!.split(token).join(replacement);
   }
   return parts.join('');
 }
@@ -81,7 +105,14 @@ function renderMath(expression: string, displayMode: boolean): string {
 
 function createRenderer(invalidImageLabel: string, imageFailedLabel: string, imagePreviewLabel: string): Renderer {
   const renderer = new Renderer();
-  renderer.html = ({ text }: Tokens.HTML | Tokens.Tag) => escapeHtml(text);
+  // Vue's DOMPurify config (USE_PROFILES html) lets harmless inline formatting
+  // tags like <kbd> through, so assistant keyboard hints render as kbd chips.
+  // Mirror that with a strict attribute-free tag whitelist; everything else
+  // stays escaped.
+  renderer.html = ({ text }: Tokens.HTML | Tokens.Tag) => {
+    if (/^<\/?kbd\s*>$/i.test(text.trim())) return text.trim();
+    return escapeHtml(text);
+  };
   renderer.link = ({ href, title, tokens }: Tokens.Link) => {
     const url = safeUrl(href);
     const label = renderer.parser.parseInline(tokens);
@@ -218,20 +249,32 @@ export interface ChatMarkdownOptions {
  * the TDesign-style error fallback wrapper, unsafe ones degrade to the
  * invalid-image placeholder.
  */
+/**
+ * Vue preprocessMathDelimiters: models emit TeX with \(...\) / \[...\]
+ * delimiters; normalize them to $ / $$ before parsing so they render as math.
+ */
+function preprocessMathDelimiters(markdown: string): string {
+  return markdown
+    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
+    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+}
+
 export function renderChatMarkdown(markdown: unknown, options: ChatMarkdownOptions = {}): string {
-  const raw = typeof markdown === 'string' ? markdown : String(markdown ?? '');
-  if (!raw.trim()) return '';
+  const rawInput = typeof markdown === 'string' ? markdown : String(markdown ?? '');
+  if (!rawInput.trim()) return '';
+  const raw = preprocessMathDelimiters(rawInput);
   const invalidImageLabel = options.invalidImageLabel?.trim() || INVALID_IMAGE_LINK_PLACEHOLDER;
   const imageFailedLabel = options.imageFailedLabel?.trim() || CHAT_IMAGE_FAILED_LABEL;
   const imagePreviewLabel = options.imagePreviewLabel?.trim() || CHAT_IMAGE_PREVIEW_LABEL;
   const rawImages = preserveRawImages(raw, invalidImageLabel, imageFailedLabel, imagePreviewLabel);
-  const citations = preserveCitations(rawImages.source);
-  const replacements = new Map([...rawImages.replacements, ...citations.replacements]);
+  const math = preserveMath(rawImages.source);
+  const citations = preserveCitations(math.source);
+  const replacements = new Map([...rawImages.replacements, ...math.replacements, ...citations.replacements]);
   const html = marked.parse(citations.source, {
     renderer: createRenderer(invalidImageLabel, imageFailedLabel, imagePreviewLabel),
     gfm: true,
     breaks: true,
     async: false,
   }) as string;
-  return restoreMath(restoreCitations(html, replacements));
+  return restorePreserved(html, replacements);
 }

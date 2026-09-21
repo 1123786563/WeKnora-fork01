@@ -81,35 +81,48 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
   }
 
   return <div className="wk-settings-ollama">
-    <Card>
-      {/* Vue OllamaSettings.vue: the section heading lives in the settings
-          wrapper — the card starts directly at the status row. 重新检测 is a
-          text link on the status row's right, next to the 可用 pill. */}
-      <div className="setting-row grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] items-center gap-[.8rem] py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1">
-        <div className="setting-info"><label className="text-muted-strong font-[650]">{t('ollamaSettings.status.label')}</label><p className="m-0 text-[12px] text-muted-strong">{t('ollamaSettings.status.desc')}</p></div>
-        <div className="setting-control flex items-center justify-end gap-[10px]">
+    {/* Vue OllamaSettings.vue: the panel owns its section-header (h2 +
+        description, no divider) and the rows sit directly on the panel
+        background via the shared .settings-group/.setting-row geometry. */}
+    <div className="section-header">
+      <h2>{t('ollamaSettings.title')}</h2>
+      <p className="section-description">{t('ollamaSettings.description')}</p>
+    </div>
+    <div className="settings-group">
+      <div className="setting-row">
+        <div className="setting-info"><label>{t('ollamaSettings.status.label')}</label><p className="desc">{t('ollamaSettings.status.desc')}</p></div>
+        <div className="setting-control">
+          <div className="status-display flex items-center gap-[12px]">
           {testing ? <Status tone="neutral">{t('ollamaSettings.status.testing')}</Status>
             : status?.available ? (
-              <span className="inline-flex items-center gap-[4px] rounded-full bg-[#e8f8f2] px-[10px] py-[3px] text-[12px] text-[#0a7f43]">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M20 6L9 17l-5-5" /></svg>
+              <span className="inline-flex items-center gap-[4px] rounded-full bg-[rgba(0,168,112,0.12)] px-[10px] py-[3px] text-[12px] text-[#0a8f4c]">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1.1-7.4l5.3-5.3-1.4-1.4-3.9 3.9-1.9-1.9-1.4 1.4 3.3 3.3z" /></svg>
                 {t('ollamaSettings.status.available')}
               </span>
-            ) : <Status tone={status ? 'warning' : 'neutral'}>{status ? t('ollamaSettings.status.unavailable') : t('ollamaSettings.status.untested')}</Status>}
+            ) : status ? (
+              <span className="inline-flex items-center gap-[5px] rounded-full bg-[rgba(227,77,89,0.12)] px-[10px] py-[3px] text-[12px] text-[#e34d59]">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-3.5-13.9 3.5 3.5 3.5-3.5 1.4 1.4-3.5 3.5 3.5 3.5-1.4 1.4-3.5-3.5-3.5 3.5-1.4-1.4 3.5-3.5-3.5-3.5z" /></svg>
+                {t('ollamaSettings.status.unavailable')}
+              </span>
+            ) : <Status tone="neutral">{t('ollamaSettings.status.untested')}</Status>}
           <button type="button" className="flex cursor-pointer items-center gap-[2px] border-0 bg-transparent p-0 text-[13px] text-[#344054] [font:inherit] hover:text-[#07c05f] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || testing} onClick={() => void refresh()}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
             {t('ollamaSettings.status.retest')}
           </button>
+          </div>
         </div>
       </div>
-      <div className="setting-row grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] items-center gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1">
-        <div className="setting-info"><label className="text-muted-strong font-[650]">{t('ollamaSettings.address.label')}</label><p className="m-0 text-[12px] text-muted-strong">{t('ollamaSettings.address.desc')}</p></div>
-        {/* Vue renders the detected address in a disabled input box. */}
-        <dd className="m-0 self-center"><Input readOnly disabled value={status?.baseUrl ?? ''} placeholder="—" className="w-full max-w-[360px] justify-self-end bg-[#f3f3f3] text-right font-mono text-[.85rem] text-[#98a2b8]" aria-label={t('ollamaSettings.address.label')} /></dd>
+      <div className="setting-row">
+        <div className="setting-info"><label>{t('ollamaSettings.address.label')}</label><p className="desc">{t('ollamaSettings.address.desc')}</p></div>
+        {/* Vue renders the detected address in a disabled input box inside the
+            360px control column; the failed-check warning alert stacks under
+            it (margin-top 8px), both right-aligned in the same column. */}
+        <div className="setting-control setting-control--stacked">
+          <Input readOnly disabled value={status?.baseUrl ?? ''} placeholder="—" className="w-full bg-[#f3f3f3] text-right font-mono text-[.85rem] text-[#98a2b8]" aria-label={t('ollamaSettings.address.label')} />
+          {status && !status.available ? <p role="alert" className="m-0 mt-[8px] flex w-full items-start gap-[8px] rounded-[6px] bg-[#fdf3e7] px-[12px] py-[8px] text-[13px] leading-[1.5] text-[#b54708]"><svg className="mt-[2px] shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg><span>{t('ollamaSettings.address.failed')}</span></p> : null}
+        </div>
       </div>
-      {/* Vue OllamaSettings.vue L79-84: a completed-but-failed check adds the
-          warning alert under the address row (t-alert theme=warning). */}
-      {status && !status.available ? <p role="alert" className="m-0 mt-[8px] rounded-[6px] border border-[#fde3ba] bg-[#fdf3e7] px-[12px] py-[8px] text-[13px] leading-[1.5] text-[#b54708]">{t('ollamaSettings.address.failed')}</p> : null}
-    </Card>
+    </div>
     {status?.available && !testing ? <>
       <Card>
         <h3>{t('ollamaSettings.download.title')}</h3>

@@ -829,7 +829,7 @@ test('the panel renders English copy when the stored locale is en-US', async () 
   window.localStorage.setItem('locale', 'en-US');
   const { client } = makeClient(() => ({}), []);
   const container = await mount(client);
-  const heading = container.querySelector('h3')!;
+  const heading = container.querySelector('h2')!;
   assert.equal(heading.textContent, formatMessage('en-US', 'settings.sandbox.title'));
   assert.match(container.textContent ?? '', new RegExp(formatMessage('en-US', 'common.all')));
 });

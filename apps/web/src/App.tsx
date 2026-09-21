@@ -37,6 +37,7 @@ import { visibleKnowledgeEditorSections, type KnowledgeEditorSection } from './k
 // KBChunkingDebug.vue / GraphSettings.vue authority), replacing the divergent
 // bare-label sections.
 import { ChunkingSettingsFields } from './knowledge-settings/chunkingSection.tsx';
+import { KNOWLEDGE_SETTINGS_NAV_ICONS } from './knowledge-settings/KnowledgeSettingsPage.tsx';
 import { GraphSettings, type GraphExtractConfig } from './knowledge-settings/GraphSettings.tsx';
 import { patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './knowledge-bases/upload-progress.ts';
 import { KbIcon, type KbIconName } from './knowledge-bases/kb-list-icons.tsx';
@@ -1174,14 +1175,24 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             to trigger and drops the implicit Enter-submit contract Vue
             never had. */}
         <div className="wk-form mb-4 grid gap-4">
-          <div className="grid min-h-[360px] grid-cols-[minmax(132px,0.34fr)_minmax(0,1fr)] gap-5 max-[680px]:grid-cols-1">
-            <nav aria-label={t('common.settings')} data-guide="kb-editor-sidebar" className="flex flex-col gap-2 border-r border-line-soft pr-3 max-[680px]:border-r-0 max-[680px]:border-b max-[680px]:pb-3">
-              {visibleKnowledgeEditorSections({ type, editing: Boolean(editingId) }).map((group) => <div key={group.key} className="grid gap-1">
-                <p className="m-0 px-3 pt-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{t(group.labelKey)}</p>
-                {group.items.map((section) => <button key={section} type="button" data-guide={`kb-editor-nav-${section}`} onClick={() => { setEditorSection(section); if (section === 'activity' && editingId) void loadEditorActivity(editingId); }} className={`border-0 bg-transparent rounded-[6px] px-3 py-2 text-left text-[13px] font-medium transition-colors ${editorSection === section ? 'bg-[color-mix(in_srgb,var(--color-brand)_10%,transparent)] text-[var(--color-brand)]' : 'text-muted hover:bg-surface-muted'}`}>{t(section === 'basic' ? 'knowledgeEditor.basic.title' : section === 'models' ? 'knowledgeEditor.models.title' : section === 'vectorStore' ? 'knowledgeEditor.sidebar.vectorStore' : section === 'faq' ? 'knowledgeEditor.faq.title' : section === 'parser' ? 'kbSettings.parser.title' : section === 'chunking' ? 'knowledgeEditor.chunking.title' : section === 'multimodal' ? 'knowledgeEditor.sidebar.multimodal' : section === 'asr' ? 'knowledgeEditor.sidebar.asr' : section === 'graph' ? 'knowledgeEditor.sidebar.graph' : section === 'advanced' ? 'knowledgeEditor.advanced.title' : section === 'storage' ? 'knowledgeEditor.sidebar.storage' : section === 'datasource' ? 'knowledgeEditor.sidebar.datasource' : section === 'share' ? 'knowledgeEditor.sidebar.share' : 'knowledgeEditor.activity.title')}</button>)}
+          <div className="kb-editor-body grid min-h-[360px] grid-cols-[minmax(132px,0.34fr)_minmax(0,1fr)] gap-5 max-[680px]:grid-cols-1">
+            {/* Vue .settings-sidebar: grey panel column with the dialog title in
+                a bordered header, then the grouped nav (icon + label rows). */}
+            <nav aria-label={t('common.settings')} data-guide="kb-editor-sidebar" className="kb-editor-sidebar flex flex-col max-[680px]:border-r-0 max-[680px]:border-b max-[680px]:pb-3">
+              <div className="kb-editor-sidebar-header">
+                <h2 className="kb-editor-sidebar-title">{editingId ? t('knowledgeEditor.titleEdit') : t('knowledgeEditor.titleCreate')}</h2>
+              </div>
+              <div className="kb-editor-nav">
+              {visibleKnowledgeEditorSections({ type, editing: Boolean(editingId) }).map((group) => <div key={group.key} className="kb-editor-nav-group">
+                <div className="kb-editor-nav-group-title">{t(group.labelKey)}</div>
+                {group.items.map((section) => <button key={section} type="button" data-guide={`kb-editor-nav-${section}`} onClick={() => { setEditorSection(section); if (section === 'activity' && editingId) void loadEditorActivity(editingId); }} className={`kb-editor-nav-item${editorSection === section ? ' is-active' : ''}`}>
+                  <span className="kb-editor-nav-icon" aria-hidden="true">{KNOWLEDGE_SETTINGS_NAV_ICONS[section]}</span>
+                  <span className="kb-editor-nav-label">{t(section === 'basic' ? 'knowledgeEditor.basic.title' : section === 'models' ? 'knowledgeEditor.models.title' : section === 'vectorStore' ? 'knowledgeEditor.sidebar.vectorStore' : section === 'faq' ? 'knowledgeEditor.faq.title' : section === 'parser' ? 'kbSettings.parser.title' : section === 'chunking' ? 'knowledgeEditor.chunking.title' : section === 'multimodal' ? 'knowledgeEditor.sidebar.multimodal' : section === 'asr' ? 'knowledgeEditor.sidebar.asr' : section === 'graph' ? 'knowledgeEditor.sidebar.graph' : section === 'advanced' ? 'knowledgeEditor.advanced.title' : section === 'storage' ? 'knowledgeEditor.sidebar.storage' : section === 'datasource' ? 'knowledgeEditor.sidebar.datasource' : section === 'share' ? 'knowledgeEditor.sidebar.share' : 'knowledgeEditor.activity.title')}</span>
+                </button>)}
               </div>)}
+              </div>
             </nav>
-            <div className="min-w-0">
+            <div className="kb-editor-content min-w-0">
               {editorSection === 'basic' ? <div className="grid gap-4">
                 <div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.basic.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.basic.description')}</p></div>
                 {editingId ? <div className="grid gap-1"><span className="text-[13px] font-medium text-ink">{t('knowledgeEditor.basic.kbId')}</span><span className="text-xs leading-[18px] text-muted">{t('knowledgeEditor.basic.kbIdDesc')}</span><code className="rounded-[6px] bg-surface-muted px-2 py-1 font-mono text-xs text-muted">{editingId}</code></div> : null}
@@ -1259,13 +1270,15 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
               {editorSection === 'activity' && editingId ? <KnowledgeBaseActivityPanel client={client} knowledgeBaseId={editingId} /> : null}
             </div>
           </div>
-          <div className="mt-3 flex justify-end gap-2">
-            <Button type="button" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
+          {/* Vue .settings-footer: pinned bar under the scroll area with the
+              取消/保存并关闭(创建) actions right-aligned (12px 40px padding). */}
+          <div className="kb-editor-footer">
+            <Button type="button" className="kb-editor-btn-cancel" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
             {/* Vue :451-453 `<t-button @click="handleSubmit" :loading="saving" :disabled="loading">` —
                 editorOptions.loading is the React counterpart of the Vue dialog-open `loading`
                 (watch(visible) arms it, loadEditorOptions settles it), so save is disabled while
                 the editor data is not ready, with saving's spinner/disable layered on top. */}
-            <Button type="button" data-guide="kb-create-submit" loading={saving} disabled={editorOptions.loading} onClick={() => { void save(); }}>{editingId ? t('knowledgeEditor.buttons.saveAndClose') : t('knowledgeEditor.buttons.create')}</Button>
+            <Button type="button" className="kb-editor-btn-save" data-guide="kb-create-submit" loading={saving} disabled={editorOptions.loading} onClick={() => { void save(); }}>{editingId ? t('knowledgeEditor.buttons.saveAndClose') : t('knowledgeEditor.buttons.create')}</Button>
           </div>
         </div>
       </Dialog>

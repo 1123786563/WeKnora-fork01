@@ -3,6 +3,10 @@ import { Badge, Button, Sheet } from '@weknora/ui';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { KbIcon } from './kb-list-icons.tsx';
 import './shared-kb-drawer.css';
+// KB 编辑器弹窗（App.tsx 新建/编辑知识库）的 Vue 几何对齐规则；此模块被
+// App.tsx 静态引用，CSS 随之在知识库列表页就绪（弹窗宿主在 App.tsx，
+// 规则落在允许维护的 knowledge-bases/ 目录内）。
+import './kb-editor-parity.css';
 
 // R438 A1 — shared knowledge base detail drawer, ported from Vue
 // KnowledgeBaseList.vue:709-776 (structure) + :1489-1525 (state & actions).
