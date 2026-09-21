@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { formatMessage } from '@weknora/i18n';
-import { Button, Card, Status, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@weknora/ui';
+import { Button, Card, Status } from '@weknora/ui';
 import { Alert as TAlert, Button as TButton, Popconfirm as TPopconfirm, Table as TTable, Tag as TTag } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { appDigest, appErrorMessage, appRows, appShort, appStatus, type AppRow } from './model.ts';
@@ -60,19 +60,6 @@ function Tag({ theme = 'default', children }: { theme?: 'success' | 'warning' | 
     : theme === 'primary' ? 'bg-[#0052d9] text-white'
     : 'bg-[#e7e7e7] text-[rgba(0,0,0,0.9)]';
   return <span className={`inline-flex box-border h-5 shrink-0 items-center rounded-[3px] border border-transparent px-1 text-xs leading-5 ${palette}`}>{children}</span>;
-}
-
-/* Vue TDesign table cell metrics (AppsView.vue/ConnectionsView.vue + t-table):
-   th 14px/22px py12 px16, box 47 with its 1px #dcdcdc bottom rule; td 14px/22px
-   py12 px16 with a 1px #dcdcdc bottom rule per row; TDesign uses a FIXED
-   layout so Vue's column widths are literal border-box widths and the
-   widthless columns split the rest. */
-const TDESIGN_TABLE = 'table-fixed [&_thead]:border-[#dcdcdc] [&_th]:box-border [&_th]:h-[47px] [&_th]:px-4 [&_th]:py-0 [&_th]:text-[14px] [&_th]:leading-[22px] [&_th]:font-normal [&_th]:align-middle [&_th]:text-[rgba(0,0,0,0.4)] [&_td]:box-border [&_td]:border-b [&_td]:border-[#dcdcdc] [&_td]:px-4 [&_td]:py-3 [&_td]:text-[14px] [&_td]:leading-[22px] [&_td]:align-middle [&_td]:text-[rgba(0,0,0,0.9)]';
-
-/* 留守段（authorization/action 两页）沿用旧栈 @weknora/ui 表格的空态单元格：
-   Vue t-table empty prop 的手排版（120px 居中占位）。 */
-function EmptyCell({ colSpan, text }: { colSpan: number; text: string }) {
-  return <TableCell colSpan={colSpan} className="text-center" style={{ padding: 0, borderBottom: 'none' }}><div className="flex h-[120px] items-center justify-center text-[14px] leading-[22px] text-[rgba(0,0,0,0.26)]">{text}</div></TableCell>;
 }
 
 /* TDesign t-popconfirm counterpart: an anchored confirm bubble with a danger
@@ -176,9 +163,9 @@ function CatalogPage({ client, t }: { client: WeKnoraClient; t: (key: string, va
           loading={loading}
           empty={t('apps.catalog.empty')}
           hover
-          /* vue-next 1.20.7 仅在内容溢出时启用固定表头（空态 th 继承白底）；
-           * tdesign-react 1.18.3 有 maxHeight 即固定表头（th 涂灰）。空数据时
-           * 不传 maxHeight 以对齐 Vue 空态 DOM/视觉（台账候选，Phase 4 归全局）。 */
+          /* 台账 #14：vue-next 仅内容溢出才启用固定表头（空态 th 继承白底）；
+           * tdesign-react 有 maxHeight 即固定表头（th 涂灰）。空数据不传
+           * maxHeight 对齐 Vue 空态 DOM/视觉。 */
           maxHeight={catalog.length ? 520 : undefined}
         />
       </section>

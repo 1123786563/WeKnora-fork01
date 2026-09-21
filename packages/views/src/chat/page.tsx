@@ -687,10 +687,6 @@ export function ChatPage(props: ChatPageProps) {
    * 会话视图仍由 conversation 流承载。Vue isReplying（Input-field.vue）在消息派发即翻转，
    * 不等首个 SSE 事件——composer 的停止换位须覆盖发送前窗口。 */
   const composerNode = (
-  /* Vue isReplying (Input-field.vue) flips true when a turn is dispatched,
-        dispatched, not when the first SSE event arrives; the composer's
-   * not when the first SSE event arrives; the composer's stop swap must cover
-   * the pre-stream send window too. */
     <ChatComposer
       copy={copy}
       draft={props.draft}

@@ -1402,7 +1402,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                               <p className="desc">{t(locale, 'organization.editor.descriptionTip')}</p>
                             </div>
                             <div className="setting-control">
-                              <Textarea name="organization-description" value={formDescription} onChange={(value: string) => setFormDescription(value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} autosize={{ minRows: 3, maxRows: 6 }} maxlength={500} />
+                              {/* count render-prop：单模板字符串 child＝单文本节点整串 shaping，
+                                  复刻 vue-next 计数器 DOM（台账 #13 处置；默认渲染是
+                                  "0"+"/500" 两文本节点，跨节点 kern 丢失致字形相位差）。 */}
+                              <Textarea name="organization-description" value={formDescription} onChange={(value: string) => setFormDescription(value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} autosize={{ minRows: 3, maxRows: 6 }} maxlength={500} count={({ count, maxLength }) => <span className="t-textarea__limit">{`${count}/${maxLength}`}</span>} />
                             </div>
                           </div>
                         </div>
