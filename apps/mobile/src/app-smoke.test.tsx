@@ -20,7 +20,8 @@ const moduleWithHooks = nodeModule as typeof nodeModule & {
 };
 
 const NATIVE_MODULE_STUBS: Record<string, string> = {
-  'expo-router': 'module.exports = { Stack: function Stack() { return null; } }',
+  'expo-linking': 'module.exports = { useLinkingURL() { return null; } }',
+  'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {} } }",
   'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button' }",
   react: "let values = []; let cursor = 0; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = next; }]; }, useRef(value) { return { current: value }; }, useEffect() {}, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
 };
@@ -71,6 +72,30 @@ test('app module exports an application root', async () => {
     'function',
     'src/app/_layout.tsx must default-export the application root component',
   );
+});
+
+test('OIDC callback route forwards the untouched deep link before returning to the app root', async () => {
+  const callback = await import('./app/auth-return.tsx');
+  const seen: string[] = [];
+  const callbackUrl = 'weknora://oidc?code=code%2B1&state=state%2F1';
+
+  const delivered = await callback.deliverOidcReturn(
+    callbackUrl,
+    async (url: string) => { seen.push(`complete:${url}`); },
+    () => { seen.push('finish:/'); },
+  );
+
+  assert.equal(delivered, true);
+  assert.deepEqual(seen, [`complete:${callbackUrl}`, 'finish:/']);
+  assert.equal(await callback.deliverOidcReturn('weknora://other?code=x&state=y', async () => { seen.push('invalid'); }, () => { seen.push('invalid-finish'); }), false);
+  assert.deepEqual(seen, [`complete:${callbackUrl}`, 'finish:/']);
+});
+
+test('the backend-approved weknora://oidc deep link has a matching Expo file route', async () => {
+  const callback = await import('./app/auth-return.tsx');
+  const oidcRoute = await import('./app/oidc.tsx');
+
+  assert.equal(oidcRoute.default, callback.default);
 });
 
 test('deployment login accepts only normalized HTTPS origins without embedded credentials', async () => {

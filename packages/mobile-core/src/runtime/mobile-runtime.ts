@@ -69,6 +69,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   let lease: ScopeLease | undefined;
   let revocableLease: RuntimeScopeLease | undefined;
   let oidcCompletion: Promise<RuntimeSnapshot> | undefined;
+  const claimedOidcCallbacks = new Set<string>();
   let deploymentMutation: Promise<void> = Promise.resolve();
   let credentialMutation: Promise<void> = Promise.resolve();
   let pendingOidcMutation: Promise<void> = Promise.resolve();
@@ -239,14 +240,17 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     },
     async completeOidc(callbackUrl: string): Promise<RuntimeSnapshot> {
       if (oidcCompletion) return oidcCompletion;
+      if (claimedOidcCallbacks.has(callbackUrl)) return state;
       const completion = (async (): Promise<RuntimeSnapshot> => {
       if (!ports.pendingOidcStore) return state;
       const pending = await mutatePendingOidc(async () => await ports.pendingOidcStore!.consumePending());
       if (!pending) {
+        if (state.surface === 'authorized' && lease) return state;
         if (!activeDeployment) return state;
         const requestEpoch = begin(activeDeployment);
         return safe(requestEpoch, activeDeployment, 'authentication-required');
       }
+      claimedOidcCallbacks.add(callbackUrl);
       let deployment: Deployment;
       try { deployment = normalizeDeployment({ origin: pending.deploymentOrigin }); } catch { return state; }
       const requestEpoch = begin(deployment);

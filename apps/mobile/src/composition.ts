@@ -13,7 +13,7 @@ import { AuthorizedLandingScreen } from './screens/AuthorizedLandingScreen.tsx';
 import { DeploymentLoginScreen, validatedDeploymentOrigin } from './screens/DeploymentLoginScreen.tsx';
 import { UpgradeRequiredScreen } from './screens/UpgradeRequiredScreen.tsx';
 
-const OIDC_REDIRECT_URI = 'weknora://oidc';
+export const OIDC_REDIRECT_URI = 'weknora://oidc';
 const cloudFromBuild = typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_WEKNORA_CLOUD_ORIGIN : undefined;
 export const officialCloudOrigin = cloudFromBuild ? validatedDeploymentOrigin(cloudFromBuild) : undefined;
 
