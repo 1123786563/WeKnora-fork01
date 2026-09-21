@@ -1,10 +1,7 @@
 package types
 
 import (
-	"database/sql/driver"
-	"encoding/json"
-	"strings"
-	"time"
+	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/domain"
 )
 
 // Query history visibility modes, stored on tenants.query_history_config.
@@ -12,79 +9,42 @@ import (
 // (the "source=all" admin listing, the admin snapshot, and the CSV export):
 // what is recorded never changes — switching modes changes what audit reads
 // return, not what was stored.
+//
+// The mode, config, and export definitions moved to the conversation
+// module's domain package (Wave 1, Task 4); these aliases keep every
+// existing import of internal/types compiling and behaving byte-identically
+// (JSON tags, GORM value/scan, table name, normalization rules). Wave 5
+// removes this seam together with the rest of the legacy types.
 const (
 	// QueryHistoryModeNormal serves audit reads with full owner identities.
-	QueryHistoryModeNormal = "normal"
+	QueryHistoryModeNormal = domain.Normal
 	// QueryHistoryModeAnonymized serves audit reads with owner identities
 	// masked at read time (user ids replaced by "anonymous", the list rows'
 	// IM principal id dropped); stored rows keep their identities, so
 	// switching back to normal restores them retroactively.
-	QueryHistoryModeAnonymized = "anonymized"
+	QueryHistoryModeAnonymized = domain.Anonymized
 	// QueryHistoryModeDisabled rejects audit reads with 403. Recording
 	// itself still writes, so re-enabling serves everything that was
 	// recorded while the mode was active.
-	QueryHistoryModeDisabled = "disabled"
+	QueryHistoryModeDisabled = domain.Disabled
 )
 
 // QueryHistoryExportJob lifecycle statuses.
 const (
-	QueryHistoryExportPending = "pending"
-	QueryHistoryExportRunning = "running"
-	QueryHistoryExportDone    = "done"
-	QueryHistoryExportFailed  = "failed"
+	QueryHistoryExportPending = domain.ExportPending
+	QueryHistoryExportRunning = domain.ExportRunning
+	QueryHistoryExportDone    = domain.ExportDone
+	QueryHistoryExportFailed  = domain.ExportFailed
 )
+
+// NormalizeQueryHistoryMode returns the supported mode for the raw value,
+// falling back to QueryHistoryModeNormal for empty/unknown input.
+var NormalizeQueryHistoryMode = domain.NormalizeMode
 
 // QueryHistoryConfig is the workspace-level query history policy, stored in
 // the tenants.query_history_config JSONB column. Nil means "not configured";
 // callers normalizing a config they are about to enforce get Mode=normal.
-type QueryHistoryConfig struct {
-	// Mode is one of the QueryHistoryMode* constants. Empty or unrecognized
-	// values normalize to QueryHistoryModeNormal so a corrupt row can never
-	// silently disable or de-identify workspace history.
-	Mode string `json:"mode" yaml:"mode"`
-}
-
-// NormalizeQueryHistoryMode returns the supported mode for the raw value,
-// falling back to QueryHistoryModeNormal for empty/unknown input.
-func NormalizeQueryHistoryMode(mode string) string {
-	switch strings.TrimSpace(mode) {
-	case QueryHistoryModeNormal, QueryHistoryModeAnonymized, QueryHistoryModeDisabled:
-		return strings.TrimSpace(mode)
-	default:
-		return QueryHistoryModeNormal
-	}
-}
-
-// Normalize canonicalizes the config's Mode in place. The nil receiver is a
-// no-op so a nil config stays "unconfigured" rather than gaining a default.
-func (c *QueryHistoryConfig) Normalize() {
-	if c == nil {
-		return
-	}
-	c.Mode = NormalizeQueryHistoryMode(c.Mode)
-}
-
-// Value implements the driver.Valuer interface, used to convert
-// QueryHistoryConfig to database value.
-func (c *QueryHistoryConfig) Value() (driver.Value, error) {
-	if c == nil {
-		return nil, nil
-	}
-	return json.Marshal(c)
-}
-
-// Scan implements the sql.Scanner interface, used to convert database value
-// to QueryHistoryConfig.
-func (c *QueryHistoryConfig) Scan(value interface{}) error {
-	if value == nil {
-		return nil
-	}
-	b, ok := value.([]byte)
-	if !ok {
-		return nil
-	}
-	return json.Unmarshal(b, c)
-}
+type QueryHistoryConfig = domain.Config
 
 // QueryHistorySnapshot is the Admin+ audit snapshot of one session: the
 // session row, its most recent messages (capped at 200 — see Truncated), and
@@ -92,6 +52,10 @@ func (c *QueryHistoryConfig) Scan(value interface{}) error {
 // mode is anonymized the service masks Session.UserID and each Feedback.UserID
 // as "anonymous" before the snapshot is returned. Messages reuse the existing
 // message serialization (knowledge_references and agent steps ride along).
+//
+// Retained locally: it reuses the legacy Session/Message/MessageFeedback
+// serializations and is the manifest-recorded Wave 5 compatibility seam the
+// module's ports still reference.
 type QueryHistorySnapshot struct {
 	// Session is the tenant-scoped session row.
 	Session Session `json:"session"`
@@ -126,39 +90,10 @@ type SharedSessionSnapshot struct {
 // QueryHistoryExportJob tracks one asynchronous query-history export. The
 // worker claims pending jobs, streams the archive to FilePath, and leaves
 // either done or failed with ErrorMessage set.
-type QueryHistoryExportJob struct {
-	// ID is generated by the database.
-	ID uint64 `json:"id" gorm:"primaryKey;autoIncrement"`
-	// TenantID scopes the export to one workspace.
-	TenantID uint64 `json:"tenant_id" gorm:"index"`
-	// RequestedBy is the principal that asked for the export.
-	RequestedBy string `json:"requested_by" gorm:"type:varchar(512)"`
-	// Status is one of the QueryHistoryExport* constants.
-	Status string `json:"status" gorm:"type:varchar(16);not null;default:'pending'"`
-	// FilePath is where the finished archive lives; empty until it exists.
-	FilePath string `json:"file_path" gorm:"type:varchar(512);not null;default:''"`
-	// ErrorMessage explains a failed export; empty otherwise.
-	ErrorMessage string    `json:"error_message" gorm:"type:text;not null;default:''"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-}
-
-// TableName pins the GORM table name.
-func (QueryHistoryExportJob) TableName() string { return "query_history_export_jobs" }
+type QueryHistoryExportJob = domain.ExportJob
 
 // QueryHistoryExportRow is one aggregated per-session row of an async export
 // CSV: the session header fields plus its message and like/dislike tallies.
 // Source reuses the audit listing's origin classification (IM platform /
 // embed / api / web).
-type QueryHistoryExportRow struct {
-	SessionID    string    `json:"session_id"    gorm:"column:session_id"`
-	Title        string    `json:"title"         gorm:"column:title"`
-	UserID       string    `json:"user_id"       gorm:"column:user_id"`
-	Source       string    `json:"source"        gorm:"column:source"`
-	EngineType   string    `json:"engine_type"   gorm:"column:engine_type"`
-	CreatedAt    time.Time `json:"created_at"    gorm:"column:created_at"`
-	UpdatedAt    time.Time `json:"updated_at"    gorm:"column:updated_at"`
-	MessageCount int64     `json:"message_count" gorm:"column:message_count"`
-	LikeCount    int64     `json:"like_count"    gorm:"column:like_count"`
-	DislikeCount int64     `json:"dislike_count" gorm:"column:dislike_count"`
-}
+type QueryHistoryExportRow = domain.ExportRow
