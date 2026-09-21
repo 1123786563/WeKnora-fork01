@@ -117,6 +117,18 @@ that touch `internal/agent/opencode` and `internal/application/repository` agent
 |---|---|---|
 | internal/agent/opencode (package) | `panic: test timed out after 25m0s`; goroutines stuck 24m on `net/http` persistConn read/write loops | unstable blocker (hang) |
 | internal/application/repository TestAgentRunDecisionConcurrentOnlyOneRevision | `agent_run_decisions_test.go:90: Not equal: expected: 2, actual: 1` (concurrent ApplyDecision idempotent-replay returns ErrConflict) | unstable blocker (concurrency flake) |
+| internal/modules/commercial/payment TestProvidersFromEnvRejectsPartialAlipay | `providers_env_test.go:82: partial alipay config must name the missing variable, got: alipay channel partially configured: WEKNORA_ALIPAY_PUBLIC_KEY_PATH missing; ...` | pre-existing latent flake (non-deterministic assertion) |
+
+Payment partial-alipay entry (registered 2026-09-21, surfaced during the IA1 full-suite run
+and once during Task A2): the validation code reports missing variables by iterating the
+`required` map (`for name, dst := range required`, providers_env.go:106/133 — Go map order is
+randomized), so WHICH missing variable is named in the error varies run to run, while the test
+asserts one specific name (`WEKNORA_ALIPAY_SELLER_ID`). Production behavior (rejecting an
+incomplete config) is always correct — only the message is non-deterministic. Classification:
+**pre-existing latent flake** — both the code and the test are 100% pure renames of the base
+`internal/payment` files (verified), so the flake predates the modularization move; it is NOT
+an integration blocker. Pass B watch item (B-commercial): fix the test to accept any
+missing-variable message.
 
 Environment-gated skips are described in §2.2 (they skip, do not fail; recorded as
 `blocked-env`, never counted as PASS).
