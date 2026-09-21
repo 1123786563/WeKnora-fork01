@@ -77,7 +77,7 @@ export function resolveRoute(pathname: string, options: { development?: boolean 
   // (SP13 Task 8) previously reached the guard only through the not-found
   // fallback; the explicit entries keep the platform allowlist authoritative.
   // /platform/billing/refund stays out on purpose (RefundPage unrouted, Ruling P-1).
-  if (path === '/platform' || path === '/platform/knowledge-bases' || path === '/platform/knowledge-search' || path === '/platform/agents' || path === '/platform/experts' || path === '/platform/market' || path === '/platform/integrations' || path === '/platform/creatChat' || path === '/platform/tenant' || path === '/platform/organizations' || path === '/platform/analytics' || path === '/platform/settings' || path === '/platform/configuration' || path === '/platform/administration' || path === '/platform/system' || path === '/platform/system/settings' || path === '/platform/system/admins' || path === '/platform/system/queues' || path === '/platform/billing' || path === '/platform/billing/checkout' || path === '/platform/billing/admin' || (development && path === '/platform/dev/markdown') || path.startsWith('/platform/chat/') || path.startsWith('/platform/shared/')) return { kind: 'platform', path };
+  if (path === '/platform' || path === '/platform/knowledge-bases' || path === '/platform/knowledge-search' || path === '/platform/agents' || path === '/platform/experts' || path === '/platform/market' || path === '/platform/integrations' || path === '/platform/creatChat' || path === '/platform/tenant' || path === '/platform/organizations' || path === '/platform/analytics' || path === '/platform/settings' || path === '/platform/configuration' || path === '/platform/administration' || path === '/platform/system' || path === '/platform/system/settings' || path === '/platform/system/admins' || path === '/platform/system/queues' || path === '/platform/billing' || path === '/platform/billing/checkout' || path === '/platform/billing/admin' || (development && path === '/platform/dev/markdown') || (development && path === '/platform/dev/tdesign-spike') || path.startsWith('/platform/chat/') || path.startsWith('/platform/shared/')) return { kind: 'platform', path };
   // Preserve the historical flat chat entry point while converging on the
   // Vue-compatible creatChat route used by the current shell.
   if (path === '/platform/chat') return { kind: 'platform', path: '/platform/creatChat' };
@@ -185,6 +185,7 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
     return { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'capability-unavailable' };
   }
   if (path === '/platform/dev/markdown') return { kind: 'allow' };
+  if (path === '/platform/dev/tdesign-spike') return { kind: 'allow' };
   if (resolved.kind === 'not-found') {
     if (protectedPath(path) && !context.authenticated) return { kind: 'redirect', to: '/login', reason: 'authentication-required' };
     return { kind: 'allow' };

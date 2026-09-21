@@ -63,6 +63,9 @@ const KnowledgeGraphPage = lazy(() => import('./knowledge/KnowledgeGraphPage.tsx
 const KnowledgeBasesPage = lazy(() => import('./App.tsx').then((module) => ({ default: module.KnowledgeBasesPage })));
 const NotFoundPage = lazy(() => import('./NotFoundPage.tsx').then((module) => ({ default: module.NotFoundPage })));
 const DevMarkdownPage = lazy(() => import('./DevMarkdownPage.tsx').then((module) => ({ default: module.DevMarkdownPage })));
+// Phase 0 spike — TDesign React/Vue 双端渲染对照页（throwaway，验证后删除）。
+// brief 组件矩阵用默认导出，lazy 包装取 module.default。
+const TDesignSpikePage = lazy(() => import('./dev/TDesignSpikePage.tsx'));
 const PlatformShell = lazy(() => import('./platform/PlatformShell.tsx').then((module) => ({ default: module.PlatformShell })));
 const LoginPage = lazy(() => import('./auth/LoginPage.tsx').then((module) => ({ default: module.LoginPage })));
 const JoinPage = lazy(() => import('./auth/JoinPage.tsx').then((module) => ({ default: module.JoinPage })));
@@ -750,6 +753,22 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     ),
   });
 
+  // Phase 0 TDesign spike 页 — 与 Vue 端 frontend/src/views/dev/TDesignSpike.vue
+  // 同路径、同 DOM 结构的对照页，供像素对比验证 tdesign-react 1.18.3 在
+  // React 19 下的渲染一致性。同 devMarkdown 策略：dev-only、独立于 app shell。
+  const tdesignSpikeRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/platform/dev/tdesign-spike',
+    beforeLoad: () => {
+      if (!development) throw notFound();
+    },
+    component: (): ReactNode => (
+      <Suspense fallback={<RoutePending loadingText={deps.loadingText} />}>
+        <TDesignSpikePage />
+      </Suspense>
+    ),
+  });
+
   const appsCatalogRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'apps',
@@ -906,6 +925,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     embedRoute,
     craftRoute.addChildren([craftSplatRoute]),
     devMarkdownRoute,
+    tdesignSpikeRoute,
     platformRoute.addChildren([
       knowledgeBasesRoute,
       platformKnowledgeBaseRoute,
