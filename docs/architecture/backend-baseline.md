@@ -118,6 +118,7 @@ that touch `internal/agent/opencode` and `internal/application/repository` agent
 | internal/agent/opencode (package) | `panic: test timed out after 25m0s`; goroutines stuck 24m on `net/http` persistConn read/write loops | unstable blocker (hang) |
 | internal/application/repository TestAgentRunDecisionConcurrentOnlyOneRevision | `agent_run_decisions_test.go:90: Not equal: expected: 2, actual: 1` (concurrent ApplyDecision idempotent-replay returns ErrConflict) | unstable blocker (concurrency flake) |
 | internal/modules/commercial/payment TestProvidersFromEnvRejectsPartialAlipay | `providers_env_test.go:82: partial alipay config must name the missing variable, got: alipay channel partially configured: WEKNORA_ALIPAY_PUBLIC_KEY_PATH missing; ...` | pre-existing latent flake (non-deterministic assertion) |
+| internal/modules/agentruntime/agent/recoverytest TestCrashMatrixSQLite/unknown_result_user_retry | `matrix_test.go:125: resume provider after "unknown_result_user_retry": exit status 1` (run did not complete after retry, status=waiting_user) | pre-existing load-sensitive flake |
 
 Payment partial-alipay entry (registered 2026-09-21, surfaced during the IA1 full-suite run
 and once during Task A2): the validation code reports missing variables by iterating the
@@ -129,6 +130,14 @@ incomplete config) is always correct — only the message is non-deterministic. 
 `internal/payment` files (verified), so the flake predates the modularization move; it is NOT
 an integration blocker. Pass B watch item (B-commercial): fix the test to accept any
 missing-variable message.
+
+recoverytest crash-matrix entry (registered 2026-09-21): recoverytest spawns the provider as a
+child process and retries with a wait budget for recovery to complete; under full-suite parallel
+load the child process is scheduled slower and the wait times out (isolated rerun passes in
+18.4s; the in-suite run failed on the 135s timeout). Classification: **pre-existing
+load-sensitive flake** (isolated rerun PASS on final tree 2026-09-21; the fix wave only touched
+comments / dead code / test parameter names); NOT an integration blocker. Pass B watch item
+(B-agentruntime): consider relaxing the child-process wait budget or lowering suite parallelism.
 
 Environment-gated skips are described in §2.2 (they skip, do not fail; recorded as
 `blocked-env`, never counted as PASS).
