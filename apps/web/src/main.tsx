@@ -11,6 +11,7 @@ import { createBrowserTransport } from './platform/http.ts';
 import { readStoredLocale } from './i18n.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { initTheme } from './theme.ts';
+import { TDesignLocaleProvider } from './tdesign-locale.tsx';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { installNavigationObserver } from './platform/navigation.ts';
 import { resolveRoute } from './routes.tsx';
@@ -194,4 +195,11 @@ const router = createWeKnoraRouter({
   completeAuthentication,
 });
 
-root.render(<RouterProvider router={router} />);
+// Vue App.vue 的 t-config-provider 包住 RouterView（页面内容）；React 对位
+// 在应用根包住 RouterProvider 渲染的整棵路由树，globalConfig 随当前语言切换
+// （tdesign-locale.tsx，五语言对齐 Vue 端 App.vue:17-38）。
+root.render(
+  <TDesignLocaleProvider>
+    <RouterProvider router={router} />
+  </TDesignLocaleProvider>,
+);
