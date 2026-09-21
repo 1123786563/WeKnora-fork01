@@ -424,3 +424,51 @@ go test ./tools/... -count=1
 
 Expected: build PASS; internal tests 117 ok / 9 no-test-files /
 1 known failure (`internal/agent/recoverytest`); tools "matched no packages".
+
+## 7. Old-vs-New differential compatibility gate (Wave 1, Task 9)
+
+The Query History module slice (conversation/queryhistory, Tasks 4-8) is
+proven behaviorally identical to the untouched legacy stack before any
+production wiring changes. The gate runs the LEGACY handler/service/
+repository and the NEW transport/application/adapters side by side on the
+same scenarios (fixed tenant/user ids, fixed clock) and compares normalized
+observations via `testkit.Compare`; the only normalizations are JSON object
+key order (recursive), the four transport-only headers (`Date`,
+`X-Request-Id`, `X-Trace-Id`, `X-Response-Time`), and the single
+`asynq.SkipRetry` ≡ `domain.ErrPermanentPayload` error-class equivalence.
+The comparator's mutation tests (status, anonymized user id, CSV column
+order, task retry count, tenant-scoped job transition — each caught with the
+field named) live in the testkit package and are part of run 7.4.
+
+Gate commands (run on branch `sdd-bm-t9`, go1.26.3 darwin/arm64, exit codes
+captured from redirected logs):
+
+```bash
+go test ./internal/handler/session -run QueryHistoryDifferential -count=1
+go test ./internal/application/service -run QueryHistoryDifferential -count=1
+go test ./internal/application/repository -run QueryHistoryDifferential -count=1
+```
+
+Results:
+
+| # | Command | Exit | Scenarios passing |
+|---|---|---|---|
+| 7.1 | `go test ./internal/handler/session -run QueryHistoryDifferential -count=1` | 0 (PASS) | 24 (4 test functions + 20 subtests): snapshot normal/anonymized/disabled/missing/foreign-tenant; export empty body/filtered; invalid start_time/end_time/feedback/job-id (status + download); status pending/running/done/failed; download not-ready/failed-job/missing-file/completed-CSV (BOM + filename + bytes) |
+| 7.2 | `go test ./internal/application/service -run QueryHistoryDifferential -count=1` | 0 (PASS) | 15 (3 test functions + 12 subtests): created pending job; enqueued task type/queue/max-retry/timeout/payload (observed through a real asynq client over isolated miniredis); enqueue-failure transition; zero-tenant guard; normal + anonymized CSV bytes; done-job idempotent rerun; disabled-after-enqueue (no file write); storage failure with 1,024-byte stored-error truncation; missing-job drop; malformed/tenantless/jobless permanent-payload failures |
+| 7.3 | `go test ./internal/application/repository -run QueryHistoryDifferential -count=1` | 0 (PASS) | 3 test functions over two independent migrated SQLite databases with identical fixtures: job CRUD lifecycle (pending → failed → done, both columns rewritten) + tenant-scoped missing/foreign reads (same sentinel); export rows contract (source classification web/api/embed/im, message/like/dislike counts, chronological order with id tie-breaking, soft-delete exclusion, skill-maintenance exclusion, user/time/feedback filters, foreign-tenant scope); 10,000-row cap (exactly cap rows, oldest kept) |
+| 7.4 | `go test ./internal/modules/conversation/queryhistory/testkit -count=1` | 0 (PASS) | 8 test functions incl. `TestCompareDetectsDrift` (brief Step 8: all five mutation classes caught with the field named) |
+
+Zero ignored mismatches: any divergence fails the gate with the field named.
+Notes for reviewers: (a) the legacy worker claims a job as `running` before
+the processing-time policy recheck, while the module worker refuses the
+disabled policy before claiming — a deliberate Task 6 design (documented in
+`worker.go`); the gate compares the FINAL job state (failed + identical
+error message + no file write), which is identical. (b) Job-row timestamps
+are wall-clock on the legacy side (no injectable seam), so job observations
+compare the time-independent transition outcome (status, file path, error
+message, scope); every timestamp that reaches a compared body or CSV byte
+comes from fixed-clock fixtures. (c) `adapters.GormExportJobStore`
+deliberately scopes `UpdateStatus` to the tenant (port-mandated hardening
+from Task 7); the owning-tenant CRUD paths — the ones the gate exercises —
+are identical.
+
