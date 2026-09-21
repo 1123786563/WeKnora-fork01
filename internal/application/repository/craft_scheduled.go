@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -70,6 +71,11 @@ type CraftScheduledTaskRepository interface {
 	// instance already claimed (or that changed underneath the sweep) is
 	// silently skipped. This is the portable SKIP LOCKED equivalent that
 	// keeps multi-instance dispatches from double-firing (Ruling P-1).
+	// Error contract: a row whose stored cron no longer parses (corrupted
+	// state) is quarantined — logged and skipped, never a sweep abort; and
+	// when a row's CAS hits a database error, the claims already won are
+	// returned TOGETHER with the error so the caller can still run the fires
+	// it owns (a dropped claim would advance the ticket with no run at all).
 	ClaimDueTasks(ctx context.Context, now time.Time, batch int) ([]ClaimedTask, error)
 	// InsertRun appends one fire ledger row (queued, skipped or manual). An
 	// empty ID is minted and a zero StartedAt is stamped with the insert
@@ -207,44 +213,61 @@ func (r *craftScheduledTaskRepository) ClaimDueTasks(
 	if err != nil {
 		return nil, err
 	}
-	claims := make([]ClaimedTask, 0, len(due))
+	// Pass 1 pre-computes every row's following fire BEFORE the first swap.
+	// A poison row — a stored cron that no longer parses, which only
+	// corrupted state can hold (both write entrances validate) — is
+	// quarantined with an error log and dropped from the batch: one broken
+	// recipe must never stop the sweep from firing every other due task
+	// (Task-1 review Important-1). The quarantined row keeps its due ticket,
+	// so it stays visibly overdue — re-examined and re-logged by every sweep
+	// — until repaired or deleted.
+	eligible := make([]types.CraftScheduledTask, 0, len(due))
+	following := make([]time.Time, 0, len(due))
 	for i := range due {
-		task := due[i]
-		if task.NextRunAt == nil {
+		if due[i].NextRunAt == nil {
 			continue
 		}
-		// Advance the ticket BEFORE the swap: the new value rides in the
-		// same UPDATE, so the row never shows a due (or missing) ticket to
-		// the next sweep between read and write.
-		next, err := types.NextCronFire(task.CronExpression, now)
+		next, err := types.NextCronFire(due[i].CronExpression, now)
 		if err != nil {
-			// Every write entrance validates the expression, so an
-			// unparseable stored cron is corrupted state: fail the sweep
-			// visibly instead of silently re-reading the row every 30s.
-			return nil, fmt.Errorf("craft scheduled task %s: %w", task.ID, err)
+			logger.Errorf(ctx, "craft scheduled task %s: quarantining unparseable cron %q in sweep: %v",
+				due[i].ID, due[i].CronExpression, err)
+			continue
 		}
+		eligible = append(eligible, due[i])
+		following = append(following, next)
+	}
+	// Pass 2 claims each eligible row with an independent CAS. A row's
+	// database error ends the sweep returning the claims already WON together
+	// with the error (Important-1): the caller processes those fires instead
+	// of losing them tracelessly — a dropped claim would mean an advanced
+	// ticket with no run and no enqueue.
+	claims := make([]ClaimedTask, 0, len(eligible))
+	for i := range eligible {
+		task := eligible[i]
 		// The CAS (Ruling P-1): the row is claimed only if it still carries
 		// the ticket this sweep read — active and live (gorm's soft-delete
 		// filter contributes the deleted_at IS NULL arm). Zero rows means
 		// another instance claimed it, it was paused or deleted, or it was
-		// rescheduled: not ours, skip.
+		// rescheduled: not ours, skip. The new ticket rides in the same
+		// UPDATE, so the row never shows a due (or missing) ticket to the
+		// next sweep between read and write.
 		claimed := r.db.WithContext(ctx).
 			Model(&types.CraftScheduledTask{}).
 			Where("id = ? AND tenant_id = ? AND next_run_at = ? AND status = ?",
 				task.ID, task.TenantID, task.NextRunAt, types.CraftScheduledTaskStatusActive).
 			Updates(map[string]any{
-				"next_run_at": next,
+				"next_run_at": following[i],
 				"last_run_at": task.NextRunAt,
 				"updated_at":  gorm.Expr("CURRENT_TIMESTAMP"),
 			})
 		if claimed.Error != nil {
-			return nil, claimed.Error
+			return claims, claimed.Error
 		}
 		if claimed.RowsAffected != 1 {
 			continue
 		}
-		task.NextRunAt = &next
-		claims = append(claims, ClaimedTask{Task: task, PrevNextRunAt: *due[i].NextRunAt})
+		task.NextRunAt = &following[i]
+		claims = append(claims, ClaimedTask{Task: task, PrevNextRunAt: *eligible[i].NextRunAt})
 	}
 	return claims, nil
 }

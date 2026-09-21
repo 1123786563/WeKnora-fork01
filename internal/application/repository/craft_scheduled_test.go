@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -378,6 +380,98 @@ func TestCraftScheduledRunLifecycleAndInFlight(t *testing.T) {
 	history, err := repo.ListRunsByTask(ctx, task.ID, nil, 50)
 	require.NoError(t, err)
 	require.Len(t, history, 3)
+}
+
+// TestCraftScheduledClaimDueTasksPoisonRowQuarantined is the Task-1 review
+// Important-1 contract: a poison row — a stored cron that no longer parses —
+// is quarantined and skipped, never a sweep abort. Every OTHER due fire in
+// the same batch is still claimed; the quarantined row keeps its due ticket
+// untouched for repair or deletion.
+func TestCraftScheduledClaimDueTasksPoisonRowQuarantined(t *testing.T) {
+	db := openCraftScheduledDB(t)
+	repo := NewCraftScheduledTaskRepository(db)
+	ctx := context.Background()
+
+	// The poison row: oldest due ticket in the batch (so the sweep meets it
+	// first) with a cron that bypassed validation via a raw insert — only
+	// corrupted state can hold one.
+	poisonDue := time.Now().UTC().Add(-3 * time.Hour)
+	require.NoError(t, db.Exec(
+		`INSERT INTO craft_scheduled_tasks
+		   (id, tenant_id, owner_id, name, prompt, cron_expression, editor_mode, status, next_run_at)
+		 VALUES ('sched-poison', 1, 'owner-a', 'poisoned', 'tick', 'not a cron', 'advanced', 'active', ?)`,
+		poisonDue,
+	).Error)
+
+	good := scheduledTask(1, "owner-a", "*/5 * * * *")
+	good.ID = "sched-good"
+	require.NoError(t, repo.Create(ctx, &good))
+
+	now := time.Now().UTC().Truncate(time.Second)
+	claims, err := repo.ClaimDueTasks(ctx, now, 50)
+	require.NoError(t, err, "a poison row must not abort the sweep")
+	require.Len(t, claims, 1, "the healthy row is still claimed")
+	require.Equal(t, "sched-good", claims[0].Task.ID)
+
+	// The quarantined row keeps its due ticket exactly: it stays visibly due
+	// (re-examined by every sweep) instead of being advanced or deleted.
+	var poison types.CraftScheduledTask
+	require.NoError(t, db.Where("id = ?", "sched-poison").First(&poison).Error)
+	require.NotNil(t, poison.NextRunAt)
+	require.True(t, poison.NextRunAt.Equal(poisonDue), "the poison row's ticket is untouched")
+}
+
+// TestCraftScheduledClaimDueTasksPartialClaimsOnError is the other half of
+// the Important-1 contract: when a row's claim UPDATE hits a database error
+// mid-sweep, the sweep returns the claims it already won TOGETHER with the
+// error — won tickets are never dropped, so the dispatcher can still run the
+// fires it owns instead of losing them tracelessly.
+func TestCraftScheduledClaimDueTasksPartialClaimsOnError(t *testing.T) {
+	db := openCraftScheduledDB(t)
+	repo := NewCraftScheduledTaskRepository(db)
+	ctx := context.Background()
+
+	older := time.Now().UTC().Add(-2 * time.Hour)
+	newer := older.Add(time.Hour)
+	dueOld := scheduledTask(1, "owner-a", "*/5 * * * *")
+	dueOld.ID = "due-old"
+	dueOld.NextRunAt = &older
+	require.NoError(t, repo.Create(ctx, &dueOld))
+	dueNew := scheduledTask(1, "owner-a", "*/10 * * * *")
+	dueNew.ID = "due-new"
+	dueNew.NextRunAt = &newer
+	require.NoError(t, repo.Create(ctx, &dueNew))
+
+	// Fail the SECOND craft_scheduled_tasks UPDATE (the CAS of due-new, the
+	// newer ticket): due-old's claim commits first, then the sweep hits the
+	// injected error.
+	var casCount int32
+	const failSecond = "test:fail_second_cas"
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register(failSecond, func(tx *gorm.DB) {
+		if _, ok := tx.Statement.Model.(*types.CraftScheduledTask); !ok {
+			return
+		}
+		if atomic.AddInt32(&casCount, 1) == 2 {
+			_ = tx.AddError(errors.New("injected cas failure"))
+		}
+	}))
+	t.Cleanup(func() { _ = db.Callback().Update().Remove(failSecond) })
+
+	now := time.Now().UTC().Truncate(time.Second)
+	claims, err := repo.ClaimDueTasks(ctx, now, 50)
+	require.Error(t, err, "the sweep reports the row's failure")
+	require.Len(t, claims, 1, "the already-won claim survives the error")
+	require.Equal(t, "due-old", claims[0].Task.ID)
+	require.True(t, claims[0].PrevNextRunAt.Equal(*dueOld.NextRunAt))
+
+	// due-old's CAS committed: its ticket advanced past the sweep time;
+	// due-new's did not — still carrying the ticket the sweep read.
+	oldRow, err := repo.GetByID(ctx, 1, "owner-a", "due-old")
+	require.NoError(t, err)
+	require.True(t, oldRow.NextRunAt.After(now), "the won claim's ticket advanced")
+	newRow, err := repo.GetByID(ctx, 1, "owner-a", "due-new")
+	require.NoError(t, err)
+	require.True(t, newRow.NextRunAt.Equal(newer), "the failed row keeps its ticket")
 }
 
 func strPtr(s string) *string { return &s }
