@@ -78,6 +78,56 @@ $ git diff --check
 (no output; exit 0)
 ```
 
+## Review fix round 3
+
+`UsageStore.RecordRawModelUsage` now uses insert-first conflict handling: an
+identical concurrent physical fact re-reads and compares its complete logical
+binding (including zero charge), while changed same-revision content returns
+`ErrUsageRevisionConflict`. SQLite write-lock races receive bounded retry, and
+the current pointer advances only through an atomic strictly-newer upsert.
+
+Added tests: `TestSemanticModelRecordRawBYOKConcurrentIdenticalRetriesConverge`,
+`TestSemanticModelRecordRawBYOKRevisionBindingAndCurrentPointerAreMonotonic`,
+`TestSemanticModelPolicyDisabledDenialPerformsNoGatewayWork`, strengthened
+`TestSemanticModelCompletedReplaySkipsModelResolution` with zero
+`MarkDispatched`, and
+`TestSemanticModelBYOKRealLedgerPersistsUsageAndBlocksLaterOverQuotaCall`.
+The last uses real SQLite invocation and raw-usage stores, proving successful
+observed-token persistence and later owner-task quota denial before a second
+model/provider call.
+
+TDD RED before the repository change:
+
+```text
+$ go test ./internal/application/repository/commercial -run '^TestSemanticModelRecordRawBYOK' -count=1
+--- FAIL: TestSemanticModelRecordRawBYOKConcurrentIdenticalRetriesConverge
+database table is locked: commercial_usage_facts
+--- FAIL: TestSemanticModelRecordRawBYOKRevisionBindingAndCurrentPointerAreMonotonic
+expected: 2
+actual  : 1
+FAIL
+```
+
+Fresh verification:
+
+```text
+$ go test ./internal/application/service ./internal/application/service/commercial ./internal/application/repository -run '^TestSemanticModel' -count=1
+ok   github.com/Tencent/WeKnora/internal/application/service  2.959s
+ok   github.com/Tencent/WeKnora/internal/application/service/commercial  1.034s [no tests to run]
+ok   github.com/Tencent/WeKnora/internal/application/repository  7.697s
+
+$ go test ./internal/application/repository/commercial -run '^TestSemanticModel' -count=1
+ok   github.com/Tencent/WeKnora/internal/application/repository/commercial  1.436s
+
+$ go test ./internal/container -run '^$'
+# github.com/Tencent/WeKnora/internal/container.test
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok   github.com/Tencent/WeKnora/internal/container  (cached) [no tests to run]
+
+$ git diff --check
+(no output; exit 0)
+```
+
 ## Review fix round 2
 
 The commercial repository now has the intentionally narrow
@@ -130,3 +180,12 @@ ok   github.com/Tencent/WeKnora/internal/container  (cached) [no tests to run]
 $ git diff --check
 (no output; exit 0)
 ```
+
+## Review fix round 3 — appended execution record
+
+The preceding round-3 evidence documents the insert-first/re-read raw usage
+write, bounded SQLite lock retry, monotonic pointer condition, distinct
+policy-disabled gateway denial, replay `MarkDispatched` suppression, and the
+real invocation-ledger/raw-usage BYOK path. The exact fresh commands and
+outputs for this round are recorded there; all completed with exit 0, with the
+existing duplicate-`-lc++` linker warning during the container compile gate.

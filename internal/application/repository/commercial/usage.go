@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/commercial"
@@ -238,7 +239,27 @@ func (s *UsageStore) RecordRawModelUsage(ctx context.Context, fact domain.UsageF
 		Status:         fact.Status,
 		ChargeMicro:    0,
 	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var recordErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		recordErr = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			return s.recordRawModelUsageTx(tx, row)
+		})
+		if recordErr == nil || !retryableRawUsageError(recordErr) {
+			return recordErr
+		}
+		time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
+	}
+	return recordErr
+}
+
+func (s *UsageStore) recordRawModelUsageTx(tx *gorm.DB, row UsageRow) error {
+	// Insert first: a concurrent identical replay then observes the durable
+	// winner instead of both writers racing through a read-then-create gap.
+	result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
 		var existing UsageRow
 		err := tx.Where("tenant_id = ? AND call_id = ? AND attempt_id = ? AND revision = ?",
 			row.TenantID, row.CallID, row.AttemptID, row.Revision).First(&existing).Error
@@ -248,23 +269,32 @@ func (s *UsageStore) RecordRawModelUsage(ctx context.Context, fact domain.UsageF
 			}
 			return ErrUsageRevisionConflict
 		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-		if err := tx.Create(&row).Error; err != nil {
-			return err
-		}
-		return tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "call_id"}, {Name: "attempt_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"revision", "updated_at"}),
-		}).Create(&UsageCurrentRow{
-			TenantID:  row.TenantID,
-			CallID:    row.CallID,
-			AttemptID: row.AttemptID,
-			Revision:  row.Revision,
-			UpdatedAt: time.Now(),
-		}).Error
-	})
+		return err
+	}
+	// Keep delayed facts for audit, but only a strictly newer revision may
+	// advance the current pointer. This is an atomic compare-and-set in both
+	// SQLite and PostgreSQL.
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "call_id"}, {Name: "attempt_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"revision", "updated_at"}),
+		Where: clause.Where{Exprs: []clause.Expression{
+			clause.Expr{SQL: "excluded.revision > commercial_usage_current.revision"},
+		}},
+	}).Create(&UsageCurrentRow{
+		TenantID:  row.TenantID,
+		CallID:    row.CallID,
+		AttemptID: row.AttemptID,
+		Revision:  row.Revision,
+		UpdatedAt: time.Now(),
+	}).Error
+}
+
+func retryableRawUsageError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") || strings.Contains(message, "database table is locked")
 }
 
 // contentEqual compares the logical content of two revisions of the same

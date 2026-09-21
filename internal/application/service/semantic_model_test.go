@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/models/asr"
@@ -48,8 +51,28 @@ func TestSemanticModelCompletedReplaySkipsModelResolution(t *testing.T) {
 	require.Zero(t, reserves)
 	require.Zero(t, models.chatCalls)
 	require.Zero(t, models.providerCalls)
+	require.Zero(t, invocations.markDispatched)
 	require.Zero(t, budget.finishCalls)
 	require.Zero(t, invocations.complete)
+}
+
+// Policy-disabled verification is a distinct admission denial: no claim,
+// platform hold, credential lookup, or provider work is authorized.
+func TestSemanticModelPolicyDisabledDenialPerformsNoGatewayWork(t *testing.T) {
+	models := &semanticGatewayModels{}
+	invocations := &semanticCountingInvocations{}
+	reserves := 0
+	budget := semanticTestBudget(func(context.Context, semanticCapability) (domain.Reservation, error) {
+		reserves++
+		return domain.Reservation{}, nil
+	})
+	gateway := NewSemanticModelGateway(semanticGatewayIssuer{err: errors.New("policy disabled")}, models, semanticGatewayScope{}, budget, invocations)
+	_, err := gateway.Invoke(context.Background(), semanticGatewayWire())
+	require.ErrorIs(t, err, ErrSemanticModelDenied)
+	require.Zero(t, invocations.claimCalls)
+	require.Zero(t, reserves)
+	require.Zero(t, models.chatCalls)
+	require.Zero(t, models.providerCalls)
 }
 
 // A valid BYOK capability still needs a pinned immutable rate version before
@@ -304,6 +327,54 @@ func TestSemanticModelBYOKPersistsOwnerRawUsageWithoutPlatformSettlement(t *test
 	var settlements int64
 	require.NoError(t, db.Model(&repocommercial.OutboxEvent{}).Where("kind = ?", repocommercial.OutboxKindUsageSettlement).Count(&settlements).Error)
 	require.Zero(t, settlements)
+}
+
+// This is deliberately not a counting fake: the successful BYOK path writes
+// raw observed usage and completes the real invocation ledger. A later call
+// in the same owner task must be quota-denied before model/provider I/O.
+func TestSemanticModelBYOKRealLedgerPersistsUsageAndBlocksLaterOverQuotaCall(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&repocommercial.UsageRow{}, &repocommercial.UsageCurrentRow{}, &repocommercial.OutboxEvent{}))
+	migration, err := os.ReadFile("../../../migrations/sqlite/000101_semantic_model_invocations.up.sql")
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(migration)).Error)
+
+	rates := func(version string) (domain.PriceVersionRates, error) {
+		return domain.PriceVersionRates{Version: version, Rates: map[string]domain.DimensionRate{domain.DimensionModel: {RateMicro: 1000, Units: 1000}}}, nil
+	}
+	usage := repocommercial.NewUsageStore(db).WithRates(rates)
+	budget := NewSemanticModelBudgetAdapter(nil, nil, rates).WithUsageStore(usage)
+	capability := semanticGatewayCapability()
+	capability.PolicyVersion = 1
+	capability.ExpiresAt = time.Now().Add(time.Hour).UTC()
+	capability.MaxCallsPerTask = 1
+	capability.MaxInputTokensPerTask = 20
+	capability.MaxOutputTokensPerTask = 20
+	ledger := repository.NewSemanticModelInvocationStore(db)
+	require.NoError(t, ledger.EnsureRun(context.Background(), capability))
+	models := &semanticGatewayModels{response: &types.ChatResponse{Content: "ok", Usage: types.TokenUsage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}}}
+	gateway := NewSemanticModelGateway(semanticGatewayIssuer{cap: capability}, models, semanticGatewayScope{}, budget, ledger)
+	_, err = gateway.Invoke(context.Background(), semanticGatewayWire())
+	require.NoError(t, err)
+
+	var raw repocommercial.UsageRow
+	require.NoError(t, db.Where("tenant_id = ? AND call_id = ?", uint64(7), "call").First(&raw).Error)
+	require.Equal(t, int64(5), func() int64 {
+		var dims map[string]int64
+		require.NoError(t, json.Unmarshal([]byte(raw.DimensionsJSON), &dims))
+		return dims[domain.DimensionModel]
+	}())
+	var invocationCount int64
+	require.NoError(t, db.Table("semantic_model_invocations").Where("tenant_id = ? AND state = ?", uint64(7), "completed").Count(&invocationCount).Error)
+	require.Equal(t, int64(1), invocationCount)
+
+	later := capability
+	later.CallID = "later-over-quota"
+	_, err = NewSemanticModelGateway(semanticGatewayIssuer{cap: later}, models, semanticGatewayScope{}, budget, ledger).Invoke(context.Background(), semanticGatewayWire())
+	require.Error(t, err)
+	require.Equal(t, 1, models.chatCalls)
+	require.Equal(t, 1, models.providerCalls)
 }
 
 func semanticGatewayCapability() types.SemanticModelCapability {
