@@ -158,6 +158,39 @@ import _ "github.com/Tencent/WeKnora/internal/modules/othermod/service/othermod"
 	}
 }
 
+func TestRunImportExceptionCoversCommercialRootImports(t *testing.T) {
+	// 同一批预存耦合的另一形态：import commercial 模块根（原 internal/commercial）。
+	// 命中豁免的 adapter.go/action.go 根导入被放行；同文件指向其他模块根的
+	// 导入不在豁免范围，仍须报告。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/appconnector/adapter.go": `package appconnector
+
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
+`,
+		"internal/modules/appconnector/service/appconnector/action.go": `package appconnector
+
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
+`,
+		"internal/modules/appconnector/other_root.go": `package appconnector
+
+import _ "github.com/Tencent/WeKnora/internal/modules/othermod"
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "appconnector"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import", "adapter.go") ||
+		hasCheck(rep.Diagnostics, "forbidden-import", "action.go") {
+		t.Fatalf("命中精确豁免的 commercial 根导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import", "other_root.go") {
+		t.Fatalf("豁免只覆盖列出的精确 file→package 对，其他模块根导入必须照常报告:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
 func TestRunAllowsSelfModuleImport(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{

@@ -110,6 +110,24 @@ var importExceptions = []importException{
 		Reason:       "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，oc_recovery 直接消费 commercial service），Pass A 不改边界",
 		PassBTask:    "B-appconnector",
 	},
+	{
+		ImporterFile: "internal/modules/appconnector/adapter.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason:       "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界",
+		PassBTask:    "B-appconnector",
+	},
+	{
+		ImporterFile: "internal/modules/appconnector/service/appconnector/action.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason:       "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界",
+		PassBTask:    "B-appconnector",
+	},
+	{
+		ImporterFile: "internal/modules/appconnector/service/appconnector/oc_recovery.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason:       "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界",
+		PassBTask:    "B-appconnector",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。
