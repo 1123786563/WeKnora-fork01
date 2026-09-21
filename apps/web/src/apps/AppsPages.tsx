@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { formatMessage } from '@weknora/i18n';
 import { Button, Card, Status, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@weknora/ui';
-import { Alert as TAlert, Button as TButton, Table as TTable, Tag as TTag } from 'tdesign-react';
+import { Alert as TAlert, Button as TButton, Popconfirm as TPopconfirm, Table as TTable, Tag as TTag } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { appDigest, appErrorMessage, appRows, appShort, appStatus, type AppRow } from './model.ts';
 import { pollBackoffDelayMs } from './pollBackoff.ts';
@@ -204,6 +204,9 @@ function vueShortId(id: unknown): string {
   return text.length > 14 ? text.slice(0, 14) + '…' : text || '—';
 }
 
+/* ---- ConnectionsPage —— ConnectionsView.vue DOM 1:1（Task 11b，playbook §3） --
+   t-table 直译（#id 等宽短 id / #kind/#state t-tag / #ops 双操作 + t-popconfirm）、
+   t-alert error/info 双提示、header 刷新 t-button。 */
 function ConnectionsPage({ client, role, t, showToast }: { client: WeKnoraClient; role?: string; t: (key: string, values?: Record<string, string | number>) => string; showToast: (tone: ToastTone, text: string) => void }) {
   const [data, setData] = useState<AppRow[]>([]); const [loading, setLoading] = useState(true); const [loadError, setLoadError] = useState(false); const [revokingId, setRevokingId] = useState(''); const generation = useRef(0); const request = useRef<AbortController | null>(null); const canManage = role === 'owner' || role === 'admin';
   const load = async () => { request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setLoadError(false); try { const value = await client.request({ method: 'GET', path: '/api/v1/apps/connections', signal: controller.signal }); if (run === generation.current) setData(appRows(value)); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setData([]); setLoadError(true); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
@@ -219,7 +222,44 @@ function ConnectionsPage({ client, role, t, showToast }: { client: WeKnoraClient
   const accountLabel = (row: AppRow): string => { if (row.kind === 'space') return t('apps.connections.accountSpace'); const owner = String(row.owner_id ?? '').trim(); return owner ? vueShortId(owner) : t('apps.connections.accountUnknown'); };
   const accountTitle = (row: AppRow): string => row.kind === 'space' ? t('apps.connections.accountSpace') : String(row.owner_id ?? '') || '';
   const stateLabel = (state: unknown): string => { const text = String(state ?? ''); if (text === 'active') return t('apps.common.stateActive'); if (text === 'revoked') return t('apps.common.stateRevoked'); return t('apps.common.stateOther', { state: text }); };
-  return <PageFrame title={t('apps.connections.title')} description={t('apps.connections.description')} loading={loading} onReload={() => void load()} refreshLabel={t('apps.connections.refresh')} loadingLabel={t('common.loading')} gapClass="gap-4">{loadError ? <Status tone="error">{t('apps.connections.loadFailed')}</Status> : null}{!canManage ? <Status>{t('apps.connections.memberCannotManage')}</Status> : null}<Table className={TDESIGN_TABLE}><TableHead><TableRow>{[[t('apps.connections.colId'), 170], [t('apps.connections.colKind'), 100], [t('apps.connections.colAccount'), undefined], [t('apps.connections.colState'), 110], [t('apps.connections.colActions'), 260]].map(([header, width]) => <TableHeader key={header as string} style={width ? { width } : undefined}>{header as string}</TableHeader>)}</TableRow></TableHead><TableBody>{data.length === 0 ? <TableRow><EmptyCell colSpan={5} text={t('apps.connections.empty')} /></TableRow> : data.map((row) => <TableRow key={String(row.id)}><TableCell title={String(row.id ?? '')}><span className="font-mono">{vueShortId(row.id)}</span></TableCell><TableCell><Tag theme={row.kind === 'space' ? 'primary' : 'default'}>{kindLabel(row.kind)}</Tag></TableCell><TableCell title={accountTitle(row)}>{accountLabel(row)}</TableCell><TableCell><Tag theme={row.state === 'active' ? 'success' : row.state === 'revoked' ? 'danger' : 'default'}>{stateLabel(row.state)}</Tag></TableCell><TableCell><span className="flex items-center gap-[4px]">{canManage && row.state === 'active' ? <><Button variant="text" size="small" className="h-6 min-h-6 px-2 text-[14px] text-[rgba(0,0,0,0.9)]" onClick={() => void startAuthorization(row)}>{t('apps.connections.startAuthorization')}</Button><Popconfirm content={t('apps.connections.revokeConfirmContent')} confirmLabel={t('apps.connections.revoke')} cancelLabel={t('apps.common.cancel')} busy={revokingId === String(row.id)} onConfirm={() => void revoke(row)}><Button variant="text" size="small" disabled={revokingId !== ''} className="h-6 min-h-6 px-2 text-[14px] text-[#d54941]">{t('apps.connections.revoke')}</Button></Popconfirm></> : row.state === 'revoked' ? <span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t('apps.connections.remoteCleanupNote')}</span> : '—'}</span></TableCell></TableRow>)}</TableBody></Table></PageFrame>;
+  const columns = [
+    { colKey: 'id', title: t('apps.connections.colId'), width: 170, cell: ({ row }: { row: AppRow }) => <span title={String(row.id ?? '')} className="connections-view__mono">{vueShortId(row.id)}</span> },
+    { colKey: 'kind', title: t('apps.connections.colKind'), width: 100, cell: ({ row }: { row: AppRow }) => <TTag theme={row.kind === 'space' ? 'primary' : 'default'} size="small">{kindLabel(row.kind)}</TTag> },
+    { colKey: 'owner', title: t('apps.connections.colAccount'), ellipsis: true, cell: ({ row }: { row: AppRow }) => <span title={accountTitle(row)}>{accountLabel(row)}</span> },
+    { colKey: 'state', title: t('apps.connections.colState'), width: 110, cell: ({ row }: { row: AppRow }) => <TTag theme={row.state === 'active' ? 'success' : row.state === 'revoked' ? 'danger' : 'default'} size="small">{stateLabel(row.state)}</TTag> },
+    { colKey: 'ops', title: t('apps.connections.colActions'), width: 260, cell: ({ row }: { row: AppRow }) => (
+      <div className="connections-view__ops">
+        {canManage && row.state === 'active' ? (<>
+          <TButton size="small" variant="text" aria-label={t('apps.connections.startAuthorization')} onClick={() => void startAuthorization(row)}>{t('apps.connections.startAuthorization')}</TButton>
+          <TPopconfirm
+            content={t('apps.connections.revokeConfirmContent')}
+            confirmBtn={{ content: t('apps.connections.revoke'), theme: 'danger', loading: revokingId === String(row.id) }}
+            cancelBtn={{ content: t('apps.common.cancel'), theme: 'default' }}
+            placement="left"
+            onConfirm={() => void revoke(row)}
+          >
+            <TButton size="small" variant="text" theme="danger" disabled={revokingId !== ''} aria-label={t('apps.connections.revoke')}>{t('apps.connections.revoke')}</TButton>
+          </TPopconfirm>
+        </>) : row.state === 'revoked' ? <span className="connections-view__cleanup-note">{t('apps.connections.remoteCleanupNote')}</span> : '—'}
+      </div>
+    ) },
+  ];
+  return (
+    <div className="connections-view">
+      <div className="connections-view__header">
+        <div className="connections-view__heading">
+          <h2 className="connections-view__title">{t('apps.connections.title')}</h2>
+          <p className="connections-view__desc">{t('apps.connections.description')}</p>
+        </div>
+        <TButton variant="outline" disabled={loading} aria-label={t('apps.connections.refresh')} onClick={() => void load()} icon={<TIcon name="refresh" />}>
+          {t('apps.connections.refresh')}
+        </TButton>
+      </div>
+      {loadError ? <TAlert theme="error" message={t('apps.connections.loadFailed')} className="connections-view__error" /> : null}
+      {!canManage ? <TAlert theme="info" message={t('apps.connections.memberCannotManage')} className="connections-view__error" /> : null}
+      <TTable rowKey="id" data={data} columns={columns} loading={loading} empty={t('apps.connections.empty')} hover />
+    </div>
+  );
 }
 
 /* Vue formatTime: locale date string, em dash when absent. */
