@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
 // skillPythonVerifier is the source of the in-sandbox Python checker. It is

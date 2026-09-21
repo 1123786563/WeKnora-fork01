@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/browserskill"
+	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

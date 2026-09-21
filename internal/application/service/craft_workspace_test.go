@@ -14,7 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/opencode"
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/craft"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
 // pinnedCraftRuntimeDigest mirrors the R01 lock digest for the 1.18.4 binary.

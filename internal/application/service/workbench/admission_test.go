@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/execution"
+	"github.com/Tencent/WeKnora/internal/modules/execution"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )
