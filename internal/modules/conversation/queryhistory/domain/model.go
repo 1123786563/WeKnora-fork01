@@ -9,6 +9,7 @@ package domain
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 )
@@ -161,6 +162,13 @@ type ExportFilter struct {
 	EndTime        time.Time
 	FeedbackRating string
 }
+
+// ErrPermanentPayload marks an export-task payload that can never succeed on
+// retry (malformed JSON, or missing job/tenant scope). The application worker
+// answers it — wrapped, so context travels along — without touching a job;
+// the module's queue adapter translates it into the task framework's
+// skip-retry signal, keeping the application layer framework-independent.
+var ErrPermanentPayload = errors.New("query history export: payload is not retryable")
 
 // ExportPayload carries one async query-history CSV export across the task
 // queue. The JSON keys, their order, and the omitempty behavior are
