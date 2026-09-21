@@ -264,6 +264,76 @@ import _ "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
 	}
 }
 
+func TestRunImportExceptionCoversBatchA3KnowledgeAndAgentruntime(t *testing.T) {
+	// batch A3：knowledge/agentruntime 搬入模块目录后，预存横向耦合显形。
+	// 命中豁免的精确 file→package 对放行；同文件指向未列包的导入
+	// （composite.go→policy/access 不在清单）仍须照常报告。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/knowledge/retriever/composite.go": `package retriever
+
+import (
+	_ "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
+	_ "github.com/Tencent/WeKnora/internal/modules/policy/access"
+)
+`,
+		"internal/modules/agentruntime/agent/engine.go": `package agent
+
+import _ "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+`,
+	})
+
+	mods := []ManifestView{{Module: "knowledge"}, {Module: "agentruntime"}}
+	rep, err := Run(root, mods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import",
+		`composite.go 导入了模块 airesource 的内部包 "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"`) {
+		t.Fatalf("batch A3 命中豁免的 composite.go→embedding 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import",
+		`engine.go 导入了模块 airesource 的内部包 "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"`) {
+		t.Fatalf("batch A3 命中豁免的 engine.go→chat 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import",
+		`composite.go 导入了模块 policy 的内部包 "github.com/Tencent/WeKnora/internal/modules/policy/access"`) {
+		t.Fatalf("未列入豁免的 composite.go→policy/access 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunImportExceptionCoversBatchA3ConversationChatPipeline(t *testing.T) {
+	// batch A3：conversation 搬入模块目录后，chat_pipeline 对 airesource/knowledge
+	// 的预存横向耦合显形。命中豁免的精确对放行；未列入清单的相邻文件
+	// 必须照常报告。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/conversation/chat_pipeline/common.go": `package chat_pipeline
+
+import (
+	_ "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+	_ "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+)
+`,
+		"internal/modules/conversation/chat_pipeline/neighbor.go": `package chat_pipeline
+
+import _ "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "conversation"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import", "common.go") {
+		t.Fatalf("batch A3 命中豁免的 common.go 两对导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import",
+		`neighbor.go 导入了模块 airesource 的内部包 "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"`) {
+		t.Fatalf("未列入豁免的 neighbor.go 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
 func TestRunAllowsSelfModuleImport(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{

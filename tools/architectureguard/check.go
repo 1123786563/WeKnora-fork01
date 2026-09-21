@@ -172,6 +172,542 @@ var importExceptions = []importException{
 			"execution/sandbox/url_guard.go 消费 policy 的 ipclass 包，Pass A 不改边界",
 		PassBTask: "B-execution",
 	},
+	// ---- batch A3 搬迁显形的预存横向耦合：agentruntime 内文件消费其他模块内部包（Pass B 任务 B-agentruntime）----
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/commercial_adapter.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/commercial_adapter.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/compaction/compactor.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/compaction/cutpoint.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/compaction/fileops.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/compaction/prepare.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/compaction/serialize.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/context_debug.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/engine.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/finalize.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/finalize.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/image_requirement.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/image_requirement.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/observe.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/recoverytest/provider/main.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/recoverytest/provider/main.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/skills/manager.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/skills/shell_environment.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/skills/shell_staging.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/skills/tenant_source.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/steer.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/subagents/executor.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/subagents/tools.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/think.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/token/estimator.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/app_connector.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/appconnector",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/browserskill.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/browserskill",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/browserskill_result.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/browserskill",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/grep_chunks.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/knowledge_search.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/knowledge_search.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/list_knowledge_chunks.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/mcp_exposure.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/mcp_oauth.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/mcp_tool.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/output_links.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/sandbox_edit.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/sandbox_ls.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/sandbox_write.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/sanitize_messages.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/shell_exec.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/skill_file.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/wiki_read_source_doc.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/workspace_reader.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/trpc/model.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/memory/consolidate.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/memory/extract.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/memory/topic_resolve.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/modelcontext/mcp.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/modelcontext/registry.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/modelcontext/resources.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/modelcontext/sources.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/modelcontext/tool_policy.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	// ---- batch A3 搬迁显形的预存横向耦合：channels 内文件消费 agentruntime 内部包（Pass B 任务 B-channels）----
+	{
+		ImporterFile: "internal/modules/channels/im/cmd_search.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-channels",
+	},
+	{
+		ImporterFile: "internal/modules/channels/im/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-channels",
+	},
+	// ---- batch A3 搬迁显形的预存横向耦合：conversation 内文件消费其他模块内部包（Pass B 任务 B-conversation）----
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/common.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/common.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/data_analysis.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/data_analysis.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/extract_entity.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/into_chat_message.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/merge.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/merge_expand.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/merge_history.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/merge_overlap.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/query_understand.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/references.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/references.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/rerank.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/rerank.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/search.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	{
+		ImporterFile: "internal/modules/conversation/chat_pipeline/search_entity.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-conversation",
+	},
+	// ---- batch A3 搬迁显形的预存横向耦合：knowledge 内文件消费 airesource 内部包（Pass B 任务 B-knowledge）----
+	{
+		ImporterFile: "internal/modules/knowledge/docparser/weknoracloud_http_reader.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retriever/composite.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-knowledge",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。
