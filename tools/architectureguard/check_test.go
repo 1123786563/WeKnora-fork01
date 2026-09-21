@@ -1,0 +1,268 @@
+package main
+
+import (
+	"strings"
+	"testing"
+)
+
+func hasCheck(ds []Diagnostic, check, substr string) bool {
+	for _, d := range ds {
+		if d.Check == check && strings.Contains(d.Message, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRunRejectsDuplicateRouteRegistration(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/router/fixture.go": `package router
+
+func RegisterFixtureDup(g gtype) {
+	g.GET("/dup", h1)
+	g.GET("/dup", h2)
+}
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "demo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep.Diagnostics, "unique-route-registration", "/dup") {
+		t.Fatalf("同一 path+method 注册两次必须报告 unique-route-registration:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunRejectsDuplicateWorkerRegistration(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/router/task.go": `package router
+
+func registerWorkers(mux muxtype) {
+	mux.HandleFunc(types.TypeDocumentProcess, h)
+	mux.HandleFunc(types.TypeDocumentProcess, h2)
+}
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "demo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep.Diagnostics, "unique-worker-registration", "types.TypeDocumentProcess") {
+		t.Fatalf("同一任务类型注册两次必须报告 unique-worker-registration:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunRejectsWorkerParityMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/router/task.go": `package router
+
+func registerWorkers(mux muxtype) {
+	mux.HandleFunc(types.TypeChunkExtract, h)
+}
+`,
+		"internal/router/sync_task.go": `package router
+
+func RegisterSyncHandlers(params ptype) {
+	params.Executor.RegisterHandler(types.TypeMemoryExtract, h)
+}
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "demo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep.Diagnostics, "worker-parity", "types.TypeChunkExtract") ||
+		!hasCheck(rep.Diagnostics, "worker-parity", "types.TypeMemoryExtract") {
+		t.Fatalf("Redis/Lite 任务集合不一致必须报告 worker-parity:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunRejectsModuleToModuleImport(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/alpha/module.go": `package alpha
+
+import _ "github.com/Tencent/WeKnora/internal/modules/beta"
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "alpha"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import", "internal/modules/beta") {
+		t.Fatalf("模块间横向 import 必须被拒绝:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunAllowsSelfModuleImport(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/alpha/module.go":  "package alpha\n",
+		"internal/modules/alpha/sub/sub.go": "package sub\n",
+		"internal/modules/alpha/user.go": `package alpha
+
+import _ "github.com/Tencent/WeKnora/internal/modules/alpha/sub"
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "alpha"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import", "") {
+		t.Fatalf("模块内部子包 import 不应被拒绝:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunRejectsNewFileInHorizontalDir(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/application/service/listed.go":   "package service\n",
+		"internal/application/service/newthing.go": "package service\n",
+	})
+
+	mods := []ManifestView{{
+		Module:      "demo",
+		LegacyPaths: []string{"internal/application/service/listed.go"},
+	}}
+	rep, err := Run(root, mods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep.Diagnostics, "legacy-guard", "internal/application/service/newthing.go") {
+		t.Fatalf("横向目录新文件必须被拒绝:\n%s", joinChecks(rep.Diagnostics))
+	}
+	if hasCheck(rep.Diagnostics, "legacy-guard", "listed.go") {
+		t.Fatalf("manifest 声明的遗留文件不应被拒绝:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunAllowsPlatformLegacyFiles(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/handler/list_pagination.go":           "package handler\n",
+		"internal/handler/upload_limit.go":              "package handler\n",
+		"internal/application/repository/task_queue.go": "package repository\n",
+		"internal/handler/dto/pagination.go":            "package dto\n",
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "demo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "legacy-guard", "") {
+		t.Fatalf("platform 本体文件与 platform 包不应被拒绝:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunRejectsUnownedRouteFile(t *testing.T) {
+	// 反向覆盖：出现注册的路由文件必须被某 manifest 的 routes 条目或 platform 残留覆盖。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/router/routes_newthing.go": `package router
+
+func RegisterNewthingRoutes(g gtype) {
+	g.GET("/newthing", h)
+}
+`,
+	})
+
+	mods := []ManifestView{{
+		Module:       "demo",
+		RouteEntries: []string{"RegisterNewthingRoutes — internal/router/routes_newthing.go:2"},
+	}}
+	rep, err := Run(root, mods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "route-file-coverage", "") {
+		t.Fatalf("被 manifest 覆盖的路由文件不应报告 route-file-coverage:\n%s", joinChecks(rep.Diagnostics))
+	}
+
+	rep2, err := Run(root, []ManifestView{{Module: "demo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep2.Diagnostics, "route-file-coverage", "internal/router/routes_newthing.go") {
+		t.Fatalf("未被覆盖的路由文件必须报告 route-file-coverage:\n%s", joinChecks(rep2.Diagnostics))
+	}
+}
+
+func TestRunRejectsUnknownRouteEntry(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/router/routes_known.go": `package router
+
+func RegisterKnownRoutes(g gtype) {
+	g.GET("/known", h)
+}
+`,
+	})
+
+	mods := []ManifestView{{
+		Module:       "demo",
+		RouteEntries: []string{"RegisterGhostRoutes — internal/router/routes_known.go:3"},
+	}}
+	rep, err := Run(root, mods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep.Diagnostics, "route-entry-coverage", "RegisterGhostRoutes") {
+		t.Fatalf("manifest 声明的不存在路由入口必须报告 route-entry-coverage:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunRejectsManifestWorkerTypeMissingFromDiscovery(t *testing.T) {
+	root := t.TempDir()
+	mods := []ManifestView{{
+		Module:      "demo",
+		WorkerTypes: []string{"TypeGhost"},
+	}}
+	rep, err := Run(root, mods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep.Diagnostics, "worker-coverage", "TypeGhost") {
+		t.Fatalf("manifest 声明但代码未注册的 worker 必须报告 worker-coverage:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+// TestGuardCleanAtHead 是 F2 的总闸：在未搬迁的当前 HEAD 上（真实 16 manifest），
+// 守卫必须零诊断退出。任何后续 Pass A 搬迁引入的重复注册/越界 import/新横向文件都会打破它。
+func TestGuardCleanAtHead(t *testing.T) {
+	root := repoRoot(t)
+	mods, err := LoadManifestViews(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mods) != 16 {
+		t.Fatalf("应加载 16 份 manifest, got %d", len(mods))
+	}
+
+	rep, err := Run(root, mods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Diagnostics) != 0 {
+		t.Fatalf("HEAD 上守卫应零违规，得到 %d 条:\n%s", len(rep.Diagnostics), joinChecks(rep.Diagnostics))
+	}
+	if rep.Summary.RoutesTotal != 632 || rep.Summary.WorkerRedis != 23 || rep.Summary.WorkerLite != 23 || rep.Summary.Hooks != 58 {
+		t.Errorf("发现规模偏离 F0 基线: %+v", rep.Summary)
+	}
+}
+
+func joinChecks(ds []Diagnostic) string {
+	var b strings.Builder
+	for _, d := range ds {
+		b.WriteString(d.String())
+		b.WriteString("\n")
+	}
+	return b.String()
+}
