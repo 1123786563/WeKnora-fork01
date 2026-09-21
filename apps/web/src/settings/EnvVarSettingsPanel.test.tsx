@@ -84,6 +84,7 @@ test('renders the Vue section header and the sandbox-secrets help popup content'
     await act(async () => root.unmount());
     document.body.replaceChildren();
   }
+});
 
 /*
  * R479 A3 — R022 错误路径交互锚定（Vue EnvVarSettings.vue 契约）。
@@ -127,6 +128,7 @@ afterEach(async () => {
 test('rejects an empty value with the localized valueRequired message and skips the API (Vue rejectBadValue)', async () => {
   const calls: EnvVarCalls = { skillSet: 0, sandboxSet: 0 };
   const client = {
+    request: async () => [{ id: 'sbx-1', name: 'parity-sandbox' }],
     settings: {
       envVars: {
         skill: { set: async () => { calls.skillSet += 1; } },
@@ -153,6 +155,7 @@ test('rejects an empty value with the localized valueRequired message and skips 
 test('rejects a value over MAX_ENV_VALUE_BYTES with the localized valueTooLong message and skips the API', async () => {
   const calls: EnvVarCalls = { skillSet: 0, sandboxSet: 0 };
   const client = {
+    request: async () => [{ id: 'sbx-1', name: 'parity-sandbox' }],
     settings: {
       envVars: {
         skill: { set: async () => { calls.skillSet += 1; } },
@@ -177,6 +180,7 @@ test('rejects a value over MAX_ENV_VALUE_BYTES with the localized valueTooLong m
 
 test('surfaces the backend error message first when saving fails and keeps the variable list rendered', async () => {
   const client = {
+    request: async () => [{ id: 'sbx-1', name: 'parity-sandbox' }],
     settings: {
       envVars: {
         skill: { set: async () => { throw new Error('quota exceeded'); } },
@@ -205,6 +209,7 @@ test('surfaces the backend error message first when saving fails and keeps the v
 
 test('falls back to the localized saveFailed message when the backend rejects without an Error payload', async () => {
   const client = {
+    request: async () => [{ id: 'sbx-1', name: 'parity-sandbox' }],
     settings: {
       envVars: {
         skill: { set: async () => { throw 'network blip'; } },

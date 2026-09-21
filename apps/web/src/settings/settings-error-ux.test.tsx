@@ -250,20 +250,19 @@ for (const [section, heading, panelSelector] of [
   });
 }
 
-test('parser: banner passes the backend message through and retries the same request (Vue ParserEngineSettings.vue mode)', async () => {
-  const { client, calls } = failingClient('parser');
+test('parser: load failure degrades silently with the self-loading panel rendering (R481 architecture)', async () => {
+  const { client } = failingClient('parser');
   const container = await mountPage(client, '?section=parser');
   await settle();
   assert.ok(headingTexts(container).includes('解析引擎'), 'the parser section h2 keeps rendering on load failure');
-  const banner = findBanner(container);
-  assert.ok(banner?.includes(UPSTREAM_FAILURE), 'the shell banner shows the backend error text');
-  assert.equal(container.querySelector('[data-testid="mineru-endpoint"]'), null, 'the banner replaces the panel content');
-  const retry = findRetryButton(container, '重试');
-  assert.ok(retry, 'the banner offers a retry button');
-  const before = calls['parser.engines'] ?? 0;
-  await act(async () => { retry!.click(); });
-  await settle();
-  assert.ok((calls['parser.engines'] ?? 0) > before, 'retry re-sends the same parser engines request');
+  // R481 之后 parser 与 retrieval 同构：壳层不再做分区读取（case 'parser'
+  // 返回 null），ConfigSettingsPanel 以自加载 + 行内错误态渲染；壳层横幅
+  // 只保留给 system/userprofile/members。
+  assert.equal(findBanner(container), null, 'no shell error banner renders for the self-loading parser panel');
+  assert.equal(findToast(container), null, 'no toast fires for the silent degradation');
+  // 面板自身把 load 失败透传为行内错误态（R021 口径）：后端原文出现在
+  // 面板内容区，壳层横幅/吐司均不介入。
+  assert.ok(container.textContent?.includes(UPSTREAM_FAILURE), 'the self-loading parser panel surfaces the backend error inline');
 });
 
 test('system: banner passes the backend message through and retries the same request (Vue SystemInfo.vue mode)', async () => {
