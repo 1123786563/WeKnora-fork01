@@ -1,0 +1,482 @@
+{
+  "cases": [
+    {
+      "actual_mode": "native",
+      "allowed_runtime_ids": [
+        "1e01209a-d71d-46dc-97fb-443bce3b222f",
+        "e3714985-ae9a-49a1-b57f-f69ccb89fcf8"
+      ],
+      "answer": "甲服务最终依赖的依赖项是其他服务。",
+      "case_id": "crossdoc-chain",
+      "document_revision": "v03-frozen-1",
+      "engine_version": null,
+      "error": "completed native query had no mapped graph reference",
+      "evidence_ids": [],
+      "failure_stage": "graph_reference",
+      "forbidden_sources": [],
+      "indexing_ms": 14722.328,
+      "latency_ms": 3423.222,
+      "model_version": "qwen2.5:0.5b",
+      "query_attempts": [
+        {
+          "actual_mode": "native",
+          "answer": "甲服务最终依赖的依赖项是其他服务。",
+          "case_id": "crossdoc-chain",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 3423.222,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "cold",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        },
+        {
+          "actual_mode": "native",
+          "answer": "甲服务最终依赖的依赖项是其他服务。",
+          "case_id": "crossdoc-chain",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 1182.545,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "warm",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        }
+      ],
+      "query_phase": "cold",
+      "references": [],
+      "requested_mode": "native",
+      "state_actions": [],
+      "status": "negative",
+      "tokens": null
+    },
+    {
+      "actual_mode": "native",
+      "allowed_runtime_ids": [
+        "4817475e-44ed-4816-895a-311cdd27d51c"
+      ],
+      "answer": "构建与部署之间是相互依存的关系。构建是部署的基础，没有构建，部署就无法进行。部署是构建的实现，通过构建，可以将需求转化为实际的代码和系统。",
+      "case_id": "depends-on-rule",
+      "document_revision": "v03-frozen-1",
+      "engine_version": null,
+      "error": "completed native query had no mapped graph reference",
+      "evidence_ids": [],
+      "failure_stage": "graph_reference",
+      "forbidden_sources": [],
+      "indexing_ms": 4506.423,
+      "latency_ms": 2715.348,
+      "model_version": "qwen2.5:0.5b",
+      "query_attempts": [
+        {
+          "actual_mode": "native",
+          "answer": "构建与部署之间是相互依存的关系。构建是部署的基础，没有构建，部署就无法进行。部署是构建的实现，通过构建，可以将需求转化为实际的代码和系统。",
+          "case_id": "depends-on-rule",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 2715.348,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "cold",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        },
+        {
+          "actual_mode": "native",
+          "answer": "构建与部署之间是相互依存的关系。构建是部署的基础，没有构建，部署就无法进行。部署是构建的实现，通过构建，可以将需求转化为实际的代码和系统。",
+          "case_id": "depends-on-rule",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 2199.997,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "warm",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        }
+      ],
+      "query_phase": "cold",
+      "references": [],
+      "requested_mode": "native",
+      "state_actions": [],
+      "status": "negative",
+      "tokens": null
+    },
+    {
+      "actual_mode": "native",
+      "allowed_runtime_ids": [
+        "be34abd1-570e-4e17-b5d5-913b0754be82",
+        "72ab50c4-5597-4aca-a7ac-37ba3a24e1f0"
+      ],
+      "answer": "支付服务是否依赖库存服务？",
+      "case_id": "conflict",
+      "document_revision": "v03-frozen-1",
+      "engine_version": null,
+      "error": "completed native query had no mapped graph reference",
+      "evidence_ids": [],
+      "failure_stage": "graph_reference",
+      "forbidden_sources": [],
+      "indexing_ms": 9991.149,
+      "latency_ms": 3341.768,
+      "model_version": "qwen2.5:0.5b",
+      "query_attempts": [
+        {
+          "actual_mode": "native",
+          "answer": "支付服务是否依赖库存服务？",
+          "case_id": "conflict",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 3341.768,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "cold",
+          "references": [
+            {
+              "chunk_index": 0,
+              "chunk_type": "text",
+              "content": "支付服务依赖库存服务。",
+              "end_at": 11,
+              "id": "58c957b1-aaf8-4f7e-993f-f03c40047fa2",
+              "image_info": "",
+              "knowledge_base_id": "d3e1682a-8b98-40df-8ff2-e1553e4ccbc2",
+              "knowledge_channel": "native-v03",
+              "knowledge_filename": "e-conflict-a.md",
+              "knowledge_id": "be34abd1-570e-4e17-b5d5-913b0754be82",
+              "knowledge_source": "manual",
+              "knowledge_title": "e-conflict-a",
+              "match_type": 6,
+              "metadata": {
+                "content": "支付服务依赖库存服务。",
+                "format": "markdown",
+                "status": "publish",
+                "updated_at": "2026-09-20T06:58:41Z",
+                "version": "1"
+              },
+              "parent_chunk_id": "",
+              "score": 1,
+              "seq": 0,
+              "start_at": 0,
+              "sub_chunk_id": null
+            }
+          ],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        },
+        {
+          "actual_mode": "native",
+          "answer": "支付服务是否依赖库存服务？",
+          "case_id": "conflict",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 1788.363,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "warm",
+          "references": [
+            {
+              "chunk_index": 0,
+              "chunk_type": "text",
+              "content": "支付服务依赖库存服务。",
+              "end_at": 11,
+              "id": "58c957b1-aaf8-4f7e-993f-f03c40047fa2",
+              "image_info": "",
+              "knowledge_base_id": "d3e1682a-8b98-40df-8ff2-e1553e4ccbc2",
+              "knowledge_channel": "native-v03",
+              "knowledge_filename": "e-conflict-a.md",
+              "knowledge_id": "be34abd1-570e-4e17-b5d5-913b0754be82",
+              "knowledge_source": "manual",
+              "knowledge_title": "e-conflict-a",
+              "match_type": 6,
+              "metadata": {
+                "content": "支付服务依赖库存服务。",
+                "format": "markdown",
+                "status": "publish",
+                "updated_at": "2026-09-20T06:58:41Z",
+                "version": "1"
+              },
+              "parent_chunk_id": "",
+              "score": 1,
+              "seq": 0,
+              "start_at": 0,
+              "sub_chunk_id": null
+            }
+          ],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        }
+      ],
+      "query_phase": "cold",
+      "references": [
+        {
+          "chunk_index": 0,
+          "chunk_type": "text",
+          "content": "支付服务依赖库存服务。",
+          "end_at": 11,
+          "id": "58c957b1-aaf8-4f7e-993f-f03c40047fa2",
+          "image_info": "",
+          "knowledge_base_id": "d3e1682a-8b98-40df-8ff2-e1553e4ccbc2",
+          "knowledge_channel": "native-v03",
+          "knowledge_filename": "e-conflict-a.md",
+          "knowledge_id": "be34abd1-570e-4e17-b5d5-913b0754be82",
+          "knowledge_source": "manual",
+          "knowledge_title": "e-conflict-a",
+          "match_type": 6,
+          "metadata": {
+            "content": "支付服务依赖库存服务。",
+            "format": "markdown",
+            "status": "publish",
+            "updated_at": "2026-09-20T06:58:41Z",
+            "version": "1"
+          },
+          "parent_chunk_id": "",
+          "score": 1,
+          "seq": 0,
+          "start_at": 0,
+          "sub_chunk_id": null
+        }
+      ],
+      "requested_mode": "native",
+      "state_actions": [],
+      "status": "negative",
+      "tokens": null
+    },
+    {
+      "actual_mode": "native",
+      "allowed_runtime_ids": [
+        "cd06b464-30eb-48a7-9120-22b373fa72e4"
+      ],
+      "answer": "风控服务依赖的其他服务包括信用评估、信用报告和信用评分等。",
+      "case_id": "no-evidence",
+      "document_revision": "v03-frozen-1",
+      "engine_version": null,
+      "error": "completed native query had no mapped graph reference",
+      "evidence_ids": [],
+      "failure_stage": "graph_reference",
+      "forbidden_sources": [],
+      "indexing_ms": 4647.964,
+      "latency_ms": 1539.652,
+      "model_version": "qwen2.5:0.5b",
+      "query_attempts": [
+        {
+          "actual_mode": "native",
+          "answer": "风控服务依赖的其他服务包括信用评估、信用报告和信用评分等。",
+          "case_id": "no-evidence",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 1539.652,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "cold",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        },
+        {
+          "actual_mode": "native",
+          "answer": "风控服务依赖的其他服务包括信用评估、信用报告和信用评分等。",
+          "case_id": "no-evidence",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 1740.646,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "warm",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        }
+      ],
+      "query_phase": "cold",
+      "references": [],
+      "requested_mode": "native",
+      "state_actions": [],
+      "status": "negative",
+      "tokens": null
+    },
+    {
+      "actual_mode": "native",
+      "allowed_runtime_ids": [
+        "4cad89ee-537f-46fe-8d97-919d0bba2935"
+      ],
+      "answer": "已删除文档中的密钥是\"密钥\"。",
+      "case_id": "deleted-document",
+      "document_revision": "v03-frozen-1",
+      "engine_version": null,
+      "error": "completed native query had no mapped graph reference",
+      "evidence_ids": [],
+      "failure_stage": "graph_reference",
+      "forbidden_sources": [
+        {
+          "canary": "CANARY-DELETE-91",
+          "evidence_id": "e-deleted",
+          "quote": "已删除文档的密钥是 CANARY-DELETE-91。",
+          "runtime_id": "59412eca-f044-4379-a939-bb81fafdcc78",
+          "state": "deleted",
+          "text": "已删除文档的密钥是 CANARY-DELETE-91。"
+        }
+      ],
+      "indexing_ms": 6508.361,
+      "latency_ms": 1050.654,
+      "model_version": "qwen2.5:0.5b",
+      "query_attempts": [
+        {
+          "actual_mode": "native",
+          "answer": "已删除文档中的密钥是\"密钥\"。",
+          "case_id": "deleted-document",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 1050.654,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "cold",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        },
+        {
+          "actual_mode": "native",
+          "answer": "已删除文档中的密钥是\"密钥\"。",
+          "case_id": "deleted-document",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 1444.028,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "warm",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        }
+      ],
+      "query_phase": "cold",
+      "references": [],
+      "requested_mode": "native",
+      "state_actions": [
+        {
+          "evidence_id": "e-deleted",
+          "state": "deleted",
+          "status": "completed"
+        }
+      ],
+      "status": "negative",
+      "tokens": null
+    },
+    {
+      "actual_mode": "native",
+      "allowed_runtime_ids": [
+        "8431a29e-f146-42c9-ab87-2ed0e041b0d9"
+      ],
+      "answer": "撤权的结算服务依赖私有账本 CANARY-REVOKED-71。",
+      "case_id": "revoked-document",
+      "document_revision": "v03-frozen-1",
+      "engine_version": null,
+      "error": "completed native query had no mapped graph reference",
+      "evidence_ids": [],
+      "failure_stage": "graph_reference",
+      "forbidden_sources": [
+        {
+          "canary": "CANARY-REVOKED-71",
+          "evidence_id": "e-revoked",
+          "quote": "撤权结算服务依赖私有账本 CANARY-REVOKED-71。",
+          "runtime_id": "04539ee3-a331-4bdd-996d-7008c515fbb6",
+          "state": "revoked",
+          "text": "撤权结算服务依赖私有账本 CANARY-REVOKED-71。"
+        }
+      ],
+      "indexing_ms": 4119.845,
+      "latency_ms": 1257.239,
+      "model_version": "qwen2.5:0.5b",
+      "query_attempts": [
+        {
+          "actual_mode": "native",
+          "answer": "撤权的结算服务依赖私有账本 CANARY-REVOKED-71。",
+          "case_id": "revoked-document",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 1257.239,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "cold",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        },
+        {
+          "actual_mode": "native",
+          "answer": "撤权的结算服务依赖私有账本 CANARY-REVOKED-71。",
+          "case_id": "revoked-document",
+          "document_revision": "v03-frozen-1",
+          "engine_version": null,
+          "error": null,
+          "evidence_ids": [],
+          "latency_ms": 1425.202,
+          "model_version": "qwen2.5:0.5b",
+          "query_phase": "warm",
+          "references": [],
+          "requested_mode": "native",
+          "status": "completed",
+          "tokens": null
+        }
+      ],
+      "query_phase": "cold",
+      "references": [],
+      "requested_mode": "native",
+      "state_actions": [
+        {
+          "evidence_id": "e-revoked",
+          "reason": "no native public per-document revocation API",
+          "state": "revoked",
+          "status": "unsupported"
+        }
+      ],
+      "status": "negative",
+      "tokens": null,
+      "unsupported_stage": "revocation"
+    }
+  ],
+  "command_exits": {
+    "teardown": 0,
+    "up": 0
+  },
+  "engine_version": "e9cec18c0f1edb56e902cc0996e94fbed723c920",
+  "failure_stage": "case_results",
+  "finished_at": 1789887563.544537,
+  "images": {
+    "neo4j": "neo4j:2025.10.1@sha256:155c8aad10d5c838bc3bbc476c0418779086547822acb214ec5e3d49ba336907",
+    "postgres": "postgres:15.2-alpine@sha256:d9c304353c031b21e9a7e33dc4781e272a9fa802a2ab9703fe4199d72ba1422c",
+    "redis": "redis:7.4-alpine@sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7"
+  },
+  "indexing_started_at": 1789887490.507941,
+  "model_version": "qwen2.5:0.5b",
+  "run_id": "v03-native-final",
+  "source_commit": "e9cec18c0f1edb56e902cc0996e94fbed723c920",
+  "started_at": 1789887428.19666,
+  "status": "negative"
+}

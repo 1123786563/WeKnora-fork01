@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "classification": ["real-storage", "actual-runtime", "live-local-provider"],
+  "run": {
+    "date": "2026-09-20",
+    "python_environment": "/tmp/semantica-v01-clean-final",
+    "semantica_version": "0.6.8",
+    "neo4j_image": "neo4j@sha256:155c8aad10d5c838bc3bbc476c0418779086547822acb214ec5e3d49ba336907",
+    "neo4j_server_version": "2025.10.1",
+    "storage_boundary": "run-unique semantica-v02-<nonce> container and volume; each destructive operation verifies exact container ID, v02/nonce labels, pinned image, running state, and 127.0.0.1:17687 mapping",
+    "model_transport": "registered Semantica GraphReasoner provider -> 127.0.0.1:18092 Go loopback -> existing WeKnora Ollama ChatStream adapter -> qwen2.5:0.5b"
+  },
+  "roundtrip": {
+    "storage_rows": 3,
+    "writer_closed": true,
+    "owned_server_restarted": true,
+    "fresh_reader": true,
+    "allowed_document_ids": ["d1", "d2"],
+    "evidence_ids_after_projection": ["e-d1", "e-d2"],
+    "hidden_evidence_excluded": true,
+    "provenance_fields_preserved": ["assertion_id", "document_id", "revision", "evidence_ids", "quote"]
+  },
+  "rule_reasoner": {
+    "backend": "semantica-reasoner-0.6.8",
+    "registered_rule": "depends_on(x,y)&depends_on(y,z)->indirectly_depends_on(x,z)",
+    "positive": {
+      "facts": ["depends_on(a,b)", "depends_on(b,c)"],
+      "conclusion": "indirectly_depends_on(a,c)",
+      "premises": ["depends_on(a,b)", "depends_on(b,c)"]
+    },
+    "missing_premise": {"facts": ["depends_on(a,b)"], "conclusions": []},
+    "conflict": {"fact": "not_depends_on(a,b)", "classification": "actual-runtime", "status": "unavailable", "reason": "Semantica 0.6.8 Reasoner.forward_chain exposes inferred facts only and has no registered contradiction/conflict operation", "actual_inference_preserved": "indirectly_depends_on(a,c)"}
+  },
+  "model_reasoner": {
+    "availability": "live-local-provider",
+    "actual_backend": "semantica-graphreasoner-via-go-loopback",
+    "query": "构建依赖什么？请只根据图中的中文证据回答。",
+    "result": "构建依赖发布。",
+    "evidence_ids": ["e-d1", "e-d2"],
+    "raw_usage": {"prompt_tokens": 166, "completion_tokens": 5, "total_tokens": 171},
+    "window_invocations": [
+      {"kind": "pytest model contract", "raw_usage": {"prompt_tokens": 157, "completion_tokens": 5, "total_tokens": 162}},
+      {"kind": "retained evidence output", "raw_usage": {"prompt_tokens": 166, "completion_tokens": 5, "total_tokens": 171}},
+      {"kind": "full V02 acceptance replay", "raw_usage": {"prompt_tokens": 157, "completion_tokens": 5, "total_tokens": 162}}
+    ],
+    "window_raw_usage_total": {"prompt_tokens": 480, "completion_tokens": 15, "total_tokens": 495},
+    "review_repair_window": {
+      "invocations": [
+        {"kind": "composed projection/model assertion failed after provider success", "raw_usage": {"prompt_tokens": 254, "completion_tokens": 5, "total_tokens": 259}, "test_failure": "expected only e-d1 despite composed ground truth containing allowed D1 and D2"},
+        {"kind": "corrected composed projection/model acceptance", "raw_usage": {"prompt_tokens": 254, "completion_tokens": 5, "total_tokens": 259}, "test_status": "passed"},
+        {"kind": "full V02 acceptance replay", "raw_usage": {"prompt_tokens": 254, "completion_tokens": 5, "total_tokens": 259}, "test_status": "passed"}
+      ],
+      "raw_usage_total": {"prompt_tokens": 762, "completion_tokens": 15, "total_tokens": 777},
+      "cumulative_v02_raw_usage_total": {"prompt_tokens": 1242, "completion_tokens": 30, "total_tokens": 1272}
+    },
+    "composed_prompt": {"evidence_ids": ["e-d1", "e-d2"], "allowed_assertion_ids": ["a-d1-build-release", "a-d2-release-deploy"], "allowed_revisions": ["r1", "r3"], "allowed_quotes": ["发布完成后才能部署。", "构建依赖发布。"], "hidden_absent": true},
+    "round2_prompt_provenance_replay": {"test_status": "passed", "raw_usage": {"prompt_tokens": 254, "completion_tokens": 5, "total_tokens": 259}, "cumulative_v02_raw_usage_total": {"prompt_tokens": 1496, "completion_tokens": 35, "total_tokens": 1531}},
+    "usage_invariant": "total_tokens == prompt_tokens + completion_tokens",
+    "non_stream_usage_not_used": true
+  }
+}

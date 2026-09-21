@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "approved": false,
+  "proposed": {
+    "minimum_source_precision": 0.8,
+    "minimum_source_recall": 0.8,
+    "minimum_unanswerable_correct_rate": 0.9,
+    "privacy_hardgate": "no observed source outside allowed_evidence",
+    "p95_query_latency_ms": 5000,
+    "maximum_actual_tokens_per_case": 1000
+  },
+  "rationale": "The corrected frozen local candidate run retained 25 actual transport/pipeline attempts; the full bounded ledger is 68 of 80. It measured source precision 0.3333, recall 0.8333, one correct conclusion, zero correct abstentions, cold query p95 828.198ms, warm query p95 1182.497ms, and index p95 7576.293ms. The final native transaction has a revoked-source canary leak and a false privacy hard gate. These proposed thresholds remain unapproved until a corrected native access boundary and explicit user acceptance decision.",
+  "observed_gaps": [
+    "Final native transaction has one observed numeric Graph MatchType reference and five negative cases; the revoked fixture leaked its canary through native fallback while per-document revocation is unsupported.",
+    "Native and candidate effective configurations differ; native uses its Go graph pipeline while candidate uses Semantica public LLM NER/RE over the Go loopback transport.",
+    "Candidate raw usage is retained for all completed transport attempts; three cases stopped before GraphReasoner because source-validated graph retrieval was empty. Native SSE usage remains unavailable and is not estimated."
+  ]
+}

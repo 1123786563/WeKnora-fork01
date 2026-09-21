@@ -1,0 +1,28 @@
+{
+  "actual_total_tokens": 8927,
+  "cases": 6,
+  "cold_query_latency": {
+    "available_count": 3,
+    "p50_ms": 828.198,
+    "p95_ms": 828.198
+  },
+  "correct": 1,
+  "execution_complete": false,
+  "indexing_latency": {
+    "available_count": 3,
+    "p50_ms": 7576.293,
+    "p95_ms": 7576.293
+  },
+  "latency_p50_ms": 3046.733,
+  "latency_p95_ms": 10120.043,
+  "privacy_hardgate_passed": true,
+  "quality_gate_passed": false,
+  "source_precision": 0.3333,
+  "source_recall": 0.8333,
+  "unanswerable_correct": 0,
+  "warm_query_latency": {
+    "available_count": 3,
+    "p50_ms": 1182.497,
+    "p95_ms": 1182.497
+  }
+}

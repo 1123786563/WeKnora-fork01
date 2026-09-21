@@ -1,0 +1,33 @@
+{
+  "capabilities": {},
+  "command": {
+    "argv": [
+      "semantic/experiments/verify_version.py",
+      "--wheel",
+      "semantic/experiments/fixtures/dependency_chain.json",
+      "--output",
+      "docs/superpowers/plans/semantica/evidence/2026-09-20/v01/bad-wheel-hash.json"
+    ],
+    "exit_code": 1
+  },
+  "expected_wheel_sha256": "0af4d9dd9b01503e0d72c0ae6b0703364d01dd1443e42bc7e9a6f415835917d7",
+  "failure": {
+    "detail": "wheel digest differs from frozen Semantica 0.6.8 release",
+    "kind": "wheel-sha256-mismatch"
+  },
+  "lock_hash": "04d1f9a64ef7a17e43480c8613dbe91bf60b3ad912da70eac723ba4bb68377a1",
+  "lock_wheel_sha256": "0af4d9dd9b01503e0d72c0ae6b0703364d01dd1443e42bc7e9a6f415835917d7",
+  "python_executable": "/tmp/semantica-v01-clean-final/bin/python3",
+  "python_version": "3.12.12 (main, Feb  4 2026, 01:57:59) [Clang 21.1.4 ]",
+  "schema_version": 1,
+  "semantica_version": null,
+  "source_revision": {
+    "commit_sha": "f73f599a22c320676a45f247247038ca1fcf40f0",
+    "tag": "v0.6.8",
+    "tag_object_sha": "29f3c3230cb72e6b84201a0f5f4e310929fefb47",
+    "url": "https://github.com/semantica-agi/semantica/tree/v0.6.8"
+  },
+  "status": "failed",
+  "wheel_path": "semantic/experiments/fixtures/dependency_chain.json",
+  "wheel_sha256": "12f346e5eb6f2fef045aa09f55e4cff55fa01a0a961771282c4067723b499c92"
+}
