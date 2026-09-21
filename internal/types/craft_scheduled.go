@@ -118,11 +118,18 @@ var craftCronParser = cron.NewParser(
 // ValidateCronExpression reports whether expr is a canonical five-field cron
 // expression the dispatcher can schedule (spec §3: minute-level minimum
 // granularity, the Onyx contract). Callers validate at every write entrance
-// so only parseable expressions can reach the durable claim path.
+// so only parseable expressions can reach the durable claim path. TZ/CRON_TZ
+// prefixes are rejected too: robfig would happily accept them, but the
+// stored expression is the canonical form and next_run_at is always UTC —
+// a per-expression timezone is a product decision, not a parse accident.
 func ValidateCronExpression(expr string) error {
 	trimmed := strings.TrimSpace(expr)
 	if trimmed == "" {
 		return fmt.Errorf("cron expression is empty")
+	}
+	upper := strings.ToUpper(trimmed)
+	if strings.HasPrefix(upper, "TZ=") || strings.HasPrefix(upper, "CRON_TZ=") {
+		return fmt.Errorf("invalid cron expression %q: timezone prefixes are not accepted (next_run_at is UTC)", trimmed)
 	}
 	if _, err := craftCronParser.Parse(trimmed); err != nil {
 		return fmt.Errorf("invalid cron expression %q: %w", trimmed, err)

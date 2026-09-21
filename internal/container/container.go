@@ -439,6 +439,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(newCraftLifecycleService))
 	must(container.Provide(newCraftUsageService))
 	must(container.Provide(newCraftUsageViewService))
+	// SP3 (C-23): the craft scheduled-task store — owner-scoped recipe CRUD,
+	// the due-fire CAS claim (Ruling P-1) and the run ledger. The 30s
+	// dispatcher and the HTTP surface arrive in their own tasks; this is
+	// the durable layer they build on.
+	must(container.Provide(repository.NewCraftScheduledTaskRepository))
 	// The craft handler registration is deferred until every provider the
 	// session service needs (SessionService, TemporaryDocumentService, ...)
 	// is registered: dig.Invoke resolves eagerly, and W03's original position

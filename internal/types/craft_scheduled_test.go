@@ -27,13 +27,13 @@ func TestValidateCronExpression(t *testing.T) {
 		"",
 		"   ",
 		"not a cron",
-		"* * *",                 // too few fields
-		"* * * * * *",           // six fields (seconds) — not canonical here
-		"61 * * * *",            // minute out of range
-		"* 25 * * *",            // hour out of range
-		"@every 30s",            // descriptor: sub-minute period
-		"@daily",                // descriptor: not five fields
-		"TZ=UTC 0 9 * * *",      // TZ prefix is a six-field parse
+		"* * *",            // too few fields
+		"* * * * * *",      // six fields (seconds) — not canonical here
+		"61 * * * *",       // minute out of range
+		"* 25 * * *",       // hour out of range
+		"@every 30s",       // descriptor: sub-minute period
+		"@daily",           // descriptor: not five fields
+		"TZ=UTC 0 9 * * *", // TZ prefix is a six-field parse
 	}
 	for _, expr := range invalid {
 		require.Error(t, ValidateCronExpression(expr), "expected invalid: %q", expr)

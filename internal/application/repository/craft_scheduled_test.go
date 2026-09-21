@@ -106,7 +106,7 @@ func TestCraftScheduledTaskCRUDMatrix(t *testing.T) {
 			// Cron validation guards both write entrances.
 			bad := scheduledTask(1, "owner-a", "not a cron")
 			require.Error(t, repo.Create(ctx, &bad), "invalid cron must not be stored")
-			worse := reread
+			worse := *reread
 			worse.CronExpression = "* * *"
 			require.Error(t, repo.Update(ctx, &worse), "invalid cron must not be stored")
 
@@ -198,7 +198,7 @@ func TestCraftScheduledClaimDueTasksCASSingleWinner(t *testing.T) {
 // rows the dispatcher may fire: live, active, ticket due, oldest first and
 // capped by the batch.
 func TestCraftScheduledClaimDueTasksScoping(t *testing.T) {
-	db := openCraftScheduledDB(t).db
+	db := openCraftScheduledDB(t)
 	repo := NewCraftScheduledTaskRepository(db)
 	ctx := context.Background()
 
@@ -210,8 +210,10 @@ func TestCraftScheduledClaimDueTasksScoping(t *testing.T) {
 		t.CreatedAt = at
 		return t
 	}
-	require.NoError(t, repo.Create(ctx, &mk("due-old", 3*time.Hour)))
-	require.NoError(t, repo.Create(ctx, &mk("due-new", time.Hour)))
+	dueOld := mk("due-old", 3*time.Hour)
+	dueNew := mk("due-new", time.Hour)
+	require.NoError(t, repo.Create(ctx, &dueOld))
+	require.NoError(t, repo.Create(ctx, &dueNew))
 
 	paused := mk("paused", 2*time.Hour)
 	paused.Status = types.CraftScheduledTaskStatusPaused
@@ -243,7 +245,7 @@ func TestCraftScheduledClaimDueTasksScoping(t *testing.T) {
 // TestCraftScheduledRunsKeysetPagination pages the run history by
 // started_at descending with the strict-before cursor and a clamped limit.
 func TestCraftScheduledRunsKeysetPagination(t *testing.T) {
-	db := openCraftScheduledDB(t).db
+	db := openCraftScheduledDB(t)
 	repo := NewCraftScheduledTaskRepository(db)
 	ctx := context.Background()
 
@@ -263,17 +265,17 @@ func TestCraftScheduledRunsKeysetPagination(t *testing.T) {
 
 	page, err := repo.ListRunsByTask(ctx, task.ID, nil, 2)
 	require.NoError(t, err)
-	require.Equal(t, []string{"r5", "r4"}, runIDs(page))
+	require.Equal(t, []string{"r5", "r4"}, scheduledRunIDs(page))
 
 	cursor := page[len(page)-1].StartedAt
 	page, err = repo.ListRunsByTask(ctx, task.ID, cursor, 2)
 	require.NoError(t, err)
-	require.Equal(t, []string{"r3", "r2"}, runIDs(page))
+	require.Equal(t, []string{"r3", "r2"}, scheduledRunIDs(page))
 
 	cursor = page[len(page)-1].StartedAt
 	page, err = repo.ListRunsByTask(ctx, task.ID, cursor, 100)
 	require.NoError(t, err)
-	require.Equal(t, []string{"r1"}, runIDs(page), "the last page drains the tail")
+	require.Equal(t, []string{"r1"}, scheduledRunIDs(page), "the last page drains the tail")
 
 	cursor = page[0].StartedAt
 	page, err = repo.ListRunsByTask(ctx, task.ID, cursor, 100)
@@ -285,7 +287,7 @@ func TestCraftScheduledRunsKeysetPagination(t *testing.T) {
 	require.Len(t, page, 5, "a non-positive limit falls back to the default")
 }
 
-func runIDs(runs []types.CraftScheduledTaskRun) []string {
+func scheduledRunIDs(runs []types.CraftScheduledTaskRun) []string {
 	ids := make([]string, 0, len(runs))
 	for _, r := range runs {
 		ids = append(ids, r.ID)
@@ -298,7 +300,7 @@ func runIDs(runs []types.CraftScheduledTaskRun) []string {
 // state — including skipped — is not; a terminal write lands status,
 // summary, error fields and finished_at; an empty string clears to NULL.
 func TestCraftScheduledRunLifecycleAndInFlight(t *testing.T) {
-	db := openCraftScheduledDB(t).db
+	db := openCraftScheduledDB(t)
 	repo := NewCraftScheduledTaskRepository(db)
 	ctx := context.Background()
 
@@ -347,7 +349,11 @@ func TestCraftScheduledRunLifecycleAndInFlight(t *testing.T) {
 	require.NoError(t, repo.InsertRun(ctx, &fail))
 	require.NoError(t, repo.UpdateRunStatus(ctx, fail.ID,
 		types.CraftScheduledRunStatusFailed, "model_error", "boom", "", &fin))
-	require.NoError(t, db.Where("id = ?", fail.ID).First(&stored).Error)
+	// A fresh destination: gorm's First folds a pre-populated primary key
+	// into the WHERE clause, so a reused struct would query the wrong id.
+	var storedFail types.CraftScheduledTaskRun
+	require.NoError(t, db.Where("id = ?", fail.ID).First(&storedFail).Error)
+	stored = storedFail
 	require.NotNil(t, stored.ErrorClass)
 	require.Equal(t, "model_error", *stored.ErrorClass)
 	require.NotNil(t, stored.ErrorDetail)
