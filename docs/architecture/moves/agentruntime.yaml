@@ -23,13 +23,13 @@ move_packages:
   - from: internal/agent/recoverytest
     to: internal/modules/agentruntime/agent/recoverytest
   - from: internal/agent/recoverytest/provider
-    to: internal/modules/agentruntime/agent/provider
+    to: internal/modules/agentruntime/agent/recoverytest/provider
   - from: internal/agent/runtime
     to: internal/modules/agentruntime/agent/runtime
   - from: internal/agent/skills
     to: internal/modules/agentruntime/agent/skills
   - from: internal/agent/skills/skillhub
-    to: internal/modules/agentruntime/agent/skillhub
+    to: internal/modules/agentruntime/agent/skills/skillhub
   - from: internal/agent/subagents
     to: internal/modules/agentruntime/agent/subagents
   - from: internal/agent/token
@@ -297,10 +297,10 @@ owned_files:
     - internal/modules/agentruntime/agent/opencode
     - internal/modules/agentruntime/agent/persona
     - internal/modules/agentruntime/agent/recoverytest
-    - internal/modules/agentruntime/agent/provider
+    - internal/modules/agentruntime/agent/recoverytest/provider
     - internal/modules/agentruntime/agent/runtime
     - internal/modules/agentruntime/agent/skills
-    - internal/modules/agentruntime/agent/skillhub
+    - internal/modules/agentruntime/agent/skills/skillhub
     - internal/modules/agentruntime/agent/subagents
     - internal/modules/agentruntime/agent/token
     - internal/modules/agentruntime/agent/tools

@@ -21,10 +21,10 @@ Agent 执行引擎、Run/Attempt、工具、审批、Compaction、Memory、Model
 | `internal/agent/opencode` | `internal/modules/agentruntime/agent/opencode` |
 | `internal/agent/persona` | `internal/modules/agentruntime/agent/persona` |
 | `internal/agent/recoverytest` | `internal/modules/agentruntime/agent/recoverytest` |
-| `internal/agent/recoverytest/provider` | `internal/modules/agentruntime/agent/provider` |
+| `internal/agent/recoverytest/provider` | `internal/modules/agentruntime/agent/recoverytest/provider` |
 | `internal/agent/runtime` | `internal/modules/agentruntime/agent/runtime` |
 | `internal/agent/skills` | `internal/modules/agentruntime/agent/skills` |
-| `internal/agent/skills/skillhub` | `internal/modules/agentruntime/agent/skillhub` |
+| `internal/agent/skills/skillhub` | `internal/modules/agentruntime/agent/skills/skillhub` |
 | `internal/agent/subagents` | `internal/modules/agentruntime/agent/subagents` |
 | `internal/agent/token` | `internal/modules/agentruntime/agent/token` |
 | `internal/agent/tools` | `internal/modules/agentruntime/agent/tools` |
