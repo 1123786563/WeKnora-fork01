@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
+	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
