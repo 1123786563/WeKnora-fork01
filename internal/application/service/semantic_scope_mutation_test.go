@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Tencent/WeKnora/internal/application/access"
+	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"

@@ -20,7 +20,7 @@ import (
 
 	"golang.org/x/net/http/httpproxy"
 
-	"github.com/Tencent/WeKnora/internal/ipclass"
+	"github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
 )
 
 // XSS 防护相关正则表达式
