@@ -12,9 +12,9 @@
 | A8 system+policy | eb78d141a | dfd343dc5 | system 零搬迁（F0 背书）；policy 5 包/25 文件 |
 
 屏障提交：
-- `0bb9b354f` composition 切换：container.go 9 条 import 翻转（browserskill/execution/mcp/embedding/limiter/ollama/sandbox/storageallowlist/web_search——最后一条为首次遗漏后补翻）、channels/im/service.go 2 条翻转、删除 batch-a2 全部 12 个别名目录（含 `internal/infrastructure/web_search` 孤儿别名）
+- `0bb9b354f` composition 切换：container.go 10 条 import 翻转（browserskill/execution/mcp/models-chat/models-embedding/models-limiter/models-ollama/sandbox/storageallowlist/web_search——最后一条为首次遗漏后补翻）、channels/im/service.go 2 条翻转、删除 batch-a2 全部 12 个别名目录（含 `internal/infrastructure/web_search` 孤儿别名）
 - `4c8dbb204` guard 例外：batch-a2 新暴露 6 条预存耦合（精确路径，B-airesource×1 / B-channels×3 / B-execution×1，加 IA1 的 4 条共 10 条在册）
-- `67af0b743` 冻结能力入口：`docs/architecture/frozen-entrypoints-batch-a2.md`（execution/airesource/agentcatalog/policy 共 253 符号/19 包，供 A9–A14 消费；冻结规则 + 10 条在册耦合）
+- `67af0b743` 冻结能力入口：`docs/architecture/frozen-entrypoints-batch-a2.md`（execution/airesource/agentcatalog/policy 共 253 符号/23 包，供 A9–A14 消费；冻结规则 + 10 条在册耦合）
 - lint 修复（gofmt/gofumpt 若干、web_search alias 删除）随 0bb9b354f 一并入账
 
 ## 2. 合并冲突（A 系 import 修复相交，均按"两侧新路径并集"解决）
