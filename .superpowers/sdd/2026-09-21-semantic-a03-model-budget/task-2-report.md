@@ -50,3 +50,14 @@ Covering tests: `internal/application/repository/semantic_model_invocation_test.
 | `go test ./internal/application/repository ./internal/application/service ./internal/config -run '^TestSemanticModel(Capability|Invocation)' -count=1` | PASS — repository, service, and config packages all exit 0 |
 
 The controller independently verified isolated PostgreSQL migration up/down/up with `go test -tags semantic_integration ./internal/database -run '^TestSemanticPostgresMigrationUpDownUp$' -count=1` (PASS); its DSN remains private. SQLite migration cycling was retained from the original Task 2 evidence.
+
+## Review remediation — round 2
+
+- `EnsureRun` now normalizes expiry to UTC seconds (the A01 wire precision), persists it, and includes it in the complete immutable binding comparison. An otherwise-identical owner/run with a different expiry is a conflict; concurrent identical requests still converge to one row.
+- Invalid-authority coverage now injects recording invocation and budget stores. The tests prove zero `EnsureRun` and `EnsureTaskBudget` calls for expired, missing-expiry, wrong-audience, tampered, revoked, scope-ref/binding mismatch, missing/deleted owner KB, disabled policy, stale-policy, and unknown-rate failures.
+
+Covering files: `internal/application/repository/semantic_model_invocation_test.go` and `internal/application/service/semantic_model_capability_test.go`.
+
+| Command | Observed result |
+| --- | --- |
+| `go test ./internal/application/repository ./internal/application/service ./internal/config -run '^TestSemanticModel(Capability|Invocation)' -count=1` | PASS — repository, service, config exit 0 |

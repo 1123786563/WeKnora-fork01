@@ -112,3 +112,11 @@ func TestSemanticModelInvocationEnsureRunConvergesConcurrently(t *testing.T) {
 	require.NoError(t, store.db.Raw("SELECT COUNT(*) FROM semantic_model_invocation_runs WHERE tenant_id=? AND run_id=?", "7", capability.RunID).Scan(&runs).Error)
 	require.Equal(t, 1, runs)
 }
+
+func TestSemanticModelInvocationEnsureRunRejectsExpiryBindingDrift(t *testing.T) {
+	store := NewSemanticModelInvocationStore(newSemanticSQLiteTestDB(t))
+	capability := types.SemanticModelCapability{OwnerTenantID: 7, KBID: "kb-1", ScopeHash: "hash", PolicyVersion: 3, RunID: "semantic-run:expiry", CallID: "semantic-call:expiry", Funding: "byok", MaxCallsPerTask: 1, MaxInputTokensPerCall: 10, MaxOutputTokensPerCall: 20, MaxInputTokensPerTask: 10, MaxOutputTokensPerTask: 20, ExpiresAt: time.Now().UTC().Truncate(time.Second).Add(time.Hour)}
+	require.NoError(t, store.EnsureRun(context.Background(), capability))
+	capability.ExpiresAt = capability.ExpiresAt.Add(time.Minute)
+	require.ErrorIs(t, store.EnsureRun(context.Background(), capability), ErrSemanticModelInvocationConflict)
+}

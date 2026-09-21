@@ -38,12 +38,13 @@ func (s *SemanticModelInvocationStore) EnsureRun(ctx context.Context, c types.Se
 	return err
 }
 func (s *SemanticModelInvocationStore) ensureRunTx(tx *gorm.DB, c types.SemanticModelCapability) error {
-	err := tx.Exec("INSERT INTO semantic_model_invocation_runs(tenant_id,run_id,kb_id,scope_hash,policy_version,model_id,funding,price_version,max_input_tokens_per_call,max_output_tokens_per_call,per_call_upper_micro,max_calls_per_task,max_input_tokens_per_task,max_output_tokens_per_task,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,run_id) DO NOTHING", semanticUint(c.OwnerTenantID), c.RunID, c.KBID, c.ScopeHash, semanticUint(c.PolicyVersion), c.ModelID, c.Funding, c.PriceVersion, c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall, c.PerCallUpperMicro, c.MaxCallsPerTask, c.MaxInputTokensPerTask, c.MaxOutputTokensPerTask, c.ExpiresAt.UTC()).Error
+	expiresAt := c.ExpiresAt.UTC().Truncate(time.Second)
+	err := tx.Exec("INSERT INTO semantic_model_invocation_runs(tenant_id,run_id,kb_id,scope_hash,policy_version,model_id,funding,price_version,max_input_tokens_per_call,max_output_tokens_per_call,per_call_upper_micro,max_calls_per_task,max_input_tokens_per_task,max_output_tokens_per_task,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,run_id) DO NOTHING", semanticUint(c.OwnerTenantID), c.RunID, c.KBID, c.ScopeHash, semanticUint(c.PolicyVersion), c.ModelID, c.Funding, c.PriceVersion, c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall, c.PerCallUpperMicro, c.MaxCallsPerTask, c.MaxInputTokensPerTask, c.MaxOutputTokensPerTask, expiresAt).Error
 	if err != nil {
 		return err
 	}
 	var n int
-	if err := tx.Raw("SELECT COUNT(*) FROM semantic_model_invocation_runs WHERE tenant_id=? AND run_id=? AND kb_id=? AND scope_hash=? AND policy_version=? AND model_id=? AND funding=? AND price_version=? AND max_input_tokens_per_call=? AND max_output_tokens_per_call=? AND per_call_upper_micro=? AND max_calls_per_task=? AND max_input_tokens_per_task=? AND max_output_tokens_per_task=?", semanticUint(c.OwnerTenantID), c.RunID, c.KBID, c.ScopeHash, semanticUint(c.PolicyVersion), c.ModelID, c.Funding, c.PriceVersion, c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall, c.PerCallUpperMicro, c.MaxCallsPerTask, c.MaxInputTokensPerTask, c.MaxOutputTokensPerTask).Scan(&n).Error; err != nil {
+	if err := tx.Raw("SELECT COUNT(*) FROM semantic_model_invocation_runs WHERE tenant_id=? AND run_id=? AND kb_id=? AND scope_hash=? AND policy_version=? AND model_id=? AND funding=? AND price_version=? AND max_input_tokens_per_call=? AND max_output_tokens_per_call=? AND per_call_upper_micro=? AND max_calls_per_task=? AND max_input_tokens_per_task=? AND max_output_tokens_per_task=? AND expires_at=?", semanticUint(c.OwnerTenantID), c.RunID, c.KBID, c.ScopeHash, semanticUint(c.PolicyVersion), c.ModelID, c.Funding, c.PriceVersion, c.MaxInputTokensPerCall, c.MaxOutputTokensPerCall, c.PerCallUpperMicro, c.MaxCallsPerTask, c.MaxInputTokensPerTask, c.MaxOutputTokensPerTask, expiresAt).Scan(&n).Error; err != nil {
 		return err
 	}
 	if n != 1 {
