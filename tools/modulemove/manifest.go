@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // MoveManifest 与 docs/architecture/moves/README.md 的 LOCKED schema 一一对应。
@@ -58,12 +62,40 @@ type IntegrationPoints struct {
 // LoadManifestStrict 以 KnownFields(true) 严格加载一份 manifest。
 // 任何 schema 外字段、格式错误都返回错误。
 func LoadManifestStrict(path string) (*MoveManifest, error) {
-	return nil, fmt.Errorf("not implemented: modulemove.LoadManifestStrict(%s)", path)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open manifest: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	dec := yaml.NewDecoder(f)
+	dec.KnownFields(true)
+	var m MoveManifest
+	if err := dec.Decode(&m); err != nil {
+		return nil, fmt.Errorf("strict decode %s: %w", path, err)
+	}
+	if m.Module == "" {
+		return nil, fmt.Errorf("strict decode %s: module 字段为空", path)
+	}
+	return &m, nil
 }
 
-// ListManifestModules 返回 manifest 目录下全部模块 id（排序，剔除 README.md 等非 YAML 文件）。
+// ListManifestModules 返回 manifest 目录下全部模块 id（排序，剔除非 .yaml 文件）。
 func ListManifestModules(root string) ([]string, error) {
-	return nil, fmt.Errorf("not implemented: modulemove.ListManifestModules(%s)", root)
+	dir := filepath.Join(root, ManifestsDir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read manifests dir: %w", err)
+	}
+	var ids []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		ids = append(ids, strings.TrimSuffix(e.Name(), ".yaml"))
+	}
+	sort.Strings(ids)
+	return ids, nil
 }
 
 // ManifestPath 返回模块 manifest 的仓库相对路径。
@@ -71,13 +103,16 @@ func ManifestPath(root, module string) string {
 	return root + "/" + ManifestsDir + "/" + module + ".yaml"
 }
 
-// moduleIDRE 校验模块 id 形态（小写字母数字，可含连字符）。
+// validModuleID 校验模块 id 形态（小写字母数字，可含连字符）。
 func validModuleID(id string) bool {
 	if id == "" || strings.ContainsAny(id, "/\\") {
 		return false
 	}
 	for _, r := range id {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+		isLower := r >= 'a' && r <= 'z'
+		isDigit := r >= '0' && r <= '9'
+		isDash := r == '-'
+		if !isLower && !isDigit && !isDash {
 			return false
 		}
 	}

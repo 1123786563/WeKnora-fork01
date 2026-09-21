@@ -87,7 +87,7 @@ func demoGoPackages(root string) map[string][]GoPackage {
 
 // fakeGoList 按精确 pattern 返回预置包集合；未登记的 pattern 返回空集。
 func fakeGoList(byPattern map[string][]GoPackage) GoLister {
-	return func(pattern string) ([]GoPackage, error) {
+	return func(_, pattern string) ([]GoPackage, error) {
 		return byPattern[pattern], nil
 	}
 }
@@ -293,7 +293,7 @@ func TestVerifyAllRejectsDuplicateOwnership(t *testing.T) {
 	a := loadDemoManifest(t)
 
 	bYAML := strings.Replace(demoManifestYAML, "module: demo", "module: beta", 1)
-	bYAML = strings.Replace(bYAML, "B-demo", "B-beta", -1)
+	bYAML = strings.ReplaceAll(bYAML, "B-demo", "B-beta")
 	bPath := filepath.Join(t.TempDir(), "beta.yaml")
 	if err := os.WriteFile(bPath, []byte(bYAML), 0o644); err != nil {
 		t.Fatal(err)
@@ -316,7 +316,7 @@ func TestVerifyAllRejectsDuplicateTarget(t *testing.T) {
 	bYAML := strings.Replace(demoManifestYAML, "module: demo", "module: beta", 1)
 	bYAML = strings.Replace(bYAML, "from: internal/demo", "from: internal/beta", 1)
 	bYAML = strings.Replace(bYAML, "  - internal/demo\n", "  - internal/beta\n", 1)
-	bYAML = strings.Replace(bYAML, "B-demo", "B-beta", -1)
+	bYAML = strings.ReplaceAll(bYAML, "B-demo", "B-beta")
 	bPath := filepath.Join(t.TempDir(), "beta.yaml")
 	if err := os.WriteFile(bPath, []byte(bYAML), 0o644); err != nil {
 		t.Fatal(err)
@@ -339,7 +339,7 @@ func TestVerifyAllRejectsDuplicateLegacyPath(t *testing.T) {
 	bYAML := strings.Replace(demoManifestYAML, "module: demo", "module: beta", 1)
 	bYAML = strings.Replace(bYAML, "from: internal/demo", "from: internal/beta", 1)
 	bYAML = strings.Replace(bYAML, "  - internal/demo\n", "  - internal/beta\n", 1)
-	bYAML = strings.Replace(bYAML, "B-demo", "B-beta", -1)
+	bYAML = strings.ReplaceAll(bYAML, "B-demo", "B-beta")
 	bPath := filepath.Join(t.TempDir(), "beta.yaml")
 	if err := os.WriteFile(bPath, []byte(bYAML), 0o644); err != nil {
 		t.Fatal(err)
@@ -364,7 +364,7 @@ func TestVerifyAllRejectsNestedFromAcrossManifests(t *testing.T) {
 	bYAML = strings.Replace(bYAML, "to: internal/modules/demo", "to: internal/modules/beta/sub", 1)
 	bYAML = strings.Replace(bYAML, "  - internal/demo\n", "  - internal/demo/sub\n", 1)
 	bYAML = strings.Replace(bYAML, "module: demo", "module: beta", 1)
-	bYAML = strings.Replace(bYAML, "B-demo", "B-beta", -1)
+	bYAML = strings.ReplaceAll(bYAML, "B-demo", "B-beta")
 	bPath := filepath.Join(t.TempDir(), "beta.yaml")
 	if err := os.WriteFile(bPath, []byte(bYAML), 0o644); err != nil {
 		t.Fatal(err)

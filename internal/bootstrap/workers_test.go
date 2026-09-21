@@ -13,7 +13,7 @@ type recordingWorkerSink struct {
 	calls []string
 }
 
-func (s *recordingWorkerSink) RegisterTaskHandler(taskType string, handler any) {
+func (s *recordingWorkerSink) RegisterTaskHandler(taskType string, _ any) {
 	s.calls = append(s.calls, taskType)
 }
 

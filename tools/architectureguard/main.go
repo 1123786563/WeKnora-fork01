@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -36,13 +37,17 @@ func main() {
 }
 
 func printReport(f *os.File, rep Report) {
-	fmt.Fprintf(f, "architectureguard: literal=%d apiKeyRoute=%d handle=%d total=%d | redis=%d lite=%d | hooks=%d | modules=%d\n",
+	var b strings.Builder
+	_, _ = fmt.Fprintf(&b, "architectureguard: literal=%d apiKeyRoute=%d handle=%d total=%d | "+
+		"redis=%d lite=%d | hooks=%d | modules=%d\n",
 		rep.Summary.RoutesLiteral, rep.Summary.RoutesAPIKey, rep.Summary.RoutesHandle, rep.Summary.RoutesTotal,
 		rep.Summary.WorkerRedis, rep.Summary.WorkerLite, rep.Summary.Hooks, rep.Summary.ModulesScanned)
 	for _, d := range rep.Diagnostics {
-		fmt.Fprintln(f, d.String())
+		b.WriteString(d.String())
+		b.WriteString("\n")
 	}
 	if len(rep.Diagnostics) == 0 {
-		fmt.Fprintln(f, "architectureguard: OK (0 violations)")
+		b.WriteString("architectureguard: OK (0 violations)\n")
 	}
+	_, _ = fmt.Fprint(f, b.String())
 }

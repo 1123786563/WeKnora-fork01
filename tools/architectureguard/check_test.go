@@ -253,8 +253,9 @@ func TestGuardCleanAtHead(t *testing.T) {
 	if len(rep.Diagnostics) != 0 {
 		t.Fatalf("HEAD 上守卫应零违规，得到 %d 条:\n%s", len(rep.Diagnostics), joinChecks(rep.Diagnostics))
 	}
-	if rep.Summary.RoutesTotal != 632 || rep.Summary.WorkerRedis != 23 || rep.Summary.WorkerLite != 23 || rep.Summary.Hooks != 58 {
-		t.Errorf("发现规模偏离 F0 基线: %+v", rep.Summary)
+	if rep.Summary.RoutesTotal != wantRouteTotal || rep.Summary.WorkerRedis != wantWorkersPerMix ||
+		rep.Summary.WorkerLite != wantWorkersPerMix || rep.Summary.Hooks != wantHooks {
+		t.Errorf("发现规模偏离基线: %+v", rep.Summary)
 	}
 }
 

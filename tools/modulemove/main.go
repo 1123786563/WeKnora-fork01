@@ -20,10 +20,16 @@ const defaultRoot = "."
 const ManifestsDir = "docs/architecture/moves"
 
 func main() {
-	root := flag.String("root", defaultRoot, "仓库根目录")
-	all := flag.Bool("all", false, "校验全部 manifest 并检查所有权重叠")
-	module := flag.String("module", "", "校验单个模块的 manifest")
-	flag.Parse()
+	args := os.Args[1:]
+	// 允许可选的 "verify" 子命令（go run ./tools/modulemove verify --all）。
+	if len(args) > 0 && args[0] == "verify" {
+		args = args[1:]
+	}
+	fs := flag.NewFlagSet("modulemove verify", flag.ExitOnError)
+	root := fs.String("root", defaultRoot, "仓库根目录")
+	all := fs.Bool("all", false, "校验全部 manifest 并检查所有权重叠")
+	module := fs.String("module", "", "校验单个模块的 manifest")
+	_ = fs.Parse(args)
 
 	if !*all && *module == "" {
 		fmt.Fprintln(os.Stderr, "usage: modulemove verify [--all | --module <id>] [--root <repo>]")

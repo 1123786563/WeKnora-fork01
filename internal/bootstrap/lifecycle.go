@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 )
@@ -30,7 +31,17 @@ func NewLifecycleRegistry(sink LifecycleSink) *LifecycleRegistry {
 // Register 登记一个生命周期挂点。name 重复时返回以 "already registered" 开头的
 // 错误，且不调用底层 sink。
 func (r *LifecycleRegistry) Register(name string, hook LifecycleHook) error {
+	if name == "" {
+		return fmt.Errorf("invalid lifecycle registration: hook name must be non-empty")
+	}
+	if hook == nil {
+		return fmt.Errorf("invalid lifecycle registration: hook %q must be non-nil", name)
+	}
 	r.mu.Lock()
+	if _, dup := r.hooks[name]; dup {
+		r.mu.Unlock()
+		return fmt.Errorf("already registered: lifecycle hook %s", name)
+	}
 	r.hooks[name] = hook
 	r.mu.Unlock()
 	if r.sink != nil {

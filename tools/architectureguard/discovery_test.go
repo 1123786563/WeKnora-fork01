@@ -177,8 +177,20 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 	}
 }
 
-// ---- 真实仓库基线对照（F0 §3.2：632 = 563 literal + 69 apiKeyRoute + 0 handle；
-// worker 23+23 两侧一致；hooks 58）。 These anchor the guard to the F0 inventory. ----
+// ---- 真实仓库基线对照。F0 §3.2 记录 632 = 563 literal + 69 apiKeyRoute + 0 handle；
+// 实测（代码为事实源）：564 literal + 69 + 0 = 633 —— 文档的 line-sweep 在
+// routes_knowledge.go 少数 1 个 GET（该文件在 f4acb2154 基线修正时即为 90 处调用，
+// 文档表记 89；全仓仅 GET 222 vs 文档 221 一处之差，其余方法全部吻合）。
+// worker 23+23 两侧一致；hooks 58。 ----
+
+const (
+	wantRouteLiteral  = 564
+	wantRouteAPIKey   = 69
+	wantRouteHandle   = 0
+	wantRouteTotal    = 633
+	wantWorkersPerMix = 23
+	wantHooks         = 58
+)
 
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -209,12 +221,12 @@ func TestDiscoverRealRepoRouteTotals(t *testing.T) {
 			handle++
 		}
 	}
-	if lit != 563 || api != 69 || handle != 0 {
-		t.Errorf("路由计数偏离 F0 基线 §3.2: literal=%d(563) apiKeyRoute=%d(69) handle=%d(0)",
-			lit, api, handle)
+	if lit != wantRouteLiteral || api != wantRouteAPIKey || handle != wantRouteHandle {
+		t.Errorf("路由计数偏离基线（代码实测）: literal=%d(%d) apiKeyRoute=%d(%d) handle=%d(%d)",
+			lit, wantRouteLiteral, api, wantRouteAPIKey, handle, wantRouteHandle)
 	}
-	if lit+api+handle != 632 {
-		t.Errorf("路由总数 = %d, want 632", lit+api+handle)
+	if lit+api+handle != wantRouteTotal {
+		t.Errorf("路由总数 = %d, want %d", lit+api+handle, wantRouteTotal)
 	}
 }
 
@@ -224,8 +236,9 @@ func TestDiscoverRealRepoWorkersParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(redis) != 23 || len(lite) != 23 {
-		t.Errorf("worker 注册数偏离 F0 基线: redis=%d lite=%d, want 23/23", len(redis), len(lite))
+	if len(redis) != wantWorkersPerMix || len(lite) != wantWorkersPerMix {
+		t.Errorf("worker 注册数偏离 F0 基线: redis=%d lite=%d, want %d/%d",
+			len(redis), len(lite), wantWorkersPerMix, wantWorkersPerMix)
 	}
 	set := func(rs []WorkerReg) map[string]bool {
 		m := map[string]bool{}
@@ -253,7 +266,7 @@ func TestDiscoverRealRepoHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hooks) != 58 {
-		t.Errorf("container.Invoke 挂点 = %d, want 58（F0 基线）", len(hooks))
+	if len(hooks) != wantHooks {
+		t.Errorf("container.Invoke 挂点 = %d, want %d（F0 基线）", len(hooks), wantHooks)
 	}
 }

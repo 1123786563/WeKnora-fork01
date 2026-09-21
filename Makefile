@@ -1,4 +1,4 @@
-.PHONY: help build run test clean docker-build-app docker-build-docreader docker-build-frontend docker-build-all docker-run migrate-up migrate-down docker-restart docker-stop start-all stop-all start-ollama stop-ollama build-images build-images-app build-images-docreader build-images-frontend clean-images check-env list-containers pull-images show-platform dev-start dev-stop dev-restart dev-logs dev-status dev-app dev-frontend docs install-swagger build-lite run-lite package-lite anydoc-lib build-anydoc
+.PHONY: help build run test clean verify-module-moves check-backend-architecture docker-build-app docker-build-docreader docker-build-frontend docker-build-all docker-run migrate-up migrate-down docker-restart docker-stop start-all stop-all start-ollama stop-ollama build-images build-images-app build-images-docreader build-images-frontend clean-images check-env list-containers pull-images show-platform dev-start dev-stop dev-restart dev-logs dev-status dev-app dev-frontend docs install-swagger build-lite run-lite package-lite anydoc-lib build-anydoc
 
 # Show help
 help:
@@ -242,6 +242,18 @@ fmt:
 # Lint code
 lint:
 	golangci-lint run
+
+# ---- 后端模块化 Pass A 守卫（任务 F2）----
+
+# 校验全部 16 份搬迁清单（docs/architecture/moves/*.yaml）：
+# 严格 schema、别名 1:1、源目录完整性、部分搬迁检测、所有权重叠、禁改文件。
+verify-module-moves:
+	go run ./tools/modulemove verify --all
+
+# 后端架构守卫：按 F0 基线 §3.2 口径发现路由/worker/hook，
+# 校验 manifest 覆盖、注册唯一性、Redis/Lite 一致、模块间禁互导、横向目录遗留文件。
+check-backend-architecture:
+	go run ./tools/architectureguard
 
 # Install dependencies
 deps:

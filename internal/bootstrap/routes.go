@@ -42,8 +42,13 @@ func (r *RouteRegistry) Register(method, path string) error {
 	if method == "" || path == "" {
 		return fmt.Errorf("invalid route registration: method and path must be non-empty")
 	}
+	rt := Route{Method: method, Path: path}
 	r.mu.Lock()
-	r.routes[Route{Method: method, Path: path}] = struct{}{}
+	if _, dup := r.routes[rt]; dup {
+		r.mu.Unlock()
+		return fmt.Errorf("already registered: route %s %s", method, path)
+	}
+	r.routes[rt] = struct{}{}
 	r.mu.Unlock()
 	if r.sink != nil {
 		r.sink.HandleRoute(method, path)

@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 )
@@ -36,7 +37,14 @@ func (r *WorkerRegistry) Mode() string {
 // Register 登记一个任务类型处理器。taskType 重复时返回以 "already registered"
 // 开头的错误，且不调用底层 sink。
 func (r *WorkerRegistry) Register(taskType string, handler any) error {
+	if taskType == "" {
+		return fmt.Errorf("invalid worker registration: task type must be non-empty")
+	}
 	r.mu.Lock()
+	if _, dup := r.handlers[taskType]; dup {
+		r.mu.Unlock()
+		return fmt.Errorf("already registered: worker task type %s (mode %s)", taskType, r.mode)
+	}
 	r.handlers[taskType] = handler
 	r.mu.Unlock()
 	if r.sink != nil {
@@ -60,5 +68,32 @@ func (r *WorkerRegistry) TaskTypes() []string {
 // VerifyWorkerParity 校验两个模式（Redis vs Lite）登记的任务类型集合完全一致；
 // 不一致时返回的错误包含两侧差集（排序、去重）。
 func VerifyWorkerParity(redis, lite *WorkerRegistry) error {
-	return nil
+	if redis == nil || lite == nil {
+		return fmt.Errorf("worker parity check requires two non-nil registries")
+	}
+	rs, ls := redis.TaskTypes(), lite.TaskTypes()
+	rset := make(map[string]bool, len(rs))
+	for _, tt := range rs {
+		rset[tt] = true
+	}
+	lset := make(map[string]bool, len(ls))
+	for _, tt := range ls {
+		lset[tt] = true
+	}
+	var onlyRedis, onlyLite []string
+	for _, tt := range rs {
+		if !lset[tt] {
+			onlyRedis = append(onlyRedis, tt)
+		}
+	}
+	for _, tt := range ls {
+		if !rset[tt] {
+			onlyLite = append(onlyLite, tt)
+		}
+	}
+	if len(onlyRedis) == 0 && len(onlyLite) == 0 {
+		return nil
+	}
+	return fmt.Errorf("worker parity mismatch (mode %q vs %q): only-in-%s=%v, only-in-%s=%v",
+		redis.mode, lite.mode, redis.mode, onlyRedis, lite.mode, onlyLite)
 }

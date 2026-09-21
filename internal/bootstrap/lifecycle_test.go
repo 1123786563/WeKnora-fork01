@@ -15,14 +15,14 @@ type recordingLifecycleSink struct {
 	calls []string
 }
 
-func (s *recordingLifecycleSink) RegisterLifecycleHook(name string, hook LifecycleHook) {
+func (s *recordingLifecycleSink) RegisterLifecycleHook(name string, _ LifecycleHook) {
 	s.calls = append(s.calls, name)
 }
 
 func TestLifecycleRegistryRejectsDuplicateHook(t *testing.T) {
 	sink := &recordingLifecycleSink{}
 	reg := NewLifecycleRegistry(sink)
-	hook := func(ctx context.Context) error { return nil }
+	hook := func(_ context.Context) error { return nil }
 
 	require.NoError(t, reg.Register("startTemporaryDocumentCleanup", hook))
 
@@ -39,8 +39,8 @@ func TestLifecycleRegistryRejectsDuplicateHook(t *testing.T) {
 func TestLifecycleRegistryNamesSortedSnapshot(t *testing.T) {
 	reg := NewLifecycleRegistry(nil)
 
-	require.NoError(t, reg.Register("registerPoolCleanup", func(ctx context.Context) error { return nil }))
-	require.NoError(t, reg.Register("registerLangfuseCleanup", func(ctx context.Context) error { return nil }))
+	require.NoError(t, reg.Register("registerPoolCleanup", func(_ context.Context) error { return nil }))
+	require.NoError(t, reg.Register("registerLangfuseCleanup", func(_ context.Context) error { return nil }))
 
 	assert.Equal(t, []string{"registerLangfuseCleanup", "registerPoolCleanup"}, reg.Names())
 }
@@ -48,7 +48,7 @@ func TestLifecycleRegistryNamesSortedSnapshot(t *testing.T) {
 func TestLifecycleRegistryStoresAndRunsHooks(t *testing.T) {
 	reg := NewLifecycleRegistry(nil)
 	called := false
-	require.NoError(t, reg.Register("hook", func(ctx context.Context) error {
+	require.NoError(t, reg.Register("hook", func(_ context.Context) error {
 		called = true
 		return errors.New("boom")
 	}))

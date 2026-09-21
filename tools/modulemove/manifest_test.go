@@ -20,7 +20,8 @@ func TestLoadManifestStrictAcceptsCompleteManifest(t *testing.T) {
 	if m.Module != "demo" {
 		t.Fatalf("module = %q, want demo", m.Module)
 	}
-	if len(m.MovePackages) != 1 || m.MovePackages[0].From != "internal/demo" || m.MovePackages[0].To != "internal/modules/demo" {
+	if len(m.MovePackages) != 1 || m.MovePackages[0].From != "internal/demo" ||
+		m.MovePackages[0].To != "internal/modules/demo" {
 		t.Fatalf("move_packages 解析错误: %+v", m.MovePackages)
 	}
 	if len(m.AliasObligations) != 1 || m.AliasObligations[0].OldImportPath != "internal/demo" {
