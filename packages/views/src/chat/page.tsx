@@ -683,6 +683,60 @@ export function ChatPage(props: ChatPageProps) {
   /* main.wk-chat-page utilities carry the chat.css parity values; the
      retained guard block in chat.css keeps beating the legacy styles.css
      .wk-chat-page rule until the Orchestrator deletes that block. */
+  /* Vue creatChat.vue 空态：composer 属于 .dialogue-answers 列（title → 推荐问题 → 输入区）；
+   * 会话视图仍由 conversation 流承载。Vue isReplying（Input-field.vue）在消息派发即翻转，
+   * 不等首个 SSE 事件——composer 的停止换位须覆盖发送前窗口。 */
+  const composerNode = (
+  /* Vue isReplying (Input-field.vue) flips true when a turn is dispatched,
+        dispatched, not when the first SSE event arrives; the composer's
+   * not when the first SSE event arrives; the composer's stop swap must cover
+   * the pre-stream send window too. */
+    <ChatComposer
+      copy={copy}
+      draft={props.draft}
+      focusSignal={props.composerFocusSignal}
+      disabled={sending || pending !== undefined || streaming}
+      onDraftChange={props.onDraftChange}
+      onSubmit={(submission) => void send(submission)}
+      attachments={props.attachments}
+      onAttachmentSelect={props.onAttachmentSelect}
+      onRemoveAttachment={props.onRemoveAttachment}
+      attachmentAccept={props.attachmentAccept}
+      mentionOptions={props.mentionOptions}
+      mentionedItems={props.mentionedItems}
+      mentionLoading={props.mentionLoading}
+      mentionError={props.mentionError}
+      mentionEmptyHint={props.mentionEmptyHint}
+      onMentionOpen={props.onMentionOpen}
+      onMentionSelect={props.onMentionSelect}
+      onMentionRemove={props.onMentionRemove}
+      agents={props.agents}
+      selectedAgentId={props.selectedAgentId}
+      onAgentChange={props.onAgentChange}
+      agentModels={props.agentModels}
+      onManageAgents={props.onManageAgents}
+      onConfigureAgent={props.onConfigureAgent}
+      onAgentNotReady={props.onAgentNotReady}
+      modelLabel={props.modelLabel}
+      modelContext={props.modelContext}
+      modelContextIsDefault={props.modelContextIsDefault}
+      modelOptions={props.modelOptions}
+      selectedModelId={props.selectedModelId}
+      onModelChange={props.onModelChange}
+      webSearchVisible={props.webSearchVisible}
+      webSearchConfigured={props.webSearchConfigured}
+      webSearchEnabled={props.webSearchEnabled}
+      onWebSearchToggle={props.onWebSearchToggle}
+      streaming={streaming || sending}
+      canSteer={canSteer}
+      onStop={props.onStopStream}
+      steerQueue={props.steerQueue}
+      onSteerPromote={props.onSteerPromote ? (steerId) => { void props.onSteerPromote!(steerId); } : undefined}
+      onSteerRemove={props.onSteerRemove ? (steerId) => { void props.onSteerRemove!(steerId); } : undefined}
+      onSteerRetry={props.onSteerRetry ? (steerId) => { void props.onSteerRetry!(steerId); } : undefined}
+    />
+  );
+
   return <main className="wk-chat-page grid h-screen items-stretch gap-0 m-0 max-w-none p-0 grid-cols-[minmax(0,1fr)]">
     <SessionSidebar
       copy={copy}
@@ -736,20 +790,16 @@ export function ChatPage(props: ChatPageProps) {
             </button> : null}
           </div>
         </header> : null}
-      <div className={props.selectedSessionId ? 'wk-chat-conversation flex min-h-0 flex-1 flex-col pl-[20px] pr-0 pb-[20px] pt-0' : 'wk-chat-conversation wk-chat-conversation--empty flex min-h-0 flex-1 flex-col justify-center px-[16px] pb-0 pt-0'}>
-        {/* Vue creatChat.vue: the welcome heading is always part of the empty
-            state; suggested-question cards load per selected agent. The empty
-            view centers the welcome+composer cluster (.dialogue-wrap) and must
-            not render the flex:1 message scroll that pins the composer down. */}
-        {/* Vue creatChat.vue .dialogue-answers: welcome → composer gap is
-            48.8px (welcome bottom 293.2 to composer top 342 in the centered
-            212px cluster); the 56px padding made the whole cluster sit 3.6px
-            high and the composer 3.6px low. */}
+      <div className={props.selectedSessionId ? 'wk-chat-conversation flex min-h-0 flex-1 flex-col pl-[20px] pr-0 pb-[20px] pt-0' : 'wk-chat-conversation wk-chat-conversation--empty flex min-h-0 flex-1 flex-col px-[16px] pb-0 pt-0'}>
+        {/* Vue creatChat.vue 空态簇（Task 11b 平移）：.dialogue-wrap 居中 →
+            .dialogue-answers 列（gap 24，100%/max 960）→ .dialogue-title +
+            .suggested-questions-container + 输入区。整数 gap 几何取代旧
+            48.8px 分数 padding（其 0.5px 偏移一路放大成字形相位差）。 */}
         {!props.selectedSessionId ? (
-      <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading mx-auto w-full max-w-[960px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none' : 'wk-chat-starters mx-auto w-full max-w-[960px] px-0 pt-0 pb-[48.8px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none'} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
-            {/* Empty-view starters always sit inside .wk-chat-conversation--empty,
-                whose padding override (0 0 24px) replaces the base 48px padding. */}
-            <h1 className="wk-chat-welcome m-0 text-center text-[28px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{copy.createChatTitle}</h1>
+      <div className="dialogue-wrap flex min-h-0 flex-1 flex-col items-center justify-center">
+      <div className="dialogue-answers flex w-full max-w-[960px] flex-col items-center gap-[24px]">
+      <h1 className="dialogue-title" style={{ '--wails-draggable': 'drag' } as React.CSSProperties}><span style={{ '--wails-draggable': 'drag' } as React.CSSProperties}>{copy.createChatTitle}</span></h1>
+      <div className={'suggested-questions-container' + (props.starterQuestionsLoading ? ' wk-chat-starters--loading' : '')} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
             {props.starterQuestionsLoading && (props.starterQuestions?.length ?? 0) === 0 ? (
               <ul className="wk-chat-starters-grid flex w-full flex-wrap justify-center gap-[10px] list-none m-0 px-[16px] py-0">
                 {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton block h-[37px] w-[180px] rounded-[10px] bg-[linear-gradient(90deg,#eceef1_25%,#f6f7f8_50%,#eceef1_75%)] bg-[length:200%_100%] animate-[wk-chat-skeleton_1.4s_infinite_ease] motion-reduce:animate-none" aria-hidden="true" /></li>)}
@@ -780,7 +830,10 @@ export function ChatPage(props: ChatPageProps) {
                 </ul>
               </>
             ) : null}
-          </section>
+      </div>
+      {composerNode}
+      </div>
+      </div>
         ) : null}
         <ChatActionCards {...props} copy={copy} />
         {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
@@ -821,53 +874,8 @@ export function ChatPage(props: ChatPageProps) {
             the message (a steer would 409), and a quick-answer turn has no
             steer affordance at all — stop is the only action. */}
         {props.selectedSessionId && props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onSteerWarning={props.onSteerWarning} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
-        {/* Vue isReplying (Input-field.vue) flips true when a turn is
-            dispatched, not when the first SSE event arrives; the composer's
-            stop swap must cover the pre-stream send window too. */}
-        <ChatComposer
-          copy={copy}
-          draft={props.draft}
-          focusSignal={props.composerFocusSignal}
-          disabled={sending || pending !== undefined || streaming}
-          onDraftChange={props.onDraftChange}
-          onSubmit={(submission) => void send(submission)}
-          attachments={props.attachments}
-          onAttachmentSelect={props.onAttachmentSelect}
-          onRemoveAttachment={props.onRemoveAttachment}
-          attachmentAccept={props.attachmentAccept}
-          mentionOptions={props.mentionOptions}
-          mentionedItems={props.mentionedItems}
-          mentionLoading={props.mentionLoading}
-          mentionError={props.mentionError}
-          mentionEmptyHint={props.mentionEmptyHint}
-          onMentionOpen={props.onMentionOpen}
-          onMentionSelect={props.onMentionSelect}
-          onMentionRemove={props.onMentionRemove}
-          agents={props.agents}
-          selectedAgentId={props.selectedAgentId}
-          onAgentChange={props.onAgentChange}
-          agentModels={props.agentModels}
-          onManageAgents={props.onManageAgents}
-          onConfigureAgent={props.onConfigureAgent}
-          onAgentNotReady={props.onAgentNotReady}
-          modelLabel={props.modelLabel}
-          modelContext={props.modelContext}
-          modelContextIsDefault={props.modelContextIsDefault}
-          modelOptions={props.modelOptions}
-          selectedModelId={props.selectedModelId}
-          onModelChange={props.onModelChange}
-          webSearchVisible={props.webSearchVisible}
-          webSearchConfigured={props.webSearchConfigured}
-          webSearchEnabled={props.webSearchEnabled}
-          onWebSearchToggle={props.onWebSearchToggle}
-          streaming={streaming || sending}
-          canSteer={canSteer}
-          onStop={props.onStopStream}
-          steerQueue={props.steerQueue}
-          onSteerPromote={props.onSteerPromote ? (steerId) => { void props.onSteerPromote!(steerId); } : undefined}
-          onSteerRemove={props.onSteerRemove ? (steerId) => { void props.onSteerRemove!(steerId); } : undefined}
-          onSteerRetry={props.onSteerRetry ? (steerId) => { void props.onSteerRetry!(steerId); } : undefined}
-        />
+        {props.selectedSessionId ? composerNode : null}
+
       </div>
       {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer absolute bottom-0 right-0 top-0 z-[40] flex w-[min(420px,100%)] max-w-[100vw] flex-col border-l border-[#e7e7e7] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.06)]" role="complementary" aria-label={copy.sandboxPanelTitle}>
         <div className="wk-chat-sandbox-drawer-head flex shrink-0 items-center justify-between border-b border-[#e7e7e7] px-[12px] py-[8px] text-[13px] font-medium text-[rgba(0,0,0,0.9)]">

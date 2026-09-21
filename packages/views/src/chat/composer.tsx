@@ -345,12 +345,12 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
     return t.attachmentProcessing;
   }
 
-  return <form className="wk-chat-composer relative mx-auto w-full max-w-[960px] shrink-0" onSubmit={submit}>
+  return <form className="wk-chat-composer relative mx-auto flex w-full max-w-[960px] shrink-0 flex-col items-center [font-family:var(--app-font-family)]" onSubmit={submit}>
     {/* The textarea's own placeholder attribute carries the visible hint (Vue
         parity); the label is aria-only so the hidden text stays out of
         innerText — a clip-hidden text node still leaks into it. */}
     <label className="wk-chat-visually-hidden" htmlFor="wk-chat-draft" aria-hidden="true" style={{ display: 'none' }}>{t.composerPlaceholder}</label>
-    <div data-guide="chat-input" className="wk-chat-input-shell w-full rounded-[12px] border border-[#dcdcdc] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_16px_-4px_rgba(0,0,0,0.06)] transition-[border-color] duration-[150ms] ease-[ease] focus-within:border-[#07c05f]">
+    <div data-guide="chat-input" className="wk-chat-input-shell box-content w-full rounded-[12px] border border-[var(--td-component-stroke,#dcdcdc)] bg-white transition-[border-color] duration-[150ms] ease-[ease] focus-within:border-[#07c05f]">
       {/* R473-A2 — Vue Input-field.vue .steer-queue (~2599): one chip per queued
           after-message at the very top of the input shell. Waiting clock icon +
           truncated text (full text via title) + per-state actions; pending
@@ -398,7 +398,7 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
         disabled={disabled}
         rows={2}
         placeholder={t.composerPlaceholder}
-        className="block box-border h-[72px] w-full min-h-[72px] resize-none overflow-auto border-0 bg-transparent px-[16px] pt-[16px] pb-[8px] [font:inherit] text-[16px] leading-[24px] text-[rgba(0,0,0,0.9)] outline-none placeholder:text-[rgba(0,0,0,0.26)] disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[rgba(0,0,0,0.4)]"
+        className="block box-border h-[72px] w-full min-h-[72px] resize-none overflow-auto border-0 bg-transparent px-[16px] pt-[16px] pb-[12px] [font-family:inherit] text-[16px] leading-[24px] text-[rgba(0,0,0,0.9)] outline-none placeholder:text-[rgba(0,0,0,0.4)] disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[rgba(0,0,0,0.4)]"
       />
       {/* Vue .answers-input control row: 9px under the textarea, 13px to the
           shell bottom edge — the 8/12 pair left the whole composer 10px low
@@ -421,11 +421,11 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
                 aria-expanded={agentPanelOpen}
                 disabled={disabled}
                 onClick={() => setAgentPanelOpen((open) => !open)}
-                className="wk-chat-agent-chip relative inline-flex h-[30px] cursor-pointer items-center gap-[4px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[10px] py-0 text-[13px] font-medium text-[rgba(0,0,0,0.6)] hover:bg-[#f7f7f7] disabled:cursor-not-allowed disabled:opacity-50"
+                className="wk-chat-agent-chip relative inline-flex h-[30px] cursor-pointer items-center gap-[4px] [font-family:inherit] rounded-[6px] border-[0.5px] border-[var(--td-component-border,#e7e7e7)] bg-transparent px-[10px] py-0 text-[13px] font-medium text-[rgba(0,0,0,0.6)] hover:bg-[#f7f7f7] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {/* Vue .agent-mode-text: margin 0 4px, on top of the control-btn flex gap 4 */}
                 <span className="mx-[4px] max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap">{chipLabel}</span>
-                <svg className="shrink-0 text-[rgba(0,0,0,0.26)]" width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
+                <svg className="ml-[2px] shrink-0 text-[rgba(0,0,0,0.6)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
               </button>
               {panelOpen && agentChipRef.current ? <AgentSelectorPanel
                 copy={t}
@@ -508,15 +508,15 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
               edge of control-left (.model-display margin-left:auto), NOT in
               control-right; keeping it there shifts it ~8px left to x≈1022. */}
           <div className="wk-chat-model-display ml-auto flex shrink-0 items-center">
-            {modelOptions.length > 0 && onModelChange ? <label className="wk-chat-model-chip relative flex h-[22px] min-w-[100px] items-center gap-[6px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-[2px] text-left"><span className="hidden" aria-hidden="true">{t.modelChip}</span><select aria-label={t.modelChip} value={selectedModelId ?? modelOptions[0]?.id ?? ''} onChange={(event) => onModelChange(event.target.value)} className="h-full w-[118px] min-w-0 cursor-pointer appearance-none border-0 bg-transparent text-[12px] font-medium text-[rgba(0,0,0,0.6)] outline-none">{modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>{modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default pointer-events-none shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)] opacity-85' : 'wk-chat-model-ctx pointer-events-none shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)]'}>{modelContext}</span> : null}<svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.26)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg></label> : <button type="button" className="wk-chat-model-chip flex h-[22px] min-w-[100px] cursor-not-allowed items-center gap-[6px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-[2px] text-left opacity-75" disabled aria-disabled="true" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
-              <span className="wk-chat-model-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium text-[rgba(0,0,0,0.6)]">{modelLabel ?? t.modelChip}</span>
-              {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)] opacity-85' : 'wk-chat-model-ctx shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)]'}>{modelContext}</span> : null}
-              <svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.26)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
+            {modelOptions.length > 0 && onModelChange ? <label className="wk-chat-model-chip relative flex h-[22px] min-w-[100px] items-center gap-[6px] rounded-[6px] border-[0.5px] border-[var(--td-component-border,#e7e7e7)] bg-transparent px-[8px] py-[2px] text-left"><span className="hidden" aria-hidden="true">{t.modelChip}</span><span className="wk-chat-model-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium leading-[normal] text-[rgba(0,0,0,0.6)]">{selectedModelId ? (modelOptions.find((model) => model.id === selectedModelId)?.name ?? modelOptions[0]?.name ?? '') : (modelOptions[0]?.name ?? '')}</span><select aria-label={t.modelChip} value={selectedModelId ?? modelOptions[0]?.id ?? ''} onChange={(event) => onModelChange(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer appearance-none border-0 bg-transparent text-[12px] opacity-0 outline-none">{modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>{modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default pointer-events-none shrink-0 text-[11px] font-normal leading-[13px] text-[rgba(0,0,0,0.4)] [font-variant-numeric:tabular-nums] opacity-85' : 'wk-chat-model-ctx pointer-events-none shrink-0 text-[11px] font-normal leading-[13px] text-[rgba(0,0,0,0.4)] [font-variant-numeric:tabular-nums]'}>{modelContext}</span> : null}<svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.4)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg></label> : <button type="button" className="wk-chat-model-chip flex h-[22px] min-w-[100px] cursor-not-allowed items-center gap-[6px] rounded-[6px] border-[0.5px] border-[var(--td-component-border,#e7e7e7)] bg-transparent px-[8px] py-[2px] text-left opacity-75" disabled aria-disabled="true" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
+              <span className="wk-chat-model-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium leading-[normal] text-[rgba(0,0,0,0.6)]">{modelLabel ?? t.modelChip}</span>
+              {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default shrink-0 text-[11px] font-normal leading-[13px] text-[rgba(0,0,0,0.4)] [font-variant-numeric:tabular-nums] opacity-85' : 'wk-chat-model-ctx shrink-0 text-[11px] font-normal leading-[13px] text-[rgba(0,0,0,0.4)] [font-variant-numeric:tabular-nums]'}>{modelContext}</span> : null}
+              <svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.4)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
             </button>}
           </div>
         </div>
         <div className="wk-chat-control-right flex items-center gap-[8px]">
-          {showStop && onStop ?<button type="button" className="wk-chat-stop wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#06b04d] disabled:cursor-not-allowed disabled:bg-[#e8f8f2] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>
+          {showStop && onStop ?<button type="button" className="wk-chat-stop wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#06b04d] disabled:cursor-not-allowed disabled:bg-[#e8f8f2] disabled:opacity-50 focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><rect x="2.5" y="2.5" width="9" height="9" rx="1.5" /></svg>
           </button> : (() => {
             // Vue steer-mode labelling: while replying on a steer-capable turn
@@ -524,8 +524,8 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
             // so both the tooltip and aria-label swap away from input.send.
             const steerMode = streaming && canSteer;
             const actionLabel = steerMode ? t.steerQueued : t.send;
-            return <button type="submit" data-guide="chat-send" className="wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#06b04d] disabled:cursor-not-allowed disabled:bg-[#e8f8f2] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" disabled={disabled || !draft.trim()} aria-label={actionLabel} title={`${actionLabel} · Enter`}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 13V3" /><path d="M3.5 7.5L8 3l4.5 4.5" /></svg>
+            return <button type="submit" data-guide="chat-send" className="wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#06b04d] disabled:cursor-not-allowed disabled:bg-[#e8f8f2] disabled:opacity-50 focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" disabled={disabled || !draft.trim()} aria-label={actionLabel} title={`${actionLabel} · Enter`}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M17.5 10.5 12 5l-5.5 5.5M12 6.25v13" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></svg>
             </button>;
           })()}
         </div>
