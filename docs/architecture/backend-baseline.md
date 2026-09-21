@@ -164,7 +164,7 @@ Per-pattern breakdown (sums to 632):
 | Literal gin method calls — `internal/handler/**` (craft 12+7+4, previews 3+3) | 29 | GET 14, POST 11, PUT 0, DELETE 1, PATCH 1, HEAD 2 |
 | `g.apiKeyRoute(grp, http.MethodX, ...)` helper (rbac.go:398) | 69 | GET 29, POST 27, PUT 6, DELETE 7 |
 | Direct `.Handle(` call sites | 0 | — |
-| **Total** | **632** | GET 235, POST 211, PUT 51, DELETE 58, PATCH 4, HEAD 4, OPTIONS 0, Any 0 |
+| **Total** | **632** | GET 264, POST 238, PUT 57, DELETE 65, PATCH 4, HEAD 4, OPTIONS 0, Any 0 (literal 563 + apiKeyRoute 69 aggregated) |
 
 (\* the exact per-method router/handler split is shown in the table above; the authoritative
 per-method totals are the right-hand column. Comment text is excluded — the old count's
@@ -223,8 +223,8 @@ the helper definitions plus 2 comment mentions that are excluded.)
 - Per-owner registration split (sums to 632; fine splits inside mixed functions are stated in
   backend-modules.yaml `coverage.route_registrations.by_owner`): knowledge 93, identity 85,
   airesource 61, agentcatalog 55, execution 48, conversation 45, system 43, channels 38,
-  workbench 34, agentruntime 27, craft 26, commercial 23, datasource 20, appconnector 17,
-  platform 11, insights 6. Notable fine splits embedded in these numbers:
+  workbench 34, agentruntime 27, craft 28, commercial 23, datasource 20, appconnector 17,
+  platform 9, insights 6. Notable fine splits embedded in these numbers:
   - `RegisterSessionRoutes` (38): conversation 27, execution 3 (local-browser ×2,
     sandbox terminal-ticket), agentruntime 4 (agent-run reads/decision/cancel), workbench 4
     (session/message artifacts + artifact preview-ticket issue). The craft groups
