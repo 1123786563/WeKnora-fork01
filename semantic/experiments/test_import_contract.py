@@ -1,28 +1,24 @@
-"""V01 public-import and machine-readable evidence contract."""
+"""Installed-distribution contract for the Semantica V01 candidate."""
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-import sys
+from hashlib import sha256
+from importlib.metadata import version
 from pathlib import Path
+from types import SimpleNamespace
 
-
-ROOT = Path(__file__).parent
-VERIFY = ROOT / "verify_version.py"
-WHEEL = Path("/tmp/semantica-0.6.8-py3-none-any.whl")
+import pytest
 
 
 def test_required_import_contract() -> None:
-    from semantica.semantic_extract import NERExtractor, RelationExtractor
     from semantica.context import ContextGraph, ContextRetriever
-    from semantica.reasoning import Reasoner, GraphReasoner
     from semantica.graph_store import GraphStore
+    from semantica.reasoning import GraphReasoner, Reasoner
+    from semantica.semantic_extract import NERExtractor, RelationExtractor
 
     assert all(
-        callable(candidate)
-        for candidate in (
+        callable(item)
+        for item in (
             NERExtractor,
             RelationExtractor,
             ContextGraph,
@@ -34,50 +30,22 @@ def test_required_import_contract() -> None:
     )
 
 
-def test_minimal_profile_includes_the_neo4j_driver() -> None:
-    from neo4j import GraphDatabase
-
-    assert callable(GraphDatabase.driver)
+def test_installed_distribution_is_the_frozen_candidate() -> None:
+    assert version("semantica") == "0.6.8"
 
 
-def test_verify_version_records_a_structured_hash_failure(tmp_path: Path) -> None:
-    bad_wheel = tmp_path / "bad.whl"
-    bad_wheel.write_bytes(b"not the frozen Semantica wheel")
-    output = tmp_path / "evidence.json"
+def test_verifier_records_runtime_contract(tmp_path: Path) -> None:
+    from verify_version import build_evidence
 
-    result = subprocess.run(
-        [sys.executable, str(VERIFY), "--wheel", str(bad_wheel), "--output", str(output)],
-        cwd=ROOT.parents[1],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    evidence = build_evidence(command=["verify_version.py", "--output", "out.json"])
 
-    assert result.returncode != 0
-    payload = json.loads(output.read_text())
-    assert payload["schema_version"] == 1
-    assert payload["status"] == "failed"
-    assert payload["failure"]["kind"] == "wheel-sha256-mismatch"
-    assert payload["command"]["exit_code"] != 0
-
-
-def test_verify_version_records_required_signatures(tmp_path: Path) -> None:
-    output = tmp_path / "evidence.json"
-    result = subprocess.run(
-        [sys.executable, str(VERIFY), "--wheel", str(WHEEL), "--output", str(output)],
-        cwd=ROOT.parents[1],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    payload = json.loads(output.read_text())
-    assert payload["schema_version"] == 1
-    assert payload["status"] == "passed"
-    assert payload["semantica_version"] == "0.6.8"
-    assert payload["wheel_sha256"] == "0af4d9dd9b01503e0d72c0ae6b0703364d01dd1443e42bc7e9a6f415835917d7"
-    assert set(payload["capabilities"]) == {
+    assert evidence["schema_version"] == 1
+    assert evidence["distribution"]["version"] == "0.6.8"
+    assert evidence["lock_hash"] == sha256((Path(__file__).parent / "uv.lock").read_bytes()).hexdigest()
+    assert evidence["command"] == ["verify_version.py", "--output", "out.json"]
+    assert evidence["exit_code"] == 0
+    assert evidence["evidence_layer"] == "actual-runtime"
+    assert set(evidence["capabilities"]) == {
         "NERExtractor",
         "RelationExtractor",
         "ContextGraph",
@@ -86,21 +54,43 @@ def test_verify_version_records_required_signatures(tmp_path: Path) -> None:
         "GraphReasoner",
         "GraphStore",
     }
-    assert all(item["status"] == "passed" and item["signature"] for item in payload["capabilities"].values())
-
-
-def test_verify_version_accepts_an_explicit_wheel_environment_variable(tmp_path: Path) -> None:
-    output = tmp_path / "evidence.json"
-    result = subprocess.run(
-        [sys.executable, str(VERIFY), "--output", str(output)],
-        cwd=ROOT.parents[1],
-        capture_output=True,
-        text=True,
-        check=False,
-        env={**os.environ, "SEMANTICA_WHEEL": str(WHEEL)},
+    assert all(
+        capability["status"] == "available"
+        and capability["signature"]
+        and capability["evidence_layer"] == "actual-runtime"
+        for capability in evidence["capabilities"].values()
     )
 
-    assert result.returncode == 0, result.stderr
-    payload = json.loads(output.read_text())
-    assert payload["wheel_path"] == str(WHEEL)
-    assert payload["lock_wheel_sha256"] == payload["wheel_sha256"]
+
+def test_verifier_rejects_changed_signature() -> None:
+    from verify_version import _record_capabilities
+
+    def observed(unexpected: str) -> None:
+        return None
+
+    records, failures = _record_capabilities(
+        {"Changed": ("fake.module", "observed", "(expected: str)")},
+        importer=lambda _: SimpleNamespace(observed=observed),
+    )
+
+    assert records["Changed"]["status"] == "unavailable"
+    assert "expected (expected: str)" in records["Changed"]["reason"]
+    assert failures
+
+
+def test_verifier_rejects_lock_entry_without_frozen_wheel(tmp_path: Path) -> None:
+    from verify_version import _locked_semantica
+
+    lock = tmp_path / "uv.lock"
+    lock.write_text('[[package]]\nname = "semantica"\nversion = "0.6.8"\nwheels = []\n')
+
+    with pytest.raises(ValueError, match="frozen wheel hash"):
+        _locked_semantica(lock)
+
+
+def test_evidence_output_must_stay_under_repository_root(tmp_path: Path) -> None:
+    from verify_version import evidence_output_path
+
+    assert evidence_output_path("docs/plans/semantica/evidence/2026-09-20/test.json").name == "test.json"
+    with pytest.raises(ValueError, match="evidence root"):
+        evidence_output_path(tmp_path / "escaped.json")

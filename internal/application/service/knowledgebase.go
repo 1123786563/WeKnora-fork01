@@ -31,6 +31,7 @@ const kbTaskCleanupTimeout = 5 * time.Second
 
 // knowledgeBaseService implements the knowledge base service interface
 type knowledgeBaseService struct {
+	semanticScopeGuard
 	repo            interfaces.KnowledgeBaseRepository
 	kgRepo          interfaces.KnowledgeRepository
 	chunkRepo       interfaces.ChunkRepository
@@ -728,6 +729,12 @@ func (s *knowledgeBaseService) DeleteKnowledgeBase(ctx context.Context, id strin
 	}
 
 	// Step 1: Delete the knowledge base record first (mark as deleted)
+	if kb == nil {
+		return ErrKBNotFound
+	}
+	if err := s.invalidateSemanticKB(ctx, kb.TenantID, kb.ID); err != nil {
+		return err
+	}
 	logger.Infof(ctx, "Deleting knowledge base from database")
 	err = s.repo.DeleteKnowledgeBase(ctx, id)
 	if err != nil {

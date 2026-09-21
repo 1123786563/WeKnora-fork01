@@ -1,122 +1,99 @@
-"""Real-storage contract for the V02 disposable Neo4j bridge."""
-
 from __future__ import annotations
 
 from pathlib import Path
 
-import subprocess
 
-import pytest
-
-import bridge_probe
-from bridge_probe import _OwnedNeo4j, build_probe_graph, probe_roundtrip
+FIXTURE = Path(__file__).parent / "fixtures" / "v02-controlled-graph.json"
 
 
-FIXTURE = Path(__file__).parent / "fixtures" / "controlled_graph.json"
+def test_scope_query_never_returns_foreign_distractor() -> None:
+    from bridge_probe import Scope, scope_read_query
 
+    query, parameters = scope_read_query(
+        Scope(tenant_id="T1", kb_id="K1", document_id="D1", revision=1, generation="g1")
+    )
 
-def test_persistent_bridge_keeps_source_ids() -> None:
-    result = probe_roundtrip(FIXTURE)
-
-    assert result["restart_verified"] is True
-    assert set(result["evidence_ids"]) == {"e-d1", "e-d2"}
-    assert result["actual_backend"] == "neo4j-dedicated-instance"
-    assert result["engine_version"]
-    assert result["client_reopened"] is True
-    assert result["storage_rows"] == 3
-    assert result["run_nonce"]
-    assert result["resource_cleanup_verified"] is True
-    assert "e-hidden" not in result["evidence_ids"]
-    assert "隐藏组件" not in str(result["result"])
-
-
-def test_authorized_projection_preserves_assertion_revision_and_quote() -> None:
-    rows = [
-        {
-            "source": "构建",
-            "target": "发布",
-            "type": "depends_on",
-            "assertion_id": "a-d1-build-release",
-            "document_id": "d1",
-            "revision": "r1",
-            "evidence_ids": ["e-d1"],
-            "quote": "构建依赖发布。",
-        }
-    ]
-
-    graph = build_probe_graph(rows)
-
-    assert graph["relationships"][0]["properties"] == {
-        "assertion_id": "a-d1-build-release",
-        "document_id": "d1",
-        "revision": "r1",
-        "evidence_ids": ["e-d1"],
-        "quote": "构建依赖发布。",
+    assert "tenant_id: $tenant_id" in query
+    assert "kb_id: $kb_id" in query
+    assert "document_id: $document_id" in query
+    assert "revision: $revision" in query
+    assert "generation: $generation" in query
+    assert parameters == {
+        "tenant_id": "T1",
+        "kb_id": "K1",
+        "document_id": "D1",
+        "revision": 1,
+        "generation": "g1",
+        "record_kind": "assertion",
     }
 
 
-def test_create_rolls_back_verified_run_resources_when_first_operational_inspect_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
+def test_fixture_declares_target_and_foreign_records() -> None:
+    from bridge_probe import load_fixture
 
-    def run(args: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-        calls.append(args)
-        if args[:3] == ["docker", "run", "-d"]:
-            return subprocess.CompletedProcess(args, 0, "owned-container\n", "")
-        return subprocess.CompletedProcess(args, 0, "", "")
+    fixture = load_fixture(FIXTURE)
 
-    monkeypatch.setattr(bridge_probe.subprocess, "run", run)
-    monkeypatch.setattr(bridge_probe, "_inspect_owned_identity", lambda *_: {"Id": "owned-container", "Config": {"Labels": {}}})
-    monkeypatch.setattr(bridge_probe, "_inspect_owned_volume", lambda *_: {"Labels": {}})
-    monkeypatch.setattr(bridge_probe, "_verify_owned_mutation", lambda *_: (_ for _ in ()).throw(RuntimeError("initial inspect failed")))
-
-    with pytest.raises(RuntimeError, match="initial inspect failed"):
-        _OwnedNeo4j.create()
-
-    assert ["docker", "rm", "-f", "owned-container"] in calls
-    assert any(call[:3] == ["docker", "volume", "rm"] for call in calls)
+    assert {item["semantic_id"] for item in fixture["assertions"]} == {"a-d1", "a-d2", "a-foreign"}
+    assert {item["semantic_id"] for item in fixture["assertions"] if item["tenant_id"] == "T1"} == {"a-d1", "a-d2"}
+    assert all(item["start_char"] >= 0 and item["end_char"] > item["start_char"] for item in fixture["assertions"])
+    assert all(item["rule_version"] == "source@v1" for item in fixture["assertions"])
 
 
-def test_cleanup_removes_stopped_verified_resource_and_never_unowned_resource(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
-    owned = _OwnedNeo4j("nonce", "owned-container", "owned-volume", 17687)
+def test_fresh_reader_process_recovers_persisted_provenance() -> None:
+    from run_v02 import from_environment, run_writer_then_reader
 
-    def run(args: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-        calls.append(args)
-        return subprocess.CompletedProcess(args, 0, "", "")
+    result = run_writer_then_reader(from_environment(), FIXTURE)
 
-    monkeypatch.setattr(bridge_probe.subprocess, "run", run)
-    monkeypatch.setattr(bridge_probe, "_inspect_owned_identity", lambda *_: {"State": {"Running": False}})
-    monkeypatch.setattr(bridge_probe, "_inspect_owned_volume", lambda *_: {"Labels": {}})
-    assert owned.cleanup() == []
-    assert ["docker", "rm", "-f", "owned-container"] in calls
-    assert ["docker", "volume", "rm", "owned-volume"] in calls
-
-    calls.clear()
-    monkeypatch.setattr(bridge_probe, "_inspect_owned_identity", lambda *_: (_ for _ in ()).throw(RuntimeError("unowned")))
-    assert owned.cleanup()[0]["resource"] == "container"
-    assert ["docker", "rm", "-f", "owned-container"] not in calls
-    assert ["docker", "volume", "rm", "owned-volume"] in calls
+    assert result["writer_pid"] != result["reader_pid"]
+    assert result["restart_verified"] is True
+    assert result["assertion_ids"] == {"a-d1", "a-d2"}
+    assert result["evidence_ids"] == {"e-d1", "e-d2"}
+    assert result["storage_returned_ids"] == {"a-d1", "a-d2"}
+    assert result["foreign_ids"] == set()
 
 
-def test_restart_failure_can_be_reported_without_masking_owned_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
-    owned = _OwnedNeo4j("nonce", "owned-container", "owned-volume", 17687)
-    monkeypatch.setattr(_OwnedNeo4j, "verify", lambda *_: None)
-    monkeypatch.setattr(bridge_probe.subprocess, "run", lambda args, **_: subprocess.CompletedProcess(args, 1, "", "restart failed"))
+def test_reader_only_process_recovers_seeded_fixture() -> None:
+    from run_v02 import from_environment, reader_only, seed_writer
 
-    with pytest.raises(RuntimeError, match="restart failed"):
-        owned.restart()
+    config = from_environment()
+    writer = seed_writer(config, FIXTURE)
+    reader = reader_only(config, FIXTURE)
+
+    assert writer["writer_pid"] != reader["reader_pid"]
+    assert reader["storage_returned_ids"] == {"a-d1", "a-d2"}
+    assert reader["foreign_ids"] == set()
 
 
-def test_cleanup_returns_structured_container_and_volume_failures(monkeypatch: pytest.MonkeyPatch) -> None:
-    owned = _OwnedNeo4j("nonce", "owned-container", "owned-volume", 17687)
-    monkeypatch.setattr(bridge_probe, "_inspect_owned_identity", lambda *_: {})
-    monkeypatch.setattr(bridge_probe, "_inspect_owned_volume", lambda *_: {})
+def test_evidence_record_serializes_logical_sets() -> None:
+    from run_v02 import evidence_record
 
-    def run(args: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-        raise subprocess.CalledProcessError(1, args, stderr="remove failed")
+    record = evidence_record({"assertion_ids": {"a-d2", "a-d1"}, "evidence_ids": {"e-d2", "e-d1"}})
 
-    monkeypatch.setattr(bridge_probe.subprocess, "run", run)
-    assert owned.cleanup() == [
-        {"resource": "container", "error": "Command '['docker', 'rm', '-f', 'owned-container']' returned non-zero exit status 1."},
-        {"resource": "volume", "error": "Command '['docker', 'volume', 'rm', 'owned-volume']' returned non-zero exit status 1."},
-    ]
+    assert record == {"assertion_ids": ["a-d1", "a-d2"], "evidence_ids": ["e-d1", "e-d2"]}
+
+
+def test_evidence_metadata_excludes_topology_password() -> None:
+    from bridge_probe import TopologyConfig
+    from run_v02 import evidence_metadata
+
+    metadata = evidence_metadata(TopologyConfig("bolt://127.0.0.1:17687", "neo4j", "not-for-evidence", "neo4j", "dedicated"))
+
+    assert metadata["topology"] == "dedicated"
+    assert metadata["endpoint_alias"] == "loopback:17687"
+    assert metadata["account_identity"] == "neo4j"
+    assert metadata["v01_lock_sha256"] == "c643ce123490c93f56ed95e9d6501bbd90daf8b2cdc74b183067dccd63864c54"
+    assert metadata["v02_lock_sha256"] != metadata["v01_lock_sha256"]
+    assert len(metadata["commit_sha"]) == 40
+    assert metadata["platform"]
+    assert "password" not in metadata
+
+
+def test_topology_manifest_is_explicit_and_password_free(tmp_path: Path) -> None:
+    from bridge_probe import TopologyConfig
+    from run_v02 import load_topology_manifest, write_topology_manifest
+
+    config = TopologyConfig("bolt://127.0.0.1:17687", "neo4j", "local-only-password", "neo4j", "dedicated")
+    manifest = write_topology_manifest(config, tmp_path / "topology.json")
+
+    assert "local-only-password" not in manifest.read_text()
+    assert load_topology_manifest(manifest, password="local-only-password") == config

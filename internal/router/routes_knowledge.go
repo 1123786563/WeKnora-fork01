@@ -247,6 +247,19 @@ func RegisterKnowledgeBaseRoutes(r *gin.RouterGroup, handler *handler.KnowledgeB
 	}
 }
 
+// RegisterSemanticModelPolicyRoutes owns the sensitive source-KB model policy
+// surface. It deliberately mirrors the KB lifecycle write boundary: this is
+// explicit owner consent to serve A01-authorized readers, not a requester
+// preference. A nil handler keeps optional deployments fail-closed.
+func RegisterSemanticModelPolicyRoutes(r *gin.RouterGroup, policyHandler *handler.SemanticModelPolicyHandler, g *rbacGuards) {
+	if policyHandler == nil {
+		return
+	}
+	kb := g.apiKeyGroup(r.Group("/knowledge-bases"), apiKeyManageKnowledgeBases(apiKeyFullAccess()))
+	kb.GET("/:id/semantic-model-policy", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), policyHandler.Get)
+	kb.PUT("/:id/semantic-model-policy", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), policyHandler.Put)
+}
+
 // RegisterKnowledgeBaseActivityRoutes exposes the read-only per-KB activity
 // feed. It intentionally stays JWT-only: audit history is a sensitive owner
 // surface and no existing workspace API-key capability grants audit access.

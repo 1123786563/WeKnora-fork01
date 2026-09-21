@@ -1,53 +1,14 @@
-# V03 Chinese evaluation baseline
+# V03 离线评估基线
 
-The frozen public corpus is `semantic/experiments/fixtures/questions.jsonl`.
-It contains six Chinese cases: cross-document dependency chain, a technical
-`depends_on` rule chain, conflict, no evidence, deletion, and revocation.
-Every row fixes `document_revision: v03-frozen-1`, source text, expected
-evidence, and the allowed evidence scope.
+本产物仅提供确定性的离线评分基础：合成中文 cases、预录 observation JSONL 的严格加载、逐 case 评分与汇总。所有 fixtures 和 example observations 都标为 `synthetic`；它们只用于 parser/scorer smoke coverage，不是查询运行结果。
 
-## Candidate measurement
+指标定义：`source_precision` 是预期证据与返回证据交集除以返回证据数；`source_recall` 是该交集除以预期证据数。无预期证据的 recall 为 1；可回答 case 的空预测 precision 为 0。`permission_leak` 独立于这些指标，命中 forbidden evidence 或出现 access violation 即为硬失败。requested/actual mode 不一致也是硬失败，不能把 GraphRAG 静默降级或升级为 Reason。不可回答 case 仅在 `insufficient_evidence` 且没有证据或结论时得分正确。
 
-The final `evaluate.py --backend semantica` run used Semantica 0.6.8 public
-`provider_registry`, `NERExtractor(method="llm")`, and
-`RelationExtractor(method="llm")` through the explicit loopback Go transport
-at `127.0.0.1:18092`, fixed to host Ollama `qwen2.5:0.5b`. It retained 21 new
-actual attempts: 6 NER, 6 relation, 3 cold GraphReasoner, 3 warm GraphReasoner,
-and 3 failed source-validated graph retrieval stages. Together with 22 historic
-calls the bounded ledger is 43 of 80. The V03 extraction profile
-permits 512 output tokens and 8192 bytes; V02's 96-token/1200-byte profile is
-unchanged. No truncation was observed.
+离线复现命令：
 
-The corrected retained result rows are `semantica-results.jsonl`: precision
-0.3333, recall 0.8333, one correct conclusion, and zero correct abstentions.
-It replaces only the earlier candidate artifact because its collector mixed
-case usage; that historical output remains evidence of the defect. Three cases
-are retained as `failed` specifically because their source-validated graph
-retrieval was empty; they are not relabelled as negative results. Evidence IDs
-come only from retrieved graph provenance, never from allowed scope.
+```sh
+uv run --locked --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q
+uv run --locked --project semantic/experiments python semantic/experiments/evaluate.py --dataset semantic/experiments/fixtures/questions.jsonl --observations semantic/experiments/fixtures/evaluation-example-observations.jsonl --output /tmp/semantica-v03-synthetic-report.json
+```
 
-The transport's initial per-row ledger retained the six query usage values
-(519 total tokens) but did not preserve NER/RE usage attribution from extractor
-instances. The gateway log retains 18 additional successful raw calls, but
-they are not reclassified as per-row usage. This is an evidence gap, not an
-estimated measurement.
-
-## Native comparison
-
-The final isolated native transaction is retained at
-`evidence/2026-09-20/v03-native-final-2.json`: one case observed a numeric Go
-Graph MatchType mapped to its runtime source, five cases are negative, the
-deleted source was actually deleted before projection, and per-document
-revocation is unsupported. The revoked source's canary leaked through native
-fallback, so the native privacy hard gate is false. The earlier
-`v03-native-final-attempt.json` retains the launcher-path failure separately.
-Native SSE usage is unavailable and not estimated. Native therefore cannot
-establish candidate/native parity. Its effective
-configuration is different from the Semantica candidate: it is the existing Go
-graph pipeline with a remote-loopback local model registration rather than
-Semantica's public NER/RE API.
-
-Candidate cold/warm query and index distributions are separate fields in the
-final summary (three available measurements each); native usage remains
-unavailable. The policy is closed (`approved: false`); the
-proposed numbers are not promotion approval.
+本基线未包含 native-vs-Semantica 查询对照、controlled-provider、live-model、授权企业语料、延迟/Token 测量或生产切换。缺失测量以 `null` 保存，绝不记为零。上线策略见 `acceptance-policy.json`，其 `approved` 必须保持 `false`，直到有可比的授权测量与产品负责人明确确认门槛。

@@ -35,6 +35,7 @@ var (
 // — Viewer in your own tenant cannot write — even when the access is
 // routed through cross-tenant sharing.
 type kbShareService struct {
+	semanticScopeGuard
 	shareRepo interfaces.KBShareRepository
 	orgRepo   interfaces.OrganizationRepository
 	kbRepo    interfaces.KnowledgeBaseRepository
@@ -110,6 +111,16 @@ func (s *kbShareService) ShareKnowledgeBase(ctx context.Context, kbID string, or
 	if !permission.IsValid() {
 		return nil, ErrInvalidRole
 	}
+	existing, existingErr := s.shareRepo.GetByKBAndOrg(ctx, kbID, orgID)
+	if existingErr != nil && !errors.Is(existingErr, repository.ErrKBShareNotFound) {
+		return nil, existingErr
+	}
+	if existingErr == nil && existing != nil && existing.Permission == permission {
+		return existing, nil
+	}
+	if err := s.invalidateSemanticKB(ctx, kb.TenantID, kb.ID); err != nil {
+		return nil, err
+	}
 
 	share := &types.KnowledgeBaseShare{
 		ID:              uuid.New().String(),
@@ -175,6 +186,12 @@ func (s *kbShareService) UpdateSharePermission(ctx context.Context, shareID stri
 	if !permission.IsValid() {
 		return ErrInvalidRole
 	}
+	if share.Permission == permission {
+		return nil
+	}
+	if err := s.invalidateSemanticKB(ctx, share.SourceTenantID, share.KnowledgeBaseID); err != nil {
+		return err
+	}
 
 	share.Permission = permission
 	share.UpdatedAt = time.Now()
@@ -200,6 +217,9 @@ func (s *kbShareService) RemoveShare(ctx context.Context, shareID string, userID
 	}
 
 	if s.callerCanManageShare(ctx, share.SharedByUserID, share.SourceTenantID, share.OrganizationID, userID, tenantID) {
+		if err := s.invalidateSemanticKB(ctx, share.SourceTenantID, share.KnowledgeBaseID); err != nil {
+			return err
+		}
 		if err := s.shareRepo.Delete(ctx, shareID); err != nil {
 			return err
 		}
@@ -469,9 +489,20 @@ func (s *kbShareService) CheckTenantKBPermission(ctx context.Context, kbID strin
 	isShared := false
 
 	for _, share := range shares {
+		// Org deletion may leave shares behind when best-effort cleanup fails.
+		// Such rows must not continue granting access through old memberships.
+		if _, err := s.orgRepo.GetByID(ctx, share.OrganizationID); err != nil {
+			if errors.Is(err, repository.ErrOrganizationNotFound) {
+				continue
+			}
+			return "", false, err
+		}
 		tm, err := s.orgRepo.GetTenantMember(ctx, share.OrganizationID, callerTenantID)
 		if err != nil {
-			continue
+			if errors.Is(err, repository.ErrOrgMemberNotFound) {
+				continue
+			}
+			return "", false, err
 		}
 
 		isShared = true

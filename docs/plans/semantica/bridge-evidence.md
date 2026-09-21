@@ -1,57 +1,18 @@
-# V02 持久图桥接与推理证据
+# Semantica V02 persistence-bridge evidence
 
-V02 是预生产能力实验。它不构成 A03 模型网关、授权/预算结算、生产 ACL、抽取质量或 native 对比验收。
+## Dedicated local Neo4j — 2026-09-20
 
-## 实际成功证据
+Authoritative evidence artifact: [v02-dedicated-reverified.json](evidence/2026-09-20/v02-dedicated-reverified.json). The earlier `v02-dedicated.json` is retained as historical output but does not prove retained-volume recovery because it seeded before its post-restart read.
 
-- 每次运行使用带随机 nonce 的专用 `semantica-v02-<nonce>` Neo4j `2025.10.1` 容器和独立
-  同 nonce 卷；写入、删除、重启和清理前均核验 container ID、V02/nonce labels、固定镜像、
-  running 状态和唯一的 `127.0.0.1:17687` Bolt 映射。镜像固定为
-  `neo4j@sha256:155c8aad10d5c838bc3bbc476c0418779086547822acb214ec5e3d49ba336907`，
-  Bolt 仅绑定 `127.0.0.1:17687`。
-- `GraphStore(backend="neo4j")` 写入受控夹具的三条关系，写客户端关闭后仅重启
-  该容器；新 `GraphStore` 客户端读回三条持久行。D1/D2 授权投影在构造内存图前完成，
-  保留 assertion、文档 revision、证据 ID 与中文 quote，仅输出 `e-d1`、`e-d2`，不含
-  隐藏关系 `e-hidden` 或“隐藏组件”。
-- 实际 Semantica `0.6.8` `Reasoner` 注册了唯一的两前提 `depends_on` 规则。两前提得到
-  `indirectly_depends_on(a,c)`；缺少第二前提没有结论。含 `not_depends_on(a,b)` 的真实
-  `forward_chain` 输出被保留，但冻结 API 没有可注册的 contradiction/conflict operation，
-  所以 conflict capability 明确标为 `actual-runtime/unavailable`，不再把字符串标记冒充上游能力。
-- 实际 Semantica `GraphReasoner` 注册的 provider 仅通过 `127.0.0.1:18092` Go 实验入口
-  调用现有 WeKnora Ollama `ChatStream` adapter；固定模型 `qwen2.5:0.5b`、单次请求 20 秒
-  deadline、96 token cap，不接受任意模型、URL 或 tools。URL 固定精确解析为
-  `http://127.0.0.1:18092`，拒绝 userinfo、其它 host/port、IPv6、query 和 fragment；严格 JSON
-  只接受单个 `{prompt}`。stream chunk 的 UTF-8 byte cap 超限会取消并以失败返回，绝不标为完成。
-  V02 使用 streaming 原始计数，未采用已知可疑的非流式 completion subtraction。
-- 组合验收把真实 `probe_roundtrip(...)["result"]` 直接交给 `probe_model`。provider 记录实际
-  prompt SHA-256，并验证 D1/D2 的 assertion/revision/quote 被输入，hidden assertion/evidence/quote
-  不在 prompt。第二轮针对该实际 prompt 的重放通过，raw usage 为 254 prompt、5 completion、259
-  total；完整失败/成功调用和累计 1496/35/1531 原始总量都保留在 JSON，不能作为商业结算证据。
+- Evidence layer: `real-storage`; Semantica `0.6.8`; V01 lock SHA-256 `c643ce123490c93f56ed95e9d6501bbd90daf8b2cdc74b183067dccd63864c54`; current V02 lock SHA-256 `7cea23660879d96120a8936b44d9c23d4aaaf036b31c9a4e79812d31a4efe709`.
+- Boundary: test-only dedicated Neo4j `2025.10.1`, loopback Bolt alias `loopback:17687`, database `neo4j`, account identity `neo4j`, and durable volume `semantica-v02_semantica-v02-neo4j-data`. Credentials are stored only in ignored `docker/.env.semantic-v02.local` and are not recorded here.
+- Initial writer/reader PIDs were `96526` / `96529`. After a container restart retaining the named volume, fresh reader PID `96742` performed a reader-only recovery using the initial seed writer PID `96526`; no writer ran after the restart.
+- The storage-constrained reads returned exactly assertions `a-d1`, `a-d2` and evidence `e-d1`, `e-d2`, retaining document/revision/chunk/hash/Chinese quote provenance. Stored `T2/K2` assertion `a-foreign` was not returned.
+- Registered rule `technical-dependency-transitivity@v1` derived only `A indirectly_depends_on C`, with premises `[a-d1, a-d2]` and evidence `[e-d1, e-d2]`; the missing-premise test returns `insufficient_evidence`.
+- Commands: `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q` exited 0 with 7 tests; `docker compose --env-file docker/.env.semantic-v02.local -f docker/compose.semantic-v02.yml restart neo4j` exited 0; dedicated capture commands exited 0.
 
-完整机器可读产物：[bridge-run.json](evidence/2026-09-20/v02/bridge-run.json)。
+This is not a production topology selection, shared-isolated comparison, provider/model result, Go authorization result, deletion/revocation result, or quality/performance acceptance.
 
-## 验证
+## Shared-isolated operator handoff
 
-```text
-UV_PROJECT_ENVIRONMENT=/tmp/semantica-v01-clean-final uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q
-exit 0; 12 passed in 192.57s
-
-go test ./semantic/experiments/model_gateway
-exit 0
-```
-
-RED 先于实现：Python bridge 测试因 `bridge_probe` 不存在而在收集阶段失败；本轮 URL 严格解析
-测试因 `validate_gateway_url` 不存在而失败；Go boundary 测试因 `decodePrompt`、`validUsage` 和
-`appendCapped` 不存在而编译失败。它们均以最小实现转绿。
-
-## 限制与未验证项
-
-- 选用 dedicated 实例，因为它给实验提供可观测的完整容器/卷边界；未对 shared-isolated
-  account/database/schema/collection/prefix 进行等价实现或生产拓扑选择。
-- 这是授权投影的合成夹具检查，不能证明 tenant/KB ACL、撤权、删除屏障、generation 或生产
-  读路径。
-- Go loopback 是 V02 特许的 live-local-provider 证据，不是 A03 `SemanticModelGateway`，没有
-  capability token、`ExecutionGate.Begin/Finish`、预算结算、重试对账或远程 provider 支持。
-- `GraphReasoner` 返回 plain text；它没有产生结构化结论或证据 DAG。证据 ID 是上游已授权
-  子图的显式投影，不应被视为模型生成的引用。
-- 夹具为手工种子，不表示实体/关系自动抽取质量；V03 必须单独消费这些可重复候选函数并区分该边界。
+Copy [v02-shared-isolated-topology.example.json](../../../semantic/experiments/fixtures/v02-shared-isolated-topology.example.json) to an ignored local manifest and replace its endpoint alias, account identity, and database/schema/collection/prefix boundary with an operator-provisioned shared boundary. Provide the credential only through the local ignored environment variable `SEMANTICA_V02_NEO4J_PASSWORD`; never add it to the manifest, repository, evidence, or chat. The subsequent matrix must prove the dedicated identity cannot read/write a foreign boundary and must use a fresh writer/reader pair plus reader-only recovery after backend restart.

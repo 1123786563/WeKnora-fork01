@@ -75,6 +75,9 @@ var startupEnvVars = []envVarSpec{
 	// Security
 	{name: "SYSTEM_AES_KEY", sensitive: true},
 	{name: "JWT_SECRET", sensitive: true},
+	{name: "SEMANTIC_SCOPE_SIGNING_KEY", sensitive: true},
+	{name: "SEMANTIC_MODEL_SIGNING_KEY", sensitive: true},
+	{name: "SEMANTIC_SERVICE_TOKEN", sensitive: true},
 	// Runtime
 	{name: "GIN_MODE"},
 	{name: "AUTO_MIGRATE"},

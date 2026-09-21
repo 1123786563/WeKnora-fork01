@@ -97,6 +97,7 @@ func getJwtSecret() string {
 
 // userService implements the UserService interface
 type userService struct {
+	semanticScopeGuard
 	userRepo         interfaces.UserRepository
 	tokenRepo        interfaces.AuthTokenRepository
 	tenantService    interfaces.TenantService
@@ -714,6 +715,9 @@ func (s *userService) UpdateUserPreferences(
 
 // DeleteUser deletes a user
 func (s *userService) DeleteUser(ctx context.Context, id string) error {
+	if err := s.invalidateSemanticUser(ctx, id); err != nil {
+		return err
+	}
 	return s.userRepo.DeleteUser(ctx, id)
 }
 

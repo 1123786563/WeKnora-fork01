@@ -28,34 +28,36 @@ import (
 type RouterParams struct {
 	dig.In
 
-	Config                  *config.Config
-	FileService             interfaces.FileService
-	UserService             interfaces.UserService
-	KBService               interfaces.KnowledgeBaseService
-	KnowledgeService        interfaces.KnowledgeService
-	ChunkService            interfaces.ChunkService
-	SessionService          interfaces.SessionService
-	MessageService          interfaces.MessageService
-	ModelService            interfaces.ModelService
-	EvaluationService       interfaces.EvaluationService
-	KBShareService          interfaces.KBShareService
-	AgentShareService       interfaces.AgentShareService
-	KBHandler               *handler.KnowledgeBaseHandler
-	KnowledgeHandler        *handler.KnowledgeHandler
-	TenantHandler           *handler.TenantHandler
-	TenantService           interfaces.TenantService
-	TenantAPIKeyService     interfaces.TenantAPIKeyService
-	TenantMemberService     interfaces.TenantMemberService
-	TenantMemberHandler     *handler.TenantMemberHandler
-	TenantInvitationHandler *handler.TenantInvitationHandler
-	AuditLogHandler         *handler.AuditLogHandler
-	AuditLogService         interfaces.AuditLogService
-	ChunkHandler            *handler.ChunkHandler
-	SessionHandler          *session.Handler
-	WorkbenchHandler        *session.WorkbenchReadHandler    `optional:"true"`
-	WorkbenchListHandler    *session.WorkbenchListHandler    `optional:"true"`
-	WorkbenchStartHandler   *session.WorkbenchStartHandler   `optional:"true"`
-	WorkbenchCommandHandler *session.WorkbenchCommandHandler `optional:"true"`
+	Config                     *config.Config
+	SemanticInternalHandler    *handler.SemanticInternalHandler `optional:"true"`
+	FileService                interfaces.FileService
+	UserService                interfaces.UserService
+	KBService                  interfaces.KnowledgeBaseService
+	KnowledgeService           interfaces.KnowledgeService
+	ChunkService               interfaces.ChunkService
+	SessionService             interfaces.SessionService
+	MessageService             interfaces.MessageService
+	ModelService               interfaces.ModelService
+	EvaluationService          interfaces.EvaluationService
+	KBShareService             interfaces.KBShareService
+	AgentShareService          interfaces.AgentShareService
+	KBHandler                  *handler.KnowledgeBaseHandler
+	SemanticModelPolicyHandler *handler.SemanticModelPolicyHandler
+	KnowledgeHandler           *handler.KnowledgeHandler
+	TenantHandler              *handler.TenantHandler
+	TenantService              interfaces.TenantService
+	TenantAPIKeyService        interfaces.TenantAPIKeyService
+	TenantMemberService        interfaces.TenantMemberService
+	TenantMemberHandler        *handler.TenantMemberHandler
+	TenantInvitationHandler    *handler.TenantInvitationHandler
+	AuditLogHandler            *handler.AuditLogHandler
+	AuditLogService            interfaces.AuditLogService
+	ChunkHandler               *handler.ChunkHandler
+	SessionHandler             *session.Handler
+	WorkbenchHandler           *session.WorkbenchReadHandler    `optional:"true"`
+	WorkbenchListHandler       *session.WorkbenchListHandler    `optional:"true"`
+	WorkbenchStartHandler      *session.WorkbenchStartHandler   `optional:"true"`
+	WorkbenchCommandHandler    *session.WorkbenchCommandHandler `optional:"true"`
 	// NativeArchiveHandler is absent until an approved archive store and scope
 	// resolver are assembled.  The router then fails closed (no archive route)
 	// rather than mounting a reader without an authority boundary.
@@ -261,6 +263,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 	}
 
 	// 认证中间件
+	RegisterSemanticInternalRoutes(r, params.Config, params.SemanticInternalHandler)
 	r.Use(middleware.Auth(params.TenantService, params.UserService, params.TenantMemberService, params.TenantAPIKeyService, params.Config))
 
 	// 文件服务：统一代理本地/MinIO/COS/TOS存储后端（需要认证）
@@ -319,6 +322,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		// revoke and the extension download for the calling member.
 		RegisterMyBrowserRoutes(v1, params.SessionHandler)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)
+		RegisterSemanticModelPolicyRoutes(v1, params.SemanticModelPolicyHandler, rbacGuards)
 		RegisterKnowledgeBaseActivityRoutes(v1, params.AuditLogHandler, rbacGuards)
 		// KB-scoped image proxy: lets tenants render images embedded in
 		// org-shared / agent-visible KB content, which the tenant-scoped

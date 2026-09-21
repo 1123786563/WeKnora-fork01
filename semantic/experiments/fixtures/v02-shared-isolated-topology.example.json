@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "uri": "bolt://shared-neo4j.example.internal:7687",
+  "user": "semantica_v02_probe",
+  "database": "semantica_v02_probe",
+  "topology": "shared-isolated"
+}

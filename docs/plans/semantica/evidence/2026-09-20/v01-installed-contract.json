@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "python": {
+    "version": "3.12.12 (main, Feb  4 2026, 01:57:59) [Clang 21.1.4 ]",
+    "executable": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpQENbmm/bin/python",
+    "prefix": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpQENbmm"
+  },
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "distribution": {
+    "name": "semantica",
+    "version": "0.6.8",
+    "path": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpQENbmm/lib/python3.12/site-packages",
+    "package_file": "/Users/wuyongjun/.cache/uv/builds-v0/.tmpQENbmm/lib/python3.12/site-packages/semantica/__init__.py",
+    "expected_wheel_sha256": "0af4d9dd9b01503e0d72c0ae6b0703364d01dd1443e42bc7e9a6f415835917d7"
+  },
+  "lock_hash": "c643ce123490c93f56ed95e9d6501bbd90daf8b2cdc74b183067dccd63864c54",
+  "command": [
+    "verify_version.py",
+    "--output",
+    "docs/plans/semantica/evidence/2026-09-20/v01-installed-contract.json"
+  ],
+  "exit_code": 0,
+  "evidence_layer": "actual-runtime",
+  "capabilities": {
+    "NERExtractor": {
+      "status": "available",
+      "signature": "(method: Union[str, List[str]] = 'ml', entity_types: Optional[List[str]] = None, **config)",
+      "evidence_layer": "actual-runtime"
+    },
+    "RelationExtractor": {
+      "status": "available",
+      "signature": "(method: Union[str, List[str]] = 'pattern', relation_types: Optional[List[str]] = None, bidirectional: bool = False, confidence_threshold: float = 0.6, max_distance: int = 50, **config)",
+      "evidence_layer": "actual-runtime"
+    },
+    "ContextGraph": {
+      "status": "available",
+      "signature": "(config: Optional[Dict[str, Any]] = None, **kwargs)",
+      "evidence_layer": "actual-runtime"
+    },
+    "ContextRetriever": {
+      "status": "available",
+      "signature": "(config: Optional[Dict[str, Any]] = None, **kwargs)",
+      "evidence_layer": "actual-runtime"
+    },
+    "Reasoner": {
+      "status": "available",
+      "signature": "(**kwargs)",
+      "evidence_layer": "actual-runtime"
+    },
+    "GraphReasoner": {
+      "status": "available",
+      "signature": "(core=None, config=None, **kwargs)",
+      "evidence_layer": "actual-runtime"
+    },
+    "GraphStore": {
+      "status": "available",
+      "signature": "(backend: Optional[str] = None, **config)",
+      "evidence_layer": "actual-runtime"
+    }
+  },
+  "limitations": [
+    "No provider, model, persistent storage, Go authorization, or external service was invoked.",
+    "The lock records the frozen wheel hash; installed files do not retain a wheel byte-for-byte hash."
+  ],
+  "failures": [],
+  "artifact_path": "docs/plans/semantica/evidence/2026-09-20/v01-installed-contract.json"
+}

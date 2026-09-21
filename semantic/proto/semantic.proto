@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package weknora.semantic.v1;
+option go_package = "github.com/Tencent/WeKnora/semantic/proto;semanticpb";
+
+message Empty {}
+message ScopeKey { uint64 tenant_id = 1; string kb_id = 2; }
+message DocumentRevision { ScopeKey scope = 1; string document_id = 2; uint64 revision = 3; string content_hash = 4; bool deleted = 5; }
+message ChunkSnapshot { string chunk_id = 1; string text = 2; string content_hash = 3; }
+message IndexConfig { string config_digest = 1; string engine_version = 2; string model_profile_ref = 3; string prompt_version = 4; string rule_set_version = 5; string schema_version = 6; }
+message ApplyRequest { DocumentRevision document = 1; repeated ChunkSnapshot chunks = 2; optional string manifest_ref = 3; IndexConfig config = 4; string idempotency_key = 5; string payload_hash = 6; }
+message OperationRef { ScopeKey scope = 1; string operation_id = 2; }
+enum OperationState { OPERATION_STATE_UNSPECIFIED = 0; OPERATION_STATE_PENDING = 1; OPERATION_STATE_RUNNING = 2; OPERATION_STATE_SUCCEEDED = 3; OPERATION_STATE_FAILED = 4; OPERATION_STATE_CANCELLED = 5; }
+message Operation { string operation_id = 1; ScopeKey scope = 2; string document_id = 3; uint64 revision = 4; OperationState state = 5; string stage = 6; uint64 lease_token = 7; optional string result_generation = 8; optional string error_code = 9; }
+message Evidence { string evidence_id = 1; string document_id = 2; uint64 revision = 3; string chunk_id = 4; string content_hash = 5; string quote = 6; optional uint32 start_char = 7; optional uint32 end_char = 8; }
+enum Purpose { PURPOSE_UNSPECIFIED = 0; PURPOSE_SEARCH = 1; PURPOSE_REASON = 2; PURPOSE_INDEX = 3; }
+message AccessScope { ScopeKey scope = 1; string subject_id = 2; string scope_ref = 3; string scope_hash = 4; uint64 permission_epoch = 5; string expires_at = 6; string audience = 7; Purpose purpose = 8; string budget_ref = 9; }
+message QueryLimits { uint32 max_hops = 1; uint32 max_nodes = 2; uint32 max_edges = 3; uint32 top_k = 4; uint32 max_tokens = 5; uint32 deadline_ms = 6; }
+enum RetrievalMode { RETRIEVAL_MODE_UNSPECIFIED = 0; RETRIEVAL_MODE_GRAPH_RAG = 1; RETRIEVAL_MODE_REASON = 2; }
+message SearchRequest { string query_id = 1; string query = 2; AccessScope access_scope = 3; QueryLimits limits = 4; RetrievalMode requested_mode = 5; }
+message SearchResponse { string query_id = 1; string generation = 2; RetrievalMode requested_mode = 3; RetrievalMode actual_mode = 4; repeated Evidence evidence = 5; repeated string assertion_ids = 6; repeated StringPath paths = 7; bool stale = 8; bool partial = 9; bool truncated = 10; }
+message StringPath { repeated string ids = 1; }
+enum ReasoningMode { REASONING_MODE_UNSPECIFIED = 0; REASONING_MODE_RULES = 1; REASONING_MODE_MODEL = 2; }
+message ReasonRequest { SearchRequest search = 1; ReasoningMode reasoning_mode = 2; string rule_set_version = 3; }
+enum ReasonStatus { REASON_STATUS_UNSPECIFIED = 0; REASON_STATUS_DERIVED = 1; REASON_STATUS_INSUFFICIENT_EVIDENCE = 2; REASON_STATUS_CONFLICT = 3; REASON_STATUS_UNAVAILABLE = 4; }
+message ReasonResponse { SearchResponse retrieval = 1; ReasonStatus status = 2; optional string conclusion = 3; optional string conclusion_kind = 4; repeated string premise_ids = 5; repeated string rule_ids = 6; optional string model_version = 7; optional string prompt_version = 8; repeated string limitations = 9; }
+message Capabilities { string protocol_version = 1; string engine_version = 2; repeated RetrievalMode retrieval_modes = 3; repeated ReasoningMode reasoning_modes = 4; QueryLimits limits = 5; repeated string limitations = 6; optional string unavailable_reason = 7; }
+
+service SemanticService {
+  rpc GetCapabilities(Empty) returns (Capabilities);
+  rpc ApplyDocumentRevision(ApplyRequest) returns (Operation);
+  rpc DeleteDocument(DocumentRevision) returns (Operation);
+  rpc GetOperation(OperationRef) returns (Operation);
+  rpc CancelOperation(OperationRef) returns (Operation);
+  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc Reason(ReasonRequest) returns (ReasonResponse);
+}

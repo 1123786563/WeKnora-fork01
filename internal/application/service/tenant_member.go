@@ -75,6 +75,7 @@ const (
 
 // tenantMemberService implements interfaces.TenantMemberService.
 type tenantMemberService struct {
+	semanticScopeGuard
 	repo      interfaces.TenantMemberRepository
 	audit     interfaces.AuditLogService     // optional; nil ⇒ no audit, business ops still succeed
 	userRepo  interfaces.UserRepository      // optional; used to clear stale home-tenant pointers
@@ -201,6 +202,9 @@ func (s *tenantMemberService) AddMember(
 	if existing != nil {
 		return nil, ErrMembershipAlreadyExists
 	}
+	if err := s.invalidateSemanticTenant(ctx, tenantID); err != nil {
+		return nil, err
+	}
 	member := &types.TenantMember{
 		UserID:    userID,
 		TenantID:  tenantID,
@@ -247,6 +251,9 @@ func (s *tenantMemberService) EnsureOwner(
 	}
 	if existing != nil {
 		return existing, nil
+	}
+	if err := s.invalidateSemanticTenant(ctx, tenantID); err != nil {
+		return nil, err
 	}
 	member := &types.TenantMember{
 		UserID:   userID,
@@ -357,6 +364,9 @@ func (s *tenantMemberService) UpdateRole(
 		return nil
 	}
 	oldRole := current.Role
+	if err := s.invalidateSemanticTenant(ctx, tenantID); err != nil {
+		return err
+	}
 	// Owner demotion is the dangerous path: two concurrent demotions of
 	// two different Owners with the old "Get → Count → Update" sequence
 	// could each observe count=2 and both commit, leaving the tenant
@@ -432,6 +442,9 @@ func (s *tenantMemberService) RemoveMember(ctx context.Context, userID string, t
 	}
 	if current == nil {
 		return ErrMembershipNotFound
+	}
+	if err := s.invalidateSemanticTenant(ctx, tenantID); err != nil {
+		return err
 	}
 	if current.Role == types.TenantRoleOwner {
 		err := s.repo.RemoveOwnerAtomically(ctx, userID, tenantID)

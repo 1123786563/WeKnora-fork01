@@ -152,6 +152,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// External service clients
 	logger.Debugf(ctx, "[Container] Registering external service clients...")
 	must(container.Provide(initDocReaderClient))
+	must(container.Provide(initSemanticClient))
 	must(container.Provide(docparser.NewImageResolver))
 	must(container.Provide(initOllamaService))
 	must(container.Provide(initNeo4jClient))
@@ -165,6 +166,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewTenantRepository))
 	must(container.Provide(repository.NewTenantAPIKeyRepository))
 	must(container.Provide(repository.NewTenantMemberRepository))
+	must(container.Provide(repository.NewSemanticControlRepository))
+	must(container.Provide(repository.NewSemanticModelPolicyRepository))
+	must(container.Provide(repository.NewSemanticModelInvocationStore))
+	must(container.Provide(func(r *repository.SemanticControlRepository) interfaces.SemanticScopeInvalidator { return r }))
+	must(container.Provide(service.NewSemanticScopeService))
+	must(container.Provide(func(cfg *config.Config, s *service.SemanticScopeService) *handler.SemanticInternalHandler {
+		return handler.NewSemanticInternalHandler(cfg, s)
+	}))
 	must(container.Provide(repository.NewTenantInvitationRepository))
 	must(container.Provide(repository.NewAuditLogRepository))
 	must(container.Provide(repository.NewKnowledgeBaseRepository))
@@ -306,6 +315,36 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewKBShareService)) // KBShareService must be registered before KnowledgeService and KnowledgeTagService
 	must(container.Provide(service.NewAgentShareService))
 	must(container.Provide(service.NewKnowledgeService))
+	must(container.Decorate(func(s interfaces.TenantMemberService, i interfaces.SemanticScopeInvalidator) interfaces.TenantMemberService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.OrganizationService, i interfaces.SemanticScopeInvalidator) interfaces.OrganizationService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.KnowledgeService, i interfaces.SemanticScopeInvalidator) interfaces.KnowledgeService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.KBShareService, i interfaces.SemanticScopeInvalidator) interfaces.KBShareService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.KnowledgeBaseService, i interfaces.SemanticScopeInvalidator) interfaces.KnowledgeBaseService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
 	must(container.Provide(service.NewSpanTracker))
 	must(container.Provide(service.NewChunkService))
 	must(container.Provide(service.NewKnowledgeTagService))
@@ -314,6 +353,18 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewDatasetService))
 	must(container.Provide(service.NewEvaluationService))
 	must(container.Provide(service.NewUserService))
+	must(container.Decorate(func(s interfaces.TenantService, i interfaces.SemanticScopeInvalidator) interfaces.TenantService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
+	must(container.Decorate(func(s interfaces.UserService, i interfaces.SemanticScopeInvalidator) interfaces.UserService {
+		s.(interface {
+			SetSemanticScopeInvalidator(interfaces.SemanticScopeInvalidator)
+		}).SetSemanticScopeInvalidator(i)
+		return s
+	}))
 	must(container.Provide(service.NewSystemSettingService))
 	must(container.Provide(func(
 		repo repository.TenantSandboxConfigRepository,
@@ -615,6 +666,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewTenantInvitationHandler))
 	must(container.Provide(handler.NewAuditLogHandler))
 	must(container.Provide(handler.NewKnowledgeBaseHandler))
+	must(container.Provide(service.NewUnavailableSemanticModelPolicyService))
+	// A03's gateway is assembled even before pricing administration is wired.
+	// Its nil immutable-rate resolver deliberately makes every invocation deny
+	// before model resolution; it is never a permissive production fallback.
+	must(container.Provide(newUnavailableSemanticModelGateway))
+	must(container.Provide(handler.NewSemanticModelPolicyHandler))
 	must(container.Provide(handler.NewKnowledgeHandler))
 	must(container.Provide(handler.NewChunkHandler))
 	must(container.Provide(handler.NewFAQHandler))
@@ -891,6 +948,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	logger.Infof(ctx, "[Container] Container initialization completed successfully")
 	return container
+}
+
+func newUnavailableSemanticModelGateway(
+	cfg *config.Config,
+	models interfaces.ModelService,
+	scope *service.SemanticScopeService,
+	policy *service.SemanticModelPolicyService,
+	invocations *repository.SemanticModelInvocationStore,
+	budget *repocommercial.BudgetStore,
+	gate domain.ExecutionGate,
+) *service.SemanticModelGateway {
+	issuer := service.NewSemanticModelCapabilityIssuer(cfg.Semantic, scope, policy, nil, budget, invocations)
+	return service.NewSemanticModelGateway(issuer, models, scope, service.NewSemanticModelBudgetAdapter(budget, gate, nil), invocations)
 }
 
 // newMobileNotificationProvider keeps push delivery behind a single

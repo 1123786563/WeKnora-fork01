@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/commercial"
@@ -202,6 +203,98 @@ func (s *UsageStore) Record(ctx context.Context, fact domain.UsageFact) error {
 		}
 		return nil
 	})
+}
+
+// RecordRawModelUsage persists the final, owner-scoped raw observation of a
+// BYOK model call. BYOK model tokens are deliberately not a credit settlement:
+// unlike Record's final-fact path, this method never creates a settlement
+// outbox event and always stores a zero charge.
+func (s *UsageStore) RecordRawModelUsage(ctx context.Context, fact domain.UsageFact) error {
+	if err := fact.Validate(); err != nil {
+		return err
+	}
+	if fact.Funding != domain.FundingBYOK || fact.Service != domain.ServiceModel || fact.Status != domain.UsageStatusFinal || len(fact.Dimensions) != 1 {
+		return ErrInvalidUsageRow
+	}
+	if _, ok := fact.Dimensions[domain.DimensionModel]; !ok {
+		return ErrInvalidUsageRow
+	}
+	dims, err := json.Marshal(fact.Dimensions)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidUsageRow, err)
+	}
+	row := UsageRow{
+		ID:             fmt.Sprintf("%d:%s:%s:%d", fact.TenantID, fact.CallID, fact.AttemptID, fact.Revision),
+		TenantID:       fact.TenantID,
+		CallID:         fact.CallID,
+		AttemptID:      fact.AttemptID,
+		Revision:       fact.Revision,
+		RunID:          fact.RunID,
+		DelegationID:   fact.DelegationID,
+		Funding:        fact.Funding,
+		Service:        fact.Service,
+		PriceVersion:   fact.PriceVersion,
+		OccurredAt:     fact.OccurredAt,
+		DimensionsJSON: string(dims),
+		Status:         fact.Status,
+		ChargeMicro:    0,
+	}
+	var recordErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		recordErr = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			return s.recordRawModelUsageTx(tx, row)
+		})
+		if recordErr == nil || !retryableRawUsageError(recordErr) {
+			return recordErr
+		}
+		time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
+	}
+	return recordErr
+}
+
+func (s *UsageStore) recordRawModelUsageTx(tx *gorm.DB, row UsageRow) error {
+	// Insert first: a concurrent identical replay then observes the durable
+	// winner instead of both writers racing through a read-then-create gap.
+	result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		var existing UsageRow
+		err := tx.Where("tenant_id = ? AND call_id = ? AND attempt_id = ? AND revision = ?",
+			row.TenantID, row.CallID, row.AttemptID, row.Revision).First(&existing).Error
+		if err == nil {
+			if existing.contentEqual(row) && existing.ChargeMicro == 0 {
+				return nil
+			}
+			return ErrUsageRevisionConflict
+		}
+		return err
+	}
+	// Keep delayed facts for audit, but only a strictly newer revision may
+	// advance the current pointer. This is an atomic compare-and-set in both
+	// SQLite and PostgreSQL.
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "call_id"}, {Name: "attempt_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"revision", "updated_at"}),
+		Where: clause.Where{Exprs: []clause.Expression{
+			clause.Expr{SQL: "excluded.revision > commercial_usage_current.revision"},
+		}},
+	}).Create(&UsageCurrentRow{
+		TenantID:  row.TenantID,
+		CallID:    row.CallID,
+		AttemptID: row.AttemptID,
+		Revision:  row.Revision,
+		UpdatedAt: time.Now(),
+	}).Error
+}
+
+func retryableRawUsageError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") || strings.Contains(message, "database table is locked")
 }
 
 // contentEqual compares the logical content of two revisions of the same

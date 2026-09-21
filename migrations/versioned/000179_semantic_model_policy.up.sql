@@ -1,0 +1,38 @@
+CREATE TABLE semantic_model_policies (
+  tenant_id NUMERIC(20,0) NOT NULL CHECK(tenant_id >= 0 AND tenant_id <= 18446744073709551615),
+  kb_id TEXT NOT NULL,
+  model_calls_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  model_id TEXT NOT NULL,
+  funding TEXT NOT NULL CHECK(funding IN ('platform','byok')),
+  price_version TEXT NOT NULL,
+  max_input_tokens_per_call BIGINT NOT NULL CHECK(max_input_tokens_per_call > 0),
+  max_output_tokens_per_call BIGINT NOT NULL CHECK(max_output_tokens_per_call > 0),
+  max_calls_per_task BIGINT NOT NULL CHECK(max_calls_per_task > 0),
+  max_input_tokens_per_task BIGINT NOT NULL CHECK(max_input_tokens_per_task > 0),
+  max_output_tokens_per_task BIGINT NOT NULL CHECK(max_output_tokens_per_task > 0),
+  per_call_upper_micro BIGINT NOT NULL CHECK(per_call_upper_micro >= 0),
+  task_upper_micro BIGINT NULL CHECK(task_upper_micro > 0),
+  policy_version NUMERIC(20,0) NOT NULL CHECK(policy_version > 0 AND policy_version <= 18446744073709551615),
+  updated_by TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant_id, kb_id)
+);
+CREATE TABLE semantic_model_policy_revisions (
+  tenant_id NUMERIC(20,0) NOT NULL CHECK(tenant_id >= 0 AND tenant_id <= 18446744073709551615),
+  kb_id TEXT NOT NULL,
+  model_calls_enabled BOOLEAN NOT NULL,
+  model_id TEXT NOT NULL,
+  funding TEXT NOT NULL CHECK(funding IN ('platform','byok')),
+  price_version TEXT NOT NULL,
+  max_input_tokens_per_call BIGINT NOT NULL CHECK(max_input_tokens_per_call > 0),
+  max_output_tokens_per_call BIGINT NOT NULL CHECK(max_output_tokens_per_call > 0),
+  max_calls_per_task BIGINT NOT NULL CHECK(max_calls_per_task > 0),
+  max_input_tokens_per_task BIGINT NOT NULL CHECK(max_input_tokens_per_task > 0),
+  max_output_tokens_per_task BIGINT NOT NULL CHECK(max_output_tokens_per_task > 0),
+  per_call_upper_micro BIGINT NOT NULL CHECK(per_call_upper_micro >= 0),
+  task_upper_micro BIGINT NULL CHECK(task_upper_micro > 0),
+  policy_version NUMERIC(20,0) NOT NULL CHECK(policy_version > 0 AND policy_version <= 18446744073709551615),
+  updated_by TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (tenant_id, kb_id, policy_version)
+);

@@ -343,6 +343,11 @@ func (s *knowledgeService) executeKnowledgeClone(
 	if err != nil {
 		return err
 	}
+	if len(plan.add)+len(plan.remove) > 0 {
+		if err := s.invalidateSemanticTransfer(ctx, source, target); err != nil {
+			return err
+		}
+	}
 	total, done := len(plan.add)+len(plan.remove), 0
 	if progress != nil {
 		progress(done, total)

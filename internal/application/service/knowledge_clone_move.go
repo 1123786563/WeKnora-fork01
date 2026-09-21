@@ -645,6 +645,9 @@ func (s *knowledgeService) cloneFAQKnowledgeBase(
 		return nil
 	}
 	srcKnowledge := srcKnowledgeList[0]
+	if err := s.invalidateSemanticTransfer(ctx, srcKB, dstKB); err != nil {
+		return err
+	}
 
 	// Get chunk-level differences based on content_hash.
 	diff, err := s.chunkRepo.FAQChunkDiff(ctx, srcKB.TenantID, srcKB.ID, dstKB.TenantID, dstKB.ID)
@@ -1107,6 +1110,11 @@ func (s *knowledgeService) ProcessKnowledgeMove(ctx context.Context, t *asynq.Ta
 			},
 		)
 		return err
+	}
+	if len(items) > 0 {
+		if err := s.invalidateSemanticTransfer(ctx, sourceKB, targetKB); err != nil {
+			return err
+		}
 	}
 	progress := &types.KnowledgeMoveProgress{
 		TaskID:     payload.TaskID,
