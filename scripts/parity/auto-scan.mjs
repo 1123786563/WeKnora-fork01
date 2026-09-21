@@ -13,8 +13,22 @@
  * 用法：node scripts/parity/auto-scan.mjs
  * 退出码：0=扫描完成（无论差异多少）；1=环境故障（服务不在线/登录失败）。
  */
-import pw from '/Users/wuyongjun/trea/WeKnora-fork01/apps/web/node_modules/@playwright/test/index.js';
-const { chromium } = pw;
+// playwright 解析：优先 apps/web 的 @playwright/test（pnpm 安装），
+// 失败则回退到本目录隔离安装的 playwright-core + ms-playwright 缓存的
+// headless shell（apps/web 的 node_modules 曾被并行会话清空过）。
+let chromium;
+try {
+  ({ chromium } = await import('/Users/wuyongjun/trea/WeKnora-fork01/apps/web/node_modules/@playwright/test/index.js'));
+} catch {
+  const { chromium: coreChromium } = await import('playwright-core');
+  const headlessShell = process.env.HOME +
+    '/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell';
+  chromium = {
+    launch(opts = {}) {
+      return coreChromium.launch({ ...opts, executablePath: opts.executablePath || headlessShell });
+    },
+  };
+}
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
