@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Tencent/WeKnora/internal/application/service/metric"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/insights/metric"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
