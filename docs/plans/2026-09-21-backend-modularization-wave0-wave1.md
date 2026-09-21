@@ -74,6 +74,7 @@
 | `internal/modules/conversation/queryhistory/adapters/platform.go` | FileService, TaskEnqueuer, clock, and tracing adapters. |
 | `internal/modules/conversation/queryhistory/transport/http/handler.go` | Gin endpoint methods, DTO parsing, AppError mapping, CSV streaming. |
 | `internal/modules/conversation/queryhistory/transport/http/routes.go` | Relative `/admin/sessions` route registration on a pre-guarded group. |
+| `internal/modules/conversation/queryhistory/testkit/observation.go` | Test-only normalization and comparison of legacy/new HTTP, job, file, and task observations. |
 | `internal/modules/conversation/queryhistory/README.md` | Responsibilities, non-responsibilities, ports, owned data, routes, worker, legacy exceptions, and removal wave. |
 | `internal/modules/conversation/queryhistory/**/*_test.go` | Domain, application, adapter, transport, module, Redis/Lite parity, and compatibility tests. |
 
@@ -363,7 +364,7 @@ Expected: FAIL because the contracts do not exist and Lite silently overwrites.
 
 - [ ] **Step 3: Implement composition contracts**
 
-`AsynqWorkerRegistry` owns a mutex and `map[string]struct{}`; it checks/records before `mux.HandleFunc`. `SyncTaskExecutor.Register` performs the same check under its existing mutex. Keep `RegisterHandler` temporarily as a delegating compatibility wrapper only until Task 9 removes old callers.
+`AsynqWorkerRegistry` owns a mutex and `map[string]struct{}`; it checks/records before `mux.HandleFunc`. `SyncTaskExecutor.Register` performs the same check under its existing mutex. Keep `RegisterHandler` temporarily as a delegating compatibility wrapper only until Task 10 removes old callers.
 
 ```go
 func (e *SyncTaskExecutor) Register(pattern string, h bootstrap.TaskHandler) error {
@@ -571,7 +572,7 @@ var exportColumns = []string{
 }
 ```
 
-Worker order is: validate payload → tenant-scoped job read → done short-circuit → policy recheck → running transition → audit rows → anonymize → CSV encode → file write → done transition. Every status update includes both `tenantID` and `jobID`. On failure, truncate stored error to 1,024 bytes, mark failed, and return the original error for retry. Malformed/tenantless payload returns `domain.ErrPermanentPayload` and never touches a job; the module's asynq adapter in Task 9 translates that error to `asynq.SkipRetry`, keeping application code independent of asynq.
+Worker order is: validate payload → tenant-scoped job read → done short-circuit → policy recheck → running transition → audit rows → anonymize → CSV encode → file write → done transition. Every status update includes both `tenantID` and `jobID`. On failure, truncate stored error to 1,024 bytes, mark failed, and return the original error for retry. Malformed/tenantless payload returns `domain.ErrPermanentPayload` and never touches a job; the module's asynq adapter in Task 10 translates that error to `asynq.SkipRetry`, keeping application code independent of asynq.
 
 - [ ] **Step 5: Run focused tests**
 
@@ -712,7 +713,114 @@ git commit -m "refactor(queryhistory): move HTTP transport"
 
 ---
 
-### Task 9: Assemble the Module and Switch Production Wiring
+### Task 9: Add the Old-vs-New Differential Compatibility Gate
+
+**Files:**
+- Create: `internal/modules/conversation/queryhistory/testkit/observation.go`
+- Test: `internal/modules/conversation/queryhistory/testkit/observation_test.go`
+- Test: `internal/handler/session/query_history_differential_test.go`
+- Test: `internal/application/service/query_history_differential_test.go`
+- Test: `internal/application/repository/query_history_differential_test.go`
+- Modify: `docs/architecture/backend-baseline.md`
+
+**Interfaces:**
+- Consumes: untouched legacy Query History handler/service/repository plus the new domain/application/adapters/transport from Tasks 4–8.
+- Produces: `testkit.Observation`, `testkit.NormalizeHTTP`, `testkit.NormalizeError`, and `testkit.Compare`; an automated gate proving the two implementations produce identical observable results before production wiring changes.
+
+- [ ] **Step 1: Write failing observation-normalizer tests**
+
+Define the comparison record explicitly:
+
+```go
+type Observation struct {
+    Status       int
+    Headers      map[string][]string
+    Body         []byte
+    ErrorClass   string
+    Jobs         []JobObservation
+    StoredFiles  map[string][]byte
+    Enqueued     []TaskObservation
+}
+```
+
+Tests must prove JSON object key order is normalized while JSON array order is preserved; `Date`, request ID, trace ID, and generated transport timing headers are removed; CSV and non-JSON bodies remain byte-exact; AppError status/code/message remain significant; job/file/task observations sort only by their stable IDs.
+
+- [ ] **Step 2: Run the normalizer tests and verify RED**
+
+Run: `go test ./internal/modules/conversation/queryhistory/testkit -count=1 -v`
+
+Expected: FAIL because the testkit does not exist.
+
+- [ ] **Step 3: Implement the deterministic comparison testkit**
+
+`Compare(want, got)` returns a field-specific error and never ignores a mismatch. The only normalization allowlist is the four transport-only headers named in Step 1. Do not normalize user IDs, timestamps stored in domain records, CSV ordering, errors, file paths, task options, or job transitions.
+
+- [ ] **Step 4: Add HTTP differential scenarios**
+
+In `internal/handler/session/query_history_differential_test.go`, the test package can construct the legacy handler using its private fields and independently construct the new transport with fake ports. For each scenario, send the same `httptest` request and compare normalized observations:
+
+```text
+snapshot normal
+snapshot anonymized
+snapshot disabled
+snapshot missing and foreign tenant
+export empty body
+export filtered by user/time/feedback
+invalid time, feedback, and job ID
+status pending/running/done/failed
+download not ready, missing file, and completed CSV
+```
+
+Use fixed Tenant/User IDs and a fixed clock. Completed downloads compare status, headers, BOM, filename, and all CSV bytes.
+
+- [ ] **Step 5: Add application/worker differential scenarios**
+
+In `internal/application/service/query_history_differential_test.go`, run the legacy export service and new export application against separate but identical fake stores. Compare:
+
+```text
+created pending job
+enqueued task type/queue/max-retry/timeout/payload
+enqueue failure transition
+normal and anonymized CSV bytes
+disabled-after-enqueue failure with no file write
+storage failure and 1,024-byte stored error truncation
+done-job idempotent rerun
+missing job drop
+malformed and tenantless payload permanent failure
+```
+
+Normalize the legacy `asynq.SkipRetry` result and new `domain.ErrPermanentPayload` to the same semantic error class only in `NormalizeError`; all other error text and wrapping remain significant.
+
+- [ ] **Step 6: Add repository differential scenarios**
+
+In external package `repository_test`, initialize two independent in-memory SQLite databases with the same fixtures. Run the legacy repository against one and the new adapter against the other. Compare job CRUD, tenant-scoped missing/foreign reads, source classification, user/time/feedback filters, chronological tie-breaking, counts, soft-delete exclusion, skill-maintenance exclusion, and the 10,000-row cap.
+
+- [ ] **Step 7: Run the complete differential gate**
+
+```bash
+go test ./internal/handler/session -run QueryHistoryDifferential -count=1
+go test ./internal/application/service -run QueryHistoryDifferential -count=1
+go test ./internal/application/repository -run QueryHistoryDifferential -count=1
+```
+
+Expected: PASS with zero ignored mismatches. Any mismatch blocks Task 10; update the new implementation, not the expected observation, unless the approved Spec explicitly changes behavior.
+
+- [ ] **Step 8: Prove the gate detects drift**
+
+The testkit unit test feeds observations differing in status, anonymized user ID, CSV column order, task retry count, and tenant-scoped job transition. Assert each comparison fails with the field name. This mutation-style check prevents an over-normalizing comparator from producing false confidence.
+
+- [ ] **Step 9: Record and commit the gate**
+
+Append the three differential commands and passing scenario counts to `docs/architecture/backend-baseline.md`.
+
+```bash
+git add internal/modules/conversation/queryhistory/testkit internal/handler/session/query_history_differential_test.go internal/application/service/query_history_differential_test.go internal/application/repository/query_history_differential_test.go docs/architecture/backend-baseline.md
+git commit -m "test(queryhistory): add old-new differential gate"
+```
+
+---
+
+### Task 10: Assemble the Module and Switch Production Wiring
 
 **Files:**
 - Create: `internal/modules/conversation/queryhistory/module.go`
@@ -728,7 +836,7 @@ git commit -m "refactor(queryhistory): move HTTP transport"
 - Test: `internal/router/sync_task_retry_test.go`
 
 **Interfaces:**
-- Consumes: Tasks 3–8.
+- Consumes: Tasks 3–9; production switching is forbidden until every Task 9 differential scenario passes.
 - Produces: `queryhistory.NewModule(queryhistory.Dependencies) *queryhistory.Module`; `(*Module).RegisterRoutes(*gin.RouterGroup)`; `(*Module).RegisterWorkers(bootstrap.WorkerRegistry) error`; a private asynq handler that passes `task.Payload()` to application and maps `domain.ErrPermanentPayload` to `asynq.SkipRetry`.
 
 - [ ] **Step 1: Write failing module tests**
@@ -777,7 +885,7 @@ git commit -m "refactor(queryhistory): switch production to conversation module"
 
 ---
 
-### Task 10: Remove Legacy Query History Paths and Verify Wave 0–1
+### Task 11: Remove Legacy Query History Paths and Verify Wave 0–1
 
 **Files:**
 - Delete: `internal/handler/session/query_history_admin.go`
@@ -791,16 +899,31 @@ git commit -m "refactor(queryhistory): switch production to conversation module"
 - Delete: `internal/application/repository/query_history_export.go`
 - Delete: `internal/application/repository/query_history_export_test.go`
 - Delete: `internal/types/interfaces/query_history_export.go`
+- Delete: `internal/handler/session/query_history_differential_test.go`
+- Delete: `internal/application/service/query_history_differential_test.go`
+- Delete: `internal/application/repository/query_history_differential_test.go`
+- Delete: `internal/modules/conversation/queryhistory/testkit/observation.go`
+- Delete: `internal/modules/conversation/queryhistory/testkit/observation_test.go`
 - Modify: `internal/application/service/session.go`
 - Modify: `internal/handler/session/handler.go`
 - Modify: `docs/architecture/backend-modules.yaml`
 - Modify: `docs/architecture/backend-baseline.md`
 
 **Interfaces:**
-- Consumes: production module from Task 9.
+- Consumes: production module from Task 10 and passing differential evidence from Task 9.
 - Produces: zero runtime imports of deleted legacy Query History service/repository/handler; final Wave 0–1 evidence and clean guard.
 
-- [ ] **Step 1: Prove production no longer imports legacy Query History symbols**
+- [ ] **Step 1: Re-run the differential gate after production switching**
+
+```bash
+go test ./internal/handler/session -run QueryHistoryDifferential -count=1
+go test ./internal/application/service -run QueryHistoryDifferential -count=1
+go test ./internal/application/repository -run QueryHistoryDifferential -count=1
+```
+
+Expected: PASS. This proves the wiring changes in Task 10 did not change the application, repository, or HTTP observations before the legacy comparator is removed.
+
+- [ ] **Step 2: Prove production no longer imports legacy Query History symbols**
 
 Run:
 
@@ -810,11 +933,11 @@ rg -n 'QueryHistoryExportService|NewQueryHistoryExportService|QueryHistoryExport
 
 Expected: only intentional module/compatibility results. Any old handler/service/repository consumer must be migrated before deletion.
 
-- [ ] **Step 2: Move remaining snapshot code and delete legacy files**
+- [ ] **Step 3: Move remaining snapshot code and delete legacy files**
 
-Remove `sessionService.GetQueryHistorySnapshot` and the Query History fields/constructor argument from `session.Handler`. Delete old tests only after their assertions exist under the new module. Remove the old repository interface after adapters use module ports.
+Remove `sessionService.GetQueryHistorySnapshot` and the Query History fields/constructor argument from `session.Handler`. Delete old tests only after their assertions exist under the new module. Remove the old repository interface after adapters use module ports. Delete the three differential test files and their Query History testkit only after Step 1 passes; permanent new-module tests retain every scenario, while Task 9's commit and baseline document retain the old-vs-new evidence.
 
-- [ ] **Step 3: Run formatting and focused tests**
+- [ ] **Step 4: Run formatting and focused tests**
 
 ```bash
 gofmt -w internal/bootstrap internal/modules/conversation/queryhistory internal/router internal/container internal/types internal/application
@@ -823,7 +946,7 @@ go test ./internal/modules/conversation/queryhistory/... ./internal/router ./int
 
 Expected: PASS.
 
-- [ ] **Step 4: Run architecture and full server verification**
+- [ ] **Step 5: Run architecture and full server verification**
 
 ```bash
 make check-backend-architecture
@@ -836,7 +959,7 @@ golangci-lint run --new-from-rev="$ARCH_BASE_SHA" ./...
 
 Expected: guard/build PASS; tests and lint PASS or match only failures documented in Task 1 baseline with identical signatures. New failures are blockers.
 
-- [ ] **Step 5: Verify scope and external contract**
+- [ ] **Step 6: Verify scope and external contract**
 
 ```bash
 ARCH_BASE_SHA=$(sed -n 's/^base_sha: //p' docs/architecture/backend-baseline.md | head -1)
@@ -848,18 +971,18 @@ git diff "$ARCH_BASE_SHA"...HEAD -- cmd/desktop docreader client
 
 Expected: last command has no output; diff check is clean; changed files match this plan.
 
-- [ ] **Step 6: Update final evidence**
+- [ ] **Step 7: Update final evidence**
 
 Append commands, results, known-baseline comparison, final route/worker counts, and the two remaining Wave 5 exceptions to `docs/architecture/backend-baseline.md`. Mark Query History assets as migrated in the YAML; do not mark other modules complete.
 
-- [ ] **Step 7: Commit cleanup and evidence**
+- [ ] **Step 8: Commit cleanup and evidence**
 
 ```bash
 git add -A internal docs/architecture
 git commit -m "refactor(queryhistory): complete first backend module slice"
 ```
 
-- [ ] **Step 8: Request independent review**
+- [ ] **Step 9: Request independent review**
 
 Review must check Spec compliance, route/worker parity, tenant isolation, disabled-after-enqueue behavior, compatibility aliases, exception scope, no hidden globals, no unrelated refactor, and the final diff against the recorded `base_sha`.
 
@@ -867,8 +990,8 @@ Review must check Spec compliance, route/worker parity, tenant isolation, disabl
 
 ## Plan Self-Review Record
 
-- **Spec coverage:** Wave 0 inventory/guard is Tasks 1–2; composition contract is Task 3; Query History domain/application/adapters/transport/wiring is Tasks 4–9; old-path removal and evidence is Task 10. Wave 2–6 are deliberately excluded and require later plans after the pilot review.
+- **Spec coverage:** Wave 0 inventory/guard is Tasks 1–2; composition contract is Task 3; Query History domain/application/adapters/transport is Tasks 4–8; old-vs-new equivalence is Task 9; production wiring is Task 10; old-path removal and evidence is Task 11. Wave 2–6 are deliberately excluded and require later plans after the pilot review.
 - **Placeholder scan:** The plan contains no implementation placeholders; every task names exact files, interfaces, commands, expected results, and commit boundaries.
-- **Type consistency:** `bootstrap.TaskHandler` and `WorkerRegistry.Register` are defined in Task 3 and used unchanged in Tasks 9–10. Query History domain and ports are defined in Task 4 and consumed unchanged by Tasks 5–9.
-- **Review Focus coverage:** Duplicate registration is tested in Tasks 3/8/9; cross-tenant 404 in Tasks 7/8; disabled-after-enqueue and malformed payload in Task 6; Redis/Lite parity in Tasks 2/9.
+- **Type consistency:** `bootstrap.TaskHandler` and `WorkerRegistry.Register` are defined in Task 3 and used unchanged in Task 10. Query History domain and ports are defined in Task 4 and consumed unchanged by Tasks 5–10. `testkit.Observation` exists only for Task 9 differential evidence and is removed after the post-switch rerun in Task 11.
+- **Review Focus coverage:** Duplicate registration is tested in Tasks 3/8/10; cross-tenant 404 in Tasks 7–9; disabled-after-enqueue and malformed payload in Tasks 6/9; Redis/Lite parity in Tasks 2/9/10. Task 9 directly compares old and new outputs and Task 11 reruns the comparison after wiring changes.
 - **Scope check:** This plan yields independently testable software: architecture ownership is enforced and one complete production feature slice runs through the new module boundary. No later module migration is required for this deliverable to function.
