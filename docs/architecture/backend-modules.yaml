@@ -1,0 +1,2932 @@
+schema_version: 1
+scope:
+  include: [cmd/server, internal]
+  exclude: [cmd/desktop, docreader, client]
+modules:
+  - {id: identity, target_prefix: internal/modules/identity}
+  - {id: knowledge, target_prefix: internal/modules/knowledge}
+  - {id: conversation, target_prefix: internal/modules/conversation}
+  - {id: agentcatalog, target_prefix: internal/modules/agentcatalog}
+  - {id: agentruntime, target_prefix: internal/modules/agentruntime}
+  - {id: workbench, target_prefix: internal/modules/workbench}
+  - {id: craft, target_prefix: internal/modules/craft}
+  - {id: execution, target_prefix: internal/modules/execution}
+  - {id: datasource, target_prefix: internal/modules/datasource}
+  - {id: appconnector, target_prefix: internal/modules/appconnector}
+  - {id: channels, target_prefix: internal/modules/channels}
+  - {id: airesource, target_prefix: internal/modules/airesource}
+  - {id: commercial, target_prefix: internal/modules/commercial}
+  - {id: insights, target_prefix: internal/modules/insights}
+  - {id: system, target_prefix: internal/modules/system}
+  - {id: policy, target_prefix: internal/modules/policy}
+platform:
+  id: platform
+  target_prefixes: [internal/platform, internal/bootstrap]
+assets:
+  - kind: route
+    id: channels.im-routes
+    owner: channels
+    source: internal/router/routes_agent.go
+    symbol: RegisterIMRoutes
+    target: internal/modules/channels/transport/http
+  - kind: route
+    id: channels.embed-public-routes
+    owner: channels
+    source: internal/router/routes_agent.go
+    symbol: RegisterEmbedPublicRoutes
+    target: internal/modules/channels/transport/http
+  - kind: route
+    id: execution.sandbox-terminal-routes
+    owner: execution
+    source: internal/router/routes_chat.go
+    symbol: RegisterSandboxTerminalRoutes
+    target: internal/modules/execution/transport/http
+  - kind: route
+    id: execution.local-browser-routes
+    owner: execution
+    source: internal/router/routes_chat.go
+    symbol: RegisterLocalBrowserRoutes
+    target: internal/modules/execution/transport/http
+  - kind: route
+    id: craft.preview-routes
+    owner: craft
+    source: internal/handler/session/craft_preview.go
+    symbol: RegisterCraftPreviewRoutes
+    target: internal/modules/craft/transport/http
+  - kind: route
+    id: craft.artifact-preview-routes
+    owner: craft
+    source: internal/handler/artifact_preview.go
+    symbol: RegisterArtifactPreviewRoutes
+    target: internal/modules/craft/transport/http
+  - kind: route
+    id: knowledge.semantic-internal-routes
+    owner: knowledge
+    source: internal/router/routes_infra.go
+    symbol: RegisterSemanticInternalRoutes
+    target: internal/modules/knowledge/transport/http
+  - kind: route
+    id: identity.auth-routes
+    owner: identity
+    source: internal/router/routes_auth_tenant.go
+    symbol: RegisterAuthRoutes
+    target: internal/modules/identity/transport/http
+  - kind: route
+    id: identity.tenant-routes
+    owner: identity
+    source: internal/router/routes_auth_tenant.go
+    symbol: RegisterTenantRoutes
+    target: internal/modules/identity/transport/http
+  - kind: route
+    id: identity.my-invitation-routes
+    owner: identity
+    source: internal/router/routes_auth_tenant.go
+    symbol: RegisterMyInvitationRoutes
+    target: internal/modules/identity/transport/http
+  - kind: route
+    id: execution.my-browser-routes
+    owner: execution
+    source: internal/router/routes_chat.go
+    symbol: RegisterMyBrowserRoutes
+    target: internal/modules/execution/transport/http
+  - kind: route
+    id: knowledge.knowledge-base-routes
+    owner: knowledge
+    source: internal/router/routes_knowledge.go
+    symbol: RegisterKnowledgeBaseRoutes
+    target: internal/modules/knowledge/transport/http
+  - kind: route
+    id: knowledge.semantic-model-policy-routes
+    owner: knowledge
+    source: internal/router/routes_knowledge.go
+    symbol: RegisterSemanticModelPolicyRoutes
+    target: internal/modules/knowledge/transport/http
+  - kind: route
+    id: identity.kb-activity-routes
+    owner: identity
+    source: internal/router/routes_knowledge.go
+    symbol: RegisterKnowledgeBaseActivityRoutes
+    target: internal/modules/identity/transport/http
+  - kind: route
+    id: knowledge.knowledge-tag-routes
+    owner: knowledge
+    source: internal/router/routes_knowledge.go
+    symbol: RegisterKnowledgeTagRoutes
+    target: internal/modules/knowledge/transport/http
+  - kind: route
+    id: knowledge.knowledge-routes
+    owner: knowledge
+    source: internal/router/routes_knowledge.go
+    symbol: RegisterKnowledgeRoutes
+    target: internal/modules/knowledge/transport/http
+  - kind: route
+    id: knowledge.faq-routes
+    owner: knowledge
+    source: internal/router/routes_knowledge.go
+    symbol: RegisterFAQRoutes
+    target: internal/modules/knowledge/transport/http
+  - kind: route
+    id: knowledge.chunk-routes
+    owner: knowledge
+    source: internal/router/routes_knowledge.go
+    symbol: RegisterChunkRoutes
+    target: internal/modules/knowledge/transport/http
+  - kind: route
+    id: conversation.session-routes
+    owner: conversation
+    source: internal/router/routes_chat.go
+    symbol: RegisterSessionRoutes
+    target: internal/modules/conversation/transport/http
+  - kind: route
+    id: conversation.session-share-routes
+    owner: conversation
+    source: internal/router/routes_chat.go
+    symbol: RegisterSessionShareRoutes
+    target: internal/modules/conversation/transport/http
+  - kind: route
+    id: agentruntime.native-archive-routes
+    owner: agentruntime
+    source: internal/router/routes_native_archive.go
+    symbol: RegisterNativeArchiveRoutes
+    target: internal/modules/agentruntime/transport/http
+  - kind: route
+    id: workbench.workbench-routes
+    owner: workbench
+    source: internal/router/routes_workbench.go
+    symbol: RegisterWorkbenchRoutes
+    target: internal/modules/workbench/transport/http
+  - kind: route
+    id: workbench.workbench-artifact-routes
+    owner: workbench
+    source: internal/router/routes_workbench.go
+    symbol: RegisterWorkbenchArtifactRoutes
+    target: internal/modules/workbench/transport/http
+  - kind: route
+    id: execution.execution-registration-routes
+    owner: execution
+    source: internal/router/routes_workbench.go
+    symbol: RegisterExecutionRegistrationRoutes
+    target: internal/modules/execution/transport/http
+  - kind: route
+    id: workbench.workbench-start-routes
+    owner: workbench
+    source: internal/router/routes_workbench.go
+    symbol: RegisterWorkbenchStartRoutes
+    target: internal/modules/workbench/transport/http
+  - kind: route
+    id: workbench.workbench-overview-routes
+    owner: workbench
+    source: internal/router/routes_workbench.go
+    symbol: RegisterWorkbenchOverviewRoutes
+    target: internal/modules/workbench/transport/http
+  - kind: route
+    id: workbench.workbench-inbox-routes
+    owner: workbench
+    source: internal/router/routes_workbench.go
+    symbol: RegisterWorkbenchInboxRoutes
+    target: internal/modules/workbench/transport/http
+  - kind: route
+    id: workbench.workbench-command-routes
+    owner: workbench
+    source: internal/router/routes_workbench.go
+    symbol: RegisterWorkbenchCommandRoutes
+    target: internal/modules/workbench/transport/http
+  - kind: route
+    id: workbench.mobile-voice-routes
+    owner: workbench
+    source: internal/router/routes_workbench.go
+    symbol: RegisterMobileVoiceRoutes
+    target: internal/modules/workbench/transport/http
+  - kind: route
+    id: workbench.mobile-device-routes
+    owner: workbench
+    source: internal/router/routes_workbench.go
+    symbol: RegisterMobileDeviceRoutes
+    target: internal/modules/workbench/transport/http
+  - kind: route
+    id: conversation.chat-routes
+    owner: conversation
+    source: internal/router/routes_chat.go
+    symbol: RegisterChatRoutes
+    target: internal/modules/conversation/transport/http
+  - kind: route
+    id: conversation.message-routes
+    owner: conversation
+    source: internal/router/routes_chat.go
+    symbol: RegisterMessageRoutes
+    target: internal/modules/conversation/transport/http
+  - kind: route
+    id: conversation.feedback-routes
+    owner: conversation
+    source: internal/router/routes_chat.go
+    symbol: RegisterFeedbackRoutes
+    target: internal/modules/conversation/transport/http
+  - kind: route
+    id: queryhistory.admin-routes
+    owner: conversation
+    source: internal/router/routes_query_history.go
+    symbol: RegisterQueryHistoryAdminRoutes
+    target: internal/modules/conversation/queryhistory/transport/http
+  - kind: route
+    id: insights.analytics-routes
+    owner: insights
+    source: internal/router/routes_analytics.go
+    symbol: RegisterAnalyticsRoutes
+    target: internal/modules/insights/transport/http
+  - kind: route
+    id: commercial.usage-routes
+    owner: commercial
+    source: internal/router/routes_usage.go
+    symbol: RegisterUsageRoutes
+    target: internal/modules/commercial/transport/http
+  - kind: route
+    id: airesource.model-routes
+    owner: airesource
+    source: internal/router/routes_infra.go
+    symbol: RegisterModelRoutes
+    target: internal/modules/airesource/transport/http
+  - kind: route
+    id: execution.sandbox-config-routes
+    owner: execution
+    source: internal/router/routes_infra.go
+    symbol: RegisterSandboxConfigRoutes
+    target: internal/modules/execution/transport/http
+  - kind: route
+    id: execution.my-env-var-routes
+    owner: execution
+    source: internal/router/routes_auth_tenant.go
+    symbol: RegisterMyEnvVarRoutes
+    target: internal/modules/execution/transport/http
+  - kind: route
+    id: insights.evaluation-routes
+    owner: insights
+    source: internal/router/routes_infra.go
+    symbol: RegisterEvaluationRoutes
+    target: internal/modules/insights/transport/http
+  - kind: route
+    id: system.initialization-routes
+    owner: system
+    source: internal/router/routes_infra.go
+    symbol: RegisterInitializationRoutes
+    target: internal/modules/system/transport/http
+  - kind: route
+    id: system.system-routes
+    owner: system
+    source: internal/router/routes_auth_tenant.go
+    symbol: RegisterSystemRoutes
+    target: internal/modules/system/transport/http
+  - kind: route
+    id: system.system-admin-routes
+    owner: system
+    source: internal/router/routes_auth_tenant.go
+    symbol: RegisterSystemAdminRoutes
+    target: internal/modules/system/transport/http
+  - kind: route
+    id: airesource.mcp-service-routes
+    owner: airesource
+    source: internal/router/routes_infra.go
+    symbol: RegisterMCPServiceRoutes
+    target: internal/modules/airesource/transport/http
+  - kind: route
+    id: airesource.web-search-routes
+    owner: airesource
+    source: internal/router/routes_infra.go
+    symbol: RegisterWebSearchRoutes
+    target: internal/modules/airesource/transport/http
+  - kind: route
+    id: airesource.web-search-provider-routes
+    owner: airesource
+    source: internal/router/routes_infra.go
+    symbol: RegisterWebSearchProviderRoutes
+    target: internal/modules/airesource/transport/http
+  - kind: route
+    id: airesource.vector-store-routes
+    owner: airesource
+    source: internal/router/routes_infra.go
+    symbol: RegisterVectorStoreRoutes
+    target: internal/modules/airesource/transport/http
+  - kind: route
+    id: airesource.storage-backend-routes
+    owner: airesource
+    source: internal/router/routes_infra.go
+    symbol: RegisterStorageBackendRoutes
+    target: internal/modules/airesource/transport/http
+  - kind: route
+    id: agentcatalog.custom-agent-routes
+    owner: agentcatalog
+    source: internal/router/routes_agent.go
+    symbol: RegisterCustomAgentRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.agent-version-routes
+    owner: agentcatalog
+    source: internal/router/routes_agent_versions.go
+    symbol: RegisterAgentVersionRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.agent-marketplace-routes
+    owner: agentcatalog
+    source: internal/router/routes_agent_marketplace.go
+    symbol: RegisterAgentMarketplaceRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.persona-routes
+    owner: agentcatalog
+    source: internal/router/routes_persona.go
+    symbol: RegisterPersonaRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.expert-routes
+    owner: agentcatalog
+    source: internal/router/routes_expert.go
+    symbol: RegisterExpertRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.subagent-routes
+    owner: agentcatalog
+    source: internal/router/routes_subagent.go
+    symbol: RegisterSubagentRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.user-favorite-routes
+    owner: agentcatalog
+    source: internal/router/routes_agent.go
+    symbol: RegisterUserFavoriteRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.skill-routes
+    owner: agentcatalog
+    source: internal/router/routes_agent.go
+    symbol: RegisterSkillRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.skill-market-routes
+    owner: agentcatalog
+    source: internal/router/routes_skill_market.go
+    symbol: RegisterSkillMarketRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.tenant-skill-market-routes
+    owner: agentcatalog
+    source: internal/router/routes_tenant_skill_market.go
+    symbol: RegisterTenantSkillMarketRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: agentcatalog.tenant-expert-market-routes
+    owner: agentcatalog
+    source: internal/router/routes_tenant_expert_market.go
+    symbol: RegisterTenantExpertMarketRoutes
+    target: internal/modules/agentcatalog/transport/http
+  - kind: route
+    id: identity.organization-routes
+    owner: identity
+    source: internal/router/routes_agent.go
+    symbol: RegisterOrganizationRoutes
+    target: internal/modules/identity/transport/http
+  - kind: route
+    id: channels.im-channel-routes
+    owner: channels
+    source: internal/router/routes_agent.go
+    symbol: RegisterIMChannelRoutes
+    target: internal/modules/channels/transport/http
+  - kind: route
+    id: channels.embed-channel-routes
+    owner: channels
+    source: internal/router/routes_agent.go
+    symbol: RegisterEmbedChannelRoutes
+    target: internal/modules/channels/transport/http
+  - kind: route
+    id: datasource.datasource-routes
+    owner: datasource
+    source: internal/router/routes_infra.go
+    symbol: RegisterDataSourceRoutes
+    target: internal/modules/datasource/transport/http
+  - kind: route
+    id: system.weknora-cloud-routes
+    owner: system
+    source: internal/router/routes_infra.go
+    symbol: RegisterWeKnoraCloudRoutes
+    target: internal/modules/system/transport/http
+  - kind: route
+    id: knowledge.wiki-page-routes
+    owner: knowledge
+    source: internal/router/routes_knowledge.go
+    symbol: RegisterWikiPageRoutes
+    target: internal/modules/knowledge/transport/http
+  - kind: route
+    id: agentruntime.memory-routes
+    owner: agentruntime
+    source: internal/router/routes_memory.go
+    symbol: RegisterMemoryRoutes
+    target: internal/modules/agentruntime/transport/http
+  - kind: route
+    id: commercial.commercial-routes
+    owner: commercial
+    source: internal/router/routes_commercial.go
+    symbol: RegisterCommercialRoutes
+    target: internal/modules/commercial/transport/http
+  - kind: route
+    id: appconnector.app-connector-routes
+    owner: appconnector
+    source: internal/router/routes_app_connectors.go
+    symbol: RegisterAppConnectorRoutes
+    target: internal/modules/appconnector/transport/http
+  - kind: route
+    id: knowledge.chunker-debug-routes
+    owner: knowledge
+    source: internal/router/routes_knowledge.go
+    symbol: RegisterChunkerDebugRoutes
+    target: internal/modules/knowledge/transport/http
+  - kind: route
+    id: craft.session-routes
+    owner: craft
+    source: internal/handler/session/craft.go
+    symbol: RegisterCraftSessionRoutes
+    target: internal/modules/craft/transport/http
+  - kind: route
+    id: craft.interaction-routes
+    owner: craft
+    source: internal/handler/session/craft_interaction.go
+    symbol: RegisterCraftInteractionRoutes
+    target: internal/modules/craft/transport/http
+  - kind: route
+    id: craft.scheduled-task-routes
+    owner: craft
+    source: internal/handler/session/craft_scheduled.go
+    symbol: RegisterCraftScheduledTaskRoutes
+    target: internal/modules/craft/transport/http
+  - kind: worker
+    id: knowledge.chunk-extract
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeChunkExtract
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.data-table-summary
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeDataTableSummary
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.document-process
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeDocumentProcess
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: conversation.temporary-document-process
+    owner: conversation
+    source: internal/router/task.go
+    task_type: TypeTemporaryDocumentProcess
+    target: internal/modules/conversation/application
+  - kind: worker
+    id: knowledge.manual-process
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeManualProcess
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.faq-import
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeFAQImport
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.question-generation
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeQuestionGeneration
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.summary-generation
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeSummaryGeneration
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.kb-clone
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeKBClone
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.knowledge-move
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeKnowledgeMove
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.knowledge-list-delete
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeKnowledgeListDelete
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: datasource.datasource-purge
+    owner: datasource
+    source: internal/router/task.go
+    task_type: TypeDataSourcePurge
+    target: internal/modules/datasource/application
+  - kind: worker
+    id: knowledge.knowledge-list-reparse
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeKnowledgeListReparse
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.index-delete
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeIndexDelete
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.kb-delete
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeKBDelete
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.image-multimodal
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeImageMultimodal
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.knowledge-post-process
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeKnowledgePostProcess
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.knowledge-auto-tag
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeKnowledgeAutoTag
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: datasource.datasource-sync
+    owner: datasource
+    source: internal/router/task.go
+    task_type: TypeDataSourceSync
+    target: internal/modules/datasource/application
+  - kind: worker
+    id: knowledge.wiki-ingest
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeWikiIngest
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: knowledge.wiki-finalize
+    owner: knowledge
+    source: internal/router/task.go
+    task_type: TypeWikiFinalize
+    target: internal/modules/knowledge/application
+  - kind: worker
+    id: agentruntime.memory-extract
+    owner: agentruntime
+    source: internal/router/task.go
+    task_type: TypeMemoryExtract
+    target: internal/modules/agentruntime/application
+  - kind: worker
+    id: queryhistory.export
+    owner: conversation
+    source: internal/router/task.go
+    task_type: TypeQueryHistoryExport
+    target: internal/modules/conversation/queryhistory/application
+  - kind: package
+    id: queryhistory.legacy-service
+    owner: conversation
+    source: internal/application/service/query_history_export.go
+    target: internal/modules/conversation/queryhistory
+  - kind: lifecycle
+    id: platform.langfuse-cleanup
+    owner: platform
+    source: internal/container/container.go
+    symbol: registerLangfuseCleanup
+    target: internal/platform
+  - kind: lifecycle
+    id: platform.pool-cleanup
+    owner: platform
+    source: internal/container/container.go
+    symbol: registerPoolCleanup
+    target: internal/platform
+  - kind: lifecycle
+    id: agentruntime.agent-run-resource-protection
+    owner: agentruntime
+    source: internal/container/container.go
+    symbol: registerAgentRunResourceProtection
+    target: internal/modules/agentruntime
+  - kind: lifecycle
+    id: airesource.web-search-providers
+    owner: airesource
+    source: internal/container/container.go
+    symbol: registerWebSearchProviders
+    target: internal/modules/airesource
+  - kind: lifecycle
+    id: policy.model-concurrency-limiter
+    owner: policy
+    source: internal/container/container.go
+    symbol: registerModelConcurrencyLimiter
+    target: internal/modules/policy
+  - kind: lifecycle
+    id: policy.lite-model-concurrency-limiter
+    owner: policy
+    source: internal/container/container.go
+    symbol: registerLiteModelConcurrencyLimiter
+    target: internal/modules/policy
+  - kind: lifecycle
+    id: conversation.temporary-document-cleanup
+    owner: conversation
+    source: internal/container/container.go
+    symbol: startTemporaryDocumentCleanup
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: datasource.task-inspector-injection
+    owner: datasource
+    source: internal/container/container.go
+    symbol: injectDataSourceTaskInspector
+    target: internal/modules/datasource
+  - kind: lifecycle
+    id: datasource.scheduler-start
+    owner: datasource
+    source: internal/container/container.go
+    symbol: startDataSourceScheduler
+    target: internal/modules/datasource
+  - kind: lifecycle
+    id: identity.audit-log-retention
+    owner: identity
+    source: internal/container/container.go
+    symbol: startAuditLogRetention
+    target: internal/modules/identity
+  - kind: lifecycle
+    id: system.housekeeping-start
+    owner: system
+    source: internal/container/container.go
+    symbol: startHousekeepingService
+    target: internal/modules/system
+  - kind: lifecycle
+    id: conversation.chat-pipeline-search
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginSearch
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-rerank
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginRerank
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-web-fetch
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginWebFetch
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-merge
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginMerge
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-data-analysis
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginDataAnalysis
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-into-chat-message
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginIntoChatMessage
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-chat-completion
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginChatCompletion
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-chat-completion-stream
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginChatCompletionStream
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-filter-topk
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginFilterTopK
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-query-understand
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginQueryUnderstand
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-load-history
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginLoadHistory
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-memory-recall
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginMemoryRecall
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-extract-entity
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginExtractEntity
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-search-entity
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginSearchEntity
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-search-parallel
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginSearchParallel
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-wiki-boost
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginWikiBoost
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: conversation.chat-pipeline-memory-affinity
+    owner: conversation
+    source: internal/container/container.go
+    symbol: chatpipeline.NewPluginMemoryAffinity
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: craft.http-handlers
+    owner: craft
+    source: internal/container/container.go
+    symbol: registerCraftHTTPHandlers
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.scheduled-http-handlers
+    owner: craft
+    source: internal/container/container.go
+    symbol: registerCraftScheduledHTTPHandlers
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.artifact-version-http-handlers
+    owner: craft
+    source: internal/container/container.go
+    symbol: registerArtifactVersionHTTPHandlers
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.artifact-preview-http-handlers
+    owner: craft
+    source: internal/container/container.go
+    symbol: registerArtifactPreviewHTTPHandlers
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.interaction-registrar-wiring
+    owner: craft
+    source: internal/container/container.go
+    symbol: wireCraftInteractionRegistrar
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.interaction-http-handlers
+    owner: craft
+    source: internal/container/container.go
+    symbol: registerCraftInteractionHTTPHandlers
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.decision-delivery-start
+    owner: craft
+    source: internal/container/container.go
+    symbol: startCraftDecisionDelivery
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.knowledge-assembly-validation
+    owner: craft
+    source: internal/container/container.go
+    symbol: validateCraftKnowledgeAssembly
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.usage-http-handlers
+    owner: craft
+    source: internal/container/container.go
+    symbol: registerCraftUsageHTTPHandlers
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.lifecycle-integration-wiring
+    owner: craft
+    source: internal/container/container.go
+    symbol: wireCraftLifecycleIntegration
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: craft.execution-cleanup-sweep-start
+    owner: craft
+    source: internal/container/cleanup.go
+    symbol: StartExecutionCleanupSweep
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: agentcatalog.tenant-skill-reaper-start
+    owner: agentcatalog
+    source: internal/container/container.go
+    symbol: startTenantSkillReaper
+    target: internal/modules/agentcatalog
+  - kind: lifecycle
+    id: identity.mobile-exchange-store-wiring
+    owner: identity
+    source: internal/container/container.go
+    symbol: inline:SetMobileExchangeStore
+    target: internal/modules/identity
+  - kind: lifecycle
+    id: channels.im-service-registration
+    owner: channels
+    source: internal/container/container.go
+    symbol: registerIMService
+    target: internal/modules/channels
+  - kind: lifecycle
+    id: commercial.platform-wiring
+    owner: commercial
+    source: internal/container/container.go
+    symbol: inline:SetCommercialPlatform
+    target: internal/modules/commercial
+  - kind: lifecycle
+    id: commercial.billing-account-wiring
+    owner: commercial
+    source: internal/container/container.go
+    symbol: inline:SetBillingAccountService
+    target: internal/modules/commercial
+  - kind: lifecycle
+    id: commercial.plan-version-wiring
+    owner: commercial
+    source: internal/container/container.go
+    symbol: inline:SetPlanVersionService
+    target: internal/modules/commercial
+  - kind: lifecycle
+    id: commercial.benefits-wiring
+    owner: commercial
+    source: internal/container/container.go
+    symbol: inline:SetBenefitsService
+    target: internal/modules/commercial
+  - kind: lifecycle
+    id: commercial.fulfillment-start
+    owner: commercial
+    source: internal/container/container.go
+    symbol: startCommercialFulfillment
+    target: internal/modules/commercial
+  - kind: lifecycle
+    id: appconnector.action-service-wiring
+    owner: appconnector
+    source: internal/container/container.go
+    symbol: inline:SetActionService
+    target: internal/modules/appconnector
+  - kind: lifecycle
+    id: appconnector.oc-preparer-wiring
+    owner: appconnector
+    source: internal/container/container.go
+    symbol: inline:SetOCPreparer
+    target: internal/modules/appconnector
+  - kind: lifecycle
+    id: appconnector.oc-connection-wiring
+    owner: appconnector
+    source: internal/container/container.go
+    symbol: inline:SetOCConnectionService
+    target: internal/modules/appconnector
+  - kind: lifecycle
+    id: appconnector.oc-recovery-runner-start
+    owner: appconnector
+    source: internal/container/container.go
+    symbol: startOCRecoveryRunner
+    target: internal/modules/appconnector
+  - kind: lifecycle
+    id: appconnector.app-oauth-providers-wiring
+    owner: appconnector
+    source: internal/container/container.go
+    symbol: inline:SetAppOAuthProviders
+    target: internal/modules/appconnector
+  - kind: lifecycle
+    id: commercial.order-service-wiring
+    owner: commercial
+    source: internal/container/container.go
+    symbol: inline:SetOrderService
+    target: internal/modules/commercial
+  - kind: lifecycle
+    id: conversation.chat-local-image-resolver
+    owner: conversation
+    source: internal/container/container.go
+    symbol: registerChatLocalImageResolver
+    target: internal/modules/conversation
+  - kind: lifecycle
+    id: craft.session-tombstone-wiring
+    owner: craft
+    source: internal/container/container.go
+    symbol: wireCraftSessionTombstone
+    target: internal/modules/craft
+  - kind: lifecycle
+    id: platform.asynq-server-run
+    owner: platform
+    source: internal/container/container.go
+    symbol: router.RunAsynqServer
+    target: internal/platform
+  - kind: lifecycle
+    id: platform.sync-handlers-registration
+    owner: platform
+    source: internal/container/container.go
+    symbol: router.RegisterSyncHandlers
+    target: internal/platform
+  - kind: lifecycle
+    id: knowledge.pending-wiki-tasks-recovery
+    owner: knowledge
+    source: internal/container/recover_pending_wiki_tasks.go
+    symbol: recoverPendingWikiTasks
+    target: internal/modules/knowledge
+  - kind: migration
+    id: migration.versioned.000000_init
+    owner: platform
+    source: migrations/versioned/000000_init.up.sql
+    target: internal/platform/migrations
+  - kind: migration
+    id: migration.versioned.000001_agent
+    owner: identity
+    source: migrations/versioned/000001_agent.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000002_embeddings
+    owner: knowledge
+    source: migrations/versioned/000002_embeddings.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000003_chunk_flags
+    owner: knowledge
+    source: migrations/versioned/000003_chunk_flags.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000004_drop_vlm_model_id
+    owner: airesource
+    source: migrations/versioned/000004_drop_vlm_model_id.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000005_mentioned_items
+    owner: conversation
+    source: migrations/versioned/000005_mentioned_items.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000006_custom_agents
+    owner: agentcatalog
+    source: migrations/versioned/000006_custom_agents.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000007_embeddings_tag_id
+    owner: knowledge
+    source: migrations/versioned/000007_embeddings_tag_id.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000008_migrate_untagged_faq
+    owner: knowledge
+    source: migrations/versioned/000008_migrate_untagged_faq.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000009_add_last_faq_import_result
+    owner: knowledge
+    source: migrations/versioned/000009_add_last_faq_import_result.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000010_add_seq_id
+    owner: knowledge
+    source: migrations/versioned/000010_add_seq_id.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000011_pg_search_update
+    owner: platform
+    source: migrations/versioned/000011_pg_search_update.up.sql
+    target: internal/platform/migrations
+  - kind: migration
+    id: migration.versioned.000012_organizations
+    owner: identity
+    source: migrations/versioned/000012_organizations.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000013_engine_configs
+    owner: airesource
+    source: migrations/versioned/000013_engine_configs.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000014_storage_provider_config
+    owner: airesource
+    source: migrations/versioned/000014_storage_provider_config.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000015_add_is_fallback
+    owner: airesource
+    source: migrations/versioned/000015_add_is_fallback.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000016_add_kb_pinned
+    owner: knowledge
+    source: migrations/versioned/000016_add_kb_pinned.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000017_mcp_builtin
+    owner: airesource
+    source: migrations/versioned/000017_mcp_builtin.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000018_extend_tenant_api_key
+    owner: identity
+    source: migrations/versioned/000018_extend_tenant_api_key.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000019_add_agent_duration_ms
+    owner: conversation
+    source: migrations/versioned/000019_add_agent_duration_ms.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000020_add_message_knowledge_id
+    owner: conversation
+    source: migrations/versioned/000020_add_message_knowledge_id.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000021_im_channel
+    owner: channels
+    source: migrations/versioned/000021_im_channel.up.sql
+    target: internal/modules/channels/migrations
+  - kind: migration
+    id: migration.versioned.000022_message_images
+    owner: conversation
+    source: migrations/versioned/000022_message_images.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000023_im_channel_kb_id
+    owner: channels
+    source: migrations/versioned/000023_im_channel_kb_id.up.sql
+    target: internal/modules/channels/migrations
+  - kind: migration
+    id: migration.versioned.000024_im_channel_bot_identity
+    owner: channels
+    source: migrations/versioned/000024_im_channel_bot_identity.up.sql
+    target: internal/modules/channels/migrations
+  - kind: migration
+    id: migration.versioned.000025_message_channel
+    owner: conversation
+    source: migrations/versioned/000025_message_channel.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000026_chunks_query_indexes
+    owner: knowledge
+    source: migrations/versioned/000026_chunks_query_indexes.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000027_message_rendered_content
+    owner: conversation
+    source: migrations/versioned/000027_message_rendered_content.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000028_im_thread_session
+    owner: channels
+    source: migrations/versioned/000028_im_thread_session.up.sql
+    target: internal/modules/channels/migrations
+  - kind: migration
+    id: migration.versioned.000029_datasource_tables
+    owner: datasource
+    source: migrations/versioned/000029_datasource_tables.up.sql
+    target: internal/modules/datasource/migrations
+  - kind: migration
+    id: migration.versioned.000030_web_search_providers
+    owner: airesource
+    source: migrations/versioned/000030_web_search_providers.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000031_add_asr_config
+    owner: airesource
+    source: migrations/versioned/000031_add_asr_config.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000032_vector_stores
+    owner: airesource
+    source: migrations/versioned/000032_vector_stores.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000033_add_video_info_to_chunks
+    owner: knowledge
+    source: migrations/versioned/000033_add_video_info_to_chunks.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000034_add_attachments
+    owner: conversation
+    source: migrations/versioned/000034_add_attachments.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000035_add_credentials
+    owner: airesource
+    source: migrations/versioned/000035_add_credentials.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000036_kb_vector_store_id
+    owner: knowledge
+    source: migrations/versioned/000036_kb_vector_store_id.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000037_wiki_and_indexing
+    owner: knowledge
+    source: migrations/versioned/000037_wiki_and_indexing.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000038_im_session_agent_id
+    owner: channels
+    source: migrations/versioned/000038_im_session_agent_id.up.sql
+    target: internal/modules/channels/migrations
+  - kind: migration
+    id: migration.versioned.000039_session_user_id_and_pin
+    owner: conversation
+    source: migrations/versioned/000039_session_user_id_and_pin.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000040_wiki_log_entries
+    owner: knowledge
+    source: migrations/versioned/000040_wiki_log_entries.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000041_task_queue_and_wiki_indexes
+    owner: platform
+    source: migrations/versioned/000041_task_queue_and_wiki_indexes.up.sql
+    target: internal/platform/migrations
+  - kind: migration
+    id: migration.versioned.000042_mcp_tool_approval
+    owner: agentruntime
+    source: migrations/versioned/000042_mcp_tool_approval.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000043_tenant_rbac
+    owner: identity
+    source: migrations/versioned/000043_tenant_rbac.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000044_audit_log
+    owner: identity
+    source: migrations/versioned/000044_audit_log.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000045_org_tenant_members
+    owner: identity
+    source: migrations/versioned/000045_org_tenant_members.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000046_org_owner_tenant_id
+    owner: identity
+    source: migrations/versioned/000046_org_owner_tenant_id.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000047_user_resource_favorites
+    owner: agentcatalog
+    source: migrations/versioned/000047_user_resource_favorites.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000048_tenant_invitations
+    owner: identity
+    source: migrations/versioned/000048_tenant_invitations.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000049_user_preferences
+    owner: identity
+    source: migrations/versioned/000049_user_preferences.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000050_user_kb_pins
+    owner: knowledge
+    source: migrations/versioned/000050_user_kb_pins.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000051_custom_agents_creator_backfill
+    owner: agentcatalog
+    source: migrations/versioned/000051_custom_agents_creator_backfill.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000052_models_managed_by
+    owner: airesource
+    source: migrations/versioned/000052_models_managed_by.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000053_system_admin_and_settings
+    owner: system
+    source: migrations/versioned/000053_system_admin_and_settings.up.sql
+    target: internal/modules/system/migrations
+  - kind: migration
+    id: migration.versioned.000054_invitation_tokens
+    owner: identity
+    source: migrations/versioned/000054_invitation_tokens.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000055_knowledge_processing_spans
+    owner: knowledge
+    source: migrations/versioned/000055_knowledge_processing_spans.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000056_knowledge_pending_subtasks
+    owner: knowledge
+    source: migrations/versioned/000056_knowledge_pending_subtasks.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000057_models_display_name
+    owner: airesource
+    source: migrations/versioned/000057_models_display_name.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000058_expand_knowledge_source
+    owner: knowledge
+    source: migrations/versioned/000058_expand_knowledge_source.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000059_embeddings_hnsw_1024
+    owner: knowledge
+    source: migrations/versioned/000059_embeddings_hnsw_1024.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000060_embed_channels
+    owner: channels
+    source: migrations/versioned/000060_embed_channels.up.sql
+    target: internal/modules/channels/migrations
+  - kind: migration
+    id: migration.versioned.000061_wiki_page_hierarchy
+    owner: knowledge
+    source: migrations/versioned/000061_wiki_page_hierarchy.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000062_mcp_oauth
+    owner: airesource
+    source: migrations/versioned/000062_mcp_oauth.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000063_knowledge_multi_tags
+    owner: knowledge
+    source: migrations/versioned/000063_knowledge_multi_tags.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000064_principal_model
+    owner: airesource
+    source: migrations/versioned/000064_principal_model.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000065_tenant_api_keys
+    owner: identity
+    source: migrations/versioned/000065_tenant_api_keys.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000066_expand_knowledge_span_name
+    owner: knowledge
+    source: migrations/versioned/000066_expand_knowledge_span_name.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000067_question_suggestions
+    owner: conversation
+    source: migrations/versioned/000067_question_suggestions.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000068_storage_backends
+    owner: airesource
+    source: migrations/versioned/000068_storage_backends.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000069_resource_registry
+    owner: execution
+    source: migrations/versioned/000069_resource_registry.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000070_temporary_documents
+    owner: conversation
+    source: migrations/versioned/000070_temporary_documents.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000071_platform_api_keys
+    owner: identity
+    source: migrations/versioned/000071_platform_api_keys.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000072_auth_timestamp_tz
+    owner: identity
+    source: migrations/versioned/000072_auth_timestamp_tz.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000073_kb_activity_scope
+    owner: knowledge
+    source: migrations/versioned/000073_kb_activity_scope.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000074_mcp_oauth_refresh_lease
+    owner: airesource
+    source: migrations/versioned/000074_mcp_oauth_refresh_lease.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000075_wiki_page_revisions
+    owner: knowledge
+    source: migrations/versioned/000075_wiki_page_revisions.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000076_knowledge_metadata_external_id_index
+    owner: knowledge
+    source: migrations/versioned/000076_knowledge_metadata_external_id_index.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000077_remove_wiki_log
+    owner: knowledge
+    source: migrations/versioned/000077_remove_wiki_log.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000078_chunk_editing_and_custom_metadata
+    owner: knowledge
+    source: migrations/versioned/000078_chunk_editing_and_custom_metadata.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000079_knowledge_folder_path
+    owner: knowledge
+    source: migrations/versioned/000079_knowledge_folder_path.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000080_knowledge_base_auto_tag_config
+    owner: knowledge
+    source: migrations/versioned/000080_knowledge_base_auto_tag_config.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000081_message_artifacts
+    owner: conversation
+    source: migrations/versioned/000081_message_artifacts.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000082_tenant_sandbox_config
+    owner: execution
+    source: migrations/versioned/000082_tenant_sandbox_config.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000083_session_sandbox_config
+    owner: execution
+    source: migrations/versioned/000083_session_sandbox_config.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000084_memory
+    owner: agentruntime
+    source: migrations/versioned/000084_memory.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000085_message_usage
+    owner: conversation
+    source: migrations/versioned/000085_message_usage.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000086_tenant_skills
+    owner: agentcatalog
+    source: migrations/versioned/000086_tenant_skills.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000087_skill_install_transcript
+    owner: agentcatalog
+    source: migrations/versioned/000087_skill_install_transcript.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000088_skill_snapshot_planned_name
+    owner: agentcatalog
+    source: migrations/versioned/000088_skill_snapshot_planned_name.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000089_env_vars
+    owner: execution
+    source: migrations/versioned/000089_env_vars.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000090_skill_catalog
+    owner: agentcatalog
+    source: migrations/versioned/000090_skill_catalog.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000091_mcp_tool_enabled
+    owner: airesource
+    source: migrations/versioned/000091_mcp_tool_enabled.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000092_mcp_metadata
+    owner: airesource
+    source: migrations/versioned/000092_mcp_metadata.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.versioned.000093_agent_runs
+    owner: agentruntime
+    source: migrations/versioned/000093_agent_runs.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000094_agent_tool_plan_versions
+    owner: agentruntime
+    source: migrations/versioned/000094_agent_tool_plan_versions.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000095_agent_decision_linkage
+    owner: agentruntime
+    source: migrations/versioned/000095_agent_decision_linkage.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000096_execution_targets
+    owner: execution
+    source: migrations/versioned/000096_execution_targets.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000097_workbench_interactions
+    owner: workbench
+    source: migrations/versioned/000097_workbench_interactions.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.versioned.000098_execution_dispatch
+    owner: execution
+    source: migrations/versioned/000098_execution_dispatch.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000099_execution_observations
+    owner: execution
+    source: migrations/versioned/000099_execution_observations.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000110_commercial_accounts
+    owner: commercial
+    source: migrations/versioned/000110_commercial_accounts.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000111_commercial_catalog
+    owner: commercial
+    source: migrations/versioned/000111_commercial_catalog.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000112_commercial_lifecycle
+    owner: commercial
+    source: migrations/versioned/000112_commercial_lifecycle.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000113_commercial_orders
+    owner: commercial
+    source: migrations/versioned/000113_commercial_orders.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000114_commercial_refunds
+    owner: commercial
+    source: migrations/versioned/000114_commercial_refunds.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000115_commercial_usage
+    owner: commercial
+    source: migrations/versioned/000115_commercial_usage.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000116_commercial_budgets
+    owner: commercial
+    source: migrations/versioned/000116_commercial_budgets.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000117_app_installations
+    owner: appconnector
+    source: migrations/versioned/000117_app_installations.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.versioned.000118_mcp_oauth_binding_states
+    owner: appconnector
+    source: migrations/versioned/000118_mcp_oauth_binding_states.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.versioned.000119_app_actions
+    owner: appconnector
+    source: migrations/versioned/000119_app_actions.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.versioned.000120_app_datasource_bindings
+    owner: appconnector
+    source: migrations/versioned/000120_app_datasource_bindings.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.versioned.000121_open_connector_bindings
+    owner: appconnector
+    source: migrations/versioned/000121_open_connector_bindings.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.versioned.000122_open_connector_actions
+    owner: appconnector
+    source: migrations/versioned/000122_open_connector_actions.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.versioned.000123_open_connector_dispatch
+    owner: appconnector
+    source: migrations/versioned/000123_open_connector_dispatch.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.versioned.000124_open_connector_tool_bindings
+    owner: appconnector
+    source: migrations/versioned/000124_open_connector_tool_bindings.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.versioned.000125_craft
+    owner: craft
+    source: migrations/versioned/000125_craft.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000126_craft_versions
+    owner: craft
+    source: migrations/versioned/000126_craft_versions.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000127_craft_usage
+    owner: craft
+    source: migrations/versioned/000127_craft_usage.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000128_craft_budget
+    owner: craft
+    source: migrations/versioned/000128_craft_budget.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000129_craft_sessions
+    owner: craft
+    source: migrations/versioned/000129_craft_sessions.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000130_craft_snapshots
+    owner: craft
+    source: migrations/versioned/000130_craft_snapshots.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000131_craft_interactions
+    owner: craft
+    source: migrations/versioned/000131_craft_interactions.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000132_craft_lifecycle
+    owner: craft
+    source: migrations/versioned/000132_craft_lifecycle.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000133_mobile_auth_exchange
+    owner: identity
+    source: migrations/versioned/000133_mobile_auth_exchange.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.versioned.000134_workbench_runs
+    owner: workbench
+    source: migrations/versioned/000134_workbench_runs.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.versioned.000135_workbench_requests
+    owner: workbench
+    source: migrations/versioned/000135_workbench_requests.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.versioned.000136_execution_cleanup
+    owner: execution
+    source: migrations/versioned/000136_execution_cleanup.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000137_execution_cleanup_observations
+    owner: execution
+    source: migrations/versioned/000137_execution_cleanup_observations.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000138_execution_cleanup_artifacts
+    owner: execution
+    source: migrations/versioned/000138_execution_cleanup_artifacts.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000139_execution_cleanup_artifact_intents
+    owner: execution
+    source: migrations/versioned/000139_execution_cleanup_artifact_intents.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000140_execution_cleanup_receipts
+    owner: execution
+    source: migrations/versioned/000140_execution_cleanup_receipts.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000141_execution_observation_revision
+    owner: execution
+    source: migrations/versioned/000141_execution_observation_revision.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000142_artifact_versions
+    owner: craft
+    source: migrations/versioned/000142_artifact_versions.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000143_voice_sessions
+    owner: workbench
+    source: migrations/versioned/000143_voice_sessions.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.versioned.000144_voice_transcriptions
+    owner: workbench
+    source: migrations/versioned/000144_voice_transcriptions.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.versioned.000145_mobile_devices
+    owner: workbench
+    source: migrations/versioned/000145_mobile_devices.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.versioned.000146_mobile_notifications
+    owner: workbench
+    source: migrations/versioned/000146_mobile_notifications.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.versioned.000147_mobile_notification_delivery
+    owner: workbench
+    source: migrations/versioned/000147_mobile_notification_delivery.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.versioned.000148_mobile_notification_provider_state
+    owner: workbench
+    source: migrations/versioned/000148_mobile_notification_provider_state.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.versioned.000149_execution_target_usage_binding
+    owner: execution
+    source: migrations/versioned/000149_execution_target_usage_binding.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000150_session_fork
+    owner: conversation
+    source: migrations/versioned/000150_session_fork.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000151_fork_snapshot_lease
+    owner: conversation
+    source: migrations/versioned/000151_fork_snapshot_lease.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000152_dingtalk_stream_only
+    owner: channels
+    source: migrations/versioned/000152_dingtalk_stream_only.up.sql
+    target: internal/modules/channels/migrations
+  - kind: migration
+    id: migration.versioned.000153_memory_consistency
+    owner: agentruntime
+    source: migrations/versioned/000153_memory_consistency.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000154_memory_vector_search
+    owner: agentruntime
+    source: migrations/versioned/000154_memory_vector_search.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000155_browser_authorization
+    owner: execution
+    source: migrations/versioned/000155_browser_authorization.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000156_paseo_control
+    owner: execution
+    source: migrations/versioned/000156_paseo_control.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000157_execution_registrations
+    owner: execution
+    source: migrations/versioned/000157_execution_registrations.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.versioned.000158_message_feedback
+    owner: conversation
+    source: migrations/versioned/000158_message_feedback.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000159_analytics_aggregation_indexes
+    owner: insights
+    source: migrations/versioned/000159_analytics_aggregation_indexes.up.sql
+    target: internal/modules/insights/migrations
+  - kind: migration
+    id: migration.versioned.000160_user_usage
+    owner: commercial
+    source: migrations/versioned/000160_user_usage.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000161_commercial_reservations_owner
+    owner: commercial
+    source: migrations/versioned/000161_commercial_reservations_owner.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000162_native_agent_schema
+    owner: agentruntime
+    source: migrations/versioned/000162_native_agent_schema.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000163_tenant_subagents
+    owner: agentcatalog
+    source: migrations/versioned/000163_tenant_subagents.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000166_native_user_state
+    owner: agentruntime
+    source: migrations/versioned/000166_native_user_state.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000170_query_history_share
+    owner: conversation
+    source: migrations/versioned/000170_query_history_share.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.versioned.000171_native_memory_job_session_key
+    owner: agentruntime
+    source: migrations/versioned/000171_native_memory_job_session_key.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000172_native_memory_job_retry
+    owner: agentruntime
+    source: migrations/versioned/000172_native_memory_job_retry.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000173_sync_logs_lifecycle
+    owner: datasource
+    source: migrations/versioned/000173_sync_logs_lifecycle.up.sql
+    target: internal/modules/datasource/migrations
+  - kind: migration
+    id: migration.versioned.000174_expert_installs
+    owner: agentcatalog
+    source: migrations/versioned/000174_expert_installs.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000175_published_skills
+    owner: agentcatalog
+    source: migrations/versioned/000175_published_skills.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000176_published_experts
+    owner: agentcatalog
+    source: migrations/versioned/000176_published_experts.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000177_knowledge_datasource_id_index
+    owner: knowledge
+    source: migrations/versioned/000177_knowledge_datasource_id_index.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000178_craft_scheduled
+    owner: craft
+    source: migrations/versioned/000178_craft_scheduled.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.versioned.000179_native_oauth_attempts
+    owner: agentruntime
+    source: migrations/versioned/000179_native_oauth_attempts.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.versioned.000181_commercial_billing_accounts
+    owner: commercial
+    source: migrations/versioned/000181_commercial_billing_accounts.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000182_commercial_plan_publications
+    owner: commercial
+    source: migrations/versioned/000182_commercial_plan_publications.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000183_commercial_tenant_benefits
+    owner: commercial
+    source: migrations/versioned/000183_commercial_tenant_benefits.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.versioned.000184_semantic_control
+    owner: knowledge
+    source: migrations/versioned/000184_semantic_control.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000185_semantic_model_policy
+    owner: knowledge
+    source: migrations/versioned/000185_semantic_model_policy.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000186_semantic_model_invocations
+    owner: knowledge
+    source: migrations/versioned/000186_semantic_model_invocations.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.versioned.000187_agent_versions
+    owner: agentcatalog
+    source: migrations/versioned/000187_agent_versions.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.versioned.000188_tenant_agent_marketplace
+    owner: agentcatalog
+    source: migrations/versioned/000188_tenant_agent_marketplace.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.sqlite.000000_init
+    owner: platform
+    source: migrations/sqlite/000000_init.up.sql
+    target: internal/platform/migrations
+  - kind: migration
+    id: migration.sqlite.000001_remove_wiki_log
+    owner: knowledge
+    source: migrations/sqlite/000001_remove_wiki_log.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.sqlite.000002_knowledge_folder_path
+    owner: knowledge
+    source: migrations/sqlite/000002_knowledge_folder_path.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.sqlite.000003_knowledge_base_auto_tag_config
+    owner: knowledge
+    source: migrations/sqlite/000003_knowledge_base_auto_tag_config.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.sqlite.000004_memory
+    owner: agentruntime
+    source: migrations/sqlite/000004_memory.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000005_messages_attachments_and_invitation_fields
+    owner: conversation
+    source: migrations/sqlite/000005_messages_attachments_and_invitation_fields.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.sqlite.000006_task_queue_and_dead_letters
+    owner: platform
+    source: migrations/sqlite/000006_task_queue_and_dead_letters.up.sql
+    target: internal/platform/migrations
+  - kind: migration
+    id: migration.sqlite.000007_system_admin_and_settings
+    owner: system
+    source: migrations/sqlite/000007_system_admin_and_settings.up.sql
+    target: internal/modules/system/migrations
+  - kind: migration
+    id: migration.sqlite.000008_processing_spans_and_pending_subtasks
+    owner: knowledge
+    source: migrations/sqlite/000008_processing_spans_and_pending_subtasks.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.sqlite.000009_embed_channel_memory_flag
+    owner: channels
+    source: migrations/sqlite/000009_embed_channel_memory_flag.up.sql
+    target: internal/modules/channels/migrations
+  - kind: migration
+    id: migration.sqlite.000010_knowledge_multi_tags
+    owner: knowledge
+    source: migrations/sqlite/000010_knowledge_multi_tags.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.sqlite.000011_principal_model
+    owner: airesource
+    source: migrations/sqlite/000011_principal_model.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.sqlite.000012_message_usage
+    owner: conversation
+    source: migrations/sqlite/000012_message_usage.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.sqlite.000013_mcp_tool_enabled
+    owner: airesource
+    source: migrations/sqlite/000013_mcp_tool_enabled.up.sql
+    target: internal/modules/airesource/migrations
+  - kind: migration
+    id: migration.sqlite.000014_agent_runs
+    owner: agentruntime
+    source: migrations/sqlite/000014_agent_runs.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000015_agent_tool_plan_versions
+    owner: agentruntime
+    source: migrations/sqlite/000015_agent_tool_plan_versions.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000016_agent_decision_linkage
+    owner: agentruntime
+    source: migrations/sqlite/000016_agent_decision_linkage.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000019_workbench_interactions
+    owner: workbench
+    source: migrations/sqlite/000019_workbench_interactions.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.sqlite.000020_execution_dispatch
+    owner: execution
+    source: migrations/sqlite/000020_execution_dispatch.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000021_execution_observations
+    owner: execution
+    source: migrations/sqlite/000021_execution_observations.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000030_commercial_accounts
+    owner: commercial
+    source: migrations/sqlite/000030_commercial_accounts.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000031_commercial_catalog
+    owner: commercial
+    source: migrations/sqlite/000031_commercial_catalog.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000032_commercial_lifecycle
+    owner: commercial
+    source: migrations/sqlite/000032_commercial_lifecycle.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000033_commercial_orders
+    owner: commercial
+    source: migrations/sqlite/000033_commercial_orders.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000034_commercial_refunds
+    owner: commercial
+    source: migrations/sqlite/000034_commercial_refunds.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000035_commercial_usage
+    owner: commercial
+    source: migrations/sqlite/000035_commercial_usage.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000036_commercial_budgets
+    owner: commercial
+    source: migrations/sqlite/000036_commercial_budgets.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000037_app_installations
+    owner: appconnector
+    source: migrations/sqlite/000037_app_installations.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.sqlite.000038_mcp_oauth_binding_states
+    owner: appconnector
+    source: migrations/sqlite/000038_mcp_oauth_binding_states.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.sqlite.000039_app_actions
+    owner: appconnector
+    source: migrations/sqlite/000039_app_actions.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.sqlite.000040_app_datasource_bindings
+    owner: appconnector
+    source: migrations/sqlite/000040_app_datasource_bindings.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.sqlite.000041_open_connector_bindings
+    owner: appconnector
+    source: migrations/sqlite/000041_open_connector_bindings.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.sqlite.000042_open_connector_actions
+    owner: appconnector
+    source: migrations/sqlite/000042_open_connector_actions.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.sqlite.000043_open_connector_dispatch
+    owner: appconnector
+    source: migrations/sqlite/000043_open_connector_dispatch.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.sqlite.000044_open_connector_tool_bindings
+    owner: appconnector
+    source: migrations/sqlite/000044_open_connector_tool_bindings.up.sql
+    target: internal/modules/appconnector/migrations
+  - kind: migration
+    id: migration.sqlite.000045_craft
+    owner: craft
+    source: migrations/sqlite/000045_craft.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000046_craft_versions
+    owner: craft
+    source: migrations/sqlite/000046_craft_versions.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000047_craft_usage
+    owner: craft
+    source: migrations/sqlite/000047_craft_usage.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000048_craft_budget
+    owner: craft
+    source: migrations/sqlite/000048_craft_budget.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000049_craft_sessions
+    owner: craft
+    source: migrations/sqlite/000049_craft_sessions.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000050_craft_snapshots
+    owner: craft
+    source: migrations/sqlite/000050_craft_snapshots.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000051_craft_interactions
+    owner: craft
+    source: migrations/sqlite/000051_craft_interactions.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000052_craft_lifecycle
+    owner: craft
+    source: migrations/sqlite/000052_craft_lifecycle.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000053_mobile_auth_exchange
+    owner: identity
+    source: migrations/sqlite/000053_mobile_auth_exchange.up.sql
+    target: internal/modules/identity/migrations
+  - kind: migration
+    id: migration.sqlite.000054_tenant_skills
+    owner: agentcatalog
+    source: migrations/sqlite/000054_tenant_skills.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.sqlite.000055_workbench_runs
+    owner: workbench
+    source: migrations/sqlite/000055_workbench_runs.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.sqlite.000056_workbench_requests
+    owner: workbench
+    source: migrations/sqlite/000056_workbench_requests.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.sqlite.000057_execution_targets
+    owner: execution
+    source: migrations/sqlite/000057_execution_targets.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000058_mobile_devices
+    owner: workbench
+    source: migrations/sqlite/000058_mobile_devices.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.sqlite.000059_mobile_notifications
+    owner: workbench
+    source: migrations/sqlite/000059_mobile_notifications.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.sqlite.000060_mobile_notification_delivery
+    owner: workbench
+    source: migrations/sqlite/000060_mobile_notification_delivery.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.sqlite.000061_execution_cleanup
+    owner: execution
+    source: migrations/sqlite/000061_execution_cleanup.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000062_execution_cleanup_observations
+    owner: execution
+    source: migrations/sqlite/000062_execution_cleanup_observations.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000063_execution_cleanup_artifacts
+    owner: execution
+    source: migrations/sqlite/000063_execution_cleanup_artifacts.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000064_execution_cleanup_artifact_intents
+    owner: execution
+    source: migrations/sqlite/000064_execution_cleanup_artifact_intents.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000065_execution_cleanup_receipts
+    owner: execution
+    source: migrations/sqlite/000065_execution_cleanup_receipts.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000066_execution_observation_revision
+    owner: execution
+    source: migrations/sqlite/000066_execution_observation_revision.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000067_artifact_versions
+    owner: craft
+    source: migrations/sqlite/000067_artifact_versions.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000068_voice_sessions
+    owner: workbench
+    source: migrations/sqlite/000068_voice_sessions.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.sqlite.000069_voice_transcriptions
+    owner: workbench
+    source: migrations/sqlite/000069_voice_transcriptions.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.sqlite.000070_mobile_notification_provider_state
+    owner: workbench
+    source: migrations/sqlite/000070_mobile_notification_provider_state.up.sql
+    target: internal/modules/workbench/migrations
+  - kind: migration
+    id: migration.sqlite.000071_execution_target_usage_binding
+    owner: execution
+    source: migrations/sqlite/000071_execution_target_usage_binding.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000072_session_fork
+    owner: conversation
+    source: migrations/sqlite/000072_session_fork.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.sqlite.000073_fork_snapshot_lease
+    owner: conversation
+    source: migrations/sqlite/000073_fork_snapshot_lease.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.sqlite.000074_memory_consistency
+    owner: agentruntime
+    source: migrations/sqlite/000074_memory_consistency.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000075_memory_vector_search
+    owner: agentruntime
+    source: migrations/sqlite/000075_memory_vector_search.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000076_browser_authorization
+    owner: execution
+    source: migrations/sqlite/000076_browser_authorization.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000077_paseo_control
+    owner: execution
+    source: migrations/sqlite/000077_paseo_control.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000078_execution_registrations
+    owner: execution
+    source: migrations/sqlite/000078_execution_registrations.up.sql
+    target: internal/modules/execution/migrations
+  - kind: migration
+    id: migration.sqlite.000079_message_feedback
+    owner: conversation
+    source: migrations/sqlite/000079_message_feedback.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.sqlite.000080_analytics_aggregation_indexes
+    owner: insights
+    source: migrations/sqlite/000080_analytics_aggregation_indexes.up.sql
+    target: internal/modules/insights/migrations
+  - kind: migration
+    id: migration.sqlite.000081_user_usage
+    owner: commercial
+    source: migrations/sqlite/000081_user_usage.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000082_commercial_reservations_owner
+    owner: commercial
+    source: migrations/sqlite/000082_commercial_reservations_owner.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000083_native_agent_schema
+    owner: agentruntime
+    source: migrations/sqlite/000083_native_agent_schema.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000084_tenant_subagents
+    owner: agentcatalog
+    source: migrations/sqlite/000084_tenant_subagents.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.sqlite.000087_native_user_state
+    owner: agentruntime
+    source: migrations/sqlite/000087_native_user_state.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000091_query_history_share
+    owner: conversation
+    source: migrations/sqlite/000091_query_history_share.up.sql
+    target: internal/modules/conversation/migrations
+  - kind: migration
+    id: migration.sqlite.000092_native_memory_job_session_key
+    owner: agentruntime
+    source: migrations/sqlite/000092_native_memory_job_session_key.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000093_native_memory_job_retry
+    owner: agentruntime
+    source: migrations/sqlite/000093_native_memory_job_retry.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000094_sync_logs_lifecycle
+    owner: datasource
+    source: migrations/sqlite/000094_sync_logs_lifecycle.up.sql
+    target: internal/modules/datasource/migrations
+  - kind: migration
+    id: migration.sqlite.000095_expert_installs
+    owner: agentcatalog
+    source: migrations/sqlite/000095_expert_installs.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.sqlite.000096_published_skills
+    owner: agentcatalog
+    source: migrations/sqlite/000096_published_skills.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.sqlite.000097_published_experts
+    owner: agentcatalog
+    source: migrations/sqlite/000097_published_experts.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.sqlite.000098_knowledge_datasource_id_index
+    owner: knowledge
+    source: migrations/sqlite/000098_knowledge_datasource_id_index.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.sqlite.000099_craft_scheduled
+    owner: craft
+    source: migrations/sqlite/000099_craft_scheduled.up.sql
+    target: internal/modules/craft/migrations
+  - kind: migration
+    id: migration.sqlite.000100_native_oauth_attempts
+    owner: agentruntime
+    source: migrations/sqlite/000100_native_oauth_attempts.up.sql
+    target: internal/modules/agentruntime/migrations
+  - kind: migration
+    id: migration.sqlite.000102_commercial_billing_accounts
+    owner: commercial
+    source: migrations/sqlite/000102_commercial_billing_accounts.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000103_commercial_plan_publications
+    owner: commercial
+    source: migrations/sqlite/000103_commercial_plan_publications.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000104_commercial_tenant_benefits
+    owner: commercial
+    source: migrations/sqlite/000104_commercial_tenant_benefits.up.sql
+    target: internal/modules/commercial/migrations
+  - kind: migration
+    id: migration.sqlite.000105_semantic_control
+    owner: knowledge
+    source: migrations/sqlite/000105_semantic_control.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.sqlite.000106_semantic_model_policy
+    owner: knowledge
+    source: migrations/sqlite/000106_semantic_model_policy.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.sqlite.000107_semantic_model_invocations
+    owner: knowledge
+    source: migrations/sqlite/000107_semantic_model_invocations.up.sql
+    target: internal/modules/knowledge/migrations
+  - kind: migration
+    id: migration.sqlite.000108_agent_versions
+    owner: agentcatalog
+    source: migrations/sqlite/000108_agent_versions.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: migration
+    id: migration.sqlite.000109_tenant_agent_marketplace
+    owner: agentcatalog
+    source: migrations/sqlite/000109_tenant_agent_marketplace.up.sql
+    target: internal/modules/agentcatalog/migrations
+  - kind: package
+    id: pkg.internal.agent
+    owner: agentruntime
+    source: internal/agent
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.approval
+    owner: agentruntime
+    source: internal/agent/approval
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.compaction
+    owner: agentruntime
+    source: internal/agent/compaction
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.experts
+    owner: agentcatalog
+    source: internal/agent/experts
+    target: internal/modules/agentcatalog
+  - kind: package
+    id: pkg.internal.agent.native
+    owner: agentruntime
+    source: internal/agent/native
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.nativecontract
+    owner: agentruntime
+    source: internal/agent/nativecontract
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.nativeprobe
+    owner: agentruntime
+    source: internal/agent/nativeprobe
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.opencode
+    owner: agentruntime
+    source: internal/agent/opencode
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.persona
+    owner: agentcatalog
+    source: internal/agent/persona
+    target: internal/modules/agentcatalog
+  - kind: package
+    id: pkg.internal.agent.recoverytest
+    owner: agentruntime
+    source: internal/agent/recoverytest
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.recoverytest.provider
+    owner: agentruntime
+    source: internal/agent/recoverytest/provider
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.runtime
+    owner: agentruntime
+    source: internal/agent/runtime
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.skills
+    owner: agentcatalog
+    source: internal/agent/skills
+    target: internal/modules/agentcatalog
+  - kind: package
+    id: pkg.internal.agent.skills.skillhub
+    owner: agentcatalog
+    source: internal/agent/skills/skillhub
+    target: internal/modules/agentcatalog
+  - kind: package
+    id: pkg.internal.agent.subagents
+    owner: agentcatalog
+    source: internal/agent/subagents
+    target: internal/modules/agentcatalog
+  - kind: package
+    id: pkg.internal.agent.token
+    owner: agentruntime
+    source: internal/agent/token
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.tools
+    owner: agentruntime
+    source: internal/agent/tools
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.agent.trpc
+    owner: agentruntime
+    source: internal/agent/trpc
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.appconnector
+    owner: appconnector
+    source: internal/appconnector
+    target: internal/modules/appconnector
+  - kind: package
+    id: pkg.internal.appconnector.openconnector
+    owner: appconnector
+    source: internal/appconnector/openconnector
+    target: internal/modules/appconnector
+  - kind: package
+    id: pkg.internal.application.access
+    owner: knowledge
+    source: internal/application/access
+    target: internal/modules/knowledge
+  - kind: package
+    id: pkg.internal.application.repository
+    owner: agentruntime
+    source: internal/application/repository
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.application.repository.appconnector
+    owner: appconnector
+    source: internal/application/repository/appconnector
+    target: internal/modules/appconnector
+  - kind: package
+    id: pkg.internal.application.repository.commercial
+    owner: commercial
+    source: internal/application/repository/commercial
+    target: internal/modules/commercial
+  - kind: package
+    id: pkg.internal.application.repository.retriever.doris
+    owner: airesource
+    source: internal/application/repository/retriever/doris
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.elasticsearch
+    owner: airesource
+    source: internal/application/repository/retriever/elasticsearch
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.elasticsearch.v7
+    owner: airesource
+    source: internal/application/repository/retriever/elasticsearch/v7
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.elasticsearch.v8
+    owner: airesource
+    source: internal/application/repository/retriever/elasticsearch/v8
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.milvus
+    owner: airesource
+    source: internal/application/repository/retriever/milvus
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.neo4j
+    owner: airesource
+    source: internal/application/repository/retriever/neo4j
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.opensearch
+    owner: airesource
+    source: internal/application/repository/retriever/opensearch
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.postgres
+    owner: airesource
+    source: internal/application/repository/retriever/postgres
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.qdrant
+    owner: airesource
+    source: internal/application/repository/retriever/qdrant
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.sqlite
+    owner: airesource
+    source: internal/application/repository/retriever/sqlite
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.tencentvectordb
+    owner: airesource
+    source: internal/application/repository/retriever/tencentvectordb
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.repository.retriever.weaviate
+    owner: airesource
+    source: internal/application/repository/retriever/weaviate
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.application.service
+    owner: knowledge
+    source: internal/application/service
+    target: internal/modules/knowledge
+  - kind: package
+    id: pkg.internal.application.service.appconnector
+    owner: appconnector
+    source: internal/application/service/appconnector
+    target: internal/modules/appconnector
+  - kind: package
+    id: pkg.internal.application.service.chat_pipeline
+    owner: conversation
+    source: internal/application/service/chat_pipeline
+    target: internal/modules/conversation
+  - kind: package
+    id: pkg.internal.application.service.commercial
+    owner: commercial
+    source: internal/application/service/commercial
+    target: internal/modules/commercial
+  - kind: package
+    id: pkg.internal.application.service.file
+    owner: platform
+    source: internal/application/service/file
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.application.service.memory
+    owner: agentruntime
+    source: internal/application/service/memory
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.application.service.metric
+    owner: insights
+    source: internal/application/service/metric
+    target: internal/modules/insights
+  - kind: package
+    id: pkg.internal.application.service.retriever
+    owner: knowledge
+    source: internal/application/service/retriever
+    target: internal/modules/knowledge
+  - kind: package
+    id: pkg.internal.application.service.workbench
+    owner: workbench
+    source: internal/application/service/workbench
+    target: internal/modules/workbench
+  - kind: package
+    id: pkg.internal.assets
+    owner: platform
+    source: internal/assets
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.browserskill
+    owner: execution
+    source: internal/browserskill
+    target: internal/modules/execution
+  - kind: package
+    id: pkg.internal.commercial
+    owner: commercial
+    source: internal/commercial
+    target: internal/modules/commercial
+  - kind: package
+    id: pkg.internal.common
+    owner: platform
+    source: internal/common
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.common.redislock
+    owner: platform
+    source: internal/common/redislock
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.config
+    owner: platform
+    source: internal/config
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.connectorcontrol
+    owner: datasource
+    source: internal/connectorcontrol
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.container
+    owner: platform
+    source: internal/container
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.craft
+    owner: craft
+    source: internal/craft
+    target: internal/modules/craft
+  - kind: package
+    id: pkg.internal.database
+    owner: platform
+    source: internal/database
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.datasource
+    owner: datasource
+    source: internal/datasource
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.confluence
+    owner: datasource
+    source: internal/datasource/connector/confluence
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.dingtalk
+    owner: datasource
+    source: internal/datasource/connector/dingtalk
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.feishu.core
+    owner: datasource
+    source: internal/datasource/connector/feishu/core
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.feishu.drive
+    owner: datasource
+    source: internal/datasource/connector/feishu/drive
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.feishu.wiki
+    owner: datasource
+    source: internal/datasource/connector/feishu/wiki
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.gitlab
+    owner: datasource
+    source: internal/datasource/connector/gitlab
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.ima
+    owner: datasource
+    source: internal/datasource/connector/ima
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.moauth
+    owner: datasource
+    source: internal/datasource/connector/moauth
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.notion
+    owner: datasource
+    source: internal/datasource/connector/notion
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.rss
+    owner: datasource
+    source: internal/datasource/connector/rss
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.datasource.connector.yuque
+    owner: datasource
+    source: internal/datasource/connector/yuque
+    target: internal/modules/datasource
+  - kind: package
+    id: pkg.internal.embedpolicy
+    owner: policy
+    source: internal/embedpolicy
+    target: internal/modules/policy
+  - kind: package
+    id: pkg.internal.errors
+    owner: platform
+    source: internal/errors
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.event
+    owner: platform
+    source: internal/event
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.execution
+    owner: execution
+    source: internal/execution
+    target: internal/modules/execution
+  - kind: package
+    id: pkg.internal.filetransport
+    owner: execution
+    source: internal/filetransport
+    target: internal/modules/execution
+  - kind: package
+    id: pkg.internal.handler
+    owner: identity
+    source: internal/handler
+    target: internal/modules/identity
+  - kind: package
+    id: pkg.internal.handler.dto
+    owner: platform
+    source: internal/handler/dto
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.handler.session
+    owner: conversation
+    source: internal/handler/session
+    target: internal/modules/conversation
+  - kind: package
+    id: pkg.internal.im
+    owner: channels
+    source: internal/im
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.im.dingtalk
+    owner: channels
+    source: internal/im/dingtalk
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.im.feishu
+    owner: channels
+    source: internal/im/feishu
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.im.mattermost
+    owner: channels
+    source: internal/im/mattermost
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.im.qqbot
+    owner: channels
+    source: internal/im/qqbot
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.im.slack
+    owner: channels
+    source: internal/im/slack
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.im.telegram
+    owner: channels
+    source: internal/im/telegram
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.im.wechat
+    owner: channels
+    source: internal/im/wechat
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.im.wecom
+    owner: channels
+    source: internal/im/wecom
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.im.yunzhijia
+    owner: channels
+    source: internal/im/yunzhijia
+    target: internal/modules/channels
+  - kind: package
+    id: pkg.internal.infrastructure.chunker
+    owner: knowledge
+    source: internal/infrastructure/chunker
+    target: internal/modules/knowledge
+  - kind: package
+    id: pkg.internal.infrastructure.commercialplatform
+    owner: commercial
+    source: internal/infrastructure/commercialplatform
+    target: internal/modules/commercial
+  - kind: package
+    id: pkg.internal.infrastructure.docparser
+    owner: knowledge
+    source: internal/infrastructure/docparser
+    target: internal/modules/knowledge
+  - kind: package
+    id: pkg.internal.infrastructure.docparser.anydoc
+    owner: knowledge
+    source: internal/infrastructure/docparser/anydoc
+    target: internal/modules/knowledge
+  - kind: package
+    id: pkg.internal.infrastructure.openmeter
+    owner: commercial
+    source: internal/infrastructure/openmeter
+    target: internal/modules/commercial
+  - kind: package
+    id: pkg.internal.infrastructure.semantic
+    owner: knowledge
+    source: internal/infrastructure/semantic
+    target: internal/modules/knowledge
+  - kind: package
+    id: pkg.internal.infrastructure.web_fetch
+    owner: conversation
+    source: internal/infrastructure/web_fetch
+    target: internal/modules/conversation
+  - kind: package
+    id: pkg.internal.infrastructure.web_search
+    owner: airesource
+    source: internal/infrastructure/web_search
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.ipclass
+    owner: policy
+    source: internal/ipclass
+    target: internal/modules/policy
+  - kind: package
+    id: pkg.internal.logger
+    owner: platform
+    source: internal/logger
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.mcp
+    owner: airesource
+    source: internal/mcp
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.metrics
+    owner: platform
+    source: internal/metrics
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.middleware
+    owner: platform
+    source: internal/middleware
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.middleware.asynqdl
+    owner: platform
+    source: internal/middleware/asynqdl
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.modelcontext
+    owner: agentruntime
+    source: internal/modelcontext
+    target: internal/modules/agentruntime
+  - kind: package
+    id: pkg.internal.models.asr
+    owner: airesource
+    source: internal/models/asr
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.models.chat
+    owner: airesource
+    source: internal/models/chat
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.models.embedding
+    owner: airesource
+    source: internal/models/embedding
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.models.limiter
+    owner: policy
+    source: internal/models/limiter
+    target: internal/modules/policy
+  - kind: package
+    id: pkg.internal.models.provider
+    owner: airesource
+    source: internal/models/provider
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.models.rerank
+    owner: airesource
+    source: internal/models/rerank
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.models.utils
+    owner: airesource
+    source: internal/models/utils
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.models.utils.ollama
+    owner: airesource
+    source: internal/models/utils/ollama
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.models.vlm
+    owner: airesource
+    source: internal/models/vlm
+    target: internal/modules/airesource
+  - kind: package
+    id: pkg.internal.notification
+    owner: workbench
+    source: internal/notification
+    target: internal/modules/workbench
+  - kind: package
+    id: pkg.internal.payment
+    owner: commercial
+    source: internal/payment
+    target: internal/modules/commercial
+  - kind: package
+    id: pkg.internal.ratelimit
+    owner: policy
+    source: internal/ratelimit
+    target: internal/modules/policy
+  - kind: package
+    id: pkg.internal.router
+    owner: platform
+    source: internal/router
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.runtime
+    owner: platform
+    source: internal/runtime
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.sandbox
+    owner: execution
+    source: internal/sandbox
+    target: internal/modules/execution
+  - kind: package
+    id: pkg.internal.searchutil
+    owner: knowledge
+    source: internal/searchutil
+    target: internal/modules/knowledge
+  - kind: package
+    id: pkg.internal.storageallowlist
+    owner: policy
+    source: internal/storageallowlist
+    target: internal/modules/policy
+  - kind: package
+    id: pkg.internal.storageurl
+    owner: platform
+    source: internal/storageurl
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.stream
+    owner: platform
+    source: internal/stream
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.textconv
+    owner: platform
+    source: internal/textconv
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.tracing.langfuse
+    owner: platform
+    source: internal/tracing/langfuse
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.types
+    owner: platform
+    source: internal/types
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.types.interfaces
+    owner: platform
+    source: internal/types/interfaces
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.usage
+    owner: commercial
+    source: internal/usage
+    target: internal/modules/commercial
+  - kind: package
+    id: pkg.internal.utils
+    owner: platform
+    source: internal/utils
+    target: internal/platform
+  - kind: package
+    id: pkg.internal.voice
+    owner: workbench
+    source: internal/voice
+    target: internal/modules/workbench
+  - kind: package
+    id: pkg.internal.workbench
+    owner: workbench
+    source: internal/workbench
+    target: internal/modules/workbench
+  - kind: package
+    id: pkg.cmd.server
+    owner: platform
+    source: cmd/server
+    target: cmd/server
+temporary_exceptions:
+  - from: internal/modules/conversation/queryhistory/adapters
+    to: internal/application/repository
+    reason: legacy Session/Tenant persistence adapter during Wave 1
+    remove_in_wave: 5
+  - from: internal/modules/conversation/queryhistory/application
+    to: internal/types
+    reason: snapshot wire compatibility until Conversation owns Session and Message types
+    remove_in_wave: 5
