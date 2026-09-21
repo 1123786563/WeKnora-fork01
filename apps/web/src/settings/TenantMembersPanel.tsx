@@ -301,8 +301,11 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
 export function TenantMembersPanel({ client, tenantId, role, initialMembers }: Props) {
   const locale = useAppLocale();
   const tr = useMemo(() => createPanelTranslator(locale), [locale]);
-  const canManage = role === 'owner' || role === 'admin';
-  const canViewAudit = canManage || role === 'system-admin';
+  // SP14 router folds a system admin to 'system-admin'; Vue derives the
+  // members role from the tenant membership (owner), so a system admin must
+  // keep the manage surface (invites / 待接受的邀请 table) here too.
+  const canManage = role === 'owner' || role === 'admin' || role === 'system-admin';
+  const canViewAudit = canManage;
   const currentRole = role === 'system-admin' ? '' : (role as TenantRole);
 
   const [members, setMembers] = useState(initialMembers?.items ?? []);
@@ -683,16 +686,13 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                 </div>)}
               </div>
             </div> : null}
+            {/* Vue TenantMembers.vue L45-50: the audit entry sits in the
+                title cluster right after the (i) trigger, not right-aligned. */}
+            {canViewAudit ? <Button type="button" variant="text" className="h-6 rounded-[3px]! px-[7px] py-0 text-[12px] text-[var(--wk-muted,#66758b)]! hover:text-primary!" onClick={openAuditDrawer}>
+              <Icon name="history" size={16} /> {tr('tenantMember.audit.tabLabel')}
+            </Button> : null}
           </div>
         </div>
-        {canViewAudit ? <Button type="button" variant="text" className="h-6 rounded-[3px]! px-[7px] py-0 text-[12px] text-[var(--wk-muted,#66758b)]! hover:text-primary!" onClick={openAuditDrawer}>
-          <Icon name="history" size={16} /> {tr('tenantMember.audit.tabLabel')}
-        </Button> : null}
-        {/* Vue TenantMembers.vue L202-205: the invite entry is an icon-only
-            square button — the label lives in title/aria only. */}
-        {canManage ? <Button type="button" variant="default" className="h-7 rounded-[3px]! px-2 text-xs" title={tr('tenantMember.add.button')} aria-label={tr('tenantMember.add.button')} onClick={() => setInviteOpen(true)}>
-          <Icon name="user-add" size={14} />
-        </Button> : null}
       </div>
       <p className="m-0 text-[14px] leading-[1.5] text-[var(--wk-muted,#66758b)] opacity-75">
         {tr('tenantMember.sectionDescription')}{' '}

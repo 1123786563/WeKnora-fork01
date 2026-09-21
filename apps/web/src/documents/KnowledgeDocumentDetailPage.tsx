@@ -264,21 +264,49 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
     }
   }
 
+  const [headerDownloadState, setHeaderDownloadState] = useState<'idle' | 'loading' | 'error'>('idle');
+  async function downloadHeader() {
+    if (state.status !== 'success') return;
+    setHeaderDownloadState('loading');
+    try {
+      const response = await client.knowledgeBases.documents.download(documentId);
+      const contentType = response.contentType || response.headers['content-type'];
+      const url = URL.createObjectURL(previewBodyAsBlob(response.body, contentType));
+      const anchor = window.document.createElement('a');
+      anchor.href = url;
+      anchor.download = buildDocumentPreview(state.document, client.knowledgeBases.documents.previewPath(documentId)).fileName;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setHeaderDownloadState('idle');
+    } catch {
+      setHeaderDownloadState('error');
+    }
+  }
+
   const detailTitle = state.status === 'success' ? documentDetailTitle(state.document, t('common.typeDocument')) : t('common.typeDocument');
-  return <Sheet open title={detailTitle} onClose={onBack} closeLabel={t('common.close')} resizeLabel="Resize drawer" side="right" width="654px" resizable minWidth={480} maxWidth={1600} storageKey="weknora-doc-drawer-width" className="wk-document-detail-drawer">
-  <main className="wk-page wk-document-detail-page max-w-[820px]! box-border px-[1.25rem] py-6"><header className="wk-header mb-6 flex items-start justify-between gap-4"><div className="min-w-0"><div className="document-title-row flex min-h-8 items-center"><h2 className="document-breadcrumb m-0 flex min-w-0 items-center gap-2 text-[20px] font-semibold leading-8"><button type="button" className="breadcrumb-link inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent px-2 py-1 -mx-2 -my-1 text-[14px] font-normal leading-6 text-[var(--wk-muted,#66758b)] [font:inherit] hover:bg-[var(--wk-surface,#fff)] hover:text-[var(--wk-brand,#00a870)]" onClick={onBack}>← {t('knowledgeBase.detail.back')}</button><span className="breadcrumb-separator text-[14px] font-normal text-[var(--wk-muted,#98a2b8)]" aria-hidden="true">›</span><span className="breadcrumb-current min-w-0 truncate">{detailTitle}</span></h2></div></div><div className="flex shrink-0 items-center gap-2">{state.status === 'success' ? <Button type="button" onClick={() => setTraceOpen(true)}>{t('knowledgeBase.timeline.title')}</Button> : null}</div></header>
+  const document = state.status === 'success' ? state.document : null;
+  const headerDownloadVisible = document !== null && canMutateDocument && documentCanDownload(document);
+  // Vue DocContent header (doc-content.vue L1584-1600): icon + title at the
+  // left, download / chart-line header actions at the right, then the drawer
+  // close button. The Sheet close button follows the title node, so the
+  // actions ride inside the title node's right group.
+  return <Sheet open onClose={onBack} closeLabel={t('common.close')} resizeLabel="Resize drawer" side="right" width="654px" resizable minWidth={480} maxWidth={1600} storageKey="weknora-doc-drawer-width" className="wk-document-detail-drawer [&header_h2]:w-full"
+    headerIcon={<span className="doc-drawer-header-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#e9f8ec] text-[#07c05f]"><FileDetailIcon size={16} /></span>}
+    title={<span className="doc-drawer-header-inner flex w-full min-w-0 items-center justify-between gap-2">
+      <span className="doc-drawer-header-title truncate text-[15px] font-medium text-[rgba(0,0,0,0.9)]">{detailTitle}</span>
+      <span className="doc-drawer-header-actions flex shrink-0 items-center gap-1">
+        {headerDownloadVisible ? <button type="button" className="header-action-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] hover:bg-hover-wash hover:text-[#07c05f]" aria-label={copy.download} title={copy.download} onClick={() => void downloadHeader()}>{headerDownloadState === 'loading' ? <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /> : <DownloadIcon size={16} />}</button> : null}
+        {document ? <button type="button" className="header-action-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] hover:bg-hover-wash hover:text-[#07c05f]" aria-label={t('knowledgeBase.timeline.title')} title={t('knowledgeBase.timeline.title')} onClick={() => setTraceOpen(true)}><ChartLineIcon size={16} /></button> : null}
+      </span>
+    </span>}
+  >
+  <main className="wk-page wk-document-detail-page box-border px-5 pb-5">
     <section className="wk-document-detail-surface" aria-live="polite" aria-busy={state.status === 'loading'}>
     {state.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
     {state.status === 'empty' ? <Status>{t('common.empty')}</Status> : null}
     {state.status === 'error' ? <div className="flex flex-wrap items-center gap-3"><Status tone="error">{state.message}</Status><Button type="button" variant="text" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t('common.retry')}</Button></div> : null}
     {state.status === 'success' && timelineSteps.length > 0 ? <Card><section aria-label={t('knowledgeBase.timeline.title')} className="wk-processing-timeline"><strong>{t('knowledgeBase.timeline.title')}</strong><ol>{timelineSteps.map((step) => <li key={step.stage} data-state={step.state}>{t('knowledgeBase.timeline.stage.' + step.stage)} — {t('knowledgeBase.timeline.' + step.state)}</li>)}</ol></section></Card> : null}
-  {state.status === 'success' ? <><div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label={t('knowledgeBase.documentContent')}>
-    {(() => { const tabs = CONTENT_TABS[locale]; return <>
-      {canPreviewDocument(state.document) ? <Button type="button" role="tab" aria-selected={contentView === 'preview'} onClick={() => setContentView('preview')}>{tabs.preview}</Button> : null}
-      <Button type="button" role="tab" aria-selected={contentView === 'merged'} onClick={() => setContentView('merged')}>{tabs.merged}</Button>
-      <Button type="button" role="tab" aria-selected={contentView === 'chunks'} onClick={() => setContentView('chunks')}>{tabs.chunks}</Button>
-    </>; })()}
-  </div><DocumentDetail client={client} document={state.document} canEdit={canMutateDocument} canDownload={canMutateDocument && documentCanDownload(state.document)} previewPath={client.knowledgeBases.documents.previewPath(documentId)} downloadPath={client.knowledgeBases.documents.downloadPath(documentId)} showPreview={contentView === 'preview'} /><DocumentChunks client={client} document={state.document} canEdit={canMutateDocument} view={contentView} parentContextCache={parentContextCache.current} /></> : null}
+  {state.status === 'success' ? <DocumentDetail client={client} document={state.document} canEdit={canMutateDocument} contentView={contentView} onContentViewChange={setContentView} parentContextCache={parentContextCache.current} /> : null}
     </section>
   {traceOpen ? <Sheet open title={t('knowledgeBase.timeline.title')} onClose={() => setTraceOpen(false)} side="right" width="820px" resizable minWidth={560} maxWidth={1400} storageKey="weknora-trace-drawer-width" className="min-w-0 border-l border-line-soft">
     <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === 'loading'}>
@@ -662,13 +690,12 @@ type PreviewState =
   | { status: 'spreadsheet'; spreadsheet: SpreadsheetPreviewModel }
   | { status: 'error'; message: string };
 
-function DocumentDetail({ document, client, canEdit, canDownload, previewPath, downloadPath, showPreview }: { document: KnowledgeDocument; client: WeKnoraClient; canEdit: boolean; canDownload: boolean; previewPath: string; downloadPath: string; showPreview: boolean }) {
-  const model = buildDocumentPreview(document, previewPath);
+function DocumentDetail({ document, client, canEdit, contentView, onContentViewChange, parentContextCache }: { document: KnowledgeDocument; client: WeKnoraClient; canEdit: boolean; contentView: ContentView; onContentViewChange: (view: ContentView) => void; parentContextCache: Map<string, string> }) {
+  const model = buildDocumentPreview(document, client.knowledgeBases.documents.previewPath(document.id));
   const locale = useAppLocale();
   const t = createTranslator(locale);
   const copy = DETAIL_COPY[locale];
   const [previewState, setPreviewState] = useState<PreviewState>({ status: 'idle' });
-  const [downloadState, setDownloadState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const [summaryEditing, setSummaryEditing] = useState(false);
   const [summaryDraft, setSummaryDraft] = useState(String(document.description || ''));
@@ -713,23 +740,6 @@ function DocumentDetail({ document, client, canEdit, canDownload, previewPath, d
     };
   }, [client, document.id, model.kind, model.ready, previewAttempt]);
 
-  async function download() {
-    setDownloadState('loading');
-    try {
-      const response = await client.knowledgeBases.documents.download(document.id);
-      const contentType = response.contentType || response.headers['content-type'];
-      const url = URL.createObjectURL(previewBodyAsBlob(response.body, contentType));
-      const anchor = window.document.createElement('a');
-      anchor.href = url;
-      anchor.download = model.fileName;
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      setDownloadState('idle');
-    } catch {
-      setDownloadState('error');
-    }
-  }
-
   async function saveDetails(input: { description?: string; custom_metadata?: Record<string, unknown> }) {
     setDetailsSaving(true);
     setDetailsError(null);
@@ -747,27 +757,137 @@ function DocumentDetail({ document, client, canEdit, canDownload, previewPath, d
 
   const inlineKind: InlinePreviewKind | undefined = isInlinePreviewKind(model.kind) ? model.kind : undefined;
   const rawTags = Array.isArray((document as KnowledgeDocument & { tags?: unknown }).tags) ? (document as KnowledgeDocument & { tags: Array<{ id?: string | number; name?: string }> }).tags : [];
-  const documentTime = (document as KnowledgeDocument & { time?: unknown }).time;
-  return <Card className="wk-document-detail-card">
-    <div className="mb-3 flex items-center justify-end gap-2 border-b border-line-soft pb-3">
-      {canDownload ? <Button type="button" aria-label={copy.download} loading={downloadState === 'loading'} onClick={() => { setDownloadState('idle'); void download(); }}>{copy.download}</Button> : null}
-    </div>
-    {detailsError ? <Status tone="error">{detailsError}</Status> : null}<section className="wk-document-metadata-section border-b border-line-soft pb-4"><h3 className="m-0 mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink before:h-[14px] before:w-[3px] before:rounded-[2px] before:bg-primary before:content-['']">{createTranslator(useAppLocale())('knowledgeBase.detailSectionMeta')}</h3><dl className="wk-document-metadata m-0 flex flex-col gap-2.5 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:w-[72px] [&_dt]:shrink-0 [&_dt]:text-[13px] [&_dt]:text-muted"><div className="flex items-start gap-3"><dt>{copy.status}</dt><dd>{String(document.parse_status || 'unknown')}</dd></div><div className="flex items-start gap-3"><dt>{copy.source}</dt><dd>{String(document.source || 'file')}</dd></div>{documentTime ? <div className="flex items-start gap-3"><dt>{copy.status}</dt><dd>{formatDetailTime(documentTime)}</dd></div> : null}{document.channel && document.channel !== 'web' ? <div className="flex items-start gap-3"><dt>{copy.source}</dt><dd>{String(document.channel)}</dd></div> : null}<div className="flex items-start gap-3"><dt>{copy.folder}</dt><dd>{String(document.folder_path || copy.root)}</dd></div><div className="flex items-start gap-3"><dt>{copy.type}</dt><dd>{String(document.file_type || model.kind).toUpperCase()}</dd></div>{rawTags.length > 0 ? <div className="flex items-start gap-3"><dt>{t('knowledgeBase.tagLabel')}</dt><dd className="flex flex-wrap gap-1">{rawTags.map((tag) => <span key={String(tag.id ?? tag.name)} className="rounded-full border border-line-soft px-2 py-0.5 text-[11px] text-muted">{tag.name}</span>)}</dd></div> : null}</dl></section>
-    <section className="border-b border-line-soft py-4" aria-label={t('knowledgeBase.documentSummary')}><div className="mb-2 flex items-center justify-between gap-2"><h3 className="m-0 text-[13px] font-semibold">{t('knowledgeBase.documentSummary')}</h3>{canEdit && !summaryEditing ? <Button type="button" onClick={() => setSummaryEditing(true)}>{t('common.edit')}</Button> : null}</div>{summaryEditing ? <><textarea value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} className="min-h-[100px] w-full rounded-control border border-line-soft p-2" /><div className="mt-2 flex gap-2"><Button type="button" loading={detailsSaving} onClick={() => void saveDetails({ description: summaryDraft })}>{t('common.save')}</Button><Button type="button" onClick={() => setSummaryEditing(false)}>{t('common.cancel')}</Button></div></> : <p className="m-0 whitespace-pre-wrap text-[13px] text-muted">{summaryDraft || '—'}</p>}</section>
-    <MetadataEditor editing={metadataEditing} rows={metadataDraft} saving={detailsSaving} canEdit={canEdit} onStart={() => { setDetailsError(null); const rows = metadataRowsFromObject(document.custom_metadata as Record<string, unknown> | undefined); setMetadataDraft(rows.length ? rows : [metadataRow()]); setMetadataEditing(true); }} onChange={setMetadataDraft} onCancel={() => { setMetadataEditing(false); setDetailsError(null); }} onSave={(value) => void saveDetails({ custom_metadata: value })} />
-    {/* Vue pins an embedded audio player above the content views for audio
-        files (audio-player-section), since canPreview() keeps them off the
-        preview tab; the blob is already fetched by the preview effect. */}
-    {inlineKind === 'audio' && previewState.status === 'blob' ? <div className="wk-document-audio-player mb-3 border-b border-line-soft pb-3"><DocumentPreviewContent kind="audio" url={previewState.url} fileName={model.fileName} /></div> : null}
-    {showPreview ? (previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} mermaidLabels={MERMAID_VIEWER_COPY[locale]} /> : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
-    {canDownload && downloadState === 'error' ? <Status tone="error">{copy.downloadFailed}</Status> : null}
-  </Card>;
+  // Vue details.time = formatStringDate(new Date(data.updated_at)) (useKnowledgeBase.ts L177).
+  const documentTime = (document as KnowledgeDocument & { time?: unknown }).time
+    ?? (document as KnowledgeDocument & { updated_at?: unknown }).updated_at
+    ?? (document as KnowledgeDocument & { created_at?: unknown }).created_at;
+  // Vue getTimeLabel / getTypeLabel / getContentLabel (doc-content.vue L986-1040).
+  const timeLabel = document.type === 'url' ? t('knowledgeBase.importTime') : document.type === 'manual' ? t('knowledgeBase.createTime') : t('knowledgeBase.uploadTime');
+  const typeLabel = document.type === 'url' ? t('knowledgeBase.typeURL') : document.type === 'manual' ? t('knowledgeBase.typeManual') : (document.file_type ? String(document.file_type).toUpperCase() : t('knowledgeBase.typeFile'));
+  const contentLabel = document.type === 'url' ? t('knowledgeBase.webContent') : document.type === 'manual' ? t('knowledgeBase.documentContent') : t('knowledgeBase.fileContent');
+  const customMetadata = (document.custom_metadata as Record<string, unknown> | undefined) ?? {};
+  const hasCustomMetadata = Object.keys(customMetadata).length > 0;
+  const sectionTitleClass = 'm-0 flex items-center gap-2 text-[13px] font-semibold text-ink before:h-[14px] before:w-[3px] before:shrink-0 before:rounded-[2px] before:bg-primary before:content-[""]';
+  const tabs = CONTENT_TABS[locale];
+  return <>
+    {detailsError ? <Status tone="error">{detailsError}</Status> : null}
+    {/* ── 基本信息 (Vue setting-drawer__section + doc-detail-rows) ── */}
+    <section className="wk-document-metadata-section border-b border-line-soft pb-4">
+      <h4 className={sectionTitleClass + ' mb-3'}>{t('knowledgeBase.detailSectionMeta')}</h4>
+      <dl className="wk-document-metadata m-0 flex flex-col gap-[10px] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dd]:text-[13px] [&_dt]:w-[72px] [&_dt]:shrink-0 [&_dt]:text-[12px] [&_dt]:leading-[1.6] [&_dt]:text-muted">
+        {documentTime ? <div className="doc-detail-row flex items-start gap-3"><dt>{timeLabel}</dt><dd>{formatDetailTime(documentTime)}</dd></div> : null}
+        <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.infoCard.type')}</dt><dd><span className="doc-type-tag inline-flex rounded-[3px] border border-[var(--wk-border,#e4e7ec)] px-[6px] py-0 text-[12px] leading-[20px] text-ink">{typeLabel}</span></dd></div>
+        {document.channel && document.channel !== 'web' ? <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.infoCard.source')}</dt><dd>{String(document.channel)}</dd></div> : null}
+        {rawTags.length > 0 ? <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.tagLabel')}</dt><dd className="flex flex-wrap gap-1">{rawTags.map((tag) => <span key={String(tag.id ?? tag.name)} className="doc-tag-chip rounded-full border border-line-soft px-2 py-0.5 text-[11px] text-muted">{tag.name}</span>)}</dd></div> : null}
+      </dl>
+    </section>
+    {/* ── 自定义元数据 (Vue metadata-section) ── */}
+    <section className="border-b border-line-soft py-4" aria-label={t('knowledgeBase.customMetadata')}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4 className={sectionTitleClass}>{t('knowledgeBase.customMetadata')}<InfoOutlineIcon size={14} className="text-muted" /></h4>
+        {canEdit && !metadataEditing ? <IconActionButton label={t('common.edit')} onClick={() => { setDetailsError(null); const rows = metadataRowsFromObject(document.custom_metadata as Record<string, unknown> | undefined); setMetadataDraft(rows.length ? rows : [metadataRow()]); setMetadataEditing(true); }}><EditIcon size={15} /></IconActionButton> : null}
+      </div>
+      {metadataEditing ? <MetadataEditor rows={metadataDraft} saving={detailsSaving} onChange={setMetadataDraft} onCancel={() => { setMetadataEditing(false); setDetailsError(null); }} onSave={(value) => void saveDetails({ custom_metadata: value })} />
+      : hasCustomMetadata ? <div className="metadata-grid grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">{Object.entries(customMetadata).map(([key, value]) => <div key={key} className="metadata-item flex min-w-0 flex-col rounded-[6px] bg-surface-muted px-2 py-1"><span className="metadata-item-key truncate text-[12px] text-muted">{key}</span><span className="metadata-item-value truncate text-[13px] text-ink">{formatMetadataValue(value)}</span></div>)}</div>
+      : canEdit ? <button type="button" className="metadata-empty-action flex w-fit cursor-pointer items-center gap-[5px] border-0 bg-transparent p-0 text-[13px] text-muted hover:text-[#07c05f]" onClick={() => { setDetailsError(null); setMetadataDraft([metadataRow()]); setMetadataEditing(true); }}><PlusIcon size={15} /><span>{t('knowledgeBase.addMetadataField')}</span></button>
+      : <span className="text-[13px] text-muted">{t('knowledgeBase.noCustomMetadata')}</span>}
+    </section>
+    {/* ── 摘要 (Vue summary-section) ── */}
+    <section className="border-b border-line-soft py-4" aria-label={t('knowledgeBase.documentSummary')}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4 className={sectionTitleClass}>{t('knowledgeBase.documentSummary')}</h4>
+        {canEdit && !summaryEditing ? <span className="flex items-center gap-1">
+          <IconActionButton label={t('common.edit')} onClick={() => { setSummaryDraft(String(document.description || '')); setSummaryEditing(true); }}><EditIcon size={15} /></IconActionButton>
+          <IconActionButton label={t('knowledgeBase.regenerateSummary')} onClick={() => {}}><RefreshIcon size={15} /></IconActionButton>
+        </span> : null}
+      </div>
+      {summaryEditing ? <><textarea value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} className="min-h-[100px] w-full rounded-control border border-line-soft p-2" /><div className="mt-2 flex gap-2"><Button type="button" loading={detailsSaving} onClick={() => void saveDetails({ description: summaryDraft })}>{t('common.save')}</Button><Button type="button" onClick={() => setSummaryEditing(false)}>{t('common.cancel')}</Button></div></>
+      : summaryDraft ? <p className="m-0 whitespace-pre-wrap text-[13px] text-ink">{summaryDraft}</p>
+      : <div className="summary_loading flex min-h-[42px] items-center gap-2 rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-surface px-3 py-3 text-[13px] text-muted">
+          <FileUnknownIcon size={18} className="shrink-0" />
+          <span>{t('knowledgeBase.noDocumentSummary')}</span>
+          {canEdit ? <button type="button" aria-label={t('knowledgeBase.generateSummary')} className="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[13px] text-muted hover:text-[#07c05f]"><RefreshIcon size={14} /><span>{t('knowledgeBase.generateSummary')}</span></button> : null}
+        </div>}
+    </section>
+    {/* ── 文件内容 (Vue doc-content-section) ── */}
+    <section className="doc-content-section pt-3">
+      <div className="doc-content-section-head mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="doc-content-section-head-left flex min-w-0 flex-1 items-center gap-2">
+          <h4 className={sectionTitleClass}>{contentLabel}</h4>
+        </div>
+        <div className="view-mode-buttons flex items-center gap-2">
+          {canPreviewDocument(document) ? <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'preview' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('preview')}>{tabs.preview}</button> : null}
+          <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'merged' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('merged')}>{tabs.merged}</button>
+          <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[6px] px-3 text-[13px] [font:inherit] ' + (contentView === 'chunks' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('chunks')}>{tabs.chunks}</button>
+        </div>
+      </div>
+      {/* Vue pins an embedded audio player above the content views for audio
+          files (audio-player-section), since canPreview() keeps them off the
+          preview tab; the blob is already fetched by the preview effect. */}
+      {inlineKind === 'audio' && previewState.status === 'blob' ? <div className="wk-document-audio-player mb-3 border-b border-line-soft pb-3"><DocumentPreviewContent kind="audio" url={previewState.url} fileName={model.fileName} /></div> : null}
+      {contentView === 'preview' ? (previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? (inlineKind === 'markdown'
+          ? <div className='wk-document-md-preview rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-surface p-4'><DocumentMarkdownBody markdown={previewState.text} labels={MERMAID_VIEWER_COPY[locale]} className='md-content min-w-0 text-[14px] leading-[1.6] text-ink [overflow-wrap:anywhere]' /></div>
+          : <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} mermaidLabels={MERMAID_VIEWER_COPY[locale]} />) : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
+    </section>
+    <DocumentChunks client={client} document={document} canEdit={canEdit} view={contentView} parentContextCache={parentContextCache} />
+  </>;
 }
 
+function formatMetadataValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+/** Vue doc-content icon-action-btn: small square text button with tooltip copy. */
+function IconActionButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+  return <button type="button" aria-label={label} title={label} className="icon-action-btn inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-muted hover:bg-hover-wash hover:text-ink" onClick={onClick}>{children}</button>;
+}
+
+/** Vue header doc icon (doc-drawer-header-icon): green file glyph on the light brand wash. */
+function FileDetailIcon({ size = 16 }: { size?: number }) {
+  return <Icon stroke={size}><path d="M6 2.5h7l4.5 4.5v13a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 20V4A1.5 1.5 0 016 2.5z" /><path d="M13 2.5V7h4.5" /></Icon>;
+}
+
+function EditIcon({ size = 15 }: { size?: number }) {
+  return <Icon stroke={size}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 013 3L8 18l-4 1 1-4z" /></Icon>;
+}
+
+function DownloadIcon({ size = 16 }: { size?: number }) {
+  return <Icon stroke={size}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></Icon>;
+}
+
+function ChartLineIcon({ size = 16 }: { size?: number }) {
+  return <Icon stroke={size}><path d="M3 3v18h18" /><path d="M7 14l4-4 3 3 5-6" /></Icon>;
+}
+
+function RefreshIcon({ size = 15 }: { size?: number }) {
+  return <Icon stroke={size}><path d="M21 4v6h-6" /><path d="M3 20v-6h6" /><path d="M21 10a9 9 0 00-15-5.5L3 7" /><path d="M3 14a9 9 0 0015 5.5L21 17" /></Icon>;
+}
+
+function InfoOutlineIcon({ size = 14, className }: { size?: number; className?: string }) {
+  return <Icon size={size} className={className}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icon>;
+}
+
+function PlusIcon({ size = 15 }: { size?: number }) {
+  return <Icon stroke={size}><path d="M12 5v14M5 12h14" /></Icon>;
+}
+
+function FileUnknownIcon({ size = 18, className }: { size?: number; className?: string }) {
+  return <Icon size={size} className={className}><path d="M6 2.5h7l4.5 4.5v13a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 20V4A1.5 1.5 0 016 2.5z" /><path d="M13 2.5V7h4.5" /><path d="M9.5 13a2.5 2.5 0 114 2c-.8.6-1.5 1-1.5 2" /><path d="M12 19.5h.01" /></Icon>;
+}
+
+function Icon({ size = 16, stroke, className, children }: { size?: number; stroke?: number; className?: string; children: React.ReactNode }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke ?? 2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" className={className}>{children}</svg>;
+}
+
+/** Vue formatStringDate (frontend/src/utils/index.ts L55): local YYYY-MM-DD HH:mm:ss. */
 function formatDetailTime(value: unknown): string {
   if (typeof value !== 'string' || !value) return String(value ?? '');
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (input: number) => String(input).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 /** Vue doc-content git-branch icon (15px, feather-style strokes). */
@@ -847,33 +967,29 @@ function upsertLocalQuestion(chunk: KnowledgeChunk, question: KnowledgeGenerated
   return writeChunkMetadata(chunk, metadata);
 }
 
-function MetadataEditor({ editing, rows, saving, canEdit, onStart, onChange, onCancel, onSave }: {
-  editing: boolean; rows: MetadataDraftRow[]; saving: boolean; canEdit: boolean;
-  onStart: () => void; onChange: (rows: MetadataDraftRow[]) => void; onCancel: () => void; onSave: (value: Record<string, unknown>) => void;
+function MetadataEditor({ rows, saving, onChange, onCancel, onSave }: {
+  rows: MetadataDraftRow[]; saving: boolean;
+  onChange: (rows: MetadataDraftRow[]) => void; onCancel: () => void; onSave: (value: Record<string, unknown>) => void;
 }) {
   const t = createTranslator(useAppLocale());
   const [validationError, setValidationError] = useState<string | null>(null);
   const updateRow = (id: number, update: Partial<MetadataDraftRow>) => onChange(rows.map((row) => row.id === id ? { ...row, ...update } : row));
-  const start = () => onStart();
   const save = () => {
     const validation = validateMetadataRows(rows);
     if (!validation.ok) { setValidationError(validation.message); return; }
     setValidationError(null);
     onSave(validation.value);
   };
-  return <section className="border-b border-line-soft py-4" aria-label={t('knowledgeBase.customMetadata')}>
-    <div className="mb-2 flex items-center justify-between gap-2"><h3 className="m-0 text-[13px] font-semibold">{t('knowledgeBase.customMetadata')}</h3>{canEdit && !editing ? <Button type="button" onClick={start}>{t('common.edit')}</Button> : null}</div>
-    {editing ? <>
-      {validationError ? <Status tone="error">{validationError}</Status> : null}
-      <div className="flex flex-col gap-2">{rows.map((row) => <div key={row.id} className="flex items-start gap-2">
-        <input aria-label={t('knowledgeBase.metadataKeyPlaceholder')} placeholder={t('knowledgeBase.metadataKeyPlaceholder')} value={row.key} onChange={(event) => updateRow(row.id, { key: event.target.value })} className="min-w-0 flex-1 rounded-control border border-line-soft px-2 py-1 text-[12px]" />
-        <select aria-label={t('knowledgeBase.metadataTypeText')} value={row.type} onChange={(event) => { const type = event.target.value as MetadataValueType; updateRow(row.id, { type, value: type === 'null' ? '' : type === 'boolean' ? 'false' : row.value }); }} className="rounded-control border border-line-soft px-2 py-1 text-[12px]">
-          <option value="text">{t('knowledgeBase.metadataTypeText')}</option><option value="number">{t('knowledgeBase.metadataTypeNumber')}</option><option value="boolean">{t('knowledgeBase.metadataTypeBoolean')}</option><option value="null">{t('knowledgeBase.metadataTypeNull')}</option>
-        </select>
-        <input aria-label={t('knowledgeBase.metadataValuePlaceholder')} placeholder={t('knowledgeBase.metadataValuePlaceholder')} value={row.value} disabled={row.type === 'null'} onChange={(event) => updateRow(row.id, { value: event.target.value })} className="min-w-0 flex-1 rounded-control border border-line-soft px-2 py-1 text-[12px]" />
-        <Button type="button" variant="text" onClick={() => onChange(rows.filter((item) => item.id !== row.id))}>{t('common.delete')}</Button>
-      </div>)}</div>
-      <div className="mt-2 flex flex-wrap gap-2"><Button type="button" disabled={rows.length >= 20} onClick={() => onChange([...rows, metadataRow()])}>{t('knowledgeBase.addMetadataField')}</Button><Button type="button" loading={saving} onClick={save}>{t('common.save')}</Button><Button type="button" onClick={onCancel}>{t('common.cancel')}</Button></div>
-    </> : <div className="flex flex-col gap-1 text-[12px] text-muted">{rows.length ? rows.map((row) => <div key={row.id} className="flex gap-3"><span className="font-medium text-ink">{row.key}</span><span>{row.type === 'null' ? 'null' : row.value}</span></div>) : <span>{t('knowledgeBase.noCustomMetadata')}</span>}</div>}
-  </section>;
+  return <div className="metadata-editor" aria-label={t('knowledgeBase.customMetadata')}>
+    {validationError ? <Status tone="error">{validationError}</Status> : null}
+    <div className="flex flex-col gap-2">{rows.map((row) => <div key={row.id} className="flex items-start gap-2">
+      <input aria-label={t('knowledgeBase.metadataKeyPlaceholder')} placeholder={t('knowledgeBase.metadataKeyPlaceholder')} value={row.key} onChange={(event) => updateRow(row.id, { key: event.target.value })} className="min-w-0 flex-1 rounded-control border border-line-soft px-2 py-1 text-[12px]" />
+      <select aria-label={t('knowledgeBase.metadataTypeText')} value={row.type} onChange={(event) => { const type = event.target.value as MetadataValueType; updateRow(row.id, { type, value: type === 'null' ? '' : type === 'boolean' ? 'false' : row.value }); }} className="rounded-control border border-line-soft px-2 py-1 text-[12px]">
+        <option value="text">{t('knowledgeBase.metadataTypeText')}</option><option value="number">{t('knowledgeBase.metadataTypeNumber')}</option><option value="boolean">{t('knowledgeBase.metadataTypeBoolean')}</option><option value="null">{t('knowledgeBase.metadataTypeNull')}</option>
+      </select>
+      <input aria-label={t('knowledgeBase.metadataValuePlaceholder')} placeholder={t('knowledgeBase.metadataValuePlaceholder')} value={row.value} disabled={row.type === 'null'} onChange={(event) => updateRow(row.id, { value: event.target.value })} className="min-w-0 flex-1 rounded-control border border-line-soft px-2 py-1 text-[12px]" />
+      <Button type="button" variant="text" onClick={() => onChange(rows.filter((item) => item.id !== row.id))}>{t('common.delete')}</Button>
+    </div>)}</div>
+    <div className="mt-2 flex flex-wrap gap-2"><Button type="button" disabled={rows.length >= 20} onClick={() => onChange([...rows, metadataRow()])}>{t('knowledgeBase.addMetadataField')}</Button><Button type="button" loading={saving} onClick={save}>{t('common.save')}</Button><Button type="button" onClick={onCancel}>{t('common.cancel')}</Button></div>
+  </div>;
 }

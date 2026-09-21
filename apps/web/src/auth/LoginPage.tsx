@@ -58,7 +58,11 @@ function readInitialLocale(): Locale {
 export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, initialMode = 'login', inviteToken = '', onInviteAccepted }: LoginPageProps) {
   const [locale, setLocale] = useState<Locale>(readInitialLocale);
   const t = (key: string, params?: Record<string, string | number>): string => formatMessage(locale, key, params);
-  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
+  // Vue Login.vue:415 — isRegisterMode always starts false. The only Vue path
+  // that loads straight into the register card is a share-link (?token=) in an
+  // open deployment (Login.vue:803-808); a bare /register must show the login
+  // card, so an initialMode of 'register' is only honoured with a token.
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode === 'register' && inviteToken ? 'register' : 'login');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -311,7 +315,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
       </div>
     </div>
 
-    <div className="relative box-border flex flex-[0_0_52%] items-end py-[100px] pl-[50px] pr-[30px] max-[1024px]:flex-[0_0_100%] max-[1024px]:pt-[90px] max-[1024px]:px-6 max-[1024px]:pb-5 max-[768px]:pt-20 max-[768px]:px-4 max-[768px]:pb-2.5">
+    <div className="relative box-border flex min-w-[680px] flex-[0_0_52%] items-end py-[100px] pl-[50px] pr-[30px] max-[1024px]:min-w-0 max-[1024px]:flex-[0_0_100%] max-[1024px]:pt-[90px] max-[1024px]:px-6 max-[1024px]:pb-5 max-[768px]:pt-20 max-[768px]:px-4 max-[768px]:pb-2.5">
       <div className="relative z-[2] mb-[60px] flex w-full max-w-[600px] flex-col max-[1024px]:mb-6">
         <p className="m-0 mb-2 text-[22px] font-medium leading-[1.4] text-[rgba(255,255,255,0.95)]">{t('platform.subtitle')}</p>
         <p className="m-0 mb-7 text-[15px] leading-[1.5] text-[rgba(255,255,255,0.8)]">{t('platform.description')}</p>
@@ -359,75 +363,80 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
         {!isRegister ? <div className="box-border w-full rounded-2xl border-0 bg-[rgba(255,255,255,0.97)] p-10 shadow-[0_10px_40px_rgba(0,0,0,0.15)] max-[768px]:p-5">
           <div className="mb-8 text-center">
             <h2 className="m-0 mb-1.5 text-2xl font-semibold leading-[normal] text-[rgba(0,0,0,0.9)]">{t('auth.login')}</h2>
-            <p className="m-0 text-[13px] leading-[1.5] text-[#555]">{t('auth.subtitle')}</p>
+            <p className="m-0 text-[13px] leading-[18px] text-[rgba(0,0,0,0.7)]">{t('auth.subtitle')}</p>
             {registrationEnabled ? <p className="mt-2.5 mb-0 rounded-lg bg-[#e9fbf0] px-3 py-2 text-[12.5px] leading-[1.5] text-[#07C05F]">{t('auth.loginHint')}</p> : null}
           </div>
-          <form className="flex flex-col gap-[18px]" onSubmit={submit} aria-label="Login form">
+          <form className="flex flex-col gap-[18px] pt-[7px]" onSubmit={submit} aria-label="Login form">
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
+              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
               <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]">
                 <Input id="auth-email" aria-invalid={hasFieldError('email')} aria-describedby={hasFieldError('email') ? fieldErrorId('email') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} />
               </div>
               {hasFieldError('email') ? <span id={fieldErrorId('email')} role="alert">{fieldError('email')}</span> : null}
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
+              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
               <span className="auth-input-shell relative flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input id="auth-password" aria-invalid={hasFieldError('password')} aria-describedby={hasFieldError('password') ? fieldErrorId('password') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 pr-8 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={password} onChange={(event) => setPassword(event.target.value)} type={showLoginPassword ? 'text' : 'password'} autoComplete="current-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} /><button type="button" className="absolute right-3 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[#87909d]" aria-label={t('auth.password')} aria-pressed={showLoginPassword} onClick={() => setShowLoginPassword((visible) => !visible)}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2.5 12s3.4-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.4 5.5-9.5 5.5S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
               {hasFieldError('password') ? <span id={fieldErrorId('password')} role="alert">{fieldError('password')}</span> : null}
             </label>
-            <button type="submit" className="h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.loggingIn') : t('auth.login')}</button>
-            {registrationEnabled ? <div className="mt-5">
-              <div className="mb-3.5 text-center text-[13px] text-[#999]"><span>{t('auth.firstTime')}</span></div>
+            <button type="submit" className="mt-[19px] h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.loggingIn') : t('auth.login')}</button>
+            {registrationEnabled ? <div>
+              {/* Vue .register-cta__divider (Login.vue:1427-1450): centred text
+                  over a full-width rule, then the outline CTA. */}
+              <div className="relative mb-3.5 text-center text-[13px] leading-[22px] text-[rgba(0,0,0,0.7)] before:absolute before:inset-x-0 before:top-1/2 before:border-t before:border-[#e7e7e7] before:content-['']">
+                <span className="relative z-[1] bg-[rgba(255,255,255,0.97)] px-3">{t('auth.firstTime')}</span>
+              </div>
               <button type="button" className="h-[46px] w-full cursor-pointer rounded-lg border border-(--auth-brand) bg-white text-[15px] text-(--auth-brand) [font-family:var(--auth-font)] hover:bg-[#e9fbf0] hover:border-(--auth-brand) hover:text-(--auth-brand) disabled:cursor-not-allowed disabled:opacity-60" disabled={loading} onClick={() => { setMode('register'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.createAccount')}</button>
             </div> : null}
             {oidcEnabled ? <div className="mb-3 mt-4 text-center text-[13px] text-[#999]"><span>{t('auth.orContinueWith')}</span></div> : null}
             {oidcEnabled ? <button type="button" className="h-[46px] w-full cursor-pointer rounded-lg border border-[#dcdcdc] bg-white text-[15px] text-[#1a1a1a] [font-family:var(--auth-font)] hover:border-(--auth-brand) hover:text-(--auth-brand) disabled:cursor-not-allowed disabled:opacity-60" disabled={oidcLoading || loading} onClick={() => void startOIDC()}>{oidcLoading ? t('auth.redirectingToOIDC') : oidcProvider ? t('auth.oidcLoginWithProvider', { provider: oidcProvider }) : t('auth.oidcLogin')}</button> : null}
           </form>
-          <div className="mt-6 flex flex-col gap-2.5">
-            <div className="flex items-center gap-2.5 text-sm text-[#333]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.multimodalParsing')}</span></div>
-            <div className="flex items-center gap-2.5 text-sm text-[#333]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.hybridSearchEngine')}</span></div>
-            <div className="flex items-center gap-2.5 text-sm text-[#333]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.ragQandA')}</span></div>
+          <div className="mt-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.multimodalParsing')}</span></div>
+            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.hybridSearchEngine')}</span></div>
+            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.ragQandA')}</span></div>
           </div>
         </div> : null}
 
         {isRegister && (registrationEnabled || invite) ? <div className="box-border w-full rounded-2xl border-0 bg-[rgba(255,255,255,0.97)] p-10 shadow-[0_10px_40px_rgba(0,0,0,0.15)] max-[768px]:p-5">
           <div className="form-header mb-8 text-center">
             <h2 className="m-0 mb-1.5 text-2xl font-semibold leading-[normal] text-[rgba(0,0,0,0.9)]">{t('auth.createAccount')}</h2>
-            <p className="m-0 text-[13px] leading-[1.5] text-[#555]">{t('auth.registerSubtitle')}</p>
+            <p className="m-0 text-[13px] leading-[18px] text-[rgba(0,0,0,0.7)]">{t('auth.registerSubtitle')}</p>
           </div>
-          <form className="flex flex-col gap-[18px]" onSubmit={submit} aria-label="Register form">
+          <form className="flex flex-col gap-[18px] pt-[7px]" onSubmit={submit} aria-label="Register form">
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.username')}</span>
+              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.username')}</span>
               <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input id="auth-username" aria-invalid={hasFieldError('username')} aria-describedby={hasFieldError('username') ? fieldErrorId('username') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={username} onChange={(event) => setUsername(event.target.value)} disabled={loading} placeholder={t('auth.usernamePlaceholder')} /></div>
               {hasFieldError('username') ? <span id={fieldErrorId('username')} role="alert">{fieldError('username')}</span> : null}
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
+              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
               <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input id="auth-register-email" aria-invalid={hasFieldError('email')} aria-describedby={hasFieldError('email') ? fieldErrorId('email') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} /></div>
               {hasFieldError('email') ? <span id={fieldErrorId('email')} role="alert">{fieldError('email')}</span> : null}
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
+              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
               <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} /></div>
               {fieldError('password')}
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.confirmPassword')}</span>
+              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.confirmPassword')}</span>
               <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" disabled={loading} placeholder={t('auth.confirmPasswordPlaceholder')} /></div>
               {fieldError('confirmPassword')}
             </label>
-            <button type="submit" className="h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.registering') : t('auth.register')}</button>
+            <button type="submit" className="mt-[19px] h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.registering') : t('auth.register')}</button>
             {/* Vue shows the 已有账户？返回登录 footer unconditionally, also on
-                the share-link invite register form. */}
-            <div className="mt-[18px] text-center text-sm text-[#666]">
+                the share-link invite register form. Vue .form-footer carries a
+                bottom rule (Login.vue:1575-1582) separating the features list. */}
+            <div className="mt-4 border-b border-[#e7e7e7] pb-4 text-center text-sm leading-[1.4] text-[rgba(0,0,0,0.7)]">
               <span>{t('auth.haveAccount')}</span>
               <a href="#" className="ml-1 cursor-pointer text-sm font-medium text-(--auth-brand) no-underline hover:underline" onClick={(event) => { event.preventDefault(); setMode('login'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.backToLogin')}</a>
             </div>
           </form>
-          <div className="mt-6 flex flex-col gap-2.5">
-            <div className="flex items-center gap-2.5 text-sm text-[#333]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.independentTenant')}</span></div>
-            <div className="flex items-center gap-2.5 text-sm text-[#333]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.fullApiAccess')}</span></div>
-            <div className="flex items-center gap-2.5 text-sm text-[#333]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.knowledgeBaseManagement')}</span></div>
+          <div className="mt-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.independentTenant')}</span></div>
+            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.fullApiAccess')}</span></div>
+            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.knowledgeBaseManagement')}</span></div>
           </div>
         </div> : null}
       </div>

@@ -84,30 +84,50 @@ const ALL_PAGES = [
     id: 'settings-integration-' + key, path: '/platform/settings?section=integration-' + key, settle: 2000,
   })),
   // —— 交互态：点击后截图（两端各自解析候选目标，找不到则截当前态并记 warning） ——
-  { id: 'ix-kb-list-create', kind: 'kb', name: 'Parity KB Demo', path: '/platform/knowledge-bases',
-    actions: [{ clickText: ['新建知识库', '创建知识库', '新建'] }] },
+  // 注意：本条目必须扫知识库"列表"页——不能带 kind:'kb'（会被 fixture 解析改写到
+  // KB 详情路径）。Vue 端新建按钮是 t-tooltip + 纯图标 t-button（无 aria/title/text，
+  // KnowledgeBaseList.vue:11-17）；React 端 aria/title=新建知识库、data-guide 同名
+  // （App.tsx:965）；clickText 保留兜底。
+  { id: 'ix-kb-list-create', path: '/platform/knowledge-bases',
+    actions: [{ clickAria: ['新建知识库'], clickCss: ['[data-guide="kb-list-create"]'], clickText: ['新建知识库', '创建知识库', '新建'] }] },
+  // Vue 端设置按钮是纯图标 button.kb-settings-button（KnowledgeBase.vue:2450-2453），
+  // React 端 aria/title=设置（KnowledgeDocumentsPage / FAQPage faq-kb-settings-button 同名）。
   { id: 'ix-kb-settings', kind: 'kb', name: 'Parity KB Demo',
-    actions: [{ clickAria: ['知识库设置', '设置'] }] },
+    actions: [{ clickCss: ['.kb-settings-button'], clickAria: ['知识库设置', '设置'] }] },
   { id: 'ix-kb-batch', kind: 'kb', name: 'Parity KB Demo',
     actions: [{ clickText: ['批量管理'] }] },
+  // Vue 端视图切换两个纯图标按钮无 aria/title（KnowledgeBase.vue:2665-2677），
+  // nth=1 是"列表视图"（第 2 个）；React 端 aria=列表视图 命中。
   { id: 'ix-kb-listview', kind: 'kb', name: 'Parity KB Demo',
-    actions: [{ clickAria: ['列表视图', '列表'] }] },
+    actions: [{ clickCss: ['.doc-view-toggle button >> nth=1'], clickAria: ['列表视图', '列表'] }] },
   { id: 'ix-faq-tagfilter', kind: 'kb', name: 'Parity FAQ Fixture',
     actions: [{ clickText: ['全部标签'] }] },
   { id: 'ix-faq-retrieval', kind: 'kb', name: 'Parity FAQ Fixture',
-    actions: [{ clickAria: ['检索测试'] }] },
+    // Vue 端检索测试入口是 t-tooltip + 纯图标按钮（无 aria/title，FAQEntryManager.vue:225-229），
+    // clickAria 只能命中 React；补 CSS 兜底命中 Vue 图标（svg.t-icon-search 唯一）。
+    actions: [{ clickAria: ['检索测试'], clickCss: ['.content-bar-icon-btn:has(svg.t-icon-search)'] }] },
+  // 导入入口是两步：先点"新建"下拉（React aria=新建 命中；Vue 端是 t-dropdown +
+  // 纯图标按钮，trailing 区第 1 个 content-bar-icon-btn，FAQEntryManager.vue:203-214），
+  // 再点菜单项"导入 FAQ"（两端菜单项可见文本均为 i18n faqImport.importButton='导入 FAQ'）。
   { id: 'ix-faq-import', kind: 'kb', name: 'Parity FAQ Fixture',
-    actions: [{ clickAria: ['导入 FAQ', '导入'] }] },
+    actions: [
+      { clickAria: ['新建'], clickCss: ['.content-bar-icon-btn >> nth=0'] },
+      { clickText: ['导入 FAQ', '导入'] },
+    ] },
   { id: 'ix-chat-header-menu', kind: 'chat', name: '工具调用 Parity Fixture',
     actions: [{ clickAria: ['更多操作', '更多'] }] },
   { id: 'ix-chat-mention', kind: 'chat', name: '工具调用 Parity Fixture',
     actions: [{ clickAria: ['@提及知识库', '提及知识库', 'mention'], clickText: ['@'] }] },
+  // 两端新建按钮均为纯图标（Vue AgentList.vue:11-15 t-tooltip 无 aria；React
+  // AgentsPage.tsx:582 aria/title=创建智能体）；data-guide 两端同名可命中 Vue。
   { id: 'ix-agents-create', path: '/platform/agents',
-    actions: [{ clickText: ['新建智能体', '新建'] }] },
+    actions: [{ clickCss: ['[data-guide="agent-list-create"]'], clickAria: ['创建智能体'], clickText: ['新建智能体', '创建智能体', '新建'] }] },
   { id: 'ix-orgs-created', path: '/platform/organizations',
     actions: [{ clickText: ['我创建的'] }] },
+  // Vue 端创建按钮是 header 第 2 个纯图标 t-button（OrganizationList.vue:16-21，
+  // 图标 img.org-create-icon 唯一）；React 端 aria/title=创建共享空间。
   { id: 'ix-orgs-create', path: '/platform/organizations',
-    actions: [{ clickText: ['创建共享空间', '新建共享空间', '创建空间'] }] },
+    actions: [{ clickCss: ['.header-action-btn:has(.org-create-icon)'], clickAria: ['创建共享空间'], clickText: ['创建共享空间', '新建共享空间', '创建空间'] }] },
   { id: 'ix-kb-doc-detail', kind: 'kb', name: 'Parity KB Demo',
     actions: [{ clickText: ['mermaid-arch-demo'] }] },
 ];
@@ -200,23 +220,30 @@ function pythonBin() {
 }
 
 // 在单端页面按候选解析可点击目标：优先 aria-label/title 精确包含，
-// 再可见文本精确、再子串。命中即点击；全部未命中返回 false（记 warning，
-// 截图当前态——差异本身会体现在像素 diff 里）。
+// 再 CSS 选择器（供两端纯图标按钮等无障碍名缺失的入口使用），再可见文本精确、
+// 再子串。每个候选枚举全部匹配（而非仅第一个）：React 页面常有多达十几个
+// 同名隐藏文本节点（tooltip/弹层模板），首个往往不可见。命中即点击；
+// 全部未命中返回 false（记 warning，截图当前态——差异本身会体现在像素 diff 里）。
 async function clickFirst(page, action) {
   const candidates = [];
   if (action.clickAria) candidates.push(...action.clickAria.map((t) => ({ by: 'aria', t })));
+  if (action.clickCss) candidates.push(...action.clickCss.map((s) => ({ by: 'css', s })));
   if (action.clickText) candidates.push(...action.clickText.map((t) => ({ by: 'text', t })));
   for (const c of candidates) {
     try {
+      let locs;
       if (c.by === 'aria') {
-        const loc = page.locator(
-          `[aria-label*="${c.t}"], [title*="${c.t}"]`).first();
-        if (await loc.isVisible().catch(() => false)) { await loc.click(); return true; }
+        locs = await page.locator(`[aria-label*="${c.t}"], [title*="${c.t}"]`).all();
+      } else if (c.by === 'css') {
+        locs = await page.locator(c.s).all();
       } else {
-        const exact = page.getByText(c.t, { exact: true }).first();
-        if (await exact.isVisible().catch(() => false)) { await exact.click(); return true; }
-        const part = page.getByText(c.t, { exact: false }).first();
-        if (await part.isVisible().catch(() => false)) { await part.click(); return true; }
+        locs = [
+          ...await page.getByText(c.t, { exact: true }).all(),
+          ...await page.getByText(c.t, { exact: false }).all(),
+        ];
+      }
+      for (const loc of locs) {
+        if (await loc.isVisible().catch(() => false)) { await loc.click(); return true; }
       }
     } catch { /* next candidate */ }
   }

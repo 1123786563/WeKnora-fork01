@@ -733,9 +733,12 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     ),
   });
 
+  // Vue mounts /platform/dev/markdown as a top-level route outside the app
+  // shell (requiresAuth: false, requiresInit: false) — mirror that so the
+  // parity fixture page renders standalone.
   const devMarkdownRoute = createRoute({
-    getParentRoute: () => platformRoute,
-    path: 'dev/markdown',
+    getParentRoute: () => rootRoute,
+    path: '/platform/dev/markdown',
     beforeLoad: () => {
       // resolveRoute only dispatched this fixture under development.
       if (!development) throw notFound();
@@ -902,6 +905,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
     flatChatRoute,
     embedRoute,
     craftRoute.addChildren([craftSplatRoute]),
+    devMarkdownRoute,
     platformRoute.addChildren([
       knowledgeBasesRoute,
       platformKnowledgeBaseRoute,
@@ -920,7 +924,6 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       billingRoute,
       billingCheckoutRoute,
       billingAdminRoute,
-      devMarkdownRoute,
       appsCatalogRoute,
       appsConnectionsRoute,
       appsAuthorizationRoute,

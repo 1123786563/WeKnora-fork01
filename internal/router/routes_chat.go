@@ -218,6 +218,17 @@ func RegisterSessionRoutes(
 		gwGroup.POST("/credentials", gw.IssueCredential)
 		gwGroup.POST("/credentials/revoke", gw.RevokeCredential)
 	}
+
+	// SP3 (C-23): the scheduled-task table (spec §3) — the same Viewer+
+	// guard and chat API-key capability shape as the craft sessions group
+	// above; per-task ownership (wrong owner, deleted and missing all read
+	// as one 404) is enforced inside the service/store. Mounted only when
+	// the container assembly registered the handler (fail-closed, no 503
+	// shims).
+	if scheduled := session.RegisteredCraftScheduledHandler(); scheduled != nil {
+		scheduledTasks := g.apiKeyGroup(r.Group("/craft/scheduled-tasks", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+		session.RegisterCraftScheduledTaskRoutes(scheduledTasks, session.NewCraftScheduledHandler(scheduled))
+	}
 }
 
 // RegisterChatRoutes 注册路由。Chat endpoints are tenant-member usage

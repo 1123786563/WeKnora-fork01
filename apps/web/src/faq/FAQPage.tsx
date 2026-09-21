@@ -1528,7 +1528,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
           search button, and a ranked result list with 3-decimal score tags.
           R488 A3: same t-drawer enter/exit motion as the editor drawer. */}
       {searchMounted ? (
-        <section className={`faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/50 p-0 [backdrop-filter:blur(4px)] ${searchOpen ? 'faq-drawer-overlay-enter' : 'faq-drawer-overlay-exit'}`} role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faq.searchTestTitle')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseSearchTest(); }}>
+        <section className={`faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/60 p-0 ${searchOpen ? 'faq-drawer-overlay-enter' : 'faq-drawer-overlay-exit'}`} role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faq.searchTestTitle')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseSearchTest(); }}>
           <aside className={`faq-editor-drawer faq-search-drawer flex h-full w-[420px] max-w-[92vw] flex-col overflow-hidden bg-surface shadow-[-8px_0_28px_rgba(15,23,42,0.16)] max-md:w-screen max-md:max-w-[100vw] ${searchOpen ? 'faq-drawer-panel-enter' : 'faq-drawer-panel-exit'}`}>
             <div className="faq-editor-header flex items-center justify-between border-b border-[#e3e8f0] px-5 py-[18px]">
               <h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faq.searchTestTitle')}</h2>
@@ -1536,11 +1536,17 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
             </div>
             <div className="faq-editor-form-body min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-5">
               {message?.tone === 'error' ? <div className="faq-editor-error mb-2.5" role="alert"><Status tone="error">{message.text}</Status></div> : null}
-              <div className="settings-group flex flex-col gap-[18px]">
-                <div className="setting-row search-first-row flex flex-col gap-2">
-                  <div className="setting-info flex flex-col gap-0.5">
-                    <label className="text-sm font-semibold leading-[1.5] text-ink" htmlFor="faq-search-query">{t('knowledgeEditor.faq.queryLabel')}</label>
-                    <p className="desc m-0 text-xs leading-[1.5] text-faint">{t('knowledgeEditor.faq.queryPlaceholder')}</p>
+              {/* Vue .search-form .setting-row: py-4(16px) + border-bottom
+                  (FAQEntryManager.vue:5178-5187), settings-group gap:0
+                  (:4789-4792), first row padding-top:0, last row no
+                  border/padding-bottom; info→control 12px row gap + 8px info
+                  margin (:4799-4801, :5208); label 14px/500 mb-1, desc 12px
+                  (:5209-5221). */}
+              <div className="settings-group flex flex-col gap-0">
+                <div className="setting-row search-first-row flex flex-col gap-3 border-b border-[#e3e8f0] pb-4">
+                  <div className="setting-info mb-2 flex flex-col">
+                    <label className="mb-1 block text-sm font-medium leading-[1.4] text-ink" htmlFor="faq-search-query">{t('knowledgeEditor.faq.queryLabel')}</label>
+                    <p className="desc m-0 text-xs leading-[1.4] text-muted">{t('knowledgeEditor.faq.queryPlaceholder')}</p>
                   </div>
                   <div className="setting-control flex flex-col gap-2">
                     <Input
@@ -1553,45 +1559,47 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     />
                   </div>
                 </div>
-                <div className="setting-row flex flex-col gap-2">
-                  <div className="setting-info flex flex-col gap-0.5">
-                    <label className="text-sm font-semibold leading-[1.5] text-ink" htmlFor="faq-search-threshold">{t('knowledgeEditor.faq.similarityThresholdLabel')}</label>
-                    <p className="desc m-0 text-xs leading-[1.5] text-faint">{t('knowledgeEditor.faq.vectorThresholdDesc')}</p>
+                <div className="setting-row flex flex-col gap-3 border-b border-[#e3e8f0] py-4">
+                  <div className="setting-info mb-2 flex flex-col">
+                    <label className="mb-1 block text-sm font-medium leading-[1.4] text-ink" htmlFor="faq-search-threshold">{t('knowledgeEditor.faq.similarityThresholdLabel')}</label>
+                    <p className="desc m-0 text-xs leading-[1.4] text-muted">{t('knowledgeEditor.faq.vectorThresholdDesc')}</p>
                   </div>
                   <div className="setting-control flex flex-col gap-2">
-                    <div className="slider-wrapper flex items-center gap-2.5">
+                    <div className="slider-wrapper flex items-center gap-3 py-0.5">
                       <Range
                         id="faq-search-threshold"
-                        className="min-w-0 flex-1 cursor-pointer accent-accent-deep"
+                        className="faq-search-range min-w-0 flex-1"
+                        style={{ ['--faq-range-fill' as string]: `${(searchForm.vectorThreshold * 100).toFixed(1)}%` }}
                         min={FAQ_SEARCH_VECTOR_THRESHOLD.min} max={FAQ_SEARCH_VECTOR_THRESHOLD.max} step={FAQ_SEARCH_VECTOR_THRESHOLD.step}
                         value={searchForm.vectorThreshold}
                         onChange={(event) => onSearchFormChange({ vectorThreshold: Number(event.target.value) })}
                       />
-                      <div className="slider-value min-w-10 text-right text-[13px] leading-[1.5] text-ink tabular-nums">{searchForm.vectorThreshold.toFixed(2)}</div>
+                      <div className="slider-value min-w-[50px] rounded-md bg-surface px-2 py-1 text-right text-sm font-medium leading-[1.4] text-ink tabular-nums">{searchForm.vectorThreshold.toFixed(2)}</div>
                     </div>
                   </div>
                 </div>
-                <div className="setting-row flex flex-col gap-2">
-                  <div className="setting-info flex flex-col gap-0.5">
-                    <label className="text-sm font-semibold leading-[1.5] text-ink" htmlFor="faq-search-match-count">{t('knowledgeEditor.faq.matchCountLabel')}</label>
-                    <p className="desc m-0 text-xs leading-[1.5] text-faint">{t('knowledgeEditor.faq.matchCountDesc')}</p>
+                <div className="setting-row flex flex-col gap-3 border-b border-[#e3e8f0] py-4">
+                  <div className="setting-info mb-2 flex flex-col">
+                    <label className="mb-1 block text-sm font-medium leading-[1.4] text-ink" htmlFor="faq-search-match-count">{t('knowledgeEditor.faq.matchCountLabel')}</label>
+                    <p className="desc m-0 text-xs leading-[1.4] text-muted">{t('knowledgeEditor.faq.matchCountDesc')}</p>
                   </div>
                   <div className="setting-control flex flex-col gap-2">
-                    <div className="slider-wrapper flex items-center gap-2.5">
+                    <div className="slider-wrapper flex items-center gap-3 py-0.5">
                       <Range
                         id="faq-search-match-count"
-                        className="min-w-0 flex-1 cursor-pointer accent-accent-deep"
+                        className="faq-search-range min-w-0 flex-1"
+                        style={{ ['--faq-range-fill' as string]: `${(((searchForm.matchCount - 1) / (FAQ_SEARCH_MATCH_COUNT.max - FAQ_SEARCH_MATCH_COUNT.min)) * 100).toFixed(1)}%` }}
                         min={FAQ_SEARCH_MATCH_COUNT.min} max={FAQ_SEARCH_MATCH_COUNT.max} step={FAQ_SEARCH_MATCH_COUNT.step}
                         value={searchForm.matchCount}
                         onChange={(event) => onSearchFormChange({ matchCount: Number(event.target.value) })}
                       />
-                      <div className="slider-value min-w-10 text-right text-[13px] leading-[1.5] text-ink tabular-nums">{searchForm.matchCount}</div>
+                      <div className="slider-value min-w-[50px] rounded-md bg-surface px-2 py-1 text-right text-sm font-medium leading-[1.4] text-ink tabular-nums">{searchForm.matchCount}</div>
                     </div>
                   </div>
                 </div>
-                <div className="setting-row flex flex-col gap-2">
+                <div className="setting-row flex flex-col gap-3 pt-4">
                   <div className="setting-control flex flex-col gap-2">
-                    <Button type="button" className="search-button w-full justify-center" loading={searching} onClick={runSearchTest}>
+                    <Button type="button" variant="primary" className="search-button h-9 w-full justify-center rounded-lg" loading={searching} onClick={runSearchTest}>
                       {searching ? t('knowledgeEditor.faq.searching') : t('knowledgeEditor.faq.searchButton')}
                     </Button>
                   </div>

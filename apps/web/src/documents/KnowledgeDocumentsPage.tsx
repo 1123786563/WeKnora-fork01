@@ -123,6 +123,7 @@ import {
 } from "./page-chrome.ts";
 import { toggleDocumentSelection, useMarqueeSelection } from "./selection.ts";
 import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
+import { KnowledgeDocumentDetailPage } from "./KnowledgeDocumentDetailPage.tsx";
 import {
   DocumentEmptyState,
   DocumentsBreadcrumb,
@@ -2314,6 +2315,11 @@ export function KnowledgeDocumentsPage({
   const [manualEditLoading, setManualEditLoading] = useState(false);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const [traceDocument, setTraceDocument] = useState<KnowledgeDocument | null>(null);
+  // Vue parity: the DocContent drawer opens IN PLACE over the still-mounted
+  // KB page (KnowledgeBase.vue isCardDetails). Never navigate — the route
+  // page would unmount the list behind the drawer.
+  const [inlineDetailId, setInlineDetailId] = useState<string | null>(null);
+  const openDocumentDetail = (document: KnowledgeDocument) => setInlineDetailId(document.id);
   // Vue traceAvailableById (KnowledgeBase.vue L356-397): opening a row menu
   // probes GET /spans once per document; in-flight parses count as traceable
   // without a request. Cache clears on every list reload.
@@ -2825,7 +2831,7 @@ export function KnowledgeDocumentsPage({
     const document = state.page.items.find((item) => String(item.id) === initialDocumentId);
     if (!document) return;
     openedInitialDocument.current = true;
-    onOpenDocument?.(document);
+    openDocumentDetail(document);
   }, [initialDocumentId, onOpenDocument, state]);
   const selectedOnPage = items.filter((item) => selected.has(item.id)).length;
   const allOnPageSelected = items.length > 0 && selectedOnPage === items.length;
@@ -3952,8 +3958,11 @@ export function KnowledgeDocumentsPage({
                 {/* Vue .doc-view-toggle：#f3f3f3 容器 + 激活态品牌绿（--td-brand-color
                     = #07c05f，frontend theme.css），非激活图标 rgba(0,0,0,0.6)。 */}
                 <div className="doc-view-toggle inline-flex shrink-0 items-center rounded-[6px] bg-[#f3f3f3] p-[2px]" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
-                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "grid" ? "rounded-[4px] bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[rgba(0,0,0,0.6)]"}`} aria-pressed={viewMode === "grid"} aria-label={t("knowledgeBase.viewModeGrid")} title={t("knowledgeBase.viewModeGrid")} onClick={() => setViewMode("grid")}><GridIcon size={16} /></button>
-                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "list" ? "rounded-[4px] bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[rgba(0,0,0,0.6)]"}`} aria-pressed={viewMode === "list"} aria-label={t("knowledgeBase.viewModeList")} title={t("knowledgeBase.viewModeList")} onClick={() => setViewMode("list")}><ListIcon size={16} /></button>
+                  {/* Vue parity (KnowledgeBase.vue L2667-2676): toggle buttons
+                      expose aria-pressed only — no aria-label/title (tooltip
+                      copy lives in the t-tooltip hover popup). */}
+                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "grid" ? "rounded-[4px] bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[rgba(0,0,0,0.6)]"}`} aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")}><GridIcon size={16} /></button>
+                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "list" ? "rounded-[4px] bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[rgba(0,0,0,0.6)]"}`} aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")}><ListIcon size={16} /></button>
                 </div>
                 {canContribute ? (
                   <div className="doc-filter-actions">
@@ -4150,7 +4159,7 @@ export function KnowledgeDocumentsPage({
                 onProbeTrace={probeTraceAvailability}
                 moveFor={moveControllerFor}
                 loadTrace={loadHoverTrace}
-                onOpen={(document) => onOpenDocument?.(document)}
+                onOpen={openDocumentDetail}
                 onOpenFolder={(path) => setFolderPath(path || undefined)}
                 onToggle={(id, checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; })}
                 onTagEdit={(document) => setTagDialog({ mode: "single", document })}
@@ -4202,7 +4211,7 @@ export function KnowledgeDocumentsPage({
                   const status = documentStatus(document, t);
                   const actions = documentRowActions(document.parse_status);
                   return (
-                    <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft px-2 py-[0.9rem] hover:bg-surface-wash lg:grid lg:grid-cols-[28px_minmax(220px,2fr)_minmax(110px,1fr)_minmax(110px,1fr)_90px_120px_150px_40px]" onClick={() => onOpenDocument?.(document)}>
+                    <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft px-2 py-[0.9rem] hover:bg-surface-wash lg:grid lg:grid-cols-[28px_minmax(220px,2fr)_minmax(110px,1fr)_minmax(110px,1fr)_90px_120px_150px_40px]" onClick={() => openDocumentDetail(document)}>
                       {canContribute && batchMode ? <Checkbox
                           type="checkbox"
                           aria-label={t("knowledgeBase.documents.select", {
@@ -4215,7 +4224,7 @@ export function KnowledgeDocumentsPage({
                         <button
                           type="button"
                           className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline"
-                          onClick={(event) => { event.stopPropagation(); onOpenDocument?.(document); }}
+                          onClick={(event) => { event.stopPropagation(); openDocumentDetail(document); }}
                         >
                           {displayName(document)}
                         </button>
@@ -4756,6 +4765,11 @@ export function KnowledgeDocumentsPage({
             }
           }}
         />
+      ) : null}
+      {inlineDetailId ? (
+        // Vue opens DocContent in place over the list (isCardDetails); the
+        // drawer portal covers the still-mounted page like the Vue t-drawer.
+        <KnowledgeDocumentDetailPage client={client} documentId={inlineDetailId} onBack={() => setInlineDetailId(null)} />
       ) : null}
       {kbSettingsOpen ? (
         <Dialog

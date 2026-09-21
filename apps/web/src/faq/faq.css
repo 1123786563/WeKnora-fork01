@@ -62,3 +62,25 @@
 .faq-search-input input::placeholder { color: rgba(0, 0, 0, 0.4); }
 .faq-search-input input:hover,
 .faq-search-input input:focus { background: #f3f3f3; }
+
+/* ix-faq-retrieval：检索测试抽屉滑块（Vue t-slider，FAQEntryManager.vue:5222-5238
+   + TDesign 默认形态）：6px 圆角轨道，已填充段品牌绿 #00a870、其余浅灰，
+   16px 白底绿边圆点 handle。原生 accent-color 在部分内核把未填充段画成深色，
+   故用 --faq-range-fill（FAQPage.tsx 内联百分比）显式画轨道。 */
+.faq-search-range { -webkit-appearance: none; appearance: none; background: transparent; height: 16px; }
+.faq-search-range::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, #00a870 var(--faq-range-fill, 0%), #e3e8f0 var(--faq-range-fill, 0%));
+}
+.faq-search-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; margin-top: -5px; border-radius: 50%;
+  background: #fff; border: 2px solid #00a870; box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+.faq-search-range::-moz-range-track { height: 6px; border-radius: 3px; background: #e3e8f0; }
+.faq-search-range::-moz-range-progress { height: 6px; border-radius: 3px; background: #00a870; }
+.faq-search-range::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; border: 2px solid #00a870; box-sizing: border-box;
+}

@@ -455,7 +455,11 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               Vue Settings.vue:88-94 renders ONLY the role-denied block when
               canSeeSection fails (the section component, and with it its
               h2/description, never mounts). */}
-          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' && key !== 'envvars' && key !== 'system-global' && !sectionRoleDenied ? (
+          {/* Integration sections (IntegrationSettingsSection.vue) own their
+              headings: im/embed/api render the section-header h2 themselves
+              and the cli/chrome/claw landings render the hero title, so the
+              wrapper heading would duplicate it (same R484 D3 pattern). */}
+          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' && key !== 'envvars' && key !== 'system-global' && key !== 'weknoracloud' && !sectionIntegrationTab && !sectionRoleDenied ? (
             <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
               <div className="w-full">
                 <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, key).title}</h2>

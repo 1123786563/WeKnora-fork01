@@ -178,7 +178,9 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
           </span>
         </span>
         {canManage ? (
-          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] [transition:all_.2s_ease] hover:bg-[#e9f8ec] hover:text-[#07c05f]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
+          // Vue parity (KnowledgeBase.vue L2451-2454): the gear carries no
+          // aria-label/title — the name lives in the t-tooltip hover popup.
+          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] [transition:all_.2s_ease] hover:bg-[#e9f8ec] hover:text-[#07c05f]" disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
             {/* Vue .kb-settings-button：30px 圆形 #f3f3f3 底，18px 图标 secondary 色。 */}
             <GearIcon size={18} />
           </button>

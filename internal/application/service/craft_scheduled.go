@@ -134,7 +134,7 @@ func NextRunsAfter(expr string, after time.Time, n int) []time.Time {
 }
 
 // CraftScheduledStore is the persistence port this service consumes: the
-// owner-scoped recipe CRUD plus the run-ledger append. The GORM
+// owner-scoped recipe CRUD plus the run-ledger append and page. The GORM
 // implementation is repository.CraftScheduledTaskRepository, which also
 // carries the due-claim and run-status methods owned by the Task 4/5
 // dispatcher and executor services.
@@ -145,6 +145,11 @@ type CraftScheduledStore interface {
 	Update(ctx context.Context, task *types.CraftScheduledTask) error
 	SoftDelete(ctx context.Context, tenantID uint64, ownerID, id string) error
 	InsertRun(ctx context.Context, run *types.CraftScheduledTaskRun) error
+	// ListRunsByTask pages one task's run history newest-first by started_at
+	// (the before cursor is exclusive; the limit is clamped 1..100, default
+	// 50). NOT owner-scoped: the Task 4 dispatcher reads it internally; the
+	// owner-facing entrance below resolves the scope first.
+	ListRunsByTask(ctx context.Context, taskID string, before *time.Time, limit int) ([]types.CraftScheduledTaskRun, error)
 }
 
 // CraftScheduledService is the /craft/scheduled-tasks application surface:
@@ -166,9 +171,10 @@ func NewCraftScheduledService(store CraftScheduledStore) (*CraftScheduledService
 	}, nil
 }
 
-// withClock swaps the clock (tests pin ticket computation and the fires
-// preview instead of sleeping).
-func (s *CraftScheduledService) withClock(now func() time.Time) *CraftScheduledService {
+// WithClock swaps the clock (exported so the HTTP-layer tests in another
+// package can pin ticket computation and the fires preview instead of
+// sleeping).
+func (s *CraftScheduledService) WithClock(now func() time.Time) *CraftScheduledService {
 	if now != nil {
 		s.now = now
 	}
@@ -381,6 +387,20 @@ func (s *CraftScheduledService) RunScheduledTaskNow(
 		return "", err
 	}
 	return s.insertManualRun(ctx, task)
+}
+
+// ListScheduledTaskRuns pages the owner's run history of one task
+// newest-first (spec §3: before = started_at ISO, limit 1..100 default 50).
+// The owner scope resolves first: a foreign, deleted or missing task answers
+// the same craft.ErrNotFound as every other owner-facing read — the ledger
+// rows themselves are only task-keyed.
+func (s *CraftScheduledService) ListScheduledTaskRuns(
+	ctx context.Context, tenantID uint64, ownerID, taskID string, before *time.Time, limit int,
+) ([]types.CraftScheduledTaskRun, error) {
+	if _, err := s.store.GetByID(ctx, tenantID, ownerID, taskID); err != nil {
+		return nil, err
+	}
+	return s.store.ListRunsByTask(ctx, taskID, before, limit)
 }
 
 // insertManualRun appends the manual queued ledger row of a run-now fire.

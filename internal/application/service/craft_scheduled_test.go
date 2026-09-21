@@ -64,7 +64,7 @@ func newCraftScheduledFixture(t *testing.T) (*CraftScheduledService, repository.
 	svc, err := NewCraftScheduledService(repo)
 	require.NoError(t, err)
 	pinned := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
-	svc.withClock(func() time.Time { return pinned })
+	svc.WithClock(func() time.Time { return pinned })
 	return svc, repo
 }
 

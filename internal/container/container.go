@@ -527,9 +527,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(newCraftUsageViewService))
 	// SP3 (C-23): the craft scheduled-task store — owner-scoped recipe CRUD,
 	// the due-fire CAS claim (Ruling P-1) and the run ledger. The 30s
-	// dispatcher and the HTTP surface arrive in their own tasks; this is
-	// the durable layer they build on.
+	// dispatcher arrives in its own task; this is the durable layer it and
+	// the HTTP surface build on.
 	must(container.Provide(repository.NewCraftScheduledTaskRepository))
+	// The scheduled-task application service (CRUD + run-now + run history)
+	// over the store above; its HTTP handler registers through the
+	// package-level registration routes_chat.go picks up (the Task 2 service
+	// deliberately stopped before the container wiring — this is it).
+	must(container.Provide(newCraftScheduledService))
 	// The craft handler registration is deferred until every provider the
 	// session service needs (SessionService, TemporaryDocumentService, ...)
 	// is registered: dig.Invoke resolves eagerly, and W03's original position
@@ -658,6 +663,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Craft handler registration now that its full dependency set exists
 	// (W03's eager Invoke position is moved here — see the craft block above).
 	must(container.Invoke(registerCraftHTTPHandlers))
+	// SP3 (C-23): the scheduled-task HTTP surface (needs only the store
+	// provider, so it resolves alongside the craft handlers).
+	must(container.Invoke(registerCraftScheduledHTTPHandlers))
 	// W26: the versioned artifact download entry mounts on the sessions route
 	// table through the package-level registration (routes_chat.go).
 	must(container.Invoke(registerArtifactVersionHTTPHandlers))
@@ -2677,6 +2685,21 @@ func registerCraftHTTPHandlers(svc *service.CraftSessionService, previews *servi
 	if snapshots != nil {
 		session.RegisterCraftSnapshotHandler(snapshots)
 	}
+}
+
+// newCraftScheduledService assembles SP3's scheduled-task application service
+// (editor-mode cron compilation, owner-scoped CRUD, run-now and the run
+// history page) over the owner-scoped store.
+func newCraftScheduledService(store repository.CraftScheduledTaskRepository) (*service.CraftScheduledService, error) {
+	return service.NewCraftScheduledService(store)
+}
+
+// registerCraftScheduledHTTPHandlers installs the SP3 scheduled-task service
+// as the registered API surface; routes_chat.go wraps it in the HTTP handler
+// at mounting time (the craft sessions shape) and mounts
+// /craft/scheduled-tasks only when this ran (fail-closed, no 503 shims).
+func registerCraftScheduledHTTPHandlers(svc *service.CraftScheduledService) {
+	session.RegisterCraftScheduledHandler(svc)
 }
 
 // registerArtifactVersionHTTPHandlers installs the W26 immutable artifact

@@ -113,7 +113,7 @@ test('metadata editor submits structured values and keeps the draft after a fail
   };
   const container = await mountDetail(client);
   const metadataSection = container.ownerDocument.body.querySelector('[aria-label="自定义元数据"]');
-  const edit = Array.from(metadataSection?.querySelectorAll('button') || []).find((button) => button.textContent === '编辑');
+  const edit = Array.from(metadataSection?.querySelectorAll('button') || []).find((button) => button.getAttribute('aria-label') === '编辑');
   assert.ok(edit);
   await act(async () => { edit!.click(); });
   const key = metadataSection?.querySelector('input[placeholder="字段名"]') as HTMLInputElement;
@@ -296,7 +296,7 @@ test('trace drawer consumes the {success,data} spans envelope and renders the co
   (client as { knowledgeBases: { documents: { spans: (id: string) => Promise<unknown> } } }).knowledgeBases.documents.spans = async () => R469_COMPLETED_SPANS;
   const container = await mountDetail(client);
   await act(async () => {
-    (Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '解析进度') as HTMLButtonElement).click();
+    (container.ownerDocument.body.querySelector('button[aria-label="解析进度"]') as HTMLButtonElement).click();
   });
   await act(async () => {});
   const text = container.ownerDocument.body.textContent || '';
@@ -364,7 +364,7 @@ test('trace drawer matches the Vue pending contract: no per-row status text, —
   });
   const container = await mountDetail(client);
   await act(async () => {
-    (Array.from(container.ownerDocument.body.querySelectorAll('button')).find((button) => button.textContent === '解析进度') as HTMLButtonElement).click();
+    (container.ownerDocument.body.querySelector('button[aria-label="解析进度"]') as HTMLButtonElement).click();
   });
   await act(async () => {});
   // The inline processing card also carries .wk-processing-timeline, so the
@@ -394,10 +394,9 @@ test('document detail uses the Vue document title-row anatomy', () => {
     onBack: () => {},
   }));
 
-  assert.ok(html.includes('document-title-row'), 'detail header keeps the Vue title row');
-  assert.ok(html.includes('document-breadcrumb'), 'detail header uses breadcrumb anatomy');
+  assert.ok(html.includes('doc-drawer-header-title'), 'detail header keeps the Vue doc-drawer-header-title anatomy');
+  assert.ok(html.includes('doc-drawer-header-icon'), 'detail header keeps the Vue icon slot');
   assert.ok(html.includes('文档'), 'detail header keeps the localized document label');
-  assert.ok(html.includes('返回'), 'detail header keeps the back action');
   assert.ok(!html.includes('wk-eyebrow'), 'React-only eyebrow is not rendered');
 });
 
@@ -414,7 +413,7 @@ test('loaded file detail matches the Vue drawer title and metadata anatomy', asy
   })));
 
   const surface = container.ownerDocument.body;
-  assert.equal(surface.querySelector('.breadcrumb-current')?.textContent, 'Deployment Guide', 'Vue removes a file extension from the detail title');
+  assert.equal(surface.querySelector('.doc-drawer-header-title')?.textContent, 'Deployment Guide', 'Vue removes a file extension from the detail title');
   assert.ok(surface.querySelector('.wk-document-detail-surface'), 'detail content uses the grouped drawer-like surface');
   assert.ok(surface.querySelector('.wk-document-metadata-section'), 'Vue basic-info section is retained');
   assert.ok(surface.textContent?.includes('基本信息'), 'metadata section has the Vue title');
@@ -429,7 +428,7 @@ test('detail load errors retain navigation and provide a retry without exposing 
 
   const surface = container.ownerDocument.body;
   assert.equal(surface.querySelector('[role="alert"]')?.textContent, 'network unavailable');
-  assert.equal(surface.querySelector('.breadcrumb-current')?.textContent, '文档', 'a failed load does not present the opaque route ID as a title');
+  assert.equal(surface.querySelector('.doc-drawer-header-title')?.textContent, '文档', 'a failed load does not present the opaque route ID as a title');
   const retry = Array.from(surface.querySelectorAll('button')).find((button) => button.textContent === '重试');
   assert.ok(retry, 'error state offers the Vue-style retry affordance');
   await act(async () => { retry!.click(); });
@@ -515,8 +514,8 @@ test('summary editor follows Vue permission and retains its draft after a failed
   }));
   (client as any).knowledgeBases.documents.updateDetails = async () => { throw new Error('summary save unavailable'); };
   const container = await mountDetail(client);
-  const summary = Array.from(container.ownerDocument.body.querySelectorAll('section')).find((section) => section.textContent?.includes('摘要'));
-  const edit = Array.from(summary?.querySelectorAll('button') || []).find((button) => button.textContent === '编辑');
+  const summary = container.ownerDocument.body.querySelector('section[aria-label="摘要"]');
+  const edit = Array.from(summary?.querySelectorAll('button') || []).find((button) => button.getAttribute('aria-label') === '编辑');
   assert.ok(edit);
   await act(async () => { edit!.click(); });
   const textarea = summary?.querySelector('textarea') as HTMLTextAreaElement;
@@ -790,7 +789,7 @@ test('merged and chunks views render markdown bodies with hydratable mermaid blo
   assert.ok(merged.querySelector('pre[data-markdown-diagram="mermaid"]'), 'the merged body renders the mermaid diagram block for post-render hydration');
   assert.ok(merged.textContent?.includes('Intro text'), 'surrounding markdown text renders alongside the diagram');
 
-  const chunksTab = Array.from(container.ownerDocument.body.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+  const chunksTab = Array.from(container.ownerDocument.body.querySelectorAll<HTMLButtonElement>('.view-mode-btn'))
     .find((button) => button.textContent === '查看分块');
   assert.ok(chunksTab, 'the chunks tab is reachable');
   await act(async () => { chunksTab!.click(); });
