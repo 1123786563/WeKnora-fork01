@@ -90,6 +90,38 @@ var platformPackageDirs = []string{
 	"internal/application/service/file/",
 }
 
+// importException 是一条精确路径（exact-path）的跨模块 import 豁免条目
+// （规格 §15：例外必须精确路径、写明原因、指明 Pass B 删除任务；禁用通配）。
+type importException struct {
+	ImporterFile string // 导入方文件的仓库相对精确路径（slash 分隔）
+	ImportedPath string // 被导入包的精确 import 路径
+	Reason       string // 一行原因
+	PassBTask    string // Pass B 删除任务 id
+}
+
+// importExceptions 是 Pass A 期间允许的跨模块 import 例外清单（与
+// platformPackageDirs 同类的代码常量先例；对应 Pass B 任务落地时逐条删除）。
+// 匹配规则：importer 文件路径与被导入包路径都必须完全相等——不做 glob、
+// 前缀或子串匹配；一条豁免只压制该精确 file→package 对的 forbidden-import。
+var importExceptions = []importException{
+	{
+		ImporterFile: "internal/modules/appconnector/service/appconnector/oc_recovery.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial",
+		Reason:       "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，oc_recovery 直接消费 commercial service），Pass A 不改边界",
+		PassBTask:    "B-appconnector",
+	},
+}
+
+// importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。
+func importExcepted(importerFile, importedPath string) bool {
+	for _, e := range importExceptions {
+		if e.ImporterFile == importerFile && e.ImportedPath == importedPath {
+			return true
+		}
+	}
+	return false
+}
+
 // horizontalDirs 是 Pass B 之前仍承载多模块遗留文件的水平业务目录。
 var horizontalDirs = []string{
 	"internal/application/service",
@@ -422,7 +454,8 @@ func Run(root string, mods []ManifestView) (Report, error) {
 		if rerr != nil {
 			return rerr
 		}
-		owner := moduleOwnerOf(filepath.ToSlash(rel))
+		relSlash := filepath.ToSlash(rel)
+		owner := moduleOwnerOf(relSlash)
 		if owner == "" {
 			return nil
 		}
@@ -441,8 +474,11 @@ func Run(root string, mods []ManifestView) (Report, error) {
 				target = target[:i]
 			}
 			if target != owner {
+				if importExcepted(relSlash, impPath) {
+					continue // §15 精确路径豁免：仅对此 file→package 对放行，Pass B 删除
+				}
 				add("forbidden-import", "%s 导入了模块 %s 的内部包 %q（跨模块只能经模块根公共门面）",
-					filepath.ToSlash(rel), target, impPath)
+					relSlash, target, impPath)
 			}
 		}
 		return nil

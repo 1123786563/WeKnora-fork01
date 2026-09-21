@@ -101,6 +101,63 @@ import _ "github.com/Tencent/WeKnora/internal/modules/beta"
 	}
 }
 
+func TestRunImportExceptionSuppressesExactPair(t *testing.T) {
+	// §15：例外必须精确到 file→package 对。命中豁免的精确组合不得报告。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/appconnector/service/appconnector/oc_recovery.go": `package appconnector
+
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "appconnector"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import", "oc_recovery.go") {
+		t.Fatalf("命中精确豁免的 file→package 对不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunImportExceptionDoesNotCoverOtherFiles(t *testing.T) {
+	// 同一 package、不同文件的 import 不在豁免范围内，必须照常报告。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/appconnector/service/appconnector/other_file.go": `package appconnector
+
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "appconnector"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import", "other_file.go") {
+		t.Fatalf("豁免只对精确 importer 文件生效，其他文件必须照常报告:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunImportExceptionDoesNotCoverOtherPackages(t *testing.T) {
+	// 同一文件 import 其他模块的包不在豁免范围内，必须照常报告。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/appconnector/service/appconnector/oc_recovery.go": `package appconnector
+
+import _ "github.com/Tencent/WeKnora/internal/modules/othermod/service/othermod"
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "appconnector"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import", "othermod") {
+		t.Fatalf("豁免只对精确 imported 路径生效，其他包必须照常报告:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
 func TestRunAllowsSelfModuleImport(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
