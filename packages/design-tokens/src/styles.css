@@ -12,9 +12,15 @@
   --wk-shadow-popup: 0 0 0 .5px rgba(0,0,0,.03), 0 2px 4px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.1); --wk-shadow-panel: 0 6px 30px rgba(0,0,0,.12);
   --wk-overlay-menu-min-width: 148px; --wk-overlay-menu-padding: 4px; --wk-overlay-settings-z: 1100; --wk-overlay-dialog-z: 3000; --wk-overlay-anchored-z: 3500; --wk-motion-duration: 180ms; --wk-motion-easing: cubic-bezier(.2,0,0,1);
   --background: var(--wk-color-page); --foreground: var(--wk-color-text); --card: var(--wk-color-surface); --card-foreground: var(--wk-color-text); --popover: var(--wk-color-surface); --popover-foreground: var(--wk-color-text);
-  --primary: var(--wk-color-brand); --primary-foreground: #ffffff; --secondary: var(--wk-color-surface-hover); --secondary-foreground: var(--wk-color-text); --muted: var(--wk-color-surface-hover); --muted-foreground: var(--wk-color-text-secondary);
-  --accent: var(--wk-color-surface-hover); --accent-foreground: var(--wk-color-text); --destructive: var(--wk-color-error); --destructive-foreground: #ffffff; --border: var(--wk-color-border); --input: var(--wk-color-border); --ring: var(--wk-color-brand);
+  --primary: var(--wk-color-brand); --secondary: var(--wk-color-surface-hover); --secondary-foreground: var(--wk-color-text); --muted: var(--wk-color-surface-hover); --muted-foreground: var(--wk-color-text-secondary);
+  --accent: var(--wk-color-surface-hover); --accent-foreground: var(--wk-color-text); --destructive: var(--wk-color-error); --border: var(--wk-color-border); --input: var(--wk-color-border); --ring: var(--wk-color-brand);
 }
+
+/* TDesign 组件主题（Vue frontend/src/assets/theme/theme.css 原样平移，Phase 1 Task 4）。
+   注意：消费方若将本文件整体 layer() 引入（如 apps/web layer(theme)），这里的
+   --td-* 覆盖会输给 unlayered 的 tdesign.css 默认值——apps/web/src/styles.css 在
+   tdesign.css 之后另有对本文件的不带 layer() 直引，确保覆盖生效。 */
+@import "./tdesign-theme.css";
 :root[theme-mode="dark"] {
   --wk-color-brand: #06b04d; --wk-color-brand-hover: #049b38; --wk-color-brand-active: #038626; --wk-color-brand-light: #06b04d20;
   --wk-color-text: rgba(255, 255, 255, 0.9); --wk-color-text-secondary: rgba(255, 255, 255, 0.55); --wk-color-text-placeholder: rgba(255, 255, 255, 0.35); --wk-color-text-disabled: rgba(255, 255, 255, 0.22);
