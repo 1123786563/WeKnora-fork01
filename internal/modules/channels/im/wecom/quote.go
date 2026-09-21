@@ -3,7 +3,7 @@ package wecom
 import (
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/im"
+	"github.com/Tencent/WeKnora/internal/modules/channels/im"
 )
 
 // extractQuoteContent extracts text content from a quoted botMessage.

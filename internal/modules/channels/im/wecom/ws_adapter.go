@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Tencent/WeKnora/internal/im"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/channels/im"
 	"github.com/gin-gonic/gin"
 )
 

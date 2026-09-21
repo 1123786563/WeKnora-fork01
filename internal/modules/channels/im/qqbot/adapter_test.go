@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/im"
+	"github.com/Tencent/WeKnora/internal/modules/channels/im"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
