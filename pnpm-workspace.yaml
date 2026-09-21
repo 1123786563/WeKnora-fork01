@@ -2,6 +2,7 @@ packages:
   - packages/contracts
   - packages/api-client
   - packages/domain
+  - packages/mobile-core
   - packages/core
   - packages/ui
   - packages/design-tokens
@@ -10,6 +11,7 @@ packages:
   - apps/web
   - apps/embed
   - apps/miniprogram
+  - apps/mobile
   - packages/happy-wire
 
 onlyBuiltDependencies:

@@ -191,6 +191,10 @@ export type { UsageRow, UsageByUserRow } from '@weknora/contracts';
 export { createQueryHistoryApi } from './queryHistory/index.ts';
 export type { QueryHistoryApi, QueryHistoryAdminListParams, QueryHistoryExportInput } from './queryHistory/index.ts';
 export type { QueryHistorySessionRow, QueryHistorySnapshot, SharedSessionSnapshot, QueryHistoryExportStatus, MessageFeedbackRow, QueryHistoryMode, QueryHistoryConfig } from '@weknora/contracts';
+export { createAgentVersionsApi } from './agents/versions.ts';
+export type { AgentVersionsApi } from './agents/versions.ts';
+export { createTenantReleaseApi } from './marketplace/tenant-releases.ts';
+export type { TenantReleaseApi, ReleaseMetadataInput, ReviewReleaseInput, TenantReleaseReviewResult } from './marketplace/tenant-releases.ts';
 export type {
   ActionSuccessResponse,
   SteerDeleteResponse,
