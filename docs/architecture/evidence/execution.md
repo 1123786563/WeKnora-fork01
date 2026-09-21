@@ -67,7 +67,10 @@ repair commit 内对 fixture 的二次 `git mv`：
 
 ## 6. Review
 
-- [ ] 待 Review（Reviewer 填写）：确认 move commit 纯 rename、alias 零逻辑、无行为变更。
+- [x] 已 Review（final whole-branch review 回填）：确认 move commit 纯 rename、alias 零逻辑、无行为变更。
+
+**Approved**（Review 范围：task-scoped gate review + batch barrier review）。pass-a 全部 task 均 Approved、四道 barrier 均 Approved；唯一修复轮次为 A9 knowledge——retriever 路径对齐 fb71b3084，复 review ADDRESSED。
+结论与证据台账见 `.superpowers/sdd/2026-09-21-backend-modularization-foundation-pass-a/progress.md` 与 `docs/architecture/evidence/batch-a*.md`。
 
 ## 7. 遗留与 IA2 关注点
 

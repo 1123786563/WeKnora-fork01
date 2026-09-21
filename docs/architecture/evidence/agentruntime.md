@@ -90,8 +90,11 @@ integration/agentruntime.md §10 与本任务 report；全部移交 IA3 Integrat
 
 ## 7. Review
 
-- [ ] 待 Review（Reviewer 填写）：确认 move commit 纯 rename、alias 零逻辑、
+- [x] 已 Review（final whole-branch review 回填）：确认 move commit 纯 rename、alias 零逻辑、
       无行为变更、测试路径修复仅改相对深度。
+
+**Approved**（Review 范围：task-scoped gate review + batch barrier review）。pass-a 全部 task 均 Approved、四道 barrier 均 Approved；唯一修复轮次为 A9 knowledge——retriever 路径对齐 fb71b3084，复 review ADDRESSED。
+结论与证据台账见 `.superpowers/sdd/2026-09-21-backend-modularization-foundation-pass-a/progress.md` 与 `docs/architecture/evidence/batch-a*.md`。
 
 ## 8. 遗留与 IA3 关注点
 
