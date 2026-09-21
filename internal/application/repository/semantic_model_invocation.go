@@ -104,7 +104,7 @@ func (s *SemanticModelInvocationStore) claimTx(tx *gorm.DB, c types.SemanticMode
 		return err
 	}
 	var calls, inputs, outputs int64
-	if err := tx.Raw("SELECT COALESCE(COUNT(*),0),COALESCE(SUM(CASE WHEN state='completed' THEN input_tokens ELSE reserved_input_tokens END),0),COALESCE(SUM(CASE WHEN state='completed' THEN output_tokens ELSE reserved_output_tokens END),0) FROM semantic_model_invocations WHERE tenant_id=? AND run_id=? AND state IN ('claimed','unknown','completed')", semanticUint(c.OwnerTenantID), c.RunID).Row().Scan(&calls, &inputs, &outputs); err != nil {
+	if err := tx.Raw("SELECT COALESCE(COUNT(*),0),COALESCE(SUM(CASE WHEN state='completed' THEN input_tokens ELSE reserved_input_tokens END),0),COALESCE(SUM(CASE WHEN state='completed' THEN output_tokens ELSE reserved_output_tokens END),0) FROM semantic_model_invocations WHERE tenant_id=? AND run_id=? AND state IN ('claimed','dispatched','unknown','completed')", semanticUint(c.OwnerTenantID), c.RunID).Row().Scan(&calls, &inputs, &outputs); err != nil {
 		return err
 	}
 	if calls >= c.MaxCallsPerTask || inputs+c.MaxInputTokensPerCall > c.MaxInputTokensPerTask || outputs+c.MaxOutputTokensPerCall > c.MaxOutputTokensPerTask {
@@ -117,25 +117,28 @@ func (s *SemanticModelInvocationStore) claimTx(tx *gorm.DB, c types.SemanticMode
 	return nil
 }
 func (s *SemanticModelInvocationStore) Complete(ctx context.Context, c types.SemanticModelCapability, result types.SemanticModelInvocationResult) error {
-	return s.transition(ctx, c, "completed", result, true)
+	return s.transitionFrom(ctx, c, "completed", result, true, "dispatched")
+}
+func (s *SemanticModelInvocationStore) MarkDispatched(ctx context.Context, c types.SemanticModelCapability) error {
+	return s.transitionFrom(ctx, c, "dispatched", types.SemanticModelInvocationResult{}, false, "claimed")
 }
 func (s *SemanticModelInvocationStore) FailBeforeDispatch(ctx context.Context, c types.SemanticModelCapability) error {
-	return s.transition(ctx, c, "failed_before_dispatch", types.SemanticModelInvocationResult{}, false)
+	return s.transitionFrom(ctx, c, "failed_before_dispatch", types.SemanticModelInvocationResult{}, false, "claimed")
 }
 func (s *SemanticModelInvocationStore) MarkUnknown(ctx context.Context, c types.SemanticModelCapability) error {
-	return s.transition(ctx, c, "unknown", types.SemanticModelInvocationResult{}, false)
+	return s.transitionFrom(ctx, c, "unknown", types.SemanticModelInvocationResult{}, false, "claimed", "dispatched")
 }
-func (s *SemanticModelInvocationStore) transition(ctx context.Context, c types.SemanticModelCapability, state string, result types.SemanticModelInvocationResult, usage bool) error {
+func (s *SemanticModelInvocationStore) transitionFrom(ctx context.Context, c types.SemanticModelCapability, state string, result types.SemanticModelInvocationResult, usage bool, from ...string) error {
 	if s == nil || s.db == nil {
 		return ErrSemanticModelInvocationNotFound
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		args := []any{state, result.Result, result.InputTokens, result.OutputTokens, semanticUint(c.OwnerTenantID), c.CallID}
-		q := "UPDATE semantic_model_invocations SET state=?,result=?,input_tokens=?,output_tokens=?,reserved_input_tokens=?,reserved_output_tokens=? WHERE tenant_id=? AND call_id=? AND state='claimed'"
-		args = []any{state, result.Result, result.InputTokens, result.OutputTokens, result.InputTokens, result.OutputTokens, semanticUint(c.OwnerTenantID), c.CallID}
+		q := "UPDATE semantic_model_invocations SET state=?,result=?,input_tokens=?,output_tokens=?,reserved_input_tokens=?,reserved_output_tokens=? WHERE tenant_id=? AND call_id=? AND state IN (?)"
+		args = []any{state, result.Result, result.InputTokens, result.OutputTokens, result.InputTokens, result.OutputTokens, semanticUint(c.OwnerTenantID), c.CallID, from}
 		if !usage {
-			q = "UPDATE semantic_model_invocations SET state=? WHERE tenant_id=? AND call_id=? AND state='claimed'"
-			args = []any{state, semanticUint(c.OwnerTenantID), c.CallID}
+			q = "UPDATE semantic_model_invocations SET state=? WHERE tenant_id=? AND call_id=? AND state IN (?)"
+			args = []any{state, semanticUint(c.OwnerTenantID), c.CallID, from}
 		}
 		res := tx.Exec(q, args...)
 		if res.Error != nil {

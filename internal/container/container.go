@@ -662,6 +662,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewAuditLogHandler))
 	must(container.Provide(handler.NewKnowledgeBaseHandler))
 	must(container.Provide(service.NewUnavailableSemanticModelPolicyService))
+	// A03's gateway is assembled even before pricing administration is wired.
+	// Its nil immutable-rate resolver deliberately makes every invocation deny
+	// before model resolution; it is never a permissive production fallback.
+	must(container.Provide(newUnavailableSemanticModelGateway))
 	must(container.Provide(handler.NewSemanticModelPolicyHandler))
 	must(container.Provide(handler.NewKnowledgeHandler))
 	must(container.Provide(handler.NewChunkHandler))
@@ -939,6 +943,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	logger.Infof(ctx, "[Container] Container initialization completed successfully")
 	return container
+}
+
+func newUnavailableSemanticModelGateway(
+	cfg *config.Config,
+	models interfaces.ModelService,
+	scope *service.SemanticScopeService,
+	policy *service.SemanticModelPolicyService,
+	invocations *repository.SemanticModelInvocationStore,
+	budget *repocommercial.BudgetStore,
+	gate domain.ExecutionGate,
+) *service.SemanticModelGateway {
+	issuer := service.NewSemanticModelCapabilityIssuer(cfg.Semantic, scope, policy, nil, budget, invocations)
+	return service.NewSemanticModelGateway(issuer, models, scope, service.NewSemanticModelBudgetAdapter(budget, gate, nil), invocations)
 }
 
 // newMobileNotificationProvider keeps push delivery behind a single
