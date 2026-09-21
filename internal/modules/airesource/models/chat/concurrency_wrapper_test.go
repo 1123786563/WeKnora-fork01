@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/models/limiter"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/limiter"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

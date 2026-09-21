@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/models/chat"
-	ollamautils "github.com/Tencent/WeKnora/internal/models/utils/ollama"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+	ollamautils "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

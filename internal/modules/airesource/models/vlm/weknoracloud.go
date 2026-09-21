@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/models/utils"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/utils"
 	"github.com/google/uuid"
 )
 

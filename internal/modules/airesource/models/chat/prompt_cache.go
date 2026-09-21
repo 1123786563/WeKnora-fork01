@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/models/provider"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/provider"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/sashabaranov/go-openai"
 )

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/config"
-	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
 	"github.com/Tencent/WeKnora/internal/logger"
+	infra_web_search "github.com/Tencent/WeKnora/internal/modules/airesource/web_search"
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"

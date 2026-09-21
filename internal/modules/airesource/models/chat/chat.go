@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/models/provider"
-	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/provider"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

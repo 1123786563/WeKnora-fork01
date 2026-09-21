@@ -13,7 +13,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/logger"
 
-	"github.com/Tencent/WeKnora/internal/models/utils"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/utils"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"github.com/google/uuid"

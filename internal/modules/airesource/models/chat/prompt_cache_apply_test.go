@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/models/provider"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/provider"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"

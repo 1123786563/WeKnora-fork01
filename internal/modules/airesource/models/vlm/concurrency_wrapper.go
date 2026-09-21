@@ -3,7 +3,7 @@ package vlm
 import (
 	"context"
 
-	"github.com/Tencent/WeKnora/internal/models/limiter"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/limiter"
 )
 
 // Multimodal enrichment (image OCR / caption) is a high-volume, slow background

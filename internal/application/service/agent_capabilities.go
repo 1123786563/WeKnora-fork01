@@ -14,8 +14,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/browserskill"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/models/chat"
-	"github.com/Tencent/WeKnora/internal/models/rerank"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

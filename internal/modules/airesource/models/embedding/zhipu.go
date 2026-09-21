@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/models/provider"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/provider"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 

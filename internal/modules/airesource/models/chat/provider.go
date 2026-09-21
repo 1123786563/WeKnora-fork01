@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/models/provider"
-	modelutils "github.com/Tencent/WeKnora/internal/models/utils"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/provider"
+	modelutils "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
