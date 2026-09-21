@@ -14,8 +14,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var _ agentruntime.ToolJournal = (*AgentRunStore)(nil)
-var _ agentruntime.ToolResultReader = (*AgentRunStore)(nil)
+var (
+	_ agentruntime.ToolJournal      = (*AgentRunStore)(nil)
+	_ agentruntime.ToolResultReader = (*AgentRunStore)(nil)
+)
 
 type agentToolCallRow struct {
 	TenantID                                   uint64

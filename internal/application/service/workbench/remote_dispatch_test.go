@@ -23,10 +23,12 @@ func (g *integrationUsageGate) Begin(_ context.Context, req commercial.BudgetReq
 	g.begins++
 	return commercial.Reservation{ID: req.Key}, nil
 }
+
 func (g *integrationUsageGate) Finish(_ context.Context, _ string, _ commercial.UsageFact) error {
 	g.finishes++
 	return nil
 }
+
 func (g *integrationUsageGate) AttachChildRun(_ context.Context, _ uint64, child, parent string) error {
 	g.attached = append(g.attached, child+":"+parent)
 	return nil
@@ -39,6 +41,7 @@ type missingUsageProvider struct{ starts int }
 func (p *missingUsageProvider) Start(context.Context, agentruntime.RunKey, string) (string, error) {
 	return "legacy", nil
 }
+
 func (p *missingUsageProvider) StartCommand(context.Context, agentruntime.RemoteStartRequest) (string, error) {
 	p.starts++
 	return "external-missing-usage", nil
@@ -47,9 +50,11 @@ func (p *missingUsageProvider) StartCommand(context.Context, agentruntime.Remote
 func (p *integrationRemoteProvider) Start(context.Context, agentruntime.RunKey, string) (string, error) {
 	return "legacy", nil
 }
+
 func (p *integrationRemoteProvider) StartCommand(context.Context, agentruntime.RemoteStartRequest) (string, error) {
 	return "legacy", nil
 }
+
 func (p *integrationRemoteProvider) StartCommandWithUsage(_ context.Context, request agentruntime.RemoteStartRequest) (agentruntime.RemoteStartResult, error) {
 	p.starts++
 	service := request.Fence.UsageService
@@ -176,15 +181,19 @@ type remoteUsageGateway struct{}
 func (remoteUsageGateway) ApplyBenefit(context.Context, commercial.BenefitRequest) (commercial.BenefitReceipt, error) {
 	return commercial.BenefitReceipt{ExternalID: "benefit"}, nil
 }
+
 func (remoteUsageGateway) FindBenefit(context.Context, string) (commercial.BenefitReceipt, error) {
 	return commercial.BenefitReceipt{ExternalID: "benefit"}, nil
 }
+
 func (remoteUsageGateway) RevokeBenefit(context.Context, string, commercial.Credits) error {
 	return nil
 }
+
 func (remoteUsageGateway) Settle(context.Context, commercial.Settlement) (commercial.SettlementReceipt, error) {
 	return commercial.SettlementReceipt{ExternalID: "settlement"}, nil
 }
+
 func (remoteUsageGateway) ConfirmSettlement(context.Context, string) (commercial.SettlementReceipt, error) {
 	return commercial.SettlementReceipt{ExternalID: "settlement", Watermark: "w2"}, nil
 }
@@ -315,9 +324,11 @@ type unknownUsageProvider struct{}
 func (unknownUsageProvider) Start(context.Context, agentruntime.RunKey, string) (string, error) {
 	return "", nil
 }
+
 func (unknownUsageProvider) StartCommand(context.Context, agentruntime.RemoteStartRequest) (string, error) {
 	return "external-unknown", nil
 }
+
 func (unknownUsageProvider) StartCommandWithUsage(_ context.Context, request agentruntime.RemoteStartRequest) (agentruntime.RemoteStartResult, error) {
 	return agentruntime.RemoteStartResult{ExternalID: "external-unknown", Usage: &agentruntime.RemoteUsageObservation{Service: commercial.ServiceConnector, PriceVersion: "remote-v1", Revision: 1, Status: commercial.UsageStatusUnknown}}, nil
 }

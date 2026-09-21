@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
+
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"time"
 )
 
 type agentRunInputRow struct {
@@ -39,6 +40,7 @@ func (s *AgentRunStore) AppendInput(ctx context.Context, key agentruntime.RunKey
 	}
 	return nil
 }
+
 func (s *AgentRunStore) ApplyInput(ctx context.Context, fence agentruntime.Fence, steerID string, cp agentruntime.CheckpointRecord) error {
 	if steerID == "" || cp.Namespace == "" || cp.ID == "" || cp.Seq < 0 || !json.Valid(cp.State) || !json.Valid(cp.PendingWrites) {
 		return agentruntime.ErrConflict

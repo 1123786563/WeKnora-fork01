@@ -41,6 +41,7 @@ type SessionService struct {
 func NewSessionService(store *repository.NativeSessionStore, scopes nativecontract.ScopeResolver) *SessionService {
 	return &SessionService{store: store, scopes: scopes}
 }
+
 func (s *SessionService) authorize(ctx context.Context, key session.Key) error {
 	scope, ok := ctx.Value(scopeContextKey{}).(nativecontract.Scope)
 	if !ok {
@@ -56,6 +57,7 @@ func (s *SessionService) authorize(ctx context.Context, key session.Key) error {
 	}
 	return nil
 }
+
 func (s *SessionService) authorizeUser(ctx context.Context, key session.UserKey) error {
 	scope, ok := ctx.Value(scopeContextKey{}).(nativecontract.Scope)
 	if !ok {
@@ -71,6 +73,7 @@ func (s *SessionService) authorizeUser(ctx context.Context, key session.UserKey)
 	}
 	return nil
 }
+
 func (s *SessionService) AppendStable(ctx context.Context, a nativecontract.SessionAppend) error {
 	if a.Event == nil || a.Event.ID == "" || a.StableEventID != a.Event.ID {
 		return &nativecontract.Failure{Code: nativecontract.ErrInvalid, Message: "stable event ID is required"}
@@ -90,6 +93,7 @@ func (s *SessionService) AppendStable(ctx context.Context, a nativecontract.Sess
 	}
 	return err
 }
+
 func (s *SessionService) CreateSession(ctx context.Context, key session.Key, state session.StateMap, _ ...session.Option) (*session.Session, error) {
 	if err := s.authorize(ctx, key); err != nil {
 		return nil, err
@@ -99,6 +103,7 @@ func (s *SessionService) CreateSession(ctx context.Context, key session.Key, sta
 	}
 	return s.store.Get(ctx, key)
 }
+
 func (s *SessionService) GetSession(ctx context.Context, key session.Key, opts ...session.Option) (*session.Session, error) {
 	if err := s.authorize(ctx, key); err != nil {
 		return nil, err
@@ -117,6 +122,7 @@ func (s *SessionService) GetSession(ctx context.Context, key session.Key, opts .
 	filterSessionEvents([]*session.Session{got}, options)
 	return got, nil
 }
+
 func (s *SessionService) ListSessions(ctx context.Context, key session.UserKey, opts ...session.Option) ([]*session.Session, error) {
 	if err := s.authorizeUser(ctx, key); err != nil {
 		return nil, err
@@ -170,18 +176,21 @@ func filterSessionEvents(items []*session.Session, options *session.Options) {
 		item.EventMu.Unlock()
 	}
 }
+
 func (s *SessionService) DeleteSession(ctx context.Context, key session.Key, _ ...session.Option) error {
 	if err := s.authorize(ctx, key); err != nil {
 		return err
 	}
 	return s.store.Delete(ctx, key)
 }
+
 func (s *SessionService) UpdateSessionState(ctx context.Context, key session.Key, state session.StateMap) error {
 	if err := s.authorize(ctx, key); err != nil {
 		return err
 	}
 	return s.store.UpdateState(ctx, key, state)
 }
+
 func (s *SessionService) AppendEvent(ctx context.Context, sess *session.Session, e *event.Event, _ ...session.Option) error {
 	if sess == nil {
 		return session.ErrNilSession
@@ -195,45 +204,53 @@ func (s *SessionService) AppendEvent(ctx context.Context, sess *session.Session,
 	}
 	return s.AppendStable(ctx, nativecontract.SessionAppend{Key: session.Key{AppName: sess.AppName, UserID: sess.UserID, SessionID: sess.ID}, StableEventID: e.ID, PayloadHash: hash, Event: e})
 }
+
 func canonicalEventHash(e *event.Event) (string, error) {
 	return repository.CanonicalNativeSessionEventHash(e)
 }
+
 func (s *SessionService) UpdateAppState(ctx context.Context, app string, state session.StateMap) error {
 	if err := s.authorizeApp(ctx, app); err != nil {
 		return err
 	}
 	return s.store.UpdateAppState(ctx, app, state)
 }
+
 func (s *SessionService) DeleteAppState(ctx context.Context, app, name string) error {
 	if err := s.authorizeApp(ctx, app); err != nil {
 		return err
 	}
 	return s.store.DeleteAppState(ctx, app, name)
 }
+
 func (s *SessionService) ListAppStates(ctx context.Context, app string) (session.StateMap, error) {
 	if err := s.authorizeApp(ctx, app); err != nil {
 		return nil, err
 	}
 	return s.store.AppState(ctx, app)
 }
+
 func (s *SessionService) UpdateUserState(ctx context.Context, key session.UserKey, state session.StateMap) error {
 	if err := s.authorizeUser(ctx, key); err != nil {
 		return err
 	}
 	return s.store.UpdateUserState(ctx, key, state)
 }
+
 func (s *SessionService) ListUserStates(ctx context.Context, key session.UserKey) (session.StateMap, error) {
 	if err := s.authorizeUser(ctx, key); err != nil {
 		return nil, err
 	}
 	return s.store.UserState(ctx, key)
 }
+
 func (s *SessionService) DeleteUserState(ctx context.Context, key session.UserKey, name string) error {
 	if err := s.authorizeUser(ctx, key); err != nil {
 		return err
 	}
 	return s.store.DeleteUserState(ctx, key, name)
 }
+
 func (s *SessionService) authorizeApp(ctx context.Context, app string) error {
 	scope, ok := ctx.Value(scopeContextKey{}).(nativecontract.Scope)
 	if !ok {
@@ -249,12 +266,15 @@ func (s *SessionService) authorizeApp(ctx context.Context, app string) error {
 	}
 	return nil
 }
+
 func (s *SessionService) CreateSessionSummary(ctx context.Context, sess *session.Session, filter string, force bool) error {
 	return s.persistSummary(ctx, sess, filter, force)
 }
+
 func (s *SessionService) EnqueueSummaryJob(ctx context.Context, sess *session.Session, filter string, force bool) error {
 	return s.persistSummary(ctx, sess, filter, force)
 }
+
 func (s *SessionService) persistSummary(ctx context.Context, sess *session.Session, filter string, force bool) error {
 	if sess == nil {
 		return session.ErrNilSession
@@ -303,6 +323,7 @@ func (s *SessionService) persistSummary(ctx context.Context, sess *session.Sessi
 	}
 	return s.store.SaveSummary(ctx, key, filter, repository.NativeSessionSummary{Text: text, ThroughEventID: through, Revision: 1})
 }
+
 func (s *SessionService) GetSessionSummaryText(ctx context.Context, sess *session.Session, opts ...session.SummaryOption) (string, bool) {
 	if sess == nil {
 		return "", false

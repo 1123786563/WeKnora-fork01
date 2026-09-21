@@ -702,8 +702,10 @@ func (env *snapshotHTTPEnv) snapshotReadySession(t *testing.T, key string) (sess
 	ref := "resource://http-version/v1"
 	env.files.blobs[ref] = []byte(content)
 	sum := sha256.Sum256([]byte(content))
-	files := []craft.File{{Path: "index.html", Ref: ref,
-		SHA256: hex.EncodeToString(sum[:]), MIME: "text/html", Bytes: int64(len(content))}}
+	files := []craft.File{{
+		Path: "index.html", Ref: ref,
+		SHA256: hex.EncodeToString(sum[:]), MIME: "text/html", Bytes: int64(len(content)),
+	}}
 	digest, err := craft.ManifestDigest(files)
 	require.NoError(t, err)
 	version, err := repository.NewCraftVersionStore(env.db).Publish(ctx, scope, craft.Version{

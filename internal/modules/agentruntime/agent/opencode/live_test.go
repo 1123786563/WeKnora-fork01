@@ -717,23 +717,39 @@ func runLiveTwoTurns(t *testing.T) LiveReport {
 		SecondHash:    secondHash,
 		PromptPosts:   posts,
 		Checks: []craft.Check{
-			{Name: "oc_session_stable", Status: "passed",
-				Detail: fmt.Sprintf("workspace binding kept session %s across both turns (revision %d)", ocSession, bindingSecond.Revision)},
-			{Name: "file_hash_changed", Status: "passed",
-				Detail: fmt.Sprintf("report.md sha256 %s.. -> %s..", firstHash[:16], secondHash[:16])},
-			{Name: "two_prompt_posts_same_session", Status: "passed",
-				Detail: fmt.Sprintf("%d prompt_async posts to %v", posts, sessionIDs)},
-			{Name: "run_first_traceable", Status: "passed",
-				Detail: fmt.Sprintf("run r-craft-live-a delegation %s saved %s", first.TaskID, savedFirst.Status)},
-			{Name: "run_second_traceable", Status: "passed",
-				Detail: fmt.Sprintf("run r-craft-live-b delegation %s saved %s", second.TaskID, savedSecond.Status)},
-			{Name: "persistence_rows", Status: "passed",
-				Detail: fmt.Sprintf("agent_runs=%d craft_delegations(succeeded)=%d", runRows, delegationRows)},
-			{Name: "session_carries_both_rounds", Status: "passed",
+			{
+				Name: "oc_session_stable", Status: "passed",
+				Detail: fmt.Sprintf("workspace binding kept session %s across both turns (revision %d)", ocSession, bindingSecond.Revision),
+			},
+			{
+				Name: "file_hash_changed", Status: "passed",
+				Detail: fmt.Sprintf("report.md sha256 %s.. -> %s..", firstHash[:16], secondHash[:16]),
+			},
+			{
+				Name: "two_prompt_posts_same_session", Status: "passed",
+				Detail: fmt.Sprintf("%d prompt_async posts to %v", posts, sessionIDs),
+			},
+			{
+				Name: "run_first_traceable", Status: "passed",
+				Detail: fmt.Sprintf("run r-craft-live-a delegation %s saved %s", first.TaskID, savedFirst.Status),
+			},
+			{
+				Name: "run_second_traceable", Status: "passed",
+				Detail: fmt.Sprintf("run r-craft-live-b delegation %s saved %s", second.TaskID, savedSecond.Status),
+			},
+			{
+				Name: "persistence_rows", Status: "passed",
+				Detail: fmt.Sprintf("agent_runs=%d craft_delegations(succeeded)=%d", runRows, delegationRows),
+			},
+			{
+				Name: "session_carries_both_rounds", Status: "passed",
 				Detail: fmt.Sprintf("%d messages; user ids adopted %v/%v; stops %v/%v",
-					len(messages), userFirst, userSecond, firstStop, secondStop)},
-			{Name: "model_round_trips", Status: "passed",
-				Detail: fmt.Sprintf("controlled endpoint called %d times", model.hits.Load())},
+					len(messages), userFirst, userSecond, firstStop, secondStop),
+			},
+			{
+				Name: "model_round_trips", Status: "passed",
+				Detail: fmt.Sprintf("controlled endpoint called %d times", model.hits.Load()),
+			},
 		},
 	}
 }
@@ -845,9 +861,13 @@ func runLiveRealModelTurn(t *testing.T) craft.Check {
 		}
 	}
 	if len(artifacts) == 0 {
-		return craft.Check{Name: "real_model_turn", Status: "not_run",
-			Detail: "model replied but wrote no markdown artifact; reply head: " + reply}
+		return craft.Check{
+			Name: "real_model_turn", Status: "not_run",
+			Detail: "model replied but wrote no markdown artifact; reply head: " + reply,
+		}
 	}
-	return craft.Check{Name: "real_model_turn", Status: "passed",
-		Detail: fmt.Sprintf("real model wrote %v; reply head: %.160s", artifacts, reply)}
+	return craft.Check{
+		Name: "real_model_turn", Status: "passed",
+		Detail: fmt.Sprintf("real model wrote %v; reply head: %.160s", artifacts, reply),
+	}
 }

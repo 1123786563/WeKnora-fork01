@@ -585,9 +585,14 @@ func TestIsSimpleFormat_JSON(t *testing.T) {
 		input string
 		want  bool
 	}{
-		{"json", true}, {"JSON", true}, {".json", true}, {"Json", true},
-		{"txt", true}, {"csv", true},
-		{"pdf", false}, {"docx", false},
+		{"json", true},
+		{"JSON", true},
+		{".json", true},
+		{"Json", true},
+		{"txt", true},
+		{"csv", true},
+		{"pdf", false},
+		{"docx", false},
 	}
 
 	t.Logf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")

@@ -301,8 +301,10 @@ func TestCraftArtifactCollectRejectsHostileOutput(t *testing.T) {
 		config   CraftArtifactConfig
 	}{
 		"traversal": {
-			entries: []sandbox.RemoteDirEntry{{Name: "secret.txt", Path: "/workspace/output/../secret.txt",
-				Type: sandbox.RemoteEntryFile, Size: 2, ModTime: sameModTime}},
+			entries: []sandbox.RemoteDirEntry{{
+				Name: "secret.txt", Path: "/workspace/output/../secret.txt",
+				Type: sandbox.RemoteEntryFile, Size: 2, ModTime: sameModTime,
+			}},
 			contents: map[string][]byte{"/workspace/output/../secret.txt": []byte("x")},
 		},
 		"credential file": {
@@ -310,8 +312,10 @@ func TestCraftArtifactCollectRejectsHostileOutput(t *testing.T) {
 			contents: map[string][]byte{craftTestOutputDir + "/.env": []byte("KEY=1")},
 		},
 		"symlink entry": {
-			entries: []sandbox.RemoteDirEntry{{Name: "link", Path: craftTestOutputDir + "/link",
-				Type: sandbox.RemoteEntryOther, Size: 1, ModTime: sameModTime}},
+			entries: []sandbox.RemoteDirEntry{{
+				Name: "link", Path: craftTestOutputDir + "/link",
+				Type: sandbox.RemoteEntryOther, Size: 1, ModTime: sameModTime,
+			}},
 			contents: map[string][]byte{craftTestOutputDir + "/link": []byte("x")},
 		},
 		"oversize file": {

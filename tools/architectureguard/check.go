@@ -559,6 +559,13 @@ var importExceptions = []importException{
 			"batch-a3 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-channels",
 	},
+	{
+		ImporterFile: "internal/modules/channels/im/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/knowledge/docparser",
+		Reason: "预存横向包耦合（channels→docparser 图像解析依赖，" +
+			"batch-a3 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-channels",
+	},
 	// ---- batch A3 搬迁显形的预存横向耦合：conversation 内文件消费其他模块内部包（Pass B 任务 B-conversation）----
 	{
 		ImporterFile: "internal/modules/conversation/chat_pipeline/common.go",

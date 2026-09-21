@@ -438,10 +438,13 @@ func (f *expertAgentsFake) CreateAgent(_ context.Context, agent *types.CustomAge
 func (f *expertAgentsFake) GetAgentByID(context.Context, string) (*types.CustomAgent, error) {
 	return nil, ErrAgentNotFound
 }
+
 func (f *expertAgentsFake) GetAgentByIDAndTenant(context.Context, string, uint64) (*types.CustomAgent, error) {
 	return nil, ErrAgentNotFound
 }
+
 func (f *expertAgentsFake) ListAgents(context.Context) ([]*types.CustomAgent, error) { return nil, nil }
+
 func (f *expertAgentsFake) UpdateAgent(_ context.Context, agent *types.CustomAgent) (*types.CustomAgent, error) {
 	return agent, nil
 }
@@ -449,11 +452,13 @@ func (f *expertAgentsFake) DeleteAgent(context.Context, string) error { return n
 func (f *expertAgentsFake) CopyAgent(context.Context, string) (*types.CustomAgent, error) {
 	return nil, nil
 }
+
 func (f *expertAgentsFake) GetSuggestedQuestions(
 	context.Context, string, []string, []string, []types.TagScope, int,
 ) ([]types.SuggestedQuestion, error) {
 	return nil, nil
 }
+
 func (f *expertAgentsFake) GetKnowledgeSuggestedQuestions(
 	context.Context, string, []string, []string, []types.TagScope, int,
 ) ([]types.SuggestedQuestion, error) {

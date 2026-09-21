@@ -330,6 +330,7 @@ func (r *AgentRuntime) Start(ctx context.Context) error {
 	}()
 	return nil
 }
+
 func (r *AgentRuntime) Drain() {
 	r.once.Do(func() {
 		if r != nil && r.Worker != nil {

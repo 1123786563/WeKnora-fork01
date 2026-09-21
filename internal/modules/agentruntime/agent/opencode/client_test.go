@@ -298,8 +298,10 @@ func TestMessageIDsFollowPinnedAscendingAlgorithm(t *testing.T) {
 // testdata/protocol-lock.json). IDs were replaced with shape-preserving
 // placeholders; every other byte is the real server response.
 
-var sessionIDPattern = regexp.MustCompile("^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$")
-var eventIDPattern = regexp.MustCompile("^evt_[0-9a-f]{12}[0-9A-Za-z]{14}$")
+var (
+	sessionIDPattern = regexp.MustCompile("^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$")
+	eventIDPattern   = regexp.MustCompile("^evt_[0-9a-f]{12}[0-9A-Za-z]{14}$")
+)
 
 func loadFixture(t *testing.T, name string) []byte {
 	t.Helper()

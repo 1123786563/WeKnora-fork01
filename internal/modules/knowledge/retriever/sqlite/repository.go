@@ -363,6 +363,7 @@ func (r *sqliteRepository) keywordsRetrieve(ctx context.Context, params types.Re
 		RetrieverType:       types.KeywordsRetrieverType,
 	}}, nil
 }
+
 func (r *sqliteRepository) vectorRetrieve(ctx context.Context, params types.RetrieveParams) ([]*types.RetrieveResult, error) {
 	if len(params.Embedding) == 0 {
 		return nil, nil

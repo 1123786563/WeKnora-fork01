@@ -27,8 +27,10 @@ func TestCompletedRequiresExactPrompt(t *testing.T) {
 }
 
 func TestCompletedRejectsEveryIncompleteObservation(t *testing.T) {
-	valid := craft.Observation{SessionID: "s", PromptMessageID: "p", AssistantParentID: "p",
-		Completed: true, Idle: true, Finish: "stop"}
+	valid := craft.Observation{
+		SessionID: "s", PromptMessageID: "p", AssistantParentID: "p",
+		Completed: true, Idle: true, Finish: "stop",
+	}
 	mutations := map[string]func(*craft.Observation){
 		"empty session":        func(o *craft.Observation) { o.SessionID = "" },
 		"empty prompt":         func(o *craft.Observation) { o.PromptMessageID = "" },
@@ -147,27 +149,43 @@ func frameOf(t *testing.T, typ string, properties any) eventFrame {
 func TestSubStateTracksOnlyTheBoundSessionAndTurn(t *testing.T) {
 	state := newSubState("ses_oc", "msg_prompt", nil)
 	state.apply(frameOf(t, "session.idle", map[string]any{"sessionID": "ses_other"}))
-	state.apply(frameOf(t, "message.updated", map[string]any{"sessionID": "ses_other",
-		"info": map[string]any{"id": "msg_x", "parentID": "msg_prompt", "role": "assistant"}}))
+	state.apply(frameOf(t, "message.updated", map[string]any{
+		"sessionID": "ses_other",
+		"info":      map[string]any{"id": "msg_x", "parentID": "msg_prompt", "role": "assistant"},
+	}))
 	if state.idle || len(state.assistants) != 0 {
 		t.Fatal("another session polluted the state")
 	}
 	// Same session, another turn: the assistant is parented elsewhere.
-	state.apply(frameOf(t, "message.updated", map[string]any{"sessionID": "ses_oc",
-		"info": map[string]any{"id": "msg_old", "parentID": "msg_older", "role": "assistant",
-			"finish": "stop", "time": map[string]any{"completed": 9}}}))
+	state.apply(frameOf(t, "message.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"info": map[string]any{
+			"id": "msg_old", "parentID": "msg_older", "role": "assistant",
+			"finish": "stop", "time": map[string]any{"completed": 9},
+		},
+	}))
 	// Same session, user message echo for our prompt.
-	state.apply(frameOf(t, "message.updated", map[string]any{"sessionID": "ses_oc",
-		"info": map[string]any{"id": "msg_prompt", "parentID": "", "role": "user"}}))
+	state.apply(frameOf(t, "message.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"info":      map[string]any{"id": "msg_prompt", "parentID": "", "role": "user"},
+	}))
 	// Our assistant answers.
-	state.apply(frameOf(t, "message.updated", map[string]any{"sessionID": "ses_oc",
-		"info": map[string]any{"id": "msg_asst", "parentID": "msg_prompt", "role": "assistant",
-			"finish": "stop", "time": map[string]any{"completed": 5}}}))
+	state.apply(frameOf(t, "message.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"info": map[string]any{
+			"id": "msg_asst", "parentID": "msg_prompt", "role": "assistant",
+			"finish": "stop", "time": map[string]any{"completed": 5},
+		},
+	}))
 	// A text part on a foreign message id must not be tracked.
-	state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "text", "id": "prt_foreign", "messageID": "msg_old", "text": "OLD"}}))
-	state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "text", "id": "prt_mine", "messageID": "msg_asst", "text": "MINE"}}))
+	state.apply(frameOf(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part":      map[string]any{"type": "text", "id": "prt_foreign", "messageID": "msg_old", "text": "OLD"},
+	}))
+	state.apply(frameOf(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part":      map[string]any{"type": "text", "id": "prt_mine", "messageID": "msg_asst", "text": "MINE"},
+	}))
 	state.apply(frameOf(t, "session.idle", map[string]any{"sessionID": "ses_oc"}))
 	obs := state.observation()
 	if !Completed(obs) {
@@ -181,8 +199,10 @@ func TestSubStateTracksOnlyTheBoundSessionAndTurn(t *testing.T) {
 func TestSubStateAbortMatchesLockedNameExactly(t *testing.T) {
 	state := newSubState("ses_oc", "msg_prompt", nil)
 	for _, name := range []string{"MessageCancelledError", "RequestCancelled", "cancelled", "AbortCancelled"} {
-		state.apply(frameOf(t, "session.error", map[string]any{"sessionID": "ses_oc",
-			"error": map[string]any{"name": name}}))
+		state.apply(frameOf(t, "session.error", map[string]any{
+			"sessionID": "ses_oc",
+			"error":     map[string]any{"name": name},
+		}))
 		if state.aborted {
 			t.Fatalf("%q was misclassified as an abort", name)
 		}
@@ -195,8 +215,10 @@ func TestSubStateAbortMatchesLockedNameExactly(t *testing.T) {
 	if state.aborted {
 		t.Fatal("session-less error was accepted as an abort")
 	}
-	state.apply(frameOf(t, "session.error", map[string]any{"sessionID": "ses_oc",
-		"error": map[string]any{"name": "MessageAbortedError", "data": map[string]any{"message": "Aborted"}}}))
+	state.apply(frameOf(t, "session.error", map[string]any{
+		"sessionID": "ses_oc",
+		"error":     map[string]any{"name": "MessageAbortedError", "data": map[string]any{"message": "Aborted"}},
+	}))
 	if !state.aborted {
 		t.Fatal("the locked MessageAbortedError was not recognized")
 	}
@@ -205,14 +227,24 @@ func TestSubStateAbortMatchesLockedNameExactly(t *testing.T) {
 func TestSubStateQuestionIsInteractionNotTool(t *testing.T) {
 	var pending []string
 	state := newSubState("ses_oc", "msg_prompt", func(kind, partID string) { pending = append(pending, kind+":"+partID) })
-	state.apply(frameOf(t, "message.updated", map[string]any{"sessionID": "ses_oc",
-		"info": map[string]any{"id": "msg_a", "parentID": "msg_prompt", "role": "assistant"}}))
-	state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "tool", "id": "prt_q", "messageID": "msg_a", "tool": "question",
-			"state": map[string]any{"status": "pending"}}}))
-	state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "tool", "id": "prt_t", "messageID": "msg_a", "tool": "bash",
-			"state": map[string]any{"status": "running"}}}))
+	state.apply(frameOf(t, "message.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"info":      map[string]any{"id": "msg_a", "parentID": "msg_prompt", "role": "assistant"},
+	}))
+	state.apply(frameOf(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part": map[string]any{
+			"type": "tool", "id": "prt_q", "messageID": "msg_a", "tool": "question",
+			"state": map[string]any{"status": "pending"},
+		},
+	}))
+	state.apply(frameOf(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part": map[string]any{
+			"type": "tool", "id": "prt_t", "messageID": "msg_a", "tool": "bash",
+			"state": map[string]any{"status": "running"},
+		},
+	}))
 	if _, leaked := state.tools["prt_q"]; leaked {
 		t.Fatal("a pending question leaked into the tool map")
 	}
@@ -230,17 +262,31 @@ func TestSubStateQuestionIsInteractionNotTool(t *testing.T) {
 
 func TestSubStateToolTerminalStatesAreKept(t *testing.T) {
 	state := newSubState("ses_oc", "msg_prompt", nil)
-	state.apply(frameOf(t, "message.updated", map[string]any{"sessionID": "ses_oc",
-		"info": map[string]any{"id": "msg_a", "parentID": "msg_prompt", "role": "assistant"}}))
-	state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "tool", "id": "prt_b", "messageID": "msg_a", "tool": "bash",
-			"callID": "call_b", "state": map[string]any{"status": "running"}}}))
-	state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "tool", "id": "prt_b", "messageID": "msg_a", "tool": "bash",
-			"callID": "call_b", "state": map[string]any{"status": "completed"}}}))
-	state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "tool", "id": "prt_e", "messageID": "msg_a", "tool": "edit",
-			"callID": "call_e", "state": map[string]any{"status": "error"}}}))
+	state.apply(frameOf(t, "message.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"info":      map[string]any{"id": "msg_a", "parentID": "msg_prompt", "role": "assistant"},
+	}))
+	state.apply(frameOf(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part": map[string]any{
+			"type": "tool", "id": "prt_b", "messageID": "msg_a", "tool": "bash",
+			"callID": "call_b", "state": map[string]any{"status": "running"},
+		},
+	}))
+	state.apply(frameOf(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part": map[string]any{
+			"type": "tool", "id": "prt_b", "messageID": "msg_a", "tool": "bash",
+			"callID": "call_b", "state": map[string]any{"status": "completed"},
+		},
+	}))
+	state.apply(frameOf(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part": map[string]any{
+			"type": "tool", "id": "prt_e", "messageID": "msg_a", "tool": "edit",
+			"callID": "call_e", "state": map[string]any{"status": "error"},
+		},
+	}))
 	tools := state.terminalTools()
 	if len(tools) != 2 || tools[0].partID != "prt_b" || tools[0].status != "completed" || tools[1].status != "error" {
 		t.Fatalf("terminal tools = %#v", tools)
@@ -252,14 +298,22 @@ func TestSubStateToolTerminalStatesAreKept(t *testing.T) {
 
 func TestSubStateDuplicatePartUpdatesAreIdempotent(t *testing.T) {
 	state := newSubState("ses_oc", "msg_prompt", nil)
-	state.apply(frameOf(t, "message.updated", map[string]any{"sessionID": "ses_oc",
-		"info": map[string]any{"id": "msg_a", "parentID": "msg_prompt", "role": "assistant"}}))
+	state.apply(frameOf(t, "message.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"info":      map[string]any{"id": "msg_a", "parentID": "msg_prompt", "role": "assistant"},
+	}))
 	for i := 0; i < 3; i++ {
-		state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-			"part": map[string]any{"type": "text", "id": "prt_t", "messageID": "msg_a", "text": "MOCK-REPLY"}}))
-		state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-			"part": map[string]any{"type": "tool", "id": "prt_b", "messageID": "msg_a", "tool": "bash",
-				"state": map[string]any{"status": "completed"}}}))
+		state.apply(frameOf(t, "message.part.updated", map[string]any{
+			"sessionID": "ses_oc",
+			"part":      map[string]any{"type": "text", "id": "prt_t", "messageID": "msg_a", "text": "MOCK-REPLY"},
+		}))
+		state.apply(frameOf(t, "message.part.updated", map[string]any{
+			"sessionID": "ses_oc",
+			"part": map[string]any{
+				"type": "tool", "id": "prt_b", "messageID": "msg_a", "tool": "bash",
+				"state": map[string]any{"status": "completed"},
+			},
+		}))
 	}
 	if text := state.mergedText(); text != "MOCK-REPLY" {
 		t.Fatalf("duplicate part updates duplicated text: %q", text)
@@ -300,21 +354,31 @@ func TestSubStateTextMergeIsBoundedAndDropsOldest(t *testing.T) {
 
 func TestSubStateDeltasMergeUntilSnapshotArrives(t *testing.T) {
 	state := newSubState("ses_oc", "msg_prompt", nil)
-	state.apply(frameOf(t, "message.updated", map[string]any{"sessionID": "ses_oc",
-		"info": map[string]any{"id": "msg_a", "parentID": "msg_prompt", "role": "assistant"}}))
-	state.apply(frameOf(t, "message.part.delta", map[string]any{"sessionID": "ses_oc",
-		"messageID": "msg_a", "partID": "prt_d", "field": "text", "delta": "Mock"}))
-	state.apply(frameOf(t, "message.part.delta", map[string]any{"sessionID": "ses_oc",
-		"messageID": "msg_a", "partID": "prt_d", "field": "text", "delta": "-Reply"}))
+	state.apply(frameOf(t, "message.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"info":      map[string]any{"id": "msg_a", "parentID": "msg_prompt", "role": "assistant"},
+	}))
+	state.apply(frameOf(t, "message.part.delta", map[string]any{
+		"sessionID": "ses_oc",
+		"messageID": "msg_a", "partID": "prt_d", "field": "text", "delta": "Mock",
+	}))
+	state.apply(frameOf(t, "message.part.delta", map[string]any{
+		"sessionID": "ses_oc",
+		"messageID": "msg_a", "partID": "prt_d", "field": "text", "delta": "-Reply",
+	}))
 	// Deltas for a foreign message are dropped.
-	state.apply(frameOf(t, "message.part.delta", map[string]any{"sessionID": "ses_oc",
-		"messageID": "msg_other", "partID": "prt_x", "field": "text", "delta": "X"}))
+	state.apply(frameOf(t, "message.part.delta", map[string]any{
+		"sessionID": "ses_oc",
+		"messageID": "msg_other", "partID": "prt_x", "field": "text", "delta": "X",
+	}))
 	if text := state.mergedText(); text != "Mock-Reply" {
 		t.Fatalf("merged deltas = %q", text)
 	}
 	// A full snapshot overwrites the accumulated deltas.
-	state.apply(frameOf(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "text", "id": "prt_d", "messageID": "msg_a", "text": "FINAL"}}))
+	state.apply(frameOf(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part":      map[string]any{"type": "text", "id": "prt_d", "messageID": "msg_a", "text": "FINAL"},
+	}))
 	if text := state.mergedText(); text != "FINAL" {
 		t.Fatalf("snapshot did not overwrite deltas: %q", text)
 	}

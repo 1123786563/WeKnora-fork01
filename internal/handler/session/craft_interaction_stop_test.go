@@ -29,13 +29,16 @@ type stopFakeAPI struct {
 func (f *stopFakeAPI) ListInteractions(context.Context, craft.Scope, string) ([]service.CraftInteractionRecord, error) {
 	return nil, nil
 }
+
 func (f *stopFakeAPI) Decide(context.Context, service.CraftDecisionRequest) (service.CraftDecisionOutcome, error) {
 	return service.CraftDecisionOutcome{}, nil
 }
+
 func (f *stopFakeAPI) Stop(_ context.Context, req service.CraftStopRequest) (service.CraftStopStatus, error) {
 	f.stopGot = req
 	return f.stopReply, f.stopErr
 }
+
 func (f *stopFakeAPI) DelegationStatus(context.Context, craft.Scope, agentruntime.RunKey, string) (service.CraftStopStatus, error) {
 	return service.CraftStopStatus{Phase: "stopping"}, nil
 }

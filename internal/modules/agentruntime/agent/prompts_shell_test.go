@@ -1,9 +1,10 @@
 package agent
 
 import (
+	"testing"
+
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestToolGuidanceUsesActualCapabilities(t *testing.T) {

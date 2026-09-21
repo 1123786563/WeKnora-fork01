@@ -42,6 +42,7 @@ func (p *directBatchProvider) Configured() bool { return p != nil && p.configure
 func (p *directBatchProvider) Send(context.Context, string, pushnotification.PushPayload) (pushnotification.PushReceipt, error) {
 	return pushnotification.PushReceipt{ID: "single"}, nil
 }
+
 func (p *directBatchProvider) SendBatch(_ context.Context, items []pushnotification.PushBatchItem) ([]pushnotification.PushBatchResult, error) {
 	p.items = append([]pushnotification.PushBatchItem(nil), items...)
 	results := make([]pushnotification.PushBatchResult, 0, len(items))

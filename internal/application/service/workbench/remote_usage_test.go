@@ -2,10 +2,11 @@ package workbench
 
 import (
 	"context"
-	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	"testing"
 	"time"
+
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 type remoteUsageGateStub struct {
@@ -30,14 +31,17 @@ func (g *remoteUsageGateStub) Begin(_ context.Context, req commercial.BudgetRequ
 	g.begins++
 	return commercial.Reservation{ID: req.Key}, nil
 }
+
 func (g *remoteUsageGateStub) Finish(_ context.Context, _ string, f commercial.UsageFact) error {
 	g.finishes++
 	g.last = f
 	return nil
 }
+
 func remoteReq() RemoteUsageRequest {
 	return RemoteUsageRequest{TenantID: 1, RunID: "run", CallID: "call", AttemptID: "attempt", Upper: 10, Deadline: time.Now().Add(time.Minute), Source: "platform_gateway", Funding: commercial.FundingPlatform, Service: commercial.ServiceModel, PriceVersion: "p1", Revision: 1, OccurredAt: time.Now(), Dimensions: map[string]int64{commercial.DimensionModel: 1}, Status: commercial.UsageStatusFinal}
 }
+
 func TestRemoteUsageRejectsSelfReportedAndBYOKModel(t *testing.T) {
 	g := &remoteUsageGateStub{}
 	s, _ := NewRemoteUsageService(g)
@@ -55,6 +59,7 @@ func TestRemoteUsageRejectsSelfReportedAndBYOKModel(t *testing.T) {
 		t.Fatalf("BYOK model reserved %d times", g.begins)
 	}
 }
+
 func TestRemoteUsageFinishTrustAndIdempotentIdentity(t *testing.T) {
 	g := &remoteUsageGateStub{}
 	s, _ := NewRemoteUsageService(g)
@@ -73,6 +78,7 @@ func TestRemoteUsageFinishTrustAndIdempotentIdentity(t *testing.T) {
 		t.Fatal("untrusted finish accepted")
 	}
 }
+
 func TestRemoteUsageDoesNotSettleUnknownOrDisplayOnly(t *testing.T) {
 	g := &remoteUsageGateStub{}
 	s, _ := NewRemoteUsageService(g)

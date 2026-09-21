@@ -152,8 +152,7 @@ func (s *Service) reviewStore(
 	result.Reviewed = len(items)
 	result.Demoted = s.demoteStaleTasks(ctx, scope, items)
 	if force || len(items) >= consolidateMinItems {
-		result.Merged, result.Candidates, result.Skipped =
-			s.mergeRedundant(ctx, scope, cfg, modelID, items, force)
+		result.Merged, result.Candidates, result.Skipped = s.mergeRedundant(ctx, scope, cfg, modelID, items, force)
 	} else {
 		result.Skipped = types.MemoryConsolidationSkipTooFewItems
 	}

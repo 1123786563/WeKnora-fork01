@@ -23,6 +23,7 @@ func (s *workerStore) Admit(_ context.Context, in agentruntime.Admission) (agent
 	s.runs[in.Key.RunID] = r
 	return r, nil
 }
+
 func (s *workerStore) Get(_ context.Context, k agentruntime.RunKey) (agentruntime.Run, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -32,6 +33,7 @@ func (s *workerStore) Get(_ context.Context, k agentruntime.RunKey) (agentruntim
 	}
 	return r, nil
 }
+
 func (s *workerStore) Claim(_ context.Context, k agentruntime.RunKey, o string, _ time.Duration) (agentruntime.Fence, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -55,9 +57,11 @@ func (s *workerStore) Scan(context.Context, int) ([]agentruntime.RunKey, error) 
 	defer s.mu.Unlock()
 	return append([]agentruntime.RunKey(nil), s.keys...), nil
 }
+
 func (s *workerStore) SaveCheckpoint(context.Context, agentruntime.Fence, agentruntime.CheckpointRecord) error {
 	return nil
 }
+
 func (s *workerStore) LoadCheckpoint(context.Context, agentruntime.RunKey) (agentruntime.CheckpointRecord, error) {
 	return agentruntime.CheckpointRecord{}, agentruntime.ErrNotFound
 }
@@ -65,6 +69,7 @@ func (s *workerStore) LoadCheckpoint(context.Context, agentruntime.RunKey) (agen
 func TestWorkerConfigRejectsUnsafeLease(t *testing.T) {
 	require.Error(t, (WorkerConfig{Lease: time.Minute, Heartbeat: time.Minute, ScanInterval: time.Second, MaxWorkers: 1}).Validate())
 }
+
 func TestWorkerSkipsWaitingUser(t *testing.T) {
 	s := &workerStore{runs: map[string]agentruntime.Run{"r": {Key: agentruntime.RunKey{TenantID: 1, RunID: "r"}, Status: "waiting_user"}}, keys: []agentruntime.RunKey{{TenantID: 1, RunID: "r"}}}
 	n := 0
@@ -75,6 +80,7 @@ func TestWorkerSkipsWaitingUser(t *testing.T) {
 	require.Zero(t, n)
 	require.Zero(t, s.claims)
 }
+
 func TestWorkerTwoTicksDoNotDuplicate(t *testing.T) {
 	s := &workerStore{runs: map[string]agentruntime.Run{"r": {Key: agentruntime.RunKey{TenantID: 1, RunID: "r"}, Status: "queued"}}, keys: []agentruntime.RunKey{{TenantID: 1, RunID: "r"}}}
 	entered := make(chan struct{})
@@ -107,6 +113,7 @@ func TestWorkerCallsRecoveryHookBeforeExecute(t *testing.T) {
 	}
 	require.Equal(t, []string{"reconcile", "execute"}, order)
 }
+
 func TestSubmitCopiesSnapshot(t *testing.T) {
 	s := &workerStore{runs: map[string]agentruntime.Run{}}
 	svc := NewAgentRunService(s)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -12,7 +13,6 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session/noop"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
-	"testing"
 
 	"github.com/stretchr/testify/require"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -157,17 +157,23 @@ type graphTestStore struct {
 func (s *graphTestStore) Admit(context.Context, agentruntime.Admission) (agentruntime.Run, error) {
 	return s.run, nil
 }
+
 func (s *graphTestStore) Get(context.Context, agentruntime.RunKey) (agentruntime.Run, error) {
 	return s.run, nil
 }
+
 func (s *graphTestStore) Claim(context.Context, agentruntime.RunKey, string, time.Duration) (agentruntime.Fence, error) {
 	return s.fence, nil
 }
+
 func (s *graphTestStore) Renew(context.Context, agentruntime.Fence, time.Duration) error { return nil }
-func (s *graphTestStore) Scan(context.Context, int) ([]agentruntime.RunKey, error)       { return nil, nil }
+
+func (s *graphTestStore) Scan(context.Context, int) ([]agentruntime.RunKey, error) { return nil, nil }
+
 func (s *graphTestStore) SaveCheckpoint(context.Context, agentruntime.Fence, agentruntime.CheckpointRecord) error {
 	return nil
 }
+
 func (s *graphTestStore) LoadCheckpoint(context.Context, agentruntime.RunKey) (agentruntime.CheckpointRecord, error) {
 	return agentruntime.CheckpointRecord{}, agentruntime.ErrNotFound
 }
@@ -188,19 +194,24 @@ func (j *graphTestJournal) EnsureToolPlan(_ context.Context, _ agentruntime.Fenc
 	j.plans = append(j.plans, p)
 	return agentruntime.ToolRecord{Plan: p, Status: agentruntime.ToolStatusPlanned}, nil
 }
+
 func (j *graphTestJournal) BeginToolAttempt(_ context.Context, f agentruntime.Fence, id string, _ ...int64) (agentruntime.ToolAttempt, error) {
 	return agentruntime.ToolAttempt{RunKey: f.RunKey, Owner: f.Owner, CallID: id, Number: 1, Epoch: f.Epoch}, nil
 }
+
 func (j *graphTestJournal) ReviseToolPlan(context.Context, agentruntime.Fence, string, int64, json.RawMessage) (agentruntime.ToolPlan, error) {
 	return agentruntime.ToolPlan{}, nil
 }
+
 func (j *graphTestJournal) CommitToolResult(_ context.Context, _ agentruntime.Fence, a agentruntime.ToolAttempt, r agentruntime.StoredToolResult) error {
 	j.results[a.CallID] = r
 	return nil
 }
+
 func (j *graphTestJournal) CommitToolRejection(context.Context, agentruntime.Fence, string, agentruntime.StoredToolResult) error {
 	return nil
 }
+
 func (j *graphTestJournal) MarkToolUnknown(context.Context, agentruntime.Fence, agentruntime.ToolAttempt, string) error {
 	return nil
 }

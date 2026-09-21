@@ -54,6 +54,7 @@ func (s *nativeUsageStoreFake) ObserveDelta(_ context.Context, _ nativecontract.
 func nativeUsageTestObservationIdentity(o nativecontract.UsageObservation) string {
 	return fmt.Sprintf("%q:%q:%d", o.AttemptID, o.ObservationID, o.Revision)
 }
+
 func (s *nativeUsageStoreFake) ConfirmSettlement(_ context.Context, _ nativecontract.Fence, intent string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -61,6 +62,7 @@ func (s *nativeUsageStoreFake) ConfirmSettlement(_ context.Context, _ nativecont
 	delete(s.claimed, intent)
 	return nil
 }
+
 func (s *nativeUsageStoreFake) ClaimSettlement(_ context.Context, _ nativecontract.Fence, intent string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -70,6 +72,7 @@ func (s *nativeUsageStoreFake) ClaimSettlement(_ context.Context, _ nativecontra
 	s.claimed[intent] = true
 	return true, nil
 }
+
 func (s *nativeUsageStoreFake) ReleaseSettlement(_ context.Context, _ nativecontract.Fence, intent string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -106,6 +109,7 @@ func (b *nativeUsageBudgetFake) Reserve(_ context.Context, root nativecontract.R
 	b.reserves++
 	return nil
 }
+
 func (b *nativeUsageBudgetFake) Settle(_ context.Context, root nativecontract.RunIdentity, key string, delta NativeUsageDelta) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -125,6 +129,7 @@ func (b *nativeUsageBudgetFake) Settle(_ context.Context, root nativecontract.Ru
 	b.settledDeltas = append(b.settledDeltas, delta)
 	return nil
 }
+
 func (b *nativeUsageBudgetFake) MarkUnknown(_ context.Context, root nativecontract.RunIdentity, key string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -147,6 +152,7 @@ func (b *nativeUsageBudgetFake) MarkUnknown(_ context.Context, root nativecontra
 func nativeUsageServiceObservation() nativecontract.UsageObservation {
 	return nativecontract.UsageObservation{Version: 1, Run: nativecontract.RunIdentity{TenantID: 1, RunID: "child", BudgetRootRunID: "root"}, AttemptID: "a", ObservationID: "o", ProviderRequestID: "p", Revision: 1, PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10, AccountingStatus: "known", Funding: nativecontract.FundingBinding{BudgetRef: "budget", BudgetRootRunID: "root", Funding: "platform", Service: "model", PriceVersion: "v1"}, OccurredAt: time.Now().UTC()}
 }
+
 func nativeUsageServiceFence() nativecontract.Fence {
 	return nativecontract.Fence{Run: nativeUsageServiceObservation().Run, Owner: "worker", Epoch: 1}
 }

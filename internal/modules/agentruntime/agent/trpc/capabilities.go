@@ -116,6 +116,7 @@ func hasDuplicate(values []string) bool {
 	}
 	return false
 }
+
 func equalStrings(a, b []string) bool {
 	aa, bb := append([]string(nil), a...), append([]string(nil), b...)
 	sort.Strings(aa)
@@ -130,6 +131,7 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
 func equalStringMap(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false

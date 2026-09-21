@@ -24,6 +24,7 @@ func TestMemoryConsistencyPendingMustNotReplaceActive(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, types.MemoryStatusActive, current.Status, "unconfirmed inference must not retire a confirmed fact")
 }
+
 func TestMemoryConsistencyUpdateTargetMustWinOverChangedTopic(t *testing.T) {
 	s, _, tr := newMemoryHarness(t)
 	ctx := enabledCtx(t, tr, 1, "alice")
@@ -36,6 +37,7 @@ func TestMemoryConsistencyUpdateTargetMustWinOverChangedTopic(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total, "indexed update must not leave contradictory old memory active")
 }
+
 func TestMemoryConsistencyCappedSessionsMustBeFollowedUp(t *testing.T) {
 	s, tr, msg, model, q := newExtractionHarness(t)
 	ctx := enabledCtx(t, tr, 1, "alice")
@@ -49,6 +51,7 @@ func TestMemoryConsistencyCappedSessionsMustBeFollowedUp(t *testing.T) {
 	drainExtractions(t, s, q)
 	require.True(t, strings.Contains(model.seenTranscripts(), "unique-session-marker-3"), "fourth claimed session must survive the three-segment cap")
 }
+
 func TestMemoryConsistencyRetryMustKeepAllClaimedSessions(t *testing.T) {
 	s, tr, msg, model, q := newExtractionHarness(t)
 	ctx := enabledCtx(t, tr, 1, "alice")

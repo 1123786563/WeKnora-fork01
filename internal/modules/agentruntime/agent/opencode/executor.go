@@ -41,7 +41,8 @@ var _ craft.Executor = (*Executor)(nil)
 // NewExecutor assembles the Craft executor. emit may be nil; event
 // writing failures never change an execution outcome.
 func NewExecutor(client *Client, store craft.Store,
-	emit func(context.Context, craft.Task, string, json.RawMessage) error) craft.Executor {
+	emit func(context.Context, craft.Task, string, json.RawMessage) error,
+) craft.Executor {
 	return &Executor{client: client, store: store, emit: emit}
 }
 
@@ -341,8 +342,10 @@ func (e *Executor) Abort(ctx context.Context, task craft.Task) error {
 		return nil
 	}
 	if snap.obs.Aborted {
-		result := craft.Result{TaskID: task.ID, Status: "canceled",
-			Summary: "assistant execution aborted (MessageAbortedError)"}
+		result := craft.Result{
+			TaskID: task.ID, Status: "canceled",
+			Summary: "assistant execution aborted (MessageAbortedError)",
+		}
 		if err := e.store.SaveResult(ctx, task.Fence, result); err != nil {
 			return err
 		}

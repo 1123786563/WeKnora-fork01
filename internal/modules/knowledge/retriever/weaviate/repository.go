@@ -60,14 +60,14 @@ func (w *weaviateRepository) getCollectionName(dimension int) string {
 func (w *weaviateRepository) ensureCollection(ctx context.Context, dimension int) error {
 	collectionName := w.getCollectionName(dimension)
 
-	//Check cache first
+	// Check cache first
 	if _, ok := w.initializedCollections.Load(dimension); ok {
 		return nil
 	}
 
 	log := logger.GetLogger(ctx)
 
-	//Check if collection exists
+	// Check if collection exists
 	exists, err := w.client.Schema().ClassExistenceChecker().WithClassName(collectionName).Do(ctx)
 	if err != nil {
 		log.Errorf("[Weaviate] Failed to check collection existence: %v", err)
@@ -77,7 +77,7 @@ func (w *weaviateRepository) ensureCollection(ctx context.Context, dimension int
 	if !exists {
 		log.Infof("[Weaviate] Creating collection %s with dimension %d", collectionName, dimension)
 
-		//定义class结构
+		// 定义class结构
 		classObj := models.Class{
 			Class:       collectionName,
 			Description: fmt.Sprintf("WeKnora embeddings collection with dimension %d", dimension),
@@ -148,7 +148,7 @@ func (w *weaviateRepository) ensureCollection(ctx context.Context, dimension int
 				"desiredCount": w.desiredShardCount,
 			}
 		}
-		//创建collection
+		// 创建collection
 		if err = w.client.Schema().ClassCreator().WithClass(&classObj).Do(ctx); err != nil {
 			log.Errorf("[Weaviate] Failed to create collection: %v", err)
 			return fmt.Errorf("failed to create collection: %w", err)
@@ -211,7 +211,6 @@ func (w *weaviateRepository) Save(ctx context.Context,
 		WithProperties(dataSchema).
 		WithVector(embeddingDB.Embedding).
 		Do(ctx)
-
 	if err != nil {
 		log.Errorf("[Weaviate] Failed to save index: %v", err)
 		return err
@@ -296,7 +295,7 @@ func (w *weaviateRepository) DeleteByChunkIDList(ctx context.Context, chunkIDLis
 	collectionName := w.getCollectionName(dimension)
 	log.Infof("[Weaviate] Deleting indices by chunk IDs from %s, count: %d", collectionName, len(chunkIDList))
 
-	//define filter
+	// define filter
 	filter := w.client.Batch().ObjectsBatchDeleter().
 		WithClassName(collectionName).
 		WithWhere(filters.Where().
@@ -327,7 +326,7 @@ func (w *weaviateRepository) DeleteByKnowledgeIDList(ctx context.Context,
 	collectionName := w.getCollectionName(dimension)
 	log.Infof("[Weaviate] Deleting indices by knowledge IDs from %s, count: %d", collectionName, len(knowledgeIDList))
 
-	//define filter
+	// define filter
 	filter := w.client.Batch().ObjectsBatchDeleter().
 		WithClassName(collectionName).
 		WithWhere(filters.Where().
@@ -357,7 +356,7 @@ func (w *weaviateRepository) DeleteBySourceIDList(ctx context.Context,
 	collectionName := w.getCollectionName(dimension)
 	log.Infof("[Weaviate] Deleting indices by source IDs from %s, count: %d", collectionName, len(sourceIDList))
 
-	//define filter
+	// define filter
 	filter := w.client.Batch().ObjectsBatchDeleter().
 		WithClassName(collectionName).
 		WithWhere(filters.Where().
@@ -471,7 +470,6 @@ func (w *weaviateRepository) BatchUpdateChunkTagID(ctx context.Context, chunkTag
 	}
 	log.Infof("[Weaviate] Batch update chunk tag ID completed")
 	return nil
-
 }
 
 func (w *weaviateRepository) getBaseFilter(params types.RetrieveParams) *filters.WhereBuilder {
@@ -572,7 +570,6 @@ func (w *weaviateRepository) VectorRetrieve(ctx context.Context,
 			WithVector(params.Embedding).
 			WithCertainty(scoreThreshold)).
 		Do(ctx)
-
 	if err != nil {
 		log.Errorf("[Weaviate] Vector search failed: %v", err)
 		return nil, fmt.Errorf("failed to search: %w", err)
@@ -628,7 +625,7 @@ func (w *weaviateRepository) KeywordsRetrieve(ctx context.Context,
 
 		filter := w.getBaseFilter(params)
 
-		//bm25 search
+		// bm25 search
 		bm25 := w.client.GraphQL().Bm25ArgBuilder().
 			WithQuery(params.Query).
 			WithProperties([]string{fieldContent}...)
@@ -641,7 +638,6 @@ func (w *weaviateRepository) KeywordsRetrieve(ctx context.Context,
 			WithFields(fields...).
 			WithBM25(bm25).
 			Do(ctx)
-
 		if err != nil {
 			log.Errorf("[Weaviate] keywords search failed: %v", err)
 			return nil, fmt.Errorf("failed to search: %w", err)

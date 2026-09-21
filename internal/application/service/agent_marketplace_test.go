@@ -22,9 +22,11 @@ type marketplaceVersionsFake struct{ snapshot types.AgentVersionSnapshot }
 func (f marketplaceVersionsFake) FreezeAgentVersion(context.Context, uint64, string, string) (types.AgentVersionView, error) {
 	return f.snapshot.AgentVersionView, nil
 }
+
 func (f marketplaceVersionsFake) GetAgentVersion(context.Context, uint64, string) (types.AgentVersionSnapshot, error) {
 	return f.snapshot, nil
 }
+
 func (f marketplaceVersionsFake) ListAgentVersions(context.Context, uint64, string) ([]types.AgentVersionView, error) {
 	return []types.AgentVersionView{f.snapshot.AgentVersionView}, nil
 }
@@ -53,9 +55,11 @@ func (f *marketplaceRepoFake) CreateSubmission(_ context.Context, listing *types
 	f.submission = &copy
 	return &copy, nil
 }
+
 func (f *marketplaceRepoFake) ListReviewQueue(context.Context, uint64) ([]types.AgentReleaseSubmissionEntity, error) {
 	return f.queue, nil
 }
+
 func (f *marketplaceRepoFake) GetSubmission(_ context.Context, _ uint64, id string) (*types.AgentReleaseSubmissionEntity, error) {
 	if f.submission != nil && f.submission.ID == id {
 		return f.submission, nil
@@ -69,6 +73,7 @@ func (f *marketplaceRepoFake) GetSubmission(_ context.Context, _ uint64, id stri
 	}
 	return nil, nil
 }
+
 func (f *marketplaceRepoFake) ReviewAndPublishTx(_ context.Context, _ uint64, _, _, digest string, decision types.AgentReleaseReviewDecision) (*types.AgentReleaseReviewEntity, *types.AgentReleaseEntity, error) {
 	if f.reviewErr != nil {
 		return nil, nil, f.reviewErr
@@ -82,18 +87,22 @@ func (f *marketplaceRepoFake) ReviewAndPublishTx(_ context.Context, _ uint64, _,
 	}
 	return f.review, f.release, nil
 }
+
 func (f *marketplaceRepoFake) ListTenantCatalog(context.Context, uint64) ([]types.AgentMarketplaceListingEntity, error) {
 	if f.listing.CurrentReleaseID == nil || f.listing.State != "listed" {
 		return nil, nil
 	}
 	return []types.AgentMarketplaceListingEntity{f.listing}, nil
 }
+
 func (f *marketplaceRepoFake) GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error) {
 	return f.release, nil
 }
+
 func (f *marketplaceRepoFake) GetReleaseBySubmission(context.Context, uint64, string) (*types.AgentReleaseEntity, error) {
 	return f.release, nil
 }
+
 func (f *marketplaceRepoFake) GetListing(_ context.Context, _ uint64, id string) (*types.AgentMarketplaceListingEntity, error) {
 	if f.listing.ID != id && !(f.listing.ID == "" && id == "listing-1") {
 		return nil, nil
@@ -109,12 +118,14 @@ func (f *marketplaceRepoFake) GetListing(_ context.Context, _ uint64, id string)
 func marketplaceTestSnapshot() types.AgentVersionSnapshot {
 	return types.AgentVersionSnapshot{AgentVersionView: types.AgentVersionView{ID: "version-1", AgentID: "agent-1", VersionNumber: 1, SourceSHA256: "source-digest"}, Agent: &types.CustomAgent{ID: "agent-1", Config: types.CustomAgentConfig{SystemPrompt: "help", SelectedSkills: []string{"skill-a"}, Subagents: []string{"agent-a"}}}}
 }
+
 func marketplaceTestLock() types.DependencyLock {
 	return types.DependencyLock{Dependencies: []types.AgentReleaseDependency{
 		{Type: "skill", ID: "skill-a", Version: "1.0.0", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", LicenseID: "MIT"},
 		{Type: "subagent", ID: "agent-a", Version: "2.0.0", Digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", LicenseID: "Apache-2.0"},
 	}}
 }
+
 func marketplaceMetadata() types.ReleaseMetadata {
 	return types.ReleaseMetadata{SemanticVersion: "1.0.0", DisplayName: "Helper", Summary: "help", SupportedLanguages: []string{"en"}, UseCases: []string{"support"}, MinimumWeKnoraCapability: "1", LicenseID: "MIT"}
 }
@@ -197,15 +208,18 @@ type concurrentApprovalRepo struct {
 func (f *concurrentApprovalRepo) CreateSubmission(context.Context, *types.AgentMarketplaceListingEntity, *types.AgentReleaseSubmissionEntity) (*types.AgentReleaseSubmissionEntity, error) {
 	panic("unused")
 }
+
 func (f *concurrentApprovalRepo) ListReviewQueue(context.Context, uint64) ([]types.AgentReleaseSubmissionEntity, error) {
 	return nil, nil
 }
+
 func (f *concurrentApprovalRepo) GetSubmission(context.Context, uint64, string) (*types.AgentReleaseSubmissionEntity, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	row := f.submission
 	return &row, nil
 }
+
 func (f *concurrentApprovalRepo) ListTenantCatalog(context.Context, uint64) ([]types.AgentMarketplaceListingEntity, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -214,16 +228,19 @@ func (f *concurrentApprovalRepo) ListTenantCatalog(context.Context, uint64) ([]t
 	}
 	return []types.AgentMarketplaceListingEntity{f.listing}, nil
 }
+
 func (f *concurrentApprovalRepo) GetRelease(context.Context, uint64, string) (*types.AgentReleaseEntity, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.release, nil
 }
+
 func (f *concurrentApprovalRepo) GetReleaseBySubmission(context.Context, uint64, string) (*types.AgentReleaseEntity, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.release, nil
 }
+
 func (f *concurrentApprovalRepo) GetListing(_ context.Context, _ uint64, id string) (*types.AgentMarketplaceListingEntity, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -233,6 +250,7 @@ func (f *concurrentApprovalRepo) GetListing(_ context.Context, _ uint64, id stri
 	row := f.listing
 	return &row, nil
 }
+
 func (f *concurrentApprovalRepo) ReviewAndPublishTx(_ context.Context, _ uint64, _, _, digest string, decision types.AgentReleaseReviewDecision) (*types.AgentReleaseReviewEntity, *types.AgentReleaseEntity, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -338,8 +338,10 @@ func TestCreateRetrieveEngineFromPayload_Bound(t *testing.T) {
 }
 
 func TestCreateRetrieveEngineFromPayload_TamperedCrossTenant(t *testing.T) {
-	esEngine := &fakeEngine{engineType: types.ElasticsearchRetrieverEngineType,
-		support: []types.RetrieverType{types.VectorRetrieverType}}
+	esEngine := &fakeEngine{
+		engineType: types.ElasticsearchRetrieverEngineType,
+		support:    []types.RetrieverType{types.VectorRetrieverType},
+	}
 	registry := registryWithStores(t,
 		map[string]*fakeEngine{"store-A": esEngine}, nil)
 	// Store is owned by tenant 99, but the (possibly tampered) payload

@@ -334,7 +334,7 @@ func TestSubagentDelegateToolEmptyIntersectionRunsToolless(t *testing.T) {
 	registry := tools.NewToolRegistry()
 	registry.RegisterTool(&fakeRegistryTool{name: tools.ToolWebSearch})
 
-	var toolCount = -1
+	toolCount := -1
 	tool := newDelegateToolForTest(t, SubagentDelegateToolConfig{
 		AllowedTools: []string{tools.ToolWebSearch}, // role wants none of these
 		Registry:     registry,

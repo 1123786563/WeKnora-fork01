@@ -86,12 +86,15 @@ func (s *fakeWorkspaceStore) snapshot() *craft.Workspace {
 func (s *fakeWorkspaceStore) PrepareTask(context.Context, craft.Task) (craft.Task, error) {
 	panic("unused by Resolve")
 }
+
 func (s *fakeWorkspaceStore) GetTask(context.Context, craft.Scope, string) (craft.Task, error) {
 	panic("unused by Resolve")
 }
+
 func (s *fakeWorkspaceStore) SaveResult(context.Context, agentruntime.Fence, craft.Result) error {
 	panic("unused by Resolve")
 }
+
 func (s *fakeWorkspaceStore) GetResult(context.Context, craft.Scope, string) (craft.Result, error) {
 	panic("unused by Resolve")
 }

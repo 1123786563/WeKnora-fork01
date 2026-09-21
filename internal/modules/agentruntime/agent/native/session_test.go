@@ -25,6 +25,7 @@ type sessionScopeResolver struct {
 func (r *sessionScopeResolver) Resolve(context.Context) (nativecontract.Scope, error) {
 	return r.scope, nil
 }
+
 func (r *sessionScopeResolver) Recheck(_ context.Context, got nativecontract.Scope, _ []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
 	if r.revoked {
 		return nativecontract.Scope{}, fmt.Errorf("scope revoked")

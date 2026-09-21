@@ -36,8 +36,10 @@ import (
 // Manifest may declare: the product's two locale surfaces (LocaleText's zh
 // and en keys, the persona renderer's zh* switch). Anything else fails the
 // submission instead of shipping an unverifiable declaration.
-var supportedReleaseLanguages = map[string]bool{"zh": true, "en": true}
-var releaseSemanticVersion = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+var (
+	supportedReleaseLanguages = map[string]bool{"zh": true, "en": true}
+	releaseSemanticVersion    = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+)
 
 // agentReleaseEnvelope is the exact document set the bundle digest covers:
 // portable payload + Manifest + Dependency Lock (the Manifest's license_id

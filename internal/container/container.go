@@ -33,26 +33,9 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/experts"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/subagents"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	dorisRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/doris"
-	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v7"
-	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v8"
-	milvusRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/milvus"
-	neo4jRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/neo4j"
-	openSearchRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/opensearch"
-	postgresRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/postgres"
-	qdrantRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/qdrant"
-	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/sqlite"
-	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/tencentvectordb"
-	weaviateRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/application/service"
-	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
@@ -61,8 +44,11 @@ import (
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/experts"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/subagents"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
@@ -88,6 +74,7 @@ import (
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/commercial/usage"
+	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/modules/datasource"
 	confluenceConnector "github.com/Tencent/WeKnora/internal/modules/datasource/connector/confluence"
 	dingtalkConnector "github.com/Tencent/WeKnora/internal/modules/datasource/connector/dingtalk"
@@ -102,6 +89,19 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/execution"
 	"github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
+	dorisRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/doris"
+	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v7"
+	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v8"
+	milvusRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/milvus"
+	neo4jRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/neo4j"
+	openSearchRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/opensearch"
+	postgresRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/postgres"
+	qdrantRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/qdrant"
+	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/sqlite"
+	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/tencentvectordb"
+	weaviateRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/modules/policy/storageallowlist"
 	pushnotification "github.com/Tencent/WeKnora/internal/notification"
 	"github.com/Tencent/WeKnora/internal/router"
@@ -960,7 +960,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repoappconn.NewOCStore))
 	must(container.Provide(repoappconn.NewInstallationStore))
 	must(container.Provide(func(src appconnectorsvc.ConnectionCredentialSource,
-		installs *repoappconn.InstallationStore, oc *repoappconn.OCStore) appconnectorsvc.A02Guard {
+		installs *repoappconn.InstallationStore, oc *repoappconn.OCStore,
+	) appconnectorsvc.A02Guard {
 		return appconnectorsvc.NewOCSubjectGuard(src, appconnectorsvc.NewInstallationStateSource(installs), nil, oc)
 	}))
 	// T13 open-connector product wiring (open_connector.go). The

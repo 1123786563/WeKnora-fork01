@@ -57,17 +57,21 @@ type minimalStore struct{}
 func (*minimalStore) Admit(context.Context, agentruntime.Admission) (agentruntime.Run, error) {
 	return agentruntime.Run{}, agentruntime.ErrNotFound
 }
+
 func (*minimalStore) Get(context.Context, agentruntime.RunKey) (agentruntime.Run, error) {
 	return agentruntime.Run{}, agentruntime.ErrNotFound
 }
+
 func (*minimalStore) Claim(context.Context, agentruntime.RunKey, string, time.Duration) (agentruntime.Fence, error) {
 	return agentruntime.Fence{}, agentruntime.ErrNotFound
 }
 func (*minimalStore) Renew(context.Context, agentruntime.Fence, time.Duration) error { return nil }
 func (*minimalStore) Scan(context.Context, int) ([]agentruntime.RunKey, error)       { return nil, nil }
+
 func (*minimalStore) SaveCheckpoint(context.Context, agentruntime.Fence, agentruntime.CheckpointRecord) error {
 	return nil
 }
+
 func (*minimalStore) LoadCheckpoint(context.Context, agentruntime.RunKey) (agentruntime.CheckpointRecord, error) {
 	return agentruntime.CheckpointRecord{}, agentruntime.ErrNotFound
 }

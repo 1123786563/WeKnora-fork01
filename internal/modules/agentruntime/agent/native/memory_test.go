@@ -28,6 +28,7 @@ var memoryFacadeDBID uint64
 func (r memoryScopeResolver) Resolve(context.Context) (nativecontract.Scope, error) {
 	return r.scope, nil
 }
+
 func (r memoryScopeResolver) Recheck(_ context.Context, scope nativecontract.Scope, _ []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
 	if r.denied {
 		return nativecontract.Scope{}, errors.New("memory access revoked")

@@ -219,8 +219,10 @@ func TestCraftDelegateToolRendersBoundedSummary(t *testing.T) {
 		t.Fatalf("output = %q", result.Output[:200])
 	}
 
-	ok := renderCraftDelegateResult(craft.Result{Status: "succeeded", Summary: "ok",
-		Checks: []craft.Check{{Name: "build", Status: "passed"}}})
+	ok := renderCraftDelegateResult(craft.Result{
+		Status: "succeeded", Summary: "ok",
+		Checks: []craft.Check{{Name: "build", Status: "passed"}},
+	})
 	if !ok.Success || !strings.Contains(ok.Output, "build: passed") {
 		t.Fatalf("result = %#v", ok)
 	}

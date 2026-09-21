@@ -51,6 +51,7 @@ func (c RemoteDispatchConfig) validate() error {
 func DefaultWorkerConfig() WorkerConfig {
 	return WorkerConfig{Lease: time.Minute, Heartbeat: 15 * time.Second, ScanInterval: 5 * time.Second, MaxWorkers: 4, Driver: "platform"}
 }
+
 func (c WorkerConfig) Validate() error {
 	if c.Lease <= 0 || c.Heartbeat <= 0 || c.ScanInterval <= 0 || c.MaxWorkers <= 0 {
 		return errors.New("agent worker durations and max_workers must be positive")

@@ -6,9 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
@@ -63,6 +64,7 @@ type GormWorkspaceLeaseStore struct{ db *gorm.DB }
 func NewGormWorkspaceLeaseStore(db *gorm.DB) *GormWorkspaceLeaseStore {
 	return &GormWorkspaceLeaseStore{db: db}
 }
+
 func (s *GormWorkspaceLeaseStore) AcquireWorkspaceLease(ctx context.Context, tenantID uint64, workspaceRef, runID, owner string, ttl time.Duration) (WorkspaceLease, error) {
 	if s == nil || s.db == nil || tenantID == 0 || strings.TrimSpace(workspaceRef) == "" || strings.TrimSpace(runID) == "" || strings.TrimSpace(owner) == "" || ttl <= 0 {
 		return WorkspaceLease{}, ErrWorkspaceLeaseLost
@@ -92,6 +94,7 @@ func (s *GormWorkspaceLeaseStore) AcquireWorkspaceLease(ctx context.Context, ten
 	})
 	return lease, err
 }
+
 func (s *GormWorkspaceLeaseStore) RenewWorkspaceLease(ctx context.Context, lease WorkspaceLease, owner string, ttl time.Duration) error {
 	if s == nil || s.db == nil || ttl <= 0 {
 		return ErrWorkspaceLeaseLost
@@ -105,6 +108,7 @@ func (s *GormWorkspaceLeaseStore) RenewWorkspaceLease(ctx context.Context, lease
 	}
 	return nil
 }
+
 func (s *GormWorkspaceLeaseStore) ReleaseWorkspaceLease(ctx context.Context, lease WorkspaceLease, owner string) error {
 	if s == nil || s.db == nil {
 		return ErrWorkspaceLeaseLost
@@ -158,6 +162,7 @@ type DecisionCompensator interface {
 }
 
 func NewGormInteractionStore(db *gorm.DB) *GormInteractionStore { return &GormInteractionStore{db: db} }
+
 func (s *GormInteractionStore) DB() *gorm.DB {
 	if s == nil {
 		return nil
@@ -360,6 +365,7 @@ type GormSteerPort struct {
 func NewGormSteerPort(db *gorm.DB, streams interfaces.StreamManager) *GormSteerPort {
 	return &GormSteerPort{db: db, streams: streams}
 }
+
 func (p *GormSteerPort) Steer(ctx context.Context, tenantID uint64, ownerID, runID, text string, expectedRevision int64) error {
 	if p == nil || p.db == nil || p.streams == nil {
 		return ErrCapabilityUnavailable

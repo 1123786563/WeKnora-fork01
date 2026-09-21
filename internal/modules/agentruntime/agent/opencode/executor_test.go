@@ -306,12 +306,15 @@ func (r *emitRecorder) payloadsOf(kind string) []string {
 }
 
 func craftWorkspace() craft.Workspace {
-	return craft.Workspace{ID: "ws_1", Scope: craft.Scope{TenantID: 7, UserID: "user_1", SessionID: "ses_main"},
-		SandboxID: "sbx_1", Generation: "g1", OpenCodeSessionID: "ses_oc", RuntimeDigest: "sha256:locked", Revision: 1}
+	return craft.Workspace{
+		ID: "ws_1", Scope: craft.Scope{TenantID: 7, UserID: "user_1", SessionID: "ses_main"},
+		SandboxID: "sbx_1", Generation: "g1", OpenCodeSessionID: "ses_oc", RuntimeDigest: "sha256:locked", Revision: 1,
+	}
 }
 
 func delegationTask(deadline time.Time) craft.Task {
-	return craft.Task{ToolCallID: "call_r04", Prompt: "build the slide deck", RequestHash: "hash_1",
+	return craft.Task{
+		ToolCallID: "call_r04", Prompt: "build the slide deck", RequestHash: "hash_1",
 		Scope:       craft.Scope{TenantID: 7, UserID: "user_1", SessionID: "ses_main"},
 		Fence:       agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: 7, RunID: "run_1"}, Owner: "worker_1", Epoch: 2},
 		WorkspaceID: "ws_1",
@@ -371,9 +374,13 @@ func awaitOutcome(t *testing.T, done chan execOutcome) execOutcome {
 
 // Message snapshot builders using the real 1.18.4 projection shapes.
 func userEntry(id, text string) map[string]any {
-	return map[string]any{"info": map[string]any{"id": id, "sessionID": "ses_oc", "role": "user",
-		"time": map[string]any{"created": 1}},
-		"parts": []any{map[string]any{"type": "text", "id": "prt_u_" + id, "sessionID": "ses_oc", "messageID": id, "text": text}}}
+	return map[string]any{
+		"info": map[string]any{
+			"id": id, "sessionID": "ses_oc", "role": "user",
+			"time": map[string]any{"created": 1},
+		},
+		"parts": []any{map[string]any{"type": "text", "id": "prt_u_" + id, "sessionID": "ses_oc", "messageID": id, "text": text}},
+	}
 }
 
 func textPart(id, messageID, text string) map[string]any {
@@ -381,13 +388,17 @@ func textPart(id, messageID, text string) map[string]any {
 }
 
 func toolPart(id, messageID, tool, status string) map[string]any {
-	return map[string]any{"type": "tool", "id": id, "sessionID": "ses_oc", "messageID": messageID,
-		"tool": tool, "callID": "call_" + id, "state": map[string]any{"status": status}}
+	return map[string]any{
+		"type": "tool", "id": id, "sessionID": "ses_oc", "messageID": messageID,
+		"tool": tool, "callID": "call_" + id, "state": map[string]any{"status": status},
+	}
 }
 
 func assistantEntry(id, parentID string, completed int64, finish, errorName string, parts ...map[string]any) map[string]any {
-	info := map[string]any{"id": id, "parentID": parentID, "sessionID": "ses_oc", "role": "assistant",
-		"finish": finish, "time": map[string]any{"created": 2}}
+	info := map[string]any{
+		"id": id, "parentID": parentID, "sessionID": "ses_oc", "role": "assistant",
+		"finish": finish, "time": map[string]any{"created": 2},
+	}
 	if completed > 0 {
 		info["time"].(map[string]any)["completed"] = completed
 	}
@@ -435,13 +446,17 @@ func TestExecuteCommitsBeforeDispatchAndSubscribesBeforePrompt(t *testing.T) {
 	promptID := f.currentPromptID()
 	f.push(t, "session.status", map[string]any{"sessionID": "ses_oc", "status": map[string]any{"type": "busy"}})
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
-		"id": "msg_asst", "parentID": promptID, "role": "assistant", "time": map[string]any{"created": 2}}})
-	f.push(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "text", "id": "prt_a", "messageID": "msg_asst", "text": "MOCK-REPLY"}})
+		"id": "msg_asst", "parentID": promptID, "role": "assistant", "time": map[string]any{"created": 2},
+	}})
+	f.push(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part":      map[string]any{"type": "text", "id": "prt_a", "messageID": "msg_asst", "text": "MOCK-REPLY"},
+	})
 	f.setStatus("idle")
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
 		"id": "msg_asst", "parentID": promptID, "role": "assistant", "finish": "stop",
-		"time": map[string]any{"created": 2, "completed": 3}}})
+		"time": map[string]any{"created": 2, "completed": 3},
+	}})
 	f.push(t, "session.status", map[string]any{"sessionID": "ses_oc", "status": map[string]any{"type": "idle"}})
 	f.push(t, "session.idle", map[string]any{"sessionID": "ses_oc"})
 	outcome := awaitOutcome(t, done)
@@ -512,7 +527,8 @@ func TestExecuteStreamBreakWithRemoteStillRunningIsUnknown(t *testing.T) {
 	}
 	f.push(t, "session.status", map[string]any{"sessionID": "ses_oc", "status": map[string]any{"type": "busy"}})
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
-		"id": "msg_asst", "parentID": f.currentPromptID(), "role": "assistant", "time": map[string]any{"created": 2}}})
+		"id": "msg_asst", "parentID": f.currentPromptID(), "role": "assistant", "time": map[string]any{"created": 2},
+	}})
 	f.cutStream()
 	outcome := awaitOutcome(t, done)
 	if outcome.result.Status != "unknown" || !errors.Is(outcome.err, craft.ErrUnknown) {
@@ -548,7 +564,8 @@ func TestExecutePromptAcceptedButResponseLostStillVerifies(t *testing.T) {
 	f.setStatus("idle")
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
 		"id": "msg_asst", "parentID": promptID, "role": "assistant", "finish": "stop",
-		"time": map[string]any{"created": 2, "completed": 3}}})
+		"time": map[string]any{"created": 2, "completed": 3},
+	}})
 	f.push(t, "session.idle", map[string]any{"sessionID": "ses_oc"})
 	outcome := awaitOutcome(t, done)
 	if outcome.err != nil || outcome.result.Status != "succeeded" {
@@ -621,7 +638,8 @@ func TestExecuteCorruptPartsSnapshotIsUnknown(t *testing.T) {
 	f.setStatus("idle")
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
 		"id": "msg_asst", "parentID": f.currentPromptID(), "role": "assistant", "finish": "stop",
-		"time": map[string]any{"completed": 3}}})
+		"time": map[string]any{"completed": 3},
+	}})
 	f.push(t, "session.idle", map[string]any{"sessionID": "ses_oc"})
 	outcome := awaitOutcome(t, done)
 	if outcome.result.Status != "unknown" || !errors.Is(outcome.err, craft.ErrUnknown) {
@@ -651,9 +669,13 @@ func TestExecuteToolStillRunningStaysUnknown(t *testing.T) {
 	if !waitFor(t, func() bool { return f.promptCount() == 1 }) {
 		t.Fatal("the prompt was never submitted")
 	}
-	f.push(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "tool", "id": "prt_tool", "messageID": "msg_asst", "tool": "bash",
-			"state": map[string]any{"status": "running"}}})
+	f.push(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part": map[string]any{
+			"type": "tool", "id": "prt_tool", "messageID": "msg_asst", "tool": "bash",
+			"state": map[string]any{"status": "running"},
+		},
+	})
 	outcome := awaitOutcome(t, done)
 	if outcome.result.Status != "unknown" || !errors.Is(outcome.err, craft.ErrUnknown) {
 		t.Fatalf("a running tool was misreported: %#v, %v", outcome.result, outcome.err)
@@ -666,7 +688,8 @@ func TestExecuteToolStillRunningStaysUnknown(t *testing.T) {
 	}
 	observed, err := executor.Observe(context.Background(), craft.Task{
 		Scope:       craft.Scope{TenantID: 7, UserID: "user_1", SessionID: "ses_main"},
-		WorkspaceID: "ws_1", PromptMessageID: f.currentPromptID()})
+		WorkspaceID: "ws_1", PromptMessageID: f.currentPromptID(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -698,17 +721,25 @@ func TestExecuteDuplicateEventsEmitOnce(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
 			"id": "msg_asst", "parentID": promptID, "role": "assistant",
-			"time": map[string]any{"created": 2, "completed": 3}}})
-		f.push(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-			"part": map[string]any{"type": "text", "id": "prt_a", "messageID": "msg_asst", "text": "MOCK-REPLY"}})
-		f.push(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-			"part": map[string]any{"type": "tool", "id": "prt_tool", "messageID": "msg_asst", "tool": "bash",
-				"state": map[string]any{"status": "completed"}}})
+			"time": map[string]any{"created": 2, "completed": 3},
+		}})
+		f.push(t, "message.part.updated", map[string]any{
+			"sessionID": "ses_oc",
+			"part":      map[string]any{"type": "text", "id": "prt_a", "messageID": "msg_asst", "text": "MOCK-REPLY"},
+		})
+		f.push(t, "message.part.updated", map[string]any{
+			"sessionID": "ses_oc",
+			"part": map[string]any{
+				"type": "tool", "id": "prt_tool", "messageID": "msg_asst", "tool": "bash",
+				"state": map[string]any{"status": "completed"},
+			},
+		})
 	}
 	f.setStatus("idle")
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
 		"id": "msg_asst", "parentID": promptID, "role": "assistant", "finish": "stop",
-		"time": map[string]any{"created": 2, "completed": 3}}})
+		"time": map[string]any{"created": 2, "completed": 3},
+	}})
 	f.push(t, "session.idle", map[string]any{"sessionID": "ses_oc"})
 	outcome := awaitOutcome(t, done)
 	if outcome.err != nil || outcome.result.Status != "succeeded" {
@@ -751,7 +782,8 @@ func TestExecuteShuffledSnapshotStillSelectsOwnTurn(t *testing.T) {
 	f.setStatus("idle")
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
 		"id": "msg_asst", "parentID": promptID, "role": "assistant", "finish": "stop",
-		"time": map[string]any{"created": 2, "completed": 3}}})
+		"time": map[string]any{"created": 2, "completed": 3},
+	}})
 	f.push(t, "session.idle", map[string]any{"sessionID": "ses_oc"})
 	outcome := awaitOutcome(t, done)
 	if outcome.err != nil || outcome.result.Status != "succeeded" || outcome.result.Summary != "MOCK-REPLY" {
@@ -787,8 +819,10 @@ func TestExecuteAbortClassificationUsesLockedErrorName(t *testing.T) {
 				t.Fatal("the prompt was never submitted")
 			}
 			f.setStatus("idle")
-			f.push(t, "session.error", map[string]any{"sessionID": "ses_oc",
-				"error": map[string]any{"name": tc.errorName, "data": map[string]any{"message": "Aborted"}}})
+			f.push(t, "session.error", map[string]any{
+				"sessionID": "ses_oc",
+				"error":     map[string]any{"name": tc.errorName, "data": map[string]any{"message": "Aborted"}},
+			})
 			f.push(t, "session.idle", map[string]any{"sessionID": "ses_oc"})
 			outcome := awaitOutcome(t, done)
 			if outcome.err != nil || outcome.result.Status != tc.wantStatus {
@@ -823,7 +857,8 @@ func TestExecuteNeverRepostsAcrossRetries(t *testing.T) {
 	}
 	promptID := f.currentPromptID()
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
-		"id": "msg_asst", "parentID": promptID, "role": "assistant", "time": map[string]any{"created": 2}}})
+		"id": "msg_asst", "parentID": promptID, "role": "assistant", "time": map[string]any{"created": 2},
+	}})
 	f.cutStream()
 	first := awaitOutcome(t, done)
 	if first.result.Status != "unknown" || !errors.Is(first.err, craft.ErrUnknown) {
@@ -839,7 +874,8 @@ func TestExecuteNeverRepostsAcrossRetries(t *testing.T) {
 	// The buffered frames are delivered to the retry's fresh subscription.
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
 		"id": "msg_asst", "parentID": promptID, "role": "assistant", "finish": "stop",
-		"time": map[string]any{"created": 2, "completed": 3}}})
+		"time": map[string]any{"created": 2, "completed": 3},
+	}})
 	f.push(t, "session.idle", map[string]any{"sessionID": "ses_oc"})
 	second := awaitOutcome(t, done)
 	if second.err != nil || second.result.Status != "succeeded" {
@@ -1013,10 +1049,15 @@ func TestExecuteInteractionPendingIsEmittedLive(t *testing.T) {
 	}
 	promptID := f.currentPromptID()
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
-		"id": "msg_asst", "parentID": promptID, "role": "assistant", "time": map[string]any{"created": 2}}})
-	f.push(t, "message.part.updated", map[string]any{"sessionID": "ses_oc",
-		"part": map[string]any{"type": "tool", "id": "prt_q", "messageID": "msg_asst", "tool": "question",
-			"state": map[string]any{"status": "pending"}}})
+		"id": "msg_asst", "parentID": promptID, "role": "assistant", "time": map[string]any{"created": 2},
+	}})
+	f.push(t, "message.part.updated", map[string]any{
+		"sessionID": "ses_oc",
+		"part": map[string]any{
+			"type": "tool", "id": "prt_q", "messageID": "msg_asst", "tool": "question",
+			"state": map[string]any{"status": "pending"},
+		},
+	})
 	outcome := awaitOutcome(t, done)
 	if outcome.result.Status != "unknown" {
 		t.Fatalf("a pending question must keep the delegation unresolved: %#v", outcome.result)

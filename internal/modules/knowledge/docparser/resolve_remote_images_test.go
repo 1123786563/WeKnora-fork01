@@ -26,13 +26,16 @@ func (m *mockFileService) CheckConnectivity(ctx context.Context) error { return 
 func (m *mockFileService) SaveFile(ctx context.Context, file *multipart.FileHeader, tenantID uint64, knowledgeID string) (string, error) {
 	return "", nil
 }
+
 func (m *mockFileService) SaveBytes(ctx context.Context, data []byte, tenantID uint64, fileName string, temp bool) (string, error) {
 	m.saved = append(m.saved, savedEntry{Data: data, TenantID: tenantID, FileName: fileName})
 	return fmt.Sprintf("local://images/%s", fileName), nil
 }
+
 func (m *mockFileService) GetFile(ctx context.Context, filePath string) (io.ReadCloser, error) {
 	return nil, nil
 }
+
 func (m *mockFileService) GetFileURL(ctx context.Context, filePath string) (string, error) {
 	return filePath, nil
 }

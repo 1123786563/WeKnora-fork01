@@ -65,7 +65,9 @@ type journalApprovalGate struct {
 func (*journalApprovalGate) IsEnabled(context.Context, uint64, string, string) (bool, error) {
 	return true, nil
 }
+
 func (*journalApprovalGate) NeedsApproval(context.Context, uint64, string, string) bool { return true }
+
 func (g *journalApprovalGate) RequestAndWait(context.Context, approval.PendingRequest) (approval.Decision, error) {
 	return g.wait()
 }

@@ -33,9 +33,11 @@ type retryInteractionStore struct {
 func (s *retryInteractionStore) List(context.Context, uint64, string, string) ([]contract.InteractionDecision, error) {
 	return []contract.InteractionDecision{s.current}, nil
 }
+
 func (s *retryInteractionStore) Get(context.Context, uint64, string, string) (contract.InteractionDecision, error) {
 	return s.current, nil
 }
+
 func (s *retryInteractionStore) Decide(_ context.Context, _ uint64, _ string, _ string, input contract.InteractionDecision) (contract.InteractionDecision, error) {
 	if s.current.DecisionID != "" {
 		if s.current.DecisionID != input.DecisionID || s.current.Action != input.Action {
@@ -154,9 +156,11 @@ func TestGormInteractionStoreScopesOwnerAndCASesDecision(t *testing.T) {
 func (s *interactionStoreStub) List(context.Context, uint64, string, string) ([]contract.InteractionDecision, error) {
 	return []contract.InteractionDecision{s.current}, nil
 }
+
 func (s *interactionStoreStub) Get(context.Context, uint64, string, string) (contract.InteractionDecision, error) {
 	return s.current, nil
 }
+
 func (s *interactionStoreStub) Decide(_ context.Context, _ uint64, _ string, _ string, input contract.InteractionDecision) (contract.InteractionDecision, error) {
 	s.calls++
 	return input, nil
@@ -169,6 +173,7 @@ type gateChecker struct{}
 func (gateChecker) IsRequired(context.Context, uint64, string, string) (bool, error) {
 	return true, nil
 }
+
 func (gateChecker) IsEnabled(context.Context, uint64, string, string) (bool, error) { return true, nil }
 
 func TestApprovalGateSuccessDenialAndRace(t *testing.T) {
@@ -269,6 +274,7 @@ func (s *commandPortStub) Steer(context.Context, uint64, string, string, string,
 	s.called = true
 	return nil
 }
+
 func (s *commandPortStub) Cancel(context.Context, uint64, string, string, int64) error {
 	s.called = true
 	return nil
@@ -327,25 +333,33 @@ type steerAppendFailureStream struct{}
 func (steerAppendFailureStream) AppendEvent(context.Context, string, string, interfaces.StreamEvent) error {
 	return nil
 }
+
 func (steerAppendFailureStream) GetEvents(context.Context, string, string, int) ([]interfaces.StreamEvent, int, error) {
 	return nil, 0, nil
 }
+
 func (steerAppendFailureStream) AppendSteerEvents(context.Context, string, string, []interfaces.StreamEvent) error {
 	return errors.New("ambiguous append")
 }
+
 func (steerAppendFailureStream) GetSteerEvents(context.Context, string, string, int) ([]interfaces.StreamEvent, int, error) {
 	return nil, 0, nil
 }
+
 func (steerAppendFailureStream) UpdateSteerEventData(context.Context, string, string, string, map[string]interface{}) (bool, error) {
 	return false, nil
 }
+
 func (steerAppendFailureStream) DeleteSteerEvent(context.Context, string, string, string) (bool, error) {
 	return false, nil
 }
+
 func (steerAppendFailureStream) SetLiveRun(context.Context, string, string, string) error { return nil }
+
 func (steerAppendFailureStream) ClaimLiveRun(context.Context, string, string, string) error {
 	return nil
 }
+
 func (steerAppendFailureStream) GetLiveRun(context.Context, string) (string, string, error) {
 	return "", "", nil
 }

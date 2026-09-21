@@ -129,6 +129,7 @@ func (s scriptedChatResponse) GetModelID() string   { return "test" }
 func (s scriptedChatResponse) Chat(context.Context, []chat.Message, *chat.ChatOptions) (*types.ChatResponse, error) {
 	return s.response, nil
 }
+
 func (s scriptedChatResponse) ChatStream(context.Context, []chat.Message, *chat.ChatOptions) (<-chan types.StreamResponse, error) {
 	ch := make(chan types.StreamResponse)
 	close(ch)
@@ -145,6 +146,7 @@ func (c *recordingChat) Chat(_ context.Context, messages []chat.Message, opts *c
 		ID: "call-1", Function: types.FunctionCall{Name: toolName, Arguments: `{"tick":1}`},
 	}}}, nil
 }
+
 func (c *recordingChat) ChatStream(_ context.Context, _ []chat.Message, opts *chat.ChatOptions) (<-chan types.StreamResponse, error) {
 	c.options = append(c.options, opts)
 	out := make(chan types.StreamResponse, 1)

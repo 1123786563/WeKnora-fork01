@@ -31,9 +31,11 @@ func NewNativeToolBoundary(db *gorm.DB, committer nativecontract.CommitCoordinat
 	return &NativeToolJournal{db: db, committer: committer}
 }
 
-var _ nativecontract.AttemptJournal = (*NativeToolJournal)(nil)
-var _ nativecontract.ToolBoundary = (*NativeToolJournal)(nil)
-var _ nativecontract.ToolAttemptPreparer = (*NativeToolJournal)(nil)
+var (
+	_ nativecontract.AttemptJournal      = (*NativeToolJournal)(nil)
+	_ nativecontract.ToolBoundary        = (*NativeToolJournal)(nil)
+	_ nativecontract.ToolAttemptPreparer = (*NativeToolJournal)(nil)
+)
 
 type nativeToolDispatchKey struct{}
 
@@ -176,6 +178,7 @@ func nullableTime(t time.Time) any {
 	}
 	return t
 }
+
 func sameTime(stored *time.Time, supplied time.Time) bool {
 	return (stored == nil && supplied.IsZero()) || (stored != nil && stored.Equal(supplied))
 }
@@ -407,6 +410,7 @@ type journalCallableTool struct {
 }
 
 func (t *journalCallableTool) Declaration() *agenttool.Declaration { return t.delegate.Declaration() }
+
 func (t *journalCallableTool) Call(ctx context.Context, args []byte) (any, error) {
 	if string(args) != string(t.dispatch.Plan.Args) {
 		return nil, toolJournalFailure(nativecontract.ErrConflict, "tool arguments differ from durable plan", nativecontract.EffectNotDispatched)
@@ -456,6 +460,7 @@ type journalStreamableTool struct {
 }
 
 func (t *journalStreamableTool) Declaration() *agenttool.Declaration { return t.delegate.Declaration() }
+
 func (t *journalStreamableTool) StreamableCall(ctx context.Context, args []byte) (*agenttool.StreamReader, error) {
 	return nil, toolJournalFailure(nativecontract.ErrForbidden, "streamable tools require a completion-aware durable outcome adapter", nativecontract.EffectNotDispatched)
 }

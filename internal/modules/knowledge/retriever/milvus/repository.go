@@ -37,10 +37,10 @@ const (
 	fieldContentSparse    = "content_sparse"
 )
 
-var (
-	allFields = []string{fieldID, fieldContent, fieldSourceID, fieldSourceType, fieldChunkID,
-		fieldKnowledgeID, fieldKnowledgeBaseID, fieldTagID, fieldIsEnabled, fieldEmbedding}
-)
+var allFields = []string{
+	fieldID, fieldContent, fieldSourceID, fieldSourceType, fieldChunkID,
+	fieldKnowledgeID, fieldKnowledgeBaseID, fieldTagID, fieldIsEnabled, fieldEmbedding,
+}
 
 // NewMilvusRetrieveEngineRepository creates and initializes a new Milvus repository.
 // indexCfg is optional — pass nil to use env var / default values (env path).

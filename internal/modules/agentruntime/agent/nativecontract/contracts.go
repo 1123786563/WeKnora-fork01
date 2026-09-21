@@ -17,19 +17,24 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-const ContractVersion = 1
-const EventProtocol = "weknora.agent.v1"
+const (
+	ContractVersion = 1
+	EventProtocol   = "weknora.agent.v1"
+)
 
-type Principal struct{ Type, ID string }
-type ResourceGrant struct{ ResourceType, ResourceID, Action string }
-type Scope struct {
-	TenantID                         uint64
-	ActorUserID                      string
-	Principal                        Principal
-	SessionOwnerID, MemorySubjectID  string
-	PolicyRevision, MemoryGeneration int64
-	Grants                           []ResourceGrant
-}
+type (
+	Principal     struct{ Type, ID string }
+	ResourceGrant struct{ ResourceType, ResourceID, Action string }
+	Scope         struct {
+		TenantID                         uint64
+		ActorUserID                      string
+		Principal                        Principal
+		SessionOwnerID, MemorySubjectID  string
+		PolicyRevision, MemoryGeneration int64
+		Grants                           []ResourceGrant
+	}
+)
+
 type ScopeResolver interface {
 	Resolve(context.Context) (Scope, error)
 	Recheck(context.Context, Scope, []ResourceGrant) (Scope, error)
@@ -164,19 +169,21 @@ const (
 	EffectUnknown       EffectState = "unknown"
 )
 
-type ToolIdentity struct{ Kind, ServiceID, InstallationID, Name, SchemaHash, ConfigVersion string }
-type ToolPlan struct {
-	Version                                    int
-	Run                                        RunIdentity
-	CallID, ProviderToolCallID, ModelAttemptID string
-	Tool                                       ToolIdentity
-	Args                                       json.RawMessage
-	ArgsHash                                   string
-	RequiredGrants                             []ResourceGrant
-	Policy                                     RecoveryPolicy
-	IdempotencyKey                             string
-	IdempotencyExpiresAt                       time.Time
-}
+type (
+	ToolIdentity struct{ Kind, ServiceID, InstallationID, Name, SchemaHash, ConfigVersion string }
+	ToolPlan     struct {
+		Version                                    int
+		Run                                        RunIdentity
+		CallID, ProviderToolCallID, ModelAttemptID string
+		Tool                                       ToolIdentity
+		Args                                       json.RawMessage
+		ArgsHash                                   string
+		RequiredGrants                             []ResourceGrant
+		Policy                                     RecoveryPolicy
+		IdempotencyKey                             string
+		IdempotencyExpiresAt                       time.Time
+	}
+)
 
 // ToolDispatchRequest is the server-assembled, immutable input to the final
 // preflight immediately before a delegate may cause an external effect. It is

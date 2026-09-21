@@ -44,8 +44,10 @@ type MemoryService struct {
 	claimRenewInterval time.Duration
 }
 
-var _ memory.Service = (*MemoryService)(nil)
-var _ nativecontract.MemoryGovernance = (*MemoryService)(nil)
+var (
+	_ memory.Service                  = (*MemoryService)(nil)
+	_ nativecontract.MemoryGovernance = (*MemoryService)(nil)
+)
 
 func NewMemoryService(resolver nativecontract.ScopeResolver, repo *repository.NativeMemoryRepository, backend memory.Service) *MemoryService {
 	return &MemoryService{resolver: resolver, repo: repo, backend: backend, claimRenewInterval: 30 * time.Second}
@@ -69,6 +71,7 @@ func (s *MemoryService) scope(ctx context.Context) (nativecontract.Scope, error)
 	}
 	return scope, nil
 }
+
 func (s *MemoryService) authorize(ctx context.Context, scope nativecontract.Scope) (nativecontract.Scope, error) {
 	fresh, err := s.scope(ctx)
 	if err != nil {
@@ -79,10 +82,12 @@ func (s *MemoryService) authorize(ctx context.Context, scope nativecontract.Scop
 	}
 	return fresh, nil
 }
+
 func matches(scope nativecontract.Scope, key memory.UserKey) bool {
 	expected, err := nativecontract.MemoryKey(scope)
 	return err == nil && expected == key
 }
+
 func (s *MemoryService) keyScope(ctx context.Context, key memory.UserKey) (nativecontract.Scope, error) {
 	scope, err := s.scope(ctx)
 	if err != nil || !matches(scope, key) {
@@ -101,6 +106,7 @@ func (s *MemoryService) SetEnabled(ctx context.Context, scope nativecontract.Sco
 	}
 	return s.repo.SetEnabled(ctx, scope, enabled)
 }
+
 func (s *MemoryService) Delete(ctx context.Context, scope nativecontract.Scope, id string) error {
 	scope, err := s.authorize(ctx, scope)
 	if err != nil {
@@ -108,6 +114,7 @@ func (s *MemoryService) Delete(ctx context.Context, scope nativecontract.Scope, 
 	}
 	return s.repo.Delete(ctx, scope, id)
 }
+
 func (s *MemoryService) Clear(ctx context.Context, scope nativecontract.Scope) error {
 	scope, err := s.authorize(ctx, scope)
 	if err != nil {
@@ -115,6 +122,7 @@ func (s *MemoryService) Clear(ctx context.Context, scope nativecontract.Scope) e
 	}
 	return s.repo.Clear(ctx, scope)
 }
+
 func (s *MemoryService) Enqueue(ctx context.Context, job nativecontract.MemoryJob) error {
 	scope, err := s.authorize(ctx, job.Scope)
 	if err != nil {
@@ -268,6 +276,7 @@ func (s *MemoryService) ReadMemories(ctx context.Context, key memory.UserKey, li
 	}
 	return out, nil
 }
+
 func (s *MemoryService) SearchMemories(ctx context.Context, key memory.UserKey, query string, opts ...memory.SearchOption) ([]*memory.Entry, error) {
 	options := memory.ResolveSearchOptions(query, opts)
 	if options.TimeAfter != nil || options.TimeBefore != nil || options.OrderByEventTime || options.KindFallback || options.Deduplicate || options.HybridSearch || options.SimilarityThreshold != 0 || options.HybridRRFK != 0 {
@@ -289,10 +298,12 @@ func (s *MemoryService) SearchMemories(ctx context.Context, key memory.UserKey, 
 	}
 	return out, nil
 }
+
 func memoryID(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
 }
+
 func memoryMetadata(topics []string, metadata *memory.Metadata) map[string]any {
 	out := map[string]any{"topics": topics}
 	if metadata == nil {
@@ -306,6 +317,7 @@ func memoryMetadata(topics []string, metadata *memory.Metadata) map[string]any {
 	}
 	return out
 }
+
 func (s *MemoryService) AddMemory(ctx context.Context, key memory.UserKey, value string, topics []string, opts ...memory.AddOption) error {
 	scope, err := s.keyScope(ctx, key)
 	if err != nil {
@@ -329,6 +341,7 @@ func (s *MemoryService) AddMemory(ctx context.Context, key memory.UserKey, value
 	}
 	return nil
 }
+
 func (s *MemoryService) UpdateMemory(ctx context.Context, key memory.Key, value string, topics []string, opts ...memory.UpdateOption) error {
 	scope, err := s.keyScope(ctx, memory.UserKey{AppName: key.AppName, UserID: key.UserID})
 	if err != nil {
@@ -350,6 +363,7 @@ func (s *MemoryService) UpdateMemory(ctx context.Context, key memory.Key, value 
 	}
 	return nil
 }
+
 func (s *MemoryService) DeleteMemory(ctx context.Context, key memory.Key) error {
 	scope, err := s.keyScope(ctx, memory.UserKey{AppName: key.AppName, UserID: key.UserID})
 	if err != nil {
@@ -357,6 +371,7 @@ func (s *MemoryService) DeleteMemory(ctx context.Context, key memory.Key) error 
 	}
 	return s.repo.Delete(ctx, scope, key.MemoryID)
 }
+
 func (s *MemoryService) ClearMemories(ctx context.Context, key memory.UserKey) error {
 	scope, err := s.keyScope(ctx, key)
 	if err != nil {
@@ -364,6 +379,7 @@ func (s *MemoryService) ClearMemories(ctx context.Context, key memory.UserKey) e
 	}
 	return s.repo.Clear(ctx, scope)
 }
+
 func (s *MemoryService) Tools() []tool.Tool {
 	// These constructors resolve the configured MemoryService and app/user
 	// from invocation context. They therefore enter this facade's keyScope
@@ -373,6 +389,7 @@ func (s *MemoryService) Tools() []tool.Tool {
 		memorytool.NewClearTool(), memorytool.NewSearchTool(), memorytool.NewLoadTool(),
 	}
 }
+
 func (s *MemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.Session) error {
 	if sess == nil {
 		return errors.New("session is required")
@@ -395,6 +412,7 @@ func (s *MemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.
 	throughEventID := sess.Events[len(sess.Events)-1].ID
 	return s.Enqueue(ctx, nativecontract.MemoryJob{ID: memoryID(sess.AppName + "\x00" + sess.UserID + "\x00" + sess.ID + "\x00" + throughEventID), Scope: scope, SessionKey: expected, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: throughEventID})
 }
+
 func (s *MemoryService) Close() error {
 	if s.backend != nil {
 		return s.backend.Close()

@@ -181,8 +181,11 @@ func TestAppConnectorReportsQueryableStates(t *testing.T) {
 	cases := []struct {
 		state string
 	}{
-		{"authorized"}, {"queued"}, {"dispatched"},
-		{"succeeded"}, {"failed"},
+		{"authorized"},
+		{"queued"},
+		{"dispatched"},
+		{"succeeded"},
+		{"failed"},
 	}
 	for _, tc := range cases {
 		facade := &capturingFacade{prepareID: "ocact_1", statusState: tc.state}

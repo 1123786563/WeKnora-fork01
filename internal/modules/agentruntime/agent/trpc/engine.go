@@ -141,6 +141,7 @@ func NewGraphRunner(b GraphBindings) (*GraphRunner, error) {
 	}
 	return &GraphRunner{bindings: b}, nil
 }
+
 func (r *GraphRunner) Run(ctx context.Context, fence agentruntime.Fence) error {
 	if r == nil || fence.TenantID == 0 || fence.RunID == "" || fence.Owner == "" || fence.Epoch <= 0 {
 		return fmt.Errorf("invalid graph run fence")

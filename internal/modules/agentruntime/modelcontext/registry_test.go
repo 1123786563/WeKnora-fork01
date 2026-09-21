@@ -391,9 +391,10 @@ func TestModelToolResultProtectsSummarySlugBeforeSourceCompaction(t *testing.T) 
 	registry.RegisterDocument(knowledgeID)
 	registry.RegisterKnowledgeBase(kbID)
 
-	got := registry.ModelToolResult(&types.ToolResult{Success: true, Output: "<knowledge_base_id>" + kbID + "</knowledge_base_id>\n" +
-		"<link>[[summary/" + knowledgeID + "|Summary]]</link>\n" +
-		"<knowledge_id>" + knowledgeID + "</knowledge_id>",
+	got := registry.ModelToolResult(&types.ToolResult{
+		Success: true, Output: "<knowledge_base_id>" + kbID + "</knowledge_base_id>\n" +
+			"<link>[[summary/" + knowledgeID + "|Summary]]</link>\n" +
+			"<knowledge_id>" + knowledgeID + "</knowledge_id>",
 	})
 	require.Contains(t, got, "[[res://0001|Summary]]")
 	require.Contains(t, got, "<knowledge_base_id>b1</knowledge_base_id>")

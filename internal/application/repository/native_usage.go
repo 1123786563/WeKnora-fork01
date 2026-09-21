@@ -272,6 +272,7 @@ func (s *NativeUsageLedger) ClaimSettlement(ctx context.Context, fence nativecon
 	})
 	return claimed, err
 }
+
 func (s *NativeUsageLedger) ReleaseSettlement(ctx context.Context, fence nativecontract.Fence, intentID string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := nativeUsageFence(tx, fence); err != nil {
@@ -287,9 +288,11 @@ func (s *NativeUsageLedger) ReleaseSettlement(ctx context.Context, fence nativec
 		return nil
 	})
 }
+
 func nativeUsageDelta(o nativecontract.UsageObservation, before NativeUsageDelta) NativeUsageDelta {
 	return NativeUsageDelta{PromptTokens: o.PromptTokens - before.PromptTokens, CompletionTokens: o.CompletionTokens - before.CompletionTokens, TotalTokens: o.TotalTokens - before.TotalTokens, CachedTokens: o.CachedTokens - before.CachedTokens, CacheReadTokens: o.CacheReadTokens - before.CacheReadTokens, CacheCreateTokens: o.CacheCreateTokens - before.CacheCreateTokens}
 }
+
 func validateNativeUsage(f nativecontract.Fence, o nativecontract.UsageObservation) error {
 	if f.Run.TenantID == 0 || f.Run.RunID == "" || f.Owner == "" || f.Epoch < 0 || o.Version <= 0 || o.AttemptID == "" || o.ObservationID == "" || o.Revision < 0 || o.OccurredAt.IsZero() || o.Run.TenantID != f.Run.TenantID || o.Run.RunID != f.Run.RunID || o.Run.SessionID != f.Run.SessionID || o.PromptTokens < 0 || o.CompletionTokens < 0 || o.TotalTokens < 0 || o.CachedTokens < 0 || o.CacheReadTokens < 0 || o.CacheCreateTokens < 0 || o.TotalTokens != o.PromptTokens+o.CompletionTokens {
 		return nativeUsageFailure(nativecontract.ErrInvalid, "usage observation is incomplete")
@@ -301,6 +304,7 @@ func validateNativeUsage(f nativecontract.Fence, o nativecontract.UsageObservati
 	}
 	return nil
 }
+
 func nativeUsageFence(tx *gorm.DB, f nativecontract.Fence) error {
 	updated := tx.Exec(`UPDATE native_agent_runs SET updated_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND run_id=? AND lease_owner=? AND lease_epoch=? AND lease_expires_at>?`, f.Run.TenantID, f.Run.RunID, f.Owner, f.Epoch, time.Now().UTC())
 	if updated.Error != nil {
@@ -311,6 +315,7 @@ func nativeUsageFence(tx *gorm.DB, f nativecontract.Fence) error {
 	}
 	return nil
 }
+
 func nativeUsageFailure(code nativecontract.ErrorCode, message string) error {
 	return &nativecontract.Failure{Code: code, Message: message, Effect: nativecontract.EffectNotDispatched}
 }

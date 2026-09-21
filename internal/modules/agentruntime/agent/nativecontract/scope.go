@@ -47,12 +47,14 @@ func validateScopeID(tenantID uint64, _ string) error {
 	}
 	return nil
 }
+
 func validateOpaque(value, field string) error {
 	if !utf8.ValidString(value) || strings.TrimSpace(value) == "" {
 		return invalidScope(field + " is required")
 	}
 	return nil
 }
+
 func invalidScope(message string) error {
 	return &Failure{Code: ErrInvalid, Message: message, Effect: EffectNotDispatched}
 }

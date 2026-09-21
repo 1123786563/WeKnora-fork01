@@ -38,7 +38,8 @@ func TestCraftAuditRedactionPayloadVocabularyIsClosed(t *testing.T) {
 	f.setStatus("idle")
 	f.push(t, "message.updated", map[string]any{"sessionID": "ses_oc", "info": map[string]any{
 		"id": "msg_asst", "parentID": f.currentPromptID(), "role": "assistant", "finish": "stop",
-		"time": map[string]any{"created": 2, "completed": 3}}})
+		"time": map[string]any{"created": 2, "completed": 3},
+	}})
 	f.push(t, "session.idle", map[string]any{"sessionID": "ses_oc"})
 	outcome := awaitOutcome(t, done)
 	if outcome.err != nil || outcome.result.Status != "succeeded" {

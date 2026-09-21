@@ -27,6 +27,7 @@ type proxyApprovalGate struct {
 func (g *proxyApprovalGate) IsEnabled(context.Context, uint64, string, string) (bool, error) {
 	return !g.disabled, nil
 }
+
 func (*proxyApprovalGate) NeedsApproval(context.Context, uint64, string, string) bool { return true }
 
 func (g *proxyApprovalGate) RequestAndWait(

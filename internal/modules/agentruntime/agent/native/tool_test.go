@@ -21,7 +21,8 @@ func nativeFailureCode(t *testing.T, err error) nativecontract.ErrorCode {
 
 type nativeTestTool struct{ calls atomic.Int64 }
 
-func (t *nativeTestTool) Declaration() *tool.Declaration            { return &tool.Declaration{Name: "write"} }
+func (t *nativeTestTool) Declaration() *tool.Declaration { return &tool.Declaration{Name: "write"} }
+
 func (t *nativeTestTool) Call(context.Context, []byte) (any, error) { t.calls.Add(1); return "ok", nil }
 
 type nativeTestStreamTool struct{ calls atomic.Int64 }
@@ -29,6 +30,7 @@ type nativeTestStreamTool struct{ calls atomic.Int64 }
 func (t *nativeTestStreamTool) Declaration() *tool.Declaration {
 	return &tool.Declaration{Name: "stream-write"}
 }
+
 func (t *nativeTestStreamTool) StreamableCall(context.Context, []byte) (*tool.StreamReader, error) {
 	t.calls.Add(1)
 	return tool.NewStream(1).Reader, nil
@@ -43,6 +45,7 @@ type nativeTestScopeResolver struct {
 func (r *nativeTestScopeResolver) Resolve(context.Context) (nativecontract.Scope, error) {
 	return r.result, r.err
 }
+
 func (r *nativeTestScopeResolver) Recheck(context.Context, nativecontract.Scope, []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
 	r.calls.Add(1)
 	return r.result, r.err

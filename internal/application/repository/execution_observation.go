@@ -73,6 +73,7 @@ func hashPayload(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
 }
+
 func observationType(t string) string {
 	if strings.HasPrefix(t, "text.") || strings.HasPrefix(t, "thought.") || strings.HasPrefix(t, "tool.") || strings.HasPrefix(t, "run.") || strings.HasPrefix(t, "execution.") || strings.HasPrefix(t, "approval.") || strings.HasPrefix(t, "usage.") || strings.HasPrefix(t, "artifact.") || t == "error" {
 		return t
@@ -228,6 +229,7 @@ func (s *ExecutionObservationStore) IngestSourceEvent(ctx context.Context, bindi
 func toExecutionEvent(row executionObservationRow) workbench.ExecutionEvent {
 	return executionEventFor(row.RunID, row.AttemptID, row.ProductSeq, row.EventType, row.Payload, row.CreatedAt)
 }
+
 func executionEventFor(runID, attemptID string, seq int64, typ string, payload []byte, at time.Time) workbench.ExecutionEvent {
 	return workbench.ExecutionEvent{SchemaVersion: 1, RunID: runID, AttemptID: attemptID, Seq: seq, Type: typ, OccurredAt: at.UTC().Format(time.RFC3339Nano), Payload: append([]byte(nil), payload...)}
 }

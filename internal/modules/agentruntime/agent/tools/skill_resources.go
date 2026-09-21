@@ -1,9 +1,10 @@
 package tools
 
 import (
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	"sort"
 	"strings"
+
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 )
 
 // skillTreeSkipDirs are install/cache trees that walk the skill root but are

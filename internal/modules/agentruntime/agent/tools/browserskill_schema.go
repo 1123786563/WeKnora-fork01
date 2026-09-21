@@ -149,7 +149,7 @@ const browserToolParameters = `{
       "type": "string",
       "minLength": 1,
       "description": "Required for press: a key or shortcut such as Enter, Escape, Ctrl+A. ` +
-		`Use fill with value to enter text, not press."
+	`Use fill with value to enter text, not press."
     },
     "settle_ms": {
       "type": "integer",
@@ -167,7 +167,7 @@ const browserToolParameters = `{
         "type": "string"
       },
       "description": "Required for select: native select option value attributes, not visible labels. ` +
-		`For custom dropdowns use click/observe. Empty clears a multiple selection."
+	`For custom dropdowns use click/observe. Empty clears a multiple selection."
     },
     "scope": {
       "type": "string",
@@ -201,10 +201,10 @@ const browserToolParameters = `{
       "type": "string",
       "minLength": 1,
       "description": "Required for evaluate: JavaScript evaluated as a script, not a function body. ` +
-		`Use an expression such as document.title, or wrap statements and return in an IIFE: ` +
-		`(() => { return document.title; })(). A top-level return is a syntax error. ` +
-		`Use only for a specific gap after observation; return bounded JSON-serializable values, ` +
-		`not DOM nodes. Inspect result ok/error."
+	`Use an expression such as document.title, or wrap statements and return in an IIFE: ` +
+	`(() => { return document.title; })(). A top-level return is a syntax error. ` +
+	`Use only for a specific gap after observation; return bounded JSON-serializable values, ` +
+	`not DOM nodes. Inspect result ok/error."
     },
     "return_by_value": {
       "type": "boolean"

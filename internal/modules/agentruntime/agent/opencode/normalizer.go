@@ -175,8 +175,10 @@ func decodePartView(raw json.RawMessage) (partView, bool) {
 	if err := json.Unmarshal(raw, &wire); err != nil || wire.Type == "" {
 		return partView{}, false
 	}
-	view := partView{id: wire.ID, messageID: wire.MessageID, typ: wire.Type,
-		tool: wire.Tool, callID: wire.CallID, text: wire.Text}
+	view := partView{
+		id: wire.ID, messageID: wire.MessageID, typ: wire.Type,
+		tool: wire.Tool, callID: wire.CallID, text: wire.Text,
+	}
 	if wire.State != nil {
 		view.status = wire.State.Status
 	}
@@ -524,8 +526,10 @@ func (s *subState) hasPendingTool() bool {
 // observation projects the live state into an Observation. Event-derived
 // completion is advisory only; the snapshot verification decides.
 func (s *subState) observation() craft.Observation {
-	obs := craft.Observation{SessionID: s.sessionID, PromptMessageID: s.promptID,
-		Idle: s.idle, Aborted: s.aborted}
+	obs := craft.Observation{
+		SessionID: s.sessionID, PromptMessageID: s.promptID,
+		Idle: s.idle, Aborted: s.aborted,
+	}
 	if best, ok := chooseAssistant(s.assistantViews()); ok {
 		obs.AssistantParentID = best.parentID
 		obs.Finish = best.finish
@@ -557,9 +561,11 @@ func (s *subState) terminalSignal() bool {
 func (s *subState) assistantViews() []assistantView {
 	views := make([]assistantView, 0, len(s.assistants))
 	for _, state := range s.assistants {
-		views = append(views, assistantView{id: state.id, parentID: state.parentID,
+		views = append(views, assistantView{
+			id: state.id, parentID: state.parentID,
 			finish: state.finish, errorName: state.errorName,
-			completedAt: state.completedAt, partCount: state.partCount})
+			completedAt: state.completedAt, partCount: state.partCount,
+		})
 	}
 	return views
 }
@@ -647,7 +653,8 @@ func snapshotObservation(ctx context.Context, client *Client, sessionID, promptI
 		return snapshot{}, err
 	}
 	snap := snapshot{status: status, obs: craft.Observation{
-		SessionID: sessionID, PromptMessageID: promptID, Idle: status == "idle"}}
+		SessionID: sessionID, PromptMessageID: promptID, Idle: status == "idle",
+	}}
 	var views []assistantView
 	for i := range messages {
 		message := messages[i]
@@ -657,8 +664,10 @@ func snapshotObservation(ctx context.Context, client *Client, sessionID, promptI
 		if message.Role != "assistant" || message.ParentID != promptID {
 			continue
 		}
-		views = append(views, assistantView{id: message.ID, parentID: message.ParentID,
-			finish: message.Finish, completedAt: message.CompletedAt, parts: message.Parts})
+		views = append(views, assistantView{
+			id: message.ID, parentID: message.ParentID,
+			finish: message.Finish, completedAt: message.CompletedAt, parts: message.Parts,
+		})
 	}
 	for _, view := range views {
 		for _, raw := range view.parts {

@@ -120,7 +120,8 @@ type fileServiceObjectDeleter struct {
 // CraftObjectDeleterFromFileService adapts the existing file service.
 func CraftObjectDeleterFromFileService(files interface {
 	DeleteFile(ctx context.Context, filePath string) error
-}) CraftObjectDeleter {
+},
+) CraftObjectDeleter {
 	return fileServiceObjectDeleter{files: files}
 }
 

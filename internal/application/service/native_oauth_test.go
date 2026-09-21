@@ -26,6 +26,7 @@ type nativeOAuthProviderFake struct {
 func (f *nativeOAuthProviderFake) Prepare(_ context.Context, b nativecontract.PendingOAuthBinding) (nativecontract.OAuthStartResult, string, error) {
 	return nativecontract.OAuthStartResult{AuthorizationURL: "https://provider.example/authorize", AuthorizationAttempt: "attempt", ExpiresAt: b.ExpiresAt}, "secret-state", nil
 }
+
 func (f *nativeOAuthProviderFake) Verify(_ context.Context, a nativecontract.PendingOAuthAttempt, proof string) (nativecontract.PendingOAuthReceipt, error) {
 	if f.onVerify != nil {
 		f.onVerify()

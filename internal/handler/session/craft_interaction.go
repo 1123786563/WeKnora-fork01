@@ -225,8 +225,10 @@ func (h *CraftInteractionHandler) DecideCraftInteraction(c *gin.Context) {
 // a canceled or otherwise terminal interaction no longer accepts input.
 func craftInteractionHTTPError(c *gin.Context, err error) {
 	if stderrors.Is(err, craft.ErrGone) {
-		c.JSON(http.StatusGone, gin.H{"success": false,
-			"error": gin.H{"code": "gone", "message": err.Error()}})
+		c.JSON(http.StatusGone, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "gone", "message": err.Error()},
+		})
 		return
 	}
 	craftHTTPError(c, err)

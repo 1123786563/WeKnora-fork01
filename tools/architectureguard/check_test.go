@@ -289,7 +289,8 @@ import _ "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 		t.Fatal(err)
 	}
 	if hasCheck(rep.Diagnostics, "forbidden-import",
-		`composite.go 导入了模块 airesource 的内部包 "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"`) {
+		`composite.go 导入了模块 airesource 的内部包`+
+			` "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"`) {
 		t.Fatalf("batch A3 命中豁免的 composite.go→embedding 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
 	}
 	if hasCheck(rep.Diagnostics, "forbidden-import",

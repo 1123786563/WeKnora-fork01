@@ -29,7 +29,8 @@ func loadWireFixture(t *testing.T) wireFixture {
 	if !ok {
 		t.Fatal("resolve wire fixture path")
 	}
-	contents, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "..", "..", "..", "tests", "native-agent", "wire-v1.json"))
+	contents, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "..", "..", "..",
+		"tests", "native-agent", "wire-v1.json")) //nolint:lll // 深层相对路径拼接，Pass A 搬迁深度修复
 	if err != nil {
 		t.Fatalf("read wire fixture: %v", err)
 	}
@@ -75,8 +76,10 @@ func wireEventKind(kind EventKind) bool {
 }
 
 func wireEventKinds() []EventKind {
-	return []EventKind{EventRunStatus, EventAttemptStarted, EventAttemptReplaced, EventAttemptFinished, EventTextDelta, EventReasoningDelta,
-		EventToolPlanned, EventToolResult, EventDecisionRequired, EventUsage, EventArtifact, EventFailure}
+	return []EventKind{
+		EventRunStatus, EventAttemptStarted, EventAttemptReplaced, EventAttemptFinished, EventTextDelta, EventReasoningDelta,
+		EventToolPlanned, EventToolResult, EventDecisionRequired, EventUsage, EventArtifact, EventFailure,
+	}
 }
 
 func parseV1LastEventID(value string) (runID, sequence string, err error) {

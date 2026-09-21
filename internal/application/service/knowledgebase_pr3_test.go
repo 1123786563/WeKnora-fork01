@@ -56,7 +56,9 @@ func (f *fakeRegistry) Register(_ interfaces.RetrieveEngineService) error { retu
 func (f *fakeRegistry) GetRetrieveEngineService(_ types.RetrieverEngineType) (interfaces.RetrieveEngineService, error) {
 	return nil, nil
 }
+
 func (f *fakeRegistry) GetAllRetrieveEngineServices() []interfaces.RetrieveEngineService { return nil }
+
 func (f *fakeRegistry) GetByStoreID(storeID string) (interfaces.RetrieveEngineService, error) {
 	if _, ok := f.registered[storeID]; ok {
 		return nil, nil

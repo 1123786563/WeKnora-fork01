@@ -513,7 +513,6 @@ func (s *NotificationStore) ProjectEventsAndCheckpoint(ctx context.Context, cons
 }
 
 func (s *NotificationStore) projectEventTx(tx *gorm.DB, evt RunNotificationEvent) error {
-
 	// Never trust producer supplied owner/type. Resolve both from the
 	// durable rows in this transaction; this closes cross-owner and fake
 	// sequence/type notification injection.
@@ -559,6 +558,7 @@ func (s *NotificationStore) projectEventTx(tx *gorm.DB, evt RunNotificationEvent
 	}
 	return nil
 }
+
 func enqueueNotificationTx(tx *gorm.DB, in NotificationIntent) error {
 	if err := validateNotificationIntent(in); err != nil {
 		return err
