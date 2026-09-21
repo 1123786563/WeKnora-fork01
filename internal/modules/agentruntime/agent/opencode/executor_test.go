@@ -233,7 +233,7 @@ func (s *memStore) lastPreparedPromptID() string {
 	return ""
 }
 
-func (s *memStore) GetTask(ctx context.Context, scope craft.Scope, taskID string) (craft.Task, error) {
+func (s *memStore) GetTask(_ context.Context, _ craft.Scope, _ string) (craft.Task, error) {
 	return craft.Task{}, craft.ErrNotFound
 }
 
@@ -379,7 +379,9 @@ func userEntry(id, text string) map[string]any {
 			"id": id, "sessionID": "ses_oc", "role": "user",
 			"time": map[string]any{"created": 1},
 		},
-		"parts": []any{map[string]any{"type": "text", "id": "prt_u_" + id, "sessionID": "ses_oc", "messageID": id, "text": text}},
+		"parts": []any{
+			map[string]any{"type": "text", "id": "prt_u_" + id, "sessionID": "ses_oc", "messageID": id, "text": text},
+		},
 	}
 }
 

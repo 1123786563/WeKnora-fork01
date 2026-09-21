@@ -18,14 +18,22 @@ import (
 )
 
 const (
+	// ContractVersion is the native contract wire schema version stamped on every BusinessEvent.
 	ContractVersion = 1
-	EventProtocol   = "weknora.agent.v1"
+	// EventProtocol is the protocol identifier carried by every BusinessEvent.
+	EventProtocol = "weknora.agent.v1"
 )
 
 type (
-	Principal     struct{ Type, ID string }
+	// Principal identifies the authenticated actor (type and ID) that a run acts for.
+	Principal struct{ Type, ID string }
+	// ResourceGrant is one permission triple (resource type, resource ID, action)
+	// that the resolved scope must cover before an effect is allowed.
 	ResourceGrant struct{ ResourceType, ResourceID, Action string }
-	Scope         struct {
+	// Scope is the resolved security context every contract call is validated
+	// against: tenant and actor identity, session and memory ownership, the
+	// policy/memory revisions it was resolved at, and its resource grants.
+	Scope struct {
 		TenantID                         uint64
 		ActorUserID                      string
 		Principal                        Principal
@@ -170,8 +178,12 @@ const (
 )
 
 type (
+	// ToolIdentity pins the registered tool instance a plan targets, by
+	// service/installation identity and schema/config versions.
 	ToolIdentity struct{ Kind, ServiceID, InstallationID, Name, SchemaHash, ConfigVersion string }
-	ToolPlan     struct {
+	// ToolPlan is the server-validated plan for one tool call: run linkage,
+	// tool identity, hashed arguments, required grants, recovery policy and idempotency.
+	ToolPlan struct {
 		Version                                    int
 		Run                                        RunIdentity
 		CallID, ProviderToolCallID, ModelAttemptID string

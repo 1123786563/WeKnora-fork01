@@ -334,10 +334,7 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 }
 
 // context values are private to this package and avoid putting live bindings in checkpoints.
-type (
-	fenceKey  struct{}
-	resultKey struct{}
-)
+type fenceKey struct{}
 
 func withFence(ctx context.Context, f agentruntime.Fence) context.Context {
 	return context.WithValue(ctx, fenceKey{}, f)
@@ -346,20 +343,6 @@ func withFence(ctx context.Context, f agentruntime.Fence) context.Context {
 func (b GraphBindings) fenceFromContext(ctx context.Context) agentruntime.Fence {
 	f, _ := ctx.Value(fenceKey{}).(agentruntime.Fence)
 	return f
-}
-
-type toolResult struct {
-	id     string
-	result agentruntime.StoredToolResult
-}
-
-func withResult(ctx context.Context, id string, r agentruntime.StoredToolResult) context.Context {
-	return context.WithValue(ctx, resultKey{}, toolResult{id: id, result: r})
-}
-
-func resultFromContext(ctx context.Context, id string) (agentruntime.StoredToolResult, bool) {
-	v, ok := ctx.Value(resultKey{}).(toolResult)
-	return v.result, ok && v.id == id
 }
 
 func hashArgs(args []byte) string { h := sha256.Sum256(args); return hex.EncodeToString(h[:]) }

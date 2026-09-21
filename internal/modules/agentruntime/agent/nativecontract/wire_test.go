@@ -77,8 +77,9 @@ func wireEventKind(kind EventKind) bool {
 
 func wireEventKinds() []EventKind {
 	return []EventKind{
-		EventRunStatus, EventAttemptStarted, EventAttemptReplaced, EventAttemptFinished, EventTextDelta, EventReasoningDelta,
-		EventToolPlanned, EventToolResult, EventDecisionRequired, EventUsage, EventArtifact, EventFailure,
+		EventRunStatus, EventAttemptStarted, EventAttemptReplaced, EventAttemptFinished,
+		EventTextDelta, EventReasoningDelta, EventToolPlanned, EventToolResult,
+		EventDecisionRequired, EventUsage, EventArtifact, EventFailure,
 	}
 }
 

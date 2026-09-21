@@ -719,7 +719,8 @@ func runLiveTwoTurns(t *testing.T) LiveReport {
 		Checks: []craft.Check{
 			{
 				Name: "oc_session_stable", Status: "passed",
-				Detail: fmt.Sprintf("workspace binding kept session %s across both turns (revision %d)", ocSession, bindingSecond.Revision),
+				Detail: fmt.Sprintf("workspace binding kept session %s across both turns (revision %d)",
+					ocSession, bindingSecond.Revision),
 			},
 			{
 				Name: "file_hash_changed", Status: "passed",

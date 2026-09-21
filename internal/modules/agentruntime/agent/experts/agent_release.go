@@ -38,7 +38,7 @@ import (
 // submission instead of shipping an unverifiable declaration.
 var (
 	supportedReleaseLanguages = map[string]bool{"zh": true, "en": true}
-	releaseSemanticVersion    = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+	releaseSemanticVersion    = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`) //nolint:lll // 预存长行（完整语义化版本正则，拆分会改变字符串内容）
 )
 
 // agentReleaseEnvelope is the exact document set the bundle digest covers:

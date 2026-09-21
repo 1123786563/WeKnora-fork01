@@ -21,7 +21,8 @@ func readFileSkills(t *testing.T) (*skills.Manager, string) {
 	for _, name := range []string{"allowed", "other"} {
 		dir := filepath.Join(root, name)
 		require.NoError(t, os.MkdirAll(dir, 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+name+"\ndescription: Test file resources\n---\n# Instructions\nUse the bundled guide.\n"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+name+
+			"\ndescription: Test file resources\n---\n# Instructions\nUse the bundled guide.\n"), 0o644))
 	}
 	mgr := skills.NewManager(&skills.ManagerConfig{Enabled: true, SkillDirs: []string{root}, AllowedSkills: []string{"allowed"}}, sandbox.NewDisabledManager())
 	require.NoError(t, mgr.Initialize(context.Background()))
