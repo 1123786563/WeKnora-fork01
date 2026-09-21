@@ -245,14 +245,6 @@ const router = createRouter({
       component: () => import('../views/dev/MarkdownTestPage.vue'),
       meta: { requiresAuth: false, requiresInit: false }
     }] : []),
-    // Dev-only TDesign spike 对照页（Phase 0 throwaway，与 React 端
-    // /platform/dev/tdesign-spike 同路径同 DOM，验证后整体删除）
-    ...(import.meta.env.DEV ? [{
-      path: '/platform/dev/tdesign-spike',
-      name: 'tdesignSpike',
-      component: () => import('../views/dev/TDesignSpike.vue'),
-      meta: { requiresAuth: false, requiresInit: false }
-    }] : []),
   ],
 });
 

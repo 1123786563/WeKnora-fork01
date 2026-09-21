@@ -6,7 +6,7 @@
 - 脚本：`scripts/parity/tmp-spike-tdesign.mjs`（一次性，复用 auto-scan.mjs 的 chromium 解析 / login() / 双 context localStorage 注入；因非 PASS 未删除，供裁决后复跑）
 - 产物目录：`docs/migrations/react/evidence/vue-react-parity/spike/`（本文件同级）
 
-## 判定结论：FAIL（按 brief 原始口径）→ 已 BLOCKED 上报，等待 controller 裁决
+## 判定结论：FAIL（按 brief 原始口径）→ 已 BLOCKED 上报 → **R5 兑现后复核 PASS（见文末「R5 兑现复验」段）**
 
 三项判定标准（plan Task 3 Step 2 / brief）：
 
@@ -83,3 +83,22 @@ raw 口径 FAIL 的根因是**计划排序**：Task 4（主题 token 平移）�
 3. 其他裁决。
 
 本任务未执行任何清理（spike 页/路由/tmp 脚本均保留），未触碰决策树的 patch / React 18 降级分支。
+
+## R5 兑现复验（Task 4 token 平移后，2026-09-21T16:17 轮）
+
+Controller Ruling R5 采纳走向 2：先执行 Task 4（主题 token 平移 + React 端 body 全局样式对齐），再原样复跑 `node scripts/parity/tmp-spike-tdesign.mjs` 复核 raw 坍缩。Task 4 已完成（commit `ff7380052`）：`frontend/src/assets/theme/theme.css` 原样平移至 `packages/design-tokens/src/tdesign-theme.css`，apps/web 在 tdesign.css 之后以 **unlayered** 直引加载（layered 会输给 unlayered 库默认值，构建产物已验证级联顺序），并补齐 Vue App.vue 同款 body `font-size: 14px` / `color: var(--td-text-color-primary)`（图标 currentColor 与继承文本依赖）。
+
+复跑数字（同口径：1280×720、容差 8、spike-result.json stamp `2026-09-21T16:17`）：
+
+| 对比项 | Task 3 raw | Task 4 后 raw | 归因预期 | 结论 |
+|---|---|---|---|---|
+| spike-tdesign 静态页 | 2.542%（23431 px） | **0.000%**（4 px 抗锯齿残差） | ≈0% | **坍缩达成** |
+| spike-tdesign-dialog 打开态 | 2.914%（26857 px） | **0.199%**（1836 px） | ~0.2%（已知库间 variant 差异，不阻塞） | **坍缩达成** |
+| data-spike-icons 区域 | 5.814%（1719 px） | **0.014%**（4 px 抗锯齿残差） | ≈0% | **坍缩达成** |
+
+- raw 与 normalized（对照组注入后）**完全相等**——React app 内建上下文已与 Vue 对齐，归因注入不再产生任何增量，反向证实 Task 3 的 raw 差异 100% 来自主题/全局上下文缺失（R5 归因成立）。
+- 运行时复验同轮全绿：Dialog 双端可见、Message/Notification 双端弹出，0 个渲染错误；HTTP≥400 仅 `auto-setup` 403（双端同现的启动探测，非 spike 回归）。
+- dev 页 computed 复核：React 主按钮 `rgb(7,192,95)`（品牌绿）、`--td-brand-color → #07c05f`、图标 currentColor `rgba(0,0,0,0.9)`、body 14px——与 Vue 端逐项一致。
+- dialog 残差 0.199% 即 Task 3 已定位的 footer 取消按钮默认 variant 差异（1.20.7 vs 1.18.3），维持「进 Task 10 playbook DOM 差异台账，迁移时对 cancel 显式传 variant 补齐」处置。
+
+**R5 兑现结论：三项判定标准全部 PASS（运行时 PASS + 静态 0.000% + 图标 0.014%，dialog 0.199% 属已裁决不阻塞项）。归因复核成立，按 R5 执行 spike 现场清理（双端 spike 页/路由注册/tmp 脚本删除，本文件与 spike/ 截图产物作为闸门证据保留）。**
