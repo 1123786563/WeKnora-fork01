@@ -957,11 +957,11 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
           {/* Vue header: title + 28x28 create icon button + subtitle */}
           <header className="kb-list-header mb-4">
             <div className="flex items-center gap-2">
-              <h1 className="m-0 text-2xl font-semibold leading-8 text-[#17233d]">{t('common.knowledgeBases')}</h1>
+              <h1 className="m-0 text-2xl font-semibold leading-8 text-[rgba(0,0,0,0.9)]">{t('common.knowledgeBases')}</h1>
               {viewer.isContributor ? (
                 <button
                   type="button"
-                  className="kb-list-header-action inline-flex h-7 w-7 min-w-[28px] cursor-pointer items-center justify-center rounded-md border border-[#e3e7ee] bg-[#f2f4f8] p-0 text-[#646e74] transition-colors duration-200 hover:text-[#1d2129] [&_svg]:text-[#07c05f]"
+                  className="kb-list-header-action inline-flex h-7 w-7 min-w-[28px] cursor-pointer items-center justify-center rounded-md border border-[#e7e7e7] bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] transition-colors duration-200 hover:text-[#1d2129] [&_svg]:text-[#07c05f]"
                   data-guide="kb-list-create"
                   title={t('knowledgeList.create')}
                   aria-label={t('knowledgeList.create')}
@@ -971,7 +971,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                 </button>
               ) : null}
             </div>
-            <p className="kb-list-subtitle mb-0 mt-1 text-sm font-normal leading-5 text-[#8a94a6]">{t('knowledgeList.subtitle')}</p>
+            <p className="kb-list-subtitle mb-0 mt-1 text-sm font-normal leading-5 text-[rgba(0,0,0,0.4)]">{t('knowledgeList.subtitle')}</p>
           </header>
           <div className="kb-list-main min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-7">
             {error ? <Status tone="error">{error}</Status> : null}
@@ -1034,14 +1034,14 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                       <button
                         key={'sec-' + row.key}
                         type="button"
-                        className="kb-list-section-header group/section col-span-full sticky top-0 z-[5] flex w-full cursor-pointer select-none items-center gap-1.5 border-0 bg-white p-1.5 pr-0 pl-0 text-left font-[inherit] text-[13px] font-semibold leading-5 text-[#646e74] shadow-[0_-8px_0_0_#fff,0_4px_0_0_#fff] hover:text-[#1d2129]"
+                        className="kb-list-section-header group/section col-span-full sticky top-0 z-[5] flex w-full cursor-pointer select-none items-center gap-1.5 border-0 bg-white p-1.5 pr-0 pl-0 text-left font-[inherit] text-[13px] font-semibold leading-5 text-[rgba(0,0,0,0.6)] shadow-[0_-8px_0_0_#fff,0_4px_0_0_#fff] hover:text-[rgba(0,0,0,0.9)]"
                         aria-expanded={row.expanded}
                         onClick={() => toggleSection(row.key)}
                       >
                         <KbIcon name={row.key === 'tenantOthers' && !viewer.isAdmin ? 'browse' : SECTION_ICONS[row.key] ?? 'user'} size={14} />
                         {SECTION_SUBICONS[row.key] ? <span className="-ml-1 opacity-75" aria-hidden="true"><KbIcon name={SECTION_SUBICONS[row.key]} size={12} /></span> : null}
                         <span>{t(row.labelKey)}</span>
-                        <span className="kb-list-section-count ml-0.5 rounded-lg bg-[#f2f4f8] px-1.5 text-[11px] font-medium leading-4 text-[#646e74]">{row.count}</span>
+                        <span className="kb-list-section-count ml-0.5 rounded-lg bg-[#f3f3f3] px-1.5 text-[11px] font-medium leading-4 text-[rgba(0,0,0,0.6)]">{row.count}</span>
                         <span className="kb-list-section-toggle ml-1 opacity-70 group-hover/section:opacity-100" aria-hidden="true"><KbIcon name={row.expanded ? 'chevron-down' : 'chevron-right'} size={14} /></span>
                       </button>
                     );
@@ -1082,7 +1082,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                         <KbIcon name={favorited ? 'star-filled' : 'star'} size={14} />
                       </button>
                       <div className="kb-list-card-head relative z-[1] mb-1.5 flex items-center gap-1">
-                        <span className="kb-list-card-title flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 overflow-hidden whitespace-nowrap border-0 bg-transparent p-0 text-left text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[#1d2129]" title={String(card.name ?? '')}>
+                        <span className="kb-list-card-title flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 overflow-hidden whitespace-nowrap border-0 bg-transparent p-0 text-left text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[rgba(0,0,0,0.9)]" title={String(card.name ?? '')}>
                           {isWiki ? <span className="kb-list-card-wiki-chip shrink-0 text-[#646e74]" role="img" aria-label={t('knowledgeList.features.wiki')} title={t('knowledgeList.features.wiki')}><KbIcon name="wiki" size={15} /></span> : null}
                           <span className="kb-list-card-title-text">{String(card.name ?? '')}</span>
                         </span>
@@ -1139,7 +1139,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                           ) : null}
                         </div>
                       ) : null}
-                      <p className="kb-list-card-desc relative z-[1] m-0 mb-1.5 min-h-0 flex-1 overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [line-clamp:2] text-xs font-normal leading-[18px] text-[#646e74]">{String(card.description ?? '') || t('knowledgeBase.noDescription')}</p>
+                      <p className="kb-list-card-desc relative z-[1] m-0 mb-1.5 min-h-0 flex-1 overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [line-clamp:2] text-xs font-normal leading-[17px] text-[rgba(0,0,0,0.6)]">{String(card.description ?? '') || t('knowledgeBase.noDescription')}</p>
                       <div className="kb-list-card-bottom relative z-[1] mt-auto flex items-center justify-between gap-2 border-t-[0.5px] border-[#e3e7ee] pt-[6px]">
                         <div className="kb-list-badges flex min-w-0 items-center gap-1">
                           <span className={'kb-list-badge inline-flex h-[22px] items-center justify-center gap-[3px] rounded-[5px] px-1.5 text-[11px] font-medium leading-none ' + (isFaq ? 'bg-[rgba(0,82,217,0.08)] text-[#07c05f]' : 'bg-[rgba(7,192,95,0.08)] text-[#06b04d]')}>

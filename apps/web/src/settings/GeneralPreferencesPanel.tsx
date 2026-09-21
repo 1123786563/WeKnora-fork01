@@ -313,7 +313,7 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
             {/* Vue GeneralSettings.vue font preview box (lines 351-375): bg
                 --td-bg-color-container #fff, border --td-component-stroke
                 #e7e7e7, radius --td-radius-medium 6px. */}
-            <div data-testid="font-preview-sans" className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-line-neutral bg-surface px-[12px] py-[8px] text-[14px] leading-[1.4]" style={{ fontFamily: currentSansStack }}>
+            <div data-testid="font-preview-sans" className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-line-neutral bg-surface px-[12px] py-[8px] text-[14px] text-[rgba(0,0,0,0.9)] leading-[1.4]" style={{ fontFamily: currentSansStack }}>
               {t('font.sansPreview')}
             </div>
           </div>
@@ -334,7 +334,7 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
                 <option key={key} value={key}>{fontLabel(locale, 'mono', key)}</option>
               ))}
             </Select>
-            <div data-testid="font-preview-mono" className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-line-neutral bg-surface px-[12px] py-[8px] text-[14px] leading-[1.4] font-[family-name:var(--wk-font-mono,ui-monospace,monospace)] overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontFamily: currentMonoStack }}>
+            <div data-testid="font-preview-mono" className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-line-neutral bg-surface px-[12px] py-[8px] text-[14px] text-[rgba(0,0,0,0.9)] leading-[1.4] font-[family-name:var(--wk-font-mono,ui-monospace,monospace)] overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontFamily: currentMonoStack }}>
               {t('font.monoPreview')}
             </div>
           </div>
@@ -345,18 +345,27 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
             <p className="desc">{t('font.fontSizeDescription')}</p>
           </div>
           <div className="setting-control">
-            <div className="inline-flex overflow-hidden rounded-[3px] border border-[#e7e7e7]" role="radiogroup" aria-label={t('font.fontSize')}>
-              {(['small', 'normal', 'large'] as const).map((size, index) => (
+            {/* TDesign t-radio-group 实测几何（GeneralSettings.vue 基准）：容器
+                32px 高、无边框、圆角 3px；按钮自带 1px 边框（首枚去 right、末枚
+                去 left、中间四边全 1px），padding 4px 16px、line-height 22px、
+                font 14px；激活态实心 brand 底 + 白字（frontend/src/assets/
+                theme.css 全局 t-is-checked 覆盖，白字落在 __label span 上）。
+                bg-transparent 与 bg-[#07c05f] 在编译 CSS 中前者排序靠后会覆盖
+                激活底色，故两态互斥输出；同理边框色任意值按值排序（#07c05f 在
+                #e7e7e7 前），激活/非激活边框色也不能共存。 */}
+            <div className="inline-flex h-8 overflow-hidden rounded-[3px] text-[14px]" role="radiogroup" aria-label={t('font.fontSize')}>
+              {(['small', 'normal', 'large'] as const).map((size, index, sizes) => (
                 <button
                   key={size}
                   type="button"
                   role="radio"
                   aria-checked={fontSize === size}
-                  className={'h-7 cursor-pointer border-0 bg-transparent px-4 py-0 font-[inherit] text-[length:inherit] leading-[inherit]'
-                    + (index > 0 ? ' border-l border-l-[#e7e7e7]' : '')
+                  className={'h-full cursor-pointer border border-solid px-4 py-1 font-[inherit] text-[14px] leading-[22px]'
+                    + (index === 0 ? ' border-r-0 rounded-l-[3px]' : '')
+                    + (index === sizes.length - 1 ? ' border-l-0 rounded-r-[3px]' : '')
                     + (fontSize === size
-                      ? ' is-active bg-[#07c05f] text-white' + (index > 0 ? ' border-l-[#07c05f]' : '') + ' hover:bg-[#06b04d]'
-                      : ' hover:text-[#07c05f]' + (index > 0 ? ' hover:border-l-[#07c05f]' : ''))
+                      ? ' is-active bg-[#07c05f] border-[#07c05f] text-white hover:bg-[#06b04d]'
+                      : ' bg-transparent border-[#e7e7e7] text-[rgba(0,0,0,0.9)] hover:border-[#07c05f] hover:text-[#07c05f]')
                   }
                   onClick={() => handleFontSizeChange(size)}
                 >

@@ -71,12 +71,19 @@ const ICONS: Record<KbIconName, ReactNode> = {
   ),
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />,
   "folder-add": (
+    // TDesign folder-add.js stroke paths (KnowledgeBaseList.vue:14 header button)
     <>
-      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-      <path d="M12 10.5v5M9.5 13h5" />
+      <path d="M22 11V6H11L9 3.5L2 3.5L2 20H13" />
+      <path d="M20 15V18M20 18V21M20 18H17M20 18H23" />
     </>
   ),
-  chat: <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />,
+  // TDesign chat-bubble-help.js stroke paths (KnowledgeBaseList.vue:259 FAQ badge)
+  chat: (
+    <>
+      <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 14.6624 3.04042 17.0817 4.73686 18.8737L3 22H12Z" />
+      <path d="M12.0002 14.75V14.5C12.0002 13.3954 12.9877 12.5414 13.8553 11.8578C14.5525 11.3085 15.0002 10.4565 15.0002 9.5C15.0002 7.84315 13.657 6.5 12.0002 6.5C10.694 6.5 9.58273 7.33481 9.1709 8.5M12 17.75H12.0039V17.7539H12V17.75Z" />
+    </>
+  ),
   "info-circle": (
     <>
       <circle cx="12" cy="12" r="9" />

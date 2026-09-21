@@ -221,7 +221,7 @@ test('featureBadges reflect agent config like the Vue card badges', () => {
     } as AgentCardModel),
     ['modeAgent', 'webSearch', 'knowledge', 'mcp', 'multiTurn'],
   );
-  assert.deepEqual(featureBadges({ config: { kb_selection_mode: 'all' } } as AgentCardModel), ['modeNormal', 'knowledge']);
+  assert.deepEqual(featureBadges({ config: { kb_selection_mode: 'all' } } as AgentCardModel), ['modePlain', 'knowledge']);
 });
 
 // --- avatar ------------------------------------------------------------------

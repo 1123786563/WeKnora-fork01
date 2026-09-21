@@ -110,10 +110,10 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
   return (
     <div className="document-title-row flex min-h-8 flex-wrap items-center gap-2">
       <h2 className="document-breadcrumb m-0 flex items-center gap-[6px] text-[20px] font-semibold leading-8 text-[var(--wk-text,#101828)]">
-        <button type="button" className="breadcrumb-link inline-flex cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent px-2 py-1 -mx-2 -my-1 text-[var(--wk-muted,#66758b)] [font:inherit] [transition:all_.12s_ease] hover:enabled:bg-[var(--wk-surface,#fff)] hover:enabled:text-[var(--wk-brand,#00a870)] disabled:cursor-not-allowed disabled:text-[var(--wk-muted,#98a2b8)]" onClick={() => onNavigate(documentsKBListPath)}>{t('menu.knowledgeBase')}</button>
-        <Icon size={14} className="breadcrumb-separator shrink-0 text-[var(--wk-muted,#98a2b8)]"><path d={Chevrons.right} /></Icon>
+        <button type="button" className="breadcrumb-link inline-flex cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent px-2 py-1 -mx-2 -my-1 text-[rgba(0,0,0,0.6)] [font:inherit] [transition:all_.12s_ease] hover:enabled:bg-[var(--wk-surface,#fff)] hover:enabled:text-[var(--wk-brand,#00a870)] disabled:cursor-not-allowed disabled:text-[var(--wk-muted,#98a2b8)]" onClick={() => onNavigate(documentsKBListPath)}>{t('menu.knowledgeBase')}</button>
+        <Icon size={14} className="breadcrumb-separator shrink-0 text-[rgba(0,0,0,0.4)]"><path d={Chevrons.right} /></Icon>
         <span className="doc-kb-switcher relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setSwitcherOpen(false))}>
-          <button type="button" className="breadcrumb-link dropdown group/dd inline-flex cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent py-1 pl-2 pr-[6px] -mx-2 -my-1 text-[var(--wk-muted,#66758b)] [font:inherit] [transition:all_.12s_ease] hover:enabled:bg-[var(--wk-surface,#fff)] hover:enabled:text-[var(--wk-brand,#00a870)] disabled:cursor-not-allowed disabled:text-[var(--wk-muted,#98a2b8)]" aria-haspopup="menu" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen((open) => !open)}>
+          <button type="button" className="breadcrumb-link dropdown group/dd inline-flex cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent py-1 pl-2 pr-[6px] -mx-2 -my-1 text-[rgba(0,0,0,0.6)] [font:inherit] [transition:all_.12s_ease] hover:enabled:bg-[var(--wk-surface,#fff)] hover:enabled:text-[var(--wk-brand,#00a870)] disabled:cursor-not-allowed disabled:text-[var(--wk-muted,#98a2b8)]" aria-haspopup="menu" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen((open) => !open)}>
             <span>{kbName ?? '…'}</span>
             <Icon size={14} className="breadcrumb-caret transition-transform duration-[120ms] group-hover/dd:translate-y-[1px]"><path d={Chevrons.down} /></Icon>
           </button>
@@ -125,14 +125,16 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
             ))}
           </span>
         </span>
-        <Icon size={14} className="breadcrumb-separator shrink-0 text-[var(--wk-muted,#98a2b8)]"><path d={Chevrons.right} /></Icon>
+        <Icon size={14} className="breadcrumb-separator shrink-0 text-[rgba(0,0,0,0.4)]"><path d={Chevrons.right} /></Icon>
         {hasTabs ? (
           <span className="breadcrumb-tabs inline-flex items-center">
             {tabs!.map((tab, index) => (
               <Fragment key={tab.key}>
-                {index > 0 ? <span className="breadcrumb-tab-sep mx-[6px] font-normal text-[var(--wk-muted,#98a2b8)]" aria-hidden="true">/</span> : null}
+                {/* Vue：h2 gap 6px + .breadcrumb-tab-sep margin 0 6px = 12px 间距，
+                    分隔符色 --td-text-color-disabled rgba(0,0,0,0.26)。 */}
+                {index > 0 ? <span className="breadcrumb-tab-sep mx-[12px] font-normal text-[rgba(0,0,0,0.26)]" aria-hidden="true">/</span> : null}
                 <a
-                  className={'breadcrumb-tab inline-flex cursor-pointer items-center gap-1 border-none bg-transparent [font:inherit] no-underline [transition:color_.15s] ' + (tab.active ? 'is-active font-semibold text-[var(--wk-brand,#07c05f)]' : 'font-normal text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-text,#101828)]')}
+                  className={'breadcrumb-tab inline-flex cursor-pointer items-center gap-1 border-none bg-transparent [font:inherit] no-underline [transition:color_.15s] ' + (tab.active ? 'is-active font-semibold text-[var(--wk-brand,#07c05f)]' : 'font-normal text-[rgba(0,0,0,0.4)] hover:text-[var(--wk-text,#101828)]')}
                   href={tab.href}
                   title={tab.title}
                   aria-current={tab.active ? 'page' : undefined}
@@ -149,12 +151,13 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
             ))}
           </span>
         ) : (
-          <span className="breadcrumb-current font-semibold text-[var(--wk-text,#101828)]">{t('knowledgeEditor.document.title')}</span>
+          <span className="breadcrumb-current font-semibold text-[rgba(0,0,0,0.9)]">{t('knowledgeEditor.document.title')}</span>
         )}
       </h2>
       <div className="kb-title-actions ml-1 inline-flex shrink-0 items-center gap-[6px]">
         <span className="kb-info-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setInfoOpen(false))}>
-          <button type="button" className="kb-info-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[rgba(0,0,0,0.05)] p-0 text-[var(--wk-muted,#66758b)] [transition:all_.2s_ease] hover:bg-[rgba(0,0,0,0.09)] hover:text-[var(--wk-brand,#00a870)]" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen} onClick={() => setInfoOpen((open) => !open)}>
+          {/* Vue .kb-info-button：26px 透明底圆形，图标 placeholder 色。 */}
+          <button type="button" className="kb-info-button inline-flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-0 text-[rgba(0,0,0,0.4)] [transition:all_.2s_ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen} onClick={() => setInfoOpen((open) => !open)}>
             <InfoIcon size={16} />
           </button>
           <span className="kb-info-card absolute right-0 top-[calc(100%+8px)] z-[200] flex w-[320px] flex-col gap-[10px] rounded-[10px] border border-[var(--wk-border,#e3e8f0)] bg-[var(--wk-surface,#fff)] px-4 py-[14px] text-left text-[13px] shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" hidden={!infoOpen}>
@@ -175,8 +178,9 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
           </span>
         </span>
         {canManage ? (
-          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[rgba(0,0,0,0.05)] p-0 text-[var(--wk-muted,#66758b)] [transition:all_.2s_ease] hover:bg-[rgba(0,0,0,0.09)] hover:text-[var(--wk-brand,#00a870)]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
-            <GearIcon size={14} />
+          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] [transition:all_.2s_ease] hover:bg-[#e9f8ec] hover:text-[#07c05f]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
+            {/* Vue .kb-settings-button：30px 圆形 #f3f3f3 底，18px 图标 secondary 色。 */}
+            <GearIcon size={18} />
           </button>
         ) : null}
       </div>
@@ -196,10 +200,10 @@ export interface ParserHintProps {
 export function ParserHint({ t, types, onConfigure }: ParserHintProps) {
   if (types.length === 0) return null;
   return (
-    <p className="parser-hint group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)] [transition:color_.15s_ease] hover:text-[#d97706]" onClick={onConfigure}>
+    <p className="parser-hint group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[rgba(237,123,47,0.8)] [transition:color_.15s_ease] hover:text-[#d35a21]" onClick={onConfigure}>
       <InfoIcon size={12} className="parser-hint-icon shrink-0" />
       <span>{t('knowledgeBase.unsupportedTypesHint', { types: types.map((fileType) => `.${fileType}`).join('、') })}</span>
-      <span className="parser-hint-link ml-[2px] whitespace-nowrap text-[var(--wk-brand,#0052d9)] group-hover:underline">{t('knowledgeBase.goToParserSettings')} →</span>
+      <span className="parser-hint-link ml-[2px] whitespace-nowrap text-[#07c05f] group-hover:underline">{t('knowledgeBase.goToParserSettings')} →</span>
     </p>
   );
 }

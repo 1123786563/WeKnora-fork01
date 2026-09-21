@@ -107,38 +107,47 @@ export async function loadAgentsPageData(client: WeKnoraClient): Promise<AgentsP
 
 // --- icons (inline SVG; no TDesign in the React client) -----------------------
 
+/* Icon path data lifted verbatim from the TDesign sprite the Vue client ships
+ * (svg <symbol id="t-icon-*" viewBox="0 0 24 24">), so stroke geometry, 2px
+ * stroke width and square line caps match the Vue baseline glyph-for-glyph.
+ * The leading fill="transparent" hit-area paths are dropped; only the stroked
+ * layer renders. 'star-filled' is TDesign's solid glyph (fill, no stroke). */
+const ICON_PATHS: Record<string, React.ReactNode> = {
+  layers: <path d="M4.5 6.125 12 3l7.5 3.125L12 9.25 4.5 6.125ZM3 11.5l9 3.877 9-3.877m0 6-9 3.877L3 17.5" stroke="currentColor" strokeWidth="2" />,
+  star: <path d="m12 3.676 2.187 6.29 6.658.136-5.307 4.024 1.928 6.374L12 16.696 6.534 20.5l1.928-6.374-5.307-4.024 6.659-.136L12 3.676Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  'star-filled': <path d="m12.001.63 2.903 8.35 8.839.181-7.045 5.341 2.56 8.462L12 17.914l-7.256 5.05 2.56-8.462L.26 9.161l8.839-.18L12 .63Z" fill="currentColor" />,
+  history: <path d="M2.552 13c.5 4.777 4.539 8.5 9.448 8.5a9.5 9.5 0 0 0 0-19c-1.628 0-3.16.41-4.5 1.131A9.54 9.54 0 0 0 3.38 8M12 7v5l2.5 2.5m-12-11v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  // TDesign system-sum: the Vue workspace rail glyph (four-petal sum shape).
+  workspace: <g stroke="currentColor" strokeWidth="2"><path d="M15.244 15.404c-4.836 4.836-10.28 7.231-12.161 5.35-1.88-1.88.515-7.324 5.35-12.16 4.836-4.836 10.281-7.232 12.162-5.351 1.88 1.88-.515 7.325-5.351 12.161Z" /><path d="M8.434 15.404c4.836 4.836 10.28 7.231 12.161 5.35 1.88-1.88-.515-7.324-5.35-12.16C10.408 3.758 4.963 1.362 3.082 3.243c-1.88 1.88.515 7.325 5.351 12.161Z" /><path d="M12 12h.004v.004H12V12Z" /></g>,
+  app: <g stroke="currentColor" strokeWidth="2"><path d="M3 3h7v7H3V3ZM14 14h7v7h-7v-7ZM3 14h7v7H3v-7Z" /><path d="M21.5 6.5a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" /></g>,
+  user: <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M16.5 7.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2h16Z" /></g>,
+  usergroup: <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM5 19a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2H5v-2Z" /><path d="M7 4a4 4 0 1 0 0 8 6 6 0 0 0-6 6v3m22 0v-3a6 6 0 0 0-6-6 4 4 0 0 0 0-8" /></g>,
+  'usergroup-add': <path d="M9 4a4 4 0 1 0 0 8 6 6 0 0 0-6 6v3m11-6h-2a4 4 0 0 0-4 4v2h6m5-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM20 15v3m0 0v3m0-3h-3m3 0h3" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  share: <><circle cx="6" cy="12" r="2.5" /><circle cx="17" cy="6" r="2.5" /><circle cx="17" cy="18" r="2.5" /><path d="m8.3 10.8 6.4-3.6M8.3 13.2l6.4 3.6" /></>,
+  // TDesign control-platform.svg: the Vue smart-reasoning avatar is a
+  // faceted cube, not the generic radial control glyph.
+  'control-platform': <path d="m12 12 8.5-4.5M12 12v9.5m0-9.5L3.5 7.5M12 2l9 5v10l-9 5-9-5V7l9-5Z" stroke="currentColor" strokeWidth="2" />,
+  chat: <path d="M2.5 4h19v15h-15l-4 3V4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  folder: <path d="M2 3.5h7L11 6h11v14H2V3.5Z" stroke="currentColor" strokeWidth="2" />,
+  extension: <path d="M9 4a2 2 0 1 1 4 0v1h6v6h1a2 2 0 1 1 0 4h-1v6h-4.535a3.501 3.501 0 0 0-6.93 0H3v-4.535a3.5 3.5 0 0 0 0-6.93V5h6V4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  // TDesign chat-bubble: the multi-turn badge is a ROUND speech bubble.
+  'chat-bubble': <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12a9.966 9.966 0 0 0 2.737 6.874L3 22h9Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  edit: <path d="m14.105 6.004-9.318 9.318L3.998 20l4.679-.79 9.317-9.317m-3.89-3.889 3.89 3.89m-3.89-3.89 3.058-3.057 3.889 3.89-3.057 3.056M17.994 9.893l3.057-3.057-3.89-3.889-3.057 3.057z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  'file-copy': <><path d="M14 2v6h6m-6-6h1l5 5v1m-6-6H7v16h13V8" stroke="currentColor" strokeWidth="2" /><path d="M3 6v16h11" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></>,
+  poweroff: <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M7 5.125a8.5 8.5 0 1 0 10 0M12 3v8" /></g>,
+  delete: <path d="M21 5H3m2 0h14l-.5 17h-13L5 5Zm3.5-3h7v3h-7V2ZM12 9v9" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  close: <path d="M16.95 7.05 12 12m0 0-4.95 4.95M12 12l4.95 4.95M12 12 7.05 7.05" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  'chevron-right': <path d="M9.5 17.5 15 12 9.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  'chevron-down': <path d="M17.5 9.5 12 15 6.5 9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />,
+  'lock-on': <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M4.5 11h15v10h-15V11ZM7 7a5 5 0 0 1 10 0v4H7V7Z" /><path d="M10 16h4" /></g>,
+  browse: <g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M12 4C6.869 4 2.523 7.36 1.042 12c1.48 4.64 5.827 8 10.958 8 5.13 0 9.477-3.36 10.957-8C21.477 7.36 17.131 4 12 4Z" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" /></g>,
+  'edit-1': <path d="m13 6.5-10 10V21h4.5l10-10M13 6.5l4.5 4.5M13 6.5l4-4L21.5 7l-4 4" stroke="currentColor" strokeWidth="2" />,
+};
+
 function Icon({ name, size = 16 }: { name: string; size?: number }) {
-  const paths: Record<string, React.ReactNode> = {
-    layers: <><path d="M12 3 3 8l9 5 9-5-9-5Z" /><path d="m3 13 9 5 9-5" /></>,
-    star: <path d="M12 3.5 14.7 9l6 .7-4.4 4.1 1.1 5.9L12 16.8 6.6 19.7l1.1-5.9L3.3 9.7l6-.7L12 3.5Z" />,
-    history: <><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" /><path d="M3 4v4h4" /><path d="M12 8v4.5l3 1.8" /></>,
-    workspace: <><rect x="4" y="4" width="7" height="7" rx="1" /><rect x="13" y="4" width="7" height="7" rx="1" /><rect x="4" y="13" width="7" height="7" rx="1" /><rect x="13" y="13" width="7" height="7" rx="1" /></>,
-    app: <><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M4 10h16M10 10v10" /></>,
-    user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></>,
-    usergroup: <><circle cx="9" cy="9" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M16 6.5a3 3 0 0 1 0 5.5" /><path d="M17.5 14.5a5.5 5.5 0 0 1 3 4.5" /></>,
-    'usergroup-add': <><circle cx="9" cy="9" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M18 6v6M15 9h6" /></>,
-    share: <><circle cx="6" cy="12" r="2.5" /><circle cx="17" cy="6" r="2.5" /><circle cx="17" cy="18" r="2.5" /><path d="m8.3 10.8 6.4-3.6M8.3 13.2l6.4 3.6" /></>,
-    // TDesign control-platform.svg: the Vue smart-reasoning avatar is a
-    // faceted cube, not the generic radial control glyph.
-    'control-platform': <><path d="M12 2L21 7V17L12 22L3 17V7L12 2Z" /><path d="M12 12L20.5 7.5M12 12V21.5M12 12L3.5 7.5" /></>,
-    chat: <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4.5 3.5V6Z" />,
-    folder: <path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4l2 2.5h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17v-10.5Z" />,
-    extension: <path d="M10 4h4v2.5a1.5 1.5 0 0 0 3 0V4h3v4h-2.5a1.5 1.5 0 0 0 0 3H20v4h-3v-2.5a1.5 1.5 0 0 0-3 0V15h-4v-2.5" />,
-    'chat-bubble': <><path d="M4 5h16v11H10l-4 3v-3H4V5Z" /><path d="M8 9.5h8M8 12.5h5" /></>,
-    edit: <><path d="M4 20h4L20 8l-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
-    'file-copy': <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>,
-    poweroff: <><path d="M12 3v8" /><path d="M6.3 6.5a8 8 0 1 0 11.4 0" /></>,
-    delete: <><path d="M4 7h16" /><path d="M9 7V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v2" /><path d="M6.5 7 7.5 20h9L17.5 7" /></>,
-    close: <path d="M6 6l12 12M18 6 6 18" />,
-    'chevron-right': <path d="m9 6 6 6-6 6" />,
-    'chevron-down': <path d="m6 9 6 6 6-6" />,
-    'lock-on': <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
-    browse: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></>,
-    'edit-1': <path d="M14.5 5.5 18.5 9.5 9 19H5v-4l9.5-9.5Z" />,
-  };
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="wk-agent-icon">{paths[name] ?? null}</svg>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      aria-hidden="true" className="wk-agent-icon">{ICON_PATHS[name] ?? null}</svg>
   );
 }
 
@@ -157,13 +166,15 @@ function SparklesIcon({ size = 19 }: { size?: number }) {
 function AgentAvatar({ agent }: { agent: AgentCardModel }) {
   if (agent.is_builtin) {
     const smart = agent.config?.agent_mode === 'smart-reasoning';
+    // Vue .builtin-avatar: gradient tint backgrounds, icon color = brand
+    // (green) for the agent facet / brand-active for quick-answer.
     return (
-      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${smart ? 'bg-[linear-gradient(135deg,rgba(124,77,255,0.15)_0%,rgba(124,77,255,0.08)_100%)] text-[#7c4dff]' : 'bg-[linear-gradient(135deg,rgba(7,192,95,0.15)_0%,rgba(7,192,95,0.08)_100%)] text-[#0a8f4c]'}`}>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${smart ? 'bg-[linear-gradient(135deg,rgba(124,77,255,0.15)_0%,rgba(124,77,255,0.08)_100%)] text-[#07c05f]' : 'bg-[linear-gradient(135deg,rgba(7,192,95,0.15)_0%,rgba(7,192,95,0.08)_100%)] text-[#06b04d]'}`}>
         <Icon name={smart ? 'control-platform' : 'chat'} size={18} />
       </span>
     );
   }
-  if (agent.avatar) return <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(127,127,127,0.12)] text-[18px] leading-none">{agent.avatar}</span>;
+  if (agent.avatar) return <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f3f3f3] text-[18px] leading-none">{agent.avatar}</span>;
   const gradient = avatarGradient(agent.name || '');
   return (
     <span
@@ -175,6 +186,7 @@ function AgentAvatar({ agent }: { agent: AgentCardModel }) {
 
 const FEATURE_BADGE_ICONS: Record<string, string> = {
   modeNormal: 'chat',
+  modePlain: 'chat',
   modeAgent: 'control-platform',
   knowledge: 'folder',
   mcp: 'extension',
@@ -182,13 +194,15 @@ const FEATURE_BADGE_ICONS: Record<string, string> = {
 };
 
 // agents.css .wk-agent-feature-badge.badge-* tones as utilities (static map).
+// Colors read off the live Vue page (AgentList.vue): mode/knowledge/multiTurn
+// icons ride the brand greens, webSearch the warning orange, mcp the error red.
 const FEATURE_BADGE_TONES: Record<string, string> = {
-  modeNormal: 'bg-[rgba(7,192,95,0.08)] text-[#0a8f4c]',
-  knowledge: 'bg-[rgba(7,192,95,0.08)] text-[#0a8f4c]',
-  modeAgent: 'bg-[rgba(124,77,255,0.08)] text-[#7c4dff]',
-  webSearch: 'bg-[rgba(255,152,0,0.08)] text-[#e37318]',
-  mcp: 'bg-[rgba(236,72,153,0.08)] text-[#d54941]',
-  multiTurn: 'bg-[rgba(59,130,246,0.08)] text-[#2e6de6]',
+  modeNormal: 'bg-[rgba(7,192,95,0.08)] text-[#06b04d]',
+  knowledge: 'bg-[rgba(7,192,95,0.08)] text-[#06b04d]',
+  modeAgent: 'bg-[rgba(124,77,255,0.08)] text-[#07c05f]',
+  webSearch: 'bg-[rgba(255,152,0,0.08)] text-[#ed7b2f]',
+  mcp: 'bg-[rgba(236,72,153,0.08)] text-[#e34d59]',
+  multiTurn: 'bg-[rgba(59,130,246,0.08)] text-[#07c05f]',
 };
 
 function FeatureBadgeSvg({ badge }: { badge: string }) {
@@ -202,7 +216,8 @@ function FeatureBadgeSvg({ badge }: { badge: string }) {
       </svg>
     );
   }
-  return <Icon name={FEATURE_BADGE_ICONS[badge] ?? 'chat'} size={16} />;
+  const modeBadge = badge === 'modeNormal' || badge === 'modeAgent' || badge === 'modePlain';
+  return <Icon name={FEATURE_BADGE_ICONS[badge] ?? 'chat'} size={modeBadge ? 14 : 16} />;
 }
 
 // --- rail (ListSpaceSidebar.vue resource-mode strip + expanded panel) ----------
@@ -217,24 +232,27 @@ export interface AgentRailItem {
 }
 
 export function AgentRail({ t, items, onSelect }: { t: Translate; items: AgentRailItem[]; onSelect: (key: string) => void }) {
+  // Vue .icon-strip: 56px column, 4px gaps, no x-padding; .icon-item-labeled
+  // is a fixed 46px column (5px auto-inset) — active tile is the neutral
+  // #f3f3f3 with brand-green content, hover is the same grey.
   return (
-    <nav className="flex w-14 min-h-0 shrink-0 flex-col items-stretch gap-1 overflow-y-auto box-border border-r border-[rgba(127,127,127,0.14)] px-[5px] pt-3 pb-[6px]" aria-label={t('agent.title')}>
+    <nav className="flex w-14 min-h-0 shrink-0 flex-col items-center gap-1 overflow-y-auto box-border shadow-[inset_-1px_0_0_#e7e7e7] pt-3 pb-[6px]" aria-label={t('agent.title')}>
       {items.map((item) => (
         <button
           key={item.key}
           type="button"
           data-space-key={item.key}
-          className={`flex cursor-pointer flex-col items-center gap-[2px] rounded-lg border-none bg-transparent px-[2px] pt-[5px] pb-[2px] text-inherit transition-[background] duration-150 ease-[ease] hover:bg-[rgba(127,127,127,0.1)]${item.active ? ' bg-[rgba(7,192,95,0.12)] text-[#06b04d]' : ''}`}
+          className={`flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-lg border-none px-0 pt-[5px] pb-[2px] transition-[background] duration-150 ease-[ease] hover:bg-[#f3f3f3]${item.active ? ' bg-[#f3f3f3] text-[#07c05f]' : ' bg-transparent text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)]'}`}
           aria-current={item.active ? 'true' : undefined}
           title={`${item.label}${item.count === undefined ? '' : ` (${item.count})`}`}
           onClick={() => onSelect(item.key)}
         >
           <span className="inline-flex items-center justify-center">
             {item.icon === 'space'
-              ? <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-md bg-[linear-gradient(135deg,#667eea_0%,#764ba2_100%)] text-[11px] font-semibold text-white">{avatarLetter(item.avatarName ?? item.label)}</span>
+              ? <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-[5px] bg-[linear-gradient(135deg,#667eea_0%,#764ba2_100%)] text-[10px] font-semibold text-white">{avatarLetter(item.avatarName ?? item.label)}</span>
               : <Icon name={item.icon === 'workspace' ? 'workspace' : item.icon} size={16} />}
           </span>
-          <span className="max-w-full truncate text-[10px] leading-[14px]">{item.label}</span>
+          <span className="max-w-[52px] truncate text-[11px] leading-[1.25]">{item.label}</span>
         </button>
       ))}
     </nav>
@@ -299,7 +317,7 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onTog
     : 'bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(7,192,95,0.04)_100%)] hover:bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(7,192,95,0.08)_100%)] hover:shadow-[0_4px_12px_rgba(7,192,95,0.12)]';
   return (
     <article
-      className={`wk-agent-card agent-mode-${mode}${agent.isMine ? '' : ' wk-agent-card-shared'} group/card relative flex h-[136px] min-h-[136px] cursor-pointer flex-col overflow-hidden box-border rounded-lg border border-[rgba(127,127,127,0.25)] px-3.5 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms] ease-[ease] hover:border-[#07c05f] ${modeTone}`}
+      className={`wk-agent-card agent-mode-${mode}${agent.isMine ? '' : ' wk-agent-card-shared'} group/card relative flex h-[136px] min-h-[136px] cursor-pointer flex-col overflow-hidden box-border rounded-lg border border-[#e7e7e7] px-3.5 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms] ease-[ease] hover:border-[#07c05f] ${modeTone}`}
       data-agent-id={agent.id}
       onClick={() => onOpen(agent)}
     >
@@ -309,23 +327,23 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onTog
       </div>
       <button
         type="button"
-        className={`absolute top-0 right-0 z-[3] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-[#575e6b] transition-[opacity,background,color] duration-150 ease-[ease] hover:bg-[rgba(127,127,127,0.12)] hover:text-[#e37318] ${favorited ? 'opacity-100 text-[#e37318]' : 'opacity-0 group-hover/card:opacity-100'}`}
+        className={`absolute top-0 right-0 z-[3] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-[rgba(0,0,0,0.6)] transition-[opacity,background,color] duration-150 ease-[ease] hover:bg-[#f3f3f3] hover:text-[#e37318] ${favorited ? 'opacity-100 text-[#e37318]' : 'opacity-0 group-hover/card:opacity-100'}`}
         aria-pressed={favorited ? 'true' : 'false'}
         aria-label={t('common.favorite')}
         onClick={(event) => { event.stopPropagation(); onToggleFavorite(agent.id); }}
       >
-        <Icon name="star" size={14} />
+        <Icon name={favorited ? 'star-filled' : 'star'} size={14} />
       </button>
       <div className="relative z-[1] mb-1.5 flex items-center justify-between gap-1">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <AgentAvatar agent={agent} />
-          <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[22px] tracking-[0.01em]" title={agent.name}>{agent.name}</span>
+          <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[rgba(0,0,0,0.9)]" title={agent.name}>{agent.name}</span>
         </div>
         {actions.length > 0 ? (
           <div className="wk-agent-card-more-wrap">
             <button
               type="button"
-              className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-lg border-none bg-transparent transition-all duration-200 ease-[ease] group-hover/card:opacity-60 hover:bg-[rgba(127,127,127,0.12)] hover:opacity-100 ${menuOpen ? 'bg-[rgba(127,127,127,0.12)] opacity-100' : 'opacity-0'}`}
+              className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-lg border-none bg-transparent transition-all duration-200 ease-[ease] group-hover/card:opacity-60 hover:bg-[#f3f3f3] hover:opacity-100 ${menuOpen ? 'bg-[#f3f3f3] opacity-100' : 'opacity-0'}`}
               aria-label={t('agent.manageAgents')}
               aria-haspopup="menu"
               aria-expanded={menuOpen ? 'true' : 'false'}
@@ -354,9 +372,9 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onTog
         ) : null}
       </div>
       <div className="relative z-[1] mb-1.5 flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
-        <div className="line-clamp-2 overflow-hidden text-[12px] font-normal leading-[18px] opacity-75">{agent.description || t('agent.noDescription')}</div>
+        <div className="line-clamp-2 overflow-hidden text-[12px] font-normal leading-[17px] text-[rgba(0,0,0,0.6)]">{agent.description || t('agent.noDescription')}</div>
       </div>
-      <div className="relative z-[1] mt-auto flex items-center justify-between border-t-[0.5px] border-t-[rgba(127,127,127,0.25)] pt-1.5">
+      <div className="relative z-[1] mt-auto flex items-center justify-between border-t-[0.5px] border-t-[#e7e7e7] pt-1.5">
         <div className="flex items-center gap-1">
           {agent.disabledByMe ? <span className="inline-flex items-center rounded bg-[rgba(127,127,127,0.12)] px-1.5 py-[2px] text-[11px]">{t('agent.disabled')}</span> : null}
           {expertBadgeId ? (
@@ -365,7 +383,7 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onTog
             <span className="inline-flex items-center rounded bg-[rgba(124,77,255,0.08)] px-1.5 py-[2px] text-[11px] font-medium text-[#7c4dff]" data-agent-expert-badge>{t('experts.badge', { expertId: expertBadgeId })}</span>
           ) : null}
           {badges.map((key) => (
-            <span key={key} className={`flex h-[22px] w-[22px] items-center justify-center rounded-[5px] transition-[background] duration-200 ease-[ease] ${FEATURE_BADGE_TONES[key] ?? ''}`} title={key === 'modeNormal' || key === 'modeAgent' ? t(modeTitleKey) : t(FEATURE_BADGE_TITLE_KEYS[key]!)}>
+            <span key={key} className={`flex h-[22px] w-[22px] items-center justify-center rounded-[5px] transition-[background] duration-200 ease-[ease] ${FEATURE_BADGE_TONES[key] ?? ''}`} title={key === 'modeNormal' || key === 'modeAgent' || key === 'modePlain' ? t(modeTitleKey) : t(FEATURE_BADGE_TITLE_KEYS[key]!)}>
               <FeatureBadgeSvg badge={key} />
             </span>
           ))}
@@ -553,7 +571,7 @@ export function AgentsPageView(props: AgentsPageViewProps) {
   });
   const hasCards = isSectioned ? sections.length > 0 : flatCards.length > 0;
   return (
-    <main className="relative m-0 flex h-full min-h-0 flex-1 box-border">
+    <main className="relative m-0 flex h-full min-h-0 flex-1 box-border [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale]">
       <AgentRail t={t} items={rail} onSelect={props.onSpaceChange} />
       <div className="flex min-w-0 flex-1 flex-col pt-5 pl-7">
         <header className="mb-4 flex items-center justify-between pr-7 [&_h2]:m-0 [&_h2]:text-[24px] [&_h2]:font-semibold [&_h2]:leading-8">
@@ -561,7 +579,7 @@ export function AgentsPageView(props: AgentsPageViewProps) {
             <div className="flex items-center gap-2">
               <h2>{t('agent.title')}</h2>
               {canCreate ? (
-                <button type="button" className="inline-flex h-7 w-7 min-w-7 cursor-pointer items-center justify-center rounded-md border border-[rgba(127,127,127,0.25)] bg-[rgba(127,127,127,0.08)] p-0 text-[#07c05f] transition-[background,border-color,color] duration-200 ease-[ease] hover:text-[#06b04d]" data-guide="agent-list-create" title={t('agent.createAgent')} aria-label={t('agent.createAgent')} onClick={props.onCreate}><SparklesIcon /></button>
+                <button type="button" className="inline-flex h-7 w-7 min-w-7 cursor-pointer items-center justify-center rounded-md border border-[#e7e7e7] bg-[#f3f3f3] p-0 text-[#07c05f] transition-[background,border-color,color] duration-200 ease-[ease] hover:text-[#06b04d]" data-guide="agent-list-create" title={t('agent.createAgent')} aria-label={t('agent.createAgent')} onClick={props.onCreate}><SparklesIcon /></button>
               ) : null}
             </div>
             <p className="m-0 text-[14px] font-normal leading-5 opacity-65">{t('agent.subtitle')}</p>

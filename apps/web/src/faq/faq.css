@@ -24,3 +24,41 @@
   .faq-drawer-overlay-enter, .faq-drawer-overlay-exit,
   .faq-drawer-panel-enter, .faq-drawer-panel-exit { animation: none; }
 }
+
+/* ---- Vue 像素对齐覆盖（R492+ parity）--------------------------------
+   Vue 端 App.vue:301 全局 -webkit-font-smoothing: antialiased；TDesign 文本色
+   为 rgba 黑（--td-font-gray-1/2/3/4），React 主题 token 是蓝灰调（#172033、
+   #98a2b8 等）。此处按 FAQEntryManager.vue 的 computed style 逐项对齐。 */
+.faq-view { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+.faq-breadcrumb, .faq-breadcrumb .breadcrumb-current,
+.faq-question { color: rgba(0, 0, 0, 0.9); }
+.faq-breadcrumb .breadcrumb-link { color: rgba(0, 0, 0, 0.6); }
+.faq-subtitle, .faq-no-more, .faq-search-icon,
+.faq-breadcrumb-separator, .breadcrumb-caret,
+.faq-tag-filter-trigger__caret,
+.doc-tag-filter-trigger__prefix, .doc-tag-filter-trigger__suffix,
+.collapse-icon, .section-count { color: rgba(0, 0, 0, 0.4); }
+.faq-tag-filter-trigger { color: rgba(0, 0, 0, 0.9); }
+.faq-section-label, .card-more-btn { color: rgba(0, 0, 0, 0.6); }
+/* TDesign 边框灰 #e8e8e8（--td-gray-color-3，component-stroke） */
+.faq-card, .faq-card-header, .faq-card-footer { border-color: #e8e8e8; }
+/* Vue .faq-card-tag { flex: 1 }；t-tag：h20/r4/#e8e8e8 边/disabled 文本/灰底 */
+.faq-card-tag { flex: 1 1 0%; line-height: 20px; font-size: 11px; }
+/* Vue .faq-card-status 定宽 34（含内边距），开关 26x16 居中 */
+.faq-card-status { width: 34px; justify-content: center; }
+.faq-card-tag .faq-tag-chip {
+  height: 20px; max-width: 120px; padding: 0 6px; border-radius: 4px;
+  border-color: #e8e8e8; background: #f3f3f3; color: rgba(0, 0, 0, 0.26);
+  box-sizing: border-box;
+}
+/* Vue t-input：灰底无边框，文本从 x+25 起（prefix icon 9..25），
+   placeholder 40% 黑。.wk-input（packages/ui）同级类会盖掉 utilities，需提特异性。 */
+.faq-search-input input {
+  font-size: 14px; line-height: 22px; font-family: inherit;
+  /* Vue t-input: prefix 24px + inner 8px padding → 文本起点 x+33 */
+  padding-left: 36px; padding-right: 12px;
+  background: #f3f3f3; border-color: transparent;
+}
+.faq-search-input input::placeholder { color: rgba(0, 0, 0, 0.4); }
+.faq-search-input input:hover,
+.faq-search-input input:focus { background: #f3f3f3; }

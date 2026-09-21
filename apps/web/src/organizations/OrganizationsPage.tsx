@@ -173,7 +173,10 @@ export function upgradeRoleOptionsForRole(myRole: string): Array<'editor' | 'adm
   return [];
 }
 
-/* Minimal inline icon set (TDesign glyph equivalents, stroke = currentColor). */
+/* Minimal inline icon set. Page-visible glyphs (rail, section headers, card
+ * badges/headers) are lifted verbatim from the TDesign sprite the Vue client
+ * ships (viewBox 0 0 24 24, stroke-width 2, square caps); modal-only glyphs
+ * keep the small hand-drawn IconGlyph set. */
 function IconGlyph(props: { d: string; size?: number; viewBox?: string; fill?: boolean; className?: string }) {
   return (
     <svg width={props.size ?? 16} height={props.size ?? 16} viewBox={props.viewBox ?? '0 0 16 16'} fill={props.fill ? 'currentColor' : 'none'} xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className={props.className}>
@@ -181,13 +184,34 @@ function IconGlyph(props: { d: string; size?: number; viewBox?: string; fill?: b
     </svg>
   );
 }
-const IconUser = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M8 7.2a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2Zm-5.4 6.6c.6-2.6 2.8-4.2 5.4-4.2s4.8 1.6 5.4 4.2" />);
-const IconUsergroup = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M6 7a2.4 2.4 0 1 0 0-4.8A2.4 2.4 0 0 0 6 7Zm-4.6 6.4c.5-2.4 2.4-3.9 4.6-3.9 1 0 1.9.3 2.7.8M10.5 3.4a2.2 2.2 0 1 1 1.1 4.2m.5 1.9c1.6.4 2.9 1.6 3.3 3.3" />);
-const IconUsergroupAdd = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M6 7a2.4 2.4 0 1 0 0-4.8A2.4 2.4 0 0 0 6 7Zm-4.6 6.4c.5-2.4 2.4-3.9 4.6-3.9.9 0 1.8.2 2.5.7M12 6.5v4M10 8.5h4" />);
-const IconFolder = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M1.8 4.2c0-.7.6-1.3 1.3-1.3h3l1.4 1.6h5.4c.7 0 1.3.6 1.3 1.3v6c0 .7-.6 1.3-1.3 1.3H3.1c-.7 0-1.3-.6-1.3-1.3v-7.6Z" />);
-const IconLayers = ({ size = 16 }: { size?: number }) => (<IconGlyph size={size} d="M8 1.8 14 5 8 8.2 2 5l6-3.2ZM2.6 8.4 8 11.2l5.4-2.8M2.6 11.4 8 14.2l5.4-2.8" />);
-const IconEnter = ({ size = 16 }: { size?: number }) => (<IconGlyph size={size} d="M9.5 2.5h4v11h-4M6 5.5 3 8.5l3 3M3 8.5h7.5" />);
-const IconChevron = ({ size = 14, direction }: { size?: number; direction: 'down' | 'right' }) => (<IconGlyph size={size} d={direction === 'down' ? 'M4 6l4 4 4-4' : 'M6 4l4 4-4 4'} />);
+function TIcon(props: { children: React.ReactNode; size?: number; className?: string }) {
+  return (
+    <svg width={props.size ?? 16} height={props.size ?? 16} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className={props.className}>{props.children}</svg>
+  );
+}
+const IconUser = ({ size = 14 }: { size?: number }) => (
+  <TIcon size={size}><path d="M16.5 7.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2h16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></TIcon>
+);
+const IconUsergroup = ({ size = 14 }: { size?: number }) => (
+  <TIcon size={size}><g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM5 19a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2H5v-2Z" /><path d="M7 4a4 4 0 1 0 0 8 6 6 0 0 0-6 6v3m22 0v-3a6 6 0 0 0-6-6 4 4 0 0 0 0-8" /></g></TIcon>
+);
+const IconUsergroupAdd = ({ size = 14 }: { size?: number }) => (
+  <TIcon size={size}><path d="M9 4a4 4 0 1 0 0 8 6 6 0 0 0-6 6v3m11-6h-2a4 4 0 0 0-4 4v2h6m5-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM20 15v3m0 0v3m0-3h-3m3 0h3" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></TIcon>
+);
+const IconFolder = ({ size = 14 }: { size?: number }) => (
+  <TIcon size={size}><path d="M2 3.5h7L11 6h11v14H2V3.5Z" stroke="currentColor" strokeWidth="2" /></TIcon>
+);
+const IconLayers = ({ size = 16 }: { size?: number }) => (
+  <TIcon size={size}><path d="M4.5 6.125 12 3l7.5 3.125L12 9.25 4.5 6.125ZM3 11.5l9 3.877 9-3.877m0 6-9 3.877L3 17.5" stroke="currentColor" strokeWidth="2" /></TIcon>
+);
+const IconEnter = ({ size = 16 }: { size?: number }) => (
+  <TIcon size={size}><path d="M5.75 16H16a3 3 0 0 0 3-3V5M8 12.5 4.5 16 8 19.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></TIcon>
+);
+const IconChevron = ({ size = 14, direction }: { size?: number; direction: 'down' | 'right' }) => (
+  <TIcon size={size}>{direction === 'down'
+    ? <path d="M17.5 9.5 12 15 6.5 9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />
+    : <path d="M9.5 17.5 15 12 9.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />}</TIcon>
+);
 const IconClose = ({ size = 20 }: { size?: number }) => (<IconGlyph size={size} d="M4 4l8 8M12 4l-8 8" viewBox="0 0 16 16" />);
 const IconBack = ({ size = 18 }: { size?: number }) => (<IconGlyph size={size} d="M10 3 5 8l5 5" />);
 const IconSearch = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10Zm6.5 1.5L10.4 10.4" />);
@@ -233,32 +257,37 @@ function avatarHash(name: string): number {
 function SpaceAvatar(props: { name: string; avatar?: unknown; size?: 'small' | 'medium' | 'large'; className?: string }) {
   const size = props.size ?? 'medium';
   const dimension = size === 'small' ? 22 : size === 'large' ? 48 : 32;
+  // Vue SpaceAvatar small: radius 5px, no shadow, decoration hidden, 11px letter.
+  const radius = size === 'small' ? '5px' : size === 'large' ? '12px' : '8px';
+  const shadow = size === 'small' ? 'none' : '0px 3px 14px 2px rgba(0,0,0,0.05), 0px 8px 10px 1px rgba(0,0,0,0.06), 0px 5px 5px -3px rgba(0,0,0,0.1)';
+  const letterPx = size === 'small' ? 11 : size === 'large' ? 20 : 14;
   const avatarText = strOf(props.avatar).trim();
   const isEmoji = avatarText.startsWith('emoji:') && avatarText.length > 6;
   const name = props.name?.trim() ?? '';
   const firstChar = name ? name.charAt(0) : '?';
   const letter = /[a-zA-Z]/.test(firstChar) ? firstChar.toUpperCase() : firstChar;
   const gradient = AVATAR_GRADIENTS[avatarHash(name) % AVATAR_GRADIENTS.length];
-  // .space-avatar / .space-avatar-large rules → utilities (margin hookable via className).
-  const className = 'flex items-center justify-center overflow-hidden relative rounded-[8px] shadow-[0_1px_3px_rgba(0,0,0,0.16)]' + (props.className ? ' ' + props.className : '');
+  const className = 'flex items-center justify-center overflow-hidden relative' + (props.className ? ' ' + props.className : '');
   const style: Record<string, string> = isEmoji
-    ? { background: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)', width: dimension + 'px', height: dimension + 'px' }
-    : { background: 'linear-gradient(135deg, ' + gradient[0] + ' 0%, ' + gradient[1] + ' 100%)', width: dimension + 'px', height: dimension + 'px' };
+    ? { background: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)', width: dimension + 'px', height: dimension + 'px', borderRadius: radius, boxShadow: shadow }
+    : { background: 'linear-gradient(135deg, ' + gradient[0] + ' 0%, ' + gradient[1] + ' 100%)', width: dimension + 'px', height: dimension + 'px', borderRadius: radius, boxShadow: shadow };
   return (
     <div className={className} style={style}>
       {isEmoji ? (
         <span style={{ fontSize: Math.round(dimension * 0.5) + 'px' }}>{avatarText.slice(6).trim()}</span>
       ) : (
         <>
-          <svg className="absolute top-0 right-0 h-auto w-full text-[rgba(255,255,255,0.5)]" viewBox="0 0 56 40" width={dimension} height={Math.round(dimension * 40 / 56)} preserveAspectRatio="xMaxYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <circle cx="10" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
-            <circle cx="28" cy="8" r="5" stroke="currentColor" strokeWidth="1.8" fill="none" opacity="0.7" />
-            <circle cx="46" cy="14" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
-            <path d="M14 13 L24 10 M32 10 L42 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.4" />
-            <circle cx="28" cy="28" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" opacity="0.35" />
-            <path d="M28 14 L28 22 M20 18 L26 24 M36 18 L30 24" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.3" />
-          </svg>
-          <span className={'relative text-white font-semibold leading-none ' + (size === 'large' ? 'text-[20px]' : 'text-[12px]')} style={{ textShadow: '0 1px 2px ' + gradient[1] + '80, 0 0 8px ' + gradient[0] + '30' }}>{letter}</span>
+          {size !== 'small' ? (
+            <svg className="absolute bottom-0 right-0 text-[rgba(255,255,255,0.9)] opacity-[0.35]" viewBox="0 0 56 40" width={Math.round(dimension * 0.55)} height={Math.round(dimension * 0.55 * 40 / 56)} preserveAspectRatio="xMaxYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <circle cx="10" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
+              <circle cx="28" cy="8" r="5" stroke="currentColor" strokeWidth="1.8" fill="none" opacity="0.7" />
+              <circle cx="46" cy="14" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
+              <path d="M14 13 L24 10 M32 10 L42 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.4" />
+              <circle cx="28" cy="28" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" opacity="0.35" />
+              <path d="M28 14 L28 22 M20 18 L26 24 M36 18 L30 24" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.3" />
+            </svg>
+          ) : null}
+          <span className="relative text-white font-semibold leading-none" style={{ fontSize: letterPx + 'px', textShadow: '0 1px 2px ' + gradient[1] + '80, 0 0 8px ' + gradient[0] + '30' }}>{letter}</span>
         </>
       )}
     </div>
@@ -898,12 +927,14 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   function sectionHeader(key: OrgSectionKey) {
     const collapsed = collapsedSections.has(key);
     return (
-      <div key={'header-' + key} className="sticky top-0 z-[5] col-span-full flex cursor-pointer select-none items-center gap-[6px] rounded-[6px] bg-surface py-[6px] pr-[4px] pl-0 text-[13px] font-semibold leading-[20px] text-[rgba(23,26,29,0.6)] shadow-[0_-8px_0_0_#fff,0_4px_0_0_#fff] outline-none hover:text-[rgba(23,26,29,0.92)]" role="button" tabIndex={0}
+      <div key={'header-' + key} className="sticky top-0 z-[5] col-span-full flex cursor-pointer select-none items-center gap-[6px] rounded-[6px] bg-surface py-[6px] pr-[4px] pl-0 text-[13px] font-semibold leading-[20px] text-[rgba(0,0,0,0.6)] shadow-[0_-8px_0_0_#fff,0_4px_0_0_#fff] outline-none hover:text-[rgba(0,0,0,0.9)]" role="button" tabIndex={0}
         onClick={() => toggleSection(key)}
         onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleSection(key); } }}>
-        {key === 'created' ? <IconUsergroupAdd /> : <IconUsergroup />}
+        {/* Vue OrganizationList.vue:57 — created uses the single-person `user`
+            glyph; joined uses `usergroup`. */}
+        {key === 'created' ? <IconUser /> : <IconUsergroup />}
         <span>{t(locale, key === 'created' ? 'organization.createdByMe' : 'organization.joinedByMe')}</span>
-        <span className="ml-[2px] rounded-[8px] bg-[#f3f3f5] px-[6px] text-[11px] font-medium leading-[16px] text-[rgba(23,26,29,0.6)]">{key === 'created' ? createdCount : joinedCount}</span>
+        <span className="ml-[2px] rounded-[8px] bg-[#f3f3f3] px-[6px] text-[11px] font-medium leading-[16px] text-[rgba(0,0,0,0.6)]">{key === 'created' ? createdCount : joinedCount}</span>
         <span className="ml-[4px] opacity-70"><IconChevron direction={collapsed ? 'right' : 'down'} /></span>
       </div>
     );
@@ -935,7 +966,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
         <div className="relative z-[2] mb-[6px] flex items-center justify-between">
           <div className="flex min-w-0 flex-1 items-center gap-[8px]">
             <div className="flex shrink-0"><SpaceAvatar name={org.name} avatar={org.avatar} size="small" /></div>
-            <div className="flex min-w-0 flex-1 flex-col gap-[2px]"><span className="truncate text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[rgba(23,26,29,0.92)]" title={org.name}>{org.name}</span></div>
+            <div className="flex min-w-0 flex-1 flex-col gap-[2px]"><span className="truncate text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[rgba(0,0,0,0.9)]" title={org.name}>{org.name}</span></div>
           </div>
           <div className={'relative flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] opacity-0 [transition:all_.2s_ease] group-hover:opacity-60 hover:bg-[#f3f3f5] hover:opacity-100!' + (moreMenuOrgId === org.id ? ' bg-[#f3f3f5] opacity-100!' : '')}
             role="button" tabIndex={0} aria-label={t(locale, 'common.moreActions')}
@@ -965,7 +996,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
           </div>
         </div>
         <div className="relative z-[1] mb-[6px] flex min-h-0 flex-1 flex-col gap-[6px] overflow-hidden">
-          <div className="line-clamp-2 text-[12px] font-normal leading-[18px] text-[rgba(23,26,29,0.6)]">{description || t(locale, 'organization.noDescription')}</div>
+          <div className="line-clamp-2 text-[12px] font-normal leading-[17px] text-[rgba(0,0,0,0.6)]">{description || t(locale, 'organization.noDescription')}</div>
         </div>
         <div className="relative z-[1] mt-auto flex items-center justify-between border-t-[0.5px] border-[#e7e7ea] pt-[6px]">
           <div className="flex min-w-0 flex-1 items-center gap-[6px]">
@@ -1069,22 +1100,25 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   // .wk-page .wk-org-page → utilities: the org page cancels the shared
   // page gutter (max-width/padding !important) and fills the shell height.
   return (
-    <main className="box-border h-full max-w-none! overflow-hidden p-0!">
-      <div className="relative flex h-full min-h-0 w-full m-0">
-        <aside className="box-border flex w-[56px] shrink-0 flex-col items-center gap-1 border-r border-[#e7e7ea] px-0 pt-3 pb-1.5" aria-label={t(locale, 'organization.title')}>
-          {/* Vue ListSpaceSidebar collapsed-strip tooltips carry the live
-              counts (tooltipText(name, count) → "name (count)").
-              "is-active" stays as a state hook (styles are utilities). */}
-          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[8px] border-0 px-0 pt-[5px] pb-0.5 font-[inherit] text-[11px] ' + (selection === 'all' ? 'is-active text-accent' : 'text-[rgba(23,26,29,0.6)] hover:text-[rgba(23,26,29,0.92)]')} title={t(locale, 'common.all') + ' (' + organizations.length + ')'} onClick={() => setSelection('all')}>
-            <span className={'flex h-[30px] w-[30px] box-border items-center justify-center rounded-[8px] border text-inherit ' + (selection === 'all' ? 'border-[rgba(7,192,95,0.35)] bg-accent-wash' : 'border-transparent')}><IconLayers /></span>
+    <main className="box-border h-full max-w-none! overflow-hidden p-0! [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale]">
+      {/* Vue .org-list-container carries margin: 0 16px 0 0 — the content row
+          is 16px narrower than the agents page. */}
+      <div className="relative flex h-full min-h-0 w-[calc(100%_-_16px)]">
+        <aside className="box-border flex w-[56px] shrink-0 flex-col items-center gap-1 shadow-[inset_-1px_0_0_#e7e7e7] pt-3 pb-[6px]" aria-label={t(locale, 'organization.title')}>
+          {/* Vue ListSpaceSidebar collapsed strip: fixed 46px items, bare 16px
+              glyph + 11px label (no icon tile); the active item is the neutral
+              #f3f3f3 pill with brand-green content. Tooltips carry the live
+              counts (tooltipText(name, count) → "name (count)"). */}
+          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-[8px] border-0 px-0 pt-[5px] pb-[2px] font-[inherit] text-[11px] leading-[1.25] transition-[background] duration-150 ' + (selection === 'all' ? 'is-active bg-[#f3f3f3] text-accent' : 'bg-transparent text-[rgba(0,0,0,0.6)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]')} title={t(locale, 'common.all') + ' (' + organizations.length + ')'} onClick={() => setSelection('all')}>
+            <IconLayers size={16} />
             <span>{t(locale, 'common.all')}</span>
           </button>
-          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[8px] border-0 px-0 pt-[5px] pb-0.5 font-[inherit] text-[11px] ' + (selection === 'created' ? 'is-active text-accent' : 'text-[rgba(23,26,29,0.6)] hover:text-[rgba(23,26,29,0.92)]')} title={t(locale, 'organization.createdByMe') + ' (' + createdCount + ')'} onClick={() => setSelection('created')}>
-            <span className={'flex h-[30px] w-[30px] box-border items-center justify-center rounded-[8px] border text-inherit ' + (selection === 'created' ? 'border-[rgba(7,192,95,0.35)] bg-accent-wash' : 'border-transparent')}><IconUsergroupAdd /></span>
+          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-[8px] border-0 px-0 pt-[5px] pb-[2px] font-[inherit] text-[11px] leading-[1.25] transition-[background] duration-150 ' + (selection === 'created' ? 'is-active bg-[#f3f3f3] text-accent' : 'bg-transparent text-[rgba(0,0,0,0.6)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]')} title={t(locale, 'organization.createdByMe') + ' (' + createdCount + ')'} onClick={() => setSelection('created')}>
+            <IconUsergroupAdd size={16} />
             <span>{t(locale, 'organization.createdByMe')}</span>
           </button>
-          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[8px] border-0 px-0 pt-[5px] pb-0.5 font-[inherit] text-[11px] ' + (selection === 'joined' ? 'is-active text-accent' : 'text-[rgba(23,26,29,0.6)] hover:text-[rgba(23,26,29,0.92)]')} title={t(locale, 'organization.joinedByMe') + ' (' + joinedCount + ')'} onClick={() => setSelection('joined')}>
-            <span className={'flex h-[30px] w-[30px] box-border items-center justify-center rounded-[8px] border text-inherit ' + (selection === 'joined' ? 'border-[rgba(7,192,95,0.35)] bg-accent-wash' : 'border-transparent')}><IconUsergroup /></span>
+          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-[8px] border-0 px-0 pt-[5px] pb-[2px] font-[inherit] text-[11px] leading-[1.25] transition-[background] duration-150 ' + (selection === 'joined' ? 'is-active bg-[#f3f3f3] text-accent' : 'bg-transparent text-[rgba(0,0,0,0.6)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]')} title={t(locale, 'organization.joinedByMe') + ' (' + joinedCount + ')'} onClick={() => setSelection('joined')}>
+            <IconUsergroup size={16} />
             <span>{t(locale, 'organization.joinedByMe')}</span>
           </button>
         </aside>
@@ -1096,10 +1130,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                 <div className="flex shrink-0 items-center gap-[8px]">
                   {/* Vue header-actions: disabled={!canManageOrg} with the
                       joinOrg/createOrg tooltip swapped for the rbac tip. */}
-                  <button type="button" className="flex h-[28px] w-[28px] min-w-[28px] box-border cursor-pointer items-center justify-center rounded-[6px] border border-[#e7e7ea] bg-[#f3f3f5] p-0 text-[rgba(23,26,29,0.6)] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] [transition:background_.2s,border-color_.2s,color_.2s] hover:text-[rgba(23,26,29,0.92)] [&_svg]:text-accent" aria-label={t(locale, 'organization.joinOrg')} title={canManageOrg ? t(locale, 'organization.joinOrg') : writeGuardTitle} disabled={!canManageOrg} onClick={openJoinModal}>
+                  <button type="button" className="flex h-[28px] w-[28px] min-w-[28px] box-border cursor-pointer items-center justify-center rounded-[6px] border border-[#e7e7e7] bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] [transition:background_.2s,border-color_.2s,color_.2s] hover:text-[rgba(0,0,0,0.9)] [&_svg]:text-accent" aria-label={t(locale, 'organization.joinOrg')} title={canManageOrg ? t(locale, 'organization.joinOrg') : writeGuardTitle} disabled={!canManageOrg} onClick={openJoinModal}>
                     <IconEnter />
                   </button>
-                  <button type="button" className="flex h-[28px] w-[28px] min-w-[28px] box-border cursor-pointer items-center justify-center rounded-[6px] border border-[#e7e7ea] bg-[#f3f3f5] p-0 text-[rgba(23,26,29,0.6)] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] [transition:background_.2s,border-color_.2s,color_.2s] hover:text-[rgba(23,26,29,0.92)] [&_svg]:text-accent" aria-label={t(locale, 'organization.createOrg')} title={canManageOrg ? t(locale, 'organization.createOrg') : writeGuardTitle} disabled={!canManageOrg} onClick={openCreateModal}>
+                  <button type="button" className="flex h-[28px] w-[28px] min-w-[28px] box-border cursor-pointer items-center justify-center rounded-[6px] border border-[#e7e7e7] bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] [transition:background_.2s,border-color_.2s,color_.2s] hover:text-[rgba(0,0,0,0.9)] [&_svg]:text-accent" aria-label={t(locale, 'organization.createOrg')} title={canManageOrg ? t(locale, 'organization.createOrg') : writeGuardTitle} disabled={!canManageOrg} onClick={openCreateModal}>
                     <IconOrgCreate />
                   </button>
                 </div>

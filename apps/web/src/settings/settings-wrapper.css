@@ -58,18 +58,24 @@
    overflow:auto so long payloads scroll instead of stretching the drawer. */
 .wk-audit-detail pre { background: #f7f9fb; border: 1px solid rgba(120,135,155,.18); border-radius: 8px; font-size: 12px; line-height: 1.55; margin: 0; max-height: 50vh; overflow: auto; padding: 12px 14px; white-space: pre-wrap; }
 .wk-settings-section .section-header { margin-bottom: 32px; }
-.wk-settings-section .section-header h2 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
-.wk-settings-section .section-description { font-size: 14px; line-height: 1.5; margin: 0; opacity: 0.75; }
+/* Vue GeneralSettings.vue section-header: h2 没有 line-height 覆盖（Tailwind
+   preflight 后 body 1.5 会把 20px 抬到 30px，Vue 实测 normal=28px），颜色取
+   --td-text-color-primary rgba(0,0,0,.9)。 */
+.wk-settings-section .section-header h2 { font-size: 20px; font-weight: 600; line-height: normal; margin: 0 0 8px; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-section .section-description { font-size: 14px; line-height: 1.5; margin: 0; color: rgba(0, 0, 0, 0.6); }
 
 /* setting-row list shared by TenantInfo.vue / UserProfile.vue /
-   SystemInfo.vue / GeneralSettings.vue */
+   SystemInfo.vue / GeneralSettings.vue — 几何与颜色逐条对齐 Vue panel 的
+   scoped 样式：行无 gap、边线 --td-component-stroke #e7e7e7、info 列
+   padding-right 24px、label 15px/500 primary（line-height normal = 21px，
+   继承 1.5 会抬到 22.5px 使每行 +1.5px）、desc 13px secondary。 */
 .wk-settings-section .settings-group { display: flex; flex-direction: column; }
-.wk-settings-section .setting-row { align-items: flex-start; border-bottom: 1px solid rgba(120, 135, 155, 0.18); display: flex; gap: 24px; justify-content: space-between; padding: 20px 0; }
+.wk-settings-section .setting-row { align-items: flex-start; border-bottom: 1px solid #e7e7e7; display: flex; justify-content: space-between; padding: 20px 0; }
 .wk-settings-section .setting-row:last-child { border-bottom: 0; }
-.wk-settings-section .setting-info { flex: 1; max-width: 65%; padding-right: 16px; }
-.wk-settings-section .setting-info label { color: inherit; display: block; font-size: 15px; font-weight: 500; margin-bottom: 4px; }
-.wk-settings-section .setting-info .desc { font-size: 13px; line-height: 1.5; margin: 0; opacity: 0.7; }
-.wk-settings-section .setting-control { align-items: center; display: flex; flex-shrink: 0; justify-content: flex-end; min-width: 220px; }
+.wk-settings-section .setting-info { flex: 1; max-width: 65%; padding-right: 24px; }
+.wk-settings-section .setting-info label { color: rgba(0, 0, 0, 0.9); display: block; font-size: 15px; font-weight: 500; line-height: normal; margin-bottom: 4px; }
+.wk-settings-section .setting-info .desc { color: rgba(0, 0, 0, 0.6); font-size: 13px; line-height: 1.5; margin: 0; }
+.wk-settings-section .setting-control { align-items: center; display: flex; flex-shrink: 0; justify-content: flex-end; min-width: 280px; }
 .wk-settings-section .setting-control--stacked { align-items: flex-end; flex-direction: column; gap: 8px; }
 .wk-settings-section .info-value { font-size: 14px; overflow-wrap: anywhere; }
 .wk-settings-section .info-value.password-mask { letter-spacing: 2px; }

@@ -556,28 +556,49 @@ function Icon({ size = 16, className, children }: { size?: number; className?: s
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{children}</svg>
   );
 }
+// Vue renders t-icon (TDesign two-tone glyphs, square line caps). Stroke-only
+// ports of the exact TDesign path data keep the glyph outlines pixel-close
+// without importing the icon font (parity: FAQEntryManager.vue toolbar/header).
+function TIcon({ size = 16, className, children }: { size?: number; className?: string; children: ReactNode }) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true" focusable="false">{children}</svg>
+  );
+}
 const Chevrons = {
   right: 'M9 18l6-6-6-6',
   down: 'M6 9l6 6 6-6',
   up: 'M18 15l-6-6-6 6',
 };
+// TDesign chevron-right / chevron-down (chevron-right.js / chevron-down.js).
+const TChevrons = {
+  right: 'M9.5 17.5L15 12L9.5 6.5',
+  down: 'M17.5 9.5L12 15L6.5 9.5',
+};
 function SearchIcon(props: { size?: number; className?: string }) {
-  return <Icon {...props}><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></Icon>;
+  // TDesign search.js stroke paths
+  return <TIcon {...props}><path d="M15.8033 15.8033C12.8744 18.7322 8.12563 18.7322 5.1967 15.8033C2.26777 12.8744 2.26777 8.12563 5.1967 5.1967C8.12563 2.26777 12.8744 2.26777 15.8033 5.1967C18.7322 8.12563 18.7322 12.8744 15.8033 15.8033Z" /><path d="M15.8027 15.8037L21.106 21.107" /></TIcon>;
 }
 function GearIcon(props: { size?: number; className?: string }) {
+  // TDesign setting.js stroke paths (hexagon nut + inner circle)
   return (
-    <Icon {...props}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
-    </Icon>
+    <TIcon {...props}>
+      <path d="M12.0001 2L20.6604 7V17L12.0001 22L3.33984 17V7L12.0001 2Z" />
+      <path d="M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z" />
+    </TIcon>
   );
 }
-function AddIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M12 5v14M5 12h14" /></Icon>; }
-function DownloadIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></Icon>; }
-function InfoIcon(props: { size?: number; className?: string }) { return <Icon {...props}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icon>; }
+function AddIcon(props: { size?: number; className?: string }) { return <TIcon {...props}><path d="M12 5L12 19M19 12L5 12" /></TIcon>; }
+function DownloadIcon(props: { size?: number; className?: string }) { return <TIcon {...props}><path d="M16.5 10.5L12 15L7.5 10.5M12 13.75V4" /><path d="M20.5 15V20H3.5V15" /></TIcon>; }
+function InfoIcon(props: { size?: number; className?: string }) {
+  // TDesign info-circle.js stroke paths
+  return <TIcon {...props}><path d="M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z" /><path d="M12 16.5L12 11M12 7.5L11.9961 7.5L11.9961 7.49609L12 7.49609L12 7.5Z" /></TIcon>;
+}
 function FileAddIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /><path d="M12 18v-6M9 15h6" /></Icon>; }
 function CloseIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M18 6L6 18M6 6l12 12" /></Icon>; }
-function TagIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" /><path d="M7 7h.01" /></Icon>; }
+function TagIcon(props: { size?: number; className?: string }) {
+  // Vue uses t-icon name="discount" (FAQEntryManager.vue:177) — TDesign discount.js
+  return <TIcon {...props}><path d="M11.878 22.0207L1.97852 12.1212L11.878 2.22168L21.0704 2.92879L21.7775 12.1212L11.878 22.0207Z" /><path d="M13.9998 7.17075C14.7809 6.3897 16.0472 6.3897 16.8283 7.17075C17.6093 7.9518 17.6093 9.21813 16.8283 9.99917C16.0472 10.7802 14.7809 10.7802 13.9998 9.99917C13.2188 9.21813 13.2188 7.9518 13.9998 7.17075Z" /></TIcon>;
+}
 function UploadIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></Icon>; }
 // Vue card-more-btn uses @/assets/img/more.png (horizontal ⋯) — inline feather-style dots.
 function MoreIcon(props: { size?: number; className?: string }) {
@@ -601,13 +622,13 @@ export function FAQBreadcrumb({ t: tr, knowledgeBaseId = '', kbName, kbList = []
   const [infoOpen, setInfoOpen] = useState(false);
   return (
     <div className="faq-title-row flex w-full flex-wrap items-center gap-2">
-      <h2 className="faq-breadcrumb m-0 flex items-center gap-1.5 text-xl font-semibold leading-[1.5] text-ink">
-        <button type="button" className="breadcrumb-link -mx-2 -my-1 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xl font-semibold leading-[1.5] text-muted [transition:all_0.12s_ease] hover:enabled:bg-surface hover:enabled:text-accent-deep disabled:cursor-not-allowed disabled:text-faint" onClick={() => onNavigate(faqKBListPath)}>{t('menu.knowledgeBase')}</button>
-        <Icon size={14} className="faq-breadcrumb-separator shrink-0 text-faint"><path d={Chevrons.right} /></Icon>
+      <h2 className="faq-breadcrumb m-0 flex items-center gap-1.5 text-xl font-semibold leading-8 text-ink">
+        <button type="button" className="breadcrumb-link -mx-2 -my-1 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xl font-semibold leading-8 text-muted [font-family:inherit] [transition:all_0.12s_ease] hover:enabled:bg-surface hover:enabled:text-accent-deep disabled:cursor-not-allowed disabled:text-faint" onClick={() => onNavigate(faqKBListPath)}>{t('menu.knowledgeBase')}</button>
+        <TIcon size={14} className="faq-breadcrumb-separator shrink-0 text-faint"><path d={TChevrons.right} /></TIcon>
         <span className="faq-kb-switcher relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setSwitcherOpen(false))}>
-          <button type="button" className="breadcrumb-link dropdown group/dd -mx-2 -my-1 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent py-1 pr-1.5 pl-2 text-xl font-semibold leading-[1.5] text-muted [transition:all_0.12s_ease] hover:enabled:bg-surface hover:enabled:text-accent-deep disabled:cursor-not-allowed disabled:text-faint" aria-haspopup="menu" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen((open) => !open)}>
+          <button type="button" className="breadcrumb-link dropdown group/dd -mx-2 -my-1 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent py-1 pr-1.5 pl-2 text-xl font-semibold leading-8 text-muted [font-family:inherit] [transition:all_0.12s_ease] hover:enabled:bg-surface hover:enabled:text-accent-deep disabled:cursor-not-allowed disabled:text-faint" aria-haspopup="menu" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen((open) => !open)}>
             <span>{kbName ?? '…'}</span>
-            <Icon size={14} className="breadcrumb-caret shrink-0 transition-transform duration-[120ms] ease-[ease] group-hover/dd:translate-y-[1px]"><path d={Chevrons.down} /></Icon>
+            <TIcon size={14} className="breadcrumb-caret shrink-0 transition-transform duration-[120ms] ease-[ease] group-hover/dd:translate-y-[1px]"><path d={TChevrons.down} /></TIcon>
           </button>
           <span className="faq-menu faq-switcher-menu absolute top-[calc(100%+6px)] left-0 right-auto z-[210] flex min-w-[200px] max-h-[320px] flex-col overflow-auto rounded-lg border border-[#e3e8f0] bg-surface p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" role="menu" hidden={!switcherOpen}>
             {kbList.map((kb) => (
@@ -617,12 +638,12 @@ export function FAQBreadcrumb({ t: tr, knowledgeBaseId = '', kbName, kbList = []
             ))}
           </span>
         </span>
-        <Icon size={14} className="faq-breadcrumb-separator shrink-0 text-faint"><path d={Chevrons.right} /></Icon>
-        <span className="breadcrumb-current text-xl font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faq.title')}</span>
+        <TIcon size={14} className="faq-breadcrumb-separator shrink-0 text-faint"><path d={TChevrons.right} /></TIcon>
+        <span className="breadcrumb-current text-xl font-semibold leading-8 text-ink">{t('knowledgeEditor.faq.title')}</span>
       </h2>
       <div className="faq-kb-title-actions inline-flex shrink-0 items-center gap-1.5">
         <span className="kb-info-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setInfoOpen(false))}>
-          <button type="button" className="faq-kb-info-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-0 bg-[#eef1f6] p-0 text-muted [transition:all_0.2s_ease] hover:bg-[#e2e7ef] hover:text-accent-deep" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen} onClick={() => setInfoOpen((open) => !open)}>
+          <button type="button" className="faq-kb-info-button inline-flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-black/40 [transition:all_0.2s_ease] hover:bg-[#f3f3f3] hover:text-accent-deep" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen} onClick={() => setInfoOpen((open) => !open)}>
             <InfoIcon size={16} />
           </button>
           <span className="faq-kb-info-card absolute top-[calc(100%+8px)] right-0 z-[200] flex w-[320px] flex-col gap-2.5 rounded-[10px] border border-[#e3e8f0] bg-surface px-4 py-3.5 text-left text-[13px] leading-[1.5] shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" hidden={!infoOpen}>
@@ -632,8 +653,8 @@ export function FAQBreadcrumb({ t: tr, knowledgeBaseId = '', kbName, kbList = []
             {kbMeta?.createdAt ? <span className="kb-info-card-row flex items-baseline gap-3"><span className="faq-kb-info-card-label w-16 shrink-0 text-faint">{t('knowledgeBase.infoCard.createdAt')}</span><span className="kb-info-card-value text-ink [word-break:break-word]">{kbMeta.createdAt}</span></span> : null}
           </span>
         </span>
-        <button type="button" className="faq-kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-0 bg-[#eef1f6] p-0 text-muted [transition:all_0.2s_ease] hover:bg-[#e2e7ef] hover:text-accent-deep" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => knowledgeBaseId && onNavigate(faqKBSettingsPath(knowledgeBaseId))}>
-          <GearIcon size={14} />
+        <button type="button" className="faq-kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-0 bg-[#f3f3f3] p-0 text-black/60 [transition:all_0.2s_ease] hover:bg-[#e8e8e8] hover:text-accent-deep" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => knowledgeBaseId && onNavigate(faqKBSettingsPath(knowledgeBaseId))}>
+          <GearIcon size={16} />
         </button>
       </div>
     </div>
@@ -980,7 +1001,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
   });
 
   return (
-    <main className="m-0 box-border max-w-none ml-[4px] mr-[16px] px-8 pt-6 pb-12 max-md:p-4">
+    <main className="faq-view m-0 box-border max-w-none ml-[4px] mr-[16px] px-8 pt-6 pb-12 max-md:p-4">
       <header className="faq-header mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="faq-header-title flex w-full flex-col gap-1">
           <FAQBreadcrumb t={t} knowledgeBaseId={knowledgeBaseId} kbName={kbName} kbList={kbList} kbMeta={kbMeta} onNavigate={onNavigate} />
@@ -1015,10 +1036,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
         <div className="faq-card-area relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="faq-filter-bar flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 pb-3">
             <div className="faq-search-input relative flex min-w-0 items-center flex-[1_1_220px] max-md:flex-[1_1_100%]">
-              <SearchIcon size={16} className="faq-search-icon pointer-events-none absolute left-3 text-faint" />
+              <SearchIcon size={16} className="faq-search-icon pointer-events-none absolute left-[9px] text-faint" />
               <Input
                 type="search"
-                className="h-9 w-full appearance-none box-border rounded-lg border border-transparent bg-surface-alt px-9 py-0 text-sm leading-[1.5] text-ink font-[inherit] outline-none [transition:background_0.2s_ease,border-color_0.2s_ease] hover:border-accent-deep hover:bg-surface focus:border-accent-deep focus:bg-surface [&::-webkit-search-cancel-button]:hidden"
+                className="h-8 w-full appearance-none box-border rounded-md border border-transparent bg-surface-alt pl-[25px] pr-3 py-0 text-sm leading-[22px] text-ink font-[inherit] outline-none [transition:background_0.2s_ease,border-color_0.2s_ease] hover:border-accent-deep hover:bg-surface focus:border-accent-deep focus:bg-surface [&::-webkit-search-cancel-button]:hidden"
                 value={keywordDraft}
                 placeholder={t('knowledgeEditor.faq.searchPlaceholder')}
                 aria-label={t('knowledgeBase.faq.search')}
@@ -1033,7 +1054,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                   <span className="doc-tag-filter-trigger__prefix mr-2 inline-flex shrink-0 items-center text-faint"><TagIcon size={16} /></span>
                   <span className="doc-tag-filter-trigger__label min-w-0 flex-1 truncate text-left">{activeTagLabel}</span>
                   <span className="doc-tag-filter-trigger__suffix ml-2 inline-flex shrink-0 items-center">
-                    {activeTagIds.length > 0 ? <span role="button" tabIndex={0} className="faq-tag-filter-clear inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded-full text-faint hover:text-ink" aria-label={t('common.clear')} onClick={(event) => { event.stopPropagation(); setTagPanelOpen(false); onClearTagFilter(); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); setTagPanelOpen(false); onClearTagFilter(); } }}><CloseIcon size={13} /></span> : <Icon size={16} className="faq-tag-filter-trigger__caret shrink-0 text-faint"><path d={Chevrons.down} /></Icon>}
+                    {activeTagIds.length > 0 ? <span role="button" tabIndex={0} className="faq-tag-filter-clear inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded-full text-faint hover:text-ink" aria-label={t('common.clear')} onClick={(event) => { event.stopPropagation(); setTagPanelOpen(false); onClearTagFilter(); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); setTagPanelOpen(false); onClearTagFilter(); } }}><CloseIcon size={13} /></span> : <TIcon size={16} className="faq-tag-filter-trigger__caret shrink-0 text-faint"><path d={TChevrons.down} /></TIcon>}
                   </span>
                 </button>
                 <span className="faq-menu faq-tag-filter-panel absolute top-[calc(100%+6px)] left-0 right-auto z-[210] flex w-[260px] min-w-[260px] flex-col gap-2 rounded-lg border border-[#e3e8f0] bg-surface p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" hidden={!tagPanelOpen}>
@@ -1061,7 +1082,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
           <div className="faq-filter-bar__trailing ml-auto flex flex-none items-center gap-1">
               {canContribute ? (
                 <span className="faq-icon-menu-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setCreateMenuOpen(false))}>
-                  <button type="button" className="content-bar-icon-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-muted [transition:all_0.15s_ease] hover:enabled:bg-[#eef1f6] hover:enabled:text-accent-deep disabled:cursor-default disabled:opacity-60" aria-label={t('knowledgeEditor.faq.createGroup')} title={t('knowledgeEditor.faq.createGroup')} aria-haspopup="menu" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen((open) => !open)}>
+                  <button type="button" className="content-bar-icon-btn inline-flex h-6 w-[30px] cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-black/60 [transition:all_0.15s_ease] hover:enabled:bg-[#eef1f6] hover:enabled:text-accent-deep disabled:cursor-default disabled:opacity-60" aria-label={t('knowledgeEditor.faq.createGroup')} title={t('knowledgeEditor.faq.createGroup')} aria-haspopup="menu" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen((open) => !open)}>
                     <AddIcon size={16} />
                   </button>
                   <span className="faq-menu faq-icon-menu absolute top-[calc(100%+6px)] right-0 z-[210] flex min-w-[140px] flex-col rounded-lg border border-[#e3e8f0] bg-surface p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" role="menu" hidden={!createMenuOpen}>
@@ -1071,7 +1092,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 </span>
               ) : null}
               <span className="faq-icon-menu-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setExportMenuOpen(false))}>
-                <button type="button" className="content-bar-icon-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-muted [transition:all_0.15s_ease] hover:enabled:bg-[#eef1f6] hover:enabled:text-accent-deep disabled:cursor-default disabled:opacity-60" aria-label={t('knowledgeEditor.faqExport.exportButton')} title={t('knowledgeEditor.faqExport.exportButton')} aria-haspopup="menu" aria-expanded={exportMenuOpen} disabled={exportLoading} onClick={() => setExportMenuOpen((open) => !open)}>
+                <button type="button" className="content-bar-icon-btn inline-flex h-6 w-[30px] cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-black/60 [transition:all_0.15s_ease] hover:enabled:bg-[#eef1f6] hover:enabled:text-accent-deep disabled:cursor-default disabled:opacity-60" aria-label={t('knowledgeEditor.faqExport.exportButton')} title={t('knowledgeEditor.faqExport.exportButton')} aria-haspopup="menu" aria-expanded={exportMenuOpen} disabled={exportLoading} onClick={() => setExportMenuOpen((open) => !open)}>
                   <DownloadIcon size={16} />
                 </button>
                 <span className="faq-menu faq-icon-menu absolute top-[calc(100%+6px)] right-0 z-[210] flex min-w-[140px] flex-col rounded-lg border border-[#e3e8f0] bg-surface p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" role="menu" hidden={!exportMenuOpen}>
@@ -1079,7 +1100,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                   <button type="button" role="menuitem" className="faq-menu-item flex w-full cursor-pointer items-center rounded-md border-0 bg-transparent px-3 py-2 text-left text-sm leading-[1.5] whitespace-nowrap font-[inherit] text-ink hover:bg-surface-alt" onClick={() => { setExportMenuOpen(false); onExport('json'); }}>{t('knowledgeEditor.faqExport.exportJSON')}</button>
                 </span>
               </span>
-              <button type="button" className="content-bar-icon-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-muted [transition:all_0.15s_ease] hover:enabled:bg-[#eef1f6] hover:enabled:text-accent-deep disabled:cursor-default disabled:opacity-60" aria-label={t('knowledgeEditor.faq.searchTest')} title={t('knowledgeEditor.faq.searchTest')} onClick={onOpenSearchTest}>
+              <button type="button" className="content-bar-icon-btn inline-flex h-6 w-[30px] cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-black/60 [transition:all_0.15s_ease] hover:enabled:bg-[#eef1f6] hover:enabled:text-accent-deep disabled:cursor-default disabled:opacity-60" aria-label={t('knowledgeEditor.faq.searchTest')} title={t('knowledgeEditor.faq.searchTest')} onClick={onOpenSearchTest}>
                 <SearchIcon size={16} />
               </button>
             </div>
@@ -1110,10 +1131,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                         ? 'question-tag is-answer max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-[5px] border border-[rgba(0,168,112,0.45)] bg-surface px-2 py-[3px] text-[11px] leading-[1.5] text-accent-deep'
                         : 'question-tag max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-[5px] border border-[#cdd6e2] bg-surface px-2 py-[3px] text-[11px] leading-[1.5] text-ink';
                     return <section className={'faq-section ' + name + ' flex min-w-0 flex-col gap-1.5'} key={name}>
-                      <button type="button" className={"faq-section-label clickable flex cursor-pointer select-none items-center gap-[5px] border-0 bg-none px-0 py-0.5 m-0 text-left text-[11px] font-semibold uppercase leading-[1.5] tracking-[0.5px] text-muted font-[inherit] hover:text-ink [&::before]:content-[''] [&::before]:w-[3px] [&::before]:h-[10px] [&::before]:shrink-0 [&::before]:rounded-[2px] " + (name === 'negative' ? '[&::before]:bg-warning' : '[&::before]:bg-accent-deep')} {...sectionButton(entry.id, name)}>
+                      <button type="button" className={"faq-section-label clickable flex cursor-pointer select-none items-center gap-[5px] border-0 bg-transparent px-0 py-0.5 m-0 text-left text-[11px] font-semibold uppercase leading-[1.5] tracking-[0.5px] text-muted font-[inherit] hover:text-ink [&::before]:content-[''] [&::before]:w-[3px] [&::before]:h-[10px] [&::before]:shrink-0 [&::before]:rounded-[2px] " + (name === 'negative' ? '[&::before]:bg-warning' : '[&::before]:bg-accent-deep')} {...sectionButton(entry.id, name)}>
                         <span>{t(labelKey)}</span>
                         <span className="section-count ml-1 font-normal text-faint">({values.length})</span>
-                        <Icon size={13} className="collapse-icon ml-auto shrink-0 text-faint"><path d={collapsed ? Chevrons.right : Chevrons.down} /></Icon>
+                        <TIcon size={13} className="collapse-icon ml-auto shrink-0 text-faint"><path d={collapsed ? TChevrons.right : TChevrons.down} /></TIcon>
                       </button>
                       {/* B5: Vue wraps each chip in FAQTagTooltip (:303-354) — the
                           bubble carries the full text instead of a native title. */}
@@ -1132,7 +1153,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                   return (
                     <article
                       key={entry.id}
-                      className={'faq-card flex min-w-0 max-w-full flex-col gap-1.5 overflow-hidden box-border rounded-[10px] border px-3 py-2.5 [transition:border-color_0.2s_ease,box-shadow_0.2s_ease,background-color_0.2s_ease] '
+                      className={'faq-card flex min-w-0 max-w-full flex-col gap-1.5 overflow-hidden box-border rounded-[10px] border px-2.5 py-2.5 [transition:border-color_0.2s_ease,box-shadow_0.2s_ease,background-color_0.2s_ease] '
                         + (isSelected
                           ? 'selected border-accent-deep bg-[rgba(0,168,112,0.06)] shadow-[0_2px_8px_rgba(0,168,112,0.15)]'
                           : 'border-[#e3e8f0] bg-surface shadow-[0_1px_3px_rgba(15,23,42,0.05)]')
@@ -1142,7 +1163,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       <div className="faq-card-header border-b border-line-soft pb-2.5">
                         <div className="faq-header-top flex items-start gap-2.5">
                           {canContribute ? (
-                            <label className="faq-card-check inline-flex shrink-0 cursor-pointer items-center pt-[3px]" onClick={(event) => event.stopPropagation()}>
+                            <label className="faq-card-check pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0" onClick={(event) => event.stopPropagation()}>
                               <Checkbox className="m-0 accent-accent-deep" checked={isSelected} aria-label={entry.standard_question} onChange={(event) => onToggleSelect(entry.id, event.target.checked)} />
                             </label>
                           ) : null}
@@ -1169,12 +1190,12 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                           ) : null}
                         </div>
                       </div>
-                      <div className="faq-card-body flex min-w-0 flex-1 flex-col gap-1.5 pt-2">
+                      <div className="faq-card-body flex min-w-0 flex-1 flex-col gap-1.5">
                         {section('similar', 'knowledgeEditor.faq.similarQuestions', entry.similar_questions)}
                         {section('negative', 'knowledgeEditor.faq.negativeQuestions', entry.negative_questions)}
                         {section('answers', 'knowledgeEditor.faq.answers', entry.answers, true)}
                       </div>
-                      <div className="faq-card-footer flex items-center justify-between gap-2.5 border-t border-dashed border-line-soft pt-2">
+                      <div className="faq-card-footer flex items-center justify-between gap-1.5 -mx-2.5 -mb-2.5 border-t border-line-soft bg-[rgba(48,50,54,0.02)] px-3 py-2">
                         <div className="faq-card-tag inline-flex min-w-0">
                           {/* B5 refine: the native title (d3a39b7b) is replaced by the
                               FAQTagTooltip bubble — hover opens the fixed, viewport-clamped
@@ -1185,7 +1206,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                         </div>
                         {canContribute ? (
                           <div className="faq-card-status inline-flex items-center" onClick={(event) => event.stopPropagation()}>
-                            <button type="button" role="switch" aria-checked={entry.is_enabled} aria-label={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')} title={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')} className={'faq-status-switch relative h-5 w-[34px] shrink-0 cursor-pointer rounded-[10px] border-0 p-0 [transition:background_0.2s_ease] ' + (entry.is_enabled ? 'is-on bg-accent-deep' : 'bg-[#c9d0dd]') + ' disabled:cursor-not-allowed disabled:opacity-[0.55]'} disabled={statusUpdatingIds.includes(entry.id)} onClick={() => onToggleEntryStatus(entry, !entry.is_enabled)}><span className={'faq-status-switch__thumb absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-[0_1px_2px_rgba(15,23,42,0.2)] [transition:transform_0.2s_ease]' + (entry.is_enabled ? ' translate-x-[14px]' : '')} /></button>
+                            <button type="button" role="switch" aria-checked={entry.is_enabled} aria-label={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')} title={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')} className={'faq-status-switch relative h-4 w-[26px] shrink-0 cursor-pointer rounded-[8px] border-0 p-0 [transition:background_0.2s_ease] ' + (entry.is_enabled ? 'is-on bg-[#07c05f]' : 'bg-[#c9d0dd]') + ' disabled:cursor-not-allowed disabled:opacity-[0.55]'} disabled={statusUpdatingIds.includes(entry.id)} onClick={() => onToggleEntryStatus(entry, !entry.is_enabled)}><span className={'faq-status-switch__thumb absolute left-[2px] top-[2px] h-3 w-3 rounded-full bg-white shadow-[0_1px_2px_rgba(15,23,42,0.2)] [transition:transform_0.2s_ease]' + (entry.is_enabled ? ' translate-x-[10px]' : '')} /></button>
                           </div>
                         ) : null}
                       </div>
@@ -1203,7 +1224,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
               </div>
             )}
             {loadingMore ? <div className="faq-load-more flex items-center justify-center px-4 py-6 text-[13px] leading-[1.5] text-muted">{t('common.loading')}</div> : null}
-            {hasMore === false && entries.length > 0 ? <div className="faq-no-more flex items-center justify-center px-4 py-6 text-[13px] italic leading-[1.5] text-faint">{t('common.noMoreData')}</div> : null}
+            {hasMore === false && entries.length > 0 ? <div className="faq-no-more flex items-center justify-center px-4 py-6 text-[13px] italic [line-height:normal] text-faint">{t('common.noMoreData')}</div> : null}
           </div>
 
           {/* R491 1b: Vue FAQBatchBar.vue:33-79 — 已选 N 项 + 取消选择 on the

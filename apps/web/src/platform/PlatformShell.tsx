@@ -966,7 +966,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               <ul>) rides along as an arbitrary-variant utility so the
               fallback chat sidebar (outside the shell) keeps its flush list. */}
           {!collapsed && (
-            <nav className="mb-[4px] pt-[8px] border-t border-[#e7ebf0] [&_h3]:mt-0 [&_ul]:px-[6px] [&_li>button]:py-[5px]" aria-label={labels.myChats}>
+            <nav className="mb-[4px] pt-[7px] border-t border-[#e7ebf0] [&_h3]:mt-0 [&_ul]:px-[6px] [&_li>button]:py-[7px]" aria-label={labels.myChats}>
               {sessionsLoadError && !sessionsLoading ? <p className="mx-[14px] my-2 text-xs text-[#b42318]" role="status">
                 {labels.sessionLoadError}{' '}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-[#07c05f] underline" onClick={retryShellSessions}>{t('common.retry')}</button>
               </p> : null}
@@ -996,13 +996,17 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
             __user-button / __avatar(+img) / __avatar-initial / __user-info /
             __user-name / __user-email / __dropdown / __dropdown-item
             (+ --danger swap) / __dropdown-divider → utilities. */}
-        <div className="shrink-0 px-[2px] py-[4px]">
+        {/* Vue menu.vue .menu_bottom is a 50px strip (py 1 around the 48px
+            button); the py-4 box made it 56px and lifted it 6px off the bottom. */}
+        <div className="shrink-0 px-[2px] py-[1px]">
           <div ref={userMenuRef} className="relative">
             <button type="button" className="flex items-center gap-[6px] w-full px-[6px] py-[8px] border-none rounded-[8px] bg-transparent cursor-pointer text-left hover:bg-[#eceff4]" aria-haspopup="menu" aria-expanded={menuOpen}
               data-guide="user-menu"
               onClick={() => setMenuOpen((open) => !open)}>
               <span className="inline-flex items-center justify-center w-[24px] h-[24px] rounded-full overflow-hidden shrink-0 bg-[linear-gradient(135deg,#2e6de6_0%,#1f56c2_100%)]" aria-hidden="true">
-                {user.avatar ? <img src={user.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-white text-[12px] font-semibold leading-[1]">{initial}</span>}
+                {/* Vue user-button renders the static /favicon.ico avatar; a
+                    dead avatar URL renders the broken-image glyph instead. */}
+                {user.avatar ? <img src={user.avatar} alt="" className="w-full h-full object-cover" onError={(event) => { const img = event.currentTarget; if (!img.dataset.faviconFallback) { img.dataset.faviconFallback = '1'; img.src = '/favicon.ico'; } }} /> : <span className="text-white text-[12px] font-semibold leading-[1]">{initial}</span>}
               </span>
               {!collapsed && (
                 <span className="flex min-w-0 flex-1 flex-col gap-[2px]">

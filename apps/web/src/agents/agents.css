@@ -29,7 +29,7 @@
   box-shadow: 0 -8px 0 0 var(--wk-bg, #fff), 0 4px 0 0 var(--wk-bg, #fff);
   padding: 6px 4px 6px 0;
   border: none;
-  color: #575e6b;
+  color: rgba(0, 0, 0, 0.6);
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
@@ -38,14 +38,14 @@
   text-align: left;
 }
 
-.wk-agent-section-header:hover { color: #1a2233; }
+.wk-agent-section-header:hover { color: rgba(0, 0, 0, 0.9); }
 
 .wk-agent-section-count {
   margin-left: 2px;
   padding: 0 6px;
   border-radius: 8px;
-  background: rgba(127, 127, 127, 0.12);
-  color: #575e6b;
+  background: #f3f3f3;
+  color: rgba(0, 0, 0, 0.6);
   font-size: 11px;
   line-height: 16px;
   font-weight: 500;

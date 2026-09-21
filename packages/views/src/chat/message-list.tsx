@@ -54,7 +54,9 @@ function MentionedItemsTags(props: { message: ChatMessage }) {
   const items = mentionedItemsOf(props.message);
   if (items.length === 0) return null;
   return (
-    <div className="wk-chat-mentioned-items m-0 mb-[2px] flex max-w-full flex-wrap justify-end gap-[6px]">
+    // Vue chat-resource-chips.less: the chip row carries mb 8 to the user
+    // bubble (mb 2 + .user_msg top gap), keeping the bubble at y74.
+    <div className="wk-chat-mentioned-items m-0 mb-[8px] flex max-w-full flex-wrap justify-end gap-[6px]">
       {items.map((item) => (
         <span
           key={item.id}
@@ -352,11 +354,16 @@ function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage; onT
     // Vue AgentStreamDisplay completed face: the live tool timeline folds into
     // the single 检索完成 summary line, with the cited-document count beside it
     // and the reference panel one click away (ChatReferencesDrawer).
+    // Vue geometry: the summary row sits flush at the block top (22px tall,
+    // .tree-container + 8px mb before the answer body).
     const docCount = completedReferenceDocCount(props.message);
-    return <section className='wk-chat-message-extras mt-[8px]' aria-label={props.copy.thinkingAndTools}>
-      <button type='button' className='wk-chat-retrieval-summary inline-flex cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-0 py-[2px] text-[12px] text-[rgba(0,0,0,0.45)] transition-[color,background] duration-200 ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]' aria-expanded={props.referencesOpen === true} onClick={() => props.onToggleReferences?.()}>
+    return <section className='wk-chat-message-extras mt-0 mb-[8px] flex' aria-label={props.copy.thinkingAndTools}>
+      {/* Vue tree-root-toolbar row: 14px label in black 0.6 at lh 22 + a
+          trailing 14px chevron, 22px tall. */}
+      <button type='button' className='wk-chat-retrieval-summary inline-flex h-[22px] cursor-pointer items-center gap-[6px] rounded-[6px] border-0 bg-transparent px-0 py-[2px] text-[14px] leading-[22px] text-[rgba(0,0,0,0.6)] transition-[color,background] duration-200 ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]' aria-expanded={props.referencesOpen === true} onClick={() => props.onToggleReferences?.()}>
         <span>{props.copy.searchDone}</span>
         {docCount > 0 ? <span>{formatChatCopy(props.copy, 'referencesDocCount', { count: docCount })}</span> : null}
+        <svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true' className='shrink-0'><path d='M6 3.5L10.5 8L6 12.5' /></svg>
       </button>
     </section>;
   }
@@ -561,16 +568,32 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
       const historyThink = isAssistant ? splitHistoryThinking(message.content) : null;
       const showSeparator = shouldShowConversationTimestamp(messages, index);
       return <Fragment key={message.id}>
-        {showSeparator ? <li className="wk-chat-timestamp block list-none select-none px-0 pt-[4px] pb-[8px] text-center text-[12px] leading-[20px] text-[rgba(0,0,0,0.26)] tabular-nums" role="separator">{formatConversationTimestampLabel(message.created_at, timestampLabels)}</li> : null}
+        {/* Vue MessageTimestamp.vue: 4/0/8 padding around a 20px label (32px
+            block, text at +4) and placeholder black 0.4. The padding rides an
+            inner span — chat.css's unlayered `.wk-chat-messages li { padding:
+            0 }` guard strips li padding — and -mb-16 cancels the ol gap so the
+            next row lands 32px after the block start, as in Vue. */}
+        {showSeparator ? <li className="wk-chat-timestamp -mb-[16px] block list-none select-none px-0 text-center text-[12px] leading-[20px] text-[rgba(0,0,0,0.4)] tabular-nums" role="separator"><span className="block pt-[4px] pb-[8px]">{formatConversationTimestampLabel(message.created_at, timestampLabels)}</span></li> : null}
+        {/* Vue botmsg.msg-item-wrapper carries an 18px block tail under the
+            assistant toolbar (user rows end at the bubble, assistant rows do
+            not) — it offsets every later message by 18px per turn. The tail
+            rides the inner body div: chat.css's unlayered
+            `.wk-chat-messages li { padding: 0 }` guard strips li padding. */}
         <li data-role={message.role} className={isAssistant ? 'wk-chat-message-row wk-chat-message-row--assistant flex w-full flex-col' : 'wk-chat-message-row wk-chat-message-row--user flex w-full flex-col'}>
-        <div className={isAssistant ? 'wk-chat-message-body flex min-w-0 max-w-full flex-col' : 'wk-chat-message-body flex min-w-0 max-w-full flex-col items-end'}>
+        <div className={isAssistant ? 'wk-chat-message-body flex min-w-0 max-w-full flex-col pb-[18px]' : 'wk-chat-message-body flex min-w-0 max-w-full flex-col items-end'}>
           {historyThink?.showThink ? <HistoryDeepThink copy={t} state={historyThink} /> : null}
           {isAssistant ? <AssistantExtras copy={t} message={message} onToggleReferences={onToggleReferences} referencesOpen={referencesOpen} /> : null}
-          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[26px] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <>
+          {/* Vue .chat-markdown-typography declares letter-spacing: normal +
+              antialiased smoothing and leaves overflow-wrap at normal — the
+              `anywhere` value wrapped lines one char earlier than Vue. Strong
+              runs at 600 (not the browser bold 700), matching chat-markdown.less. */}
+          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[26px] tracking-normal text-[rgba(0,0,0,0.9)] [-webkit-font-smoothing:antialiased] [&_strong]:font-semibold" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml({ content: historyThink?.answer ?? message.content }, t.invalidImageLink) }} /> : <>
             <MentionedItemsTags message={message} />
             <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>
           </>}
-          {isAssistant ? <div className="wk-chat-answer-toolbar mt-[6px] ml-[-7px] flex min-h-[30px] items-center justify-start gap-[4px]">
+          {/* Vue botmsg: the toolbar sits 10px under the answer body (mt-6px
+              left a 4px deficit that shifted every icon row up). */}
+          {isAssistant ? <div className="wk-chat-answer-toolbar mt-[10px] ml-[-7px] flex min-h-[30px] items-center justify-start gap-[4px]">
             <CopyAnswerButton copy={t} message={message} />
             <BookmarkAnswerButton copy={t} messageId={message.id} onBookmark={onBookmark} />
             <FallbackInfoButton copy={t} message={message} />

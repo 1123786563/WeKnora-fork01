@@ -12,6 +12,143 @@
   padding-left: 2rem;
 }
 
+/* --- kb-wiki/kb-demo parity: mirror KnowledgeBase.vue scoped toolbar CSS ---
+   Vue restyles every TDesign control in the toolbar via :deep(.t-input)
+   (gray #f3f3f3 fill, transparent border, 6px radius, 13px font). The shared
+   .wk-input / cva classes here are either unlayered or layered utilities, so
+   these unlayered local rules are the only way to win the cascade without
+   touching packages/ui. Token source: frontend/src/assets/theme/theme.css. */
+
+/* 工具栏/卡片里的裸 <button> 会落到 Chromium UA 默认字体（Arial 13.3px），Vue
+   同位置走 --app-font-family（苹方栈）—— 卡片标题 252.7 vs 246.3 等文字
+   ghosting 的根源。 */
+.wk-document-results button {
+  font-family: var(--wk-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+}
+
+
+/* 搜索框：Vue :deep(.t-input) 灰底无边框，hover/focus 白底品牌描边 */
+.wk-document-results .doc-search-field {
+  border-color: transparent;
+  border-radius: 6px;
+  background-color: #f3f3f3;
+  font-size: 13px;
+}
+
+.wk-document-results .doc-search-field:hover:not(:disabled),
+.wk-document-results .doc-search-field:focus {
+  border-color: #07c05f;
+  background-color: #fff;
+}
+
+/* 三个下拉筛选（文件类型/解析状态/来源）：t-select 同样走 :deep(.t-input) */
+.wk-document-results select.doc-filter-control {
+  border-color: transparent;
+  border-radius: 6px;
+  background-color: #f3f3f3;
+}
+
+.wk-document-results select.doc-filter-control:hover,
+.wk-document-results select.doc-filter-control:focus {
+  border-color: #07c05f;
+  background-color: #fff;
+}
+
+/* 标签筛选触发器：Vue .doc-tag-filter-trigger 灰底无边框 3px 圆角 14px 字号 */
+.wk-document-results .doc-tag-filter-trigger {
+  border-color: transparent;
+  border-radius: 3px;
+  background-color: #f3f3f3;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+/* 日期范围：Vue t-date-range-picker = 白底 #dcdcdc 外框 + 内部灰 pill 接管。
+   原生 date input 的文本/日历角标在空值时必须隐掉，只留灰 placeholder。 */
+.wk-document-results .doc-date-input {
+  height: 22px;
+  min-height: 22px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 13px;
+}
+
+.wk-document-results .doc-date-input:hover {
+  border: 0;
+}
+
+.wk-document-results .doc-date-input--empty,
+.wk-document-results .doc-date-input--empty::-webkit-datetime-edit {
+  color: transparent;
+}
+
+/* 隐掉原生日历角标，把点击区铺满 pill（点 pill 任意位置都能弹日期面板） */
+.wk-document-results .doc-date-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.wk-document-results .doc-date-pill {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 22px;
+  align-items: center;
+  background: #f3f3f3;
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+/* 卡片状态行（解析中/解析失败）：Vue .card-analyze-txt 11px；按钮的
+   [font:inherit] 在工具类竞序中会盖掉 text-[11px]，这里钉住。 */
+.wk-document-results .doc-card-status {
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.wk-document-results .doc-card-status--trace-icon {
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  margin-left: -6px;
+  border-radius: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 批量管理按钮：Vue t-button outline small = h24 / 12px / 3px 圆角 */
+.wk-document-results .doc-filter-bar__trailing .wk-button-size-small {
+  height: 24px;
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+
+/* 空态：Vue .doc-empty-state 盒模型为 border-box 且父列比 React 窄 4px，内容
+   中心因此差 2px（padding-right 补齐）；垂直方向 Vue 插画中心在 455.9px，
+   React 容器流内位置不同，+12px 平移后逐像素对齐（720 视口校准）。 */
+.wk-document-results .doc-empty-state {
+  box-sizing: border-box;
+  padding-right: 24px;
+}
+
+.wk-document-results .doc-empty-state > .doc-empty-illustration {
+  transform: translateY(12px);
+}
+
+/* Vue .empty-type-txt 行高 1.4（12px → 16.8px），React 默认 1.5 导致换行块高 4px */
+.wk-document-results .doc-empty-state .empty-type-txt {
+  line-height: 1.4;
+}
+
+
 
 @container doc-card-area (min-width: 1240px) {
   .wk-document-results .doc-filter-bar {

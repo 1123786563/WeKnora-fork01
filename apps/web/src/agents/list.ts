@@ -319,11 +319,18 @@ export function cornerBadge(agent: AgentCardModel, userId: string, showSectionHe
 
 // --- feature badges (AgentList.vue card-bottom .feature-badge conditions) -----
 
-export type FeatureBadgeKey = 'modeNormal' | 'modeAgent' | 'webSearch' | 'knowledge' | 'mcp' | 'multiTurn';
+export type FeatureBadgeKey = 'modeNormal' | 'modeAgent' | 'modePlain' | 'webSearch' | 'knowledge' | 'mcp' | 'multiTurn';
 
 export function featureBadges(agent: Pick<AgentCardModel, 'config'>): FeatureBadgeKey[] {
   const config = agent.config ?? {};
-  const badges: FeatureBadgeKey[] = [config.agent_mode === 'smart-reasoning' ? 'modeAgent' : 'modeNormal'];
+  // Vue tints the mode badge only for the two known modes
+  // (AgentList.vue :class mode-normal/mode-agent); any other agent_mode keeps
+  // the bare .feature-badge (transparent bg, primary-color icon).
+  const badges: FeatureBadgeKey[] = [
+    config.agent_mode === 'smart-reasoning' ? 'modeAgent'
+    : config.agent_mode === 'quick-answer' ? 'modeNormal'
+    : 'modePlain',
+  ];
   if (config.web_search_enabled === true) badges.push('webSearch');
   if ((config.knowledge_bases?.length ?? 0) > 0 || config.kb_selection_mode === 'all') badges.push('knowledge');
   if ((config.mcp_services?.length ?? 0) > 0 || config.mcp_selection_mode === 'all') badges.push('mcp');
@@ -334,6 +341,7 @@ export function featureBadges(agent: Pick<AgentCardModel, 'config'>): FeatureBad
 export const FEATURE_BADGE_TITLE_KEYS: Record<FeatureBadgeKey, string> = {
   modeNormal: 'agent.mode.normal',
   modeAgent: 'agent.mode.agent',
+  modePlain: 'agent.mode.normal',
   webSearch: 'agent.features.webSearch',
   knowledge: 'agent.features.knowledgeBase',
   mcp: 'agent.features.mcp',

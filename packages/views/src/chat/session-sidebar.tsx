@@ -245,7 +245,10 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
     </div> : null}
     {!loading && totalItems === 0 && emptyLabel ? <p className="my-[10px] mx-[4px] text-[rgba(0,0,0,0.4)] text-[12px]" role="status">{emptyLabel}</p> : null}
     {visibleGroups.map((group) => <section key={group.key}>
-      {group.label ? <h3 className="mt-[1rem] mx-0 mb-[0.35rem] text-[#66758b] text-[0.78rem] font-normal tracking-[0.04em] leading-[20px] uppercase">{sessionGroupLabel(t, group.label)}</h3> : null}
+      {/* Vue menu.vue .timeline_header: 11px/16px label with 4/10/1/14 padding
+          sitting flush on the group rows (the 1rem/0.35rem box ran 8px loose
+          per group and 1.5px large type). */}
+      {group.label ? <h3 className="mt-[5px] mx-0 pt-[4px] pb-[1px] pl-[14px] pr-[10px] text-[#66758b] text-[11px] font-normal tracking-[0.04em] leading-[16px] uppercase">{sessionGroupLabel(t, group.label)}</h3> : null}
       <ul className="list-none m-0 p-0">{group.items.map((session) => {
         const badge = sessionSourceBadge(session);
         const active = session.id === selectedSessionId;
@@ -263,7 +266,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
               onBlur={() => { void submitRename(session); }} />
             {renameError ? <span role="alert" className="text-[11px] leading-[16px] text-[#e34d59]">{renameError}</span> : null}
           </div> : <button type="button" aria-current={active ? 'page' : undefined} onClick={() => { if (batchMode) toggleSelected(session.id); else onSelect(session.id); }}
-            className={'flex flex-1 items-center min-w-0 gap-[6px] px-[10px] py-[7px] border-0 rounded-[8px] cursor-pointer text-left text-[14px] leading-[22px] overflow-hidden transition-[background-color,color] duration-[150ms] ease-[ease] '
+            className={'flex h-[36px] flex-1 items-center min-w-0 gap-[6px] px-[10px] border-0 rounded-[8px] cursor-pointer text-left text-[14px] leading-[22px] overflow-hidden transition-[background-color,color] duration-[150ms] ease-[ease] '
             + (active ? 'bg-[#e9f8ec] text-[#07c05f] font-medium' : 'bg-transparent text-[rgba(0,0,0,0.9)] group-hover/item:bg-[rgba(0,0,0,0.04)]')}>
             {session.running === true ? <span role="status" aria-label={t.sessionInProgress} title={t.sessionInProgress} className="wk-chat-session-running inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center text-[#07c05f]"><span aria-hidden="true" className="wk-chat-session-running-spinner block h-[12px] w-[12px] rounded-full border-[1.5px] border-current border-t-transparent motion-safe:animate-[wk-chat-session-spin_0.8s_linear_infinite]" /></span> : null}
             {session.is_pinned ? <span className="shrink-0 text-[rgba(0,0,0,0.4)] text-[12px]" aria-hidden="true">★</span> : null}
@@ -271,10 +274,14 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
             <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{session.title || untitledLabel || t.untitledChat}</span>
             {badge.kind ? <span className={badge.kind + ' shrink-0 text-[10px] font-semibold tracking-[0.03em] leading-[1.4] uppercase text-[rgba(0,0,0,0.4)] bg-[#eee] rounded-[4px] px-[4px]'} title={t.sourceLabel}>{badge.label}</span> : null}
           </button>}
-          {!batchMode && hasMenu ? <details className="group/menu shrink-0 relative">
+          {/* Vue session-row-menu-wrap overlays the row's right edge (absolute,
+              4px inset) instead of flexing beside the title — the flex slot
+              narrowed every title 32px and forced early ellipsis. The active
+              row keeps the ⋯ visible like the Vue menu-more. */}
+          {!batchMode && hasMenu ? <details className={'group/menu absolute right-[4px] top-1/2 z-[2] -translate-y-1/2' + (active ? ' is-active' : '')}>
             <summary aria-label={t.moreActions} title={t.moreActions}
-              className="inline-flex items-center justify-center h-[24px] w-[24px] rounded-[5px] text-[rgba(0,0,0,0.26)] cursor-pointer list-none opacity-0 transition-[opacity,background-color,color] duration-[150ms] ease-[ease] hover:bg-[rgba(0,0,0,0.06)] hover:text-[rgba(0,0,0,0.9)] group-hover/item:opacity-100 focus-visible:opacity-100 group-open/menu:opacity-100 [&::-webkit-details-marker]:hidden">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="8" cy="13" r="1.4" /></svg>
+              className="inline-flex items-center justify-center h-[24px] w-[24px] rounded-[5px] bg-white/0 text-[rgba(0,0,0,0.26)] cursor-pointer list-none opacity-0 transition-[opacity,background-color,color] duration-[150ms] ease-[ease] hover:bg-[rgba(0,0,0,0.06)] hover:text-[rgba(0,0,0,0.9)] group-hover/item:opacity-100 group-hover/item:bg-white focus-visible:opacity-100 group-open/menu:opacity-100 group-[.is-active]/menu:opacity-100 [&::-webkit-details-marker]:hidden">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
             </summary>
             <div className="absolute right-0 top-[26px] z-30 flex min-w-[120px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
               {/* .wk-chat-session-menu-list button (+ .is-danger) → utilities. */}

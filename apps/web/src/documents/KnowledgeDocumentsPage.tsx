@@ -614,7 +614,7 @@ export function DocumentCardGrid({
     }, 300);
   };
   return <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3" data-document-view="grid">
-    {folders.map((folder) => <button key={`folder-${folder.path}`} type="button" className="min-w-[240px] h-[136px] box-border flex flex-col overflow-hidden rounded-lg border border-line-soft bg-surface p-0 text-left shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:bg-surface-wash hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" title={folder.path} onClick={() => onOpenFolder(folder.path)}>
+    {folders.map((folder) => <button key={`folder-${folder.path}`} type="button" className="min-w-[240px] h-[136px] box-border flex flex-col overflow-hidden rounded-lg border border-[#dcdcdc] bg-surface p-0 text-left shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:bg-surface-wash hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" title={folder.path} onClick={() => onOpenFolder(folder.path)}>
       <span className="flex min-h-0 flex-1 flex-col justify-start gap-2 overflow-hidden px-[14px] pb-[10px] pt-3">
         <FolderIcon size={28} className="shrink-0 text-primary opacity-[0.88]" />
         <strong className="line-clamp-2 min-h-0 flex-1 text-sm font-medium leading-5 text-primary-deep">{folder.name}</strong>
@@ -629,18 +629,21 @@ export function DocumentCardGrid({
       const summaryInFlight = document.summary_status === "pending" || document.summary_status === "processing";
       const description = typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root");
       const tags = documentTags(document);
-      return <article key={document.id} data-select-id={document.id} className={`knowledge-card flex h-[136px] min-w-[240px] flex-col cursor-pointer overflow-hidden rounded-[8px] border bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] ${selected.has(document.id) ? "is-selected border-primary/70" : "border-line-soft"} ${batchMode ? "batch-mode" : ""}`} onClick={() => onOpen(document)} onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
+      return <article key={document.id} data-select-id={document.id} className={`knowledge-card flex h-[136px] min-w-[240px] flex-col cursor-pointer overflow-hidden rounded-[8px] border bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] ${selected.has(document.id) ? "is-selected border-primary/70" : "border-[#dcdcdc]"} ${batchMode ? "batch-mode" : ""}`} onClick={() => onOpen(document)} onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
         <div className="flex min-h-0 flex-1 flex-col px-[14px] pb-2 pt-[10px]">
           <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
             {canContribute && batchMode ? <span className="mr-2 inline-flex h-[29px] w-[22px] shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()}><Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /></span> : null}
-            <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={(event) => { event.stopPropagation(); onOpen(document); }} title={displayName(document)}>{displayName(document)}</button>
+            <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-[rgba(0,0,0,0.9)]" onClick={(event) => { event.stopPropagation(); onOpen(document); }} title={displayName(document)}>{displayName(document)}</button>
             {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} canMutateKnowledge={canMutateKnowledge} t={t} actions={actions} traceAvailable={traceAvailableById?.[document.id]} onMenuOpen={() => onProbeTrace?.(document)} move={moveFor?.(document)} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
-          {parseInFlight ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-success-text [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /><span>{status.label}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "failed" ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-danger [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-flex h-3 w-3 items-center justify-center rounded-full border border-current text-[9px] leading-none" aria-hidden="true">×</span><span>{t("knowledgeBase.parsingFailed")}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "draft" ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-warning-text"><Status tone="warning">{t("knowledgeBase.draft")}</Status><span>{t("knowledgeBase.draftTip")}</span></div> : summaryInFlight ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-success-text"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{t("knowledgeBase.generatingSummary")}</div> : <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{description}</p>}
+          {/* Vue .card-analyze：内容顶对齐（items-start），图标 14px + 2px 顶距，
+              解析失败/解析中文本 11px（.doc-card-status 钉住字号）。失败态用
+              close-circle + chart-bar 图标（card-analyze-trace-btn）。 */}
+          {parseInFlight ? <button type="button" className="doc-card-status mt-[2px] inline-flex min-h-0 flex-1 items-start gap-2 self-start border-0 bg-transparent p-0 text-success-text [font:inherit]" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="mt-[2px] inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /><span>{status.label}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "failed" ? <button type="button" className="doc-card-status mt-[2px] inline-flex min-h-0 flex-1 items-start gap-2 self-start border-0 bg-transparent p-0 text-danger [font:inherit]" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><Icon size={14} className="mt-[2px] shrink-0"><circle cx="12" cy="12" r="9" /><path d="M9 9l6 6M15 9l-6 6" /></Icon><span>{t("knowledgeBase.parsingFailed")}</span><span className="doc-card-status--trace-icon inline-flex shrink-0" aria-hidden="true"><Icon size={14}><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" /></Icon></span></button> : parseStatus === "draft" ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-warning-text"><Status tone="warning">{t("knowledgeBase.draft")}</Status><span>{t("knowledgeBase.draftTip")}</span></div> : summaryInFlight ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-success-text"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{t("knowledgeBase.generatingSummary")}</div> : <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{description}</p>}
         </div>
-        <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-line-soft bg-surface px-[14px] text-[12px] text-muted">
+        <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-[#e7e7e7] bg-surface px-[14px] text-[12px] text-[rgba(0,0,0,0.6)]">
           <span>{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
-          <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px] overflow-hidden">{tags.length > 0 ? <button type="button" className={`min-w-0 border-0 bg-transparent p-0 ${canContribute ? "cursor-pointer" : "cursor-default"}`} onClick={(event) => { event.stopPropagation(); if (canContribute) onTagEdit(document); }} title={tags.map((tag) => tag.name).join(", ")}><DocumentTagChips tags={tags} /></button> : null}<span className="shrink-0 text-[11px] font-medium tracking-[.02em] text-muted">{documentTypeLabel(document)}</span></span>
+          <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px] overflow-hidden">{tags.length > 0 ? <button type="button" className={`min-w-0 border-0 bg-transparent p-0 ${canContribute ? "cursor-pointer" : "cursor-default"}`} onClick={(event) => { event.stopPropagation(); if (canContribute) onTagEdit(document); }} title={tags.map((tag) => tag.name).join(", ")}><DocumentTagChips tags={tags} /></button> : null}<span className="shrink-0 text-[11px] font-medium leading-[13px] tracking-[.02em] text-[rgba(0,0,0,0.6)]">{documentTypeLabel(document)}</span></span>
         </div>
       </article>;
     })}
@@ -1128,7 +1131,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
         aria-expanded={props.open}
         data-guide={props.guideTarget}
         onClick={props.onToggle}
-        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "28px", height: "28px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "6px", background: "transparent", cursor: "pointer", fontSize: "14px" }}
+        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "30px", height: "24px", border: "none", borderRadius: "3px", background: "transparent", cursor: "pointer", fontSize: "14px", color: "rgba(0, 0, 0, 0.6)" }}
       >
         <AddFileIcon />
       </button>
@@ -3666,7 +3669,7 @@ export function KnowledgeDocumentsPage({
             onOpenSettings={() => setKbSettingsOpen(true)}
             tabs={breadcrumbTabs}
           />
-          <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[var(--wk-muted,#66758b)]">{t("knowledgeEditor.document.subtitle")}</p>
+          <p className="document-subtitle m-0 text-[14px] font-normal leading-[20px] text-[rgba(0,0,0,0.4)]">{t("knowledgeEditor.document.subtitle")}</p>
           {kbMetaError ? (
             <div className="flex flex-wrap items-center gap-2" role="alert">
               <Status tone="error">{kbMetaError.kind === "forbidden" ? `${kbMetaError.message} (403)` : kbMetaError.message}</Status>
@@ -3802,9 +3805,13 @@ export function KnowledgeDocumentsPage({
                     title={tagTriggerTitle}
                     onClick={() => setTagFilterOpen((open) => !open)}
                   >
-                    <span className="doc-tag-filter-trigger__label truncate">{tagTriggerLabel}</span>
-                    <span className="doc-tag-filter-trigger__caret text-[10px] text-[var(--wk-muted,#98a2b8)]" aria-hidden>
-                      {tagFilterOpen ? "▴" : "▾"}
+                    {/* Vue trigger 前缀 t-icon discount 16px（placeholder 色）+ 8px 间距 */}
+                    <span className="doc-tag-filter-trigger__prefix mr-2 inline-flex shrink-0 items-center text-[rgba(0,0,0,0.4)]" aria-hidden>
+                      <Icon size={16}><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.83z" /><path d="M7 7h.01" /></Icon>
+                    </span>
+                    <span className="doc-tag-filter-trigger__label min-w-0 flex-1 truncate text-left">{tagTriggerLabel}</span>
+                    <span className="doc-tag-filter-trigger__suffix ml-2 inline-flex shrink-0 items-center text-[rgba(0,0,0,0.4)]" aria-hidden>
+                      <Icon size={16}><path d="M6 9l6 6 6-6" /></Icon>
                     </span>
                   </button>
                   {tagFilterOpen ? (
@@ -3832,10 +3839,13 @@ export function KnowledgeDocumentsPage({
                 </div>
                 <label className="doc-filter-field relative w-[140px] flex-none">
                   <span className="wk-visually-hidden sr-only">{t("knowledgeBase.fileTypeFilter")}</span>
-                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[var(--wk-muted,#98a2b8)]" aria-hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg></span>
-                  <span className={`pointer-events-none absolute left-[30px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${fileType ? "opacity-0" : ""}`}>{t("knowledgeBase.fileTypeFilter")}</span>
+                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg></span>
+                  {/* Vue t-select 空值时显示 dark 的“全部类型”（value='' 的选项标签），
+                      不是灰 placeholder；有选中值时隐藏（原生 select 文本接管）。 */}
+                  <span className={`pointer-events-none absolute left-[32px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.9)] ${fileType ? "opacity-0" : ""}`}>{t("knowledgeBase.allFileTypes")}</span>
+                  <span className="pointer-events-none absolute right-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
                   <Select
-                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[28px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${fileType ? "" : "text-transparent"}`}
+                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[32px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${fileType ? "" : "text-transparent"}`}
                     value={fileType}
                     onChange={(event) => setFileType(event.target.value)}
                   >
@@ -3849,10 +3859,11 @@ export function KnowledgeDocumentsPage({
                 </label>
                 <label className="doc-filter-field relative w-[140px] flex-none">
                   <span className="wk-visually-hidden sr-only">{t("knowledgeBase.parseStatusFilter")}</span>
-                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[var(--wk-muted,#98a2b8)]" aria-hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9 12.5l2 2 4-4.5" /></svg></span>
-                  <span className={`pointer-events-none absolute left-[30px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${parseStatus ? "opacity-0" : ""}`}>{t("knowledgeBase.parseStatusFilter")}</span>
+                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9 12.5l2 2 4-4.5" /></svg></span>
+                  <span className={`pointer-events-none absolute left-[32px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.9)] ${parseStatus ? "opacity-0" : ""}`}>{t("knowledgeBase.allParseStatuses")}</span>
+                  <span className="pointer-events-none absolute right-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
                   <Select
-                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[28px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${parseStatus ? "" : "text-transparent"}`}
+                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[32px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${parseStatus ? "" : "text-transparent"}`}
                     value={parseStatus}
                     onChange={(event) => setParseStatus(event.target.value)}
                   >
@@ -3866,10 +3877,11 @@ export function KnowledgeDocumentsPage({
                 </label>
                 <label className="doc-filter-field relative w-[140px] flex-none">
                   <span className="wk-visually-hidden sr-only">{t("knowledgeBase.sourceFilter")}</span>
-                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[var(--wk-muted,#98a2b8)]" aria-hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.07.07l2-2a5 5 0 00-7.07-7.07l-1.15 1.15" /><path d="M14 11a5 5 0 00-7.07-.07l-2 2A5 5 0 0012 20l1.15-1.15" /></svg></span>
-                  <span className={`pointer-events-none absolute left-[30px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${source ? "opacity-0" : ""}`}>{t("knowledgeBase.sourceFilter")}</span>
+                  <span className="pointer-events-none absolute left-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.07.07l2-2a5 5 0 00-7.07-7.07l-1.15 1.15" /><path d="M14 11a5 5 0 00-7.07-.07l-2 2A5 5 0 0012 20l1.15-1.15" /></svg></span>
+                  <span className={`pointer-events-none absolute left-[32px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.9)] ${source ? "opacity-0" : ""}`}>{t("knowledgeBase.allSources")}</span>
+                  <span className="pointer-events-none absolute right-[9px] top-1/2 z-[1] -translate-y-1/2 text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
                   <Select
-                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[28px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${source ? "" : "text-transparent"}`}
+                    className={`doc-filter-control h-8 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] pl-[32px] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${source ? "" : "text-transparent"}`}
                     value={source}
                     onChange={(event) => setSource(event.target.value)}
                   >
@@ -3881,32 +3893,37 @@ export function KnowledgeDocumentsPage({
                     ))}
                   </Select>
                 </label>
-                <div className="doc-filter-field doc-filter-field--wide doc-date-range flex w-[280px] flex-none items-center gap-[6px]">
-                    <span className="relative flex min-w-0 flex-[1_1_0]">
-                    <span className={`pointer-events-none absolute left-[8px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${updatedFrom ? "opacity-0" : ""}`}>{t("knowledgeBase.updatedTimeFrom")}</span>
-                  <Input
-                    type="date"
-                    className={`doc-date-input h-8 w-auto min-w-0 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${updatedFrom ? "" : "text-transparent"}`}
-                    value={updatedFrom}
-                    max={updatedTo || undefined}
-                    aria-label={t("knowledgeBase.updatedTimeFrom")}
-                    title={t("knowledgeBase.updatedTimeFrom")}
-                    onChange={(event) => setUpdatedFrom(event.target.value)}
-                  />
+                {/* Vue t-date-range-picker：白底 #dcdcdc 外框内含时钟前缀、两段灰 pill
+                    （起始时间/结束时间灰 placeholder）与日历后缀；原生 date input
+                    以透明文本接管 pill，点击任意处弹原生日历。 */}
+                <div className="doc-filter-field doc-filter-field--wide doc-date-range box-border flex h-8 w-[280px] flex-none items-center gap-[8px] rounded-[6px] border border-[#dcdcdc] bg-white px-[9px] focus-within:border-[#07c05f]">
+                  <span className="inline-flex shrink-0 items-center text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg></span>
+                  <span className="doc-date-pill">
+                    <span className={`pointer-events-none absolute left-[4px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.4)] ${updatedFrom ? "opacity-0" : ""}`}>{t("knowledgeBase.updatedTimeFrom")}</span>
+                    <Input
+                      type="date"
+                      className={`doc-date-input w-full min-w-0 cursor-pointer outline-none ${updatedFrom ? "" : "doc-date-input--empty"}`}
+                      value={updatedFrom}
+                      max={updatedTo || undefined}
+                      aria-label={t("knowledgeBase.updatedTimeFrom")}
+                      title={t("knowledgeBase.updatedTimeFrom")}
+                      onChange={(event) => setUpdatedFrom(event.target.value)}
+                    />
                   </span>
-                  <span className="doc-date-range-sep shrink-0 text-[var(--wk-muted,#98a2b8)]" aria-hidden>—</span>
-                    <span className="relative flex min-w-0 flex-[1_1_0]">
-                    <span className={`pointer-events-none absolute left-[8px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[var(--wk-muted,#98a2b8)] ${updatedTo ? "opacity-0" : ""}`}>{t("knowledgeBase.updatedTimeTo")}</span>
-                  <Input
-                    type="date"
-                    className={`doc-date-input h-8 w-auto min-w-0 w-full cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[rgba(0,0,0,0.02)] px-2 py-0 text-[13px] text-[var(--wk-text,#101828)] outline-none focus:border-[var(--wk-brand,#0052d9)] focus:bg-[var(--wk-surface,#fff)] ${updatedTo ? "" : "text-transparent"}`}
-                    value={updatedTo}
-                    min={updatedFrom || undefined}
-                    aria-label={t("knowledgeBase.updatedTimeTo")}
-                    title={t("knowledgeBase.updatedTimeTo")}
-                    onChange={(event) => setUpdatedTo(event.target.value)}
-                  />
+                  <span className="doc-date-range-sep shrink-0 text-[13px] text-[rgba(0,0,0,0.4)]" aria-hidden>-</span>
+                  <span className="doc-date-pill">
+                    <span className={`pointer-events-none absolute left-[4px] top-1/2 z-[1] -translate-y-1/2 text-[13px] text-[rgba(0,0,0,0.4)] ${updatedTo ? "opacity-0" : ""}`}>{t("knowledgeBase.updatedTimeTo")}</span>
+                    <Input
+                      type="date"
+                      className={`doc-date-input w-full min-w-0 cursor-pointer outline-none ${updatedTo ? "" : "doc-date-input--empty"}`}
+                      value={updatedTo}
+                      min={updatedFrom || undefined}
+                      aria-label={t("knowledgeBase.updatedTimeTo")}
+                      title={t("knowledgeBase.updatedTimeTo")}
+                      onChange={(event) => setUpdatedTo(event.target.value)}
+                    />
                   </span>
+                  <span className="inline-flex shrink-0 items-center text-[rgba(0,0,0,0.4)]" aria-hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></svg></span>
                 </div>
               </div>
               <div className="doc-filter-bar__trailing relative z-[1] flex shrink-0 items-center gap-2 [grid-area:trailing]">
@@ -3924,9 +3941,11 @@ export function KnowledgeDocumentsPage({
                     {t(batchMode ? "knowledgeBase.clearSelection" : "menu.batchManage")}
                   </Button>
                 ) : null}
-                <div className="doc-view-toggle inline-flex shrink-0 items-center rounded-[6px] bg-[rgba(0,0,0,0.04)] p-[2px]" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
-                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "grid" ? "rounded-[4px] bg-white text-[var(--wk-brand,#0052d9)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[var(--wk-muted,#888)]"}`} aria-pressed={viewMode === "grid"} aria-label={t("knowledgeBase.viewModeGrid")} title={t("knowledgeBase.viewModeGrid")} onClick={() => setViewMode("grid")}><GridIcon size={16} /></button>
-                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "list" ? "rounded-[4px] bg-white text-[var(--wk-brand,#0052d9)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[var(--wk-muted,#888)]"}`} aria-pressed={viewMode === "list"} aria-label={t("knowledgeBase.viewModeList")} title={t("knowledgeBase.viewModeList")} onClick={() => setViewMode("list")}><ListIcon size={16} /></button>
+                {/* Vue .doc-view-toggle：#f3f3f3 容器 + 激活态品牌绿（--td-brand-color
+                    = #07c05f，frontend theme.css），非激活图标 rgba(0,0,0,0.6)。 */}
+                <div className="doc-view-toggle inline-flex shrink-0 items-center rounded-[6px] bg-[#f3f3f3] p-[2px]" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
+                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "grid" ? "rounded-[4px] bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[rgba(0,0,0,0.6)]"}`} aria-pressed={viewMode === "grid"} aria-label={t("knowledgeBase.viewModeGrid")} title={t("knowledgeBase.viewModeGrid")} onClick={() => setViewMode("grid")}><GridIcon size={16} /></button>
+                  <button type="button" className={`h-[24px] w-[28px] border-0 bg-transparent px-0 [font:inherit] ${viewMode === "list" ? "rounded-[4px] bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "text-[rgba(0,0,0,0.6)]"}`} aria-pressed={viewMode === "list"} aria-label={t("knowledgeBase.viewModeList")} title={t("knowledgeBase.viewModeList")} onClick={() => setViewMode("list")}><ListIcon size={16} /></button>
                 </div>
                 {canContribute ? (
                   <div className="doc-filter-actions">
