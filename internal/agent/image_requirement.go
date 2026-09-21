@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
-	"github.com/Tencent/WeKnora/internal/searchutil"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

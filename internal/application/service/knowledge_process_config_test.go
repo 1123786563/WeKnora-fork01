@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	werrors "github.com/Tencent/WeKnora/internal/errors"
-	"github.com/Tencent/WeKnora/internal/infrastructure/chunker"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/chunker"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )

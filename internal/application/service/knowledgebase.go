@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/application/service/retriever"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/datasource"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/modules/policy/storageallowlist"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"

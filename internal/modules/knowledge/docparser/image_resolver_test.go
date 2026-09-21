@@ -529,7 +529,7 @@ func TestResolveAndStoreSharedMHTMLContract(t *testing.T) {
 		Images          []contractImage `json:"images"`
 	}
 
-	contractPath := filepath.Join("..", "..", "..", "testdata", "mhtml", "titled-image-contract.json")
+	contractPath := filepath.Join("..", "..", "..", "..", "testdata", "mhtml", "titled-image-contract.json")
 	raw, err := os.ReadFile(contractPath)
 	if err != nil {
 		t.Fatal(err)

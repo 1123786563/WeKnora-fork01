@@ -14,9 +14,9 @@ import (
 	"fmt"
 	"strings"
 
-	elasticsearchRetriever "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/logger"
+	elasticsearchRetriever "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch"
 	typesLocal "github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/elastic/go-elasticsearch/v7"

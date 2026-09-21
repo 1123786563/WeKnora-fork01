@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/service/retriever"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/assert"

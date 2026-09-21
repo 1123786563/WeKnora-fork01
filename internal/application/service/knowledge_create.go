@@ -12,10 +12,10 @@ import (
 	"time"
 
 	werrors "github.com/Tencent/WeKnora/internal/errors"
-	"github.com/Tencent/WeKnora/internal/infrastructure/chunker"
-	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	"github.com/Tencent/WeKnora/internal/logger"
 	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/chunker"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"

@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/application/service/retriever"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/types"
 	"slices"
 )

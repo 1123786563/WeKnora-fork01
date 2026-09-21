@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	openSearchRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/opensearch"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
+	openSearchRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/opensearch"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 	"github.com/go-sql-driver/mysql"   // MySQL driver for database/sql, used by Doris connection test
