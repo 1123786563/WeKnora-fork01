@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/models/asr"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/embedding"
@@ -37,6 +38,149 @@ func TestSemanticModelCompletedReplaySkipsModelResolution(t *testing.T) {
 	require.Zero(t, models.chatCalls)
 }
 
+// A valid BYOK capability still needs a pinned immutable rate version before
+// provider credentials may be resolved; BYOK only waives Credits settlement.
+func TestSemanticModelBYOKMissingRatesFailsBeforeModelResolution(t *testing.T) {
+	models := &semanticGatewayModels{}
+	invocations := &semanticCountingInvocations{claim: types.SemanticModelInvocationClaim{Disposition: types.SemanticModelInvocationClaimedNew}}
+	gateway := NewSemanticModelGateway(semanticGatewayIssuer{cap: semanticGatewayCapability()}, models, semanticGatewayScope{}, NewSemanticModelBudgetAdapter(nil, nil, nil), invocations)
+	_, err := gateway.Invoke(context.Background(), semanticGatewayWire())
+	require.ErrorIs(t, err, ErrSemanticModelRatesUnavailable)
+	require.Zero(t, models.chatCalls)
+	require.Equal(t, 1, invocations.failBeforeDispatch)
+	require.Zero(t, invocations.markDispatched)
+}
+
+func TestSemanticModelExpiredDeadlineFailsBeforeModelResolution(t *testing.T) {
+	capability := semanticGatewayCapability()
+	capability.Deadline = time.Now().Add(-time.Second)
+	models := &semanticGatewayModels{}
+	gateway := NewSemanticModelGateway(semanticGatewayIssuer{cap: capability}, models, semanticGatewayScope{}, NewSemanticModelBudgetAdapter(nil, nil, nil), &semanticCountingInvocations{})
+	_, err := gateway.Invoke(context.Background(), semanticGatewayWire())
+	require.ErrorIs(t, err, ErrSemanticModelDenied)
+	require.Zero(t, models.chatCalls)
+}
+
+func TestSemanticUsageRejectsPartialAndInconsistentProviderFacts(t *testing.T) {
+	capability := semanticGatewayCapability()
+	cases := []struct {
+		name  string
+		usage types.TokenUsage
+		valid bool
+	}{
+		{"missing total", types.TokenUsage{PromptTokens: 2, CompletionTokens: 3}, false},
+		{"unequal total", types.TokenUsage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 4}, false},
+		{"negative component", types.TokenUsage{PromptTokens: -1, CompletionTokens: 3, TotalTokens: 2}, false},
+		{"input cap", types.TokenUsage{PromptTokens: 21, CompletionTokens: 3, TotalTokens: 24}, false},
+		{"output cap", types.TokenUsage{PromptTokens: 2, CompletionTokens: 21, TotalTokens: 23}, false},
+		{"exact observed usage", types.TokenUsage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, ok := semanticUsage(&types.ChatResponse{Usage: tc.usage}, capability)
+			require.Equal(t, tc.valid, ok)
+		})
+	}
+}
+
+func TestSemanticModelPlatformBudgetDenialPreventsModelLookup(t *testing.T) {
+	models := &semanticGatewayModels{}
+	invocations := &semanticCountingInvocations{claim: types.SemanticModelInvocationClaim{Disposition: types.SemanticModelInvocationClaimedNew}}
+	budget := semanticTestBudget(func(context.Context, semanticCapability) (domain.Reservation, error) {
+		return domain.Reservation{}, errors.New("denied")
+	})
+	capability := semanticGatewayCapability()
+	capability.Funding = domain.FundingPlatform
+	_, err := NewSemanticModelGateway(semanticGatewayIssuer{cap: capability}, models, semanticGatewayScope{}, budget, invocations).Invoke(context.Background(), semanticGatewayWire())
+	require.Error(t, err)
+	require.Zero(t, models.chatCalls)
+	require.Equal(t, 1, invocations.failBeforeDispatch)
+}
+
+func TestSemanticModelResolutionFailureReleasesOnlyUnstartedHoldAndQuota(t *testing.T) {
+	models := &semanticGatewayModels{err: errors.New("model unavailable")}
+	invocations := &semanticCountingInvocations{claim: types.SemanticModelInvocationClaim{Disposition: types.SemanticModelInvocationClaimedNew}}
+	budget := semanticTestBudget(func(context.Context, semanticCapability) (domain.Reservation, error) {
+		return domain.Reservation{ID: "hold"}, nil
+	})
+	capability := semanticGatewayCapability()
+	capability.Funding = domain.FundingPlatform
+	_, err := NewSemanticModelGateway(semanticGatewayIssuer{cap: capability}, models, semanticGatewayScope{}, budget, invocations).Invoke(context.Background(), semanticGatewayWire())
+	require.Error(t, err)
+	require.Equal(t, 1, models.chatCalls)
+	require.Zero(t, models.providerCalls)
+	require.Equal(t, 1, budget.releaseCalls)
+	require.Equal(t, 1, invocations.failBeforeDispatch)
+	require.Zero(t, invocations.markDispatched)
+}
+
+func TestSemanticModelInvalidUsageAfterDispatchRetainsQuotaAndHold(t *testing.T) {
+	models := &semanticGatewayModels{response: &types.ChatResponse{Usage: types.TokenUsage{PromptTokens: 2, CompletionTokens: 3}}}
+	invocations := &semanticCountingInvocations{claim: types.SemanticModelInvocationClaim{Disposition: types.SemanticModelInvocationClaimedNew}}
+	budget := semanticTestBudget(func(context.Context, semanticCapability) (domain.Reservation, error) {
+		return domain.Reservation{ID: "hold"}, nil
+	})
+	capability := semanticGatewayCapability()
+	capability.Funding = domain.FundingPlatform
+	_, err := NewSemanticModelGateway(semanticGatewayIssuer{cap: capability}, models, semanticGatewayScope{}, budget, invocations).Invoke(context.Background(), semanticGatewayWire())
+	require.ErrorIs(t, err, ErrSemanticModelUnknown)
+	require.Equal(t, 1, models.providerCalls)
+	require.Zero(t, budget.finishCalls)
+	require.Zero(t, budget.releaseCalls)
+	require.Equal(t, 1, invocations.markUnknown)
+	require.Zero(t, invocations.failBeforeDispatch)
+}
+
+func TestSemanticModelDispatchFailureRetainsHoldAndQuota(t *testing.T) {
+	models := &semanticGatewayModels{response: &types.ChatResponse{Usage: types.TokenUsage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}}}
+	invocations := &semanticCountingInvocations{claim: types.SemanticModelInvocationClaim{Disposition: types.SemanticModelInvocationClaimedNew}, markDispatchedErr: errors.New("marker")}
+	budget := semanticTestBudget(func(context.Context, semanticCapability) (domain.Reservation, error) {
+		return domain.Reservation{ID: "hold"}, nil
+	})
+	capability := semanticGatewayCapability()
+	capability.Funding = domain.FundingPlatform
+	_, err := NewSemanticModelGateway(semanticGatewayIssuer{cap: capability}, models, semanticGatewayScope{}, budget, invocations).Invoke(context.Background(), semanticGatewayWire())
+	require.Error(t, err)
+	require.Equal(t, 1, models.chatCalls)
+	require.Zero(t, models.providerCalls)
+	require.Zero(t, budget.releaseCalls)
+	require.Equal(t, 1, invocations.markUnknown)
+	require.Zero(t, invocations.failBeforeDispatch)
+}
+
+func TestSemanticModelSuccessSettlesOnceAndDeadlineCancellationBecomesUnknown(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		models := &semanticGatewayModels{response: &types.ChatResponse{Content: "ok", Usage: types.TokenUsage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}}}
+		invocations := &semanticCountingInvocations{claim: types.SemanticModelInvocationClaim{Disposition: types.SemanticModelInvocationClaimedNew}}
+		budget := semanticTestBudget(func(context.Context, semanticCapability) (domain.Reservation, error) {
+			return domain.Reservation{ID: "hold"}, nil
+		})
+		capability := semanticGatewayCapability()
+		capability.Funding = domain.FundingPlatform
+		got, err := NewSemanticModelGateway(semanticGatewayIssuer{cap: capability}, models, semanticGatewayScope{}, budget, invocations).Invoke(context.Background(), semanticGatewayWire())
+		require.NoError(t, err)
+		require.Equal(t, "ok", got.Text)
+		require.Equal(t, 1, models.providerCalls)
+		require.Equal(t, 1, budget.finishCalls)
+		require.Equal(t, 1, invocations.complete)
+		require.Zero(t, invocations.markUnknown)
+	})
+	t.Run("cancelled after dispatch", func(t *testing.T) {
+		capability := semanticGatewayCapability()
+		capability.Deadline = time.Now().Add(20 * time.Millisecond)
+		models := &semanticGatewayModels{waitForContext: true}
+		invocations := &semanticCountingInvocations{claim: types.SemanticModelInvocationClaim{Disposition: types.SemanticModelInvocationClaimedNew}}
+		budget := semanticTestBudget(func(context.Context, semanticCapability) (domain.Reservation, error) {
+			return domain.Reservation{}, nil
+		})
+		_, err := NewSemanticModelGateway(semanticGatewayIssuer{cap: capability}, models, semanticGatewayScope{}, budget, invocations).Invoke(context.Background(), semanticGatewayWire())
+		require.ErrorIs(t, err, ErrSemanticModelUnknown)
+		require.Equal(t, 1, models.providerCalls)
+		require.Equal(t, 1, invocations.markUnknown)
+		require.Zero(t, invocations.failBeforeDispatch)
+	})
+}
+
 func semanticGatewayCapability() types.SemanticModelCapability {
 	return types.SemanticModelCapability{OwnerTenantID: 7, KBID: "kb", ScopeRef: "scope", ScopeHash: "hash", ModelID: "model", Funding: "byok", PriceVersion: "pv", RunID: "run", CallID: "call", MaxInputTokensPerCall: 20, MaxOutputTokensPerCall: 20, PerCallUpperMicro: 10, Deadline: time.Now().Add(time.Hour)}
 }
@@ -66,6 +210,35 @@ type semanticGatewayInvocations struct {
 	claim types.SemanticModelInvocationClaim
 }
 
+type semanticCountingInvocations struct {
+	claim                                                     types.SemanticModelInvocationClaim
+	markDispatchedErr                                         error
+	failBeforeDispatch, markDispatched, markUnknown, complete int
+}
+
+func (*semanticCountingInvocations) EnsureRun(context.Context, types.SemanticModelCapability) error {
+	return nil
+}
+func (s *semanticCountingInvocations) Claim(context.Context, types.SemanticModelCapability, string) (types.SemanticModelInvocationClaim, error) {
+	return s.claim, nil
+}
+func (s *semanticCountingInvocations) MarkDispatched(context.Context, types.SemanticModelCapability) error {
+	s.markDispatched++
+	return s.markDispatchedErr
+}
+func (s *semanticCountingInvocations) Complete(context.Context, types.SemanticModelCapability, types.SemanticModelInvocationResult) error {
+	s.complete++
+	return nil
+}
+func (s *semanticCountingInvocations) FailBeforeDispatch(context.Context, types.SemanticModelCapability) error {
+	s.failBeforeDispatch++
+	return nil
+}
+func (s *semanticCountingInvocations) MarkUnknown(context.Context, types.SemanticModelCapability) error {
+	s.markUnknown++
+	return nil
+}
+
 func (s semanticGatewayInvocations) EnsureRun(context.Context, types.SemanticModelCapability) error {
 	return nil
 }
@@ -85,7 +258,12 @@ func (semanticGatewayInvocations) MarkUnknown(context.Context, types.SemanticMod
 	return nil
 }
 
-type semanticGatewayModels struct{ chatCalls int }
+type semanticGatewayModels struct {
+	chatCalls, providerCalls int
+	err                      error
+	response                 *types.ChatResponse
+	waitForContext           bool
+}
 
 func (*semanticGatewayModels) CreateModel(context.Context, *types.Model) error { return nil }
 func (*semanticGatewayModels) GetModelByID(context.Context, string) (*types.Model, error) {
@@ -109,7 +287,34 @@ func (*semanticGatewayModels) GetRerankModel(context.Context, string) (rerank.Re
 }
 func (s *semanticGatewayModels) GetChatModel(context.Context, string) (chat.Chat, error) {
 	s.chatCalls++
-	return nil, nil
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s, nil
 }
 func (*semanticGatewayModels) GetVLMModel(context.Context, string) (vlm.VLM, error) { return nil, nil }
 func (*semanticGatewayModels) GetASRModel(context.Context, string) (asr.ASR, error) { return nil, nil }
+func (s *semanticGatewayModels) Chat(ctx context.Context, _ []chat.Message, _ *chat.ChatOptions) (*types.ChatResponse, error) {
+	s.providerCalls++
+	if s.waitForContext {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return s.response, nil
+}
+func (*semanticGatewayModels) ChatStream(context.Context, []chat.Message, *chat.ChatOptions) (<-chan types.StreamResponse, error) {
+	return nil, errors.New("unused")
+}
+func (*semanticGatewayModels) GetModelName() string { return "test" }
+func (*semanticGatewayModels) GetModelID() string   { return "test" }
+
+func semanticTestBudget(reserve func(context.Context, semanticCapability) (domain.Reservation, error)) *SemanticModelBudgetAdapter {
+	b := &SemanticModelBudgetAdapter{reserveFunc: reserve}
+	b.releaseFunc = func(context.Context, semanticCapability, domain.Reservation) error { b.releaseCalls++; return nil }
+	b.markDispatchedFunc = func(context.Context, semanticCapability, domain.Reservation) error { return nil }
+	b.finishFunc = func(context.Context, semanticCapability, domain.Reservation, int64, int64) error {
+		b.finishCalls++
+		return nil
+	}
+	return b
+}

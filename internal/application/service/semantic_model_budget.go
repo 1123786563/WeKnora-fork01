@@ -21,6 +21,13 @@ type SemanticModelBudgetAdapter struct {
 	gate  domain.ExecutionGate
 	rates repocommercial.RateResolver
 	usage *repocommercial.UsageStore
+	// Test seams keep gateway ordering observable without changing the
+	// production commercial interfaces. They are intentionally package-local.
+	reserveFunc               func(context.Context, semanticCapability) (domain.Reservation, error)
+	releaseFunc               func(context.Context, semanticCapability, domain.Reservation) error
+	markDispatchedFunc        func(context.Context, semanticCapability, domain.Reservation) error
+	finishFunc                func(context.Context, semanticCapability, domain.Reservation, int64, int64) error
+	releaseCalls, finishCalls int
 }
 
 // WithUsageStore installs the durable observation ledger used for BYOK calls.
@@ -36,24 +43,41 @@ func NewSemanticModelBudgetAdapter(store *repocommercial.BudgetStore, gate domai
 }
 
 func (b *SemanticModelBudgetAdapter) reserve(ctx context.Context, c semanticCapability) (domain.Reservation, error) {
-	if c.funding != domain.FundingPlatform {
-		return domain.Reservation{}, nil
+	if b != nil && b.reserveFunc != nil {
+		return b.reserveFunc(ctx, c)
 	}
-	if b == nil || b.store == nil || b.rates == nil {
+	if b == nil || b.rates == nil || c.priceVersion == "" {
 		return domain.Reservation{}, ErrSemanticModelRatesUnavailable
 	}
 	if rates, err := b.rates(c.priceVersion); err != nil || rates.Version != c.priceVersion {
 		return domain.Reservation{}, ErrSemanticModelRatesUnavailable
 	}
+	if c.funding == domain.FundingBYOK {
+		// BYOK waives platform credits, not immutable price/rate binding or
+		// durable raw-usage accounting. Admit it only after that binding.
+		if b.usage == nil {
+			return domain.Reservation{}, ErrSemanticModelRatesUnavailable
+		}
+		return domain.Reservation{}, nil
+	}
+	if c.funding != domain.FundingPlatform || b.store == nil {
+		return domain.Reservation{}, ErrSemanticModelRatesUnavailable
+	}
 	return b.store.Reserve(ctx, domain.BudgetRequest{TenantID: c.owner, RunID: c.runID, Key: c.callID, Upper: domain.Credits(c.upper), Deadline: c.deadline})
 }
 func (b *SemanticModelBudgetAdapter) release(ctx context.Context, c semanticCapability, r domain.Reservation) error {
+	if b != nil && b.releaseFunc != nil {
+		return b.releaseFunc(ctx, c, r)
+	}
 	if c.funding != domain.FundingPlatform || r.ID == "" {
 		return nil
 	}
 	return b.store.ReleaseReservation(ctx, c.owner, r.ID)
 }
 func (b *SemanticModelBudgetAdapter) markDispatched(ctx context.Context, c semanticCapability, r domain.Reservation) error {
+	if b != nil && b.markDispatchedFunc != nil {
+		return b.markDispatchedFunc(ctx, c, r)
+	}
 	if c.funding != domain.FundingPlatform {
 		return nil
 	}
@@ -63,6 +87,9 @@ func (b *SemanticModelBudgetAdapter) markDispatched(ctx context.Context, c seman
 	return b.store.MarkReservationDispatched(ctx, c.owner, r.ID)
 }
 func (b *SemanticModelBudgetAdapter) finish(ctx context.Context, c semanticCapability, r domain.Reservation, input, output int64) error {
+	if b != nil && b.finishFunc != nil {
+		return b.finishFunc(ctx, c, r, input, output)
+	}
 	fact := domain.UsageFact{TenantID: c.owner, RunID: c.runID, CallID: c.callID, AttemptID: c.callID, Funding: c.funding, Service: domain.ServiceModel, PriceVersion: c.priceVersion, Revision: 1, OccurredAt: time.Now().UTC(), Dimensions: map[string]int64{domain.DimensionModel: input + output}, Status: domain.UsageStatusFinal}
 	if c.funding == domain.FundingBYOK {
 		if b == nil || b.usage == nil || b.rates == nil {

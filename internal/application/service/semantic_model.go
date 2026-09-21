@@ -59,7 +59,12 @@ func (g *SemanticModelGateway) Invoke(ctx context.Context, wire types.SemanticMo
 	if err != nil {
 		return SemanticModelResult{}, ErrSemanticModelDenied
 	}
+	if c.Deadline.IsZero() || !c.Deadline.After(time.Now()) {
+		return SemanticModelResult{}, ErrSemanticModelDenied
+	}
 	ownerCtx := types.WithExecutionTenant(ctx, c.OwnerTenantID)
+	ownerCtx, cancel := context.WithDeadline(ownerCtx, c.Deadline)
+	defer cancel()
 	snapshot, err := g.scope.Resolve(ownerCtx, c.ScopeRef)
 	if err != nil || snapshot.Scope.TenantID != c.OwnerTenantID || snapshot.Scope.KBID != c.KBID || snapshot.ScopeHash != c.ScopeHash {
 		return SemanticModelResult{}, ErrSemanticModelDenied
@@ -108,34 +113,42 @@ func (g *SemanticModelGateway) Invoke(ctx context.Context, wire types.SemanticMo
 	// The two durable markers immediately precede I/O. Any failure is
 	// ambiguous enough to retain both quota and platform hold.
 	if err := g.invocations.MarkDispatched(ownerCtx, c); err != nil {
-		_ = g.invocations.MarkUnknown(ownerCtx, c)
+		g.markUnknown(c)
 		return SemanticModelResult{}, err
 	}
 	if err := g.budget.markDispatched(ownerCtx, cap, reservation); err != nil {
-		_ = g.invocations.MarkUnknown(ownerCtx, c)
+		g.markUnknown(c)
 		return SemanticModelResult{}, err
 	}
 	resp, err := model.Chat(ownerCtx, semanticMessages(wire.Messages), &chat.ChatOptions{MaxCompletionTokens: int(wire.Parameters.MaxOutputTokens), Temperature: semanticTemperature(wire.Parameters.Temperature)})
 	if err != nil || resp == nil || ownerCtx.Err() != nil {
-		_ = g.invocations.MarkUnknown(context.Background(), c)
+		g.markUnknown(c)
 		return SemanticModelResult{}, ErrSemanticModelUnknown
 	}
 	in, out, ok := semanticUsage(resp, c)
 	if !ok {
-		_ = g.invocations.MarkUnknown(context.Background(), c)
+		g.markUnknown(c)
 		return SemanticModelResult{}, ErrSemanticModelUnknown
 	}
 	result := SemanticModelResult{Text: resp.Content, PromptTokens: &in, CompletionTokens: &out}
 	if err := g.budget.finish(ownerCtx, cap, reservation, in, out); err != nil {
-		_ = g.invocations.MarkUnknown(context.Background(), c)
+		g.markUnknown(c)
 		return SemanticModelResult{}, err
 	}
 	stored, _ := json.Marshal(result)
 	if err := g.invocations.Complete(ownerCtx, c, types.SemanticModelInvocationResult{Result: stored, InputTokens: in, OutputTokens: out}); err != nil {
-		_ = g.invocations.MarkUnknown(context.Background(), c)
+		g.markUnknown(c)
 		return SemanticModelResult{}, err
 	}
 	return result, nil
+}
+
+// markUnknown never inherits a cancelled request context: reconciliation is
+// an independent, bounded durability attempt after outbound I/O may have run.
+func (g *SemanticModelGateway) markUnknown(c types.SemanticModelCapability) {
+	cleanup, cancel := context.WithTimeout(types.WithExecutionTenant(context.Background(), c.OwnerTenantID), 5*time.Second)
+	defer cancel()
+	_ = g.invocations.MarkUnknown(cleanup, c)
 }
 
 func validateSemanticWire(w types.SemanticModelWireRequest, c types.SemanticModelCapability) error {
@@ -179,6 +192,9 @@ func semanticTemperature(v *float64) float64 {
 	return *v
 }
 func semanticUsage(resp *types.ChatResponse, c types.SemanticModelCapability) (int64, int64, bool) {
-	in, out := int64(resp.Usage.PromptTokens), int64(resp.Usage.CompletionTokens)
-	return in, out, in > 0 && out > 0 && in <= c.MaxInputTokensPerCall && out <= c.MaxOutputTokensPerCall && in <= math.MaxInt64-out
+	in, out, total := int64(resp.Usage.PromptTokens), int64(resp.Usage.CompletionTokens), int64(resp.Usage.TotalTokens)
+	if in <= 0 || out <= 0 || total <= 0 || in > c.MaxInputTokensPerCall || out > c.MaxOutputTokensPerCall || in > math.MaxInt64-out {
+		return in, out, false
+	}
+	return in, out, total == in+out
 }

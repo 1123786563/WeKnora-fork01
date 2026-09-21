@@ -48,3 +48,32 @@ The registered production gateway intentionally has no immutable rate resolver a
 The dispatch ordering retains the platform hold and task quota after either dispatch marker is ambiguous; provider I/O follows both markers only. Model resolution occurs after platform reserve; completed replay exits before model resolution. BYOK has no platform reservation and records its owner-tenant raw usage through `UsageStore` when a real resolver/store is injected.
 
 Concern: provider `ChatResponse` exposes integer token fields without a presence bit. The gateway intentionally treats zero prompt or completion usage as unknown to avoid inventing a zero settlement; this is conservative but providers that legitimately report a zero completion will require a richer provider-usage contract to settle it.
+
+## Review fix round 1
+
+Files changed in this round:
+
+- `internal/application/service/semantic_model.go`
+- `internal/application/service/semantic_model_budget.go`
+- `internal/application/service/semantic_model_test.go`
+
+The gateway now rejects elapsed/zero capability deadlines before scope/model work, places owner scope/model resolution, dispatch markers, and provider I/O beneath that deadline, and persists post-dispatch unknown state through an independent five-second owner-tenant cleanup context. Provider usage now requires positive prompt, completion, and total fields; total must exactly equal overflow-safe prompt plus completion and each component must stay under its capability cap. Invalid facts remain unknown and do not settle.
+
+BYOK admission now requires a non-empty exact immutable rate version, a resolver returning that version, and an owner raw-usage store before it can resolve a model. It still never reserves or settles platform Credits. Focused counted seams in the budget adapter drive gateway-only ordering tests without modifying generic `ExecutionGate.Begin` or Craft APIs. `semantic_model_test.go` covers rates admission, deadline denial/cancellation, platform denial, pre-dispatch model-resolution release, dispatch-marker ambiguity, malformed usage retention, successful one-time settlement, and completed replay.
+
+Observed verification:
+
+```text
+$ go test ./internal/application/service ./internal/application/service/commercial ./internal/application/repository -run '^TestSemanticModel' -count=1
+ok   github.com/Tencent/WeKnora/internal/application/service  1.660s
+ok   github.com/Tencent/WeKnora/internal/application/service/commercial  1.308s [no tests to run]
+ok   github.com/Tencent/WeKnora/internal/application/repository  6.188s
+
+$ go test ./internal/container -run '^$'
+# github.com/Tencent/WeKnora/internal/container.test
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok   github.com/Tencent/WeKnora/internal/container  (cached) [no tests to run]
+
+$ git diff --check
+(no output; exit 0)
+```
