@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 )
 
 // messageAbortedErrorName is the exact error.name the locked OpenCode 1.18.4

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 )
 
 func TestUnknownAcceptanceRemoteAcceptedReadTimeoutNoSecondPost(t *testing.T) {

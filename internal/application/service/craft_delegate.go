@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/metrics"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"gorm.io/gorm"
 )

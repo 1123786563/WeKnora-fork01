@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 )
 
 // TestCraftSnapshotSourceLiveSmoke drives the local snapshot source's HTTP

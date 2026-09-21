@@ -164,7 +164,7 @@ func TestSkillManifestRejectsAuthorityClaims(t *testing.T) {
 // manifest decodes under the strict rules and its digest pins the actual
 // SKILL.md bytes shipped beside it.
 func TestShippedWebReportSkillManifest(t *testing.T) {
-	raw, err := osReadFile("../../skills/craft-web-report/manifest.json")
+	raw, err := osReadFile("../../../skills/craft-web-report/manifest.json")
 	if err != nil {
 		t.Fatalf("read shipped manifest: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestShippedWebReportSkillManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("shipped manifest rejected by its own contract: %v", err)
 	}
-	skillMD, err := osReadFile("../../skills/craft-web-report/SKILL.md")
+	skillMD, err := osReadFile("../../../skills/craft-web-report/SKILL.md")
 	if err != nil {
 		t.Fatalf("read shipped SKILL.md: %v", err)
 	}
