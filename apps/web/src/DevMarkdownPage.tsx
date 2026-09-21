@@ -380,7 +380,7 @@ function wrapCodeBlocksWithChrome(root: HTMLElement): void {
     const block = document.createElement('div');
     block.className = 'chat-code-block';
     block.innerHTML = `<div class="chat-code-block__header"><span class="chat-code-block__lang">${formatCodeLang(langMatch?.slice('language-'.length) || '')}</span><div class="chat-code-block__actions"><button type="button" class="chat-code-block__copy" aria-label="复制代码" title="复制代码">${COPY_ICON}<span class="chat-code-block__copy-text">复制代码</span></button></div></div>`;
-    pre.parentNode.insertBefore(block, pre);
+    pre.parentNode?.insertBefore(block, pre);
     block.appendChild(pre);
     pre.classList.add('chat-code-block__pre');
   });

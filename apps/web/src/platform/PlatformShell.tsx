@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
 import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
@@ -40,8 +40,11 @@ import weknoraLogo from '../auth/assets/weknora.png';
 
 type Client = ReturnType<typeof createWeKnoraClient>;
 
-function handleInternalLink(event: ReactMouseEvent<HTMLAnchorElement>, path: string, afterNavigate?: () => void): void {
-  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+// Union param so the role="button" account card can reuse the anchor guard for
+// its Enter keydown; `button` is mouse-only, so read it through a narrowing cast
+// (identical expression after erasure — keyboard events keep the early return).
+function handleInternalLink(event: ReactMouseEvent<Element> | ReactKeyboardEvent<Element>, path: string, afterNavigate?: () => void): void {
+  if (event.defaultPrevented || (event as ReactMouseEvent<Element>).button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
   afterNavigate?.();
   navigate(path);
