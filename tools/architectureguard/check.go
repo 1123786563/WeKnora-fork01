@@ -715,6 +715,135 @@ var importExceptions = []importException{
 			"batch-a3 搬迁后显形），Pass A 不改边界",
 		PassBTask: "B-knowledge",
 	},
+	// ---- batch A4 搬迁显形的预存横向耦合：agentruntime 内文件消费 craft 内部包（Pass B 任务 B-agentruntime）----
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/opencode/executor.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/craft",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/opencode/normalizer.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/craft",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/tools/craft_delegate.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/craft",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-agentruntime",
+	},
+	// ---- batch A4 搬迁显形的预存横向耦合：craft 内文件消费 agentruntime 内部包（Pass B 任务 B-craft）----
+	{
+		ImporterFile: "internal/modules/craft/contracts.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-craft",
+	},
+	// ---- batch A4 搬迁显形的预存横向耦合：workbench 内文件消费其他模块内部包（Pass B 任务 B-workbench）----
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/admission.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/admission.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/admission.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/admission.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/interaction.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/interaction.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/notification.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/notification_worker.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_dispatch.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_dispatch.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_usage.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_usage.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_usage.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
+	{
+		ImporterFile: "internal/modules/workbench/service/workbench/remote_usage.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/execution",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，" +
+			"batch-a4 搬迁后显形），Pass A 不改边界",
+		PassBTask: "B-workbench",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。
