@@ -16,7 +16,7 @@ base_sha: 7b1d3cf017a50cc8061da166d67befc6b51773a0
 | Asset | Count | Source of truth |
 |---|---|---|
 | Server Go packages (`go list` ∩ cmd/server + internal/...) | 128 | §3.1 |
-| Route registrations (all registration paths, non-test) | 632 = 563 literal gin method calls + 69 `g.apiKeyRoute` helper calls (§3.2 has the per-pattern and per-owner breakdown) | §3.2 |
+| Route registrations (all registration paths, non-test) | 633 = 564 literal gin method calls + 69 `g.apiKeyRoute` helper calls (§3.2 has the per-pattern and per-owner breakdown) | §3.2 |
 | Route entry points (route-mounting Register*/serve* functions) | 90 (67 Register* + 16 serve*/embedFrame* in router pkg + 7 handler pkg) | §3.2 |
 | Redis-mode worker pools (asynq servers) | 6 (core, postprocess, enrichment, maintenance, shared, wiki) | §3.3 |
 | Redis-mode worker task types (`mux.HandleFunc`) | 23 | §3.3 |
@@ -146,7 +146,7 @@ undercounted three registration families: (1) `g.apiKeyRoute(grp, http.MethodX, 
 call sites; (2) routes mounted by the handler-side craft delegation functions in
 `internal/handler/session/{craft,craft_interaction,craft_scheduled}.go` — 23 registrations;
 (3) HEAD variants. It also counted 2 comment-line matches in rbac.go as registrations. The
-authoritative total below is **632**.
+authoritative total below is **633**.
 
 Counting method (RE-VISITED): sweep of `internal/router/*.go` (non-test) and ALL
 `internal/handler/**/*.go` (non-test), line by line, skipping comment text (full-line and
@@ -156,15 +156,15 @@ registers exactly one route via `grp.Handle`; one call spans multiple lines — 
 and direct `.Handle(` calls with a method argument (0 call sites outside the helper
 definitions themselves, rbac.go:373 and rbac.go:403).
 
-Per-pattern breakdown (sums to 632):
+Per-pattern breakdown (sums to 633):
 
 | Pattern | Count | Method split |
 |---|---|---|
-| Literal gin method calls — `internal/router/*.go` | 534 | GET 221, POST 200, PUT 51, DELETE 57, PATCH 3, HEAD 2 |
+| Literal gin method calls — `internal/router/*.go` | 535 | GET 222, POST 200, PUT 51, DELETE 57, PATCH 3, HEAD 2 |
 | Literal gin method calls — `internal/handler/**` (craft 12+7+4, previews 3+3) | 29 | GET 14, POST 11, PUT 0, DELETE 1, PATCH 1, HEAD 2 |
 | `g.apiKeyRoute(grp, http.MethodX, ...)` helper (rbac.go:398) | 69 | GET 29, POST 27, PUT 6, DELETE 7 |
 | Direct `.Handle(` call sites | 0 | — |
-| **Total** | **632** | GET 264, POST 238, PUT 57, DELETE 65, PATCH 4, HEAD 4, OPTIONS 0, Any 0 (literal 563 + apiKeyRoute 69 aggregated) |
+| **Total** | **633** | GET 265, POST 238, PUT 57, DELETE 65, PATCH 4, HEAD 4, OPTIONS 0, Any 0 (literal 564 + apiKeyRoute 69 aggregated) |
 
 (\* the exact per-method router/handler split is shown in the table above; the authoritative
 per-method totals are the right-hand column. Comment text is excluded — the old count's
@@ -177,7 +177,7 @@ non-test, comment-stripped):
 |---|---|---|---|
 | internal/router/routes_infra.go | 103 | 19 | 122 |
 | internal/router/routes_agent.go | 88 | 4 | 92 |
-| internal/router/routes_knowledge.go | 89 | 2 | 91 |
+| internal/router/routes_knowledge.go | 90 | 2 | 92 |
 | internal/router/routes_auth_tenant.go | 53 | 28 | 81 |
 | internal/router/routes_chat.go | 58 | 0 | 58 |
 | internal/router/routes_workbench.go | 39 | 0 | 39 |
@@ -220,8 +220,8 @@ the helper definitions plus 2 comment mentions that are excluded.)
   currently invoked by no production caller — the mounted variant of the same path is
   registered inline by `craft.go:151-153`; both call sites are counted, the dormancy is noted
   for Pass B.
-- Per-owner registration split (sums to 632; fine splits inside mixed functions are stated in
-  backend-modules.yaml `coverage.route_registrations.by_owner`): knowledge 93, identity 85,
+- Per-owner registration split (sums to 633; fine splits inside mixed functions are stated in
+  backend-modules.yaml `coverage.route_registrations.by_owner`): knowledge 94, identity 85,
   airesource 61, agentcatalog 55, execution 48, conversation 45, system 43, channels 38,
   workbench 34, agentruntime 27, craft 28, commercial 23, datasource 20, appconnector 17,
   platform 9, insights 6. Notable fine splits embedded in these numbers:
@@ -343,6 +343,13 @@ agentcatalog 1, channels 1, knowledge 1 = **58**.
   `http.MethodX` argument on the following line. A route added through any NEW wrapper that
   internally calls `Handle` will NOT be caught by these patterns — such a wrapper must be
   added to the sweep (this is exactly how the initial 542 undercounted `apiKeyRoute`).
+- Verification: the count above was re-verified by an AST-based recount (F2
+  `architectureguard` + an independent stdlib `go/parser` pass, both concordant,
+  2026-09-21), which corrected a single missed literal GET in
+  `internal/router/routes_knowledge.go:243-244` — a multi-line chained registration
+  (`kb.With(...).` / `GET("/copy/progress/:task_id", ...)` whose dot terminates the
+  previous line and is invisible to a same-line regex). Same-line-sweep users must also
+  match method calls on the continuation line of a chained expression.
 - Hook inventory = exact `container.Invoke(` call-site scan of `internal/container/container.go`
   (the only file with `container.Invoke` outside tests).
 - Worker inventory = `mux.HandleFunc` scan of `internal/router/task.go` and

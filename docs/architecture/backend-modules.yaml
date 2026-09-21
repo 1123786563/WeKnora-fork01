@@ -18,8 +18,8 @@
 # Conventions:
 #   - "packages" are Go import paths under module github.com/Tencent/WeKnora.
 #   - "routes" are HTTP registration entry points in internal/router (source file:line)
-#     plus handler-side route-mounting functions; total gin route registrations = 632
-#     (563 literal method calls + 69 g.apiKeyRoute helper calls, comment text excluded).
+#     plus handler-side route-mounting functions; total gin route registrations = 633
+#     (564 literal method calls + 69 g.apiKeyRoute helper calls, comment text excluded).
 #   - "workers" are asynq task types (Redis mode: internal/router/task.go; Lite mode:
 #     internal/router/sync_task.go registers the same 23 types on SyncTaskExecutor).
 #   - "hooks" are container.Invoke lifecycle call sites (internal/container/container.go
@@ -35,11 +35,11 @@ meta:
   scope: [cmd/server, internal/...]
   counts:
     server_packages: 128            # go list ./... filtered to cmd/server + internal/...
-    route_registrations: 632        # ALL registration paths, non-test, comments excluded:
-                                    # 563 literal .GET/.POST/.PUT/.DELETE/.PATCH/.HEAD calls
-                                    # (router 534 + handler 29) + 69 g.apiKeyRoute helper
+    route_registrations: 633        # ALL registration paths, non-test, comments excluded:
+                                    # 564 literal .GET/.POST/.PUT/.DELETE/.PATCH/.HEAD calls
+                                    # (router 535 + handler 29) + 69 g.apiKeyRoute helper
                                     # calls (rbac.go:398, registers via grp.Handle);
-                                    # 0 direct .Handle call sites outside the helper itself
+                                    # 0 direct .Handle call sites outside the helper itself.
     route_entry_points: 90          # 67 Register* + 16 serve*/embedFrame* in internal/router
                                     # + 7 handler-side route-mounting Register* functions
                                     # (craft sessions/interaction/scheduled, craft preview
@@ -1024,12 +1024,12 @@ coverage:
     airesource: 12, channels: 10, commercial: 7, bootstrap: 6, policy: 5, appconnector: 5, workbench: 4,
     execution: 3, conversation: 2, craft: 1, insights: 1, identity: 0, agentcatalog: 0, system: 0 } }
   route_registrations:
-    total: 632
-    note: "563 literal gin method calls + 69 g.apiKeyRoute helper calls; comment text excluded;
+    total: 633
+    note: "564 literal gin method calls + 69 g.apiKeyRoute helper calls; comment text excluded;
       patterns: literal (.GET/.POST/.PUT/.DELETE/.PATCH/.HEAD/.OPTIONS/.Any), apiKeyRoute
-      (grp.Handle), direct .Handle (0 sites)"
+      (grp.Handle), direct .Handle (0 sites); AST re-verified 2026-09-21"
     by_owner:
-      knowledge: 93
+      knowledge: 94
       identity: 85
       airesource: 61
       agentcatalog: 55
