@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/metrics"
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 )
 
 // CraftUsageStore is the persistence port of the usage ledger: the durable

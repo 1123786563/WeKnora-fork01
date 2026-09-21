@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

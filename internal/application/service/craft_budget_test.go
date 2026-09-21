@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
