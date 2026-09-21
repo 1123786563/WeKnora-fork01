@@ -11,7 +11,7 @@ import (
 
 // These tests run against the REAL versioned SQLite migration stream
 // (openRunTestDB applies every migrations/sqlite up migration, including
-// 000099_agent_versions), so the unique index, the append-only columns and
+// 000108_agent_versions), so the unique index, the append-only columns and
 // the tenant predicate are the production schema, not an AutoMigrate
 // approximation.
 

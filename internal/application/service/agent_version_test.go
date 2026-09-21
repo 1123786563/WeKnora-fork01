@@ -26,7 +26,7 @@ import (
 )
 
 // openAgentVersionServiceTestDB applies the REAL versioned SQLite migration
-// stream (including 000099_agent_versions) so the service tests exercise the
+// stream (including 000108_agent_versions) so the service tests exercise the
 // production schema and the real repository, not an AutoMigrate sketch.
 func openAgentVersionServiceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()

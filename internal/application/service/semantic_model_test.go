@@ -336,7 +336,7 @@ func TestSemanticModelBYOKRealLedgerPersistsUsageAndBlocksLaterOverQuotaCall(t *
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&repocommercial.UsageRow{}, &repocommercial.UsageCurrentRow{}, &repocommercial.OutboxEvent{}))
-	migration, err := os.ReadFile("../../../migrations/sqlite/000101_semantic_model_invocations.up.sql")
+	migration, err := os.ReadFile("../../../migrations/sqlite/000107_semantic_model_invocations.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(migration)).Error)
 

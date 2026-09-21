@@ -236,7 +236,7 @@ func TestAgentMarketplaceSQLiteDownWithPublishedListing(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
-	down, err := os.ReadFile(filepath.Join(repoRoot, "migrations/sqlite/000100_tenant_agent_marketplace.down.sql"))
+	down, err := os.ReadFile(filepath.Join(repoRoot, "migrations/sqlite/000109_tenant_agent_marketplace.down.sql"))
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(down)).Error)
 	for _, table := range []string{"agent_marketplace_listings", "agent_release_submissions", "agent_release_reviews", "agent_releases"} {
