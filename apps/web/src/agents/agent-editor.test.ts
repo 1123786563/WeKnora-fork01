@@ -300,12 +300,12 @@ test('nav groups follow the Vue section list and order for quick-answer without 
 test('nav groups add retrieval with KB capability and tools/skills in agent mode', () => {
   const groups = buildNavGroups({ isAgentMode: true, hasKnowledgeBase: true });
   assert.deepEqual(groups.map((group) => group.key), ['basic', 'knowledge', 'capability']);
-  // personalization (Octop M1, no Vue baseline) rides the basic group after
-  // the Vue sections, offered only in smart-reasoning mode; subagents (Octop M3
-  // delegation) rides the capability group under the same agent-mode gate
-  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization']);
+  // rail parity with Vue navItems 2657-2684: personalization (Octop persona)
+  // and subagents (Octop delegation) stay off the rail in agent mode too —
+  // both sections remain reachable via the initialSection deep link.
+  assert.deepEqual(groups[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'suggestions']);
   assert.deepEqual(groups[1]!.items.map((item) => item.key), ['knowledge', 'retrieval', 'websearch']);
-  assert.deepEqual(groups[2]!.items.map((item) => item.key), ['multimodal', 'tools', 'mcp', 'skills', 'subagents']);
+  assert.deepEqual(groups[2]!.items.map((item) => item.key), ['multimodal', 'tools', 'mcp', 'skills']);
 });
 
 // --- tool requirement evaluation (frontend/src/utils/tool-capabilities.ts) -----------
@@ -443,11 +443,11 @@ test('nav groups register suggestions/multimodal/mcp like the Vue rail (D1)', ()
   assert.deepEqual(quick[2]!.items.map((item) => item.key), ['multimodal']);
 
   const agent = buildNavGroups({ isAgentMode: true, hasKnowledgeBase: true });
-  assert.deepEqual(agent[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization']);
+  // rail parity: personalization/subagents stay off the rail in agent mode too
+  assert.deepEqual(agent[0]!.items.map((item) => item.key), ['basic', 'prompts', 'model', 'conversation', 'suggestions']);
   assert.deepEqual(agent[1]!.items.map((item) => item.key), ['knowledge', 'retrieval', 'websearch']);
-  // Vue capability order: multimodal, tools, mcp, skills; subagents (Octop M3,
-  // no Vue baseline) rides last
-  assert.deepEqual(agent[2]!.items.map((item) => item.key), ['multimodal', 'tools', 'mcp', 'skills', 'subagents']);
+  // Vue capability order: multimodal, tools, mcp, skills
+  assert.deepEqual(agent[2]!.items.map((item) => item.key), ['multimodal', 'tools', 'mcp', 'skills']);
 });
 
 // --- R485 D1: multimodal/attachment config fields mirror Vue defaultFormData ------------

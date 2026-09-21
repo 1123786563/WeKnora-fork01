@@ -64,22 +64,23 @@
 .faq-search-input input:focus { background: #f3f3f3; }
 
 /* ix-faq-retrieval：检索测试抽屉滑块（Vue t-slider，FAQEntryManager.vue:5222-5238
-   + TDesign 默认形态）：6px 圆角轨道，已填充段品牌绿 #00a870、其余浅灰，
+   + TDesign 默认形态）：输入条 302x12（React flex-1 首端 2px 由负 margin 对齐），
+   4px 圆角轨道，已填充段品牌绿 #00a870、其余浅灰，
    16px 白底绿边圆点 handle。原生 accent-color 在部分内核把未填充段画成深色，
    故用 --faq-range-fill（FAQPage.tsx 内联百分比）显式画轨道。 */
-.faq-search-range { -webkit-appearance: none; appearance: none; background: transparent; height: 16px; }
+.faq-search-range { -webkit-appearance: none; appearance: none; background: transparent; height: 12px; margin-left: -2px; }
 .faq-search-range::-webkit-slider-runnable-track {
-  height: 6px; border-radius: 3px;
+  height: 4px; border-radius: 2px;
   background: linear-gradient(to right, #00a870 var(--faq-range-fill, 0%), #e3e8f0 var(--faq-range-fill, 0%));
 }
 .faq-search-range::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
-  width: 16px; height: 16px; margin-top: -5px; border-radius: 50%;
+  width: 16px; height: 16px; margin-top: -6px; border-radius: 50%;
   background: #fff; border: 2px solid #00a870; box-sizing: border-box;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
-.faq-search-range::-moz-range-track { height: 6px; border-radius: 3px; background: #e3e8f0; }
-.faq-search-range::-moz-range-progress { height: 6px; border-radius: 3px; background: #00a870; }
+.faq-search-range::-moz-range-track { height: 4px; border-radius: 2px; background: #e3e8f0; }
+.faq-search-range::-moz-range-progress { height: 4px; border-radius: 2px; background: #00a870; }
 .faq-search-range::-moz-range-thumb {
   width: 16px; height: 16px; border-radius: 50%;
   background: #fff; border: 2px solid #00a870; box-sizing: border-box;
@@ -122,9 +123,15 @@
   padding-right: 15px;
 }
 .faq-search-drawer .wk-button-size-medium { border-color: #dcdcdc; }
+/* Vue t-drawer 默认（非 primary）按钮：#e7e7e7 实底（DOM 实测 2026-09-21） */
+.faq-search-drawer .wk-button-size-medium:not([class*="bg-accent"]) {
+  background: #e7e7e7;
+  color: rgba(0, 0, 0, 0.9);
+}
 .faq-search-drawer .wk-button-size-medium[class*="bg-accent"],
 .faq-search-drawer .search-button[class*="bg-accent"] { border-color: #07c05f; }
-/* Vue 查询内容输入框 t-input h34 */
-.faq-search-drawer .full-width-input { min-height: 34px; }
+/* Vue 查询内容输入框：外壳 380x32（t-input 高 32），内层文本左右 12px */
+.faq-search-drawer .full-width-input { min-height: 32px; padding-top: 5px; padding-bottom: 5px; }
+.faq-search-drawer .full-width-input input { padding-left: 12px; padding-right: 12px; }
 /* 导入弹窗「下载示例文件」：Vue 1px #e7e7e7 边 */
 .faq-import-modal .download-example-btn { border-color: #e7e7e7; }

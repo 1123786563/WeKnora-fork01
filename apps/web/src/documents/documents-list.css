@@ -608,7 +608,8 @@
    内容列 x644 宽 618。React 的 div.mt-1.px-5 + main.px-5.pb-5 双层
    20px 内边距把内容压到 x665 宽 574（差 44px），整列文本全部错位。 */
 .wk-document-detail-drawer > header {
-  padding: 14px 18px !important;
+  /* 原生 border-top 移除后（外壳几何对齐），补 1px 保持 Vue header 61 高 */
+  padding: 15px 18px 14px !important;
 }
 .wk-document-detail-drawer header h2 {
   font-size: 15px;
@@ -649,3 +650,13 @@
   border-bottom: 1px solid var(--td-component-stroke, #e7e7e7);
 }
 .wk-document-detail-drawer .wk-document-md-preview .md-content p { margin: 8px 0; line-height: 23.8px; }
+
+/* --- 详情抽屉外壳几何（ix-kb-doc-detail，DOM 实测 2026-09-21） ----------
+   Vue doc-main-drawer：外沿 [626,0,654,720]，仅左缘分隔（无上下边框）。
+   React Sheet aside 是 content-box（width 653 + 四边 1px border →
+   [625,0,655,722]），整体左移 1px、下溢 2px，导致全抽屉文本 1px 错位。 */
+.wk-document-detail-drawer {
+  box-sizing: border-box !important;
+  width: 654px !important;
+  border-width: 0 !important;
+}

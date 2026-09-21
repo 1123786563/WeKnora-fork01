@@ -251,6 +251,10 @@ function makeClient(options: {
 }
 
 let mountedRoot: Root | undefined;
+/** Last mount props + rendered element, so goto() can deep-link rail-hidden
+ *  sections by re-rendering into the same container. */
+let lastMountProps: Parameters<typeof mountModal>[0] | undefined;
+let lastElement: React.ReactElement | undefined;
 
 afterEach(async () => {
   if (mountedRoot) await act(async () => mountedRoot?.unmount());
@@ -259,12 +263,14 @@ afterEach(async () => {
 });
 
 async function mountModal(props: { client: WeKnoraClient; mode?: 'create' | 'edit'; agent?: Record<string, unknown> | null; initialSection?: string; initialHighlightField?: string; readOnly?: boolean; onClose?: () => void }) {
+  lastMountProps = props;
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   const { client, mode = 'create', agent = null, onClose = () => {}, ...initial } = props;
+  lastElement = React.createElement(AgentEditorModal, { open: true, mode, client, t, onClose, ...initial, ...(agent ? { agent } : {}) });
   await act(async () => {
-    mountedRoot?.render(React.createElement(AgentEditorModal, { open: true, mode, client, t, onClose, ...initial, ...(agent ? { agent } : {}) }));
+    mountedRoot?.render(lastElement);
   });
   // let the async dependency load + form hydration settle
   await act(async () => { await Promise.resolve(); });
@@ -401,7 +407,9 @@ test('subagents nav item is gated by agent mode like tools/skills', async () => 
   const root = await mountModal({ client, mode: 'edit', agent: EDIT_AGENT });
   assert.equal($('[data-section-key="subagents"]', root), null);
   const agentRoot = await mountSubagents(subagentAgent([]), client);
-  assert.ok($('[data-section-key="subagents"]', agentRoot), 'smart-reasoning exposes the subagents section');
+  // rail parity: no nav row, but the section itself is deep-link reachable
+  assert.equal($('[data-section-key="subagents"]', agentRoot), null, 'subagents stays off the rail');
+  assert.ok($('[data-editor-section="subagents"]', agentRoot), 'smart-reasoning exposes the subagents section');
 });
 
 test('subagents empty installed list shows the delegation-off hint', async () => {
@@ -589,9 +597,19 @@ async function checkCheckbox(section: ParentNode, selector: string) {
   });
 }
 
-/** Navigate to a section through the rail. */
+/** Navigate to a section through the rail; personalization/subagents are off
+ *  the rail (Vue navItems parity), so fall back to a deep-link re-render. */
 async function goto(root: ParentNode, key: string) {
-  await click(root, '[data-section-key="' + key + '"]');
+  if ($(document.body, '[data-section-key="' + key + '"]')) {
+    await click(root, '[data-section-key="' + key + '"]');
+    return;
+  }
+  if (!lastElement) throw new Error('no rail item and no prior mount for ' + key);
+  const { initialSection: _drop, ...rest } = (lastElement.props as Record<string, unknown>);
+  await act(async () => {
+    mountedRoot?.render(React.cloneElement(lastElement!, { ...rest, initialSection: key } as never));
+  });
+  await act(async () => { await Promise.resolve(); });
 }
 
 // --- create mode: rail + sections ------------------------------------------------------

@@ -979,12 +979,14 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
             // from the runtime type-presets fetch (static catalog on failure).
             // Vue renders this row as setting-row--emphasize (3px brand bar +
             // bold label) with a 360px-capped select right-aligned.
+            // The preset desc (.agent-type-preset-desc) is 13px with no top
+            // gap — the .desc block above carries the spacing.
             <Row
               label={t('agentEditor.agentType.label')}
               desc={t('agentEditor.agentType.desc')}
               emphasize
               extra={activeAgentTypePreset ? (
-                <p className="m-0 mt-1 text-[12px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]" data-agent-type-desc>
+                <p className="m-0 text-[13px] leading-[1.5] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]" data-agent-type-desc>
                   {agentTypePresetDescription(activeAgentTypePreset, locale)}
                 </p>
               ) : null}

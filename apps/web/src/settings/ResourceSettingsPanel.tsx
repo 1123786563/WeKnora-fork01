@@ -944,13 +944,22 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
           )}
           <div className="min-w-0 flex-1">
             <div className="backend-card__header flex items-center gap-1.5">
-              <h3 className="backend-card__title m-0 min-w-0 max-w-full truncate text-sm font-semibold leading-[24px] text-[#101828]" title={nameValue}>{nameValue}</h3>
+              {/* Vue StorageBackendSettings .backend-card__title: flex:1, lh 1.4,
+                  color var(--td-text-color-primary)=rgba(0,0,0,0.9)（store/provider 卡同款） */}
+              <h3 className="backend-card__title m-0 min-w-0 flex-1 truncate text-sm font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]" title={nameValue}>{nameValue}</h3>
               {section !== 'storage' && row.source === 'env' ? envPill(row) : null}
-              {isDefault ? <span className="shrink-0 rounded-[4px] bg-[rgba(7,192,95,0.1)] px-[5px] py-[2px] text-[12px] leading-[16px] text-[#07c05f]">{copy.defaultLabel}</span> : null}
+              {/* Vue t-tag small light：h20/lh20、padding 0 4px、radius 3px，且因标题 flex:1 靠右 */}
+              {isDefault ? <span className="shrink-0 rounded-[3px] bg-[rgba(7,192,95,0.1)] px-[4px] text-[12px] leading-[20px] text-[#07c05f]">{copy.defaultLabel}</span> : null}
+              {/* Vue 每张 storage 卡尾部都有 opacity:0 的 24px 操作按钮
+                 （.backend-card__action-btn，hover 才显形）——不可见但参与布局：
+                  把 header 撑到 24px 高、默认徽标右侧留出 24+6px。 */}
+              {section === 'storage' ? <span className="h-6 w-6 shrink-0" aria-hidden="true" /> : null}
             </div>
-            <p className={`backend-card__subtitle m-0 flex items-center truncate text-xs text-muted ${section === 'storage' ? 'mt-[4px] leading-[18px]' : 'mt-1 leading-[1.4]'}`}>
-              <span className="font-medium">{provider ? (section === 'websearch' ? providerTypeLabel(provider) : providerLabel(provider)) : copy.typeUnavailable}</span>
-              {meta ? <><span className="mx-[4px] text-[#97a3b6]">·</span><span className="truncate">{meta}</span></> : null}
+            <p className={`backend-card__subtitle m-0 flex items-center truncate text-xs ${section === 'storage' ? 'mt-[4px] leading-[18px] text-[rgba(0,0,0,0.6)]' : 'mt-1 leading-[1.4] text-muted'}`}>
+              {/* Vue storage 版 type 无加粗（vectorstore .store-card__type 才是 500），
+                  sep margin 0 6px、颜色 placeholder token rgba(0,0,0,0.4) */}
+              <span className={section === 'storage' ? 'font-normal' : 'font-medium'}>{provider ? (section === 'websearch' ? providerTypeLabel(provider) : providerLabel(provider)) : copy.typeUnavailable}</span>
+              {meta ? <><span className={`text-[rgba(0,0,0,0.4)] ${section === 'storage' ? 'mx-[6px]' : 'mx-[4px]'}`}>·</span><span className="truncate">{meta}</span></> : null}
             </p>
           </div>
         </article>;

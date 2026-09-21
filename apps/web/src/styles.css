@@ -21,7 +21,12 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
   /* Vue App.vue body/html/#app 同款字体平滑（frontend/src/App.vue:301-302），
      缺失时 React 全站字形以亚像素渲染、笔画偏粗，逐像素对比整页字形红。 */
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale; }
+  -moz-osx-font-smoothing: grayscale;
+  /* Vue 全站字体栈（frontend/src/assets/theme/theme.css --app-font-family，
+     TDesign 挂在 body 上）；React 缺失时 body 落到 Times，未带显式字体
+     utility 的文本（侧栏、弹层、按钮内文字）逐像素整行偏红。 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
 /* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/

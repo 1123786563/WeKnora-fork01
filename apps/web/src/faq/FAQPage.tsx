@@ -1549,9 +1549,9 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
         <section className={`faq-editor-overlay fixed inset-0 z-[1000] flex items-stretch justify-end bg-black/60 p-0 ${searchOpen ? 'faq-drawer-overlay-enter' : 'faq-drawer-overlay-exit'}`} role="dialog" aria-modal="true" aria-label={t('knowledgeEditor.faq.searchTestTitle')} onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseSearchTest(); }}>
           <aside className={`faq-editor-drawer faq-search-drawer flex h-full w-[420px] max-w-[92vw] flex-col overflow-hidden bg-surface shadow-[-8px_0_28px_rgba(15,23,42,0.16)] max-md:w-screen max-md:max-w-[100vw] ${searchOpen ? 'faq-drawer-panel-enter' : 'faq-drawer-panel-exit'}`}>
             <div className="faq-editor-header flex items-center justify-between border-b border-[#e3e8f0] px-6 py-5">
-              <h2 className="m-0 text-lg font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faq.searchTestTitle')}</h2>
-              {/* Vue t-drawer__close-btn：24x24 裸 ×，无灰底盒子。 */}
-              <button type="button" className="faq-modal-close static z-10 -mr-3 flex h-6 w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent text-ink hover:text-ink" aria-label={t('common.close')} onClick={onCloseSearchTest}><CloseIcon size={16} /></button>
+              <h2 className="m-0 text-lg font-semibold leading-6 text-ink">{t('knowledgeEditor.faq.searchTestTitle')}</h2>
+              {/* Vue t-drawer__close-btn：24x24 裸 ×，无灰底盒子（右上角 x1248/y16）。 */}
+              <button type="button" className="faq-modal-close static z-10 -mr-4 -mt-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent text-ink hover:text-ink" aria-label={t('common.close')} onClick={onCloseSearchTest}><CloseIcon size={16} /></button>
             </div>
             <div className="faq-editor-form-body min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-5">
               {message?.tone === 'error' ? <div className="faq-editor-error mb-2.5" role="alert"><Status tone="error">{message.text}</Status></div> : null}
@@ -1634,7 +1634,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 left-aligned per .t-drawer__footer (tdesign.css:17190-17197
                 text-align:left + button margin-left). 确认 runs the search
                 test (the drawer's whole purpose), 取消 closes it. */}
-            <div className="faq-editor-footer flex flex-none items-center gap-2 border-t border-[#e3e8f0] bg-surface px-5 py-3.5">
+            <div className="faq-editor-footer flex flex-none items-center gap-2 border-t border-[#e3e8f0] bg-surface p-4">
               <Button type="button" variant="primary" loading={searching} onClick={runSearchTest}>{t('common.confirm')}</Button>
               <Button type="button" onClick={onCloseSearchTest}>{t('common.cancel')}</Button>
             </div>

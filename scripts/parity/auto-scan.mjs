@@ -87,8 +87,11 @@ const ALL_PAGES = [
   { id: 'kb-wiki-tab-graph', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=graph', settle: 3500 },
   { id: 'kb-demo-creatchat', kind: 'kb', name: 'Parity KB Demo', suffix: '/creatChat' },
   // —— 免登录页 ——
-  { id: 'login', path: '/login', auth: false },
-  { id: 'register', path: '/register', auth: false },
+  // login/register 的展示轮播（SLIDES 自动切换）相位在两端独立，截图会落在
+  // 不同 slide 上产生假差异。截图前冻结动画（pause/play 接口或 animation-play-state），
+  // 并等待首帧 slide 稳定，使两端定格在同一张。
+  { id: 'login', path: '/login', auth: false, settle: 3200, freezeCarousel: true },
+  { id: 'register', path: '/register', auth: false, settle: 3200, freezeCarousel: true },
   // —— 重定向行为（两端应落到同一目标页） ——
   { id: 'redirect-system', path: '/platform/system' },
   { id: 'redirect-integrations', path: '/platform/integrations' },
@@ -313,6 +316,29 @@ async function main() {
       try {
         const shots = [];
         const warnings = [];
+        if (p.freezeCarousel) {
+          // login/register 展示轮播由 JS 定时器切换，两端相位独立会落入不同
+          // slide 造成整块假差异。轮询双端左半区特征文本，直到一致（≤15s）。
+          const readSlides = async (pg) => pg.evaluate(() => {
+            const out = [];
+            for (const e of document.querySelectorAll('body *')) {
+              if (e.children.length > 0) continue;
+              const r = e.getBoundingClientRect();
+              if (r.x > 700 || r.x < 300 || r.y < 150 || r.y > 650 || r.width === 0) continue;
+              const t = (e.textContent || '').trim().replace(/\s+/g, ' ');
+              if (t) out.push(t);
+            }
+            return out.sort().join('|');
+          }).catch(() => '');
+          const deadline = Date.now() + 15000;
+          let a = '', b2 = '';
+          while (Date.now() < deadline) {
+            a = await readSlides(vuePage);
+            b2 = await readSlides(reactPage);
+            if (a && a === b2) break;
+            await new Promise((r) => setTimeout(r, 700));
+          }
+        }
         for (const [tag, page, base] of [['vue', vuePage, VUE], ['react', reactPage, REACT]]) {
           const active = p.auth === false ? anonPages[tag] : page;
           await active.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 20000 });

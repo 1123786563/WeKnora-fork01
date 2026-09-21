@@ -240,7 +240,7 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
           {section === 'parser' ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button><Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button></div> : null}</form></Shell>
     {section === 'chathistory' ? (
       <div className="stats-section mt-5" data-testid="chat-history-stats">
-        <h3 className="stats-title m-0 mb-3 text-[15px] font-semibold">{t('chatHistorySettings.statsTitle')}</h3>
+        <h3 className="stats-title m-0 mb-4 text-[15px] font-semibold [line-height:normal]">{t('chatHistorySettings.statsTitle')}</h3>
         {stats !== null && stats !== undefined && typeof stats === 'object' && (stats as Record<string, unknown>).enabled === true && (stats as Record<string, unknown>).knowledge_base_id ? (
           <div className="stats-grid grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
             <div className="stat-card rounded-[10px] border border-[rgba(120,135,155,0.3)] bg-white p-4 text-center">
@@ -249,9 +249,9 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
             </div>
           </div>
         ) : (
-          <div className="stats-empty rounded-[10px] bg-[#f3f3f3] px-4 py-6 text-center [border:0]">
-            <p className="stats-empty-title m-0 mb-1 font-medium">{t('chatHistorySettings.statsNotConfigured')}</p>
-            <p className="stats-empty-desc m-0 text-[13px] text-[rgba(0,0,0,0.4)]">{t('chatHistorySettings.statsNotConfiguredDesc')}</p>
+          <div className="stats-empty rounded-[8px] bg-[#f3f3f3] px-6 py-6 text-center [border:0]">
+            <p className="stats-empty-title m-0 mb-1 font-medium [line-height:normal]">{t('chatHistorySettings.statsNotConfigured')}</p>
+            <p className="stats-empty-desc m-0 text-[13px] leading-[normal] text-[rgba(0,0,0,0.4)]">{t('chatHistorySettings.statsNotConfiguredDesc')}</p>
           </div>
         )}
       </div>

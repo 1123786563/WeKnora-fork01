@@ -19,7 +19,6 @@ import {
 import { buildCLIConnectCommand } from './cli.ts';
 import { integrationsLocale, integrationsT } from './messages.ts';
 import { imPlatformLabel, imPlatformOrder, integrationSectionCopy } from './view.ts';
-import { shouldShowSwaggerDocs, swaggerDocsUrl } from './swagger.ts';
 import {
   IM_WIZARD_STEPS,
   applyImPlatformChange,
@@ -1437,7 +1436,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
 }
 
 
-function ApiIntegrationPanel({ apiBaseUrl, swaggerEnabled, actions, principalMode, setPrincipalMode, requireDirectHeader, setRequireDirectHeader, hmacSecret, setHmacSecret, externalUserId, setExternalUserId, principalToken, onSavePrincipal, onCreatePrincipalToken, apiKey, setApiKey, sessionId, setSessionId, playgroundPath, setPlaygroundPath, playgroundBody, setPlaygroundBody, playgroundOutput, onRunPlayground, busy, apiKeys, apiKeysLoading, freshApiKeyId, knowledgeBases, showApiKeyForm, setShowApiKeyForm, onCreateApiKey, onRevokeApiKey, onCopyApiKey, onOpenApiPlayground, t }: {
+function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalMode, requireDirectHeader, setRequireDirectHeader, hmacSecret, setHmacSecret, externalUserId, setExternalUserId, principalToken, onSavePrincipal, onCreatePrincipalToken, busy, apiKeys, apiKeysLoading, freshApiKeyId, knowledgeBases, showApiKeyForm, setShowApiKeyForm, onCreateApiKey, onRevokeApiKey, onCopyApiKey, onOpenApiPlayground, t }: {
   apiBaseUrl: string;
   swaggerEnabled?: boolean;
   actions: IntegrationActions;
@@ -1477,41 +1476,59 @@ function ApiIntegrationPanel({ apiBaseUrl, swaggerEnabled, actions, principalMod
   t: Translator;
 }) {
   const principal = actions.principal;
-  return <div className="grid gap-5">
-    <section className="rounded-[10px] border border-[#eef1f5] p-4">
-      <div className="flex items-center justify-between gap-4 py-[0.35rem] max-[720px]:flex-col max-[720px]:items-start">
+  // Vue useApiBaseUrlDisplay: configured base, else window origin + '/api/v1'
+  // — the raw apiBaseUrl prop may be empty when settings embeds the page.
+  const apiBaseDisplay = apiBaseUrl || (typeof window === 'undefined' ? '' : `${window.location.origin}/api/v1`);
+  // Vue requestExample: curl session-create + SSE agent-chat with the
+  // principal headers per mode (ApiIntegrationSettings.vue L1081-1114).
+  const principalHeaders: string[] = [];
+  if (principalMode === 'direct_header') principalHeaders.push('  -H "X-External-User-ID: user_123"');
+  if (principalMode === 'signed_token') principalHeaders.push(`  -H "X-External-User-Token: ${t('integrations.api.requestExampleJwtPlaceholder')}"`);
+  const commonHeaders = ['  -H "X-API-Key: <YOUR_API_KEY>"', '  -H "Content-Type: application/json"', ...principalHeaders].join(' \\\n');
+  const requestExample = [
+    t('integrations.api.requestExampleCreateSession'),
+    `curl -X POST ${apiBaseDisplay}/sessions \\`,
+    commonHeaders,
+    `  -d '{}'`,
+    '',
+    t('integrations.api.requestExampleAgentChat'),
+    `curl -N -X POST ${apiBaseDisplay}/agent-chat/<session_id> \\`,
+    commonHeaders,
+    `  -d '{"query":"hello","agent_enabled":true,"agent_id":"agent-smart-reasoning","channel":"api"}'`,
+  ].join('\n');
+  const openApiDoc = () => { window.open('https://github.com/Tencent/WeKnora/blob/main/docs/api/README.md', '_blank', 'noopener'); };
+  return <div className="api-settings flex flex-col">
+    <section className="flex flex-col border-t border-[#e7e7e7]">
+      <div className="grid grid-cols-[minmax(220px,0.8fr)_minmax(320px,1fr)] gap-[24px] py-[20px] border-b border-[#e7e7e7] max-[780px]:grid-cols-1">
         <div>
-          <label className="block font-semibold text-ink">{t('integrations.api.baseUrl')}</label>
-          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.baseUrlDesc')}</p>
+          <label className="mb-[4px] block text-[15px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.api.baseUrl')}</label>
+          <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.api.baseUrlDesc')}</p>
         </div>
-        <div className="flex min-w-0 flex-nowrap items-center gap-[0.4rem]">
-          <input className="wk-mono-input box-border min-w-0 flex-1 max-w-[420px] rounded-control border border-solid border-line bg-canvas px-[0.6rem] py-[0.5rem] text-ink [font:0.85rem_ui-monospace,_monospace]" readOnly value={apiBaseUrl} aria-label={t('integrations.api.baseUrl')} />
-          <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! shrink-0 whitespace-nowrap" type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseUrl).catch(() => undefined); }}>{t('integrations.api.copy')}</button>
+        <div className="flex min-w-0 items-center gap-[8px]">
+          <input className="h-[32px] min-w-0 flex-1 rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[8px] text-[12px] text-[rgba(0,0,0,0.9)] [font:12px_ui-monospace,_SFMono-Regular,_Menlo,_monospace] focus:outline-none" readOnly value={apiBaseDisplay} aria-label={t('integrations.api.baseUrl')} />
+          <button className="flex h-[32px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent px-[10px] text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-[#f3f3f3]" type="button" title={t('integrations.api.copy')} aria-label={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseDisplay).catch(() => undefined); }}><CopyIcon /></button>
         </div>
       </div>
-      {shouldShowSwaggerDocs(swaggerEnabled) ? <div className="flex items-center justify-between gap-4 border-t border-[#f2f5fa] py-[0.35rem] max-[720px]:flex-col max-[720px]:items-start">
+      {/* Vue .row--doc renders unconditionally (ApiIntegrationSettings.vue
+          L78-89): 打开文档 opens the static GitHub API guide, no swagger flag. */}
+      <div className="grid grid-cols-1 gap-[24px] py-[20px] border-b border-[#e7e7e7]">
         <div>
-          <label className="block font-semibold text-ink">OpenAPI /docs</label>
-          {/* SP14 Task 2: the historical {apiBaseUrl}/docs link was dangling —
-              the backend serves gin-swagger at /swagger/index.html and only
-              outside release mode; the row renders solely when the
-              system-info swagger_enabled flag confirms the route exists. */}
-          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong"><a href={swaggerDocsUrl(apiBaseUrl)} target="_blank" rel="noreferrer">{swaggerDocsUrl(apiBaseUrl)}</a></p>
+          <label className="mb-[4px] block text-[15px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('tenant.api.docLabel')}</label>
+          <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('tenant.api.docDescription')}{' '}<a className="inline-flex cursor-pointer items-center gap-[3px] font-medium text-[#07c05f] no-underline hover:underline" onClick={openApiDoc}>{t('tenant.api.openDoc')}<LandingIcon name="url" size={13} /></a></p>
         </div>
-      </div> : null}
-    </section>
-
-    <section className="rounded-[10px] border border-[#eef1f5] p-4">
-      <div className="mb-[0.75rem] flex items-start justify-between gap-4">
-        <div>
-          <label className="block font-semibold text-ink">{t('integrations.api.apiKeys')}</label>
-          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.apiKeysDesc')}</p>
-        </div>
-        <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={() => setShowApiKeyForm?.(!showApiKeyForm)}>{t('integrations.api.createApiKey')}</button>
       </div>
+      <div className="flex flex-col gap-[14px] border-b border-[#e7e7e7] py-[20px]">
+        <div className="flex items-start justify-between gap-[16px]">
+          <div className="min-w-0">
+            <label className="mb-[6px] block text-[15px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.api.apiKeys')}</label>
+            <p className="m-0 text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">{t('integrations.api.apiKeysDesc')}</p>
+          </div>
+          <button className="flex h-[24px] shrink-0 cursor-pointer items-center gap-[8px] rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[7px] text-[12px] text-[rgba(0,0,0,0.9)] [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:border-primary!" type="button" onClick={() => setShowApiKeyForm?.(!showApiKeyForm)}><PlusIcon />{t('integrations.api.createApiKey')}</button>
+        </div>
       {freshApiKeyId !== null ? <p className="wk-status wk-status-ok my-[0.25rem]! text-[13px] text-success-text!" role="status">{t('integrations.api.apiKeyCreated')} · {t('integrations.api.secretSavedCopyHint')}</p> : null}
       {showApiKeyForm ? <ApiKeyCreateForm t={t} busy={busy} knowledgeBases={knowledgeBases ?? []} canSubmit={Boolean(actions.onCreateApiKey)} onCreate={onCreateApiKey} onCancel={() => setShowApiKeyForm?.(false)} /> : null}
-      {apiKeysLoading ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.loading')}</p> : (apiKeys ?? []).length === 0 ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.noApiKeys')}</p> : <div className="overflow-x-auto">
+      <div className="flex min-w-0 flex-col overflow-hidden rounded-[8px] border border-solid border-[#e7e7e7] bg-surface">
+      {apiKeysLoading ? <div className="flex min-h-[88px] items-center justify-center gap-[8px] text-[12px] text-[rgba(0,0,0,0.6)]">{t('integrations.api.loading')}</div> : (apiKeys ?? []).length === 0 ? <div className="flex min-h-[88px] items-center justify-center gap-[8px] text-[12px] text-[rgba(0,0,0,0.6)]">{t('integrations.api.noApiKeys')}</div> : <div className="w-full overflow-x-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead><tr>
             <th className="whitespace-nowrap border-b border-[#eef1f5] px-[0.6rem] py-[0.45rem] text-left text-[12px] font-medium text-muted">{t('integrations.api.apiKeyName')}</th>
@@ -1537,50 +1554,65 @@ function ApiIntegrationPanel({ apiBaseUrl, swaggerEnabled, actions, principalMod
           </tbody>
         </table>
       </div>}
+      </div>
+      </div>
     </section>
 
-    <section className="rounded-[10px] border border-[#eef1f5] p-4">
-      <div className="mb-[0.75rem] flex items-start justify-between gap-4">
-        <div>
-          <label className="block font-semibold text-ink">{t('integrations.api.principalMode')}</label>
-          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.principalModeDesc')}</p>
-        </div>
+    {/* Vue .principal-section: bare band (border-top only), header + joined
+        t-radio-group + per-mode detail + the curl 请求示例 code panel and the
+        playground-entry row (ApiIntegrationSettings.vue L196-336). The
+        external-user/token controls live in the Vue playground drawer, so they
+        stay behind the non-tenant mode detail here. */}
+    <section className="flex flex-col gap-[20px] border-t border-[#e7e7e7] py-[20px]">
+      <div>
+        <label className="mb-[6px] block text-[15px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.api.principalMode')}</label>
+        <p className="m-0 text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">{t('integrations.api.principalModeDesc')}</p>
+        <p className="m-0 mt-[6px]! text-[12px]! text-[rgba(0,0,0,0.4)]!">{t('integrations.api.principalScope')}</p>
       </div>
-      <p className="wk-muted text-muted">{t('integrations.api.principalScope')}</p>
-      <div className="flex flex-wrap gap-[8px] my-[0.5rem]" role="radiogroup" aria-label={t('integrations.api.principalMode')}>
-        {([['tenant', 'integrations.api.modeTenant'], ['direct_header', 'integrations.api.modeDirect'], ['signed_token', 'integrations.api.modeSigned']] as const).map(([value, key]) => (
-          <button key={value} type="button" role="radio" aria-checked={principalMode === value} className={chip(principalMode === value)} onClick={() => setPrincipalMode(value)}>{t(key)}</button>
+      <div className="flex w-fit max-w-full" role="radiogroup" aria-label={t('integrations.api.principalMode')}>
+        {([['tenant', 'integrations.api.modeTenant'], ['direct_header', 'integrations.api.modeDirect'], ['signed_token', 'integrations.api.modeSigned']] as const).map(([value, key], index) => (
+          <button key={value} type="button" role="radio" aria-checked={principalMode === value} className={'flex h-[32px] cursor-pointer items-center border border-solid px-[16px] text-[14px] [font:inherit] last:rounded-r-[3px] first:rounded-l-[3px] ' + (index > 0 ? '-ml-px ' : '') + (principalMode === value ? 'z-[1] border-[#07c05f] bg-[#07c05f] text-white' : 'border-[#dcdcdc] bg-surface text-[rgba(0,0,0,0.9)] hover:border-primary!')} onClick={() => setPrincipalMode(value)}>{t(key)}</button>
         ))}
       </div>
-      {principalMode === 'direct_header' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">
+      {principalMode === 'direct_header' ? <div className="grid w-full max-w-[760px] gap-[12px]">
         <p className="wk-muted wk-muted--warn text-[#b45309]">{t('integrations.api.directWarning')}</p>
         <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!"><input className="size-4 shrink-0 accent-primary" type="checkbox" checked={requireDirectHeader} onChange={(event) => setRequireDirectHeader(event.target.checked)} />{t('integrations.api.requireDirectHeader')}</label>
         <p className="wk-muted text-muted">{t('integrations.api.requireDirectHeaderDesc')}</p>
       </div> : null}
-      {principalMode === 'signed_token' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">
+      {principalMode === 'signed_token' ? <div className="grid w-full max-w-[760px] gap-[12px]">
         <label className="grid gap-[0.3rem] font-semibold">{t('integrations.api.hmacSecret')}<input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" type="password" value={hmacSecret} onChange={(event) => setHmacSecret(event.target.value)} placeholder={principal?.has_hmac_secret ? t('integrations.api.secretConfigured') : ''} /></label>
         <p className="wk-muted text-muted">{t('integrations.api.hmacSecretDesc')}</p>
       </div> : null}
-      {principalMode !== 'tenant' ? <div className="wk-form-actions">
-        <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={busy} onClick={onSavePrincipal}>{t('common.save')}</button>
-      </div> : null}
-      <div className="mt-[0.6rem] grid gap-[0.5rem]">
-        <label className="grid gap-[0.3rem] font-semibold">{t('integrations.api.playgroundExternalUser')}<input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" value={externalUserId} onChange={(event) => setExternalUserId(event.target.value)} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} /></label>
+      {principalMode !== 'tenant' ? <>
         <div className="wk-form-actions">
-          <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={busy} onClick={onCreatePrincipalToken}>{t('integrations.api.generateSecret')}</button>
+          <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={busy} onClick={onSavePrincipal}>{t('common.save')}</button>
         </div>
-        {principalToken ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.playgroundGeneratedToken')}: <code>{principalToken.token}</code> ({principalToken.headerName})</p> : null}
-      </div>
-    </section>
-
-    <section className="rounded-[10px] border border-[#eef1f5] p-4">
-      <div className="mb-[0.75rem] flex items-start justify-between gap-4">
-        <div>
-          <label className="block font-semibold text-ink">{t('integrations.api.playgroundTitle')}</label>
-          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.playgroundDesc')}</p>
+        <div className="grid gap-[0.5rem]">
+          <label className="grid gap-[0.3rem] font-semibold">{t('integrations.api.playgroundExternalUser')}<input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" value={externalUserId} onChange={(event) => setExternalUserId(event.target.value)} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} /></label>
+          <div className="wk-form-actions">
+            <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={busy} onClick={onCreatePrincipalToken}>{t('integrations.api.generateSecret')}</button>
+          </div>
+          {principalToken ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.playgroundGeneratedToken')}: <code>{principalToken.token}</code> ({principalToken.headerName})</p> : null}
+        </div>
+      </> : null}
+      {/* Vue .examples .code-panel (L305-324): white toolbar with the
+          请求示例 label + icon 复制 button over the mono curl pre. */}
+      <div className="w-full">
+        <div className="overflow-hidden rounded-[8px] border border-solid border-[#e7e7e7] bg-[#f3f3f3]">
+          <div className="flex items-center justify-between gap-[8px] border-b border-[#e7e7e7] bg-surface px-[10px] py-[8px]">
+            <span className="text-[12px] font-medium text-[rgba(0,0,0,0.6)]">{t('integrations.api.requestExample')}</span>
+            <button className="flex shrink-0 cursor-pointer items-center border-0 bg-transparent px-[7px] py-0 text-[12px] text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-[#f3f3f3]" type="button" onClick={() => { void navigator.clipboard.writeText(requestExample).catch(() => undefined); }}><CopyIcon />{t('integrations.api.copy')}</button>
+          </div>
+          <pre className="m-0 overflow-auto px-[12px] py-[10px] text-left text-[12px] leading-[1.5] text-[rgba(0,0,0,0.9)] [font:12px/1.5_ui-monospace,_SFMono-Regular,_Menlo,_monospace]">{requestExample}</pre>
         </div>
       </div>
-      {onOpenApiPlayground ? <button className="wk-button wk-button--primary cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiPlayground}>{t('integrations.api.playgroundOpen')}</button> : null}
+      <div className="flex items-center justify-between gap-[16px] rounded-[8px] border border-solid border-[#e7e7e7] bg-[#f3f3f3] px-[14px] py-[12px] max-[780px]:flex-col max-[780px]:items-stretch">
+        <div className="min-w-0">
+          <label className="mb-[4px] block text-[13px] font-medium leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.api.playgroundTitle')}</label>
+          <p className="m-0 text-[12px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.api.playgroundDesc')}</p>
+        </div>
+        {onOpenApiPlayground ? <button className="flex h-[32px] shrink-0 cursor-pointer items-center gap-[8px] rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[15px] text-[14px] text-[rgba(0,0,0,0.9)] [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:border-primary!" type="button" onClick={onOpenApiPlayground}><LandingIcon name="code" size={16} />{t('integrations.api.playgroundOpen')}</button> : null}
+      </div>
     </section>
   </div>;
 }
@@ -1860,6 +1892,11 @@ function LandingIcon({ name, size = 14 }: { name: string; size?: number }) {
 // button and the connect-row copy control.
 function CopyIcon() {
   return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M14 2V8H20M14 2H15L20 7V8M14 2H7V18H20V8" /><path d="M3 6L3 22H14" /></svg>;
+}
+
+// Vue t-icon "add" (TDesign path, 14px) on the small 创建 API Key outline button.
+function PlusIcon() {
+  return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
 }
 
 // Vue t-icon "jump" (TDesign path) in the ext-cta arrow wrap (1em = 14px).

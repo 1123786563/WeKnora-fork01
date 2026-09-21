@@ -60,3 +60,27 @@
   0% { background-position: 100% 50%; }
   100% { background-position: 0 50%; }
 }
+
+/* ---- AgentEditorModal form-control parity (Vue AgentEditorModal.vue) ----
+   Native button/input/select/textarea keep the UA font (13px Arial) instead
+   of inheriting the app stack like Vue's t-* components; the select chevron
+   is a background-image data-URI utility that Tailwind does not emit from the
+   vendored packages/ui class string. Both fixed with plain CSS. */
+[data-testid="agent-editor-modal"] button,
+[data-testid="agent-editor-modal"] input,
+[data-testid="agent-editor-modal"] select,
+[data-testid="agent-editor-modal"] textarea {
+  font-family: inherit;
+}
+
+[data-testid="agent-editor-modal"] .wk-ae-input,
+[data-testid="agent-editor-modal"] .wk-ae-select,
+[data-testid="agent-editor-modal"] .wk-ae-textarea {
+  font-size: 14px;
+}
+
+[data-testid="agent-editor-modal"] .wk-ae-select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2366758b' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}

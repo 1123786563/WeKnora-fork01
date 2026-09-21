@@ -96,10 +96,19 @@
   min-height: 0;
 }
 
-/* --- 遮罩浓度（Vue 取样：t-dialog 黑 53%）——列表页无 documents-list.css，
-       在此重复落地。 --- */
+/* --- 遮罩浓度 + 背景模糊（Vue KnowledgeBaseEditorModal.vue:1617-1629
+       settings-overlay：rgba(0,0,0,0.5) + backdrop-filter blur(4px)）——
+       列表页无 documents-list.css，在此重复落地。 --- */
 .wk-dialog-backdrop {
   background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* --- 索引策略卡标题行：Vue t-checkbox 自带 4px 左偏移，React 原生 checkbox
+       没有——整行（checkbox+文字+NEW 徽标）需右移 4px 对齐。 --- */
+.wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] input[type="checkbox"] {
+  margin-left: 4px;
 }
 
 /* --- Vue KnowledgeBaseEditorModal 弹窗形态（DOM 实测 2026-09-21） ----------

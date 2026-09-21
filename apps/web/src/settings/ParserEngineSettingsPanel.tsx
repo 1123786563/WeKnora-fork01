@@ -100,21 +100,19 @@ function rowText(row: ParserEngineRow, key: keyof ParserEngineRow): string {
 }
 
 // Vue ParserEngineSettings.vue .engine-card--{name} .engine-card__badge palette:
-// builtin/weknoracloud green, simple gray, markitdown blue, mineru/paddleocr
-// purple; unknown engines fall back to the base blue. All badges sit on the
-// neutral secondarycontainer wash (--td-bg-color-secondarycontainer #f3f3f3) —
-// only the glyph color differs (ParserEngineSettings.vue:815-842).
+// 每类引擎各有浅色底（builtin/weknoracloud 绿 0.12、simple 灰 0.1、markitdown 蓝
+// 0.12、mineru/paddleocr 紫 0.12），未知引擎回退蓝底（ParserEngineSettings.vue:822-843）。
 const BADGE_TONES: Record<string, { bg: string; fg: string }> = {
-  builtin: { bg: '#f3f3f3', fg: '#07C05F' },
-  weknoracloud: { bg: '#f3f3f3', fg: '#07C05F' },
-  simple: { bg: '#f3f3f3', fg: '#464646' },
-  markitdown: { bg: '#f3f3f3', fg: '#0089FF' },
-  mineru: { bg: '#f3f3f3', fg: '#6235BB' },
-  mineru_cloud: { bg: '#f3f3f3', fg: '#6235BB' },
-  paddleocr_vl: { bg: '#f3f3f3', fg: '#6235BB' },
-  paddleocr_vl_cloud: { bg: '#f3f3f3', fg: '#6235BB' },
+  builtin: { bg: 'rgba(7, 192, 95, 0.12)', fg: '#07C05F' },
+  weknoracloud: { bg: 'rgba(7, 192, 95, 0.12)', fg: '#07C05F' },
+  simple: { bg: 'rgba(70, 70, 70, 0.1)', fg: '#464646' },
+  markitdown: { bg: 'rgba(0, 137, 255, 0.12)', fg: '#0089FF' },
+  mineru: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
+  mineru_cloud: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
+  paddleocr_vl: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
+  paddleocr_vl_cloud: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
 };
-const BADGE_BASE = { bg: '#f3f3f3', fg: '#0052D9' };
+const BADGE_BASE = { bg: 'rgba(0, 82, 217, 0.1)', fg: '#0052D9' };
 
 export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient }) {
   // Stable translator: recreating it per render would re-trigger the load
@@ -376,7 +374,7 @@ function EngineCard({ name, initial, title, desc, statusLabel, statusTone, statu
     onClick={onClick}
   >
     <span
-      className="mt-px inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]"
+      className="mt-px inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-[15px] font-semibold leading-[normal] tracking-[0.02em]"
       style={{ background: (BADGE_TONES[name] ?? BADGE_BASE).bg, color: (BADGE_TONES[name] ?? BADGE_BASE).fg }}
       aria-hidden="true"
     >{initial}</span>

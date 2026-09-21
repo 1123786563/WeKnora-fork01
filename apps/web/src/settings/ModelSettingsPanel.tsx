@@ -936,7 +936,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
         ) : null}
         </div>
         <div className="mt-3 rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-3 py-[10px] leading-[18px]" role="note">
-          <p className="m-0 mb-1 text-xs font-medium leading-[17px] tracking-[0.02em] text-[rgba(0,0,0,0.4)]"><strong>{t("modelSettings.builtinModels.title")}</strong></p>
+          <p className="m-0 mb-1 text-xs font-medium leading-[17px] tracking-[0.02em] text-[rgba(0,0,0,0.4)]"><strong className="font-medium">{t("modelSettings.builtinModels.title")}</strong></p>
           <p className="m-0 mb-[6px] text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">
             {t(role === "system-admin" ? "modelSettings.builtinModels.descriptionAdmin" : "modelSettings.builtinModels.description")}
           </p>
@@ -952,7 +952,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       <nav className="wk-model-tabs flex flex-wrap gap-0 border-b border-b-[#e7e7e7]" aria-label={t("model.editor.typeLabel")}>
         <button
           type="button"
-          className={filter === "all" ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! [font-weight:650] is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
+          className={filter === "all" ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
           onClick={() => setFilter("all")}
         >
           {t("common.all")}({models.length})
@@ -961,7 +961,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           <button
             type="button"
             key={type}
-            className={filter === type ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! [font-weight:650] is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
+            className={filter === type ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
             onClick={() => setFilter(type)}
           >
             {typeLabelOf(type)}({models.filter((item) => modelType(item) === type).length})

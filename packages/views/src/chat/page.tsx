@@ -600,7 +600,7 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
           <div className="wk-chat-header-menu-divider mx-[6px] my-[2px] h-[1px] bg-[#e7e7e7]" role="separator" />
         </> : null}
         {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => { setHeaderDangerAction('clear'); setHeaderDangerError(null); }}>{headerMenuIcons.clear}{copy.clearMessages}</button> : null}
-        {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => { setHeaderDangerAction('delete'); setHeaderDangerError(null); }}>{headerMenuIcons.delete}{copy.deleteSession}</button> : null}
+        {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem.replace('text-[rgba(0,0,0,0.9)]', '') + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => { setHeaderDangerAction('delete'); setHeaderDangerError(null); }}>{headerMenuIcons.delete}{copy.deleteSession}</button> : null}
       </>}
     </div>
     </details>

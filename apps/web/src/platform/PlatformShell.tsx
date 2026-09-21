@@ -1021,12 +1021,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
             button); the py-4 box made it 56px and lifted it 6px off the bottom. */}
         <div className="shrink-0 px-[2px] py-[1px]">
           <div ref={userMenuRef} className="relative">
-            <button type="button" className="flex items-center gap-[6px] w-full px-[6px] py-[8px] border-none rounded-[8px] bg-transparent cursor-pointer text-left hover:bg-[#f3f3f3]" aria-haspopup="menu" aria-expanded={menuOpen}
+            {/* Vue menu_bottom: the name/email lines truncate 18px short of the
+                row edge (chevron overlay reserve) — pr 24px encodes that. */}
+            <button type="button" className="flex items-center gap-[6px] w-full pl-[6px] pr-[24px] py-[8px] border-none rounded-[8px] bg-transparent cursor-pointer text-left hover:bg-[#f3f3f3]" aria-haspopup="menu" aria-expanded={menuOpen}
               data-guide="user-menu"
               onClick={() => setMenuOpen((open) => !open)}>
-              <span className="inline-flex items-center justify-center w-[24px] h-[24px] rounded-full overflow-hidden shrink-0 bg-[linear-gradient(135deg,#2e6de6_0%,#1f56c2_100%)]" aria-hidden="true">
-                {/* Vue user-button renders the static /favicon.ico avatar; a
-                    dead avatar URL renders the broken-image glyph instead. */}
+              {/* Vue UserMenu .user-avatar: brand-green gradient disc with the
+                  account initial when no avatar URL (not a blue disc / favicon). */}
+              <span className="inline-flex items-center justify-center w-[24px] h-[24px] rounded-full overflow-hidden shrink-0 bg-[linear-gradient(135deg,var(--td-brand-color,#07c05f)_0%,var(--td-brand-color-active,#06b04d)_100%)]" aria-hidden="true">
                 {user.avatar ? <img src={user.avatar} alt="" className="w-full h-full object-cover" onError={(event) => { const img = event.currentTarget; if (!img.dataset.faviconFallback) { img.dataset.faviconFallback = '1'; img.src = '/favicon.ico'; } }} /> : <span className="text-white text-[12px] font-semibold leading-[1]">{initial}</span>}
               </span>
               {!collapsed && (
@@ -1047,6 +1049,9 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   </>}
                 </span>
               )}
+              {/* Vue UserMenu .dropdown-icon: 16px chevron that flips when the
+                  menu opens; the React button dropped it entirely. */}
+              {!collapsed ? <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className={'shrink-0 text-[rgba(0,0,0,0.6)] transition-transform duration-200 ' + (menuOpen ? 'rotate-180' : '')}><path d="M3.5 6l4.5 4.5L12.5 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
             </button>
             {menuOpen && (
               <div className="absolute bottom-[calc(100%_+_6px)] left-[-6px] right-[-7px] bg-white border border-[#e7ebf0] rounded-[8px] shadow-[0_4px_20px_rgba(0,0,0,0.12)] overflow-hidden z-[1000]" role="menu">

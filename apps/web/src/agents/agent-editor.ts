@@ -474,29 +474,24 @@ export function buildNavGroups(options: { isAgentMode: boolean; hasKnowledgeBase
   // R485 D1 — multimodal is NOT agent-mode gated in Vue (navItems push is unconditional)
   items.push({ key: 'multimodal', icon: 'attach', labelKey: 'agentEditor.imageUpload.navLabel' });
   if (options.isAgentMode) {
-    // Octop M1 persona section (no Vue baseline). Persona renders only in the
-    // smart-reasoning pipeline (capability assembly); quick-answer runs never
-    // read it, so gate the section by agent-mode exactly like tools/skills
-    // instead of offering a control that silently does nothing.
-    items.push({ key: 'personalization', icon: 'user', labelKey: 'agentEditor.personalization.title' });
     items.push({ key: 'tools', icon: 'tools', labelKey: 'agent.editor.toolsConfig' });
     // R485 D1 — Vue places mcp between tools and skills in agent mode
     items.push({ key: 'mcp', icon: 'server', labelKey: 'agentEditor.mcp.label' });
     items.push({ key: 'skills', icon: 'skills', labelKey: 'agent.editor.skillsConfig' });
-    // Octop M3 delegation (no Vue baseline): sub-agent roles only register the
-    // delegate tool in the smart-reasoning pipeline, so the same agent-mode
-    // gate as tools/skills applies.
-    items.push({ key: 'subagents', icon: 'app-link', labelKey: 'agentEditor.subagents.title' });
+    // personalization (Octop persona) and subagents (Octop delegation) stay
+    // OFF the rail: Vue navItems 2657-2684 has no such rows and the extra
+    // entries were a visible parity diff on ix-agents-create. Both sections
+    // remain reachable through the initialSection deep link.
   }
   const byKey = new Map(items.map((item) => [item.key, item]));
   const pick = (keys: AgentSectionKey[]): AgentNavItem[] =>
     keys.map((key) => byKey.get(key)).filter((item): item is AgentNavItem => item !== undefined);
   return [
     // Vue navGroups 2687-2713: basic group picks suggestions after conversation
-    { key: 'basic', labelKey: 'agentEditor.navGroups.basic', items: pick(['basic', 'prompts', 'model', 'conversation', 'suggestions', 'personalization']) },
+    { key: 'basic', labelKey: 'agentEditor.navGroups.basic', items: pick(['basic', 'prompts', 'model', 'conversation', 'suggestions']) },
     { key: 'knowledge', labelKey: 'agentEditor.navGroups.knowledge', items: pick(['knowledge', 'retrieval', 'websearch']) },
-    // Vue capability order: multimodal, tools, mcp, skills (subagents rides last)
-    { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['multimodal', 'tools', 'mcp', 'skills', 'subagents']) },
+    // Vue capability order: multimodal, tools, mcp, skills
+    { key: 'capability', labelKey: 'agentEditor.navGroups.capability', items: pick(['multimodal', 'tools', 'mcp', 'skills']) },
   ].filter((group) => group.items.length > 0);
 }
 

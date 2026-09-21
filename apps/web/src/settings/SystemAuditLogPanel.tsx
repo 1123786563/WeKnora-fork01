@@ -75,7 +75,7 @@ export function SystemAuditLogPanel({ client, payload }: { client: WeKnoraClient
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [selected]);
   const title = t('system.globalSettings.audit.tabLabel') === 'system.globalSettings.audit.tabLabel' ? copy.title : t('system.globalSettings.audit.tabLabel');
-  return <section className="wk-system-audit grid gap-4">{/* Vue SystemAuditLog.vue:3-21 — 面板自持 section-header（20px/600 h2 +
+  return <section className="wk-system-audit grid">{/* Vue SystemAuditLog.vue:3-21 — 面板自持 section-header（20px/600 h2 +
         14px 描述，margin-bottom 20px、无分割线），刷新按钮 20×20 悬于右上。 */}
   <header className="section-header flex items-start justify-between gap-4 max-[720px]:flex-col"><div><h2>{title}</h2><p className="section-description">{t('system.globalSettings.audit.description') === 'system.globalSettings.audit.description' ? copy.description : t('system.globalSettings.audit.description')}</p></div><button type="button" className={`wk-audit-refresh inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-[12px] transition-colors hover:bg-[rgba(0,0,0,0.06)] hover:text-[#07c05f] disabled:cursor-default disabled:opacity-70 ${loading ? 'animate-[wk-audit-spin_0.8s_linear_infinite]' : ''}`} aria-label={copy.refresh} onClick={() => void loadMore(true)} disabled={loading}>{loading ? '↻' : '⟳'}</button></header>{loadError ? <Card role="alert"><Status tone="error">{loadError}</Status><button type="button" onClick={() => void loadMore(true)}>{copy.retry}</button></Card> : null}{/* Vue SystemAuditLog.vue:34-39 — 空态为 min-height 280px 居中的
       t-empty（默认「暂无数据」标题 + 描述行），无外框卡片。 */}

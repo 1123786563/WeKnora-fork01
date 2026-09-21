@@ -252,7 +252,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
       <ul className="list-none m-0 p-0">{group.items.map((session) => {
         const badge = sessionSourceBadge(session);
         const active = session.id === selectedSessionId;
-        return <li key={session.id} className={'group/item flex items-center rounded-[8px] relative' + (active ? ' is-active' : '')}>
+          return <li key={session.id} className={'group/item flex items-center rounded-[6px] relative' + (active ? ' is-active' : '')}>
           {batchMode ? <input type="checkbox" aria-label={formatChatCopy(t, 'batchSelectSession', { title: session.title || untitledLabel || t.untitledChat })} checked={selectedIds.has(session.id)} onChange={() => toggleSelected(session.id)} disabled={batchBusy} className="mx-[4px] shrink-0" /> : null}
           {editingSessionId === session.id ? <div className="flex min-w-0 flex-1 flex-col gap-[2px] px-[6px] py-[4px]">
             <input type="text" aria-label={t.renameSession} value={editingTitle} maxLength={80} autoFocus disabled={renameSubmitting.current}
@@ -266,8 +266,11 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
               onBlur={() => { void submitRename(session); }} />
             {renameError ? <span role="alert" className="text-[11px] leading-[16px] text-[#e34d59]">{renameError}</span> : null}
           </div> : <button type="button" aria-current={active ? 'page' : undefined} onClick={() => { if (batchMode) toggleSelected(session.id); else onSelect(session.id); }}
-            className={'flex h-[36px] flex-1 items-center min-w-0 gap-[6px] px-[10px] border-0 rounded-[8px] cursor-pointer text-left text-[14px] leading-[22px] overflow-hidden transition-[background-color,color] duration-[150ms] ease-[ease] '
-            + (active ? 'bg-[#e9f8ec] text-[#07c05f] font-medium' : 'bg-transparent text-[rgba(0,0,0,0.9)] group-hover/item:bg-[rgba(0,0,0,0.04)]')}>
+            className={'flex h-[36px] flex-1 items-center min-w-0 gap-[6px] px-[10px] border-0 rounded-[6px] cursor-pointer text-left text-[14px] leading-[22px] overflow-hidden transition-[background-color,color] duration-[150ms] ease-[ease] '
+            + /* Vue menu.vue 1632-1641: active bg = --td-bg-color-container-hover
+                 (neutral #f3f3f3), only the title turns brand green; hover same
+                 neutral grey, not a green tint. */
+            (active ? 'bg-[var(--td-bg-color-container-hover,#f3f3f3)] text-[#07c05f]' : 'bg-transparent text-[rgba(0,0,0,0.9)] group-hover/item:bg-[var(--td-bg-color-container-hover,#f3f3f3)]')}>
             {session.running === true ? <span role="status" aria-label={t.sessionInProgress} title={t.sessionInProgress} className="wk-chat-session-running inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center text-[#07c05f]"><span aria-hidden="true" className="wk-chat-session-running-spinner block h-[12px] w-[12px] rounded-full border-[1.5px] border-current border-t-transparent motion-safe:animate-[wk-chat-session-spin_0.8s_linear_infinite]" /></span> : null}
             {session.is_pinned ? <span className="shrink-0 text-[rgba(0,0,0,0.4)] text-[12px]" aria-hidden="true">★</span> : null}
             {session.parent_session_id ? <span role="img" aria-label={t.forkBadgeTooltip} title={t.forkBadgeTooltip} className="shrink-0 text-[11px] text-[rgba(0,0,0,0.4)]">⑂</span> : null}

@@ -21,6 +21,10 @@ const FALLBACK_STRINGS: FallbackTable = {
   'zh-CN': {
     'common.close': '关闭',
     'integrations.selectAgentHint': '请先选择一个智能体',
+    // Vue ApiIntegrationSettings.vue API 文档 row (tenant.api subtree).
+    'tenant.api.docLabel': 'API 文档',
+    'tenant.api.docDescription': '查看完整的 API 调用文档和示例，',
+    'tenant.api.openDoc': '打开文档',
     'agentEditor.im.sectionCredentials': "平台凭证",
     'embedPublish.allowedOrigins': "域名白名单",
     'embedPublish.originsPlaceholder': 'https://shop.example.com',
@@ -64,6 +68,9 @@ const FALLBACK_STRINGS: FallbackTable = {
     'embedPublish.defaultChannelName': '网页嵌入',
   },
   'en-US': {
+    'tenant.api.docLabel': 'API Documentation',
+    'tenant.api.docDescription': 'View complete API documentation and examples,',
+    'tenant.api.openDoc': 'Open documentation',
     'common.close': 'Close',
     'integrations.selectAgentHint': 'Please select an agent first',
     'agentEditor.im.sectionCredentials': "Platform credentials",
@@ -109,6 +116,9 @@ const FALLBACK_STRINGS: FallbackTable = {
     'embedPublish.defaultChannelName': 'Web Embed',
   },
   'ja-JP': {
+    'tenant.api.docLabel': 'APIドキュメント',
+    'tenant.api.docDescription': 'APIの詳細なドキュメントとサンプルはこちら：',
+    'tenant.api.openDoc': 'ドキュメントを開く',
     'common.close': '閉じる',
     'integrations.selectAgentHint': '先にエージェントを選択してください',
     'agentEditor.im.sectionCredentials': "プラットフォームの認証情報",
@@ -154,6 +164,9 @@ const FALLBACK_STRINGS: FallbackTable = {
     'embedPublish.defaultChannelName': 'Web埋め込み',
   },
   'ko-KR': {
+    'tenant.api.docLabel': 'API 문서',
+    'tenant.api.docDescription': '전체 API 호출 문서 및 예시 보기, ',
+    'tenant.api.openDoc': '문서 열기',
     'common.close': '닫기',
     'integrations.selectAgentHint': '먼저 에이전트를 선택하세요',
     'agentEditor.im.sectionCredentials': "플랫폼 자격 증명",
@@ -199,6 +212,9 @@ const FALLBACK_STRINGS: FallbackTable = {
     'embedPublish.defaultChannelName': '웹 페이지 임베드',
   },
   'ru-RU': {
+    'tenant.api.docLabel': 'Документация API',
+    'tenant.api.docDescription': 'Ознакомьтесь с полной документацией и примерами API,',
+    'tenant.api.openDoc': 'Открыть документацию',
     'common.close': 'Закрыть',
     'integrations.selectAgentHint': 'Сначала выберите агента',
     'agentEditor.im.sectionCredentials': "Учётные данные платформы",

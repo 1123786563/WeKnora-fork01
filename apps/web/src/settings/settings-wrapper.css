@@ -77,9 +77,10 @@
 .wk-settings-section .setting-info .desc { color: rgba(0, 0, 0, 0.6); font-size: 13px; line-height: 1.5; margin: 0; }
 .wk-settings-section .setting-control { align-items: center; display: flex; flex-shrink: 0; justify-content: flex-end; min-width: 280px; }
 .wk-settings-section .setting-control--stacked { align-items: flex-end; flex-direction: column; gap: 8px; }
-.wk-settings-section .info-value { font-size: 14px; overflow-wrap: anywhere; }
+.wk-settings-section .info-value { font-size: 14px; line-height: normal; overflow-wrap: anywhere; }
 .wk-settings-section .info-value.password-mask { letter-spacing: 2px; }
-.wk-settings-section .commit-info { font-family: ui-monospace, monospace; font-size: 12px; opacity: 0.7; }
+/* Vue SystemInfo.vue：commit-info 无 mono 字体、placeholder 色、左距 6px。 */
+.wk-settings-section .commit-info { font-size: 12px; color: rgba(0, 0, 0, 0.4); margin-left: 6px; }
 .wk-settings-section .edit-btn { background: transparent; border: 0; cursor: pointer; font-size: 14px; opacity: 0.6; padding: 2px 6px; }
 .wk-settings-section .edit-btn:hover { opacity: 1; }
 .wk-settings-section .inline-edit { align-items: center; display: flex; gap: 8px; }
@@ -92,7 +93,9 @@
 .wk-tag--success { background: rgba(7, 192, 95, 0.12); color: #0a8f4c; }
 .wk-tag--warning { background: rgba(236, 149, 27, 0.14); color: #b26a08; }
 .wk-tag--danger { background: rgba(220, 38, 38, 0.12); color: #c23434; }
-.wk-tag--default { background: rgba(100, 116, 139, 0.14); color: #52607a; }
+/* Vue t-tag--default light：#f3f3f3 底 + rgba(0,0,0,0.9) 文字、lh/高 20、
+   左右 4px、radius 3px（span 提高特异性以压过 px-[8px]! 等工具类）。 */
+span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-height: 20px; height: 20px; border-radius: 3px; padding: 0 4px !important; }
 
 /* RETAINED select chrome (consumers listed in the file-head index above).
    Source: t-input chrome (tdesign.css .t-input / .t-input:hover /
@@ -185,9 +188,20 @@
    提供（Vue .settings-group gap 0，无表单 grid gap）。 */
 .wk-chathistory-settings .wk-settings-editor { max-width: none; gap: 0; margin-bottom: 0; }
 
+/* ChatHistorySettings.vue 用 t-switch size-m（32.4×20 轨道、15px 旋钮、
+   2.5px 内边距；unchecked 轨道 --td-bg-color-secondarycontainer ≈ #e3e3e3），
+   而共享 <Switch> 是 40×20/16px 旋钮/track-off 蓝灰——按 Vue 实测覆盖。 */
+.wk-chathistory-settings [role="switch"] { width: 32.4px; background: #e3e3e3; }
+.wk-chathistory-settings [role="switch"][data-state="checked"] { background: #07c05f; }
+.wk-chathistory-settings [role="switch"] span { width: 15px; height: 15px; margin-left: 2.5px; translate: none; }
+.wk-chathistory-settings [role="switch"][data-state="checked"] span { translate: 12.4px; }
+
 /* SystemAuditLog.vue:627-650 — 面板自持 section-header，下边距 20px（非
    共享的 32px），无分割线；刷新按钮 20×20、图标 12px、占位色。 */
 .wk-system-audit .section-header { margin-bottom: 20px; }
+/* Vue audit-page-header h2 为 20px/28px（无 lh:normal 撑高），保证空态/表格
+   body 落在 Vue 的 y=127（header 57px + 20px margin，不再叠加 grid gap）。 */
+.wk-system-audit .section-header h2 { line-height: 28px; }
 .wk-system-audit .wk-audit-refresh { width: 20px; height: 20px; font-size: 12px; color: rgba(0, 0, 0, 0.4); }
 .wk-system-audit .wk-audit-empty { min-height: 280px; }
 
@@ -512,3 +526,75 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 /* Vue App.vue:301 enables grayscale font smoothing app-wide; without it every
    glyph in the drawer rasterizes subpixel and ghosts against the baseline. */
 .wk-settings-drawer-root { color: rgba(0, 0, 0, 0.9); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+/* ==== R5xx 壳层/系统设置清扫切片（2026-09-21 DOM 逐元素对齐） ==== */
+
+/* 1) 侧栏 latin 标签行盒（Ollama / WeKnora Cloud / CLI / Claw Skill）：Vue
+   .nav-label line-height normal → latin 17px / CJK 20px；React 按钮上的
+   leading-[20px] 把 latin 行盒抬到 21px 且字形整体上偏 2px，是全设置页侧栏
+   残差（integrations 底噪 3.18 的侧栏部分）的来源。scoped 覆盖还原 normal。 */
+.wks-modal .wks-nav-label { line-height: normal; }
+
+/* 2) system-global 面板 TDesign token 重映射（同 .parser-engine-settings /
+   .runtime-queues 先例）：Vue SystemSettings.vue 全文用 --td-text-color-*
+   rgba(0,0,0,.9/.6/.4)，React 面板继承全局蓝-gray token（#172033/#66758b），
+   是该页内容区两个热格 12.9%/14% 的主因。仅在面板子树重映射。 */
+.wk-system-global {
+  --color-ink: rgba(0, 0, 0, 0.9);
+  --color-ink-strong: rgba(0, 0, 0, 0.9);
+  --color-muted: rgba(0, 0, 0, 0.6);
+  --color-muted-strong: rgba(0, 0, 0, 0.9);
+  --color-faint: rgba(0, 0, 0, 0.4);
+}
+/* SystemSettings.vue .desc { max-width: 480px }：长后端描述钳宽防止挤压控制列
+   （React desc 填满 info 列 499px，折行点整体偏移）。 */
+.wk-system-global p.wk-muted { max-width: 480px; }
+
+/* 3) 分区 tab 条（Vue t-tabs size=m）：nav-item 文本 rgba(0,0,0,.6)/活跃
+   #07c05f、fw500、行盒 48px 垂直居中（文字几何中心 y155）、底部指示条 3px
+   #07c05f。React 按钮原为 #5c6b83/#0a8f4c、fw600/400、lh normal（中心 y153.5）、
+   border-b-2。padding 3px 顶 + lh42px 使字形中心回到 y155。 */
+.wk-system-global-tabs { gap: 0; }
+.wk-system-global-tabs button {
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 500;
+  line-height: 42px;
+  padding: 3px 16px 0;
+  border-bottom-width: 3px;
+}
+.wk-system-global-tabs button.is-active { color: #07c05f; border-bottom-color: #07c05f; }
+
+/* 3b) 管理员标签输入框（Vue t-tag-input）：外框 320x32 白底 radius3、内芯片
+   t-tag--dark #e7e7e7 3px 圆角 24px 高（pad 0 8）；React 原为 30px 高框 +
+   #eff4ff pill 18px 高芯片。 */
+.wk-system-global .wk-tag-input { width: 320px; box-sizing: border-box; height: 32px; padding: 4px 8px 4px 4px; }
+.wk-system-global .wk-tag-input-tag { background: #e7e7e7; border-radius: 3px; box-sizing: border-box; height: 24px; padding: 0 8px; }
+
+/* 3c) 「重置密码 / 创建用户」文字按钮（Vue t-button variant=text）：32px 高、
+   16px 图标、无边框透明底；React 原为 34px 高带边框、14px 图标。 */
+.wk-system-global .wk-password-reset-trigger { height: 32px; border: 0; background: #fdecee; }
+.wk-system-global .wk-password-reset-trigger svg { width: 16px; height: 16px; }
+/* 管理员标签输入框：Vue 的内嵌 input 宽度为 0（placeholder 不可见），React
+   min-w-120 使 placeholder 文字外露。 */
+.wk-system-global .wk-tag-input-field { min-width: 0; }
+
+/* 3d) 开关（Vue t-switch t-size-m）：轨道 32.4x20，未选中旋钮 12x12 左偏 4px，
+   选中旋钮放大 15x15 且偏移 14.9px；共享 32px/15px 规则是 TenantInfo 系的
+   size 差异，此处按本面板 Vue 实测覆盖。 */
+.wk-system-global button[role='switch'] > span { width: 12px; height: 12px; margin-left: 4px; }
+.wk-system-global button[role='switch'][data-state='checked'] > span { width: 15px; height: 15px; margin-left: 3px; transform: translateX(11.5px); }
+
+/* 4) 高风险徽标（Vue t-tag t-tag--danger t-tag--light）：12px/400 #e34d59 文字
+   on #fdecee、radius 3px、padding 0 5px（整签 46x20）。React Badge 原为
+   fw500 #b42318 on rgba(213,73,65,.1)、pill、1px 8px（54x20）。 */
+.wk-system-global-label .rounded-pill {
+  background: #fdecee;
+  border: 0;
+  border-radius: 3px;
+  box-sizing: border-box;
+  color: #e34d59;
+  font-weight: 400;
+  height: 20px;
+  line-height: normal;
+  padding: 0 5px;
+}
