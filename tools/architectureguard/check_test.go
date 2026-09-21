@@ -191,6 +191,79 @@ import _ "github.com/Tencent/WeKnora/internal/modules/othermod"
 	}
 }
 
+func TestRunImportExceptionCoversBatchA2AiresourceChat(t *testing.T) {
+	// batch A2：models/chat 搬入 airesource 后，usage.go 对 commercial 根包的
+	// 预存横向耦合显形。命中豁免的精确 file→package 对放行；同包相邻文件
+	// 不在豁免范围，必须照常报告。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/airesource/models/chat/usage.go": `package chat
+
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
+`,
+		"internal/modules/airesource/models/chat/usage_neighbor.go": `package chat
+
+import _ "github.com/Tencent/WeKnora/internal/modules/commercial"
+`,
+	})
+
+	rep, err := Run(root, []ManifestView{{Module: "airesource"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import", "chat/usage.go") {
+		t.Fatalf("batch A2 命中豁免的 usage.go→commercial 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import", "usage_neighbor.go") {
+		t.Fatalf("未列入豁免的相邻文件必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
+func TestRunImportExceptionCoversBatchA2ChannelsAndExecution(t *testing.T) {
+	// batch A2：channels/im 与 execution/sandbox 对 airesource/policy 的预存
+	// 横向耦合显形。命中豁免的精确对放行；同一文件指向未列包的导入
+	// （service.go→policy/ipclass 不在清单）仍须报告。
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"internal/modules/channels/im/service.go": `package im
+
+import (
+	_ "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+	_ "github.com/Tencent/WeKnora/internal/modules/airesource/storageurl"
+	_ "github.com/Tencent/WeKnora/internal/modules/policy/ratelimit"
+	_ "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
+)
+`,
+		"internal/modules/channels/im/yunzhijia/url.go": `package yunzhijia
+
+import _ "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
+`,
+		"internal/modules/execution/sandbox/url_guard.go": `package sandbox
+
+import _ "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
+`,
+	})
+
+	mods := []ManifestView{{Module: "channels"}, {Module: "execution"}}
+	rep, err := Run(root, mods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import", "airesource/mcp") ||
+		hasCheck(rep.Diagnostics, "forbidden-import", "airesource/storageurl") ||
+		hasCheck(rep.Diagnostics, "forbidden-import", "policy/ratelimit") {
+		t.Fatalf("batch A2 命中豁免的 service.go 导入不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+	if hasCheck(rep.Diagnostics, "forbidden-import", "yunzhijia/url.go") ||
+		hasCheck(rep.Diagnostics, "forbidden-import", "url_guard.go") {
+		t.Fatalf("batch A2 命中豁免的 url.go/url_guard.go→ipclass 不应报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+	if !hasCheck(rep.Diagnostics, "forbidden-import",
+		`service.go 导入了模块 policy 的内部包 "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"`) {
+		t.Fatalf("未列入豁免的 service.go→policy/ipclass 必须照常报告 forbidden-import:\n%s", joinChecks(rep.Diagnostics))
+	}
+}
+
 func TestRunAllowsSelfModuleImport(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{

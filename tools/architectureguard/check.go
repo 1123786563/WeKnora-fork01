@@ -129,6 +129,49 @@ var importExceptions = []importException{
 		Reason:       "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界",
 		PassBTask:    "B-appconnector",
 	},
+	// ---- batch A2 搬迁显形的预存横向耦合（reason 前缀见各条目）----
+	{
+		ImporterFile: "internal/modules/airesource/models/chat/usage.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：" +
+			"models/chat/usage.go 消费 commercial 根包，Pass A 不改边界",
+		PassBTask: "B-airesource",
+	},
+	{
+		ImporterFile: "internal/modules/channels/im/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：" +
+			"im/service.go 消费 airesource 的 mcp 包，Pass A 不改边界",
+		PassBTask: "B-channels",
+	},
+	{
+		ImporterFile: "internal/modules/channels/im/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/storageurl",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：" +
+			"im/service.go 消费 airesource 的 storageurl 包，Pass A 不改边界",
+		PassBTask: "B-channels",
+	},
+	{
+		ImporterFile: "internal/modules/channels/im/service.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/ratelimit",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：" +
+			"im/service.go 消费 policy 的 ratelimit 包，Pass A 不改边界",
+		PassBTask: "B-channels",
+	},
+	{
+		ImporterFile: "internal/modules/channels/im/yunzhijia/url.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/ipclass",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：" +
+			"im/yunzhijia/url.go 消费 policy 的 ipclass 包，Pass A 不改边界",
+		PassBTask: "B-channels",
+	},
+	{
+		ImporterFile: "internal/modules/execution/sandbox/url_guard.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/ipclass",
+		Reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：" +
+			"execution/sandbox/url_guard.go 消费 policy 的 ipclass 包，Pass A 不改边界",
+		PassBTask: "B-execution",
+	},
 }
 
 // importExcepted 报告 (importerFile, importedPath) 是否命中一条精确豁免。
