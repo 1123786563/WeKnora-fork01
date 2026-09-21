@@ -98,7 +98,7 @@ func (b *SemanticModelBudgetAdapter) finish(ctx context.Context, c semanticCapab
 		if rates, err := b.rates(c.priceVersion); err != nil || rates.Version != c.priceVersion {
 			return ErrSemanticModelRatesUnavailable
 		}
-		return b.usage.WithRates(b.rates).Record(ctx, fact)
+		return b.usage.RecordRawModelUsage(ctx, fact)
 	}
 	if b == nil || b.gate == nil || b.rates == nil || r.ID == "" {
 		return ErrSemanticModelRatesUnavailable

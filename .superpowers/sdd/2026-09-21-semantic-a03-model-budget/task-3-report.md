@@ -77,3 +77,56 @@ ok   github.com/Tencent/WeKnora/internal/container  (cached) [no tests to run]
 $ git diff --check
 (no output; exit 0)
 ```
+
+## Review fix round 2
+
+The commercial repository now has the intentionally narrow
+`UsageStore.RecordRawModelUsage(ctx, fact)` path. It accepts only a final
+BYOK `ServiceModel` fact containing the model dimension, writes its physical
+owner usage row and current-revision pointer with `ChargeMicro=0`, and creates
+no `usage_settlement` outbox record. Generic `UsageStore.Record` retains its
+existing billable-final behavior. `SemanticModelBudgetAdapter.finish` uses the
+new raw path for BYOK and continues using `ExecutionGate.Finish` for platform
+funding.
+
+Added/strengthened behavioral tests:
+
+- `TestSemanticModelRecordRawBYOKFinalPersistsWithoutSettlement` exercises
+  the real SQLite `UsageStore` and verifies owner persistence, current pointer,
+  zero charge, and no settlement outbox event.
+- `TestSemanticModelBYOKPersistsOwnerRawUsageWithoutPlatformSettlement` runs
+  the gateway with the real raw usage store and verifies owner/funding/price
+  binding, one claim/model/provider/completion path, no platform gate, and no
+  settlement event.
+- `TestSemanticModelOwnerAdmissionDenialsPrecedeModelResolution`,
+  `TestSemanticModelBudgetDispatchMarkerFailureRetainsHoldAndSkipsProvider`,
+  and `TestSemanticModelMalformedUsageBecomesUnknownWithoutSettlement` cover
+  ACL/quota admission ordering, second-marker ambiguity, and end-to-end
+  malformed provider usage. The completed-replay and platform-success tests
+  now count and assert no repeat reserve/provider/finish plus exact owner
+  reservation, funding, and immutable rate version respectively.
+
+TDD evidence: the new repository test initially failed to compile because
+`RecordRawModelUsage` did not exist. The new gateway BYOK test then failed with
+one `usage_settlement` event while `finish` still called generic `Record`.
+After the narrow method and adapter routing were added, both tests passed.
+
+Fresh verification output:
+
+```text
+$ go test ./internal/application/service ./internal/application/service/commercial ./internal/application/repository -run '^TestSemanticModel' -count=1
+ok   github.com/Tencent/WeKnora/internal/application/service  2.713s
+ok   github.com/Tencent/WeKnora/internal/application/service/commercial  2.052s [no tests to run]
+ok   github.com/Tencent/WeKnora/internal/application/repository  5.094s
+
+$ go test ./internal/application/repository/commercial -run '^TestSemanticModel' -count=1
+ok   github.com/Tencent/WeKnora/internal/application/repository/commercial  0.441s
+
+$ go test ./internal/container -run '^$'
+# github.com/Tencent/WeKnora/internal/container.test
+ld: warning: ignoring duplicate libraries: '-lc++'
+ok   github.com/Tencent/WeKnora/internal/container  (cached) [no tests to run]
+
+$ git diff --check
+(no output; exit 0)
+```

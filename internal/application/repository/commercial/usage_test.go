@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -213,6 +214,23 @@ func TestUsageRecordUnknownStatusEmitsNoZeroSettlement(t *testing.T) {
 	if got := usageSettlementCount(t, s); got != 0 {
 		t.Fatalf("settlement events=%d want none for status=unknown", got)
 	}
+}
+
+// This catches a regression where a final BYOK model observation goes through
+// Record and incorrectly creates a credit-settlement outbox event.
+func TestSemanticModelRecordRawBYOKFinalPersistsWithoutSettlement(t *testing.T) {
+	s := testUsageStore(t)
+	fact := repoUsageFact(42, "semantic-call", "semantic-attempt", domain.UsageStatusFinal, 1, 17)
+	fact.Funding = domain.FundingBYOK
+	fact.Service = domain.ServiceModel
+
+	require.NoError(t, s.RecordRawModelUsage(context.Background(), fact))
+
+	var row UsageRow
+	require.NoError(t, s.db.Where("tenant_id = ? AND call_id = ? AND attempt_id = ?", uint64(42), "semantic-call", "semantic-attempt").First(&row).Error)
+	require.Equal(t, int64(0), row.ChargeMicro)
+	require.Equal(t, int64(1), usageCurrentRevision(t, s, 42, "semantic-call", "semantic-attempt"))
+	require.Zero(t, usageSettlementCount(t, s))
 }
 
 func TestUsageRecordFinalWithoutRatesIsRejected(t *testing.T) {
