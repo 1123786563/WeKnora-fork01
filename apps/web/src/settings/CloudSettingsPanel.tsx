@@ -181,8 +181,9 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
     <div>
       <div className="mb-6">
         <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[23px] text-[rgba(0,0,0,0.9)]">{t('settings.weknoraCloud.title')}</h2>
-        <p className="m-0 mb-[10px] text-[14px] leading-[20px] text-[rgba(0,0,0,0.6)]">{t('settings.weknoraCloud.description')}{' '}
-          <a className="inline-flex items-center gap-[3px] text-[#07c05f] hover:underline" href="https://developers.weixin.qq.com/doc/aispeech/knowledge/atomic_capability/atomic_interface.html" target="_blank" rel="noopener noreferrer">{t('settings.weknoraCloud.viewDocs')}<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg></a>
+        {/* Vue .section-description: 14px, line-height 1.5 (21px). */}
+        <p className="m-0 mb-[10px] text-[14px] leading-[21px] text-[rgba(0,0,0,0.6)]">{t('settings.weknoraCloud.description')}{' '}
+          <a className="inline-flex items-center gap-[3px] text-[#07c05f] [font-weight:450] hover:underline" href="https://developers.weixin.qq.com/doc/aispeech/knowledge/atomic_capability/atomic_interface.html" target="_blank" rel="noopener noreferrer">{t('settings.weknoraCloud.viewDocs')}<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg></a>
         </p>
       </div>
       {credentialState === 'unconfigured' ? <div className="mb-5 flex items-center gap-2 rounded-[6px] border border-[#e7e7e7] bg-[#f3f3f3] px-[14px] py-[10px] text-[13px] leading-[18px] text-[rgba(0,0,0,0.6)]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg><span>{t('settings.weknoraCloud.unconfigured')}</span></div>
@@ -216,8 +217,10 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
       <div className="grid">
         {WKC_MODEL_KINDS.map((kind) => <div key={kind} className={`flex items-center justify-between gap-3 border-b border-[#e7e7e7] py-3 first:pt-1 last:border-b-0 last:pb-0 ${credentialState !== 'configured' ? 'opacity-90' : ''}`}>
           <div className="flex min-w-0 items-center gap-[10px]">
-            <span className="min-w-[88px] text-[14px] font-medium text-[rgba(0,0,0,0.9)]">{kindLabel(kind)}</span>
-            <code className="rounded-[4px] bg-[#f3f3f3] px-[6px] py-0.5 [font-family:monospace] text-[12px] text-[rgba(0,0,0,0.6)]">{WKC_MODEL_NAME_BY_KIND[kind]}</code>
+            {/* Vue row label/code use line-height normal (17–20px) — the
+                inherited 21px inflates each row and drifts the list. */}
+            <span className="min-w-[88px] text-[14px] font-medium leading-[normal] text-[rgba(0,0,0,0.9)]">{kindLabel(kind)}</span>
+            <code className="rounded-[4px] bg-[#f3f3f3] px-[6px] [font-family:monospace] text-[12px] leading-[18px] text-[rgba(0,0,0,0.6)]">{WKC_MODEL_NAME_BY_KIND[kind]}</code>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {credentialState === 'configured' && existingKinds.has(kind) ? <Status tone="success">{t('settings.weknoraCloud.modelsSection.statusAdded')}</Status>
@@ -252,7 +255,8 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
       ) : credentialState === 'configured' && missingKinds.length === 0 ? <p className="mb-0 mt-[14px] flex items-center gap-1.5 text-[13px] text-[#0a7f43]"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M8 12l3 3 5-6" /></svg>{t('settings.weknoraCloud.modelsSection.allReady')}</p> : null}
     </section>
     <div className="rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3] px-4 py-[14px]">
-      <p className="m-0 mb-2 text-[13px] font-medium text-[rgba(0,0,0,0.4)]">{t('settings.weknoraCloud.usageTitle')}</p>
+      {/* Vue .hint-title: 13px/500 lh normal (18px). */}
+      <p className="m-0 mb-2 text-[13px] font-medium leading-[normal] text-[rgba(0,0,0,0.4)]">{t('settings.weknoraCloud.usageTitle')}</p>
       <p className="mb-0 mt-0 text-[13px] leading-[1.8] text-[rgba(0,0,0,0.6)]">{t('settings.weknoraCloud.usageSteps').split('\n').map((line, index) => <span key={index} className="block">{line}</span>)}</p>
     </div>
   </div>;

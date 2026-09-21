@@ -99,7 +99,7 @@
 /* --- 遮罩浓度（Vue 取样：t-dialog 黑 53%）——列表页无 documents-list.css，
        在此重复落地。 --- */
 .wk-dialog-backdrop {
-  background: rgba(0, 0, 0, 0.53);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 /* --- Vue KnowledgeBaseEditorModal 弹窗形态（DOM 实测 2026-09-21） ----------
@@ -269,6 +269,17 @@
   background: var(--wk-color-surface, #fff);
 }
 
+/* Vue settings-footer 覆盖在内容列上（侧栏贯通到弹窗底），此处用绝对定位
+   实现同一形态：kb-editor-body 占满弹窗高，footer 浮在其右列底部。 */
+.wk-kb-editor-dialog .kb-editor-footer {
+  position: absolute;
+  bottom: 0;
+  left: 209px;
+  right: 0;
+  z-index: 2;
+  margin-left: 0;
+}
+
 .wk-kb-editor-dialog .kb-editor-btn-cancel,
 .wk-kb-editor-dialog .kb-editor-btn-save {
   height: 32px;
@@ -289,34 +300,117 @@
   color: #fff !important;
 }
 
-/* Vue .settings-footer 只覆盖内容列（侧栏贯通到底），bg 透明。 */
-.wk-kb-editor-dialog .kb-editor-footer {
-  margin-left: 209px;
-  background: transparent;
+/* Vue .settings-footer 只覆盖内容列（侧栏贯通到底）。 */
+
+/* 弹窗体占满弹窗高（612），侧栏随之贯通到底；内容列预留 footer 高。 */
+.wk-kb-editor-dialog .wk-form > .kb-editor-body {
+  height: 100%;
+}
+
+.wk-kb-editor-dialog .kb-editor-content {
+  height: 100%;
+  box-sizing: border-box;
+  padding-bottom: 81px;
 }
 
 /* --- 基本信息区表单节奏（Vue .form-item / t-input / t-textarea） ---------- */
-/* 索引策略卡：Vue padding 12px 14px、标题行 14px/22、标题-描述间距 6、
-   复选框 16x16 → 两卡等高 ≈90（grid 拉伸）。 */
+/* 文本色系：Vue td tokens——主文字 rgba(0,0,0,.9)、提示 rgba(0,0,0,.4)；
+   React 默认 text-ink=#172033 / text-muted=#66758b 偏蓝，容差 8 下整篇文字
+   像素级不匹配，弹窗内统一切到 td 色系。 */
+.wk-kb-editor-dialog { color: rgba(0, 0, 0, 0.9); }
+.wk-kb-editor-dialog .text-ink { color: rgba(0, 0, 0, 0.9); }
+.wk-kb-editor-dialog .text-muted { color: rgba(0, 0, 0, 0.4); }
+
+/* 区块头（Vue section-title mb6 + section-desc 14/22 placeholder 色）。 */
+.wk-kb-editor-dialog .kb-editor-content h3 + p { margin-top: 6px; }
+
+/* 类型行（Vue form-item block 流：label 21 + mb8 → radio 32 + tip mt6 12px/17）。 */
+.wk-kb-editor-dialog [data-guide="kb-create-type"] { row-gap: 0; }
+.wk-kb-editor-dialog [data-guide="kb-create-type"] > span:first-child { line-height: 21px; }
+.wk-kb-editor-dialog [data-guide="kb-create-type"] .kb-create-type-frame { margin-top: 8px; }
+.wk-kb-editor-dialog [data-guide="kb-create-type"] .kb-create-type-frame button {
+  width: 62px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 22px;
+}
+.wk-kb-editor-dialog [data-guide="kb-create-type"] > span.text-xs {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+/* 索引策略行（Vue 实测 2026-09-21：label 21 → tip +8 12px/17 → 卡 +12 高 90）。
+   卡：padding 12px 14px、标题行 14px/22、标题-描述间距 6、复选框 16x16。 */
+.wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] { row-gap: 0; }
+.wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] legend { font-size: 15px; line-height: 21px; }
+.wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] > p {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 17px;
+}
+.wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] > div { margin-top: 12px; }
 .wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] > div > label {
+  box-sizing: border-box;
+  height: 90px;
+  grid-template-rows: 22px auto;
+  align-content: start;
   row-gap: 6px;
   padding: 12px 14px;
+}
+.wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] > div > label > span {
+  box-sizing: border-box;
+  height: 22px;
 }
 .wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] > div > label > span > input[type="checkbox"] {
   width: 16px;
   height: 16px;
+  /* 抵消 UA checkbox 默认 margin (3px 3px 3px 4px)，对齐 Vue 视觉盒。 */
+  margin: 3px 0 0 -4px;
 }
 .wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] > div > label strong {
   font-size: 14px;
   line-height: 22px;
+  white-space: nowrap;
 }
-/* 字段行：label 15px/21 + 8px 间距（Vue form-label mb8），名称/描述/模型行通用。 */
-.wk-kb-editor-dialog .kb-editor-content label.grid { row-gap: 8px; }
+.wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] > div > label small {
+  line-height: 18px;
+  margin-top: 0;
+  padding: 0;
+}
+/* 复选框：Vue t-checkbox__input 16x16 与标题行间距 8（视觉盒 x=卡内容起点）。 */
+.wk-kb-editor-dialog fieldset[data-guide="kb-create-indexing"] > div > label > span {
+  gap: 8px;
+}
+/* 占位符：Vue t-input/t-textarea placeholder = rgba(0,0,0,0.4)。 */
+.wk-kb-editor-dialog input::placeholder,
+.wk-kb-editor-dialog textarea::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+  opacity: 1;
+}
+/* 字段行：label 15px/21 + 8px 间距（Vue form-label mb8），名称/描述/模型行通用。
+   描述行的字段名是匿名文本节点（无 span 包裹），行高必须落在 label 本身。 */
+.wk-kb-editor-dialog .kb-editor-content label.grid { row-gap: 8px; line-height: 21px; }
 .wk-kb-editor-dialog .kb-editor-content label.grid > span { line-height: 21px; }
-/* 描述 textarea：14px/22（rows=3 → 78px），不超列宽。 */
+/* 名称输入：Vue t-input 字号 14/22（React wk-input 默认 16/24）。 */
+.wk-kb-editor-dialog [data-guide="kb-create-name"] {
+  font-size: 14px;
+  line-height: 22px;
+}
+/* 描述 textarea：14px/22、高 98（Vue t-textarea 实测）、无 resize 手柄；
+   0/200 计数叠加在 textarea 右下（Vue t-textarea__limit 形态）。 */
+.wk-kb-editor-dialog .kb-editor-content label.grid { position: relative; }
 .wk-kb-editor-dialog .kb-editor-content textarea {
   max-width: 100%;
   box-sizing: border-box;
+  height: 98px;
+  resize: none;
   font-size: 14px;
   line-height: 22px;
+}
+.wk-kb-editor-dialog .kb-editor-desc-count {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  line-height: 20px;
 }

@@ -40,7 +40,7 @@ import { ChunkingSettingsFields } from './knowledge-settings/chunkingSection.tsx
 import { KNOWLEDGE_SETTINGS_NAV_ICONS } from './knowledge-settings/KnowledgeSettingsPage.tsx';
 import { GraphSettings, type GraphExtractConfig } from './knowledge-settings/GraphSettings.tsx';
 import { patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './knowledge-bases/upload-progress.ts';
-import { KbIcon, type KbIconName } from './knowledge-bases/kb-list-icons.tsx';
+import { KbIcon, TDesignNavIcon, type KbIconName } from './knowledge-bases/kb-list-icons.tsx';
 import { DataSourcesPage } from './data-sources/DataSourcesPage.tsx';
 import { KB_EMPTY_SVG } from './knowledge-bases/empty-kb-svg.ts';
 import { ModelOptionSelect, type ModelOption } from './settings/ModelOptionSelect.tsx';
@@ -1185,8 +1185,15 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
               <div className="kb-editor-nav">
               {visibleKnowledgeEditorSections({ type, editing: Boolean(editingId) }).map((group) => <div key={group.key} className="kb-editor-nav-group">
                 <div className="kb-editor-nav-group-title">{t(group.labelKey)}</div>
-                {group.items.map((section) => <button key={section} type="button" data-guide={`kb-editor-nav-${section}`} onClick={() => { setEditorSection(section); if (section === 'activity' && editingId) void loadEditorActivity(editingId); }} className={`kb-editor-nav-item${editorSection === section ? ' is-active' : ''}`}>
-                  <span className="kb-editor-nav-icon" aria-hidden="true">{KNOWLEDGE_SETTINGS_NAV_ICONS[section]}</span>
+                {group.items.map((section) => <button key={section} type="button" data-guide={`kb-editor-nav-${section}`} onClick={() => { setEditorSection(section); if (section === 'activity' && editingId) void loadEditorActivity(editingId); }} className={`kb-editor-nav-item${editorSection === section ? ' is-active bg-[#f3f3f3]' : ''}`}>
+                  <span className="kb-editor-nav-icon" aria-hidden="true">{(() => {
+                    // Vue KnowledgeBaseEditorModal.vue:604-632 navItems icon 字段：
+                    // 侧栏图标必须与 t-icon 字形一致（像素 diff 下近似版整块红）。
+                    const tdesignNames: Record<string, string> = { basic: 'info-circle', models: 'control-platform', vectorStore: 'data-base', faq: 'help-circle', parser: 'file-search', chunking: 'file-copy', multimodal: 'image', asr: 'sound', graph: 'chart-bubble', advanced: 'setting', storage: 'cloud', share: 'share', activity: 'history' };
+                    const tdesignName = tdesignNames[section];
+                    const tdIcon = tdesignName ? <TDesignNavIcon name={tdesignName} size={16} /> : null;
+                    return tdIcon ?? KNOWLEDGE_SETTINGS_NAV_ICONS[section];
+                  })()}</span>
                   <span className="kb-editor-nav-label">{t(section === 'basic' ? 'knowledgeEditor.basic.title' : section === 'models' ? 'knowledgeEditor.models.title' : section === 'vectorStore' ? 'knowledgeEditor.sidebar.vectorStore' : section === 'faq' ? 'knowledgeEditor.faq.title' : section === 'parser' ? 'kbSettings.parser.title' : section === 'chunking' ? 'knowledgeEditor.chunking.title' : section === 'multimodal' ? 'knowledgeEditor.sidebar.multimodal' : section === 'asr' ? 'knowledgeEditor.sidebar.asr' : section === 'graph' ? 'knowledgeEditor.sidebar.graph' : section === 'advanced' ? 'knowledgeEditor.advanced.title' : section === 'storage' ? 'knowledgeEditor.sidebar.storage' : section === 'datasource' ? 'knowledgeEditor.sidebar.datasource' : section === 'share' ? 'knowledgeEditor.sidebar.share' : 'knowledgeEditor.activity.title')}</span>
                 </button>)}
               </div>)}

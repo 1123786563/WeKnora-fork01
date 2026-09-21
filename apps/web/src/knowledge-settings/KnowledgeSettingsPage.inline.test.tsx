@@ -196,3 +196,16 @@ afterEach(() => {
   document.body.innerHTML = '';
   return undefined;
 });
+
+test('Vue settings-overlay mask: page toggles the wkbs-dialog-open body class while mounted (Dialog backdrop override)', async () => {
+  document.body.classList.remove('wkbs-dialog-open');
+  const calls: ClientCalls = { dataSources: [], shareList: 0, activityCalls: [] };
+  await renderPage(clientFor(calls));
+  assert.ok(document.body.classList.contains('wkbs-dialog-open'), 'expected the body class while the settings page is mounted');
+  if (mountedRoot) {
+    const root = mountedRoot;
+    mountedRoot = undefined;
+    await act(async () => { root.unmount(); });
+  }
+  assert.ok(!document.body.classList.contains('wkbs-dialog-open'), 'expected the body class removed after unmount');
+});

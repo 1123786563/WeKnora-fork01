@@ -95,13 +95,16 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
           <div className="status-display flex items-center gap-[12px]">
           {testing ? <Status tone="neutral">{t('ollamaSettings.status.testing')}</Status>
             : status?.available ? (
-              <span className="inline-flex items-center gap-[4px] rounded-full bg-[rgba(0,168,112,0.12)] px-[10px] py-[3px] text-[12px] text-[#0a8f4c]">
+              // Vue t-tag theme=success variant=light: 24px chip, check-circle icon.
+              <span className="inline-flex items-center gap-[4px] rounded-[3px] bg-[#e3f9e9] px-[10px] py-[4px] text-[12px] leading-[16px] text-[#0a8f4c]">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1.1-7.4l5.3-5.3-1.4-1.4-3.9 3.9-1.9-1.9-1.4 1.4 3.3 3.3z" /></svg>
                 {t('ollamaSettings.status.available')}
               </span>
             ) : status ? (
-              <span className="inline-flex items-center gap-[5px] rounded-full bg-[rgba(227,77,89,0.12)] px-[10px] py-[3px] text-[12px] text-[#e34d59]">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-3.5-13.9 3.5 3.5 3.5-3.5 1.4 1.4-3.5 3.5 3.5 3.5-1.4 1.4-3.5-3.5-3.5 3.5-1.4-1.4 3.5-3.5-3.5-3.5z" /></svg>
+              // Vue t-tag theme=danger variant=light with close-circle-filled:
+              // 24px chip (#fdecee), filled red x-circle icon.
+              <span className="inline-flex items-center gap-[4px] rounded-[3px] bg-[#fdecee] px-[10px] py-[4px] text-[12px] leading-[16px] text-[#e34d59]">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1.1-7.4 5.3-5.3-1.4-1.4-3.9 3.9-1.9-1.9-1.4 1.4 3.3 3.3z" /></svg>
                 {t('ollamaSettings.status.unavailable')}
               </span>
             ) : <Status tone="neutral">{t('ollamaSettings.status.untested')}</Status>}
@@ -118,8 +121,11 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
             360px control column; the failed-check warning alert stacks under
             it (margin-top 8px), both right-aligned in the same column. */}
         <div className="setting-control setting-control--stacked">
-          <Input readOnly disabled value={status?.baseUrl ?? ''} placeholder="—" className="w-full bg-[#f3f3f3] text-right font-mono text-[.85rem] text-[#98a2b8]" aria-label={t('ollamaSettings.address.label')} />
-          {status && !status.available ? <p role="alert" className="m-0 mt-[8px] flex w-full items-start gap-[8px] rounded-[6px] bg-[#fdf3e7] px-[12px] py-[8px] text-[13px] leading-[1.5] text-[#b54708]"><svg className="mt-[2px] shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg><span>{t('ollamaSettings.address.failed')}</span></p> : null}
+          {/* Vue t-input disabled: 14px left-aligned value, disabled gray. */}
+          <Input readOnly disabled value={status?.baseUrl ?? ''} placeholder="—" className="w-full bg-[#eeeeee] text-[14px] text-[rgba(0,0,0,0.26)]" aria-label={t('ollamaSettings.address.label')} />
+          {/* Vue t-alert theme=warning: #f9e0c7 wash, 22px filled orange icon,
+              24px horizontal padding, 13px near-black message. */}
+          {status && !status.available ? <p role="alert" className="m-0 mt-[8px] flex w-full items-start gap-[8px] rounded-[6px] bg-[rgb(249,224,199)] px-[24px] py-[16px] text-[13px] leading-[22px] text-[rgba(0,0,0,0.9)]"><svg className="mt-px shrink-0" width="22" height="22" viewBox="0 0 24 24" fill="#ed7b2f" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" /><path d="M12 6.6a1.3 1.3 0 0 1 1.3 1.3v5a1.3 1.3 0 1 1-2.6 0v-5A1.3 1.3 0 0 1 12 6.6z" fill="#fff" /><circle cx="12" cy="16.6" r="1.35" fill="#fff" /></svg><span>{t('ollamaSettings.address.failed')}</span></p> : null}
         </div>
       </div>
     </div>

@@ -951,6 +951,16 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
     void import('@weknora/ui').then(setUi);
   }, []);
 
+  // Vue KnowledgeBaseEditorModal .settings-overlay masks the page with
+  // rgba(0,0,0,.5) + blur(4px); the shared Dialog backdrop ships
+  // --wk-overlay (rgb(23 32 51/45%)) without blur. The host renders this page
+  // inside a .wk-kb-settings-dialog portal, so scope the Vue mask to it via a
+  // body class for the page's lifetime.
+  useEffect(() => {
+    document.body.classList.add('wkbs-dialog-open');
+    return () => document.body.classList.remove('wkbs-dialog-open');
+  }, []);
+
   useEffect(() => {
     if (!navKeys.includes(activeSection)) setActiveSection(navKeys[0] ?? 'basic');
   }, [activeSection, navKeys]);

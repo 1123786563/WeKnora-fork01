@@ -99,6 +99,21 @@ function rowText(row: ParserEngineRow, key: keyof ParserEngineRow): string {
   return typeof row[key] === 'string' ? (row[key] as string) : '';
 }
 
+// Vue ParserEngineSettings.vue .engine-card--{name} .engine-card__badge palette:
+// builtin/weknoracloud green, simple gray, markitdown blue, mineru/paddleocr
+// purple; unknown engines fall back to the base blue wash.
+const BADGE_TONES: Record<string, { bg: string; fg: string }> = {
+  builtin: { bg: 'rgba(7, 192, 95, 0.12)', fg: '#07C05F' },
+  weknoracloud: { bg: 'rgba(7, 192, 95, 0.12)', fg: '#07C05F' },
+  simple: { bg: 'rgba(70, 70, 70, 0.1)', fg: '#464646' },
+  markitdown: { bg: 'rgba(0, 137, 255, 0.12)', fg: '#0089FF' },
+  mineru: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
+  mineru_cloud: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
+  paddleocr_vl: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
+  paddleocr_vl_cloud: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
+};
+const BADGE_BASE = { bg: 'rgba(0, 82, 217, 0.1)', fg: '#0052D9' };
+
 export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient }) {
   // Stable translator: recreating it per render would re-trigger the load
   // effect below (the callbacks close over it).
@@ -358,12 +373,20 @@ function EngineCard({ name, initial, title, desc, statusLabel, statusTone, statu
     className={`group flex w-full cursor-pointer items-start gap-3 rounded-[10px] border bg-surface py-[14px] pr-[14px] pl-3 text-left [font:inherit] [transition:border-color_.2s_ease,box-shadow_.2s_ease] ${active ? 'border-accent shadow-[0_0_0_1px_var(--wk-brand,#0052d9)]' : 'border-line-soft hover:border-accent/50 hover:shadow-[0_4px_14px_rgba(15,23,42,0.07)]'}`}
     onClick={onClick}
   >
-    <span className="mt-px inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-surface-wash text-[15px] font-semibold tracking-[0.02em] text-accent" aria-hidden="true">{initial}</span>
+    <span
+      className="mt-px inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-[15px] font-semibold tracking-[0.02em]"
+      style={{ background: (BADGE_TONES[name] ?? BADGE_BASE).bg, color: (BADGE_TONES[name] ?? BADGE_BASE).fg }}
+      aria-hidden="true"
+    >{initial}</span>
     <span className="min-w-0 flex-1">
-      <span className="flex items-center justify-between gap-2">
-        <h3 className="m-0 min-w-0 truncate text-[14px] font-semibold text-ink">{title}</h3>
+      <span className="flex items-center justify-between gap-[6px]">
+        {/* Vue .engine-card__title: 14px/600 with line-height 1.4 (19.6px) — the
+            inherited 1.5 makes each card row ~1.4px taller and drifts the grid. */}
+        <h3 className="m-0 min-w-0 truncate text-[14px] font-semibold leading-[1.4] text-ink">{title}</h3>
+        {/* Vue .engine-card__status: 11px/500, lh 16px, padding 1px 8px 1px 6px,
+            radius 10px, neutral secondary-container background. */}
         <span
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] ${statusTone === 'on' ? 'bg-[rgba(7,192,95,0.1)] text-[#0a7f43]' : 'bg-[rgba(194,52,52,0.08)] text-[#c23434]'}`}
+          className={`inline-flex shrink-0 items-center gap-[5px] rounded-[10px] py-[1px] pl-[6px] pr-[8px] text-[11px] font-medium leading-4 ${statusTone === 'on' ? 'bg-[rgba(7,192,95,0.1)] text-[#0a7f43]' : 'bg-[rgba(194,52,52,0.08)] text-[#c23434]'}`}
           title={statusReason}
         >
           <span className={`inline-block h-[6px] w-[6px] rounded-full ${statusTone === 'on' ? 'bg-[#0a7f43]' : 'bg-[#c23434]'}`} />

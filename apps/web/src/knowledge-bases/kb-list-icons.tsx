@@ -235,3 +235,68 @@ export function KbIcon({ name, size = 16 }: { name: KbIconName; size?: number })
     </svg>
   );
 }
+
+// --- KB 编辑器弹窗侧栏：TDesign t-icon 精确字形（ix-kb-list-create 深修） ---
+// Vue KnowledgeBaseEditorModal.vue navItems 用 t-icon（info-circle 等），
+// 上面的 stroke 近似版在像素 diff 下每个图标整块红。此处直接落地从 Vue 端
+// sprite 提取的 TDesign 官方 path（24x24，stroke 2，square cap），弹窗侧栏
+// 逐图标与 Vue 一致；未命中的 section 回落 stroke 近似版。
+const T_DESIGN_NAV_GLYPHS: Record<string, ReactNode> = {
+  "info-circle": (<>
+    <path d="M2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12Z" />
+    <path d="M12 16.5V11m0-3.5h-.004v-.004H12V7.5Z" />
+  </>),
+  "control-platform": (<>
+    <path d="m12 12 8.5-4.5M12 12v9.5m0-9.5L3.5 7.5M12 2l9 5v10l-9 5-9-5V7l9-5Z" />
+  </>),
+  "data-base": (<>
+    <path d="M21 12c0 1.657-4.03 3-9 3s-9-1.343-9-3m18 0v7c0 1.657-4.03 3-9 3s-9-1.343-9-3v-7m18 0V5M3 12V5m0 0c0 1.657 4.03 3 9 3s9-1.343 9-3M3 5c0-1.657 4.03-3 9-3s9 1.343 9 3" />
+  </>),
+  "file-search": (<>
+    <path d="M20 10.5V7l-5-5H4v20h7.5M14 2v6h6" />
+    <path d="m19.998 20 1.502 1.5m-.5-4.25a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+  </>),
+  "file-copy": (<>
+    <path d="M14 2v6h6m-6-6h1l5 5v1m-6-6H7v16h13V8" />
+    <path d="M3 6v16h11" />
+  </>),
+  image: (<>
+    <path d="M3 16V3h18v18h-1M3 16v5h17M3 16l6-6 11 11" />
+    <circle cx="15.75" cy="8.25" r="2" />
+  </>),
+  sound: (<>
+    <path d="M5.999 16.5H2v-9h3.999m0 9L14 21V3L5.999 7.5m0 9v-9M17.99 13.506a2.5 2.5 0 0 0 .001-3.015m2.79 5.127a6 6 0 0 0 .003-7.235" />
+  </>),
+  "chart-bubble": (<>
+    <path d="M21 21H3V3" />
+    <path d="M18 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM19 15a1 1 0 1 1 0-2 1 1 0 0 1 0 2ZM13 14a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+  </>),
+  setting: (<>
+    <path d="m12 2 8.66 5v10L12 22l-8.66-5V7L12 2Z" />
+    <path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" />
+  </>),
+  cloud: (<>
+    <path d="M2 15a4 4 0 0 0 4 4h11a5 5 0 1 0-.083-10 6.002 6.002 0 1 0-11.816 2.101A4.001 4.001 0 0 0 2 15Z" />
+  </>),
+  "help-circle": (<>
+    <path d="M2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12Z" />
+    <path d="M12 14.25V14c0-1.105.988-1.959 1.855-2.642A3 3 0 1 0 9.171 8M12 17.25h.003v.004H12v-.004Z" />
+  </>),
+  share: (<>
+    <path d="m7.599 13.501 7.794 4.5m-7.794-7.502 7.794-4.5m0 0a3 3 0 1 1 5.196-3 3 3 0 0 1-5.196 3Zm0 12.002a3 3 0 1 1 5.196 3 3 3 0 0 1-5.196-3Zm-7.794-7.503a3 3 0 1 1-5.197 3 3 3 0 0 1 5.197-3Zm0 3.002a3 3 0 1 1-5.197-3 3 3 0 0 1 5.197 3Z" />
+  </>),
+  history: (<>
+    <path d="M2.552 13c.5 4.777 4.539 8.5 9.448 8.5a9.5 9.5 0 0 0 0-19c-1.628 0-3.16.41-4.5 1.131A9.54 9.54 0 0 0 3.38 8M12 7v5l2.5 2.5m-12-11v5h5" />
+  </>),
+};
+
+export function TDesignNavIcon({ name, size = 16 }: { name: string; size?: number }): ReactNode {
+  const glyph = T_DESIGN_NAV_GLYPHS[name];
+  if (!glyph) return null;
+  return (
+    <svg data-kb-icon={`td-${name}`} viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="square" strokeLinejoin="round" aria-hidden="true">
+      {glyph}
+    </svg>
+  );
+}

@@ -6,6 +6,15 @@
    Tokens follow the Settings.vue port already landed in styles.css
    (--wk-color-* with TDesign light fallbacks). */
 
+/* Vue .settings-overlay page mask (KnowledgeBaseEditorModal.vue:1617-1628):
+   rgba(0,0,0,.5) + backdrop blur(4px). The shared Dialog backdrop defaults to
+   --wk-overlay (rgb(23 32 51/45%)) with no blur; KnowledgeSettingsPage toggles
+   the body class while mounted so the override only applies to this dialog. */
+body.wkbs-dialog-open .wk-dialog-backdrop {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
 .wkbs-modal {
   position: relative;
   width: 90vw;
