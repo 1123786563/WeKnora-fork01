@@ -89,6 +89,7 @@ func TestCompileCronSpecMatrix(t *testing.T) {
 		{"advanced passthrough", types.CraftScheduledEditorModeAdvanced, `{"cron":"*/5 * * * *"}`, "*/5 * * * *"},
 		{"advanced trimmed", types.CraftScheduledEditorModeAdvanced, `{"cron":"  30 9 * * *  "}`, "30 9 * * *"},
 		{"advanced dom", types.CraftScheduledEditorModeAdvanced, `{"cron":"30 9 30 * *"}`, "30 9 30 * *"},
+		{"advanced leap-day", types.CraftScheduledEditorModeAdvanced, `{"cron":"0 0 29 2 *"}`, "0 0 29 2 *"},
 	}
 	for _, tc := range valid {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,6 +127,9 @@ func TestCompileCronSpecMatrix(t *testing.T) {
 		{"advanced six fields", types.CraftScheduledEditorModeAdvanced, `{"cron":"0 9 * * * 1"}`},
 		{"advanced descriptor", types.CraftScheduledEditorModeAdvanced, `{"cron":"@every 30s"}`},
 		{"advanced tz prefix", types.CraftScheduledEditorModeAdvanced, `{"cron":"TZ=Asia/Tokyo 0 9 * * *"}`},
+		{"advanced never fires feb30", types.CraftScheduledEditorModeAdvanced, `{"cron":"0 0 30 2 *"}`},
+		{"advanced never fires feb31", types.CraftScheduledEditorModeAdvanced, `{"cron":"0 0 31 2 *"}`},
+		{"advanced never fires apr31", types.CraftScheduledEditorModeAdvanced, `{"cron":"0 0 31 4 *"}`},
 		{"unknown mode empty", "", `{"every_minutes":30}`},
 		{"unknown mode weekly", "weekly", `{"every_minutes":30}`},
 		{"unknown mode cron", "cron", `{"cron":"*/5 * * * *"}`},
@@ -173,6 +177,13 @@ func TestNextRunsAfter(t *testing.T) {
 		time.Date(2026, 4, 30, 9, 30, 0, 0, time.UTC),
 	}, fires)
 
+	// Leap-day fires every fourth year — rare is not never.
+	fires = NextRunsAfter("0 0 29 2 *", jan, 2)
+	require.Equal(t, []time.Time{
+		time.Date(2028, 2, 29, 0, 0, 0, 0, time.UTC),
+		time.Date(2032, 2, 29, 0, 0, 0, 0, time.UTC),
+	}, fires)
+
 	// Year rollover.
 	fires = NextRunsAfter("0 9 * * *", time.Date(2026, 12, 31, 10, 0, 0, 0, time.UTC), 2)
 	require.Equal(t, []time.Time{
@@ -182,6 +193,8 @@ func TestNextRunsAfter(t *testing.T) {
 
 	require.Empty(t, NextRunsAfter("*/5 * * * *", at(10, 0), 0), "n <= 0 answers nothing")
 	require.Nil(t, NextRunsAfter("not a cron", at(10, 0), 3), "unparseable expressions preview nothing")
+	require.Nil(t, NextRunsAfter("0 0 30 2 *", at(10, 0), 3),
+		"never-firing expressions preview nothing, never year-0001 fires")
 }
 
 // TestCraftScheduledServiceCreateSemantics walks the POST entrance: the three
@@ -257,6 +270,8 @@ func TestCraftScheduledServiceCreateSemantics(t *testing.T) {
 			Payload: json.RawMessage(`{"at":"24:00"}`)},
 		{Name: "n", Prompt: "p", EditorMode: types.CraftScheduledEditorModeAdvanced,
 			Payload: json.RawMessage(`{"cron":"@every 30s"}`)},
+		{Name: "n", Prompt: "p", EditorMode: types.CraftScheduledEditorModeAdvanced,
+			Payload: json.RawMessage(`{"cron":"0 0 30 2 *"}`)},
 		{Name: "n", Prompt: "p", EditorMode: types.CraftScheduledEditorModeAdvanced,
 			Payload: json.RawMessage(`{"cron":"*/5 * * * *"}`), Status: "enabled"},
 	}
@@ -347,6 +362,9 @@ func TestCraftScheduledServiceUpdateSemantics(t *testing.T) {
 	_, err = svc.UpdateScheduledTask(ctx, 1, "owner-a", task.ID,
 		CraftScheduledTaskUpdate{EditorMode: &badCronMode, Payload: json.RawMessage(`{"cron":"nope"}`)})
 	require.ErrorIs(t, err, craft.ErrInvalidInput)
+	_, err = svc.UpdateScheduledTask(ctx, 1, "owner-a", task.ID,
+		CraftScheduledTaskUpdate{EditorMode: &badCronMode, Payload: json.RawMessage(`{"cron":"0 0 30 2 *"}`)})
+	require.ErrorIs(t, err, craft.ErrInvalidInput, "a never-firing schedule is rejected at PATCH too")
 	_, err = svc.UpdateScheduledTask(ctx, 1, "owner-b", task.ID, CraftScheduledTaskUpdate{Name: strPtr("steal")})
 	require.ErrorIs(t, err, craft.ErrNotFound, "a foreign recipe is an indistinguishable 404")
 	_, err = svc.UpdateScheduledTask(ctx, 1, "owner-a", "missing", CraftScheduledTaskUpdate{Name: strPtr("x")})

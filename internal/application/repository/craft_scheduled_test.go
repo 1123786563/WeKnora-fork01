@@ -105,12 +105,18 @@ func TestCraftScheduledTaskCRUDMatrix(t *testing.T) {
 			wrongOwner.OwnerID = "owner-b"
 			require.ErrorIs(t, repo.Update(ctx, &wrongOwner), craft.ErrNotFound)
 
-			// Cron validation guards both write entrances.
+			// Cron validation guards both write entrances — including the
+			// never-firing class (Feb 30 parses but holds no occurrence, which
+			// would store a permanently-due year-0001 ticket).
 			bad := scheduledTask(1, "owner-a", "not a cron")
 			require.Error(t, repo.Create(ctx, &bad), "invalid cron must not be stored")
+			feb30 := scheduledTask(1, "owner-a", "0 0 30 2 *")
+			require.Error(t, repo.Create(ctx, &feb30), "a never-firing schedule must not be stored")
 			worse := *reread
 			worse.CronExpression = "* * *"
 			require.Error(t, repo.Update(ctx, &worse), "invalid cron must not be stored")
+			worse.CronExpression = "0 0 31 4 *"
+			require.Error(t, repo.Update(ctx, &worse), "a never-firing schedule must not be stored")
 
 			// Soft delete: idempotent, hides the row from get and list.
 			require.NoError(t, repo.SoftDelete(ctx, 1, "owner-a", "sched-new"))
@@ -402,6 +408,15 @@ func TestCraftScheduledClaimDueTasksPoisonRowQuarantined(t *testing.T) {
 		 VALUES ('sched-poison', 1, 'owner-a', 'poisoned', 'tick', 'not a cron', 'advanced', 'active', ?)`,
 		poisonDue,
 	).Error)
+	// The never-fires sibling: parses, but no occurrence exists — the
+	// zero-time guard in NextCronFire routes it into the same quarantine
+	// instead of minting a year-0001 ticket the CAS would rewrite forever.
+	require.NoError(t, db.Exec(
+		`INSERT INTO craft_scheduled_tasks
+		   (id, tenant_id, owner_id, name, prompt, cron_expression, editor_mode, status, next_run_at)
+		 VALUES ('sched-never', 1, 'owner-a', 'never', 'tick', '0 0 30 2 *', 'advanced', 'active', ?)`,
+		poisonDue,
+	).Error)
 
 	good := scheduledTask(1, "owner-a", "*/5 * * * *")
 	good.ID = "sched-good"
@@ -413,12 +428,16 @@ func TestCraftScheduledClaimDueTasksPoisonRowQuarantined(t *testing.T) {
 	require.Len(t, claims, 1, "the healthy row is still claimed")
 	require.Equal(t, "sched-good", claims[0].Task.ID)
 
-	// The quarantined row keeps its due ticket exactly: it stays visibly due
-	// (re-examined by every sweep) instead of being advanced or deleted.
+	// The quarantined rows keep their due tickets exactly: they stay visibly
+	// due (re-examined by every sweep) instead of being advanced or deleted.
 	var poison types.CraftScheduledTask
 	require.NoError(t, db.Where("id = ?", "sched-poison").First(&poison).Error)
 	require.NotNil(t, poison.NextRunAt)
 	require.True(t, poison.NextRunAt.Equal(poisonDue), "the poison row's ticket is untouched")
+	var never types.CraftScheduledTask
+	require.NoError(t, db.Where("id = ?", "sched-never").First(&never).Error)
+	require.NotNil(t, never.NextRunAt)
+	require.True(t, never.NextRunAt.Equal(poisonDue), "the never-firing row's ticket is untouched")
 }
 
 // TestCraftScheduledClaimDueTasksPartialClaimsOnError is the other half of

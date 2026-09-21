@@ -117,11 +117,17 @@ var craftCronParser = cron.NewParser(
 
 // ValidateCronExpression reports whether expr is a canonical five-field cron
 // expression the dispatcher can schedule (spec §3: minute-level minimum
-// granularity, the Onyx contract). Callers validate at every write entrance
-// so only parseable expressions can reach the durable claim path. TZ/CRON_TZ
-// prefixes are rejected too: robfig would happily accept them, but the
-// stored expression is the canonical form and next_run_at is always UTC —
-// a per-expression timezone is a product decision, not a parse accident.
+// granularity, the Onyx contract), INCLUDING the never-fires probe: a
+// calendar-impossible pattern (Feb 30, Feb 31, the 31st of a 30-day month)
+// parses as legal cron but holds no occurrence in any year — robfig's
+// five-year search then answers a zero time, which would store a year-0001
+// next_run_at ticket (permanently due; the claim CAS would rewrite the same
+// zero ticket every sweep — a runaway fire loop). Callers validate at every
+// write entrance so only fireable expressions can reach the durable claim
+// path. TZ/CRON_TZ prefixes are rejected too: robfig would happily accept
+// them, but the stored expression is the canonical form and next_run_at is
+// always UTC — a per-expression timezone is a product decision, not a parse
+// accident.
 func ValidateCronExpression(expr string) error {
 	trimmed := strings.TrimSpace(expr)
 	if trimmed == "" {
@@ -131,8 +137,17 @@ func ValidateCronExpression(expr string) error {
 	if strings.HasPrefix(upper, "TZ=") || strings.HasPrefix(upper, "CRON_TZ=") {
 		return fmt.Errorf("invalid cron expression %q: timezone prefixes are not accepted (next_run_at is UTC)", trimmed)
 	}
-	if _, err := craftCronParser.Parse(trimmed); err != nil {
+	schedule, err := craftCronParser.Parse(trimmed)
+	if err != nil {
 		return fmt.Errorf("invalid cron expression %q: %w", trimmed, err)
+	}
+	// Never-fires probe (SP3 Task 2 review Important-1): one Next() answer
+	// separates "rare" (Feb 29 fires every leap year) from "never" (Feb 30
+	// exists in no year). The probe time is irrelevant to the impossible
+	// class; it only means patterns rarer than the five-year search window
+	// are rejected too — an acceptable floor for a recurring-task product.
+	if next := schedule.Next(time.Now().UTC()); next.IsZero() {
+		return fmt.Errorf("invalid cron expression %q: schedule never fires (no occurrence in the calendar)", trimmed)
 	}
 	return nil
 }
@@ -140,13 +155,23 @@ func ValidateCronExpression(expr string) error {
 // NextCronFire returns the first fire of expr strictly after from, in from's
 // location. The dispatcher uses it to advance next_run_at when claiming a
 // due row; the API uses it for the next-fires preview. An invalid expression
-// is an error — every write entrance validated it first, so reaching here
-// with garbage means stored state was corrupted.
+// — unparseable, or parseable but with no occurrence after from (robfig
+// signals the exhausted five-year search with a zero time) — is an error:
+// returning the zero time would mint a year-0001 ticket or preview fire,
+// and every write entrance validated first, so reaching here with garbage
+// means stored state was corrupted.
 func NextCronFire(expr string, from time.Time) (time.Time, error) {
 	trimmed := strings.TrimSpace(expr)
 	schedule, err := craftCronParser.Parse(trimmed)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("invalid cron expression %q: %w", trimmed, err)
 	}
-	return schedule.Next(from), nil
+	next := schedule.Next(from)
+	// Zero-time guard (Important-1): a zero Next is robfig's "no occurrence
+	// within five years", not a fireable instant. Error out — the claim
+	// sweep's quarantine catches it and the preview degrades to empty.
+	if next.IsZero() {
+		return time.Time{}, fmt.Errorf("cron expression %q never fires after %s", trimmed, from.Format(time.RFC3339))
+	}
+	return next, nil
 }
