@@ -21,6 +21,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	dorisRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/doris"
 	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v7"
 	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v8"
@@ -28,7 +29,6 @@ import (
 	openSearchRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/opensearch"
 	postgresRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/postgres"
 	qdrantRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/qdrant"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/service"
 	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/sqlite"
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/weaviate"

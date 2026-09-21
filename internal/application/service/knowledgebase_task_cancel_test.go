@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/service"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/hibiken/asynq"

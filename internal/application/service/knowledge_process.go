@@ -18,7 +18,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/chunker"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/service"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"

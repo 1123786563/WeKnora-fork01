@@ -18,7 +18,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
-	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/service"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"

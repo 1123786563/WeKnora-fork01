@@ -34,6 +34,6 @@ handler=`internal/handler/`。）
 
 - 上述 29 文件从横向包删除；
 - A9 guard 移交的预存耦合中归本域的两条改走 airesource 模块门面或登记后于本任务删除：
-  `internal/modules/knowledge/retriever/service/composite.go` 与
+  `internal/modules/knowledge/retriever/composite.go` 与
   `keywords_vector_hybrid_indexer.go` → `modules/airesource/models/{embedding,utils}`；
 - `semantic_internal` 内部路由（routes_infra.go:14）委托改经模块门面。

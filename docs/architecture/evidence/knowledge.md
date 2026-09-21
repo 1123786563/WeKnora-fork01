@@ -10,7 +10,8 @@
 |---|---|---|
 | `1cc9a7bd3` | refactor(knowledge): move packages to internal/modules/knowledge | 纯 rename：142 文件全部 R100（`git diff --cached --name-status` 142×R100，0 insertions/deletions，`git diff --summary` 逐条 `rename … (100%)`） |
 | `7fd56e4ac` | refactor(knowledge): repair imports and add pass-a aliases | 68 个非禁改 importer 的 import 行修复 + 18 个零逻辑别名包 + 1 处测试相对路径深度修复（86 files, +203/−85） |
-| （待本 commit） | docs(knowledge): add integration brief, passb briefs and evidence | integration/knowledge.md、passb/knowledge-{ingest,process,wikifaq,retrieval}.md、evidence/knowledge.md |
+| `faaf8bb44` | docs(knowledge): add integration brief, passb briefs and evidence | integration/knowledge.md、passb/knowledge-{ingest,process,wikifaq,retrieval}.md、evidence/knowledge.md |
+| （本 fix commit） | refactor(knowledge): align retriever service package to manifest target path | review round 1 Critical 修复：retriever 服务包 12 文件 `retriever/service/` → `retriever/` 根（manifest `to:` 对齐，12×R100）、24 处 import 重写、文档 verbatim 虚假声明更正（见 §7/§8） |
 
 ## 2. Pre-move gate（基线记录）
 
@@ -24,7 +25,7 @@
 
 ## 3. Post-move 验证
 
-- `go test ./internal/modules/knowledge/... -count=1` → 15 包全 ok：chunker、docparser、docparser/anydoc、retriever/{doris,elasticsearch/v7,elasticsearch/v8,milvus,opensearch,qdrant,service,sqlite,tencentvectordb,weaviate}、searchutil、semantic（elasticsearch 父包与 neo4j、postgres 无测试文件）。
+- `go test ./internal/modules/knowledge/... -count=1` → 15 包全 ok：chunker、docparser、docparser/anydoc、**retriever（根包，原 retriever/service）**、retriever/{doris,elasticsearch/v7,elasticsearch/v8,milvus,opensearch,qdrant,sqlite,tencentvectordb,weaviate}、searchutil、semantic（elasticsearch 父包与 neo4j、postgres 无测试文件）。
 - 直连消费方测试（全部 -count=1）：
   - `internal/container` ok（3.2s，含 retrieve_registry_wiring_test）
   - `internal/application/service` ok（100.6s）+ `chat_pipeline` ok + file/memory/metric/workbench ok
@@ -50,9 +51,9 @@
 ## 6. 移交 IA3 的 guard 发现（未修、未加例外、未改工具）
 
 1. `internal/modules/knowledge/docparser/weknoracloud_http_reader.go` → `modules/airesource/models/utils`
-2. `internal/modules/knowledge/retriever/service/composite.go` → `modules/airesource/models/embedding`
-3. `internal/modules/knowledge/retriever/service/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/embedding`
-4. `internal/modules/knowledge/retriever/service/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/utils`
+2. `internal/modules/knowledge/retriever/composite.go` → `modules/airesource/models/embedding`
+3. `internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/embedding`
+4. `internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/utils`
 
 基点提交中同文件同内容即 import airesource 模块路径（当时文件在非模块路径，guard 不可见）——预存耦合被搬迁暴露。另：IA3 翻转 `channels/im/service.go:28` 时将新增第 5 条 `channels/im → modules/knowledge` 诊断，随翻转登记。
 
@@ -60,5 +61,36 @@
 
 - 任务 brief 文件缺失：`task-A9-brief.md` 未由脚本生成，worker 按计划原文自行提取生成（extract-brief.sh A9 → 7 行 checklist），执行以任务指令 + manifest 为准。
 - anydoc 基线失败为本机环境限制（无 Rust 工具链、原生库未构建），非代码问题；判据是搬迁前后失败输出一致且非 anydoc 模式 docparser 测试全绿。风险窗口由 CI anydoc.yml 覆盖。
-- `internal/application/service/retriever` 落位为 `internal/modules/knowledge/retriever/service`（manifest `to:` 逐字；目录名 service、包名仍为 `retriever`，与 manifest 确定性规则一致）。
+- **（review round 1 Critical 修正，见 §8）** `internal/application/service/retriever` 的
+  manifest `to:` 是 `internal/modules/knowledge/retriever`。A9 首轮曾误落位为
+  `internal/modules/knowledge/retriever/service`，fix commit（见 §1）已将 12 个文件
+  `git mv` 上移至 `retriever/` 根（包名 `retriever` 不变，与 12 个引擎仓子目录同层），
+  并重写全部 import（24 处，含 alias.go）。首轮文档中"落位为 retriever/service 且
+  manifest to: 逐字"的表述不实，以本节与本 fix 为准。
 - 4 条 guard 诊断涉及符号面不变：搬迁零逻辑，error/retry/删除/索引语义未动（测试全绿 + guard 业务基线一致佐证）。
+
+## 8. Fix round 1（review Critical：retriever 服务包未落在 manifest `to:` 路径）
+
+**Finding（Critical）**：`internal/application/service/retriever` 的 manifest `to:` 为
+`internal/modules/knowledge/retriever`（knowledge.yaml:29-30），A9 首轮误落位为
+`internal/modules/knowledge/retriever/service/`；且首轮报告 §7、evidence 本文件 §7、
+integration/knowledge.md 均声称"manifest to: 逐字"，该声明不实。控制器裁定：manifest
+布局合法（`retriever/` 目录根部为服务包文件、子目录为引擎仓独立包），代码必须对齐。
+
+**Fix**（fix commit，见 §1 末行）：
+1. 12 个文件（11 个 .go + move_test.go 等，含全部 _test.go）`git mv`
+   `internal/modules/knowledge/retriever/service/*` → `internal/modules/knowledge/retriever/`
+   （12×R100，rename 可追溯；包子句 `retriever` 不变，已验证与子目录无相互 import、无环）；空目录 service/ 删除。
+2. 全库 import 重写 `internal/modules/knowledge/retriever/service` →
+   `internal/modules/knowledge/retriever`：24 处（application/service 20、
+   container 非禁改 2、旧路径别名 alias.go 1、alias.go 头注释 1）；grep 复核零残留。
+3. 重跑：`go build ./...` OK；`go vet`（knowledge retriever/…、application/service、container）零输出；
+   `go test ./internal/modules/knowledge/... -count=1` 15 包全 ok（含根包 retriever 1.5s）；
+   直连消费方 `go test ./internal/application/service/... ./internal/container/... -count=1` 全 ok；
+   `go run ./tools/modulemove verify --module knowledge` → `modulemove: OK (knowledge)`
+   （对真实 `to:` 路径校验通过）；
+   `go run ./tools/architectureguard` 业务基线不变（633/23+23/58/16），4 条预存耦合
+   forbidden-import 诊断不变（文件路径随上移自动更新为 `retriever/composite.go`、
+   `retriever/keywords_vector_hybrid_indexer.go`）。
+4. 文档更正：integration/knowledge.md §1/§3/§7/§8、evidence §1/§3/§7（本节）、
+   passb/knowledge-retrieval.md、task-A9-report.md §7 + §9。

@@ -21,7 +21,7 @@
 | `internal/application/repository/retriever/sqlite` | `internal/modules/knowledge/retriever/sqlite` |
 | `internal/application/repository/retriever/tencentvectordb` | `internal/modules/knowledge/retriever/tencentvectordb` |
 | `internal/application/repository/retriever/weaviate` | `internal/modules/knowledge/retriever/weaviate` |
-| `internal/application/service/retriever` | `internal/modules/knowledge/retriever/service` |
+| `internal/application/service/retriever` | `internal/modules/knowledge/retriever` |
 | `internal/infrastructure/chunker` | `internal/modules/knowledge/chunker` |
 | `internal/infrastructure/docparser` | `internal/modules/knowledge/docparser` |
 | `internal/infrastructure/docparser/anydoc` | `internal/modules/knowledge/docparser/anydoc` |
@@ -29,9 +29,12 @@
 | `internal/searchutil` | `internal/modules/knowledge/searchutil` |
 
 共 142 个文件（含全部 `_test.go`），move commit 为**纯 rename**（142/142 相似度 100%，
-0 insertions/deletions）。注意 `retriever/` 父目录（12 个引擎仓子包）与
-`internal/modules/knowledge/retriever/service`（原 `application/service/retriever`，
-包名仍是 `retriever`）的落位均按 manifest `to:` 逐字执行。
+0 insertions/deletions）。注意 `internal/modules/knowledge/retriever` 目录根部即检索服务包
+（原 `application/service/retriever`，包名 `retriever`，12 个文件），与 doris/ elasticsearch/
+等 12 个引擎仓子目录同层——这正是 manifest `to:` 的精确落位（合法 Go：一目录一包、
+子目录为独立包）。
+review round 1 Critical 修正：A9 首轮曾误落位为 `retriever/service/`（偏离 manifest），
+fix commit 已把 12 个文件上移到 `retriever/` 根并重写全部 import（见 evidence §8）。
 
 ## 2. 旧路径别名（alias_obligations，18 处）
 
@@ -86,7 +89,7 @@
 **给集成者的操作（knowledge 部分）：**
 1. 把上述 13 行的路径前缀 `internal/application/repository/retriever/` →
    `internal/modules/knowledge/retriever/`、`internal/application/service/retriever` →
-   `internal/modules/knowledge/retriever/service`、`internal/infrastructure/docparser` →
+   `internal/modules/knowledge/retriever`、`internal/infrastructure/docparser` →
    `internal/modules/knowledge/docparser`。全部 qualifier 与 container.go 其余行**零改动**
    （已验证所有引用均为构造器/类型只读消费，**无可变导出 var 赋值**，无需 A6
    LocalImageResolver 式翻转）；
@@ -167,7 +170,7 @@ guard 基线 Redis=23 / Lite=23 不变。
 | `OPENSEARCH_INDEX` | internal/modules/knowledge/retriever/opensearch/repository.go:117（经 types.ResolveIndexName） |
 | `ELASTICSEARCH_INDEX` | internal/modules/knowledge/retriever/elasticsearch/{v7/repository.go:44,v8/repository.go:39} |
 
-chunker / semantic / searchutil / retriever/service 零自有 env 键（其余配置经
+chunker / semantic / searchutil / retriever 根包 零自有 env 键（其余配置经
 `*config.Config` 注入）。
 
 ## 8. Guard 新增发现（A9 Pass A 不修，交 IA3 处置）
@@ -178,9 +181,9 @@ routes 633 / redis 23 / lite 23 / hooks 58 / modules 16）。全部是**先于�
 A6 搬迁 airesource 时它们还在非模块路径，guard 不可见）：
 
 1. `internal/modules/knowledge/docparser/weknoracloud_http_reader.go` → `modules/airesource/models/utils`
-2. `internal/modules/knowledge/retriever/service/composite.go` → `modules/airesource/models/embedding`
-3. `internal/modules/knowledge/retriever/service/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/embedding`
-4. `internal/modules/knowledge/retriever/service/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/utils`
+2. `internal/modules/knowledge/retriever/composite.go` → `modules/airesource/models/embedding`
+3. `internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/embedding`
+4. `internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go` → `modules/airesource/models/utils`
 
 **处置建议（IA3）**：参照 batch-a1/a2 先例登记精确路径例外（B-knowledge 删），或
 Pass B 改走 airesource 模块门面；不得为过 guard 回退本搬迁。另：IA3 翻转
