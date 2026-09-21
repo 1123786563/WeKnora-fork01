@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/bootstrap"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -28,11 +29,28 @@ func NewSyncTaskExecutor() *SyncTaskExecutor {
 	}
 }
 
-// RegisterHandler registers a handler for a given task type pattern.
-func (e *SyncTaskExecutor) RegisterHandler(pattern string, handler func(context.Context, *asynq.Task) error) {
+// Register registers a task handler for a given type pattern. First
+// registration wins: registering an already-installed pattern returns an
+// error and keeps the original handler. SyncTaskExecutor therefore
+// satisfies bootstrap.WorkerRegistry.
+func (e *SyncTaskExecutor) Register(pattern string, handler bootstrap.TaskHandler) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if _, exists := e.handlers[pattern]; exists {
+		return fmt.Errorf("worker %q already registered", pattern)
+	}
 	e.handlers[pattern] = handler
+	return nil
+}
+
+// RegisterHandler registers a handler for a given task type pattern.
+//
+// Compatibility wrapper that delegates to Register and ignores the error,
+// kept only until old fire-and-forget callers are migrated to the
+// error-returning contract. No existing caller registers the same pattern
+// twice, so behavior is unchanged.
+func (e *SyncTaskExecutor) RegisterHandler(pattern string, handler func(context.Context, *asynq.Task) error) {
+	_ = e.Register(pattern, handler)
 }
 
 // Enqueue satisfies interfaces.TaskEnqueuer.
