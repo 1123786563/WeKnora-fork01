@@ -1,0 +1,156 @@
+# MOVE-MANIFEST workbench — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: workbench
+description: Task 视图、Timeline、Inbox/Attention、通用 Artifact、通知、移动任务投影（§5.6/§5.18）
+move_packages:
+  - from: internal/application/service/workbench
+    to: internal/modules/workbench/service/workbench
+  - from: internal/notification
+    to: internal/modules/workbench/notification
+  - from: internal/voice
+    to: internal/modules/workbench/voice
+  - from: internal/workbench
+    to: internal/modules/workbench
+alias_obligations:
+  - old_import_path: internal/application/service/workbench
+    passb_task: B-workbench
+  - old_import_path: internal/notification
+    passb_task: B-workbench
+  - old_import_path: internal/voice
+    passb_task: B-workbench
+  - old_import_path: internal/workbench
+    passb_task: B-workbench
+legacy_files:
+  - path: internal/application/repository/artifact_version.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Artifact version (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/mobile_device.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Mobile device (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/mobile_notification.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Mobile notification (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/mobile_notification_provider.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Mobile notification provider (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/voice_session.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Voice session (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/workbench_list.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Workbench list (application/repository)
+    passb_task: B-workbench
+  - path: internal/application/repository/workbench_request.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Workbench request (application/repository)
+    passb_task: B-workbench
+  - path: internal/handler/artifact_preview.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Artifact preview (handler)
+    passb_task: B-workbench
+  - path: internal/handler/mobile_device.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Mobile device (handler)
+    passb_task: B-workbench
+  - path: internal/handler/mobile_voice.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Mobile voice (handler)
+    passb_task: B-workbench
+  - path: internal/handler/session/artifact_download.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Artifact download (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/artifact_reference.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Artifact reference (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_artifacts.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Workbench artifacts (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_commands.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Workbench commands (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_inbox.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Workbench inbox (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_list.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Workbench list (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_overview.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Workbench overview (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_read.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Workbench read (handler/session)
+    passb_task: B-workbench
+  - path: internal/handler/session/workbench_start.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Workbench start (handler/session)
+    passb_task: B-workbench
+owned_files:
+  move_sources:
+  - internal/application/service/workbench
+  - internal/notification
+  - internal/voice
+  - internal/workbench
+  move_targets:
+    - internal/modules/workbench/service/workbench
+    - internal/modules/workbench/notification
+    - internal/modules/workbench/voice
+    - internal/modules/workbench
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/application/service/workbench
+    - internal/notification
+    - internal/voice
+    - internal/workbench
+  importers:
+  - cmd/desktop
+  - cmd/server
+  - internal/agent
+  - internal/application/repository
+  - internal/application/service
+  - internal/application/service/workbench
+  - internal/container
+  - internal/handler
+  - internal/handler/session
+  - internal/router
+  module_files:
+    - internal/modules/workbench/README.md
+    - internal/modules/workbench/module.go
+    - internal/modules/workbench/legacy/README.md
+test_commands:
+  - go test ./internal/modules/workbench/... -count=1
+integration_points:
+  routes:
+  - RegisterWorkbenchOverviewRoutes — internal/router/routes_workbench.go:73
+  - RegisterWorkbenchInboxRoutes — internal/router/routes_workbench.go:84
+  - RegisterWorkbenchStartRoutes — internal/router/routes_workbench.go:127
+  - RegisterWorkbenchArtifactRoutes — internal/router/routes_workbench.go:142
+  - RegisterWorkbenchCommandRoutes — internal/router/routes_workbench.go:159
+  - RegisterMobileVoiceRoutes — internal/router/routes_workbench.go:177
+  - RegisterMobileDeviceRoutes — internal/router/routes_workbench.go:191
+  - RegisterWorkbenchRoutes — internal/router/routes_workbench.go:33 (10 条中 workbench 5：/workbench/executions 读+写)
+  - RegisterArtifactPreviewRoutes — internal/handler/artifact_preview.go:284 (隔离预览源 /ap/:token；票据签发经 RegisterArtifactPreviewIssueRoute，routes_chat.go:187 委托)
+  - session/message artifacts 子路由 ×4 — internal/router/routes_chat.go (RegisterSessionRoutes 内)
+  workers:
+    []
+  lifecycle_hooks:
+  - registerArtifactVersionHTTPHandlers — internal/container/container.go:671 (func at container.go:2709)
+  - registerArtifactPreviewHTTPHandlers — internal/container/container.go:676 (func at container.go:2725)
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

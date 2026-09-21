@@ -1,0 +1,144 @@
+# MOVE-MANIFEST channels — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: channels
+description: IM、Webhook、Embed Channel、外部身份/会话映射、入站标准化、出站投递（§5.11/§5.18）
+move_packages:
+  - from: internal/im
+    to: internal/modules/channels/im
+  - from: internal/im/dingtalk
+    to: internal/modules/channels/im/dingtalk
+  - from: internal/im/feishu
+    to: internal/modules/channels/im/feishu
+  - from: internal/im/mattermost
+    to: internal/modules/channels/im/mattermost
+  - from: internal/im/qqbot
+    to: internal/modules/channels/im/qqbot
+  - from: internal/im/slack
+    to: internal/modules/channels/im/slack
+  - from: internal/im/telegram
+    to: internal/modules/channels/im/telegram
+  - from: internal/im/wechat
+    to: internal/modules/channels/im/wechat
+  - from: internal/im/wecom
+    to: internal/modules/channels/im/wecom
+  - from: internal/im/yunzhijia
+    to: internal/modules/channels/im/yunzhijia
+alias_obligations:
+  - old_import_path: internal/im
+    passb_task: B-channels
+  - old_import_path: internal/im/dingtalk
+    passb_task: B-channels
+  - old_import_path: internal/im/feishu
+    passb_task: B-channels
+  - old_import_path: internal/im/mattermost
+    passb_task: B-channels
+  - old_import_path: internal/im/qqbot
+    passb_task: B-channels
+  - old_import_path: internal/im/slack
+    passb_task: B-channels
+  - old_import_path: internal/im/telegram
+    passb_task: B-channels
+  - old_import_path: internal/im/wechat
+    passb_task: B-channels
+  - old_import_path: internal/im/wecom
+    passb_task: B-channels
+  - old_import_path: internal/im/yunzhijia
+    passb_task: B-channels
+legacy_files:
+  - path: internal/application/repository/embed_channel.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Embed channel (application/repository)
+    passb_task: B-channels
+  - path: internal/application/service/embed_channel.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Embed channel (application/service)
+    passb_task: B-channels
+  - path: internal/application/service/embed_session.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Embed session (application/service)
+    passb_task: B-channels
+  - path: internal/application/service/embed_webhook.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Embed webhook (application/service)
+    passb_task: B-channels
+  - path: internal/handler/embed_channel.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Embed channel (handler)
+    passb_task: B-channels
+  - path: internal/handler/im.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Im (handler)
+    passb_task: B-channels
+  - path: internal/handler/wechat_qrcode.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Wechat qrcode (handler)
+    passb_task: B-channels
+owned_files:
+  move_sources:
+  - internal/im
+  - internal/im/dingtalk
+  - internal/im/feishu
+  - internal/im/mattermost
+  - internal/im/qqbot
+  - internal/im/slack
+  - internal/im/telegram
+  - internal/im/wechat
+  - internal/im/wecom
+  - internal/im/yunzhijia
+  move_targets:
+    - internal/modules/channels/im
+    - internal/modules/channels/im/dingtalk
+    - internal/modules/channels/im/feishu
+    - internal/modules/channels/im/mattermost
+    - internal/modules/channels/im/qqbot
+    - internal/modules/channels/im/slack
+    - internal/modules/channels/im/telegram
+    - internal/modules/channels/im/wechat
+    - internal/modules/channels/im/wecom
+    - internal/modules/channels/im/yunzhijia
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/im
+    - internal/im/dingtalk
+    - internal/im/feishu
+    - internal/im/mattermost
+    - internal/im/qqbot
+    - internal/im/slack
+    - internal/im/telegram
+    - internal/im/wechat
+    - internal/im/wecom
+    - internal/im/yunzhijia
+  importers:
+  - internal/container
+  - internal/handler
+  - internal/im/dingtalk
+  - internal/im/feishu
+  - internal/im/mattermost
+  - internal/im/qqbot
+  - internal/im/slack
+  - internal/im/telegram
+  - internal/im/wechat
+  - internal/im/wecom
+  - internal/im/yunzhijia
+  module_files:
+    - internal/modules/channels/README.md
+    - internal/modules/channels/module.go
+    - internal/modules/channels/legacy/README.md
+test_commands:
+  - go test ./internal/modules/channels/... -count=1
+integration_points:
+  routes:
+  - RegisterEmbedPublicRoutes — internal/router/routes_agent.go:220
+  - RegisterEmbedChannelRoutes — internal/router/routes_agent.go:261
+  - RegisterIMRoutes — internal/router/routes_agent.go:284
+  - RegisterIMChannelRoutes — internal/router/routes_agent.go:297
+  workers:
+    []
+  lifecycle_hooks:
+  - registerIMService — internal/container/container.go:863 (func at container.go:2283)
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

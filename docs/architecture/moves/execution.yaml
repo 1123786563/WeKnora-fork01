@@ -1,0 +1,153 @@
+# MOVE-MANIFEST execution — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: execution
+description: Sandbox、Execution Target/Registration、Workspace Lease、Terminal、Browser Skill、环境变量、资源传输（§5.8/§5.18）
+move_packages:
+  - from: internal/browserskill
+    to: internal/modules/execution/browserskill
+  - from: internal/execution
+    to: internal/modules/execution
+  - from: internal/sandbox
+    to: internal/modules/execution/sandbox
+alias_obligations:
+  - old_import_path: internal/browserskill
+    passb_task: B-execution
+  - old_import_path: internal/execution
+    passb_task: B-execution
+  - old_import_path: internal/sandbox
+    passb_task: B-execution
+legacy_files:
+  - path: internal/application/repository/execution_cleanup.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Execution cleanup (application/repository)
+    passb_task: B-execution
+  - path: internal/application/repository/execution_dispatch.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Execution dispatch (application/repository)
+    passb_task: B-execution
+  - path: internal/application/repository/execution_observation.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Execution observation (application/repository)
+    passb_task: B-execution
+  - path: internal/application/repository/execution_target.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Execution target (application/repository)
+    passb_task: B-execution
+  - path: internal/application/repository/tenant_sandbox_config.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Tenant sandbox config (application/repository)
+    passb_task: B-execution
+  - path: internal/application/service/sandbox_terminal_auth.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Sandbox terminal auth (application/service)
+    passb_task: B-execution
+  - path: internal/application/service/sandbox_terminal_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Sandbox terminal service (application/service)
+    passb_task: B-execution
+  - path: internal/application/service/sandbox_terminal_ticket.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Sandbox terminal ticket (application/service)
+    passb_task: B-execution
+  - path: internal/application/service/tenant_sandbox_config.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant sandbox config (application/service)
+    passb_task: B-execution
+  - path: internal/application/service/tenant_sandbox_resolve.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant sandbox resolve (application/service)
+    passb_task: B-execution
+  - path: internal/application/service/user_env.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: User env (application/service)
+    passb_task: B-execution
+  - path: internal/application/service/user_env_resolver.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: User env resolver (application/service)
+    passb_task: B-execution
+  - path: internal/handler/execution_registration.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Execution registration (handler)
+    passb_task: B-execution
+  - path: internal/handler/execution_target.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Execution target (handler)
+    passb_task: B-execution
+  - path: internal/handler/me_env_var.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Me env var (handler)
+    passb_task: B-execution
+  - path: internal/handler/sandbox_check.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Sandbox check (handler)
+    passb_task: B-execution
+  - path: internal/handler/sandbox_config.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Sandbox config (handler)
+    passb_task: B-execution
+  - path: internal/handler/sandbox_skill.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Sandbox skill (handler)
+    passb_task: B-execution
+  - path: internal/handler/session/browserskill.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Browserskill (handler/session)
+    passb_task: B-execution
+  - path: internal/handler/session/sandbox_terminal_bridge.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Sandbox terminal bridge (handler/session)
+    passb_task: B-execution
+  - path: internal/handler/session/sandbox_terminal_ws.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Sandbox terminal ws (handler/session)
+    passb_task: B-execution
+owned_files:
+  move_sources:
+  - internal/browserskill
+  - internal/execution
+  - internal/sandbox
+  move_targets:
+    - internal/modules/execution/browserskill
+    - internal/modules/execution
+    - internal/modules/execution/sandbox
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/browserskill
+    - internal/execution
+    - internal/sandbox
+  importers:
+  - internal/agent/skills
+  - internal/agent/tools
+  - internal/application/repository
+  - internal/application/service
+  - internal/application/service/workbench
+  - internal/container
+  - internal/handler
+  - internal/handler/session
+  - internal/router
+  module_files:
+    - internal/modules/execution/README.md
+    - internal/modules/execution/module.go
+    - internal/modules/execution/legacy/README.md
+test_commands:
+  - go test ./internal/modules/execution/... -count=1
+integration_points:
+  routes:
+  - RegisterMyEnvVarRoutes — internal/router/routes_auth_tenant.go:191
+  - RegisterSandboxTerminalRoutes — internal/router/routes_chat.go:271
+  - RegisterLocalBrowserRoutes — internal/router/routes_chat.go:282
+  - RegisterMyBrowserRoutes — internal/router/routes_chat.go:292
+  - RegisterSandboxConfigRoutes — internal/router/routes_infra.go:55
+  - RegisterExecutionRegistrationRoutes — internal/router/routes_workbench.go:97
+  - execution target groups (inside RegisterWorkbenchRoutes) — internal/router/routes_workbench.go:33-72 (/execution-targets ×4、/execution-workspaces ×1)
+  - local-browser + sandbox-terminal session 子路由 ×3 — internal/router/routes_chat.go (RegisterSessionRoutes 内)
+  workers:
+    []
+  lifecycle_hooks:
+    []
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

@@ -1,0 +1,179 @@
+# MOVE-MANIFEST craft — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: craft
+description: 开发工作区、会话/运行、Interaction、Snapshot、Artifact Version/Preview、用量、Scheduled Task（§5.7/§5.18）
+move_packages:
+  - from: internal/craft
+    to: internal/modules/craft
+alias_obligations:
+  - old_import_path: internal/craft
+    passb_task: B-craft
+legacy_files:
+  - path: internal/application/repository/craft_preview_check.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Craft preview check (application/repository)
+    passb_task: B-craft
+  - path: internal/application/repository/craft_scheduled.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Craft scheduled (application/repository)
+    passb_task: B-craft
+  - path: internal/application/repository/craft_snapshot.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Craft snapshot (application/repository)
+    passb_task: B-craft
+  - path: internal/application/repository/craft_usage.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Craft usage (application/repository)
+    passb_task: B-craft
+  - path: internal/application/repository/craft_version.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Craft version (application/repository)
+    passb_task: B-craft
+  - path: internal/application/repository/craft_workspace.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Craft workspace (application/repository)
+    passb_task: B-craft
+  - path: internal/application/service/craft_artifacts.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft artifacts (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_budget.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft budget (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_control.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft control (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_decision_delivery.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft decision delivery (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_delegate.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft delegate (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_inputs.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft inputs (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_interaction_store.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft interaction store (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_knowledge.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft knowledge (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_knowledge_tool.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft knowledge tool (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_lifecycle.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft lifecycle (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_preview.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft preview (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_recovery.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft recovery (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_scheduled.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft scheduled (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_session.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft session (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_snapshot.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft snapshot (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_usage.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft usage (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_usage_view.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft usage view (application/service)
+    passb_task: B-craft
+  - path: internal/application/service/craft_workspace.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Craft workspace (application/service)
+    passb_task: B-craft
+  - path: internal/handler/craft_model_gateway.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Craft model gateway (handler)
+    passb_task: B-craft
+  - path: internal/handler/session/craft.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Craft (handler/session)
+    passb_task: B-craft
+  - path: internal/handler/session/craft_interaction.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Craft interaction (handler/session)
+    passb_task: B-craft
+  - path: internal/handler/session/craft_preview.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Craft preview (handler/session)
+    passb_task: B-craft
+  - path: internal/handler/session/craft_scheduled.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Craft scheduled (handler/session)
+    passb_task: B-craft
+  - path: internal/handler/session/craft_usage.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Craft usage (handler/session)
+    passb_task: B-craft
+owned_files:
+  move_sources:
+  - internal/craft
+  move_targets:
+    - internal/modules/craft
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/craft
+  importers:
+  - internal/agent/opencode
+  - internal/agent/tools
+  - internal/application/repository
+  - internal/application/service
+  - internal/container
+  - internal/handler
+  - internal/handler/session
+  module_files:
+    - internal/modules/craft/README.md
+    - internal/modules/craft/module.go
+    - internal/modules/craft/legacy/README.md
+test_commands:
+  - go test ./internal/modules/craft/... -count=1
+integration_points:
+  routes:
+  - craft route groups (inside RegisterSessionRoutes)：/craft/sessions、/craft/scheduled-tasks、/craft/model-gateway — internal/router/routes_chat.go:95-235 (groups at 103/123/135)
+  - RegisterCraftSessionRoutes (handler-side delegation; 12 routes) — internal/handler/session/craft.go:116-154
+  - RegisterCraftInteractionRoutes (handler-side delegation; 4 routes) — internal/handler/session/craft_interaction.go:63
+  - RegisterCraftScheduledTaskRoutes (handler-side delegation; 7 routes) — internal/handler/session/craft_scheduled.go:77
+  - craft model gateway top-level (pre-auth) — internal/router/router.go:262-265
+  - "RegisterCraftPreviewRoutes — internal/handler/session/craft_preview.go:55 (隔离预览源 /p/:cap/*filepath；RegisterCraftPreviewIssueRoute 休眠挂载已计数)"
+  workers:
+    []
+  lifecycle_hooks:
+  - registerCraftHTTPHandlers — internal/container/container.go:665 (func at container.go:2682)
+  - registerCraftScheduledHTTPHandlers — internal/container/container.go:668 (func at container.go:2701)
+  - wireCraftInteractionRegistrar — internal/container/container.go:680 (func at container.go:2666)
+  - registerCraftInteractionHTTPHandlers — internal/container/container.go:681 (func at internal/container/craft_interaction.go:81)
+  - startCraftDecisionDelivery — internal/container/container.go:682 (func at internal/container/craft_interaction.go:92)
+  - validateCraftKnowledgeAssembly — internal/container/container.go:684 (func at container.go:2650)
+  - registerCraftUsageHTTPHandlers — internal/container/container.go:686 (func at internal/container/craft_lifecycle.go:101)
+  - wireCraftLifecycleIntegration — internal/container/container.go:689 (func at internal/container/craft_lifecycle.go:116)
+  - wireCraftSessionTombstone — internal/container/container.go:1038 (func at internal/container/craft_lifecycle.go:136)
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

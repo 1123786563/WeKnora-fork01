@@ -1,0 +1,108 @@
+# MOVE-MANIFEST appconnector — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: appconnector
+description: 应用目录、安装、OAuth、连接、授权、动作、同步、Open Connector（§5.10/§5.18）
+move_packages:
+  - from: internal/appconnector
+    to: internal/modules/appconnector
+  - from: internal/appconnector/openconnector
+    to: internal/modules/appconnector/openconnector
+  - from: internal/application/repository/appconnector
+    to: internal/modules/appconnector/repository/appconnector
+  - from: internal/application/service/appconnector
+    to: internal/modules/appconnector/service/appconnector
+  - from: internal/connectorcontrol
+    to: internal/modules/appconnector/connectorcontrol
+alias_obligations:
+  - old_import_path: internal/appconnector
+    passb_task: B-appconnector
+  - old_import_path: internal/appconnector/openconnector
+    passb_task: B-appconnector
+  - old_import_path: internal/application/repository/appconnector
+    passb_task: B-appconnector
+  - old_import_path: internal/application/service/appconnector
+    passb_task: B-appconnector
+  - old_import_path: internal/connectorcontrol
+    passb_task: B-appconnector
+legacy_files:
+  - path: internal/handler/app_connector.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: App connector (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_action.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: App connector action (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_connection.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: App connector connection (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_installation.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: App connector installation (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_oauth.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: App connector oauth (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_oc.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: App connector oc (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/app_connector_sync.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: App connector sync (handler)
+    passb_task: B-appconnector
+owned_files:
+  move_sources:
+  - internal/appconnector
+  - internal/appconnector/openconnector
+  - internal/application/repository/appconnector
+  - internal/application/service/appconnector
+  - internal/connectorcontrol
+  move_targets:
+    - internal/modules/appconnector
+    - internal/modules/appconnector/openconnector
+    - internal/modules/appconnector/repository/appconnector
+    - internal/modules/appconnector/service/appconnector
+    - internal/modules/appconnector/connectorcontrol
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/appconnector
+    - internal/appconnector/openconnector
+    - internal/application/repository/appconnector
+    - internal/application/service/appconnector
+    - internal/connectorcontrol
+  importers:
+  - cmd/connector-control
+  - internal/agent/tools
+  - internal/application/repository
+  - internal/application/repository/appconnector
+  - internal/application/service
+  - internal/application/service/appconnector
+  - internal/connectorcontrol
+  - internal/container
+  - internal/handler
+  module_files:
+    - internal/modules/appconnector/README.md
+    - internal/modules/appconnector/module.go
+    - internal/modules/appconnector/legacy/README.md
+test_commands:
+  - go test ./internal/modules/appconnector/... -count=1
+integration_points:
+  routes:
+  - RegisterAppConnectorRoutes — internal/router/routes_app_connectors.go:20
+  workers:
+    []
+  lifecycle_hooks:
+  - wire AppActionHandler + ActionService (inline) — internal/container/container.go:980
+  - wire AppActionHandler + OCPreparer (inline) — internal/container/container.go:983
+  - wire AppActionHandler + OCConnectionService (inline) — internal/container/container.go:986
+  - startOCRecoveryRunner — internal/container/container.go:989 (func at internal/container/open_connector.go:683)
+  - wire AppConnectionHandler (inline) — internal/container/container.go:994
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/
