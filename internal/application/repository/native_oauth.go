@@ -111,9 +111,9 @@ func (r *NativeOAuthRepository) validate(scope nativecontract.Scope, a NativeOAu
 	return nil
 }
 
-// lockPending follows the pending repository's run-first lock order. Its first
+// lockRun follows the pending repository's run-first lock order. Its first
 // statement is a write, avoiding SQLite deferred read-to-write upgrade races.
-func (r *NativeOAuthRepository) lockPending(tx *gorm.DB, scope nativecontract.Scope, b NativeOAuthBinding) error {
+func (r *NativeOAuthRepository) lockRun(tx *gorm.DB, scope nativecontract.Scope, b NativeOAuthBinding) error {
 	locked := tx.Table("native_agent_runs").Where("tenant_id=? AND run_id=? AND session_id=? AND owner_id=?", b.Key.Run.TenantID, b.Key.Run.RunID, b.Key.Run.SessionID, scope.SessionOwnerID).UpdateColumn("revision", gorm.Expr("revision"))
 	if locked.Error != nil {
 		return nativePendingFailure(nativecontract.ErrStore, "OAuth authority lock failed")
@@ -121,6 +121,12 @@ func (r *NativeOAuthRepository) lockPending(tx *gorm.DB, scope nativecontract.Sc
 	if locked.RowsAffected != 1 {
 		return nativePendingFailure(nativecontract.ErrNotFound, "OAuth pending was not found")
 	}
+	return nil
+}
+
+// validatePending requires the caller to hold the run lock. Only creation and
+// first consumption need a live pending decision; a committed replay is a read.
+func (r *NativeOAuthRepository) validatePending(tx *gorm.DB, scope nativecontract.Scope, b NativeOAuthBinding) error {
 	p := NewNativePendingDecisionRepository(tx)
 	run, err := p.scopedRun(tx, scope, b.Key.Run)
 	if err != nil {
@@ -146,7 +152,10 @@ func (r *NativeOAuthRepository) Create(ctx context.Context, scope nativecontract
 		return err
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := r.lockPending(tx, scope, a.Binding); err != nil {
+		if err := r.lockRun(tx, scope, a.Binding); err != nil {
+			return err
+		}
+		if err := r.validatePending(tx, scope, a.Binding); err != nil {
 			return err
 		}
 		row := nativeOAuthRowFor(a)
@@ -187,7 +196,8 @@ func (r *NativeOAuthRepository) Get(ctx context.Context, scope nativecontract.Sc
 
 // Consume accepts only a receipt hash already verified by the service adapter.
 // It cannot verify provider proof itself. The first receipt wins; an identical
-// receipt replays that committed result, while any other receipt conflicts.
+// receipt replays that committed result even after expiry, while any other
+// receipt conflicts. A replay never renews expiry or authorizes new consumption.
 func (r *NativeOAuthRepository) Consume(ctx context.Context, scope nativecontract.Scope, a NativeOAuthAttempt, verifiedReceiptHash string) (NativeOAuthMetadata, error) {
 	if err := r.validate(scope, a); err != nil {
 		return NativeOAuthMetadata{}, err
@@ -197,7 +207,7 @@ func (r *NativeOAuthRepository) Consume(ctx context.Context, scope nativecontrac
 	}
 	var result NativeOAuthMetadata
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := r.lockPending(tx, scope, a.Binding); err != nil {
+		if err := r.lockRun(tx, scope, a.Binding); err != nil {
 			return err
 		}
 		var row nativeOAuthRow
@@ -208,8 +218,8 @@ func (r *NativeOAuthRepository) Consume(ctx context.Context, scope nativecontrac
 		if err != nil {
 			return nativePendingFailure(nativecontract.ErrStore, "OAuth attempt read failed")
 		}
-		if row.BindingHash != nativeOAuthBindingHash(a.Binding) || row.StateHash != a.StateHash || !row.ExpiresAt.After(r.now()) {
-			return nativePendingFailure(nativecontract.ErrConflict, "OAuth callback binding is invalid or expired")
+		if row.BindingHash != nativeOAuthBindingHash(a.Binding) || row.StateHash != a.StateHash {
+			return nativePendingFailure(nativecontract.ErrConflict, "OAuth callback binding is invalid")
 		}
 		if row.Revision == 2 {
 			if row.ReceiptHash != verifiedReceiptHash {
@@ -217,6 +227,9 @@ func (r *NativeOAuthRepository) Consume(ctx context.Context, scope nativecontrac
 			}
 			result = row.metadata()
 			return nil
+		}
+		if err := r.validatePending(tx, scope, a.Binding); err != nil {
+			return err
 		}
 		now := r.now().UTC().Truncate(time.Microsecond)
 		updated := tx.Table("native_agent_oauth_attempts").Where("tenant_id=? AND attempt_id=? AND revision=1 AND expires_at > ? AND binding_hash=? AND state_hash=?", scope.TenantID, a.AttemptID, now, row.BindingHash, a.StateHash).

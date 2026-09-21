@@ -64,6 +64,37 @@ func TestNativeOAuthDurableIdentityAndReceiptReplay(t *testing.T) {
 	}
 }
 
+func TestNativeOAuthDurableCommittedReceiptReplaysAfterExpiry(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			r, scope, attempt, now := durableOAuthFixture(t)
+			ctx := context.Background()
+			require.NoError(t, r.Create(ctx, scope, attempt))
+			unconsumed := attempt
+			unconsumed.AttemptID, unconsumed.StateHash = "attempt-2", strings.Repeat("d", 64)
+			require.NoError(t, r.Create(ctx, scope, unconsumed))
+			receiptHash := strings.Repeat("b", 64)
+			first, err := r.Consume(ctx, scope, attempt, receiptHash)
+			require.NoError(t, err)
+			// Advance beyond both attempt and pending expiry. A committed receipt
+			// is a historical read, while first consumption still requires liveness.
+			*now = attempt.Binding.ExpiresAt.Add(time.Hour)
+			reopened := NewNativeOAuthRepository(reopenRunDB(t, r.db), r.now)
+			replay, err := reopened.Consume(ctx, scope, attempt, receiptHash)
+			require.NoError(t, err)
+			require.Equal(t, first, replay)
+			_, err = reopened.Consume(ctx, scope, attempt, strings.Repeat("c", 64))
+			require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
+			_, err = reopened.Consume(ctx, scope, unconsumed, receiptHash)
+			require.Equal(t, nativecontract.ErrConflict, failureCode(t, err))
+			got, err := reopened.Get(ctx, scope, unconsumed.Binding.Key, unconsumed.AttemptID)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, got.Revision)
+			require.Nil(t, got.ConsumedAt)
+		})
+	}
+}
+
 func TestNativeOAuthDurableRejectsImmutableBindingChanges(t *testing.T) {
 	mutations := map[string]func(*NativeOAuthAttempt){
 		"tenant":              func(a *NativeOAuthAttempt) { a.Binding.Key.Run.TenantID++ },
