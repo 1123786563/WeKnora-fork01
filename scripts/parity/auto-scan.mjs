@@ -42,19 +42,74 @@ function loadCreds() {
 // ---- 页面清单（Vue 为基准；id 与 R492 台账一致）----
 // 可用环境变量 PAGES=chat,kb-list 过滤（逗号分隔的 id），便于单页快验。
 const PAGE_FILTER = (process.env.PAGES || '').split(',').map(s => s.trim()).filter(Boolean);
+// Settings section 键表：frontend/src/views/settings/Settings.vue navItems +
+// currentSection 分支 + frontend/src/config/integrations.ts INTEGRATION_TABS。
+const SETTINGS_SECTION_KEYS = [
+  'general', 'userprofile', 'mymemory', 'envvars', 'tenant', 'members',
+  'models', 'ollama', 'weknoracloud', 'chathistory', 'memory',
+  'vectorstore', 'parser', 'storage', 'sandbox', 'skills', 'mcp', 'websearch',
+  'system', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log',
+];
+const INTEGRATION_TAB_KEYS = ['im', 'embed', 'api', 'cli', 'chrome', 'claw'];
+
 const ALL_PAGES = [
+  // —— 核心平台路由 ——
   { id: 'kb-list', path: '/platform/knowledge-bases' },
   { id: 'agents', path: '/platform/agents' },
   { id: 'orgs', path: '/platform/organizations' },
-  { id: 'settings-general', path: '/platform/settings?section=general' },
   { id: 'creatchat', path: '/platform/creatChat' },
   { id: 'apps', path: '/platform/apps' },
   { id: 'apps-connections', path: '/platform/apps/connections' },
-  // fixture 数据页：运行时按名字解析 ID，找不到则跳过并标注
+  { id: 'chat', kind: 'chat', name: '工具调用 Parity Fixture' },
+  // —— KB fixture 页 + 子视图（tab / KB 内新建对话） ——
   { id: 'kb-faq', kind: 'kb', name: 'Parity FAQ Fixture' },
   { id: 'kb-wiki', kind: 'kb', name: 'Wiki Parity Fixture' },
   { id: 'kb-demo', kind: 'kb', name: 'Parity KB Demo' },
-  { id: 'chat', kind: 'chat', name: '工具调用 Parity Fixture' },
+  { id: 'kb-wiki-tab-wiki', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500 },
+  { id: 'kb-wiki-tab-graph', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=graph', settle: 3500 },
+  { id: 'kb-demo-creatchat', kind: 'kb', name: 'Parity KB Demo', suffix: '/creatChat' },
+  // —— 免登录页 ——
+  { id: 'login', path: '/login', auth: false },
+  { id: 'register', path: '/register', auth: false },
+  // —— 重定向行为（两端应落到同一目标页） ——
+  { id: 'redirect-system', path: '/platform/system' },
+  { id: 'redirect-integrations', path: '/platform/integrations' },
+  // —— dev-only 页（两端 dev server 均启用） ——
+  { id: 'dev-markdown', path: '/platform/dev/markdown', settle: 2200 },
+  // —— 设置：全部 section（Vue Settings.vue navItems 权威键表） ——
+  ...SETTINGS_SECTION_KEYS.map((key) => ({
+    id: 'settings-' + key, path: '/platform/settings?section=' + key, settle: 2000,
+  })),
+  ...INTEGRATION_TAB_KEYS.map((key) => ({
+    id: 'settings-integration-' + key, path: '/platform/settings?section=integration-' + key, settle: 2000,
+  })),
+  // —— 交互态：点击后截图（两端各自解析候选目标，找不到则截当前态并记 warning） ——
+  { id: 'ix-kb-list-create', kind: 'kb', name: 'Parity KB Demo', path: '/platform/knowledge-bases',
+    actions: [{ clickText: ['新建知识库', '创建知识库', '新建'] }] },
+  { id: 'ix-kb-settings', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickAria: ['知识库设置', '设置'] }] },
+  { id: 'ix-kb-batch', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickText: ['批量管理'] }] },
+  { id: 'ix-kb-listview', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickAria: ['列表视图', '列表'] }] },
+  { id: 'ix-faq-tagfilter', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickText: ['全部标签'] }] },
+  { id: 'ix-faq-retrieval', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickAria: ['检索测试'] }] },
+  { id: 'ix-faq-import', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickAria: ['导入 FAQ', '导入'] }] },
+  { id: 'ix-chat-header-menu', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickAria: ['更多操作', '更多'] }] },
+  { id: 'ix-chat-mention', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickAria: ['@提及知识库', '提及知识库', 'mention'], clickText: ['@'] }] },
+  { id: 'ix-agents-create', path: '/platform/agents',
+    actions: [{ clickText: ['新建智能体', '新建'] }] },
+  { id: 'ix-orgs-created', path: '/platform/organizations',
+    actions: [{ clickText: ['我创建的'] }] },
+  { id: 'ix-orgs-create', path: '/platform/organizations',
+    actions: [{ clickText: ['创建共享空间', '新建共享空间', '创建空间'] }] },
+  { id: 'ix-kb-doc-detail', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickText: ['mermaid-arch-demo'] }] },
 ];
 const PAGES = PAGE_FILTER.length ? ALL_PAGES.filter(p => PAGE_FILTER.includes(p.id)) : ALL_PAGES;
 
@@ -126,8 +181,50 @@ async function newAuthedPage(ctx, base, auth) {
   return page;
 }
 
+// PATH 上的 python3 可能缺 numpy/PIL（homebrew 升级会换环境）；探测一次，
+// 选第一个能跑 pixdiff 依赖的解释器。
+let _pythonBin;
+function pythonBin() {
+  if (_pythonBin) return _pythonBin;
+  const candidates = ['python3', '/usr/bin/python3', '/opt/homebrew/Caskroom/miniconda/base/bin/python3'];
+  const probe = join(ROOT, 'scripts/parity/pixdiff.py');
+  for (const bin of candidates) {
+    try {
+      execFileSync(bin, ['-c', 'import numpy, PIL'], { stdio: 'ignore' });
+      _pythonBin = bin;
+      return bin;
+    } catch { /* try next */ }
+  }
+  _pythonBin = 'python3';
+  return _pythonBin;
+}
+
+// 在单端页面按候选解析可点击目标：优先 aria-label/title 精确包含，
+// 再可见文本精确、再子串。命中即点击；全部未命中返回 false（记 warning，
+// 截图当前态——差异本身会体现在像素 diff 里）。
+async function clickFirst(page, action) {
+  const candidates = [];
+  if (action.clickAria) candidates.push(...action.clickAria.map((t) => ({ by: 'aria', t })));
+  if (action.clickText) candidates.push(...action.clickText.map((t) => ({ by: 'text', t })));
+  for (const c of candidates) {
+    try {
+      if (c.by === 'aria') {
+        const loc = page.locator(
+          `[aria-label*="${c.t}"], [title*="${c.t}"]`).first();
+        if (await loc.isVisible().catch(() => false)) { await loc.click(); return true; }
+      } else {
+        const exact = page.getByText(c.t, { exact: true }).first();
+        if (await exact.isVisible().catch(() => false)) { await exact.click(); return true; }
+        const part = page.getByText(c.t, { exact: false }).first();
+        if (await part.isVisible().catch(() => false)) { await part.click(); return true; }
+      }
+    } catch { /* next candidate */ }
+  }
+  return false;
+}
+
 function pixdiff(vuePng, reactPng, diffPng) {
-  const out = execFileSync('python3', [
+  const out = execFileSync(pythonBin(), [
     join(ROOT, 'scripts/parity/pixdiff.py'), vuePng, reactPng, diffPng,
   ], { encoding: 'utf8' });
   return JSON.parse(out);
@@ -158,27 +255,42 @@ async function main() {
   try {
     const vuePage = await newAuthedPage(await browser.newContext(), VUE, auth);
     const reactPage = await newAuthedPage(await browser.newContext(), REACT, auth);
+    // 免登录页（login/register 等）：全新 context，不注入任何会话
+    const anonVue = await (await browser.newContext()).newPage();
+    const anonReact = await (await browser.newContext()).newPage();
+    const anonPages = { vue: anonVue, react: anonReact };
 
     for (const p of PAGES) {
-      const path = p.kind ? fixtures[p.id] : p.path;
+      const fixturePath = fixtures[p.id];
+      const path = p.kind ? (fixturePath ? fixturePath + (p.suffix || '') : undefined) : p.path;
       const entry = { id: p.id, path: path || p.path, status: 'ok', diff_pct: null };
       if (!path) { entry.status = 'skipped-no-fixture'; results.push(entry); console.log(`[skip] ${p.id}（fixture 未找到）`); continue; }
       try {
         const shots = [];
+        const warnings = [];
         for (const [tag, page, base] of [['vue', vuePage, VUE], ['react', reactPage, REACT]]) {
-          await page.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
-          await page.waitForTimeout(3000);
+          const active = p.auth === false ? anonPages[tag] : page;
+          await active.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
+          await active.waitForTimeout(p.settle ?? 2400);
+          if (p.actions) {
+            for (const action of p.actions) {
+              const ok = await clickFirst(active, action);
+              if (!ok) warnings.push(tag + ' 未命中 ' + JSON.stringify(action));
+              await active.waitForTimeout(1100);
+            }
+          }
           const file = join(outDir, `${p.id}-${tag}.png`);
-          await page.screenshot({ path: file });
+          await active.screenshot({ path: file });
           shots.push(file);
         }
         const d = pixdiff(shots[0], shots[1], join(outDir, `${p.id}-diff.png`));
         entry.diff_pct = d.diff_pct;
         entry.hot_cells = d.hot_cells?.slice(0, 6) || [];
         entry.urls = { vue: await vuePage.url(), react: await reactPage.url() };
-        console.log(`[done] ${p.id}: diff ${d.diff_pct}%`);
+        if (warnings.length) entry.warnings = warnings;
+        console.log(`[done] ${p.id}: diff ${d.diff_pct}%${warnings.length ? ' (warn:' + warnings.length + ')' : ''}`);
       } catch (e) {
-        entry.status = 'error'; entry.error = e.message.split('\n')[0];
+        entry.status = 'error'; entry.error = e.message.split(String.fromCharCode(10))[0];
         console.log(`[err ] ${p.id}: ${entry.error}`);
       }
       results.push(entry);
