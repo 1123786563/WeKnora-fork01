@@ -14,7 +14,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Tencent/WeKnora/internal/agent/skills"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 )
 
 // ErrSkillBundleInvalid marks every rejection of an uploaded archive, so the

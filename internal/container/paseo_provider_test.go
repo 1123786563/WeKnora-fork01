@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 )
 
 func TestPaseoRemoteProviderAssemblyAndStart(t *testing.T) {

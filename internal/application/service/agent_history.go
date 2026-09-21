@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
+	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"

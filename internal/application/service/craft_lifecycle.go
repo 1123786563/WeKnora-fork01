@@ -36,10 +36,10 @@ import (
 	"strings"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/metrics"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

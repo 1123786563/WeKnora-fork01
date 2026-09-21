@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"trpc.group/trpc-go/trpc-agent-go/event"

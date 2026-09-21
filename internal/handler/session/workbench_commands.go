@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/agent/approval"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/gin-gonic/gin"

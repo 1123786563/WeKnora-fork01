@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 )
 
 func (c *NativeCommitCoordinator) Read(ctx context.Context, scope nativecontract.Scope, run nativecontract.RunIdentity, cursor string, limit int) (nativecontract.EventPage, error) {

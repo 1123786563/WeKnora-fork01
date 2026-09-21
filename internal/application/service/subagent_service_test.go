@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/agent/subagents"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/subagents"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -74,7 +74,7 @@ func (s *fakeSubagentAgentService) UpdateAgent(_ context.Context, agent *types.C
 // library (the subagents package's testdata tree) and in-memory fakes.
 func newSubagentServiceForTest(t *testing.T) (interfaces.SubagentService, *fakeSubagentRepo, *fakeSubagentAgentService) {
 	t.Helper()
-	catalog, err := subagents.ScanSubagents("../../agent/subagents/testdata/subagents")
+	catalog, err := subagents.ScanSubagents("../../modules/agentruntime/agent/subagents/testdata/subagents")
 	if err != nil {
 		t.Fatal(err)
 	}

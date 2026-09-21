@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	pushnotification "github.com/Tencent/WeKnora/internal/notification"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"

@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"gorm.io/gorm"
 )
 

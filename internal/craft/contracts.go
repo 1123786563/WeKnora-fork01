@@ -9,7 +9,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 )
 
 // Sentinel errors returned by Craft ports. Callers classify with errors.Is;
@@ -51,7 +51,7 @@ type Workspace struct {
 	ID string
 	Scope
 	SandboxID, Generation, OpenCodeSessionID, RuntimeDigest string
-	Revision                                               int64
+	Revision                                                int64
 }
 
 // Input is one immutable upload referenced by a delegation prompt.
@@ -94,7 +94,7 @@ type Version struct {
 // Observation is the OpenCode session state projected by Observe.
 type Observation struct {
 	SessionID, PromptMessageID, AssistantParentID, Finish string
-	Completed, Idle, PendingTool, Aborted                  bool
+	Completed, Idle, PendingTool, Aborted                 bool
 }
 
 // Result is the terminal outcome of one delegated Task. Status is only

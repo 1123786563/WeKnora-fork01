@@ -21,12 +21,12 @@ import (
 	"time"
 	"unicode/utf8"
 
-	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/config"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	"github.com/Tencent/WeKnora/internal/logger"
+	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	mcppkg "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/storageurl"
 	"github.com/Tencent/WeKnora/internal/modules/policy/ratelimit"
