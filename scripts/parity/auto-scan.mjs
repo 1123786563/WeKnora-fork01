@@ -278,6 +278,25 @@ function pixdiff(vuePng, reactPng, diffPng) {
   return JSON.parse(out);
 }
 
+// 稳态门：双端各自截图前统一执行——网络空闲 → 字体就绪 → 差异化 settle → 冻结动画定格。
+// 目的：消除 Vue 端路由切换瞬态白屏 / 字体闪烁 / 过渡动画中间态被截入的伪差
+// （历史坑：瞬态白屏伪造恶化）。与 login/register 的 freezeCarousel 叠加生效
+// （后者冻结轮播相位，本门只冻结过渡动画，不改变已渲染稳态）。
+// 顺序注意：freeze 必须在 settle 之后、紧贴截图前——若放在 settle 前，点击/路由
+// 触发的入场过渡会被冻在开头（实测：新建知识库对话框半透明幽灵态 46% 伪差）。
+// noFreeze：getAnimations().pause() 会把 spinner/进度条等循环动画冻在中间态，
+// 若某页确证因此抬差，在 ALL_PAGES 该项加 noFreeze:true 跳过动画冻结。
+async function waitForSteady(page, settleMs, noFreeze) {
+  await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  await page.waitForTimeout(settleMs);
+  if (!noFreeze) {
+    await page.evaluate(() => {
+      document.getAnimations().forEach(a => a.pause?.());
+    }).catch(() => {});
+  }
+}
+
 async function main() {
   // 0. 服务在线检查
   for (const [name, base] of [['vue', VUE], ['react', REACT], ['backend', BACKEND]]) {
@@ -342,15 +361,16 @@ async function main() {
         for (const [tag, page, base] of [['vue', vuePage, VUE], ['react', reactPage, REACT]]) {
           const active = p.auth === false ? anonPages[tag] : page;
           await active.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 20000 });
-          // dev server 首次编译/HMR full-reload 会打断首帧；等网络空闲再走 settle，
-          // 否则首页截图会踩到 Loading（R5xx chat 页间歇 93% 假阳性的根因）。
-          await active.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
-          await active.waitForTimeout(p.settle ?? 2400);
+          // dev server 首次编译/HMR full-reload 会打断首帧；稳态门（网络空闲 +
+          // 字体就绪 + 动画冻结）后走每页差异化 settle，消除瞬态白屏/字体/过渡
+          // 动画伪差（R5xx chat 页间歇 93% 假阳性的根因是网络瞬态）。
+          await waitForSteady(active, p.settle ?? 2400, p.noFreeze);
           if (p.actions) {
             for (const action of p.actions) {
               const ok = await clickFirst(active, action);
               if (!ok) warnings.push(tag + ' 未命中 ' + JSON.stringify(action));
-              await active.waitForTimeout(1100);
+              // 点击可能触发新的过渡动画/数据请求，截图前再过一遍稳态门定格。
+              await waitForSteady(active, 1100, p.noFreeze);
             }
           }
           const file = join(outDir, `${p.id}-${tag}.png`);
