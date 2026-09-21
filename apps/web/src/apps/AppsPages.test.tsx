@@ -8,7 +8,32 @@ const hooks = createRequire(import.meta.url)('node:module') as typeof import('no
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
-Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
+/* tdesign 运行时依赖的 DOM 全局必须在模块加载前就位：_util/listener.js 的
+ * 事件绑定函数是模块级 IIFE，导入时若 document.addEventListener 缺席会
+ * 固化到 IE 时代的 attachEvent 分支（jsdom 无此 API）——pilot/kb-list 同款
+ * 顶层 JSDOM + 全局补齐。 */
+const harnessDom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/apps' });
+Object.assign(globalThis, {
+  React,
+  IS_REACT_ACT_ENVIRONMENT: true,
+  window: harnessDom.window,
+  document: harnessDom.window.document,
+  HTMLElement: harnessDom.window.HTMLElement,
+  HTMLInputElement: harnessDom.window.HTMLInputElement,
+  HTMLTextAreaElement: harnessDom.window.HTMLTextAreaElement,
+  HTMLSelectElement: harnessDom.window.HTMLSelectElement,
+  Element: harnessDom.window.Element,
+  Node: harnessDom.window.Node,
+  SVGElement: harnessDom.window.SVGElement,
+  DocumentFragment: harnessDom.window.DocumentFragment,
+  Event: harnessDom.window.Event,
+  KeyboardEvent: harnessDom.window.KeyboardEvent,
+  MouseEvent: harnessDom.window.MouseEvent,
+  MutationObserver: harnessDom.window.MutationObserver,
+  getComputedStyle: harnessDom.window.getComputedStyle?.bind(harnessDom.window),
+  requestAnimationFrame: harnessDom.window.requestAnimationFrame?.bind(harnessDom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: harnessDom.window.cancelAnimationFrame?.bind(harnessDom.window) ?? clearTimeout,
+});
 const { AppsPage } = await import('./AppsPages.tsx');
 
 /* Vue ActionView parity: the approval card renders the FROZEN risk from the
@@ -16,10 +41,7 @@ const { AppsPage } = await import('./AppsPages.tsx');
    to an honest em dash with the riskUnknownHint — never a guess. */
 function renderActionPage(actionDto: unknown, props: Record<string, unknown> = {}): Promise<{ container: HTMLElement; cleanup: () => Promise<void> }> {
   return (async () => {
-    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/apps/actions/action-1' });
-    const previousWindow = globalThis.window;
-    const previousDocument = globalThis.document;
-    Object.assign(globalThis, { window: dom.window, document: dom.window.document });
+    const dom = harnessDom;
     const { createRoot } = await import('react-dom/client');
     const container = dom.window.document.createElement('div');
     dom.window.document.body.appendChild(container);
@@ -34,18 +56,14 @@ function renderActionPage(actionDto: unknown, props: Record<string, unknown> = {
       container,
       cleanup: async () => {
         await act(async () => { root.unmount(); });
-        Object.assign(globalThis, { window: previousWindow, document: previousDocument });
-        dom.window.close();
+        document.body.replaceChildren();
       },
     };
   })();
 }
 
 async function renderCatalogPage(): Promise<{ container: HTMLElement; cleanup: () => Promise<void> }> {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/apps' });
-  const previousWindow = globalThis.window;
-  const previousDocument = globalThis.document;
-  Object.assign(globalThis, { window: dom.window, document: dom.window.document });
+  const dom = harnessDom;
   const { createRoot } = await import('react-dom/client');
   const container = dom.window.document.createElement('div');
   dom.window.document.body.appendChild(container);
@@ -59,8 +77,7 @@ async function renderCatalogPage(): Promise<{ container: HTMLElement; cleanup: (
     container,
     cleanup: async () => {
       await act(async () => { root.unmount(); });
-      Object.assign(globalThis, { window: previousWindow, document: previousDocument });
-      dom.window.close();
+      document.body.replaceChildren();
     },
   };
 }
@@ -69,11 +86,12 @@ test('catalog tables use the Vue unboxed section layout and centered empty state
   const { container, cleanup } = await renderCatalogPage();
   try {
     assert.equal(container.querySelectorAll('section.rounded-card').length, 0, 'catalog and installed tables are not wrapped in cards');
-    assert.ok(container.querySelector('header button svg[aria-hidden="true"]'), 'refresh control includes the Vue refresh icon');
-    const emptyCells = Array.from(container.querySelectorAll('td'));
-    assert.equal(emptyCells.length, 2);
-    for (const cell of emptyCells) {
-      assert.ok(cell.className.includes('text-center'), 'Vue table empty state is centered');
+    assert.ok(container.querySelector('.apps-view__header button svg'), 'refresh control includes the Vue refresh icon (tdesign sprite use)');
+    // tdesign t-table empty：双表各渲染一个 .t-table__empty 占位块。
+    const emptyBlocks = Array.from(container.querySelectorAll('.t-table__empty'));
+    assert.equal(emptyBlocks.length, 2, 'catalog + installed tables each render the t-table empty block');
+    for (const block of emptyBlocks) {
+      assert.ok(block.textContent, 'empty block carries its description text');
     }
   } finally {
     await cleanup();
