@@ -17,9 +17,9 @@ import (
 
 	appconn "github.com/Tencent/WeKnora/internal/appconnector"
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	commsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
-	"github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	commsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

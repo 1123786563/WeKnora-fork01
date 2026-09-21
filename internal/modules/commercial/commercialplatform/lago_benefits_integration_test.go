@@ -40,9 +40,9 @@ import (
 	"testing"
 	"time"
 
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
-	"github.com/Tencent/WeKnora/internal/payment"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 
 	"gorm.io/gorm"
 )

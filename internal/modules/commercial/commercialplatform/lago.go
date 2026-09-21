@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // healthRequestTimeout bounds one readiness probe of the authority's health

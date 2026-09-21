@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // contractGrantPeriod is a safely-future calendar period for the grant legs

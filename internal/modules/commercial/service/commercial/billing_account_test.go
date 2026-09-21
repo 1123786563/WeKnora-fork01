@@ -6,9 +6,9 @@ import (
 	"sync"
 	"testing"
 
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
-	"github.com/Tencent/WeKnora/internal/infrastructure/commercialplatform"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial/commercialplatform"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

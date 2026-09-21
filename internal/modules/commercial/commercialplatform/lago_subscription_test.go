@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // ---- stateful stubs (the planStub pattern, extended to subscriptions and

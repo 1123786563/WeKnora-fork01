@@ -128,7 +128,7 @@ func testAccountPGStore(t *testing.T) *AccountStore {
 		t.Fatal(err)
 	}
 	pool.SetMaxOpenConns(20)
-	migration, err := os.ReadFile("../../../../migrations/versioned/000110_commercial_accounts.up.sql")
+	migration, err := os.ReadFile("../../../../../migrations/versioned/000110_commercial_accounts.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

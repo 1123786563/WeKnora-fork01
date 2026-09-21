@@ -12,9 +12,9 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	domaincommercial "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/execution"
+	domaincommercial "github.com/Tencent/WeKnora/internal/modules/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -70,7 +70,7 @@ type StartInput struct {
 	BudgetUpper int64  `json:"budget_upper"`
 	// Binding carries the trusted usage binding resolved from the execution
 	// target at admission time; it never crosses the HTTP boundary.
-	Binding      *TrustedAdmissionBinding `json:"-"`
+	Binding *TrustedAdmissionBinding `json:"-"`
 }
 
 type RequestState struct {

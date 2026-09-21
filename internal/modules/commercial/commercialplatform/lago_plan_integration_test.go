@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // integrationClient is the thin raw HTTP client the phases share (the

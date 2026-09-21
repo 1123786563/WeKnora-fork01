@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

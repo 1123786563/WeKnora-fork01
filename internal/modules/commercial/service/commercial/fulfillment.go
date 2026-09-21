@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/logger"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

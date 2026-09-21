@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"time"
 
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // FamilyOfficialV3 is the single model family this gateway implements, per

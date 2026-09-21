@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // lockedRelease reads the deployment-pinned release identity from
@@ -24,7 +24,7 @@ import (
 // against a hardcoded string drifting from the deployment.
 func lockedRelease(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "deploy", "lago", "images.lock.json")
+	path := filepath.Join("..", "..", "..", "..", "deploy", "lago", "images.lock.json")
 	blob, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read image lock: %v", err)

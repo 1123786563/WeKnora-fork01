@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // ProviderAlipay names the Alipay channel on PaymentFact.Provider.

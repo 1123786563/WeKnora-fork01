@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // grantServer stands in for the one OpenMeter deployment family V03 selected

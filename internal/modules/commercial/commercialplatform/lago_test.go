@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // healthStub stands in for the Lago health signal. #73 probe fact: /health

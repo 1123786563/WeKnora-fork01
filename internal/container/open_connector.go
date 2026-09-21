@@ -32,10 +32,10 @@ import (
 	"github.com/Tencent/WeKnora/internal/appconnector/openconnector"
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/connectorcontrol"
 	"github.com/Tencent/WeKnora/internal/logger"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 

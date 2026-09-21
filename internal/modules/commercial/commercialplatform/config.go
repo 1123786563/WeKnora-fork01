@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // Adapter provider values selected by WEKNORA_COMMERCIAL_PLATFORM_PROVIDER.

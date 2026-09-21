@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -19,7 +19,7 @@ import (
 // 000036 budget DDL followed by the 000079 owner-column ALTER, then take one
 // reservation through Reserve on that schema (no AutoMigrate anywhere).
 func TestReserveWorksOnMigratedSchema(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "..")
+	root := filepath.Join("..", "..", "..", "..", "..")
 	exec := func(db *gorm.DB, rel string) {
 		raw, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil {

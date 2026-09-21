@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -57,7 +57,7 @@ func budgetPGFixture(t *testing.T) *gorm.DB {
 	}
 	t.Cleanup(func() { pool.Close() })
 	pool.SetMaxOpenConns(20)
-	migration, err := os.ReadFile("../../../../migrations/versioned/000116_commercial_budgets.up.sql")
+	migration, err := os.ReadFile("../../../../../migrations/versioned/000116_commercial_budgets.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestBudgetPGConcurrentReservation(t *testing.T) {
 	}
 	defer pool.Close()
 	pool.SetMaxOpenConns(20)
-	migration, err := os.ReadFile("../../../../migrations/versioned/000116_commercial_budgets.up.sql")
+	migration, err := os.ReadFile("../../../../../migrations/versioned/000116_commercial_budgets.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

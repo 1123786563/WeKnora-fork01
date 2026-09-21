@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // FakeCustomer is one stored authority-side customer in the fake: the
@@ -97,9 +97,9 @@ type FakeAdapter struct {
 	// models the a1 after-commit settlement lag (default 0 — the fake's
 	// authority is idealized; tests advance the clock to expose the lag).
 	// rejectWalletCreates models a wallet_limit_reached window.
-	now                func() time.Time
-	baseFeatures       map[string]bool
-	walletSettleLag    time.Duration
+	now                 func() time.Time
+	baseFeatures        map[string]bool
+	walletSettleLag     time.Duration
 	rejectWalletCreates error
 }
 

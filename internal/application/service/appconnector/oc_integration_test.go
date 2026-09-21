@@ -65,9 +65,9 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
-	"github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/connectorcontrol"
 	"github.com/Tencent/WeKnora/internal/container"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 
 	"gorm.io/driver/postgres"

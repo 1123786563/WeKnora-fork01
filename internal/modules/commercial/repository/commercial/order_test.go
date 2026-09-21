@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

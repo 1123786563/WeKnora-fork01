@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"gorm.io/gorm"
 )
 

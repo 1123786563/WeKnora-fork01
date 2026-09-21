@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // stubReq is one recorded stub request.

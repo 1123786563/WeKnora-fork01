@@ -7,9 +7,9 @@ import (
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
-	"github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

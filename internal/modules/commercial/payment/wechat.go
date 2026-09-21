@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 // ProviderWechat names the WeChat Pay channel on PaymentFact.Provider.

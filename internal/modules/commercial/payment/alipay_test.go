@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
 func TestAlipayAmountIsExactFen(t *testing.T) {
