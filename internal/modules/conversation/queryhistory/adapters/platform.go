@@ -118,3 +118,22 @@ func (q *AsynqTaskQueue) EnqueueQueryHistoryExport(
 	_, err = q.enqueuer.Enqueue(task)
 	return err
 }
+
+// SystemClock satisfies ports.Clock with the real wall clock. It is the
+// production time provider the module wiring hands to the application layer;
+// the application layer's own tests keep injecting frozen fakes, so this
+// adapter stays a plain delegation with no behavior of its own.
+type SystemClock struct{}
+
+// NewSystemClock builds the wall-clock provider.
+func NewSystemClock() *SystemClock {
+	return &SystemClock{}
+}
+
+// compile-time port conformance.
+var _ ports.Clock = (*SystemClock)(nil)
+
+// Now reads the real wall clock.
+func (c *SystemClock) Now() time.Time {
+	return time.Now()
+}

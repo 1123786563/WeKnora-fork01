@@ -1,14 +1,15 @@
 package adapters
 
-// Platform adapter tests (Wave 1, Task 7, brief Step 3): the ports.TaskQueue
-// and ports.FileStore contracts. The queue adapter must create the legacy
-// asynq task (types.TypeQueryHistoryExport on types.QueueMaintenance with
+// Platform adapter tests (Wave 1, Task 7, brief Step 3): the ports.TaskQueue,
+// ports.FileStore, and ports.Clock contracts. The queue adapter must create the
+// legacy asynq task (types.TypeQueryHistoryExport on types.QueueMaintenance with
 // MaxRetry(3) and Timeout(10*time.Minute), options attached to the task
 // exactly like the legacy enqueue) and keep the payload wire format
 // byte-identical to the legacy types.QueryHistoryExportPayload, including the
 // lf_* tracing fields the domain payload mirrors. The file adapter must
 // preserve the platform's generated path convention and return the original
-// platform reader.
+// platform reader. The clock adapter must satisfy ports.Clock and read the
+// real wall clock.
 
 import (
 	"context"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/domain"
+	"github.com/Tencent/WeKnora/internal/modules/conversation/queryhistory/ports"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/hibiken/asynq"
@@ -227,4 +229,14 @@ func TestPlatformFileStorePropagatesErrors(t *testing.T) {
 	require.ErrorIs(t, err, boom)
 	_, err = store.Open(context.Background(), "local://x")
 	require.ErrorIs(t, err, boom)
+}
+
+// TestSystemClockSatisfiesPortAndReadsWallClock: SystemClock is the
+// production ports.Clock provider the wiring hands the application layer;
+// assigning it to the port here doubles the compile-time assertion. Beyond
+// conformance it only delegates to time.Now, so the single runtime assertion
+// is a non-zero reading — no frozen wall-clock pinning.
+func TestSystemClockSatisfiesPortAndReadsWallClock(t *testing.T) {
+	var clock ports.Clock = NewSystemClock()
+	require.False(t, clock.Now().IsZero(), "the system clock reads the real wall clock")
 }
