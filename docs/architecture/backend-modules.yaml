@@ -18,7 +18,8 @@
 # Conventions:
 #   - "packages" are Go import paths under module github.com/Tencent/WeKnora.
 #   - "routes" are HTTP registration entry points in internal/router (source file:line)
-#     plus the two handler-side Register functions; total gin route registrations = 540.
+#     plus handler-side route-mounting functions; total gin route registrations = 632
+#     (563 literal method calls + 69 g.apiKeyRoute helper calls, comment text excluded).
 #   - "workers" are asynq task types (Redis mode: internal/router/task.go; Lite mode:
 #     internal/router/sync_task.go registers the same 23 types on SyncTaskExecutor).
 #   - "hooks" are container.Invoke lifecycle call sites (internal/container/container.go
@@ -34,10 +35,15 @@ meta:
   scope: [cmd/server, internal/...]
   counts:
     server_packages: 128            # go list ./... filtered to cmd/server + internal/...
-    route_registrations: 542        # gin .GET/.POST/.PUT/.DELETE/.PATCH calls, non-test
-                                    # (538 internal/router + 4 in handler-side Register funcs)
-    route_entry_points: 85          # 67 Register* + 16 serve*/embedFrame* in internal/router
-                                    # + 2 Register* in internal/handler (craft/artifact preview)
+    route_registrations: 632        # ALL registration paths, non-test, comments excluded:
+                                    # 563 literal .GET/.POST/.PUT/.DELETE/.PATCH/.HEAD calls
+                                    # (router 534 + handler 29) + 69 g.apiKeyRoute helper
+                                    # calls (rbac.go:398, registers via grp.Handle);
+                                    # 0 direct .Handle call sites outside the helper itself
+    route_entry_points: 90          # 67 Register* + 16 serve*/embedFrame* in internal/router
+                                    # + 7 handler-side route-mounting Register* functions
+                                    # (craft sessions/interaction/scheduled, craft preview
+                                    # ×2, artifact preview ×2)
     redis_worker_pools: 6           # asynq servers (core/postprocess/enrichment/maintenance/shared/wiki)
     redis_worker_task_types: 23     # mux.HandleFunc registrations in internal/router/task.go
     lite_worker_task_types: 23      # RegisterSyncHandlers in internal/router/sync_task.go (same set)
@@ -221,9 +227,12 @@ modules:
     routes:
       - name: RegisterSessionRoutes
         source: internal/router/routes_chat.go:95
+        split: 38 条注册的域内拆分：conversation 27、execution 3（/sessions/:id/local-browser ×2、
+          sandbox/terminal-ticket）、agentruntime 4（/sessions/:id/runs/*）、workbench 4
+          （session/message artifacts + 预览票据）；craft 分组与委托注册归 craft（见 craft 条目）
       - name: RegisterChatRoutes
         source: internal/router/routes_chat.go:237
-        split: 该函数内 craft/sessions、craft/scheduled-tasks、craft/model-gateway 分组归 craft
+        note: 3 条（knowledge-chat / agent-chat / knowledge-search），全部归 conversation
       - name: RegisterMessageRoutes
         source: internal/router/routes_chat.go:20
       - name: RegisterFeedbackRoutes
@@ -409,7 +418,8 @@ modules:
     routes:
       - name: RegisterWorkbenchRoutes
         source: internal/router/routes_workbench.go:33
-        split: 该函数内 execution targets 分组（/workbench/targets 等，targetHandlers）归 execution
+        split: 10 条注册的域内拆分：workbench 5（/workbench/executions 读+写），execution 5
+          （/execution-targets ×4、/execution-workspaces ×1，targetHandlers）
       - name: RegisterWorkbenchOverviewRoutes
         source: internal/router/routes_workbench.go:73
       - name: RegisterWorkbenchInboxRoutes
@@ -426,7 +436,8 @@ modules:
         source: internal/router/routes_workbench.go:191
       - name: RegisterArtifactPreviewRoutes
         source: internal/handler/artifact_preview.go:284
-        note: 隔离预览源 /ap/:token（W27）；工件预览归 workbench
+        note: 隔离预览源 /ap/:token（W27）GET+HEAD；票据签发 POST 经
+          RegisterArtifactPreviewIssueRoute（同文件，由 routes_chat.go:187 委托调用）
     workers: []
     hooks:
       - name: registerArtifactVersionHTTPHandlers
@@ -462,13 +473,22 @@ modules:
     packages:
       - internal/craft
     routes:
-      - name: "craft route groups (inside RegisterChatRoutes): /craft/sessions, /craft/scheduled-tasks, /craft/model-gateway"
-        source: internal/router/routes_chat.go:95-235 (groups at 118/122/131)
+      - name: "craft route groups (inside RegisterSessionRoutes): /craft/sessions, /craft/scheduled-tasks, /craft/model-gateway"
+        source: internal/router/routes_chat.go:95-235 (groups at 103/123/135)
+        note: /craft/sessions 与 /craft/scheduled-tasks 的实际路由在 handler 侧委托函数中注册
+          （见下两条）；/craft/model-gateway 的 2 条 credentials 路由在 routes_chat.go:124-125
+      - name: RegisterCraftSessionRoutes (handler-side delegation; 12 routes on /craft/sessions + /sessions)
+        source: internal/handler/session/craft.go:116-154
+      - name: RegisterCraftInteractionRoutes (handler-side delegation; 4 routes on /sessions)
+        source: internal/handler/session/craft_interaction.go:63
+      - name: RegisterCraftScheduledTaskRoutes (handler-side delegation; 7 routes on /craft/scheduled-tasks)
+        source: internal/handler/session/craft_scheduled.go:77
       - name: "craft model gateway top-level (pre-auth): /api/v1/craft/model-gateway/v1/chat/completions, .../models"
         source: internal/router/router.go:262-265
       - name: RegisterCraftPreviewRoutes
         source: internal/handler/session/craft_preview.go:55
-        note: 隔离预览源 /p/:cap/*filepath（W02）
+        note: 隔离预览源 /p/:cap/*filepath（W02）GET+HEAD；同文件 RegisterCraftPreviewIssueRoute
+          (POST 预览票据) 当前无生产调用方（等价路由由 craft.go:151-153 内联注册），计数含此休眠挂载
     workers: []
     hooks:
       - name: registerCraftHTTPHandlers
@@ -1003,7 +1023,31 @@ coverage:
   packages: { total: 128, by_owner: { agentruntime: 21, platform: 20, knowledge: 19, datasource: 12,
     airesource: 12, channels: 10, commercial: 7, bootstrap: 6, policy: 5, appconnector: 5, workbench: 4,
     execution: 3, conversation: 2, craft: 1, insights: 1, identity: 0, agentcatalog: 0, system: 0 } }
-  route_registrations: { total: 542, note: "538 internal/router + 2 craft preview (1 isolated-origin GET + 1 sessions-group POST) + 2 artifact preview (same shape)" }
+  route_registrations:
+    total: 632
+    note: "563 literal gin method calls + 69 g.apiKeyRoute helper calls; comment text excluded;
+      patterns: literal (.GET/.POST/.PUT/.DELETE/.PATCH/.HEAD/.OPTIONS/.Any), apiKeyRoute
+      (grp.Handle), direct .Handle (0 sites)"
+    by_owner:
+      knowledge: 93
+      identity: 85
+      airesource: 61
+      agentcatalog: 55
+      execution: 48
+      conversation: 45
+      system: 43
+      channels: 38
+      workbench: 34
+      agentruntime: 27
+      craft: 28
+      commercial: 23
+      datasource: 20
+      appconnector: 17
+      platform: 9
+      insights: 6
+      note: craft 含 NewRouter 内挂载的 craft model-gateway 2 条预认证路由（按 craft 条目归属）；
+        platform 9 = /health、/swagger、静态前端、文件/预签名/资源授权路由（含
+        workbench artifacts/download 挂载点，其 split 注记见 platform 路由条目）
   worker_task_types: { redis_mux: 23, lite_executor: 23, pools: 6 }
   container_invoke_hooks: { total: 58, by_owner: { conversation: 19, craft: 9, commercial: 6, appconnector: 5,
     airesource: 3, platform: 2, agentruntime: 2, datasource: 2, identity: 2, bootstrap: 2, workbench: 2,

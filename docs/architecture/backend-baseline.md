@@ -16,8 +16,8 @@ base_sha: 7b1d3cf017a50cc8061da166d67befc6b51773a0
 | Asset | Count | Source of truth |
 |---|---|---|
 | Server Go packages (`go list` ∩ cmd/server + internal/...) | 128 | §3.1 |
-| Route registrations (gin method calls, non-test) | 542 (538 `internal/router` + 4 handler-side) | §3.2 |
-| Route entry points (Register*/serve* functions) | 85 (67 Register* + 16 serve*/embedFrame* in router pkg + 2 handler pkg) | §3.2 |
+| Route registrations (all registration paths, non-test) | 632 = 563 literal gin method calls + 69 `g.apiKeyRoute` helper calls (§3.2 has the per-pattern and per-owner breakdown) | §3.2 |
+| Route entry points (route-mounting Register*/serve* functions) | 90 (67 Register* + 16 serve*/embedFrame* in router pkg + 7 handler pkg) | §3.2 |
 | Redis-mode worker pools (asynq servers) | 6 (core, postprocess, enrichment, maintenance, shared, wiki) | §3.3 |
 | Redis-mode worker task types (`mux.HandleFunc`) | 23 | §3.3 |
 | Lite-mode worker task types (`SyncTaskExecutor`) | 23 (same set as Redis mode) | §3.3 |
@@ -139,33 +139,105 @@ Environment-gated skips are described in §2.2 (they skip, do not fail; recorded
 
 ### 3.2 Routes
 
-- Total gin route registrations (`.GET/.POST/.PUT/.DELETE/.PATCH(` in non-test files):
-  - `internal/router/*.go`: 538 — by method: GET 221, POST 201, PUT 53, DELETE 60, PATCH 3.
-    (Line-based `grep -c` undercounts; the totals use occurrence-based `grep -o` and include
-    2 chained registrations `X.With(...).GET/DELETE(...)` in routes_auth_tenant.go:252 and
-    routes_knowledge.go:83.)
-  - `internal/handler/session/craft_preview.go`: 2 — `sessions.POST(.../craft/versions/:version_id/preview)`
-    (authenticated group, line 45) + `r.GET /p/:cap/*filepath` (W02 isolated preview origin, line 56)
-  - `internal/handler/artifact_preview.go`: 2 — `sessions.POST(.../artifact-versions/:version_id/preview-ticket)`
-    (authenticated group, line 275) + `r.GET /ap/:token` (W27 isolated preview origin, line 288)
-  - **Total: 542** (method split across all: GET 223, POST 203, PUT 53, DELETE 60, PATCH 3)
-- Route entry points: **85** = 67 `Register*` functions (HTTP) + 16 `serve*`/`embedFrame*`
-  route-mounting helpers in `internal/router` (worker registration `RegisterSyncHandlers`
-  excluded) + 2 handler-side `Register*` functions
-  (`internal/handler/artifact_preview.go:284`, `internal/handler/session/craft_preview.go:55`).
+RECOUNT NOTE (fix commit): the first F0 version of this section counted only literal
+`.GET/.POST/.PUT/.DELETE/.PATCH(` occurrences and reported 542. That systematically
+undercounted three registration families: (1) `g.apiKeyRoute(grp, http.MethodX, ...)`
+(rbac.go:398-404, registers via `grp.Handle(method, ...)` with no literal method call) — 69
+call sites; (2) routes mounted by the handler-side craft delegation functions in
+`internal/handler/session/{craft,craft_interaction,craft_scheduled}.go` — 23 registrations;
+(3) HEAD variants. It also counted 2 comment-line matches in rbac.go as registrations. The
+authoritative total below is **632**.
+
+Counting method (RE-VISITED): sweep of `internal/router/*.go` (non-test) and ALL
+`internal/handler/**/*.go` (non-test), line by line, skipping comment text (full-line and
+trailing `//` comments stripped), counting each of: literal gin method calls
+(`.GET/.POST/.PUT/.DELETE/.PATCH/.HEAD/.OPTIONS/.Any(`), `g.apiKeyRoute(` helper calls (each
+registers exactly one route via `grp.Handle`; one call spans multiple lines — files.go:498),
+and direct `.Handle(` calls with a method argument (0 call sites outside the helper
+definitions themselves, rbac.go:373 and rbac.go:403).
+
+Per-pattern breakdown (sums to 632):
+
+| Pattern | Count | Method split |
+|---|---|---|
+| Literal gin method calls — `internal/router/*.go` | 534 | GET 221, POST 200, PUT 51, DELETE 57, PATCH 3, HEAD 2 |
+| Literal gin method calls — `internal/handler/**` (craft 12+7+4, previews 3+3) | 29 | GET 14, POST 11, PUT 0, DELETE 1, PATCH 1, HEAD 2 |
+| `g.apiKeyRoute(grp, http.MethodX, ...)` helper (rbac.go:398) | 69 | GET 29, POST 27, PUT 6, DELETE 7 |
+| Direct `.Handle(` call sites | 0 | — |
+| **Total** | **632** | GET 235, POST 211, PUT 51, DELETE 58, PATCH 4, HEAD 4, OPTIONS 0, Any 0 |
+
+(\* the exact per-method router/handler split is shown in the table above; the authoritative
+per-method totals are the right-hand column. Comment text is excluded — the old count's
+rbac.go:480/489 `chunks.DELETE(...)` comment mentions are NOT registrations.)
+
+Registration-site totals per file (lit = literal method calls, api = `apiKeyRoute` calls;
+non-test, comment-stripped):
+
+| File | lit | api | total |
+|---|---|---|---|
+| internal/router/routes_infra.go | 103 | 19 | 122 |
+| internal/router/routes_agent.go | 88 | 4 | 92 |
+| internal/router/routes_knowledge.go | 89 | 2 | 91 |
+| internal/router/routes_auth_tenant.go | 53 | 28 | 81 |
+| internal/router/routes_chat.go | 58 | 0 | 58 |
+| internal/router/routes_workbench.go | 39 | 0 | 39 |
+| internal/router/files.go | 6 | 2 | 8 |
+| internal/router/routes_commercial.go | 20 | 0 | 20 |
+| internal/router/routes_app_connectors.go | 17 | 0 | 17 |
+| internal/router/routes_memory.go | 16 | 0 | 16 |
+| internal/handler/session/craft.go | 12 | 0 | 12 |
+| internal/router/routes_persona.go | 5 | 2 | 7 |
+| internal/router/routes_native_archive.go | 7 | 0 | 7 |
+| internal/router/routes_skill_market.go | 5 | 1 | 6 |
+| internal/router/router.go | 5 | 0 | 5 |
+| internal/router/routes_subagent.go | 2 | 3 | 5 |
+| internal/handler/session/craft_scheduled.go | 7 | 0 | 7 |
+| internal/handler/session/craft_interaction.go | 4 | 0 | 4 |
+| internal/router/routes_analytics.go | 4 | 0 | 4 |
+| internal/router/routes_query_history.go | 4 | 0 | 4 |
+| internal/router/routes_agent_marketplace.go | 1 | 3 | 4 |
+| internal/router/routes_tenant_skill_market.go | 3 | 1 | 4 |
+| internal/router/routes_tenant_expert_market.go | 3 | 1 | 4 |
+| internal/router/routes_agent_versions.go | 0 | 3 | 3 |
+| internal/router/routes_expert.go | 3 | 0 | 3 |
+| internal/router/routes_usage.go | 3 | 0 | 3 |
+| internal/handler/artifact_preview.go | 3 | 0 | 3 |
+| internal/handler/session/craft_preview.go | 3 | 0 | 3 |
+
+(All other non-test files in `internal/router` — rbac.go, task*.go, sync_task.go, static.go,
+deployment_capabilities.go, task_inspector*.go — register 0 HTTP routes; rbac.go contains only
+the helper definitions plus 2 comment mentions that are excluded.)
+
+- Route entry points (route-mounting functions): **90** = 67 `Register*` functions (HTTP) +
+  16 `serve*`/`embedFrame*` route-mounting helpers in `internal/router` (worker registration
+  `RegisterSyncHandlers` excluded) + 7 handler-side route-mounting `Register*` functions
+  (`internal/handler/artifact_preview.go:284` RegisterArtifactPreviewRoutes and
+  RegisterArtifactPreviewIssueRoute; `internal/handler/session/craft_preview.go:55`
+  RegisterCraftPreviewRoutes and RegisterCraftPreviewIssueRoute; and the craft delegations
+  `craft.go:116` RegisterCraftSessionRoutes, `craft_interaction.go:63`
+  RegisterCraftInteractionRoutes, `craft_scheduled.go:77` RegisterCraftScheduledTaskRoutes).
+  One dormant alternative mount: `RegisterCraftPreviewIssueRoute` (craft_preview.go) is
+  currently invoked by no production caller — the mounted variant of the same path is
+  registered inline by `craft.go:151-153`; both call sites are counted, the dormancy is noted
+  for Pass B.
+- Per-owner registration split (sums to 632; fine splits inside mixed functions are stated in
+  backend-modules.yaml `coverage.route_registrations.by_owner`): knowledge 93, identity 85,
+  airesource 61, agentcatalog 55, execution 48, conversation 45, system 43, channels 38,
+  workbench 34, agentruntime 27, craft 26, commercial 23, datasource 20, appconnector 17,
+  platform 11, insights 6. Notable fine splits embedded in these numbers:
+  - `RegisterSessionRoutes` (38): conversation 27, execution 3 (local-browser ×2,
+    sandbox terminal-ticket), agentruntime 4 (agent-run reads/decision/cancel), workbench 4
+    (session/message artifacts + artifact preview-ticket issue). The craft groups
+    (`/craft/sessions`, `/craft/model-gateway` credentials ×2, `/craft/scheduled-tasks`) and
+    their handler-side delegations are counted under craft.
+  - `RegisterWorkbenchRoutes` (10): workbench 5 (workbench executions read/write),
+    execution 5 (`/execution-targets` ×4, `/execution-workspaces` ×1).
+  - `RegisterSystemAdminRoutes` (18) counted under system with the audit-endpoint → identity
+    split note; `RegisterTenantRoutes` audit-log endpoint → identity likewise noted.
 - Special pre-auth groups (registered before global Auth middleware): IM callbacks, embed
   public routes, resource grants, sandbox terminal WS, workbench artifact grant download,
   local browser extension gateway, craft preview origin, artifact preview origin, craft model
   gateway, semantic internal route, presigned files.
-- Per-file registration counts (non-test, `internal/router`, occurrence-based):
-  routes_infra.go 103, routes_knowledge.go 92, routes_agent.go 88, routes_chat.go 58,
-  routes_auth_tenant.go 53, routes_workbench.go 39, routes_commercial.go 20,
-  routes_app_connectors.go 17, routes_memory.go 16, routes_native_archive.go 7,
-  routes_skill_market.go 5, routes_persona.go 5, router.go 5, routes_query_history.go 4,
-  routes_analytics.go 4, files.go 4, routes_usage.go 3, routes_tenant_skill_market.go 3,
-  routes_tenant_expert_market.go 3, routes_expert.go 3, rbac.go 3, routes_subagent.go 2,
-  routes_agent_marketplace.go 1. (task.go/sync_task.go and the remaining files register no
-  HTTP routes.)
 
 ### 3.3 Workers
 
@@ -261,9 +333,16 @@ agentcatalog 1, channels 1, knowledge 1 = **58**.
 
 ## 4. Method and verification notes
 
-- Route count = textual count of gin method registrations on non-test files; every receiver
-  was verified to be a gin `*gin.Engine`/`*gin.RouterGroup` variable (spot-checked all
-  ambiguous receivers). A route added/moved later will change these counts.
+- Route count = pattern sweep over non-test `internal/router/**/*.go` and
+  `internal/handler/**/*.go` with comment text stripped, enumerating ALL registration
+  patterns: literal gin method calls (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS/Any),
+  `g.apiKeyRoute(` helper call sites (rbac.go:398 — each call registers one route via
+  `grp.Handle`), and direct `.Handle(` calls (0 sites outside the helper definitions).
+  What was NOT done: receiver-type verification of every call (the sweep is textual, not an
+  AST build); a line-continuation edge (`files.go:498`) is handled by matching the
+  `http.MethodX` argument on the following line. A route added through any NEW wrapper that
+  internally calls `Handle` will NOT be caught by these patterns — such a wrapper must be
+  added to the sweep (this is exactly how the initial 542 undercounted `apiKeyRoute`).
 - Hook inventory = exact `container.Invoke(` call-site scan of `internal/container/container.go`
   (the only file with `container.Invoke` outside tests).
 - Worker inventory = `mux.HandleFunc` scan of `internal/router/task.go` and
