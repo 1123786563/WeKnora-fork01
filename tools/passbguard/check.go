@@ -210,10 +210,20 @@ func CheckOwnership(g *Governance, d *Discovery) []Diagnostic {
 	for _, de := range d.Exceptions {
 		discovered[excKey{de.ImporterFile, de.ImportedPath}] = de
 	}
+	// seenEdge 是边级判重（OCR R1 #2）：同一 (from,to) 只允许一行例外——
+	// validate 只对相邻同 ExceptionID 判重（排序后同边不同 id 不相邻），
+	// 与 legacy-overlap 双防护同构地由这里兜底。
+	seenEdge := map[excKey]ExceptionID{}
 	ledger := map[excKey]Exception{}
 	for _, x := range g.Exceptions {
-		ledger[excKey{x.From, x.To}] = x
 		key := excKey{x.From, x.To}
+		if prev, dup := seenEdge[key]; dup {
+			emit("exception-overlap", x.From,
+				"%s → %s claimed by two exceptions %q and %q", x.From, x.To, prev, x.ID)
+		} else {
+			seenEdge[key] = x.ID
+		}
+		ledger[key] = x
 		de, registered := discovered[key]
 		if !registered {
 			emit("exception-unregistered", x.From,

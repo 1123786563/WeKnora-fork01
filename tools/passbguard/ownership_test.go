@@ -200,6 +200,20 @@ func TestOwnershipDiagnostics(t *testing.T) {
 			check: "exception-missing",
 			want:  "agent/engine.go",
 		},
+		{
+			// 10b. 同一 (from,to) 边被两行不同 id 的例外重复认领
+			// （OCR R1 #2：validate 只对相邻同 id 判重，边级判重必须由
+			// CheckOwnership 兜底——与 legacy-overlap 双防护同构）。
+			name: "duplicate exception edge",
+			mutG: func(g *Governance) {
+				dup := g.Exceptions[0]
+				dup.ID = "exc-0099"
+				g.Exceptions = append(g.Exceptions, dup)
+			},
+			check:    "exception-overlap",
+			want:     "exc-0099",
+			wantPath: "internal/modules/agentruntime/agent/engine.go",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
