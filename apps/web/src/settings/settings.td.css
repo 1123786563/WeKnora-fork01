@@ -1712,3 +1712,24 @@
   font-size: 14px;
   color: var(--td-text-color-secondary);
 }
+
+/* ==== 7c. 复审 fix-2 追补 ==== */
+/* vue-next .t-table 基础规则带 background-color: var(--td-bg-color-container)
+ * （表格区盖住待接受壳的灰底），tdesign-react 同规则缺该声明——库 CSS 差
+ * 按页面作用域补齐（原 settings-wrapper.css 遗留 slice 的唯一存活规则，
+ * 收编自 table{background:#fff} 硬编码）。 */
+.wk-settings-drawer-root .tenant-members .data-table-shell .t-table {
+  background-color: var(--td-bg-color-container);
+}
+
+/* Vue TenantMembers.vue:2022-2028 .share-link-title（fix-2 ③：此前平移缺漏）。
+ * 注意 color 不随源规则平移：Vue 端 .member-cell .member-name（0,2,0）盖过
+ * .share-link-title（0,1,0）的 var(--td-brand-color)，实测生效色 = 文字主色
+ * rgba(0,0,0,0.9)——平移复刻生效结果。display:inline-flex + gap:4px 使
+ * 「图标+文字」间距来自 gap（flex 匿名项裁前导空格，故 JSX 不写手工空格）。 */
+.wk-settings-drawer-root .tenant-members .member-cell .share-link-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+}

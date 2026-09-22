@@ -301,12 +301,10 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
     else setJump(String(page));
   }
 
-  // Vue t-pagination 实测：内容行高 24px、上下 padding 10px（border-t +
-  // 灰底区 294~337），邀请表 pager 透出 shell 灰底、成员表白底。
-  
-
   // T12a：tdesign Pagination 直译 Vue t-pagination（size=small +
   // show-jumper show-page-number show-page-size，页脚壳样式走 settings.td.css §7）。
+  const totalText = (count: number): string => tr('tenantMembersPanel.pager.total', { total: count });
+
   return <div className="data-table-shell__pager">
     <Pagination
       total={total}
@@ -318,7 +316,9 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
       // 页码/跳至整体左移）。totalContent 函数分支整体替换默认渲染
       // （useTotal.js:41-51），返回单字符串=单文本节点，与 vue-next
       // （pagination.mjs:349 createVNode div > t(total) 单串 child）同构。
-      totalContent={((count: number) => tr('tenantMembersPanel.pager.total', { total: count })) as unknown as ReactNode}
+      // totalContent 函数分支（useTotal.js:41-51）单字符串=单文本节点；
+      // 类型面 TNode 不含函数签名，需一处 as 断言越过 props 类型。
+      totalContent={totalText as unknown as ReactNode}
       showJumper
       showPageNumber
       showPageSize
@@ -697,7 +697,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       cell: ({ row }: { row: TenantInvitation }) => (
         <div className="member-cell">
           {row.is_share_link ? <>
-            <span className="member-name share-link-title"><TIcon name="link" size="14px" />{' ' + tr('tenantInvitation.shareLink.cellTitle')}</span>
+            <span className="member-name share-link-title"><TIcon name="link" size="14px" />{tr('tenantInvitation.shareLink.cellTitle')}</span>
             <span className="member-email">
               {(row.accepted_count ?? 0) > 0 ? tr('tenantInvitation.shareLink.cellAccepted', { count: row.accepted_count ?? 0 }) : tr('tenantInvitation.shareLink.cellEmpty')}
             </span>
@@ -832,9 +832,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         </div>
       </div>
       <p className="section-description">
-        {tr('tenantMember.sectionDescription')}{' '}
+        {tr('tenantMember.sectionDescription') + ' '}
         <a className="doc-link" href={RBAC_DOC_URL} target="_blank" rel="noopener noreferrer">
-          {tr('tenantMember.learnRbacGuide')} <TIcon name="link" size="13px" className="link-icon" />
+          {tr('tenantMember.learnRbacGuide') + ' '}<TIcon name="link" size="13px" className="link-icon" />
         </a>
       </p>
     </div>
