@@ -246,9 +246,10 @@ async function openMentionPopup(): Promise<HTMLElement> {
 }
 
 function mentionOptions(container: HTMLElement): Array<{ type: string; name: string }> {
+  // Vue .mention-item 结构：名称在 .name span（icon-wrap/count 各自独立）。
   return [...container.querySelectorAll<HTMLElement>('[data-mention-id]')].map((el) => ({
     type: el.getAttribute('data-mention-type') ?? '',
-    name: (el.textContent ?? '').replace(/^[@#▧]/, ''),
+    name: (el.querySelector('.name')?.textContent ?? '').replace(/^[@#▧]/, ''),
   }));
 }
 

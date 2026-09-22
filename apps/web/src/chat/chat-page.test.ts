@@ -668,7 +668,8 @@ test('composer localizes empty KB mention states', () => {
     mentionOpen: true,
     mentionOptions: [],
   }));
-  assert.match(html, /No knowledge bases available/);
+  // Vue MentionSelector.vue:270 空态 = emptyHint || common.noResult（无搜索框）。
+  assert.match(html, /No results/);
   assert.doesNotMatch(html, /暂无可用知识库/);
 });
 
