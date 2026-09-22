@@ -106,9 +106,11 @@ func DiscoverPassB(root string) (*Discovery, error) {
 	return d, nil
 }
 
-// discoverGoTree 枚举仓库内全部 .go 文件（跳过 .git 与 testdata——Go 工具链
-// 惯例上 testdata 不参与构建，guard fixture 不得进入仓库发现集），并解析每个
-// 文件的 import 面（含厂商路径原样保留）。返回 slash 分隔的仓库相对路径。
+// discoverGoTree 枚举仓库内全部 .go 文件（跳过一切点前缀目录与 testdata——
+// 点前缀目录含 .git 与本仓工作流的 .worktrees git worktree 树，其中 worktree
+// 的 .git 是文件非目录；testdata 按 Go 工具链惯例不参与构建，guard fixture
+// 不得进入仓库发现集），并解析每个文件的 import 面（含厂商路径原样保留）。
+// 返回 slash 分隔的仓库相对路径。
 func discoverGoTree(root string) ([]string, map[string][]string, error) {
 	var files []string
 	imports := map[string][]string{}
@@ -117,7 +119,11 @@ func discoverGoTree(root string) ([]string, map[string][]string, error) {
 			return err
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".git" || entry.Name() == "testdata" {
+			// 根目录自身不得跳过（`-root .` 的根回调 entry.Name() 是 "."，
+			// 点前缀根名同理）；其余一切点前缀目录（.git/.worktrees/.superpowers
+			// 等——worktree 内 .git 是文件非目录，按名 ".git" SkipDir 命中不了，
+			// 故统一按点前缀剪枝）与 testdata（Go 工具链不构建）整体跳过。
+			if path != root && (strings.HasPrefix(entry.Name(), ".") || entry.Name() == "testdata") {
 				return filepath.SkipDir
 			}
 			return nil
