@@ -58,6 +58,7 @@ function render(component: (props: any) => unknown, props: any): unknown {
 }
 
 function descendants(node: unknown): Array<{ type: unknown; props: Record<string, unknown> }> {
+  if (Array.isArray(node)) return node.flatMap(descendants);
   if (!node || typeof node !== 'object') return [];
   const element = node as { type?: unknown; props?: Record<string, unknown> };
   const here = element.props ? [{ type: element.type, props: element.props }] : [];
@@ -132,6 +133,7 @@ test('surface routing keeps upgrade-required free of authorized controls and gua
   const safe = RuntimeSurface({
     snapshot: { surface: 'upgrade-required', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, reason: 'protocol-mismatch' },
     onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {},
+    onActivateTenant: async () => {},
   });
   assert.equal(safe.type.name, 'UpgradeRequiredScreen');
   const safeControls = descendants(render(safe.type, safe.props)).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
@@ -142,12 +144,14 @@ test('surface routing keeps upgrade-required free of authorized controls and gua
   const invalidAuthorized = RuntimeSurface({
     snapshot: { surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1' } },
     onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {},
+    onActivateTenant: async () => {},
   });
   assert.equal(invalidAuthorized.type.name, 'UpgradeRequiredScreen');
 
   const authorized = RuntimeSurface({
     snapshot: { surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1', activeTenantId: 'tenant-1' } },
     onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {},
+    onActivateTenant: async () => {},
   });
   assert.equal(authorized.type.name, 'AuthorizedLandingScreen');
   const authorizedText = descendants(render(authorized.type, authorized.props)).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
@@ -180,4 +184,43 @@ test('pnpm --filter @weknora/mobile typecheck resolves the package', () => {
     0,
     `expected exit code 0 but got ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
+});
+
+test('authorized landing switches tenants only through non-active options', async () => {
+  const { AuthorizedLandingScreen } = await import('./screens/AuthorizedLandingScreen.tsx');
+  hooks().__reset();
+  const activated: string[] = [];
+  const element = render(AuthorizedLandingScreen, {
+    deploymentLabel: 'WeKnora', userId: 'member-1', tenantId: '7',
+    tenants: [{ id: '7', name: 'Acme', active: true }, { id: '9', name: 'Beta', active: false }],
+    onSignOut: async () => {},
+    onActivateTenant: async (id: string) => { activated.push(id); },
+  });
+
+  const texts = descendants(element).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children);
+  assert.equal(texts.includes('Acme (active)'), true);
+  const buttons = descendants(element).filter(({ type }) => type === 'Button');
+  const switchButton = buttons.find(({ props }) => props.title === 'Switch to Beta');
+  assert.ok(switchButton, 'inactive tenant must render a switch button');
+  (switchButton.props.onPress as () => void)();
+  assert.deepEqual(activated, ['9']);
+});
+
+test('RuntimeSurface derives tenant options from the snapshot identity', async () => {
+  const { RuntimeSurface } = await import('./composition.ts');
+  const surface = RuntimeSurface({
+    snapshot: {
+      surface: 'authorized',
+      deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+      identity: { userId: 'member-1', activeTenantId: '7', tenants: [{ id: '7', name: 'Acme' }, { id: '9', name: 'Beta' }] },
+    },
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {},
+    onActivateTenant: async () => {},
+  });
+
+  assert.equal(surface.type.name, 'AuthorizedLandingScreen');
+  assert.deepEqual((surface.props as { tenants: Array<{ id: string; name?: string; active: boolean }> }).tenants, [
+    { id: '7', name: 'Acme', active: true },
+    { id: '9', name: 'Beta', active: false },
+  ]);
 });

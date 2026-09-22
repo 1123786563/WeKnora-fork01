@@ -4,9 +4,12 @@ import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createJsonTransport } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createMobileRuntime } from '@weknora/mobile-core';
-import type { MobileRuntime, RuntimeSnapshot } from '@weknora/mobile-core';
+import { createScopedVault, createWebCryptoCipher } from '@weknora/mobile-core';
+import type { MobileRuntime, RuntimeSnapshot, ScopedVault } from '@weknora/mobile-core';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
 import { createNativeSecurePendingOidcStore } from './adapters/secure-store.ts';
+import type { SecureStorePort } from './adapters/secure-store.ts';
+import { createSecureVaultKeyStore, createSecureVaultStorage } from './adapters/vault-adapters.ts';
 import { createNativeSecureCredentialStore } from './adapters/credential-store.ts';
 import { createNativeSecureDeploymentStore } from './adapters/deployment-store.ts';
 import { AuthorizedLandingScreen } from './screens/AuthorizedLandingScreen.tsx';
@@ -21,6 +24,20 @@ function nativeFetch(input: string, init?: { method?: string; headers?: Record<s
   return fetch(input, init as RequestInit);
 }
 
+/** Wires the Scoped Vault only where Web Crypto exists. Native crypto seam completes in T10 (#40); absence must not break login. */
+function createNativeScopedVaultIfAvailable(): ScopedVault | undefined {
+  try {
+    const secure = require('expo-secure-store') as SecureStorePort;
+    return createScopedVault({
+      keyStore: createSecureVaultKeyStore(secure),
+      storage: createSecureVaultStorage(secure),
+      cipher: createWebCryptoCipher(),
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 /** The app composition root is the only place that joins concrete native adapters to Runtime. */
 export function createNativeMobileRuntime(): MobileRuntime {
   let runtime!: MobileRuntime;
@@ -29,6 +46,7 @@ export function createNativeMobileRuntime(): MobileRuntime {
     credentialStore: createNativeSecureCredentialStore(),
     deploymentStore: createNativeSecureDeploymentStore(),
     clientVersion: CLIENT_PROTOCOL_VERSION,
+    scopedVault: createNativeScopedVaultIfAvailable(),
     remoteFor(origin) {
       const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
       return createMobileRuntimeRemote({ origin, request: client.request });
@@ -50,12 +68,15 @@ export interface RuntimeSurfaceProps {
   onSignIn: (input: { origin: string; email: string; password: string }) => Promise<void>;
   onBeginOidc: (input: { origin: string }) => Promise<void>;
   onSignOut: () => Promise<void>;
+  onActivateTenant: (tenantId: string) => Promise<void>;
 }
 
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */
-export function RuntimeSurface({ snapshot, onSignIn, onBeginOidc, onSignOut }: RuntimeSurfaceProps) {
+export function RuntimeSurface({ snapshot, onSignIn, onBeginOidc, onSignOut, onActivateTenant }: RuntimeSurfaceProps) {
   if (snapshot.surface === 'authorized' && snapshot.deployment && snapshot.identity?.userId && snapshot.identity.activeTenantId) {
-    return createElement(AuthorizedLandingScreen, { deploymentLabel: snapshot.deployment.label, userId: snapshot.identity.userId, tenantId: snapshot.identity.activeTenantId, onSignOut });
+    const activeTenantId = snapshot.identity.activeTenantId;
+    const tenants = (snapshot.identity.tenants ?? [{ id: activeTenantId }]).map((tenant) => ({ ...tenant, active: tenant.id === activeTenantId }));
+    return createElement(AuthorizedLandingScreen, { deploymentLabel: snapshot.deployment.label, userId: snapshot.identity.userId, tenantId: activeTenantId, tenants, onSignOut, onActivateTenant });
   }
   if (snapshot.surface === 'deployment-login') {
     return createElement(DeploymentLoginScreen, { officialCloudOrigin, onSignIn, onBeginOidc });
@@ -90,6 +111,7 @@ export function MobileApp() {
     onSignIn: async ({ origin, email, password }) => { await activeRuntime.signIn({ deployment: { origin }, email, password }); },
     onBeginOidc: async ({ origin }) => { await activeRuntime.beginOidc({ deployment: { origin }, redirectUri: OIDC_REDIRECT_URI }); },
     onSignOut: () => activeRuntime.signOut(),
+    onActivateTenant: async (tenantId) => { await activeRuntime.activateTenant(tenantId); },
   });
 }
 
