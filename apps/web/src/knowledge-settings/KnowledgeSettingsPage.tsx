@@ -971,7 +971,9 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
 
   return (
     <section aria-label={`Knowledge settings for ${currentKnowledgeBase.name}`}>
-      {/* Vue KnowledgeBaseEditorModal .settings-modal frame (1000x750) */}
+      {/* Vue KnowledgeBaseEditorModal .settings-modal frame (1000x750)。
+          radius 12 与宿主 .wk-kb-settings-dialog 的同半径弧线叠合（两道弧线
+          的合成覆盖更贴近 Vue 单弧线栅格，见 documents-list.css 注）。 */}
       <div
         className="wkbs-modal"
         style={{ width: '90vw', maxWidth: '1000px', height: '85vh', maxHeight: '750px', borderRadius: '12px' }}
@@ -1000,7 +1002,7 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
                             详情页设置弹窗与列表页编辑器共用同一 t-icon 字形，像素 diff
                             下近似 stroke 版每个图标整块红 —— 优先走 TDesign 官方 path。 */}
                         {(() => {
-                          const tdesignNames: Record<string, string> = { basic: 'info-circle', models: 'control-platform', vectorStore: 'data-base', faq: 'help-circle', parser: 'file-search', chunking: 'file-copy', multimodal: 'image', asr: 'sound', graph: 'chart-bubble', advanced: 'setting', storage: 'cloud', share: 'share', activity: 'history' };
+                          const tdesignNames: Record<string, string> = { basic: 'info-circle', models: 'control-platform', vectorStore: 'data-base', faq: 'help-circle', parser: 'file-search', chunking: 'file-copy', multimodal: 'image', asr: 'sound', graph: 'chart-bubble', advanced: 'setting', storage: 'cloud', datasource: 'cloud-download', share: 'share', activity: 'history' };
                           const tdIcon = tdesignNames[item.key] ? <TDesignNavIcon name={tdesignNames[item.key]} size={16} /> : null;
                           return tdIcon ?? KNOWLEDGE_SETTINGS_NAV_ICONS[item.key];
                         })()}
@@ -1296,7 +1298,7 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
     <div className={options?.className ? `kb-form-item ${options.className}` : 'kb-form-item'}>
       <label className="kb-form-label">
         {t(labelKey)}
-        {options?.required ? <span className="kb-form-required" aria-hidden="true"> *</span> : null}
+        {options?.required ? <span className="kb-form-required" aria-hidden="true">*</span> : null}
       </label>
       {tipKey && !options?.tipAfter ? <p className="kb-form-tip">{t(tipKey)}</p> : null}
       {control}
@@ -1324,7 +1326,10 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
               title={t('common.copy')}
               onClick={copyKbId}
             >
-              {navIcon(<><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>)}
+              {/* Vue .kb-id-field 内是 t-button(t-size-s) + t-icon file-copy
+                  （KnowledgeBaseEditorModal.vue:59）；用 TDesign 官方 path 复刻，
+                  KbIcon 'copy' 的自绘 rect 字形像素 diff 下整块红。 */}
+              <TDesignNavIcon name="file-copy" size={14} />
             </button>
           </div>
         ))
@@ -1365,6 +1370,10 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
                       setIndexing({ vectorEnabled: event.target.checked, keywordEnabled: event.target.checked });
                     }}
                   />
+                  {/* Vue t-checkbox：native input 视觉隐藏（1px/opacity 0），
+                      可见盒是 .t-checkbox__input span（tdesign 官方几何：
+                      16x16 / #dcdcdc 边 / radius 3 / ::after 对勾）。 */}
+                  <span className="kb-checkbox-input" aria-hidden="true" />
                   <span className="indexing-check-label">{t('knowledgeEditor.indexing.searchTitle')}</span>
                 </span>
                 <span className="indexing-check-desc">{t('knowledgeEditor.indexing.searchDesc')}</span>
@@ -1382,6 +1391,7 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
                       setIndexing({ wikiEnabled: event.target.checked });
                     }}
                   />
+                  <span className="kb-checkbox-input" aria-hidden="true" />
                   <span className="indexing-check-label">
                     {t('knowledgeEditor.indexing.wikiTitle')}
                     <span className="kb-editor-new-badge" aria-hidden="true">NEW</span>
@@ -1444,15 +1454,19 @@ function BasicSettingsSection({ knowledgeBase, editorDraft, indexingLocked, t, o
         </>
       ) : null}
       {formItem('knowledgeEditor.basic.nameLabel', null, (
-        // Vue t-input: 32px high, #dcdcdc border, radius 3, full width.
-        <input
-          className="kb-text-input"
-          aria-label={t('knowledgeEditor.basic.nameLabel')}
-          maxLength={50}
-          placeholder={t('knowledgeEditor.basic.namePlaceholder')}
-          value={name}
-          onChange={(event) => onDraftChange({ ...editorDraft, name: event.target.value })}
-        />
+        // Vue t-input 结构：32px 外框（边框+flex 居中）套 22px 内层 input ——
+        // Chrome 对原生 input 的文本垂直居中跟随元素自身高度而非 padding，
+        // 单层 32px input 的文本会比 Vue 低 1px，必须两层结构复刻相位。
+        <div className="kb-text-input-wrap">
+          <input
+            className="kb-text-input"
+            aria-label={t('knowledgeEditor.basic.nameLabel')}
+            maxLength={50}
+            placeholder={t('knowledgeEditor.basic.namePlaceholder')}
+            value={name}
+            onChange={(event) => onDraftChange({ ...editorDraft, name: event.target.value })}
+          />
+        </div>
       ), { required: true })}
       {formItem('knowledgeEditor.basic.descriptionLabel', null, (
         <>

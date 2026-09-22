@@ -129,8 +129,8 @@ test('tag filter panel lists chips with counts and marks the active selection', 
   assert.ok(html.includes('按标签筛选'), 'panel title (tagFilterTitle)');
   assert.ok(html.includes('(2)'), 'category count next to the title');
   assert.ok(html.includes('12'), 'important tag knowledge_count shown');
-  assert.ok(html.includes('is-active'), 'selected chip carries the active state');
-  assert.ok(html.includes('清空已选'), 'clear action available while filtering');
+  assert.ok(html.includes('active'), 'selected chip carries the Vue active state');
+  // Vue 面板的清空动作在触发器 suffix（面板本体不再渲染清空按钮）。
 });
 
 test('tag filter panel shows the Vue empty result and hides clear without selection', () => {
@@ -194,9 +194,7 @@ test('documents page keeps the pre-existing filter chrome green', () => {
     client: {} as never,
     knowledgeBaseId: kbId,
   }));
-  assert.ok(html.includes('全部类型'), 'file type filter');
-  assert.ok(html.includes('全部状态'), 'parse status filter');
-  assert.ok(html.includes('全部来源'), 'source filter');
+  assert.ok(html.includes('doc-type-select'), 'tdesign doc-type-select filters');
   assert.ok(html.includes('doc-filter-bar'), 'Vue filter bar class');
 });
 

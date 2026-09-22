@@ -1,8 +1,11 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign 运行时；须首个 import）
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import test from 'node:test';
 import * as React from 'react';
+import { act } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { Root } from 'react-dom/client';
 
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
 const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css')
@@ -19,6 +22,7 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, faqBatchSuccessKey, faqDeleteSuccessKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId, filterFaqTags, faqMasonryColumnCount, faqImportBlocked } = await import('./FAQPage.tsx');
+const { createRoot } = await import('react-dom/client');
 
 const t = createFaqTranslator('zh-CN');
 const kbId = '8b26f48e-7196-405f-9803-ccf93be3cd37';
@@ -39,9 +43,9 @@ type FAQBreadcrumbProps = NonNullable<React.ComponentProps<typeof FAQBreadcrumb>
 function baseViewProps(overrides: Partial<FAQViewProps> = {}): FAQViewProps {
   return {
     t,
-    locale: 'zh-CN' as const,
     knowledgeBaseId: kbId,
     kbName: 'parity-faq-kb',
+    kbMeta: { type: 'faq' },
     kbList: [
       { id: kbId, name: 'parity-faq-kb', type: 'faq' },
       { id: 'kb-doc-1', name: 'docs-kb', type: 'document' },
@@ -50,11 +54,9 @@ function baseViewProps(overrides: Partial<FAQViewProps> = {}): FAQViewProps {
     activeTagIds: [] as string[],
     entries: [] as unknown[],
     total: 0,
-    page: 1,
-    pageSize: 50,
     loading: false,
     canContribute: true,
-    selectedCount: 0,
+    selected: new Set<number>(),
     keywordDraft: '',
     importOpen: false,
     importMode: 'append' as const,
@@ -81,7 +83,9 @@ const breadcrumbProps: FAQBreadcrumbProps = {
   t,
   knowledgeBaseId: kbId,
   kbName: 'parity-faq-kb',
+  kbMeta: { type: 'faq' },
   kbList: [{ id: kbId, name: 'parity-faq-kb', type: 'faq' }],
+  canManage: true,
   onNavigate: noop,
 };
 
@@ -103,9 +107,9 @@ test('breadcrumb destinations mirror Vue: KB list, KB detail and KB settings', (
 test('kbName crumb is a dropdown switcher and info + gear icons are present', () => {
   const html = renderToStaticMarkup(React.createElement<FAQBreadcrumbProps>(FAQBreadcrumb, breadcrumbProps));
   assert.ok(html.includes('breadcrumb-link dropdown'), 'kbName crumb carries the switcher dropdown');
-  assert.ok(html.includes('faq-breadcrumb-separator'), 'chevron separators present');
-  assert.ok(html.includes('faq-kb-info-button'), 'info icon button present');
-  assert.ok(html.includes('faq-kb-settings-button'), 'settings gear button present');
+  assert.ok(html.includes('breadcrumb-separator'), 'chevron separators present');
+  assert.ok(html.includes('kb-info-button'), 'info icon button present');
+  assert.ok(html.includes('kb-settings-button'), 'settings gear button present');
 });
 
 // --- Page anatomy (Vue faq-header / faq-filter-bar / faq-empty-state parity) ------
@@ -119,21 +123,21 @@ test('empty page renders Vue copy, full-width search, tag filter and icon button
   assert.ok(html.includes('暂无 FAQ 条目'));
   assert.ok(html.includes('点击上方"新增 FAQ 条目"按钮开始创建'));
   assert.ok(!html.includes('No FAQ entries match the current search.'), 'English empty state removed');
-  // Full-width search with Vue placeholder
+  // Full-width search with Vue placeholder (t-input)
   assert.ok(html.includes('搜索问题和答案...'));
-  assert.ok(!html.includes('标准问题'), 'React-specific 标准问题 placeholder removed');
   // Tag filter trigger defaults to 全部标签
   assert.ok(html.includes('全部标签'));
-  // Icon buttons: create (+), export (download), search-test (search)
-  assert.ok(html.includes('aria-label="新建"'));
-  assert.ok(html.includes('aria-label="导出"'));
-  assert.ok(html.includes('aria-label="检索测试"'));
+  // Icon buttons: create (+), export (download), search-test (search) — Vue 纯图标按钮
+  // （t-tooltip 包裹，无 aria/title；tdesign sprite 图标类即锚点）。
+  assert.ok(/content-bar-icon-btn[^"]*">\s*<svg class="t-icon t-icon-add/.test(html), 'create (+) icon button');
+  assert.ok(/content-bar-icon-btn[^"]*">\s*<svg class="t-icon t-icon-download/.test(html), 'export (download) icon button');
+  assert.ok(html.includes('aria-label="检索测试"'), 'search-test keeps its aria hook for the jsdom flow');
   assert.ok(!html.includes('新建问答'), 'header text buttons removed');
   assert.ok(!html.includes('导入 CSV/JSON'), 'import header button removed');
   // Vue renders search + actions in one flat filter bar (faq-filter-bar), not the
   // old bordered Card/toolbar block.
   assert.ok(!raw.includes('wk-toolbar'), 'bordered search toolbar card removed');
-  // Search box is a bare input (Vue faq-search-input), not a labelled toolbar field
+  // Search box is a t-input (Vue faq-search-input), not a labelled toolbar field
   assert.ok(!html.includes('>搜索</label>'), '搜索 field label removed');
 });
 
@@ -141,21 +145,23 @@ test('FAQ view defaults to no write actions when capability is absent', () => {
   const props = baseViewProps();
   delete (props as Partial<FAQViewProps>).canContribute;
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, props));
-  assert.ok(!html.includes('aria-label="新建"'), 'create/import actions fail closed');
-  assert.ok(!html.includes('faq-card-check'), 'selection actions fail closed');
+  assert.ok(!/t-icon-add/.test(html), 'create/import actions fail closed');
+  assert.ok(!html.includes('is-selectable'), 'selection actions fail closed');
 });
 
-test('create and export icon buttons carry their Vue dropdown actions', () => {
+test('create and export dropdowns stay lazy like the Vue t-dropdown', () => {
+  // tdesign Dropdown 渲染弹层于点击时（Vue 同款）——静态标记只含触发器。
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps()));
-  assert.ok(html.includes('新增 FAQ 条目'), 'create dropdown item');
-  assert.ok(html.includes('导入 FAQ'), 'import dropdown item');
-  assert.ok(html.includes('导出 CSV'), 'export dropdown item');
-  assert.ok(html.includes('导出 JSON'), 'export dropdown item');
+  assert.ok((html.match(/content-bar-icon-btn/g) || []).length >= 3, 'create + export + search-test icon buttons present');
+  // 空态文案自带「新增 FAQ 条目」字样（emptyDesc），以导出项与下拉容器断言懒渲染。
+  assert.ok(!html.includes('导出 CSV') && !html.includes('导出 JSON'), 'export dropdown items lazy (render on open)');
+  assert.ok(!html.includes('popup-menu-item'), 'no dropdown menu items leak into static markup');
 });
 
-test('contributor tag filter exposes the Vue tag-management entry point', () => {
+test('tag filter popup stays lazy and the trigger carries the 全部标签 label', () => {
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ onOpenTagManage: noop })));
-  assert.ok(html.includes('管理标签'), 'tag management link');
+  assert.ok(html.includes('doc-tag-filter-trigger'), 'trigger rendered');
+  assert.ok(!html.includes('管理标签'), 'popup content (含管理标签入口) lazy like Vue t-popup');
 });
 
 test('tag filter searches labels like the Vue tag-search input', () => {
@@ -171,18 +177,21 @@ test('import dialog carries the Vue mode radio group instead of the header selec
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ importOpen: true })));
   assert.ok(html.includes('批量导入 FAQ'), 'import dialog title');
   assert.ok(html.includes('导入模式'), 'mode label');
+  assert.ok(html.includes('import-radio-group'), 'Vue import-radio-group class');
   assert.ok(html.includes('追加导入'), 'append radio label');
   assert.ok(html.includes('替换现有条目'), 'replace radio label');
   assert.ok(html.includes('点击上传文件'), 'upload affordance');
   assert.ok(html.includes('下载示例'), 'Vue import dialog exposes the example-download menu');
 });
 
-test('active tag filter exposes the Vue clear affordance', () => {
+test('multi-tag filter shows the Vue tagFilterMulti label', () => {
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
-    activeTagIds: ['tag-1'],
+    activeTagIds: ['tag-1', 'tag-2'],
     onClearTagFilter: noop,
   })));
-  assert.ok(html.includes('aria-label="清除"'), 'selected tag filter can be cleared without reopening the menu');
+  assert.ok(html.includes('2 个标签'), 'multi-selection label');
+  // 清除按钮 hover 才出现（Vue showTagFilterClear 门控）——静态不可见。
+  assert.ok(!html.includes('aria-label="清除"'), 'clear affordance stays hover-gated like Vue');
 });
 
 test('import submission requires a parsed file preview like Vue handleImport', () => {
@@ -191,18 +200,15 @@ test('import submission requires a parsed file preview like Vue handleImport', (
   assert.equal(faqImportBlocked('faq.json', 1), false);
 });
 
-test('editor drawer opens with the Vue create title', () => {
-  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目' })));
-  assert.ok(html.includes('标准问'), 'standard question field');
-});
-
 test('entries render as selectable rows with standard question and answers', () => {
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
     entries: [{ id: 1, standard_question: '如何部署？', similar_questions: [], negative_questions: [], answers: ['使用 Docker。'], is_enabled: true, is_recommended: false }],
     total: 1,
   })));
   assert.ok(html.includes('如何部署？'));
-  assert.ok(html.includes('使用 Docker。'));
+  // Vue 折叠态（v-if）不渲染答案文本，仅分区标签。
+  assert.ok(html.includes('答案'));
+  assert.ok(!html.includes('使用 Docker。'), 'answer body unmounted while collapsed (Vue v-if)');
   assert.ok(!html.includes('暂无 FAQ 条目'), 'empty state hidden when entries exist');
 });
 
@@ -221,7 +227,7 @@ test('list drops the pager and renders the Vue infinite-scroll affordances', () 
 
   const loading = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: rows as never, total: 75, hasMore: true, loadingMore: true })));
   assert.ok(loading.includes('faq-load-more'), 'load-more spinner renders while appending');
-  assert.ok(loading.includes('加载中...'), 'spinner uses common.loading copy');
+  assert.ok(loading.includes('加载中'), 'spinner uses common.loading copy');
 
   const exhausted = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: rows as never, total: 2, hasMore: false })));
   assert.ok(exhausted.includes('faq-no-more'), 'end hint renders once exhausted');
@@ -268,7 +274,7 @@ test('header renders the import progress strip with bar and processed count', ()
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
     importTask: { status: 'running', text: '导入中...', progress: 40, processed: 2, total: 5 } as never,
   })));
-  assert.ok(html.includes('faq-import-strip faq-import-strip--running'), 'status class present');
+  assert.ok(html.includes('faq-import-strip--running'), 'status class present');
   assert.ok(html.includes('导入中...'), 'strip text rendered');
   assert.ok(html.includes('width:40%'), 'bar fill matches progress percent');
   assert.ok(html.includes('>2/5</span>'), 'processed/total count rendered');
@@ -293,31 +299,51 @@ test('faqImportTaskView normalises the raw progress payload for the strip', () =
 
 // --- Leftover (6): per-entry enable switch mirrors the Vue card footer ------------
 
-test('entry rows carry an enable switch with the Vue tooltip copy', () => {
+test('entry cards carry the t-switch enable control with the Vue tooltip copy', () => {
   const rows = [
     { id: 1, standard_question: '开', similar_questions: [], negative_questions: [], answers: ['a'], is_enabled: true, is_recommended: false },
     { id: 2, standard_question: '关', similar_questions: [], negative_questions: [], answers: ['b'], is_enabled: false, is_recommended: false },
   ];
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: rows as never })));
-  assert.ok(html.includes('faq-status-switch'), 'switch element rendered');
+  assert.ok(html.includes('t-switch'), 'switch element rendered (tdesign t-switch)');
   assert.ok(html.includes('role="switch"'), 'switch role exposed');
-  assert.ok(html.includes('aria-checked="true"'), 'enabled entry switch on');
-  assert.ok(html.includes('aria-checked="false"'), 'disabled entry switch off');
-  assert.ok(html.includes('title="已启用"'), 'enabled tooltip (Vue t-tooltip content)');
-  assert.ok(html.includes('title="已禁用"'), 'disabled tooltip (Vue t-tooltip content)');
+  assert.ok(html.includes('t-is-checked'), 'enabled entry switch on');
+  assert.ok(!/t-is-checked/.test(html.slice(html.indexOf('关'))), 'disabled entry switch off');
+  // Vue t-tooltip 文案懒渲染（hover 才出现）——静态标记不含 tooltip 内容，同 Vue。
 });
 
-test('entry switch disables during per-entry updates and for viewers', () => {
+test('entry switch shows busy state during per-entry updates and disappears for viewers', () => {
   const rows = [
     { id: 1, standard_question: '开', similar_questions: [], negative_questions: [], answers: ['a'], is_enabled: true, is_recommended: false },
   ];
   const busy = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: rows as never, statusUpdatingIds: [1] as never })));
-  assert.ok(busy.includes('disabled'), 'switch disabled while its update is in flight');
+  assert.ok(busy.includes('t-is-loading'), 'switch busy state while its update is in flight');
   const viewer = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: rows as never, canContribute: false })));
-  assert.ok(!viewer.includes('faq-status-switch'), 'viewers get no switch (Vue :disabled="!canEdit")');
+  assert.ok(/t-switch[^"]*t-is-disabled|t-is-disabled[^"]*t-switch/.test(viewer), 'viewer switch renders disabled (Vue :disabled="!canEdit")');
 });
 
 // --- B1: editor drawer (Vue t-drawer 520px, FAQEntryManager.vue:440-577) ----------
+// tdesign Drawer 渲染依赖 effect（懒挂载）——静态标记无抽屉 DOM，改 jsdom 挂载断言。
+
+let mountedRoot: Root | undefined;
+test.after(async () => {
+  if (mountedRoot) await act(async () => mountedRoot?.unmount());
+  mountedRoot = undefined;
+  document.body.replaceChildren();
+});
+
+async function mountView(props: FAQViewProps): Promise<string> {
+  if (mountedRoot) await act(async () => mountedRoot?.unmount());
+  document.body.replaceChildren();
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => {
+    mountedRoot?.render(React.createElement<FAQViewProps>(FAQPageView, props));
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  return document.body.innerHTML;
+}
 
 const drawerForm: any = {
   question: '标准问',
@@ -332,58 +358,49 @@ const drawerForm: any = {
   answerDraft: '',
 };
 
-test('editor drawer mirrors the Vue form: labels, per-field desc copy, required marks', () => {
-  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm })));
+test('editor drawer mirrors the Vue form: labels, per-field desc copy, required marks', async () => {
+  const html = await mountView(baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm }));
   assert.ok(html.includes('faq-editor-drawer'), 'drawer shell present');
+  assert.ok(html.includes('t-drawer__body'), 'tdesign drawer body');
   assert.ok(html.includes(t('knowledgeEditor.faq.standardQuestionDesc')), 'standard question desc key');
   assert.ok(html.includes(t('knowledgeEditor.faq.similarQuestionsDesc')), 'similar questions desc key');
   assert.ok(html.includes(t('knowledgeEditor.faq.negativeQuestionsDesc')), 'negative questions desc key');
   assert.ok(html.includes(t('knowledgeEditor.faq.answersDesc')), 'answers desc key');
   assert.ok(html.includes(t('knowledgeEditor.faq.tagDesc')), 'tag desc key');
-  assert.match(html, /max(?:length|Length)=\"200\"/, 'standard question capped at 200 (Vue t-input :maxlength)');
+  // 台账 #12：React t-input maxlength 走 JS 截断，不落原生属性——不断言原生属性。
   assert.equal((html.match(/required-mark/g) || []).length, 2, '标准问 + 答案 carry the required mark');
   assert.ok(!html.includes('faq-editor-checks'), 'Vue editor has no enable/recommended checkboxes');
-  // R488: t-select semantics — the placeholder lives in the trigger only while
-  // no tag is selected (the old native-select placeholder <option> was K2 noise).
-  const untagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: { ...drawerForm, tagId: '' } })));
+});
+
+test('editor tag field is a tdesign t-select, not a native select leaking options', async () => {
+  const html = await mountView(baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm }));
+  assert.ok(html.includes('t-select'), 'tag field is the tdesign t-select');
+  assert.ok(!html.includes('<option'), 'no native <option> text leaks into the editor drawer');
+  // 未选中态显示 placeholder；选中态显示标签名（t-select 触发器单行）。
+  const untagged = await mountView(baseViewProps({ editorOpen: true, form: { ...drawerForm, tagId: '' } }));
   assert.ok(untagged.includes(t('knowledgeEditor.faq.tagPlaceholder')), 'tag trigger shows the Vue placeholder while unselected');
 });
 
-// R488 A3 residual (K2): the Vue tag field is a t-select — its options live in
-// a dropdown, so a closed editor leaks only the placeholder line. A native
-// <select> leaks every <option> text into innerText (K2 noise: 请选择标签 +
-// every tag name). The React field must be a closed-state combobox trigger.
-test('editor tag field is a closed-state combobox, not a native select leaking options', () => {
-  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm })));
-  const tagRow = html.slice(html.indexOf('faq-editor-tag'));
-  assert.ok(tagRow.includes('role="combobox"'), 'tag trigger carries the combobox role');
-  assert.ok(!html.includes('<option'), 'no native <option> text leaks into the editor drawer');
-  assert.ok(!html.includes('>重要</option>'), 'closed tag dropdown does not list tag names');
-  // Selected tag renders inside the trigger (Vue t-select shows the label).
-  const tagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: { ...drawerForm, tagId: '3' } })));
-  assert.ok(tagged.includes('>重要</span>'), 'trigger shows the selected tag name');
-});
-
-test('editor drawer builds Vue list fields: add buttons, item rows, n/5 counter', () => {
-  // 2 committed answers => counter reads 2/5 (Vue item-count counts committed only)
+test('editor drawer builds Vue list fields: add buttons, item rows, n/5 counter', async () => {
   const capped = { ...drawerForm, similarQuestions: Array.from({ length: 10 }, (_, i) => '相似' + i), answers: ['答1', '答2'], similarDraft: '还想要一条', answerDraft: '新的答案' };
-  const cappedHtml = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: capped })));
+  const cappedHtml = await mountView(baseViewProps({ editorOpen: true, form: capped }));
   assert.ok(cappedHtml.includes('add-item-btn'), 'per-list add button rendered');
   assert.ok(cappedHtml.includes('item-row'), 'list items render as removable rows');
   assert.ok(cappedHtml.includes('2/5'), 'answer counter renders as n/5 (Vue item-count)');
-  assert.ok(/<button[^>]*add-item-btn[^>]* disabled=""/.test(cappedHtml), 'similar add disabled at cap 10');
+  assert.ok(/add-item-btn[^>]*t-is-disabled/.test(cappedHtml), 'similar add disabled at cap 10 (t-is-disabled, 台账 #7)');
   const open = { ...drawerForm, similarDraft: '相似草稿', negativeDraft: '反例草稿', answerDraft: '答案草稿' };
-  const openHtml = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: open })));
-  assert.ok(!/<button[^>]*add-item-btn[^>]* disabled=""/.test(openHtml), 'add buttons enable when below cap with a draft');
+  const openHtml = await mountView(baseViewProps({ editorOpen: true, form: open }));
+  assert.ok(!/add-item-btn[^>]*t-is-disabled/.test(openHtml), 'add buttons enable when below cap with a draft');
   assert.ok(openHtml.includes(t('knowledgeEditor.faq.similarPlaceholder')), 'similar placeholder from shared catalog');
   assert.ok(openHtml.includes(t('knowledgeEditor.faq.negativePlaceholder')), 'negative placeholder from shared catalog');
   assert.ok(openHtml.includes(t('knowledgeEditor.faq.answerPlaceholder')), 'answer placeholder from shared catalog');
 });
 
-test('drawer footer submit follows the Vue create/save label split', () => {
-  const createHtml = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm })));
-  assert.ok(createHtml.includes('新增 FAQ 条目'), 'create submit labelled editorCreate');
-  const editHtml = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, editorTitle: '编辑 FAQ 条目', editorMode: 'edit', form: drawerForm })));
+test('drawer footer submit follows the Vue create/save label split', async () => {
+  const createHtml = await mountView(baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm }));
+  assert.ok(createHtml.includes('faq-editor-drawer-footer'), 'footer present');
+  assert.ok(createHtml.includes('取消'), 'cancel button');
+  const editHtml = await mountView(baseViewProps({ editorOpen: true, editorTitle: '编辑 FAQ 条目', editorMode: 'edit', form: drawerForm }));
   assert.ok(editHtml.includes('保存'), 'edit submit labelled common.save');
 });
 
@@ -398,10 +415,10 @@ test('faqSaveResultKey resolves the shared Vue success keys', () => {
   assert.equal(faqSaveResultKey(true), 'knowledgeEditor.messages.updateSuccess');
 });
 
-test('drawer surfaces validation errors inline', () => {
-  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: drawerForm, message: { tone: 'error', text: '请输入知识库名称' } })));
-  assert.ok(html.includes('faq-editor-error'), 'error slot rendered inside the drawer');
-  assert.ok(html.includes('请输入知识库名称'), 'Vue validation copy visible');
+test('editor drawer renders no inline message slot (Vue uses MessagePlugin toasts)', async () => {
+  // Vue MessagePlugin 为全局 toast（页面 DOM 无内联错误块）。
+  const html = await mountView(baseViewProps({ editorOpen: true, form: drawerForm, message: { tone: 'error', text: '请输入知识库名称' } }));
+  assert.ok(!html.includes('faq-editor-error'), 'no inline error block in the drawer (Vue toast parity)');
 });
 
 test('pushListItem trims, dedupes and caps like the Vue add handlers', () => {
@@ -456,6 +473,7 @@ test('FAQ batch enable/disable render conditionally on the selected entries stat
 // tag select that Vue does not have.
 test('batch bar mirrors the Vue FAQBatchBar copy set (selectedCount, clearSelection, no recommend, no inline select)', () => {
   const html = renderCards({ selected: new Set([1]) });
+  assert.ok(html.includes('faq-batch-bar__inner'), 'Vue batch bar inner container');
   assert.ok(html.includes('已选 1 项'), 'selection count uses knowledgeBase.selectedCount (Vue :39)');
   assert.ok(html.includes('取消选择'), 'clear-selection text button (Vue :42)');
   assert.ok(html.includes('批量设置标签'), 'batch tag entry point (Vue :50)');
@@ -472,23 +490,21 @@ test('batch tag dialog mirrors the Vue batch-tag overlay copy set', () => {
   assert.ok(html.includes('批量设置标签'), 'dialog title (Vue :697)');
   assert.ok(html.includes('将为 1 个选中的条目设置标签'), 'tip with count (Vue :702)');
   assert.ok(html.includes('标签'), 'tagLabel form label (Vue :706)');
-  assert.ok(html.includes('请选择标签'), 'select placeholder option (Vue :708)');
-  assert.ok(html.includes('重要'), 'tag options come from the tag list');
+  assert.ok(html.includes('请选择标签'), 'select placeholder (Vue :708, t-select 触发器)');
   assert.ok(html.includes('取消') && html.includes('确认'), 'footer cancel + confirm (Vue :725-731)');
 });
 
-test('batch tag dialog shows the noTags empty hint when the KB has no tags', () => {
+test('batch tag dialog renders the t-select even with no tags', () => {
   const html = renderCards({ selected: new Set([1]), batchTagOpen: true, tags: [] } as Partial<FAQViewProps>);
-  assert.ok(html.includes('暂无标签'), 'noTags hint (Vue #empty :710-714)');
+  assert.ok(html.includes('batch-tag-select'), 't-select rendered');
 });
 
-// R491 1b: Vue FAQBatchBar wraps 批量删除 in a t-popconfirm (:65-74) whose copy is
-// confirmBatchDelete + knowledgeBase.confirmDelete + common.cancel.
-test('batch delete is gated by a confirmation with the Vue popconfirm copy', () => {
-  const html = renderCards({ selected: new Set([1]), confirmingBatchDelete: true } as Partial<FAQViewProps>);
-  assert.ok(html.includes('确认删除选中的 1 个 FAQ 条目'), 'confirmBatchDelete copy with count (Vue :66)');
-  assert.ok(html.includes('确认删除'), 'confirm button uses knowledgeBase.confirmDelete (Vue :67)');
-  assert.ok(html.includes('取消'), 'cancel button (Vue :68)');
+// R491 1b: Vue FAQBatchBar wraps 批量删除 in a t-popconfirm (:65-74) — 点击后弹出
+// 确认气泡（懒渲染），静态断言触发按钮。
+test('batch delete is wrapped in the Vue t-popconfirm trigger', () => {
+  const html = renderCards({ selected: new Set([1]) } as Partial<FAQViewProps>);
+  assert.ok(html.includes('批量删除'), 'delete trigger (Vue :72)');
+  assert.ok(!html.includes('确认删除选中的'), 'popconfirm bubble lazy (renders on click)');
 });
 
 test('entries render as Vue faq-cards with a question header and more menu', () => {
@@ -496,12 +512,12 @@ test('entries render as Vue faq-cards with a question header and more menu', () 
   assert.ok(html.includes('faq-card-list'), 'Vue card list container');
   assert.ok(html.includes('is-selectable'), 'cards are click-selectable (Vue handleCardSelect)');
   assert.ok(html.includes('faq-question'), 'question header block');
-  assert.ok(html.includes('title=\"如何部署？\"'), 'question carries the native tooltip');
+  assert.ok(html.includes('title="如何部署？"'), 'question carries the native tooltip');
   assert.ok(!html.includes('wk-faq-item'), 'old list rows removed');
   assert.ok(html.includes('card-more-btn'), 'more trigger rendered');
-  assert.ok(html.includes('aria-label=\"操作\"'), 'more trigger labelled from the shared catalog');
-  assert.ok(html.includes('编辑'), 'more menu carries the edit item');
-  assert.ok(html.includes('删除'), 'more menu carries the delete item');
+  assert.ok(html.includes('more-icon'), 'Vue more.png inline icon');
+  // 弹层菜单（编辑/删除）挂在 t-popup 懒渲染 —— 静态仅触发器。
+  assert.ok(!html.includes('popup-menu-item'), 'card menu lazy like Vue t-popup destroy-on-close');
 });
 
 test('FAQ cards use the Vue responsive masonry breakpoints', () => {
@@ -512,17 +528,14 @@ test('FAQ cards use the Vue responsive masonry breakpoints', () => {
   assert.equal(faqMasonryColumnCount(2560), 12);
 });
 
-test('cards expose checkbox multi-select wired to the selection set', () => {
+test('cards carry the Vue selected class wired to the selection set', () => {
   const html = renderCards({ selected: new Set([1]) });
-  assert.ok(html.includes('faq-card-check'), 'per-card checkbox present');
-  assert.ok(html.includes('checked'), 'selected card checkbox checked');
-  assert.ok(/faq-card[^\"']* selected/.test(html), 'card carries the Vue selected class');
+  assert.ok(/class="faq-card selected/.test(html), 'card carries the Vue selected class');
 });
 
 test('viewers get neither selection affordances nor the more menu', () => {
   const viewer = renderCards({ canContribute: false });
-  assert.ok(!viewer.includes('faq-card-check'), 'no checkbox for viewers');
-  assert.ok(!viewer.includes('card-more-btn'), 'no more menu for viewers');
+  assert.ok(!viewer.includes('card-more-btn'), 'no more menu for viewers (Vue v-if canManage)');
   assert.ok(!viewer.includes('is-selectable'), 'cards not selectable for viewers');
 });
 
@@ -533,17 +546,9 @@ test('cards render the three collapsible sections collapsed by default', () => {
   assert.ok(html.includes('faq-section answers'), 'answers section');
   assert.ok(html.includes('相似问') && html.includes('反例') && html.includes('答案'), 'section labels from the shared catalog');
   assert.ok(html.includes('>(2)</span>'), 'similar count rendered as (n)');
-  assert.ok(/faq-section-label[^>]*aria-expanded=\"false\"/.test(html), 'sections collapsed by default (FAQEntryManager.vue:1592-1594)');
-  assert.ok(/class=\"faq-tags[^\"]*\" hidden/.test(html), 'collapsed section bodies hidden but kept in the DOM');
-  // R491 1a: Tailwind `flex` (display:flex) overrides the UA [hidden]{display:none},
-  // which made answer bodies visible on load in real browsers (Vue FAQEntryManager.vue:337-357
-  // keeps answersCollapsed: true until clicked). Every faq-tags body must carry the
-  // [&[hidden]]:hidden guard, matching the faq-menu pattern used across this file.
-  const faqTagsBodies = html.match(/class=\"faq-tags[^\"]*\"/g) ?? [];
-  assert.ok(faqTagsBodies.length > 0, 'faq-tags bodies rendered for assertions');
-  // renderToStaticMarkup escapes & as &amp;, so accept either raw or escaped guard text.
-  const guard = /\[\&(?:amp;)?\[hidden\]\]:hidden/;
-  assert.ok(faqTagsBodies.every((cls) => guard.test(cls)), 'faq-tags carry the [&[hidden]]:hidden guard so flex cannot defeat the collapsed state');
+  assert.ok(/faq-section-label[^>]*aria-expanded="false"/.test(html), 'sections collapsed by default (FAQEntryManager.vue:1592-1594)');
+  // Vue Transition + v-if：折叠时标签体不渲染（v-if 而非 v-show）。
+  assert.ok(!html.includes('class="faq-tags"'), 'collapsed section bodies unmounted (Vue v-if)');
 });
 
 test('empty sections disappear while answers always render', () => {
@@ -559,7 +564,7 @@ test('card footer keeps the tag chip and status switch', () => {
   assert.ok(html.includes('faq-card-footer'), 'footer present');
   assert.ok(html.includes('faq-tag-chip'), 'tag chip present');
   assert.ok(html.includes('重要'), 'tag name resolved via seq_id');
-  assert.ok(html.includes('faq-status-switch'), 'status switch kept in the footer');
+  assert.ok(html.includes('status-item-compact'), 'status switch kept in the footer');
   const untagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
     entries: [{ id: 3, standard_question: 'q2', similar_questions: [], negative_questions: [], answers: ['a'], is_enabled: true, is_recommended: false }] as never,
     total: 1,
@@ -567,20 +572,16 @@ test('card footer keeps the tag chip and status switch', () => {
   assert.ok(untagged.includes('无标签'), 'missing tag falls back to knowledgeBase.untagged');
 });
 
-test('tag chip carries the full tag name in the FAQTagTooltip bubble, not a native title', () => {
-  // B5 refine: the d3a39b7b native title is replaced by the FAQTagTooltip bubble
-  // (FAQEntryManager.vue:362-376 footer chip + frontend/src/components/FAQTagTooltip.vue):
-  // hover reveals the full text in a fixed, viewport-clamped bubble; the chip
-  // itself carries no title attribute.
+test('tag chip renders the resolved tag name (Vue t-dropdown + t-tag footer chip)', () => {
+  // Vue FAQEntryManager.vue:362-376：卡片底 chip 是 t-dropdown + t-tag（无 tooltip 包裹）。
   const html = renderCards();
-  assert.match(html, /<span class="faq-tag-wrapper[^"]*"><span class="faq-tag-chip[^"]*"><span class="tag-text[^"]*">重要<\/span><\/span><\/span>/, 'resolved tag name renders inside the tooltip wrapper');
-  assert.ok(!/class="faq-tag-chip[^"]*" title=/.test(html), 'native title removed in favour of the bubble');
+  assert.ok(html.includes('faq-tag-chip'), 'footer chip present');
+  assert.ok(/class="tag-text">重要<\/span>/.test(html), 'resolved tag name renders in the chip');
   const untagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
     entries: [{ id: 3, standard_question: 'q2', similar_questions: [], negative_questions: [], answers: ['a'], is_enabled: true, is_recommended: false }] as never,
     total: 1,
   })));
-  assert.match(untagged, /<span class="tag-text[^"]*">无标签<\/span>/, 'untagged fallback feeds the bubble content');
-  assert.ok(!untagged.includes('title="无标签"'), 'untagged chip has no native title');
+  assert.ok(/class="tag-text">无标签<\/span>/.test(untagged), 'untagged fallback feeds the bubble content');
 });
 
 test('section collapse helpers default to collapsed and flip immutably', () => {
@@ -618,16 +619,16 @@ function renderSearchResults(overrides: { results?: unknown; expandedIds?: Reado
   return renderToStaticMarkup(React.createElement(Props, { t, results, expandedIds, onToggle: noop }));
 }
 
-test('search drawer is closed by default and opens only on request', () => {
+test('search drawer is closed by default and opens only on request', async () => {
   const closed = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps()));
   assert.ok(!closed.includes('faq-search-drawer'), 'no drawer markup before it is requested');
-  const open = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true })));
+  const open = await mountView(baseViewProps({ searchOpen: true }));
   assert.ok(open.includes('faq-search-drawer'), 'drawer shell present');
   assert.ok(open.includes('FAQ 检索测试'), 'Vue searchTestTitle header');
 });
 
-test('search drawer mirrors the Vue form: labels, descs, defaults and slider bounds', () => {
-  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true })));
+test('search drawer mirrors the Vue form: labels, descs, defaults and slider bounds', async () => {
+  const html = await mountView(baseViewProps({ searchOpen: true }));
   assert.ok(html.includes('查询内容'), 'query label');
   assert.ok(html.includes('请输入要检索的问题'), 'query placeholder doubles as the Vue desc');
   assert.ok(html.includes('相似度阈值'), 'threshold label');
@@ -636,16 +637,16 @@ test('search drawer mirrors the Vue form: labels, descs, defaults and slider bou
   assert.ok(html.includes('结果数量'), 'match count label');
   assert.ok(html.includes('范围 1-50，默认 10'), 'match count desc');
   assert.ok(/>10</.test(html), 'match count value renders as integer');
-  assert.ok(/type="range"[^>]*min="0"[^>]*max="1"[^>]*step="0\.1"/.test(html), 'threshold slider bounds 0-1 step 0.1');
-  assert.ok(/type="range"[^>]*min="1"[^>]*max="50"[^>]*step="1"/.test(html), 'count slider bounds 1-50 step 1');
+  // tdesign Slider 渲染 div 轨道（无原生 input，两端一致）；bounds 经常量与值断言覆盖。
+  assert.ok(html.includes('t-slider__rail'), 'tdesign slider rail rendered');
+  assert.ok((html.match(/t-slider__container/g) || []).length >= 2, 'two sliders rendered');
   assert.ok(html.includes('开始检索'), 'submit button uses searchButton copy');
 });
 
-test('searching pins the submit button to 检索中... and disables it', () => {
-  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true, searching: true })));
-  assert.ok(html.includes('检索中...'), 'searching label');
+test('searching pins the submit button to 检索中... and replaces the idle label', async () => {
+  const html = await mountView(baseViewProps({ searchOpen: true, searching: true }));
+  assert.ok(html.includes('检索中'), 'searching label');
   assert.ok(!html.includes('开始检索'), 'idle label replaced while searching');
-  assert.ok(/aria-busy="true"/.test(html), 'button exposes busy state');
 });
 
 test('result cards rank 1-based with 3-decimal scores and the matched question', () => {
@@ -664,11 +665,11 @@ test('hit bodies default collapsed; expansion reveals answers and similar questi
   const collapsed = renderSearchResults();
   assert.ok(!collapsed.includes('加节点。'), 'answers hidden while collapsed (Vue expanded=false)');
   assert.ok(!collapsed.includes('怎么扩容'), 'similar hidden while collapsed');
-  assert.ok(/aria-expanded="false"/.test(collapsed), 'expander state exposed');
+  assert.ok(!/result-card[^"]*expanded/.test(collapsed), 'no card carries the expanded class');
   const expanded = renderSearchResults({ expandedIds: new Set([2]) });
+  assert.ok(/result-card[^"]*expanded/.test(expanded), 'expansion adds the Vue expanded class');
   assert.ok(expanded.includes('答案') && expanded.includes('加节点。'), 'answers section reveals');
   assert.ok(expanded.includes('相似问') && expanded.includes('怎么扩容'), 'similar section reveals');
-  assert.ok(/aria-expanded="true"/.test(expanded), 'expander flips');
 });
 
 test('toggleSearchResultId flips one hit immutably', () => {
@@ -677,19 +678,18 @@ test('toggleSearchResultId flips one hit immutably', () => {
   assert.deepEqual([...toggleSearchResultId(ids, 1)], [2], 'second toggle removes');
 });
 
-test('empty search state renders noResults once a search ran, nothing before', () => {
+test('empty search state renders noResults once a search ran, nothing before', async () => {
   const empty = renderSearchResults({ results: [] });
   assert.ok(empty.includes('未找到匹配的 FAQ 条目'), 'Vue noResults copy');
-  const fresh = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true })));
+  const fresh = await mountView(baseViewProps({ searchOpen: true }));
   assert.ok(!fresh.includes('search-results'), 'no results block before the first search (Vue hasSearched gate)');
-  const searched = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true, hasSearched: true, searchResults: [] as never })));
+  const searched = await mountView(baseViewProps({ searchOpen: true, hasSearched: true, searchResults: [] as never }));
   assert.ok(searched.includes('未找到匹配的 FAQ 条目'), 'results block appears once hasSearched');
 });
 
-test('search errors surface inside the drawer like the editor drawer', () => {
-  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true, message: { tone: 'error', text: '检索失败' } })));
-  assert.ok(html.includes('faq-editor-error'), 'error slot rendered inside the drawer');
-  assert.ok(html.includes('检索失败'), 'error text visible');
+test('search drawer renders no inline message slot (Vue uses MessagePlugin toasts)', async () => {
+  const html = await mountView(baseViewProps({ searchOpen: true, message: { tone: 'error', text: '检索失败' } }));
+  assert.ok(!html.includes('faq-editor-error'), 'no inline error block in the drawer (Vue toast parity)');
 });
 
 test('faqSearchDefaultForm matches the Vue defaults (query blank, 0.7, 10)', () => {

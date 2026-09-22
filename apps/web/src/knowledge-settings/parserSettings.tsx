@@ -4,6 +4,10 @@
 // suffixed 「(默认)」), the xlsx first-row checkbox while the Excel family
 // resolves to builtin, and buildCompleteRules() persisting one rule per
 // group. R482 B1 差异4/R484 G1: replaces the React aggregated single-select.
+// Wave1-S3: 原生 <select> 平移为 tdesign-react Select（Vue t-select 同构：
+// warning 状态 + noEngine placeholder + 240px 弹层内高；台账 #8 Select 根
+// 不透传 data-*，行标识挂在包裹 span 上）。
+import { Select } from 'tdesign-react';
 
 export interface ParserEngineInfo {
   Name: string;
@@ -216,18 +220,30 @@ export function ParserSettingsSection({ engines, loading, error, rules, onChange
               </div>
             </div>
             <div style={{ flex: '0 1 55%', minWidth: '12rem', display: 'grid', gap: '0.5rem', justifyItems: 'stretch' }}>
-              <select
-                aria-label={group.label}
-                value={resolved}
+              {/* Vue t-select（KBParserSettings.vue）：无可用引擎时 warning
+                  状态 + noEngine placeholder（不禁用），弹层内高 240px。 */}
+              <span
                 data-parser-group={group.key}
-                disabled={options.length === 0}
-                onChange={(event) => handleEngineChange(group.extensions, event.target.value)}
+                aria-label={group.label}
+                style={{ display: 'block' }}
               >
-                {options.length === 0 ? <option value="">{t('kbSettings.parser.noEngine')}</option> : null}
-                {options.map((option) => (
-                  <option key={option.value} value={option.value}>{parserEngineOptionLabel(option.value, option.isDefault, t)}</option>
-                ))}
-              </select>
+                <Select
+                  value={resolved || undefined}
+                  onChange={(value) => handleEngineChange(group.extensions, String(value ?? ''))}
+                  status={options.length === 0 ? 'warning' : 'default'}
+                  placeholder={t('kbSettings.parser.noEngine')}
+                  popupProps={{ overlayInnerStyle: { maxHeight: '240px' } }}
+                >
+                  {options.map((option) => {
+                    const optionLabel = parserEngineOptionLabel(option.value, option.isDefault, t);
+                    return (
+                      <Select.Option key={option.value} value={option.value} label={optionLabel}>
+                        {optionLabel}
+                      </Select.Option>
+                    );
+                  })}
+                </Select>
+              </span>
               {showXlsxOption ? (
                 <label style={{ display: 'inline-flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.8rem' }}>
                   <input

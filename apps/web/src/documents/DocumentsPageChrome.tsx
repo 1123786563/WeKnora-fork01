@@ -7,7 +7,9 @@
 // knowledgeEditor.*, knowledgeBase.*) — no literals in this file.
 
 import { Fragment, useState } from 'react';
-import type { FocusEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { Popup, Tooltip } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import { createTranslator } from '../i18n.ts';
 import { navigate } from '../platform/navigation.ts';
 import {
@@ -29,11 +31,6 @@ export interface KBChromeMeta {
 
 function defaultNavigate(path: string): void { navigate(path); }
 
-/** Vue dropdowns close on outside click — mirror it via focusout. */
-function closeOnBlur(event: FocusEvent<HTMLElement>, close: () => void): void {
-  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close();
-}
-
 // --- Inline icons (no TDesign / icon font; feather-style strokes) -----------------
 
 export function Icon({ size = 16, className, children }: { size?: number; className?: string; children: ReactNode }) {
@@ -45,7 +42,6 @@ const Chevrons = {
   right: 'M9 18l6-6-6-6',
   down: 'M6 9l6 6 6-6',
 };
-function InfoIcon(props: { size?: number; className?: string }) { return <Icon {...props}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icon>; }
 export function SearchIcon(props: { size?: number; className?: string }) { return <Icon {...props}><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></Icon>; }
 export function FolderIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M3 6.5A2.5 2.5 0 015.5 4h4l2 2h7A2.5 2.5 0 0121 8.5v8A2.5 2.5 0 0118.5 19h-13A2.5 2.5 0 013 16.5z" /></Icon>; }
 export function FileIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></Icon>; }
@@ -53,16 +49,6 @@ export function LinkIcon(props: { size?: number; className?: string }) { return 
 export function EditIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 013 3L8 18l-4 1 1-4z" /></Icon>; }
 export function GridIcon(props: { size?: number; className?: string }) { return <Icon {...props}><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></Icon>; }
 export function ListIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></Icon>; }
-function GearIcon(props: { size?: number; className?: string }) {
-  // Vue .kb-settings-button renders t-icon-setting: hexagon + inner circle
-  // (TDesign outline icon, stroke 2) — not the classic cog teeth glyph.
-  return (
-    <Icon {...props}>
-      <path d="M12.0001 2L20.6604 7V17L12.0001 22L3.33984 17V7L12.0001 2Z" />
-      <path d="M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z" />
-    </Icon>
-  );
-}
 
 // --- Breadcrumb (Vue .document-title-row + .kb-title-actions) ---------------------
 
@@ -109,85 +95,138 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
   const [infoOpen, setInfoOpen] = useState(false);
   const sortedFileTypes = supportedFileTypes ? [...supportedFileTypes].sort() : [];
   const hasTabs = !!tabs && tabs.length > 0;
+  // Vue KBSwitcherDropdown：当前 KB 置顶，其余保持调用方顺序。
+  const sortedKbList = (() => {
+    const current = kbList.find((kb) => kb.id === knowledgeBaseId);
+    if (!current) return kbList;
+    return [current, ...kbList.filter((kb) => kb.id !== knowledgeBaseId)];
+  })();
   return (
-    <div className="document-title-row flex min-h-8 flex-wrap items-center gap-2">
-      <h2 className="document-breadcrumb m-0 flex items-center gap-[6px] text-[20px] font-semibold leading-8 text-[var(--wk-text,#101828)]">
-        <button type="button" className="breadcrumb-link inline-flex cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent px-2 py-1 -mx-2 -my-1 text-[rgba(0,0,0,0.6)] [font:inherit] [transition:all_.12s_ease] hover:enabled:bg-[var(--wk-surface,#fff)] hover:enabled:text-[var(--wk-brand,#00a870)] disabled:cursor-not-allowed disabled:text-[var(--wk-muted,#98a2b8)]" onClick={() => onNavigate(documentsKBListPath)}>{t('menu.knowledgeBase')}</button>
-        <Icon size={14} className="breadcrumb-separator shrink-0 text-[rgba(0,0,0,0.4)]"><path d={Chevrons.right} /></Icon>
-        <span className="doc-kb-switcher relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setSwitcherOpen(false))}>
-          <button type="button" className="breadcrumb-link dropdown group/dd inline-flex cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent py-1 pl-2 pr-[6px] -mx-2 -my-1 text-[rgba(0,0,0,0.6)] [font:inherit] [transition:all_.12s_ease] hover:enabled:bg-[var(--wk-surface,#fff)] hover:enabled:text-[var(--wk-brand,#00a870)] disabled:cursor-not-allowed disabled:text-[var(--wk-muted,#98a2b8)]" aria-haspopup="menu" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen((open) => !open)}>
-            <span>{kbName ?? '…'}</span>
-            <Icon size={14} className="breadcrumb-caret transition-transform duration-[120ms] group-hover/dd:translate-y-[1px]"><path d={Chevrons.down} /></Icon>
+    <div className="document-title-row">
+      <h2 className="document-breadcrumb">
+        <button type="button" className="breadcrumb-link" onClick={() => onNavigate(documentsKBListPath)}>{t('menu.knowledgeBase')}</button>
+        <TIcon name="chevron-right" className="breadcrumb-separator" />
+        {kbList.length ? (
+          <Popup
+            visible={switcherOpen}
+            trigger="click"
+            placement="bottom-left"
+            overlayStyle={{ padding: 0 }}
+            overlayInnerStyle={{ padding: 0 }}
+            onVisibleChange={setSwitcherOpen}
+            content={(
+              <div className="kb-switcher-card">
+                <div className="kb-switcher-list">
+                  {sortedKbList.map((kb) => (
+                    <button
+                      key={kb.id}
+                      type="button"
+                      className={'kb-switcher-row' + (kb.id === knowledgeBaseId ? ' active' : '')}
+                      onClick={() => { setSwitcherOpen(false); if (kb.id !== knowledgeBaseId) onNavigate(documentsKBDetailPath(kb.id)); }}
+                    >
+                      <TIcon name={kb.type === 'faq' ? 'chat-bubble-help' : 'folder'} size="16px" className="kb-switcher-row-icon" />
+                      <span className="kb-switcher-row-name" title={kb.name}>{kb.name}</span>
+                      {kb.id === knowledgeBaseId ? <TIcon name="check" size="14px" className="kb-switcher-row-check" /> : null}
+                    </button>
+                  ))}
+                  {!sortedKbList.length ? <div className="kb-switcher-empty">{t('common.noData')}</div> : null}
+                </div>
+              </div>
+            )}
+          >
+            <button type="button" className="breadcrumb-link dropdown" disabled={!knowledgeBaseId}>
+              {kbName == null ? '…' : <><span>{kbName}</span><TIcon name="chevron-down" /></>}
+            </button>
+          </Popup>
+        ) : (
+          <button type="button" className="breadcrumb-link" disabled={!knowledgeBaseId}>
+            {kbName == null ? '…' : kbName}
           </button>
-          <span className="doc-switcher-menu absolute left-0 top-[calc(100%+6px)] z-[200] flex max-h-[280px] min-w-[180px] flex-col overflow-y-auto rounded-[10px] border border-[var(--wk-border,#e3e8f0)] bg-[var(--wk-surface,#fff)] p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" role="menu" hidden={!switcherOpen}>
-            {kbList.map((kb) => (
-              <button key={kb.id} type="button" role="menuitem" className={'doc-switcher-item cursor-pointer whitespace-nowrap rounded-[6px] border-none bg-transparent px-[10px] py-[7px] text-left text-[14px] text-[var(--wk-text,#101828)] hover:bg-[rgba(0,0,0,0.04)]' + (kb.id === knowledgeBaseId ? ' is-active font-semibold text-[var(--wk-brand,#00a870)]' : '')} onClick={() => { setSwitcherOpen(false); onNavigate(documentsKBDetailPath(kb.id)); }}>
-                {kb.name}
-              </button>
-            ))}
-          </span>
-        </span>
-        <Icon size={14} className="breadcrumb-separator shrink-0 text-[rgba(0,0,0,0.4)]"><path d={Chevrons.right} /></Icon>
+        )}
+        <TIcon name="chevron-right" className="breadcrumb-separator" />
         {hasTabs ? (
-          <span className="breadcrumb-tabs inline-flex items-center">
+          <>
             {tabs!.map((tab, index) => (
               <Fragment key={tab.key}>
-                {/* Vue：h2 gap 6px + .breadcrumb-tab-sep margin 0 6px = 12px 间距，
-                    分隔符色 --td-text-color-disabled rgba(0,0,0,0.26)。 */}
-                {index > 0 ? <span className="breadcrumb-tab-sep mx-[12px] font-normal text-[rgba(0,0,0,0.26)]" aria-hidden="true">/</span> : null}
-                <a
-                  className={'breadcrumb-tab inline-flex cursor-pointer items-center gap-1 border-none bg-transparent no-underline text-[20px] leading-8 [transition:color_.15s] ' + (tab.active ? 'is-active font-semibold text-[var(--wk-brand,#07c05f)]' : 'font-normal text-[rgba(0,0,0,0.4)] hover:text-[var(--wk-text,#101828)]')}
-                  href={tab.href}
-                  title={tab.title}
-                  aria-current={tab.active ? 'page' : undefined}
-                  onClick={(event) => {
-                    // Vue flips activeKbTab in place; the React routes navigate
-                    // to the tab's ?tab= URL. Keep modified clicks / middle
-                    // click on the browser default (new tab, bookmark).
-                    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                    event.preventDefault();
-                    onNavigate(tab.href);
-                  }}
-                >{tab.label}</a>
+                {index > 0 ? <span className="breadcrumb-tab-sep" aria-hidden="true">/</span> : null}
+                {tab.title ? (
+                  <Tooltip content={tab.title} placement="bottom">
+                    <span
+                      className={'breadcrumb-tab' + (tab.active ? ' active' : '')}
+                      role="link"
+                      tabIndex={0}
+                      onClick={() => onNavigate(tab.href)}
+                    >{tab.label}</span>
+                  </Tooltip>
+                ) : (
+                  <span
+                    className={'breadcrumb-tab' + (tab.active ? ' active' : '')}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => onNavigate(tab.href)}
+                  >{tab.label}</span>
+                )}
               </Fragment>
             ))}
-          </span>
+          </>
         ) : (
-          <span className="breadcrumb-current font-semibold text-[rgba(0,0,0,0.9)]">{t('knowledgeEditor.document.title')}</span>
+          <span className="breadcrumb-current">{t('knowledgeEditor.document.title')}</span>
         )}
       </h2>
-      <div className="kb-title-actions ml-1 inline-flex shrink-0 items-center gap-[6px]">
-        <span className="kb-info-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setInfoOpen(false))}>
-          {/* Vue .kb-info-button：26px 透明底圆形，图标 placeholder 色。 */}
-          <button type="button" className="kb-info-button inline-flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-0 text-[rgba(0,0,0,0.4)] [transition:all_.2s_ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen} onClick={() => setInfoOpen((open) => !open)}>
-            <InfoIcon size={16} />
-          </button>
-          <span className="kb-info-card absolute right-0 top-[calc(100%+8px)] z-[200] flex w-[320px] flex-col gap-[10px] rounded-[10px] border border-[var(--wk-border,#e3e8f0)] bg-[var(--wk-surface,#fff)] px-4 py-[14px] text-left text-[13px] shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" hidden={!infoOpen}>
-            <span className="kb-info-card-header border-b border-[var(--wk-border,#e3e8f0)] pb-2 text-[14px] font-semibold text-[var(--wk-text,#101828)]">{t('knowledgeBase.infoCard.title')}</span>
-            <span className="kb-info-card-row flex items-baseline gap-3"><span className="kb-info-card-label w-16 shrink-0 text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.infoCard.type')}</span><span className="kb-info-card-value text-[var(--wk-text,#101828)] [word-break:break-word]">{kbMeta?.type?.toLowerCase() === 'faq' ? t('knowledgeEditor.basic.typeFAQ') : t('knowledgeEditor.basic.typeDocument')}</span></span>
-            {kbMeta?.description ? <span className="kb-info-card-row flex items-baseline gap-3"><span className="kb-info-card-label w-16 shrink-0 text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.description')}</span><span className="kb-info-card-value text-[var(--wk-text,#101828)] [word-break:break-word]">{kbMeta.description}</span></span> : null}
-            {kbMeta?.createdAt ? <span className="kb-info-card-row flex items-baseline gap-3"><span className="kb-info-card-label w-16 shrink-0 text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.infoCard.createdAt')}</span><span className="kb-info-card-value text-[var(--wk-text,#101828)] [word-break:break-word]">{kbMeta.createdAt}</span></span> : null}
-            {sortedFileTypes.length > 0 ? (
-              <span className="kb-info-card-row flex items-baseline gap-3">
-                <span className="kb-info-card-label w-16 shrink-0 text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.infoCard.supportedFileTypes')}</span>
-                <span className="kb-info-card-value text-[var(--wk-text,#101828)] [word-break:break-word]">
-                  {sortedFileTypes.map((fileType) => (
-                    <span key={fileType} className="kb-info-filetype mb-1 mr-1 inline-block rounded-full border border-[var(--wk-border,#e4e7ec)] px-[6px] py-0 text-[12px] leading-[20px]">{`.${fileType}`}</span>
-                  ))}
-                </span>
-              </span>
-            ) : null}
-          </span>
-        </span>
+      <div className="kb-title-actions">
+        {kbMeta ? (
+          <Popup
+            visible={infoOpen}
+            trigger="click"
+            placement="bottom-right"
+            overlayStyle={{ padding: 0 }}
+            overlayInnerStyle={{ padding: 0 }}
+            onVisibleChange={setInfoOpen}
+            content={(
+              <div className="kb-info-card">
+                <div className="kb-info-card-header">{t('knowledgeBase.infoCard.title')}</div>
+                <div className="kb-info-card-body">
+                  <div className="kb-info-card-row">
+                    <span className="kb-info-card-label">{t('knowledgeBase.infoCard.type')}</span>
+                    <span className="kb-info-card-value">{kbMeta.type?.toLowerCase() === 'faq' ? t('knowledgeEditor.basic.typeFAQ') : t('knowledgeEditor.basic.typeDocument')}</span>
+                  </div>
+                  {kbMeta.description ? (
+                    <div className="kb-info-card-row">
+                      <span className="kb-info-card-label">{t('knowledgeBase.description')}</span>
+                      <span className="kb-info-card-value kb-info-card-value-block">{kbMeta.description}</span>
+                    </div>
+                  ) : null}
+                  {kbMeta.createdAt ? (
+                    <div className="kb-info-card-row">
+                      <span className="kb-info-card-label">{t('knowledgeBase.infoCard.createdAt')}</span>
+                      <span className="kb-info-card-value">{kbMeta.createdAt}</span>
+                    </div>
+                  ) : null}
+                  {sortedFileTypes.length > 0 ? (
+                    <div className="kb-info-card-row">
+                      <span className="kb-info-card-label">{t('knowledgeBase.infoCard.supportedFileTypes')}</span>
+                      <span className="kb-info-card-value">
+                        {sortedFileTypes.map((fileType) => (
+                          <span key={fileType} className="kb-info-card-ext">{`.${fileType}`}</span>
+                        ))}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          >
+            <button type="button" className="kb-info-button" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen}>
+              <TIcon name="info-circle" size="16px" />
+            </button>
+          </Popup>
+        ) : null}
         {canManage ? (
-          // Vue parity (KnowledgeBase.vue L2451-2454): the gear is wrapped in a
-          // t-tooltip; the accessible name is mirrored with aria-label/title
-          // (same pattern as the FAQ gear) so AT users and the parity
-          // interactive scan can reach it without a hover.
-          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] [transition:all_.2s_ease] hover:bg-[#e9f8ec] hover:text-[#07c05f]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
-            {/* Vue .kb-settings-button：30px 圆形 #f3f3f3 底，18px 图标 secondary 色。 */}
-            <GearIcon size={18} />
-          </button>
+          <Tooltip content={t('knowledgeBase.settings')} placement="top">
+            <button type="button" className="kb-settings-button" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => { if (!knowledgeBaseId) return; if (onOpenSettings) onOpenSettings(); else onNavigate(documentsKBSettingsPath(knowledgeBaseId)); }}>
+              <TIcon name="setting" size="16px" />
+            </button>
+          </Tooltip>
         ) : null}
       </div>
     </div>
@@ -206,10 +245,10 @@ export interface ParserHintProps {
 export function ParserHint({ t, types, onConfigure }: ParserHintProps) {
   if (types.length === 0) return null;
   return (
-    <p className="parser-hint group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[rgb(237,123,47)] [transition:color_.15s_ease] hover:text-[#d35a21]" onClick={onConfigure}>
-      <InfoIcon size={12} className="parser-hint-icon shrink-0" />
+    <p className="parser-hint" onClick={onConfigure}>
+      <TIcon name="info-circle" className="parser-hint-icon" />
       <span>{t('knowledgeBase.unsupportedTypesHint', { types: types.map((fileType) => `.${fileType}`).join('、') })}</span>
-      <span className="parser-hint-link ml-[2px] whitespace-nowrap text-[#07c05f] group-hover:underline">{t('knowledgeBase.goToParserSettings')} →</span>
+      <span className="parser-hint-link">{t('knowledgeBase.goToParserSettings')} →</span>
     </p>
   );
 }
@@ -226,26 +265,25 @@ export interface DocumentEmptyStateProps {
 export function DocumentEmptyState({ t, variant }: DocumentEmptyStateProps) {
   if (variant === 'folder') {
     return (
-      <div className="doc-empty-state flex w-full min-h-full flex-1 items-center justify-center px-5 py-[60px]">
-        <p className="doc-empty-folder m-0 text-[14px] text-[var(--wk-muted,#66758b)]">{t('knowledgeBase.folderTree.emptyFolder')}</p>
+      <div className="doc-empty-state">
+        <p className="doc-empty-folder">{t('knowledgeBase.folderTree.emptyFolder')}</p>
       </div>
     );
   }
   if (variant === 'search') {
     return (
-      <div className="doc-empty-state flex w-full min-h-full flex-1 items-center justify-center px-5 py-[60px]">
-        <p className="doc-empty-folder m-0 text-[14px] text-[var(--wk-muted,#66758b)]">{t('knowledgeBase.folderTree.emptySearch')}</p>
+      <div className="doc-empty-state">
+        <p className="doc-empty-folder">{t('knowledgeBase.folderTree.emptySearch')}</p>
       </div>
     );
   }
+  // Vue EmptyKnowledge.vue（.empty + upload.svg + 三行文案）。
   return (
-    <div className="doc-empty-state flex w-full min-h-full flex-1 items-center justify-center px-5 py-[60px]">
-      <div className="doc-empty-illustration flex flex-col items-center justify-center">
-        <img className="empty-img h-[162px] w-[162px]" src={emptyIllustration} alt="" />
-        <span className="empty-txt m-0 mb-4 mt-3 text-[16px] font-semibold leading-[26px] text-[var(--wk-muted,#667085)]">{t('knowledgeBase.emptyKnowledgeDragDrop')}</span>
-        <span className="empty-type-txt w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.pdfDocFormat')}</span>
-        <span className="empty-type-txt w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.textMarkdownFormat')}</span>
-      </div>
+    <div className="empty">
+      <img className="empty-img" src={emptyIllustration} alt="" />
+      <span className="empty-txt">{t('knowledgeBase.emptyKnowledgeDragDrop')}</span>
+      <span className="empty-type-txt">{t('knowledgeBase.pdfDocFormat')}</span>
+      <span className="empty-type-txt">{t('knowledgeBase.textMarkdownFormat')}</span>
     </div>
   );
 }

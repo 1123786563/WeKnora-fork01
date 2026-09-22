@@ -23,7 +23,6 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
   max-height: 750px;
   background: var(--wk-color-surface, #fff);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -555,7 +554,10 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
   font-weight: 500;
   color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
 }
-.kb-form-required { color: var(--wk-color-error, #e34d59); }
+/* Vue .form-label.required::after { content:'*'; color:#e34d59;
+   margin-left:4px }（KnowledgeBaseEditorModal.vue）——行内星号与文字间隔
+   4px；React 此前的 " *" 空格文本节点 + 0 间距导致星号横向偏移。 */
+.kb-form-required { color: var(--wk-color-error, #e34d59); margin-left: 4px; }
 .kb-form-tip {
   margin: 0 0 12px;
   font-size: 12px;
@@ -620,6 +622,11 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
   padding: 4px 16px;
   height: 32px;
   box-sizing: border-box;
+  line-height: 22px;
+  /* tdesign .t-radio-button 基础边框：#dcdcdc（theme.css 覆盖后 border-level-2），
+     选中段整圈 #8ce0af、其后段左边框清除。 */
+  border: 1px solid var(--wk-color-border, #dcdcdc);
+  border-left: 0;
   cursor: default;
   user-select: none;
 }
@@ -632,10 +639,28 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
   opacity: 0;
   pointer-events: none;
 }
+/* Vue t-radio-button（theme.css 全局覆盖后）：选中段自带 1px #8ce0af 全边框
+   （宽 62 含边框、radius 3 0 0 3）；紧随其后的段 border-left: 0（tdesign
+   `.t-is-checked + .t-radio-button { border-left: 0 }`），末段 border-right
+   1px #dcdcdc + radius 0 3 3 0（宽 61）。文本 lh 22px。 */
 .kb-type-tab.is-checked {
   background: #8ce0af;
-  border-color: #8ce0af;
+  border: 1px solid #8ce0af;
+  /* tdesign 半径 3px 在两端引擎的弧线栅格相位不同，2.5px 逐像素对齐。 */
+  border-radius: 2.5px 0 0 2.5px;
   color: #fff;
+}
+.kb-type-tab.is-checked + .kb-type-tab {
+  border-left: 0;
+}
+.kb-type-tab:last-child {
+  border-right: 1px solid var(--wk-color-border, #dcdcdc);
+  border-radius: 0 3px 3px 0;
+}
+/* FAQ 型 KB：选中段是末段 —— Vue checked 覆盖 border-right-color（brand）。 */
+.kb-type-tab.is-checked:last-child {
+  border-right-color: #8ce0af;
+  border-radius: 0 3px 3px 0;
 }
 .kb-type-tab.is-disabled {
   background: #eee;
@@ -663,12 +688,69 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
 }
 .indexing-check-item.is-disabled { cursor: default; }
 .indexing-check-head { display: flex; align-items: center; gap: 8px; }
+/* Vue t-checkbox：原生 input 视觉隐藏（.t-checkbox__former 1px/opacity 0），
+   可见面孔由下方 .kb-checkbox-input span 承担 —— 原生 checkbox（含
+   accent-color 染色）与 tdesign 自绘盒像素 diff 整块红。 */
 .indexing-check-head input[type='checkbox'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+  flex-shrink: 0;
+}
+/* tdesign checkbox 官方几何（tdesign-vue-next es/checkbox/style/index.css）：
+   16x16 / border 1px #dcdcdc / radius 3 / box-sizing border-box；选中态
+   bg+border #07c05f，::after 对勾 2px #fff（top 6 left 3 w5 h9
+   rotate(45deg) scale(1) translate(-50%,-50%)）；禁用选中 bg #eee、边 #dcdcdc、
+   对勾 rgba(0,0,0,.26)。 */
+.kb-checkbox-input {
+  position: relative;
+  display: inline-block;
   width: 16px;
   height: 16px;
-  margin: 0;
+  vertical-align: middle;
+  border: 1px solid #dcdcdc;
+  border-radius: 3px;
+  background-color: #fff;
+  box-sizing: border-box;
   flex-shrink: 0;
-  accent-color: var(--wk-color-brand, #07c05f);
+}
+.kb-checkbox-input::after {
+  content: '';
+  position: absolute;
+  opacity: 0;
+  box-sizing: border-box;
+}
+.indexing-check-head input:checked + .kb-checkbox-input {
+  border-color: var(--wk-color-brand, #07c05f);
+  background-color: var(--wk-color-brand, #07c05f);
+}
+.indexing-check-head input:checked + .kb-checkbox-input::after {
+  opacity: 1;
+  top: 6px;
+  left: 3px;
+  width: 5px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-radius: 0 0 1px;
+  border-top: 0;
+  border-left: 0;
+  transform: rotate(45deg) scale(1) translate(-50%, -50%);
+  background: transparent;
+}
+.indexing-check-head input:disabled + .kb-checkbox-input {
+  /* tdesign：.t-is-disabled .t-checkbox__input 一律 #eee 底（勾/未勾皆是），
+   未勾选（无论禁用与否）无对勾。 */
+  border-color: #dcdcdc;
+  background-color: #eee;
+}
+.indexing-check-head input:disabled:checked + .kb-checkbox-input::after {
+  border-color: rgba(0, 0, 0, 0.26);
 }
 .indexing-check-label {
   font-size: 14px;
@@ -709,8 +791,13 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
   color: var(--wk-color-warning, #ed7b2f);
 }
 
-/* Vue t-input / t-textarea (32px, #dcdcdc, radius 3) + n/200 counter. */
-.kb-text-input {
+/* Vue t-input / t-textarea (32px, #dcdcdc, radius 3) + n/200 counter.
+   t-input 是两层结构：32px 外框（flex align-center）+ 22px 内层 input；Chrome
+   对原生 input 的文本垂直居中跟随元素自身 content 高度（垂直 padding 与
+   line-height 都不参与），单层 32px input 文本会比 Vue 低 1px。 */
+.kb-text-input-wrap {
+  display: flex;
+  align-items: center;
   width: 100%;
   height: 32px;
   box-sizing: border-box;
@@ -718,11 +805,23 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
   border: 1px solid var(--wk-color-border, #dcdcdc);
   border-radius: 3px;
   background: var(--wk-color-surface, #fff);
+}
+.kb-text-input-wrap:focus-within { outline: none; border-color: var(--wk-color-brand, #07c05f); }
+.kb-text-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
   font: inherit;
   font-size: 14px;
+  line-height: 22px;
   color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
 }
-.kb-text-input:focus { outline: none; border-color: var(--wk-color-brand, #07c05f); }
+.kb-text-input:focus { outline: none; border-color: none; }
 .kb-textarea {
   width: 100%;
   box-sizing: border-box;

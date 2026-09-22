@@ -5,6 +5,8 @@
 // Chips, sections and footer copy mirror the Vue dialogs; state stays local.
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button, Dialog, Input } from '@weknora/ui';
+import { Button as TdButton, Input as TdInput } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import type { KnowledgeTag } from '@weknora/api-client';
 import { filterTagOptions, selectTagId, tagCreateFailureMessage } from './tags.ts';
 import type { TagSurfaceT } from './tags-locale.ts';
@@ -245,7 +247,7 @@ interface TagFilterPanelProps {
   onManage?: () => void;
 }
 
-/** The Vue tag-filter popup body (KnowledgeBase.vue L2468-2523). */
+/** The Vue tag-filter popup body (KnowledgeBase.vue L2531-2586). */
 export function TagFilterPanel({
   t,
   tags,
@@ -270,66 +272,55 @@ export function TagFilterPanel({
   const visible = [...missing, ...tags];
 
   return (
-    <div className="tag-filter-panel absolute left-0 top-[calc(100%+4px)] z-[5500] flex max-h-[min(70vh,480px)] w-[min(320px,80vw)] flex-col rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-[12px_14px] text-[12px] text-[var(--wk-text,#344054)] shadow-[0_8px_24px_rgba(0,0,0,0.1)]" role="group" aria-label={t('knowledgeBase.tagFilterTitle')}>
-      <div className="tag-filter-panel__header mb-[10px] flex items-center gap-1">
-        <span className="tag-filter-panel__title flex items-baseline gap-[6px] text-[14px] font-semibold tracking-[0.5px] text-[var(--wk-text,#344054)]">{t('knowledgeBase.tagFilterTitle')}</span>
-        <span className="tag-filter-panel__count text-[12px] text-[var(--wk-muted,#98a2b8)]">({total ?? tags.length})</span>
-        <button type="button" className="wk-tag-link wk-tag-panel-close ml-auto cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]" aria-label={t('common.cancel')} onClick={onClose}>
-          ×
-        </button>
+    <div className="tag-filter-panel" role="group" aria-label={t('knowledgeBase.tagFilterTitle')} onClick={(event) => event.stopPropagation()}>
+      <div className="tag-filter-panel__header">
+        <div className="tag-filter-panel__title">
+          <span>{t('knowledgeBase.tagFilterTitle')}</span>
+          <span className="tag-filter-panel__count">({total ?? tags.length})</span>
+        </div>
       </div>
-      <div className="tag-filter-panel__search">
-        <Input
-          type="search"
-          className="mb-[10px] h-8 border-transparent bg-[var(--wk-surface-strong,#f2f4f7)] px-2 text-[13px] text-[var(--wk-text,#344054)] hover:border-[var(--wk-border,#e4e7ec)] hover:bg-[var(--wk-surface,#fff)] focus:border-[var(--wk-border,#e4e7ec)] focus:bg-[var(--wk-surface,#fff)]"
+      <div className="tag-search-bar">
+        <TdInput
+          size="small"
           value={searchQuery}
           placeholder={t('knowledgeBase.tagSearchPlaceholder')}
+          clearable
           aria-label={t('knowledgeBase.tagSearchPlaceholder')}
-          onChange={(event) => onSearch(event.target.value)}
+          onChange={(value) => onSearch(String(value).trim())}
+          prefixIcon={<TIcon name="search" size="14px" />}
         />
       </div>
-      <div className="tag-filter-panel__body flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto">
-        {visible.length > 0 ? (
-          <div className="tag-filter-chips flex flex-wrap items-start gap-[6px]">
-            {visible.map((tag) => (
-              <button
-                key={tag.id}
-                type="button"
-                className={selectedIds.includes(tag.id) ? 'tag-filter-chip is-active inline-flex h-6 max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] leading-6 text-ellipsis whitespace-nowrap text-[var(--wk-brand,#07c05f)] bg-[rgb(7_192_95/6%)] font-medium focus-visible:outline-none focus-visible:[box-shadow:0_0_0_2px_rgb(120_135_155/60%)] hover:bg-[rgb(7_192_95/10%)]' : 'tag-filter-chip inline-flex h-6 max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] leading-6 text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent transition-[background,color,border-color] duration-150 hover:border-[var(--wk-border-strong,#d0d5dd)] hover:bg-[var(--wk-surface-strong,#f2f4f7)] hover:text-[var(--wk-text,#344054)] focus-visible:outline-none focus-visible:[box-shadow:0_0_0_2px_rgb(120_135_155/60%)]'}
-                title={`${tag.name} (${tag.knowledge_count || 0})`}
-                onClick={() => onToggle(tag.id)}
-              >
-                <span className="tag-filter-chip__label max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">{tag.name}</span>
-                <span className="tag-filter-chip__count shrink-0 text-[10px] tabular-nums text-[var(--wk-muted,#98a2b8)] before:mr-0.5 before:content-['·'] before:opacity-65">{tag.knowledge_count || 0}</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="wk-tag-section-empty m-0 min-h-[22px] text-[12px] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.tagEmptyResult')}</p>
-        )}
+      <div className="tag-filter-panel__body">
+        <div className="tag-filter-chips">
+          {visible.map((tag) => (
+            <button
+              key={tag.id}
+              type="button"
+              className={'tag-filter-chip' + (selectedIds.includes(tag.id) ? ' active' : '')}
+              title={`${tag.name} (${tag.knowledge_count || 0})`}
+              onClick={() => onToggle(tag.id)}
+            >
+              <span className="tag-filter-chip__label">{tag.name}</span>
+              <span className="tag-filter-chip__count">{tag.knowledge_count || 0}</span>
+            </button>
+          ))}
+        </div>
+        {!visible.length ? (
+          <div className="tag-empty-state">{t('knowledgeBase.tagEmptyResult')}</div>
+        ) : null}
         {hasMore ? (
-          <button
-            type="button"
-            className="wk-tag-link wk-tag-load-more mt-2 cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)] disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={loadingMore}
-            onClick={onLoadMore}
-          >
-            {loadingMore ? t('common.loading') : t('tenant.loadMore')}
-          </button>
+          <div className="tag-load-more">
+            <TdButton variant="text" size="small" loading={loadingMore} onClick={onLoadMore}>
+              {t('tenant.loadMore')}
+            </TdButton>
+          </div>
         ) : null}
       </div>
-      {selectedIds.length > 0 ? (
-        <div className="tag-filter-panel__footer mt-[10px] flex justify-start border-t border-[var(--wk-border,#e7e7ec)] pt-[10px]">
-          <button type="button" className="wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[13px] text-[var(--wk-muted,#98a2b8)] transition-colors hover:text-[var(--wk-brand,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]" onClick={onClear}>
-            {t('knowledgeBase.tagClearAction')}
-          </button>
-        </div>
-      ) : null}
       {canManage && onManage ? (
-        <div className="tag-filter-panel__footer mt-[10px] flex justify-start border-t border-[var(--wk-border,#e7e7ec)] pt-[10px]">
-          <button type="button" className="tag-manage-link wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[13px] text-[var(--wk-muted,#98a2b8)] transition-colors hover:text-[var(--wk-brand,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]" onClick={onManage}>
+        <div className="tag-filter-panel__footer">
+          <TdButton variant="text" size="small" className="tag-manage-link" onClick={onManage}>
             {t('knowledgeBase.tagManageLink')}
-          </button>
+          </TdButton>
         </div>
       ) : null}
     </div>

@@ -368,9 +368,16 @@
    #f3f3f3 底、radius 6）；弹窗内边距 0，wkbs-modal 铺满整个面板。 */
 .wk-kb-settings-dialog {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0 !important;
   border: 0 !important;
   border-radius: 12px;
+  /* Vue .settings-modal box-shadow（KnowledgeBaseEditorModal.vue）：内层
+     .wkbs-modal 的阴影被上面 box-shadow:none!important 关掉（避免双层阴影
+     叠加），投影只能落在宿主弹窗上，否则四角与 Vue 差一道 0 8px 32px。 */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 .wk-kb-settings-dialog .wk-dialog-header {
   position: absolute;
@@ -391,8 +398,20 @@
   border-radius: 6px;
   background: var(--wk-color-surface-hover, #f3f3f3);
   color: rgba(0, 0, 0, 0.6);
-  font-size: 20px;
-  line-height: 1;
+  /* Vue 关闭钮是 svg X（20x20、stroke 2、round cap，KnowledgeBase
+     EditorModal .close-btn）；文本 "×" 字形与 svg 像素 diff 整块红：
+     字号清零藏掉文本，::after 以 mask 复刻同几何 svg。 */
+  font-size: 0;
+  line-height: 0;
+}
+.wk-kb-settings-dialog .wk-dialog-close::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M15 5L5 15M5 5L15 15' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M15 5L5 15M5 5L15 15' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / contain;
 }
 .wk-kb-settings-dialog .wk-dialog-body {
   margin-top: 0 !important;
@@ -608,8 +627,8 @@
    内容列 x644 宽 618。React 的 div.mt-1.px-5 + main.px-5.pb-5 双层
    20px 内边距把内容压到 x665 宽 574（差 44px），整列文本全部错位。 */
 .wk-document-detail-drawer > header {
-  /* 原生 border-top 移除后（外壳几何对齐），补 1px 保持 Vue header 61 高 */
-  padding: 15px 18px 14px !important;
+  /* Vue t-drawer__header：pad 14px 18px + 底边框 1px #e7e7e7 = 61px。 */
+  padding: 14px 18px !important;
 }
 .wk-document-detail-drawer header h2 {
   font-size: 15px;
@@ -659,4 +678,158 @@
   box-sizing: border-box !important;
   width: 654px !important;
   border-width: 0 !important;
+}
+
+/* --- 详情抽屉 Vue 几何对齐（ix-kb-doc-detail，DOM 实测 2026-09-22） ------
+   Vue 权威（doc-content.vue）：t-drawer__header 底边框 1px #e7e7e7（61px
+   含边框，pad 14/18）；t-drawer__body lh 22px、pad 16/18；doc-drawer-body
+   flex 列 gap 4px；setting-drawer__section bb 1px var(--td-component-stroke)
+   #e7e7e7、pad 12/0/16；summary_loading 虚线框 var(--td-component-border)
+   #dcdcdc、placeholder 灰文字。React 侧 border-line-soft=#edf0f5、--wk-border
+   全局 #dce3ed、header 无底边框、surface 无 gap、body lh 21 —— 逐项对齐。 */
+.wk-document-detail-drawer {
+  /* Tailwind v4 token：border-line-soft 编译为 var(--color-line-soft)。
+     文本色对齐 tdesign：--td-text-color-primary/secondary 是 rgba 灰而非
+     #172033/#66758b（pixel diff 下整块红）。 */
+  --color-line-soft: #e7e7e7;
+  --wk-border: #e7e7e7;
+  --color-ink: rgba(0, 0, 0, 0.9);
+  --color-muted: rgba(0, 0, 0, 0.6);
+  line-height: 22px;
+}
+.wk-document-detail-drawer > header {
+  box-sizing: border-box;
+  height: 61px;
+  border-bottom: 1px solid #e7e7e7;
+}
+.wk-document-detail-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wk-document-detail-drawer .summary_loading {
+  --wk-border: #dcdcdc;
+  border: 1px dashed #dcdcdc;
+  color: rgba(0, 0, 0, 0.4);
+  line-height: 22px;
+  min-height: 68px;
+}
+/* Vue .preview-toolbar（document-preview.vue）：618 宽、上下 pad 8、底边框
+   #e7e7e7，内含 30x30 右对齐 actions —— React 直接渲染 actions 行。 */
+.wk-document-detail-drawer .preview-toolbar-actions {
+  height: auto;
+  margin: 2px 0 8px;
+  padding: 8px 0;
+  color: rgba(0, 0, 0, 0.6);
+}
+.wk-document-detail-drawer .preview-toolbar-actions button {
+  width: 30px;
+  height: 30px;
+}
+/* Vue h1/h2 文字色 --td-text-color-primary；md 卡片标题不是 #172033。 */
+.wk-document-detail-drawer .wk-document-md-preview h1,
+.wk-document-detail-drawer .wk-document-md-preview h2 {
+  color: rgba(0, 0, 0, 0.9);
+}
+/* Vue .doc-drawer-resize-line：2x48、r1、#dcdcdc、opacity .55（handle 常显，
+   hover 才全绿）。Sheet 的分隔条是隐形热区 —— 用 ::after 复刻可见线条，
+   纵向居中于抽屉（Vue y336-384）。 */
+.wk-document-detail-drawer [role="separator"] {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.wk-document-detail-drawer [role="separator"]::after {
+  content: '';
+  position: fixed;
+  width: 2px;
+  height: 48px;
+  border-radius: 1px;
+  background: #dcdcdc;
+  opacity: 0.55;
+  /* Vue 线条在 x619（handle 中心 -6px）；Sheet 分隔条盒在 x622-630 且被
+     aside overflow 裁剪 —— fixed 定位逃逸裁剪，静态位（622）-3px = 619。 */
+  margin-left: -3px;
+}
+/* header 图标与标题细节（Vue doc-drawer-header-icon/title）：r9、
+   rgba(7,192,95,.1) 底、icon→text 10px、actions gap 2。 */
+.wk-document-detail-drawer .doc-drawer-header-icon {
+  border-radius: 9px;
+  background: rgba(7, 192, 95, 0.1);
+}
+.wk-document-detail-drawer header {
+  gap: 10px;
+}
+.wk-document-detail-drawer header > div {
+  /* Sheet 把 icon + 标题包在一个 gap-3 的 div 里；Vue icon→title 是 10px。 */
+  gap: 10px;
+}
+.wk-document-detail-drawer .doc-drawer-header-inner {
+  gap: 10px;
+  padding-right: 32px;
+}
+/* Vue t-drawer__close-btn：24x24 @ [right 8, y16]，白底 r3，svg X 16
+   （t-icon close）；Sheet 关闭钮是 20px 文本 ×、#66758b —— 绝对定位 +
+   字号清零 + mask 复刻 svg 字形。 */
+.wk-document-detail-drawer header {
+  position: relative;
+}
+.wk-document-detail-drawer header > button {
+  position: absolute;
+  top: 16px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 3px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.9);
+  font-size: 0;
+  line-height: 0;
+}
+.wk-document-detail-drawer header > button::after {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  background-color: currentColor;
+  /* t-icon close（sprite）：stroke 2 / square cap。 */
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M16.95 7.05 12 12m0 0-4.95 4.95M12 12l4.95 4.95M12 12 7.05 7.05' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M16.95 7.05 12 12m0 0-4.95 4.95M12 12l4.95 4.95M12 12 7.05 7.05' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+/* Vue section 标题绿条：--td-brand-color #07c05f（before:bg-primary 是蓝 #2e6de6）。 */
+.wk-document-detail-drawer section h4::before {
+  background: #07c05f;
+}
+/* tdesign 描边灰 #dcdcdc（view-mode outline 按钮边框），非 #e7e7e7。 */
+.wk-document-detail-drawer .view-mode-btn {
+  --wk-border: #dcdcdc;
+}
+.wk-document-detail-drawer .doc-content-section-head {
+  /* Vue .doc-content-section-head 高 28（h4 22 垂直居中 y450）。 */
+  height: 28px;
+}
+.wk-document-detail-drawer .doc-content-section-head-left h4 {
+  /* Vue 标题文本比 React 同行高低 2px（字体度量差），相对下移对齐。 */
+  position: relative;
+  top: 2px;
+}
+.wk-document-detail-drawer .summary_loading button svg {
+  margin-left: 1px;
+}
+.wk-document-detail-drawer .summary-title-actions {
+  gap: 6px;
+}
+.wk-document-detail-drawer .summary_loading button {
+  height: 24px;
+  gap: 8px;
+}
+.wk-document-detail-drawer .doc-drawer-header-actions {
+  gap: 2px;
+  /* Vue .header-actions 落在 [1172,16]（右缘 1230 = aside 内容右 1262 -
+     32）；Sheet 标题节点溢出容器，flex 排位不可靠 —— 绝对定位钉死。 */
+  position: absolute;
+  top: 16px;
+  right: 50px;
 }
