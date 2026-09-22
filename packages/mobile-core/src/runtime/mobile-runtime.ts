@@ -1,5 +1,6 @@
 import { clientGate, validateAuthReturn } from '@weknora/domain/mobile';
 import type { MobileRuntimePorts, StoredCredential } from './ports.ts';
+import type { ScopedVault, VaultRevokeReason } from '../vault/scoped-vault.ts';
 import { RuntimeScopeLease } from './scope-lease.ts';
 import type { Deployment, DeploymentInput, MobileRuntime, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
 
@@ -99,16 +100,30 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     for (const listener of listeners) listener(state);
     return state;
   };
-  const revoke = (): void => { revocableLease?.revoke(); revocableLease = undefined; lease = undefined; };
-  const begin = (deployment: Deployment): number => {
+  let vaultTail: Promise<void> = Promise.resolve();
+  const queueVaultRevoke = (reason: VaultRevokeReason): void => {
+    const expired = revocableLease;
+    const vault = ports.scopedVault;
+    if (!expired || !vault) return;
+    const attempt = (): Promise<void> => vault.revoke(expired.asScopeLease(), reason);
+    const next = vaultTail.then(attempt, attempt);
+    vaultTail = next.then(() => {}, () => {});
+  };
+  const revoke = (vaultReason: VaultRevokeReason): void => {
+    queueVaultRevoke(vaultReason);
+    revocableLease?.revoke();
+    revocableLease = undefined;
+    lease = undefined;
+  };
+  const begin = (deployment: Deployment, vaultReason: VaultRevokeReason = 'deployment-change'): number => {
     epoch += 1;
-    revoke();
+    revoke(vaultReason);
     activeDeployment = deployment;
     return epoch;
   };
-  const reserve = (): number => {
+  const reserve = (vaultReason: VaultRevokeReason = 'deployment-change'): number => {
     epoch += 1;
-    revoke();
+    revoke(vaultReason);
     activeDeployment = undefined;
     return epoch;
   };
@@ -186,13 +201,14 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   };
   const signOut = async (): Promise<void> => {
     const deployment = activeDeployment;
-    reserve();
+    reserve('sign-out');
     publish({ surface: 'deployment-login', reason: 'authentication-required' });
     await Promise.all([
       deployment ? mutateCredential(async () => { await ports.credentialStore.clear(deployment.origin); }) : Promise.resolve(),
       ports.pendingOidcStore ? mutatePendingOidc(async () => { await ports.pendingOidcStore!.clearPending(); }) : Promise.resolve(),
       mutateDeployment(async () => { await ports.deploymentStore?.clear(); }),
     ]);
+    await vaultTail;
   };
 
   return {
@@ -216,15 +232,19 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       }
     },
     async signIn(input): Promise<RuntimeSnapshot> {
-      const deployment = normalizeDeployment(input.deployment);
-      const requestEpoch = begin(deployment);
       try {
-        const credential = await ports.remoteFor(deployment.origin).passwordLogin({ email: input.email, password: input.password });
-        if (!current(requestEpoch, deployment)) return state;
-        if (!await persistCredential(requestEpoch, deployment, credential)) return state;
-        return await authenticate(requestEpoch, deployment, credential);
-      } catch {
-        return safe(requestEpoch, deployment, 'authentication-required');
+        const deployment = normalizeDeployment(input.deployment);
+        const requestEpoch = begin(deployment);
+        try {
+          const credential = await ports.remoteFor(deployment.origin).passwordLogin({ email: input.email, password: input.password });
+          if (!current(requestEpoch, deployment)) return state;
+          if (!await persistCredential(requestEpoch, deployment, credential)) return state;
+          return await authenticate(requestEpoch, deployment, credential);
+        } catch {
+          return safe(requestEpoch, deployment, 'authentication-required');
+        }
+      } finally {
+        await vaultTail;
       }
     },
     async beginOidc(input): Promise<void> {
@@ -295,25 +315,29 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     scopeLease: () => lease,
     signOut,
     async activateTenant(tenantId: string): Promise<RuntimeSnapshot> {
-      if (typeof tenantId !== 'string' || tenantId.trim() === '') return state;
-      const deployment = activeDeployment;
-      if (!deployment || state.surface !== 'authorized') return state;
-      const requestEpoch = begin(deployment);
       try {
-        const credential = await ports.credentialStore.read(deployment.origin);
-        if (!current(requestEpoch, deployment)) return state;
-        if (!credential) return safe(requestEpoch, deployment, 'authentication-required');
-        const switched = await ports.remoteFor(deployment.origin).switchTenant({ tenantId: tenantId.trim(), refreshToken: credential.refreshToken });
-        if (!current(requestEpoch, deployment)) return state;
-        if (!await persistCredential(requestEpoch, deployment, switched.credential)) return state;
-        return await authenticate(requestEpoch, deployment, switched.credential);
-      } catch {
-        return safe(requestEpoch, deployment, 'authentication-required');
+        if (typeof tenantId !== 'string' || tenantId.trim() === '') return state;
+        const deployment = activeDeployment;
+        if (!deployment || state.surface !== 'authorized') return state;
+        const requestEpoch = begin(deployment, 'tenant-switch');
+        try {
+          const credential = await ports.credentialStore.read(deployment.origin);
+          if (!current(requestEpoch, deployment)) return state;
+          if (!credential) return safe(requestEpoch, deployment, 'authentication-required');
+          const switched = await ports.remoteFor(deployment.origin).switchTenant({ tenantId: tenantId.trim(), refreshToken: credential.refreshToken });
+          if (!current(requestEpoch, deployment)) return state;
+          if (!await persistCredential(requestEpoch, deployment, switched.credential)) return state;
+          return await authenticate(requestEpoch, deployment, switched.credential);
+        } catch {
+          return safe(requestEpoch, deployment, 'authentication-required');
+        }
+      } finally {
+        await vaultTail;
       }
     },
     dispose(): void {
       epoch += 1;
-      revoke();
+      revoke('dispose');
       activeDeployment = undefined;
       listeners.clear();
     },

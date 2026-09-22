@@ -1,3 +1,5 @@
+import type { ScopedVault } from '../vault/scoped-vault.ts';
+
 /** Exact credential fields returned by Task 2's `passwordLogin` adapter. */
 export interface StoredCredential {
   token: string;
@@ -63,6 +65,8 @@ export interface MobileRuntimePorts {
   pendingOidcStore?: PendingOidcStore;
   oidcBrowser?: OidcBrowserPort;
   lifecycle?: AppLifecyclePort;
+  /** Scoped Vault Module; the Runtime revokes its scopes on every scope change. Optional so T01-only compositions stay valid. */
+  scopedVault?: ScopedVault;
   /** Native platform entropy hook. Omit only where Web Crypto is available. */
   randomBytes?: (size: number) => Uint8Array;
 }
