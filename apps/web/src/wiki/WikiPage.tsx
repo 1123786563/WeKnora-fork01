@@ -22,6 +22,7 @@ import {
   wikiSlugDisplayName,
 } from "./markdown.ts";
 import "./wiki-reader.css";
+import "../documents/documents.td.css";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { navigate } from "../platform/navigation.ts";
 import { pagerState } from "../pagination.ts";
@@ -1169,46 +1170,38 @@ export function WikiPage({
   );
 
   return (
-    /* Vue KnowledgeBase.vue page shell: .knowledge-layout = margin 0 16px 0 4px
-       + padding 24px 32px 0 + gap 20px between header / .wiki-main-area / a
-       trailing 0-height sibling — mirrored with the pl/pr/pb utilities below
-       so the wiki surface lands on the same box as the Vue screenshot. */
-    /* Vue App.vue also renders text with -webkit-font-smoothing: antialiased
-       (inherited); the platform shell lacks it, so the page root re-arms it
-       to keep glyph rasterization identical. */
-    <main className="wk-page [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] flex min-h-0 flex-1 flex-col box-border pl-[36px] pr-[28px] pt-6 pb-5">
-      <header className="wk-header mb-5">
-        <DocumentsBreadcrumb
-          t={t}
-          knowledgeBaseId={knowledgeBaseId}
-          kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
-          kbList={kbList}
-          kbMeta={{
-            type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
-            description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
-            createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
-          }}
-          supportedFileTypes={supportedFileTypes}
-          canManage={canManage}
-          onOpenSettings={() => setSettingsOpen(true)}
-          tabs={kbTabs}
-        />
-        {/* Vue .document-header-title gap 4px offsets the subtitle from the
-            title row; the wrapper margin (collapsing with ParserHint's own
-            2px) yields the 6px hint gap. */}
-        <p className="document-subtitle m-0 mt-[4px] text-[14px] font-normal leading-[20px] text-[rgba(0,0,0,0.4)]">{t("knowledgeEditor.document.subtitle")}</p>
-        <div className="mt-[6px]">
+    /* Vue KnowledgeBase.vue page shell: .knowledge-layout（margin 0 16px 0 4px
+       + padding 24px 32px 0 + gap 20px）> .document-header + .wiki-main-area；
+       样式平移在 documents/documents.td.css（breadcrumb/容器同源共享）。 */
+    <div className="knowledge-layout">
+      <div className="document-header">
+        <div className="document-header-title">
+          <DocumentsBreadcrumb
+            t={t}
+            knowledgeBaseId={knowledgeBaseId}
+            kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
+            kbList={kbList}
+            kbMeta={{
+              type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
+              description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
+              createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
+            }}
+            supportedFileTypes={supportedFileTypes}
+            canManage={canManage}
+            onOpenSettings={() => setSettingsOpen(true)}
+            tabs={kbTabs}
+          />
+          <p className="document-subtitle">{t("knowledgeEditor.document.subtitle")}</p>
           <ParserHint
             t={t}
             types={unsupportedFileTypes}
             onConfigure={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
           />
         </div>
-      </header>
-      {/* Vue .wiki-browser: a full-bleed white flex row (sidebar + reader
-          separated by the sidebar's 1px right border — no gap, no card
-          chrome). */}
-      <div className="wk-wiki-layout flex min-h-0 flex-1 items-stretch bg-white max-[720px]:flex-col">
+      </div>
+      {/* Vue .wiki-main-area：flex:1 + overflow hidden；.wiki-browser 全出血白底行。 */}
+      <div className="wiki-main-area">
+      <div className="wk-wiki-layout flex min-h-0 h-full w-full flex-1 items-stretch bg-white max-[720px]:flex-col">
         <aside className="wk-wiki-sidebar flex w-[280px] min-w-[240px] shrink-0 flex-col border-r border-[#e7e7e7] bg-white max-[720px]:w-full">
           <div className="wk-wiki-sidebar-header pb-2 pr-[10px]">
             {/* Vue sidebar search = a single 32px t-input (border #dcdcdc,
@@ -1620,6 +1613,9 @@ export function WikiPage({
           </div>
         </Card>
       ) : null}
-    </main>
+      </div>
+      {/* Vue DocContent 宿主（关闭态 0 高度，参与 knowledge-layout gap 布局）。 */}
+      <div className="doc_content" />
+    </div>
   );
 }
