@@ -7,7 +7,7 @@ import { createInMemoryCredentialStore, createMobileRuntime } from '@weknora/mob
 const CLIENT_PROTOCOL = CLIENT_PROTOCOL_VERSION;
 
 export type MobileRuntimeIntegrationConfig =
-  | { enabled: true; deploymentOrigin: string; email: string; password: string }
+  | { enabled: true; deploymentOrigin: string; email: string; password: string; switchTenantId?: string }
   | { enabled: false; disposition: 'skip'; reason: string }
   | { enabled: false; disposition: 'invalid'; reason: string };
 
@@ -17,6 +17,7 @@ export interface MobileRuntimeIntegrationEvidence {
   capabilityMode: 'compatible' | 'incompatible' | 'unknown';
   identity: 'present' | 'absent';
   outcome: 'authorized' | 'not-authorized';
+  tenantSwitch: 'skipped' | 'switched' | 'switch-failed';
   commandTimestamp: string;
 }
 
@@ -26,6 +27,24 @@ function capabilityEvidenceMode(capabilities: unknown): MobileRuntimeIntegration
   if (typeof minimum !== 'number' || typeof maximum !== 'number' ||
       !Number.isSafeInteger(minimum) || !Number.isSafeInteger(maximum) || minimum < 1 || maximum < minimum) return 'unknown';
   return minimum <= CLIENT_PROTOCOL && CLIENT_PROTOCOL <= maximum ? 'compatible' : 'incompatible';
+}
+
+/** 部署 URL 主机防线：仅允许公网主机，拒绝 localhost、环回、私网、链路本地与保留地址。 */
+function disallowedDeploymentHost(hostname: string): string | undefined {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target localhost';
+  if (host === '::1' || host === '0.0.0.0') return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target a loopback or wildcard address';
+  const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (match) {
+    const a = Number(match[1]);
+    const b = Number(match[2]);
+    if (a === 127 || a === 0 || a >= 240) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target loopback or reserved addresses';
+    if (a === 10) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
+    if (a === 172 && b >= 16 && b <= 31) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
+    if (a === 192 && b === 168) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
+    if (a === 169 && b === 254) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target link-local addresses';
+  }
+  return undefined;
 }
 
 /** Reads only opt-in test variables. No fallback makes an absent environment authorized. */
@@ -51,7 +70,17 @@ export function mobileRuntimeIntegrationConfig(env: Record<string, string | unde
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
     return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must be a credential-free HTTPS origin' };
   }
-  return { enabled: true, deploymentOrigin: parsed.origin, email, password };
+  const hostRejection = disallowedDeploymentHost(parsed.hostname);
+  if (hostRejection) return { enabled: false, disposition: 'invalid', reason: hostRejection };
+
+  const switchTenantId = env.WEKNORA_MOBILE_TEST_SWITCH_TENANT_ID?.trim();
+  if (switchTenantId !== undefined && switchTenantId !== '' && !/^\d+$/.test(switchTenantId)) {
+    return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_SWITCH_TENANT_ID must be a positive integer tenant id' };
+  }
+  if (/^0+$/.test(switchTenantId ?? '')) {
+    return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_SWITCH_TENANT_ID must be a positive integer tenant id' };
+  }
+  return { enabled: true, deploymentOrigin: parsed.origin, email, password, ...(switchTenantId ? { switchTenantId } : {}) };
 }
 
 /**
@@ -85,12 +114,24 @@ export async function runMobileRuntimeIntegration(config: Extract<MobileRuntimeI
     password: config.password,
   });
   const identityPresent = Boolean(snapshot.identity?.userId && snapshot.identity.activeTenantId);
+
+  let tenantSwitch: MobileRuntimeIntegrationEvidence['tenantSwitch'] = 'skipped';
+  if (config.switchTenantId && snapshot.surface === 'authorized') {
+    const leaseBefore = runtime.scopeLease();
+    const switched = await runtime.activateTenant(config.switchTenantId);
+    const switchIdentityPresent = Boolean(switched.identity?.userId && switched.identity.activeTenantId && switched.identity.activeTenantId !== snapshot.identity?.activeTenantId);
+    tenantSwitch = switched.surface === 'authorized' && switchIdentityPresent && runtime.scopeLease() !== undefined && runtime.scopeLease() !== leaseBefore
+      ? 'switched'
+      : 'switch-failed';
+  }
+
   return {
     deploymentOrigin: config.deploymentOrigin,
     clientProtocol: CLIENT_PROTOCOL,
     capabilityMode,
     identity: identityPresent ? 'present' : 'absent',
     outcome: snapshot.surface === 'authorized' && identityPresent ? 'authorized' : 'not-authorized',
+    tenantSwitch,
     commandTimestamp: new Date().toISOString(),
   };
 }
