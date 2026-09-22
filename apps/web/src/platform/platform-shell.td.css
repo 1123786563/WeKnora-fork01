@@ -1364,6 +1364,15 @@ html[theme-mode="dark"] .aside_box .menu_item_active .menu_icon img.icon {
   color: var(--td-text-color-placeholder);
   transition: color 0.15s ease;
 }
+/* Vue 端 trail 是裸 t-icon（div，直接作面板 flex item）；React 侧为可访问性
+   语义化成 button（§0 已清 UA 默认）。inline 图标在 button 的文本基线上会
+   比裸 flex item 低 1px（descender 空隙）——居中 flex 消除基线，恢复 Vue
+   几何（T9.5 §0 同款归一手法，参照 .dropdown-guide-btn）。 */
+.user-menu .dropdown-tenant-panel .dropdown-tenant-panel-trail-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .user-menu .dropdown-tenant-panel .dropdown-tenant-panel-role {
   display: flex;
   align-items: center;

@@ -138,7 +138,14 @@ const ALL_PAGES = [
   { id: 'ix-chat-header-menu', kind: 'chat', name: '工具调用 Parity Fixture',
     actions: [{ clickAria: ['更多操作', '更多'] }] },
   { id: 'ix-chat-mention', kind: 'chat', name: '工具调用 Parity Fixture',
-    actions: [{ clickAria: ['@提及知识库', '提及知识库', 'mention'], clickText: ['@'] }] },
+    // composer 的 @ 按钮：双端同名 data-guide="chat-kb-mention"（Vue
+    // Input-field.vue:2769 / React packages/views composer.tsx）。clickAria 全
+    // miss——Vue 是纯图标 div 无 aria/title，React aria-label='知识库' 又与
+    // 侧栏「知识库」导航同名会误伤；clickCss 精确命中后双端各自打开 @ 弹层
+    // （Vue .mention-menu / React #wk-chat-mention-listbox）。clickText '@' 兜底
+    // 有坑：DOM 序更早的侧栏邮箱 parity-test@local.dev 含 '@'，仅在前两级
+    // 同时失效时才会误中（点击冒泡到 user-button 偶然打开菜单）。
+    actions: [{ clickAria: ['@提及知识库', '提及知识库', 'mention'], clickCss: ['[data-guide="chat-kb-mention"]'], clickText: ['@'] }] },
   // 两端新建按钮均为纯图标（Vue AgentList.vue:11-15 t-tooltip 无 aria；React
   // AgentsPage.tsx:582 aria/title=创建智能体）；data-guide 两端同名可命中 Vue。
   { id: 'ix-agents-create', path: '/platform/agents',

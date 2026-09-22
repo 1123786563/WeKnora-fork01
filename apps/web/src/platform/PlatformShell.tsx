@@ -224,6 +224,15 @@ export function shouldShowTenantSwitcher(options: {
   return options.hasSwitchHandler && options.canAccessAllTenants && !options.collapsed;
 }
 
+// Vue composables/useRoleLabel.ts ROLE_ICONS — 角色前缀图标映射（受限集合，
+// 只收录已随包发行的图标名，避免冷门角色触发 icon-not-found）。
+const ROLE_ICONS: Record<string, string> = {
+  owner: 'secured',
+  admin: 'user-circle',
+  contributor: 'edit',
+  viewer: 'browse',
+};
+
 // Vue stores/ui.ts:23,123-126 persists the collapsed rail under the Vue-era
 // key `sidebar_collapsed` and re-reads it on boot; keep the same key so the
 // preference survives reloads and stays interchangeable with the Vue artifact
@@ -493,11 +502,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     () => <PaletteRetrievalSettings client={client} locale={locale} />,
     [client, locale],
   );
-  const tenantSwitcherVisible = !isLiteEdition && shouldShowTenantSwitcher({
-    canAccessAllTenants: user.canAccessAllTenants,
-    collapsed,
-    hasSwitchHandler: Boolean(onTenantSwitch),
-  });
+  // Vue UserMenu.vue:375-382 — showTenantSwitcher 只看 memberships 数（>=1 即
+  // 显示切换 glyph：单空间用户也要能从子菜单看到当前空间/创建入口）。它不看
+  // canAccessAllTenants——超管额外走侧栏 TenantSelector（Vue-only 挂载），不收紧
+  // 此处门控。shouldShowTenantSwitcher 仍保留给未来的侧栏 TenantSelector 挂载。
+  const tenantSwitcherVisible = !isLiteEdition && user.memberships.length > 0;
   const switchTenant = useCallback(async (tenantId: string) => {
     if (!onTenantSwitch || tenantSwitchPending) return;
     // Vue UserMenu.switchToTenant closes both the account menu and its
@@ -905,6 +914,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   // the tenant switcher, so the switcher collapses with it (UserMenu.vue:56).
   const showTenantIdentityLine = !isLiteEdition && (!collapsed && !user.canAccessAllTenants && user.membershipsCount > 1 || (!collapsed && user.canAccessAllTenants));
   const roleLabel = user.role ? formatMessage(locale, `tenantMember.role.${user.role}`) : '';
+  // Vue composables/useRoleLabel.ts ROLE_ICONS — 角色标签的 12px 前缀图标
+  // （owner=secured/admin=user-circle/contributor=edit/viewer=browse），颜色随
+  // 所在行文本（user-tenant-meta-icon / dropdown-tenant-panel-role-icon 均
+  // color:inherit）。
+  const roleIcon = user.role && ROLE_ICONS[user.role] ? ROLE_ICONS[user.role] : '';
 
   return (
     // shell.css → utilities: .plat-shell (flex row, full viewport), .plat-shell__aside
@@ -1056,6 +1070,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     <span className="user-tenant-meta">
                       {user.name && user.name !== user.tenantName ? <span className="user-tenant-meta-name">{user.name}</span> : null}
                       {user.name && user.name !== user.tenantName && roleLabel ? <span aria-hidden="true" className="user-tenant-meta-sep">·</span> : null}
+                      {roleIcon ? <TIcon name={roleIcon} size="12px" className="user-tenant-meta-icon" aria-hidden="true" /> : null}
                       {roleLabel ? <span className="user-tenant-meta-role">{roleLabel}</span> : null}
                     </span>
                   </> : <>
@@ -1093,7 +1108,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   <TIcon name="system-sum" className="menu-icon" aria-hidden="true" />
                   <span className="dropdown-tenant-panel-main">
                     <span className="dropdown-tenant-panel-name" title={user.tenantName || user.name || undefined}>{user.tenantName || user.name || '—'}</span>
-                    {roleLabel ? <span className="dropdown-tenant-panel-role">{roleLabel}</span> : null}
+                    {roleLabel ? <span className="dropdown-tenant-panel-role">
+                      {roleIcon ? <TIcon name={roleIcon} size="12px" className="dropdown-tenant-panel-role-icon" aria-hidden="true" /> : null}
+                      {roleLabel}
+                    </span> : null}
                   </span>
                   {tenantSwitcherVisible ? <button type="button" aria-label={t('tenant.switcher.menuLabel')} title={t('tenant.switcher.menuLabel')} aria-expanded={tenantMenuOpen}
                     className="dropdown-tenant-panel-trail-btn" onClick={toggleTenantSubmenu}>
@@ -1156,7 +1174,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   <span className="menu-text-with-icon">
                     <span>{labels.helpAndDocs}</span>
                     <svg className="menu-external-icon" viewBox="0 0 16 16" aria-hidden="true">
-                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
+                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667a2.667 2.667 0 0 1-2.667-2.666V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334A1.333 1.333 0 0 0 4.667 13.333h6a1.333 1.333 0 0 0 1.333-1.333v-4A.667.667 0 0 1 12.667 8Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
                     </svg>
                   </span>
                 </a>
@@ -1167,7 +1185,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     <span>{labels.github}</span>
                     <TIcon name="star-filled" className="menu-github-star-icon" size="16px" aria-hidden="true" />
                     <svg className="menu-external-icon" viewBox="0 0 16 16" aria-hidden="true">
-                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
+                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667a2.667 2.667 0 0 1-2.667-2.666V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334A1.333 1.333 0 0 0 4.667 13.333h6a1.333 1.333 0 0 0 1.333-1.333v-4A.667.667 0 0 1 12.667 8Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
                     </svg>
                   </span>
                 </a>
