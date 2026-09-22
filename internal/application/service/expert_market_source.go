@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/Tencent/WeKnora/internal/agent/experts"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/experts"
 )
 
 // MarketExpertSource is the production ExpertSource: it scans each tenant's

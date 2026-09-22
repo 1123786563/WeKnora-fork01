@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 )
 
 // AuthorizedInputLoader reads one referenced resource for a scope. It is the

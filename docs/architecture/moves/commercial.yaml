@@ -1,0 +1,137 @@
+# MOVE-MANIFEST commercial — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: commercial
+description: 套餐、权益、预算、Usage、账单、支付、履约、商业网关（§5.13/§5.18）
+move_packages:
+  - from: internal/application/repository/commercial
+    to: internal/modules/commercial/repository/commercial
+  - from: internal/application/service/commercial
+    to: internal/modules/commercial/service/commercial
+  - from: internal/commercial
+    to: internal/modules/commercial
+  - from: internal/infrastructure/commercialplatform
+    to: internal/modules/commercial/commercialplatform
+  - from: internal/infrastructure/openmeter
+    to: internal/modules/commercial/openmeter
+  - from: internal/payment
+    to: internal/modules/commercial/payment
+  - from: internal/usage
+    to: internal/modules/commercial/usage
+alias_obligations:
+  - old_import_path: internal/application/repository/commercial
+    passb_task: B-commercial
+  - old_import_path: internal/application/service/commercial
+    passb_task: B-commercial
+  - old_import_path: internal/commercial
+    passb_task: B-commercial
+  - old_import_path: internal/infrastructure/commercialplatform
+    passb_task: B-commercial
+  - old_import_path: internal/infrastructure/openmeter
+    passb_task: B-commercial
+  - old_import_path: internal/payment
+    passb_task: B-commercial
+  - old_import_path: internal/usage
+    passb_task: B-commercial
+legacy_files:
+  - path: internal/application/repository/model_usage.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Model usage (application/repository)
+    passb_task: B-commercial
+  - path: internal/application/repository/user_usage.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: User usage (application/repository)
+    passb_task: B-commercial
+  - path: internal/application/service/semantic_model_budget.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Semantic model budget (application/service)
+    passb_task: B-commercial
+  - path: internal/application/service/usage_recorder.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Usage recorder (application/service)
+    passb_task: B-commercial
+  - path: internal/handler/commercial.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Commercial (handler)
+    passb_task: B-commercial
+  - path: internal/handler/commercial_task_budget.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Commercial task budget (handler)
+    passb_task: B-commercial
+  - path: internal/handler/payment_callbacks.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Payment callbacks (handler)
+    passb_task: B-commercial
+  - path: internal/handler/usage.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Usage (handler)
+    passb_task: B-commercial
+owned_files:
+  move_sources:
+  - internal/application/repository/commercial
+  - internal/application/service/commercial
+  - internal/commercial
+  - internal/infrastructure/commercialplatform
+  - internal/infrastructure/openmeter
+  - internal/payment
+  - internal/usage
+  move_targets:
+    - internal/modules/commercial/repository/commercial
+    - internal/modules/commercial/service/commercial
+    - internal/modules/commercial
+    - internal/modules/commercial/commercialplatform
+    - internal/modules/commercial/openmeter
+    - internal/modules/commercial/payment
+    - internal/modules/commercial/usage
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/application/repository/commercial
+    - internal/application/service/commercial
+    - internal/commercial
+    - internal/infrastructure/commercialplatform
+    - internal/infrastructure/openmeter
+    - internal/payment
+    - internal/usage
+  importers:
+  - cmd/saas-migrate
+  - internal/agent
+  - internal/agent/trpc
+  - internal/appconnector
+  - internal/application/repository
+  - internal/application/repository/commercial
+  - internal/application/service
+  - internal/application/service/appconnector
+  - internal/application/service/commercial
+  - internal/application/service/workbench
+  - internal/container
+  - internal/craft
+  - internal/handler
+  - internal/infrastructure/commercialplatform
+  - internal/infrastructure/openmeter
+  - internal/models/chat
+  - internal/payment
+  - internal/router
+  module_files:
+    - internal/modules/commercial/README.md
+    - internal/modules/commercial/module.go
+    - internal/modules/commercial/legacy/README.md
+test_commands:
+  - go test ./internal/modules/commercial/... -count=1
+integration_points:
+  routes:
+  - RegisterCommercialRoutes — internal/router/routes_commercial.go:19
+  - RegisterUsageRoutes — internal/router/routes_usage.go:21
+  workers:
+    []
+  lifecycle_hooks:
+  - wire CommercialHandler + CommercialPlatform (inline) — internal/container/container.go:881
+  - wire CommercialHandler + BillingAccountService (inline) — internal/container/container.go:892
+  - wire CommercialHandler + PlanVersionService (inline) — internal/container/container.go:902
+  - wire QuotaGuard → Commercial/TenantMember/Knowledge (inline) — internal/container/container.go:916 (QuotaGuard 主所有权 commercial；触及 identity/knowledge)
+  - startCommercialFulfillment — internal/container/container.go:944 (func at container.go:2475)
+  - wire CommercialHandler + OrderService (inline) — internal/container/container.go:1015
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

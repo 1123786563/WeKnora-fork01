@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"gorm.io/gorm"
 )
 
@@ -19,8 +19,10 @@ import (
 // run fence in the same transaction as its writes.
 type NativeCommitCoordinator struct{ db *gorm.DB }
 
-var _ nativecontract.CommitCoordinator = (*NativeCommitCoordinator)(nil)
-var _ nativecontract.EventReader = (*NativeCommitCoordinator)(nil)
+var (
+	_ nativecontract.CommitCoordinator = (*NativeCommitCoordinator)(nil)
+	_ nativecontract.EventReader       = (*NativeCommitCoordinator)(nil)
+)
 
 func NewNativeCommitCoordinator(db *gorm.DB) *NativeCommitCoordinator {
 	return &NativeCommitCoordinator{db: db}

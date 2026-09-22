@@ -36,11 +36,11 @@ import (
 	"strings"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/metrics"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -120,7 +120,8 @@ type fileServiceObjectDeleter struct {
 // CraftObjectDeleterFromFileService adapts the existing file service.
 func CraftObjectDeleterFromFileService(files interface {
 	DeleteFile(ctx context.Context, filePath string) error
-}) CraftObjectDeleter {
+},
+) CraftObjectDeleter {
 	return fileServiceObjectDeleter{files: files}
 }
 

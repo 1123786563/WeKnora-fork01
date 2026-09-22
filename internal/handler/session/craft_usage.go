@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
-	"github.com/Tencent/WeKnora/internal/craft"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/gin-gonic/gin"
 )
 

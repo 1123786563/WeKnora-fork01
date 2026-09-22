@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,6 +18,7 @@ type nativeArchiveScopeFake struct {
 func (f *nativeArchiveScopeFake) Resolve(context.Context) (nativecontract.Scope, error) {
 	return f.result, f.err
 }
+
 func (f *nativeArchiveScopeFake) Recheck(_ context.Context, _ nativecontract.Scope, _ []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
 	f.calls++
 	if f.err != nil {
@@ -43,11 +44,13 @@ func (f *nativeArchiveStoreFake) List(_ context.Context, scope nativecontract.Sc
 	f.listScope, f.listQuery = scope, query
 	return f.listPage, f.err
 }
+
 func (f *nativeArchiveStoreFake) Read(_ context.Context, _ nativecontract.Scope, id string) (nativecontract.ArchiveRecord, error) {
 	f.calls++
 	f.readID = id
 	return f.record, f.err
 }
+
 func (f *nativeArchiveStoreFake) ReadArtifact(_ context.Context, _ nativecontract.Scope, id string) (nativecontract.ArtifactRef, error) {
 	f.calls++
 	f.artifactID = id

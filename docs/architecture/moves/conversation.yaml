@@ -1,0 +1,227 @@
+# MOVE-MANIFEST conversation — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: conversation
+description: Session、Message、Chat pipeline、Feedback、分享、建议、Query History、临时文档（§5.3/§5.18）
+move_packages:
+  - from: internal/application/service/chat_pipeline
+    to: internal/modules/conversation/chat_pipeline
+alias_obligations:
+  - old_import_path: internal/application/service/chat_pipeline
+    passb_task: B-conversation
+legacy_files:
+  - path: internal/application/repository/feedback.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Feedback (application/repository)
+    passb_task: B-conversation
+  - path: internal/application/repository/message.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Message (application/repository)
+    passb_task: B-conversation
+  - path: internal/application/repository/message_suggestion.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Message suggestion (application/repository)
+    passb_task: B-conversation
+  - path: internal/application/repository/query_history_export.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Query history export (application/repository)
+    passb_task: B-conversation
+  - path: internal/application/repository/session.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Session (application/repository)
+    passb_task: B-conversation
+  - path: internal/application/repository/temporary_document.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Temporary document (application/repository)
+    passb_task: B-conversation
+  - path: internal/application/service/artifact_collector.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Artifact collector (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/artifact_collector_store.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Artifact collector store (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/feedback.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Feedback (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/fork_bootstrapper.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Fork bootstrapper (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/message.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Message (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/message_artifact_versions.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Message artifact versions (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/message_suggestion.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Message suggestion (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/pinned_session_sandbox.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Pinned session sandbox (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/query_history_export.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Query history export (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/query_history_policy.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Query history policy (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/session.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Session (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/session_agent_qa.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Session agent qa (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/session_attachment_staging.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Session attachment staging (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/session_fork.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Session fork (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/session_knowledge_qa.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Session knowledge qa (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/session_qa_helpers.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Session qa helpers (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/session_sandbox_pin.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Session sandbox pin (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/session_share.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Session share (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/temporary_document.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Temporary document (application/service)
+    passb_task: B-conversation
+  - path: internal/application/service/workspace_checkpointer.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Workspace checkpointer (application/service)
+    passb_task: B-conversation
+  - path: internal/handler/feedback.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Feedback (handler)
+    passb_task: B-conversation
+  - path: internal/handler/message.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Message (handler)
+    passb_task: B-conversation
+  - path: internal/handler/message_suggestion.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Message suggestion (handler)
+    passb_task: B-conversation
+  - path: internal/handler/session/attachment_processor.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Attachment processor (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/fork.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Fork (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/handler.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Handler (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/helpers.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Helpers (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/image_upload.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Image upload (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/qa.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Qa (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/query_history_admin.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Query history admin (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/quick_answer_timeline.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Quick answer timeline (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/resource_urls.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Resource urls (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/share.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Share (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/steer.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Steer (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/stream.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Stream (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/temporary_document.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Temporary document (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/title.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Title (handler/session)
+    passb_task: B-conversation
+  - path: internal/handler/session/types.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Types (handler/session)
+    passb_task: B-conversation
+owned_files:
+  move_sources:
+  - internal/application/service/chat_pipeline
+  move_targets:
+    - internal/modules/conversation/chat_pipeline
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/application/service/chat_pipeline
+  importers:
+  - internal/application/service
+  - internal/container
+  - internal/handler
+  module_files:
+    - internal/modules/conversation/README.md
+    - internal/modules/conversation/module.go
+    - internal/modules/conversation/legacy/README.md
+test_commands:
+  - go test ./internal/modules/conversation/... -count=1
+integration_points:
+  routes:
+  - RegisterMessageRoutes — internal/router/routes_chat.go:20
+  - RegisterFeedbackRoutes — internal/router/routes_chat.go:49
+  - RegisterSessionShareRoutes — internal/router/routes_chat.go:72
+  - RegisterSessionRoutes — internal/router/routes_chat.go:95 (38 条中 conversation 27；craft 分组归 craft)
+  - RegisterChatRoutes — internal/router/routes_chat.go:237 (knowledge-chat/agent-chat/knowledge-search)
+  - RegisterQueryHistoryAdminRoutes — internal/router/routes_query_history.go:16
+  - serveMessageScopedFiles — internal/router/files.go (called router.go:346)
+  workers:
+  - TypeTemporaryDocumentProcess
+  - TypeQueryHistoryExport
+  lifecycle_hooks:
+  - startTemporaryDocumentCleanup — internal/container/container.go:618 (func at container.go:2421)
+  - registerChatLocalImageResolver — internal/container/container.go:1034 (func at container.go:1123)
+  - chatpipeline plugins ×17 (Search/Rerank/WebFetch/Merge/DataAnalysis/IntoChatMessage/ChatCompletion/ChatCompletionStream/FilterTopK/QueryUnderstand/LoadHistory/MemoryRecall/ExtractEntity/SearchEntity/SearchParallel/WikiBoost/MemoryAffinity) — internal/container/container.go:645-661
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

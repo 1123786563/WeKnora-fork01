@@ -3,15 +3,16 @@ package session
 import (
 	"context"
 	"encoding/json"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/application/service"
-	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/gin-gonic/gin"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Tencent/WeKnora/internal/application/service"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/gin-gonic/gin"
 )
 
 type runStoreFake struct {
@@ -23,27 +24,36 @@ type runStoreFake struct {
 func (f *runStoreFake) Admit(context.Context, agentruntime.Admission) (agentruntime.Run, error) {
 	return f.run, nil
 }
+
 func (f *runStoreFake) Claim(context.Context, agentruntime.RunKey, string, time.Duration) (agentruntime.Fence, error) {
 	return agentruntime.Fence{}, nil
 }
+
 func (f *runStoreFake) Renew(context.Context, agentruntime.Fence, time.Duration) error { return nil }
-func (f *runStoreFake) Scan(context.Context, int) ([]agentruntime.RunKey, error)       { return nil, nil }
+
+func (f *runStoreFake) Scan(context.Context, int) ([]agentruntime.RunKey, error) { return nil, nil }
+
 func (f *runStoreFake) SaveCheckpoint(context.Context, agentruntime.Fence, agentruntime.CheckpointRecord) error {
 	return nil
 }
+
 func (f *runStoreFake) SetStatus(context.Context, agentruntime.Fence, string, string) error {
 	return nil
 }
+
 func (f *runStoreFake) LoadCheckpoint(context.Context, agentruntime.RunKey) (agentruntime.CheckpointRecord, error) {
 	return agentruntime.CheckpointRecord{State: json.RawMessage(`{}`)}, nil
 }
+
 func (f *runStoreFake) Get(context.Context, agentruntime.RunKey) (agentruntime.Run, error) {
 	f.got++
 	return f.run, nil
 }
+
 func (f *runStoreFake) ReadEvents(context.Context, agentruntime.RunKey, int64, int) ([]agentruntime.RunEvent, error) {
 	return f.events, nil
 }
+
 func TestAgentRunHandlerRejectsRunFromOtherOwner(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	f := &runStoreFake{run: agentruntime.Run{Key: agentruntime.RunKey{TenantID: 1, RunID: "r"}, SessionID: "s", UserID: "other"}}

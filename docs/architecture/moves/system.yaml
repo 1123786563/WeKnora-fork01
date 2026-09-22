@@ -1,0 +1,58 @@
+# MOVE-MANIFEST system — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: system
+description: 初始化、System Setting、部署能力、系统管理、健康、housekeeping（§5.15/§5.18）
+move_packages:
+  []
+alias_obligations:
+  []
+legacy_files:
+  - path: internal/application/repository/system_setting.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: System setting (application/repository)
+    passb_task: B-system
+  - path: internal/application/service/system_setting.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: System setting (application/service)
+    passb_task: B-system
+  - path: internal/handler/deployment_capabilities.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Deployment capabilities (handler)
+    passb_task: B-system
+  - path: internal/handler/initialization.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Initialization (handler)
+    passb_task: B-system
+  - path: internal/handler/system.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: System (handler)
+    passb_task: B-system
+owned_files:
+  move_sources:
+    []
+  move_targets:
+    []
+  importers:
+    []
+  module_files:
+    - internal/modules/system/README.md
+    - internal/modules/system/module.go
+    - internal/modules/system/legacy/README.md
+test_commands:
+  - go test ./internal/modules/system/... -count=1
+integration_points:
+  routes:
+  - RegisterInitializationRoutes — internal/router/routes_infra.go:102
+  - RegisterSystemRoutes — internal/router/routes_auth_tenant.go:245
+  - RegisterSystemAdminRoutes — internal/router/routes_auth_tenant.go:279 (审计端点归 identity；其余归 system)
+  workers:
+    []
+  lifecycle_hooks:
+  - startHousekeepingService — internal/container/container.go:642 (func at container.go:2389)
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

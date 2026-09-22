@@ -1,6 +1,6 @@
 package service
 
-import "github.com/Tencent/WeKnora/internal/modelcontext"
+import "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
 
 // wikiSlugHandles maps real wiki slugs to short, low-entropy model handles
 // (ref-1, ref-2, …) so the ingest editor LLM never has to reproduce a

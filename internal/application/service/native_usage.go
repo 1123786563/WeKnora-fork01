@@ -4,17 +4,24 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 )
 
-type NativeUsageDelta = repository.NativeUsageDelta
-type NativeUsageStore interface {
-	ObserveDelta(context.Context, nativecontract.Fence, nativecontract.UsageObservation) (NativeUsageDelta, error)
-	ConfirmSettlement(context.Context, nativecontract.Fence, string) error
-	ClaimSettlement(context.Context, nativecontract.Fence, string) (bool, error)
-	ReleaseSettlement(context.Context, nativecontract.Fence, string) error
-}
+// NativeUsageDelta aliases the repository-level usage delta record.
+type (
+	NativeUsageDelta = repository.NativeUsageDelta
+
+	// NativeUsageStore is the settlement boundary the service depends on to
+	// observe and settle usage against a fence.
+	NativeUsageStore interface {
+		ObserveDelta(context.Context, nativecontract.Fence, nativecontract.UsageObservation) (NativeUsageDelta, error)
+		ConfirmSettlement(context.Context, nativecontract.Fence, string) error
+		ClaimSettlement(context.Context, nativecontract.Fence, string) (bool, error)
+		ReleaseSettlement(context.Context, nativecontract.Fence, string) error
+	}
+)
+
 type NativeUsageFunding interface {
 	Funding(context.Context, nativecontract.RunIdentity) (nativecontract.FundingBinding, error)
 }
@@ -44,6 +51,7 @@ func (s *NativeUsageService) BudgetRoot(o nativecontract.UsageObservation) strin
 	}
 	return o.Run.BudgetRootRunID
 }
+
 func (s *NativeUsageService) Reserve(ctx context.Context, fence nativecontract.Fence, key string, units int64) error {
 	if s == nil || s.budget == nil || units <= 0 || key == "" {
 		return nativeUsageServiceFailure(nativecontract.ErrInvalid, "usage reservation is incomplete")
@@ -62,6 +70,7 @@ func (s *NativeUsageService) Reserve(ctx context.Context, fence nativecontract.F
 	}
 	return s.budget.Reserve(ctx, root, key, units)
 }
+
 func (s *NativeUsageService) Observe(ctx context.Context, fence nativecontract.Fence, o nativecontract.UsageObservation) error {
 	if s == nil || s.store == nil || s.budget == nil {
 		return nativeUsageServiceFailure(nativecontract.ErrStore, "usage service is unavailable")
@@ -137,6 +146,7 @@ func (s *NativeUsageService) Observe(ctx context.Context, fence nativecontract.F
 	}
 	return s.store.ConfirmSettlement(ctx, fence, delta.IntentID)
 }
+
 func (s *NativeUsageService) authoritativeFunding(ctx context.Context, run nativecontract.RunIdentity) (nativecontract.FundingBinding, error) {
 	if s.funding == nil {
 		return nativecontract.FundingBinding{}, nativeUsageServiceFailure(nativecontract.ErrStore, "usage funding authority is unavailable")
@@ -150,6 +160,7 @@ func (s *NativeUsageService) authoritativeFunding(ctx context.Context, run nativ
 	}
 	return f, nil
 }
+
 func nativeUsageServiceFailure(code nativecontract.ErrorCode, message string) error {
 	return &nativecontract.Failure{Code: code, Message: message, Effect: nativecontract.EffectNotDispatched}
 }

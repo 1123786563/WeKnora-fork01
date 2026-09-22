@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/config"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"

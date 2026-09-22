@@ -5,9 +5,9 @@ import (
 	"io"
 	"net/http"
 
-	repository "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
-	"github.com/Tencent/WeKnora/internal/payment"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
+	repository "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

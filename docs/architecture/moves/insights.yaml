@@ -1,0 +1,65 @@
+# MOVE-MANIFEST insights — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: insights
+description: Analytics、Evaluation、运营指标、报表、可重建分析投影（§5.14/§5.18）
+move_packages:
+  - from: internal/application/service/metric
+    to: internal/modules/insights/metric
+alias_obligations:
+  - old_import_path: internal/application/service/metric
+    passb_task: B-insights
+legacy_files:
+  - path: internal/application/repository/analytics.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Analytics (application/repository)
+    passb_task: B-insights
+  - path: internal/application/service/dataset.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Dataset (application/service)
+    passb_task: B-insights
+  - path: internal/application/service/evaluation.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Evaluation (application/service)
+    passb_task: B-insights
+  - path: internal/application/service/metric_hook.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Metric hook (application/service)
+    passb_task: B-insights
+  - path: internal/handler/analytics.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Analytics (handler)
+    passb_task: B-insights
+  - path: internal/handler/evaluation.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Evaluation (handler)
+    passb_task: B-insights
+owned_files:
+  move_sources:
+  - internal/application/service/metric
+  move_targets:
+    - internal/modules/insights/metric
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/application/service/metric
+  importers:
+  - internal/application/service
+  module_files:
+    - internal/modules/insights/README.md
+    - internal/modules/insights/module.go
+    - internal/modules/insights/legacy/README.md
+test_commands:
+  - go test ./internal/modules/insights/... -count=1
+integration_points:
+  routes:
+  - RegisterAnalyticsRoutes — internal/router/routes_analytics.go:15
+  - RegisterEvaluationRoutes — internal/router/routes_infra.go:94
+  workers:
+    []
+  lifecycle_hooks:
+    []
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

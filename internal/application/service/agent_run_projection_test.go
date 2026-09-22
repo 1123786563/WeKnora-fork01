@@ -2,9 +2,10 @@ package service
 
 import (
 	"encoding/json"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEventsAfter(t *testing.T) {
@@ -12,6 +13,7 @@ func TestEventsAfter(t *testing.T) {
 	got := EventsAfter(events, 2)
 	require.Equal(t, []agentruntime.RunEvent{{Seq: 3}}, got)
 }
+
 func TestRunEventJSON(t *testing.T) {
 	in := agentruntime.RunEvent{Seq: 4, AttemptID: "a", Type: "attempt_replaced", Payload: json.RawMessage(`{"old":"x"}`)}
 	raw, err := json.Marshal(in)

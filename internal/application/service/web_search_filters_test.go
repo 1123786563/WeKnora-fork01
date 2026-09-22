@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	infra "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
+	infra "github.com/Tencent/WeKnora/internal/modules/airesource/web_search"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"

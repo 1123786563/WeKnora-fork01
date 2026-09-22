@@ -3,8 +3,9 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/Tencent/WeKnora/internal/sandbox"
 	"testing"
+
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
 type resourceRecoveryFake struct {
@@ -16,12 +17,15 @@ func (f *resourceRecoveryFake) Observe(context.Context, sandbox.ExecutionRef) (s
 	f.calls++
 	return f.obs, nil
 }
+
 func (f *resourceRecoveryFake) CancelExecution(context.Context, sandbox.ExecutionRef) error {
 	return nil
 }
+
 func testResource() AgentRunResource {
 	return AgentRunResource{TenantID: 1, RunID: "r1", SessionID: "s1", Ref: sandbox.ExecutionRef{TenantID: 1, SessionID: "s1", Provider: "docker", ConfigID: "cfg", InstanceID: "i1", Generation: "g1", TaskID: "t1", WorkspaceID: "w1"}}
 }
+
 func TestAgentRunResourceRecoveryStates(t *testing.T) {
 	for _, tc := range []struct {
 		name, state string
@@ -43,6 +47,7 @@ func TestAgentRunResourceRecoveryStates(t *testing.T) {
 		})
 	}
 }
+
 func TestAgentRunResourceRejectsCrossTenantAndGeneration(t *testing.T) {
 	repo := NewMemoryAgentRunResourceRepository()
 	f := &resourceRecoveryFake{obs: sandbox.ExecutionObservation{State: "succeeded", Result: []byte(`{"ok":true}`)}}
@@ -76,6 +81,7 @@ func TestAgentRunResourcePersistsUnavailableAndRejectsGenerationChange(t *testin
 		t.Fatalf("protected=%v err=%v", protected, err)
 	}
 }
+
 func TestAgentRunResourceProtectsNonterminal(t *testing.T) {
 	repo := NewMemoryAgentRunResourceRepository()
 	r := testResource()

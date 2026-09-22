@@ -1,0 +1,266 @@
+# MOVE-MANIFEST agentcatalog — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: agentcatalog
+description: Agent 定义/版本、Persona、Expert、Subagent 目录、Skill、Marketplace、收藏（§5.4/§5.18）
+move_packages:
+  []
+alias_obligations:
+  []
+legacy_files:
+  - path: internal/application/repository/agent_marketplace.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent marketplace (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/agent_share.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent share (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/agent_version.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent version (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/custom_agent.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Custom agent (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/expert_install.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Expert install (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/published_expert.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Published expert (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/published_skill.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Published skill (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/tenant_disabled_shared_agent.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Tenant disabled shared agent (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/tenant_skill.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Tenant skill (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/tenant_subagent.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Tenant subagent (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/repository/user_resource_favorite.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: User resource favorite (application/repository)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_browser_preferences.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent browser preferences (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_marketplace.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent marketplace (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent service (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_share.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent share (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/agent_version.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent version (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/custom_agent.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Custom agent (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/expert_market_source.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Expert market source (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/expert_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Expert service (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/expert_skills.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Expert skills (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/skill_market_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Skill market service (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/subagent_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Subagent service (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_expert_market_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant expert market service (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_admin.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill admin (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_bundle.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill bundle (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_catalog.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill catalog (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_effective.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill effective (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_env_declare.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill env declare (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_files.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill files (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_install.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill install (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_market_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill market service (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_progress.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill progress (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_reaper.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill reaper (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_remove.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill remove (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_runtime_verify.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill runtime verify (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill service (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_source.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill source (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_steer.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill steer (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_stop.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill stop (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_transcript.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill transcript (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/tenant_skill_verify.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant skill verify (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/application/service/user_resource_favorite.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: User resource favorite (application/service)
+    passb_task: B-agentcatalog
+  - path: internal/handler/agent_marketplace.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Agent marketplace (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/agent_version.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Agent version (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/custom_agent.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Custom agent (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/expert.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Expert (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/persona.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Persona (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/shared_agent_access.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Shared agent access (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/skill_catalog.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Skill catalog (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/skill_handler.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Skill handler (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/skill_market.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Skill market (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/subagent.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Subagent (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/tenant_expert_market.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Tenant expert market (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/tenant_skill_market.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Tenant skill market (handler)
+    passb_task: B-agentcatalog
+  - path: internal/handler/user_resource_favorite.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: User resource favorite (handler)
+    passb_task: B-agentcatalog
+owned_files:
+  move_sources:
+    []
+  move_targets:
+    []
+  importers:
+    []
+  module_files:
+    - internal/modules/agentcatalog/README.md
+    - internal/modules/agentcatalog/module.go
+    - internal/modules/agentcatalog/legacy/README.md
+test_commands:
+  - go test ./internal/modules/agentcatalog/... -count=1
+integration_points:
+  routes:
+  - RegisterCustomAgentRoutes — internal/router/routes_agent.go:22
+  - RegisterUserFavoriteRoutes — internal/router/routes_agent.go:61
+  - RegisterSkillRoutes — internal/router/routes_agent.go:76
+  - RegisterAgentVersionRoutes — internal/router/routes_agent_versions.go:29
+  - RegisterAgentMarketplaceRoutes — internal/router/routes_agent_marketplace.go:21
+  - RegisterPersonaRoutes — internal/router/routes_persona.go:24
+  - RegisterExpertRoutes — internal/router/routes_expert.go:21
+  - RegisterSubagentRoutes — internal/router/routes_subagent.go:26
+  - RegisterSkillMarketRoutes — internal/router/routes_skill_market.go:32
+  - RegisterTenantSkillMarketRoutes — internal/router/routes_tenant_skill_market.go:31
+  - RegisterTenantExpertMarketRoutes — internal/router/routes_tenant_expert_market.go:35
+  workers:
+    []
+  lifecycle_hooks:
+  - startTenantSkillReaper — internal/container/container.go:702 (func at container.go:2405)
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/agent/experts"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/experts"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )

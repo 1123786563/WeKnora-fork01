@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/workbench/voice"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/voice"
 	"github.com/gin-gonic/gin"
 )
 
@@ -307,10 +307,10 @@ func (h *MobileVoiceHandler) CreateVoiceSession(c *gin.Context) {
 	}
 	// The plaintext token appears exactly once, here. Never logged.
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"id":           sessionID,
-		"token":        grant.Token,
-		"expires_at":   expiry,
-		"max_seconds":  maxSeconds,
+		"id":            sessionID,
+		"token":         grant.Token,
+		"expires_at":    expiry,
+		"max_seconds":   maxSeconds,
 		"price_version": priceVersion,
 	}})
 }
@@ -343,12 +343,12 @@ func (h *MobileVoiceHandler) releaseHold(ctx context.Context, tenantID uint64, r
 // recorded row WITHOUT re-issuing a token (only its hash is stored).
 func (h *MobileVoiceHandler) writeExistingVoiceSession(c *gin.Context, existing repository.VoiceSessionRow) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"id":            existing.ID,
-		"state":         existing.State,
-		"expires_at":    existing.ExpiresAt,
-		"max_seconds":   existing.MaxSeconds,
-		"token_issued":  false,
-		"replay":        true,
+		"id":           existing.ID,
+		"state":        existing.State,
+		"expires_at":   existing.ExpiresAt,
+		"max_seconds":  existing.MaxSeconds,
+		"token_issued": false,
+		"replay":       true,
 	}})
 }
 

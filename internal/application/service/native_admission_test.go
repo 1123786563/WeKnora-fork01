@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -98,6 +98,7 @@ type nativeAdmissionAuthorityFake struct {
 func (f *nativeAdmissionAuthorityFake) Resolve(context.Context) (nativecontract.Scope, error) {
 	return f.scope, f.err
 }
+
 func (f *nativeAdmissionAuthorityFake) Recheck(_ context.Context, _ nativecontract.Scope, _ []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -107,15 +108,19 @@ func (f *nativeAdmissionAuthorityFake) Recheck(_ context.Context, _ nativecontra
 	}
 	return f.scope, f.err
 }
+
 func (f *nativeAdmissionAuthorityFake) CurrentConfig(context.Context, nativecontract.Scope) (nativecontract.ConfigBinding, error) {
 	return f.config, f.err
 }
+
 func (f *nativeAdmissionAuthorityFake) CurrentFunding(context.Context, nativecontract.Scope, nativecontract.RunIdentity) (nativecontract.FundingBinding, error) {
 	return f.funding, f.err
 }
+
 func (f *nativeAdmissionAuthorityFake) RequiredGrants(context.Context, nativecontract.Scope, nativecontract.RunIdentity) ([]nativecontract.ResourceGrant, error) {
 	return f.grants, f.err
 }
+
 func (f *nativeAdmissionAuthorityFake) ValidateSession(context.Context, nativecontract.Scope, session.Key) error {
 	if f.sessionErr != nil {
 		return f.sessionErr
@@ -137,6 +142,7 @@ func (b *nativeAdmissionBudgetFake) Reserve(_ context.Context, admission nativec
 	b.last = admission
 	return b.err
 }
+
 func (b *nativeAdmissionBudgetFake) Release(context.Context, nativecontract.Admission) error {
 	return nil
 }

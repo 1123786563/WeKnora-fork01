@@ -3,10 +3,11 @@ package repository
 import (
 	"context"
 	"encoding/json"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/stretchr/testify/require"
 )
 
 func admitEventRun(t *testing.T) (*AgentRunStore, agentruntime.Fence) {
@@ -19,6 +20,7 @@ func admitEventRun(t *testing.T) (*AgentRunStore, agentruntime.Fence) {
 	require.NoError(t, err)
 	return s, f
 }
+
 func TestAgentRunEventsSequenceAndReplay(t *testing.T) {
 	s, f := admitEventRun(t)
 	a, err := s.AppendEvent(context.Background(), f, agentruntime.RunEvent{AttemptID: "a1", Type: "attempt_replaced", Payload: json.RawMessage(`{}`)})
@@ -31,6 +33,7 @@ func TestAgentRunEventsSequenceAndReplay(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []int64{2}, []int64{got[0].Seq})
 }
+
 func TestAgentRunFinalizeIdempotent(t *testing.T) {
 	s, f := admitEventRun(t)
 	require.NoError(t, s.Finalize(context.Background(), f, json.RawMessage(`{"content":"done"}`)))

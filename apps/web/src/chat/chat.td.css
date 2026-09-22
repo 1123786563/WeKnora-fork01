@@ -1426,3 +1426,164 @@
   color: var(--td-text-color-placeholder);
   padding: 4px 0 8px;
 }
+
+/* ===== §12 MentionSelector.vue（composer @ 弹层，Input-field Teleport） ===== */
+.mention-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--td-bg-color-container, #fff);
+  border: 1px solid var(--td-component-stroke, #e7e9eb);
+  border-radius: var(--td-radius-extraLarge, 12px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.04);
+  width: 220px;
+  max-height: 388px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mention-menu .mention-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.mention-menu .mention-group {
+  padding: 2px 0 5px;
+}
+
+.mention-menu .mention-group:not(:last-child) {
+  border-bottom: 1px solid var(--td-component-stroke, #f0f0f0);
+}
+
+.mention-menu .mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  margin: 1px 6px;
+  box-sizing: border-box;
+  cursor: pointer;
+  border-radius: var(--td-radius-medium, 6px);
+  color: var(--td-text-color-primary, #333);
+  font-size: var(--td-font-size-body-medium, 14px);
+  font-family: var(--app-font-family);
+  transition: background 0.15s ease;
+}
+
+.mention-menu .mention-item:hover,
+.mention-menu .mention-item.active {
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+  color: var(--td-text-color-primary, #333);
+}
+
+.mention-menu .mention-item .icon-wrap {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.mention-menu .mention-item .icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  font-size: 16px;
+  background: transparent;
+  color: var(--td-text-color-secondary, #666);
+}
+
+.mention-menu .mention-item.active .icon {
+  color: var(--td-brand-color);
+}
+
+.mention-menu .mention-item.active .faq-icon {
+  color: var(--weknora-faq-color, #0052d9);
+}
+
+.mention-menu .mention-item .item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mention-menu .mention-item .name {
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-menu .mention-item .count {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--td-font-size-mark-small, 12px);
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text-color-placeholder, #999);
+}
+
+.mention-menu .empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--td-text-color-placeholder, #999);
+  font-size: var(--td-font-size-body-medium, 14px);
+}
+
+/* ===== §13 kb-btn 悬停 tooltip（Vue Input-field.vue:2756 t-tooltip light/top，
+   实测：content 4/8 pad、#fff、radius 6、--td-shadow-2、14/22，箭头 8px 居中朝下） ===== */
+.wk-kb-tip {
+  pointer-events: none;
+  position: absolute;
+  /* Vue 实测：content 底缘距按钮顶 16px（content30 + arrow8），箭头随流外定位 */
+  bottom: calc(100% + 15px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5600;
+}
+
+.wk-kb-tip .t-popup__content {
+  display: inline-block;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border-radius: var(--td-radius-medium, 6px);
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  line-height: 22px;
+  box-shadow: var(--td-shadow-2, 0 3px 14px 2px rgba(0, 0, 0, 0.05), 0 8px 10px 1px rgba(0, 0, 0, 0.06)),
+    /* tdesign light 主题 tooltip 的 0.5px 发丝边＝四向 inset shadow（Vue 实测） */
+    #dcdcdc 0 0.5px 0 0 inset, #dcdcdc 0.5px 0 0 0 inset, #dcdcdc 0 -0.5px 0 0 inset, #dcdcdc -0.5px 0 0 0 inset;
+  white-space: nowrap;
+}
+
+/* Vue tdesign（tdesign.css:4166-4213）原方复刻：8px 箭头容器 + ::before 旋转方块
+   （border-top-left-radius 100% + inset 发丝影）；top placement 下中心压 content 底缘。 */
+.wk-kb-tip .wk-kb-tip__arrow {
+  position: absolute;
+  /* tdesign-react 侧 .t-tooltip .t-popup__content 携 z-index:5600 与外投影，
+     箭头须压过其投影层才可见（vue-next 侧无此 z，天然可见） */
+  z-index: 5601;
+  width: 8px;
+  height: 8px;
+  left: 50%;
+  margin-left: -4px;
+  top: calc(100% - 5px);
+}
+
+.wk-kb-tip .wk-kb-tip__arrow::before {
+  position: absolute;
+  content: '';
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: var(--td-bg-color-container, #fff);
+  border-top-left-radius: 100%;
+  box-shadow: var(--td-shadow-inset-left, inset 0.5px 0 0 0 #dcdcdc), var(--td-shadow-inset-bottom, inset 0 -0.5px 0 0 #dcdcdc);
+}

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 )
 
 var ErrSemanticModelRatesUnavailable = errors.New("semantic_model_rates_unavailable")

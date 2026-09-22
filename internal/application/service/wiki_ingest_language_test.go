@@ -7,7 +7,7 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/Tencent/WeKnora/internal/agent"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/craft"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/stretchr/testify/require"
 )
 
@@ -251,7 +251,8 @@ func (r *fakeControlReplier) calls() []string {
 
 // newControlFixture assembles the control service with recording fakes.
 func newControlFixture(t *testing.T) (*CraftControlService, *fakeControlRuns, *fakeDelegationStore,
-	*controlExecutor, *fakeInteractionStore, *fakeControlReplier, *controlSequence) {
+	*controlExecutor, *fakeInteractionStore, *fakeControlReplier, *controlSequence,
+) {
 	t.Helper()
 	runs := &fakeControlRuns{run: agentruntime.Run{
 		Key:       agentruntime.RunKey{TenantID: 1, RunID: "run-ctl"},
@@ -340,8 +341,10 @@ func TestControlRegistersInteractionAndParksRun(t *testing.T) {
 }
 
 func TestControlWithoutInteractionSupportWaitsExplicitly(t *testing.T) {
-	runs := &fakeControlRuns{run: agentruntime.Run{Key: agentruntime.RunKey{TenantID: 1, RunID: "run-ctl"},
-		SessionID: "s1", UserID: "u1", Status: "running"}}
+	runs := &fakeControlRuns{run: agentruntime.Run{
+		Key:       agentruntime.RunKey{TenantID: 1, RunID: "run-ctl"},
+		SessionID: "s1", UserID: "u1", Status: "running",
+	}}
 	store := newFakeDelegationStore()
 	exec := &fakeDelegationExecutor{}
 	reply := &fakeControlReplier{}
@@ -550,8 +553,10 @@ func TestControlStopKeepsResultWhenCompletionRacesAbort(t *testing.T) {
 		if err := store.SaveResult(ctx, controlFence(), saved); err != nil {
 			return craft.Observation{}, err
 		}
-		return craft.Observation{SessionID: "oc-1", PromptMessageID: "msg_ctl",
-			Completed: true, Idle: true, Finish: "stop", AssistantParentID: "msg_ctl"}, nil
+		return craft.Observation{
+			SessionID: "oc-1", PromptMessageID: "msg_ctl",
+			Completed: true, Idle: true, Finish: "stop", AssistantParentID: "msg_ctl",
+		}, nil
 	}
 
 	status, err := svc.Stop(ctx, controlStopRequest())

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
+	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -53,7 +53,7 @@ func TestMX013OverviewOwnerScope(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	var envelope struct {
-		Success bool                     `json:"success"`
+		Success bool                      `json:"success"`
 		Data    workbenchservice.Overview `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))

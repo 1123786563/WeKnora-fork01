@@ -30,32 +30,22 @@ test('KB mention picker supports search, Enter selection, Escape, and chip remov
   await act(async () => trigger?.click());
   assert.ok(container.querySelector('[role="listbox"]'));
   assert.equal(trigger?.getAttribute('aria-expanded'), 'true');
-  const search = container.querySelector<HTMLInputElement>('[role="listbox"] input');
-  assert.ok(search);
-  await act(async () => {
-    search!.value = 'FAQ';
-    search!.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  });
-  assert.match(container.querySelector('[role="option"]')?.textContent ?? '', /FAQ 库/);
-  await act(async () => {
-    search!.value = '';
-    search!.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  });
-  const firstOption = container.querySelector<HTMLElement>('[role="option"]');
-  assert.equal(firstOption?.getAttribute('id'), 'wk-chat-mention-option-kb-2');
-  assert.equal(search?.getAttribute('aria-activedescendant'), 'wk-chat-mention-option-kb-2');
-  await act(async () => search?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })));
-  assert.equal(search?.getAttribute('aria-activedescendant'), 'wk-chat-mention-option-kb-3');
-  await act(async () => search?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true })));
-  assert.equal(search?.getAttribute('aria-activedescendant'), 'wk-chat-mention-option-kb-2');
-  await act(async () => search?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })));
-  await act(async () => search?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+  // Vue MentionSelector 同构：弹层无搜索框，键盘导航挂在 textarea（wk-chat-draft）。
+  const textarea = container.querySelector<HTMLTextAreaElement>('#wk-chat-draft');
+  assert.ok(textarea);
+  const options = () => [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+  assert.equal(options()[0]?.getAttribute('id'), 'wk-chat-mention-option-kb-2');
+  assert.equal(options()[0]?.getAttribute('aria-selected'), 'true');
+  await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })));
+  assert.equal(options()[1]?.getAttribute('aria-selected'), 'true');
+  await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true })));
+  assert.equal(options()[0]?.getAttribute('aria-selected'), 'true');
+  await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })));
+  await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
   assert.deepEqual(selected, ['kb-3']);
   assert.equal(container.querySelector('[role="listbox"]'), null);
   await act(async () => trigger?.click());
-  const escapeSearch = container.querySelector<HTMLInputElement>('[role="listbox"] input');
-  assert.ok(escapeSearch);
-  await act(async () => escapeSearch?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+  await act(async () => textarea?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
   assert.equal(container.querySelector('[role="listbox"]'), null);
   await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="关闭: 产品文档"]')?.click());
   assert.deepEqual(removed, ['kb-1']);
@@ -73,7 +63,8 @@ test('resource mention options expose stable type markers for non-KB resources',
   ]} />));
   await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="知识库"]')?.click());
   assert.deepEqual([...container.querySelectorAll('[role="option"]')].map((node) => node.getAttribute('data-mention-type')), ['file', 'tag', 'mcp', 'skill']);
-  assert.deepEqual([...container.querySelectorAll('[role="option"] span:first-child')].map((node) => node.textContent), ['▧', '#', '⚒', '✦']);
+  // Vue .mention-item 结构：icon-wrap > svg（sprite 类型图标）替代旧文本 marker。
+  assert.equal(container.querySelectorAll('[role="option"] .icon-wrap svg').length, 4);
 });
 
 test('streaming steer picker supports keyboard navigation and blocks existing attachments', async () => {

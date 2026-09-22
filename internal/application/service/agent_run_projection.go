@@ -3,7 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 )
 
 // EventsAfter filters an already ordered event page for a reconnecting client.
@@ -39,12 +40,14 @@ func NewAgentRunProjection(events runEventStore, finalizer ...runFinalizer) *Age
 	}
 	return p
 }
+
 func (p *AgentRunProjection) Replay(ctx context.Context, key agentruntime.RunKey, after, limit int) ([]agentruntime.RunEvent, error) {
 	if p == nil || p.events == nil {
 		return nil, agentruntime.ErrNotFound
 	}
 	return p.events.ReadEvents(ctx, key, int64(after), limit)
 }
+
 func (p *AgentRunProjection) Finalize(ctx context.Context, fence agentruntime.Fence, answer json.RawMessage) error {
 	if p == nil || p.finalizer == nil {
 		return agentruntime.ErrConflict

@@ -8,9 +8,9 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/handler"
-	"github.com/Tencent/WeKnora/internal/voice"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/workbench/voice"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -21,14 +21,21 @@ type routesVoiceStore struct{}
 func (routesVoiceStore) CreateVoiceSession(context.Context, repository.VoiceSessionRow) (repository.VoiceSessionRow, error) {
 	return repository.VoiceSessionRow{}, nil
 }
+
 func (routesVoiceStore) GetOwnedVoiceSession(context.Context, uint64, string, string) (repository.VoiceSessionRow, error) {
 	return repository.VoiceSessionRow{}, nil
 }
+
 func (routesVoiceStore) MarkVoiceSessionUnknown(context.Context, uint64, string) error { return nil }
+
 func (routesVoiceStore) PendingUnknownVoiceSession(context.Context, uint64, string) (bool, error) {
 	return false, nil
 }
-func (routesVoiceStore) RecordVoiceSessionUsage(context.Context, uint64, string, int64) error { return nil }
+
+func (routesVoiceStore) RecordVoiceSessionUsage(context.Context, uint64, string, int64) error {
+	return nil
+}
+
 func (routesVoiceStore) CloseVoiceSessionWithUsage(context.Context, uint64, string, int64, time.Time) (bool, error) {
 	return true, nil
 }
@@ -38,9 +45,11 @@ type routesVoiceTranscriptions struct{}
 func (routesVoiceTranscriptions) SaveVoiceTranscription(context.Context, repository.VoiceTranscriptionRow) error {
 	return nil
 }
+
 func (routesVoiceTranscriptions) GetOwnedVoiceTranscription(context.Context, uint64, string, string) (repository.VoiceTranscriptionRow, error) {
 	return repository.VoiceTranscriptionRow{}, nil
 }
+
 func (routesVoiceTranscriptions) MarkVoiceTranscriptionSettled(context.Context, uint64, string) (bool, error) {
 	return true, nil
 }

@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/opencode"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/golang-migrate/migrate/v4"
 	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -411,15 +411,19 @@ type craftProcBarrierStore struct {
 func (s *craftProcBarrierStore) GetWorkspace(ctx context.Context, sc craft.Scope) (craft.Workspace, error) {
 	return s.inner.GetWorkspace(ctx, sc)
 }
+
 func (s *craftProcBarrierStore) PutWorkspace(ctx context.Context, w craft.Workspace, rev int64) (craft.Workspace, error) {
 	return s.inner.PutWorkspace(ctx, w, rev)
 }
+
 func (s *craftProcBarrierStore) PrepareTask(ctx context.Context, t craft.Task) (craft.Task, error) {
 	return s.inner.PrepareTask(ctx, t)
 }
+
 func (s *craftProcBarrierStore) GetTask(ctx context.Context, sc craft.Scope, id string) (craft.Task, error) {
 	return s.inner.GetTask(ctx, sc, id)
 }
+
 func (s *craftProcBarrierStore) SaveResult(ctx context.Context, f agentruntime.Fence, r craft.Result) error {
 	if err := s.inner.SaveResult(ctx, f, r); err != nil {
 		return err
@@ -427,6 +431,7 @@ func (s *craftProcBarrierStore) SaveResult(ctx context.Context, f agentruntime.F
 	touchCraftBarrier(s.barrier)
 	select {} // killed here: result stored, graph checkpoint pending
 }
+
 func (s *craftProcBarrierStore) GetResult(ctx context.Context, sc craft.Scope, id string) (craft.Result, error) {
 	return s.inner.GetResult(ctx, sc, id)
 }

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/models/vlm"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/vlm"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 

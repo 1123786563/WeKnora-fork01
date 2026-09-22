@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"github.com/stretchr/testify/require"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -17,6 +17,7 @@ type repositoryTestCallableTool struct{ calls int }
 func (t *repositoryTestCallableTool) Declaration() *tool.Declaration {
 	return &tool.Declaration{Name: "write"}
 }
+
 func (t *repositoryTestCallableTool) Call(context.Context, []byte) (any, error) {
 	t.calls++
 	return "ok", nil
@@ -27,6 +28,7 @@ type repositoryTestStreamableTool struct{ calls int }
 func (t *repositoryTestStreamableTool) Declaration() *tool.Declaration {
 	return &tool.Declaration{Name: "stream-write"}
 }
+
 func (t *repositoryTestStreamableTool) StreamableCall(context.Context, []byte) (*tool.StreamReader, error) {
 	t.calls++
 	return tool.NewStream(1).Reader, nil

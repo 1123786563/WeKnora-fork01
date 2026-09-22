@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Tencent/WeKnora/internal/application/access"
 	"testing"
+
+	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -149,6 +150,7 @@ func (r *recordingSemanticInvalidator) InvalidateTransfer(_ context.Context, sou
 	r.scopes = append(r.scopes, source, destination)
 	return r.err
 }
+
 func TestSemanticScopeTransferFailsBeforeCheckpoint(t *testing.T) {
 	for _, operation := range []access.KBTransferOperation{access.KBTransferMove, access.KBTransferClone} {
 		t.Run(string(operation), func(t *testing.T) {
@@ -171,6 +173,7 @@ func TestSemanticScopeTransferFailsBeforeCheckpoint(t *testing.T) {
 		})
 	}
 }
+
 func TestSemanticScopeTransferFolderMoveExcluded(t *testing.T) {
 	repo := &folderMoveRepoStub{}
 	svc := &knowledgeService{repo: repo, kbService: &writeKBLookup{kb: &types.KnowledgeBase{ID: "kb-1", TenantID: 1}}}
@@ -206,14 +209,17 @@ func (r *semanticTransferOrderingRepo) check() {
 	require.Equal(r.t, []types.SemanticScopeKey{{TenantID: 7, KBID: "kb"}, {TenantID: 7, KBID: "other"}}, r.guard.scopes)
 	r.writes++
 }
+
 func (r *semanticTransferOrderingRepo) CreateKnowledge(ctx context.Context, k *types.Knowledge) error {
 	r.check()
 	return r.KnowledgeRepository.CreateKnowledge(ctx, k)
 }
+
 func (r *semanticTransferOrderingRepo) UpdateKnowledgeForTransfer(ctx context.Context, before, after *types.Knowledge) error {
 	r.check()
 	return r.KnowledgeRepository.UpdateKnowledgeForTransfer(ctx, before, after)
 }
+
 func TestSemanticScopeTransferBeforeSuccessfulCheckpoint(t *testing.T) {
 	for _, operation := range []access.KBTransferOperation{access.KBTransferMove, access.KBTransferClone} {
 		t.Run(string(operation), func(t *testing.T) {
@@ -265,6 +271,7 @@ func requireEpochBeforeSQL(t *testing.T, f *semanticScopeFixture, table, operati
 	sql := fmt.Sprintf("CREATE TRIGGER semantic_order BEFORE %s ON %s BEGIN SELECT CASE WHEN COALESCE((SELECT CAST(epoch AS INTEGER) FROM semantic_access_epochs WHERE tenant_id='10' AND kb_id='%s'),0) < %d THEN RAISE(ABORT,'semantic barrier missing') END; END", operation, table, kb, epoch)
 	require.NoError(t, f.DB.Exec(sql).Error)
 }
+
 func semanticEpoch(t *testing.T, f *semanticScopeFixture, kb string) int {
 	t.Helper()
 	var epoch int
@@ -335,10 +342,13 @@ type failingSemanticInvalidator struct{ err error }
 func (f failingSemanticInvalidator) InvalidateUser(context.Context, string) error { return f.err }
 
 func (f failingSemanticInvalidator) InvalidateKB(context.Context, uint64, string) error { return f.err }
-func (f failingSemanticInvalidator) InvalidateTenant(context.Context, uint64) error     { return f.err }
+
+func (f failingSemanticInvalidator) InvalidateTenant(context.Context, uint64) error { return f.err }
+
 func (f failingSemanticInvalidator) InvalidateOrganization(context.Context, string) error {
 	return f.err
 }
+
 func (f failingSemanticInvalidator) InvalidateTransfer(context.Context, types.SemanticScopeKey, types.SemanticScopeKey) error {
 	return f.err
 }
@@ -399,6 +409,7 @@ func TestSemanticScopeTenantDelete(t *testing.T) {
 		})
 	}
 }
+
 func TestSemanticScopeUserDelete(t *testing.T) {
 	for _, failed := range []bool{false, true} {
 		t.Run(fmt.Sprint(failed), func(t *testing.T) {

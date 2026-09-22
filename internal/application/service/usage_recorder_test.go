@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/modules/commercial/usage"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/Tencent/WeKnora/internal/usage"
 )
 
 // stubUsageRepo captures AddUsage calls; the aggregation readers are unused
@@ -85,34 +85,34 @@ func TestRecordChatTurnMapsDimensions(t *testing.T) {
 
 func TestRecordChatTurnCacheFallback(t *testing.T) {
 	cases := []struct {
-		name       string
-		usage      types.TokenUsage
-		wantRead   int64
-		wantWrite  int64
+		name      string
+		usage     types.TokenUsage
+		wantRead  int64
+		wantWrite int64
 	}{
 		{
-			name:       "legacy cached_tokens used when cache_read is zero",
-			usage:      types.TokenUsage{PromptTokens: 10, CachedTokens: 80},
-			wantRead:   80,
-			wantWrite:  0,
+			name:      "legacy cached_tokens used when cache_read is zero",
+			usage:     types.TokenUsage{PromptTokens: 10, CachedTokens: 80},
+			wantRead:  80,
+			wantWrite: 0,
 		},
 		{
-			name:       "explicit cache_read wins over legacy alias",
-			usage:      types.TokenUsage{PromptTokens: 10, CachedTokens: 999, CacheReadTokens: 40},
-			wantRead:   40,
-			wantWrite:  0,
+			name:      "explicit cache_read wins over legacy alias",
+			usage:     types.TokenUsage{PromptTokens: 10, CachedTokens: 999, CacheReadTokens: 40},
+			wantRead:  40,
+			wantWrite: 0,
 		},
 		{
-			name:       "both zero stays zero",
-			usage:      types.TokenUsage{PromptTokens: 10},
-			wantRead:   0,
-			wantWrite:  0,
+			name:      "both zero stays zero",
+			usage:     types.TokenUsage{PromptTokens: 10},
+			wantRead:  0,
+			wantWrite: 0,
 		},
 		{
-			name:       "write counter passes through",
-			usage:      types.TokenUsage{PromptTokens: 10, CacheWriteTokens: 55, CachedTokens: 5},
-			wantRead:   5,
-			wantWrite:  55,
+			name:      "write counter passes through",
+			usage:     types.TokenUsage{PromptTokens: 10, CacheWriteTokens: 55, CachedTokens: 5},
+			wantRead:  5,
+			wantWrite: 55,
 		},
 	}
 	for _, tc := range cases {
@@ -137,11 +137,11 @@ func TestRecordChatTurnCacheFallback(t *testing.T) {
 
 func TestRecordChatTurnSkipsInvalidInput(t *testing.T) {
 	cases := []struct {
-		name    string
-		tenant  uint64
-		userID  string
-		model   string
-		usage   *types.TokenUsage
+		name   string
+		tenant uint64
+		userID string
+		model  string
+		usage  *types.TokenUsage
 	}{
 		{name: "nil usage", tenant: 1, userID: "u", model: "m", usage: nil},
 		{name: "empty user", tenant: 1, userID: "", model: "m", usage: &types.TokenUsage{PromptTokens: 5}},

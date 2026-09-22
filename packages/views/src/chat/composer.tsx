@@ -224,7 +224,6 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const mentionSearchRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   // Vue Input-field.vue prefill consume: nextTick(() => textarea.focus()).
   useEffect(() => {
@@ -232,6 +231,12 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   }, [focusSignal]);
   const [mentionOpen, setMentionOpen] = useState(initialMentionOpen);
   const [mentionQuery, setMentionQuery] = useState('');
+  // Vue triggerMention（Input-field.vue:1640-1694）：弹层 fixed 定位锚定 textarea
+  //（left=rect.left；上方优先，bottom=vh-rect.top+8，menuHeight 阈值 320）。
+  const [mentionMenuStyle, setMentionMenuStyle] = useState<React.CSSProperties | null>(null);
+  // Vue kb-btn t-tooltip（Input-field.vue:2756-2774，theme light / placement top）。
+  const [kbTipOpen, setKbTipOpen] = useState(false);
+  const kbTipTimer = useRef<number | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const agentChipRef = useRef<HTMLButtonElement>(null);
@@ -307,14 +312,28 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
       setMentionQuery('');
       setActiveMentionIndex(0);
       onMentionOpen?.();
-      window.setTimeout(() => mentionSearchRef.current?.focus(), 0);
+      // Vue triggerMention：锚定 textarea 左缘，优先上方（8px 间距）。
+      const textarea = draftRef.current;
+      if (textarea) {
+        const rect = textarea.getBoundingClientRect();
+        const vh = window.innerHeight;
+        const menuHeight = 320;
+        const spaceAbove = rect.top;
+        const spaceBelow = vh - rect.bottom;
+        if (spaceAbove > menuHeight || spaceAbove > spaceBelow) {
+          setMentionMenuStyle({ position: 'fixed', left: `${rect.left}px`, bottom: `${vh - rect.top + 8}px`, top: 'auto' });
+        } else {
+          setMentionMenuStyle({ position: 'fixed', left: `${rect.left}px`, top: `${rect.bottom + 8}px`, bottom: 'auto' });
+        }
+      }
+      textarea?.focus();
     }
   }
   function closeMentions(): void {
     setMentionOpen(false);
     setMentionQuery('');
   }
-  function handleMentionKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+  function handleMentionKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
     if (event.key === 'Escape') {
       event.preventDefault();
       closeMentions();
@@ -394,7 +413,7 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
         ref={draftRef}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
-        onKeyDown={handleDraftKeyDown}
+        onKeyDown={(event) => { if (mentionOpen) handleMentionKeyDown(event); handleDraftKeyDown(event); }}
         disabled={disabled}
         rows={2}
         placeholder={t.composerPlaceholder}
@@ -488,21 +507,63 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <div className="relative">
-          <button type="button" data-guide="chat-kb-mention" className="wk-chat-control-icon flex h-[28px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.mentionKnowledge} aria-expanded={mentionOpen} aria-controls="wk-chat-mention-listbox" disabled={disabled} title={t.mentionKnowledge} onClick={toggleMentions}>
+          <div className="relative wk-chat-kb-btn-wrap"
+            onMouseEnter={() => { if (kbTipTimer.current !== null) window.clearTimeout(kbTipTimer.current); kbTipTimer.current = window.setTimeout(() => setKbTipOpen(true), 300); }}
+            onMouseLeave={() => { if (kbTipTimer.current !== null) window.clearTimeout(kbTipTimer.current); kbTipTimer.current = window.setTimeout(() => setKbTipOpen(false), 80); }}
+          >
+          <button type="button" data-guide="chat-kb-mention" className="wk-chat-control-icon flex h-[28px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[var(--td-bg-color-secondarycontainer-hover,#eee)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.mentionKnowledge} aria-expanded={mentionOpen} aria-controls="wk-chat-mention-listbox" disabled={disabled} onClick={toggleMentions}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <circle cx="10" cy="10" r="3.5" stroke="currentColor" strokeWidth="1.8" />
               <path d="M13.5 10V11.5C13.5 12.163 13.7634 12.7989 14.2322 13.2678C14.7011 13.7366 15.337 14 16 14C16.663 14 17.2989 13.7366 17.7678 13.2678C18.2366 12.7989 18.5 12.163 18.5 11.5V10C18.5 7.74566 17.6045 5.58365 16.0104 3.98959C14.4163 2.39553 12.2543 1.5 10 1.5C7.74566 1.5 5.58365 2.39553 3.98959 3.98959C2.39553 5.58365 1.5 7.74566 1.5 10C1.5 12.2543 2.39553 14.4163 3.98959 16.0104C5.58365 17.6045 7.74566 18.5 10 18.5H12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          {mentionOpen ? <div id="wk-chat-mention-listbox" role="listbox" aria-label={t.mentionKnowledge} className="absolute bottom-[36px] left-0 z-20 w-[280px] rounded-[8px] border border-[#e7e7e7] bg-white p-[8px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
-            <input ref={mentionSearchRef} value={mentionQuery} onChange={(event) => { setMentionQuery(event.target.value); setActiveMentionIndex(0); }} onKeyDown={handleMentionKeyDown} aria-label={t.composerPlaceholder} aria-activedescendant={filteredMentionOptions.length > 0 ? `wk-chat-mention-option-${filteredMentionOptions[Math.min(activeMentionIndex, filteredMentionOptions.length - 1)].id}` : undefined} aria-controls="wk-chat-mention-options" placeholder={t.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[6px] text-[12px] outline-none focus:border-[#07c05f]" />
-            {mentionLoading ? <p role="status" className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{t.loadingMessages}</p> : mentionError ? <p role="alert" className="m-0 px-[8px] py-[8px] text-[12px] text-[#d54941]">{mentionError}</p> : filteredMentionOptions.length > 0 ? <div className="max-h-[220px] overflow-y-auto">
-              <div id="wk-chat-mention-options">
-              {filteredMentionOptions.map((item, index) => <button key={item.id} id={`wk-chat-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} data-mention-type={item.type} className={index === activeMentionIndex ? 'flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-[#f3f3f3] px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] focus:outline-none' : 'flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-transparent px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] hover:bg-[#f3f3f3] focus:bg-[#f3f3f3] focus:outline-none'} onMouseEnter={() => setActiveMentionIndex(index)} onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">{mentionMarker(item.type)}</span><span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span></button>)}
+          {kbTipOpen ? (
+            <span className="t-popup t-tooltip t-tooltip--light wk-kb-tip" role="tooltip">
+              <span className="t-popup__content">{t.mentionKnowledge}</span>
+              <span className="wk-kb-tip__arrow" aria-hidden="true" />
+            </span>
+          ) : null}
+          {/* Vue MentionSelector.vue（Teleport body）：views 包无 react-dom（agent-selector
+              同款 in-tree 先例），以 position:fixed 视口锚定达到同一几何/层叠。 */}
+          {mentionOpen ? (
+            <div id="wk-chat-mention-listbox" role="listbox" aria-label={t.mentionKnowledge} className="mention-menu" style={mentionMenuStyle ?? undefined} onClick={(event) => event.stopPropagation()}>
+              <div className="mention-list">
+                {mentionLoading ? (
+                  <div className="empty" role="status">{t.loadingMessages}</div>
+                ) : mentionError ? (
+                  <div className="empty" role="alert">{mentionError}</div>
+                ) : filteredMentionOptions.length > 0 ? (
+                  <div className="mention-group" data-group-type="kb" id="wk-chat-mention-options">
+                    {filteredMentionOptions.map((item, index) => (
+                      <div
+                        key={item.id}
+                        id={`wk-chat-mention-option-${item.id}`}
+                        role="option"
+                        aria-selected={index === activeMentionIndex}
+                        data-mention-id={item.id}
+                        data-mention-type={item.type}
+                        className={'mention-item wk-chat-mention-item' + (index === activeMentionIndex ? ' active' : '')}
+                        onMouseEnter={() => setActiveMentionIndex(index)}
+                        onClick={() => { onMentionSelect?.(item); closeMentions(); }}
+                      >
+                        <div className="icon-wrap">
+                          <div className={'icon ' + (item.type === 'kb' ? (item.kbType === 'faq' ? 'faq-icon' : 'kb-icon') : `${item.type}-icon`)}>
+                            <svg className="t-icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href={'#t-icon-' + (item.type === 'kb' ? (item.kbType === 'faq' ? 'chat-bubble-help' : 'folder') : item.type === 'file' ? 'file' : 'tools')} /></svg>
+                          </div>
+                        </div>
+                        <div className="item-main">
+                          <span className="name">{item.name}</span>
+                          {item.type === 'kb' || item.type === 'mcp' ? <span className="count">{item.toolCount ?? 0}</span> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty">{mentionEmptyHint || t.noResult}</div>
+                )}
               </div>
-            </div> : <p className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{mentionQuery ? t.mentionNoResults : (mentionEmptyHint ?? t.mentionNoAvailable)}</p>}
-          </div> : null}
+            </div>
+          ) : null}
           </div>
           {/* Vue Input-field.vue:2787-2795 — the model chip lives at the right
               edge of control-left (.model-display margin-left:auto), NOT in

@@ -12,8 +12,8 @@ import (
 	"unicode"
 
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/models/chat"
-	"github.com/Tencent/WeKnora/internal/searchutil"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -21,8 +21,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var suggestionThinkBlock = regexp.MustCompile(`(?s)<think>.*?</think>`)
-var trailingCitationTags = regexp.MustCompile(`(?s)(?:\s*<(?:kb|web)>.*?</(?:kb|web)>)+\s*$`)
+var (
+	suggestionThinkBlock = regexp.MustCompile(`(?s)<think>.*?</think>`)
+	trailingCitationTags = regexp.MustCompile(`(?s)(?:\s*<(?:kb|web)>.*?</(?:kb|web)>)+\s*$`)
+)
 
 const (
 	suggestionHistoryRuneBudget        = 6000

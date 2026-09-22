@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -72,9 +72,11 @@ func (r *NativePendingDecisionRepository) Create(ctx context.Context, runID nati
 		if run.Revision != runRevision || nativecontract.RunStatus(run.Status) != detail.RunStatus {
 			return nativePendingFailure(nativecontract.ErrConflict, "pending run changed before parking")
 		}
-		row := nativePendingDecisionRow{TenantID: int64(runID.TenantID), RunID: detail.RunID, PendingID: detail.Ref.PendingID,
+		row := nativePendingDecisionRow{
+			TenantID: int64(runID.TenantID), RunID: detail.RunID, PendingID: detail.Ref.PendingID,
 			Revision: 1, CallID: detail.CallID, PlanVersion: detail.PlanVersion, ArgsHash: detail.ArgsHash, WaitKind: string(detail.WaitKind),
-			Status: string(detail.Status), ExpiresAt: &detail.ExpiresAt, ExpectedRevision: runRevision, ResourceRef: detail.Service.ResourceRef, Detail: string(payload)}
+			Status: string(detail.Status), ExpiresAt: &detail.ExpiresAt, ExpectedRevision: runRevision, ResourceRef: detail.Service.ResourceRef, Detail: string(payload), //nolint:lll // 预存长行,import 修复入 range
+		}
 		created := tx.Table("native_agent_pending_decisions").Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
 		if created.Error != nil {
 			return created.Error
@@ -422,6 +424,7 @@ func nativePendingNextRun(detail nativecontract.PendingDecisionDetail, action na
 		return "", "held", nativePendingFailure(nativecontract.ErrConflict, "pending wait kind cannot resume")
 	}
 }
+
 func nativePendingSavedResumeState(detail nativecontract.PendingDecisionDetail) string {
 	if detail.RunStatus == nativecontract.RunCancelled || detail.ResolvedAction == nativecontract.DecisionTerminate {
 		return "terminated"

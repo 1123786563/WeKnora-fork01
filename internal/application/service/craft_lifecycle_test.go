@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/craft"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -122,18 +122,18 @@ func (t lifecycleTTL) TTL(context.Context, uint64, string) (time.Time, bool, err
 
 // lifecycleEnv assembles the lifecycle service and its collaborators.
 type lifecycleEnv struct {
-	db         *gorm.DB
-	bindings   *sandbox.MemorySessionSandboxBindingStore
-	store      craft.Store
-	versions   craft.VersionStore
-	snapshots  craft.SnapshotStore
-	deleter    *lifecycleSandboxDeleter
-	canceler   *lifecycleRunCanceler
-	objects    *lifecycleObjectDeleter
-	svc        *CraftLifecycle
-	scope      craft.Scope
-	workspace  craft.Workspace
-	now        *atomic.Int64
+	db        *gorm.DB
+	bindings  *sandbox.MemorySessionSandboxBindingStore
+	store     craft.Store
+	versions  craft.VersionStore
+	snapshots craft.SnapshotStore
+	deleter   *lifecycleSandboxDeleter
+	canceler  *lifecycleRunCanceler
+	objects   *lifecycleObjectDeleter
+	svc       *CraftLifecycle
+	scope     craft.Scope
+	workspace craft.Workspace
+	now       *atomic.Int64
 }
 
 func (e *lifecycleEnv) tick(d time.Duration) time.Time {
@@ -553,7 +553,7 @@ func TestLifecycleSnapshotSaveRacesReclaim(t *testing.T) {
 		DB: env.db, Sessions: &fakeCraftSessions{db: env.db}, Store: env.store,
 		Versions: env.versions, Snapshots: env.snapshots, Files: files, Source: source,
 		ActiveRuns: CraftActiveRunsQuery(env.db), RuntimeDigest: "sha256:runtime",
-		Lock:       CraftWorkspaceLockFromBindingStore(gated),
+		Lock: CraftWorkspaceLockFromBindingStore(gated),
 	})
 	require.NoError(t, err)
 	version := env.publishVersion(t, files, "run-cap", "<html>v1</html>")
@@ -752,7 +752,7 @@ func TestLifecycleQuotaGatesOnlyNewSandboxes(t *testing.T) {
 		DB: env.db, Store: env.store, Bindings: env.bindings,
 		ActiveRuns: CraftActiveRunsQuery(env.db), SessionExists: NewCraftSessionExistence(env.db),
 		SandboxDeleter: env.deleter, Quota: lifecycleQuota{},
-		Now:            func() time.Time { return time.Unix(10_000, 0).UTC() },
+		Now: func() time.Time { return time.Unix(10_000, 0).UTC() },
 	})
 	require.NoError(t, err)
 	require.NoError(t, healthy.AdmitNewSandbox(ctx, 1))

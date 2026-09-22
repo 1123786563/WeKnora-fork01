@@ -1,0 +1,1058 @@
+# backend-modules.yaml — Server ownership inventory (Task F0, Pass A)
+#
+# Facts:
+#   - Scope: cmd/server + internal/... ONLY (cmd/desktop, cmd/docreader, cmd/client,
+#     cmd/connector-control, cmd/download, cmd/saas-migrate are OUT of scope).
+#   - Authority for module boundaries: docs/specs/2026-09-21-backend-domain-module-reorganization-design.md §5.18.
+#   - Every server package / route entry point / worker task type / container.Invoke hook /
+#     migration file below has EXACTLY ONE owner. Duplicate or missing owners are defects.
+#   - base_sha and baseline commands: see docs/architecture/backend-baseline.md.
+#
+# Owner categories:
+#   - 16 business modules: identity, knowledge, conversation, agentcatalog, agentruntime,
+#     workbench, craft, execution, datasource, appconnector, channels, airesource,
+#     commercial, insights, system, policy.
+#   - 2 non-business categories: platform (shared technical primitives),
+#     bootstrap (process assembly / wiring / migration runner baseline schema).
+#
+# Conventions:
+#   - "packages" are Go import paths under module github.com/Tencent/WeKnora.
+#   - "routes" are HTTP registration entry points in internal/router (source file:line)
+#     plus handler-side route-mounting functions; total gin route registrations = 633
+#     (564 literal method calls + 69 g.apiKeyRoute helper calls, comment text excluded).
+#   - "workers" are asynq task types (Redis mode: internal/router/task.go; Lite mode:
+#     internal/router/sync_task.go registers the same 23 types on SyncTaskExecutor).
+#   - "hooks" are container.Invoke lifecycle call sites (internal/container/container.go
+#     unless another file is given).
+#   - "migrations" pair each NNNNNN_name.up.sql with its .down.sql as ONE asset.
+#   - Horizontal packages whose files span multiple modules carry a `split:` note and
+#     the package-level owner is the plurality content owner (Pass B splits files).
+
+meta:
+  base_sha: 7b1d3cf017a50cc8061da166d67befc6b51773a0
+  branch: backend-mod-passa
+  go_module: github.com/Tencent/WeKnora
+  scope: [cmd/server, internal/...]
+  counts:
+    server_packages: 128            # go list ./... filtered to cmd/server + internal/...
+    route_registrations: 633        # ALL registration paths, non-test, comments excluded:
+                                    # 564 literal .GET/.POST/.PUT/.DELETE/.PATCH/.HEAD calls
+                                    # (router 535 + handler 29) + 69 g.apiKeyRoute helper
+                                    # calls (rbac.go:398, registers via grp.Handle);
+                                    # 0 direct .Handle call sites outside the helper itself.
+    route_entry_points: 90          # 67 Register* + 16 serve*/embedFrame* in internal/router
+                                    # + 7 handler-side route-mounting Register* functions
+                                    # (craft sessions/interaction/scheduled, craft preview
+                                    # ×2, artifact preview ×2)
+    redis_worker_pools: 6           # asynq servers (core/postprocess/enrichment/maintenance/shared/wiki)
+    redis_worker_task_types: 23     # mux.HandleFunc registrations in internal/router/task.go
+    lite_worker_task_types: 23      # RegisterSyncHandlers in internal/router/sync_task.go (same set)
+    container_invoke_hooks: 58      # container.Invoke call sites in internal/container/container.go
+    migration_files: 537            # .sql files: mysql 1, paradedb 2, sqlite 188, versioned 346
+    migration_assets: 270           # 94 sqlite pairs + 173 versioned pairs + 3 single files
+
+modules:
+
+  # =========================================================================
+  # Business modules (16)
+  # =========================================================================
+
+  identity:
+    description: 认证、用户、Tenant、成员、邀请、API Key、Organization、RBAC、审计日志（§5.1/§5.18）
+    packages: []                  # 无独立包；代码位于横向包（见 shared_assets 拆分注记）
+    routes:
+      - name: RegisterAuthRoutes
+        source: internal/router/routes_auth_tenant.go:206
+      - name: RegisterTenantRoutes
+        source: internal/router/routes_auth_tenant.go:43
+        split: members/invitations/api-keys/audit-log 归 identity；tenant sandbox-config 与
+          query-history 配置端点分别归属 execution/conversation（Pass B 拆分）
+      - name: RegisterMyInvitationRoutes
+        source: internal/router/routes_auth_tenant.go:164
+      - name: RegisterOrganizationRoutes
+        source: internal/router/routes_agent.go:96
+      - name: audit-log admin endpoints (inside RegisterSystemAdminRoutes)
+        source: internal/router/routes_auth_tenant.go:279
+        split: 仅 /system/admin 下审计端点归 identity；其余 system-admin 路由归 system
+    workers: []
+    hooks:
+      - name: startAuditLogRetention
+        source: internal/container/container.go:639 (func at container.go:2452)
+      - name: wire AuthHandler + repository.MobileExchangeStore (inline)
+        source: internal/container/container.go:751
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000011_principal_model"
+        - "migrations/sqlite/000053_mobile_auth_exchange"
+      versioned:
+        - "migrations/versioned/000012_organizations"
+        - "migrations/versioned/000018_extend_tenant_api_key"
+        - "migrations/versioned/000043_tenant_rbac"
+        - "migrations/versioned/000044_audit_log"
+        - "migrations/versioned/000045_org_tenant_members"
+        - "migrations/versioned/000046_org_owner_tenant_id"
+        - "migrations/versioned/000048_tenant_invitations"
+        - "migrations/versioned/000049_user_preferences"
+        - "migrations/versioned/000064_principal_model"
+        - "migrations/versioned/000065_tenant_api_keys"
+        - "migrations/versioned/000071_platform_api_keys"
+        - "migrations/versioned/000072_auth_timestamp_tz"
+        - "migrations/versioned/000133_mobile_auth_exchange"
+        - "migrations/versioned/000054_invitation_tokens"
+
+  knowledge:
+    description: 知识库、文档、Chunk、Tag、FAQ、Wiki、检索、语义索引（§5.2/§5.18）
+    packages:
+      - internal/infrastructure/chunker
+      - internal/infrastructure/docparser
+      - internal/infrastructure/docparser/anydoc
+      - internal/infrastructure/semantic
+      - internal/searchutil
+    horizontal_packages:
+      - path: internal/application/service
+        role: plurality-owner
+        split: 182 个非测试文件中 knowledge/knowledgebase/wiki/chunk/faq/tag/semantic 家族占多数
+          (~55)。其余按文件前缀分别归属 identity(tenant_*)、agentcatalog(tenant_skill_*/custom_agent/
+          persona/expert/subagent/marketplace)、agentruntime(agent_run_*/native_*)、conversation(
+          session/message/query_history/temporary_document)、craft(craft_*)、airesource(mcp/vectorstore/
+          web_search/model/storagebackend)、commercial(usage_recorder/semantic_model_budget)、system(
+          system_setting)、execution(sandbox_terminal/user_env)；Pass B 逐文件归属。
+      - path: internal/application/service/retriever
+        role: single-domain (检索适配层；向量驱动选择经 airesource)
+      - path: internal/application/repository/retriever/{doris,elasticsearch,elasticsearch/v7,elasticsearch/v8,milvus,neo4j,opensearch,postgres,qdrant,sqlite,tencentvectordb,weaviate}
+        role: single-domain (12 个向量/检索驱动包)
+    routes:
+      - name: RegisterKnowledgeBaseRoutes
+        source: internal/router/routes_knowledge.go:185
+      - name: RegisterKnowledgeRoutes
+        source: internal/router/routes_knowledge.go:67
+      - name: RegisterChunkRoutes
+        source: internal/router/routes_knowledge.go:28
+      - name: RegisterFAQRoutes
+        source: internal/router/routes_knowledge.go:143
+      - name: RegisterKnowledgeTagRoutes
+        source: internal/router/routes_knowledge.go:279
+      - name: RegisterWikiPageRoutes
+        source: internal/router/routes_knowledge.go:309
+      - name: RegisterSemanticModelPolicyRoutes
+        source: internal/router/routes_knowledge.go:254
+      - name: RegisterKnowledgeBaseActivityRoutes
+        source: internal/router/routes_knowledge.go:266
+      - name: RegisterChunkerDebugRoutes
+        source: internal/router/routes_knowledge.go:18
+      - name: RegisterSemanticInternalRoutes
+        source: internal/router/routes_infra.go:14
+      - name: serveKBScopedFiles
+        source: internal/router/files.go (called router.go:332)
+    workers:
+      - { task: TypeChunkExtract, handler_owner: knowledge }
+      - { task: TypeDataTableSummary, handler_owner: knowledge }
+      - { task: TypeDocumentProcess, handler_owner: knowledge }
+      - { task: TypeManualProcess, handler_owner: knowledge }
+      - { task: TypeFAQImport, handler_owner: knowledge }
+      - { task: TypeQuestionGeneration, handler_owner: knowledge }
+      - { task: TypeSummaryGeneration, handler_owner: knowledge }
+      - { task: TypeKBClone, handler_owner: knowledge }
+      - { task: TypeKnowledgeMove, handler_owner: knowledge }
+      - { task: TypeKnowledgeListDelete, handler_owner: knowledge }
+      - { task: TypeKnowledgeListReparse, handler_owner: knowledge }
+      - { task: TypeIndexDelete, handler_owner: knowledge }
+      - { task: TypeKBDelete, handler_owner: knowledge }
+      - { task: TypeImageMultimodal, handler_owner: knowledge }
+      - { task: TypeKnowledgePostProcess, handler_owner: knowledge }
+      - { task: TypeKnowledgeAutoTag, handler_owner: knowledge }
+      - { task: TypeWikiIngest, handler_owner: knowledge }
+      - { task: TypeWikiFinalize, handler_owner: knowledge }
+    hooks:
+      - name: recoverPendingWikiTasks
+        source: internal/container/container.go:1052 (func at internal/container/recover_pending_wiki_tasks.go:32)
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000001_remove_wiki_log"
+        - "migrations/sqlite/000002_knowledge_folder_path"
+        - "migrations/sqlite/000003_knowledge_base_auto_tag_config"
+        - "migrations/sqlite/000008_processing_spans_and_pending_subtasks"
+        - "migrations/sqlite/000010_knowledge_multi_tags"
+        - "migrations/sqlite/000098_knowledge_datasource_id_index"
+        - "migrations/sqlite/000105_semantic_control"
+        - "migrations/sqlite/000106_semantic_model_policy"
+        - "migrations/sqlite/000107_semantic_model_invocations"
+      versioned:
+        - "migrations/versioned/000002_embeddings"
+        - "migrations/versioned/000003_chunk_flags"
+        - "migrations/versioned/000007_embeddings_tag_id"
+        - "migrations/versioned/000008_migrate_untagged_faq"
+        - "migrations/versioned/000009_add_last_faq_import_result"
+        - "migrations/versioned/000010_add_seq_id"
+        - "migrations/versioned/000011_pg_search_update"
+        - "migrations/versioned/000013_engine_configs"
+        - "migrations/versioned/000016_add_kb_pinned"
+        - "migrations/versioned/000020_add_message_knowledge_id"
+        - "migrations/versioned/000026_chunks_query_indexes"
+        - "migrations/versioned/000033_add_video_info_to_chunks"
+        - "migrations/versioned/000037_wiki_and_indexing"
+        - "migrations/versioned/000040_wiki_log_entries"
+        - "migrations/versioned/000050_user_kb_pins"
+        - "migrations/versioned/000055_knowledge_processing_spans"
+        - "migrations/versioned/000056_knowledge_pending_subtasks"
+        - "migrations/versioned/000058_expand_knowledge_source"
+        - "migrations/versioned/000059_embeddings_hnsw_1024"
+        - "migrations/versioned/000061_wiki_page_hierarchy"
+        - "migrations/versioned/000063_knowledge_multi_tags"
+        - "migrations/versioned/000066_expand_knowledge_span_name"
+        - "migrations/versioned/000073_kb_activity_scope"
+        - "migrations/versioned/000075_wiki_page_revisions"
+        - "migrations/versioned/000076_knowledge_metadata_external_id_index"
+        - "migrations/versioned/000077_remove_wiki_log"
+        - "migrations/versioned/000078_chunk_editing_and_custom_metadata"
+        - "migrations/versioned/000079_knowledge_folder_path"
+        - "migrations/versioned/000080_knowledge_base_auto_tag_config"
+        - "migrations/versioned/000177_knowledge_datasource_id_index"
+        - "migrations/versioned/000184_semantic_control"
+        - "migrations/versioned/000185_semantic_model_policy"
+        - "migrations/versioned/000186_semantic_model_invocations"
+
+  conversation:
+    description: Session、Message、Chat、Feedback、分享、建议、Query History、临时文档（§5.3/§5.18）
+    packages:
+      - internal/application/service/chat_pipeline
+    horizontal_packages:
+      - path: internal/handler/session
+        role: plurality-owner
+        split: 36 个非测试文件中 conversation 家族占多数 (~12：handler/stream/share/title/steer/qa/
+          query_history_admin/temporary_document/fork/image_upload/attachment_processor/
+          quick_answer_timeline)；workbench_*+artifact_* (9) 归 workbench，craft* (5) 归 craft，
+          sandbox_terminal_*/browserskill (3) 归 execution，agent_run/agent_stream (2) 归
+          agentruntime，wiki_fixer_scope (1) 归 knowledge；helpers/types 共享。
+    routes:
+      - name: RegisterSessionRoutes
+        source: internal/router/routes_chat.go:95
+        split: 38 条注册的域内拆分：conversation 27、execution 3（/sessions/:id/local-browser ×2、
+          sandbox/terminal-ticket）、agentruntime 4（/sessions/:id/runs/*）、workbench 4
+          （session/message artifacts + 预览票据）；craft 分组与委托注册归 craft（见 craft 条目）
+      - name: RegisterChatRoutes
+        source: internal/router/routes_chat.go:237
+        note: 3 条（knowledge-chat / agent-chat / knowledge-search），全部归 conversation
+      - name: RegisterMessageRoutes
+        source: internal/router/routes_chat.go:20
+      - name: RegisterFeedbackRoutes
+        source: internal/router/routes_chat.go:49
+      - name: RegisterSessionShareRoutes
+        source: internal/router/routes_chat.go:72
+      - name: RegisterQueryHistoryAdminRoutes
+        source: internal/router/routes_query_history.go:16
+      - name: serveMessageScopedFiles
+        source: internal/router/files.go (called router.go:346)
+    workers:
+      - { task: TypeTemporaryDocumentProcess, handler_owner: conversation }
+      - { task: TypeQueryHistoryExport, handler_owner: conversation }
+    hooks:
+      - name: startTemporaryDocumentCleanup
+        source: internal/container/container.go:618 (func at container.go:2421)
+      - name: registerChatLocalImageResolver
+        source: internal/container/container.go:1034 (func at container.go:1123)
+      - name: "chatpipeline plugins ×17: NewPluginSearch/Rerank/WebFetch/Merge/DataAnalysis/IntoChatMessage/ChatCompletion/ChatCompletionStream/FilterTopK/QueryUnderstand/LoadHistory/MemoryRecall/ExtractEntity/SearchEntity/SearchParallel/WikiBoost/MemoryAffinity"
+        source: internal/container/container.go:645-661
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000005_messages_attachments_and_invitation_fields"
+        - "migrations/sqlite/000072_session_fork"
+        - "migrations/sqlite/000073_fork_snapshot_lease"
+        - "migrations/sqlite/000079_message_feedback"
+        - "migrations/sqlite/000091_query_history_share"
+      versioned:
+        - "migrations/versioned/000005_mentioned_items"
+        - "migrations/versioned/000019_add_agent_duration_ms"
+        - "migrations/versioned/000022_message_images"
+        - "migrations/versioned/000025_message_channel"
+        - "migrations/versioned/000027_message_rendered_content"
+        - "migrations/versioned/000034_add_attachments"
+        - "migrations/versioned/000039_session_user_id_and_pin"
+        - "migrations/versioned/000067_question_suggestions"
+        - "migrations/versioned/000070_temporary_documents"
+        - "migrations/versioned/000081_message_artifacts"
+        - "migrations/versioned/000150_session_fork"
+        - "migrations/versioned/000151_fork_snapshot_lease"
+        - "migrations/versioned/000158_message_feedback"
+        - "migrations/versioned/000170_query_history_share"
+
+  agentcatalog:
+    description: Agent Definition/Version、Persona、Expert、Subagent、Skill、Marketplace、Favorite（§5.4/§5.18）
+    packages: []                  # 无独立包；见 internal/application/service 拆分注记
+    routes:
+      - name: RegisterCustomAgentRoutes
+        source: internal/router/routes_agent.go:22
+      - name: RegisterAgentVersionRoutes
+        source: internal/router/routes_agent_versions.go:29
+      - name: RegisterAgentMarketplaceRoutes
+        source: internal/router/routes_agent_marketplace.go:21
+      - name: RegisterPersonaRoutes
+        source: internal/router/routes_persona.go:24
+      - name: RegisterExpertRoutes
+        source: internal/router/routes_expert.go:21
+      - name: RegisterSubagentRoutes
+        source: internal/router/routes_subagent.go:26
+      - name: RegisterUserFavoriteRoutes
+        source: internal/router/routes_agent.go:61
+      - name: RegisterSkillRoutes
+        source: internal/router/routes_agent.go:76
+      - name: RegisterSkillMarketRoutes
+        source: internal/router/routes_skill_market.go:32
+      - name: RegisterTenantSkillMarketRoutes
+        source: internal/router/routes_tenant_skill_market.go:31
+      - name: RegisterTenantExpertMarketRoutes
+        source: internal/router/routes_tenant_expert_market.go:35
+    workers: []
+    hooks:
+      - name: startTenantSkillReaper
+        source: internal/container/container.go:702 (func at container.go:2405)
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000054_tenant_skills"
+        - "migrations/sqlite/000084_tenant_subagents"
+        - "migrations/sqlite/000095_expert_installs"
+        - "migrations/sqlite/000096_published_skills"
+        - "migrations/sqlite/000097_published_experts"
+        - "migrations/sqlite/000108_agent_versions"
+        - "migrations/sqlite/000109_tenant_agent_marketplace"
+      versioned:
+        - "migrations/versioned/000001_agent"
+        - "migrations/versioned/000006_custom_agents"
+        - "migrations/versioned/000047_user_resource_favorites"
+        - "migrations/versioned/000051_custom_agents_creator_backfill"
+        - "migrations/versioned/000086_tenant_skills"
+        - "migrations/versioned/000087_skill_install_transcript"
+        - "migrations/versioned/000088_skill_snapshot_planned_name"
+        - "migrations/versioned/000090_skill_catalog"
+        - "migrations/versioned/000163_tenant_subagents"
+        - "migrations/versioned/000174_expert_installs"
+        - "migrations/versioned/000175_published_skills"
+        - "migrations/versioned/000176_published_experts"
+        - "migrations/versioned/000187_agent_versions"
+        - "migrations/versioned/000188_tenant_agent_marketplace"
+
+  agentruntime:
+    description: Agent 执行引擎、Run/Attempt、工具、审批、Compaction、Memory、Model Context、native/tRPC/OpenCode 协议（§5.5/§5.18）
+    packages:
+      - internal/agent
+      - internal/agent/approval
+      - internal/agent/compaction
+      - internal/agent/experts
+      - internal/agent/native
+      - internal/agent/nativecontract
+      - internal/agent/nativeprobe
+      - internal/agent/opencode
+      - internal/agent/persona
+      - internal/agent/recoverytest
+      - internal/agent/recoverytest/provider
+      - internal/agent/runtime
+      - internal/agent/skills
+      - internal/agent/skills/skillhub
+      - internal/agent/subagents
+      - internal/agent/token
+      - internal/agent/tools
+      - internal/agent/trpc
+      - internal/modelcontext
+    horizontal_packages:
+      - path: internal/application/service/memory
+        role: single-domain (memory 抽取/一致性/向量检索服务)
+      - path: internal/application/repository
+        role: plurality-owner
+        split: 95 个非测试文件中 agent_run_*/native_* (agentruntime, ~21) 占多数；craft_* (6) 归
+          craft，tenant_*/user/organization (identity ~10)、semantic_* (knowledge 4)、mcp (airesource 4)、
+          execution (4)、mobile (workbench 4)、memory (agentruntime 3)、knowledge (3)、workbench (2)、
+          appconnector/commercial 等散布；Pass B 逐文件归属。
+      - path: internal/mcp
+        role: shared (owner=airesource)
+        split: MCP client/manager 同时被 airesource（service/mcp_service、mcp_metadata、handler）
+          与 agentruntime（agent/tools/mcp_tool、mcp_oauth）消费；§5.18 判定 MCP 服务定义与凭据归
+          airesource，运行工具在 agentruntime。
+    routes:
+      - name: RegisterMemoryRoutes
+        source: internal/router/routes_memory.go:17
+      - name: RegisterNativeArchiveRoutes
+        source: internal/router/routes_native_archive.go:11
+    workers:
+      - { task: TypeMemoryExtract, handler_owner: agentruntime }
+    hooks:
+      - name: registerAgentRunResourceProtection
+        source: internal/container/container.go:257 (func at container.go:2462)
+      - name: wire AgentRunStore cleaner (inline)
+        source: internal/container/container.go:693
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000004_memory"
+        - "migrations/sqlite/000014_agent_runs"
+        - "migrations/sqlite/000015_agent_tool_plan_versions"
+        - "migrations/sqlite/000016_agent_decision_linkage"
+        - "migrations/sqlite/000074_memory_consistency"
+        - "migrations/sqlite/000075_memory_vector_search"
+        - "migrations/sqlite/000083_native_agent_schema"
+        - "migrations/sqlite/000087_native_user_state"
+        - "migrations/sqlite/000092_native_memory_job_session_key"
+        - "migrations/sqlite/000093_native_memory_job_retry"
+        - "migrations/sqlite/000100_native_oauth_attempts"
+      versioned:
+        - "migrations/versioned/000042_mcp_tool_approval"
+        - "migrations/versioned/000084_memory"
+        - "migrations/versioned/000093_agent_runs"
+        - "migrations/versioned/000094_agent_tool_plan_versions"
+        - "migrations/versioned/000095_agent_decision_linkage"
+        - "migrations/versioned/000153_memory_consistency"
+        - "migrations/versioned/000154_memory_vector_search"
+        - "migrations/versioned/000162_native_agent_schema"
+        - "migrations/versioned/000166_native_user_state"
+        - "migrations/versioned/000171_native_memory_job_session_key"
+        - "migrations/versioned/000172_native_memory_job_retry"
+        - "migrations/versioned/000179_native_oauth_attempts"
+
+  workbench:
+    description: Task 视图、Timeline、Inbox/Attention、通用 Artifact、通知、移动任务投影（§5.6/§5.18）
+    packages:
+      - internal/workbench
+      - internal/notification
+      - internal/voice
+    horizontal_packages:
+      - path: internal/application/service/workbench
+        role: single-domain
+    routes:
+      - name: RegisterWorkbenchRoutes
+        source: internal/router/routes_workbench.go:33
+        split: 10 条注册的域内拆分：workbench 5（/workbench/executions 读+写），execution 5
+          （/execution-targets ×4、/execution-workspaces ×1，targetHandlers）
+      - name: RegisterWorkbenchOverviewRoutes
+        source: internal/router/routes_workbench.go:73
+      - name: RegisterWorkbenchInboxRoutes
+        source: internal/router/routes_workbench.go:84
+      - name: RegisterWorkbenchStartRoutes
+        source: internal/router/routes_workbench.go:127
+      - name: RegisterWorkbenchArtifactRoutes
+        source: internal/router/routes_workbench.go:142
+      - name: RegisterWorkbenchCommandRoutes
+        source: internal/router/routes_workbench.go:159
+      - name: RegisterMobileVoiceRoutes
+        source: internal/router/routes_workbench.go:177
+      - name: RegisterMobileDeviceRoutes
+        source: internal/router/routes_workbench.go:191
+      - name: RegisterArtifactPreviewRoutes
+        source: internal/handler/artifact_preview.go:284
+        note: 隔离预览源 /ap/:token（W27）GET+HEAD；票据签发 POST 经
+          RegisterArtifactPreviewIssueRoute（同文件，由 routes_chat.go:187 委托调用）
+    workers: []
+    hooks:
+      - name: registerArtifactVersionHTTPHandlers
+        source: internal/container/container.go:671 (func at container.go:2709)
+      - name: registerArtifactPreviewHTTPHandlers
+        source: internal/container/container.go:676 (func at container.go:2725)
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000019_workbench_interactions"
+        - "migrations/sqlite/000055_workbench_runs"
+        - "migrations/sqlite/000056_workbench_requests"
+        - "migrations/sqlite/000058_mobile_devices"
+        - "migrations/sqlite/000059_mobile_notifications"
+        - "migrations/sqlite/000060_mobile_notification_delivery"
+        - "migrations/sqlite/000067_artifact_versions"
+        - "migrations/sqlite/000068_voice_sessions"
+        - "migrations/sqlite/000069_voice_transcriptions"
+        - "migrations/sqlite/000070_mobile_notification_provider_state"
+      versioned:
+        - "migrations/versioned/000097_workbench_interactions"
+        - "migrations/versioned/000134_workbench_runs"
+        - "migrations/versioned/000135_workbench_requests"
+        - "migrations/versioned/000142_artifact_versions"
+        - "migrations/versioned/000143_voice_sessions"
+        - "migrations/versioned/000144_voice_transcriptions"
+        - "migrations/versioned/000145_mobile_devices"
+        - "migrations/versioned/000146_mobile_notifications"
+        - "migrations/versioned/000147_mobile_notification_delivery"
+        - "migrations/versioned/000148_mobile_notification_provider_state"
+
+  craft:
+    description: 开发工作区、会话/运行、Interaction、Snapshot、Artifact Version/Preview、用量、Scheduled Task（§5.7/§5.18）
+    packages:
+      - internal/craft
+    routes:
+      - name: "craft route groups (inside RegisterSessionRoutes): /craft/sessions, /craft/scheduled-tasks, /craft/model-gateway"
+        source: internal/router/routes_chat.go:95-235 (groups at 103/123/135)
+        note: /craft/sessions 与 /craft/scheduled-tasks 的实际路由在 handler 侧委托函数中注册
+          （见下两条）；/craft/model-gateway 的 2 条 credentials 路由在 routes_chat.go:124-125
+      - name: RegisterCraftSessionRoutes (handler-side delegation; 12 routes on /craft/sessions + /sessions)
+        source: internal/handler/session/craft.go:116-154
+      - name: RegisterCraftInteractionRoutes (handler-side delegation; 4 routes on /sessions)
+        source: internal/handler/session/craft_interaction.go:63
+      - name: RegisterCraftScheduledTaskRoutes (handler-side delegation; 7 routes on /craft/scheduled-tasks)
+        source: internal/handler/session/craft_scheduled.go:77
+      - name: "craft model gateway top-level (pre-auth): /api/v1/craft/model-gateway/v1/chat/completions, .../models"
+        source: internal/router/router.go:262-265
+      - name: RegisterCraftPreviewRoutes
+        source: internal/handler/session/craft_preview.go:55
+        note: 隔离预览源 /p/:cap/*filepath（W02）GET+HEAD；同文件 RegisterCraftPreviewIssueRoute
+          (POST 预览票据) 当前无生产调用方（等价路由由 craft.go:151-153 内联注册），计数含此休眠挂载
+    workers: []
+    hooks:
+      - name: registerCraftHTTPHandlers
+        source: internal/container/container.go:665 (func at container.go:2682)
+      - name: registerCraftScheduledHTTPHandlers
+        source: internal/container/container.go:668 (func at container.go:2701)
+      - name: wireCraftInteractionRegistrar
+        source: internal/container/container.go:680 (func at container.go:2666)
+      - name: registerCraftInteractionHTTPHandlers
+        source: internal/container/container.go:681 (func at internal/container/craft_interaction.go:81)
+      - name: startCraftDecisionDelivery
+        source: internal/container/container.go:682 (func at internal/container/craft_interaction.go:92)
+      - name: validateCraftKnowledgeAssembly
+        source: internal/container/container.go:684 (func at container.go:2650)
+      - name: registerCraftUsageHTTPHandlers
+        source: internal/container/container.go:686 (func at internal/container/craft_lifecycle.go:101)
+      - name: wireCraftLifecycleIntegration
+        source: internal/container/container.go:689 (func at internal/container/craft_lifecycle.go:116)
+      - name: wireCraftSessionTombstone
+        source: internal/container/container.go:1038 (func at internal/container/craft_lifecycle.go:136)
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000045_craft"
+        - "migrations/sqlite/000046_craft_versions"
+        - "migrations/sqlite/000047_craft_usage"
+        - "migrations/sqlite/000048_craft_budget"
+        - "migrations/sqlite/000049_craft_sessions"
+        - "migrations/sqlite/000050_craft_snapshots"
+        - "migrations/sqlite/000051_craft_interactions"
+        - "migrations/sqlite/000052_craft_lifecycle"
+        - "migrations/sqlite/000099_craft_scheduled"
+      versioned:
+        - "migrations/versioned/000125_craft"
+        - "migrations/versioned/000126_craft_versions"
+        - "migrations/versioned/000127_craft_usage"
+        - "migrations/versioned/000128_craft_budget"
+        - "migrations/versioned/000129_craft_sessions"
+        - "migrations/versioned/000130_craft_snapshots"
+        - "migrations/versioned/000131_craft_interactions"
+        - "migrations/versioned/000132_craft_lifecycle"
+        - "migrations/versioned/000178_craft_scheduled"
+
+  execution:
+    description: Sandbox、Execution Target/Registration、Workspace Lease、Terminal、Browser Skill、环境变量、资源传输（§5.8/§5.18）
+    packages:
+      - internal/sandbox
+      - internal/execution
+      - internal/browserskill
+    routes:
+      - name: RegisterSandboxConfigRoutes
+        source: internal/router/routes_infra.go:55
+      - name: RegisterSandboxTerminalRoutes
+        source: internal/router/routes_chat.go:271
+      - name: RegisterLocalBrowserRoutes
+        source: internal/router/routes_chat.go:282
+      - name: RegisterMyBrowserRoutes
+        source: internal/router/routes_chat.go:292
+      - name: RegisterMyEnvVarRoutes
+        source: internal/router/routes_auth_tenant.go:191
+      - name: RegisterExecutionRegistrationRoutes
+        source: internal/router/routes_workbench.go:97
+      - name: execution target groups (inside RegisterWorkbenchRoutes)
+        source: internal/router/routes_workbench.go:33-72
+    workers: []
+    hooks: []
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000020_execution_dispatch"
+        - "migrations/sqlite/000021_execution_observations"
+        - "migrations/sqlite/000057_execution_targets"
+        - "migrations/sqlite/000061_execution_cleanup"
+        - "migrations/sqlite/000062_execution_cleanup_observations"
+        - "migrations/sqlite/000063_execution_cleanup_artifacts"
+        - "migrations/sqlite/000064_execution_cleanup_artifact_intents"
+        - "migrations/sqlite/000065_execution_cleanup_receipts"
+        - "migrations/sqlite/000066_execution_observation_revision"
+        - "migrations/sqlite/000071_execution_target_usage_binding"
+        - "migrations/sqlite/000076_browser_authorization"
+        - "migrations/sqlite/000077_paseo_control"
+        - "migrations/sqlite/000078_execution_registrations"
+      versioned:
+        - "migrations/versioned/000082_tenant_sandbox_config"
+        - "migrations/versioned/000083_session_sandbox_config"
+        - "migrations/versioned/000089_env_vars"
+        - "migrations/versioned/000096_execution_targets"
+        - "migrations/versioned/000098_execution_dispatch"
+        - "migrations/versioned/000099_execution_observations"
+        - "migrations/versioned/000136_execution_cleanup"
+        - "migrations/versioned/000137_execution_cleanup_observations"
+        - "migrations/versioned/000138_execution_cleanup_artifacts"
+        - "migrations/versioned/000139_execution_cleanup_artifact_intents"
+        - "migrations/versioned/000140_execution_cleanup_receipts"
+        - "migrations/versioned/000141_execution_observation_revision"
+        - "migrations/versioned/000149_execution_target_usage_binding"
+        - "migrations/versioned/000155_browser_authorization"
+        - "migrations/versioned/000156_paseo_control"
+        - "migrations/versioned/000157_execution_registrations"
+
+  datasource:
+    description: 外部知识源、连接器注册、同步、取消、重试、进度、凭据元数据、调度（§5.9/§5.18）
+    packages:
+      - internal/datasource
+      - internal/datasource/connector/confluence
+      - internal/datasource/connector/dingtalk
+      - internal/datasource/connector/feishu/core
+      - internal/datasource/connector/feishu/drive
+      - internal/datasource/connector/feishu/wiki
+      - internal/datasource/connector/gitlab
+      - internal/datasource/connector/ima
+      - internal/datasource/connector/moauth
+      - internal/datasource/connector/notion
+      - internal/datasource/connector/rss
+      - internal/datasource/connector/yuque
+    routes:
+      - name: RegisterDataSourceRoutes
+        source: internal/router/routes_infra.go:301
+    workers:
+      - { task: TypeDataSourceSync, handler_owner: datasource }
+      - { task: TypeDataSourcePurge, handler_owner: datasource }
+    hooks:
+      - name: injectDataSourceTaskInspector
+        source: internal/container/container.go:636 (func at container.go:2366)
+      - name: startDataSourceScheduler
+        source: internal/container/container.go:637 (func at container.go:2373)
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000094_sync_logs_lifecycle"
+      versioned:
+        - "migrations/versioned/000029_datasource_tables"
+        - "migrations/versioned/000173_sync_logs_lifecycle"
+
+  appconnector:
+    description: 应用目录、安装、OAuth、连接、授权、动作、同步、Open Connector（§5.10/§5.18）
+    packages:
+      - internal/appconnector
+      - internal/appconnector/openconnector
+      - internal/connectorcontrol
+    horizontal_packages:
+      - path: internal/application/service/appconnector
+        role: single-domain
+      - path: internal/application/repository/appconnector
+        role: single-domain
+    routes:
+      - name: RegisterAppConnectorRoutes
+        source: internal/router/routes_app_connectors.go:20
+    workers: []
+    hooks:
+      - name: wire AppActionHandler + ActionService (inline)
+        source: internal/container/container.go:980
+      - name: wire AppActionHandler + OCPreparer (inline)
+        source: internal/container/container.go:983
+      - name: wire AppActionHandler + OCConnectionService (inline)
+        source: internal/container/container.go:986
+      - name: startOCRecoveryRunner
+        source: internal/container/container.go:989 (func at internal/container/open_connector.go:683)
+      - name: wire AppConnectionHandler (inline)
+        source: internal/container/container.go:994
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000037_app_installations"
+        - "migrations/sqlite/000039_app_actions"
+        - "migrations/sqlite/000040_app_datasource_bindings"
+        - "migrations/sqlite/000041_open_connector_bindings"
+        - "migrations/sqlite/000042_open_connector_actions"
+        - "migrations/sqlite/000043_open_connector_dispatch"
+        - "migrations/sqlite/000044_open_connector_tool_bindings"
+      versioned:
+        - "migrations/versioned/000117_app_installations"
+        - "migrations/versioned/000119_app_actions"
+        - "migrations/versioned/000120_app_datasource_bindings"
+        - "migrations/versioned/000121_open_connector_bindings"
+        - "migrations/versioned/000122_open_connector_actions"
+        - "migrations/versioned/000123_open_connector_dispatch"
+        - "migrations/versioned/000124_open_connector_tool_bindings"
+
+  channels:
+    description: IM、Webhook、Embed Channel、外部身份/会话映射、入站标准化、出站投递（§5.11/§5.18）
+    packages:
+      - internal/im
+      - internal/im/dingtalk
+      - internal/im/feishu
+      - internal/im/mattermost
+      - internal/im/qqbot
+      - internal/im/slack
+      - internal/im/telegram
+      - internal/im/wechat
+      - internal/im/wecom
+      - internal/im/yunzhijia
+    routes:
+      - name: RegisterIMRoutes
+        source: internal/router/routes_agent.go:284
+      - name: RegisterIMChannelRoutes
+        source: internal/router/routes_agent.go:297
+      - name: RegisterEmbedChannelRoutes
+        source: internal/router/routes_agent.go:261
+      - name: RegisterEmbedPublicRoutes
+        source: internal/router/routes_agent.go:220
+    workers: []
+    hooks:
+      - name: registerIMService
+        source: internal/container/container.go:863 (func at container.go:2283)
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000009_embed_channel_memory_flag"
+      versioned:
+        - "migrations/versioned/000021_im_channel"
+        - "migrations/versioned/000023_im_channel_kb_id"
+        - "migrations/versioned/000024_im_channel_bot_identity"
+        - "migrations/versioned/000028_im_thread_session"
+        - "migrations/versioned/000038_im_session_agent_id"
+        - "migrations/versioned/000060_embed_channels"
+        - "migrations/versioned/000152_dingtalk_stream_only"
+
+  airesource:
+    description: 模型、Provider 凭据、MCP、Web Search、Vector Store、Storage Backend、租户能力配置（§5.12/§5.18）
+    packages:
+      - internal/models/asr
+      - internal/models/chat
+      - internal/models/embedding
+      - internal/models/limiter
+      - internal/models/provider
+      - internal/models/rerank
+      - internal/models/utils
+      - internal/models/utils/ollama
+      - internal/models/vlm
+      - internal/storageurl
+      - internal/mcp
+      - internal/infrastructure/web_search
+    horizontal_packages:
+      - path: (none)
+        role: note-only
+        split: MCP/model/web_search/vectorstore/storagebackend 业务服务文件位于横向包
+          internal/application/service（见 knowledge 条目的拆分注记）
+    routes:
+      - name: RegisterModelRoutes
+        source: internal/router/routes_infra.go:23
+      - name: RegisterMCPServiceRoutes
+        source: internal/router/routes_infra.go:145
+      - name: RegisterWebSearchRoutes
+        source: internal/router/routes_infra.go:215
+      - name: RegisterWebSearchProviderRoutes
+        source: internal/router/routes_infra.go:230
+      - name: RegisterVectorStoreRoutes
+        source: internal/router/routes_infra.go:261
+      - name: RegisterStorageBackendRoutes
+        source: internal/router/routes_infra.go:280
+      - name: RegisterWeKnoraCloudRoutes
+        source: internal/router/routes_infra.go:363
+        note: WeKnoraCloud APPID/APPSECRET 为 provider 凭据 → AI Resource
+    workers: []
+    hooks:
+      - name: registerWebSearchProviders
+        source: internal/container/container.go:439 (func at container.go:2263)
+      - name: registerModelConcurrencyLimiter
+        source: internal/container/container.go:604 (func at container.go:1216)
+      - name: registerLiteModelConcurrencyLimiter
+        source: internal/container/container.go:615 (func at container.go:1232)
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000013_mcp_tool_enabled"
+        - "migrations/sqlite/000038_mcp_oauth_binding_states"
+      versioned:
+        - "migrations/versioned/000004_drop_vlm_model_id"
+        - "migrations/versioned/000014_storage_provider_config"
+        - "migrations/versioned/000015_add_is_fallback"
+        - "migrations/versioned/000017_mcp_builtin"
+        - "migrations/versioned/000030_web_search_providers"
+        - "migrations/versioned/000031_add_asr_config"
+        - "migrations/versioned/000032_vector_stores"
+        - "migrations/versioned/000035_add_credentials"
+        - "migrations/versioned/000036_kb_vector_store_id"
+        - "migrations/versioned/000052_models_managed_by"
+        - "migrations/versioned/000057_models_display_name"
+        - "migrations/versioned/000062_mcp_oauth"
+        - "migrations/versioned/000068_storage_backends"
+        - "migrations/versioned/000069_resource_registry"
+        - "migrations/versioned/000074_mcp_oauth_refresh_lease"
+        - "migrations/versioned/000091_mcp_tool_enabled"
+        - "migrations/versioned/000092_mcp_metadata"
+        - "migrations/versioned/000118_mcp_oauth_binding_states"
+
+  commercial:
+    description: 套餐、权益、预算、Usage、账单、支付、履约、商业网关（§5.13/§5.18）
+    packages:
+      - internal/commercial
+      - internal/payment
+      - internal/usage
+      - internal/infrastructure/openmeter
+      - internal/infrastructure/commercialplatform
+    horizontal_packages:
+      - path: internal/application/service/commercial
+        role: single-domain
+      - path: internal/application/repository/commercial
+        role: single-domain
+    routes:
+      - name: RegisterCommercialRoutes
+        source: internal/router/routes_commercial.go:19
+      - name: RegisterUsageRoutes
+        source: internal/router/routes_usage.go:21
+    workers: []
+    hooks:
+      - name: wire CommercialHandler + CommercialPlatform (inline)
+        source: internal/container/container.go:881
+      - name: wire CommercialHandler + BillingAccountService (inline)
+        source: internal/container/container.go:892
+      - name: wire CommercialHandler + PlanVersionService (inline)
+        source: internal/container/container.go:902
+      - name: wire QuotaGuard → Commercial/TenantMember/Knowledge (inline)
+        source: internal/container/container.go:916
+        split: QuotaGuard 主所有权 commercial；注入点触及 identity(TenantMemberHandler) 与 knowledge
+      - name: startCommercialFulfillment
+        source: internal/container/container.go:944 (func at container.go:2475)
+      - name: wire CommercialHandler + OrderService (inline)
+        source: internal/container/container.go:1015
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000012_message_usage"
+        - "migrations/sqlite/000030_commercial_accounts"
+        - "migrations/sqlite/000031_commercial_catalog"
+        - "migrations/sqlite/000032_commercial_lifecycle"
+        - "migrations/sqlite/000033_commercial_orders"
+        - "migrations/sqlite/000034_commercial_refunds"
+        - "migrations/sqlite/000035_commercial_usage"
+        - "migrations/sqlite/000036_commercial_budgets"
+        - "migrations/sqlite/000081_user_usage"
+        - "migrations/sqlite/000082_commercial_reservations_owner"
+        - "migrations/sqlite/000102_commercial_billing_accounts"
+        - "migrations/sqlite/000103_commercial_plan_publications"
+        - "migrations/sqlite/000104_commercial_tenant_benefits"
+      versioned:
+        - "migrations/versioned/000085_message_usage"
+        - "migrations/versioned/000110_commercial_accounts"
+        - "migrations/versioned/000111_commercial_catalog"
+        - "migrations/versioned/000112_commercial_lifecycle"
+        - "migrations/versioned/000113_commercial_orders"
+        - "migrations/versioned/000114_commercial_refunds"
+        - "migrations/versioned/000115_commercial_usage"
+        - "migrations/versioned/000116_commercial_budgets"
+        - "migrations/versioned/000160_user_usage"
+        - "migrations/versioned/000161_commercial_reservations_owner"
+        - "migrations/versioned/000181_commercial_billing_accounts"
+        - "migrations/versioned/000182_commercial_plan_publications"
+        - "migrations/versioned/000183_commercial_tenant_benefits"
+
+  insights:
+    description: Analytics、Evaluation、运营指标、报表、可重建分析投影（§5.14/§5.18）
+    packages: []
+    horizontal_packages:
+      - path: internal/application/service/metric
+        role: single-domain
+    routes:
+      - name: RegisterAnalyticsRoutes
+        source: internal/router/routes_analytics.go:15
+      - name: RegisterEvaluationRoutes
+        source: internal/router/routes_infra.go:94
+    workers: []
+    hooks: []
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000080_analytics_aggregation_indexes"
+      versioned:
+        - "migrations/versioned/000159_analytics_aggregation_indexes"
+
+  system:
+    description: 初始化、System Setting、部署能力、系统管理、健康、housekeeping（§5.15/§5.18）
+    packages: []                  # 无独立包；system_setting 服务位于横向包
+    routes:
+      - name: RegisterInitializationRoutes
+        source: internal/router/routes_infra.go:102
+      - name: RegisterSystemRoutes
+        source: internal/router/routes_auth_tenant.go:245
+      - name: RegisterSystemAdminRoutes
+        source: internal/router/routes_auth_tenant.go:279
+        split: 审计端点归 identity；其余归 system
+    workers: []
+    hooks:
+      - name: startHousekeepingService
+        source: internal/container/container.go:642 (func at container.go:2389)
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000007_system_admin_and_settings"
+      versioned:
+        - "migrations/versioned/000053_system_admin_and_settings"
+
+  policy:
+    description: 跨域配额、限流、存储白名单、embed/access policy、capability gate（§5.16/§5.18）
+    packages:
+      - internal/ratelimit
+      - internal/storageallowlist
+      - internal/embedpolicy
+      - internal/ipclass
+      - internal/application/access
+    horizontal_packages:
+      - path: internal/application/access
+        role: shared (owner=policy)
+        split: FileAccess 是 KB/message 授权的统一执行门；授权事实分别归 knowledge/conversation
+    routes:
+      - name: embedFrameAncestorsMiddleware
+        source: internal/router/router.go:195-197
+        note: embed 页面 frame-ancestors 策略（使用 internal/embedpolicy）；无独立业务路由
+    workers: []
+    hooks: []
+    migrations: {}
+
+  # =========================================================================
+  # Non-business categories
+  # =========================================================================
+
+  platform:
+    description: 连接、migration runner、队列、blob、缓存/锁、加密、日志、指标、Tracing、配置、HTTP 中间件、文件服务（§5.17/§5.18）
+    packages:
+      - internal/common
+      - internal/common/redislock
+      - internal/database
+      - internal/errors
+      - internal/event
+      - internal/filetransport
+      - internal/logger
+      - internal/metrics
+      - internal/middleware
+      - internal/middleware/asynqdl
+      - internal/stream
+      - internal/textconv
+      - internal/tracing/langfuse
+      - internal/types
+      - internal/types/interfaces
+      - internal/utils
+      - internal/infrastructure/web_fetch
+      - internal/application/service/file
+      - internal/handler/dto
+      - internal/handler
+    horizontal_packages:
+      - path: internal/handler
+        role: platform-owner (HTTP adapter 层)
+        split: 86 个非测试文件按域分散（app_* appconnector 7、tenant_* identity 6、mcp_* airesource 5、
+          skill* agentcatalog 3、sandbox* execution 3、mobile_* workbench 2、execution_* execution 2、
+          semantic* knowledge 2、其余单文件分属各模块）；Pass B 逐文件归属到各业务模块。
+      - path: internal/application/service/file
+        role: single-domain (文件服务 → Platform, §5.18)
+    routes:
+      - name: "GET /health"
+        source: internal/router/router.go:175
+      - name: "GET /swagger/*any"
+        source: internal/router/router.go:182
+      - name: serveFrontendStatic
+        source: internal/router/static.go
+      - name: serveResourceGrants
+        source: internal/router/files.go (called router.go:221)
+      - name: serveFilesWithResources
+        source: internal/router/files.go (called router.go:272)
+      - name: servePresignedFiles
+        source: internal/router/files.go (called router.go:275)
+      - name: servePresignedPreview
+        source: internal/router/files.go (called router.go:278)
+      - name: "GET /api/v1/workbench/artifacts/download (HMAC grant, pre-auth)"
+        source: internal/router/router.go:233-235
+        split: 挂载点属 workbench 域；HMAC grant 机制归 platform 文件服务
+    workers:
+      - name: 6 asynq server pools (core/postprocess/enrichment/maintenance/shared/wiki)
+        source: internal/router/task.go:173-229,330-343
+        note: 队列容量拓扑是 platform 基础设施；任务处理器归属见各业务模块 workers
+    hooks:
+      - name: registerLangfuseCleanup
+        source: internal/container/container.go:166 (func at container.go:2140)
+      - name: registerPoolCleanup
+        source: internal/container/container.go:169 (func at container.go:2130)
+    migrations:
+      sqlite:
+        - "migrations/sqlite/000006_task_queue_and_dead_letters"
+      versioned:
+        - "migrations/versioned/000041_task_queue_and_wiki_indexes"
+      paradedb:
+        - "migrations/paradedb/00-init-db.sql"
+        - "migrations/paradedb/01-migrate-to-paradedb.sql"
+      paradedb_note: ParadeDB（向量/全文引擎）初始化脚本 → platform 引擎适配
+
+  bootstrap:
+    description: 进程装配、DI 容器、路由装配、配置加载、迁移 runner 基线 schema；非业务模块
+    packages:
+      - cmd/server
+      - internal/container
+      - internal/router
+      - internal/config
+      - internal/runtime
+      - internal/assets
+    routes:
+      - name: NewRouter (assembly entry)
+        source: internal/router/router.go:138
+    workers:
+      - name: RunAsynqServer (Redis mode worker bootstrap)
+        source: internal/router/task.go:231 (invoked container.go:1044)
+      - name: RegisterSyncHandlers (Lite mode in-memory worker bootstrap)
+        source: internal/router/sync_task.go:142 (invoked container.go:1046)
+    hooks:
+      - name: RunAsynqServer (Invoke)
+        source: internal/container/container.go:1044
+      - name: RegisterSyncHandlers (Invoke)
+        source: internal/container/container.go:1046
+    migrations:
+      mysql:
+        - "migrations/mysql/00-init-db.sql"
+      sqlite:
+        - "migrations/sqlite/000000_init"
+      versioned:
+        - "migrations/versioned/000000_init"
+      note: init 基线 schema 跨模块（users/sessions/knowledge 等同批建表）；owner=bootstrap，
+        Pass B 按表归属逐项拆分时需设计修订（§5.18 遗漏处理规则）。
+
+# =========================================================================
+# Shared / horizontal assets requiring Pass B file-level split
+# (each listed once here; package-level owners above are the F0 plurality decisions)
+# =========================================================================
+shared_assets:
+  - path: internal/application/service
+    owner: knowledge
+    note: 见 knowledge.horizontal_packages[0] 的完整拆分清单
+  - path: internal/application/repository
+    owner: agentruntime
+    note: 见 agentruntime.horizontal_packages[1] 的完整拆分清单
+  - path: internal/handler
+    owner: platform
+    note: 见 platform.horizontal_packages[0] 的完整拆分清单
+  - path: internal/handler/session
+    owner: conversation
+    note: 见 conversation.horizontal_packages[0] 的完整拆分清单
+  - path: internal/mcp
+    owner: airesource
+    note: agentruntime 运行时消费；§5.18 MCP 定义/凭据归 airesource
+
+# 覆盖核对（Coverage check）
+coverage:
+  packages: { total: 128, by_owner: { agentruntime: 21, platform: 20, knowledge: 19, datasource: 12,
+    airesource: 12, channels: 10, commercial: 7, bootstrap: 6, policy: 5, appconnector: 5, workbench: 4,
+    execution: 3, conversation: 2, craft: 1, insights: 1, identity: 0, agentcatalog: 0, system: 0 } }
+  route_registrations:
+    total: 633
+    note: "564 literal gin method calls + 69 g.apiKeyRoute helper calls; comment text excluded;
+      patterns: literal (.GET/.POST/.PUT/.DELETE/.PATCH/.HEAD/.OPTIONS/.Any), apiKeyRoute
+      (grp.Handle), direct .Handle (0 sites); AST re-verified 2026-09-21"
+    by_owner:
+      knowledge: 94
+      identity: 85
+      airesource: 61
+      agentcatalog: 55
+      execution: 48
+      conversation: 45
+      system: 43
+      channels: 38
+      workbench: 34
+      agentruntime: 27
+      craft: 28
+      commercial: 23
+      datasource: 20
+      appconnector: 17
+      platform: 9
+      insights: 6
+      note: craft 含 NewRouter 内挂载的 craft model-gateway 2 条预认证路由（按 craft 条目归属）；
+        platform 9 = /health、/swagger、静态前端、文件/预签名/资源授权路由（含
+        workbench artifacts/download 挂载点，其 split 注记见 platform 路由条目）
+  worker_task_types: { redis_mux: 23, lite_executor: 23, pools: 6 }
+  container_invoke_hooks: { total: 58, by_owner: { conversation: 19, craft: 9, commercial: 6, appconnector: 5,
+    airesource: 3, platform: 2, agentruntime: 2, datasource: 2, identity: 2, bootstrap: 2, workbench: 2,
+    system: 1, agentcatalog: 1, channels: 1, knowledge: 1 } }
+  migrations: { files: 537, assets: 270, by_owner_assets: { execution: 29, knowledge: 42, commercial: 26,
+    agentruntime: 23, agentcatalog: 21, airesource: 20, workbench: 20, conversation: 19, craft: 18,
+    identity: 16, appconnector: 14, channels: 8, datasource: 3, platform: 4, bootstrap: 3, insights: 2,
+    system: 2 } }

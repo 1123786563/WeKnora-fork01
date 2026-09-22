@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/opencode"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/craft"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/opencode"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 )
 
 // pinnedCraftRuntimeDigest mirrors the R01 lock digest for the 1.18.4 binary.
@@ -86,12 +86,15 @@ func (s *fakeWorkspaceStore) snapshot() *craft.Workspace {
 func (s *fakeWorkspaceStore) PrepareTask(context.Context, craft.Task) (craft.Task, error) {
 	panic("unused by Resolve")
 }
+
 func (s *fakeWorkspaceStore) GetTask(context.Context, craft.Scope, string) (craft.Task, error) {
 	panic("unused by Resolve")
 }
+
 func (s *fakeWorkspaceStore) SaveResult(context.Context, agentruntime.Fence, craft.Result) error {
 	panic("unused by Resolve")
 }
+
 func (s *fakeWorkspaceStore) GetResult(context.Context, craft.Scope, string) (craft.Result, error) {
 	panic("unused by Resolve")
 }

@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	commercial "github.com/Tencent/WeKnora/internal/commercial"
 	werrors "github.com/Tencent/WeKnora/internal/errors"
-	"github.com/Tencent/WeKnora/internal/infrastructure/chunker"
-	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	"github.com/Tencent/WeKnora/internal/logger"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/chunker"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
@@ -1205,7 +1205,8 @@ func usesSourceIdentityDuplicateCheck(channel string) bool {
 	}
 }
 
-func ensureManualFileName(title string) string {	if title == "" {
+func ensureManualFileName(title string) string {
+	if title == "" {
 		return fmt.Sprintf("manual-%s%s", time.Now().Format("20060102-150405"), manualFileExtension)
 	}
 	trimmed := strings.TrimSpace(title)

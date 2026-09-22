@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"time"
+
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 )
 
 var ErrRemoteStopUnknown = errors.New("remote_stop_unconfirmed")
