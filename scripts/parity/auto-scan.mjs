@@ -332,6 +332,10 @@ async function main() {
       // 精确匹配 section 参数（'system' 而非 'system-global' 等前缀子串，
       // 避免误冻结其他系统管理分区的轮询/计时逻辑）。
       await authedPage.addInitScript(`if (new URLSearchParams(location.search).get('section') === 'system') { const frozen = ${scanClock}; Date.now = () => frozen; }`);
+      // T12c：settings-runtime-queues 的「更新于 HH:mm:ss」由 5s 轮询响应的
+      // server timestamp 驱动，双端截图相位不同必差秒数文本。冻结
+      // toLocaleTimeString 为同一字面量（渲染值确定性；系统时钟本身不受影响）。
+      await authedPage.addInitScript(`if (new URLSearchParams(location.search).get('section') === 'runtime-queues') { const frozen = new Date(${scanClock}).toLocaleTimeString('zh-CN', { hour12: false }); Date.prototype.toLocaleTimeString = function () { return frozen; }; }`);
     }
     // 免登录页（login/register 等）：全新 context，不注入任何会话
     const anonVue = await (await browser.newContext()).newPage();

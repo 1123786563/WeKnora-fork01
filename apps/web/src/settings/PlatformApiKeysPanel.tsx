@@ -1,5 +1,9 @@
 import type { ApiKey, WeKnoraClient } from '@weknora/api-client';
-import { Button, Checkbox, Input } from '@weknora/ui';
+import { Button as WkButton, Checkbox, Input } from '@weknora/ui';
+// T12c：t-alert warning + t-button(size small, variant outline, add icon)
+// 对齐 Vue PlatformAPIKeys.vue:8-18 / :31-37（sprite glyph 图标）。
+import { Alert, Button } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import { useEffect, useState } from 'react';
 import { shouldShowSwaggerDocs, swaggerDocsUrl } from '@weknora/views/integrations/swagger';
 import { resolveApiBaseUrl } from '../platform/api-base.ts';
@@ -85,17 +89,13 @@ export function PlatformApiKeysPanel({ client, initialKeys }: { client: WeKnoraC
       <h2>{title}</h2>
       <p className="section-description">{copy.description}</p>
     </header>
-    <div className="pak-security-alert" role="status">
-      <span className="pak-security-alert__icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16h.01" /></svg></span>
-      <p className="pak-security-alert__text">{copy.securityNotice}</p>
-      <button type="button" className="pak-outline-btn" onClick={openCreate}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>{copy.create}</button>
-    </div>
+    <Alert theme="warning" message={copy.securityNotice} className="security-alert" operation={<Button size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{copy.create}</Button>} />
     {message ? <p className="wk-api-key-message m-0 mb-3 text-[13px] text-[#c23434]" role="status">{message}</p> : null}
-    {token ? <div className="pak-token-card" role="alert"><strong className="text-sm font-semibold text-[#1f2733]">{copy.created}</strong><code className="bg-[rgba(120,135,155,0.1)] px-2 py-2 [overflow-wrap:anywhere]">{token}</code><div className="flex gap-2"><Button type="button" onClick={() => void copyToken()}>{copied ? copy.copied : copy.copy}</Button><Button type="button" onClick={() => setToken(null)}>{copy.close}</Button></div></div> : null}
+    {token ? <div className="pak-token-card" role="alert"><strong className="text-sm font-semibold text-[#1f2733]">{copy.created}</strong><code className="bg-[rgba(120,135,155,0.1)] px-2 py-2 [overflow-wrap:anywhere]">{token}</code><div className="flex gap-2"><WkButton type="button" onClick={() => void copyToken()}>{copied ? copy.copied : copy.copy}</WkButton><WkButton type="button" onClick={() => setToken(null)}>{copy.close}</WkButton></div></div> : null}
     <section className="pak-keys-section">
       {keys.length === 0 ? <div className="pak-keys-state pak-keys-state--empty">
         <span>{copy.empty}</span>
-        <button type="button" className="pak-outline-btn" onClick={openCreate}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>{copy.create}</button>
+        <Button size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{copy.create}</Button>
       </div> : <div className="pak-table-wrap"><table className="pak-table">
         <thead><tr><th>{copy.nameHead}</th><th>{copy.keyHead}</th><th>{copy.permissionsHead}</th><th>{copy.lastUsedHead}</th><th>{copy.createdHead}</th><th className="pak-table__actions">{copy.actionHead}</th></tr></thead>
         <tbody>{keys.map((key) => { const keyCapabilities = key.capabilities ?? []; return <tr key={key.id}>
@@ -127,8 +127,8 @@ export function PlatformApiKeysPanel({ client, initialKeys }: { client: WeKnoraC
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Button type="button" onClick={() => setDrawerOpen(false)}>{copy.close}</Button>
-          <Button type="button" loading={creating} onClick={() => void createAndClose()}>{creating ? copy.creating : copy.create}</Button>
+          <WkButton type="button" onClick={() => setDrawerOpen(false)}>{copy.close}</WkButton>
+          <WkButton type="button" loading={creating} onClick={() => void createAndClose()}>{creating ? copy.creating : copy.create}</WkButton>
         </div>
       </div>
     </div> : null}

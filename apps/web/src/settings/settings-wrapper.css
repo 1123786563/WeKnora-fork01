@@ -201,17 +201,26 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
   --color-ink: rgba(0, 0, 0, 0.9);
   --color-muted: rgba(0, 0, 0, 0.6);
   --color-faint: rgba(0, 0, 0, 0.4);
+  /* T12c：危险/警告 metric 值色 Vue 用 --td-error-color #e34d59 /
+     --td-warning-color #ed7b2f，React --color-danger-strong #d54941 泛灰
+     （最终失败 64 实测 170px 残差），随子树重映射一并归位。 */
+  --color-danger-strong: var(--td-error-color);
+  --color-warning: var(--td-warning-color);
+  /* 卡片/告示描边 Vue 用 --td-component-stroke #e7e7e7 中性灰，React
+     --color-line-soft #edf0f5 蓝灰（pool 卡边框条带 ~700px 残差）。 */
+  --color-line-soft: var(--td-component-stroke);
 }
 .rq-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
 .rq-header h2 { margin: 0 0 8px; color: var(--color-ink); font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
 .rq-header .section-description { max-width: 560px; margin: 0; color: var(--color-muted); font-size: 14px; line-height: 1.6; text-wrap: pretty; }
 .rq-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .rq-refresh { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: none; border-radius: 6px; background: transparent; color: var(--color-faint); cursor: pointer; transition: color 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+/* T12c：TIcon sprite 图标以 1em 取宽高，复刻 Vue :deep(.t-icon){font-size:12px}。 */
+.rq-refresh .t-icon { font-size: 12px; }
 .rq-refresh:hover:not(:disabled) { color: var(--color-accent); background: var(--color-surface-muted); }
 .rq-auto-refresh { display: flex; align-items: center; gap: 7px; min-height: 32px; color: var(--color-muted); font-size: 13px; white-space: nowrap; cursor: pointer; }
 .rq-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-faint); transition: background-color 0.2s ease, box-shadow 0.2s ease; }
 .rq-live-dot--active { background: var(--color-success); box-shadow: 0 0 0 3px rgba(0, 168, 112, 0.12); }
-.rq-auto-refresh-switch { scale: 0.81; }
 .rq-skeleton { height: 84px; border-radius: 10px; background: linear-gradient(90deg, rgba(120, 135, 155, 0.08), rgba(120, 135, 155, 0.18), rgba(120, 135, 155, 0.08)); }
 .rq-loading { display: grid; gap: 22px; padding-top: 4px; }
 .rq-state { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; min-height: 112px; padding: 20px 22px; border: 1px solid var(--color-line-soft); border-radius: 10px; background: var(--color-surface-muted); }
@@ -222,7 +231,7 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 .rq-state--error .rq-state-icon { color: var(--color-danger-strong); background: var(--color-danger-wash); }
 .rq-overview { display: flex; min-height: 64px; align-items: center; gap: 28px; margin-bottom: 30px; padding: 13px 16px; border-radius: 8px; background: var(--color-surface-muted); }
 .rq-overview-title { display: inline-flex; min-width: 112px; align-items: center; gap: 9px; color: var(--color-ink); font-size: 14px; font-weight: 600; white-space: nowrap; }
-.rq-overview-mark { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 6px; color: var(--color-accent); background: var(--color-surface); }
+.rq-overview-mark { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 6px; color: var(--color-accent); background: var(--color-surface); font-size: 15px; }
 .rq-overview-metrics { display: grid; grid-template-columns: repeat(4, minmax(64px, 1fr)); align-items: stretch; gap: 24px; flex: 1; }
 .rq-metric { display: flex; min-width: 0; align-items: flex-start; flex-direction: column; justify-content: center; gap: 4px; }
 .rq-metric-value { color: var(--color-ink); font-size: 20px; font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -348,13 +357,10 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 /* Vue .platform-api-keys .section-header keeps the scoped 20px margin and
    the t-alert carries 16px/24px padding. */
 .wk-settings-section .platform-api-keys .section-header { margin-bottom: 20px; }
-.pak-security-alert { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 16px 24px; border-radius: 6px; background: #f9e0c7; }
-.pak-security-alert__icon { display: grid; flex-shrink: 0; place-items: center; color: #ed7b2f; }
-/* Vue t-alert message: 14px/22px secondary text. */
-.pak-security-alert__text { flex: 1; min-width: 0; margin: 0; color: rgba(0, 0, 0, 0.6); font-size: 14px; line-height: 22px; }
-/* Vue t-button size=small outline: 24px tall, 12px label. */
-.pak-outline-btn { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 24px; padding: 0 12px; border: 1px solid var(--color-line-input, #dcdcdc); border-radius: 4px; background: var(--color-surface, #fff); color: var(--color-ink, #172033); cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
-.pak-outline-btn:hover { border-color: #07c05f; color: #07c05f; }
+/* T12c：手搓 pak-security-alert/pak-outline-btn 已换 tdesign Alert/Button，
+   组件样式随库走；页面级仅保留 Vue .security-alert 的 20px 下边距
+   （PlatformAPIKeys.vue:381-383）。 */
+.platform-api-keys .security-alert { margin-bottom: 20px; }
 .pak-keys-section { overflow: hidden; border: 1px solid var(--color-line-input, #dcdcdc); border-radius: 10px; background: var(--color-surface, #fff); }
 .pak-keys-state { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 120px; color: rgba(0, 0, 0, 0.6); font-size: 13px; line-height: normal; }
 .pak-keys-state--empty { flex-direction: column; gap: 12px; }
@@ -415,26 +421,16 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 
 /* ==== C 组深修（settings-runtime-queues 细节）
    1) rq-auto-refresh 文本行高：Vue span 继承 normal（13px→18px），React body 1.5
-      抬到 20px 使标签文本整体偏 1px；2) 开关轨道几何对齐 Vue t-switch size=small
-      （轨道 26x16、旋钮 12x12、checked 左偏移 12px），替换原 scale:0.81 近似；
-      3) 运行概览标题行高 normal（20px）。 ==== */
+      抬到 20px 使标签文本整体偏 1px；
+   3) 运行概览标题行高 normal（20px）。
+   （原第 2 条 t-switch 几何近似 hack 已删——T12c 直接换 tdesign-react
+   Switch size="small"，库级 26x16/12x12/checked 偏移与 Vue t-switch 同构，
+   台账 #2 根标签差异豁免沿用。） ==== */
 .rq-auto-refresh { line-height: normal; }
-.rq-auto-refresh-switch { width: 26px !important; height: 16px !important; scale: none; }
-.rq-auto-refresh-switch > span { width: 12px !important; height: 12px !important; margin-left: 2px; transform: translateX(0); }
-.rq-auto-refresh-switch[data-state="checked"] > span { transform: translateX(10px); }
 .rq-overview-title { line-height: normal; }
 
-/* Vue PlatformAPIKeys.vue t-alert：warning 图标 22px（非 16），图标-文案间距 8px；
-   t-button size=small：padding 0 7px（轨道宽 132px）、图标-文案间距 8px；
-   operation 列右缘距 alert 内容右缘 ~38px。 */
-.pak-security-alert__icon svg { width: 22px; height: 22px; }
-.pak-security-alert { gap: 8px; }
-.pak-outline-btn { gap: 8px; padding: 0 7px; }
-.pak-outline-btn svg { width: 14px; height: 14px; }
-/* Vue t-alert 的 message 列 547px 恰好容纳单行文案（操作列右缘 1092）；
-   React 字形略宽 ~6px，锁定单行避免 alert 折行抬高整卡。 */
-.pak-security-alert .pak-outline-btn { margin-right: 38px; }
-.pak-security-alert__text { white-space: nowrap; }
+/* （原 pak-security-alert/pak-outline-btn 深修 slice 已删——T12c 换 tdesign
+   Alert/Button 后由库样式自持，见上方 .security-alert 规则。） */
 
 /* ==== D 组深修（全 settings 文本渲染对齐）
    Vue App.vue:301 在 body 全局启用灰阶字体平滑（-webkit-font-smoothing:
@@ -454,9 +450,9 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
    32.4x20); the shared Switch primitive ships 40x20. Row value clusters also
    carry the Vue 8px control gap + 24px square edit button (TenantInfo.vue
    .setting-control gap / t-button size=small square). */
-.wk-settings-section button[role='switch'] { width: 32px; }
-.wk-settings-section button[role='switch'] > span { width: 15px; height: 15px; margin-left: 2px; }
-.wk-settings-section button[role='switch'][data-state='checked'] > span { transform: translateX(13px); }
+.wk-settings-section button[role='switch']:not(.t-switch) { width: 32px; }
+.wk-settings-section button[role='switch']:not(.t-switch) > span { width: 15px; height: 15px; margin-left: 2px; }
+.wk-settings-section button[role='switch']:not(.t-switch)[data-state='checked'] > span { transform: translateX(13px); }
 .wk-settings-section .setting-control { gap: 8px; }
 .wk-settings-section .edit-btn { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; padding: 0; }
 /* Vue App.vue:301 enables grayscale font smoothing app-wide; without it every
@@ -517,8 +513,8 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 /* 3d) 开关（Vue t-switch t-size-m）：轨道 32.4x20，未选中旋钮 12x12 左偏 4px，
    选中旋钮放大 15x15 且偏移 14.9px；共享 32px/15px 规则是 TenantInfo 系的
    size 差异，此处按本面板 Vue 实测覆盖。 */
-.wk-system-global button[role='switch'] > span { width: 12px; height: 12px; margin-left: 4px; }
-.wk-system-global button[role='switch'][data-state='checked'] > span { width: 15px; height: 15px; margin-left: 3px; transform: translateX(11.5px); }
+.wk-system-global button[role='switch']:not(.t-switch) > span { width: 12px; height: 12px; margin-left: 4px; }
+.wk-system-global button[role='switch']:not(.t-switch)[data-state='checked'] > span { width: 15px; height: 15px; margin-left: 3px; transform: translateX(11.5px); }
 
 /* 4) 高风险徽标（Vue t-tag t-tag--danger t-tag--light）：12px/400 #e34d59 文字
    on #fdecee、radius 3px、padding 0 5px（整签 46x20）。React Badge 原为
