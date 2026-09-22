@@ -313,7 +313,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
                       {/* Vue SessionSidebarRow.vue:26 leaves the row ⋯ button
                           without an accessible name (aria-haspopup only). */}
                       <summary className="menu-more-wrap" aria-haspopup="menu">
-                        <svg className="t-icon menu-more" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href="#t-icon-ellipsis" /></svg>
+                        <svg className="t-icon t-icon-ellipsis menu-more" viewBox="0 0 24 24" width="1em" height="1em" style={{ fontSize: '13.3333px' }} fill="none" aria-hidden="true"><use href="#t-icon-ellipsis" /></svg>
                       </summary>
                       <div className="session-action-menu-panel" role="menu">
                         <div className="session-action-menu">
