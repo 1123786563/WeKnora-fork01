@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Input, Status, Textarea } from '@weknora/ui';
+import { Status } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { profilePasswordPatch, tenantPatch } from './surface.ts';
+import { TenantDeleteZone } from './TenantDeleteZone.tsx';
 
 // T12a：UserProfileSection 直译 UserProfile.vue 的 t-popup / t-alert /
 // t-loading / t-button / t-form / t-input（TenantInfoSection 仍走旧栈，
 // settings-tenant 提交时迁移）。
 import { Icon as TIcon } from 'tdesign-icons-react';
-import { Alert, Button as TButton, Form, Input as TInput, Loading, Popup } from 'tdesign-react';
+import { Alert, Button as TButton, Form, Input as TInput, Loading, Popup, Progress, Tag, Textarea } from 'tdesign-react';
 import { pushSettingsToast } from './settings-toast.tsx';
 
 // ---------------------------------------------------------------------------
@@ -35,21 +36,30 @@ function tenantStatus(status: string): { key: string; tone: string } {
   return { key: 'tenant.statusUnknown', tone: 'default' };
 }
 
-export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
+export function TenantInfoSection({ client, tenantId, role, locale, payload, error: loadError, loading, onRetry }: {
   client: WeKnoraClient;
   tenantId: number;
   role: string;
   locale: Locale;
   payload: unknown;
+  /** 壳层读取失败原文（TenantInfo.vue error 态：t-alert theme=error + 重试）。 */
+  error?: string | null;
+  /** 壳层首载中（TenantInfo.vue loading 态）。 */
+  loading?: boolean;
+  onRetry?: () => void;
 }) {
   const t = (key: string) => formatMessage(locale, key);
   const info = payload !== null && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
-  const canEditTenant = role === 'owner' || role === 'admin' || role === 'system-admin';
+  // Vue canEditTenant = hasRole('owner')（TenantInfo.vue:273，按当前空间
+  // membership 判定）。React 侧 SettingsRole 把 system-admin 折叠为高于
+  // owner 的档位（router.tsx settingsRoute），故两者都可编辑。
+  const canEditTenant = role === 'owner' || role === 'system-admin';
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [savingDescription, setSavingDescription] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const currentName = text(info.name);
@@ -60,7 +70,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
   function cancelEdits() { setEditingName(false); setEditingDescription(false); setError(null); }
 
   async function saveName(reload: () => void) {
-    if (saving) return;
+    if (saving || !nameDraft.trim()) return;
     setSaving(true); setError(null); setNotice(null);
     try {
       const patch = tenantPatch(nameDraft, currentDescription);
@@ -74,8 +84,8 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
   }
 
   async function saveDescription(reload: () => void) {
-    if (saving) return;
-    setSaving(true); setError(null); setNotice(null);
+    if (savingDescription) return;
+    setSavingDescription(true); setError(null); setNotice(null);
     try {
       const patch = tenantPatch(currentName || ' ', descriptionDraft);
       await client.settings.tenant.update(tenantId, patch);
@@ -83,7 +93,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
       reload();
     } catch (reason) {
       setError(reason instanceof Error && reason.message ? reason.message : t('tenant.messages.fetchFailed'));
-    } finally { setSaving(false); }
+    } finally { setSavingDescription(false); }
   }
 
   const status = tenantStatus(text(info.status));
@@ -99,142 +109,209 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
     return parseFloat((bytes / Math.pow(1024, index)).toFixed(2)) + ' ' + units[index];
   };
   const usage = hasQuota && quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
+  const reload = () => { window.location.reload(); };
 
+  // TenantInfo.vue 逐节点复刻：section-header + loading/error-inline 自持态 +
+  // tenant-info-body（settings-group 行 + 危险区 aside）。样式走
+  // settings.td.css §5（TenantInfo.vue scoped 块平移）。
   return (
     <div className="tenant-info" data-testid="tenant-info-section">
-      {error ? <Status tone="error">{error}</Status> : null}
-      <div className="settings-group">
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('tenant.details.idLabel')}</label>
-            <p className="desc">{t('tenant.details.idDescription')}</p>
-          </div>
-          <div className="setting-control">
-            <span className="info-value">{typeof info.id === 'number' || typeof info.id === 'string' ? String(info.id) : '-'}</span>
-          </div>
-        </div>
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('tenant.details.nameLabel')}</label>
-            <p className="desc">{t('tenant.details.nameDescription')}</p>
-          </div>
-          <div className="setting-control">
-            {editingName ? (
-              <div className="inline-edit">
-                <Input
-                  className="box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
-                  autoFocus
-                  maxLength={64}
-                  aria-label={t('tenant.details.nameLabel')}
-                  placeholder={t('tenant.details.editNamePlaceholder')}
-                  disabled={saving}
-                  value={nameDraft}
-                  onChange={(event) => setNameDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') { event.preventDefault(); void saveName(() => window.location.reload()); }
-                    if (event.key === 'Escape') cancelEdits();
-                  }}
-                />
-                <Button type="button" disabled={saving || !nameDraft.trim()} onClick={() => void saveName(() => window.location.reload())}>{t('tenant.details.editNameConfirm')}</Button>
-                <Button type="button" disabled={saving} onClick={cancelEdits}>{t('tenant.details.editNameCancel')}</Button>
-              </div>
-            ) : (
-              <>
-                <span className="info-value">{currentName || '-'}</span>
-                {canEditTenant ? (
-                  <button type="button" className="edit-btn" aria-label={t('tenant.details.editName')} title={t('tenant.details.editName')} onClick={startEditName}>{/* t-icon "edit" counterpart */}<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg></button>
-                ) : null}
-              </>
-            )}
-          </div>
-        </div>
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('tenant.details.descriptionLabel')}</label>
-            <p className="desc">{t('tenant.details.descriptionDescription')}</p>
-          </div>
-          <div className="setting-control">
-            {editingDescription ? (
-              <div className="inline-edit inline-edit-description">
-                <Textarea
-                  className="box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
-                  autoFocus
-                  rows={2}
-                  maxLength={512}
-                  aria-label={t('tenant.details.descriptionLabel')}
-                  placeholder={t('tenant.details.editDescriptionPlaceholder')}
-                  disabled={saving}
-                  value={descriptionDraft}
-                  onChange={(event) => setDescriptionDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape') cancelEdits();
-                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void saveDescription(() => window.location.reload()); }
-                  }}
-                />
-                <div className="inline-edit-actions">
-                  <Button type="button" disabled={saving} onClick={() => void saveDescription(() => window.location.reload())}>{t('tenant.details.editNameConfirm')}</Button>
-                  <Button type="button" disabled={saving} onClick={cancelEdits}>{t('tenant.details.editNameCancel')}</Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <span className="info-value description-value">{currentDescription || t('tenant.details.descriptionEmptyPlaceholder')}</span>
-                {canEditTenant ? (
-                  <button type="button" className="edit-btn" aria-label={t('tenant.details.editDescription')} title={t('tenant.details.editDescription')} onClick={startEditDescription}>{/* t-icon "edit" counterpart */}<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg></button>
-                ) : null}
-              </>
-            )}
-          </div>
-        </div>
-        {info.business ? (
-          <div className="setting-row">
-            <div className="setting-info">
-              <label>{t('tenant.details.businessLabel')}</label>
-              <p className="desc">{t('tenant.details.businessDescription')}</p>
-            </div>
-            <div className="setting-control"><span className="info-value">{text(info.business)}</span></div>
-          </div>
-        ) : null}
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('tenant.details.statusLabel')}</label>
-            <p className="desc">{t('tenant.details.statusDescription')}</p>
-          </div>
-          <div className="setting-control"><span className={'wk-tag wk-tag--' + status.tone + ' inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]' + (status.tone === 'warning' ? ' text-[#b45309]! bg-[#fffaeb]! border border-solid border-[#fedf89]' : '')}>{t(status.key)}</span></div>
-        </div>
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('tenant.details.createdAtLabel')}</label>
-            <p className="desc">{t('tenant.details.createdAtDescription')}</p>
-          </div>
-          <div className="setting-control"><span className="info-value">{formatDateTime(info.created_at, locale)}</span></div>
-        </div>
-        {hasQuota ? (
-          <>
-            <div className="setting-row">
-              <div className="setting-info">
-                <label>{t('tenant.storage.quotaLabel')}</label>
-                <p className="desc">{t('tenant.storage.quotaDescription')}</p>
-              </div>
-              <div className="setting-control"><span className="info-value">{fmtBytes(quota)}</span></div>
-            </div>
-            <div className="setting-row">
-              <div className="setting-info">
-                <label>{t('tenant.storage.usedLabel')}</label>
-                <p className="desc">{t('tenant.storage.usedDescription')}</p>
-              </div>
-              <div className="setting-control"><span className="info-value">{fmtBytes(used)}</span></div>
-            </div>
-            <div className="setting-row">
-              <div className="setting-info">
-                <label>{t('tenant.storage.usageLabel')}</label>
-                <p className="desc">{t('tenant.storage.usageDescription')}</p>
-              </div>
-              <div className="setting-control"><span className="info-value">{usage}%</span></div>
-            </div>
-          </>
-        ) : null}
+      <div className="section-header">
+        <h2>{t('tenant.title')}</h2>
+        <p className="section-description">{t('tenant.sectionDescription')}</p>
       </div>
+
+      {loading ? (
+        <div className="loading-inline">
+          <Loading size="small" />
+          <span>{t('tenant.loadingInfo')}</span>
+        </div>
+      ) : loadError ? (
+        <div className="error-inline">
+          <Alert
+            theme="error"
+            message={loadError}
+            operation={<TButton size="small" onClick={() => onRetry?.()}>{t('tenant.retry')}</TButton>}
+          />
+        </div>
+      ) : (
+        <div className="tenant-info-body">
+          <div className="settings-group">
+            <div className="setting-row">
+              <div className="setting-info">
+                <label>{t('tenant.details.idLabel')}</label>
+                <p className="desc">{t('tenant.details.idDescription')}</p>
+              </div>
+              <div className="setting-control">
+                <span className="info-value">{typeof info.id === 'number' || typeof info.id === 'string' ? String(info.id) : '-'}</span>
+              </div>
+            </div>
+            <div className="setting-row">
+              <div className="setting-info">
+                <label>{t('tenant.details.nameLabel')}</label>
+                <p className="desc">{t('tenant.details.nameDescription')}</p>
+              </div>
+              <div className="setting-control">
+                {editingName ? (
+                  <div className="inline-edit">
+                    <TInput
+                      placeholder={t('tenant.details.editNamePlaceholder')}
+                      maxlength={64}
+                      disabled={saving}
+                      autofocus
+                      className="inline-edit-input"
+                      value={nameDraft}
+                      onChange={(value) => setNameDraft(String(value ?? ''))}
+                      onEnter={() => { void saveName(reload); }}
+                      onKeydown={(_value, { e }) => {
+                        if (e.key === 'Escape') cancelEdits();
+                      }}
+                    />
+                    <TButton theme="primary" size="small" loading={saving} disabled={!nameDraft.trim()} onClick={() => { void saveName(reload); }}>
+                      {t('tenant.details.editNameConfirm')}
+                    </TButton>
+                    <TButton theme="default" variant="outline" size="small" disabled={saving} onClick={cancelEdits}>
+                      {t('tenant.details.editNameCancel')}
+                    </TButton>
+                  </div>
+                ) : (
+                  <>
+                    <span className="info-value">{currentName || '-'}</span>
+                    {canEditTenant ? (
+                      <TButton
+                        theme="default"
+                        variant="text"
+                        shape="square"
+                        size="small"
+                        className="edit-btn"
+                        title={t('tenant.details.editName')}
+                        aria-label={t('tenant.details.editName')}
+                        icon={<TIcon name="edit" />}
+                        onClick={startEditName}
+                      />
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="setting-row">
+              <div className="setting-info">
+                <label>{t('tenant.details.descriptionLabel')}</label>
+                <p className="desc">{t('tenant.details.descriptionDescription')}</p>
+              </div>
+              <div className="setting-control">
+                {editingDescription ? (
+                  <div className="inline-edit inline-edit-description">
+                    <Textarea
+                      placeholder={t('tenant.details.editDescriptionPlaceholder')}
+                      maxlength={512}
+                      autosize={{ minRows: 2, maxRows: 6 }}
+                      disabled={savingDescription}
+                      autofocus
+                      className="inline-edit-textarea"
+                      value={descriptionDraft}
+                      onChange={(value) => setDescriptionDraft(String(value ?? ''))}
+                      count={({ count, maxLength }: { count: number; maxLength?: number }) => <span className="t-textarea__limit">{`${count}/${maxLength}`}</span>}
+                      onKeydown={(_value, { e }) => {
+                        if (e.key === 'Escape') cancelEdits();
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void saveDescription(reload); }
+                      }}
+                    />
+                    <div className="inline-edit-actions">
+                      <TButton theme="primary" size="small" loading={savingDescription} disabled={!descriptionDraft.trim()} onClick={() => { void saveDescription(reload); }}>
+                        {t('tenant.details.editNameConfirm')}
+                      </TButton>
+                      <TButton theme="default" variant="outline" size="small" disabled={savingDescription} onClick={cancelEdits}>
+                        {t('tenant.details.editNameCancel')}
+                      </TButton>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <span className={'info-value description-value' + (currentDescription ? '' : ' is-empty')}>{currentDescription || t('tenant.details.descriptionEmptyPlaceholder')}</span>
+                    {canEditTenant ? (
+                      <TButton
+                        theme="default"
+                        variant="text"
+                        shape="square"
+                        size="small"
+                        className="edit-btn"
+                        title={t('tenant.details.editDescription')}
+                        aria-label={t('tenant.details.editDescription')}
+                        icon={<TIcon name="edit" />}
+                        onClick={startEditDescription}
+                      />
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+            {info.business ? (
+              <div className="setting-row">
+                <div className="setting-info">
+                  <label>{t('tenant.details.businessLabel')}</label>
+                  <p className="desc">{t('tenant.details.businessDescription')}</p>
+                </div>
+                <div className="setting-control"><span className="info-value">{text(info.business)}</span></div>
+              </div>
+            ) : null}
+            <div className="setting-row">
+              <div className="setting-info">
+                <label>{t('tenant.details.statusLabel')}</label>
+                <p className="desc">{t('tenant.details.statusDescription')}</p>
+              </div>
+              <div className="setting-control">
+                <Tag theme={status.tone as 'default'} variant="light" size="small">{t(status.key)}</Tag>
+              </div>
+            </div>
+            <div className="setting-row">
+              <div className="setting-info">
+                <label>{t('tenant.details.createdAtLabel')}</label>
+                <p className="desc">{t('tenant.details.createdAtDescription')}</p>
+              </div>
+              <div className="setting-control"><span className="info-value">{formatDateTime(info.created_at, locale)}</span></div>
+            </div>
+            {hasQuota ? (
+              <>
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <label>{t('tenant.storage.quotaLabel')}</label>
+                    <p className="desc">{t('tenant.storage.quotaDescription')}</p>
+                  </div>
+                  <div className="setting-control"><span className="info-value">{fmtBytes(quota)}</span></div>
+                </div>
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <label>{t('tenant.storage.usedLabel')}</label>
+                    <p className="desc">{t('tenant.storage.usedDescription')}</p>
+                  </div>
+                  <div className="setting-control"><span className="info-value">{fmtBytes(used)}</span></div>
+                </div>
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <label>{t('tenant.storage.usageLabel')}</label>
+                    <p className="desc">{t('tenant.storage.usageDescription')}</p>
+                  </div>
+                  <div className="setting-control">
+                    <div className="usage-control">
+                      <span className="usage-text">{usage}%</span>
+                      <Progress percentage={usage} label={false} size="small" status={usage > 80 ? 'warning' : 'success'} style={{ flex: 1 }} />
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          {/* TenantInfo.vue:202-215 deleteDangerZone（owner 且为当前空间时渲染；
+              leaveDangerZone 需 owner 数 >1，单 owner 空间不渲染——与 Vue
+              evaluateLeaveGate 同判）。删除确认弹窗保持 TenantDeleteZone 实现。 */}
+          {canEditTenant && Number(info.id) === tenantId ? (
+            <TenantDeleteZone client={client} tenantId={tenantId} tenantName={currentName || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} />
+          ) : null}
+        </div>
+      )}
+      {error ? <div className="error-inline"><Alert theme="error" message={error} /></div> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
     </div>
   );

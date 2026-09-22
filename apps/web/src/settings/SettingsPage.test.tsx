@@ -202,13 +202,19 @@ test('tenant deletion accepts a space-padded confirmation name like the Vue dial
   assert.ok(openDelete, 'the owner danger-zone action renders');
   await act(async () => openDelete.click());
   await act(async () => {});
-  const input = container.querySelector<HTMLInputElement>('[role="dialog"] input');
+  // T12a：tdesign Dialog portal 到 body（Vue t-dialog 同构）。
+  const input = document.body.querySelector<HTMLInputElement>('.t-dialog input');
   assert.ok(input, 'the confirmation dialog input renders');
   await act(async () => {
     Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, '  Parity 空间  ');
     input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   });
-  assert.equal(container.querySelector<HTMLButtonElement>('[data-testid="tenant-delete-button"]')?.disabled, false,
+  await act(async () => {});
+  // tdesign 确认按钮（台账 #7：disabled 渲染 t-is-disabled 类而非 disabled 属性）。
+  const confirm = Array.from(document.body.querySelectorAll<HTMLElement>('.t-dialog__confirm'))
+    .find((button) => (button.textContent ?? '').includes('确认删除'));
+  assert.ok(confirm, 'the destructive confirm button renders');
+  assert.equal(confirm.classList.contains('t-is-disabled'), false,
     'Vue enables deletion after trim() matches the tenant name');
 });
 
@@ -245,7 +251,9 @@ test('userprofile section shows the Vue rows and localized change-password copy'
 test('loading state uses localized shared copy without leaking the API domain', async () => {
   const container = await mountPage(makeClient({ tenant: new Promise(() => {}) }), '?section=tenant');
   const text = container.textContent ?? '';
-  assert.ok(text.includes('加载中'), 'the localized loading copy renders');
+  // T12a：tenant 面板自持 Vue loading 态（TenantInfo.vue loading-inline =
+  // t('tenant.loadingInfo') 正在加载信息...）。
+  assert.ok(text.includes('正在加载信息'), 'the localized loading copy renders');
   assert.equal(text.includes('Loading from'), false, 'no English loading copy');
   assert.equal(text.includes('configuration'), false, 'no API domain leak');
 });

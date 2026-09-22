@@ -793,3 +793,236 @@
   color: var(--td-text-color-placeholder);
   margin: 0;
 }
+
+/* ==== 5. TenantInfo.vue scoped 块平移（settings-tenant 分区） ==== */
+
+.wk-settings-drawer-root .tenant-info {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .tenant-info .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .tenant-info .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .tenant-info .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .tenant-info .loading-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+  justify-content: center;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+}
+
+.wk-settings-drawer-root .tenant-info .error-inline {
+  padding: 20px 0;
+}
+
+.wk-settings-drawer-root .tenant-info .tenant-info-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-settings-drawer-root .tenant-info .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .tenant-info .setting-row:last-child {
+  border-bottom: none;
+}
+
+/* Vue :737-745——标签列不参与剩余空间分配（width: max-content）。 */
+.wk-settings-drawer-root .tenant-info .setting-info {
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 140px;
+  max-width: 40%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Vue :763-786——内容列吃剩余空间，去掉 280px 硬约束。 */
+.wk-settings-drawer-root .tenant-info .setting-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-control .info-value {
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  text-align: right;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-control .edit-btn {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit-input {
+  max-width: 220px;
+  flex: 1;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit-description {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit-textarea {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .tenant-info .description-value {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wk-settings-drawer-root .tenant-info .description-value.is-empty {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel {
+  margin-top: 4px;
+}
+
+.wk-settings-drawer-root .tenant-info .delete-space-panel {
+  margin-top: 12px;
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--td-component-stroke);
+  background-color: var(--td-bg-color-secondarycontainer);
+  box-sizing: border-box;
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-text {
+  flex: 1;
+  min-width: 0;
+  max-width: min(65%, 28rem);
+  padding-right: 8px;
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-action {
+  flex-shrink: 0;
+}
+
+@media (max-width: 560px) {
+  .wk-settings-drawer-root .tenant-info .leave-space-panel-inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wk-settings-drawer-root .tenant-info .leave-space-panel-text {
+    max-width: none;
+    padding-right: 0;
+  }
+
+  .wk-settings-drawer-root .tenant-info .leave-space-panel-action {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+.wk-settings-drawer-root .tenant-info .usage-control .usage-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  min-width: 50px;
+  text-align: right;
+}
+
+/* TenantInfo.vue :912-922 delete dialog 确认文案（t-dialog portal 到 body，
+   类名带语义前缀按 §2.5 原样平移）。 */
+.delete-tenant-confirm-body {
+  margin: 0 0 10px;
+  color: var(--td-text-color-primary);
+  line-height: 1.6;
+}
+
+.delete-tenant-confirm-hint {
+  margin: 0 0 12px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.5;
+}
