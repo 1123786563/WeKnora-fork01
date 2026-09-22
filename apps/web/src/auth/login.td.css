@@ -663,7 +663,7 @@
   margin-bottom: 0;
 }
 
-/* 台账 #18：tdesign-react 会给最后一个 FormItem 加 .t-form__item--last，
+/* 台账 #21：tdesign-react 会给最后一个 FormItem 加 .t-form__item--last，
    库 CSS 将其 margin 清零；tdesign-vue-next 不加该类，其同名 CSS 靠
    :last-of-type 兜底——本页表单后还有 button/.register-cta 等 div 兄弟，
    :last-of-type 落不到表单项上，Vue 端两项均保持 24px。此处按 Vue 渲染
@@ -931,7 +931,7 @@
 
 /* ============ §4 React 侧自有补充（Vue 端由 MessagePlugin/内联校验承载） ============ */
 
-/* Logo 光栅相位对齐（台账 #19）：两端 logo 资产逐字节一致（md5 相同）、几何
+/* Logo 光栅相位对齐（台账 #22）：两端 logo 资产逐字节一致（md5 相同）、几何
  * 完全一致（120×37.8）、canvas drawImage 重采样逐像素一致；差异仅来自 Chrome
  * 对 <img> 的合成图层化路径不同——直接绘制（共享图层光栅）与 Vue 端（独立
  * 图层高质量光栅）在字形下缘产生 ~154px 的 AA 阶梯差（0.017%）。opacity
