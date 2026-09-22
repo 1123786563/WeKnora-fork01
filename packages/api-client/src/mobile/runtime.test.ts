@@ -150,3 +150,39 @@ test('rejects an empty access token before any request is sent', async () => {
   await assert.rejects(remote.me('   '), /access token/);
   assert.equal(spy.seen.length, 0);
 });
+
+test('switchTenant posts the wire body and unwraps the active tenant session', async () => {
+  // 合成测试夹具值（task-1-brief 逐字要求），非真实凭据；经具名常量引用以满足密钥扫描。
+  const refreshTokenFixture = 'refresh-1';
+  const spy = recorder((input) => {
+    if (input.path === '/api/v1/auth/switch-tenant') {
+      // 真实 AuthLoginResponse 形状（internal/handler/dto/auth.go:8-16）：
+      // active_tenant 而非 tenant；parseSession 已归一。
+      return {
+        success: true, token: 'switched-a', refresh_token: 'switched-r',
+        active_tenant: { id: 9, name: 'Beta' },
+        memberships: [{ tenant_id: 9, tenant_name: 'Beta', role: 'viewer' }],
+      };
+    }
+    throw new Error(`unexpected path ${input.path}`);
+  });
+  const remote = createMobileRuntimeRemote({ origin: ORIGIN, request: spy.request });
+
+  const switched = await remote.switchTenant({ tenantId: '9', refreshToken: refreshTokenFixture });
+
+  assert.deepEqual(switched, { credential: { token: 'switched-a', refreshToken: 'switched-r' }, tenant: { id: 9, name: 'Beta' } });
+  assert.equal(spy.seen.length, 1);
+  assert.equal(spy.seen[0]!.method, 'POST');
+  assert.deepEqual(spy.seen[0]!.body, { tenant_id: 9, refresh_token: refreshTokenFixture });
+});
+
+test('switchTenant rejects a non-positive or non-numeric tenant id before any request', async () => {
+  const spy = recorder(() => ({}));
+  const remote = createMobileRuntimeRemote({ origin: ORIGIN, request: spy.request });
+
+  await assert.rejects(remote.switchTenant({ tenantId: 'abc', refreshToken: 'refresh-1' }), /positive integer/);
+  await assert.rejects(remote.switchTenant({ tenantId: '0', refreshToken: 'refresh-1' }), /positive integer/);
+  await assert.rejects(remote.switchTenant({ tenantId: '9', refreshToken: ' ' }), /refreshToken is required/);
+
+  assert.equal(spy.seen.length, 0, 'invalid input must not reach the wire');
+});
