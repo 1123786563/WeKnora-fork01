@@ -2,7 +2,12 @@ package passbguard
 
 import (
 	"fmt"
+	"go/ast"
+	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -251,4 +256,470 @@ func containsExact(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// ---- B0.4：能力/组合契约校验 ----
+
+// contractSymbolKinds 是以 file:Name 定位源码符号的契约 kind；
+// 其余 kind（route-set/worker-set/lifecycle-set/module-construction）是组合面记录。
+var contractSymbolKinds = map[string]bool{
+	"capability-port": true,
+	"wire-protocol":   true,
+	"data-ownership":  true,
+}
+
+// moduleFaçadeOps 是 module-construction 契约可冻结的门面操作全集
+// （freeze B0.4 Step 6：缺席必须显式记录，不得推断）。
+var moduleFacadeOps = []string{"NewModule", "RegisterRoutes", "RegisterWorkers", "Start", "Stop"}
+
+var (
+	// entryFileRE 从 manifest routes/lifecycle_hooks 条目提取引用的 .go 文件
+	// （形如 "— internal/router/routes_x.go:43"，行号可缺省）。
+	entryFileRE = regexp.MustCompile(`([A-Za-z0-9_./-]+\.go)(:\d+)?`)
+	// façade 注释提取：门面操作行与「当前 N 项」计数句式（module.go 包注释）。
+	facadeOpRE      = regexp.MustCompile(`(?m)^//\t(?:\(m \*Module\) )?(NewModule|RegisterRoutes|RegisterWorkers|Start|Stop)\(`)
+	facadeRoutesRE  = regexp.MustCompile(`当前 (\d+) 项入口`)
+	facadeWorkersRE = regexp.MustCompile(`当前 (\d+) 项，见 integration_points\.workers`)
+	facadeHooksRE   = regexp.MustCompile(`当前 (\d+) 项生命周期挂点`)
+)
+
+// moduleImportBase 用于消费方跨模块导入检查的 import 路径前缀
+// （与 architectureguard 同源常量）。
+const moduleImportBase = repoModulePath + "/internal/modules/"
+
+// compositionBaseline 是从 Pass A 验收台账解析出的组合基线计数（F5：期望值参数化）。
+type compositionBaseline struct {
+	RoutesTotal, RoutesLiteral, RoutesAPIKey int
+	WorkerTypes, WorkerRedis, WorkerLite     int
+	Hooks                                    int
+}
+
+// parseCompositionBaseline 从 pass-a-acceptance.md 的基线比对表解析计数。
+func parseCompositionBaseline(path string) (compositionBaseline, error) {
+	var b compositionBaseline
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return b, fmt.Errorf("read acceptance ledger: %w", err)
+	}
+	text := string(data)
+	m := regexp.MustCompile(`路由注册 \| (\d+)（(\d+) literal \+ (\d+) apiKeyRoute）`).FindStringSubmatch(text)
+	if m == nil {
+		return b, fmt.Errorf("acceptance ledger missing 路由注册 baseline row")
+	}
+	b.RoutesTotal, b.RoutesLiteral, b.RoutesAPIKey = atoiSafe(m[1]), atoiSafe(m[2]), atoiSafe(m[3])
+	m = regexp.MustCompile(`Redis/Lite worker \| (\d+) 任务类型 \+ \d+ 池 / (\d+)`).FindStringSubmatch(text)
+	if m == nil {
+		return b, fmt.Errorf("acceptance ledger missing Redis/Lite worker baseline row")
+	}
+	b.WorkerTypes, b.WorkerRedis, b.WorkerLite = atoiSafe(m[1]), atoiSafe(m[1]), atoiSafe(m[2])
+	m = regexp.MustCompile(`container\.Invoke hooks \| (\d+)`).FindStringSubmatch(text)
+	if m == nil {
+		return b, fmt.Errorf("acceptance ledger missing container.Invoke hooks baseline row")
+	}
+	b.Hooks = atoiSafe(m[1])
+	return b, nil
+}
+
+func atoiSafe(s string) int {
+	n := 0
+	for _, r := range s {
+		n = n*10 + int(r-'0')
+	}
+	return n
+}
+
+// splitContractSymbol 拆解 "file:Name" 形态的契约符号地址。
+func splitContractSymbol(symbol string) (file, name string, err error) {
+	i := strings.LastIndex(symbol, ":")
+	if i < 0 || i == len(symbol)-1 {
+		return "", "", fmt.Errorf("symbol %q must be file:Name", symbol)
+	}
+	return symbol[:i], symbol[i+1:], nil
+}
+
+// CheckContracts 把 contracts.yaml 的冻结记录与仓库发现对照，报告全部
+// 符号/签名/消费方/组合面/基线漂移诊断。返回值已排序去重；空切片即通过。
+func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
+	var ds []Diagnostic
+	emit := func(check, path, format string, args ...any) {
+		ds = append(ds, Diagnostic{Check: check, Path: path, Message: fmt.Sprintf(format, args...)})
+	}
+
+	goFileSet := make(map[string]bool, len(d.GoFiles))
+	for _, p := range d.GoFiles {
+		goFileSet[p] = true
+	}
+
+	// ---- 组合基线：三行 composition.baseline-* 必须在册且与台账一致 ----
+	led, ledErr := parseCompositionBaseline(filepath.Join(d.Root, filepath.FromSlash("docs/architecture/evidence/pass-a-acceptance.md")))
+	if ledErr != nil {
+		emit("contract-baseline-ledger", "", "cannot parameterize baseline counts: %v", ledErr)
+	}
+	baselineWant := map[string]map[string]int{
+		"composition.baseline-routes": {
+			"routes_total":   led.RoutesTotal,
+			"routes_literal": led.RoutesLiteral,
+			"routes_apikey":  led.RoutesAPIKey,
+		},
+		"composition.baseline-workers": {
+			"worker_types": led.WorkerTypes,
+			"worker_redis": led.WorkerRedis,
+			"worker_lite":  led.WorkerLite,
+		},
+		"composition.baseline-lifecycle": {
+			"hooks": led.Hooks,
+		},
+	}
+	baselineRows := map[string]Contract{}
+	for _, c := range g.Contracts {
+		if strings.HasPrefix(string(c.ID), "composition.baseline-") {
+			baselineRows[string(c.ID)] = c
+		}
+	}
+	for id, want := range baselineWant {
+		row, ok := baselineRows[id]
+		if !ok {
+			emit("contract-baseline-missing", id, "baseline row required (counts parameterized from pass-a ledger)")
+			continue
+		}
+		got := map[string]string{}
+		for _, item := range row.Items {
+			kv := strings.SplitN(item, "=", 2)
+			if len(kv) != 2 {
+				emit("contract-baseline-drift", id, "item %q must be key=value", item)
+				continue
+			}
+			got[kv[0]] = kv[1]
+		}
+		for key, wantVal := range want {
+			gotVal, ok := got[key]
+			if !ok {
+				emit("contract-baseline-drift", id, "missing %s entry (want %d)", key, wantVal)
+				continue
+			}
+			if gotVal != strconv.Itoa(wantVal) {
+				emit("contract-baseline-drift", id, "%s=%s disagrees with pass-a ledger %d", key, gotVal, wantVal)
+			}
+		}
+	}
+
+	// ---- 每个 manifest 模块：module-construction + 三种 set 契约恰一行 ----
+	for _, m := range d.Manifests {
+		rowsByKind := map[string][]Contract{}
+		for _, c := range g.Contracts {
+			if c.Owner != m.Module || strings.HasPrefix(string(c.ID), "composition.baseline-") {
+				continue
+			}
+			rowsByKind[c.Kind] = append(rowsByKind[c.Kind], c)
+		}
+		for _, kind := range []string{"module-construction", "route-set", "worker-set", "lifecycle-set"} {
+			switch n := len(rowsByKind[kind]); {
+			case n == 0:
+				emit("contract-set-missing", "docs/architecture/moves/"+m.Module+".yaml",
+					"module %s has no %s contract row", m.Module, kind)
+			case n > 1:
+				emit("contract-set-duplicate", "docs/architecture/moves/"+m.Module+".yaml",
+					"module %s has %d %s contract rows (want exactly 1)", m.Module, n, kind)
+			}
+		}
+
+		// route-set / worker-set / lifecycle-set：items 与 manifest 精确集合相等。
+		wantSets := map[string][]string{
+			"route-set":     m.IntegrationPoints.Routes,
+			"worker-set":    m.IntegrationPoints.Workers,
+			"lifecycle-set": m.IntegrationPoints.LifecycleHooks,
+		}
+		for kind, rows := range rowsByKind {
+			want, isSet := wantSets[kind]
+			if !isSet || len(rows) != 1 {
+				continue
+			}
+			row := rows[0]
+			if diff := setDiff(row.Items, want); len(diff) > 0 {
+				emit("contract-set-drift", string(row.ID),
+					"items disagree with manifest integration_points: %s", strings.Join(diff, "; "))
+			}
+			// set 行消费方 = 注册/装配位点（见各 kind 语义），必须与发现值一致。
+			discovered := discoverSetConsumers(d, kind, want)
+			for _, p := range discovered {
+				if !containsExact(row.Consumers, p) {
+					emit("contract-consumer-unrecorded", string(row.ID),
+						"registration file %s consumes this %s but is not recorded", p, kind)
+				}
+			}
+			for _, p := range row.Consumers {
+				if !containsExact(discovered, p) {
+					emit("contract-consumer-vanished", string(row.ID),
+						"recorded consumer %s no longer registers this %s", p, kind)
+				}
+			}
+		}
+
+		// module-construction：门面操作集合与 module.go 注释声明的形态一致，
+		// 注释计数不得与 manifest 冻结登记数矛盾（freeze B0.4 文件清单）。
+		for _, row := range rowsByKind["module-construction"] {
+			moduleGo := "internal/modules/" + m.Module + "/module.go"
+			if row.Symbol != moduleGo {
+				emit("contract-facade-symbol-drift", string(row.ID),
+					"symbol %q must be %s", row.Symbol, moduleGo)
+			}
+			data, err := os.ReadFile(filepath.Join(d.Root, filepath.FromSlash(moduleGo)))
+			if err != nil {
+				emit("contract-facade-file-missing", string(row.ID), "cannot read %s: %v", moduleGo, err)
+				continue
+			}
+			text := string(data)
+			declared := map[string]bool{}
+			for _, mm := range facadeOpRE.FindAllStringSubmatch(text, -1) {
+				declared[mm[1]] = true
+			}
+			for _, op := range moduleFacadeOps {
+				inItems, inDeclared := containsExact(row.Items, op), declared[op]
+				if inItems != inDeclared {
+					emit("contract-facade-shape-drift", string(row.ID),
+						"façade operation %s: frozen=%v but module.go declares %v (absence must be explicit, not inferred)", op, inItems, inDeclared)
+				}
+			}
+			for _, cc := range []struct {
+				kind  string
+				re    *regexp.Regexp
+				count int
+			}{
+				{"routes", facadeRoutesRE, len(m.IntegrationPoints.Routes)},
+				{"workers", facadeWorkersRE, len(m.IntegrationPoints.Workers)},
+				{"lifecycle_hooks", facadeHooksRE, len(m.IntegrationPoints.LifecycleHooks)},
+			} {
+				mm := cc.re.FindStringSubmatch(text)
+				if mm == nil {
+					emit("contract-facade-count-drift", string(row.ID),
+						"module.go facade comment lacks %s count sentence", cc.kind)
+					continue
+				}
+				if got := atoiSafe(mm[1]); got != cc.count {
+					emit("contract-facade-count-drift", string(row.ID),
+						"module.go claims %d %s but manifest freezes %d", got, cc.kind, cc.count)
+				}
+			}
+		}
+	}
+
+	// ---- 符号契约：符号存在、签名无漂移、消费方全量且无禁用导入 ----
+	for _, c := range g.Contracts {
+		if !contractSymbolKinds[c.Kind] {
+			continue
+		}
+		file, name, err := splitContractSymbol(c.Symbol)
+		if err != nil {
+			emit("contract-symbol-missing", string(c.ID), "%v", err)
+			continue
+		}
+		if !goFileSet[file] {
+			emit("contract-symbol-missing", string(c.ID), "symbol file %s does not exist on disk", file)
+			continue
+		}
+		fact, found, err := DiscoverSymbol(d.Root, file, name)
+		if err != nil {
+			emit("contract-symbol-missing", string(c.ID), "cannot parse %s: %v", file, err)
+			continue
+		}
+		if !found {
+			emit("contract-symbol-missing", string(c.ID), "%s no longer declares %s", file, name)
+			continue
+		}
+		if fact.Signature != c.Signature {
+			emit("contract-signature-drift", string(c.ID),
+				"frozen signature %q != current %q (contract revision required)", c.Signature, fact.Signature)
+		}
+		consumers, _, err := DiscoverSymbolConsumers(d, fact)
+		if err != nil {
+			emit("contract-symbol-missing", string(c.ID), "consumer discovery failed: %v", err)
+			continue
+		}
+		for _, p := range consumers {
+			if !containsExact(c.Consumers, p) {
+				emit("contract-consumer-unrecorded", string(c.ID),
+					"production consumer %s references %s but is not recorded", p, name)
+			}
+		}
+		for _, p := range c.Consumers {
+			if !goFileSet[p] {
+				emit("contract-consumer-file-missing", string(c.ID), "recorded consumer %s does not exist on disk", p)
+				continue
+			}
+			if !containsExact(consumers, p) {
+				emit("contract-consumer-vanished", string(c.ID),
+					"recorded consumer %s no longer references %s", p, name)
+			}
+		}
+		for _, p := range c.CharacterizationTests {
+			if !goFileSet[p] {
+				emit("contract-characterization-missing", string(c.ID), "characterization test %s does not exist on disk", p)
+			}
+		}
+
+		// 消费方禁用导入：/adapters 子包与其他模块非公开子包（在册例外除外）。
+		scanConsumerImports(g, c, consumers, d, emit)
+	}
+
+	// set 行消费方同样受禁用导入约束。
+	for _, c := range g.Contracts {
+		switch c.Kind {
+		case "route-set", "worker-set", "lifecycle-set":
+			if strings.HasPrefix(string(c.ID), "composition.baseline-") {
+				continue
+			}
+			scanConsumerImports(g, c, c.Consumers, d, emit)
+		}
+	}
+
+	return sortDiagnosticsDiag(ds)
+}
+
+// scanConsumerImports 检查一组消费方文件的导入面：
+//   - 任何消费方都禁止导入其他模块的 /adapters 子包（同模块内部装配除外；
+//     当前仓库零出现，本规则纯防 B1+ 新漂移）；
+//   - 模块代码消费方（internal/modules/<X>/ 下）禁止导入其他模块非公开子包
+//     （与 architectureguard forbidden-import 同口径；exception-ledger 在册对
+//     除外——那是已有删除属主的已知债务，不是新漂移）。平台 legacy 文件导入
+//     模块子包是 Pass A 已接受状态（guard 只扫 modules 目录），不在此报告。
+func scanConsumerImports(g *Governance, c Contract, consumers []string, d *Discovery, emit func(check, path, format string, args ...any)) {
+	excepted := map[string]bool{}
+	for _, x := range g.Exceptions {
+		excepted[x.From+"→"+x.To] = true
+	}
+	for _, p := range consumers {
+		imports := d.Imports[p]
+		if imports == nil && !containsExact(d.GoFiles, p) {
+			continue // 不在仓库树上的文件由其它 check 报告
+		}
+		for _, imp := range imports {
+			if !strings.HasPrefix(imp, moduleImportBase) {
+				continue
+			}
+			target := strings.TrimPrefix(imp, moduleImportBase)
+			targetModule := target
+			sub := ""
+			if i := strings.Index(target, "/"); i >= 0 {
+				targetModule, sub = target[:i], target[i+1:]
+			}
+			if sub == "" {
+				continue // 模块根公共门面：合法
+			}
+			consumerModule := moduleOfPath(p)
+			if consumerModule == targetModule {
+				continue // 本模块内部子包
+			}
+			if strings.HasPrefix(sub, "adapters/") || sub == "adapters" {
+				emit("contract-consumer-adapters-import", p,
+					"consumer of %s imports non-public adapters subpackage %q (route via module root façade or export a narrow port)", string(c.ID), imp)
+				continue
+			}
+			if consumerModule != "" && !excepted[p+"→"+imp] {
+				emit("contract-consumer-module-import", p,
+					"consumer of %s imports module %s non-public subpackage %q without a ledgered exception", string(c.ID), targetModule, imp)
+			}
+		}
+	}
+}
+
+// moduleOfPath 返回 internal/modules/<mod>/ 下文件的属主模块 id（否则空串）。
+func moduleOfPath(p string) string {
+	const prefix = "internal/modules/"
+	if !strings.HasPrefix(p, prefix) {
+		return ""
+	}
+	rest := strings.TrimPrefix(p, prefix)
+	if i := strings.Index(rest, "/"); i >= 0 {
+		return rest[:i]
+	}
+	return rest
+}
+
+// discoverSetConsumers 发现组合面 set 的注册/装配位点：
+//   - route-set / lifecycle-set：manifest 条目中引用的 .go 文件（去重排序）；
+//   - worker-set：internal/router 下引用任一任务类型标识符的非测试文件。
+func discoverSetConsumers(d *Discovery, kind string, items []string) []string {
+	switch kind {
+	case "route-set", "lifecycle-set":
+		seen := map[string]bool{}
+		var out []string
+		for _, entry := range items {
+			for _, m := range entryFileRE.FindAllStringSubmatch(entry, -1) {
+				if !seen[m[1]] {
+					seen[m[1]] = true
+					out = append(out, m[1])
+				}
+			}
+		}
+		sort.Strings(out)
+		return out
+	case "worker-set":
+		var out []string
+		for _, f := range d.GoFiles {
+			if !strings.HasPrefix(f, "internal/router/") || strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+			relevant := false
+			for _, taskType := range items {
+				if taskType == "" {
+					continue
+				}
+				if fileReferencesIdent(d, f, taskType) {
+					relevant = true
+					break
+				}
+			}
+			if relevant {
+				out = append(out, f)
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	return nil
+}
+
+// fileReferencesIdent 判断文件 AST 内任意位置（含限定名 Sel）出现同名 Ident。
+func fileReferencesIdent(d *Discovery, file, name string) bool {
+	c, err := d.parseFileFull(file)
+	if err != nil {
+		return false
+	}
+	found := false
+	ast.Inspect(c.file, func(n ast.Node) bool {
+		if found {
+			return false
+		}
+		if id, ok := n.(*ast.Ident); ok && id.Name == name {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// setDiff 返回两个集合的单向差描述（仅出现在其中一个集合的元素）。
+func setDiff(a, b []string) []string {
+	count := map[string]int{}
+	for _, x := range a {
+		count[x]++
+	}
+	for _, x := range b {
+		count[x]--
+	}
+	keys := make([]string, 0, len(count))
+	for k := range count {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var out []string
+	for _, k := range keys {
+		if count[k] > 0 {
+			out = append(out, fmt.Sprintf("only-in-contract: %q", k))
+		} else if count[k] < 0 {
+			out = append(out, fmt.Sprintf("only-in-manifest: %q", k))
+		}
+	}
+	return out
 }

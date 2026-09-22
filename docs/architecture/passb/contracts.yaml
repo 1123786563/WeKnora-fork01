@@ -1,0 +1,2176 @@
+# Pass B 冻结能力/组合契约（B0.4 生成，passbguard CheckContracts 逐行校验）
+# 语义：symbol 是 file:Name 顶层声明地址；signature 是规范化渲染签名（源码序文本）；
+# consumers 是当前生产消费方（非测试）；characterization_tests 是锚定旧行为的在册测试。
+# kind ∈ module-construction|capability-port|route-set|worker-set|lifecycle-set|wire-protocol|data-ownership。
+# 组合基线三行（composition.baseline-*）计数从 Pass A 验收台账参数化（conventions §8 / F5）。
+# 契约变更（签名/消费方/组合面）须走串行契约修订 + 架构审查（framework:26）。
+
+contracts:
+    - id: agentcatalog.agent-version-service
+      owner: agentcatalog
+      kind: capability-port
+      symbol: internal/types/interfaces/agent_version.go:AgentVersionService
+      signature: interface { FreezeAgentVersion(ctx context.Context, tenantID uint64, actorID, agentID string) (AgentVersionView, error); GetAgentVersion(ctx context.Context, tenantID uint64, versionID string) (AgentVersionSnapshot, error); ListAgentVersions(ctx context.Context, tenantID uint64, agentID string) ([]AgentVersionView, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_marketplace.go
+        - internal/application/service/agent_version.go
+        - internal/container/container.go
+        - internal/handler/agent_marketplace.go
+        - internal/handler/agent_version.go
+      characterization_tests:
+        - internal/application/service/agent_version_test.go
+      items: []
+    - id: agentcatalog.custom-agent-service
+      owner: agentcatalog
+      kind: capability-port
+      symbol: internal/types/interfaces/custom_agent.go:CustomAgentService
+      signature: interface { CreateAgent(ctx context.Context, agent *types.CustomAgent) (*types.CustomAgent, error); GetAgentByID(ctx context.Context, id string) (*types.CustomAgent, error); GetAgentByIDAndTenant(ctx context.Context, id string, tenantID uint64) (*types.CustomAgent, error); ListAgents(ctx context.Context) ([]*types.CustomAgent, error); UpdateAgent(ctx context.Context, agent *types.CustomAgent) (*types.CustomAgent, error); DeleteAgent(ctx context.Context, id string) error; CopyAgent(ctx context.Context, id string) (*types.CustomAgent, error); GetSuggestedQuestions(ctx context.Context, agentID string, kbIDs []string, knowledgeIDs []string, tagScopes []types.TagScope, limit int) ([]types.SuggestedQuestion, error); GetKnowledgeSuggestedQuestions(ctx context.Context, agentID string, kbIDs []string, knowledgeIDs []string, tagScopes []types.TagScope, limit int) ([]types.SuggestedQuestion, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/custom_agent.go
+        - internal/application/service/embed_channel.go
+        - internal/application/service/expert_service.go
+        - internal/application/service/message_suggestion.go
+        - internal/application/service/subagent_service.go
+        - internal/application/service/tenant_skill_service.go
+        - internal/container/container.go
+        - internal/handler/custom_agent.go
+        - internal/handler/organization.go
+        - internal/handler/persona.go
+        - internal/handler/session/handler.go
+        - internal/modules/channels/im/service.go
+      characterization_tests:
+        - internal/application/service/embed_channel_public_config_test.go
+        - internal/application/service/expert_service_test.go
+        - internal/application/service/subagent_service_test.go
+        - internal/application/service/tenant_skill_install_test.go
+        - internal/handler/custom_agent_api_key_scope_test.go
+        - internal/handler/persona_test.go
+        - internal/handler/rbac_lookups_test.go
+        - internal/modules/channels/im/service_agent_test.go
+      items: []
+    - id: agentcatalog.facade
+      owner: agentcatalog
+      kind: module-construction
+      symbol: internal/modules/agentcatalog/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: agentcatalog.lifecycle
+      owner: agentcatalog
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/agentcatalog.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - startTenantSkillReaper — internal/container/container.go:702 (func at container.go:2405)
+    - id: agentcatalog.marketplace-service
+      owner: agentcatalog
+      kind: capability-port
+      symbol: internal/types/interfaces/agent_marketplace.go:AgentMarketplaceService
+      signature: interface { SubmitRelease(ctx context.Context, tenantID uint64, actorID, versionID string, input SubmitReleaseInput) (ReleaseSubmissionView, error); ListReviewQueue(ctx context.Context, tenantID uint64) ([]ReleaseSubmissionView, error); ReviewSubmission(ctx context.Context, tenantID uint64, actorID, submissionID, expectedDigest string, decision types.AgentReleaseReviewDecision) (ReleaseReviewResult, error); ListTenantCatalog(ctx context.Context, tenantID uint64) ([]TenantListingView, error); GetRelease(ctx context.Context, tenantID uint64, releaseID string) (*types.AgentReleaseEntity, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_marketplace.go
+        - internal/container/container.go
+        - internal/handler/agent_marketplace.go
+      characterization_tests: []
+      items: []
+    - id: agentcatalog.routes
+      owner: agentcatalog
+      kind: route-set
+      symbol: docs/architecture/moves/agentcatalog.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_agent.go
+        - internal/router/routes_agent_marketplace.go
+        - internal/router/routes_agent_versions.go
+        - internal/router/routes_expert.go
+        - internal/router/routes_persona.go
+        - internal/router/routes_skill_market.go
+        - internal/router/routes_subagent.go
+        - internal/router/routes_tenant_expert_market.go
+        - internal/router/routes_tenant_skill_market.go
+      characterization_tests: []
+      items:
+        - RegisterCustomAgentRoutes — internal/router/routes_agent.go:22
+        - RegisterUserFavoriteRoutes — internal/router/routes_agent.go:61
+        - RegisterSkillRoutes — internal/router/routes_agent.go:76
+        - RegisterAgentVersionRoutes — internal/router/routes_agent_versions.go:29
+        - RegisterAgentMarketplaceRoutes — internal/router/routes_agent_marketplace.go:21
+        - RegisterPersonaRoutes — internal/router/routes_persona.go:24
+        - RegisterExpertRoutes — internal/router/routes_expert.go:21
+        - RegisterSubagentRoutes — internal/router/routes_subagent.go:26
+        - RegisterSkillMarketRoutes — internal/router/routes_skill_market.go:32
+        - RegisterTenantSkillMarketRoutes — internal/router/routes_tenant_skill_market.go:31
+        - RegisterTenantExpertMarketRoutes — internal/router/routes_tenant_expert_market.go:35
+    - id: agentcatalog.skill-market-service
+      owner: agentcatalog
+      kind: capability-port
+      symbol: internal/types/interfaces/skill_market.go:SkillMarketService
+      signature: interface { SearchMarketSkills(ctx context.Context, query string, limit int) (*SkillMarketListing, error); MarketSkillRankings(ctx context.Context, kind string) (*SkillMarketListing, error); InstallMarketSkill(ctx context.Context, tenantID uint64, slug string, sandboxConfigIDs []string) (*MarketSkillInstallResult, error); ListMarketSkillsets(ctx context.Context, tenantID uint64) (*MarketSkillsetIndex, error); GetMarketSkillset(ctx context.Context, tenantID uint64, slug string) (*MarketSkillsetDetail, error); InstallMarketSkillset(ctx context.Context, tenantID uint64, slug string, req InstantiateRequest) (*MarketSkillsetInstallResult, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/skill_market_service.go
+        - internal/handler/skill_market.go
+      characterization_tests: []
+      items: []
+    - id: agentcatalog.tenant-skill-market-service
+      owner: agentcatalog
+      kind: capability-port
+      symbol: internal/types/interfaces/tenant_skill_market.go:TenantSkillMarketService
+      signature: interface { PublishSkill(ctx context.Context, tenantID uint64, catalogID, publishedBy string) (*PublishedSkillView, error); UnpublishSkill(ctx context.Context, tenantID uint64, catalogID string) error; ListPublishedSkills(ctx context.Context, tenantID uint64) (*PublishedSkillIndex, error); InstallPublishedSkill(ctx context.Context, tenantID uint64, catalogID string, sandboxConfigIDs []string) (*TenantSkillInstallResult, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/tenant_skill_market_service.go
+        - internal/handler/tenant_skill_market.go
+      characterization_tests: []
+      items: []
+    - id: agentcatalog.workers
+      owner: agentcatalog
+      kind: worker-set
+      symbol: docs/architecture/moves/agentcatalog.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: agentruntime.agent-engine
+      owner: agentruntime
+      kind: capability-port
+      symbol: internal/types/interfaces/agent.go:AgentEngine
+      signature: interface { Execute(ctx context.Context, sessionID, messageID, query string, llmContext []chat.Message, imageURLs ...[]string) (*types.AgentState, error); SetMemoryPrompt(prompt string); SetSteerSink(sink types.SteerSink) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/tenant_skill_install.go
+      characterization_tests:
+        - internal/application/service/tenant_skill_install_test.go
+      items: []
+    - id: agentruntime.agent-service
+      owner: agentruntime
+      kind: capability-port
+      symbol: internal/types/interfaces/agent.go:AgentService
+      signature: interface { CreateAgentEngine(ctx context.Context, config *types.AgentConfig, chatModel chat.Chat, rerankModel rerank.Reranker, eventBus *event.EventBus, sessionID, assistantMessageID string) (AgentEngine, error); ValidateConfig(config *types.AgentConfig) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/session.go
+        - internal/application/service/tenant_skill_service.go
+      characterization_tests:
+        - internal/application/service/tenant_skill_install_test.go
+      items: []
+    - id: agentruntime.facade
+      owner: agentruntime
+      kind: module-construction
+      symbol: internal/modules/agentruntime/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: agentruntime.lifecycle
+      owner: agentruntime
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/agentruntime.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - registerAgentRunResourceProtection — internal/container/container.go:257 (func at container.go:2462)
+        - wire AgentRunStore cleaner (inline) — internal/container/container.go:693
+    - id: agentruntime.mcp-tool-approval-service
+      owner: agentruntime
+      kind: capability-port
+      symbol: internal/types/interfaces/mcp_tool_approval.go:MCPToolApprovalService
+      signature: interface { ListByService(ctx context.Context, tenantID uint64, serviceID string) ([]*types.MCPToolApproval, error); SetPolicy(ctx context.Context, tenantID uint64, serviceID, toolName string, requireApproval, enabled *bool) error; SetRequireApproval(ctx context.Context, tenantID uint64, serviceID, toolName string, require bool) error; SetEnabled(ctx context.Context, tenantID uint64, serviceID, toolName string, enabled bool) error; IsRequired(ctx context.Context, tenantID uint64, serviceID, toolName string) (bool, error); IsEnabled(ctx context.Context, tenantID uint64, serviceID, toolName string) (bool, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/mcp_tool_approval_service.go
+        - internal/container/container.go
+        - internal/handler/mcp_service.go
+      characterization_tests:
+        - internal/handler/mcp_tool_approval_test.go
+        - internal/handler/mcp_usage_instructions_test.go
+      items: []
+    - id: agentruntime.memory-service
+      owner: agentruntime
+      kind: capability-port
+      symbol: internal/types/interfaces/memory.go:MemoryService
+      signature: interface { Recall(ctx context.Context, query string) MemoryRecall; SearchMemory(ctx context.Context, query string, limit int) MemorySearchResult; MemoryAvailable(ctx context.Context) bool; RetrievalContextFor(ctx context.Context) RetrievalContext; DocumentAffinity(ctx context.Context, knowledgeIDs []string) map[string]int; RecordAnswerSources(ctx context.Context, refs []types.MemoryDocAffinity); ObserveQuestionTopics(ctx context.Context, topics []string) []string; Remember(ctx context.Context, item types.MemoryItem) (*types.MemoryItem, error); ScheduleExtraction(ctx context.Context, sessionID, messageID, chatModelID string); Handle(ctx context.Context, task *asynq.Task) error; ListItems(ctx context.Context, status string, limit, offset int) ([]*types.MemoryItem, int64, error); ListTopics(ctx context.Context, limit, offset int) ([]*types.MemoryTopicView, int64, error); PromoteTopic(ctx context.Context, id string) (*types.MemoryItem, error); DeleteTopic(ctx context.Context, id string) error; ListDocuments(ctx context.Context, limit, offset int) ([]*types.MemoryDocView, int64, error); DeleteDocument(ctx context.Context, id string) error; FamiliarKnowledgeIDs(ctx context.Context) []string; CreateItem(ctx context.Context, kind, content string, importance int) (*types.MemoryItem, error); ConfirmItem(ctx context.Context, id string) (*types.MemoryItem, error); RejectItem(ctx context.Context, id string) error; UpdateItem(ctx context.Context, id, content string, importance int) (*types.MemoryItem, error); DeleteItem(ctx context.Context, id string) error; Clear(ctx context.Context) (int64, error); ConsolidateNow(ctx context.Context) (*types.MemoryConsolidationResult, error); GetSettings(ctx context.Context) (*types.MemorySettings, error); SetEnabled(ctx context.Context, enabled bool) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/session.go
+        - internal/handler/memory.go
+        - internal/handler/session/handler.go
+        - internal/handler/wiki_page.go
+        - internal/modules/agentruntime/agent/tools/search_memory.go
+        - internal/modules/agentruntime/memory/service.go
+        - internal/modules/conversation/chat_pipeline/memory_affinity.go
+        - internal/modules/conversation/chat_pipeline/memory_recall.go
+        - internal/modules/conversation/chat_pipeline/query_understand.go
+        - internal/router/sync_task.go
+        - internal/router/task.go
+      characterization_tests:
+        - internal/application/service/agent_memory_tool_test.go
+        - internal/handler/memory_consistency_test.go
+        - internal/modules/agentruntime/agent/tools/search_memory_test.go
+        - internal/modules/conversation/chat_pipeline/memory_recall_test.go
+      items: []
+    - id: agentruntime.native-wire-admission
+      owner: agentruntime
+      kind: wire-protocol
+      symbol: internal/modules/agentruntime/agent/nativecontract/contracts.go:Admission
+      signature: struct { Scope Scope; Run RunIdentity; Session session.Key; Config ConfigBinding; Funding FundingBinding; Input model.Message; InputHash string; Deadline time.Time }
+      stability: frozen
+      consumers:
+        - internal/application/service/native_admission.go
+      characterization_tests:
+        - internal/application/service/native_admission_test.go
+      items: []
+    - id: agentruntime.native-wire-run-record
+      owner: agentruntime
+      kind: wire-protocol
+      symbol: internal/modules/agentruntime/agent/nativecontract/contracts.go:RunRecord
+      signature: struct { Admission Admission; Status RunStatus; Wait WaitKind; Revision int64; Fence Fence }
+      stability: frozen
+      consumers:
+        - internal/application/service/native_admission.go
+      characterization_tests:
+        - internal/application/service/native_admission_test.go
+      items: []
+    - id: agentruntime.routes
+      owner: agentruntime
+      kind: route-set
+      symbol: docs/architecture/moves/agentruntime.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_chat.go
+        - internal/router/routes_memory.go
+        - internal/router/routes_native_archive.go
+      characterization_tests: []
+      items:
+        - RegisterMemoryRoutes — internal/router/routes_memory.go:17
+        - RegisterNativeArchiveRoutes — internal/router/routes_native_archive.go:11
+        - agent-run session 子路由 ×4 — internal/router/routes_chat.go (RegisterSessionRoutes 内 /sessions/:id/runs/*)
+    - id: agentruntime.subagent-service
+      owner: agentruntime
+      kind: capability-port
+      symbol: internal/types/interfaces/subagent.go:SubagentService
+      signature: interface { ListCatalog(ctx context.Context, tenantID uint64) (*SubagentCatalog, error); GetCatalogEntry(ctx context.Context, tenantID uint64, slug string) (*SubagentCatalogDetail, error); ListAgentSubagents(ctx context.Context, agentID string) ([]string, error); InstallForAgent(ctx context.Context, tenantID uint64, agentID, slug, locale string) ([]string, error); RemoveFromAgent(ctx context.Context, agentID, slug string) ([]string, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/subagent_service.go
+        - internal/handler/subagent.go
+      characterization_tests:
+        - internal/application/service/subagent_service_test.go
+      items: []
+    - id: agentruntime.workers
+      owner: agentruntime
+      kind: worker-set
+      symbol: docs/architecture/moves/agentruntime.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers:
+        - internal/router/sync_task.go
+        - internal/router/task.go
+      characterization_tests: []
+      items:
+        - TypeMemoryExtract
+    - id: airesource.facade
+      owner: airesource
+      kind: module-construction
+      symbol: internal/modules/airesource/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: airesource.lifecycle
+      owner: airesource
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/airesource.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - registerWebSearchProviders — internal/container/container.go:439 (func at container.go:2263)
+        - registerModelConcurrencyLimiter — internal/container/container.go:604 (func at container.go:1216)
+        - registerLiteModelConcurrencyLimiter — internal/container/container.go:615 (func at container.go:1232)
+    - id: airesource.mcp-service
+      owner: airesource
+      kind: capability-port
+      symbol: internal/types/interfaces/mcp_service.go:MCPServiceService
+      signature: interface { CreateMCPService(ctx context.Context, service *types.MCPService) error; GetMCPServiceByID(ctx context.Context, tenantID uint64, id string) (*types.MCPService, error); ListMCPServices(ctx context.Context, tenantID uint64) ([]*types.MCPService, error); ListMCPMetadataSummaries(context.Context, uint64, []*types.MCPService) (map[string]*types.MCPMetadataSummary, error); ListMCPServicesByIDs(ctx context.Context, tenantID uint64, ids []string) ([]*types.MCPService, error); UpdateMCPService(ctx context.Context, service *types.MCPService, updateFields map[string]bool) error; DeleteMCPService(ctx context.Context, tenantID uint64, id string) error; TestMCPService(ctx context.Context, tenantID uint64, id string) (*types.MCPTestResult, error); GetMCPServiceTools(ctx context.Context, tenantID uint64, id string) ([]*types.MCPTool, error); GetMCPServiceResources(ctx context.Context, tenantID uint64, id string) ([]*types.MCPResource, error); UpdateMCPCredentials(ctx context.Context, tenantID uint64, id string, apiKey *string, token *string) (*types.MCPService, error); ClearMCPCredential(ctx context.Context, tenantID uint64, id, field string) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/mcp_service.go
+        - internal/handler/mcp_credentials.go
+        - internal/handler/mcp_oauth.go
+        - internal/handler/mcp_service.go
+      characterization_tests:
+        - internal/application/service/agent_capabilities_test.go
+        - internal/handler/mcp_usage_instructions_test.go
+      items: []
+    - id: airesource.model-service
+      owner: airesource
+      kind: capability-port
+      symbol: internal/types/interfaces/model.go:ModelService
+      signature: interface { CreateModel(ctx context.Context, model *types.Model) error; GetModelByID(ctx context.Context, id string) (*types.Model, error); ListModels(ctx context.Context) ([]*types.Model, error); UpdateModel(ctx context.Context, model *types.Model) error; DeleteModel(ctx context.Context, id string) error; UpdateModelCredentials(ctx context.Context, id string, apiKey, appSecret *string) (*types.Model, error); ClearModelCredential(ctx context.Context, id, field string) error; GetEmbeddingModel(ctx context.Context, modelId string) (embedding.Embedder, error); GetEmbeddingModelForTenant(ctx context.Context, modelId string, tenantID uint64) (embedding.Embedder, error); GetRerankModel(ctx context.Context, modelId string) (rerank.Reranker, error); GetChatModel(ctx context.Context, modelId string) (chat.Chat, error); GetVLMModel(ctx context.Context, modelId string) (vlm.VLM, error); GetASRModel(ctx context.Context, modelId string) (asr.ASR, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/chunk.go
+        - internal/application/service/craft_session.go
+        - internal/application/service/evaluation.go
+        - internal/application/service/extract.go
+        - internal/application/service/image_multimodal.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledge_auto_tag.go
+        - internal/application/service/knowledgebase.go
+        - internal/application/service/message.go
+        - internal/application/service/message_suggestion.go
+        - internal/application/service/model.go
+        - internal/application/service/semantic_model.go
+        - internal/application/service/semantic_model_policy.go
+        - internal/application/service/session.go
+        - internal/application/service/tag.go
+        - internal/application/service/temporary_document.go
+        - internal/application/service/tenant_skill_service.go
+        - internal/application/service/wiki_ingest.go
+        - internal/container/container.go
+        - internal/container/craft_model_gateway.go
+        - internal/handler/initialization.go
+        - internal/handler/mcp_service.go
+        - internal/handler/model.go
+        - internal/handler/model_credentials.go
+        - internal/handler/session/attachment_processor.go
+        - internal/handler/session/handler.go
+        - internal/modules/agentruntime/memory/service.go
+        - internal/modules/conversation/chat_pipeline/chat_completion.go
+        - internal/modules/conversation/chat_pipeline/chat_completion_stream.go
+        - internal/modules/conversation/chat_pipeline/common.go
+        - internal/modules/conversation/chat_pipeline/data_analysis.go
+        - internal/modules/conversation/chat_pipeline/extract_entity.go
+        - internal/modules/conversation/chat_pipeline/query_understand.go
+        - internal/modules/conversation/chat_pipeline/rerank.go
+        - internal/router/router.go
+      characterization_tests:
+        - internal/application/service/agent_run_graph_test.go
+        - internal/application/service/craft_session_test.go
+        - internal/application/service/knowledge_process_parent_child_test.go
+        - internal/application/service/knowledgebase_search_fanout_test.go
+        - internal/application/service/knowledgebase_task_cancel_test.go
+        - internal/container/craft_model_gateway_test.go
+        - internal/handler/initialization_fill_secrets_test.go
+        - internal/handler/initialization_model_tenant_test.go
+        - internal/handler/mcp_usage_instructions_test.go
+        - internal/handler/session/craft_test.go
+        - internal/modules/agentruntime/memory/stubs_test.go
+        - internal/modules/conversation/chat_pipeline/chat_completion_stream_test.go
+      items: []
+    - id: airesource.resource-catalog
+      owner: airesource
+      kind: capability-port
+      symbol: internal/types/interfaces/resource.go:ResourceCatalog
+      signature: interface { Register(ctx context.Context, tenantID uint64, physicalPath string, meta ResourceRegistration) (string, error); Resolve(ctx context.Context, reference string) (*types.StoredResource, error); ResolvePath(ctx context.Context, value string) (string, *types.StoredResource, error); Bind(ctx context.Context, reference, ownerType, ownerID, relation string) error; Release(ctx context.Context, reference, ownerType, ownerID string) (remaining int64, err error); MarkDeleted(ctx context.Context, reference string) error; CreateAccessGrant(ctx context.Context, reference string, ttl time.Duration) (string, error); ResolveAccessGrant(ctx context.Context, token string) (*types.StoredResource, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_web_pages.go
+        - internal/application/service/artifact_collector.go
+        - internal/application/service/file/resource_catalog.go
+        - internal/application/service/image_multimodal.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledge_delete.go
+        - internal/application/service/knowledgebase.go
+        - internal/application/service/resource.go
+        - internal/application/service/storagebackend.go
+        - internal/application/service/temporary_document.go
+        - internal/container/container.go
+        - internal/handler/session/handler.go
+        - internal/router/files.go
+        - internal/router/router.go
+        - internal/router/routes_agent.go
+      characterization_tests:
+        - internal/application/service/resource_test.go
+        - internal/handler/session/artifact_download_test.go
+        - internal/router/router_files_test.go
+      items: []
+    - id: airesource.routes
+      owner: airesource
+      kind: route-set
+      symbol: docs/architecture/moves/airesource.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_infra.go
+      characterization_tests: []
+      items:
+        - RegisterModelRoutes — internal/router/routes_infra.go:23
+        - RegisterMCPServiceRoutes — internal/router/routes_infra.go:145
+        - RegisterWebSearchRoutes — internal/router/routes_infra.go:215
+        - RegisterWebSearchProviderRoutes — internal/router/routes_infra.go:230
+        - RegisterVectorStoreRoutes — internal/router/routes_infra.go:261
+        - RegisterStorageBackendRoutes — internal/router/routes_infra.go:280
+        - RegisterWeKnoraCloudRoutes — internal/router/routes_infra.go:363
+    - id: airesource.storage-backend-resolver
+      owner: airesource
+      kind: capability-port
+      symbol: internal/types/interfaces/storagebackend.go:StorageBackendResolver
+      signature: interface { ResolveFileService(ctx context.Context, tenant *types.Tenant, backendID, provider, localBaseDir string) (FileService, string, error); ResolveBackend(ctx context.Context, tenant *types.Tenant, backendID, provider string) (*types.StorageBackend, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/extract.go
+        - internal/application/service/file/resolve_tenant.go
+        - internal/application/service/image_multimodal.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledgebase.go
+        - internal/application/service/storagebackend.go
+        - internal/application/service/tenant_skill_service.go
+        - internal/container/container.go
+        - internal/handler/artifact_preview.go
+        - internal/handler/initialization.go
+        - internal/handler/knowledgebase.go
+        - internal/handler/message.go
+        - internal/handler/session/artifact_download.go
+        - internal/handler/session/handler.go
+        - internal/modules/agentruntime/agent/tools/data_analysis.go
+        - internal/modules/airesource/storageurl/request.go
+        - internal/modules/airesource/storageurl/resolver.go
+        - internal/modules/channels/im/service.go
+        - internal/router/files.go
+        - internal/router/router.go
+        - internal/router/routes_agent.go
+      characterization_tests:
+        - internal/application/service/agent_web_pages_test.go
+        - internal/container/artifact_preview_wiring_test.go
+        - internal/container/artifact_version_wiring_test.go
+        - internal/handler/session/artifact_download_test.go
+      items: []
+    - id: airesource.storage-backend-service
+      owner: airesource
+      kind: capability-port
+      symbol: internal/types/interfaces/storagebackend.go:StorageBackendService
+      signature: interface { Create(ctx context.Context, backend *types.StorageBackend) error; Update(ctx context.Context, backend *types.StorageBackend) error; Delete(ctx context.Context, tenantID uint64, id string) error; SetDefault(ctx context.Context, tenantID uint64, id string) error; Test(ctx context.Context, backend *types.StorageBackend) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/storagebackend.go
+        - internal/container/container.go
+        - internal/handler/storagebackend.go
+      characterization_tests: []
+      items: []
+    - id: airesource.store-registry
+      owner: airesource
+      kind: capability-port
+      symbol: internal/types/interfaces/vectorstore.go:StoreRegistry
+      signature: interface { RegisterWithStoreID(storeID string, svc RetrieveEngineService); GetByStoreID(storeID string) (RetrieveEngineService, error); UnregisterByStoreID(storeID string) }
+      stability: frozen
+      consumers:
+        - internal/application/service/vectorstore.go
+        - internal/container/container.go
+      characterization_tests:
+        - internal/modules/knowledge/retriever/registry_test.go
+      items: []
+    - id: airesource.vector-store-service
+      owner: airesource
+      kind: capability-port
+      symbol: internal/types/interfaces/vectorstore.go:VectorStoreService
+      signature: interface { CreateStore(ctx context.Context, store *types.VectorStore) error; UpdateStore(ctx context.Context, store *types.VectorStore) error; DeleteStore(ctx context.Context, tenantID uint64, id string) error; TestConnection(ctx context.Context, engineType types.RetrieverEngineType, config types.ConnectionConfig) (string, error); TestRawConnection(ctx context.Context, engineType types.RetrieverEngineType, config types.ConnectionConfig) (string, error); SaveDetectedVersion(ctx context.Context, store *types.VectorStore, version string) error; ResolveStoreView(ctx context.Context, tenantID uint64, storeID string) (types.StoreDisplay, error); BatchResolveStoreView(ctx context.Context, tenantID uint64, storeIDs []string) (map[string]types.StoreDisplay, error); EnvDefaultStoreView(ctx context.Context) types.StoreDisplay }
+      stability: frozen
+      consumers:
+        - internal/application/service/vectorstore.go
+        - internal/handler/knowledgebase.go
+        - internal/handler/vectorstore.go
+      characterization_tests:
+        - internal/handler/knowledgebase_pr5_list_test.go
+      items: []
+    - id: airesource.web-search-service
+      owner: airesource
+      kind: capability-port
+      symbol: internal/types/interfaces/web_search.go:WebSearchService
+      signature: interface { Search(ctx context.Context, providerID string, config *types.WebSearchConfig, query string) ([]*types.WebSearchResult, error); CompressWithRAG(ctx context.Context, sessionID string, tempKBID string, questions []string, webSearchResults []*types.WebSearchResult, cfg *types.WebSearchConfig, kbSvc KnowledgeBaseService, knowSvc KnowledgeService, seenURLs map[string]bool, knowledgeIDs []string) (compressed []*types.WebSearchResult, kbID string, newSeen map[string]bool, newIDs []string, err error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/web_search.go
+        - internal/modules/agentruntime/agent/tools/web_search.go
+        - internal/modules/conversation/chat_pipeline/search.go
+        - internal/modules/conversation/chat_pipeline/search_parallel.go
+      characterization_tests:
+        - internal/modules/agentruntime/agent/tools/web_search_test.go
+        - internal/modules/conversation/chat_pipeline/search_error_test.go
+      items: []
+    - id: airesource.weknora-cloud-service
+      owner: airesource
+      kind: capability-port
+      symbol: internal/types/interfaces/weknoracloud.go:WeKnoraCloudService
+      signature: interface { SaveCredentials(ctx context.Context, appID, appSecret string) error; CheckStatus(ctx context.Context) (*types.WeKnoraCloudStatusResult, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/weknoracloud.go
+        - internal/handler/weknoracloud.go
+      characterization_tests: []
+      items: []
+    - id: airesource.workers
+      owner: airesource
+      kind: worker-set
+      symbol: docs/architecture/moves/airesource.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: appconnector.facade
+      owner: appconnector
+      kind: module-construction
+      symbol: internal/modules/appconnector/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: appconnector.lifecycle
+      owner: appconnector
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/appconnector.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - internal/container/container.go
+        - internal/container/open_connector.go
+      characterization_tests: []
+      items:
+        - wire AppActionHandler + ActionService (inline) — internal/container/container.go:980
+        - wire AppActionHandler + OCPreparer (inline) — internal/container/container.go:983
+        - wire AppActionHandler + OCConnectionService (inline) — internal/container/container.go:986
+        - startOCRecoveryRunner — internal/container/container.go:989 (func at internal/container/open_connector.go:683)
+        - wire AppConnectionHandler (inline) — internal/container/container.go:994
+    - id: appconnector.routes
+      owner: appconnector
+      kind: route-set
+      symbol: docs/architecture/moves/appconnector.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_app_connectors.go
+      characterization_tests: []
+      items:
+        - RegisterAppConnectorRoutes — internal/router/routes_app_connectors.go:20
+    - id: appconnector.workers
+      owner: appconnector
+      kind: worker-set
+      symbol: docs/architecture/moves/appconnector.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: channels.facade
+      owner: channels
+      kind: module-construction
+      symbol: internal/modules/channels/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: channels.lifecycle
+      owner: channels
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/channels.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - registerIMService — internal/container/container.go:863 (func at container.go:2283)
+    - id: channels.routes
+      owner: channels
+      kind: route-set
+      symbol: docs/architecture/moves/channels.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_agent.go
+      characterization_tests: []
+      items:
+        - RegisterEmbedPublicRoutes — internal/router/routes_agent.go:220
+        - RegisterEmbedChannelRoutes — internal/router/routes_agent.go:261
+        - RegisterIMRoutes — internal/router/routes_agent.go:284
+        - RegisterIMChannelRoutes — internal/router/routes_agent.go:297
+    - id: channels.workers
+      owner: channels
+      kind: worker-set
+      symbol: docs/architecture/moves/channels.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: commercial.billing-access-decision
+      owner: commercial
+      kind: capability-port
+      symbol: internal/modules/commercial/access.go:CanManageBilling
+      signature: func CanManageBilling(role string, active, billingGrant bool) bool
+      stability: frozen
+      consumers:
+        - internal/handler/commercial.go
+      characterization_tests:
+        - internal/modules/commercial/access_test.go
+      items: []
+    - id: commercial.budget-adapter-construction
+      owner: commercial
+      kind: capability-port
+      symbol: internal/application/service/semantic_model_budget.go:NewSemanticModelBudgetAdapter
+      signature: func NewSemanticModelBudgetAdapter(store *repocommercial.BudgetStore, gate domain.ExecutionGate, rates repocommercial.RateResolver) *SemanticModelBudgetAdapter
+      stability: frozen
+      consumers:
+        - internal/container/container.go
+      characterization_tests:
+        - internal/application/service/semantic_model_test.go
+      items: []
+    - id: commercial.budget-availability
+      owner: commercial
+      kind: capability-port
+      symbol: internal/modules/commercial/budget.go:Available
+      signature: func Available(verified, unreflected, held, refundLocked Credits) (Credits, error)
+      stability: frozen
+      consumers: []
+      characterization_tests:
+        - internal/modules/commercial/budget_test.go
+        - internal/modules/commercial/repository/commercial/budget_test.go
+        - internal/modules/commercial/service/commercial/budget_test.go
+        - internal/modules/commercial/service/commercial/settlement_test.go
+      items: []
+    - id: commercial.facade
+      owner: commercial
+      kind: module-construction
+      symbol: internal/modules/commercial/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: commercial.funding-validation
+      owner: commercial
+      kind: capability-port
+      symbol: internal/modules/commercial/usage.go:ValidateFunding
+      signature: func ValidateFunding(funding string) error
+      stability: frozen
+      consumers:
+        - internal/application/service/craft_budget.go
+        - internal/application/service/craft_usage.go
+        - internal/application/service/semantic_model_policy.go
+        - internal/modules/agentruntime/agent/commercial_adapter.go
+        - internal/modules/commercial/execution.go
+        - internal/modules/workbench/service/workbench/remote_usage.go
+      characterization_tests:
+        - internal/modules/commercial/execution_test.go
+        - internal/modules/commercial/usage_test.go
+      items: []
+    - id: commercial.lifecycle
+      owner: commercial
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/commercial.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - wire CommercialHandler + CommercialPlatform (inline) — internal/container/container.go:881
+        - wire CommercialHandler + BillingAccountService (inline) — internal/container/container.go:892
+        - wire CommercialHandler + PlanVersionService (inline) — internal/container/container.go:902
+        - wire QuotaGuard → Commercial/TenantMember/Knowledge (inline) — internal/container/container.go:916 (QuotaGuard 主所有权 commercial；触及 identity/knowledge)
+        - startCommercialFulfillment — internal/container/container.go:944 (func at container.go:2475)
+        - wire CommercialHandler + OrderService (inline) — internal/container/container.go:1015
+    - id: commercial.payment-validation
+      owner: commercial
+      kind: capability-port
+      symbol: internal/modules/commercial/order.go:ValidatePayment
+      signature: func ValidatePayment(o Order, f PaymentFact) error
+      stability: frozen
+      consumers:
+        - internal/modules/commercial/repository/commercial/order.go
+      characterization_tests:
+        - internal/modules/commercial/order_test.go
+      items: []
+    - id: commercial.routes
+      owner: commercial
+      kind: route-set
+      symbol: docs/architecture/moves/commercial.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_commercial.go
+        - internal/router/routes_usage.go
+      characterization_tests: []
+      items:
+        - RegisterCommercialRoutes — internal/router/routes_commercial.go:19
+        - RegisterUsageRoutes — internal/router/routes_usage.go:21
+    - id: commercial.settlement-key
+      owner: commercial
+      kind: capability-port
+      symbol: internal/modules/commercial/settlement.go:SettlementKey
+      signature: func SettlementKey(tenantID uint64, callID, attemptID string, revision int64) string
+      stability: frozen
+      consumers:
+        - internal/modules/commercial/service/commercial/settlement.go
+      characterization_tests:
+        - internal/modules/commercial/service/commercial/settlement_test.go
+        - internal/modules/commercial/settlement_test.go
+      items: []
+    - id: commercial.usage-data-ownership
+      owner: commercial
+      kind: data-ownership
+      symbol: internal/types/interfaces/user_usage.go:UsageRepository
+      signature: interface { AddUsage(ctx context.Context, u *types.UserUsage) error; AggregateByUser(ctx context.Context, tenantID uint64, userID string, from, to time.Time) ([]UsageAggregate, error); AggregateAllUsers(ctx context.Context, tenantID uint64, from, to time.Time, limit, offset int) ([]UsageAggregate, error); ExportRows(ctx context.Context, tenantID uint64, from, to time.Time) ([]UsageAggregate, error) }
+      stability: frozen
+      consumers:
+        - internal/application/repository/user_usage.go
+        - internal/application/service/usage_recorder.go
+        - internal/container/container.go
+        - internal/handler/usage.go
+      characterization_tests:
+        - internal/handler/usage_test.go
+      items: []
+    - id: commercial.usage-recorder-service
+      owner: commercial
+      kind: capability-port
+      symbol: internal/types/interfaces/user_usage.go:UsageRecorderService
+      signature: interface { RecordChatTurn(ctx context.Context, tenantID uint64, userID, model string, usage *types.TokenUsage) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/usage_recorder.go
+        - internal/container/container.go
+        - internal/handler/session/handler.go
+        - internal/modules/channels/im/service.go
+      characterization_tests:
+        - internal/handler/session/qa_usage_record_test.go
+      items: []
+    - id: commercial.workers
+      owner: commercial
+      kind: worker-set
+      symbol: docs/architecture/moves/commercial.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: composition.baseline-lifecycle
+      owner: system
+      kind: lifecycle-set
+      symbol: docs/architecture/evidence/pass-a-acceptance.md
+      signature: baseline totals
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - hooks=58
+    - id: composition.baseline-routes
+      owner: system
+      kind: route-set
+      symbol: docs/architecture/evidence/pass-a-acceptance.md
+      signature: baseline totals
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - routes_total=633
+        - routes_literal=564
+        - routes_apikey=69
+    - id: composition.baseline-workers
+      owner: system
+      kind: worker-set
+      symbol: docs/architecture/evidence/pass-a-acceptance.md
+      signature: baseline totals
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - worker_types=23
+        - worker_redis=23
+        - worker_lite=23
+    - id: conversation.facade
+      owner: conversation
+      kind: module-construction
+      symbol: internal/modules/conversation/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: conversation.feedback-service
+      owner: conversation
+      kind: capability-port
+      symbol: internal/types/interfaces/feedback.go:FeedbackService
+      signature: interface { SubmitFeedback(ctx context.Context, caller types.Caller, sessionID, messageID, rating, comment string) error; RemoveFeedback(ctx context.Context, caller types.Caller, sessionID, messageID string) error; ListMyFeedback(ctx context.Context, caller types.Caller, sessionID string) ([]types.MessageFeedback, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/feedback.go
+        - internal/handler/feedback.go
+      characterization_tests:
+        - internal/application/service/feedback_test.go
+        - internal/handler/feedback_test.go
+      items: []
+    - id: conversation.lifecycle
+      owner: conversation
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/conversation.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - startTemporaryDocumentCleanup — internal/container/container.go:618 (func at container.go:2421)
+        - registerChatLocalImageResolver — internal/container/container.go:1034 (func at container.go:1123)
+        - chatpipeline plugins ×17 (Search/Rerank/WebFetch/Merge/DataAnalysis/IntoChatMessage/ChatCompletion/ChatCompletionStream/FilterTopK/QueryUnderstand/LoadHistory/MemoryRecall/ExtractEntity/SearchEntity/SearchParallel/WikiBoost/MemoryAffinity) — internal/container/container.go:645-661
+    - id: conversation.message-service
+      owner: conversation
+      kind: capability-port
+      symbol: internal/types/interfaces/message.go:MessageService
+      signature: interface { CreateMessage(ctx context.Context, message *types.Message) (*types.Message, error); GetMessage(ctx context.Context, sessionID string, id string) (*types.Message, error); GetMessagesBySession(ctx context.Context, sessionID string, page int, pageSize int) ([]*types.Message, error); GetRecentMessagesBySession(ctx context.Context, sessionID string, limit int) ([]*types.Message, error); GetMessagesBySessionBeforeTime(ctx context.Context, sessionID string, beforeTime time.Time, limit int) ([]*types.Message, error); UpdateMessage(ctx context.Context, message *types.Message) error; UpdateMessageImages(ctx context.Context, sessionID, messageID string, images types.MessageImages) error; UpdateMessageRenderedContent(ctx context.Context, sessionID, messageID string, renderedContent string) error; DeleteMessage(ctx context.Context, sessionID string, id string) error; ClearSessionMessages(ctx context.Context, sessionID string) error; SearchMessages(ctx context.Context, params *types.MessageSearchParams) (*types.MessageSearchResult, error); IndexMessageToKB(ctx context.Context, userQuery string, assistantAnswer string, messageID string, sessionID string); DeleteMessageKnowledge(ctx context.Context, knowledgeID string); DeleteSessionKnowledge(ctx context.Context, sessionID string); GetChatHistoryKBStats(ctx context.Context) (*types.ChatHistoryKBStats, error); GetSessionArtifacts(ctx context.Context, sessionID string) (types.MessageArtifacts, error); GetSessionArtifactRefs(ctx context.Context, sessionID string) ([]types.SessionArtifactRef, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/message.go
+        - internal/application/service/message_suggestion.go
+        - internal/container/workbench.go
+        - internal/handler/message.go
+        - internal/handler/session/handler.go
+        - internal/handler/session/steer.go
+        - internal/modules/agentruntime/agent/tools/search_conversations.go
+        - internal/modules/channels/im/service.go
+        - internal/modules/conversation/chat_pipeline/common.go
+        - internal/modules/conversation/chat_pipeline/into_chat_message.go
+        - internal/modules/conversation/chat_pipeline/load_history.go
+        - internal/modules/conversation/chat_pipeline/query_understand.go
+        - internal/router/files.go
+        - internal/router/router.go
+      characterization_tests:
+        - internal/handler/message_session_not_found_test.go
+        - internal/handler/session/artifact_download_test.go
+        - internal/handler/session/continue_stream_resource_urls_test.go
+        - internal/handler/session/qa_usage_record_test.go
+        - internal/handler/session/steer_live_run_test.go
+        - internal/handler/session/temporary_attachment_persist_test.go
+        - internal/handler/session/workbench_artifacts_test.go
+        - internal/modules/channels/im/full_output_test.go
+      items: []
+    - id: conversation.query-history-export
+      owner: conversation
+      kind: capability-port
+      symbol: internal/types/interfaces/query_history_export.go:QueryHistoryExportJobRepository
+      signature: interface { Create(ctx context.Context, job *types.QueryHistoryExportJob) error; GetByID(ctx context.Context, tenantID uint64, id uint64) (*types.QueryHistoryExportJob, error); UpdateStatus(ctx context.Context, id uint64, status, filePath, errMsg string) error; ExportSessionRows(ctx context.Context, q *types.SessionListQuery) ([]types.QueryHistoryExportRow, error) }
+      stability: frozen
+      consumers:
+        - internal/application/repository/query_history_export.go
+        - internal/application/service/query_history_export.go
+      characterization_tests:
+        - internal/application/service/query_history_export_test.go
+      items: []
+    - id: conversation.routes
+      owner: conversation
+      kind: route-set
+      symbol: docs/architecture/moves/conversation.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/files.go
+        - internal/router/routes_chat.go
+        - internal/router/routes_query_history.go
+        - router.go
+      characterization_tests: []
+      items:
+        - RegisterMessageRoutes — internal/router/routes_chat.go:20
+        - RegisterFeedbackRoutes — internal/router/routes_chat.go:49
+        - RegisterSessionShareRoutes — internal/router/routes_chat.go:72
+        - RegisterSessionRoutes — internal/router/routes_chat.go:95 (38 条中 conversation 27；craft 分组归 craft)
+        - RegisterChatRoutes — internal/router/routes_chat.go:237 (knowledge-chat/agent-chat/knowledge-search)
+        - RegisterQueryHistoryAdminRoutes — internal/router/routes_query_history.go:16
+        - serveMessageScopedFiles — internal/router/files.go (called router.go:346)
+    - id: conversation.session-service
+      owner: conversation
+      kind: capability-port
+      symbol: internal/types/interfaces/session.go:SessionService
+      signature: interface { CreateSession(ctx context.Context, session *types.Session) (*types.Session, error); GetSession(ctx context.Context, id string) (*types.Session, error); GetOwnedSession(ctx context.Context, id string) (*types.Session, error); GetSessionByID(ctx context.Context, tenantID uint64, id string) (*types.Session, error); SetSessionOwnerID(ctx context.Context, tenantID uint64, sessionID, ownerID string) error; GetSessionsByTenant(ctx context.Context) ([]*types.Session, error); GetPagedSessionsByTenant(ctx context.Context, page *types.Pagination) (*types.PageResult, error); UpdateSession(ctx context.Context, session *types.Session) error; UpdateSessionLastRequestState(ctx context.Context, sessionID string, state *types.SessionLastRequestState) error; DeleteSession(ctx context.Context, id string) error; BatchDeleteSessions(ctx context.Context, ids []string) error; DeleteAllSessions(ctx context.Context) error; ListSessions(ctx context.Context, query *types.SessionListQuery) (*types.PageResult, error); CountSessionsBySource(ctx context.Context, query *types.SessionListQuery) (int64, error); GetQueryHistorySnapshot(ctx context.Context, tenantID uint64, sessionID string) (*types.QueryHistorySnapshot, error); ShareSession(ctx context.Context, caller types.Caller, sessionID string) (string, error); UnshareSession(ctx context.Context, caller types.Caller, sessionID string) error; GetSharedSession(ctx context.Context, caller types.Caller, token string) (*types.SharedSessionSnapshot, error); SetSessionPinned(ctx context.Context, sessionID string, pinned bool) (int64, error); GenerateTitle(ctx context.Context, session *types.Session, messages []types.Message, modelID string) (string, error); GenerateTitleAsync(ctx context.Context, session *types.Session, userQuery string, modelID string, eventBus *event.EventBus); KnowledgeQA(ctx context.Context, req *types.QARequest, eventBus *event.EventBus) error; KnowledgeQAByEvent(ctx context.Context, chatManage *types.ChatManage, eventList []types.EventType) error; SearchKnowledge(ctx context.Context, knowledgeBaseIDs []string, knowledgeIDs []string, tagScopes []types.TagScope, query string) ([]*types.SearchResult, error); AgentQA(ctx context.Context, req *types.QARequest, eventBus *event.EventBus) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/craft_session.go
+        - internal/application/service/craft_snapshot.go
+        - internal/application/service/craft_usage_view.go
+        - internal/application/service/evaluation.go
+        - internal/application/service/sandbox_terminal_auth.go
+        - internal/application/service/session.go
+        - internal/application/service/tenant_skill_service.go
+        - internal/container/container.go
+        - internal/container/craft_lifecycle.go
+        - internal/container/craft_runtime.go
+        - internal/handler/artifact_preview.go
+        - internal/handler/embed_channel.go
+        - internal/handler/session/artifact_download.go
+        - internal/handler/session/handler.go
+        - internal/modules/channels/im/cmd_search.go
+        - internal/modules/channels/im/service.go
+        - internal/modules/conversation/chat_pipeline/search.go
+        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/router/router.go
+      characterization_tests:
+        - internal/application/service/craft_session_test.go
+        - internal/application/service/craft_usage_view_test.go
+        - internal/application/service/sandbox_terminal_auth_test.go
+        - internal/container/artifact_preview_wiring_test.go
+        - internal/container/artifact_version_wiring_test.go
+        - internal/container/craft_o05_drill_test.go
+        - internal/handler/artifact_preview_test.go
+        - internal/handler/embed_session_test.go
+        - internal/handler/session/agent_run_blackbox_test.go
+        - internal/handler/session/agent_run_test.go
+        - internal/handler/session/artifact_download_test.go
+        - internal/handler/session/continue_stream_resource_urls_test.go
+        - internal/handler/session/craft_test.go
+        - internal/handler/session/mobile_upload_test.go
+        - internal/handler/session/query_history_admin_test.go
+        - internal/handler/session/search_knowledge_resource_urls_test.go
+        - internal/handler/session/session_delete_tombstone_test.go
+        - internal/handler/session/session_list_test.go
+        - internal/handler/session/share_test.go
+        - internal/handler/session/steer_durable_test.go
+        - internal/handler/session/steer_live_run_test.go
+        - internal/modules/channels/im/full_output_test.go
+        - internal/modules/channels/im/qa_exit_test.go
+      items: []
+    - id: conversation.stream-manager
+      owner: conversation
+      kind: capability-port
+      symbol: internal/types/interfaces/stream_manager.go:StreamManager
+      signature: interface { AppendEvent(ctx context.Context, sessionID, messageID string, event StreamEvent) error; GetEvents(ctx context.Context, sessionID, messageID string, fromOffset int) ([]StreamEvent, int, error); AppendSteerEvents(ctx context.Context, sessionID, messageID string, events []StreamEvent) error; GetSteerEvents(ctx context.Context, sessionID, messageID string, fromOffset int) ([]StreamEvent, int, error); UpdateSteerEventData(ctx context.Context, sessionID, messageID, eventID string, data map[string]interface{}) (bool, error); DeleteSteerEvent(ctx context.Context, sessionID, messageID, eventID string) (bool, error); SetLiveRun(ctx context.Context, sessionID, assistantMessageID, requestID string) error; ClaimLiveRun(ctx context.Context, sessionID, assistantMessageID, requestID string) error; GetLiveRun(ctx context.Context, sessionID string) (assistantMessageID, requestID string, err error); ClearLiveRun(ctx context.Context, sessionID, assistantMessageID string) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/tenant_skill_service.go
+        - internal/application/service/tenant_skill_transcript.go
+        - internal/container/container.go
+        - internal/container/workbench.go
+        - internal/handler/sandbox_skill.go
+        - internal/handler/session/agent_stream_handler.go
+        - internal/handler/session/handler.go
+        - internal/handler/session/steer.go
+        - internal/modules/channels/im/service.go
+        - internal/modules/workbench/service/workbench/interaction.go
+        - internal/stream/factory.go
+        - internal/stream/memory_manager.go
+        - internal/stream/redis_manager.go
+      characterization_tests:
+        - internal/application/service/tenant_skill_steer_test.go
+        - internal/handler/session/artifact_completion_test.go
+        - internal/handler/session/steer_delivery_test.go
+        - internal/handler/session/steer_live_run_test.go
+        - internal/modules/channels/im/full_output_test.go
+        - internal/stream/redis_live_run_test.go
+      items: []
+    - id: conversation.temporary-document-service
+      owner: conversation
+      kind: capability-port
+      symbol: internal/types/interfaces/temporary_document.go:TemporaryDocumentService
+      signature: interface { Create(ctx context.Context, tenantID uint64, sessionID, fileName, mimeType string, fileSize int64, reader io.Reader, options types.TemporaryDocumentCreateOptions) (*types.TemporaryDocument, error); Get(ctx context.Context, tenantID uint64, sessionID, documentID string) (*types.TemporaryDocument, error); OpenFile(ctx context.Context, tenantID uint64, sessionID, documentID string) (io.ReadCloser, string, error); List(ctx context.Context, tenantID uint64, sessionID string) ([]*types.TemporaryDocument, error); Delete(ctx context.Context, tenantID uint64, sessionID, documentID string) error; ResolveForPrompt(ctx context.Context, tenantID uint64, sessionID string, documentIDs []string, query string) (*types.TemporaryDocumentPromptResult, error); Process(ctx context.Context, task *asynq.Task) error; CleanupExpired(ctx context.Context) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/craft_session.go
+        - internal/application/service/temporary_document.go
+        - internal/container/container.go
+        - internal/handler/session/handler.go
+        - internal/router/sync_task.go
+        - internal/router/task.go
+      characterization_tests:
+        - internal/application/service/craft_session_test.go
+        - internal/handler/session/craft_test.go
+        - internal/handler/session/mobile_upload_test.go
+      items: []
+    - id: conversation.workers
+      owner: conversation
+      kind: worker-set
+      symbol: docs/architecture/moves/conversation.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers:
+        - internal/router/sync_task.go
+        - internal/router/task.go
+      characterization_tests: []
+      items:
+        - TypeTemporaryDocumentProcess
+        - TypeQueryHistoryExport
+    - id: craft.facade
+      owner: craft
+      kind: module-construction
+      symbol: internal/modules/craft/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: craft.lifecycle
+      owner: craft
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/craft.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+        - internal/container/craft_interaction.go
+        - internal/container/craft_lifecycle.go
+      characterization_tests: []
+      items:
+        - registerCraftHTTPHandlers — internal/container/container.go:665 (func at container.go:2682)
+        - registerCraftScheduledHTTPHandlers — internal/container/container.go:668 (func at container.go:2701)
+        - wireCraftInteractionRegistrar — internal/container/container.go:680 (func at container.go:2666)
+        - registerCraftInteractionHTTPHandlers — internal/container/container.go:681 (func at internal/container/craft_interaction.go:81)
+        - startCraftDecisionDelivery — internal/container/container.go:682 (func at internal/container/craft_interaction.go:92)
+        - validateCraftKnowledgeAssembly — internal/container/container.go:684 (func at container.go:2650)
+        - registerCraftUsageHTTPHandlers — internal/container/container.go:686 (func at internal/container/craft_lifecycle.go:101)
+        - wireCraftLifecycleIntegration — internal/container/container.go:689 (func at internal/container/craft_lifecycle.go:116)
+        - wireCraftSessionTombstone — internal/container/container.go:1038 (func at internal/container/craft_lifecycle.go:136)
+    - id: craft.routes
+      owner: craft
+      kind: route-set
+      symbol: docs/architecture/moves/craft.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/handler/session/craft.go
+        - internal/handler/session/craft_interaction.go
+        - internal/handler/session/craft_preview.go
+        - internal/handler/session/craft_scheduled.go
+        - internal/router/router.go
+        - internal/router/routes_chat.go
+      characterization_tests: []
+      items:
+        - craft route groups (inside RegisterSessionRoutes)：/craft/sessions、/craft/scheduled-tasks、/craft/model-gateway — internal/router/routes_chat.go:95-235 (groups at 103/123/135)
+        - RegisterCraftSessionRoutes (handler-side delegation; 12 routes) — internal/handler/session/craft.go:116-154
+        - RegisterCraftInteractionRoutes (handler-side delegation; 4 routes) — internal/handler/session/craft_interaction.go:63
+        - RegisterCraftScheduledTaskRoutes (handler-side delegation; 7 routes) — internal/handler/session/craft_scheduled.go:77
+        - craft model gateway top-level (pre-auth) — internal/router/router.go:262-265
+        - RegisterCraftPreviewRoutes — internal/handler/session/craft_preview.go:55 (隔离预览源 /p/:cap/*filepath；RegisterCraftPreviewIssueRoute 休眠挂载已计数)
+    - id: craft.workers
+      owner: craft
+      kind: worker-set
+      symbol: docs/architecture/moves/craft.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: datasource.facade
+      owner: datasource
+      kind: module-construction
+      symbol: internal/modules/datasource/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: datasource.lifecycle
+      owner: datasource
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/datasource.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - injectDataSourceTaskInspector — internal/container/container.go:636 (func at container.go:2366)
+        - startDataSourceScheduler — internal/container/container.go:637 (func at container.go:2373)
+    - id: datasource.routes
+      owner: datasource
+      kind: route-set
+      symbol: docs/architecture/moves/datasource.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_infra.go
+      characterization_tests: []
+      items:
+        - RegisterDataSourceRoutes — internal/router/routes_infra.go:301
+    - id: datasource.workers
+      owner: datasource
+      kind: worker-set
+      symbol: docs/architecture/moves/datasource.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers:
+        - internal/router/sync_task.go
+        - internal/router/task.go
+        - internal/router/task_inspector.go
+      characterization_tests: []
+      items:
+        - TypeDataSourceSync
+        - TypeDataSourcePurge
+    - id: execution.facade
+      owner: execution
+      kind: module-construction
+      symbol: internal/modules/execution/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: execution.lifecycle
+      owner: execution
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/execution.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: execution.routes
+      owner: execution
+      kind: route-set
+      symbol: docs/architecture/moves/execution.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_auth_tenant.go
+        - internal/router/routes_chat.go
+        - internal/router/routes_infra.go
+        - internal/router/routes_workbench.go
+      characterization_tests: []
+      items:
+        - RegisterMyEnvVarRoutes — internal/router/routes_auth_tenant.go:191
+        - RegisterSandboxTerminalRoutes — internal/router/routes_chat.go:271
+        - RegisterLocalBrowserRoutes — internal/router/routes_chat.go:282
+        - RegisterMyBrowserRoutes — internal/router/routes_chat.go:292
+        - RegisterSandboxConfigRoutes — internal/router/routes_infra.go:55
+        - RegisterExecutionRegistrationRoutes — internal/router/routes_workbench.go:97
+        - execution target groups (inside RegisterWorkbenchRoutes) — internal/router/routes_workbench.go:33-72 (/execution-targets ×4、/execution-workspaces ×1)
+        - local-browser + sandbox-terminal session 子路由 ×3 — internal/router/routes_chat.go (RegisterSessionRoutes 内)
+    - id: execution.sandbox-config-loader-construction
+      owner: execution
+      kind: capability-port
+      symbol: internal/application/service/tenant_sandbox_resolve.go:NewTenantSandboxConfigLoader
+      signature: func NewTenantSandboxConfigLoader(repo repository.TenantSandboxConfigRepository) sandbox.TenantSandboxConfigLoader
+      stability: frozen
+      consumers:
+        - internal/container/container.go
+      characterization_tests: []
+      items: []
+    - id: execution.sandbox-terminal-construction
+      owner: execution
+      kind: capability-port
+      symbol: internal/application/service/sandbox_terminal_service.go:NewSandboxTerminalService
+      signature: func NewSandboxTerminalService(pinner *SessionSandboxPinner, resolver sandbox.TenantSandboxResolver, fallback sandbox.Manager, policy WorkspaceSandboxPolicy) *SandboxTerminalService
+      stability: frozen
+      consumers:
+        - internal/container/container.go
+      characterization_tests:
+        - internal/application/service/sandbox_terminal_service_test.go
+      items: []
+    - id: execution.user-env-resolver-construction
+      owner: execution
+      kind: capability-port
+      symbol: internal/application/service/user_env_resolver.go:NewUserEnvResolver
+      signature: func NewUserEnvResolver(rows []*types.TenantSkillEntity, userEnvs userEnvReader, tenantID uint64, configID string) *userEnvResolver
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+      characterization_tests:
+        - internal/application/service/user_env_resolver_test.go
+      items: []
+    - id: execution.workers
+      owner: execution
+      kind: worker-set
+      symbol: docs/architecture/moves/execution.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: execution.workspace-sandbox-policy
+      owner: execution
+      kind: capability-port
+      symbol: internal/application/service/tenant_sandbox_resolve.go:WorkspaceSandboxPolicy
+      signature: interface { WorkspaceScriptsDisabled(ctx context.Context, tenantID uint64) (bool, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/sandbox_terminal_service.go
+        - internal/application/service/session.go
+        - internal/application/service/session_sandbox_pin.go
+        - internal/application/service/tenant_skill_service.go
+        - internal/container/container.go
+      characterization_tests: []
+      items: []
+    - id: identity.audit-log-service
+      owner: identity
+      kind: capability-port
+      symbol: internal/types/interfaces/audit_log.go:AuditLogService
+      signature: interface { Log(ctx context.Context, entry *types.AuditLog) error; LogDenied(ctx context.Context, c *gin.Context, tenantID uint64, actorUserID, actorRole string, requiredRole types.TenantRole) error; List(ctx context.Context, tenantID uint64, q *AuditLogQuery) ([]*types.AuditLog, error); Purge(ctx context.Context, retentionDays int) (int64, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/audit_log.go
+        - internal/application/service/audit_log_retention.go
+        - internal/application/service/datasource_service.go
+        - internal/application/service/kb_activity.go
+        - internal/application/service/kbshare.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledgebase.go
+        - internal/application/service/system_setting.go
+        - internal/application/service/tag.go
+        - internal/application/service/tenant_invitation.go
+        - internal/application/service/tenant_member.go
+        - internal/application/service/wiki_ingest.go
+        - internal/container/audit_sink.go
+        - internal/container/container.go
+        - internal/container/engine_factory.go
+        - internal/handler/audit_log.go
+        - internal/handler/system.go
+        - internal/handler/wiki_page.go
+        - internal/middleware/audit_provider.go
+        - internal/router/router.go
+      characterization_tests:
+        - internal/application/service/audit_log_retention_test.go
+        - internal/application/service/datasource_purge_test.go
+        - internal/container/retrieve_registry_wiring_test.go
+        - internal/handler/audit_log_test.go
+        - internal/handler/system_admin_audit_test.go
+        - internal/middleware/rbac_audit_test.go
+      items: []
+    - id: identity.auth-handler-construction
+      owner: identity
+      kind: capability-port
+      symbol: internal/handler/auth.go:NewAuthHandler
+      signature: func NewAuthHandler(configInfo *config.Config, userService interfaces.UserService, tenantService interfaces.TenantService, systemSettingSvc interfaces.SystemSettingService, invitationSvc interfaces.TenantInvitationService) *AuthHandler
+      stability: frozen
+      consumers:
+        - internal/container/container.go
+      characterization_tests:
+        - internal/handler/auth_mobile_exchange_test.go
+        - internal/handler/auth_oidc_mobile_test.go
+        - internal/handler/auth_oidc_start_test.go
+        - internal/handler/auth_register_invite_only_test.go
+      items: []
+    - id: identity.facade
+      owner: identity
+      kind: module-construction
+      symbol: internal/modules/identity/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: identity.lifecycle
+      owner: identity
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/identity.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - startAuditLogRetention — internal/container/container.go:639 (func at container.go:2452)
+        - wire AuthHandler + repository.MobileExchangeStore (inline) — internal/container/container.go:751
+    - id: identity.organization-service
+      owner: identity
+      kind: capability-port
+      symbol: internal/types/interfaces/organization.go:OrganizationService
+      signature: interface { CreateOrganization(ctx context.Context, userID string, tenantID uint64, req *types.CreateOrganizationRequest) (*types.Organization, error); GetOrganization(ctx context.Context, id string) (*types.Organization, error); GetOrganizationByInviteCode(ctx context.Context, inviteCode string) (*types.Organization, error); ListTenantOrganizations(ctx context.Context, tenantID uint64) ([]*types.Organization, error); UpdateOrganization(ctx context.Context, id string, userID string, tenantID uint64, req *types.UpdateOrganizationRequest) (*types.Organization, error); DeleteOrganization(ctx context.Context, id string, userID string, tenantID uint64) error; AddTenantMember(ctx context.Context, orgID string, tenantID uint64, representativeUserID string, role types.OrgMemberRole) error; RemoveTenantMember(ctx context.Context, orgID string, memberTenantID uint64, operatorUserID string, operatorTenantID uint64) error; UpdateTenantMemberRole(ctx context.Context, orgID string, memberTenantID uint64, role types.OrgMemberRole, operatorUserID string, operatorTenantID uint64) error; ListTenantMembers(ctx context.Context, orgID string) ([]*types.OrganizationTenantMember, error); GetTenantMember(ctx context.Context, orgID string, tenantID uint64) (*types.OrganizationTenantMember, error); GenerateInviteCode(ctx context.Context, orgID string, userID string, tenantID uint64) (string, error); JoinByInviteCode(ctx context.Context, inviteCode string, userID string, tenantID uint64) (*types.Organization, error); SearchSearchableOrganizations(ctx context.Context, tenantID uint64, query string, limit int) (*types.ListSearchableOrganizationsResponse, error); JoinByOrganizationID(ctx context.Context, orgID string, userID string, tenantID uint64, message string, requestedRole types.OrgMemberRole) (*types.Organization, error); SubmitJoinRequest(ctx context.Context, orgID string, userID string, tenantID uint64, message string, requestedRole types.OrgMemberRole) (*types.OrganizationJoinRequest, error); ListJoinRequests(ctx context.Context, orgID string) ([]*types.OrganizationJoinRequest, error); CountPendingJoinRequests(ctx context.Context, orgID string) (int64, error); ReviewJoinRequest(ctx context.Context, orgID string, requestID string, approved bool, reviewerID string, reviewerTenantID uint64, message string, assignRole *types.OrgMemberRole) error; RequestRoleUpgrade(ctx context.Context, orgID string, userID string, tenantID uint64, requestedRole types.OrgMemberRole, message string) (*types.OrganizationJoinRequest, error); GetPendingUpgradeRequest(ctx context.Context, orgID string, tenantID uint64) (*types.OrganizationJoinRequest, error); IsTenantOrgAdmin(ctx context.Context, orgID string, tenantID uint64) (bool, error); GetTenantRoleInOrg(ctx context.Context, orgID string, tenantID uint64) (types.OrgMemberRole, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/organization.go
+        - internal/container/container.go
+        - internal/handler/organization.go
+      characterization_tests: []
+      items: []
+    - id: identity.routes
+      owner: identity
+      kind: route-set
+      symbol: docs/architecture/moves/identity.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_agent.go
+        - internal/router/routes_auth_tenant.go
+      characterization_tests: []
+      items:
+        - RegisterAuthRoutes — internal/router/routes_auth_tenant.go:206
+        - 'RegisterTenantRoutes — internal/router/routes_auth_tenant.go:43 (split: members/invitations/api-keys/audit-log 归 identity)'
+        - RegisterMyInvitationRoutes — internal/router/routes_auth_tenant.go:164
+        - RegisterOrganizationRoutes — internal/router/routes_agent.go:96
+        - audit-log admin endpoints (inside RegisterSystemAdminRoutes) — internal/router/routes_auth_tenant.go:279 (仅 /system/admin 下审计端点)
+    - id: identity.tenant-api-key-service
+      owner: identity
+      kind: capability-port
+      symbol: internal/types/interfaces/tenant.go:TenantAPIKeyService
+      signature: interface { CreateAPIKey(ctx context.Context, req TenantAPIKeyCreateRequest) (*TenantAPIKeyCreateResult, error); AuthenticateAPIKey(ctx context.Context, token string) (*types.TenantAPIKey, error); ListAPIKeys(ctx context.Context, tenantID uint64) ([]*types.TenantAPIKey, error); ListPlatformAPIKeys(ctx context.Context) ([]*types.TenantAPIKey, error); UpdateAPIKey(ctx context.Context, req TenantAPIKeyUpdateRequest) (*types.TenantAPIKey, error); RevokeAPIKey(ctx context.Context, tenantID uint64, id uint64) error; RevokePlatformAPIKey(ctx context.Context, id uint64) error; BackfillMissingKeyHashes(ctx context.Context) (int, error) }
+      stability: frozen
+      consumers:
+        - cmd/server/bootstrap.go
+        - internal/application/service/tenant_api_key.go
+        - internal/handler/system.go
+        - internal/handler/tenant.go
+        - internal/middleware/auth.go
+        - internal/router/router.go
+      characterization_tests: []
+      items: []
+    - id: identity.tenant-invitation-service
+      owner: identity
+      kind: capability-port
+      symbol: internal/types/interfaces/tenant_invitation_service.go:TenantInvitationService
+      signature: interface { Create(ctx context.Context, tenantID uint64, inviteeUserID string, role types.TenantRole, invitedBy *string, message string) (*types.TenantInvitation, error); Accept(ctx context.Context, invID uint64, callerUserID string) (*types.TenantMember, error); Decline(ctx context.Context, invID uint64, callerUserID string) error; Revoke(ctx context.Context, invID uint64) error; GetByID(ctx context.Context, invID uint64) (*types.TenantInvitation, error); ListByTenant(ctx context.Context, tenantID uint64, includeTerminal bool) ([]*types.TenantInvitation, error); ListTenantInvitationsPage(ctx context.Context, tenantID uint64, includeTerminal bool, page, pageSize int) ([]*types.TenantInvitation, int64, error); ListByInvitee(ctx context.Context, inviteeUserID string, includeTerminal bool) ([]*types.TenantInvitation, error); CountPendingByInvitee(ctx context.Context, inviteeUserID string) (int64, error); CreateShareLink(ctx context.Context, tenantID uint64, role types.TenantRole, invitedBy *string, message string) (inv *types.TenantInvitation, plainToken string, err error); LookupByToken(ctx context.Context, plainToken string) (*types.TenantInvitation, error); AcceptByToken(ctx context.Context, plainToken string, newUserID string) (*types.TenantMember, error); MarkPendingAcceptedIfExists(ctx context.Context, tenantID uint64, inviteeUserID string) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/tenant_invitation.go
+        - internal/handler/auth.go
+        - internal/handler/tenant_invitation.go
+      characterization_tests:
+        - internal/application/service/tenant_invitation_test.go
+        - internal/handler/auth_register_by_invite_tenant_test.go
+        - internal/handler/tenant_invitation_accept_by_token_test.go
+        - internal/handler/tenant_invitation_auto_accept_test.go
+      items: []
+    - id: identity.tenant-member-service
+      owner: identity
+      kind: capability-port
+      symbol: internal/types/interfaces/tenant_member_service.go:TenantMemberService
+      signature: interface { AddMember(ctx context.Context, userID string, tenantID uint64, role types.TenantRole, invitedBy *string) (*types.TenantMember, error); EnsureOwner(ctx context.Context, userID string, tenantID uint64) (*types.TenantMember, error); GetMembership(ctx context.Context, userID string, tenantID uint64) (*types.TenantMember, error); ListByUser(ctx context.Context, userID string) ([]*types.TenantMember, error); ListByTenant(ctx context.Context, tenantID uint64) ([]*types.TenantMember, error); ListMembersPage(ctx context.Context, tenantID uint64, query string, page, pageSize int) ([]*types.TenantMember, int64, error); HasAnyMembers(ctx context.Context, tenantID uint64) (bool, error); UpdateRole(ctx context.Context, userID string, tenantID uint64, newRole types.TenantRole) error; RemoveMember(ctx context.Context, userID string, tenantID uint64) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/sandbox_terminal_auth.go
+        - internal/application/service/tenant_invitation.go
+        - internal/application/service/tenant_member.go
+        - internal/application/service/user.go
+        - internal/container/container.go
+        - internal/handler/session/handler.go
+        - internal/handler/tenant.go
+        - internal/handler/tenant_invitation.go
+        - internal/handler/tenant_member.go
+        - internal/middleware/access.go
+        - internal/middleware/auth.go
+        - internal/middleware/ws_auth.go
+        - internal/router/router.go
+      characterization_tests:
+        - internal/application/service/sandbox_terminal_auth_test.go
+        - internal/application/service/tenant_invitation_test.go
+        - internal/application/service/tenant_member_test.go
+        - internal/application/service/user_provisioning_test.go
+        - internal/application/service/user_switch_tenant_test.go
+        - internal/handler/tenant_invitation_auto_accept_test.go
+        - internal/handler/tenant_member_test.go
+        - internal/middleware/auth_role_test.go
+      items: []
+    - id: identity.tenant-service
+      owner: identity
+      kind: capability-port
+      symbol: internal/types/interfaces/tenant.go:TenantService
+      signature: interface { CreateTenant(ctx context.Context, tenant *types.Tenant) (*types.Tenant, error); GetTenantByID(ctx context.Context, id uint64) (*types.Tenant, error); GetTenantsByIDs(ctx context.Context, ids []uint64) (map[uint64]*types.Tenant, error); ListTenants(ctx context.Context) ([]*types.Tenant, error); UpdateTenant(ctx context.Context, tenant *types.Tenant) (*types.Tenant, error); DeleteTenant(ctx context.Context, id uint64) error; ListAllTenants(ctx context.Context) ([]*types.Tenant, error); BulkSetStorageQuota(ctx context.Context, quotaBytes int64) (int64, error); SearchTenants(ctx context.Context, keyword string, tenantID uint64, page, pageSize int) ([]*types.Tenant, int64, error); GetTenantByIDForUser(ctx context.Context, tenantID uint64, userID string) (*types.Tenant, error); GetWeKnoraCloudCredentials(ctx context.Context) *types.WeKnoraCloudCredentials }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/extract.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/message.go
+        - internal/application/service/model.go
+        - internal/application/service/session.go
+        - internal/application/service/temporary_document.go
+        - internal/application/service/tenant.go
+        - internal/application/service/user.go
+        - internal/container/container.go
+        - internal/handler/artifact_preview.go
+        - internal/handler/auth.go
+        - internal/handler/initialization.go
+        - internal/handler/organization.go
+        - internal/handler/session/artifact_download.go
+        - internal/handler/session/handler.go
+        - internal/handler/system.go
+        - internal/handler/tenant.go
+        - internal/handler/tenant_invitation.go
+        - internal/middleware/auth.go
+        - internal/middleware/embed_auth.go
+        - internal/middleware/ws_auth.go
+        - internal/modules/agentruntime/agent/tools/data_analysis.go
+        - internal/modules/channels/im/service.go
+        - internal/modules/conversation/chat_pipeline/data_analysis.go
+        - internal/modules/conversation/chat_pipeline/search.go
+        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/router/files.go
+        - internal/router/router.go
+        - internal/router/routes_agent.go
+      characterization_tests:
+        - internal/application/service/tenant_deletion_test.go
+        - internal/application/service/user_provisioning_test.go
+        - internal/container/artifact_preview_wiring_test.go
+        - internal/container/artifact_version_wiring_test.go
+        - internal/handler/auth_register_by_invite_tenant_test.go
+        - internal/handler/session/artifact_download_test.go
+        - internal/handler/tenant_invitation_accept_by_token_test.go
+        - internal/handler/tenant_self_service_policy_test.go
+        - internal/middleware/embed_auth_test.go
+        - internal/modules/conversation/chat_pipeline/search_error_test.go
+        - internal/router/router_files_test.go
+        - internal/router/router_presigned_test.go
+      items: []
+    - id: identity.user-service
+      owner: identity
+      kind: capability-port
+      symbol: internal/types/interfaces/user.go:UserService
+      signature: interface { Register(ctx context.Context, req *types.RegisterRequest) (*types.User, error); Login(ctx context.Context, req *types.LoginRequest) (*types.LoginResponse, error); GetOIDCAuthorizationURL(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error); GetOIDCAuthorizationURLWithPKCE(ctx context.Context, redirectURI, codeChallenge string) (*types.OIDCAuthURLResponse, error); LoginWithOIDC(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error); LoginWithOIDCWithPKCE(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode, codeVerifier string) (*types.OIDCCallbackResponse, error); GetUserByID(ctx context.Context, id string) (*types.User, error); GetUsersByIDs(ctx context.Context, ids []string) (map[string]*types.User, error); GetUserByEmail(ctx context.Context, email string) (*types.User, error); GetUserByUsername(ctx context.Context, username string) (*types.User, error); GetUserByTenantID(ctx context.Context, tenantID uint64) (*types.User, error); UpdateUser(ctx context.Context, user *types.User) error; DeleteUser(ctx context.Context, id string) error; ChangePassword(ctx context.Context, userID string, oldPassword, newPassword string) error; AdminResetPassword(ctx context.Context, userID string, newPassword string) error; ValidatePassword(ctx context.Context, userID string, password string) error; GenerateTokens(ctx context.Context, user *types.User) (accessToken, refreshToken string, err error); BuildLoginMemberships(ctx context.Context, user *types.User, activeTenant *types.Tenant) []types.Membership; SwitchTenant(ctx context.Context, user *types.User, targetTenantID uint64, currentRefreshToken string) (*types.LoginResponse, error); ValidateToken(ctx context.Context, token string) (*types.User, uint64, error); GetAccessTokenByValue(ctx context.Context, token string) (*types.AuthToken, error); GetAccessTokenByID(ctx context.Context, id string) (*types.AuthToken, error); RefreshToken(ctx context.Context, refreshToken string) (accessToken, newRefreshToken string, err error); RevokeToken(ctx context.Context, token string) error; Logout(ctx context.Context, token string) error; GetCurrentUser(ctx context.Context) (*types.User, error); SearchUsers(ctx context.Context, query string, limit int) ([]*types.User, error); ListSystemAdmins(ctx context.Context, offset, limit int) ([]*types.User, int64, error); AdminCreateUser(ctx context.Context, req *types.AdminCreateUserRequest, provisioning types.TenantProvisioningMode) (*types.User, string, error); RevokeSystemAdmin(ctx context.Context, userID, actorID string) (*types.User, error); UpdateUserPreferences(ctx context.Context, userID string, patch types.UserPreferences) (types.UserPreferences, error) }
+      stability: frozen
+      consumers:
+        - cmd/server/bootstrap.go
+        - internal/application/service/sandbox_terminal_auth.go
+        - internal/application/service/user.go
+        - internal/container/container.go
+        - internal/handler/auth.go
+        - internal/handler/custom_agent.go
+        - internal/handler/knowledgebase.go
+        - internal/handler/organization.go
+        - internal/handler/session/handler.go
+        - internal/handler/system.go
+        - internal/handler/tenant.go
+        - internal/handler/tenant_invitation.go
+        - internal/handler/tenant_member.go
+        - internal/middleware/auth.go
+        - internal/router/router.go
+      characterization_tests:
+        - internal/application/service/sandbox_terminal_auth_test.go
+        - internal/handler/auth_change_password_test.go
+        - internal/handler/auth_mobile_exchange_test.go
+        - internal/handler/auth_oidc_mobile_test.go
+        - internal/handler/auth_oidc_start_test.go
+        - internal/handler/auth_register_by_invite_tenant_test.go
+        - internal/handler/auth_register_invite_only_test.go
+        - internal/handler/system_password_reset_test.go
+        - internal/handler/system_user_create_test.go
+        - internal/handler/tenant_invitation_accept_by_token_test.go
+        - internal/handler/tenant_invitation_auto_accept_test.go
+        - internal/handler/tenant_member_test.go
+        - internal/handler/tenant_self_service_policy_test.go
+      items: []
+    - id: identity.workers
+      owner: identity
+      kind: worker-set
+      symbol: docs/architecture/moves/identity.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: insights.facade
+      owner: insights
+      kind: module-construction
+      symbol: internal/modules/insights/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: insights.lifecycle
+      owner: insights
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/insights.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: insights.routes
+      owner: insights
+      kind: route-set
+      symbol: docs/architecture/moves/insights.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_analytics.go
+        - internal/router/routes_infra.go
+      characterization_tests: []
+      items:
+        - RegisterAnalyticsRoutes — internal/router/routes_analytics.go:15
+        - RegisterEvaluationRoutes — internal/router/routes_infra.go:94
+    - id: insights.workers
+      owner: insights
+      kind: worker-set
+      symbol: docs/architecture/moves/insights.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: knowledge.chunk-service
+      owner: knowledge
+      kind: capability-port
+      symbol: internal/types/interfaces/chunk.go:ChunkService
+      signature: interface { CreateChunks(ctx context.Context, chunks []*types.Chunk) error; GetChunkByID(ctx context.Context, id string) (*types.Chunk, error); GetChunkByIDOnly(ctx context.Context, id string) (*types.Chunk, error); ListChunksByKnowledgeID(ctx context.Context, knowledgeID string) ([]*types.Chunk, error); ListPagedChunksByKnowledgeID(ctx context.Context, knowledgeID string, page *types.Pagination, chunkType []types.ChunkType) (*types.PageResult, error); UpdateChunk(ctx context.Context, chunk *types.Chunk) error; UpdateChunks(ctx context.Context, chunks []*types.Chunk) error; DeleteChunk(ctx context.Context, id string) error; DeleteChunks(ctx context.Context, ids []string) error; DeleteChunksByKnowledgeID(ctx context.Context, knowledgeID string) error; DeleteByKnowledgeList(ctx context.Context, ids []string) error; ListChunkByParentID(ctx context.Context, tenantID uint64, parentID string) ([]*types.Chunk, error); GetRepository() ChunkRepository; DeleteGeneratedQuestion(ctx context.Context, chunkID string, questionID string) error; UpdateDocumentChunk(ctx context.Context, chunkID string, content *string, isEnabled *bool, expectedRevision *int) (*types.Chunk, error); ListChunkRevisions(ctx context.Context, chunkID string) ([]*types.ChunkRevision, error); RevertDocumentChunk(ctx context.Context, chunkID string, revision int, expectedRevision *int) (*types.Chunk, error); UpsertGeneratedQuestion(ctx context.Context, chunkID string, questionID string, question string) (*types.GeneratedQuestion, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/chunk.go
+        - internal/application/service/embed_channel.go
+        - internal/application/service/extract.go
+        - internal/application/service/image_multimodal.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledge_auto_tag.go
+        - internal/application/service/knowledge_post_process.go
+        - internal/application/service/session.go
+        - internal/handler/chunk.go
+        - internal/modules/agentruntime/agent/tools/get_document_info.go
+        - internal/modules/agentruntime/agent/tools/knowledge_search.go
+        - internal/modules/agentruntime/agent/tools/list_knowledge_chunks.go
+        - internal/modules/agentruntime/agent/tools/scope_authorization.go
+        - internal/modules/agentruntime/agent/tools/wiki_read_source_doc.go
+        - internal/modules/conversation/chat_pipeline/merge.go
+        - internal/modules/conversation/chat_pipeline/search.go
+        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/router/rbac.go
+        - internal/router/router.go
+      characterization_tests:
+        - internal/application/service/embed_channel_chunk_test.go
+        - internal/application/service/knowledge_auto_tag_test.go
+        - internal/application/service/knowledge_post_process_wiki_enqueue_test.go
+        - internal/application/service/knowledge_replace_test.go
+        - internal/application/service/knowledge_write_access_test.go
+        - internal/handler/knowledge_mutation_admission_test.go
+        - internal/handler/rbac_lookups_test.go
+        - internal/modules/agentruntime/agent/tools/scope_authorization_test.go
+      items: []
+    - id: knowledge.facade
+      owner: knowledge
+      kind: module-construction
+      symbol: internal/modules/knowledge/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: knowledge.knowledge-base-service
+      owner: knowledge
+      kind: capability-port
+      symbol: internal/types/interfaces/knowledgebase.go:KnowledgeBaseService
+      signature: interface { CreateKnowledgeBase(ctx context.Context, kb *types.KnowledgeBase) (*types.KnowledgeBase, error); GetKnowledgeBaseByID(ctx context.Context, id string) (*types.KnowledgeBase, error); GetKnowledgeBaseByIDOnly(ctx context.Context, id string) (*types.KnowledgeBase, error); GetKnowledgeBasesByIDsOnly(ctx context.Context, ids []string) ([]*types.KnowledgeBase, error); FillKnowledgeBaseCounts(ctx context.Context, kb *types.KnowledgeBase) error; ListKnowledgeBases(ctx context.Context) ([]*types.KnowledgeBase, error); ListKnowledgeBasesByTenantID(ctx context.Context, tenantID uint64) ([]*types.KnowledgeBase, error); UpdateKnowledgeBase(ctx context.Context, id string, name string, description string, config *types.KnowledgeBaseConfig) (*types.KnowledgeBase, error); DeleteKnowledgeBase(ctx context.Context, id string) error; TogglePinKnowledgeBase(ctx context.Context, id string) (*types.KnowledgeBase, error); HybridSearch(ctx context.Context, id string, params types.SearchParams) ([]*types.SearchResult, error); GetQueryEmbedding(ctx context.Context, kbID string, queryText string) ([]float32, error); ResolveEmbeddingModelKeys(ctx context.Context, kbs []*types.KnowledgeBase) map[string]string; CopyKnowledgeBase(ctx context.Context, src string, dst string) (*types.KnowledgeBase, *types.KnowledgeBase, error); DuplicateKnowledgeBase(ctx context.Context, src string) (*types.KnowledgeBase, error); GetRepository() KnowledgeBaseRepository; ProcessKBDelete(ctx context.Context, t *asynq.Task) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/custom_agent.go
+        - internal/application/service/datasource_service.go
+        - internal/application/service/evaluation.go
+        - internal/application/service/extract.go
+        - internal/application/service/image_multimodal.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledge_auto_tag.go
+        - internal/application/service/knowledge_post_process.go
+        - internal/application/service/knowledgebase.go
+        - internal/application/service/message.go
+        - internal/application/service/semantic_model_policy.go
+        - internal/application/service/session.go
+        - internal/application/service/tag.go
+        - internal/application/service/web_search.go
+        - internal/application/service/web_search_state.go
+        - internal/application/service/wiki_ingest.go
+        - internal/application/service/wiki_lint.go
+        - internal/application/service/wiki_page.go
+        - internal/container/container.go
+        - internal/handler/datasource.go
+        - internal/handler/datasource_credentials.go
+        - internal/handler/faq.go
+        - internal/handler/initialization.go
+        - internal/handler/knowledge.go
+        - internal/handler/knowledgebase.go
+        - internal/handler/organization.go
+        - internal/handler/rbac_lookups.go
+        - internal/handler/session/handler.go
+        - internal/handler/tenant.go
+        - internal/handler/wiki_page.go
+        - internal/modules/agentruntime/agent/tools/data_analysis.go
+        - internal/modules/agentruntime/agent/tools/knowledge_search.go
+        - internal/modules/agentruntime/agent/tools/query_knowledge_graph.go
+        - internal/modules/channels/im/cmd_info.go
+        - internal/modules/channels/im/cmd_search.go
+        - internal/modules/channels/im/service.go
+        - internal/modules/conversation/chat_pipeline/data_analysis.go
+        - internal/modules/conversation/chat_pipeline/search.go
+        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/modules/conversation/chat_pipeline/wiki_boost.go
+        - internal/router/files.go
+        - internal/router/rbac.go
+        - internal/router/router.go
+        - internal/router/sync_task.go
+        - internal/router/task.go
+        - internal/types/interfaces/web_search.go
+      characterization_tests:
+        - internal/application/service/agent_service_test.go
+        - internal/application/service/custom_agent_suggestion_scope_test.go
+        - internal/application/service/datasource_purge_test.go
+        - internal/application/service/datasource_service_test.go
+        - internal/application/service/document_write_access_test.go
+        - internal/application/service/image_multimodal_orphan_test.go
+        - internal/application/service/knowledge_auto_tag_test.go
+        - internal/application/service/knowledge_batch_reparse_test.go
+        - internal/application/service/knowledge_caller_scope_test.go
+        - internal/application/service/knowledge_cleanup_regression_test.go
+        - internal/application/service/knowledge_create_test.go
+        - internal/application/service/knowledge_index_content_test.go
+        - internal/application/service/knowledge_owner_chain_test.go
+        - internal/application/service/knowledge_post_process_wiki_enqueue_test.go
+        - internal/application/service/knowledge_write_access_test.go
+        - internal/application/service/session_tag_targets_test.go
+        - internal/application/service/wiki_deleted_kb_guard_test.go
+        - internal/application/service/wiki_folder_prune_finalize_test.go
+        - internal/handler/datasource_test.go
+        - internal/handler/knowledge_download_test.go
+        - internal/handler/knowledge_folder_test.go
+        - internal/handler/knowledge_move_gate_test.go
+        - internal/handler/knowledgebase_copy_preflight_test.go
+        - internal/handler/knowledgebase_hybrid_search_resource_urls_test.go
+        - internal/handler/knowledgebase_hybrid_search_test.go
+        - internal/handler/knowledgebase_not_found_test.go
+        - internal/handler/knowledgebase_pr3_response_test.go
+        - internal/handler/knowledgebase_pr5_list_test.go
+        - internal/handler/rbac_lookups_test.go
+        - internal/handler/shared_agent_access_test.go
+        - internal/modules/conversation/chat_pipeline/search_error_test.go
+      items: []
+    - id: knowledge.lifecycle
+      owner: knowledge
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/knowledge.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - internal/container/container.go
+        - internal/container/recover_pending_wiki_tasks.go
+      characterization_tests: []
+      items:
+        - recoverPendingWikiTasks — internal/container/container.go:1052 (func at internal/container/recover_pending_wiki_tasks.go:32)
+    - id: knowledge.retrieve-engine-service
+      owner: knowledge
+      kind: capability-port
+      symbol: internal/types/interfaces/retriever.go:RetrieveEngineService
+      signature: interface { Index(ctx context.Context, embedder embedding.Embedder, indexInfo *types.IndexInfo, retrieverTypes []types.RetrieverType) error; BatchIndex(ctx context.Context, embedder embedding.Embedder, indexInfoList []*types.IndexInfo, retrieverTypes []types.RetrieverType) error; EstimateStorageSize(ctx context.Context, embedder embedding.Embedder, indexInfoList []*types.IndexInfo, retrieverTypes []types.RetrieverType) int64; CopyIndices(ctx context.Context, sourceKnowledgeBaseID string, sourceToTargetKBIDMap map[string]string, sourceToTargetChunkIDMap map[string]string, targetKnowledgeBaseID string, dimension int, knowledgeType string) error; DeleteByChunkIDList(ctx context.Context, indexIDList []string, dimension int, knowledgeType string) error; DeleteBySourceIDList(ctx context.Context, sourceIDList []string, dimension int, knowledgeType string) error; DeleteByKnowledgeIDList(ctx context.Context, knowledgeIDList []string, dimension int, knowledgeType string) error; BatchUpdateChunkEnabledStatus(ctx context.Context, chunkStatusMap map[string]bool) error; BatchUpdateChunkTagID(ctx context.Context, chunkTagMap map[string]string) error; RetrieveEngine }
+      stability: frozen
+      consumers:
+        - internal/container/engine_factory.go
+        - internal/modules/knowledge/retriever/composite.go
+        - internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go
+        - internal/modules/knowledge/retriever/registry.go
+        - internal/types/interfaces/vectorstore.go
+      characterization_tests:
+        - internal/application/service/knowledge_process_parent_child_test.go
+        - internal/application/service/knowledge_write_access_test.go
+        - internal/application/service/knowledgebase_pr3_test.go
+        - internal/application/service/knowledgebase_search_budget_test.go
+        - internal/application/service/knowledgebase_search_fanout_test.go
+        - internal/application/service/knowledgebase_task_cancel_test.go
+        - internal/application/service/vectorstore_test.go
+        - internal/modules/knowledge/retriever/factory_test.go
+        - internal/modules/knowledge/retriever/registry_rehydrate_test.go
+        - internal/modules/knowledge/retriever/registry_test.go
+      items: []
+    - id: knowledge.routes
+      owner: knowledge
+      kind: route-set
+      symbol: docs/architecture/moves/knowledge.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/files.go
+        - internal/router/routes_infra.go
+        - internal/router/routes_knowledge.go
+        - router.go
+      characterization_tests: []
+      items:
+        - RegisterChunkerDebugRoutes — internal/router/routes_knowledge.go:18
+        - RegisterChunkRoutes — internal/router/routes_knowledge.go:28
+        - RegisterKnowledgeRoutes — internal/router/routes_knowledge.go:67
+        - RegisterFAQRoutes — internal/router/routes_knowledge.go:143
+        - RegisterSemanticModelPolicyRoutes — internal/router/routes_knowledge.go:254
+        - RegisterKnowledgeBaseActivityRoutes — internal/router/routes_knowledge.go:266
+        - RegisterKnowledgeBaseRoutes — internal/router/routes_knowledge.go:185
+        - RegisterKnowledgeTagRoutes — internal/router/routes_knowledge.go:279
+        - RegisterWikiPageRoutes — internal/router/routes_knowledge.go:309
+        - RegisterSemanticInternalRoutes — internal/router/routes_infra.go:14
+        - serveKBScopedFiles — internal/router/files.go (called router.go:332)
+    - id: knowledge.service
+      owner: knowledge
+      kind: capability-port
+      symbol: internal/types/interfaces/knowledge.go:KnowledgeService
+      signature: interface { CreateKnowledgeFromFile(ctx context.Context, kbID string, file *multipart.FileHeader, metadata map[string]string, enableMultimodel *bool, customFileName string, tagIDs []string, channel string, processOverrides *types.KnowledgeProcessOverrides) (*types.Knowledge, error); CreateKnowledgeFromURL(ctx context.Context, kbID string, url string, fileName string, fileType string, enableMultimodel *bool, title string, tagIDs []string, channel string, processOverrides *types.KnowledgeProcessOverrides) (*types.Knowledge, error); CreateKnowledgeFromPassage(ctx context.Context, kbID string, passage []string, channel string) (*types.Knowledge, error); CreateKnowledgeFromPassageSync(ctx context.Context, kbID string, passage []string, channel string) (*types.Knowledge, error); CreateKnowledgeFromManual(ctx context.Context, kbID string, payload *types.ManualKnowledgePayload, channel string) (*types.Knowledge, error); GetKnowledgeByID(ctx context.Context, id string) (*types.Knowledge, error); GetKnowledgeByIDOnly(ctx context.Context, id string) (*types.Knowledge, error); GetOwningKBCreatorID(ctx context.Context, knowledgeID string) (string, error); GetKnowledgeBatch(ctx context.Context, tenantID uint64, ids []string) ([]*types.Knowledge, error); GetKnowledgeBatchWithSharedAccess(ctx context.Context, tenantID uint64, ids []string) ([]*types.Knowledge, error); ListKnowledgeIDsByTagIDs(ctx context.Context, tenantID uint64, kbID string, tagIDs []string) ([]string, error); ListKnowledgeByKnowledgeBaseID(ctx context.Context, kbID string) ([]*types.Knowledge, error); ListPagedKnowledgeByKnowledgeBaseID(ctx context.Context, kbID string, page *types.Pagination, filter types.KnowledgeListFilter) (*types.PageResult, error); ListKnowledgeFolderTree(ctx context.Context, kbID string) (*types.KnowledgeFolderTree, error); MoveKnowledgeToFolder(ctx context.Context, kbID string, ids []string, folderPath string) (int64, error); RenameKnowledgeFolder(ctx context.Context, kbID string, from string, to string) (int64, error); DeleteKnowledge(ctx context.Context, id string) error; DeleteKnowledgeList(ctx context.Context, ids []string) error; GetKnowledgeFile(ctx context.Context, id string) (io.ReadCloser, string, error); UpdateKnowledge(ctx context.Context, knowledge *types.Knowledge) error; RegenerateKnowledgeSummary(ctx context.Context, knowledgeID string) (*types.Knowledge, error); RequestKnowledgeSummaryRefresh(ctx context.Context, knowledgeID string) error; RegenerateChunkQuestions(ctx context.Context, chunkID string) ([]types.GeneratedQuestion, error); UpdateManualKnowledge(ctx context.Context, knowledgeID string, payload *types.ManualKnowledgePayload) (*types.Knowledge, error); ReparseKnowledge(ctx context.Context, knowledgeID string, processOverrides *types.KnowledgeProcessOverrides) (*types.Knowledge, error); ReplaceKnowledgeFile(ctx context.Context, knowledgeID string, file *multipart.FileHeader, customFileName string, metadata map[string]string) (*types.Knowledge, error); CancelKnowledgeParse(ctx context.Context, knowledgeID string) (*types.Knowledge, error); CloneKnowledgeBase(ctx context.Context, srcID, dstID string) error; UpdateImageInfo(ctx context.Context, knowledgeID string, chunkID string, imageInfo string) error; ListFAQEntries(ctx context.Context, kbID string, page *types.Pagination, tagUUIDs []string, legacyTagSeqID int64, keyword string, searchField string, sortOrder string, isEnabled *bool) (*types.PageResult, error); UpsertFAQEntries(ctx context.Context, kbID string, payload *types.FAQBatchUpsertPayload) (string, error); CreateFAQEntry(ctx context.Context, kbID string, payload *types.FAQEntryPayload) (*types.FAQEntry, error); GetFAQEntry(ctx context.Context, kbID string, entrySeqID int64) (*types.FAQEntry, error); UpdateFAQEntry(ctx context.Context, kbID string, entrySeqID int64, payload *types.FAQEntryPayload) (*types.FAQEntry, error); AddSimilarQuestions(ctx context.Context, kbID string, entrySeqID int64, questions []string) (*types.FAQEntry, error); UpdateFAQEntryFieldsBatch(ctx context.Context, kbID string, req *types.FAQEntryFieldsBatchUpdate) error; DeleteFAQEntries(ctx context.Context, kbID string, entrySeqIDs []int64) error; SearchFAQEntries(ctx context.Context, kbID string, req *types.FAQSearchRequest) ([]*types.FAQEntry, error); ExportFAQEntries(ctx context.Context, kbID string) ([]byte, error); ExportFAQEntriesJSON(ctx context.Context, kbID string) ([]byte, error); UpdateKnowledgeTagBatch(ctx context.Context, authorizedKBID string, updates map[string][]string) error; SetKnowledgeTags(ctx context.Context, knowledgeID string, tagIDs []string) error; GetKnowledgeTags(ctx context.Context, knowledgeIDs []string) (map[string][]*types.KnowledgeTag, error); UpdateFAQEntryTagBatch(ctx context.Context, kbID string, updates map[int64]*int64) error; GetRepository() KnowledgeRepository; ProcessManualUpdate(ctx context.Context, t *asynq.Task) error; ProcessDocument(ctx context.Context, t *asynq.Task) error; ProcessFAQImport(ctx context.Context, t *asynq.Task) error; ProcessQuestionGeneration(ctx context.Context, t *asynq.Task) error; ProcessSummaryGeneration(ctx context.Context, t *asynq.Task) error; ProcessKBClone(ctx context.Context, t *asynq.Task) error; ProcessKnowledgeMove(ctx context.Context, t *asynq.Task) error; ProcessKnowledgeListDelete(ctx context.Context, t *asynq.Task) error; ProcessKnowledgeListReparse(ctx context.Context, t *asynq.Task) error; GetKBCloneProgress(ctx context.Context, taskID string) (*types.KBCloneProgress, error); SaveKBCloneProgress(ctx context.Context, progress *types.KBCloneProgress) error; GetKnowledgeMoveProgress(ctx context.Context, taskID string) (*types.KnowledgeMoveProgress, error); SaveKnowledgeMoveProgress(ctx context.Context, progress *types.KnowledgeMoveProgress) error; GetFAQImportProgress(ctx context.Context, taskID string) (*types.FAQImportProgress, error); UpdateLastFAQImportResultDisplayStatus(ctx context.Context, kbID string, displayStatus string) error; SearchKnowledge(ctx context.Context, keyword string, offset, limit int, fileTypes []string) ([]*types.Knowledge, bool, int64, error); SearchKnowledgeForScopes(ctx context.Context, scopes []types.KnowledgeSearchScope, keyword string, offset, limit int, fileTypes []string) ([]*types.Knowledge, bool, int64, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/datasource_service.go
+        - internal/application/service/evaluation.go
+        - internal/application/service/extract.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledge_delete_plan.go
+        - internal/application/service/message.go
+        - internal/application/service/session.go
+        - internal/application/service/web_search.go
+        - internal/application/service/web_search_state.go
+        - internal/application/service/wiki_ingest.go
+        - internal/application/service/wiki_lint.go
+        - internal/container/container.go
+        - internal/handler/chunk.go
+        - internal/handler/faq.go
+        - internal/handler/initialization.go
+        - internal/handler/knowledge.go
+        - internal/handler/knowledgebase.go
+        - internal/handler/rbac_lookups.go
+        - internal/handler/system.go
+        - internal/modules/agentruntime/agent/tools/data_analysis.go
+        - internal/modules/agentruntime/agent/tools/data_schema.go
+        - internal/modules/agentruntime/agent/tools/get_document_info.go
+        - internal/modules/agentruntime/agent/tools/knowledge_search.go
+        - internal/modules/agentruntime/agent/tools/list_knowledge_chunks.go
+        - internal/modules/agentruntime/agent/tools/query_knowledge_graph.go
+        - internal/modules/agentruntime/agent/tools/scope_authorization.go
+        - internal/modules/agentruntime/agent/tools/wiki_flag_issue.go
+        - internal/modules/agentruntime/agent/tools/wiki_read_source_doc.go
+        - internal/modules/agentruntime/agent/tools/wiki_replace_text.go
+        - internal/modules/agentruntime/agent/tools/wiki_route_resolver.go
+        - internal/modules/agentruntime/agent/tools/wiki_tools.go
+        - internal/modules/agentruntime/agent/tools/wiki_write_page.go
+        - internal/modules/channels/im/service.go
+        - internal/modules/conversation/chat_pipeline/data_analysis.go
+        - internal/modules/conversation/chat_pipeline/extract_entity.go
+        - internal/modules/conversation/chat_pipeline/search.go
+        - internal/modules/conversation/chat_pipeline/search_parallel.go
+        - internal/router/files.go
+        - internal/router/rbac.go
+        - internal/router/router.go
+        - internal/router/sync_task.go
+        - internal/router/task.go
+        - internal/types/interfaces/web_search.go
+      characterization_tests:
+        - internal/application/service/agent_service_test.go
+        - internal/application/service/datasource_purge_test.go
+        - internal/application/service/datasource_sweep_wiring_test.go
+        - internal/application/service/session_tag_targets_test.go
+        - internal/handler/document_write_scope_test.go
+        - internal/handler/faq_enabled_filter_test.go
+        - internal/handler/kb_access_test.go
+        - internal/handler/knowledge_download_test.go
+        - internal/handler/knowledge_folder_test.go
+        - internal/handler/knowledge_move_gate_test.go
+        - internal/handler/knowledge_mutation_admission_test.go
+        - internal/handler/knowledge_preview_security_test.go
+        - internal/handler/knowledge_transfer_test.go
+        - internal/handler/rbac_lookups_test.go
+        - internal/handler/shared_agent_access_test.go
+        - internal/modules/agentruntime/agent/tools/scope_authorization_test.go
+        - internal/router/task_processing_scope_test.go
+      items: []
+    - id: knowledge.tag-service
+      owner: knowledge
+      kind: capability-port
+      symbol: internal/types/interfaces/tag.go:KnowledgeTagService
+      signature: interface { ListTags(ctx context.Context, kbID string, page *types.Pagination, keyword string) (*types.PageResult, error); CreateTag(ctx context.Context, kbID string, name string, color string, sortOrder int) (*types.KnowledgeTag, error); UpdateTag(ctx context.Context, id string, name *string, color *string, sortOrder *int) (*types.KnowledgeTag, error); DeleteTag(ctx context.Context, id string, force bool, contentOnly bool, excludeIDs []string) error; FindOrCreateTagByName(ctx context.Context, kbID string, name string) (*types.KnowledgeTag, error); DeleteOrphanTagByName(ctx context.Context, kbID string, name string) error; ProcessIndexDelete(ctx context.Context, t *asynq.Task) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/datasource_service.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/tag.go
+        - internal/handler/tag.go
+        - internal/router/sync_task.go
+        - internal/router/task.go
+      characterization_tests:
+        - internal/application/service/datasource_service_test.go
+        - internal/handler/tag_delete_test.go
+      items: []
+    - id: knowledge.wiki-page-service
+      owner: knowledge
+      kind: capability-port
+      symbol: internal/types/interfaces/wiki_page.go:WikiPageService
+      signature: interface { CreatePage(ctx context.Context, page *types.WikiPage) (*types.WikiPage, error); UpdatePage(ctx context.Context, page *types.WikiPage) (*types.WikiPage, error); UpdatePageMeta(ctx context.Context, page *types.WikiPage) error; UpdateAutoLinkedContent(ctx context.Context, page *types.WikiPage) error; GetPageBySlug(ctx context.Context, kbID string, slug string) (*types.WikiPage, error); RepairContentLinks(ctx context.Context, kbID, selfSlug, content string) (string, bool, error); GetPageByID(ctx context.Context, id string) (*types.WikiPage, error); ListPages(ctx context.Context, req *types.WikiPageListRequest) (*types.WikiPageListResponse, error); DeletePage(ctx context.Context, kbID string, slug string) error; GetIndex(ctx context.Context, kbID string) (*types.WikiPage, error); GetIndexView(ctx context.Context, kbID string, pageTypes []string, limit int, cursor string) (*types.WikiIndexResponse, error); GetGraph(ctx context.Context, req *types.WikiGraphRequest) (*types.WikiGraphData, error); GetStats(ctx context.Context, kbID string) (*types.WikiStats, error); RebuildLinks(ctx context.Context, kbID string) error; InjectCrossLinks(ctx context.Context, kbID string, affectedSlugs []string); RebuildIndexPage(ctx context.Context, kbID string) error; ListAllPages(ctx context.Context, kbID string) ([]*types.WikiPage, error); ListByType(ctx context.Context, kbID string, pageType string) ([]*types.WikiPage, error); ListPagesBySourceRef(ctx context.Context, kbID string, knowledgeID string) ([]*types.WikiPage, error); ListSlugsBySourceRef(ctx context.Context, kbID string, knowledgeID string) ([]string, error); ListBySlugs(ctx context.Context, kbID string, slugs []string) (map[string]*types.WikiPageLite, error); ListSummariesByKnowledgeIDs(ctx context.Context, kbID string, kids []string) (map[string]string, error); ExistsSlugs(ctx context.Context, kbID string, slugs []string) (map[string]bool, error); ListAllSlugs(ctx context.Context, kbID string) ([]string, error); ListPagesCursor(ctx context.Context, kbID string, cursor string, limit int) ([]*types.WikiPage, string, error); ListByTypeRecent(ctx context.Context, kbID string, pageType string, limit int) ([]types.WikiIndexEntry, error); FindSimilarPages(ctx context.Context, kbID string, query string, pageTypes []string, limit int) ([]*types.WikiPageLite, error); FindPagesByNormalizedTitle(ctx context.Context, kbID, pageType, identity string) ([]*types.WikiPageLite, error); FindPagesByNormalizedTitles(ctx context.Context, kbID, pageType string, identities []string) ([]*types.WikiPageLite, error); ListDistinctCategoryPaths(ctx context.Context, kbID string, maxPaths int) ([][]string, error); ListChildFolders(ctx context.Context, kbID string, parentID string, pageTypes []string) ([]types.WikiFolderNode, error); GetFolder(ctx context.Context, kbID string, id string) (*types.WikiFolder, error); CreateFolder(ctx context.Context, kbID string, tenantID uint64, parentID string, name string) (*types.WikiFolder, error); RenameOrMoveFolder(ctx context.Context, kbID string, id string, newName string, newParentID string, moveParent bool) (*types.WikiFolder, error); DeleteFolder(ctx context.Context, kbID string, id string) error; PruneEmptyFolderChains(ctx context.Context, kbID string, folderIDs []string) ([]string, error); FindOrCreateFolderPath(ctx context.Context, kbID string, tenantID uint64, path []string) (string, []string, error); MovePage(ctx context.Context, kbID string, slug string, folderID string) (*types.WikiPage, error); CountByType(ctx context.Context, kbID string) (map[string]int64, error); SearchPages(ctx context.Context, kbID string, query string, limit int) ([]*types.WikiPage, error); ListRevisions(ctx context.Context, kbID string, slug string, limit int, offset int) (*types.WikiPageRevisionListResponse, error); GetRevision(ctx context.Context, kbID string, slug string, version int) (*types.WikiPageRevision, error); RevertPageToVersion(ctx context.Context, kbID string, slug string, version int) (*types.WikiPage, error); CreateIssue(ctx context.Context, issue *types.WikiPageIssue) (*types.WikiPageIssue, error); ListIssues(ctx context.Context, kbID string, slug string, status string) ([]*types.WikiPageIssue, error); UpdateIssueStatus(ctx context.Context, issueID string, status string) error }
+      stability: frozen
+      consumers:
+        - internal/application/service/agent_service.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/wiki_ingest.go
+        - internal/application/service/wiki_lint.go
+        - internal/application/service/wiki_page.go
+        - internal/handler/wiki_page.go
+        - internal/modules/agentruntime/agent/tools/wiki_delete_page.go
+        - internal/modules/agentruntime/agent/tools/wiki_flag_issue.go
+        - internal/modules/agentruntime/agent/tools/wiki_link_mutation.go
+        - internal/modules/agentruntime/agent/tools/wiki_read_issue.go
+        - internal/modules/agentruntime/agent/tools/wiki_rename_page.go
+        - internal/modules/agentruntime/agent/tools/wiki_replace_text.go
+        - internal/modules/agentruntime/agent/tools/wiki_route_resolver.go
+        - internal/modules/agentruntime/agent/tools/wiki_tools.go
+        - internal/modules/agentruntime/agent/tools/wiki_update_issue.go
+        - internal/modules/agentruntime/agent/tools/wiki_write_page.go
+      characterization_tests:
+        - internal/application/service/knowledge_move_wiki_test.go
+        - internal/application/service/wiki_folder_prune_finalize_test.go
+        - internal/application/service/wiki_ingest_dedup_test.go
+        - internal/application/service/wiki_page_revision_test.go
+        - internal/modules/agentruntime/agent/tools/wiki_link_mutation_test.go
+        - internal/modules/agentruntime/agent/tools/wiki_replace_text_test.go
+        - internal/modules/agentruntime/agent/tools/wiki_tools_test.go
+        - internal/modules/agentruntime/agent/tools/wiki_write_page_test.go
+      items: []
+    - id: knowledge.workers
+      owner: knowledge
+      kind: worker-set
+      symbol: docs/architecture/moves/knowledge.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers:
+        - internal/router/sync_task.go
+        - internal/router/task.go
+        - internal/router/task_inspector.go
+      characterization_tests: []
+      items:
+        - TypeChunkExtract
+        - TypeDataTableSummary
+        - TypeDocumentProcess
+        - TypeManualProcess
+        - TypeFAQImport
+        - TypeQuestionGeneration
+        - TypeSummaryGeneration
+        - TypeKBClone
+        - TypeKnowledgeMove
+        - TypeKnowledgeListDelete
+        - TypeKnowledgeListReparse
+        - TypeIndexDelete
+        - TypeKBDelete
+        - TypeImageMultimodal
+        - TypeKnowledgePostProcess
+        - TypeKnowledgeAutoTag
+        - TypeWikiIngest
+        - TypeWikiFinalize
+    - id: policy.facade
+      owner: policy
+      kind: module-construction
+      symbol: internal/modules/policy/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: policy.lifecycle
+      owner: policy
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/policy.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: policy.routes
+      owner: policy
+      kind: route-set
+      symbol: docs/architecture/moves/policy.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/router.go
+      characterization_tests: []
+      items:
+        - embedFrameAncestorsMiddleware — internal/router/router.go:195-197 (embed 页面 frame-ancestors 策略，使用 internal/embedpolicy；无独立业务路由)
+    - id: policy.workers
+      owner: policy
+      kind: worker-set
+      symbol: docs/architecture/moves/policy.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: system.facade
+      owner: system
+      kind: module-construction
+      symbol: internal/modules/system/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: system.lifecycle
+      owner: system
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/system.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - startHousekeepingService — internal/container/container.go:642 (func at container.go:2389)
+    - id: system.routes
+      owner: system
+      kind: route-set
+      symbol: docs/architecture/moves/system.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/router/routes_auth_tenant.go
+        - internal/router/routes_infra.go
+      characterization_tests: []
+      items:
+        - RegisterInitializationRoutes — internal/router/routes_infra.go:102
+        - RegisterSystemRoutes — internal/router/routes_auth_tenant.go:245
+        - RegisterSystemAdminRoutes — internal/router/routes_auth_tenant.go:279 (审计端点归 identity；其余归 system)
+    - id: system.workers
+      owner: system
+      kind: worker-set
+      symbol: docs/architecture/moves/system.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
+    - id: workbench.artifact-versions-decision
+      owner: workbench
+      kind: capability-port
+      symbol: internal/types/artifact_versions.go:ClarifyArtifactVersions
+      signature: func ClarifyArtifactVersions(content string, current, previous MessageArtifacts, language string) string
+      stability: frozen
+      consumers:
+        - internal/application/service/message_artifact_versions.go
+        - internal/handler/session/agent_stream_handler.go
+      characterization_tests:
+        - internal/types/artifact_versions_test.go
+      items: []
+    - id: workbench.facade
+      owner: workbench
+      kind: module-construction
+      symbol: internal/modules/workbench/module.go
+      signature: façade
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items:
+        - NewModule
+        - RegisterRoutes
+        - RegisterWorkers
+        - Start
+        - Stop
+    - id: workbench.lifecycle
+      owner: workbench
+      kind: lifecycle-set
+      symbol: docs/architecture/moves/workbench.yaml
+      signature: integration_points.lifecycle_hooks
+      stability: frozen
+      consumers:
+        - container.go
+        - internal/container/container.go
+      characterization_tests: []
+      items:
+        - registerArtifactVersionHTTPHandlers — internal/container/container.go:671 (func at container.go:2709)
+        - registerArtifactPreviewHTTPHandlers — internal/container/container.go:676 (func at container.go:2725)
+    - id: workbench.routes
+      owner: workbench
+      kind: route-set
+      symbol: docs/architecture/moves/workbench.yaml
+      signature: integration_points.routes
+      stability: frozen
+      consumers:
+        - internal/handler/artifact_preview.go
+        - internal/router/routes_chat.go
+        - internal/router/routes_workbench.go
+        - routes_chat.go
+      characterization_tests: []
+      items:
+        - RegisterWorkbenchOverviewRoutes — internal/router/routes_workbench.go:73
+        - RegisterWorkbenchInboxRoutes — internal/router/routes_workbench.go:84
+        - RegisterWorkbenchStartRoutes — internal/router/routes_workbench.go:127
+        - RegisterWorkbenchArtifactRoutes — internal/router/routes_workbench.go:142
+        - RegisterWorkbenchCommandRoutes — internal/router/routes_workbench.go:159
+        - RegisterMobileVoiceRoutes — internal/router/routes_workbench.go:177
+        - RegisterMobileDeviceRoutes — internal/router/routes_workbench.go:191
+        - RegisterWorkbenchRoutes — internal/router/routes_workbench.go:33 (10 条中 workbench 5：/workbench/executions 读+写)
+        - RegisterArtifactPreviewRoutes — internal/handler/artifact_preview.go:284 (隔离预览源 /ap/:token；票据签发经 RegisterArtifactPreviewIssueRoute，routes_chat.go:187 委托)
+        - session/message artifacts 子路由 ×4 — internal/router/routes_chat.go (RegisterSessionRoutes 内)
+    - id: workbench.runtime-task-inspector
+      owner: workbench
+      kind: capability-port
+      symbol: internal/types/interfaces/task_inspector.go:RuntimeTaskInspector
+      signature: interface { ListRuntimeTasks(ctx context.Context, queue string, state types.RuntimeTaskState, cursor string, pageSize int) (page types.RuntimeTaskPage, supported bool, err error); GetRuntimeTask(ctx context.Context, queue, taskID string) (task *types.RuntimeTaskInfo, supported bool, err error); RunRuntimeTask(ctx context.Context, queue, taskID string) (supported bool, err error); DeleteRuntimeTask(ctx context.Context, queue, taskID string) (supported bool, err error); ForceDeleteRuntimeTask(ctx context.Context, queue, taskID string) (supported bool, err error); PurgeArchivedRuntimeTasks(ctx context.Context, queue string) (deleted int, supported bool, err error) }
+      stability: frozen
+      consumers:
+        - internal/handler/system.go
+      characterization_tests: []
+      items: []
+    - id: workbench.task-enqueuer
+      owner: workbench
+      kind: capability-port
+      symbol: internal/types/interfaces/task_enqueuer.go:TaskEnqueuer
+      signature: interface { Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/chunk.go
+        - internal/application/service/datasource_service.go
+        - internal/application/service/extract.go
+        - internal/application/service/image_multimodal.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledge_post_process.go
+        - internal/application/service/knowledge_summary_refresh.go
+        - internal/application/service/knowledgebase.go
+        - internal/application/service/query_history_export.go
+        - internal/application/service/tag.go
+        - internal/application/service/temporary_document.go
+        - internal/application/service/wiki_ingest.go
+        - internal/container/container.go
+        - internal/container/recover_pending_wiki_tasks.go
+        - internal/handler/knowledge.go
+        - internal/handler/knowledgebase.go
+        - internal/modules/agentruntime/memory/service.go
+        - internal/modules/datasource/scheduler.go
+      characterization_tests:
+        - internal/application/service/image_multimodal_orphan_test.go
+        - internal/application/service/knowledge_auto_tag_test.go
+        - internal/application/service/knowledge_post_process_wiki_enqueue_test.go
+        - internal/application/service/wiki_deleted_kb_guard_test.go
+        - internal/application/service/wiki_folder_prune_finalize_test.go
+      items: []
+    - id: workbench.task-inspector
+      owner: workbench
+      kind: capability-port
+      symbol: internal/types/interfaces/task_inspector.go:TaskInspector
+      signature: interface { CancelTasksForKnowledge(ctx context.Context, knowledgeID string) (deleted int, cancelled int, err error); HasQueuedTasksForKnowledge(ctx context.Context, knowledgeID string) (bool, error); QueueStats(ctx context.Context) (stats []types.QueueStat, supported bool, err error); WorkerServerStats(ctx context.Context) (stats []types.WorkerServerStat, supported bool, err error) }
+      stability: frozen
+      consumers:
+        - internal/application/service/datasource_service.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledge_housekeeping.go
+        - internal/application/service/knowledgebase.go
+        - internal/container/container.go
+        - internal/handler/system.go
+        - internal/router/task_inspector.go
+      characterization_tests:
+        - internal/application/service/datasource_cancel_enqueue_test.go
+        - internal/application/service/knowledge_housekeeping_test.go
+        - internal/application/service/knowledgebase_task_cancel_test.go
+      items: []
+    - id: workbench.task-pending-ops-repository
+      owner: workbench
+      kind: capability-port
+      symbol: internal/types/interfaces/task_queue.go:TaskPendingOpsRepository
+      signature: interface { Enqueue(ctx context.Context, op *types.TaskPendingOp) error; PeekBatch(ctx context.Context, taskType, scope, scopeID string, limit int) ([]*types.TaskPendingOp, error); ClaimBatch(ctx context.Context, taskType, scope, scopeID string, limit int, staleBefore time.Time) ([]*types.TaskPendingOp, error); ReleaseByIDs(ctx context.Context, ids []int64) error; DeleteByIDs(ctx context.Context, ids []int64) error; IncrFailCount(ctx context.Context, id int64) (int, error); PendingCount(ctx context.Context, taskType, scope, scopeID string) (int64, error); DeleteByDedupKey(ctx context.Context, taskType, scope, scopeID, dedupKey, op string) error }
+      stability: frozen
+      consumers:
+        - internal/application/repository/task_queue.go
+        - internal/application/service/knowledge.go
+        - internal/application/service/knowledge_post_process.go
+        - internal/application/service/knowledgebase.go
+        - internal/application/service/wiki_ingest.go
+        - internal/application/service/wiki_page.go
+      characterization_tests:
+        - internal/application/service/knowledge_move_wiki_test.go
+        - internal/application/service/knowledge_post_process_wiki_enqueue_test.go
+        - internal/application/service/knowledgebase_task_cancel_test.go
+        - internal/application/service/wiki_deleted_kb_guard_test.go
+        - internal/application/service/wiki_folder_prune_finalize_test.go
+      items: []
+    - id: workbench.workers
+      owner: workbench
+      kind: worker-set
+      symbol: docs/architecture/moves/workbench.yaml
+      signature: integration_points.workers
+      stability: frozen
+      consumers: []
+      characterization_tests: []
+      items: []
