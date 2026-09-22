@@ -29,20 +29,88 @@ function capabilityEvidenceMode(capabilities: unknown): MobileRuntimeIntegration
   return minimum <= CLIENT_PROTOCOL && CLIENT_PROTOCOL <= maximum ? 'compatible' : 'incompatible';
 }
 
-/** 部署 URL 主机防线：仅允许公网主机，拒绝 localhost、环回、私网、链路本地与保留地址。 */
+/** 部署 URL 主机防线：仅允许公网主机，拒绝 localhost、环回、私网、链路本地与保留地址（含 IPv6 形式）。 */
+function disallowedIpv4Octets(octets: number[]): string | undefined {
+  const a = octets[0]!;
+  const b = octets[1]!;
+  if (a === 127 || a === 0 || a >= 240) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target loopback or reserved addresses';
+  if (a === 10) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
+  if (a === 172 && b >= 16 && b <= 31) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
+  if (a === 192 && b === 168) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
+  if (a === 169 && b === 254) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target link-local addresses';
+  return undefined;
+}
+
+/** 展开去掉方括号后的 IPv6 字面量为 16 字节；非合法 IPv6 返回 undefined（zone id 视为非法）。 */
+function parseIpv6Literal(host: string): number[] | undefined {
+  if (host.includes('%')) return undefined;
+  const halves = host.split('::');
+  if (halves.length > 2) return undefined;
+  const expandGroups = (half: string): string[] | undefined => {
+    if (half === '') return [];
+    const groups = half.split(':');
+    const dotted = groups[groups.length - 1]!.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (dotted) {
+      const octets = [Number(dotted[1]), Number(dotted[2]), Number(dotted[3]), Number(dotted[4])];
+      if (octets.some((value) => value > 255)) return undefined;
+      groups.splice(groups.length - 1, 1, `${(octets[0]! << 8) | octets[1]!}`, `${(octets[2]! << 8) | octets[3]!}`);
+    }
+    if (!groups.every((group) => /^[0-9a-f]{1,4}$/.test(group))) return undefined;
+    return groups;
+  };
+  const head = expandGroups(halves[0]!);
+  const tail = expandGroups(halves.length === 2 ? halves[1]! : '');
+  if (!head || !tail) return undefined;
+  if (halves.length === 1 && head.length !== 8) return undefined;
+  if (halves.length === 2 && head.length + tail.length > 7) return undefined;
+  const groups = halves.length === 1
+    ? head
+    : [...head, ...Array.from({ length: 8 - head.length - tail.length }, () => '0'), ...tail];
+  const bytes: number[] = [];
+  for (const group of groups) {
+    const word = Number.parseInt(group, 16);
+    bytes.push((word >> 8) & 0xff, word & 0xff);
+  }
+  return bytes;
+}
+
+function disallowedIpv6Bytes(bytes: number[]): string | undefined {
+  const words = Array.from({ length: 8 }, (_, i) => (bytes[i * 2]! << 8) | bytes[i * 2 + 1]!);
+  const wordsZero = (from: number, to: number) => words.slice(from, to).every((word) => word === 0);
+  // ::ffff:0:0/96 IPv4-mapped：内嵌 IPv4 部分复用 IPv4 规则。
+  if (wordsZero(0, 6) && words[6] === 0xffff) return disallowedIpv4Octets(bytes.slice(12));
+  if (wordsZero(0, 7)) {
+    if (words[7] === 0) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target the unspecified address';
+    if (words[7] === 1) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target a loopback or wildcard address';
+    // ::/96 IPv4-compatible：内嵌 IPv4 部分复用 IPv4 规则。
+    return disallowedIpv4Octets(bytes.slice(12));
+  }
+  // fe80::/10 链路本地（含全部 zone-scoped 地址）。
+  if ((words[0]! & 0xffc0) === 0xfe80) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target link-local addresses';
+  // fc00::/7 ULA 私有。
+  if ((words[0]! & 0xfe00) === 0xfc00) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
+  // ff00::/8 组播。
+  if ((words[0]! & 0xff00) === 0xff00) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target multicast or reserved addresses';
+  // 2001::/32 Teredo 与 2001:db8::/32 文档保留段。
+  if (words[0] === 0x2001 && (words[1] === 0x0db8 || words[1] === 0)) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target reserved addresses';
+  // 2002::/16 6to4：内嵌 IPv4（第 2、3 字节组）复用 IPv4 规则。
+  if (words[0] === 0x2002) return disallowedIpv4Octets(bytes.slice(2, 6));
+  // 100::/64 discard-only。
+  if (words[0] === 0x0100 && wordsZero(1, 4)) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target reserved addresses';
+  // 除 2000::/3 全球单播外的其余地址段均为保留/未分配。
+  if ((words[0]! & 0xe000) !== 0x2000) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target reserved addresses';
+  return undefined;
+}
+
 function disallowedDeploymentHost(hostname: string): string | undefined {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host.endsWith('.localhost')) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target localhost';
-  if (host === '::1' || host === '0.0.0.0') return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target a loopback or wildcard address';
   const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (match) {
-    const a = Number(match[1]);
-    const b = Number(match[2]);
-    if (a === 127 || a === 0 || a >= 240) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target loopback or reserved addresses';
-    if (a === 10) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
-    if (a === 172 && b >= 16 && b <= 31) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
-    if (a === 192 && b === 168) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target private addresses';
-    if (a === 169 && b === 254) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target link-local addresses';
+  if (match) return disallowedIpv4Octets([Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])]);
+  if (host.includes(':')) {
+    const bytes = parseIpv6Literal(host);
+    if (!bytes) return 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must not target an invalid IPv6 host';
+    return disallowedIpv6Bytes(bytes);
   }
   return undefined;
 }

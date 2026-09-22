@@ -90,7 +90,39 @@ test('integration config rejects a non-numeric switch tenant id as invalid rathe
 });
 
 test('integration config rejects loopback, private, and reserved deployment hosts', () => {
-  for (const url of ['https://localhost', 'https://sub.localhost', 'https://127.0.0.1', 'https://10.0.0.2', 'https://172.16.0.9', 'https://192.168.1.10', 'https://169.254.1.1', 'https://0.0.0.0', 'https://240.0.0.1']) {
+  const rejected = [
+    'https://localhost',
+    'https://sub.localhost',
+    'https://127.0.0.1',
+    'https://10.0.0.2',
+    'https://172.16.0.9',
+    'https://192.168.1.10',
+    'https://169.254.1.1',
+    'https://0.0.0.0',
+    'https://240.0.0.1',
+    // IPv6 loopback, unspecified, IPv4-mapped loopback/private, IPv4-compatible private.
+    'https://[::1]',
+    'https://[::]',
+    'https://[::ffff:127.0.0.1]',
+    'https://[::ffff:7f00:1]',
+    'https://[::ffff:10.0.0.2]',
+    'https://[::10.0.0.2]',
+    // Link-local fe80::/10 and zone-scoped link-local.
+    'https://[fe80::1]',
+    'https://[febf::1]',
+    // ULA-private fc00::/7 (both fc00:: and fd00:: halves).
+    'https://[fc00::1]',
+    'https://[fd12:3456:789a::1]',
+    // Multicast, documentation, Teredo, discard-only, and non-global-unicast space.
+    'https://[ff02::1]',
+    'https://[2001:db8::1]',
+    'https://[2001::1]',
+    'https://[100::1]',
+    'https://[4000::1]',
+    // 6to4 embedding a private IPv4 host (172.16.0.9 = ac10:9).
+    'https://[2002:ac10:9::1]',
+  ];
+  for (const url of rejected) {
     const config = mobileRuntimeIntegrationConfig({
       WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: url,
       WEKNORA_MOBILE_TEST_EMAIL: 'mobile-test@example.test',
@@ -100,4 +132,14 @@ test('integration config rejects loopback, private, and reserved deployment host
     assert.equal(config.enabled, false, `${url} must not enable a real HTTP run`);
     assert.equal(config.disposition, 'invalid', `${url} is invalid, not skippable`);
   }
+});
+
+test('integration config keeps a public IPv6 deployment host eligible for a real HTTP run', () => {
+  const config = mobileRuntimeIntegrationConfig({
+    WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'https://[2606:4700::6810:84e5]',
+    WEKNORA_MOBILE_TEST_EMAIL: 'mobile-test@example.test',
+    WEKNORA_MOBILE_TEST_PASSWORD: nonEmptyPassword,
+  });
+
+  assert.equal(config.enabled, true, 'a global-unicast IPv6 literal must not be over-blocked');
 });
