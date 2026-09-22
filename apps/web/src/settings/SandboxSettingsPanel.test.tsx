@@ -188,6 +188,18 @@ function setSelectValue(select: HTMLSelectElement, value: string) {
   select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
 }
 
+/* S6：backend select 换 tdesign Select（弹层 portal 到 body），驱动改为
+   触发器点击 + li.t-select-option 文本点击（台账 #8 同款口径）。 */
+async function chooseBackend(editor: HTMLElement, label: string) {
+  const trigger = editor.querySelector('.wk-sandbox-sel-backend');
+  assert.ok(trigger, 'the backend select trigger renders');
+  await click(trigger);
+  const option = Array.from(document.body.querySelectorAll('.t-select-option'))
+    .find((node) => (node.textContent ?? '').trim() === label);
+  assert.ok(option, `the ${label} backend option renders in the popup`);
+  await click(option);
+}
+
 function submitEditor(editor: HTMLElement) {
   return act(async () => {
     editor.querySelector('form')!.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
@@ -444,8 +456,7 @@ test('connection validation mirrors Vue required fields, copy, and clearing trig
   const remaining = Array.from(editor.querySelectorAll('[role="alert"]')).map((node) => node.textContent);
   assert.equal(remaining.filter((text) => text === t('settings.sandbox.fieldRequired')).length, 2);
   // Switching backend clears carried errors (drawer.vue:1692-1697).
-  const backendSelect = editor.querySelector('select')!;
-  setSelectValue(backendSelect, 'e2b');
+  await chooseBackend(editor, t('settings.sandbox.backends.e2b'));
   await act(async () => {});
   assert.equal(Array.from(editor.querySelectorAll('[role="alert"]')).length, 0);
 });
@@ -454,7 +465,7 @@ test('e2b requires only the API key on the connection step (drawer.vue:1064-1068
   const { client } = makeClient(() => okCatalog([]));
   const container = await mount(client);
   const editor = await openCreateEditor(container);
-  setSelectValue(editor.querySelector('select')!, 'e2b');
+  await chooseBackend(editor, t('settings.sandbox.backends.e2b'));
   await act(async () => {});
   const inputs = Array.from(editor.querySelectorAll('input')) as HTMLInputElement[];
   setInputValue(inputs.find((input) => input.placeholder === t('settings.sandbox.configNamePlaceholder'))!, 'E2B config');
@@ -540,8 +551,9 @@ test('a catalog without any ready template keeps the wizard gated with the Vue e
   await act(async () => checkGate.resolve(okCheck(true, [{ name: 'client_build', ok: true }])));
   await submitting;
   // The pending standard is auto-selected but blocks continuing (drawer.vue:979-985).
-  const primary = editor.querySelector<HTMLButtonElement>('[data-testid="sandbox-editor-primary"]')!;
-  assert.equal(primary.disabled, true);
+  // S6：disabled 的 tdesign Button 渲染 div.t-button.t-is-disabled（台账 #7）。
+  const primary = editor.querySelector('[data-testid="sandbox-editor-primary"]')!;
+  assert.equal(primary.classList.contains('t-is-disabled'), true);
   assert.match(editor.textContent ?? '', new RegExp(t('settings.sandbox.templateBuildingHint')));
   // The create-standard offer is hidden because a standard entry exists (drawer.vue:950-952).
   assert.equal(Array.from(editor.querySelectorAll('button')).find((button) => button.textContent === t('settings.sandbox.createStandardTemplate')), undefined);

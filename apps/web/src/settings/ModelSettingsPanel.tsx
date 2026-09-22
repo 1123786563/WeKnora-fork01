@@ -109,6 +109,10 @@ function payloadNumber(value: unknown, key: string): number | undefined {
   const candidate = (value as Record<string, unknown>)[key];
   return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : undefined;
 }
+function fromTInputNumber(value: number | string): number | "" {
+  if (typeof value === "number") return value;
+  return value.trim() === "" ? "" : Number(value);
+}
 function toNumberInput(value: string): number | "" {
   if (value === "") return "";
   const parsed = Number(value);
@@ -1255,7 +1259,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 <label>
                   {t("model.modelName")}
                   <TInput
-                    required
                     maxlength={100}
                     placeholder={t(modelNamePlaceholderKey(draft.type, draft.source))}
                     disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
@@ -1281,7 +1284,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       {t("model.editor.baseUrlLabel")}
                       <TInput
                         type="url"
-                        required
                         placeholder={t(baseUrlPlaceholderKey(draft.type))}
                         value={draft.baseUrl}
                         onChange={(value) => changeBaseUrl(String(value))}
@@ -1354,7 +1356,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   <TInput
                             type="password"
                             autocomplete="new-password"
-                            spellcheck={false}
+                            spellCheck={false}
                             placeholder={apiKeyPlaceholder}
                             value={draft.apiKey}
                             onChange={(value) => updateDraft("apiKey", String(value))}
@@ -1367,7 +1369,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       <TInput
                                 type="password"
                                 autocomplete="new-password"
-                                spellcheck={false}
+                                spellCheck={false}
                                 placeholder={secretKeyPlaceholder}
                                 value={draft.appSecret}
                                 onChange={(value) => updateDraft("appSecret", String(value))}
@@ -1437,7 +1439,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         placeholder={t("model.editor.dimensionPlaceholder")}
                         disabled={!draft.supportsDimensionOverride || (draft.source === "local" && checking)}
                         value={draft.dimension}
-                        onChange={(value) => updateDraft("dimension", value)}
+                        onChange={(value) => updateDraft("dimension", fromTInputNumber(value))}
                       />
                     </label>
                     {draft.source === "local" && draft.name ? (
@@ -1463,7 +1465,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       max={10000000}
                       placeholder={t("model.editor.contextWindowPlaceholder", { value: DEFAULT_MODEL_CONTEXT_WINDOW })}
                       value={draft.contextWindow}
-                      onChange={(value) => updateDraft("contextWindow", value)}
+                      onChange={(value) => updateDraft("contextWindow", fromTInputNumber(value))}
                     />
                     <span className="wk-muted">{t("model.editor.contextWindowDesc")}</span>
                   </label>
@@ -1498,7 +1500,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     max={4096}
                     placeholder={t("model.editor.maxConcurrencyPlaceholder")}
                     value={draft.maxConcurrency}
-                    onChange={(value) => updateDraft("maxConcurrency", value)}
+                    onChange={(value) => updateDraft("maxConcurrency", fromTInputNumber(value))}
                   />
                   <span className="wk-muted">{t("model.editor.maxConcurrencyDesc")}</span>
                 </label>

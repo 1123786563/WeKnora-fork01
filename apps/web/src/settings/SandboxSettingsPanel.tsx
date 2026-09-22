@@ -17,16 +17,22 @@ import { formatMessage, type Locale } from '@weknora/i18n';
 // 组件换 tdesign-react；SandboxConfigEditor 与 inventory 抽屉沿用 React 表单栈
 // （批次先例：parser/mcp/models 编辑器同口径，扫描稳态不可达，待后续批次收编），
 // @weknora/ui 仅剩保留域使用。
-import { Button, Checkbox, Input, NumberInput, Radio, Select, Status } from '@weknora/ui';
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
+// S6 抽屉收编：SandboxConfigEditor/网络规则/模板目录抽屉离开 @weknora/ui 表单栈（T15 硬前置），组件换 tdesign。
 import { Icon as TIcon } from 'tdesign-icons-react';
 import {
   Alert as TAlert,
   Button as TButton,
+  Checkbox as TCheckbox,
   Dropdown as TDropdown,
   Empty as TEmpty,
+  Input as TInput,
+  InputNumber as TInputNumber,
   Loading as TLoading,
   Popconfirm as TPopconfirm,
   Popup as TPopup,
+  Radio as TRadio,
+  Select as TSelect,
   Switch as TSwitch,
   Tabs as TTabs,
   Tag as TTag,
@@ -1072,7 +1078,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
   };
 
   const renderFieldError = (field: string) => (
-    fieldErrors[field] ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]" role="alert">{t('settings.sandbox.fieldRequired')}</p> : null
+    fieldErrors[field] ? <p className="wk-field-error" role="alert">{t('settings.sandbox.fieldRequired')}</p> : null
   );
 
   const title = record ? t('settings.sandbox.editTitle') : t('settings.sandbox.createTitle');
@@ -1082,12 +1088,12 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
 
   return (
     <section className="wk-sandbox-editor" role="dialog" aria-modal="true" aria-label={title} data-testid="sandbox-editor">
-      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
+      <div className="wk-settings-panel-heading">
         <div>
           <h3>{title}</h3>
-          <p className="wk-muted text-muted m-0">{t(`settings.sandbox.stepDescriptions.${stepKey}`)}</p>
+          <p className="wk-muted">{t(`settings.sandbox.stepDescriptions.${stepKey}`)}</p>
         </div>
-        <Button type="button" onClick={onClose}>{t('common.cancel')}</Button>
+        <TButton type="button" onClick={onClose}>{t('common.cancel')}</TButton>
       </div>
 
       {/* Step rail (drawer.vue:34-57). */}
@@ -1126,28 +1132,26 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
       ) : null}
       {actionError ? <Status tone="error">{actionError}</Status> : null}
 
-      <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]" onSubmit={(event) => { event.preventDefault(); void handlePrimary(); }}>
+      <form className="wk-settings-editor" onSubmit={(event) => { event.preventDefault(); void handlePrimary(); }}>
         {stepKey === 'connection' ? (<>
           <section className="wk-sandbox-editor-section">
             <h4>{t('settings.sandbox.sectionBasic')}</h4>
             <label>
               {t('settings.sandbox.backendType')}
-              <Select value={form.backend} disabled={retargetFrozen} onChange={(event) => selectBackend(event.target.value)}>
-                {SANDBOX_BACKENDS.filter((type) => dockerBackendEnabled || type !== 'docker' || form.backend === 'docker').map((type) => (
-                  <option key={type} value={type}>{t(`settings.sandbox.backends.${type}`)}</option>
-                ))}
-              </Select>
+              <TSelect className="wk-sandbox-sel-backend" value={form.backend} disabled={retargetFrozen}
+                options={SANDBOX_BACKENDS.filter((type) => dockerBackendEnabled || type !== 'docker' || form.backend === 'docker').map((type) => ({ value: type, label: t(`settings.sandbox.backends.${type}`) }))}
+                onChange={(value) => selectBackend(String(value))} />
             </label>
-            <p className="wk-muted text-muted">{t(`settings.sandbox.backendDescriptions.${form.backend}`)}</p>
+            <p className="wk-muted">{t(`settings.sandbox.backendDescriptions.${form.backend}`)}</p>
             {dockerBackendOff ? <Status tone="warning">{t('settings.sandbox.dockerDisabledAlert')}{t('settings.sandbox.dockerDisabledHint')}</Status> : null}
             <label>
               {t('settings.sandbox.configName')}
-              <Input value={form.name} placeholder={t('settings.sandbox.configNamePlaceholder')} aria-invalid={nameError || undefined} onChange={(event) => { updateForm({ name: event.target.value }); setNameError(false); }} />
-              {nameError ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]" role="alert">{t('settings.sandbox.configNameRequired')}</p> : null}
+              <TInput value={form.name} placeholder={t('settings.sandbox.configNamePlaceholder')} aria-invalid={nameError || undefined} onChange={(value) => { updateForm({ name: String(value) }); setNameError(false); }} />
+              {nameError ? <p className="wk-field-error" role="alert">{t('settings.sandbox.configNameRequired')}</p> : null}
             </label>
             <label>
               {t('settings.sandbox.configDescription')}
-              <Input value={form.description} placeholder={t('settings.sandbox.configDescriptionPlaceholder')} onChange={(event) => updateForm({ description: event.target.value })} />
+              <TInput value={form.description} placeholder={t('settings.sandbox.configDescriptionPlaceholder')} onChange={(value) => updateForm({ description: String(value) })} />
             </label>
           </section>
 
@@ -1156,90 +1160,90 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
               <h4>{t('settings.sandbox.sectionConnection')}</h4>
               {hasSkillSnapshot ? <Status tone="warning">{t('settings.sandbox.connectionLockedBySkills')}</Status>
                 : inFlightSkill ? <Status tone="warning">{t('settings.sandbox.connectionLockedByInFlight')}</Status>
-                  : record ? <p className="wk-muted text-muted">{t('settings.sandbox.identityFieldHint')}</p> : null}
+                  : record ? <p className="wk-muted">{t('settings.sandbox.identityFieldHint')}</p> : null}
               {form.backend === 'cube' ? (<>
                 <label>{requiredLabel('settings.sandbox.apiUrl')}
-                  <Input value={form.cube.api_url ?? ''} placeholder="http://cube.example.com:33000" disabled={retargetFrozen} onChange={(event) => setCube({ api_url: event.target.value }, 'api_url')} />
+                  <TInput value={form.cube.api_url ?? ''} placeholder="http://cube.example.com:33000" disabled={retargetFrozen} onChange={(value) => setCube({ api_url: String(value) }, 'api_url')} />
                   {renderFieldError('api_url')}
                 </label>
-                <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
+                <div className="wk-form-grid">
                   <label>{requiredLabel('settings.sandbox.proxyUrl')}
-                    <Input value={form.cube.proxy_url ?? ''} placeholder="http://cube.example.com:80" disabled={retargetFrozen} onChange={(event) => setCube({ proxy_url: event.target.value }, 'proxy_url')} />
+                    <TInput value={form.cube.proxy_url ?? ''} placeholder="http://cube.example.com:80" disabled={retargetFrozen} onChange={(value) => setCube({ proxy_url: String(value) }, 'proxy_url')} />
                     {renderFieldError('proxy_url')}
                   </label>
                   <label>{requiredLabel('settings.sandbox.sandboxDomain')}
-                    <Input value={form.cube.sandbox_domain ?? ''} placeholder="cube.app" disabled={retargetFrozen} onChange={(event) => setCube({ sandbox_domain: event.target.value }, 'sandbox_domain')} />
+                    <TInput value={form.cube.sandbox_domain ?? ''} placeholder="cube.app" disabled={retargetFrozen} onChange={(value) => setCube({ sandbox_domain: String(value) }, 'sandbox_domain')} />
                     {renderFieldError('sandbox_domain')}
                   </label>
                 </div>
                 <label>{t('settings.sandbox.apiKey')}
-                  <Input type="password" value={form.cube.api_key ?? ''} placeholder={secretInputPlaceholder('cube')} disabled={retargetFrozen} onChange={(event) => setCube({ api_key: event.target.value })} />
+                  <TInput type="password" value={form.cube.api_key ?? ''} placeholder={secretInputPlaceholder('cube')} disabled={retargetFrozen} onChange={(value) => setCube({ api_key: String(value) })} />
                 </label>
-                <p className="wk-muted text-muted">{form.storedCubeKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.cubeApiKeyOptional')}</p>
+                <p className="wk-muted">{form.storedCubeKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.cubeApiKeyOptional')}</p>
                 <a href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.cubeApiKeyWhere')}</a>
                 <label>{t('settings.sandbox.cubeDnsServers')}
-                  <Input value={(form.cube.dns_servers ?? []).join(', ')} placeholder={t('settings.sandbox.cubeDnsServersPlaceholder')} disabled={retargetFrozen}
-                    onChange={(event) => setCube({ dns_servers: event.target.value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean) })} />
+                  <TInput value={(form.cube.dns_servers ?? []).join(', ')} placeholder={t('settings.sandbox.cubeDnsServersPlaceholder')} disabled={retargetFrozen}
+                    onChange={(value) => setCube({ dns_servers: String(value).split(/[,\s]+/).map((item) => item.trim()).filter(Boolean) })} />
                 </label>
-                <p className="wk-muted text-muted">{t('settings.sandbox.cubeDnsServersHelp')}</p>
+                <p className="wk-muted">{t('settings.sandbox.cubeDnsServersHelp')}</p>
               </>) : (<>
                 <label>{requiredLabel('settings.sandbox.apiKey')}
-                  <Input type="password" value={form.e2b.api_key ?? ''} placeholder={secretInputPlaceholder('e2b')} disabled={retargetFrozen} onChange={(event) => setE2B({ api_key: event.target.value }, 'api_key')} />
+                  <TInput type="password" value={form.e2b.api_key ?? ''} placeholder={secretInputPlaceholder('e2b')} disabled={retargetFrozen} onChange={(value) => setE2B({ api_key: String(value) }, 'api_key')} />
                   {renderFieldError('api_key')}
                 </label>
-                <p className="wk-muted text-muted">{form.storedE2BKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.e2bApiKeyHelp')}</p>
+                <p className="wk-muted">{form.storedE2BKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.e2bApiKeyHelp')}</p>
                 <a href={E2B_API_KEYS_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.e2bApiKeyWhere')}</a>
-                <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
+                <div className="wk-form-grid">
                   <label>{t('settings.sandbox.apiUrl')}
-                    <Input value={form.e2b.api_url ?? ''} placeholder="https://api.e2b.app" disabled={retargetFrozen} onChange={(event) => setE2B({ api_url: event.target.value })} />
+                    <TInput value={form.e2b.api_url ?? ''} placeholder="https://api.e2b.app" disabled={retargetFrozen} onChange={(value) => setE2B({ api_url: String(value) })} />
                   </label>
                   <label>{t('settings.sandbox.sandboxDomain')}
-                    <Input value={form.e2b.sandbox_domain ?? ''} placeholder="e2b.app" disabled={retargetFrozen} onChange={(event) => setE2B({ sandbox_domain: event.target.value })} />
+                    <TInput value={form.e2b.sandbox_domain ?? ''} placeholder="e2b.app" disabled={retargetFrozen} onChange={(value) => setE2B({ sandbox_domain: String(value) })} />
                   </label>
                 </div>
-                <p className="wk-muted text-muted">{t('settings.sandbox.e2bApiUrlOptional')}</p>
+                <p className="wk-muted">{t('settings.sandbox.e2bApiUrlOptional')}</p>
                 <label>{t('settings.sandbox.proxyUrl')}
-                  <Input value={form.e2b.proxy_url ?? ''} placeholder="http://sandbox-gateway.example.com" disabled={retargetFrozen} onChange={(event) => setE2B({ proxy_url: event.target.value })} />
+                  <TInput value={form.e2b.proxy_url ?? ''} placeholder="http://sandbox-gateway.example.com" disabled={retargetFrozen} onChange={(value) => setE2B({ proxy_url: String(value) })} />
                 </label>
-                <p className="wk-muted text-muted">{t('settings.sandbox.e2bProxyUrlOptional')}</p>
+                <p className="wk-muted">{t('settings.sandbox.e2bProxyUrlOptional')}</p>
               </>)}
               <div className="wk-sandbox-switch-row">
                 <div>
                   <p><strong>{t('settings.sandbox.allowPrivateEndpoints')}</strong></p>
-                  <p className="wk-muted text-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
+                  <p className="wk-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
                 </div>
-                <Checkbox checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
-                  onChange={(event) => { updateForm({ allowPrivateEndpoints: event.target.checked }); setCheckResult(null); }} aria-label={t('settings.sandbox.allowPrivateEndpoints')} />
+                <TCheckbox checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
+                  onChange={(value) => { updateForm({ allowPrivateEndpoints: Boolean(value) }); setCheckResult(null); }} aria-label={t('settings.sandbox.allowPrivateEndpoints')} />
               </div>
             </section>
           ) : (
             <section className="wk-sandbox-editor-section">
               <h4>{t('settings.sandbox.sectionRuntimeEnvironment')}</h4>
               <div className="wk-template-card is-active">
-                <strong>{t('settings.sandbox.weknoraDockerImage')}</strong> <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.recommendedTag')}</span>
-                <p className="wk-muted text-muted">{t('settings.sandbox.weknoraDockerImageHint')}</p>
+                <strong>{t('settings.sandbox.weknoraDockerImage')}</strong> <span className="wk-tag">{t('settings.sandbox.recommendedTag')}</span>
+                <p className="wk-muted">{t('settings.sandbox.weknoraDockerImageHint')}</p>
               </div>
               <label>{requiredLabel('settings.sandbox.dockerImage')}
-                <Input value={form.docker.image ?? ''} placeholder={DEFAULT_DOCKER_IMAGE} disabled={retargetFrozen} onChange={(event) => setDocker({ image: event.target.value }, 'image')} />
+                <TInput value={form.docker.image ?? ''} placeholder={DEFAULT_DOCKER_IMAGE} disabled={retargetFrozen} onChange={(value) => setDocker({ image: String(value) }, 'image')} />
                 {renderFieldError('image')}
               </label>
-              {retargetFrozen ? <p className="wk-muted text-muted">{hasSkillSnapshot ? t('settings.sandbox.templateLockedBySkills') : t('settings.sandbox.templateLockedByInFlight')}</p> : null}
+              {retargetFrozen ? <p className="wk-muted">{hasSkillSnapshot ? t('settings.sandbox.templateLockedBySkills') : t('settings.sandbox.templateLockedByInFlight')}</p> : null}
               <label>{t('settings.sandbox.dockerHost')}
-                <Input value={form.docker.host ?? ''} placeholder="unix:///var/run/docker.sock" disabled={retargetFrozen} onChange={(event) => setDocker({ host: event.target.value }, 'host')} />
+                <TInput value={form.docker.host ?? ''} placeholder="unix:///var/run/docker.sock" disabled={retargetFrozen} onChange={(value) => setDocker({ host: String(value) }, 'host')} />
               </label>
-              <p className="wk-muted text-muted">{t('settings.sandbox.dockerHostHelp')}</p>
+              <p className="wk-muted">{t('settings.sandbox.dockerHostHelp')}</p>
               <label>{t('settings.sandbox.dockerTlsCertPath')}
-                <Input value={form.docker.tls_cert_path ?? ''} placeholder="/etc/weknora/docker-certs" disabled={retargetFrozen} onChange={(event) => setDocker({ tls_cert_path: event.target.value }, 'tls_cert_path')} />
+                <TInput value={form.docker.tls_cert_path ?? ''} placeholder="/etc/weknora/docker-certs" disabled={retargetFrozen} onChange={(value) => setDocker({ tls_cert_path: String(value) }, 'tls_cert_path')} />
               </label>
-              <p className="wk-muted text-muted">{t('settings.sandbox.dockerTlsCertPathHelp')}</p>
+              <p className="wk-muted">{t('settings.sandbox.dockerTlsCertPathHelp')}</p>
               <Status tone="warning">{t('settings.sandbox.dockerHostRisk')}</Status>
               <div className="wk-sandbox-switch-row">
                 <div>
                   <p><strong>{t('settings.sandbox.allowPrivateEndpoints')}</strong></p>
-                  <p className="wk-muted text-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
+                  <p className="wk-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
                 </div>
-                <Checkbox checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
-                  onChange={(event) => { updateForm({ allowPrivateEndpoints: event.target.checked }); setCheckResult(null); }} aria-label={t('settings.sandbox.allowPrivateEndpoints')} />
+                <TCheckbox checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
+                  onChange={(value) => { updateForm({ allowPrivateEndpoints: Boolean(value) }); setCheckResult(null); }} aria-label={t('settings.sandbox.allowPrivateEndpoints')} />
               </div>
             </section>
           )}
@@ -1249,7 +1253,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
           <section className="wk-sandbox-editor-section">
             <div className="wk-sandbox-section-row">
               <h4>{t('settings.sandbox.sectionTemplate')}</h4>
-              <Button type="button" loading={templatesLoading} onClick={() => void loadTemplates()}>{t('settings.sandbox.refreshTemplates')}</Button>
+              <TButton type="button" loading={templatesLoading} onClick={() => void loadTemplates()}>{t('settings.sandbox.refreshTemplates')}</TButton>
             </div>
             {hasSkillSnapshot ? <Status tone="warning">{t('settings.sandbox.templateLockedBySkills')}</Status>
               : inFlightSkill ? <Status tone="warning">{t('settings.sandbox.templateLockedByInFlight')}</Status> : null}
@@ -1258,9 +1262,9 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 {canCreateStandard ? (
                   <div className="wk-template-row wk-template-row--offer">
                     <div>
-                      <strong>{t('settings.sandbox.weknoraStandardTemplate')}</strong> <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.recommendedTag')}</span>{' '}
-                      <Button type="button" loading={templatesLoading} onClick={() => void loadTemplates({ ensureStandard: true })}>{t('settings.sandbox.createStandardTemplate')}</Button>
-                      <p className="wk-muted text-muted">{t('settings.sandbox.createStandardTemplateHint')}</p>
+                      <strong>{t('settings.sandbox.weknoraStandardTemplate')}</strong> <span className="wk-tag">{t('settings.sandbox.recommendedTag')}</span>{' '}
+                      <TButton type="button" loading={templatesLoading} onClick={() => void loadTemplates({ ensureStandard: true })}>{t('settings.sandbox.createStandardTemplate')}</TButton>
+                      <p className="wk-muted">{t('settings.sandbox.createStandardTemplateHint')}</p>
                     </div>
                   </div>
                 ) : null}
@@ -1278,12 +1282,12 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                       onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onTemplateCardClick(item); }}>
                       <div>
                         <strong title={name || undefined}>{name || t('settings.sandbox.templateUnnamed')}</strong>
-                        {item.standard ? <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.recommendedTag')}</span> : null}{' '}
-                        <span className={`wk-tag wk-tag--${templateStatusKey(item)} inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]`}>{t(`settings.sandbox.templateStatuses.${templateStatusKey(item)}`)}</span>{' '}
+                        {item.standard ? <span className="wk-tag">{t('settings.sandbox.recommendedTag')}</span> : null}{' '}
+                        <span className={`wk-tag wk-tag--${templateStatusKey(item)}`}>{t(`settings.sandbox.templateStatuses.${templateStatusKey(item)}`)}</span>{' '}
                         {item.standard && item.id && !isTemplatePending(item) && !retargetFrozen ? (
-                          <Button type="button" loading={templatesLoading} onClick={(event) => { event.stopPropagation(); if (window.confirm(t('settings.sandbox.replaceStandardTemplateConfirm'))) void loadTemplates({ replaceStandard: true }); }}>
+                          <TButton type="button" loading={templatesLoading} onClick={(event) => { event.stopPropagation(); if (window.confirm(t('settings.sandbox.replaceStandardTemplateConfirm'))) void loadTemplates({ replaceStandard: true }); }}>
                             {t('settings.sandbox.replaceStandardTemplate')}
-                          </Button>
+                          </TButton>
                         ) : null}
                         {rows.length ? (
                           <dl className="wk-template-fields">
@@ -1292,9 +1296,9 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                             ))}
                           </dl>
                         ) : null}
-                        {isTemplateUntagged(item) ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{t('settings.sandbox.templateUntaggedHint')}</p>
-                          : failureReason ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{failureReason}</p>
-                            : isTemplatePending(item) && item.standard ? <p className="wk-muted text-muted">{t('settings.sandbox.templateBuildingHint')}</p> : null}
+                        {isTemplateUntagged(item) ? <p className="wk-field-error">{t('settings.sandbox.templateUntaggedHint')}</p>
+                          : failureReason ? <p className="wk-field-error">{failureReason}</p>
+                            : isTemplatePending(item) && item.standard ? <p className="wk-muted">{t('settings.sandbox.templateBuildingHint')}</p> : null}
                       </div>
                     </div>
                   );
@@ -1304,7 +1308,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             )}
             {templatesError ? <Status tone="warning">{templatesError}</Status> : null}
             {templatesInfo ? <Status>{templatesInfo}</Status> : null}
-            {fieldErrors.template_id ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]" role="alert">{t('settings.sandbox.templateNotReady')}</p> : null}
+            {fieldErrors.template_id ? <p className="wk-field-error" role="alert">{t('settings.sandbox.templateNotReady')}</p> : null}
             <a href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.howToBuildTemplate')}</a>
           </section>
         ) : null}
@@ -1312,124 +1316,126 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
         {stepKey === 'runtime' ? (<>
           <section className="wk-sandbox-editor-section">
             <h4>{t('settings.sandbox.sectionRuntime')}</h4>
-            <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
+            <div className="wk-form-grid">
               {isRemote ? (<>
                 <label>{t('settings.sandbox.httpTimeout')}
-                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="30" value={numberInputValue(form.backend === 'cube' ? form.cube.http_timeout_sec : form.e2b.http_timeout_sec)}
-                    onValueChange={(value) => { const next = value === '' ? undefined : value; if (form.backend === 'cube') setCube({ http_timeout_sec: next }); else setE2B({ http_timeout_sec: next }); }} />
+                  <TInputNumber min={0} max={Number.MAX_SAFE_INTEGER} placeholder="30" value={numberInputValue(form.backend === 'cube' ? form.cube.http_timeout_sec : form.e2b.http_timeout_sec)}
+                    onChange={(value) => { const next = value === '' ? undefined : Number(value); if (form.backend === 'cube') setCube({ http_timeout_sec: next }); else setE2B({ http_timeout_sec: next }); }} />
                 </label>
                 <label>{t('settings.sandbox.sandboxTtl')}
-                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder={form.backend === 'cube' ? '1800' : '300'} value={numberInputValue(form.backend === 'cube' ? form.cube.cube_sandbox_ttl_seconds : form.e2b.e2b_sandbox_ttl_seconds)}
-                    onValueChange={(value) => { const next = value === '' ? undefined : value; if (form.backend === 'cube') setCube({ cube_sandbox_ttl_seconds: next }); else setE2B({ e2b_sandbox_ttl_seconds: next }); }} />
+                  <TInputNumber min={0} max={Number.MAX_SAFE_INTEGER} placeholder={form.backend === 'cube' ? '1800' : '300'} value={numberInputValue(form.backend === 'cube' ? form.cube.cube_sandbox_ttl_seconds : form.e2b.e2b_sandbox_ttl_seconds)}
+                    onChange={(value) => { const next = value === '' ? undefined : Number(value); if (form.backend === 'cube') setCube({ cube_sandbox_ttl_seconds: next }); else setE2B({ e2b_sandbox_ttl_seconds: next }); }} />
                 </label>
               </>) : (<>
                 <label>{t('settings.sandbox.dockerIdleTtl')}
-                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="1800" value={numberInputValue(form.docker.idle_ttl_seconds)} onValueChange={(value) => setDocker({ idle_ttl_seconds: value === '' ? undefined : value })} />
+                  <TInputNumber min={0} max={Number.MAX_SAFE_INTEGER} placeholder="1800" value={numberInputValue(form.docker.idle_ttl_seconds)} onChange={(value) => setDocker({ idle_ttl_seconds: value === '' ? undefined : Number(value) })} />
                 </label>
                 <label>{t('settings.sandbox.dockerCpuLimit')}
-                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} step={0.5} placeholder="2" value={numberInputValue(form.docker.cpu_limit)} onValueChange={(value) => setDocker({ cpu_limit: value === '' ? undefined : value })} />
+                  <TInputNumber min={0} max={Number.MAX_SAFE_INTEGER} step={0.5} placeholder="2" value={numberInputValue(form.docker.cpu_limit)} onChange={(value) => setDocker({ cpu_limit: value === '' ? undefined : Number(value) })} />
                 </label>
                 <label>{t('settings.sandbox.dockerMemoryLimit')}
-                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="2048" value={numberInputValue(form.docker.memory_limit_mb)} onValueChange={(value) => setDocker({ memory_limit_mb: value === '' ? undefined : value })} />
+                  <TInputNumber min={0} max={Number.MAX_SAFE_INTEGER} placeholder="2048" value={numberInputValue(form.docker.memory_limit_mb)} onChange={(value) => setDocker({ memory_limit_mb: value === '' ? undefined : Number(value) })} />
                 </label>
                 <label>{t('settings.sandbox.dockerPidsLimit')}
-                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="512" value={numberInputValue(form.docker.pids_limit)} onValueChange={(value) => setDocker({ pids_limit: value === '' ? undefined : value })} />
+                  <TInputNumber min={0} max={Number.MAX_SAFE_INTEGER} placeholder="512" value={numberInputValue(form.docker.pids_limit)} onChange={(value) => setDocker({ pids_limit: value === '' ? undefined : Number(value) })} />
                 </label>
               </>)}
               <label>{t('settings.sandbox.defaultTimeout')}
-                <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="60" value={numberInputValue(form.defaultTimeoutSec)} onValueChange={(value) => setNumberField('defaultTimeoutSec', value === '' ? '' : String(value))} />
+                <TInputNumber min={0} max={Number.MAX_SAFE_INTEGER} placeholder="60" value={numberInputValue(form.defaultTimeoutSec)} onChange={(value) => setNumberField('defaultTimeoutSec', value === '' ? '' : String(value))} />
               </label>
               <label>{t('settings.sandbox.terminalIdleDisconnect')}
-                <NumberInput min={0} max={86400} placeholder="900" value={numberInputValue(form.terminalIdleDisconnectSec)} onValueChange={(value) => setNumberField('terminalIdleDisconnectSec', value === '' ? '' : String(value))} />
+                <TInputNumber min={0} max={86400} placeholder="900" value={numberInputValue(form.terminalIdleDisconnectSec)} onChange={(value) => setNumberField('terminalIdleDisconnectSec', value === '' ? '' : String(value))} />
               </label>
             </div>
-            <p className="wk-muted text-muted">{t('settings.sandbox.httpTimeoutHelp')}</p>
-            <p className="wk-muted text-muted">{t('settings.sandbox.sandboxTtlHelp')}</p>
-            <p className="wk-muted text-muted">{t('settings.sandbox.defaultTimeoutHelp')}</p>
-            <p className="wk-muted text-muted">{t('settings.sandbox.terminalIdleDisconnectHelp')}</p>
+            <p className="wk-muted">{t('settings.sandbox.httpTimeoutHelp')}</p>
+            <p className="wk-muted">{t('settings.sandbox.sandboxTtlHelp')}</p>
+            <p className="wk-muted">{t('settings.sandbox.defaultTimeoutHelp')}</p>
+            <p className="wk-muted">{t('settings.sandbox.terminalIdleDisconnectHelp')}</p>
           </section>
 
           <section className="wk-sandbox-editor-section">
             <h4>{t('settings.sandbox.sectionNetwork')}</h4>
-            <p className="wk-muted text-muted">{t('settings.sandbox.networkHint')}</p>
+            <p className="wk-muted">{t('settings.sandbox.networkHint')}</p>
             {form.backend !== 'docker' ? (<>
               <fieldset>
                 <legend>{t('settings.sandbox.egressDefault')}</legend>
-                <label><Radio name="sandbox-egress-policy" checked={!form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: false })} /> {t('settings.sandbox.egressAllowAll')}</label>
-                <label><Radio name="sandbox-egress-policy" checked={form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: true })} /> {t('settings.sandbox.egressDenyAll')}</label>
+                <label><TRadio name="sandbox-egress-policy" checked={!form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: false })} /> {t('settings.sandbox.egressAllowAll')}</label>
+                <label><TRadio name="sandbox-egress-policy" checked={form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: true })} /> {t('settings.sandbox.egressDenyAll')}</label>
               </fieldset>
-              <p className="wk-muted text-muted">{t('settings.sandbox.egressPrecedence')}</p>
+              <p className="wk-muted">{t('settings.sandbox.egressPrecedence')}</p>
               <div className="wk-sandbox-rows">
                 <div className="wk-sandbox-section-row">
                   <strong>{t('settings.sandbox.allowOut')}</strong>
-                  <Button type="button" onClick={() => updateForm((current) => ({ allowOutRows: [...current.allowOutRows, ''] }))}>{t('settings.sandbox.addTarget')}</Button>
+                  <TButton type="button" onClick={() => updateForm((current) => ({ allowOutRows: [...current.allowOutRows, ''] }))}>{t('settings.sandbox.addTarget')}</TButton>
                 </div>
                 {form.allowOutRows.map((row, index) => (
                   <div className="wk-net-row" key={`allow-${index}`}>
-                    <Input value={row} placeholder={t('settings.sandbox.allowOutPlaceholder')}
-                      onChange={(event) => updateForm((current) => ({ allowOutRows: current.allowOutRows.map((item, i) => i === index ? event.target.value : item) }))} />
-                    <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ allowOutRows: current.allowOutRows.filter((_, i) => i !== index) }))}>×</Button>
+                    <TInput value={row} placeholder={t('settings.sandbox.allowOutPlaceholder')}
+                      onChange={(value) => updateForm((current) => ({ allowOutRows: current.allowOutRows.map((item, i) => i === index ? String(value) : item) }))} />
+                    <TButton type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ allowOutRows: current.allowOutRows.filter((_, i) => i !== index) }))}>×</TButton>
                   </div>
                 ))}
-                <p className="wk-muted text-muted">{t('settings.sandbox.allowOutHelp')}</p>
+                <p className="wk-muted">{t('settings.sandbox.allowOutHelp')}</p>
                 {domainAllowNeedsDenyAll(form.allowOutRows, form.denyOutRows, form.denyEgressByDefault)
                   ? <span data-testid="domain-allow-warning"><Status tone="warning">{t('settings.sandbox.domainAllowNeedsDenyAll')}</Status></span> : null}
               </div>
               <div className="wk-sandbox-rows">
                 <div className="wk-sandbox-section-row">
                   <strong>{t('settings.sandbox.denyOut')}</strong>
-                  <Button type="button" onClick={() => updateForm((current) => ({ denyOutRows: [...current.denyOutRows, ''] }))}>{t('settings.sandbox.addTarget')}</Button>
+                  <TButton type="button" onClick={() => updateForm((current) => ({ denyOutRows: [...current.denyOutRows, ''] }))}>{t('settings.sandbox.addTarget')}</TButton>
                 </div>
                 {form.denyOutRows.map((row, index) => (
                   <div className="wk-net-row" key={`deny-${index}`}>
-                    <Input value={row} placeholder={t('settings.sandbox.denyOutPlaceholder')}
-                      onChange={(event) => updateForm((current) => ({ denyOutRows: current.denyOutRows.map((item, i) => i === index ? event.target.value : item) }))} />
-                    <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ denyOutRows: current.denyOutRows.filter((_, i) => i !== index) }))}>×</Button>
+                    <TInput value={row} placeholder={t('settings.sandbox.denyOutPlaceholder')}
+                      onChange={(value) => updateForm((current) => ({ denyOutRows: current.denyOutRows.map((item, i) => i === index ? String(value) : item) }))} />
+                    <TButton type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ denyOutRows: current.denyOutRows.filter((_, i) => i !== index) }))}>×</TButton>
                   </div>
                 ))}
-                <p className="wk-muted text-muted">{t('settings.sandbox.denyOutHelp')}</p>
+                <p className="wk-muted">{t('settings.sandbox.denyOutHelp')}</p>
               </div>
             </>) : (
               <label>{t('settings.sandbox.dockerNetworkMode')}
-                <Select value={form.docker.network_mode ?? ''} onChange={(event) => setDocker({ network_mode: event.target.value || undefined })}>
-                  <option value="">{t('settings.sandbox.dockerNetworkBridge')}</option>
-                  <option value="bridge">{t('settings.sandbox.dockerNetworkBridge')}</option>
-                  <option value="none">{t('settings.sandbox.dockerNetworkNone')}</option>
-                </Select>
+                <TSelect value={form.docker.network_mode ?? ''} clearable
+                  options={[
+                    { value: '', label: t('settings.sandbox.dockerNetworkBridge') },
+                    { value: 'bridge', label: t('settings.sandbox.dockerNetworkBridge') },
+                    { value: 'none', label: t('settings.sandbox.dockerNetworkNone') },
+                  ]}
+                  onChange={(value) => setDocker({ network_mode: String(value) || undefined })} />
               </label>
             )}
-            {form.backend === 'docker' ? <p className="wk-muted text-muted">{t('settings.sandbox.dockerNetworkModeHelp')}</p> : null}
+            {form.backend === 'docker' ? <p className="wk-muted">{t('settings.sandbox.dockerNetworkModeHelp')}</p> : null}
 
             {form.backend === 'cube' ? (
               <div className="wk-sandbox-rows">
                 <div className="wk-sandbox-section-row">
                   <strong>{t('settings.sandbox.cubeL7Rules')}</strong>
-                  <Button type="button" onClick={() => updateForm((current) => ({ cubeRules: [...current.cubeRules, { key: newCubeRuleKey(), name: '', scheme: 'https', sni: '', host: '', methodsText: '', path: '', deny: false, audit: '', inject: [] }] }))}>{t('settings.sandbox.addRule')}</Button>
+                  <TButton type="button" onClick={() => updateForm((current) => ({ cubeRules: [...current.cubeRules, { key: newCubeRuleKey(), name: '', scheme: 'https', sni: '', host: '', methodsText: '', path: '', deny: false, audit: '', inject: [] }] }))}>{t('settings.sandbox.addRule')}</TButton>
                 </div>
-                <p className="wk-muted text-muted">{t('settings.sandbox.cubeL7RulesHelp')}</p>
+                <p className="wk-muted">{t('settings.sandbox.cubeL7RulesHelp')}</p>
                 {form.cubeRules.map((rule, index) => (
                   <details className="wk-net-rule" key={rule.key}>
                     <summary>{rule.name.trim() || t('settings.sandbox.ruleUntitled')}</summary>
-                    <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
-                      <label>{t('settings.sandbox.ruleName')}<Input value={rule.name} placeholder="allow-payment-api" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, name: event.target.value } : item) }))} /></label>
+                    <div className="wk-form-grid">
+                      <label>{t('settings.sandbox.ruleName')}<TInput value={rule.name} placeholder="allow-payment-api" onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, name: String(value) } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleScheme')}
-                        <Select value={rule.scheme} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, scheme: event.target.value } : item) }))}>
-                          <option value=""></option><option value="https">https</option><option value="http">http</option>
-                        </Select>
+                        <TSelect value={rule.scheme} clearable
+                          options={[{ value: '', label: '—' }, { value: 'https', label: 'https' }, { value: 'http', label: 'http' }]}
+                          onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, scheme: String(value) } : item) }))} />
                       </label>
-                      <label>{t('settings.sandbox.ruleSni')}<Input value={rule.sni} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, sni: event.target.value } : item) }))} /></label>
-                      <label>{t('settings.sandbox.ruleHost')}<Input value={rule.host} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, host: event.target.value } : item) }))} /></label>
-                      <label>{t('settings.sandbox.ruleMethods')}<Input value={rule.methodsText} placeholder="POST, GET" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, methodsText: event.target.value } : item) }))} /></label>
-                      <label>{t('settings.sandbox.rulePath')}<Input value={rule.path} placeholder="/v1/*" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, path: event.target.value } : item) }))} /></label>
+                      <label>{t('settings.sandbox.ruleSni')}<TInput value={rule.sni} placeholder="api.example.com" onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, sni: String(value) } : item) }))} /></label>
+                      <label>{t('settings.sandbox.ruleHost')}<TInput value={rule.host} placeholder="api.example.com" onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, host: String(value) } : item) }))} /></label>
+                      <label>{t('settings.sandbox.ruleMethods')}<TInput value={rule.methodsText} placeholder="POST, GET" onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, methodsText: String(value) } : item) }))} /></label>
+                      <label>{t('settings.sandbox.rulePath')}<TInput value={rule.path} placeholder="/v1/*" onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, path: String(value) } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleAction')}
-                        <Select value={rule.deny ? 'deny' : 'allow'} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, deny: event.target.value === 'deny' } : item) }))}>
-                          <option value="allow">{t('settings.sandbox.ruleAllow')}</option><option value="deny">{t('settings.sandbox.ruleDeny')}</option>
-                        </Select>
+                        <TSelect value={rule.deny ? 'deny' : 'allow'}
+                          options={[{ value: 'allow', label: t('settings.sandbox.ruleAllow') }, { value: 'deny', label: t('settings.sandbox.ruleDeny') }]}
+                          onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, deny: String(value) === 'deny' } : item) }))} />
                       </label>
                       <label>{t('settings.sandbox.ruleAudit')}
-                        <Select value={rule.audit} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, audit: event.target.value } : item) }))}>
-                          <option value=""></option><option value="metadata">metadata</option><option value="full">full</option><option value="none">none</option>
-                        </Select>
+                        <TSelect value={rule.audit} clearable
+                          options={[{ value: '', label: '—' }, { value: 'metadata', label: 'metadata' }, { value: 'full', label: 'full' }, { value: 'none', label: 'none' }]}
+                          onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, audit: String(value) } : item) }))} />
                       </label>
                     </div>
                     {!rule.deny ? (
@@ -1437,29 +1443,29 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                         <strong>{t('settings.sandbox.ruleInject')}</strong>
                         {rule.inject.map((inject, injectIndex) => (
                           <div className="wk-net-row" key={`inject-${injectIndex}`}>
-                            <Input value={inject.header} placeholder={t('settings.sandbox.headerName')}
-                              onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.map((row, j) => j === injectIndex ? { ...row, header: event.target.value } : row) } : item) }))} />
-                            <Input type="password" value={inject.secret}
+                            <TInput value={inject.header} placeholder={t('settings.sandbox.headerName')}
+                              onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.map((row, j) => j === injectIndex ? { ...row, header: String(value) } : row) } : item) }))} />
+                            <TInput type="password" value={inject.secret}
                               placeholder={isStoredNetworkSecretRecoverable(inject, inject.originalRuleName, inject.originalHeader, rule.name, inject.header) ? t('settings.sandbox.secretKeepHint') : t('settings.sandbox.headerValue')}
-                              onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.map((row, j) => j === injectIndex ? { ...row, secret: event.target.value } : row) } : item) }))} />
-                            <Input value={inject.format} placeholder="Bearer ${SECRET}"
-                              onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.map((row, j) => j === injectIndex ? { ...row, format: event.target.value } : row) } : item) }))} />
-                            <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.filter((_, j) => j !== injectIndex) } : item) }))}>×</Button>
+                              onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.map((row, j) => j === injectIndex ? { ...row, secret: String(value) } : row) } : item) }))} />
+                            <TInput value={inject.format} placeholder="Bearer ${SECRET}"
+                              onChange={(value) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.map((row, j) => j === injectIndex ? { ...row, format: String(value) } : row) } : item) }))} />
+                            <TButton type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.filter((_, j) => j !== injectIndex) } : item) }))}>×</TButton>
                           </div>
                         ))}
-                        <Button type="button" onClick={() => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: [...item.inject, { header: '', secret: '', format: '' }] } : item) }))}>{t('settings.sandbox.addHeader')}</Button>
+                        <TButton type="button" onClick={() => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: [...item.inject, { header: '', secret: '', format: '' }] } : item) }))}>{t('settings.sandbox.addHeader')}</TButton>
                       </div>
                     ) : null}
-                    <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-                      <Button type="button" disabled={index === 0} aria-label={t('settings.sandbox.moveRuleUp')} onClick={() => updateForm((current) => {
+                    <div className="wk-list-actions">
+                      <TButton type="button" disabled={index === 0} aria-label={t('settings.sandbox.moveRuleUp')} onClick={() => updateForm((current) => {
                         if (index <= 0) return {};
                         const rows = [...current.cubeRules]; const [row] = rows.splice(index, 1); rows.splice(index - 1, 0, row); return { cubeRules: rows };
-                      })}>↑</Button>
-                      <Button type="button" disabled={index === form.cubeRules.length - 1} aria-label={t('settings.sandbox.moveRuleDown')} onClick={() => updateForm((current) => {
+                      })}>↑</TButton>
+                      <TButton type="button" disabled={index === form.cubeRules.length - 1} aria-label={t('settings.sandbox.moveRuleDown')} onClick={() => updateForm((current) => {
                         if (index >= current.cubeRules.length - 1) return {};
                         const rows = [...current.cubeRules]; const [row] = rows.splice(index, 1); rows.splice(index + 1, 0, row); return { cubeRules: rows };
-                      })}>↓</Button>
-                      <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ cubeRules: current.cubeRules.filter((_, i) => i !== index) }))}>×</Button>
+                      })}>↓</TButton>
+                      <TButton type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ cubeRules: current.cubeRules.filter((_, i) => i !== index) }))}>×</TButton>
                     </div>
                   </details>
                 ))}
@@ -1470,25 +1476,25 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
               <div className="wk-sandbox-rows">
                 <div className="wk-sandbox-section-row">
                   <strong>{t('settings.sandbox.e2bHostRules')}</strong>
-                  <Button type="button" onClick={() => updateForm((current) => ({ e2bHostRules: [...current.e2bHostRules, { host: '', headers: [] }] }))}>{t('settings.sandbox.addRule')}</Button>
+                  <TButton type="button" onClick={() => updateForm((current) => ({ e2bHostRules: [...current.e2bHostRules, { host: '', headers: [] }] }))}>{t('settings.sandbox.addRule')}</TButton>
                 </div>
-                <p className="wk-muted text-muted">{t('settings.sandbox.e2bHostRulesHelp')}</p>
+                <p className="wk-muted">{t('settings.sandbox.e2bHostRulesHelp')}</p>
                 {form.e2bHostRules.map((rule, index) => (
                   <details className="wk-net-rule" key={`e2b-rule-${index}`}>
                     <summary>{rule.host.trim() || t('settings.sandbox.ruleUntitled')}</summary>
-                    <label>{t('settings.sandbox.ruleHost')}<Input value={rule.host} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, host: event.target.value } : item) }))} /></label>
+                    <label>{t('settings.sandbox.ruleHost')}<TInput value={rule.host} placeholder="api.example.com" onChange={(value) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, host: String(value) } : item) }))} /></label>
                     {rule.headers.map((header, headerIndex) => (
                       <div className="wk-net-row" key={`header-${headerIndex}`}>
-                        <Input value={header.name} placeholder={t('settings.sandbox.headerName')}
-                          onChange={(event) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: item.headers.map((row, j) => j === headerIndex ? { ...row, name: event.target.value } : row) } : item) }))} />
-                        <Input type="password" value={header.value}
+                        <TInput value={header.name} placeholder={t('settings.sandbox.headerName')}
+                          onChange={(value) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: item.headers.map((row, j) => j === headerIndex ? { ...row, name: String(value) } : row) } : item) }))} />
+                        <TInput type="password" value={header.value}
                           placeholder={isStoredNetworkSecretRecoverable(header, header.originalHost, header.originalName, rule.host, header.name) ? t('settings.sandbox.secretKeepHint') : t('settings.sandbox.headerValue')}
-                          onChange={(event) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: item.headers.map((row, j) => j === headerIndex ? { ...row, value: event.target.value } : row) } : item) }))} />
-                        <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: item.headers.filter((_, j) => j !== headerIndex) } : item) }))}>×</Button>
+                          onChange={(value) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: item.headers.map((row, j) => j === headerIndex ? { ...row, value: String(value) } : row) } : item) }))} />
+                        <TButton type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: item.headers.filter((_, j) => j !== headerIndex) } : item) }))}>×</TButton>
                       </div>
                     ))}
-                    <Button type="button" onClick={() => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: [...item.headers, { name: '', value: '' }] } : item) }))}>{t('settings.sandbox.addHeader')}</Button>
-                    <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.filter((_, i) => i !== index) }))}>×</Button>
+                    <TButton type="button" onClick={() => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: [...item.headers, { name: '', value: '' }] } : item) }))}>{t('settings.sandbox.addHeader')}</TButton>
+                    <TButton type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.filter((_, i) => i !== index) }))}>×</TButton>
                   </details>
                 ))}
               </div>
@@ -1498,39 +1504,39 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
           <section className="wk-sandbox-editor-section">
             <div className="wk-sandbox-section-row">
               <h4>{t('settings.sandbox.sectionEnvironment')}</h4>
-              <Button type="button" onClick={() => updateForm((current) => ({ envRows: [...current.envRows, { key: '', value: '' }] }))}>{t('settings.sandbox.addRow')}</Button>
+              <TButton type="button" onClick={() => updateForm((current) => ({ envRows: [...current.envRows, { key: '', value: '' }] }))}>{t('settings.sandbox.addRow')}</TButton>
             </div>
-            <p className="wk-muted text-muted">{t('settings.sandbox.envVarsHint')}</p>
+            <p className="wk-muted">{t('settings.sandbox.envVarsHint')}</p>
             {form.envRows.length ? form.envRows.map((row, index) => (
               <div className="wk-net-row" key={`env-${index}`}>
-                <Input value={row.key} placeholder={t('settings.sandbox.envKey')} className="env-key"
-                  onChange={(event) => updateForm((current) => ({ envRows: current.envRows.map((item, i) => i === index ? { ...item, key: event.target.value } : item) }))} />
-                <Input type="password" value={row.value} placeholder={row.stored ? t('settings.sandbox.secretKeepHint') : t('settings.sandbox.envValue')} className="env-value"
-                  onChange={(event) => updateForm((current) => ({ envRows: current.envRows.map((item, i) => i === index ? { ...item, value: event.target.value } : item) }))} />
-                <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ envRows: current.envRows.filter((_, i) => i !== index) }))}>×</Button>
+                <TInput value={row.key} placeholder={t('settings.sandbox.envKey')} className="env-key"
+                  onChange={(value) => updateForm((current) => ({ envRows: current.envRows.map((item, i) => i === index ? { ...item, key: String(value) } : item) }))} />
+                <TInput type="password" value={row.value} placeholder={row.stored ? t('settings.sandbox.secretKeepHint') : t('settings.sandbox.envValue')} className="env-value"
+                  onChange={(value) => updateForm((current) => ({ envRows: current.envRows.map((item, i) => i === index ? { ...item, value: String(value) } : item) }))} />
+                <TButton type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ envRows: current.envRows.filter((_, i) => i !== index) }))}>×</TButton>
               </div>
-            )) : <p className="wk-muted text-muted">{t('settings.sandbox.noEnvVars')}</p>}
+            )) : <p className="wk-muted">{t('settings.sandbox.noEnvVars')}</p>}
           </section>
 
           <section className="wk-sandbox-editor-section">
             <h4>{t('settings.sandbox.skillRollout')}</h4>
-            <p className="wk-muted text-muted">{t('settings.sandbox.skillRolloutHint')}</p>
+            <p className="wk-muted">{t('settings.sandbox.skillRolloutHint')}</p>
             <fieldset>
-              <label><Radio name="sandbox-skill-rollout" checked={form.skillRollout === 'next_turn'} onChange={() => updateForm({ skillRollout: 'next_turn' })} /> {t('settings.sandbox.skillRolloutNextTurn')}</label>
-              <label><Radio name="sandbox-skill-rollout" checked={form.skillRollout === 'new_session'} onChange={() => updateForm({ skillRollout: 'new_session' })} /> {t('settings.sandbox.skillRolloutNewSession')}</label>
+              <label><TRadio name="sandbox-skill-rollout" checked={form.skillRollout === 'next_turn'} onChange={() => updateForm({ skillRollout: 'next_turn' })} /> {t('settings.sandbox.skillRolloutNextTurn')}</label>
+              <label><TRadio name="sandbox-skill-rollout" checked={form.skillRollout === 'new_session'} onChange={() => updateForm({ skillRollout: 'new_session' })} /> {t('settings.sandbox.skillRolloutNewSession')}</label>
             </fieldset>
           </section>
         </>) : null}
 
-        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-          {step > 0 ? <Button type="button" onClick={previousStep}>{t('settings.sandbox.back')}</Button> : null}
+        <div className="wk-list-actions">
+          {step > 0 ? <TButton type="button" onClick={previousStep}>{t('settings.sandbox.back')}</TButton> : null}
           {canDeepCheck ? (
-            <Button type="button" loading={checking} data-testid="sandbox-deep-check"
+            <TButton type="button" loading={checking} data-testid="sandbox-deep-check"
               onClick={() => { if (window.confirm(t('settings.sandbox.deepCheckConfirm'))) void runCheck(true); }}>
               {lastCheckWasDeep ? t('settings.sandbox.recheck') : t('settings.sandbox.deepCheck')}
-            </Button>
+            </TButton>
           ) : null}
-          <Button type="submit" loading={saving || checking || templatesLoading} disabled={primaryDisabled} data-testid="sandbox-editor-primary">{t(primaryTextKey(stepKey))}</Button>
+          <TButton type="submit" loading={saving || checking || templatesLoading} disabled={primaryDisabled} data-testid="sandbox-editor-primary">{t(primaryTextKey(stepKey))}</TButton>
         </div>
       </form>
 
@@ -1540,7 +1546,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
           <p className={checkResult.ok ? 'is-success' : 'is-error'}>
             {checkResult.ok ? '✓ ' : '✕ '}{checkResult.ok ? t('settings.sandbox.checkPassed') : t('settings.sandbox.checkFailed')}
           </p>
-          <p className="wk-muted text-muted">{t(checkScopeKey(checkResult))}</p>
+          <p className="wk-muted">{t(checkScopeKey(checkResult))}</p>
           <ul>
             {reportedChecks(checkResult).map((item) => (
               <li key={item.name} className={item.ok === true ? 'ok' : item.ok === false ? 'err' : 'skip'}>
@@ -1553,7 +1559,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             ))}
           </ul>
           {pendingCheckItems(checkResult).length ? (
-            <p className="wk-muted text-muted">{t('settings.sandbox.checkPendingHint', { names: pendingCheckItems(checkResult).map((item) => t(`settings.sandbox.checks.${item.name}`, undefined, item.name)).join('、') })}</p>
+            <p className="wk-muted">{t('settings.sandbox.checkPendingHint', { names: pendingCheckItems(checkResult).map((item) => t(`settings.sandbox.checks.${item.name}`, undefined, item.name)).join('、') })}</p>
           ) : null}
         </div>
       ) : null}
@@ -1958,18 +1964,18 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
       </TLoading>
 
       {inventory ? (
-        <div className="wk-sandbox-inventory-overlay fixed inset-0 z-[1250] bg-[rgb(23_32_51_/_35%)]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setInventory(null); }}>
-        <section className="wk-sandbox-inventory wk-sandbox-inventory-drawer box-border absolute top-0 right-0 bottom-0 left-auto w-[min(400px,100%)] max-h-[100vh] overflow-y-auto border-l border-line bg-surface p-5 shadow-[-18px_0_48px_rgb(23_32_51_/_16%)] animate-[wk-sandbox-inventory-enter_.18s_ease-out] max-[640px]:w-full" role="dialog" aria-modal="true" aria-label={t('settings.sandbox.inventoryTitle')}>
-          <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
+        <div className="wk-sandbox-inventory-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setInventory(null); }}>
+        <section className="wk-sandbox-inventory wk-sandbox-inventory-drawer" role="dialog" aria-modal="true" aria-label={t('settings.sandbox.inventoryTitle')}>
+          <div className="wk-settings-panel-heading">
             <div>
               <h3>{t('settings.sandbox.inventoryTitle')}: {inventory.record.name}</h3>
-              <p className="wk-muted text-muted m-0">
+              <p className="wk-muted">
                 {inventory.notice === 'blocked'
                   ? t('settings.sandbox.sandboxesStillLive', { count: inventory.data.sandboxCount })
                   : t('settings.sandbox.inventoryUnverifiableHint')}
               </p>
             </div>
-            <Button type="button" onClick={() => setInventory(null)}>{t('common.cancel')}</Button>
+            <TButton type="button" onClick={() => setInventory(null)}>{t('common.cancel')}</TButton>
           </div>
           <h4>{t('settings.sandbox.inventorySessions')}</h4>
           {inventory.data.sessionIds.length > 0 ? (
@@ -1981,15 +1987,15 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
               {inventory.data.sessionIds.map((id) => {
                 const label = (
                   <>
-                    <strong title={id}>{sessionTitleText(sessionTitles, id, t('settings.sandbox.inventoryUntitledSession'))}</strong> <span className="wk-muted text-muted font-mono text-[0.8rem]!">{t('settings.sandbox.inventorySessionKind')}</span>
+                    <strong title={id}>{sessionTitleText(sessionTitles, id, t('settings.sandbox.inventoryUntitledSession'))}</strong> <span className="wk-sandbox-inventory-kind">{t('settings.sandbox.inventorySessionKind')}</span>
                   </>
                 );
                 return (
-                  <li key={id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
+                  <li key={id} className="wk-sandbox-inventory-item">
                     {onOpenSession ? (
                       <button type="button" className="wk-sandbox-inventory-row" onClick={() => { setInventory(null); onOpenSession(id); }}>
                         {label}
-                        <span aria-hidden="true" className="font-mono text-[0.8rem] text-muted">›</span>
+                        <span aria-hidden="true" className="wk-sandbox-inventory-arrow">›</span>
                       </button>
                     ) : label}
                   </li>
@@ -1999,7 +2005,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           ) : <Status>{t('settings.sandbox.inventoryEmpty')}</Status>}
           {inventory.data.agentNames.length > 0 ? <p>{t('settings.sandbox.inventoryAgentsTitle')}: {inventory.data.agentNames.join('、')}</p> : null}
           {inventory.notice === 'unverifiable' ? (
-            <Button type="button" disabled={busy} onClick={() => void forceRemove()}>{t('settings.sandbox.forceDelete')}</Button>
+            <TButton type="button" disabled={busy} onClick={() => void forceRemove()}>{t('settings.sandbox.forceDelete')}</TButton>
           ) : null}
         </section>
         </div>
