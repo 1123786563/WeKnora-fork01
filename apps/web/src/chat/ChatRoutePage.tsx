@@ -7,6 +7,8 @@ import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@we
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
+import { ChatHeader, SandboxHeaderToggle } from './chat-header.tsx';
+import './chat.td.css';
 import { installChatImageErrorWatcher } from '@weknora/views/chat/markdown';
 import { getAgentNotReadyReasonKeys } from '@weknora/views/chat/agent-readiness';
 import { agentNotReadyLabels } from '@weknora/views/chat/agent-selector';
@@ -1920,6 +1922,35 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setSelectedModelId(modelId);
     }}
     headerUtilityItems={headerUtilityItems}
+    headerSlot={selectedSessionId ? (
+      <ChatHeader
+        copy={copy}
+        title={sessions.find((session) => session.id === selectedSessionId)?.title || copy.newSession}
+        isPinned={sessions.find((session) => session.id === selectedSessionId)?.is_pinned === true}
+        onTogglePin={(pinned) => { void toggleSessionPin(selectedSessionId, pinned); }}
+        onRenameSession={async (title) => { await renameSession(selectedSessionId, title); }}
+        onClearSession={clearMessages}
+        onDeleteSession={async () => { await deleteSession(selectedSessionId); }}
+        headerUtilityItems={headerUtilityItems}
+        renameTitle={sessions.find((session) => session.id === selectedSessionId)?.title || copy.newSession}
+        renameTitleRequired={copy.renameTitleRequired}
+        renameTitleFailed={copy.renameTitleFailed}
+        renameCancel={copy.renameCancel}
+        renameConfirm={copy.renameConfirm}
+        renameSaving={copy.renameSaving}
+        clearConfirmTitle={copy.clearConfirmTitle}
+        clearConfirmBody={copy.clearConfirmBody}
+        clearConfirmAction={copy.clearConfirmAction}
+        deleteConfirmTitle={copy.deleteConfirmTitle}
+        deleteConfirmBody={copy.deleteConfirmBody}
+        deleteConfirmAction={copy.deleteConfirmAction}
+        cancelLabel={copy.renameCancel}
+        operationFailed={copy.operationFailed}
+      />
+    ) : undefined}
+    sandboxToggleSlot={(
+      <SandboxHeaderToggle copy={copy} label={copy.openSandboxPanel} onOpen={() => void openTerminal()} />
+    )}
     starterQuestions={starterQuestions}
     onForkMessage={forkAtMessage}
     canForkMessage={(messageId) => resolveForkAffordance(messages, messageId).canFork}
