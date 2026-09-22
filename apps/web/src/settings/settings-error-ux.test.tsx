@@ -247,7 +247,7 @@ test('storage: load failure degrades silently to the empty list + add button (Vu
 for (const [section, heading, panelSelector] of [
   ['vectorstore', '向量数据库引擎', '.wk-settings-resource'],
   ['websearch', '网络搜索配置', '.wk-settings-resource'],
-  ['weknoracloud', 'WeKnora Cloud', '.wk-settings-cloud'],
+  ['weknoracloud', 'WeKnora Cloud', '.weknoracloud-settings'],
   ['ollama', 'Ollama 配置', '.ollama-settings'],
   ['retrieval', '搜索设置', 'form.wk-settings-editor'],
 ] as const) {
