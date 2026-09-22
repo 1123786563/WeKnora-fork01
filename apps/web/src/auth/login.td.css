@@ -1,0 +1,1054 @@
+/* Login/Register 页 TDesign 平移样式（Vue 事实源：frontend/src/views/auth/Login.vue）。
+ *
+ * 提取规则（tdesign-migration-playbook §2）：
+ * - Login.vue <style lang="less" scoped>（:838-1818）→ 本文件 §1-§2：每选择器以
+ *   根类 .login-layout 前缀限定（scoped 属性选择器的等价物），less 嵌套展平，
+ *   :deep() 去壳保留嵌套位置，@keyframes 名保留 Vue 原名。
+ * - Login.vue <style lang="less">（:1820-1898，dark 主题 unscoped 块）→ §5
+ *   原样平移不加前缀（选择器自带 html[theme-mode="dark"] 限定）。
+ * - §3 为 Vue 端全局加载的 swiper 基础 css（swiper/css + modules/pagination.css）
+ *   中登录页实际生效的结构子集：React 端手写复刻 swiper DOM，需要这些布局规则；
+ *   以 .login-layout 前缀限定作用域，视觉覆盖项全在 §1 的 :deep 平移规则里。
+ * - 类名一律不改（Vue 端类名即事实源）。
+ */
+
+/* ============ §3 swiper 结构基础（Vue 全局 import 'swiper/css' 等效子集） ============ */
+
+.login-layout .swiper {
+  margin-left: auto;
+  margin-right: auto;
+  position: relative;
+  overflow: hidden;
+  list-style: none;
+  padding: 0;
+  z-index: 1;
+  display: block;
+}
+
+.login-layout .swiper-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  display: flex;
+  transition-property: transform;
+  box-sizing: content-box;
+  transform: translate3d(0px, 0, 0);
+}
+
+.login-layout .swiper-slide {
+  flex-shrink: 0;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transition-property: transform;
+  display: block;
+  /* effect-fade crossFade（speed 800）：稳态下 opacity 由 inline style 决定 */
+  transition-property: transform, opacity;
+  transition-duration: 800ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-layout .swiper-horizontal > .swiper-pagination-bullets {
+  bottom: var(--swiper-pagination-bottom, 8px);
+  top: var(--swiper-pagination-top, auto);
+  left: 0;
+  width: 100%;
+}
+
+.login-layout .swiper-pagination {
+  position: absolute;
+  text-align: center;
+  transition: 300ms opacity;
+  transform: translate3d(0, 0, 0);
+  z-index: 10;
+}
+
+.login-layout .swiper-pagination-bullet {
+  width: var(--swiper-pagination-bullet-width, var(--swiper-pagination-bullet-size, 8px));
+  height: var(--swiper-pagination-bullet-height, var(--swiper-pagination-bullet-size, 8px));
+  display: inline-block;
+  border-radius: var(--swiper-pagination-bullet-border-radius, 50%);
+  background: var(--swiper-pagination-bullet-inactive-color, #000);
+  opacity: var(--swiper-pagination-bullet-inactive-opacity, 0.2);
+}
+
+.login-layout .swiper-pagination-clickable .swiper-pagination-bullet {
+  cursor: pointer;
+}
+
+/* ============ §1 scoped 块（平移自 Login.vue :839-1817） ============ */
+
+.login-layout {
+  display: flex;
+  width: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  position: relative;
+  background: linear-gradient(225deg, #022c22 0%, #064e3b 15%, #065f46 25%, #047857 38%, #059669 50%, #07C05F 65%, #10B981 78%, #34D399 90%, #6EE7B7 100%);
+}
+
+.login-layout::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.06) 0%, transparent 50%),
+    radial-gradient(circle at 80% 50%, rgba(255, 255, 255, 0.04) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.login-layout .animated-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+  contain: strict;
+}
+
+.login-layout .knowledge-node {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 0 15px rgba(255, 255, 255, 0.35),
+    0 0 30px rgba(16, 185, 129, 0.2),
+    inset 0 0 8px rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: nodePulse 5s infinite ease-in-out;
+  will-change: transform, opacity;
+}
+
+.login-layout .node-icon {
+  width: 20px;
+  height: 20px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.login-layout .node-1 { top: 15%; left: 20%; animation-delay: 0s; }
+.login-layout .node-2 { top: 25%; left: 35%; animation-delay: 0.5s; }
+.login-layout .node-3 { top: 20%; left: 55%; animation-delay: 1s; }
+.login-layout .node-4 { top: 30%; left: 75%; animation-delay: 1.5s; }
+.login-layout .node-5 { top: 45%; left: 25%; animation-delay: 2s; }
+.login-layout .node-6 { top: 50%; left: 45%; animation-delay: 2.5s; }
+.login-layout .node-7 { top: 48%; left: 65%; animation-delay: 3s; }
+.login-layout .node-8 { top: 60%; left: 20%; animation-delay: 0.3s; }
+.login-layout .node-9 { top: 12%; right: 15%; animation-delay: 1.8s; }
+.login-layout .node-10 { top: 38%; right: 10%; animation-delay: 2.3s; }
+.login-layout .node-11 { top: 70%; left: 40%; animation-delay: 0.8s; }
+.login-layout .node-12 { top: 65%; left: 80%; animation-delay: 1.3s; }
+
+@keyframes nodePulse {
+  0%, 100% { transform: scale(1); opacity: 0.65; }
+  50% { transform: scale(1.08); opacity: 0.9; }
+}
+
+.login-layout .knowledge-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.35;
+}
+
+.login-layout .connection-line {
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 1.5;
+  stroke-dasharray: 6, 3;
+  stroke-linecap: round;
+  animation: lineFlow 10s infinite linear;
+  will-change: stroke-dashoffset;
+}
+
+.login-layout .line-1 { animation-delay: 0s; }
+.login-layout .line-2 { animation-delay: 0.5s; }
+.login-layout .line-3 { animation-delay: 1s; }
+.login-layout .line-4 { animation-delay: 0.3s; }
+.login-layout .line-5 { animation-delay: 0.8s; }
+.login-layout .line-6 { animation-delay: 1.3s; }
+.login-layout .line-7 { animation-delay: 1.8s; }
+.login-layout .line-8 { animation-delay: 2.3s; }
+.login-layout .line-9 { animation-delay: 0.2s; }
+.login-layout .line-10 { animation-delay: 0.7s; }
+.login-layout .line-11 { animation-delay: 0.9s; }
+.login-layout .line-12 { animation-delay: 1.5s; }
+
+@keyframes lineFlow {
+  0% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: 18; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-layout .knowledge-node {
+    animation: none;
+    opacity: 0.65;
+  }
+  .login-layout .connection-line {
+    animation: none;
+  }
+}
+
+/* Left Showcase Section */
+.login-layout .showcase-section {
+  flex: 0 0 52%;
+  display: flex;
+  align-items: flex-end;
+  padding: 100px 30px 100px 50px;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.login-layout .showcase-content {
+  width: 100%;
+  max-width: 600px;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 60px;
+}
+
+.login-layout .showcase-subtitle {
+  margin-top: 0;
+  font-size: 22px;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0 0 8px 0;
+  font-family: var(--app-font-family);
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.login-layout .showcase-description {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0 0 28px 0;
+  font-family: var(--app-font-family);
+  line-height: 1.5;
+}
+
+.login-layout .feature-tags {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+}
+
+.login-layout .tag {
+  display: inline-block;
+  padding: 8px 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: var(--td-text-color-anti);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--app-font-family);
+}
+
+/* Carousel */
+.login-layout .carousel-container {
+  width: 100%;
+  margin-top: 48px;
+}
+
+/* Vue :deep(.screenshot-swiper) 规则（Login.vue :1131-1161）——.screenshot-swiper
+   即 .swiper 根，scoped 规则直接命中组件根，前缀化后等价。 */
+.login-layout .screenshot-swiper {
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  padding-bottom: 40px;
+}
+
+.login-layout .screenshot-swiper .swiper-wrapper {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.login-layout .screenshot-swiper .swiper-pagination {
+  bottom: 15px !important;
+  z-index: 10;
+}
+
+.login-layout .screenshot-swiper .swiper-pagination-bullet {
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  opacity: 1;
+  transition: all 0.3s ease;
+  margin: 0 6px !important;
+}
+
+.login-layout .screenshot-swiper .swiper-pagination-bullet-active {
+  background: var(--td-bg-color-container);
+  width: 28px;
+  border-radius: 5px;
+}
+
+.login-layout .slide-content {
+  width: 100%;
+  height: 100%;
+  background: var(--td-bg-color-container);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-layout .slide-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+/* Right Form Section */
+.login-layout .form-section {
+  flex: 0 0 48%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 112px 50px 100px 30px;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.login-layout .form-panel {
+  width: 100%;
+  max-width: 480px;
+  margin-bottom: 60px;
+  position: relative;
+  z-index: 2;
+}
+
+.login-layout .header-logo {
+  position: fixed;
+  top: 32px;
+  left: 50px;
+  z-index: 100;
+  cursor: pointer;
+}
+
+.login-layout .header-logo .logo-image {
+  width: 120px;
+  height: auto;
+}
+
+.login-layout .header-links {
+  position: fixed;
+  top: 28px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 100;
+}
+
+.login-layout .header-link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 15px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--td-text-color-anti);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--app-font-family);
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  position: relative;
+}
+
+.login-layout .header-link svg {
+  flex-shrink: 0;
+}
+
+.login-layout .header-link .link-text {
+  line-height: 1;
+}
+
+.login-layout .header-link:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: var(--td-text-color-anti);
+}
+
+.login-layout .language-switch {
+  position: relative;
+}
+
+.login-layout .language-switch button {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--td-text-color-anti);
+}
+
+.login-layout .language-switch button .lang-flag-icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.login-layout .language-switch button:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.login-layout .language-switch button svg:last-child {
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+.login-layout .language-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.login-layout .language-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--app-font-family);
+  color: var(--td-text-color-primary);
+}
+
+.login-layout .language-option .lang-flag {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.login-layout .language-option .lang-label {
+  flex: 1;
+}
+
+.login-layout .language-option .check-icon {
+  color: var(--td-success-color);
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.login-layout .language-option:hover {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.login-layout .language-option.active {
+  background: var(--td-success-color-light);
+  color: var(--td-brand-color-active);
+}
+
+.login-layout .form-card {
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+  border: none;
+  width: 100%;
+}
+
+/* Share-link invitation banner（Login.vue :1345-1389） */
+.login-layout .invite-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  border-radius: 10px;
+  background: var(--td-bg-color-container-hover, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--td-component-stroke);
+  color: var(--td-text-color-primary);
+}
+
+.login-layout .invite-banner__icon {
+  margin-top: 2px;
+  font-size: 18px;
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+}
+
+.login-layout .invite-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.login-layout .invite-banner__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
+}
+
+.login-layout .invite-banner__hint {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.5;
+}
+
+.login-layout .invite-banner--error {
+  background: var(--td-error-color-1, rgba(220, 38, 38, 0.06));
+  border-color: var(--td-error-color-3, rgba(220, 38, 38, 0.2));
+  color: var(--td-error-color, #b91c1c);
+  font-size: 13px;
+}
+
+.login-layout .form-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-layout .form-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 6px 0;
+  font-family: var(--app-font-family);
+}
+
+.login-layout .form-welcome {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  font-family: var(--app-font-family);
+}
+
+.login-layout .form-hint {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--td-success-color-light, rgba(7, 192, 95, 0.08));
+  color: var(--td-brand-color-active);
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-family: var(--app-font-family);
+}
+
+/* 注册入口（Login.vue :1422-1466） */
+.login-layout .register-cta {
+  margin-top: 8px;
+}
+
+.login-layout .register-cta__divider {
+  position: relative;
+  text-align: center;
+  margin: 4px 0 14px;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  font-family: var(--app-font-family);
+}
+
+.login-layout .register-cta__divider span {
+  position: relative;
+  z-index: 1;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.login-layout .register-cta__divider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.login-layout .register-cta__button {
+  height: 46px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  border-color: var(--td-brand-color);
+  color: var(--td-brand-color);
+}
+
+.login-layout .register-cta__button:hover {
+  border-color: var(--td-brand-color-active);
+  color: var(--td-brand-color-active);
+  background: var(--td-success-color-light, rgba(7, 192, 95, 0.08));
+}
+
+.login-layout .form-subtitle {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  font-family: var(--app-font-family);
+}
+
+/* :deep(.t-form-item__label)（Login.vue :1476-1484） */
+.login-layout .form-content .t-form-item__label {
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  font-weight: 500;
+  margin-bottom: 8px;
+  font-family: var(--app-font-family);
+  display: block;
+  text-align: left;
+}
+
+/* :deep(.t-input)（Login.vue :1486-1520） */
+.login-layout .form-content .t-input {
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  background: var(--td-bg-color-container);
+  transition: all 0.2s;
+}
+
+.login-layout .form-content .t-input:focus-within {
+  border-color: var(--td-brand-color);
+  box-shadow: 0 0 0 3px rgba(7, 192, 95, 0.1);
+}
+
+.login-layout .form-content .t-input:hover {
+  border-color: var(--td-brand-color);
+}
+
+.login-layout .form-content .t-input .t-input__inner {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent;
+  font-size: 15px;
+  font-family: var(--app-font-family);
+}
+
+.login-layout .form-content .t-input .t-input__inner:focus {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.login-layout .form-content .t-input .t-input__wrap {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* :deep(.t-form-item)（Login.vue :1522-1528）。注：Vue 源码此处类名笔误
+   （t-form-item ≠ 实际类 t-form__item），两条规则在 Vue 端从不命中——实际
+   生效的是 tdesign 库默认 .t-form__item { margin-bottom: var(--td-comp-margin-xxl) }。
+   按事实源原样平移（同样不命中），渲染对齐交给下面的 --last 中和规则。 */
+.login-layout .form-content .t-form-item {
+  margin-bottom: 18px;
+}
+
+.login-layout .form-content .t-form-item:last-child {
+  margin-bottom: 0;
+}
+
+/* 台账 #18：tdesign-react 会给最后一个 FormItem 加 .t-form__item--last，
+   库 CSS 将其 margin 清零；tdesign-vue-next 不加该类，其同名 CSS 靠
+   :last-of-type 兜底——本页表单后还有 button/.register-cta 等 div 兄弟，
+   :last-of-type 落不到表单项上，Vue 端两项均保持 24px。此处按 Vue 渲染
+   结果中和 react 的 --last 清零（等值恢复库默认 --td-comp-margin-xxl）。 */
+.login-layout .form-content .t-form__item--last {
+  margin-bottom: var(--td-comp-margin-xxl);
+}
+
+/* :deep(.t-form-item__control)（Login.vue :1530-1532） */
+.login-layout .form-content .t-form-item__control {
+  width: 100%;
+}
+
+.login-layout .submit-button {
+  height: 46px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  font-family: var(--app-font-family);
+  margin: 20px 0 16px 0;
+}
+
+.login-layout .oidc-divider {
+  position: relative;
+  margin: 4px 0 6px;
+  text-align: center;
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+}
+
+.login-layout .oidc-divider span {
+  position: relative;
+  z-index: 1;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.login-layout .oidc-divider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.login-layout .oidc-button {
+  height: 46px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.login-layout .form-footer {
+  text-align: center;
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+  margin-top: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.login-layout .form-footer .link-button {
+  color: var(--td-brand-color);
+  text-decoration: none;
+  margin-left: 4px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.login-layout .form-footer .link-button:hover {
+  color: var(--td-brand-color);
+  text-decoration: underline;
+}
+
+/* Vue .login-form-footer（Login.vue :1598-1602）模板未引用，按事实源原样平移 */
+.login-layout .login-form-footer {
+  border-bottom: none;
+  padding-bottom: 8px;
+  margin-top: 12px;
+}
+
+.login-layout .login-features {
+  margin-top: 20px;
+  padding: 0;
+}
+
+.login-layout .login-features .feature-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+}
+
+.login-layout .login-features .feature-item:last-child {
+  margin-bottom: 0;
+}
+
+.login-layout .login-features .feature-item .feature-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--td-success-color-light);
+  color: var(--td-brand-color-active);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.login-layout .login-features .feature-item .feature-text {
+  line-height: 1.4;
+}
+
+/* ============ §2 Responsive（scoped 块 :1642-1817，同前缀化） ============ */
+
+@media (max-width: 1024px) {
+  .login-layout .knowledge-node:nth-of-type(n + 13) {
+    display: none;
+  }
+  .login-layout .connection-line:nth-of-type(n + 13) {
+    display: none;
+  }
+  .login-layout .showcase-subtitle {
+    font-size: 18px;
+  }
+  .login-layout .header-logo {
+    top: 26px;
+    left: 40px;
+  }
+  .login-layout .header-logo .logo-image {
+    width: 100px;
+  }
+  .login-layout .header-links {
+    top: 22px;
+    right: 22px;
+    gap: 8px;
+  }
+  .login-layout .header-links .link-text {
+    display: none;
+  }
+  .login-layout .header-links .header-link {
+    padding: 10px;
+    gap: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-layout {
+    flex-direction: column;
+  }
+  .login-layout .knowledge-node:nth-of-type(n + 9) {
+    display: none;
+  }
+  .login-layout .connection-line:nth-of-type(n + 9) {
+    display: none;
+  }
+  .login-layout .showcase-section {
+    flex: 0 0 auto;
+    min-height: 50vh;
+    padding: 40px 24px;
+  }
+  .login-layout .showcase-content {
+    max-width: 100%;
+  }
+  .login-layout .header-logo {
+    top: 22px;
+    left: 30px;
+  }
+  .login-layout .header-logo .logo-image {
+    width: 80px;
+  }
+  .login-layout .showcase-subtitle {
+    font-size: 16px;
+    margin-bottom: 24px;
+  }
+  .login-layout .feature-tags {
+    margin-bottom: 24px;
+  }
+  .login-layout .carousel-container {
+    margin-top: 24px;
+  }
+  .login-layout .form-section {
+    flex: 0 0 auto;
+    padding: 24px;
+  }
+  .login-layout .header-links {
+    top: 18px;
+    right: 18px;
+    gap: 8px;
+  }
+  .login-layout .header-links .link-text {
+    display: inline;
+  }
+  .login-layout .header-links .header-link {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .login-layout .form-card {
+    padding: 32px 24px;
+  }
+  .login-layout .form-title {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-layout .animated-bg {
+    display: none;
+  }
+  .login-layout .showcase-section {
+    padding: 32px 20px;
+  }
+  .login-layout .header-logo {
+    top: 18px;
+    left: 20px;
+  }
+  .login-layout .header-logo .logo-image {
+    width: 70px;
+  }
+  .login-layout .showcase-subtitle {
+    font-size: 14px;
+  }
+  .login-layout .tag {
+    font-size: 12px;
+    padding: 6px 16px;
+  }
+  .login-layout .form-section {
+    padding: 20px;
+  }
+  .login-layout .header-links {
+    top: 14px;
+    right: 14px;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .login-layout .header-links .header-link {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  .login-layout .form-card {
+    padding: 28px 20px;
+  }
+  .login-layout .form-header {
+    margin-bottom: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-layout .knowledge-node,
+  .login-layout .connection-line {
+    animation: none !important;
+    transition: none !important;
+  }
+  .login-layout .animated-bg {
+    display: none;
+  }
+}
+
+/* ============ §4 React 侧自有补充（Vue 端由 MessagePlugin/内联校验承载） ============ */
+
+/* Logo 光栅相位对齐（台账 #19）：两端 logo 资产逐字节一致（md5 相同）、几何
+ * 完全一致（120×37.8）、canvas drawImage 重采样逐像素一致；差异仅来自 Chrome
+ * 对 <img> 的合成图层化路径不同——直接绘制（共享图层光栅）与 Vue 端（独立
+ * 图层高质量光栅）在字形下缘产生 ~154px 的 AA 阶梯差（0.017%）。opacity
+ * 0.9999 + scale(1.0000001) 把 img 提升为独立合成图层，光栅路径与 Vue 端
+ * 一致（probe 实测 154px→0，3 次复跑稳定 0）；视觉量级 1e-7px/1e-4 alpha，
+ * 不可感知。 */
+.login-layout .header-logo .logo-image {
+  opacity: 0.9999;
+  transform: scale(1.0000001);
+}
+
+/* 顶部 toast：Vue Login.vue 用 tdesign MessagePlugin（顶部居中白底）呈现
+ * 登录/注册/OIDC/语言切换结果（R445 定稿形态）；toast 为瞬态，不进稳态扫描。 */
+.auth-toast {
+  position: fixed;
+  left: 50%;
+  top: 32px;
+  transform: translateX(-50%);
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  border-radius: 6px;
+  background: #fff;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-family: var(--app-font-family);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+.auth-toast__text--error { color: #d54941; }
+.auth-toast__text--success { color: #0a8f4c; }
+
+/* React 侧校验错误文案（Vue 端由 t-form 校验渲染 .t-input__extra；React 页
+ * 沿用自带 validation.ts + role=alert span，仅错误瞬态出现，不进稳态扫描）。 */
+.login-layout .auth-field-error {
+  display: block;
+  font-size: 12px;
+  color: var(--td-error-color);
+  margin-top: 4px;
+}
+
+/* ============ §5 unscoped dark 主题块（Login.vue :1820-1898 原样平移） ============ */
+
+html[theme-mode="dark"] .login-layout {
+  background: linear-gradient(225deg, #011a14 0%, #032e22 15%, #043a2c 25%, #05503d 38%, #046647 50%, #038a56 65%, #049b60 78%, #06a06a 90%, #07b074 100%);
+}
+
+html[theme-mode="dark"] .login-layout .knowledge-node {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
+}
+
+html[theme-mode="dark"] .login-layout .connection-line {
+  stroke: rgba(255, 255, 255, 0.25);
+}
+
+html[theme-mode="dark"] .login-layout .header-logo .logo-image {
+  filter: invert(1) hue-rotate(180deg) brightness(1.1);
+}
+
+html[theme-mode="dark"] .login-layout .header-link {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+html[theme-mode="dark"] .login-layout .header-link:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+html[theme-mode="dark"] .login-layout .language-switch button {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+html[theme-mode="dark"] .login-layout .language-switch button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+html[theme-mode="dark"] .login-layout .language-dropdown {
+  background: rgba(36, 36, 36, 0.97) !important;
+  border-color: var(--td-component-stroke) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+html[theme-mode="dark"] .login-layout .tag {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+html[theme-mode="dark"] .login-layout .form-card {
+  background: rgba(36, 36, 36, 0.97) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+html[theme-mode="dark"] .login-layout .register-cta__divider span {
+  background: rgba(36, 36, 36, 0.97);
+}
+
+html[theme-mode="dark"] .login-layout .form-content .t-input {
+  background: var(--td-bg-color-page) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html[theme-mode="dark"] .login-layout .form-content .t-input:hover {
+  border-color: var(--td-brand-color) !important;
+}
+
+html[theme-mode="dark"] .login-layout .form-content .t-input:focus-within {
+  border-color: var(--td-brand-color) !important;
+}
+
+html[theme-mode="dark"] .login-layout .screenshot-swiper .swiper-pagination-bullet-active {
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+
+html[theme-mode="dark"] .login-layout .login-features .feature-icon {
+  background: rgba(6, 176, 77, 0.15);
+}
