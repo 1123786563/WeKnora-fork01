@@ -355,18 +355,27 @@ test('system-global section renders grouped editable settings instead of a gener
   assert.ok(text.includes('重置用户密码'), 'the reset-password high-risk row renders');
   assert.ok(text.includes('创建用户'), 'the create-user high-risk row renders');
   assert.ok(container.textContent?.includes('peer-admin@local.dev'), 'the peer admin tag renders (current user excluded)');
-  const registrationSelect = container.querySelector<HTMLSelectElement>('select');
+  // T12c：enum 控件已换 tdesign Select（GeneralPreferencesPanel.test 同款
+  // 交互：点开 trigger，在 body 弹层点目标选项）。
+  const registrationSelect = container.querySelector('.t-select__wrap');
   assert.ok(registrationSelect, 'enum settings use a select control');
-  registrationSelect.value = 'invite_only';
-  await act(async () => registrationSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true })));
+  const triggerInner = registrationSelect!.querySelector('.t-input') as HTMLElement;
+  await act(async () => { triggerInner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const option = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option')).find((el) => (el.textContent ?? '').trim() === '仅邀请（关闭公网注册）');
+  assert.ok(option, 'the invite_only option renders in the popup');
+  await act(async () => { option.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.ok(container.querySelector('[role="alertdialog"]'), 'high-risk enum changes require Vue-style confirmation');
   const cancelConfirm = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')).find((button) => button.textContent === '取消');
   assert.ok(cancelConfirm);
   await act(async () => cancelConfirm?.click());
   assert.equal(container.querySelector('[role="alertdialog"]'), null, 'cancelling rolls back the pending high-risk edit');
-  const securityTab = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((button) => button.textContent?.includes('网络安全'));
+  // T12c：tdesign Tabs nav item（div.t-tabs__nav-item）+ tdesign Switch
+  // （button[role="switch"]，台账 #2 根标签差异豁免沿用）。
+  const securityTab = Array.from(container.querySelectorAll<HTMLElement>('.t-tabs__nav-item')).find((item) => item.textContent?.includes('网络安全'));
   assert.ok(securityTab, 'the security tab renders with the Vue label');
-  await act(async () => securityTab?.click());
+  await act(async () => { securityTab?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
   assert.ok(container.querySelector('[role="switch"]'), 'boolean settings use the shared switch control');
   assert.equal(text.includes('尚未移植'), false, 'the generic placeholder is gone');
 });

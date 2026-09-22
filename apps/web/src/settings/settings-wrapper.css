@@ -467,66 +467,16 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
    残差（integrations 底噪 3.18 的侧栏部分）的来源。scoped 覆盖还原 normal。 */
 .wks-modal .wks-nav-label { line-height: normal; }
 
-/* 2) system-global 面板 TDesign token 重映射（同 .parser-engine-settings /
-   .runtime-queues 先例）：Vue SystemSettings.vue 全文用 --td-text-color-*
-   rgba(0,0,0,.9/.6/.4)，React 面板继承全局蓝-gray token（#172033/#66758b），
-   是该页内容区两个热格 12.9%/14% 的主因。仅在面板子树重映射。 */
-.wk-system-global {
+/* 2) system-global 面板（T12c 已迁 tdesign，控制域随库样式 + settings.td.css
+   §17 平移块）；本 slice 仅保留 --color-* 子树重映射——供面板内 React 保留
+   实现消费（ResetPasswordDialog/CreateUserDialog 的 Tailwind 色 utilities
+   text-ink/text-muted 等仍读蓝-gray token，对齐抽屉中性灰）。 */
+.system-settings {
   --color-ink: rgba(0, 0, 0, 0.9);
   --color-ink-strong: rgba(0, 0, 0, 0.9);
   --color-muted: rgba(0, 0, 0, 0.6);
   --color-muted-strong: rgba(0, 0, 0, 0.9);
   --color-faint: rgba(0, 0, 0, 0.4);
 }
-/* SystemSettings.vue .desc { max-width: 480px }：长后端描述钳宽防止挤压控制列
-   （React desc 填满 info 列 499px，折行点整体偏移）。 */
-.wk-system-global p.wk-muted { max-width: 480px; }
-
-/* 3) 分区 tab 条（Vue t-tabs size=m）：nav-item 文本 rgba(0,0,0,.6)/活跃
-   #07c05f、fw500、行盒 48px 垂直居中（文字几何中心 y155）、底部指示条 3px
-   #07c05f。React 按钮原为 #5c6b83/#0a8f4c、fw600/400、lh normal（中心 y153.5）、
-   border-b-2。padding 3px 顶 + lh42px 使字形中心回到 y155。 */
-.wk-system-global-tabs { gap: 0; }
-.wk-system-global-tabs button {
-  color: rgba(0, 0, 0, 0.6);
-  font-weight: 500;
-  line-height: 42px;
-  padding: 3px 16px 0;
-  border-bottom-width: 3px;
-}
-.wk-system-global-tabs button.is-active { color: #07c05f; border-bottom-color: #07c05f; }
-
-/* 3b) 管理员标签输入框（Vue t-tag-input）：外框 320x32 白底 radius3、内芯片
-   t-tag--dark #e7e7e7 3px 圆角 24px 高（pad 0 8）；React 原为 30px 高框 +
-   #eff4ff pill 18px 高芯片。 */
-.wk-system-global .wk-tag-input { width: 320px; box-sizing: border-box; height: 32px; padding: 4px 8px 4px 4px; }
-.wk-system-global .wk-tag-input-tag { background: #e7e7e7; border-radius: 3px; box-sizing: border-box; height: 24px; padding: 0 8px; }
-
-/* 3c) 「重置密码 / 创建用户」文字按钮（Vue t-button variant=text）：32px 高、
-   16px 图标、无边框透明底；React 原为 34px 高带边框、14px 图标。 */
-.wk-system-global .wk-password-reset-trigger { height: 32px; border: 0; background: #fdecee; }
-.wk-system-global .wk-password-reset-trigger svg { width: 16px; height: 16px; }
-/* 管理员标签输入框：Vue 的内嵌 input 宽度为 0（placeholder 不可见），React
-   min-w-120 使 placeholder 文字外露。 */
-.wk-system-global .wk-tag-input-field { min-width: 0; }
-
-/* 3d) 开关（Vue t-switch t-size-m）：轨道 32.4x20，未选中旋钮 12x12 左偏 4px，
-   选中旋钮放大 15x15 且偏移 14.9px；共享 32px/15px 规则是 TenantInfo 系的
-   size 差异，此处按本面板 Vue 实测覆盖。 */
-.wk-system-global button[role='switch']:not(.t-switch) > span { width: 12px; height: 12px; margin-left: 4px; }
-.wk-system-global button[role='switch']:not(.t-switch)[data-state='checked'] > span { width: 15px; height: 15px; margin-left: 3px; transform: translateX(11.5px); }
-
-/* 4) 高风险徽标（Vue t-tag t-tag--danger t-tag--light）：12px/400 #e34d59 文字
-   on #fdecee、radius 3px、padding 0 5px（整签 46x20）。React Badge 原为
-   fw500 #b42318 on rgba(213,73,65,.1)、pill、1px 8px（54x20）。 */
-.wk-system-global-label .rounded-pill {
-  background: #fdecee;
-  border: 0;
-  border-radius: 3px;
-  box-sizing: border-box;
-  color: #e34d59;
-  font-weight: 400;
-  height: 20px;
-  line-height: normal;
-  padding: 0 5px;
-}
+/* （原 3/3b/3c/3d/4 手搓 tab 条/wk-tag-input/password-reset svg/switch 几何/
+   badge 深修 slice 已删——T12c 全部换 tdesign 组件，由库与 §17 自持。） */

@@ -1,6 +1,11 @@
 import type { SystemAdminUser, SystemSetting, WeKnoraClient } from '@weknora/api-client';
-import { Badge, Button, Card, Checkbox, Dialog, Input, NumberInput, Select, Status, Switch } from '@weknora/ui';
-import { useEffect, useMemo, useState } from 'react';
+import { Button as WkButton, Checkbox, Dialog, Input as WkInput } from '@weknora/ui';
+// T12c：SystemSettings.vue 控制域平移——t-tabs/t-select/t-switch/
+// t-input-number/t-tag-input/t-button/t-tag/t-loading + t-icon sprite
+// glyph；样式平移至 settings.td.css §17（.system-settings scoped 块）。
+import { Button, Input, InputNumber, Loading, Select, Switch, Tag, TagInput, Tabs } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatMessage } from '@weknora/i18n';
 import { useSettingsLocale } from './PortedSectionsPanel.tsx';
 import { PASSWORD_SPECIAL_CHARS } from '../auth/validation.ts';
@@ -58,49 +63,26 @@ function ConfirmInline({ state, cancelLabel }: { state: ConfirmState; cancelLabe
 }
 
 /** Email/tag input mirroring the Vue t-tag-input rows (admins + SSRF). */
-function TagInput({ values, placeholder, ariaLabel, disabled, onCommit }: { values: string[]; placeholder: string; ariaLabel: string; disabled?: boolean; onCommit: (next: string[]) => void }) {
-  const [draft, setDraft] = useState('');
-  const commit = (next: string[]) => { setDraft(''); onCommit(next); };
-  const addDraft = () => { const value = draft.trim(); if (!value) return; if (values.includes(value)) { setDraft(''); return; } commit([...values, value]); };
-  // Vue .setting-input--wide is 320px total; the app's box-sizing is
-  // content-box, so 302px + 16px padding + 2px border lands on 320px.
-  return <div className={`wk-tag-input flex w-[302px] max-w-full flex-wrap items-center gap-1.5 rounded-[3px] border border-line-input bg-surface px-2 py-[5px] ${disabled ? 'opacity-60' : ''}`}>
-    {values.map((value) => <span key={value} className="wk-tag-input-tag inline-flex items-center gap-1 rounded-pill bg-surface-wash px-2 py-px text-xs text-ink">
-      {value}
-      <button type="button" aria-label={`${ariaLabel} ${value}`} disabled={disabled} className="cursor-pointer border-0 bg-transparent p-0 text-xs text-muted hover:text-danger" onClick={() => commit(values.filter((item) => item !== value))}>×</button>
-    </span>)}
-    <input
-      className="wk-tag-input-field min-w-[120px] flex-1 border-0 bg-transparent text-[13px] outline-none"
-      value={draft}
-      placeholder={placeholder}
-      aria-label={ariaLabel}
-      disabled={disabled}
-      onChange={(event) => setDraft(event.target.value)}
-      onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addDraft(); } }}
-      onBlur={addDraft}
-    />
-  </div>;
-}
+/** T12c：手搓 TagInput 组件已删——控制域全部换 tdesign TagInput（Vue
+ * t-tag-input 同构：break-line wrap、clearable、t-tag 芯片随库走）。 */
 
 /** Vue t-popup hover hint (SystemSettings.vue:38-52) — info-circle trigger
- * whose bottom-start popover carries the priority tiers. */
+ * whose bottom-start popover carries the priority tiers.（弹层为 React 保留
+ * 实现；触发按钮图标已换 t-icon sprite glyph。） */
 function PriorityHint({ locale }: { locale: ReturnType<typeof useSettingsLocale> }) {
   const t = (key: string) => formatMessage(locale, key);
   const [open, setOpen] = useState(false);
   return <span className="relative inline-flex">
     <button
       type="button"
-      className="wk-system-global-hint-trigger inline-flex cursor-help items-center justify-center rounded-[4px] border-0 bg-transparent p-[2px] leading-none text-muted/60"
+      className="hint-trigger"
       aria-label={t('system.globalSettings.priorityHint.disclosure')}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       onFocus={() => setOpen(true)}
       onBlur={() => setOpen(false)}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 16v-4M12 8h.01" />
-      </svg>
+      <TIcon name="info-circle" size="16px" />
     </button>
     {open ? <div className="wk-system-global-hint-popover absolute left-0 top-full z-20 mt-1 w-max max-w-[420px] rounded-lg border border-line-soft bg-surface px-4 py-3 shadow-[0_6px_30px_rgba(0,0,0,0.12)]" role="tooltip">
       <p className="m-0 mb-2 text-[13px] font-semibold text-ink">{t('system.globalSettings.priorityHint.disclosure')}</p>
@@ -393,123 +375,122 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
     askNext(0);
   };
 
-  // ---- render ---------------------------------------------------------------
+  // ---- render（SystemSettings.vue 模板逐节点平移，类名/结构与 Vue 一致）----
   const cancelLabel = t('system.globalSettings.confirm.cancelBtn');
-  return <section className="wk-system-global grid gap-4" aria-label={t('system.globalSettings.title')}>
-    {/* Vue SystemSettings.vue:34-57 section-header — titlewrap (h2 + hover
-        hint trigger) then description; NO bottom border (unlike the shared
-        wk-settings-panel-heading), margin-bottom 24px. */}
-    <header className="wk-settings-panel-heading mb-2">
-      {/* outer section grid gap-4 adds 16px → header→tabs spacing totals
-          the Vue .section-header margin-bottom 24px */}
-      <div className="flex items-center gap-1.5">
-        <h2 className="m-0 text-[20px] font-semibold leading-[normal]">{t('system.globalSettings.title')}</h2>
+  // Input/InputNumber 的 @blur 提交语义（Vue :233）——onChange 只回写 editValues，
+  // onBlur 才 persist；ref 记录最新草稿值防闭包过期。
+  const draftRef = useRef<Record<string, unknown>>({});
+  const sectionTabs = tabs.map((key) => ({ value: key, label: t(`system.globalSettings.sections.${key}.tab`, { count: key === 'other' ? unknownSettings.length : sectionCount(key as Exclude<Section, 'other'>) }) }));
+  return <div className="system-settings" aria-label={t('system.globalSettings.title')}>
+    <div className="section-header">
+      <div className="section-header__titlewrap">
+        <h2>{t('system.globalSettings.title')}</h2>
         <PriorityHint locale={locale} />
       </div>
-      <p className="wk-muted text-muted m-0 mt-2 text-[14px] leading-[1.5]">{t('system.globalSettings.description')}</p>
-    </header>
+      <p className="section-description">{t('system.globalSettings.description')}</p>
+    </div>
+    {/* 消息条/内联确认为 React 保留实现（Vue 用 MessagePlugin toast + t-popconfirm
+        弹层，稳态扫描不可见）。 */}
     {message ? <p className={`wk-system-global-message m-0 text-[13px] ${messageTone === 'success' ? 'text-[#0a8f4c]' : 'text-[#b23b34]'}`} role="status">{message}</p> : null}
     {confirm ? <ConfirmInline state={confirm} cancelLabel={cancelLabel} /> : null}
-    {settings.length === 0 ? <Card><Status>{t('system.globalSettings.empty')}</Status></Card> : <>
-      {/* Vue .settings-section-tabs: 1px bottom line via box-shadow (not a
-          border) so the row keeps the t-tabs 48px height. */}
-      <div className="wk-system-global-tabs mb-[2px] flex overflow-x-auto gap-1 shadow-[0_1px_0_0_rgba(120,135,155,0.22)]" role="tablist" aria-label={t('system.globalSettings.title')}>
-        {/* Vue t-tabs nav-item: 48px tall, 16px horizontal padding */}
-        {tabs.map((key) => <button key={key} type="button" role="tab" aria-selected={section === key} className={`cursor-pointer whitespace-nowrap border-0 border-b-2 bg-transparent px-4 py-[13px] text-[14px] font-[inherit] text-[#5c6b83] transition-colors ${section === key ? 'is-active border-b-[#0a8f4c] font-semibold text-[#0a8f4c]' : 'border-b-transparent'}`} onClick={() => setSection(key)}>{t(`system.globalSettings.sections.${key}.tab`, { count: key === 'other' ? unknownSettings.length : sectionCount(key) })}</button>)}
-      </div>
-      <div className="wk-system-global-section grid" aria-label={t(`system.globalSettings.sections.${section}.title`)}>
-        <div className="wk-system-global-intro flex items-start justify-between gap-4 border-b border-line-soft pb-3 text-[13px] text-muted">
-          <p className="m-0">{t(`system.globalSettings.sections.${section}.description`)}</p>
-          {section === 'runtime' ? <Badge tone="warning">{t('system.globalSettings.sections.runtime.restartHint')}</Badge> : null}
+    {settings.length === 0 ? <div className="empty-state"><TIcon name="info-circle" size="24px" /><span>{t('system.globalSettings.empty')}</span></div> : <>
+      <Tabs value={section} onChange={(value) => setSection(value as Section)} className="settings-section-tabs" list={sectionTabs} />
+      <section className="settings-section-panel" aria-label={t(`system.globalSettings.sections.${section}.title`)}>
+        <div className={`settings-section-intro${section === 'runtime' ? ' settings-section-intro--runtime' : ''}`}>
+          <p>{t(`system.globalSettings.sections.${section}.description`)}</p>
+          {section === 'runtime' ? <Tag theme="warning" variant="light" size="small">{t('system.globalSettings.sections.runtime.restartHint')}</Tag> : null}
         </div>
-        {section === 'runtime' ? <div className="wk-system-global-runtime-header grid grid-cols-[minmax(0,1fr)_280px] gap-6 rounded-t-lg border border-line-soft border-b-0 bg-surface-alt px-4 py-2 text-xs font-medium text-muted" aria-hidden="true">
+        {section === 'runtime' ? <div className="runtime-table-header" aria-hidden="true">
           <span>{t('system.globalSettings.runtimeTable.setting')}</span>
-          <span className="text-right">{t('system.globalSettings.runtimeTable.value')}</span>
+          <span>{t('system.globalSettings.runtimeTable.value')}</span>
         </div> : null}
-        <div className={`wk-system-global-rows grid ${section === 'runtime' ? 'wk-system-global-rows--runtime' : ''}`}>
+        <div className={`settings-group${section === 'runtime' ? ' settings-group--runtime' : ''}`}>
           {section === 'access' ? <>
-            <div className="wk-system-global-row wk-system-global-row--admins flex items-start justify-between border-b border-line-soft py-5 last:border-b-0">
-              <div className="min-w-0 flex-1 max-w-[65%] pr-6">
-                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 leading-[21px] text-[15px] font-medium text-ink">{t('system.globalSettings.admins.label')}<Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge></div>
-                <p className="wk-muted m-0 text-[13px] leading-normal text-muted">{t('system.globalSettings.admins.description')}</p>
+            <div className="setting-row setting-row--admin">
+              <div className="setting-info">
+                <div className="setting-label">
+                  <span>{t('system.globalSettings.admins.label')}</span>
+                  <Tag theme="danger" variant="light" size="small" className="setting-badge">{t('system.globalSettings.badgeHighRisk')}</Tag>
+                </div>
+                <p className="desc">{t('system.globalSettings.admins.description')}</p>
               </div>
-              <div className="flex min-w-[280px] flex-col items-end gap-1.5">
-                <TagInput values={adminEmails} placeholder={t('system.globalSettings.admins.placeholder')} ariaLabel={t('system.globalSettings.admins.label')} disabled={adminBusy} onCommit={onAdminsCommit} />
-                {adminBusy ? <span className="text-xs text-muted" role="status">{t('system.globalSettings.saving')}</span> : null}
-              </div>
-            </div>
-            <div className="wk-system-global-row wk-system-global-row--password-reset flex items-start justify-between border-b border-line-soft py-5 last:border-b-0">
-              <div className="min-w-0 flex-1 max-w-[65%] pr-6">
-                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 leading-[21px] text-[15px] font-medium text-ink">{t('system.globalSettings.passwordReset.label')}<Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge></div>
-                <p className="wk-muted m-0 text-[13px] leading-normal text-muted">{t('system.globalSettings.passwordReset.description')}</p>
-              </div>
-              <div className="flex min-w-[280px] justify-end">
-                <button type="button" className="wk-password-reset-trigger inline-flex min-w-[112px] cursor-pointer items-center justify-center gap-1.5 rounded-[6px] border border-transparent bg-[rgba(213,73,65,0.08)] px-3 text-[13px] leading-[30px] text-danger hover:bg-[rgba(213,73,65,0.14)]" onClick={() => setResetPasswordVisible(true)}>
-                  {/* t-icon lock-on */}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
-                  {t('system.globalSettings.passwordReset.action')}
-                </button>
+              <div className="setting-control">
+                <div className="setting-control-row">
+                  <TagInput value={adminEmails} placeholder={t('system.globalSettings.admins.placeholder')} aria-label={t('system.globalSettings.admins.label')} disabled={adminBusy} className="setting-input setting-input--wide" clearable onChange={(value) => onAdminsCommit(value as string[])} />
+                  {adminBusy ? <div className="setting-save-state" role="status"><Loading size="small" /><span>{t('system.globalSettings.saving')}</span></div> : null}
+                </div>
               </div>
             </div>
-            <div className="wk-system-global-row wk-system-global-row--create-user flex items-start justify-between border-b border-line-soft py-5 last:border-b-0">
-              <div className="min-w-0 flex-1 max-w-[65%] pr-6">
-                <div className="wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 leading-[21px] text-[15px] font-medium text-ink">{t('system.globalSettings.createUser.label')}<Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge></div>
-                <p className="wk-muted m-0 text-[13px] leading-normal text-muted">{t('system.globalSettings.createUser.description')}</p>
+            <div className="setting-row setting-row--password-reset">
+              <div className="setting-info">
+                <div className="setting-label">
+                  <span>{t('system.globalSettings.passwordReset.label')}</span>
+                  <Tag theme="danger" variant="light" size="small" className="setting-badge">{t('system.globalSettings.badgeHighRisk')}</Tag>
+                </div>
+                <p className="desc">{t('system.globalSettings.passwordReset.description')}</p>
               </div>
-              <div className="flex min-w-[280px] justify-end">
-                <button type="button" className="wk-create-user-trigger inline-flex min-w-[112px] cursor-pointer items-center justify-center gap-1.5 rounded-[6px] border border-accent bg-transparent px-3 text-[13px] leading-[30px] text-accent hover:bg-accent/10" onClick={() => setCreateUserVisible(true)}>
-                  {/* t-icon user-add */}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M19 8v6M22 11h-6" /></svg>
-                  {t('system.globalSettings.createUser.action')}
-                </button>
+              <div className="setting-control">
+                <Button theme="danger" variant="text" className="password-reset-trigger" icon={<TIcon name="lock-on" />} onClick={() => setResetPasswordVisible(true)}>{t('system.globalSettings.passwordReset.action')}</Button>
+              </div>
+            </div>
+            <div className="setting-row setting-row--create-user">
+              <div className="setting-info">
+                <div className="setting-label">
+                  <span>{t('system.globalSettings.createUser.label')}</span>
+                  <Tag theme="danger" variant="light" size="small" className="setting-badge">{t('system.globalSettings.badgeHighRisk')}</Tag>
+                </div>
+                <p className="desc">{t('system.globalSettings.createUser.description')}</p>
+              </div>
+              <div className="setting-control">
+                <Button theme="primary" variant="text" className="create-user-trigger" icon={<TIcon name="user-add" />} onClick={() => setCreateUserVisible(true)}>{t('system.globalSettings.createUser.action')}</Button>
               </div>
             </div>
           </> : null}
-          {rows.length === 0 ? <Card><Status>{t('system.globalSettings.empty')}</Status></Card> : rows.map((item) => {
+          {rows.length === 0 ? <div className="empty-state"><TIcon name="info-circle" size="24px" /><span>{t('system.globalSettings.empty')}</span></div> : rows.map((item) => {
             const current = editValues[item.key];
             const enums = Array.isArray(item.enum) ? item.enum : [];
             const itemSaving = savingKey === item.key;
             const dirty = isDirty(item);
-            return <div key={item.key} className={`wk-system-global-row items-start gap-6 border-b border-line-soft last:border-b-0 ${section === 'runtime' ? 'grid grid-cols-[minmax(0,1fr)_280px] bg-surface px-4 py-3.5' : 'flex justify-between py-5'}`}>
-              <div className={`wk-system-global-info min-w-0 ${section === 'runtime' ? '' : 'flex-1 max-w-[65%] pr-6'}`}>
-                <div className={`wk-system-global-label m-0 mb-1 flex flex-wrap items-center gap-1.5 leading-[21px] font-medium text-ink ${section === 'runtime' ? 'text-[14px]' : 'text-[15px]'}`}>
-                  {keyLabel(item.key)}
-                  {item.requires_restart ? <Badge tone="warning">{t('system.globalSettings.badgeRequiresRestart')}</Badge> : null}
-                  {item.is_secret ? <Badge tone="primary">{t('system.globalSettings.badgeSecret')}</Badge> : null}
-                  {HIGH_IMPACT_KEYS.has(item.key) ? <Badge tone="danger">{t('system.globalSettings.badgeHighRisk')}</Badge> : null}
-                  {hasOverride(item) ? <Badge tone="success" title={t('system.globalSettings.badgeOverrideTooltip')}>{t('system.globalSettings.badgeOverride')}</Badge> : null}
+            return <div key={item.key} className="setting-row">
+              <div className="setting-info">
+                <div className="setting-label">
+                  <span>{keyLabel(item.key)}</span>
+                  {item.requires_restart ? <Tag theme="warning" variant="light" size="small" className="setting-badge">{t('system.globalSettings.badgeRequiresRestart')}</Tag> : null}
+                  {item.is_secret ? <Tag theme="primary" variant="light" size="small" className="setting-badge">{t('system.globalSettings.badgeSecret')}</Tag> : null}
+                  {HIGH_IMPACT_KEYS.has(item.key) ? <Tag theme="danger" variant="light" size="small" className="setting-badge">{t('system.globalSettings.badgeHighRisk')}</Tag> : null}
+                  {hasOverride(item) ? <Tag theme="success" variant="light" size="small" className="setting-badge" title={t('system.globalSettings.badgeOverrideTooltip')}>{t('system.globalSettings.badgeOverride')}</Tag> : null}
                 </div>
-                {keyDescription(item) ? <p className={`wk-muted m-0 text-muted leading-normal ${section === 'runtime' ? 'max-w-[620px] text-[12px]' : 'max-w-[480px] text-[13px]'}`}>{keyDescription(item)}</p> : null}
-                {modifiedMeta(item) ? <p className="m-0 mt-1.5 text-xs text-muted/70">{modifiedMeta(item)}</p> : null}
+                {keyDescription(item) ? <p className="desc">{keyDescription(item)}</p> : null}
+                {modifiedMeta(item) ? <div className="setting-meta">{t('system.globalSettings.modifiedAt', { value: modifiedMeta(item) })}</div> : null}
               </div>
-              <div className="wk-system-global-control flex min-w-[280px] flex-col items-end gap-1.5">
-                <div className="flex w-full items-center justify-end gap-2">
+              <div className="setting-control">
+                <div className="setting-control-row">
                   {item.value_type === 'bool'
-                    ? <Switch checked={current === true} disabled={itemSaving} aria-label={keyLabel(item.key)} onCheckedChange={(checked) => requestPersist(item, checked)} />
+                    ? <Switch value={current === true} disabled={itemSaving} aria-label={keyLabel(item.key)} onChange={(value) => requestPersist(item, value)} />
                     : enums.length > 0
-                      ? <Select className="max-w-[240px]" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} onChange={(event) => requestPersist(item, event.target.value)}>{enums.map((option) => <option key={option} value={option}>{enumLabel(item.key, option)}</option>)}</Select>
+                      ? <Select className="setting-input" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} options={enums.map((option) => ({ label: enumLabel(item.key, option), value: option }))} onChange={(value) => requestPersist(item, value)} />
                       : item.value_type === 'int'
-                        ? <NumberInput className="max-w-[210px]" value={typeof current === 'number' ? current : Number(current ?? 0)} min={minimumFor(item.key)} max={9999} disabled={itemSaving} aria-label={keyLabel(item.key)} onValueChange={(value) => setEditValues((state) => ({ ...state, [item.key]: value === '' ? '' : value }))} onBlur={(event) => { const parsed = event.target.value === '' ? null : Number(event.target.value); if (parsed !== null && !Number.isNaN(parsed)) void persist(item, parsed); }} />
+                        ? <InputNumber className="setting-input" value={typeof current === 'number' ? current : Number(current ?? 0)} min={minimumFor(item.key)} disabled={itemSaving} aria-label={keyLabel(item.key)} theme="normal" step={1} placeholder={t('system.globalSettings.tagInputPlaceholder')} onChange={(value) => { draftRef.current[item.key] = value; setEditValues((state) => ({ ...state, [item.key]: value })); }} onBlur={(value) => { const parsed = value === '' || value === null || value === undefined ? null : Number(value); if (parsed !== null && !Number.isNaN(parsed)) void persist(item, parsed); }} />
                         : item.value_type === 'string_list'
-                          ? <TagInput values={Array.isArray(current) ? (current as string[]) : []} placeholder={t('system.globalSettings.tagInputPlaceholder')} ariaLabel={keyLabel(item.key)} disabled={itemSaving} onCommit={onSsrfTagsCommit} />
-                          : <Input className="max-w-[240px]" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} onChange={(event) => setEditValues((state) => ({ ...state, [item.key]: event.target.value }))} onBlur={(event) => void persist(item, event.target.value)} />}
-                  {itemSaving ? <span className="wk-system-global-saving inline-flex min-w-[52px] items-center gap-1 text-xs text-muted" role="status">{t('system.globalSettings.saving')}</span> : null}
-                  {savedKey === item.key ? <span className="inline-flex min-w-[52px] items-center gap-1 text-xs text-[#0a8f4c]" role="status">{t('system.globalSettings.saved')}</span> : null}
+                          ? <TagInput value={Array.isArray(current) ? (current as string[]) : []} placeholder={t('system.globalSettings.tagInputPlaceholder')} aria-label={keyLabel(item.key)} disabled={itemSaving} className="setting-input setting-input--wide" clearable onChange={(value) => { setEditValues((state) => ({ ...state, [item.key]: value })); onSsrfTagsCommit(value as string[]); }} />
+                          : <Input className="setting-input" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} clearable placeholder={t('system.globalSettings.tagInputPlaceholder')} onChange={(value) => { draftRef.current[item.key] = value; setEditValues((state) => ({ ...state, [item.key]: value })); }} onBlur={() => { const draft = draftRef.current[item.key]; void persist(item, typeof draft === 'string' ? draft : String(current ?? '')); }} />}
+                  {itemSaving ? <div className="setting-save-state" role="status"><Loading size="small" /><span>{t('system.globalSettings.saving')}</span></div> : null}
+                  {savedKey === item.key ? <div className="setting-save-state setting-save-state--success" role="status"><TIcon name="check-circle-filled" /><span>{t('system.globalSettings.saved')}</span></div> : null}
                 </div>
-                {hasOverride(item) || item.key === 'tenant.default_storage_quota_gb' ? <div className="flex justify-end gap-2">
-                  {item.key === 'tenant.default_storage_quota_gb' ? <button type="button" className="wk-system-global-bulk cursor-pointer border-0 bg-transparent p-0 text-xs text-accent disabled:cursor-not-allowed disabled:text-muted" disabled={itemSaving || dirty} title={t('system.globalSettings.bulkApply.tooltip')} onClick={() => runBulkAction(item)}>{t('system.globalSettings.bulkApply.label')}</button> : null}
-                  {hasOverride(item) ? <button type="button" className="wk-system-global-reset cursor-pointer border-0 bg-transparent p-0 text-xs text-accent disabled:cursor-not-allowed disabled:text-muted" title={t('system.globalSettings.reset.tooltip')} onClick={() => resetSetting(item)}>{t('system.globalSettings.reset.label')}</button> : null}
+                {hasOverride(item) || item.key === 'tenant.default_storage_quota_gb' ? <div className="setting-control-actions">
+                  {item.key === 'tenant.default_storage_quota_gb' ? <Button variant="text" size="small" className="setting-bulk-btn" icon={<TIcon name="usergroup" />} disabled={itemSaving || dirty} title={t('system.globalSettings.bulkApply.tooltip')} onClick={() => runBulkAction(item)}>{t('system.globalSettings.bulkApply.label')}</Button> : null}
+                  {hasOverride(item) ? <Button variant="text" size="small" className="setting-reset-btn" icon={<TIcon name="refresh" />} disabled={itemSaving} title={t('system.globalSettings.reset.tooltip')} onClick={() => resetSetting(item)}>{t('system.globalSettings.reset.label')}</Button> : null}
                 </div> : null}
               </div>
             </div>;
           })}
         </div>
-      </div>
+      </section>
     </>}
     <ResetPasswordDialog client={client} open={resetPasswordVisible} onClose={() => setResetPasswordVisible(false)} onAnnounced={(text) => { setMessage(text); setMessageTone('success'); }} onFailed={(text) => { setMessage(text); setMessageTone('error'); }} />
     <CreateUserDialog client={client} open={createUserVisible} onClose={() => setCreateUserVisible(false)} onAnnounced={(text) => { setMessage(text); setMessageTone('success'); }} onFailed={(text) => { setMessage(text); setMessageTone('error'); }} />
     <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
-  </section>;
+  </div>;
 }
 
 /** Vue newPasswordRules (frontend/src/utils/passwordPolicy.ts), message form. */
@@ -566,18 +547,18 @@ function ResetPasswordDialog({ client, open, onClose, onAnnounced, onFailed }: {
     <p className="wk-muted m-0 mt-1 mb-3 text-[13px] leading-normal text-muted">{t('system.globalSettings.passwordReset.warning')}</p>
     <div className="grid gap-3">
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.passwordReset.emailLabel')}
-        <Input value={email} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.emailPlaceholder')} onChange={(event) => setEmail(event.target.value)} />
+        <WkInput value={email} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.emailPlaceholder')} onChange={(event) => setEmail(event.target.value)} />
       </label>
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.passwordReset.newPasswordLabel')}
-        <Input type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.newPasswordPlaceholder')} onChange={(event) => setNewPassword(event.target.value)} />
+        <WkInput type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.newPasswordPlaceholder')} onChange={(event) => setNewPassword(event.target.value)} />
       </label>
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.passwordReset.confirmPasswordLabel')}
-        <Input type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.confirmPasswordPlaceholder')} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void submit(); }} />
+        <WkInput type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.confirmPasswordPlaceholder')} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void submit(); }} />
       </label>
       {errors.length > 0 ? <div role="alert" className="grid gap-0.5 text-[12px] text-danger">{errors.map((error) => <span key={error}>{error}</span>)}</div> : null}
       <div className="mt-1 flex justify-end gap-2">
-        <Button type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</Button>
-        <Button type="button" className="wk-reset-password-submit !bg-danger !text-white" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.passwordReset.confirmBtn')}</Button>
+        <WkButton type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</WkButton>
+        <WkButton type="button" className="wk-reset-password-submit !bg-danger !text-white" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.passwordReset.confirmBtn')}</WkButton>
       </div>
     </div>
   </Dialog>;
@@ -648,15 +629,15 @@ function CreateUserDialog({ client, open, onClose, onAnnounced, onFailed }: { cl
         <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3"><dt className="font-medium text-muted">{t('system.globalSettings.createUser.generated.passwordLabel')}</dt><dd className="m-0 break-all font-mono">{reveal.generatedPassword}</dd></div>
       </dl>
       <div className="mt-3 flex justify-end gap-2">
-        <Button type="button" onClick={() => void copyDetails()}>{t('system.globalSettings.createUser.generated.copyBtn')}</Button>
-        <Button type="button" className="wk-create-user-acknowledge !bg-accent !text-white" onClick={() => { setReveal(null); onClose(); }}>{t('system.globalSettings.createUser.generated.acknowledgeBtn')}</Button>
+        <WkButton type="button" onClick={() => void copyDetails()}>{t('system.globalSettings.createUser.generated.copyBtn')}</WkButton>
+        <WkButton type="button" className="wk-create-user-acknowledge !bg-accent !text-white" onClick={() => { setReveal(null); onClose(); }}>{t('system.globalSettings.createUser.generated.acknowledgeBtn')}</WkButton>
       </div>
     </> : <div className="grid gap-3">
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.createUser.usernameLabel')}
-        <Input value={username} disabled={submitting} placeholder={t('system.globalSettings.createUser.usernamePlaceholder')} onChange={(event) => setUsername(event.target.value)} />
+        <WkInput value={username} disabled={submitting} placeholder={t('system.globalSettings.createUser.usernamePlaceholder')} onChange={(event) => setUsername(event.target.value)} />
       </label>
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.createUser.emailLabel')}
-        <Input value={email} disabled={submitting} placeholder={t('system.globalSettings.createUser.emailPlaceholder')} onChange={(event) => setEmail(event.target.value)} />
+        <WkInput value={email} disabled={submitting} placeholder={t('system.globalSettings.createUser.emailPlaceholder')} onChange={(event) => setEmail(event.target.value)} />
       </label>
       <label className="flex items-center gap-2 text-[13px] text-ink">
         <Checkbox checked={autoGenerate} disabled={submitting} onChange={(event) => setAutoGenerate(event.target.checked)} />
@@ -664,16 +645,16 @@ function CreateUserDialog({ client, open, onClose, onAnnounced, onFailed }: { cl
       </label>
       {!autoGenerate ? <>
         <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.createUser.newPasswordLabel')}
-          <Input type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.newPasswordPlaceholder')} onChange={(event) => setNewPassword(event.target.value)} />
+          <WkInput type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.newPasswordPlaceholder')} onChange={(event) => setNewPassword(event.target.value)} />
         </label>
         <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.createUser.confirmPasswordLabel')}
-          <Input type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.confirmPasswordPlaceholder')} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void submit(); }} />
+          <WkInput type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.confirmPasswordPlaceholder')} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void submit(); }} />
         </label>
       </> : null}
       {errors.length > 0 ? <div role="alert" className="grid gap-0.5 text-[12px] text-danger">{errors.map((error) => <span key={error}>{error}</span>)}</div> : null}
       <div className="mt-1 flex justify-end gap-2">
-        <Button type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</Button>
-        <Button type="button" className="wk-create-user-submit !bg-accent !text-white" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.createUser.confirmBtn')}</Button>
+        <WkButton type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</WkButton>
+        <WkButton type="button" className="wk-create-user-submit !bg-accent !text-white" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.createUser.confirmBtn')}</WkButton>
       </div>
     </div>}
   </Dialog>;

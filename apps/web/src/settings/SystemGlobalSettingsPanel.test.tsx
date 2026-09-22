@@ -10,7 +10,28 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/settings' });
-Object.assign(globalThis, { React, window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Event: dom.window.Event, IS_REACT_ACT_ENVIRONMENT: true });
+/* T12c：面板控制域换 tdesign Select/TagInput/Tabs 后依赖 Popup 运行时，
+ * 补齐 DOM 构造器全局（OrganizationsPage.test / pilot agents 同款）。 */
+Object.assign(globalThis, {
+  React,
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
+  Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  IS_REACT_ACT_ENVIRONMENT: true,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
+});
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
@@ -93,13 +114,34 @@ async function mountPanel(client: WeKnoraClient, settings: SystemSetting[]) {
   return document.body;
 }
 
+/* T12c：面板换 tdesign Tabs——nav item 是 div.t-tabs__nav-item（非 role=tab
+ * button），点击仍走组件 onClick。 */
 function tabButton(container: ParentNode, label: string) {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((button) => button.textContent === label);
+  return Array.from(container.querySelectorAll<HTMLElement>('.t-tabs__nav-item')).find((item) => item.textContent === label);
 }
 function setInputValue(input: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, value);
   input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
 }
+/** tdesign Select 交互：点开 trigger，在 body 弹层里点文本匹配的选项
+ * （GeneralPreferencesPanel.test 同款）。 */
+async function pickOption(container: ParentNode, optionText: string) {
+  const trigger = container.querySelector('.t-select__wrap .t-input') as HTMLElement | null;
+  assert.ok(trigger, 'the tdesign select trigger renders');
+  await act(async () => { trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  let options = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'));
+  if (options.length === 0) {
+    await act(async () => { trigger.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    options = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'));
+  }
+  const target = options.find((el) => (el.textContent ?? '').trim() === optionText);
+  assert.ok(target, 'option missing: ' + optionText + ' (have ' + options.map((el) => el.textContent).join(',') + ')');
+  await act(async () => { target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
 async function clickButton(container: ParentNode, text: string) {
   const button = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((candidate) => candidate.textContent === text);
   assert.ok(button, `button "${text}" must render`);
@@ -117,7 +159,8 @@ test('renders the Vue section shape: counts, descriptions, labels, badges and mo
   }
   assert.ok(text.includes('管理系统管理员、公开注册与用户创建空间的规则。'), 'the access section description renders');
   assert.ok(text.includes('自助注册模式'), 'the Vue keyLabel renders');
-  assert.ok(text.includes('仅邀请（关闭公网注册）'), 'enum options render the Vue labels');
+  const enumTrigger = container.querySelector<HTMLInputElement>('.t-select__wrap input.t-input__inner');
+  assert.equal(enumTrigger?.value, '仅邀请（关闭公网注册）', 'enum options render the Vue labels');
   assert.ok(text.includes('已覆盖'), 'the override badge renders for persisted rows');
   assert.ok(text.includes('上次修改：'), 'the modified-by meta line renders');
   assert.ok(text.includes('高风险'), 'the high-risk badge renders');
@@ -144,7 +187,7 @@ test('reset-to-default only renders for rows with a DB override; quota keeps the
   await act(async () => tabButton(container, '空间默认值 3')?.click());
   const text = container.textContent ?? '';
   assert.ok(text.includes('新空间默认存储配额 (GB)'), 'the quota row uses the Vue keyLabel');
-  const bulk = container.querySelector<HTMLButtonElement>('.wk-system-global-bulk');
+  const bulk = container.querySelector<HTMLButtonElement>('.setting-bulk-btn');
   assert.ok(bulk, 'the quota row carries the bulk-apply action');
 });
 
@@ -167,7 +210,7 @@ test('promoting an admin goes through the Vue confirm copy and the promote API',
   assert.ok((container.textContent ?? '').includes('peer-admin@local.dev'), 'the peer admin tag renders');
   assert.equal((container.textContent ?? '').includes('self@local.dev'), false, 'the current user is not tagged');
 
-  const field = container.querySelector<HTMLInputElement>('.wk-tag-input-field');
+  const field = container.querySelector<HTMLInputElement>('.t-tag-input input');
   assert.ok(field, 'the admin tag input renders');
   await act(async () => {
     setInputValue(field, 'new-admin@local.dev');
@@ -185,9 +228,9 @@ test('removing an admin tag goes through the revoke confirm and API', async () =
   const calls = { promote: [], revoke: [] as Array<unknown>, resetPassword: [], createUser: [], update: [] as Array<[string, unknown]>, reset: [], bulk: 0 };
   const admins = [{ id: 'u-peer', username: 'peer', email: 'peer-admin@local.dev', is_active: true, is_system_admin: true, created_at: '', updated_at: '' }];
   const container = await mountPanel(makeClient({ settings: fullSettings(), admins, calls, profile: { id: 'u-self' } }), fullSettings());
-  const remove = container.querySelector<HTMLButtonElement>('.wk-tag-input-tag button');
-  assert.ok(remove, 'the tag remove button renders');
-  await act(async () => remove.click());
+  const remove = container.querySelector<HTMLElement>('.t-tag-input .t-tag__icon-close');
+  assert.ok(remove, 'the tag remove icon renders');
+  await act(async () => { remove.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
   assert.ok((container.textContent ?? '').includes('确认撤销 peer-admin@local.dev 的系统管理员权限？'), 'the Vue revoke confirm body renders');
   await clickButton(container, '确认撤销');
   await act(async () => {});
@@ -243,12 +286,9 @@ test('creating a user with a generated password shows the one-time reveal view',
 test('high-risk registration mode requires confirmation before the PUT lands', async () => {
   const calls = { promote: [], revoke: [], resetPassword: [], createUser: [], update: [] as Array<[string, unknown]>, reset: [], bulk: 0 };
   const container = await mountPanel(makeClient({ settings: fullSettings(), calls }), fullSettings());
-  const select = container.querySelector<HTMLSelectElement>('select');
+  const select = container.querySelector('.t-select__wrap');
   assert.ok(select, 'the enum control renders');
-  await act(async () => {
-    select.value = 'self_serve';
-    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
+  await pickOption(container, '自助注册（任何人可注册）');
   const confirmText = container.textContent ?? '';
   assert.ok(confirmText.includes('即将把「自助注册模式」改为：self_serve'), 'the Vue high-risk confirm body renders with the new value');
   await clickButton(container, '确认保存');
@@ -272,7 +312,7 @@ test('ssrf whitelist edits confirm per entry before the PUT', async () => {
   const calls = { promote: [], revoke: [], resetPassword: [], createUser: [], update: [] as Array<[string, unknown]>, reset: [], bulk: 0 };
   const container = await mountPanel(makeClient({ settings: fullSettings(), calls }), fullSettings());
   await act(async () => tabButton(container, '网络安全 2')?.click());
-  const field = container.querySelector<HTMLInputElement>('.wk-tag-input-field');
+  const field = container.querySelector<HTMLInputElement>('.t-tag-input input');
   assert.ok(field, 'the ssrf tag input renders');
   await act(async () => {
     setInputValue(field, 'example.com');
