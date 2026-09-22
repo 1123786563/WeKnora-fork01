@@ -248,7 +248,7 @@ for (const [section, heading, panelSelector] of [
   ['vectorstore', '向量数据库引擎', '.wk-settings-resource'],
   ['websearch', '网络搜索配置', '.wk-settings-resource'],
   ['weknoracloud', 'WeKnora Cloud', '.wk-settings-cloud'],
-  ['ollama', 'Ollama 配置', '.wk-settings-ollama'],
+  ['ollama', 'Ollama 配置', '.ollama-settings'],
   ['retrieval', '搜索设置', 'form.wk-settings-editor'],
 ] as const) {
   test(`${section}: load failure degrades silently with the panel rendering on a null payload (R480 Vue baseline)`, async () => {

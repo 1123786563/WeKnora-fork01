@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react';
+// Ollama settings — TDesign 同构迁移（T12b）平移自
+// frontend/src/views/settings/OllamaSettings.vue。DOM/类名/文案逐节点对照
+// Vue SFC（t-tag 状态徽标 / t-button 重新检测 / t-input 禁用地址 /
+// t-alert 失败告警 / 下载与已装模型分区）；样式在 settings.td.css §10。
+import { useEffect, useRef, useState } from 'react';
 import type { OllamaModel, OllamaStatus, SettingsPayload, WeKnoraClient } from '@weknora/api-client';
-import type { Locale } from '@weknora/i18n';
-import { Button, Card, Input, Status } from '@weknora/ui';
+import { Icon as TIcon } from 'tdesign-icons-react';
+import { Alert as TAlert, Button as TButton, Input as TInput, Loading as TLoading, Progress as TProgress, Tag as TTag } from 'tdesign-react';
 import { ollamaModelInput } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
+import { pushSettingsToast } from './settings-toast.tsx';
 
 type OllamaPayload = { status?: OllamaStatus; models?: OllamaModel[] };
 function object(value: unknown): Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
@@ -32,116 +37,263 @@ function formatDate(dateStr: string | undefined, t: (key: string, values?: Recor
   return date.toLocaleDateString();
 }
 
-const OLLAMA_EXTRA_COPY: Record<Locale, { progressUpdated: string; task: string; accepted: string; progress: string; reported: string; sizeUnavailable: string; bytes: string }> = {
-  'zh-CN': { progressUpdated: '进度已刷新', task: '任务', accepted: '已接受', progress: '进度', reported: '已返回', sizeUnavailable: '大小未知', bytes: '字节' },
-  'en-US': { progressUpdated: 'Progress refreshed', task: 'Task', accepted: 'Accepted', progress: 'Progress', reported: 'Reported', sizeUnavailable: 'Size unavailable', bytes: 'bytes' },
-  'ja-JP': { progressUpdated: '進捗を更新しました', task: 'タスク', accepted: '受付済み', progress: '進捗', reported: '取得済み', sizeUnavailable: 'サイズ不明', bytes: 'バイト' },
-  'ko-KR': { progressUpdated: '진행률을 새로 고쳤습니다', task: '작업', accepted: '접수됨', progress: '진행률', reported: '보고됨', sizeUnavailable: '크기 없음', bytes: '바이트' },
-  'ru-RU': { progressUpdated: 'Прогресс обновлён', task: 'Задача', accepted: 'Принято', progress: 'Прогресс', reported: 'Получено', sizeUnavailable: 'Размер неизвестен', bytes: 'байт' },
-};
-
 export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraClient; initialValue: unknown }) {
   const initial = payload(initialValue);
-  const locale = readInitialLocale();
-  const t = settingsT(locale);
-  const copy = OLLAMA_EXTRA_COPY[locale];
+  const t = settingsT(readInitialLocale());
+  // Vue localBaseUrl：store 配置 → 探测回填 → 默认 http://localhost:11434。
+  const [localBaseUrl, setLocalBaseUrl] = useState(typeof initial.status?.baseUrl === 'string' && initial.status.baseUrl ? initial.status.baseUrl : 'http://localhost:11434');
   const [status, setStatus] = useState<OllamaStatus | null>(initial.status ?? null);
   const [models, setModels] = useState<OllamaModel[]>(initial.models ?? []);
-  const [modelName, setModelName] = useState('');
-  const [activeTask, setActiveTask] = useState('');
-  const [progress, setProgress] = useState<SettingsPayload | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadModelName, setDownloadModelName] = useState('');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const progressTimerRef = useRef<number | null>(null);
 
-  useEffect(() => { const next = payload(initialValue); setStatus(next.status ?? { available: false }); setModels(next.models ?? []); }, [initialValue]);
+  const connectionStatus: boolean | null = testing ? null : status ? status.available === true : null;
 
-  async function refresh() {
-    setBusy(true); setTesting(true); setStatus(null); setError(null); setNotice(null);
-    try { const [nextStatus, nextModels] = await Promise.all([client.settings.ollama.status(), client.settings.ollama.models()]); setStatus(nextStatus); setModels(nextModels); }
-    catch (reason) { setStatus({ available: false }); setError(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.connectFailed')); }
-    finally { setTesting(false); setBusy(false); }
+  useEffect(() => {
+    const next = payload(initialValue);
+    setStatus(next.status ?? { available: false });
+    setModels(next.models ?? []);
+    if (typeof next.status?.baseUrl === 'string' && next.status.baseUrl) setLocalBaseUrl(next.status.baseUrl);
+  }, [initialValue]);
+
+  useEffect(() => () => { if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current); }, []);
+
+  // Vue refreshModels（listOllamaModels）。
+  async function refreshModels() {
+    setLoadingModels(true);
+    try {
+      const nextModels = await client.settings.ollama.models();
+      setModels(nextModels);
+    } catch (reason) {
+      pushSettingsToast(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.listFailed'));
+    } finally { setLoadingModels(false); }
   }
 
-  async function download() {
-    if (!modelName.trim()) return;
-    setBusy(true); setError(null); setNotice(null);
-    try { const result = await client.settings.ollama.download(ollamaModelInput(modelName)); const id = taskId(result); setActiveTask(id); setProgress(result); setModelName(''); setNotice(t('ollamaSettings.toasts.downloadStarted', { name: id || '' })); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.downloadFailed')); }
-    finally { setBusy(false); }
+  // Vue testConnection（checkOllamaStatus）。
+  async function testConnection() {
+    setTesting(true);
+    setStatus(null);
+    try {
+      const [nextStatus] = await Promise.all([client.settings.ollama.status()]);
+      if (typeof nextStatus.baseUrl === 'string' && nextStatus.baseUrl && nextStatus.baseUrl !== localBaseUrl) setLocalBaseUrl(nextStatus.baseUrl);
+      setStatus(nextStatus);
+      if (nextStatus.available === true) {
+        pushSettingsToast(t('ollamaSettings.toasts.connected'), 'success');
+        void refreshModels();
+      } else {
+        pushSettingsToast((nextStatus as { error?: string }).error || t('ollamaSettings.toasts.connectFailed'));
+      }
+    } catch (reason) {
+      setStatus({ available: false });
+      pushSettingsToast(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.connectFailed'));
+    } finally { setTesting(false); }
   }
 
-  async function checkProgress() {
-    if (!activeTask) return;
-    setBusy(true); setError(null); setNotice(null);
-    try { const result = await client.settings.ollama.progress(activeTask); setProgress(result); setNotice(copy.progressUpdated); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.progressFailed')); }
-    finally { setBusy(false); }
+  // Vue downloadModel + 1s 进度轮询（getDownloadProgress）。
+  async function downloadModel() {
+    if (!downloadModelName.trim()) return;
+    setDownloading(true);
+    setDownloadProgress(0);
+    try {
+      const result = await client.settings.ollama.download(ollamaModelInput(downloadModelName));
+      const id = taskId(result);
+      if ((result as { status?: string }).status === 'failed' || !id) {
+        pushSettingsToast(t('ollamaSettings.toasts.downloadFailed'));
+        setDownloading(false);
+        setDownloadProgress(0);
+        return;
+      }
+      pushSettingsToast(t('ollamaSettings.toasts.downloadStarted', { name: downloadModelName }), 'success');
+      if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
+      progressTimerRef.current = window.setInterval(async () => {
+        try {
+          const task = await client.settings.ollama.progress(id);
+          const value = typeof task.progress === 'number' ? task.progress : 0;
+          setDownloadProgress(value);
+          if (task.status === 'completed') {
+            window.clearInterval(progressTimerRef.current!);
+            progressTimerRef.current = null;
+            pushSettingsToast(t('ollamaSettings.toasts.downloadCompleted', { name: downloadModelName }), 'success');
+            setDownloadModelName('');
+            setDownloadProgress(0);
+            setDownloading(false);
+            void refreshModels();
+          } else if (task.status === 'failed') {
+            window.clearInterval(progressTimerRef.current!);
+            progressTimerRef.current = null;
+            pushSettingsToast((task as { message?: string }).message || t('ollamaSettings.toasts.downloadFailed'));
+            setDownloading(false);
+            setDownloadProgress(0);
+          }
+        } catch {
+          window.clearInterval(progressTimerRef.current!);
+          progressTimerRef.current = null;
+          pushSettingsToast(t('ollamaSettings.toasts.progressFailed'));
+          setDownloading(false);
+          setDownloadProgress(0);
+        }
+      }, 1000);
+    } catch (reason) {
+      pushSettingsToast(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.downloadFailed'));
+      setDownloading(false);
+      setDownloadProgress(0);
+    }
   }
 
-  return <div className="wk-settings-ollama">
-    {/* Vue OllamaSettings.vue: the panel owns its section-header (h2 +
-        description, no divider) and the rows sit directly on the panel
-        background via the shared .settings-group/.setting-row geometry. */}
-    <div className="section-header">
-      <h2>{t('ollamaSettings.title')}</h2>
-      <p className="section-description">{t('ollamaSettings.description')}</p>
-    </div>
-    <div className="settings-group">
-      <div className="setting-row">
-        <div className="setting-info"><label>{t('ollamaSettings.status.label')}</label><p className="desc">{t('ollamaSettings.status.desc')}</p></div>
-        <div className="setting-control">
-          <div className="status-display flex items-center gap-[12px]">
-          {testing ? <Status tone="neutral">{t('ollamaSettings.status.testing')}</Status>
-            : status?.available ? (
-              // Vue t-tag theme=success variant=light: 24px chip, check-circle icon.
-              <span className="inline-flex items-center gap-[6px] rounded-[3px] bg-[#e3f9e9] px-[10px] py-[4px] text-[12px] leading-[16px] text-[#0a8f4c]">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1.1-7.4l5.3-5.3-1.4-1.4-3.9 3.9-1.9-1.9-1.4 1.4 3.3 3.3z" /></svg>
-                {t('ollamaSettings.status.available')}
-              </span>
-            ) : status ? (
-              // Vue t-tag theme=danger variant=light with close-circle-filled:
-              // 24px chip (#fdecee), filled red x-circle icon.
-              <span className="inline-flex items-center gap-[6px] rounded-[3px] bg-[#fdecee] px-[10px] py-[4px] text-[12px] leading-[16px] text-[#e34d59]">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1.1-7.4 5.3-5.3-1.4-1.4-3.9 3.9-1.9-1.9-1.4 1.4 3.3 3.3z" /></svg>
-                {t('ollamaSettings.status.unavailable')}
-              </span>
-            ) : <Status tone="neutral">{t('ollamaSettings.status.untested')}</Status>}
-          <button type="button" className="flex cursor-pointer items-center gap-[8px] border-0 bg-transparent p-0 text-[14px] text-[rgba(0,0,0,0.9)] [font:inherit] hover:text-[#07c05f] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || testing} onClick={() => void refresh()}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
-            {t('ollamaSettings.status.retest')}
-          </button>
+  return (
+    <div className="ollama-settings">
+      <div className="section-header">
+        <h2>{t('ollamaSettings.title')}</h2>
+        <p className="section-description">{t('ollamaSettings.description')}</p>
+      </div>
+
+      <div className="settings-group">
+        {/* Ollama 服务状态 */}
+        <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('ollamaSettings.status.label')}</label>
+            <p className="desc">{t('ollamaSettings.status.desc')}</p>
+          </div>
+          <div className="setting-control">
+            <div className="status-display">
+              {/* Vue 模板 t-tag 内 icon 与 {{ }} 插值间的换行缩进编译为一个
+                  前导空格文本（「 不可用」）；单文本节点复刻（台账 #11/#13
+                  先例：模板字符串拼空格，勿拆两个文本节点）。 */}
+              {testing ? <TTag theme="default" variant="light">
+                <TIcon name="loading" className="status-icon spinning" />
+                {` ${t('ollamaSettings.status.testing')}`}
+              </TTag>
+                : connectionStatus === true ? <TTag theme="success" variant="light">
+                <TIcon name="check-circle-filled" />
+                {` ${t('ollamaSettings.status.available')}`}
+              </TTag>
+                  : connectionStatus === false ? <TTag theme="danger" variant="light">
+                <TIcon name="close-circle-filled" />
+                {` ${t('ollamaSettings.status.unavailable')}`}
+              </TTag>
+                    : <TTag theme="default" variant="light">
+                <TIcon name="help-circle" />
+                {` ${t('ollamaSettings.status.untested')}`}
+              </TTag>}
+              {/* Vue #icon slot 使图标渲染在 .t-button__text 之外（icon prop
+                  直译，playbook §3.3）；label 同样带前导空格。 */}
+              <TButton size="small" variant="text" loading={testing} icon={<TIcon name="refresh" />} onClick={() => void testConnection()}>
+                {` ${t('ollamaSettings.status.retest')}`}
+              </TButton>
+            </div>
+          </div>
+        </div>
+
+        {/* Ollama 服务地址 */}
+        <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('ollamaSettings.address.label')}</label>
+            <p className="desc">{t('ollamaSettings.address.desc')}</p>
+          </div>
+          <div className="setting-control">
+            <div className="url-control-group">
+              <TInput
+                value={localBaseUrl}
+                placeholder={t('ollamaSettings.address.placeholder')}
+                disabled
+                style={{ flex: 1 }}
+              />
+            </div>
+            {connectionStatus === false ? <TAlert
+              theme="warning"
+              message={t('ollamaSettings.address.failed')}
+              style={{ marginTop: '8px' }}
+            /> : null}
           </div>
         </div>
       </div>
-      <div className="setting-row">
-        <div className="setting-info"><label>{t('ollamaSettings.address.label')}</label><p className="desc">{t('ollamaSettings.address.desc')}</p></div>
-        {/* Vue renders the detected address in a disabled input box inside the
-            360px control column; the failed-check warning alert stacks under
-            it (margin-top 8px), both right-aligned in the same column. */}
-        <div className="setting-control setting-control--stacked">
-          {/* Vue t-input disabled: 14px left-aligned value, disabled gray. */}
-          <Input readOnly disabled value={status?.baseUrl ?? ''} placeholder="—" className="w-full bg-[#eeeeee] text-[14px] text-[rgba(0,0,0,0.26)]" aria-label={t('ollamaSettings.address.label')} />
-          {/* Vue t-alert theme=warning (measured): #f9e0c7 wash, 20px filled
-              orange icon, 24px horizontal / 16px vertical padding, 14px/22px
-              near-black message; the alert fills the same 360px column as the
-              disabled input above it. */}
-          {status && !status.available ? <p role="alert" className="m-0 mt-0 box-border flex w-full items-start gap-[8px] rounded-[6px] bg-[rgb(249,224,199)] px-[24px] py-[16px] text-[14px] leading-[22px] text-[rgba(0,0,0,0.9)]"><svg className="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="#ed7b2f" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" /><path d="M12 6.6a1.3 1.3 0 0 1 1.3 1.3v5a1.3 1.3 0 1 1-2.6 0v-5A1.3 1.3 0 0 1 12 6.6z" fill="#fff" /><circle cx="12" cy="16.6" r="1.35" fill="#fff" /></svg><span>{t('ollamaSettings.address.failed')}</span></p> : null}
+
+      {/* 下载新模型 */}
+      {connectionStatus === true ? <div className="model-category-section">
+        <div className="category-header">
+          <div className="header-info">
+            <h3>{t('ollamaSettings.download.title')}</h3>
+            <p>
+              {t('ollamaSettings.download.descPrefix')}
+              {/* Vue 文本插值与 t-icon 间的换行缩进＝尾部空格文本节点
+                  （「浏览模型库 」），单文本节点复刻。 */}
+              <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer" className="doc-link">
+                {`${t('ollamaSettings.download.browse')} `}
+                <TIcon name="link" className="link-icon" />
+              </a>
+            </p>
+          </div>
         </div>
-      </div>
+
+        <div className="download-content">
+          <div className="input-group">
+            <TInput
+              value={downloadModelName}
+              placeholder={t('ollamaSettings.download.placeholder')}
+              style={{ flex: 1 }}
+              onChange={(value) => setDownloadModelName(String(value ?? ''))}
+            />
+            <TButton
+              variant="base"
+              theme="default"
+              size="small"
+              className="download-btn"
+              loading={downloading}
+              disabled={!downloadModelName.trim()}
+              icon={<TIcon name="download" />}
+              onClick={() => void downloadModel()}
+            >
+              {` ${t('ollamaSettings.download.download')}`}
+            </TButton>
+          </div>
+
+          {downloadProgress > 0 ? <div className="download-progress">
+            <div className="progress-info">
+              <span>{t('ollamaSettings.download.downloading', { name: downloadModelName })}</span>
+              <span>{downloadProgress.toFixed(2)}%</span>
+            </div>
+            <TProgress percentage={downloadProgress} size="small" />
+          </div> : null}
+        </div>
+      </div> : null}
+
+      {/* 已下载的模型 */}
+      {connectionStatus === true ? <div className="model-category-section">
+        <div className="category-header">
+          <div className="header-info">
+            <h3>{t('ollamaSettings.installed.title')}</h3>
+            <p>{t('ollamaSettings.installed.desc')}</p>
+          </div>
+          <TButton size="small" variant="text" loading={loadingModels} icon={<TIcon name="refresh" />} onClick={() => void refreshModels()}>
+            {` ${t('common.refresh')}`}
+          </TButton>
+        </div>
+
+        {loadingModels ? <div className="loading-state">
+          <TLoading size="small" />
+          <span>{t('common.loading')}</span>
+        </div>
+          : models.length > 0 ? <div className="model-list-container">
+            {models.map((model) => (
+              <div key={model.name} className="model-card">
+                <div className="model-info">
+                  <div className="model-name">{model.name}</div>
+                  <div className="model-meta">
+                    <span className="model-size">{formatSize(Number(model.size))}</span>
+                    <span className="model-modified">{formatDate(model.modified_at, t)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+            : <div className="empty-state">
+              <p className="empty-text">{t('ollamaSettings.installed.empty')}</p>
+            </div>}
+      </div> : null}
     </div>
-    {status?.available && !testing ? <>
-      <Card>
-        <h3>{t('ollamaSettings.download.title')}</h3>
-        <p className="wk-muted text-muted">{t('ollamaSettings.download.descPrefix')} <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer">{t('ollamaSettings.download.browse')}</a></p>
-        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Input aria-label={t('ollamaSettings.download.placeholder')} className="w-full min-w-0" value={modelName} placeholder={t('ollamaSettings.download.placeholder')} onChange={(event) => setModelName(event.target.value)} /><Button type="button" className="shrink-0 whitespace-nowrap" disabled={busy || !modelName.trim()} onClick={() => void download()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /><path d="M4 21h16" /></svg>{t('ollamaSettings.download.download')}</Button>{activeTask ? <Button type="button" disabled={busy} onClick={() => void checkProgress()}>{t('common.refresh')}</Button> : null}</div>
-        {progress ? <dl className="wk-settings-values mb-0 mt-4 grid gap-[.65rem]"><div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1"><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{copy.task}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{activeTask || copy.accepted}</dd></div><div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1"><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{copy.progress}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{String(progress.progress ?? progress.status ?? copy.reported)}</dd></div></dl> : null}
-      </Card>
-      <Card>
-        <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col"><div><h3>{t('ollamaSettings.installed.title')}</h3><p className="wk-muted text-muted m-0">{t('ollamaSettings.installed.desc')}</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>
-        {models.length === 0 ? <Status>{t('ollamaSettings.installed.empty')}</Status> : <ul className="wk-list m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3 p-0">{models.map((model) => <li key={model.name} className="rounded-[10px] border border-[#e4e7ec] bg-white px-4 py-3"><div className="min-w-0"><strong className="block truncate text-[14px] text-[#101828]" title={model.name}>{model.name}</strong>{model.size ? <span className="mt-1 block text-[12px] text-muted">{formatSize(Number(model.size))}</span> : null}{model.modified_at ? <span className="mt-[2px] block text-[12px] text-muted">{formatDate(model.modified_at, t)}</span> : null}</div></li>)}</ul>}
-      </Card>
-    </> : null}
-  </div>;
+  );
 }

@@ -2073,3 +2073,235 @@
   justify-content: stretch;
 }
 
+/* ==== 10. OllamaSettings.vue scoped 块平移（settings-ollama 分区，T12b） ==== */
+
+.wk-settings-drawer-root .ollama-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .ollama-settings .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .ollama-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .ollama-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-info {
+  flex: 1;
+  padding-right: 32px;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-control {
+  flex-shrink: 0;
+  min-width: 360px;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.wk-settings-drawer-root .ollama-settings .status-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wk-settings-drawer-root .ollama-settings .status-display .status-icon.spinning {
+  /* keyframes 名保留 Vue 原名 spin（scoped 不改名；kb-list.td.css 已有同名
+     同值定义，重复声明等价）。 */
+  animation: spin 1s linear infinite;
+}
+
+.wk-settings-drawer-root .ollama-settings .url-control-group {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-category-section {
+  margin-top: 32px;
+  margin-bottom: 32px;
+  padding-top: 32px;
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .ollama-settings .model-category-section:first-of-type {
+  margin-top: 24px;
+  padding-top: 24px;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-category-section:last-child {
+  margin-bottom: 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .category-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .ollama-settings .category-header .header-info {
+  flex: 1;
+}
+
+.wk-settings-drawer-root .ollama-settings .category-header .header-info h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 6px 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .category-header .header-info p {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .ollama-settings .loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 0;
+  color: var(--td-text-color-placeholder);
+  font-size: 14px;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-list-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .wk-settings-drawer-root .ollama-settings .model-list-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wk-settings-drawer-root .ollama-settings .model-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 6px;
+  background: var(--td-bg-color-secondarycontainer);
+  transition: all 0.2s;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-card:hover {
+  border-color: var(--td-brand-color);
+  background: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .ollama-settings .model-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-info .model-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  margin-bottom: 4px;
+  font-family: var(--app-font-family-mono);
+}
+
+.wk-settings-drawer-root .ollama-settings .model-info .model-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content .input-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content .input-group .download-btn {
+  flex-shrink: 0;
+  height: 32px;
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content .download-progress {
+  padding: 16px;
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 8px;
+  border: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content .download-progress .progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--td-text-color-primary);
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .ollama-settings .empty-state {
+  padding: 48px 0;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .ollama-settings .empty-state .empty-text {
+  font-size: 14px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+}

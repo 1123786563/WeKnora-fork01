@@ -176,13 +176,6 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
   --color-surface-wash: #f3f3f3;
 }
 
-/* OllamaSettings.vue:422-438 — setting-control 列宽固定 360px（min=max），
-   info 列 padding-right 32px、desc line-height 1.6；地址输入与警告 alert
-   同列等宽（Vue 实测 alert 与输入框同为 757→1116px）。 */
-.wk-settings-ollama .setting-control { min-width: 360px; max-width: 360px; }
-.wk-settings-ollama .setting-info { padding-right: 32px; }
-.wk-settings-ollama .setting-info .desc { line-height: 1.6; }
-
 /* SystemAuditLog.vue:627-650 — 面板自持 section-header，下边距 20px（非
    共享的 32px），无分割线；刷新按钮 20×20、图标 12px、占位色。 */
 .wk-system-audit .section-header { margin-bottom: 20px; }
@@ -401,8 +394,6 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 .wk-settings-section:has(.parser-engine-settings) > .wk-settings-panel-heading { display: none; }
 .wk-settings-section .parser-engine-settings .section-header { margin-bottom: 28px; }
 .wk-settings-section .parser-engine-settings .section-header .section-description { line-height: 1.6; }
-/* OllamaSettings.vue：面板自持 header（默认 32px/h2 20px/desc 14px lh1.5） */
-.wk-settings-section:has(.wk-settings-ollama) > .wk-settings-panel-heading { display: none; }
 /* SystemInfo.vue：面板自持 header */
 .wk-settings-section:has(.system-info) > .wk-settings-panel-heading { display: none; }
 /* EnvVarSettings.vue 覆盖：header margin-bottom 24px，desc margin 8px 0 0 / lh1.6 */
@@ -418,11 +409,6 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 .wk-settings-section .wk-sandbox-settings .setting-info { max-width: none; }
 .wk-settings-section .wk-sandbox-settings .setting-info label { font-size: 14px; }
 .wk-settings-section .wk-sandbox-settings .setting-control { min-width: 0; }
-/* OllamaSettings.vue .setting-control：360px 定宽右对齐纵向栈（输入框+告警） */
-.wk-settings-section .wk-settings-ollama .setting-control { flex-direction: column; align-items: flex-end; min-width: 360px; max-width: 360px; }
-.wk-settings-section .wk-settings-ollama .setting-control .t-input-wrap { width: 100%; }
-/* OllamaSettings.vue .setting-info .desc：line-height 1.6（wrapper 共享规则是 1.5） */
-.wk-settings-section .wk-settings-ollama .setting-info .desc { line-height: 1.6; }
 /* SandboxSettings.vue .sandbox-grid：添加卡片与记录卡同网格（auto-fill 320px） */
 .wk-sandbox-settings .wk-sandbox-grid--empty { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 /* ModelSettings.vue section-header：mb28，容器自带 grid gap-4(16px)，补差 12px */
