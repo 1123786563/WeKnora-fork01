@@ -18,7 +18,7 @@ export const SETTINGS_TOAST_DURATION_MS = 3000;
 
 export interface SettingsToast {
   id: number;
-  tone: 'error' | 'success';
+  tone: 'error' | 'success' | 'warning';
   message: string;
 }
 
@@ -61,7 +61,10 @@ export function SettingsToastHost() {
           className={
             toast.tone === 'error'
               ? 'rounded-card border border-danger-line bg-danger-wash px-3 py-2.5 text-[13px] leading-relaxed text-danger shadow-lg'
-              : 'rounded-card border border-success-line bg-accent-wash px-3 py-2.5 text-[13px] leading-relaxed text-accent-strong shadow-lg'
+              : toast.tone === 'warning'
+                // MessagePlugin.warning 琥珀色语义（WeKnoraCloud 部分成功/fillRequired，T12b）。
+                ? 'rounded-card border border-warning-line bg-warning-wash px-3 py-2.5 text-[13px] leading-relaxed text-warning shadow-lg'
+                : 'rounded-card border border-success-line bg-accent-wash px-3 py-2.5 text-[13px] leading-relaxed text-accent-strong shadow-lg'
           }
         >
           {toast.message}

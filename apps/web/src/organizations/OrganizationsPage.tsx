@@ -1,28 +1,36 @@
-// Shared-space list page ported from the Vue baseline
-// frontend/src/views/organization/OrganizationList.vue (+ ListSpaceSidebar.vue,
-// SpaceAvatar.vue and the invite-preview modal). Layout, section chips, card
-// anatomy, empty state and the create / join flows mirror the Vue page while
-// all server wiring keeps using @weknora/api-client identity.organizations.
+// Shared-space list page — TDesign 同构迁移（Task 11b，playbook §3 DOM 复刻）。
+// 事实源：frontend/src/views/organization/OrganizationList.vue（列表 +
+// ListSpaceSidebar organization 模式 + del-org-dialog）与
+// OrganizationSettingsModal.vue（壳层 + create 模式 basic/permissions 段，
+// ix-orgs-create 扫描态）。样式全部在 orgs.td.css（Vue <style> 平移）。
+//
+// 留守段（R490 React 端口保留，Tailwind 自持，playbook §4.2 留守例外）：
+//  - 设置弹窗编辑模式 sections（members/requests/shares/agents + basic 的
+//    邀请成员卡）——不出现在 orgs 三扫描态中；
+//  - 加入组织 / 邀请预览弹框（invite-preview）；
+//  - 列表加载失败的重试态（React 韧性补充，Vue 模板无对应 UI）。
+// 其中的 WkInput/WkSelect/WkSwitch/WkTextarea（@weknora/ui）仅为留守段
+// 引用，本迁移未新增旧栈用法。
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { readReactPlatformState } from '../platform/legacy-session.ts';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
-import { Input, Select, Switch, Textarea } from '@weknora/ui';
+import { Input as WkInput, Select as WkSelect, Switch as WkSwitch, Textarea as WkTextarea } from '@weknora/ui';
+import { Button, Dialog, Input, Popup, Skeleton, Tag, Textarea, Tooltip } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
 import { copyText, sharedResourceRow } from './settings-actions.ts';
 import { organizationRoleLabel, organizationSettingsNavGroups, organizationSettingsSections } from './summary.ts';
-import './organizations.css';
-import emptyIllustration from './empty-organizations.svg';
+import './orgs.td.css';
 
-/* organizations.css migrated to inline utilities (Tailwind v4). The css file
- * keeps only the two @keyframes; every static rule became utilities. Recipes
- * shared by many nodes keep the markup readable, and conditional state colors
- * are mutually exclusive branches so two utilities of the same property never
- * compete on one element (utilities have equal specificity). */
-const ORG_CARD = 'group relative box-border flex h-[136px] min-h-[136px] cursor-pointer flex-col overflow-hidden rounded-[8px] border border-[#e7e7ea] bg-surface px-[14px] py-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] [transition:border-color_.25s_ease,box-shadow_.25s_ease,transform_.2s_ease] hover:border-[rgba(7,192,95,0.5)] hover:shadow-[0_6px_20px_rgba(7,192,95,0.12)] before:pointer-events-none before:absolute before:top-0 before:right-0 before:z-0 before:h-[80px] before:w-[120px] before:bg-[radial-gradient(ellipse_60%_50%_at_100%_0%,rgba(7,192,95,0.06)_0%,transparent_70%)] before:content-[""]';
-const ORG_SKEL_BLOCK = 'animate-[orgSkelPulse_1.4s_ease-in-out_infinite] rounded-[6px] bg-[linear-gradient(90deg,#f2f2f3_25%,#e9e9ec_37%,#f2f2f3_63%)] [background-size:400%_100%]';
-const ORG_CARD_WRAP = 'grid grid-cols-1 gap-[12px] animate-[orgContentFadeIn_0.32s_ease-out] min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6';
+/* frontend/src/assets/img/upload.svg —— 空状态插画（162×162，与 kb-list/
+   agents 同源文件的内联副本，按页各持一份，Phase 4 归并）。 */
+const UPLOAD_SVG_DATA = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYyIiBoZWlnaHQ9IjE2MiIgdmlld0JveD0iMCAwIDE2MiAxNjIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGZpbHRlcj0idXJsKCNmaWx0ZXIwX2RfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNMzYuODc1IDc4TDIwIDExMS43NVYxMzMuMDQ3QzIwIDE0MC43NiAyNi4yNTI2IDE0Ny4wMTMgMzMuOTY1NSAxNDcuMDEzSDgwLjc1SDEyNy41MzRDMTM1LjI0NyAxNDcuMDEzIDE0MS41IDE0MC43NiAxNDEuNSAxMzMuMDQ3VjExMS43NUwxMjQuNjI1IDc4SDgwLjc1SDM2Ljg3NVoiIGZpbGw9InVybCgjcGFpbnQwX2xpbmVhcl82MDIyXzUxNzMxKSIvPgo8L2c+CjxwYXRoIGQ9Ik0zNy4xMjUgMTExLjM3NVY3Ny42MjVMMjAuMjUgMTExLjM3NUgzNy4xMjVaIiBmaWxsPSJ1cmwoI3BhaW50MV9saW5lYXJfNjAyMl81MTczMSkiLz4KPHBhdGggZD0iTTEyNSAxMTEuNzVWNzhMMTQxLjg3NSAxMTEuNzVIMTI1WiIgZmlsbD0idXJsKCNwYWludDJfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxwYXRoIGQ9Ik03Ny45ODY0IDEwOC42MjdMNjYuMjc0IDkzLjc0MzZDNjUuNDAyOSA5Mi42MzY1IDY2LjE5MTUgOTEuMDEyNSA2Ny42MDAyIDkxLjAxMjVINzIuNjM1QzczLjU2NyA5MS4wMTI1IDc0LjMyOTIgOTAuMjYyNSA3NC4yMDExIDg5LjMzOTRDNzIuNjc1NCA3OC4zNTAzIDU2Ljg4MDUgNTkuNDM1NSAzMy4xMDA3IDUwLjg1NDlDMzIuMTcyOSA1MC41MjAxIDMyLjQwNjcgNDguOTM3NSAzMy4zOTMgNDguOTM3NUgxMjUuMjMyQzEyNi4yMTggNDguOTM3NSAxMjYuNDUyIDUwLjUyMDEgMTI1LjUyNCA1MC44NTQ5QzEwMS43NDQgNTkuNDM1NSA4NS45NDk2IDc4LjM1MDMgODQuNDIzOSA4OS4zMzk0Qzg0LjI5NTcgOTAuMjYyNSA4NS4wNTggOTEuMDEyNSA4NS45OSA5MS4wMTI1SDkxLjAyNDhDOTIuNDMzNSA5MS4wMTI1IDkzLjIyMjEgOTIuNjM2NSA5Mi4zNTEgOTMuNzQzNkw4MC42Mzg2IDEwOC42MjdDNzkuOTYzIDEwOS40ODYgNzguNjYyIDEwOS40ODYgNzcuOTg2NCAxMDguNjI3WiIgZmlsbD0idXJsKCNwYWludDNfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNjcuNjA0IDExMS4zNzVIMjAuMjVWMTMzLjEzOEMyMC4yNSAxNDAuNTk0IDI2LjI5NDIgMTQ2LjYzOCAzMy43NSAxNDYuNjM4SDEyOC4yNUMxMzUuNzA2IDE0Ni42MzggMTQxLjc1IDE0MC41OTQgMTQxLjc1IDEzMy4xMzhWMTExLjM3NUg5NC4zOTUxQzkzLjU2NDcgMTE4LjAzNCA4Ny44ODM5IDEyMy4xODggODAuOTk5NSAxMjMuMTg4Qzc0LjExNTIgMTIzLjE4OCA2OC40MzQ0IDExOC4wMzQgNjcuNjA0IDExMS4zNzVaIiBmaWxsPSJ1cmwoI3BhaW50NF9saW5lYXJfNjAyMl81MTczMSkiLz4KPHBhdGggZD0iTTQ2LjkzNjYgMTguNTQzNkM0Ni43NDA4IDE4LjE0MTEgNDYuNzEyOSAxNy42Nzc0IDQ2Ljg1OTEgMTcuMjU0NEw0OS4xMTAyIDEwLjczNzVDNDkuODcxIDguNTM1MiA1Mi4yNzI5IDcuMzY2NjEgNTQuNDc1MiA4LjEyNzM0TDY4LjgzMDQgMTMuMDg2MUM3MS4wMzI2IDEzLjg0NjggNzIuMjAxMiAxNi4yNDg4IDcxLjQ0MDUgMTguNDUxMUw2Ny41ODM3IDI5LjYxNjJDNjYuODIyOSAzMS44MTg1IDY0LjQyMSAzMi45ODcxIDYyLjIxODcgMzIuMjI2M0w1Mi41MTE3IDI4Ljg3MzJDNTIuMDg4NyAyOC43MjcxIDUxLjc0MTEgMjguNDE4OSA1MS41NDUzIDI4LjAxNjVMNDYuOTM2NiAxOC41NDM2WiIgZmlsbD0idXJsKCNwYWludDVfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxtYXNrIGlkPSJtYXNrMF82MDIyXzUxNzMxIiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSI0NiIgeT0iNyIgd2lkdGg9IjI2IiBoZWlnaHQ9IjI2Ij4KPHBhdGggZD0iTTQ2LjkzNjYgMTguNTQzNkM0Ni43NDA4IDE4LjE0MTEgNDYuNzEyOSAxNy42Nzc0IDQ2Ljg1OTEgMTcuMjU0NEw0OS4xMTAyIDEwLjczNzVDNDkuODcxIDguNTM1MiA1Mi4yNzI5IDcuMzY2NjEgNTQuNDc1MiA4LjEyNzM0TDY4LjgzMDQgMTMuMDg2MUM3MS4wMzI2IDEzLjg0NjggNzIuMjAxMiAxNi4yNDg4IDcxLjQ0MDUgMTguNDUxMUw2Ny41ODM3IDI5LjYxNjJDNjYuODIyOSAzMS44MTg1IDY0LjQyMSAzMi45ODcxIDYyLjIxODcgMzIuMjI2M0w1Mi41MTE3IDI4Ljg3MzJDNTIuMDg4NyAyOC43MjcxIDUxLjc0MTEgMjguNDE4OSA1MS41NDUzIDI4LjAxNjVMNDYuOTM2NiAxOC41NDM2WiIgZmlsbD0iI0Q5RDlEOSIvPgo8L21hc2s+CjxnIG1hc2s9InVybCgjbWFzazBfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNNDMuODc2IDI1Ljg5MDFMNDYuNjMwOCAxNy45MTVMNTEuNDE1OSAxOS41NjhDNTMuMTc3NyAyMC4xNzY1IDU0LjExMjYgMjIuMDk4MSA1My41MDQgMjMuODU5OUw1MS44NTExIDI4LjY0NUw0My44NzYgMjUuODkwMVoiIGZpbGw9IiNCNUVDQ0YiLz4KPC9nPgo8cGF0aCBkPSJNODkuNTU3MiAxNi40Mzg1Qzg5LjY2NjUgMTYuMTE4MSA4OS44OTg3IDE1Ljg1NDMgOTAuMjAyNSAxNS43MDUxTDk0Ljg4MzIgMTMuNDA2NkM5Ni40NjQ5IDEyLjYyOTkgOTguMzc2OCAxMy4yODI1IDk5LjE1MzUgMTQuODY0MkwxMDQuMjE3IDI1LjE3NDZDMTA0Ljk5MyAyNi43NTYzIDEwNC4zNDEgMjguNjY4MiAxMDIuNzU5IDI5LjQ0NUw5NC43Mzk4IDMzLjM4MjlDOTMuMTU4MSAzNC4xNTk2IDkxLjI0NjIgMzMuNTA3MSA5MC40Njk1IDMxLjkyNTNMODcuMDQ1OCAyNC45NTM1Qzg2Ljg5NjYgMjQuNjQ5NiA4Ni44NzQyIDI0LjI5OSA4Ni45ODM2IDIzLjk3ODZMODkuNTU3MiAxNi40Mzg1WiIgZmlsbD0idXJsKCNwYWludDZfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxtYXNrIGlkPSJtYXNrMV82MDIyXzUxNzMxIiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSI4NiIgeT0iMTMiIHdpZHRoPSIxOSIgaGVpZ2h0PSIyMSI+CjxwYXRoIGQ9Ik04OS41NTcyIDE2LjQzODVDODkuNjY2NSAxNi4xMTgxIDg5Ljg5ODcgMTUuODU0MyA5MC4yMDI1IDE1LjcwNTFMOTQuODgzMiAxMy40MDY2Qzk2LjQ2NDkgMTIuNjI5OSA5OC4zNzY4IDEzLjI4MjUgOTkuMTUzNSAxNC44NjQyTDEwNC4yMTcgMjUuMTc0NkMxMDQuOTkzIDI2Ljc1NjMgMTA0LjM0MSAyOC42NjgyIDEwMi43NTkgMjkuNDQ1TDk0LjczOTggMzMuMzgyOUM5My4xNTgxIDM0LjE1OTYgOTEuMjQ2MiAzMy41MDcxIDkwLjQ2OTUgMzEuOTI1M0w4Ny4wNDU4IDI0Ljk1MzVDODYuODk2NiAyNC42NDk2IDg2Ljg3NDIgMjQuMjk5IDg2Ljk4MzYgMjMuOTc4Nkw4OS41NTcyIDE2LjQzODVaIiBmaWxsPSIjRDlEOUQ5Ii8+CjwvbWFzaz4KPGcgbWFzaz0idXJsKCNtYXNrMV82MDIyXzUxNzMxKSI+CjxwYXRoIGQ9Ik04NCAxOC43NTFMODkuNzI4IDE1LjkzODJMOTEuNDE1NyAxOS4zNzVDOTIuMDM3MSAyMC42NDAzIDkxLjUxNSAyMi4xNjk5IDkwLjI0OTYgMjIuNzkxM0w4Ni44MTI4IDI0LjQ3OUw4NCAxOC43NTFaIiBmaWxsPSIjRTdFN0U3Ii8+CjwvZz4KPHBhdGggZD0iTTQ2LjM3MzQgNTcuMjI4OUM0Ni4yNTAyIDU3LjYxMjUgNDUuOTc5NiA1Ny45MzE1IDQ1LjYyMTMgNTguMTE1N0w0MC4xMDAxIDYwLjk1MzJDMzguMjM0NCA2MS45MTIxIDM1Ljk0NDUgNjEuMTc2OSAzNC45ODU3IDU5LjMxMTFMMjguNzM1NCA0Ny4xNDk0QzI3Ljc3NjYgNDUuMjgzNiAyOC41MTE4IDQyLjk5MzggMzAuMzc3NSA0Mi4wMzQ5TDM5LjgzNjYgMzcuMTczNkM0MS43MDI0IDM2LjIxNDggNDMuOTkyMiAzNi45NSA0NC45NTExIDM4LjgxNTdMNDkuMTc3NSA0Ny4wMzk1QzQ5LjM2MTcgNDcuMzk3OSA0OS4zOTU5IDQ3LjgxNDcgNDkuMjcyOCA0OC4xOTg0TDQ2LjM3MzQgNTcuMjI4OVoiIGZpbGw9InVybCgjcGFpbnQ3X2xpbmVhcl82MDIyXzUxNzMxKSIvPgo8bWFzayBpZD0ibWFzazJfNjAyMl81MTczMSIgc3R5bGU9Im1hc2stdHlwZTphbHBoYSIgbWFza1VuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeD0iMjgiIHk9IjM2IiB3aWR0aD0iMjIiIGhlaWdodD0iMjYiPgo8cGF0aCBkPSJNNDYuMzczNCA1Ny4yMjg5QzQ2LjI1MDIgNTcuNjEyNSA0NS45Nzk2IDU3LjkzMTUgNDUuNjIxMyA1OC4xMTU3TDQwLjEwMDEgNjAuOTUzMkMzOC4yMzQ0IDYxLjkxMjEgMzUuOTQ0NSA2MS4xNzY5IDM0Ljk4NTcgNTkuMzExMUwyOC43MzU0IDQ3LjE0OTRDMjcuNzc2NiA0NS4yODM2IDI4LjUxMTggNDIuOTkzOCAzMC4zNzc1IDQyLjAzNDlMMzkuODM2NiAzNy4xNzM2QzQxLjcwMjQgMzYuMjE0OCA0My45OTIyIDM2Ljk1IDQ0Ljk1MTEgMzguODE1N0w0OS4xNzc1IDQ3LjAzOTVDNDkuMzYxNyA0Ny4zOTc5IDQ5LjM5NTkgNDcuODE0NyA0OS4yNzI4IDQ4LjE5ODRMNDYuMzczNCA1Ny4yMjg5WiIgZmlsbD0iI0Q5RDlEOSIvPgo8L21hc2s+CjxnIG1hc2s9InVybCgjbWFzazJfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNNTIuOTM3NSA1NC4zNTU3TDQ2LjE4MSA1Ny44MjgxTDQ0LjA5NzYgNTMuNzc0MkM0My4zMzA1IDUyLjI4MTYgNDMuOTE4NiA1MC40NDk3IDQ1LjQxMTIgNDkuNjgyNkw0OS40NjUxIDQ3LjU5OTJMNTIuOTM3NSA1NC4zNTU3WiIgZmlsbD0iI0U3RTdFNyIvPgo8L2c+CjxwYXRoIGQ9Ik0xMjAuODggMzcuMzg5MkMxMjEuMjAzIDM3LjQ3NTggMTIxLjQ3OSAzNy42ODcyIDEyMS42NDYgMzcuOTc2OUwxMjQuMjIzIDQyLjQzOTlDMTI1LjA5MyA0My45NDgxIDEyNC41NzcgNDUuODc2NiAxMjMuMDY5IDQ2Ljc0NzRMMTEzLjIzOCA1Mi40MjMzQzExMS43MjkgNTMuMjk0IDEwOS44MDEgNTIuNzc3MyAxMDguOTMgNTEuMjY5MUwxMDQuNTE1IDQzLjYyMjhDMTAzLjY0NSA0Mi4xMTQ2IDEwNC4xNjEgNDAuMTg2MSAxMDUuNjcgMzkuMzE1M0wxMTIuMzE3IDM1LjQ3NzNDMTEyLjYwNyAzNS4zMSAxMTIuOTUxIDM1LjI2NDcgMTEzLjI3NCAzNS4zNTEzTDEyMC44OCAzNy4zODkyWiIgZmlsbD0idXJsKCNwYWludDhfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxtYXNrIGlkPSJtYXNrM182MDIyXzUxNzMxIiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSIxMDQiIHk9IjM1IiB3aWR0aD0iMjEiIGhlaWdodD0iMTgiPgo8cGF0aCBkPSJNMTIwLjg4IDM3LjM4OTJDMTIxLjIwMyAzNy40NzU4IDEyMS40NzkgMzcuNjg3MiAxMjEuNjQ2IDM3Ljk3NjlMMTI0LjIyMyA0Mi40Mzk5QzEyNS4wOTMgNDMuOTQ4MSAxMjQuNTc3IDQ1Ljg3NjYgMTIzLjA2OSA0Ni43NDc0TDExMy4yMzggNTIuNDIzM0MxMTEuNzI5IDUzLjI5NCAxMDkuODAxIDUyLjc3NzMgMTA4LjkzIDUxLjI2OTFMMTA0LjUxNSA0My42MjI4QzEwMy42NDUgNDIuMTE0NiAxMDQuMTYxIDQwLjE4NjEgMTA1LjY3IDM5LjMxNTNMMTEyLjMxNyAzNS40NzczQzExMi42MDcgMzUuMzEgMTEyLjk1MSAzNS4yNjQ3IDExMy4yNzQgMzUuMzUxM0wxMjAuODggMzcuMzg5MloiIGZpbGw9IiNEOUQ5RDkiLz4KPC9tYXNrPgo8ZyBtYXNrPSJ1cmwoI21hc2szXzYwMjJfNTE3MzEpIj4KPHBhdGggZD0iTTExOC4yMzEgMzIuMDYyN0wxMjEuMzg1IDM3LjUyNDRMMTE4LjEwOCAzOS40MTY0QzExNi45MDEgNDAuMTEzIDExNS4zNTggMzkuNjk5NiAxMTQuNjYyIDM4LjQ5M0wxMTIuNzcgMzUuMjE2TDExOC4yMzEgMzIuMDYyN1oiIGZpbGw9IiNCNUVDQ0YiLz4KPC9nPgo8cGF0aCBkPSJNNzMuMzQ4MyA0NS4wOTg0QzczLjM0NzggNDQuODQ2OCA3My40NDczIDQ0LjYwNTMgNzMuNjI0OCA0NC40MjdMNzYuMzYwMyA0MS42ODA1Qzc3LjI4NDcgNDAuNzUyNCA3OC43ODY0IDQwLjc0OTQgNzkuNzE0NSA0MS42NzM4TDg1Ljc2NDMgNDcuNjk5M0M4Ni42OTI0IDQ4LjYyMzcgODYuNjk1NSA1MC4xMjU1IDg1Ljc3MTEgNTEuMDUzNkw4MS4wODQ1IDU1Ljc1OUM4MC4xNjAxIDU2LjY4NzEgNzguNjU4NCA1Ni42OTAxIDc3LjczMDMgNTUuNzY1N0w3My42Mzk0IDUxLjY5MTJDNzMuNDYxMSA1MS41MTM3IDczLjM2MDcgNTEuMjcyNiA3My4zNjAyIDUxLjAyMUw3My4zNDgzIDQ1LjA5ODRaIiBmaWxsPSJ1cmwoI3BhaW50OV9saW5lYXJfNjAyMl81MTczMSkiLz4KPG1hc2sgaWQ9Im1hc2s0XzYwMjJfNTE3MzEiIHN0eWxlPSJtYXNrLXR5cGU6YWxwaGEiIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiIHg9IjczIiB5PSI0MCIgd2lkdGg9IjE0IiBoZWlnaHQ9IjE3Ij4KPHBhdGggZD0iTTczLjM0ODMgNDUuMDk4NEM3My4zNDc4IDQ0Ljg0NjggNzMuNDQ3MyA0NC42MDUzIDczLjYyNDggNDQuNDI3TDc2LjM2MDMgNDEuNjgwNUM3Ny4yODQ3IDQwLjc1MjQgNzguNzg2NCA0MC43NDk0IDc5LjcxNDUgNDEuNjczOEw4NS43NjQzIDQ3LjY5OTNDODYuNjkyNCA0OC42MjM3IDg2LjY5NTUgNTAuMTI1NSA4NS43NzExIDUxLjA1MzZMODEuMDg0NSA1NS43NTlDODAuMTYwMSA1Ni42ODcxIDc4LjY1ODQgNTYuNjkwMSA3Ny43MzAzIDU1Ljc2NTdMNzMuNjM5NCA1MS42OTEyQzczLjQ2MTEgNTEuNTEzNyA3My4zNjA3IDUxLjI3MjYgNzMuMzYwMiA1MS4wMjFMNzMuMzQ4MyA0NS4wOTg0WiIgZmlsbD0iI0Q5RDlEOSIvPgo8L21hc2s+CjxnIG1hc2s9InVybCgjbWFzazRfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNNzAgNDguMDY2NEw3My4zNDc1IDQ0LjcwNTRMNzUuMzY0MSA0Ni43MTM5Qzc2LjEwNjYgNDcuNDUzNCA3Ni4xMDkgNDguNjU0OCA3NS4zNjk1IDQ5LjM5NzNMNzMuMzYxIDUxLjQxMzlMNzAgNDguMDY2NFoiIGZpbGw9IiMwN0MwNUYiLz4KPC9nPgo8cGF0aCBkPSJNMTA2LjEzOCAxMjAuMTAzQzEwNi4xMzggMTE4Ljk0NiAxMDcuMDc2IDExOC4wMDkgMTA4LjIzMyAxMTguMDA5SDExMy44MTlDMTE0Ljk3NiAxMTguMDA5IDExNS45MTQgMTE4Ljk0NiAxMTUuOTE0IDEyMC4xMDNWMTIwLjEwM0MxMTUuOTE0IDEyMS4yNiAxMTQuOTc2IDEyMi4xOTggMTEzLjgxOSAxMjIuMTk4SDEwOC4yMzNDMTA3LjA3NiAxMjIuMTk4IDEwNi4xMzggMTIxLjI2IDEwNi4xMzggMTIwLjEwM1YxMjAuMTAzWiIgZmlsbD0iIzE0ODVFRSIvPgo8cGF0aCBkPSJNMTIyLjg5NiAxMjAuMTAzQzEyMi44OTYgMTE4Ljk0NiAxMjMuODM0IDExOC4wMDkgMTI0Ljk5MSAxMTguMDA5SDEzMC41NzhDMTMxLjczNCAxMTguMDA5IDEzMi42NzIgMTE4Ljk0NiAxMzIuNjcyIDEyMC4xMDNWMTIwLjEwM0MxMzIuNjcyIDEyMS4yNiAxMzEuNzM0IDEyMi4xOTggMTMwLjU3OCAxMjIuMTk4SDEyNC45OTFDMTIzLjgzNCAxMjIuMTk4IDEyMi44OTYgMTIxLjI2IDEyMi44OTYgMTIwLjEwM1YxMjAuMTAzWiIgZmlsbD0iIzA3QzA1RiIvPgo8cmVjdCB4PSIxMDYuMTM4IiB5PSIxMTcuMzEiIHdpZHRoPSI5Ljc3NTg2IiBoZWlnaHQ9IjQuMTg5NjYiIHJ4PSIyLjA5NDgzIiBmaWxsPSIjNDM5REYxIi8+CjxyZWN0IHg9IjEyMi44OTYiIHk9IjExNy4zMSIgd2lkdGg9IjkuNzc1ODYiIGhlaWdodD0iNC4xODk2NiIgcng9IjIuMDk0ODMiIGZpbGw9IiMzOUNEODAiLz4KPGRlZnM+CjxmaWx0ZXIgaWQ9ImZpbHRlcjBfZF82MDIyXzUxNzMxIiB4PSIxNC40MTM4IiB5PSI3NS4yMDY5IiB3aWR0aD0iMTMyLjY3MiIgaGVpZ2h0PSI4MC4xODU0IiBmaWx0ZXJVbml0cz0idXNlclNwYWNlT25Vc2UiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+CjxmZUZsb29kIGZsb29kLW9wYWNpdHk9IjAiIHJlc3VsdD0iQmFja2dyb3VuZEltYWdlRml4Ii8+CjxmZUNvbG9yTWF0cml4IGluPSJTb3VyY2VBbHBoYSIgdHlwZT0ibWF0cml4IiB2YWx1ZXM9IjAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDEyNyAwIiByZXN1bHQ9ImhhcmRBbHBoYSIvPgo8ZmVPZmZzZXQgZHk9IjIuNzkzMSIvPgo8ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIyLjc5MzEiLz4KPGZlQ29tcG9zaXRlIGluMj0iaGFyZEFscGhhIiBvcGVyYXRvcj0ib3V0Ii8+CjxmZUNvbG9yTWF0cml4IHR5cGU9Im1hdHJpeCIgdmFsdWVzPSIwIDAgMCAwIDAuMTkyNjkxIDAgMCAwIDAgMC4xOTI2OTEgMCAwIDAgMCAwLjE5MjY5MSAwIDAgMCAwLjEgMCIvPgo8ZmVCbGVuZCBtb2RlPSJub3JtYWwiIGluMj0iQmFja2dyb3VuZEltYWdlRml4IiByZXN1bHQ9ImVmZmVjdDFfZHJvcFNoYWRvd182MDIyXzUxNzMxIi8+CjxmZUJsZW5kIG1vZGU9Im5vcm1hbCIgaW49IlNvdXJjZUdyYXBoaWMiIGluMj0iZWZmZWN0MV9kcm9wU2hhZG93XzYwMjJfNTE3MzEiIHJlc3VsdD0ic2hhcGUiLz4KPC9maWx0ZXI+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQwX2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iODAuNzUiIHkxPSI3OCIgeDI9IjgwLjc1IiB5Mj0iMTMyIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiNFNEY5RUUiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjOUVERUJEIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQxX2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iMjguNjg3NSIgeTE9Ijc3LjYyNSIgeDI9IjI4LjY4NzUiIHkyPSIxMTEuMzc1IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiNEQkZBRTkiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMkNEODdFIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQyX2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iMTMzLjQzOCIgeTE9Ijc4IiB4Mj0iMTMzLjQzOCIgeTI9IjExMS43NSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjREJGQUU5Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzJDRDg3RSIvPgo8L2xpbmVhckdyYWRpZW50Pgo8bGluZWFyR3JhZGllbnQgaWQ9InBhaW50M19saW5lYXJfNjAyMl81MTczMSIgeDE9Ijc5LjMxMjUiIHkxPSIxMDYuMzEyIiB4Mj0iNzkuMzEyNSIgeTI9IjQ4LjkzNzUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KPHN0b3Agc3RvcC1jb2xvcj0iIzgzQzFGQSIvPgo8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM4M0MxRkEiIHN0b3Atb3BhY2l0eT0iMCIvPgo8L2xpbmVhckdyYWRpZW50Pgo8bGluZWFyR3JhZGllbnQgaWQ9InBhaW50NF9saW5lYXJfNjAyMl81MTczMSIgeDE9IjgxIiB5MT0iMTExLjM3NSIgeDI9IjgxIiB5Mj0iMTQ2LjYzOCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjRjNGRkY3Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0id2hpdGUiLz4KPC9saW5lYXJHcmFkaWVudD4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDVfbGluZWFyXzYwMjJfNTE3MzEiIHgxPSI0Ny4xODE4IiB5MT0iMTYuMzIiIHgyPSI2OS41MTIxIiB5Mj0iMjQuMDMzNiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjMDdDMDVGIi8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzA3QzA1RiIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQ2X2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iOTAuODczNiIgeTE9IjE1LjM3NTYiIHgyPSI5OC43NDk0IiB5Mj0iMzEuNDEzOSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjQzVDNUM1Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI0M1QzVDNSIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQ3X2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iNDQuODI5NyIgeTE9IjU4LjUyMjUiIHgyPSIzNS4xMDcxIiB5Mj0iMzkuNjA0MyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjQzVDNUM1Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI0M1QzVDNSIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQ4X2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iMTIxLjczMiIgeTE9IjM4LjEyNjIiIHgyPSIxMDUuOTc0IiB5Mj0iNDUuODI0NCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjNTRFODlBIi8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzA3QzA1RiIgc3RvcC1vcGFjaXR5PSIwLjEiLz4KPC9saW5lYXJHcmFkaWVudD4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDlfbGluZWFyXzYwMjJfNTE3MzEiIHgxPSI3My42NTYyIiB5MT0iNDQuMzk1NSIgeDI9IjgyLjI0NDYiIHkyPSI1NC4zNzMxIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiM2RUUxQTUiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNkVFMUE1IiBzdG9wLW9wYWNpdHk9IjAiLz4KPC9saW5lYXJHcmFkaWVudD4KPC9kZWZzPgo8L3N2Zz4K';
+
+/* ---- 留守段共享 Tailwind recipes（R490 编辑模式/加入弹框 internals） ---- */
 const ORG_BTN = 'box-border inline-flex min-h-[32px] cursor-pointer items-center justify-center gap-0 rounded-[3px] border px-4 py-0 font-[inherit] text-[14px] font-medium [transition:all_.2s_ease] disabled:cursor-not-allowed disabled:opacity-55';
 const ORG_BTN_PRIMARY = ORG_BTN + ' border-0 bg-accent text-white shadow-[0_2px_8px_rgba(7,192,95,0.25)] hover:shadow-[0_4px_14px_rgba(7,192,95,0.35)]';
 const ORG_BTN_OUTLINE = ORG_BTN + ' border-[rgba(7,192,95,0.5)] bg-surface text-accent hover:border-accent hover:bg-accent-wash';
@@ -173,10 +181,14 @@ export function upgradeRoleOptionsForRole(myRole: string): Array<'editor' | 'adm
   return [];
 }
 
-/* Minimal inline icon set. Page-visible glyphs (rail, section headers, card
- * badges/headers) are lifted verbatim from the TDesign sprite the Vue client
- * ships (viewBox 0 0 24 24, stroke-width 2, square caps); modal-only glyphs
- * keep the small hand-drawn IconGlyph set. */
+/* ---- 内联图片资源（frontend/src/assets/img，与 kb-list/agents 同源副本） ---- */
+
+const CIRCLE_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAACXBIWXMAACE4AAAhOAFFljFgAAAABGdBTUEAALGPC/xhBQAAAPZQTFRFAAAA91BQ+lBQ9FBQ/1BQ/FBQ+FBQ/FJS+lBQ91BQ/FFR/FBQ+VBQ+FBQ+lNT+FBQ+1JS+VBQ+lBQ+FBQ/FBQ+VBQ91BQ+lNT+1FR+1BQ+FBQ+VFR+VBQ+lFR+VFR91BQ+lFR+VFR+FFR+1JS+1FR+VFR+VBQ+lBQ+FBQ+VFR+FFR+1FR+lFR+lBQ+lFR+lBQ+lFR+VFR+VBQ+lFR+lJS+lFR+VFR+lFR+VFR+lFR+VFR+lFR+VFR+lFR+VFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR+VFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR+lFR8WpGUQAAAFF0Uk5TAAQFBQcJCRISEhcXFxcZGRwcJCQqKysxMjIyOTk8PEBDQ0NGR0dHS0tOYGp/f4CAg4ODh42VlZycn5+mp62ur7O0tbi/wc7V2Njc3+bt8fT4NJ1opQAAAAFiS0dEUg1gLZAAAAFuSURBVHjaxdXJUsJAFIXhAwYNIjIGEQQBB1AQFQWR2TDEgQTu+7+MVUmFSpoMDRu+/V91e3MahxGKJCUpGQmCi1B9ncwXirKYjxu3AnyclD40slD7BREeLmSVGMthGm7OP1fkYN2Ow1H2i1xM89gWqGjkSisHwKr8kIfvMhh5jTxpWdjEp+RDjsGqQ3ZPQIPserDIrP2DVQ4b4RH5BySLMBWXPIFagmlAPAF1AYOg8gWaAMMd8QVUhaHJG7xAFxzzBpOQHpzNeYP5qR6kFrzBIqkHksIbKNLOwc4n7ffo0IQ3GAeha9GWWbM5oy0NGGrE6QYGQSMu6mY4u8SlD1NJJcavovwRY1mASZSJ8SBJj8QYitjIsaOaAa7ZiU3DoucftGEVY456q9ffmUFOwCbrN5VX+48x/9yz8lNyIV/CUaKzJgerXgxuMqMlMVQ5Bw/h4kAlC61bEuFDuH8eGx/7pFUTwOUompKkVPQYB/EPlK2oyxaXjlIAAAAASUVORK5CYII=';
+const MORE_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgBAMAAACBVGfHAAAAD1BMVEUAAAAwMTMwMDMwMjIwMTPbLw9bAAAABHRSTlMA3llYOk1BewAAABxJREFUKM9jGGnAUAiJAAERRwSBXUBRCIkYYQAAnNMDYY7Uun8AAAAASUVORK5CYII=';
+const ORG_GREEN_SVG = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cGF0aCBkPSJNMTAgMTBDOC44IDcuNSA3LjggMy44IDQuOCAzLjhDMi4yIDMuOCAwLjggNi44IDAuOCAxMEMwLjggMTMuMiAyLjIgMTYuMiA0LjggMTYuMkM3LjggMTYuMiA4LjggMTIuNSAxMCAxMEMxMS4yIDcuNSAxMi41IDUuNSAxNC41IDUuNUMxNi41IDUuNSAxOCA3LjUgMTggMTBDMTggMTIuNSAxNi41IDE0LjUgMTQuNSAxNC41QzEyLjUgMTQuNSAxMS4yIDEyLjUgMTAgMTBaIiBzdHJva2U9IiMwN0MwNUYiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGZpbGw9Im5vbmUiLz4KPC9zdmc+Cg==';
+const AGENT_GREEN_SVG = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cGF0aCBkPSJNMTAgM0wxMC44IDYuMkMxMC45IDYuNyAxMS4zIDcuMSAxMS44IDcuMkwxNSA4TDExLjggOC44QzExLjMgOC45IDEwLjkgOS4zIDEwLjggOS44TDEwIDEzTDkuMiA5LjhDOS4xIDkuMyA4LjcgOC45IDguMiA4LjhMNSA4TDguMiA3LjJDOC43IDcuMSA5LjEgNi43IDkuMiA2LjJMMTAgM1oiIGZpbGw9IiMwN0MwNUYiIHN0cm9rZT0iIzA3QzA1RiIgc3Ryb2tlLXdpZHRoPSIwLjgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Ik0xNS41IDRMMTUuOCA1LjJDMTUuODUgNS40NSAxNi4wNSA1LjY1IDE2LjMgNS43TDE3LjUgNkwxNi4zIDYuM0MxNi4wNSA2LjM1IDE1Ljg1IDYuNTUgMTUuOCA2LjhMMTUuNSA4TDE1LjIgNi44QzE1LjE1IDYuNTUgMTQuOTUgNi4zNSAxNC43IDYuM0wxMy41IDZMMTQuNyA1LjdDMTQuOTUgNS42NSAxNS4xNSA1LjQ1IDE1LjIgNS4yTDE1LjUgNFoiIGZpbGw9IiMwN0MwNUYiIHN0cm9rZT0iIzA3QzA1RiIgc3Ryb2tlLXdpZHRoPSIwLjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxwYXRoIGQ9Ik00LjUgMTNMNC44IDE0LjJDNC44NSAxNC40NSA1LjA1IDE0LjY1IDUuMyAxNC43TDYuNSAxNUw1LjMgMTUuM0M1LjA1IDE1LjM1IDQuODUgMTUuNTUgNC44IDE1LjhMNC41IDE3TDQuMiAxNS44QzQuMTUgMTUuNTUgMy45NSAxNS4zNSAzLjcgMTUuM0wyLjUgMTVMMy43IDE0LjdDMy45NSAxNC42NSA0LjE1IDE0LjQ1IDQuMiAxNC4yTDQuNSAxM1oiIGZpbGw9IiMwN0MwNUYiIHN0cm9rZT0iIzA3QzA1RiIgc3Ryb2tlLXdpZHRoPSIwLjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K';
+
+/* ---- 留守段小图标（IconGlyph 手绘集，仅编辑模式邀请卡 / 加入弹框使用） ---- */
 function IconGlyph(props: { d: string; size?: number; viewBox?: string; fill?: boolean; className?: string }) {
   return (
     <svg width={props.size ?? 16} height={props.size ?? 16} viewBox={props.viewBox ?? '0 0 16 16'} fill={props.fill ? 'currentColor' : 'none'} xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className={props.className}>
@@ -184,112 +196,26 @@ function IconGlyph(props: { d: string; size?: number; viewBox?: string; fill?: b
     </svg>
   );
 }
-function TIcon(props: { children: React.ReactNode; size?: number; className?: string }) {
-  return (
-    <svg width={props.size ?? 16} height={props.size ?? 16} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className={props.className}>{props.children}</svg>
-  );
-}
-const IconUser = ({ size = 14 }: { size?: number }) => (
-  <TIcon size={size}><path d="M16.5 7.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2h16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></TIcon>
+const IconUser = ({ size = 12 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M16.5 7.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2h16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></svg>
 );
-const IconUsergroup = ({ size = 14 }: { size?: number }) => (
-  <TIcon size={size}><g stroke="currentColor" strokeWidth="2" strokeLinecap="square"><path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM5 19a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2H5v-2Z" /><path d="M7 4a4 4 0 1 0 0 8 6 6 0 0 0-6 6v3m22 0v-3a6 6 0 0 0-6-6 4 4 0 0 0 0-8" /></g></TIcon>
-);
-const IconUsergroupAdd = ({ size = 14 }: { size?: number }) => (
-  <TIcon size={size}><path d="M9 4a4 4 0 1 0 0 8 6 6 0 0 0-6 6v3m11-6h-2a4 4 0 0 0-4 4v2h6m5-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM20 15v3m0 0v3m0-3h-3m3 0h3" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></TIcon>
-);
-const IconFolder = ({ size = 14 }: { size?: number }) => (
-  <TIcon size={size}><path d="M2 3.5h7L11 6h11v14H2V3.5Z" stroke="currentColor" strokeWidth="2" /></TIcon>
-);
-const IconLayers = ({ size = 16 }: { size?: number }) => (
-  <TIcon size={size}><path d="M4.5 6.125 12 3l7.5 3.125L12 9.25 4.5 6.125ZM3 11.5l9 3.877 9-3.877m0 6-9 3.877L3 17.5" stroke="currentColor" strokeWidth="2" /></TIcon>
-);
-const IconEnter = ({ size = 16 }: { size?: number }) => (
-  <TIcon size={size}><path d="M5.75 16H16a3 3 0 0 0 3-3V5M8 12.5 4.5 16 8 19.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></TIcon>
+const IconUsergroupAdd = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 4a4 4 0 1 0 0 8 6 6 0 0 0-6 6v3m11-6h-2a4 4 0 0 0-4 4v2h6m5-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM20 15v3m0 0v3m0-3h-3m3 0h3" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></svg>
 );
 const IconChevron = ({ size = 14, direction }: { size?: number; direction: 'down' | 'right' }) => (
-  <TIcon size={size}>{direction === 'down'
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">{direction === 'down'
     ? <path d="M17.5 9.5 12 15 6.5 9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />
-    : <path d="M9.5 17.5 15 12 9.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />}</TIcon>
+    : <path d="M9.5 17.5 15 12 9.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />}</svg>
 );
 const IconClose = ({ size = 20 }: { size?: number }) => (<IconGlyph size={size} d="M4 4l8 8M12 4l-8 8" viewBox="0 0 16 16" />);
 const IconBack = ({ size = 18 }: { size?: number }) => (<IconGlyph size={size} d="M10 3 5 8l5 5" />);
 const IconSearch = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10Zm6.5 1.5L10.4 10.4" />);
 /* R488 D-B4.2 — icon glyphs for the Vue t-icon file-copy / refresh invite-card
  * actions (OrganizationSettingsModal.vue:125/:131). */
-const IconCopy = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M5.5 5.5V4a1 1 0 0 1 1-1H12a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1h-1.5M4 6h5.5a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z" />);
-const IconRefresh = ({ size = 14 }: { size?: number }) => (<IconGlyph size={size} d="M13.2 8a5.2 5.2 0 1 1-1.6-3.8M13.4 2.6v2.8h-2.8" />);
+const IconCopy = ({ size = 15 }: { size?: number }) => (<IconGlyph size={size} d="M5.5 5.5V4a1 1 0 0 1 1-1H12a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1h-1.5M4 6h5.5a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z" />);
+const IconRefresh = ({ size = 15 }: { size?: number }) => (<IconGlyph size={size} d="M13.2 8a5.2 5.2 0 1 1-1.6-3.8M13.4 2.6v2.8h-2.8" />);
 const IconCheckCircle = ({ size = 18 }: { size?: number }) => (<IconGlyph size={size} d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12Zm-2.6-6.2L7.5 9.9l3.2-3.8" />);
 const IconInfoCircle = ({ size = 20 }: { size?: number }) => (<IconGlyph size={size} d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM8 7.4V11M8 5.2v.2" />);
-const IconSetting = ({ size = 15 }: { size?: number }) => (<IconGlyph size={size} d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Zm5.6-2.2a5.6 5.6 0 0 0-.1-1l1.2-1-1.4-2.4-1.4.6a5.6 5.6 0 0 0-1.7-1L9.9 1.8H6.1L5.8 3.2a5.6 5.6 0 0 0-1.7 1l-1.4-.6-1.4 2.4 1.2 1a5.6 5.6 0 0 0 0 2l-1.2 1 1.4 2.4 1.4-.6a5.6 5.6 0 0 0 1.7 1l.3 1.4h3.8l.3-1.4a5.6 5.6 0 0 0 1.7-1l1.4.6 1.4-2.4-1.2-1c.1-.3.1-.7.1-1Z" />);
-const IconLogout = ({ size = 15 }: { size?: number }) => (<IconGlyph size={size} d="M6.5 2.5h-3v11h3M10 5l3 3-3 3M13 8H6" />);
-const IconDelete = ({ size = 15 }: { size?: number }) => (<IconGlyph size={size} d="M2.5 4.5h11M6 4.5v-2h4v2M4 4.5l.7 9h6.6l.7-9M6.6 7v4.2M9.4 7v4.2" />);
-const IconMore = ({ size = 16 }: { size?: number }) => (<IconGlyph size={size} d="M3.2 8h.1M8 8h.1M12.8 8h.1" viewBox="0 0 16 16" />);
-// Agent spark icon, ported from frontend/src/assets/img/agent-green.svg.
-const IconAgent = ({ size = 14 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="shrink-0 text-[#7c4dff]">
-    <path d="M10 3l.8 3.2c.1.5.5.9 1 1L15 8l-3.2.8c-.5.1-.9.5-1 1L10 13l-.8-3.2c-.1-.5-.5-.9-1-1L5 8l3.2-.8c.5-.1.9-.5 1-1L10 3Z" />
-    <path d="M15.5 4l.3 1.2c.05.25.25.45.5.5l1.2.3-1.2.3c-.25.05-.45.25-.5.5l-.3 1.2-.3-1.2c-.05-.25-.25-.45-.5-.5l-1.2-.3 1.2-.3c.25-.05.45-.25.5-.5l.3-1.2Z" />
-    <path d="M4.5 13l.3 1.2c.05.25.25.45.5.5l1.2.3-1.2.3c-.25.05-.45.25-.5.5l-.3 1.2-.3-1.2c-.05-.25-.25-.45-.5-.5l-1.2-.3 1.2-.3c.25-.05.45-.25.5-.5l.3-1.2Z" />
-  </svg>
-);
-// Create-organization glyph, ported from frontend/src/assets/img/organization-green.svg.
-const IconOrgCreate = ({ size = 16 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path d="M10 10C8.8 7.5 7.8 3.8 4.8 3.8C2.2 3.8 0.8 6.8 0.8 10C0.8 13.2 2.2 16.2 4.8 16.2C7.8 16.2 8.8 12.5 10 10C11.2 7.5 12.5 5.5 14.5 5.5C16.5 5.5 18 7.5 18 10C18 12.5 16.5 14.5 14.5 14.5C12.5 14.5 11.2 12.5 10 10Z" stroke="#07C05F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-  </svg>
-);
-
-/* Settings-modal nav icons — t-icon replicas (tdesign-icons-vue-next): 24px
- * grid, transparent fills, 1px currentColor strokes with square caps. Path
- * data copied verbatim so the modal rail matches the Vue drawer pixel-for-
- * pixel (OrganizationSettingsModal.vue navItems L993-1027). */
-const ORG_NAV_ICON_PATHS: Record<string, { fill?: string[]; stroke: string[] }> = {
-  'info-circle': {
-    fill: ['M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z'],
-    stroke: [
-      'M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z',
-      'M12 16.5L12 11M12 7.5L11.9961 7.5L11.9961 7.49609L12 7.49609L12 7.5Z',
-    ],
-  },
-  'user-safety': {
-    fill: [
-      'M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z',
-      'M15.5 14.5C17.8954 14.5 20.1046 14.5 22.5 14.5V19.1336C22.5 19.8089 22.1592 20.4387 21.5938 20.808L19 22.5024L16.4062 20.808C15.8408 20.4387 15.5 19.8089 15.5 19.1336V14.5Z',
-    ],
-    stroke: [
-      'M11.5 15H8C5.23858 15 3 17.2386 3 20V21H11.5508M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z',
-      'M15.5 14.5C17.8954 14.5 20.1046 14.5 22.5 14.5V19.1336C22.5 19.8089 22.1592 20.4387 21.5938 20.808L19 22.5024L16.4062 20.808C15.8408 20.4387 15.5 19.8089 15.5 19.1336V14.5Z',
-    ],
-  },
-  user: {
-    stroke: ['M11.5 15H8C5.23858 15 3 17.2386 3 20V21H16M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z'],
-  },
-  'user-add': {
-    fill: ['M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z'],
-    stroke: [
-      'M11 15H8C5.23858 15 3 17.2386 3 20V21H11.0508M16 7.5C16 9.98528 13.9853 12 11.5 12C9.01472 12 7 9.98528 7 7.5C7 5.01472 9.01472 3 11.5 3C13.9853 3 16 5.01472 16 7.5Z',
-      'M18 14V18M18 18V22M18 18H14M18 18H22',
-    ],
-  },
-  'folder-open': {
-    fill: ['M22 10L22 20L2 20L2 7.5L9 7.5L11 10L18 10L22 10Z'],
-    stroke: ['M22 10V20L2 20L2 7.5H9L11 10H22Z', 'M22 6L13 6L11 3.5L2 3.5'],
-  },
-  'control-platform': {
-    fill: ['M12 2L21 7V17L12 22L3 17V7L12 2Z'],
-    stroke: ['M12 12L20.5 7.5M12 12V21.5M12 12L3.5 7.5M12 2L21 7V17L12 22L3 17V7L12 2Z'],
-  },
-};
-function OrgNavIcon({ name }: { name: string }) {
-  const def = ORG_NAV_ICON_PATHS[name] ?? ORG_NAV_ICON_PATHS['info-circle']!;
-  return (
-    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" width={16} height={16}>
-      {(def.fill ?? []).map((d) => <path key={'f' + d.slice(0, 24)} fill="transparent" d={d} />)}
-      {def.stroke.map((d) => <path key={'s' + d.slice(0, 24)} stroke="currentColor" strokeWidth={1} strokeLinecap="square" d={d} />)}
-    </svg>
-  );
-}
 /* Vue navItems icon per section key (OrganizationSettingsModal.vue L993-1010). */
 const ORG_NAV_ICON_BY_KEY: Record<string, string> = {
   basic: 'info-circle',
@@ -300,7 +226,8 @@ const ORG_NAV_ICON_BY_KEY: Record<string, string> = {
   sharedAgents: 'control-platform',
 };
 
-/* SpaceAvatar ported from frontend/src/components/SpaceAvatar.vue. */
+/* SpaceAvatar —— frontend/src/components/SpaceAvatar.vue 1:1（类名/结构照搬，
+   尺寸样式由 orgs.td.css §2 承载）。 */
 const AVATAR_GRADIENTS: Array<[string, string]> = [
   ['#07c05f', '#059669'], ['#11998e', '#38ef7d'], ['#43e97b', '#38f9d7'], ['#02aab0', '#00cdac'],
   ['#36d1dc', '#5b86e5'], ['#4facfe', '#00f2fe'], ['#667eea', '#764ba2'], ['#4776e6', '#8e54e9'],
@@ -316,91 +243,161 @@ function avatarHash(name: string): number {
 }
 function SpaceAvatar(props: { name: string; avatar?: unknown; size?: 'small' | 'medium' | 'large'; className?: string }) {
   const size = props.size ?? 'medium';
-  const dimension = size === 'small' ? 22 : size === 'large' ? 48 : 32;
-  // Vue SpaceAvatar small: radius 5px, no shadow, decoration hidden, 11px letter.
-  const radius = size === 'small' ? '5px' : size === 'large' ? '12px' : '8px';
-  const shadow = size === 'small' ? 'none' : '0px 3px 14px 2px rgba(0,0,0,0.05), 0px 8px 10px 1px rgba(0,0,0,0.06), 0px 5px 5px -3px rgba(0,0,0,0.1)';
-  const letterPx = size === 'small' ? 11 : size === 'large' ? 20 : 14;
   const avatarText = strOf(props.avatar).trim();
   const isEmoji = avatarText.startsWith('emoji:') && avatarText.length > 6;
   const name = props.name?.trim() ?? '';
   const firstChar = name ? name.charAt(0) : '?';
   const letter = /[a-zA-Z]/.test(firstChar) ? firstChar.toUpperCase() : firstChar;
   const gradient = AVATAR_GRADIENTS[avatarHash(name) % AVATAR_GRADIENTS.length];
-  const className = 'flex items-center justify-center overflow-hidden relative' + (props.className ? ' ' + props.className : '');
-  const style: Record<string, string> = isEmoji
-    ? { background: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)', width: dimension + 'px', height: dimension + 'px', borderRadius: radius, boxShadow: shadow }
-    : { background: 'linear-gradient(135deg, ' + gradient[0] + ' 0%, ' + gradient[1] + ' 100%)', width: dimension + 'px', height: dimension + 'px', borderRadius: radius, boxShadow: shadow };
+  const background = isEmoji
+    ? 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)'
+    : 'linear-gradient(135deg, ' + gradient[0] + ' 0%, ' + gradient[1] + ' 100%)';
   return (
-    <div className={className} style={style}>
+    <div
+      className={'space-avatar' + (size === 'small' ? ' space-avatar-small' : size === 'large' ? ' space-avatar-large' : '') + (isEmoji ? ' space-avatar-emoji' : '') + (props.className ? ' ' + props.className : '')}
+      style={{ background }}
+    >
       {isEmoji ? (
-        <span style={{ fontSize: Math.round(dimension * 0.5) + 'px' }}>{avatarText.slice(6).trim()}</span>
+        <span className="space-avatar-emoji-char">{avatarText.slice(6).trim()}</span>
       ) : (
         <>
-          {size !== 'small' ? (
-            <svg className="absolute bottom-0 right-0 text-[rgba(255,255,255,0.9)] opacity-[0.35]" viewBox="0 0 56 40" width={Math.round(dimension * 0.55)} height={Math.round(dimension * 0.55 * 40 / 56)} preserveAspectRatio="xMaxYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <circle cx="10" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
-              <circle cx="28" cy="8" r="5" stroke="currentColor" strokeWidth="1.8" fill="none" opacity="0.7" />
-              <circle cx="46" cy="14" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
-              <path d="M14 13 L24 10 M32 10 L42 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.4" />
-              <circle cx="28" cy="28" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" opacity="0.35" />
-              <path d="M28 14 L28 22 M20 18 L26 24 M36 18 L30 24" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.3" />
-            </svg>
-          ) : null}
-          <span className="relative text-white font-semibold leading-none" style={{ fontSize: letterPx + 'px', textShadow: '0 1px 2px ' + gradient[1] + '80, 0 0 8px ' + gradient[0] + '30' }}>{letter}</span>
+          <svg className="space-avatar-decoration" viewBox="0 0 56 40" preserveAspectRatio="xMaxYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="10" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
+            <circle cx="28" cy="8" r="5" stroke="currentColor" strokeWidth="1.8" fill="none" opacity="0.7" />
+            <circle cx="46" cy="14" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
+            <path d="M14 13 L24 10 M32 10 L42 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.4" />
+            <circle cx="28" cy="28" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" opacity="0.35" />
+            <path d="M28 14 L28 22 M20 18 L26 24 M36 18 L30 24" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.3" />
+          </svg>
+          <span className="space-avatar-letter" style={{ textShadow: '0 1px 2px ' + gradient[1] + '80, 0 0 8px ' + gradient[0] + '30' }}>{letter}</span>
         </>
       )}
     </div>
   );
 }
 
-/* Constellation card decoration, ported verbatim from OrganizationList.vue. */
-function CardDecoration() {
-  return (
-    <div className="pointer-events-none absolute right-[14px] top-[8px] z-0 flex items-start justify-end text-[rgba(7,192,95,0.35)] [transition:color_.3s_ease] group-hover:text-[rgba(7,192,95,0.55)]">
-      <svg width="56" height="40" viewBox="0 0 56 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <circle cx="10" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
-        <circle cx="28" cy="8" r="5" stroke="currentColor" strokeWidth="1.8" fill="none" opacity="0.7" />
-        <circle cx="46" cy="14" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
-        <path d="M14 13 L24 10 M32 10 L42 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.4" />
-        <circle cx="28" cy="28" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" opacity="0.35" />
-        <path d="M28 14 L28 22 M20 18 L26 24 M36 18 L30 24" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.3" />
-      </svg>
-    </div>
-  );
-}
-
+/* 留守段（加入弹框预览态）的统计徽标 —— Vue feature-badge DOM 由迁移后的
+   列表卡片自持，此组件仅供 invite-preview 预览态复用。 */
 function FeatureBadge(props: { tone: 'stat-member' | 'stat-kb' | 'stat-agent'; title: string; count: number }) {
   return (
     <div className={FEATURE_BADGE_BASE + ' ' + FEATURE_BADGE_TONES[props.tone]} title={props.title}>
-      {props.tone === 'stat-member' ? <IconUser /> : props.tone === 'stat-kb' ? <IconFolder /> : <IconAgent />}
+      {props.tone === 'stat-member' ? <IconUser /> : props.tone === 'stat-kb' ? (
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M2 3.5h7L11 6h11v14H2V3.5Z" stroke="currentColor" strokeWidth="2" /></svg>
+      ) : (
+        <svg width={14} height={14} viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="shrink-0">
+          <path d="M10 3l.8 3.2c.1.5.5.9 1 1L15 8l-3.2.8c-.5.1-.9.5-1 1L10 13l-.8-3.2c-.1-.5-.5-.9-1-1L5 8l3.2-.8c.5-.1.9-.5 1-1L10 3Z" />
+        </svg>
+      )}
       <span>{props.count}</span>
     </div>
   );
 }
 
-function skeletonCard(key: string) {
+type ToastState = { tone: 'success' | 'error' | 'warning'; text: string } | null;
+
+/* ---- ListSpaceSidebar（organization 模式）—— ListSpaceSidebar.vue 1:1 --------
+   与 kb-list.td.css §5 / KnowledgeBasesPage.tsx 同源（按页各持一份）。
+   organization 模式 collapsed 条带：全部 / 我创建的 / 我加入的 三条目；
+   expanded 面板：同样三条目 + 计数徽标；右缘 resize-handle 拖拽 snap。 */
+const ORG_RAIL_COLLAPSED_WIDTH = 56;
+const ORG_RAIL_EXPANDED_WIDTH = 208;
+const ORG_RAIL_SNAP_THRESHOLD = 120;
+const ORG_RAIL_MAX_DRAG_WIDTH = ORG_RAIL_EXPANDED_WIDTH + 20;
+const ORG_RAIL_STORAGE_KEY = 'sidebar-collapsed-list-expanded';
+
+const ORG_RAIL_ITEMS: Array<{ key: 'all' | 'created' | 'joined'; icon: string; labelKey: string }> = [
+  { key: 'all', icon: 'layers', labelKey: 'listSpaceSidebar.all' },
+  { key: 'created', icon: 'usergroup-add', labelKey: 'organization.createdByMe' },
+  { key: 'joined', icon: 'usergroup', labelKey: 'organization.joinedByMe' },
+];
+
+function OrgListSpaceSidebar({ t, selection, counts, onSelect }: { t: (key: string) => string; selection: 'all' | 'created' | 'joined'; counts: { all: number; created: number; joined: number }; onSelect: (key: 'all' | 'created' | 'joined') => void }) {
+  const [expanded, setExpanded] = useState(() => {
+    try { return window.localStorage.getItem(ORG_RAIL_STORAGE_KEY) === 'true'; } catch { return false; }
+  });
+  const [dragging, setDragging] = useState(false);
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const drag = useRef<{ startX: number; startWidth: number; width: number } | null>(null);
+
+  const tooltipText = (name: string, count: number) => `${name} (${count})`;
+
+  const onDragStart = (event: ReactMouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    const startWidth = expanded ? ORG_RAIL_EXPANDED_WIDTH : ORG_RAIL_COLLAPSED_WIDTH;
+    drag.current = { startX: event.clientX, startWidth, width: startWidth };
+    setDragWidth(startWidth);
+    setDragging(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (event: MouseEvent) => {
+      const state = drag.current;
+      if (!state) return;
+      state.width = Math.max(ORG_RAIL_COLLAPSED_WIDTH, Math.min(ORG_RAIL_MAX_DRAG_WIDTH, state.startWidth + (event.clientX - state.startX)));
+      setDragWidth(state.width);
+    };
+    const onUp = () => {
+      const width = drag.current?.width ?? ORG_RAIL_COLLAPSED_WIDTH;
+      drag.current = null;
+      const shouldExpand = width >= ORG_RAIL_SNAP_THRESHOLD;
+      setExpanded(shouldExpand);
+      try { window.localStorage.setItem(ORG_RAIL_STORAGE_KEY, String(shouldExpand)); } catch { /* storage unavailable */ }
+      setDragging(false);
+      setDragWidth(null);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [dragging]);
+
   return (
-    <div key={key} className={ORG_CARD + ' cursor-default'}>
-      <div className="relative z-[2] mb-[6px] flex items-center justify-between">
-        <div className="flex min-w-0 flex-1 items-center gap-[8px]">
-          <div className={ORG_SKEL_BLOCK} style={{ width: '36px', height: '36px', borderRadius: '8px' }} />
-          <div className={ORG_SKEL_BLOCK} style={{ width: '50%', height: '20px' }} />
+    <div
+      className={`list-space-sidebar${expanded ? ' expanded' : ''}${dragging ? ' dragging' : ''}`}
+      style={dragging && dragWidth !== null ? { width: `${dragWidth}px` } : undefined}
+    >
+      {!expanded ? (
+        <div className="icon-strip">
+          {ORG_RAIL_ITEMS.map((item) => (
+            <Tooltip key={item.key} content={tooltipText(t(item.labelKey), counts[item.key])} placement="right" showArrow={false}>
+              <div
+                className={`icon-item-labeled${selection === item.key ? ' active' : ''}`}
+                data-space-key={item.key}
+                onClick={() => onSelect(item.key)}
+              >
+                <TIcon name={item.icon} size="16px" />
+                <span className="icon-label">{t(item.labelKey)}</span>
+              </div>
+            </Tooltip>
+          ))}
         </div>
-      </div>
-      <div style={{ flex: 1, marginTop: '12px' }}>
-        <div className={ORG_SKEL_BLOCK} style={{ width: '100%', height: '14px', marginBottom: '8px' }} />
-        <div className={ORG_SKEL_BLOCK} style={{ width: '70%', height: '14px' }} />
-      </div>
-      <div className="relative z-[1] mt-auto flex items-center justify-between border-t-[0.5px] border-[#e7e7ea] pt-[6px]">
-        <div className={ORG_SKEL_BLOCK} style={{ width: '60px', height: '22px' }} />
-        <div className={ORG_SKEL_BLOCK} style={{ width: '60px', height: '22px' }} />
+      ) : (
+        <nav className="expanded-panel">
+          {ORG_RAIL_ITEMS.map((item) => (
+            <div key={item.key} className={`sidebar-item${selection === item.key ? ' active' : ''}`} data-space-key={item.key} onClick={() => onSelect(item.key)}>
+              <div className="item-left">
+                <TIcon name={item.icon} className="item-icon" />
+                <span className="item-label">{t(item.labelKey)}</span>
+              </div>
+              <span className="item-count">{counts[item.key]}</span>
+            </div>
+          ))}
+        </nav>
+      )}
+      <div className="resize-handle" aria-hidden="true" onMouseDown={onDragStart}>
+        <div className="resize-handle-line" />
       </div>
     </div>
   );
 }
 
-type ToastState = { tone: 'success' | 'error' | 'warning'; text: string } | null;
 type DetailFeedKey = 'members' | 'requests' | 'shares' | 'agents';
 type DetailFeedState = { status: 'idle' | 'loading' | 'ready' | 'error'; message?: string };
 const idleDetailFeeds: Record<DetailFeedKey, DetailFeedState> = {
@@ -984,32 +981,30 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     });
   };
 
+  /* Vue OrganizationList.vue:53-74 —— 分组标题（我创建的/我加入的）。 */
   function sectionHeader(key: OrgSectionKey) {
     const collapsed = collapsedSections.has(key);
     return (
-      <div key={'header-' + key} className="sticky top-0 z-[5] col-span-full flex cursor-pointer select-none items-center gap-[6px] rounded-[6px] bg-surface py-[6px] pr-[4px] pl-0 text-[13px] font-semibold leading-[20px] text-[rgba(0,0,0,0.6)] shadow-[0_-8px_0_0_#fff,0_4px_0_0_#fff] outline-none hover:text-[rgba(0,0,0,0.9)]" role="button" tabIndex={0}
+      <div key={'header-' + key} className="org-section-header" role="button" tabIndex={0}
         onClick={() => toggleSection(key)}
         onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleSection(key); } }}>
         {/* Vue OrganizationList.vue:57 — created uses the single-person `user`
             glyph; joined uses `usergroup`. */}
-        {key === 'created' ? <IconUser /> : <IconUsergroup />}
+        <TIcon name={key === 'created' ? 'user' : 'usergroup'} size="14px" />
         <span>{t(locale, key === 'created' ? 'organization.createdByMe' : 'organization.joinedByMe')}</span>
-        <span className="ml-[2px] rounded-[8px] bg-[#f3f3f3] px-[6px] text-[11px] font-medium leading-[16px] text-[rgba(0,0,0,0.6)]">{key === 'created' ? createdCount : joinedCount}</span>
-        <span className="ml-[4px] opacity-70"><IconChevron direction={collapsed ? 'right' : 'down'} /></span>
+        <span className="org-section-count">{key === 'created' ? createdCount : joinedCount}</span>
+        <TIcon className="org-section-toggle" name={collapsed ? 'chevron-right' : 'chevron-down'} size="14px" />
       </div>
     );
   }
 
   const cardRows: React.ReactNode[] = [];
-  let createdHeaderPlaced = false;
-  let joinedHeaderPlaced = false;
   ordered.forEach((org, index) => {
     const owner = isOwnerOf(org);
-    if (selection === 'all') {
-      if (owner && !createdHeaderPlaced) { cardRows.push(sectionHeader('created')); createdHeaderPlaced = true; }
-      if (!owner && !joinedHeaderPlaced) { cardRows.push(sectionHeader('joined')); joinedHeaderPlaced = true; }
-      if (collapsedSections.has(sectionOf(org))) return;
-    }
+    /* Vue 标题插位：created 仅 index===0 的 owner 卡前；joined 在首张非 owner
+       卡（或 owner→非 owner 过渡处）前（OrganizationList.vue:53/64）。 */
+    if (selection === 'all' && owner && index === 0) cardRows.push(sectionHeader('created'));
+    if (selection === 'all' && !owner && (index === 0 || isOwnerOf(ordered[index - 1]))) cardRows.push(sectionHeader('joined'));
     const role = strOf(org.my_role);
     const memberCount = numOf(org.member_count);
     const shareCount = numOf(org.share_count);
@@ -1018,61 +1013,97 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     const description = strOf(org.description);
     const showRelation = shouldShowOrgRelationTag({ selection, isOwner: owner, myRole: role });
     const relationClass = owner ? 'owner' : role;
+    /* Vue v-show="!isOrgRowHidden(org)" —— 折叠保留 DOM 仅 display:none。 */
+    const rowHidden = selection === 'all' && collapsedSections.has(sectionOf(org));
     cardRows.push(
-      <div key={org.id || index} className={ORG_CARD} role="button" tabIndex={0}
-        onClick={() => openSettingsModal(org)}
-        onKeyDown={(event) => { if (event.key === 'Enter') openSettingsModal(org); }}>
-        <CardDecoration />
-        <div className="relative z-[2] mb-[6px] flex items-center justify-between">
-          <div className="flex min-w-0 flex-1 items-center gap-[8px]">
-            <div className="flex shrink-0"><SpaceAvatar name={org.name} avatar={org.avatar} size="small" /></div>
-            <div className="flex min-w-0 flex-1 flex-col gap-[2px]"><span className="truncate text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[rgba(0,0,0,0.9)]" title={org.name}>{org.name}</span></div>
+      <div key={org.id || index} className={'org-card' + (owner ? '' : ' joined-org')} style={rowHidden ? { display: 'none' } : undefined}
+        onClick={() => openSettingsModal(org)}>
+        {/* 装饰：协作网络感图形（Vue :77-90 逐 path 复刻）。 */}
+        <div className="card-decoration">
+          <svg className="card-deco-svg" width="56" height="40" viewBox="0 0 56 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="10" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
+            <circle cx="28" cy="8" r="5" stroke="currentColor" strokeWidth="1.8" fill="none" opacity="0.7" />
+            <circle cx="46" cy="14" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.5" />
+            <path d="M14 13 L24 10 M32 10 L42 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.4" />
+            <circle cx="28" cy="28" r="6" stroke="currentColor" strokeWidth="1.2" fill="none" opacity="0.35" />
+            <path d="M28 14 L28 22 M20 18 L26 24 M36 18 L30 24" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.3" />
+          </svg>
+        </div>
+        <div className="card-header">
+          <div className="card-header-left">
+            <div className="org-avatar"><SpaceAvatar name={org.name} avatar={org.avatar} size="small" /></div>
+            <div className="card-title-block"><span className="card-title" title={org.name}>{org.name}</span></div>
           </div>
-          <div className={'relative flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] opacity-0 [transition:all_.2s_ease] group-hover:opacity-60 hover:bg-[#f3f3f5] hover:opacity-100!' + (moreMenuOrgId === org.id ? ' bg-[#f3f3f5] opacity-100!' : '')}
-            role="button" tabIndex={0} aria-label={t(locale, 'common.moreActions')}
-            onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(moreMenuOrgId === org.id ? null : org.id); }}
-            onKeyDown={(event) => { if (event.key === 'Enter') { event.stopPropagation(); setMoreMenuOrgId(moreMenuOrgId === org.id ? null : org.id); } }}>
-            <IconMore />
-            {moreMenuOrgId === org.id ? (
-              <div className="absolute right-0 top-[32px] z-[30]">
-                <div className="min-w-[148px] rounded-[10px] border border-[#e7e7ea] bg-surface p-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.1)]" onClick={(event) => event.stopPropagation()}>
-                  <div className="flex cursor-pointer items-center gap-[8px] whitespace-nowrap rounded-[6px] px-[10px] py-[8px] text-[13px] text-[rgba(23,26,29,0.92)] hover:bg-[#f3f3f5]" onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(null); openSettingsModal(org); }}>
-                    <IconSetting /><span>{t(locale, 'organization.settings.editTitle')}</span>
-                  </div>
-                  {!owner ? (
-                    <div className="flex cursor-pointer items-center gap-[8px] whitespace-nowrap rounded-[6px] px-[10px] py-[8px] text-[13px] text-[#d54941] hover:bg-[#f3f3f5]" onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(null); setConfirmState({ kind: 'leave', org }); }}>
-                      <IconLogout /><span>{t(locale, 'organization.leave')}</span>
-                    </div>
-                  ) : canManageOrg ? (
-                    // Vue: v-if="org.is_owner && canManageOrg" — deleting an
-                    // owned space also requires the tenant admin+ role.
-                    <div className="flex cursor-pointer items-center gap-[8px] whitespace-nowrap rounded-[6px] px-[10px] py-[8px] text-[13px] text-[#d54941] hover:bg-[#f3f3f5]" onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(null); setConfirmState({ kind: 'delete', org }); }}>
-                      <IconDelete /><span>{t(locale, 'common.delete')}</span>
-                    </div>
-                  ) : null}
+          {/* Vue t-popup v-model + card-more-popup（OrganizationList.vue:102-125）。 */}
+          <Popup
+            visible={moreMenuOrgId === org.id}
+            trigger="click"
+            destroyOnClose
+            placement="bottom-right"
+            overlayClassName="card-more-popup"
+            onVisibleChange={(visible: boolean) => { if (!visible && moreMenuOrgId === org.id) setMoreMenuOrgId(null); }}
+            content={(
+              <div className="popup-menu" onClick={(event) => event.stopPropagation()}>
+                <div className="popup-menu-item" onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(null); openSettingsModal(org); }}>
+                  <TIcon className="menu-icon" name="setting" />
+                  <span>{t(locale, 'organization.settings.editTitle')}</span>
                 </div>
+                {!owner ? (
+                  <div className="popup-menu-item delete" onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(null); setConfirmState({ kind: 'leave', org }); }}>
+                    <TIcon className="menu-icon" name="logout" />
+                    <span>{t(locale, 'organization.leave')}</span>
+                  </div>
+                ) : canManageOrg ? (
+                  // Vue: v-if="org.is_owner && canManageOrg" — deleting an
+                  // owned space also requires the tenant admin+ role.
+                  <div className="popup-menu-item delete" onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(null); setConfirmState({ kind: 'delete', org }); }}>
+                    <TIcon className="menu-icon" name="delete" />
+                    <span>{t(locale, 'common.delete')}</span>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
+            )}
+          >
+            <div className={'more-wrap' + (moreMenuOrgId === org.id ? ' active-more' : '')} onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(moreMenuOrgId === org.id ? null : org.id); }}>
+              <img className="more-icon" src={MORE_PNG} alt="" />
+            </div>
+          </Popup>
         </div>
-        <div className="relative z-[1] mb-[6px] flex min-h-0 flex-1 flex-col gap-[6px] overflow-hidden">
-          <div className="line-clamp-2 text-[12px] font-normal leading-[17px] text-[rgba(0,0,0,0.6)]">{description || t(locale, 'organization.noDescription')}</div>
+        <div className="card-content">
+          <div className="card-description">{description || t(locale, 'organization.noDescription')}</div>
         </div>
-        <div className="relative z-[1] mt-auto flex items-center justify-between border-t-[0.5px] border-[#e7e7ea] pt-[6px]">
-          <div className="flex min-w-0 flex-1 items-center gap-[6px]">
-            <div className="flex items-center gap-[4px]">
-              <FeatureBadge tone="stat-member" title={t(locale, 'organization.memberCount')} count={memberCount} />
-              <FeatureBadge tone="stat-kb" title={t(locale, 'organization.invite.knowledgeBases')} count={shareCount} />
-              <FeatureBadge tone="stat-agent" title={t(locale, 'organization.invite.agents')} count={agentShareCount} />
+        <div className="card-bottom">
+          <div className="bottom-left">
+            <div className="feature-badges">
+              <Tooltip content={t(locale, 'organization.memberCount')} placement="top">
+                <div className="feature-badge stat-member">
+                  <TIcon name="user" size="14px" />
+                  <span className="badge-count">{memberCount}</span>
+                </div>
+              </Tooltip>
+              <Tooltip content={t(locale, 'organization.invite.knowledgeBases')} placement="top">
+                <div className="feature-badge stat-kb">
+                  <TIcon name="folder" size="14px" />
+                  <span className="badge-count">{shareCount}</span>
+                </div>
+              </Tooltip>
+              <Tooltip content={t(locale, 'organization.invite.agents')} placement="top">
+                <div className="feature-badge stat-agent">
+                  <img src={AGENT_GREEN_SVG} className="stat-agent-icon" alt="" aria-hidden="true" />
+                  <span className="badge-count">{agentShareCount}</span>
+                </div>
+              </Tooltip>
             </div>
             {pendingCount > 0 ? (
-              <span className="inline-flex h-[22px] items-center whitespace-nowrap rounded-[6px] bg-[rgba(250,173,20,0.12)] px-[6px] text-[12px] font-medium text-[#faad14]" title={t(locale, 'organization.settings.pendingJoinRequestsBadge')}>{pendingCount} {t(locale, 'organization.settings.pendingReview')}</span>
+              <Tooltip content={t(locale, 'organization.settings.pendingJoinRequestsBadge')} placement="top">
+                <span className="pending-requests-badge">{pendingCount} {t(locale, 'organization.settings.pendingReview')}</span>
+              </Tooltip>
             ) : null}
           </div>
           {showRelation ? (
-            <div className="flex shrink-0 items-center">
-              <div className={RELATION_ROLE_TAG + ' ' + (RELATION_ROLE_TAG_TONES[relationClass] ?? 'bg-[rgba(107,114,128,0.08)] text-[rgba(23,26,29,0.6)]')}>
-                {owner ? <IconUsergroupAdd /> : <IconUsergroup />}
+            <div className="bottom-right">
+              <div className={'relation-role-tag ' + relationClass}>
+                <TIcon name={owner ? 'usergroup-add' : 'usergroup'} size="14px" />
                 <span>{owner ? t(locale, 'organization.owner') : role ? t(locale, 'organization.role.' + role) : t(locale, 'organization.joinedByMe')}</span>
               </div>
             </div>
@@ -1157,117 +1188,144 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     return null;
   };
 
-  // .wk-page .wk-org-page → utilities: the org page cancels the shared
-  // page gutter (max-width/padding !important) and fills the shell height.
+  /* OrganizationList.vue 模板 1:1（playbook §3）：
+     .org-list-container > ListSpaceSidebar(organization) + .org-list-content。 */
   return (
-    <main className="box-border h-full max-w-none! overflow-hidden p-0! [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale]">
-      {/* Vue .org-list-container carries margin: 0 16px 0 0 — the content row
-          is 16px narrower than the agents page. */}
-      <div className="relative flex h-full min-h-0 w-[calc(100%_-_16px)]">
-        <aside className="box-border flex w-[56px] shrink-0 flex-col items-center gap-1 shadow-[inset_-1px_0_0_#e7e7e7] pt-3 pb-[6px]" aria-label={t(locale, 'organization.title')}>
-          {/* Vue ListSpaceSidebar collapsed strip: fixed 46px items, bare 16px
-              glyph + 11px label (no icon tile); the active item is the neutral
-              #f3f3f3 pill with brand-green content. Tooltips carry the live
-              counts (tooltipText(name, count) → "name (count)"). */}
-          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-[8px] border-0 px-0 pt-[5px] pb-[2px] font-[inherit] text-[11px] leading-[1.25] transition-[background] duration-150 ' + (selection === 'all' ? 'is-active bg-[#f3f3f3] text-accent' : 'bg-transparent text-[rgba(0,0,0,0.6)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]')} title={t(locale, 'common.all') + ' (' + organizations.length + ')'} onClick={() => setSelection('all')}>
-            <IconLayers size={16} />
-            <span>{t(locale, 'common.all')}</span>
-          </button>
-          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-[8px] border-0 px-0 pt-[5px] pb-[2px] font-[inherit] text-[11px] leading-[1.25] transition-[background] duration-150 ' + (selection === 'created' ? 'is-active bg-[#f3f3f3] text-accent' : 'bg-transparent text-[rgba(0,0,0,0.6)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]')} title={t(locale, 'organization.createdByMe') + ' (' + createdCount + ')'} onClick={() => setSelection('created')}>
-            <IconUsergroupAdd size={16} />
-            <span>{t(locale, 'organization.createdByMe')}</span>
-          </button>
-          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-[8px] border-0 px-0 pt-[5px] pb-[2px] font-[inherit] text-[11px] leading-[1.25] transition-[background] duration-150 ' + (selection === 'joined' ? 'is-active bg-[#f3f3f3] text-accent' : 'bg-transparent text-[rgba(0,0,0,0.6)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]')} title={t(locale, 'organization.joinedByMe') + ' (' + joinedCount + ')'} onClick={() => setSelection('joined')}>
-            <IconUsergroup size={16} />
-            <span>{t(locale, 'organization.joinedByMe')}</span>
-          </button>
-        </aside>
-        <div className="box-border flex flex-1 flex-col min-w-0 px-[28px] pt-[20px] pb-0">
-          <header className="mb-[16px] flex shrink-0 items-center justify-between">
-            <div className="flex flex-col gap-[4px]">
-              <div className="flex items-center gap-[8px]">
-                <h2 className="m-0 text-[24px] font-semibold leading-[32px] text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.title')}</h2>
-                <div className="flex shrink-0 items-center gap-[8px]">
-                  {/* Vue header-actions: disabled={!canManageOrg} with the
-                      joinOrg/createOrg tooltip swapped for the rbac tip. */}
-                  <button type="button" className="flex h-[28px] w-[28px] min-w-[28px] box-border cursor-pointer items-center justify-center rounded-[6px] border border-[#e7e7e7] bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] [transition:background_.2s,border-color_.2s,color_.2s] hover:text-[rgba(0,0,0,0.9)] [&_svg]:text-accent" aria-label={t(locale, 'organization.joinOrg')} title={canManageOrg ? t(locale, 'organization.joinOrg') : writeGuardTitle} disabled={!canManageOrg} onClick={openJoinModal}>
-                    <IconEnter />
-                  </button>
-                  <button type="button" className="flex h-[28px] w-[28px] min-w-[28px] box-border cursor-pointer items-center justify-center rounded-[6px] border border-[#e7e7e7] bg-[#f3f3f3] p-0 text-[rgba(0,0,0,0.6)] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] [transition:background_.2s,border-color_.2s,color_.2s] hover:text-[rgba(0,0,0,0.9)] [&_svg]:text-accent" aria-label={t(locale, 'organization.createOrg')} title={canManageOrg ? t(locale, 'organization.createOrg') : writeGuardTitle} disabled={!canManageOrg} onClick={openCreateModal}>
-                    <IconOrgCreate />
-                  </button>
-                </div>
+    <div className="org-list-container">
+      <OrgListSpaceSidebar
+        t={(key: string) => t(locale, key)}
+        selection={selection}
+        counts={{ all: organizations.length, created: createdCount, joined: joinedCount }}
+        onSelect={setSelection}
+      />
+      <div className="org-list-content">
+        <div className="header" style={{ '--wails-draggable': 'drag' } as CSSProperties}>
+          <div className="header-title" style={{ '--wails-draggable': 'drag' } as CSSProperties}>
+            <div className="title-row" style={{ '--wails-draggable': 'drag' } as CSSProperties}>
+              <h2 style={{ '--wails-draggable': 'drag' } as CSSProperties}>{t(locale, 'organization.title')}</h2>
+              {/* Vue header-actions（OrganizationList.vue:10-24）：t-tooltip +
+                  纯图标 t-button，禁用态 tooltip 切 rbac 提示。 */}
+              <div className="header-actions" style={{ '--wails-draggable': 'no-drag' } as CSSProperties}>
+                <Tooltip content={canManageOrg ? t(locale, 'organization.joinOrg') : writeGuardTitle} placement="bottom">
+                  <Button
+                    variant="text"
+                    theme="default"
+                    size="small"
+                    className="header-action-btn"
+                    style={{ '--wails-draggable': 'no-drag' } as CSSProperties}
+                    disabled={!canManageOrg}
+                    onClick={openJoinModal}
+                    icon={<TIcon name="enter" size="16px" />}
+                  />
+                </Tooltip>
+                <Tooltip content={canManageOrg ? t(locale, 'organization.createOrg') : writeGuardTitle} placement="bottom">
+                  <Button
+                    variant="text"
+                    theme="default"
+                    size="small"
+                    className="header-action-btn"
+                    style={{ '--wails-draggable': 'no-drag' } as CSSProperties}
+                    disabled={!canManageOrg}
+                    onClick={openCreateModal}
+                    icon={<img src={ORG_GREEN_SVG} className="org-create-icon" alt="" aria-hidden="true" />}
+                  />
+                </Tooltip>
               </div>
-              <p className="m-0 text-[14px] font-normal leading-[20px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.subtitle')}</p>
             </div>
-          </header>
-          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-[8px]">
-            {loading && organizations.length === 0 ? (
-              <div className={ORG_CARD_WRAP}>{[1, 2, 3, 4].map((n) => skeletonCard('skel-' + n))}</div>
-            ) : listError ? (
-              <div className="flex flex-col items-center justify-center px-[20px] py-[60px] text-center" role="alert">
-                <IconInfoCircle size={24} />
-                <p className="m-0 mt-[12px] text-[14px] text-[#d54941]">{listError}</p>
-                <button type="button" className={ORG_BTN_OUTLINE + ' mt-[16px]'} onClick={() => void load()}>{t(locale, 'common.retry')}</button>
-              </div>
-            ) : ordered.length === 0 ? (
-              <div className="flex flex-1 flex-col items-center justify-center px-[20px] py-[60px]">
-                <img className="h-[162px] w-[162px] mb-[20px]" src={emptyIllustration} alt="" />
-                <span className="text-[16px] font-semibold leading-[26px] text-[rgba(23,26,29,0.4)] mb-[8px]">{emptyTitle}</span>
-                <span className="m-0 text-[14px] font-normal leading-[22px] text-[rgba(23,26,29,0.4)]">{emptyDesc}</span>
-                <div className="flex items-center gap-[12px] mt-[20px]">
-                  <button type="button" className={ORG_BTN_OUTLINE} title={canManageOrg ? undefined : writeGuardTitle} disabled={!canManageOrg} onClick={openJoinModal}>
-                    <IconEnter />{t(locale, 'organization.joinOrg')}
-                  </button>
-                  <button type="button" className={ORG_BTN_PRIMARY} title={canManageOrg ? undefined : writeGuardTitle} disabled={!canManageOrg} onClick={openCreateModal}>
-                    <IconOrgCreate />{t(locale, 'organization.createOrg')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className={ORG_CARD_WRAP}>{cardRows}</div>
-            )}
+            <p className="header-subtitle" style={{ '--wails-draggable': 'drag' } as CSSProperties}>{t(locale, 'organization.subtitle')}</p>
           </div>
+        </div>
+        <div className="org-list-main">
+          {/* 骨架屏占位（Vue :30-46：t-skeleton rowCol 三段）。 */}
+          {loading && ordered.length === 0 ? (
+            <div className="org-card-wrap">
+              {[0, 1, 2, 3].map((n) => (
+                <div key={'skel-' + n} className="org-card org-card-skeleton">
+                  <div className="card-header">
+                    <Skeleton animation="gradient" rowCol={[[{ width: '36px', height: '36px', type: 'circle' }, { width: '50%', height: '20px' }]]} />
+                  </div>
+                  <div style={{ flex: 1, marginTop: '12px' }}>
+                    <Skeleton animation="gradient" rowCol={[{ width: '100%', height: '14px' }, { width: '70%', height: '14px' }]} />
+                  </div>
+                  <div style={{ marginTop: 'auto' }}>
+                    <Skeleton animation="gradient" rowCol={[[{ width: '60px', height: '22px', type: 'rect' }, { width: '60px', height: '22px', type: 'rect' }]]} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : listError ? (
+            /* React 韧性补充（Vue 模板无列表失败态）：重试入口。 */
+            <div className="flex flex-col items-center justify-center px-[20px] py-[60px] text-center" role="alert">
+              <IconInfoCircle size={24} />
+              <p className="m-0 mt-[12px] text-[14px] text-[#d54941]">{listError}</p>
+              <button type="button" className={ORG_BTN_OUTLINE + ' mt-[16px]'} onClick={() => void load()}>{t(locale, 'common.retry')}</button>
+            </div>
+          ) : ordered.length === 0 && !loading ? (
+            /* 空状态（Vue :177-198）。 */
+            <div className="empty-state">
+              <img className="empty-img" src={UPLOAD_SVG_DATA} alt="" />
+              <span className="empty-txt">{emptyTitle}</span>
+              <span className="empty-desc">{emptyDesc}</span>
+              <div className="empty-state-actions">
+                <Tooltip content={writeGuardTitle} placement="top" disabled={canManageOrg}>
+                  <Button theme="default" variant="outline" className="org-join-btn" disabled={!canManageOrg} onClick={openJoinModal} icon={<TIcon name="enter" />}>
+                    {t(locale, 'organization.joinOrg')}
+                  </Button>
+                </Tooltip>
+                <Tooltip content={writeGuardTitle} placement="top" disabled={canManageOrg}>
+                  <Button className="org-create-btn" disabled={!canManageOrg} onClick={openCreateModal} icon={<img src={ORG_GREEN_SVG} className="org-create-icon" alt="" aria-hidden="true" />}>
+                    {t(locale, 'organization.createOrg')}
+                  </Button>
+                </Tooltip>
+              </div>
+            </div>
+          ) : ordered.length > 0 ? (
+            <div className="org-card-wrap">{cardRows}</div>
+          ) : null}
         </div>
       </div>
 
-      {/* Create / edit settings modal. */}
-      {settingsOpen ? (
-        <div className={ORG_MODAL_OVERLAY + ' z-[2100]'} onClick={closeSettings}>
-          <div className="relative box-border flex h-[85vh] max-h-[750px] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')} onClick={(event) => event.stopPropagation()}>
-            <button type="button" className={ORG_CLOSE_BTN} aria-label={t(locale, 'common.close')} onClick={closeSettings}><IconClose /></button>
-            <div className="flex min-h-0 flex-1">
-              {settingsMode === 'create' || (settingsMode === 'edit' && settingsOrg) ? (
-                <nav className="box-border w-[208px] shrink-0 overflow-y-auto border-r border-[#e7e7e7] bg-[#f9f9f9] px-2 pt-2 pb-3 max-[720px]:hidden">
-                  {/* Vue sidebar-header (L1976-1987): 16/14/12 padding + hairline
-                      bottom border; the title row spans the full 208px rail. */}
-                  <h2 className="m-0 -mx-2 border-b border-[#e7e7e7] px-3.5 pb-3 pt-2 text-[16px] font-semibold leading-[22px] text-[rgba(0,0,0,0.9)]">{t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}</h2>
-                  {/* R487 K1 — Vue navGroups (L1028-1058): the navigation
-                      renders as TITLED groups (基础 / 成员与协作 / 共享资源),
-                      create mode keeps the single 基础 group; group titles and
-                      items flatten into the nav as siblings (Vue v-for) and
-                      badges mirror Vue L30-33. Row metrics = Vue .nav-item
-                      (L2012-2035): 32px rows, 14px text, 6px radius, active
-                      gray-1 pill with brand text. */}
+      {/* 创建/编辑设置弹窗 —— OrganizationSettingsModal.vue Teleport body →
+          createPortal；壳层 + create 模式 basic/permissions 段为 Vue DOM 1:1
+          （ix-orgs-create 扫描态），编辑模式各 section 为 R490 留守段（.section
+          v-show 容器 + Tailwind 自持 internals）。 */}
+      {settingsOpen ? createPortal(
+        <div className="settings-overlay" onClick={(event) => { if (event.target === event.currentTarget) closeSettings(); }} role="dialog" aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}>
+          <div className="settings-modal">
+            <button type="button" className="close-btn" aria-label={t(locale, 'common.close')} onClick={closeSettings}>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+            <div className="settings-container">
+              <div className="settings-sidebar">
+                <div className="sidebar-header">
+                  <h2 className="sidebar-title">{t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}</h2>
+                </div>
+                <div className="settings-nav">
+                  {/* Vue navGroups（L1028-1058）：nav-group-title 与 nav-item 同级
+                      平铺；badge 可见性 mirrors Vue L30-33。 */}
                   {organizationSettingsNavGroups(settingsMode, settingsCanManage).flatMap((group, groupIndex) => [
-                    <div key={group.key + '-title'} className={'px-[6px] pb-[1px] text-[12px] font-semibold leading-[18px] tracking-[0.02em] text-[rgba(0,0,0,0.4)] ' + (groupIndex === 0 ? 'pt-[10px]' : 'pt-2')}>{t(locale, group.titleKey)}</div>,
+                    <div key={group.key + '-title'} className="nav-group-title" style={groupIndex === 0 ? { paddingTop: '2px' } : undefined}>{t(locale, group.titleKey)}</div>,
                     ...group.items.filter((key) => settingsNavLabels[key]).map((key) => {
                       const badge = settingsNavBadges[key];
                       const showBadge = badge !== undefined && (settingsNavBadgeAlways.has(key) || badge > 0);
                       return (
-                        <button key={key} type="button" className={'mb-[2px] flex h-8 w-full cursor-pointer items-center rounded-md border-0 px-3 py-0 text-left font-[inherit] text-[14px] leading-[20px] ' + (settingsSection === key ? 'bg-[#f3f3f3] font-medium text-accent' : 'bg-transparent text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]')} onClick={() => setSettingsSection(key)}>
-                          <span className="mr-[9px] flex h-4 w-4 shrink-0 items-center justify-center [&_svg]:h-4 [&_svg]:w-4"><OrgNavIcon name={ORG_NAV_ICON_BY_KEY[key] ?? 'info-circle'} /></span>
-                          <span className="min-w-0 flex-1 truncate">{t(locale, settingsNavLabels[key])}</span>
-                          {showBadge ? <span data-nav-badge className={'inline-flex h-[16px] min-w-[16px] shrink-0 items-center justify-center rounded-[8px] px-[4px] text-[11px] font-medium leading-none ' + (key === 'requests' ? 'bg-[rgba(250,173,20,0.14)] text-[#faad14]' : 'bg-accent-wash text-accent')}>{badge}</span> : null}
-                        </button>
+                        <div key={key} className={'nav-item' + (settingsSection === key ? ' active' : '')} onClick={() => setSettingsSection(key)}>
+                          <TIcon name={ORG_NAV_ICON_BY_KEY[key] ?? 'info-circle'} className="nav-icon" />
+                          <span className="nav-label">{t(locale, settingsNavLabels[key])}</span>
+                          {showBadge ? <span data-nav-badge className={'nav-badge' + (settingsNavBadgeAlways.has(key) ? ' nav-badge-count' : '')}>{badge}</span> : null}
+                        </div>
                       );
                     }),
                   ])}
-                </nav>
-              ) : null}
-              <div className="flex min-w-0 flex-1 flex-col">
+                </div>
+              </div>
+              <div className="settings-content">
+                {/* React 韧性补充（<720px 时侧栏不可见时的等价 section 切换），
+                    Vue 无对应物；桌面扫描态 display:none 零像素影响。 */}
                 <div className="hidden border-b border-[#e7e7ea] px-4 pb-3 pt-4 max-[720px]:block">
-                  <Select
+                  <WkSelect
                     data-testid="organization-settings-section-selector"
                     aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}
                     className="min-h-[34px]"
@@ -1275,51 +1333,116 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                     onChange={(event) => setSettingsSection(event.target.value)}
                   >
                     {settingsNavItems.map(([key, labelKey]) => <option key={key} value={key}>{t(locale, labelKey)}</option>)}
-                  </Select>
+                  </WkSelect>
                 </div>
-                <div className={'min-h-0 flex-1 overflow-y-auto ' + (settingsMode === 'create' ? 'px-[40px] py-[28px] max-[720px]:px-4 max-[720px]:py-5' : 'px-[24px] py-[20px] max-[720px]:px-4 max-[720px]:py-5')}>
-                  {showSettingsRoleHint ? <div className="mb-[16px] flex items-center gap-[8px] rounded-[8px] bg-[rgba(46,109,230,0.06)] px-[12px] py-[10px] text-[13px] text-[rgba(23,26,29,0.7)]"><IconInfoCircle size={18} /><span>{writeGuardTitle}</span></div> : null}
-                  {settingsMode === 'create' && settingsSection === 'basic' ? (
-                    <form id="organization-create-form" onSubmit={submitCreate}>
-                      {/* Vue section-header (L2115-2140): 20px/600 title, 14px
-                          description at 8px, block closes with 20px. */}
-                      <h2 className="m-0 ml-px text-[20px] font-semibold leading-[28px] text-[rgba(0,0,0,0.9)]">{t(locale, 'organization.editor.basicTitle')}</h2>
-                      <p className="m-0 mb-5 ml-px mt-2 text-[14px] leading-[21px] text-[rgba(0,0,0,0.6)]">{t(locale, 'organization.editor.basicDesc')}</p>
-                      {/* Vue setting-row (L2173-2216): 16px vertical padding
-                          (first row pt-0), hairline divider, 42% label column +
-                          right-justified control column. */}
-                      <div className="flex items-start justify-between gap-6 border-b border-[#e7e7e7] pt-0 pb-4">
-                        <div className="ml-px min-w-0 w-[42%] max-w-[42%] shrink-0">
-                          <label className="mb-1 block text-[15px] font-medium leading-[21px] text-[rgba(0,0,0,0.9)]" htmlFor="organization-name">{t(locale, 'organization.name')} <span aria-hidden="true" className="ml-[2px] text-[#e34d59]">*</span></label>
-                          <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t(locale, 'organization.editor.nameTip')}</p>
+                <div className="content-wrapper">
+                  {showSettingsRoleHint ? (
+                    <div className="tenant-role-hint">
+                      <TIcon name="info-circle" size="16px" />
+                      <span>{writeGuardTitle}</span>
+                    </div>
+                  ) : null}
+                  {settingsMode === 'create' ? (
+                    <>
+                      {/* 基本信息（Vue :48-226，v-show 语义保留 DOM）。 */}
+                      <div className="section" style={{ display: settingsSection === 'basic' ? undefined : 'none' }}>
+                        <div className="section-header">
+                          <h2>{t(locale, 'organization.editor.basicTitle')}</h2>
+                          <p className="section-description">{t(locale, 'organization.editor.basicDesc')}</p>
                         </div>
-                        <div className="flex min-w-0 max-w-[58%] flex-1 basis-[58%] items-start justify-end overflow-hidden">
-                          <div className="flex w-full min-w-0 items-center gap-3"><div className="relative flex shrink-0 flex-col items-center gap-1 p-1"><button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)} disabled={!settingsCanManage}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button><span className="text-[11px] leading-[1.2] text-[rgba(0,0,0,0.4)]">{t(locale, 'organization.avatar')}</span>{avatarPickerOpen ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}</div><Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[32px] w-auto flex-1'} value={formName} onChange={(event) => setFormName(event.target.value)} required placeholder={t(locale, 'organization.namePlaceholder')} /></div>
+                        {/* React 保留：form 包装仅为 create 提交契约（Vue 走 footer
+                            handleSave），display 中性无像素影响。 */}
+                        <form id="organization-create-form" onSubmit={submitCreate}>
+                        <div className="settings-group">
+                          <div className="setting-row">
+                            <div className="setting-info">
+                              <label htmlFor="organization-name">{t(locale, 'organization.name')}{' '}<span className="required">*</span></label>
+                              <p className="desc">{t(locale, 'organization.editor.nameTip')}</p>
+                            </div>
+                            <div className="setting-control">
+                              <div className="name-input-wrapper">
+                                {/* 头像 emoji 弹层（Vue :63-86 t-popup）。 */}
+                                <Popup
+                                  visible={avatarPickerOpen}
+                                  trigger="click"
+                                  placement="bottom-left"
+                                  disabled={!settingsCanManage}
+                                  overlayClassName="avatar-emoji-popover"
+                                  onVisibleChange={(visible: boolean) => setAvatarPickerOpen(visible)}
+                                  content={(
+                                    <div className="avatar-popover-content" onClick={(event) => event.stopPropagation()}>
+                                      <p className="avatar-popover-title">{t(locale, 'organization.avatarPickerHint')}</p>
+                                      <div className="avatar-emoji-grid">
+                                        {ORG_AVATAR_EMOJIS.map((emoji) => (
+                                          <button key={emoji} type="button" className={'avatar-emoji-btn' + (formAvatar === 'emoji:' + emoji ? ' is-selected' : '')} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>
+                                            {emoji}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      {formAvatar ? (
+                                        <Button variant="text" size="small" className="avatar-clear-btn" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>
+                                          {t(locale, 'organization.avatarClear')}
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                  )}
+                                >
+                                  <div className="avatar-trigger-wrap">
+                                    <SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" />
+                                    {settingsCanManage ? <span className="avatar-change-hint">{t(locale, 'organization.avatar')}</span> : null}
+                                  </div>
+                                </Popup>
+                                <Input name="organization-name" className="name-input" value={formName} onChange={(value: string) => setFormName(value)} placeholder={t(locale, 'organization.namePlaceholder')} />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="setting-row">
+                            <div className="setting-info">
+                              <label>{t(locale, 'organization.description')}</label>
+                              <p className="desc">{t(locale, 'organization.editor.descriptionTip')}</p>
+                            </div>
+                            <div className="setting-control">
+                              {/* count render-prop：单模板字符串 child＝单文本节点整串 shaping，
+                                  复刻 vue-next 计数器 DOM（台账 #13 处置；默认渲染是
+                                  "0"+"/500" 两文本节点，跨节点 kern 丢失致字形相位差）。 */}
+                              <Textarea name="organization-description" value={formDescription} onChange={(value: string) => setFormDescription(value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} autosize={{ minRows: 3, maxRows: 6 }} maxlength={500} count={({ count, maxLength }) => <span className="t-textarea__limit">{`${count}/${maxLength}`}</span>} />
+                            </div>
+                          </div>
+                        </div>
+                        </form>
+                      </div>
+                      {/* 创建空间 - 权限说明（Vue :228-295）。 */}
+                      <div className="section" style={{ display: settingsSection === 'permissions' ? undefined : 'none' }}>
+                        <div className="section-header">
+                          <h2>{t(locale, 'organization.editor.permissionsTitle')}</h2>
+                          <p className="section-description">{t(locale, 'organization.editor.permissionsDesc')}</p>
+                        </div>
+                        <div className="permissions-info">
+                          {(['admin', 'editor', 'viewer'] as const).map((roleKey) => (
+                            <div key={roleKey} className="permission-card">
+                              <div className="permission-header">
+                                <div className={'permission-icon ' + roleKey}>
+                                  <TIcon name={roleKey === 'admin' ? 'user-safety' : roleKey === 'editor' ? 'edit' : 'browse'} />
+                                </div>
+                                <div className="permission-title">
+                                  <span className="role-name">{t(locale, 'organization.role.' + roleKey)}</span>
+                                  <Tag size="small" theme={roleKey === 'admin' ? 'primary' : roleKey === 'editor' ? 'warning' : 'default'}>{t(locale, roleKey === 'admin' ? 'organization.editor.fullAccess' : roleKey === 'editor' ? 'organization.editor.editAccess' : 'organization.editor.viewAccess')}</Tag>
+                                </div>
+                              </div>
+                              <ul className="permission-list">
+                                {ORG_PERMISSION_ITEMS[roleKey].map(([permKey, allowed]) => (
+                                  <li key={permKey}><TIcon name={allowed ? 'check' : 'close'} className={allowed ? 'check-icon' : 'close-icon'} />{t(locale, permKey)}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="info-notice">
+                          <TIcon name="info-circle" />
+                          <span>{t(locale, 'organization.editor.ownerNote')}</span>
                         </div>
                       </div>
-                      <div className="flex items-start justify-between gap-6 border-0 pt-4 pb-4">
-                        <div className="ml-px min-w-0 w-[42%] max-w-[42%] shrink-0">
-                          <label className="mb-1 block text-[15px] font-medium leading-[21px] text-[rgba(0,0,0,0.9)]" htmlFor="organization-description">{t(locale, 'organization.description')}</label>
-                          <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t(locale, 'organization.editor.descriptionTip')}</p>
-                        </div>
-                        {/* R484 G4 D6 — Vue t-textarea :maxlength="500" shows
-                            the TDesign 0/500 counter (OrganizationSettingsModal
-                            line 102). */}
-                        <div className="min-w-0 max-w-[58%] flex-1 basis-[58%]">
-                          <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[80px] resize-none'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} />
-                          <p className="m-0 mt-1 text-right text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)]">{formDescription.length}/500</p>
-                        </div>
-                      </div>
-                    </form>
-                  ) : settingsMode === 'create' ? (
-                    <section>
-                      <h2 className="m-0 mb-2 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.permissionsTitle')}</h2>
-                      <p className="m-0 mb-6 text-[14px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.permissionsDesc')}</p>
-                      <div className="grid gap-4">
-                        {(['admin', 'editor', 'viewer'] as const).map((roleKey) => <div key={roleKey} className="rounded-lg border border-[#e7e7ea] bg-[#f9f9f9] p-4"><div className="flex items-center justify-between gap-3"><strong className="text-[15px]">{t(locale, 'organization.role.' + roleKey)}</strong><span className="rounded-full border border-[#dce3ed] bg-white px-2 py-0.5 text-[12px] text-[rgba(23,26,29,0.6)]">{t(locale, roleKey === 'admin' ? 'organization.editor.fullAccess' : roleKey === 'editor' ? 'organization.editor.editAccess' : 'organization.editor.viewAccess')}</span></div><ul className="m-0 mt-3 grid list-none gap-1 p-0">{ORG_PERMISSION_ITEMS[roleKey].map(([key, allowed]) => <li key={key} className={'text-[13px] leading-[1.45] ' + (allowed ? 'text-[rgba(23,26,29,0.82)]' : 'text-[rgba(23,26,29,0.4)]')}><span className="mr-1" aria-hidden="true">{allowed ? '✓' : '✗'}</span>{t(locale, key)}</li>)}</ul></div>)}
-                      </div>
-                      <div className="mt-4 rounded-lg border border-[rgba(46,109,230,0.18)] bg-[rgba(46,109,230,0.06)] p-3 text-[13px] text-[rgba(23,26,29,0.7)]">{t(locale, 'organization.editor.ownerNote')}</div>
-                    </section>
+                    </>
                   ) : settingsSection === 'basic' ? (
                     <>
                       <form onSubmit={submitBasic}>
@@ -1338,7 +1461,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                               {settingsCanManage ? <span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.avatar')}</span> : null}
                               {avatarPickerOpen && settingsCanManage ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}
                             </div>
-                            <Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px] min-w-0 flex-1'} value={formName} onChange={(event) => setFormName(event.target.value)} required disabled={!settingsCanManage} />
+                            <WkInput id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px] min-w-0 flex-1'} value={formName} onChange={(event) => setFormName(event.target.value)} required disabled={!settingsCanManage} />
                           </div>
                         </div>
                         <div className={ORG_FORM_ITEM}>
@@ -1349,7 +1472,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           {/* Vue t-textarea :maxlength="500" (L102) — the edit
                               mode shows the same 0/500 counter as create. */}
                           <div className="min-w-0">
-                            <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} disabled={!settingsCanManage} />
+                            <WkTextarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} disabled={!settingsCanManage} />
                             <p className="m-0 mt-1 text-right text-[12px] text-[rgba(23,26,29,0.4)]">{formDescription.length}/500</p>
                           </div>
                         </div>
@@ -1409,7 +1532,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                 <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.requireApproval')}</strong>
                                 <span className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.requireApprovalDesc')}</span>
                               </div>
-                              <Switch aria-label={t(locale, 'organization.settings.requireApproval')} checked={formRequireApproval} onCheckedChange={(value) => void handleApprovalToggle(value)} />
+                              <WkSwitch aria-label={t(locale, 'organization.settings.requireApproval')} checked={formRequireApproval} onCheckedChange={(value) => void handleApprovalToggle(value)} />
                             </div>
                             {/* ⑤ 开放可被搜索：立即保存 */}
                             <div className="flex items-start justify-between gap-[12px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
@@ -1417,7 +1540,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                 <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.searchable')}</strong>
                                 <span className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.searchableDesc')}</span>
                               </div>
-                              <Switch aria-label={t(locale, 'organization.settings.searchable')} checked={formSearchable} onCheckedChange={(value) => void handleSearchableToggle(value)} />
+                              <WkSwitch aria-label={t(locale, 'organization.settings.searchable')} checked={formSearchable} onCheckedChange={(value) => void handleSearchableToggle(value)} />
                             </div>
                             {/* ⑥ 成员数量上限：0-10000 + 当前成员数 hint */}
                             <div className="flex flex-col gap-[6px] px-[12px] py-[10px]">
@@ -1428,7 +1551,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                     carries no stepper column; the ▲▼ glyphs were
                                     scrape noise. Clamping keeps the 0-10000
                                     contract (submitBasic payload unchanged). */}
-                                <Input type="number" aria-label={t(locale, 'organization.settings.memberLimit')} className={ORG_FIELD + ' min-h-[30px] w-[140px]'} min={0} max={10000} step={1} value={formMemberLimit === '' ? '' : String(formMemberLimit)} placeholder={t(locale, 'organization.settings.memberLimitPlaceholder')} onChange={(event) => { const raw = event.target.value; if (raw === '') { setFormMemberLimit(''); return; } const next = Math.min(10000, Math.max(0, Math.round(Number(raw)))); if (Number.isSafeInteger(next)) setFormMemberLimit(next); }} />
+                                <WkInput type="number" aria-label={t(locale, 'organization.settings.memberLimit')} className={ORG_FIELD + ' min-h-[30px] w-[140px]'} min={0} max={10000} step={1} value={formMemberLimit === '' ? '' : String(formMemberLimit)} placeholder={t(locale, 'organization.settings.memberLimitPlaceholder')} onChange={(event) => { const raw = event.target.value; if (raw === '') { setFormMemberLimit(''); return; } const next = Math.min(10000, Math.max(0, Math.round(Number(raw)))); if (Number.isSafeInteger(next)) setFormMemberLimit(next); }} />
                                 <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.memberLimitHint', { count: numOf(settingsOrg?.member_count) })}</span>
                               </div>
                             </div>
@@ -1484,7 +1607,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span>
                         </div>
                         <div className="flex items-center gap-[8px]">
-                          {detailFeeds.members.status === 'ready' && members.length > 0 ? <Input className={ORG_FIELD + ' min-h-[30px] w-[min(100%,200px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
+                          {detailFeeds.members.status === 'ready' && members.length > 0 ? <WkInput className={ORG_FIELD + ' min-h-[30px] w-[min(100%,200px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
                           {settingsCanManage ? (
                             <div className="relative">
                               <button type="button" className="box-border inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-[3px] border border-[rgba(7,192,95,0.5)] bg-surface text-accent [transition:all_.2s_ease] hover:border-accent hover:bg-accent-wash" aria-label={t(locale, 'organization.addMember.button')} title={t(locale, 'organization.addMember.button')} aria-expanded={addMemberPopupOpen} onClick={() => { setAddMemberPopupOpen((open) => !open); setSelectedInviteTenant(null); }}><IconUsergroupAdd size={16} /></button>
@@ -1494,7 +1617,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                   <p className="m-0 mb-[12px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.addMember.tipTenant')}</p>
                                   <div className="mb-[12px]">
                                     <label className={ORG_FORM_LABEL + ' mb-[4px]'}>{t(locale, 'organization.addMember.searchTenant')}</label>
-                                    <Input className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />
+                                    <WkInput className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />
                                     <p className="m-0 mt-[4px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.addMember.searchTenantHint')}</p>
                                     {memberInviteLoading ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p> : memberInviteCandidates.map((candidate) => {
                                       const candidateId = String(candidate.tenant_id);
@@ -1509,9 +1632,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                   </div>
                                   <div className="mb-[12px]">
                                     <label className={ORG_FORM_LABEL + ' mb-[4px]'}>{t(locale, 'organization.addMember.selectRole')}</label>
-                                    <Select className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
+                                    <WkSelect className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
                                       {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                                    </Select>
+                                    </WkSelect>
                                   </div>
                                   <div className="flex items-center justify-end gap-[8px]">
                                     <button type="button" className={ORG_BTN_OUTLINE + ' min-h-[30px] px-[12px] text-[13px]'} onClick={() => setAddMemberPopupOpen(false)}>{t(locale, 'common.cancel')}</button>
@@ -1559,9 +1682,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                     </td>
                                     <td className={MEMBER_TD}>
                                       {settingsCanManage && !memberIsOwner ? (
-                                        <Select className={ORG_FIELD + ' min-h-[28px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
+                                        <WkSelect className={ORG_FIELD + ' min-h-[28px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
                                           {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                                        </Select>
+                                        </WkSelect>
                                       ) : (
                                         <span className={MEMBER_ROLE_TAG + ' ' + (MEMBER_ROLE_TAG_TONES[member.role] ?? MEMBER_ROLE_TAG_TONES.viewer)}>{t(locale, 'organization.role.' + member.role)}</span>
                                       )}
@@ -1586,13 +1709,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-role">{t(locale, 'organization.upgrade.selectRole')}</label>
-                          <Select id="upgrade-role" className={ORG_FIELD + ' min-h-[34px]'} value={upgradeRole} onChange={(event) => setUpgradeRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
+                          <WkSelect id="upgrade-role" className={ORG_FIELD + ' min-h-[34px]'} value={upgradeRole} onChange={(event) => setUpgradeRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
                             {upgradeChoices.map((value) => <option key={value} value={value}>{t(locale, 'organization.role.' + value)}</option>)}
-                          </Select>
+                          </WkSelect>
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-note">{t(locale, 'organization.upgrade.reason')}</label>
-                          <Textarea id="upgrade-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={upgradeNote} onChange={(event) => setUpgradeNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
+                          <WkTextarea id="upgrade-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={upgradeNote} onChange={(event) => setUpgradeNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
                         </div>
                         <button type="submit" className={ORG_BTN_OUTLINE} disabled={hasPendingUpgrade} title={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined} aria-label={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined}>{t(locale, 'organization.upgrade.submitBtn')}</button>
                       </form> : null}
@@ -1658,21 +1781,20 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                     </>
                   ) : null}
                 </div>
-                <div className="flex justify-end gap-[12px] border-t border-[#e7e7ea] px-[40px] pt-[12px] pb-[12px]">
-                  <button type="button" className={ORG_BTN_NEUTRAL} onClick={closeSettings}>{t(locale, 'common.cancel')}</button>
-                  {/* R484 G4 D6 — Vue create-mode confirm reads common.create
-                      (OrganizationSettingsModal.vue line 809), not the modal
-                      title createOrg. */}
-                  {settingsMode === 'create' ? <button type="button" className={ORG_BTN_PRIMARY} disabled={saving} onClick={() => void submitCreate()}>{t(locale, 'common.create')}</button> : null}
-                  {/* R487 K1 — Vue settings-footer (L806-811): the edit-mode
-                      save lives in the global footer (admin only), not inside
-                      the basic form. */}
-                  {settingsMode === 'edit' && settingsCanManage ? <button type="button" className={ORG_BTN_PRIMARY} disabled={saving} onClick={() => void submitBasic()}>{t(locale, 'common.save')}</button> : null}
+                {/* 底部操作按钮（Vue :806-811 settings-footer）。 */}
+                <div className="settings-footer">
+                  <Button variant="outline" onClick={closeSettings}>{t(locale, 'common.cancel')}</Button>
+                  {settingsCanManage ? (
+                    <Button theme="primary" loading={saving} onClick={() => { void (settingsMode === 'create' ? submitCreate() : submitBasic()); }}>
+                      {t(locale, settingsMode === 'create' ? 'common.create' : 'common.save')}
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
 
       {/* Join modal (invite code / search / preview). */}
@@ -1718,13 +1840,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <div className="mt-[14px] flex flex-col gap-[12px] border-t border-dashed border-[#e7e7ea] pt-[14px]">
                             <div className={ORG_FORM_ITEM} style={{ marginBottom: '0' }}>
                               <label className={ORG_FORM_LABEL} htmlFor="join-request-role">{t(locale, 'organization.invite.requestRole')}</label>
-                              <Select id="join-request-role" className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.invite.requestRole')} value={requestRole} onChange={(event) => setRequestRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
+                              <WkSelect id="join-request-role" className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.invite.requestRole')} value={requestRole} onChange={(event) => setRequestRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
                                 {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                              </Select>
+                              </WkSelect>
                             </div>
                             <div className={ORG_FORM_ITEM} style={{ marginBottom: '0' }}>
                               <label className={ORG_FORM_LABEL} htmlFor="join-request-note">{t(locale, 'organization.invite.applicationNote')}</label>
-                              <Textarea id="join-request-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={requestNote} onChange={(event) => setRequestNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.invite.messagePlaceholder')} />
+                              <WkTextarea id="join-request-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={requestNote} onChange={(event) => setRequestNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.invite.messagePlaceholder')} />
                             </div>
                           </div>
                         </>
@@ -1746,7 +1868,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <div className={ORG_FORM_ITEM}>
                         <label className={ORG_FORM_LABEL} htmlFor="join-code">{t(locale, 'organization.inviteCode')}</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.invite.inputDesc')}</p>
-                        <Input id="join-code" name="join-code" className={ORG_FIELD + ' min-h-[34px]'} value={joinInputCode} maxLength={32} placeholder={t(locale, 'organization.inviteCodePlaceholder')} onChange={(event) => setJoinInputCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void doPreviewFromInput(); }} />
+                        <WkInput id="join-code" name="join-code" className={ORG_FIELD + ' min-h-[34px]'} value={joinInputCode} maxLength={32} placeholder={t(locale, 'organization.inviteCodePlaceholder')} onChange={(event) => setJoinInputCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void doPreviewFromInput(); }} />
                         <p className="m-0 mt-[8px] text-[12px] leading-[1.45] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.inviteCodeTip')}</p>
                       </div>
                     </>
@@ -1756,7 +1878,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         <label className={ORG_FORM_LABEL} htmlFor="join-search">{t(locale, 'organization.join.searchSpaces')}</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.join.searchSpacesDesc')}</p>
                         <div style={{ position: 'relative' }}>
-                          <Input id="join-search" className={ORG_FIELD + ' min-h-[34px]'} value={searchQuery} placeholder={t(locale, 'organization.join.searchSpacesPlaceholder')} onChange={(event) => onSearchQueryChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') runSearch(searchQuery.trim()); }} />
+                          <WkInput id="join-search" className={ORG_FIELD + ' min-h-[34px]'} value={searchQuery} placeholder={t(locale, 'organization.join.searchSpacesPlaceholder')} onChange={(event) => onSearchQueryChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') runSearch(searchQuery.trim()); }} />
                           <span style={{ position: 'absolute', right: '10px', top: '8px', color: 'rgba(23, 26, 29, 0.4)' }}><IconSearch /></span>
                         </div>
                       </div>
@@ -1811,21 +1933,32 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
         </div>
       ) : null}
 
-      {/* Delete / leave confirm dialog. */}
-      {confirmState ? (
-        <div className={ORG_MODAL_OVERLAY} onClick={() => setConfirmState(null)}>
-          <div className="box-border w-full max-w-[400px] rounded-[8px] bg-surface p-[16px] shadow-[0_8px_32px_rgba(0,0,0,0.16)]" role="dialog" aria-label={t(locale, confirmState.kind === 'delete' ? 'organization.deleteConfirmTitle' : 'organization.leaveConfirmTitle')} onClick={(event) => event.stopPropagation()}>
-            <div className="mb-[8px] flex items-center gap-[8px] text-[16px] font-semibold text-[rgba(23,26,29,0.92)] [&_svg]:text-accent"><IconInfoCircle /><span>{t(locale, confirmState.kind === 'delete' ? 'organization.deleteConfirmTitle' : 'organization.leaveConfirmTitle')}</span></div>
-            <p className="mt-0 mr-0 mb-[20px] ml-[28px] inline-block text-[14px] leading-[22px] text-[rgba(23,26,29,0.6)]">{t(locale, confirmState.kind === 'delete' ? 'organization.deleteConfirmMessage' : 'organization.leaveConfirmMessage', { name: confirmState.org.name })}</p>
-            <div className="flex justify-end gap-[40px] text-[14px]">
-              <button type="button" className="cursor-pointer border-0 bg-transparent font-[inherit] text-[14px] text-[rgba(23,26,29,0.92)]" onClick={() => setConfirmState(null)}>{t(locale, 'common.cancel')}</button>
-              <button type="button" className="cursor-pointer border-0 bg-transparent font-[inherit] text-[14px] text-[#d54941]" onClick={() => void confirmLeaveOrDelete()}>{confirmState.kind === 'delete' ? t(locale, 'common.delete') : t(locale, 'organization.leave')}</button>
-            </div>
+      {/* 删除/退出确认弹窗（Vue :207-240 t-dialog del-org-dialog + circle-wrap，
+          与 kb-list del-knowledge-dialog 同款先例）。 */}
+      {confirmState ? <Dialog
+        visible
+        dialogClassName="del-org-dialog"
+        closeBtn={false}
+        cancelBtn={null}
+        confirmBtn={null}
+        onClose={() => setConfirmState(null)}
+      >
+        <div className="circle-wrap">
+          <div className="dialog-header">
+            <img className="circle-img" src={CIRCLE_PNG} alt="" />
+            <span className="circle-title">{t(locale, confirmState?.kind === 'delete' ? 'organization.deleteConfirmTitle' : 'organization.leaveConfirmTitle')}</span>
+          </div>
+          <span className="del-circle-txt">
+            {t(locale, confirmState?.kind === 'delete' ? 'organization.deleteConfirmMessage' : 'organization.leaveConfirmMessage', { name: confirmState?.org.name ?? '' })}
+          </span>
+          <div className="circle-btn">
+            <span className="circle-btn-txt" onClick={() => setConfirmState(null)}>{t(locale, 'common.cancel')}</span>
+            <span className="circle-btn-txt confirm" onClick={() => void confirmLeaveOrDelete()}>{confirmState?.kind === 'delete' ? t(locale, 'common.delete') : t(locale, 'organization.leave')}</span>
           </div>
         </div>
-      ) : null}
+</Dialog> : null}
 
       {toast ? <div className={'fixed left-1/2 top-[24px] z-[3000] flex items-center rounded-[8px] px-[18px] py-[10px] shadow-[0_6px_20px_rgba(0,0,0,0.18)] box-border max-w-[420px] bg-[rgba(23,26,29,0.86)] -translate-x-1/2 ' + (toast.tone === 'success' ? 'text-[#7bf2b6]' : toast.tone === 'warning' ? 'text-[#faad14]' : 'text-[#ffb4ae]')} role="status">{toast.text}</div> : null}
-    </main>
+    </div>
   );
 }

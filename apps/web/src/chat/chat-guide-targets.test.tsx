@@ -65,8 +65,9 @@ test('session group headers stay non-interactive labels like the Vue timeline_he
     selectedSessionId: null,
     onSelect: () => undefined,
   }));
-  assert.match(html, /<h3[^>]*>近7天<\/h3>/);
-  const header = html.match(/<h3[^>]*>/)?.[0] ?? '';
+  // Task 9.5 — 分组标题复刻 Vue .timeline_header（div 标签，menu.vue:137-141）。
+  assert.match(html, /<div class="timeline_header[^"]*"[^>]*>/);
+  const header = html.match(/<div class="timeline_header[^"]*"[^>]*>/)?.[0] ?? '';
   assert.doesNotMatch(header, /onclick/i);
   assert.doesNotMatch(header, /tabindex/i);
   assert.doesNotMatch(header, /role="button"/);

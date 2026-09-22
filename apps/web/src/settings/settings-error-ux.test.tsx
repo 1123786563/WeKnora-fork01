@@ -16,7 +16,20 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -234,8 +247,8 @@ test('storage: load failure degrades silently to the empty list + add button (Vu
 for (const [section, heading, panelSelector] of [
   ['vectorstore', '向量数据库引擎', '.wk-settings-resource'],
   ['websearch', '网络搜索配置', '.wk-settings-resource'],
-  ['weknoracloud', 'WeKnora Cloud', '.wk-settings-cloud'],
-  ['ollama', 'Ollama 配置', '.wk-settings-ollama'],
+  ['weknoracloud', 'WeKnora Cloud', '.weknoracloud-settings'],
+  ['ollama', 'Ollama 配置', '.ollama-settings'],
   ['retrieval', '搜索设置', 'form.wk-settings-editor'],
 ] as const) {
   test(`${section}: load failure degrades silently with the panel rendering on a null payload (R480 Vue baseline)`, async () => {
@@ -281,16 +294,18 @@ test('system: banner passes the backend message through and retries the same req
   assert.ok((calls['system.info'] ?? 0) > before, 'retry re-sends the same system info request');
 });
 
-test('userprofile: banner passes the backend message through and retries the same request (Vue UserProfile.vue mode)', async () => {
+test('userprofile: the panel error alert passes the backend message through and retries (Vue UserProfile.vue error-inline mode)', async () => {
   const { client, calls } = failingClient('userprofile');
   const container = await mountPage(client, '?section=userprofile');
   await settle();
+  // T12a：userprofile 面板自持 Vue error 态（UserProfile.vue :15-21
+  // error-inline t-alert theme=error + 重试），壳层横幅不再顶替。
   assert.ok(headingTexts(container).includes('用户信息'), 'the userprofile section h2 keeps rendering on load failure');
-  const banner = findBanner(container);
-  assert.ok(banner?.includes(UPSTREAM_FAILURE), 'the shell banner shows the backend error text');
-  assert.equal(container.querySelector('[data-testid="user-profile-section"]'), null, 'the banner replaces the panel content');
+  assert.ok(container.querySelector('[data-testid="user-profile-section"] .error-inline'), 'the panel renders its own error-inline block');
+  assert.ok(container.textContent?.includes(UPSTREAM_FAILURE), 'the panel alert shows the backend error text');
+  assert.equal(findBanner(container), null, 'no shell error banner for the self-erroring userprofile panel');
   const retry = findRetryButton(container, '重试');
-  assert.ok(retry, 'the banner offers a retry button');
+  assert.ok(retry, 'the panel alert offers a retry button');
   const before = calls['profile.get'] ?? 0;
   await act(async () => { retry!.click(); });
   await settle();

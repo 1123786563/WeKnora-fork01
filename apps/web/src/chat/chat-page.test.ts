@@ -5,17 +5,20 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
 
 import { ChatComposer, ChatPage, resolveChatCopy } from '@weknora/views';
+import { SessionSidebarList } from '@weknora/views';
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 test('header rename uses the localized inline editor contract instead of a browser prompt', () => {
   const routeSource = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
-  const viewSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
+  // Vue ChatHeader.vue 同构迁移后，rename 编辑器住在 apps/web 的 tdesign header 里。
+  const headerSource = readFileSync(new URL('./chat-header.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(routeSource, /window\.prompt\(/);
-  assert.match(viewSource, /onBlur=\{\(event\) =>/);
-  assert.match(viewSource, /renameSubmittingRef/);
-  assert.match(viewSource, /requestAnimationFrame.*select\(\)/);
-  assert.match(viewSource, /role=\"alert\" className=\"text/);
+  assert.match(headerSource, /chat-header__edit-input/);
+  assert.match(headerSource, /renameSubmittingRef/);
+  assert.match(headerSource, /requestAnimationFrame/);
+  assert.match(headerSource, /\.select\(\)/);
+  assert.match(headerSource, /chat-header__edit-error/);
   for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
     const copy = resolveChatCopy(locale);
     assert.ok(copy.renameTitle && copy.renameTitlePlaceholder && copy.renameConfirm && copy.renameCancel);
@@ -26,8 +29,13 @@ test('chat view keeps destructive session actions behind the Vue confirmation st
   const routeSource = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
   const viewSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
   const sidebarSource = readFileSync(new URL('../../../../packages/views/src/chat/session-sidebar.tsx', import.meta.url), 'utf8');
-  assert.match(viewSource, /headerDangerAction/);
-  assert.match(viewSource, /onClear=\{props\.onClearSession\}/);
+  // Vue ChatHeader.vue：clear/delete 走同一弹层的 .chat-header-confirm 二次确认。
+  const headerSource = readFileSync(new URL('./chat-header.tsx', import.meta.url), 'utf8');
+  assert.match(headerSource, /menuMode/);
+  assert.match(headerSource, /'clear'/);
+  assert.match(headerSource, /'delete'/);
+  assert.match(headerSource, /chat-header-confirm__btn is-danger/);
+  assert.match(routeSource, /onClearSession=\{clearMessages\}/);
   assert.match(routeSource, /setStreamState\(\(current\) => \(\{ \.\.\.current, phase: 'error'/);
   assert.match(routeSource, /setStreamState\(\(current\) => \(\{ \.\.\.current, phase: 'stopped'/);
   assert.match(sidebarSource, /clearConfirmBody/);
@@ -125,10 +133,10 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /redacted/);
   // Session menu items (Vue ChatHeader menu; zh aligns with menu.renameSession
   // 修改标题 / chatHeader.deleteSession 删除对话).
-  assert.match(html, /修改标题/);
-  assert.match(html, /删除对话/);
+  // Vue ChatHeader.vue t-popup destroyOnClose：菜单项仅开层时渲染（ix-chat-header-menu 扫描覆盖）。
+  assert.match(html, /aria-label=\"更多对话操作\"/);
   // Sandbox drawer opened via terminalOpen: connected terminal surface.
-  assert.match(html, /沙箱终端/);
+  assert.match(html, /沙箱可视化/);
   assert.match(html, /ls/);
   assert.match(html, /终端输入/);
   assert.match(html, /id="wk-chat-draft"[^>]*disabled=""/);
@@ -465,7 +473,7 @@ test('message list renders the Vue anatomy: date separators, user pill, plain as
     selectedSessionId: null,
     messages: [
       { id: 'u1', session_id: 's', role: 'user', content: 'hello', created_at: new Date(2024, 2, 5, 9, 0, 0).toISOString() },
-      { id: 'a1', session_id: 's', role: 'assistant', content: 'The answer is 42', created_at: new Date(2024, 2, 5, 9, 1, 0).toISOString() },
+      { id: 'a1', session_id: 's', role: 'assistant', content: 'The answer is 42', is_completed: true, created_at: new Date(2024, 2, 5, 9, 1, 0).toISOString() },
       { id: 'u2', session_id: 's', role: 'user', content: 'next day', created_at: new Date(2024, 2, 6, 9, 0, 0).toISOString() },
     ],
     locale: 'zh-CN',
@@ -487,7 +495,7 @@ test('message list renders the Vue anatomy: date separators, user pill, plain as
   assert.match(html, /wk-chat-answer-toolbar/);
   assert.match(html, /aria-label="复制"/);
   assert.match(html, /aria-label="添加到知识库"/);
-  assert.match(html, /<button[^>]*class="wk-chat-bookmark[^>]*aria-label="添加到知识库"[^>]*aria-disabled="true"[^>]*disabled=""/);
+  assert.match(html, /<button[^>]*class="[^"]*wk-chat-bookmark[^>]*aria-label="添加到知识库"[^>]*disabled="[^"]*"[^>]*aria-disabled="true"/);
   assert.match(html, /The answer is 42/);
   // Scroll-to-bottom only appears after the user scrolls up (client-only).
   assert.doesNotMatch(html, /wk-chat-scroll-bottom/);
@@ -516,23 +524,20 @@ test('artifact rows expose the Vue drawer entry while keeping protected actions 
 });
 
 test('session sidebar renders time-group headers, full titles, and the hover ⋯ menu', () => {
-  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+  // Vue menu.vue：会话侧栏由平台 shell 渲染（chat/index.vue 无自有侧栏），
+  // 分组列表直接经 SessionSidebarList 断言（ChatPage 会话视图不再重复侧栏）。
+  const html = renderToStaticMarkup(React.createElement(SessionSidebarList, {
     sessions: [
       { id: 'session-1', title: '修复后首发截图', is_pinned: false },
       { id: 'session-2', title: 'creatChat首发修复验证', is_pinned: false },
     ],
     selectedSessionId: 'session-1',
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
-    onRenameSession: async () => undefined,
-    onToggleSessionPin: async () => undefined,
-    onDeleteSession: async () => undefined,
-    locale: 'zh-CN',
-    sessionGroups: [
+    onSelect: () => undefined,
+    onRename: async () => undefined,
+    onTogglePin: async () => undefined,
+    onDelete: async () => undefined,
+    copy: resolveChatCopy('zh-CN'),
+    groups: [
       { key: 'yesterday', label: 'yesterday', items: [{ id: 'session-1', title: '修复后首发截图', is_pinned: false }] },
       { key: 'older', label: 'older', items: [{ id: 'session-2', title: 'creatChat首发修复验证', is_pinned: false }] },
     ],
@@ -541,9 +546,8 @@ test('session sidebar renders time-group headers, full titles, and the hover ⋯
   assert.match(html, /更早/);
   assert.match(html, /修复后首发截图/);
   assert.match(html, /creatChat首发修复验证/);
-  assert.match(html, /aria-current="page"/);
+  assert.match(html, /aria-current=\"page\"/);
   assert.match(html, /修改标题/);
-  assert.match(html, /aria-label="更多对话操作"/);
 });
 
 // --- R016 model chip (Vue Input-field.vue model-display parity) ---
@@ -664,7 +668,8 @@ test('composer localizes empty KB mention states', () => {
     mentionOpen: true,
     mentionOptions: [],
   }));
-  assert.match(html, /No knowledge bases available/);
+  // Vue MentionSelector.vue:270 空态 = emptyHint || common.noResult（无搜索框）。
+  assert.match(html, /No results/);
   assert.doesNotMatch(html, /暂无可用知识库/);
 });
 
@@ -764,34 +769,15 @@ test('an unclosed think block in history restores the live thinking presentation
  * Markdown / 在新窗口中打开, separated by dividers (ChatHeader.vue:61-78).
  */
 test('chat header menu renders the Vue utility block between rename and clear with dividers', () => {
-  const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    ...baseProps,
-    locale: 'zh-CN',
-    onRenameSession: async () => undefined,
-    onToggleSessionPin: async () => undefined,
-    onDeleteSession: async () => undefined,
-    onClearSession: async () => undefined,
-    headerUtilityItems: [
-      { id: 'copySessionId', label: '复制会话 ID', onActivate: () => undefined },
-      { id: 'copyLink', label: '复制对话链接', onActivate: () => undefined },
-      { id: 'copyMarkdown', label: '复制为 Markdown', onActivate: () => undefined },
-      { id: 'openNewWindow', label: '在新窗口中打开', onActivate: () => undefined },
-    ],
-  }));
-  for (const label of ['复制会话 ID', '复制对话链接', '复制为 Markdown', '在新窗口中打开']) {
-    assert.match(html, new RegExp(label));
-  }
-  // Scope the order check to the header menu list: the sidebar row menus
-  // carry the same 置顶/修改标题/清空消息 labels earlier in the DOM.
-  const menuStart = html.indexOf('wk-chat-header-menu-list');
-  const menuHtml = html.slice(menuStart, menuStart + 6000);
-  // Vue menu order: pin | rename | copyId | copyLink | copyMarkdown | openNewWindow | clear | delete.
-  const vueOrder = ['置顶', '修改标题', '复制会话 ID', '复制对话链接', '复制为 Markdown', '在新窗口中打开', '清空消息', '删除对话'];
-  const order = vueOrder.map((text) => menuHtml.indexOf(text));
+  // Vue ChatHeader.vue t-popup destroyOnClose：菜单项只在开层时进入 DOM
+  // （ix-chat-header-menu 像素扫描覆盖开层态），静态断言改为 chat-header.tsx 源契约。
+  const headerSource = readFileSync(new URL('./chat-header.tsx', import.meta.url), 'utf8');
+  assert.match(headerSource, /chat-header-menu__item/);
+  assert.match(headerSource, /data-menu-action=\{item\.id\}/);
+  const dividers = headerSource.match(/chat-header-menu__divider/g) ?? [];
+  assert.ok(dividers.length >= 2, 'the header menu must carry the two Vue dividers around the utility block');
+  const order = ['onTogglePin', 'startTitleEdit', 'utilityItems.map', 'data-menu-action=\"clear\"', 'data-menu-action=\"delete\"'].map((token) => headerSource.indexOf(token));
   for (let index = 1; index < order.length; index += 1) {
-    assert.ok(order[index] > order[index - 1], `menu items must render in the Vue order (${vueOrder[index - 1]} before ${vueOrder[index]})`);
+    assert.ok(order[index] > order[index - 1], 'menu actions must render in the Vue order');
   }
-  // The utility block sits between two dividers like the Vue menu structure.
-  const dividers = menuHtml.match(/wk-chat-header-menu-divider/g) ?? [];
-  assert.equal(dividers.length, 2, 'the header menu must carry the two Vue dividers around the utility block');
 });

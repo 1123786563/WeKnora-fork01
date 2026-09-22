@@ -24,6 +24,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "recharts": "^3.10.1",
+    "tdesign-icons-react": "0.6.11",
+    "tdesign-react": "1.18.3",
     "xlsx": "file:./vendor/xlsx-0.20.2.tgz"
   },
   "devDependencies": {

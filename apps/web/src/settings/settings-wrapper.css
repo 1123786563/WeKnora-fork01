@@ -161,11 +161,12 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 
 /* —— R5xx settings 面板清扫切片 —————————————————————————————————————— */
 
-/* ParserEngineSettings.vue 卡片走 TDesign 中性灰 token（--td-text-color-*
-   rgba(0,0,0,.9/.6/.4)、--td-component-stroke #e7e7e7、
-   --td-bg-color-secondarycontainer #f3f3f3），而 React 全局 --color-* 系
-   蓝-gray（#172033/#66758b/#edf0f5），是 parser 面板全文本/边线泛红的根因。
-   仅在面板子树重映射（同 .runtime-queues 先例）。 */
+/* CSS retention criteria（settings-parser TDesign 迁移后仅剩此块）：列表域
+   已迁 tdesign（settings.td.css §13，--td-* token 直用）；配置抽屉沿用
+   React 表单栈（批次先例：resource/mcp/models 编辑器同口径），其 Tailwind
+   色 utilities（text-ink/text-muted/border-line-soft/bg-surface-wash…）仍
+   读 --color-* 蓝-gray 系（#172033/#66758b/#edf0f5），而 Vue SettingDrawer
+   抽屉是 TDesign 中性灰 token——保留子树重映射对齐抽屉，待抽屉收编时删除。 */
 .parser-engine-settings {
   --color-ink: rgba(0, 0, 0, 0.9);
   --color-ink-strong: rgba(0, 0, 0, 0.9);
@@ -175,26 +176,6 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
   --color-line-soft: #e7e7e7;
   --color-surface-wash: #f3f3f3;
 }
-
-/* OllamaSettings.vue:422-438 — setting-control 列宽固定 360px（min=max），
-   info 列 padding-right 32px、desc line-height 1.6；地址输入与警告 alert
-   同列等宽（Vue 实测 alert 与输入框同为 757→1116px）。 */
-.wk-settings-ollama .setting-control { min-width: 360px; max-width: 360px; }
-.wk-settings-ollama .setting-info { padding-right: 32px; }
-.wk-settings-ollama .setting-info .desc { line-height: 1.6; }
-
-/* ChatHistorySettings.vue 的行不在 620px 窄表单里：settings-group 全宽
-   （启用开关右缘贴面板右缘 x≈1116，分割线全宽），行间距由 20px 行内边距
-   提供（Vue .settings-group gap 0，无表单 grid gap）。 */
-.wk-chathistory-settings .wk-settings-editor { max-width: none; gap: 0; margin-bottom: 0; }
-
-/* ChatHistorySettings.vue 用 t-switch size-m（32.4×20 轨道、15px 旋钮、
-   2.5px 内边距；unchecked 轨道 --td-bg-color-secondarycontainer ≈ #e3e3e3），
-   而共享 <Switch> 是 40×20/16px 旋钮/track-off 蓝灰——按 Vue 实测覆盖。 */
-.wk-chathistory-settings [role="switch"] { width: 32.4px; background: #e3e3e3; }
-.wk-chathistory-settings [role="switch"][data-state="checked"] { background: #07c05f; }
-.wk-chathistory-settings [role="switch"] span { width: 15px; height: 15px; margin-left: 2.5px; translate: none; }
-.wk-chathistory-settings [role="switch"][data-state="checked"] span { translate: 12.4px; }
 
 /* SystemAuditLog.vue:627-650 — 面板自持 section-header，下边距 20px（非
    共享的 32px），无分割线；刷新按钮 20×20、图标 12px、占位色。 */
@@ -361,25 +342,6 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
    old registry copy for runtime-queues; suppress it only when this panel's own
    header is present (SettingsPage.tsx is out of this agent's scope). */
 .wk-settings-section:has(.runtime-queues) > .wk-settings-panel-heading { display: none; }
-/* TenantMembers.vue t-table 几何与 tdesign 线色（headless+像素实测）：
-   - 外框 #e7e7e7（--td-component-stroke），行线 #dcdcdc（--td-component-border）
-     由 td border-bottom 提供（tdesign 模式），pager border-top #e7e7e7。
-   - 邀请表壳 .pending-invitations-table 整体 #f3f3f3
-     （--td-bg-color-secondarycontainer），表格区被白底 table 盖住、pager 区
-     透明露灰（y294~337 实测灰带）。
-   - 邀请表 th 47px 含 1px 底线（内容中心 y200.1、底线渲染 y223）；成员表
-     th 46px（内容中心 y421.3、底线 y443）。邀请 td 68.9px（行底线 y292 与
-     pager 顶线 y293 双线，同 Vue）；成员 td 68.5px 无底线（Vue isSelf 灰行
-     无可见行线，仅 pager 顶线 y513）。Scoped to the members section. */
-[data-testid="tenant-members-settings"] .data-table-shell { border-color: #e7e7e7; }
-[data-testid="tenant-members-settings"] .data-table-shell table { background: #fff; }
-[data-testid="tenant-members-settings"] .pending-invitations-section .data-table-shell { background: #f3f3f3; }
-[data-testid="tenant-members-settings"] .data-table-shell thead th { height: 46px; border-bottom: 1px solid #dcdcdc; padding-top: 0; padding-bottom: 0; }
-[data-testid="tenant-members-settings"] .members-list-wrap .data-table-shell thead th { border-bottom: 0; }
-[data-testid="tenant-members-settings"] .data-table-shell tbody td { height: 68.9px; border-top: 0; border-bottom: 1px solid #dcdcdc; padding-top: 0; padding-bottom: 0; }
-[data-testid="tenant-members-settings"] .members-list-wrap .data-table-shell tbody td { height: 69px; border-bottom: 0; }
-[data-testid="tenant-members-settings"] .members-list-wrap .data-table-shell__pager { padding-top: 9px; }
-[data-testid="tenant-members-settings"] .data-table-shell__pager { border-top-color: #e7e7e7; }
 
 /* Vue PlatformAPIKeys.vue — pak-* slice (platform-api-keys section). */
 .platform-api-keys { width: 100%; }
@@ -421,50 +383,24 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 /* PlatformAPIKeys.vue owns its section header; suppress the wrapper heading
    (old registry copy) when this panel is mounted. */
 .wk-settings-section:has(.platform-api-keys) > .wk-settings-panel-heading { display: none; }
-/* SandboxSettings.vue owns its header (title + (i) + guide link). */
-.wk-settings-section:has(.wk-sandbox-settings) > .wk-settings-panel-heading { display: none; }
 
 /* ==== A 组深修（settings-members/parser/ollama/envvars/sandbox/system/models）
    以下规则与既有 runtime-queues / platform-api-keys 的「面板自持 section-header」
    模式同构：Vue 面板各自渲染 section-header（无底部分隔线、专属 margin），而
    SettingsPage 壳层 wrapper heading 自带 border-b（SettingsPage.tsx 不在本代理
    范围），故挂载对应面板时隐藏壳层 heading。 ==== */
-/* ParserEngineSettings.vue：面板自持 header，margin-bottom 28px，desc lh1.6 */
-.wk-settings-section:has(.parser-engine-settings) > .wk-settings-panel-heading { display: none; }
-.wk-settings-section .parser-engine-settings .section-header { margin-bottom: 28px; }
-.wk-settings-section .parser-engine-settings .section-header .section-description { line-height: 1.6; }
-/* OllamaSettings.vue：面板自持 header（默认 32px/h2 20px/desc 14px lh1.5） */
-.wk-settings-section:has(.wk-settings-ollama) > .wk-settings-panel-heading { display: none; }
+/* （原 ParserEngineSettings.vue 三条深修 slice 已删——parser 已迁
+   SELF_HEADER 直挂 .section，样式由 settings.td.css §13 平移块自持。） */
 /* SystemInfo.vue：面板自持 header */
 .wk-settings-section:has(.system-info) > .wk-settings-panel-heading { display: none; }
 /* EnvVarSettings.vue 覆盖：header margin-bottom 24px，desc margin 8px 0 0 / lh1.6 */
-.wk-settings-section:has(.env-settings) .section-header { margin-bottom: 24px; }
-.wk-settings-section:has(.env-settings) .section-header .section-description { margin: 8px 0 0; line-height: 1.6; }
 /* EnvVarSettings.vue scoped h2 { margin: 0 }：tsx 上的 m-0 会被上方共享
    .section-header h2 的 margin 0 0 8px 以更高优先级压掉，导致 desc 下移 8px。 */
-.wk-settings-section:has(.env-settings) .section-header h2 { margin: 0; }
-/* SandboxSettings.vue 覆盖：header margin-bottom 20px，desc lh1.6 */
-.wk-settings-section .wk-sandbox-settings .section-header { margin-bottom: 20px; }
-.wk-settings-section .wk-sandbox-settings .section-header .section-description { line-height: 1.6; }
-/* SandboxSettings.vue scoped .setting-row：padding 0 0 16px + margin-bottom 8px
-   （wrapper 共享 20px 上下 padding 是 TenantInfo 系的），setting-info 不限宽、
-   label 14px（共享规则 15px），setting-control 无 280px min-width。 */
-.wk-settings-section .wk-sandbox-settings .setting-row { gap: 24px; padding: 0 0 16px; margin-bottom: 8px; }
-.wk-settings-section .wk-sandbox-settings .setting-info { max-width: none; }
-.wk-settings-section .wk-sandbox-settings .setting-info label { font-size: 14px; }
-.wk-settings-section .wk-sandbox-settings .setting-control { min-width: 0; }
-/* OllamaSettings.vue .setting-control：360px 定宽右对齐纵向栈（输入框+告警） */
-.wk-settings-section .wk-settings-ollama .setting-control { flex-direction: column; align-items: flex-end; min-width: 360px; max-width: 360px; }
-.wk-settings-section .wk-settings-ollama .setting-control .t-input-wrap { width: 100%; }
-/* OllamaSettings.vue .setting-info .desc：line-height 1.6（wrapper 共享规则是 1.5） */
-.wk-settings-section .wk-settings-ollama .setting-info .desc { line-height: 1.6; }
-/* SandboxSettings.vue .sandbox-grid：添加卡片与记录卡同网格（auto-fill 320px） */
-.wk-sandbox-settings .wk-sandbox-grid--empty { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-/* ModelSettings.vue section-header：mb28，容器自带 grid gap-4(16px)，补差 12px */
-.wk-settings-section [data-testid="model-settings"] .section-header { margin-bottom: 12px; }
-/* ModelSettings.vue .section-description：line-height 1.6（wrapper 共享规则是 1.5，
-   22px vs 21px 会把 hint/tabs/卡片链整体抬高 1px） */
-.wk-settings-section [data-testid="model-settings"] .section-header .section-description { line-height: 1.6; }
+/* （原 SandboxSettings.vue 深修 slice 六条已删——sandbox 已迁 SELF_HEADER
+   直挂 .section，样式由 settings.td.css §14 平移块自持。） */
+/* （原 ModelSettings.vue section-header 深修 slice 两条已删——T12b models 迁移
+   SELF_HEADER 直挂 .section 后不再经过 .wk-settings-section wrapper，
+   样式由 settings.td.css §12 平移块自持。） */
 
 /* ==== B 组深修（settings-vectorstore/storage/websearch — ResourceSettingsPanel）
    Vue 三个资源面板（VectorStore/StorageBackend/WebSearchSettings.vue）都自持

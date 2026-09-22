@@ -1,0 +1,242 @@
+{
+  "stamp": "2026-09-21T16:17:00.688Z",
+  "raw": {
+    "spike-tdesign": {
+      "diff_pct": 0,
+      "diff_pixels": 4,
+      "bbox": [
+        56,
+        469,
+        57,
+        470
+      ],
+      "bands_pct": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.01,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": []
+    },
+    "spike-tdesign-dialog": {
+      "diff_pct": 0.199,
+      "diff_pixels": 1836,
+      "bbox": [
+        57,
+        299,
+        778,
+        470
+      ],
+      "bands_pct": [
+        0,
+        0,
+        0,
+        0,
+        0.07,
+        2.32,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": [
+        {
+          "cell": "3,4",
+          "pct": 12.7
+        }
+      ]
+    },
+    "icons": {
+      "bbox": {
+        "vue": {
+          "x": 24,
+          "y": 453,
+          "width": 1232,
+          "height": 23.78125
+        },
+        "react": {
+          "x": 24,
+          "y": 453,
+          "width": 1232,
+          "height": 23.78125
+        }
+      },
+      "diff": {
+        "diff_pct": 0.014,
+        "diff_pixels": 4,
+        "bbox": [
+          32,
+          16,
+          33,
+          17
+        ],
+        "bands_pct": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.16,
+          0,
+          0,
+          0
+        ],
+        "hot_cells": []
+      },
+      "counts": {
+        "vue": 20,
+        "react": 20
+      }
+    }
+  },
+  "normalized": {
+    "spike-tdesign": {
+      "diff_pct": 0,
+      "diff_pixels": 4,
+      "bbox": [
+        56,
+        469,
+        57,
+        470
+      ],
+      "bands_pct": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.01,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": []
+    },
+    "spike-tdesign-dialog": {
+      "diff_pct": 0.199,
+      "diff_pixels": 1836,
+      "bbox": [
+        57,
+        299,
+        778,
+        470
+      ],
+      "bands_pct": [
+        0,
+        0,
+        0,
+        0,
+        0.07,
+        2.32,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": [
+        {
+          "cell": "3,4",
+          "pct": 12.7
+        }
+      ]
+    },
+    "icons": {
+      "diff_pct": 0.014,
+      "diff_pixels": 4,
+      "bbox": [
+        32,
+        16,
+        33,
+        17
+      ],
+      "bands_pct": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.16,
+        0,
+        0,
+        0
+      ],
+      "hot_cells": []
+    }
+  },
+  "runtime": {
+    "dialog_visible": {
+      "vue": true,
+      "react": true
+    },
+    "vue": {
+      "message_shown": true,
+      "notification_shown": true
+    },
+    "react": {
+      "message_shown": true,
+      "notification_shown": true
+    }
+  },
+  "contextProbe": {
+    "vue": {
+      "body": {
+        "font": "-apple-system, \"system-ui\", \"Segoe UI\", Roboto, \"Helvetica Neue\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+        "size": "14px",
+        "color": "rgba(0, 0, 0, 0.9)"
+      },
+      "primaryBtnBg": "rgb(7, 192, 95)",
+      "iconColor": "rgba(0, 0, 0, 0.9)"
+    },
+    "react": {
+      "body": {
+        "font": "-apple-system, \"system-ui\", \"Segoe UI\", Roboto, \"Helvetica Neue\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+        "size": "14px",
+        "color": "rgba(0, 0, 0, 0.9)"
+      },
+      "primaryBtnBg": null,
+      "iconColor": null
+    },
+    "reactNormalized": {
+      "body": {
+        "font": "-apple-system, \"system-ui\", \"Segoe UI\", Roboto, \"Helvetica Neue\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+        "size": "14px",
+        "color": "rgba(0, 0, 0, 0.9)"
+      },
+      "primaryBtnBg": "rgb(7, 192, 95)",
+      "iconColor": "rgba(0, 0, 0, 0.9)"
+    }
+  },
+  "errors": [
+    {
+      "tag": "react",
+      "kind": "http403",
+      "text": "http://localhost:5175/api/v1/auth/auto-setup"
+    },
+    {
+      "tag": "react",
+      "kind": "console",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    }
+  ]
+}

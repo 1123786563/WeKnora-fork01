@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { AgentConfiguration, InstalledSkill, ModelConfiguration, SandboxConfigRecord, SkillCatalog, SkillCatalogInstallation, SkillConfiguration, SkillFileContent, SkillInstallGuidanceState, WeKnoraClient } from '@weknora/api-client';
 import { initialSkillTimelineState, installProgressPercent, reduceSkillTimelineFrame, type SkillInstallProgressEvent, type SkillTimelineState } from '@weknora/domain/sandbox/skill-install';
-import { Button, Card, Checkbox, Dialog, Input, Select, Status, Switch, Textarea, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@weknora/ui';
+// TDesign 同构迁移（批次 2 收官）：列表域（section-header / loading / 空态 /
+// skill-list 卡片网格 / chip + install 弹层面板 / add 卡）按 SkillSettings.vue
+// 逐节点平移，组件换 tdesign-react（TTooltip/TLoading/TEmpty/TPopup/TButton +
+// tdesign-icons-react）；Add 向导 / Install / Manage / Files 抽屉与删除确认弹层
+// 沿用 React 表单栈 + Tailwind（批次先例：sandbox/parser/models 编辑器同口径，
+// 扫描稳态不可达，待后续批次收编），@weknora/ui 仅剩保留域使用。
+import { Button, Card, Checkbox, Dialog, Input, Select, Status, Switch, Textarea } from '@weknora/ui';
+import { AddIcon, DeleteIcon, FolderIcon, Icon as TIcon } from 'tdesign-icons-react';
+import { Button as TButton, Empty as TEmpty, Loading as TLoading, Popup as TPopup, Tooltip as TTooltip } from 'tdesign-react';
 import { renderChatMarkdown } from '../../../../packages/views/src/chat/markdown.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
-import { EmptyState } from './EmptyState.tsx';
 import { pushSettingsToast } from './settings-toast.tsx';
+import { providerLogo } from './providerLogos.ts';
 import { navigate } from '../platform/navigation.ts';
 import { observeUploadProgress } from '../platform/http.ts';
-import './skill-settings.css';
 import {
   MAX_ENV_VALUE_BYTES, adminSkillEnvClearPayload, backendLabelKey, buildSkillFileTree, canClearAdminSkillEnv,
   canDeleteCatalog, classifySkillRegisterError, clearSubmittedSkillEnvDrafts, collectSkillDirPaths, compactSkillText,
@@ -204,92 +211,48 @@ function DrawerShell({ open, spec, children }: { open: boolean; spec: DrawerWidt
 const INSTALLER_AGENT_ID = 'builtin-skill-installer';
 const LAST_CHAT_MODEL_KEY = 'weknora_last_chat_model_id';
 const SKILL_POLL_INTERVAL_MS = 2500;
+/** Vue SKILL_ICON（frontend/src/types/mention.ts:4）——卡片徽章与抽屉头图标同名。 */
+const SKILL_ICON = 'system-code';
 
-/* ---- Vue baseline glyphs (TDesign currentColor icons, SkillSettings.vue:44-59,196-198) ---- */
-function GlyphIcon({ children, size = 14 }: { children: React.ReactNode; size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block' }}>{children}</svg>;
-}
-/** t-icon "system-code" (SKILL_ICON, frontend/src/types/mention.ts:4). */
-function SkillGlyph({ size }: { size?: number }) {
-  return <GlyphIcon size={size}><path d="m8.5 8-4.5 4 4.5 4" /><path d="m15.5 8 4.5 4-4.5 4" /><path d="M13.5 5 10.5 19" /></GlyphIcon>;
-}
-function FolderGlyph({ size }: { size?: number }) {
-  return <GlyphIcon size={size}><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4.2l1.8 2H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z" /></GlyphIcon>;
-}
-function DeleteGlyph({ size }: { size?: number }) {
-  return <GlyphIcon size={size}><path d="M4 7h16M9.5 7V4.5h5V7m-8.5 0 .8 12.5h11.4L19 7" /><path d="M10 11v5.5M14 11v5.5" /></GlyphIcon>;
-}
-function CloudUploadGlyph({ size }: { size?: number }) {
-  return <GlyphIcon size={size}><path d="M7.5 17.5a4.2 4.2 0 0 1-.9-8.3 5.6 5.6 0 0 1 11-.1 4 4 0 0 1-.3 8.2" /><path d="M12 12.5V20" /><path d="m8.8 15.2 3.2-3.2 3.2 3.2" /></GlyphIcon>;
-}
-function CloudGlyph() {
-  return <GlyphIcon><path d="M7 17.5a4 4 0 0 1-.9-7.9 5.4 5.4 0 0 1 10.6-.1 3.9 3.9 0 0 1-.2 7.9" /></GlyphIcon>;
-}
-function ServerGlyph() {
-  return <GlyphIcon><rect x="4" y="5" width="16" height="6" rx="1.2" /><rect x="4" y="13" width="16" height="6" rx="1.2" /><path d="M7.5 8h.01M7.5 16h.01" /></GlyphIcon>;
-}
-function MinusCircleGlyph() {
-  return <GlyphIcon><circle cx="12" cy="12" r="8.5" /><path d="M8.5 12h7" /></GlyphIcon>;
+/* Vue SandboxBackendBadge.vue（frontend/src/components/settings/）：同一枚后端
+   徽章与 sandbox 面板共用，样式平移块在 settings.td.css（.sandbox-badge 家族）；
+   有 mono logo（docker）时用 ::before mask，否则回落 TDesign glyph
+   （cube→server、其余→cloud）。 */
+function SandboxBackendBadge({ type, size = 'md' }: { type?: string; size?: 'xs' | 'sm' | 'md' }) {
+  if (!type) return null;
+  const logo = providerLogo('sandbox', type);
+  const iconName = type === 'cube' ? 'server' : type === 'disabled' ? 'minus-circle' : 'cloud';
+  const className = `sandbox-badge sandbox-badge--${type} sandbox-badge--${size}${logo?.mode === 'mono' ? ' sandbox-badge--mono' : ''}`;
+  const style = logo?.mode === 'mono' ? { '--logo-url': `url("${logo.url}")` } as CSSProperties : undefined;
+  return <span className={className} style={style} aria-hidden="true">{logo ? null : <TIcon name={iconName} />}</span>;
 }
 
 /**
- * Vue SkillSettings.vue:5-9 header help: a t-icon "help-circle" wrapped in a
- * t-tooltip (placement right). Icon is 16px, --td-text-color-placeholder with
- * cursor:help and a hover shift to --td-text-color-secondary
- * (SkillSettings.vue:1244-1253); the popup content caps at 340px width with
- * line-height 1.55 (SkillSettings.vue:1268-1271).
+ * Vue SkillSettings.vue:3-12 section-header：20px/600 标题行（标题 + 帮助图标，
+ * 8px 间距）叠 14px secondary 描述，28px 底距；帮助是 t-tooltip（placement
+ * right）包裹的 t-icon help-circle（16px、placeholder 色、cursor:help，hover
+ * 移到 secondary，SkillSettings.vue:1250-1253），弹层内容限宽 340px、行高
+ * 1.55（SkillSettings.vue:1269-1272 unscoped :global 块）。
  */
 function SkillHelpTooltip({ content }: { content: string }) {
   return (
-    <TooltipProvider delayDuration={0}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={content}
-            className="m-0 inline-flex cursor-help border-0 bg-transparent p-0 text-[rgba(0_0_0_/.4)] transition-colors duration-150 hover:text-[rgba(0_0_0_/.6)] focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block' }}>
-              <circle cx="12" cy="12" r="10" />
-              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-              <path d="M12 17h.01" />
-            </svg>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" className="max-w-[340px] leading-[1.55]">{content}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <TTooltip content={content} placement="right" overlayClassName="skill-settings__help-tooltip">
+      <TIcon name="help-circle" className="section-header__help" aria-label={content} />
+    </TTooltip>
   );
 }
 
-/** Vue SkillSettings.vue:3-11 .section-header: 20px/600 title row (title +
- * help icon, 8px gap) over a 14px secondary description, 28px bottom margin. */
 function SkillSectionHeader({ helpContent }: { helpContent: string }) {
   const t = useSkillT();
   return (
-    <header className="mb-7">
-      <div className="mb-2 flex items-center gap-2">
-        <h2 className="m-0 text-[20px] font-semibold leading-[normal] text-[rgba(0_0_0_/.9)]">{t('settings.skills.title')}</h2>
+    <div className="section-header">
+      <div className="section-header__title-row">
+        <h2>{t('settings.skills.title')}</h2>
         <SkillHelpTooltip content={helpContent} />
       </div>
-      <p className="m-0 text-sm leading-[1.6] text-[rgba(0_0_0_/.6)]">{t('settings.skills.description')}</p>
-    </header>
+      <p className="section-description">{t('settings.skills.description')}</p>
+    </div>
   );
-}
-
-/** Vue SandboxBackendBadge.vue — square icon badge, exact tones/sizes. */
-const SANDBOX_BADGE_TONES: Record<string, string> = {
-  e2b: 'bg-[rgb(98_53_187/10%)] text-[#6235bb]',
-  docker: 'bg-[rgb(29_99_237/10%)] text-[#1d63ed]',
-};
-function SandboxBadge({ type, size }: { type?: string; size: 'xs' | 'sm' }) {
-  if (!type) return null;
-  const dims = size === 'xs'
-    ? 'h-4 w-4 rounded-[4px] [&_svg]:h-2.5 [&_svg]:w-2.5'
-    : 'h-[26px] w-[26px] rounded-[7px] [&_svg]:h-3.5 [&_svg]:w-3.5';
-  return <span aria-hidden="true" className={`inline-flex shrink-0 items-center justify-center ${dims} ${SANDBOX_BADGE_TONES[type] ?? 'bg-[rgb(0_82_217/10%)] text-[#0052d9]'}`}>
-    {type === 'cube' ? <ServerGlyph /> : type === 'disabled' ? <MinusCircleGlyph /> : <CloudGlyph />}
-  </span>;
 }
 
 /**
@@ -333,6 +296,15 @@ function installChipStatusKeys(item: SkillCatalog, installation: SkillCatalogIns
   return installStatusKeys(installation.status, installation.enabled);
 }
 
+/** Vue installChipStatusIcon (SkillSettings.vue:669-674): the status glyph shown
+ *  next to a single install entry inside the chip panel. */
+function installChipStatusIcon(item: SkillCatalog, installation: SkillCatalogInstallation): string {
+  if (installation.status === 'failed') return 'close-circle';
+  if (installation.status === 'ready' && installation.enabled && item.bundleSha256 && installation.bundleSha256 && item.bundleSha256 !== installation.bundleSha256) return 'error-circle';
+  if (installation.status === 'ready' && installation.enabled) return 'check-circle-filled';
+  return '';
+}
+
 export function SkillSettingsPanel({ client, role, initialSkills, initialCatalog, initialSandboxConfigs }: Props) {
   // SkillSettings.vue is mounted for authenticated admin+ users; keep the
   // system-admin role on the catalog-management branch as well.
@@ -368,8 +340,12 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
   const [installPreselectId, setInstallPreselectId] = useState('');
   const [manageTarget, setManageTarget] = useState<{ record: SandboxConfigRecord; skillId: string; catalogName: string } | null>(null);
   const [filesTarget, setFilesTarget] = useState<{ id: string; name: string } | null>(null);
-  const [toast, setToast] = useState<{ tone: 'success' | 'warning' | 'error'; message: string } | null>(null);
   const focusTimer = useRef<number | null>(null);
+
+  /** Vue MessagePlugin 语义经由 Settings 域 toast 总线呈现（R472 A2）。 */
+  const onToast = useCallback((tone: 'success' | 'warning' | 'error', message: string) => {
+    pushSettingsToast(message, tone);
+  }, []);
 
   const skillConfigs = useMemo(() => records.filter((record) => isNamedSandboxBackend(record.sandbox_type)), [records]);
 
@@ -457,7 +433,7 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
     try {
       await persistInstallerModel(modelId);
     } catch (cause) {
-      setToast({ tone: 'error', message: errorText(cause, t('settings.sandbox.skillInstallerModelSaveFailed')) });
+      pushSettingsToast(errorText(cause, t('settings.sandbox.skillInstallerModelSaveFailed')), 'error');
     } finally {
       setSavingInstallerModel(false);
     }
@@ -505,16 +481,16 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
 
   async function removeCatalog(item: SkillCatalog) {
     if (!canDeleteCatalog(item)) {
-      setToast({ tone: 'warning', message: t('settings.skills.deleteCatalogBlocked') });
+      pushSettingsToast(t('settings.skills.deleteCatalogBlocked'), 'warning');
       return;
     }
     setDeletingId(item.id);
     try {
       await client.configuration.skills.catalog.remove(item.id);
-      setToast({ tone: 'success', message: t('settings.skills.deleteSuccess') });
+      pushSettingsToast(t('settings.skills.deleteSuccess'), 'success');
       await load(true);
     } catch (cause) {
-      setToast({ tone: 'error', message: errorText(cause, t('common.deleteFailed')) });
+      pushSettingsToast(errorText(cause, t('common.deleteFailed')), 'error');
     } finally {
       setDeletingId('');
     }
@@ -533,34 +509,45 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
     setInstallItem(item);
   }
 
+  /** Vue setInstallPanel (SkillSettings.vue:747-753)：受控 t-popup 的回写。 */
+  function setInstallPanel(id: string, visible: boolean) {
+    if (visible) {
+      setOpenPanelId(id);
+      return;
+    }
+    setOpenPanelId((current) => (current === id ? '' : current));
+  }
+
+  /* Vue SkillSettings.vue:2-130 列表域逐节点平移：section-header →
+     loading-container（t-loading）→ 空态（t-empty + hint + actions）/ skill-list
+     卡片网格（badge t-icon system-code / 图标按钮 folder+delete / chip 三分支：
+     label / 直达按钮 / t-popup 安装面板）→ skill-card--add 虚线卡。样式在
+     settings.td.css skills §。 */
   const empty = catalog.length === 0;
-  return <section data-testid="skill-settings" className="grid gap-3">
+  return <div className="skill-settings" data-testid="skill-settings">
     <SkillSectionHeader helpContent={t('settings.skills.helpTooltip')} />
-    {toast ? <Status tone={toast.tone}>{toast.message}</Status> : null}
-    {loading ? <Status>{t('common.loading')}</Status> : loadError ? (
-      /* R472 A2 — Vue SkillSettings.vue 加载失败：Toast + 中央空态 + 重试；
-         标题/说明保持渲染，列表区被空态替代。 */
-      <div data-testid="settings-load-empty" className="flex flex-col items-center justify-center px-4 py-20 text-center">
-        <EmptyState description={loadError}>
-          <Button type="button" variant="primary" onClick={() => { void load(); }}>{t('common.retry')}</Button>
-        </EmptyState>
+    {loading ? <div className="loading-container"><TLoading text={t('common.loading')} /></div> : loadError ? (
+      /* R472 A2 — Vue SkillSettings.vue 加载失败：Toast + 空态 + 重试；
+         标题/说明保持渲染，列表区被空态替代（DOM 沿用 Vue .empty-state 形状）。 */
+      <div className="empty-state" data-testid="settings-load-empty">
+        <TEmpty description={loadError} />
+        <div className="empty-actions">
+          <TButton theme="primary" onClick={() => { void load(); }}>{t('common.retry')}</TButton>
+        </div>
       </div>
     ) : empty ? (
-      /* Vue SkillSettings.vue:1291-1294 — .empty-state padding 80px 0；React 的
-         t-empty 等效栈实测整体低 12px，顶部收敛到 68px 对齐（R5xx 清扫实测）。 */
-      <div className="flex flex-col items-center justify-center px-4 pb-20 pt-[68px] text-center">
-        <EmptyState
-          description={t('settings.skills.emptyDesc')}
-          hint={skillConfigs.length === 0 ? t('settings.skills.emptyNoSandboxHint') : undefined}
-        >
-          <Button type="button" variant="primary" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</Button>
+      <div className="empty-state">
+        <TEmpty description={t('settings.skills.emptyDesc')} />
+        {skillConfigs.length === 0 ? <p className="empty-hint">{t('settings.skills.emptyNoSandboxHint')}</p> : null}
+        <div className="empty-actions">
+          <TButton theme="primary" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</TButton>
           {skillConfigs.length === 0
-            ? <Button type="button" onClick={() => navigate('/platform/settings?section=sandbox')}>{t('settings.skills.goSandboxSettings')}</Button>
+            ? <TButton theme="default" variant="outline" onClick={() => navigate('/platform/settings?section=sandbox')}>{t('settings.skills.goSandboxSettings')}</TButton>
             : null}
-        </EmptyState>
+        </div>
       </div>
     ) : (
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] items-stretch gap-2.5">
+      <div className="skill-list">
         {catalog.map((item) => {
           const view = installsView(item, skillConfigs);
           const live = view.installs.length > 0;
@@ -571,100 +558,124 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
             ...view.available.map((config) => `${config.name} · ${t('settings.skills.installPanelAvailable')}`),
           ];
           const chipTooltip = tooltipLines.length === 0 ? t('settings.skills.installToSandbox') : tooltipLines.join('\n');
-          // Vue: border/box-shadow brand + --td-brand-color-focus 20% mix (SkillSettings.vue:1334-1337).
-          const cardTone = focusedCatalogId === item.id ? 'border-[#07c05f] shadow-[0_0_0_2px_rgb(7_192_95/20%)]' : 'border-[#e7e7e7]';
-          const chipColorCls = chipTone === 'off' ? 'text-[rgba(0_0_0_/.4)]' : live ? 'text-[rgba(0_0_0_/.6)]' : 'text-[#07c05f]';
-          const chipBgCls = chipTone === 'stale' ? 'bg-[rgb(237_123_47/10%)]' : chipTone === 'failed' ? 'bg-[rgb(227_77_89/10%)]' : live ? 'bg-[#f3f3f3]' : 'bg-[rgb(7_192_95/10%)]';
-          const chipHoverCls = live ? 'enabled:hover:text-[rgba(0_0_0_/.9)] enabled:hover:bg-[#f3f3f3]' : 'enabled:hover:text-[#07c05f] enabled:hover:bg-[rgb(7_192_95/16%)]';
-          const chipCls = `group/chip inline-flex items-center gap-1 min-w-0 max-w-full m-0 px-1.5 py-0.5 border-0 rounded-control [font:inherit] text-xs leading-[18px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-60 ${chipColorCls} ${chipBgCls} ${chipHoverCls}`;
-          const chipGoCls = live ? 'shrink-0 text-[rgba(0_0_0_/.4)] group-hover/chip:text-current' : 'shrink-0 text-[#07c05f]';
-          const entryStatusCls = chipTone === 'ready' ? 'text-[#00a870]' : chipTone === 'stale' ? 'text-[#ed7b2f]' : chipTone === 'failed' ? 'text-[#e34d59]' : '';
-          return <article key={item.id} className={`relative flex flex-col p-0 overflow-hidden rounded-[10px] bg-white transition-[border-color,box-shadow] duration-[180ms] min-w-0 h-full border ${cardTone}${focusedCatalogId === item.id ? ' skill-card--focused' : ''}${live ? ' skill-card--installed' : ' skill-card--idle'}`}>
-            <div className="flex items-stretch p-3 min-w-0 flex-1"><div className="flex-1 min-w-0 flex flex-col gap-2">
-              <div className="flex items-center gap-2.5 min-w-0 min-h-[28px]">
-                <span className={`shrink-0 w-[26px] h-[26px] rounded-[7px] flex items-center justify-center ${live ? 'bg-[rgb(7_192_95/12%)] text-[#07c05f]' : 'bg-[#f3f3f3] text-[rgba(0_0_0_/.6)]'}`} aria-hidden="true"><SkillGlyph size={14} /></span>
-                <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
-                  <h3 className="flex-[0_1_auto] min-w-0 m-0 text-sm font-semibold leading-5 text-[rgba(0_0_0_/.9)] overflow-hidden text-ellipsis whitespace-nowrap" title={item.name}>{item.name}</h3>
-                  {item.version ? <span className="shrink-0 text-[11px] font-medium leading-[18px] text-[rgba(0_0_0_/.4)]">{item.version}</span> : null}
-                </div>
-                <div className="shrink-0 flex items-center gap-0.5">
-                  <button type="button" className="shrink-0 inline-flex items-center justify-center w-6 h-6 m-0 p-0 border-0 rounded-control bg-none text-[rgba(0_0_0_/.4)] cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 enabled:hover:text-[rgba(0_0_0_/.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40" title={t('settings.sandbox.skillFiles')} aria-label={t('settings.sandbox.skillFiles')} onClick={() => setFilesTarget({ id: item.id, name: item.name })}><FolderGlyph size={14} /></button>
-                  {canDeleteCatalog(item)
-                    ? <button type="button" className="shrink-0 inline-flex items-center justify-center w-6 h-6 m-0 p-0 border-0 rounded-control bg-none text-[rgba(0_0_0_/.4)] cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 enabled:hover:text-[#e34d59] enabled:hover:bg-[rgb(227_77_89/8%)] disabled:cursor-not-allowed disabled:opacity-40" disabled={deletingId === item.id} title={t('settings.skills.deleteCatalog')} aria-label={t('settings.skills.deleteCatalog')} onClick={() => setPendingDelete(item)}><DeleteGlyph size={14} /></button>
-                    : null}
-                </div>
-              </div>
-              {item.description ? <p className="line-clamp-2 m-0 overflow-hidden text-xs leading-[1.5] text-[rgba(0_0_0_/.6)] [overflow-wrap:anywhere]" title={item.description}>{compactSkillText(item.description)}</p> : null}
-              <div className="flex items-center min-w-0 mt-auto">
-                {view.installs.length === 0 && !view.canAdd ? <span className="text-xs leading-[18px] text-[rgba(0_0_0_/.4)]">{t('settings.skills.noInstalls')}</span>
-                  : !view.needsPanel ? (
-                    <button type="button" className={`skill-card__chip ${live ? 'skill-card__chip--installed' : 'skill-card__chip--idle'}${chipTone ? ` skill-card__entry--${chipTone}` : ''} ${chipCls}`} disabled={Boolean(view.installs[0] && !recordFor(view.installs[0].sandboxConfigId))} title={chipTooltip} aria-label={summary}
-                      onClick={() => { if (view.installs[0]) openManage(item, view.installs[0]); else if (view.canAdd) openInstall(item); }}>
-                      {view.installs.some(isInstallBusy) ? <span className={`skill-card__entry-dot w-1.5 h-1.5 rounded-full ${chipTone === 'busy' ? 'bg-[#ed7b2f]' : 'bg-current'} animate-[skill-chip-dot_1.2s_ease-in-out_infinite]`} aria-hidden="true" /> : null}
-                      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{summary}</span>
-                      <span className={chipGoCls} aria-hidden="true"><GlyphIcon size={14}><path d="m9 6 6 6-6 6" /></GlyphIcon></span>
+          // Vue chipClass (SkillSettings.vue:718-723)：idle/installed 轴 + 首装状态轴。
+          const chipClass = [
+            'skill-card__chip',
+            live ? 'skill-card__chip--installed' : 'skill-card__chip--idle',
+            chipTone ? `skill-card__entry--${chipTone}` : '',
+          ].filter(Boolean).join(' ');
+          return <article key={item.id} className={[
+            'skill-card',
+            focusedCatalogId === item.id ? 'skill-card--focused' : '',
+            live ? 'skill-card--installed' : 'skill-card--idle',
+          ].filter(Boolean).join(' ')}>
+            <div className="skill-card__main">
+              <div className="skill-card__body">
+                <div className="skill-card__header">
+                  <div className="skill-card__badge" aria-hidden="true">
+                    <TIcon name={SKILL_ICON} size="14px" />
+                  </div>
+                  <div className="skill-card__heading">
+                    <h3 className="skill-card__title" title={item.name}>{item.name}</h3>
+                    {item.version ? <span className="skill-card__type">{item.version}</span> : null}
+                  </div>
+                  <div className="skill-card__actions">
+                    <button type="button" className="skill-card__icon-btn" title={t('settings.sandbox.skillFiles')} aria-label={t('settings.sandbox.skillFiles')} onClick={() => setFilesTarget({ id: item.id, name: item.name })}>
+                      <FolderIcon size="14px" />
                     </button>
-                  ) : (
-                    <div className="relative inline-flex min-w-0">
-                      <button type="button" className={`skill-card__chip ${live ? 'skill-card__chip--installed' : 'skill-card__chip--idle'}${chipTone ? ` skill-card__entry--${chipTone}` : ''} ${chipCls}`} title={chipTooltip} aria-label={summary} aria-expanded={openPanelId === item.id}
-                        onClick={() => setOpenPanelId((current) => (current === item.id ? '' : item.id))}>
-                        {view.installs.some(isInstallBusy) ? <span className={`skill-card__entry-dot w-1.5 h-1.5 rounded-full ${chipTone === 'busy' ? 'bg-[#ed7b2f]' : 'bg-current'} animate-[skill-chip-dot_1.2s_ease-in-out_infinite]`} aria-hidden="true" /> : null}
-                        <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{summary}</span>
-                        <span className={chipGoCls} aria-hidden="true"><GlyphIcon size={14}><path d="m6 9 6 6 6-6" /></GlyphIcon></span>
+                    {canDeleteCatalog(item)
+                      ? <button type="button" className="skill-card__icon-btn skill-card__icon-btn--danger" disabled={deletingId === item.id} title={t('settings.skills.deleteCatalog')} aria-label={t('settings.skills.deleteCatalog')} onClick={() => setPendingDelete(item)}>
+                        <DeleteIcon size="14px" />
                       </button>
-                      {openPanelId === item.id ? (
-                        <div className="absolute top-[calc(100%_+_6px)] left-0 z-[3050] flex flex-col w-60 max-w-[calc(100vw_-_32px)] max-h-[min(360px,70vh)] overflow-y-auto py-1 bg-white border border-[#e7e7e7] rounded-[6px] shadow-[0px_3px_14px_2px_rgba(0,0,0,.05),0px_8px_10px_1px_rgba(0,0,0,.06),0px_5px_5px_-3px_rgba(0,0,0,.1)]" data-testid={`skill-install-panel-${item.id}`}>
+                      : null}
+                  </div>
+                </div>
+                {item.description ? <p className="skill-card__desc" title={item.description}>{compactSkillText(item.description)}</p> : null}
+                <div className="skill-card__installs">
+                  {view.installs.length === 0 && !view.canAdd ? <span className="skill-card__installs-label">{t('settings.skills.noInstalls')}</span>
+                    : !view.needsPanel ? (
+                      <button type="button" className={chipClass} disabled={Boolean(view.installs[0] && !recordFor(view.installs[0].sandboxConfigId))} title={chipTooltip} aria-label={summary}
+                        onClick={() => { if (view.installs[0]) openManage(item, view.installs[0]); else if (view.canAdd) openInstall(item); }}>
+                        {view.installs.some(isInstallBusy) ? <span className="skill-card__entry-dot" aria-hidden="true" /> : null}
+                        <span className="skill-card__chip-text">{summary}</span>
+                        <TIcon name="chevron-right" size="14px" className="skill-card__chip-go" />
+                      </button>
+                    ) : (
+                      <TPopup
+                        visible={openPanelId === item.id}
+                        trigger="click"
+                        placement="bottom-left"
+                        attach="body"
+                        destroyOnClose
+                        overlayClassName="skill-install-panel-overlay"
+                        overlayInnerStyle={{ padding: 0 }}
+                        onVisibleChange={(visible: boolean) => setInstallPanel(item.id, visible)}
+                        content={<div className="skill-install-panel">
                           {view.installs.length > 0 ? <>
-                            <p className="m-0 pt-1.5 px-3 pb-1 text-xs leading-5 text-[rgba(0_0_0_/.4)]">{t('settings.skills.installPanelGroup')}</p>
+                            <p className="skill-install-panel__group">{t('settings.skills.installPanelGroup')}</p>
                             {view.installs.map((installation) => (
-                              <button key={installation.sandboxConfigId} type="button" className={`skill-card__entry--${installEntryTone(item, installation)} flex items-center gap-2 m-0 h-8 w-full shrink-0 px-3 py-0 border-0 bg-none [font:inherit] text-[13px] leading-[22px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 enabled:hover:bg-[#f3f3f3] disabled:cursor-default disabled:opacity-50 text-[rgba(0_0_0_/.9)]`} disabled={!recordFor(installation.sandboxConfigId)} title={installTooltip(item, installation)}
+                              <button key={installation.sandboxConfigId} type="button"
+                                className={`skill-install-panel__item skill-card__entry--${installEntryTone(item, installation)}`}
+                                disabled={!recordFor(installation.sandboxConfigId)} title={installTooltip(item, installation)}
                                 onClick={() => openManage(item, installation)}>
-                                <SandboxBadge type={installation.sandboxType} size="xs" />
-                                <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{installName(installation)}</span>
-                                {isInstallBusy(installation) ? <span className="skill-card__entry-dot w-1.5 h-1.5 rounded-full bg-[#ed7b2f] animate-[skill-chip-dot_1.2s_ease-in-out_infinite]" aria-hidden="true" /> : <span className={`shrink-0 ${installEntryTone(item, installation) === 'ready' ? 'text-[#00a870]' : installEntryTone(item, installation) === 'stale' ? 'text-[#ed7b2f]' : installEntryTone(item, installation) === 'failed' ? 'text-[#e34d59]' : ''}`} aria-hidden="true">{installation.status === 'failed' ? '✕' : installation.status === 'ready' ? '✓' : '!'}</span>}
+                                <SandboxBackendBadge type={installation.sandboxType} size="xs" />
+                                <span className="skill-install-panel__name">{installName(installation)}</span>
+                                {isInstallBusy(installation)
+                                  ? <span className="skill-card__entry-dot" aria-hidden="true" />
+                                  : installChipStatusIcon(item, installation)
+                                    ? <TIcon name={installChipStatusIcon(item, installation)} size="14px" className="skill-card__entry-status" />
+                                    : null}
                               </button>
                             ))}
                           </> : null}
                           {view.available.length > 0 ? <>
-                            {view.installs.length > 0 ? <div className="h-px mx-0 my-1 bg-[#e7e7e7]" role="separator" /> : null}
-                            <p className="m-0 pt-1.5 px-3 pb-1 text-xs leading-5 text-[rgba(0_0_0_/.4)]">{t('settings.skills.installPanelAvailable')}</p>
+                            {view.installs.length > 0 ? <div className="skill-install-panel__split" role="separator" /> : null}
+                            <p className="skill-install-panel__group">{t('settings.skills.installPanelAvailable')}</p>
                             {view.available.map((config) => (
-                              <button key={config.id} type="button" className="group/avail flex items-center gap-2 m-0 h-8 w-full shrink-0 px-3 py-0 border-0 bg-none text-[rgba(0_0_0_/.6)] [font:inherit] text-[13px] leading-[22px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2 enabled:hover:bg-[#f3f3f3] disabled:cursor-default disabled:opacity-50" title={sandboxMetaLine(config)}
-                                onClick={() => openInstall(item, config.id)}>
-                                <SandboxBadge type={config.sandbox_type} size="xs" />
-                                <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{config.name}</span>
-                                <span className="shrink-0 text-[rgba(0_0_0_/.4)] group-hover/avail:text-[#07c05f]" aria-hidden="true"><GlyphIcon size={14}><path d="M12 5v14M5 12h14" /></GlyphIcon></span>
+                              <button key={config.id} type="button" className="skill-install-panel__item skill-install-panel__item--available"
+                                title={sandboxMetaLine(config)} onClick={() => openInstall(item, config.id)}>
+                                <SandboxBackendBadge type={config.sandbox_type} size="xs" />
+                                <span className="skill-install-panel__name">{config.name}</span>
+                                <TIcon name="add" size="14px" className="skill-install-panel__add" />
                               </button>
                             ))}
                           </> : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
+                        </div>}
+                      >
+                        <button type="button" className={chipClass} title={chipTooltip} aria-label={summary} aria-expanded={openPanelId === item.id}>
+                          {view.installs.some(isInstallBusy) ? <span className="skill-card__entry-dot" aria-hidden="true" /> : null}
+                          <span className="skill-card__chip-text">{summary}</span>
+                          <TIcon name="chevron-down" size="14px" className="skill-card__chip-go" />
+                        </button>
+                      </TPopup>
+                    )}
+                </div>
               </div>
-            </div></div>
+            </div>
           </article>;
         })}
-        <button type="button" className="skill-card--add group relative flex flex-col items-center justify-center gap-1.5 p-3 overflow-hidden h-full min-h-[88px] min-w-0 border border-dashed border-[#e7e7e7] rounded-[10px] bg-transparent text-[rgba(0_0_0_/.4)] cursor-pointer [font:inherit] text-center transition-[border-color,box-shadow] duration-[180ms] hover:text-[#07c05f] hover:border-[#07c05f] hover:bg-[rgb(7_192_95/6%)] hover:shadow-none focus-visible:text-[#07c05f] focus-visible:border-[#07c05f] focus-visible:bg-[rgb(7_192_95/6%)] focus-visible:shadow-none focus-visible:outline-2 focus-visible:outline-[#07c05f] focus-visible:-outline-offset-2" onClick={() => setWizardOpen(true)}>
-          <span className="flex items-center justify-center w-8 h-8 rounded-card bg-[#f3f3f3] text-[rgba(0_0_0_/.6)] group-hover:bg-[rgb(7_192_95/10%)] group-hover:text-[#07c05f] group-focus-visible:bg-[rgb(7_192_95/10%)] group-focus-visible:text-[#07c05f]" aria-hidden="true"><GlyphIcon size={18}><path d="M12 5v14M5 12h14" /></GlyphIcon></span>
-          <span className="text-[13px] font-medium leading-[1.4]">{t('settings.skills.addSkill')}</span>
+        <button type="button" className="skill-card skill-card--add" onClick={() => setWizardOpen(true)}>
+          <span className="skill-card--add__icon" aria-hidden="true">
+            <AddIcon />
+          </span>
+          <span className="skill-card--add__label">{t('settings.skills.addSkill')}</span>
         </button>
       </div>
     )}
     <AddSkillWizard client={client} open={wizardOpen} catalog={catalog} configs={skillConfigs} installer={installer} t={t}
       onClose={(registeredId) => { setWizardOpen(false); void load(true); if (registeredId) revealCatalog(registeredId); }}
       onCatalogChanged={() => void load(true)}
-      onToast={(tone, message) => setToast({ tone, message })}
+      onToast={onToast}
       onManage={(record, skillId, catalogName) => { setWizardOpen(false); setManageTarget({ record, skillId, catalogName }); }} />
     <InstallSkillDialog client={client} open={installItem !== null} item={installItem} configs={skillConfigs} preselectConfigId={installPreselectId} installer={installer} t={t}
       onClose={() => { setInstallItem(null); setInstallPreselectId(''); }}
       onCatalogChanged={() => void load(true)}
-      onToast={(tone, message) => setToast({ tone, message })}
+      onToast={onToast}
       onManage={(record, skillId, catalogName) => { setInstallItem(null); setManageTarget({ record, skillId, catalogName }); }} />
     <ManageSkillDialog client={client} open={manageTarget !== null} target={manageTarget} t={t}
       onClose={() => setManageTarget(null)}
       onChanged={() => void load(true)}
-      onToast={(tone, message) => setToast({ tone, message })} />
+      onToast={onToast} />
     <CatalogFilesDialog client={client} open={filesTarget !== null} target={filesTarget} t={t} onClose={() => setFilesTarget(null)} />
     <Dialog open={pendingDelete !== null} title={t('common.confirmDelete')} onClose={() => setPendingDelete(null)}>
       {pendingDelete ? <>
@@ -675,7 +686,7 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
         </div>
       </> : null}
     </Dialog>
-  </section>;
+  </div>;
 }
 
 function skillRegisterErrorMessage(cause: unknown, t: (key: string, values?: Record<string, string | number>) => string, fromFile: boolean): string {
@@ -757,14 +768,14 @@ function SandboxPickList({ client, item, configs, mode, sessionIds, targetIds, o
       <label key={row.config.id} className={`cursor-pointer ${pickRowBase} hover:border-[rgb(7_192_95/40%)] hover:bg-[rgb(7_192_95/4%)] has-[:checked]:border-[rgb(7_192_95/40%)] has-[:checked]:bg-[rgb(7_192_95/5%)]`}>
         <Checkbox checked={targetIds.includes(row.config.id)} onChange={(event) => onToggle(row.config.id, event.target.checked)} />
         <span className="flex items-center gap-2.5 flex-1 min-w-0">
-          <SandboxBadge type={row.config.sandbox_type} size="sm" />
+          <SandboxBackendBadge type={row.config.sandbox_type} size="sm" />
           <span className="flex flex-col gap-px min-w-0"><span className="text-[13px] font-medium text-[rgba(0_0_0_/.9)] leading-[1.3] overflow-hidden text-ellipsis whitespace-nowrap">{row.config.name}</span><span className="text-xs text-[rgba(0_0_0_/.6)] leading-[1.3] overflow-hidden text-ellipsis whitespace-nowrap">{metaLine(row.config)}</span></span>
         </span>
       </label>
     ) : (
       <div key={row.config.id} className={`${pickRowBase}${row.busy ? ' border-[rgb(237_123_47/35%)]' : ''}`}>
         <span className="flex items-center gap-2.5 flex-1 min-w-0">
-          <SandboxBadge type={row.config.sandbox_type} size="sm" />
+          <SandboxBackendBadge type={row.config.sandbox_type} size="sm" />
           <span className="flex flex-col gap-px min-w-0">
             <span className="text-[13px] font-medium text-[rgba(0_0_0_/.9)] leading-[1.3] overflow-hidden text-ellipsis whitespace-nowrap">{row.config.name}</span>
             <span className="text-xs text-[rgba(0_0_0_/.6)] leading-[1.3] overflow-hidden text-ellipsis whitespace-nowrap">{row.install && isInstallBusy(row.install) ? installStatusKeys(row.install.status, row.install.enabled).map((key) => t(key)).join(' ') : row.ready ? t('settings.sandbox.skillStatusReady') : metaLine(row.config)}</span>
@@ -968,7 +979,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
   }
 
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.add}>
-  <Dialog open={open} title={<DrawerTitle icon={<SkillGlyph size={16} />} title={t('settings.skills.addSkill')} subtitle={stepDescription} />} onClose={() => onClose(registeredId || undefined)}>
+  <Dialog open={open} title={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={t('settings.skills.addSkill')} subtitle={stepDescription} />} onClose={() => onClose(registeredId || undefined)}>
     <nav className="skill-add-steps" aria-label={t('settings.skills.addProgress')}>
       {steps.map((title, index) => {
         const clickable = canJump(index);
@@ -1096,7 +1107,7 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
   }
 
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.install}>
-  <Dialog open={open} title={<DrawerTitle icon={<SkillGlyph size={16} />} title={t('settings.skills.installToSandbox')} subtitle={description} />} onClose={onClose}>
+  <Dialog open={open} title={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={t('settings.skills.installToSandbox')} subtitle={description} />} onClose={onClose}>
     {error ? <Status tone="error">{error}</Status> : null}
     <SandboxPickList client={client} item={item} configs={configs} mode="remaining" sessionIds={sessionIds} targetIds={targetIds}
       onToggle={(configId, checked) => setTargetIds((current) => (checked ? [...new Set([...current, configId])] : current.filter((id) => id !== configId)))} t={t}
@@ -1553,7 +1564,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
 
   const errorLines = installErrorLines(skill?.error);
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.manage}>
-  <Dialog open={open} title={<DrawerTitle icon={<SkillGlyph size={16} />} title={target?.catalogName ?? ''} subtitle={target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : undefined} />} onClose={onClose}>
+  <Dialog open={open} title={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={target?.catalogName ?? ''} subtitle={target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : undefined} />} onClose={onClose}>
     {loading ? <Status>{t('common.loading')}</Status> : null}
     {error ? <Status tone="error">{error}</Status> : null}
     {skill ? uninstallDone ? <div className="flex flex-col items-start gap-2.5 pt-2 pb-1 text-[#067647] [&_p]:m-0 [&_p]:text-[13px]">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Checkbox, Input, Select, Status } from '@weknora/ui';
+import { Button, Checkbox, Input, Select, Status } from '@weknora/ui';
+import { Alert, Button as TButton, Loading, Tooltip } from 'tdesign-react';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 /* Full port of Vue ParserEngineSettings.vue: the engine-card grid (monogram
@@ -8,7 +9,12 @@ import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
    per-engine configuration drawer (mineru / mineru_cloud / paddleocr_vl /
    paddleocr_vl_cloud), the DocReader connection status for builtin, the
    WeKnoraCloud credential state inline alert, and the test-connection /
-   save flows. */
+   save flows.
+
+   TDesign 同构迁移（批次 2 收尾）：列表域（section-header / loading / error /
+   empty / engine-cards）按 Vue SFC 逐节点复刻，样式在 settings.td.css §13；
+   配置抽屉沿用 React 表单栈（批次先例：resource/mcp/models 编辑器同口径，
+   扫描稳态不可达，待后续批次收编）。 */
 
 type Copy = (key: string, values?: Record<string, string | number>) => string;
 
@@ -86,33 +92,9 @@ const ENGINE_ORDER: Record<string, number> = {
   paddleocr_vl_cloud: 8,
 };
 
-const ENGINE_DOC_LINKS: Record<string, string> = {
-  weknoracloud: 'https://developers.weixin.qq.com/doc/aispeech/knowledge/atomic_capability/atomic_interface.html',
-  markitdown: 'https://github.com/microsoft/markitdown',
-  mineru: 'https://github.com/opendatalab/MinerU',
-  mineru_cloud: 'https://mineru.net/apiManage/docs',
-  paddleocr_vl: 'https://github.com/PaddlePaddle/PaddleOCR',
-  paddleocr_vl_cloud: 'https://aistudio.baidu.com/paddleocr',
-};
-
 function rowText(row: ParserEngineRow, key: keyof ParserEngineRow): string {
   return typeof row[key] === 'string' ? (row[key] as string) : '';
 }
-
-// Vue ParserEngineSettings.vue .engine-card--{name} .engine-card__badge palette:
-// 每类引擎各有浅色底（builtin/weknoracloud 绿 0.12、simple 灰 0.1、markitdown 蓝
-// 0.12、mineru/paddleocr 紫 0.12），未知引擎回退蓝底（ParserEngineSettings.vue:822-843）。
-const BADGE_TONES: Record<string, { bg: string; fg: string }> = {
-  builtin: { bg: 'rgba(7, 192, 95, 0.12)', fg: '#07C05F' },
-  weknoracloud: { bg: 'rgba(7, 192, 95, 0.12)', fg: '#07C05F' },
-  simple: { bg: 'rgba(70, 70, 70, 0.1)', fg: '#464646' },
-  markitdown: { bg: 'rgba(0, 137, 255, 0.12)', fg: '#0089FF' },
-  mineru: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
-  mineru_cloud: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
-  paddleocr_vl: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
-  paddleocr_vl_cloud: { bg: 'rgba(98, 53, 187, 0.12)', fg: '#6235BB' },
-};
-const BADGE_BASE = { bg: 'rgba(0, 82, 217, 0.1)', fg: '#0052D9' };
 
 export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient }) {
   // Stable translator: recreating it per render would re-trigger the load
@@ -283,29 +265,42 @@ export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient })
       void loadEngines();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('settings.parser.saveFailed'));
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   }
 
   const drawerName = rowText(drawerEngine ?? {}, 'Name');
   const drawerFileTypes = Array.isArray(drawerEngine?.FileTypes) ? (drawerEngine?.FileTypes as unknown[]).map((ft) => String(ft)) : [];
   const needsTestButton = Boolean(drawerEngine) && (CONFIGURABLE_ENGINES.has(drawerName) || drawerName === 'builtin');
 
+  /* Vue ParserEngineSettings.vue:2-94 列表域逐节点平移：section-header →
+     loading-state（t-loading + span）→ error-inline（t-alert #operation →
+     operation prop）→ empty-state / engine-cards（button 卡片 + monogram 徽章 +
+     dot 状态徽；UnavailableReason 走 t-tooltip placement=top）。 */
   return <div className="parser-engine-settings" data-testid="parser-engine-settings">
-    {/* Vue ParserEngineSettings.vue:3-9 — the panel owns its section-header
-        (h2 + description, no divider, margin-bottom 28px); the SettingsPage
-        wrapper heading is suppressed via CSS while this panel is mounted.
-        There is no outer card around the grid. */}
     <div className="section-header">
       <h2>{t('settings.parser.title')}</h2>
       <p className="section-description">{t('settings.parser.description')}</p>
     </div>
-    {loading ? <Status>{t('settings.parser.loading', { defaultValue: '' }) || t('common.loading')}</Status> : null}
-    {!loading ? <>
-      {error ? <div className="mb-3 flex items-center gap-2"><Status tone="error">{error}</Status><Button type="button" size="small" onClick={() => { setError(null); void loadEngines(); void loadConfig(); void checkWkcStatus(); }}>{t('settings.parser.retry')}</Button></div> : null}
-      {engines.length === 0 && !hasBuiltinEngine ? <Status>{t('settings.parser.noEngineDetected')}</Status> : null}
-      {(engines.length > 0 || hasBuiltinEngine) ? <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
+    {loading ? <div className="loading-state">
+      <Loading size="small" />
+      <span>{t('settings.parser.loading')}</span>
+    </div> : error ? <div className="error-inline">
+      <Alert
+        theme="error"
+        message={error}
+        operation={<TButton size="small" onClick={() => { setError(null); void loadEngines(); void loadConfig(); void checkWkcStatus(); }}>{t('settings.parser.retry')}</TButton>}
+      />
+    </div> : <>
+      {engines.length === 0 && !hasBuiltinEngine ? <div className="empty-state">
+        <p className="empty-text">{t('settings.parser.noEngineDetected')}</p>
+      </div> : <div className="engine-cards">
+        {/* 当后端未返回 builtin 引擎项时，仍展示 DocReader 状态卡片 */}
         {!hasBuiltinEngine ? <EngineCard
-          name="builtin" initial={initialOf('builtin')} title={displayOf('builtin')}
+          name="builtin"
+          initial={initialOf('builtin')}
+          title={displayOf('builtin')}
           desc={t('settings.parser.builtinDesc')}
           statusLabel={connected ? t('settings.parser.connected') : t('settings.parser.disconnected')}
           statusTone={connected ? 'on' : 'err'}
@@ -329,8 +324,8 @@ export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient })
             onClick={() => setDrawerEngine(engine)}
           />;
         })}
-      </div> : null}
-    </> : null}
+      </div>}
+    </>}
     {drawerEngine ? <EngineDrawer
       name={drawerName}
       initial={initialOf(drawerName)}
@@ -362,6 +357,9 @@ function rowOf(value: unknown): Record<string, unknown> {
 function str(value: unknown, fallback: string): string { return typeof value === 'string' ? value : fallback; }
 function bool(value: unknown, fallback: boolean): boolean { return typeof value === 'boolean' ? value : fallback; }
 
+/* Vue engine-card button（ParserEngineSettings.vue:32-91）：class 静态段在前、
+   active 条件类按对象键序追加；状态徽三分支 on / err+help(Tooltip) / err。
+   per-engine 徽章配色走 §13 .engine-card--{name} .engine-card__badge。 */
 function EngineCard({ name, initial, title, desc, statusLabel, statusTone, statusReason, active, onClick }: {
   name: string; initial: string; title: string; desc: string;
   statusLabel: string; statusTone: 'on' | 'err'; statusReason?: string;
@@ -370,34 +368,28 @@ function EngineCard({ name, initial, title, desc, statusLabel, statusTone, statu
   return <button
     type="button"
     data-testid={`parser-engine-card-${name}`}
-    className={`group flex w-full cursor-pointer items-start gap-3 rounded-[10px] border bg-surface py-[14px] pr-[14px] pl-3 text-left [font:inherit] [transition:border-color_.2s_ease,box-shadow_.2s_ease] ${active ? 'border-accent shadow-[0_0_0_1px_var(--wk-brand,#0052d9)]' : 'border-line-soft hover:border-accent/50 hover:shadow-[0_4px_14px_rgba(15,23,42,0.07)]'}`}
+    className={`engine-card engine-card--${name}${active ? ' engine-card--active' : ''}`}
     onClick={onClick}
   >
-    <span
-      className="mt-px inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-[15px] font-semibold leading-[normal] tracking-[0.02em]"
-      style={{ background: (BADGE_TONES[name] ?? BADGE_BASE).bg, color: (BADGE_TONES[name] ?? BADGE_BASE).fg }}
-      aria-hidden="true"
-    >{initial}</span>
-    <span className="min-w-0 flex-1">
-      <span className="flex items-center justify-between gap-[6px]">
-        {/* Vue .engine-card__title: 14px/600 with line-height 1.4 (19.6px) — the
-            inherited 1.5 makes each card row ~1.4px taller and drifts the grid. */}
-        <h3 className="m-0 min-w-0 truncate text-[14px] font-semibold leading-[1.4] text-ink">{title}</h3>
-        {/* Vue .engine-card__status: 11px/500, lh 16px, padding 1px 8px 1px 6px,
-            radius 10px, neutral secondary-container background. */}
-        {/* Vue .engine-card__status: 11px/500, lh 16px, padding 1px 8px 1px 6px,
-            radius 10px, neutral secondary-container background; on=#067945
-            (success-7) with #00a870 dot, err=#C9353F (error-7) with #e34d59 dot. */}
-        <span
-          className={`inline-flex shrink-0 items-center gap-[5px] rounded-[10px] bg-[#f3f3f3] py-[1px] pl-[6px] pr-[8px] text-[11px] font-medium leading-4 ${statusTone === 'on' ? 'text-[#067945]' : 'text-[#c9353f]'}`}
-          title={statusReason}
-        >
-          <span className={`inline-block h-[6px] w-[6px] rounded-full ${statusTone === 'on' ? 'bg-[#00a870]' : 'bg-[#e34d59]'}`} />
+    <div className="engine-card__badge">{initial}</div>
+    <div className="engine-card__body">
+      <div className="engine-card__header">
+        <h3 className="engine-card__title">{title}</h3>
+        {statusTone === 'on' ? <span className="engine-card__status engine-card__status--on">
+          <span className="engine-card__status-dot" />
           {statusLabel}
-        </span>
-      </span>
-      <span className="mt-1 block text-[12px] leading-[1.5] text-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{desc}</span>
-    </span>
+        </span> : statusReason ? <Tooltip content={statusReason} placement="top">
+          <span className="engine-card__status engine-card__status--err engine-card__status--help">
+            <span className="engine-card__status-dot" />
+            {statusLabel}
+          </span>
+        </Tooltip> : <span className="engine-card__status engine-card__status--err">
+          <span className="engine-card__status-dot" />
+          {statusLabel}
+        </span>}
+      </div>
+      <p className="engine-card__desc">{desc}</p>
+    </div>
   </button>;
 }
 

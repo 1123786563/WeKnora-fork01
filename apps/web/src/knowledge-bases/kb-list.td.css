@@ -1,0 +1,2427 @@
+/*
+ * kb-list 页 TDesign 同构样式（playbook §2 平移产物，Task 11a）。
+ *
+ * 事实源（Vue SFC <style> 逐块平移，less 嵌套已按 §2.3 展平）：
+ *  1. frontend/src/assets/dropdown-menu.less —— 卡片三点菜单（Vue main.ts
+ *     全局引入的共享子集：card-more-popup / popup-menu / popup-menu-item）。
+ *  2. frontend/src/components/SpaceAvatar.vue —— .space-avatar*。
+ *  3. frontend/src/components/ResourceOriginBadge.vue —— .resource-origin-badge*。
+ *  4. frontend/src/views/knowledge/components/KbWikiBadge.vue —— .kb-wiki-badge。
+ *  5. frontend/src/components/ListSpaceSidebar.vue —— scoped → 显式根类前缀
+ *     .list-space-sidebar（§2.2；与 agents.td.css §5 同源，按页各持一份，
+ *     Phase 4 归并）。
+ *  6. frontend/src/views/knowledge/KnowledgeBaseList.vue —— scoped 块 → 根类
+ *     前缀 .kb-list-container；unscoped 块（shared-detail 抽屉 / 弹层服务
+ *     body DOM）原样平移（§2.5）；del-knowledge-dialog 弹层以 dialogClassName
+ *     限定作用域（语义与 [data-v] 等价）。
+ *  7. frontend/src/views/knowledge/KnowledgeBaseEditorModal.vue —— scoped 块 →
+ *     根类前缀 .settings-overlay（Teleport 到 body 的弹层，类名全局唯一）。
+ *
+ * 类名不改（§2.4）；--td-* / --app-font-family 变量原样平移（T4 token 已接线）。
+ * @keyframes 名保留 Vue 端原名（contentFadeIn / spin / highlightFlash /
+ * dropdownSlideIn）。
+ */
+
+/* ============================================================================
+ * 1. dropdown-menu.less 子集（卡片三点菜单；Vue 端 main.ts 全局引入）
+ * ========================================================================== */
+
+@keyframes dropdownSlideIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dropdownSlideInUp {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.card-more-popup {
+  z-index: 99 !important;
+}
+
+.card-more-popup .t-popup__content {
+  padding: 4px !important;
+  margin-top: 4px !important;
+  min-width: 148px;
+  border-radius: 10px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  animation: dropdownSlideIn 0.18s cubic-bezier(0.2, 0, 0, 1) both;
+  overflow: hidden;
+}
+
+.popup-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.popup-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  border-radius: 6px;
+  position: relative;
+}
+
+.popup-menu-item .menu-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.popup-menu-item:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.popup-menu-item:hover .menu-icon {
+  color: var(--td-text-color-primary);
+}
+
+.popup-menu-item:active {
+  background: var(--td-bg-color-container-active);
+  transform: scale(0.98);
+}
+
+.popup-menu-item.delete,
+.popup-menu-item.danger {
+  color: var(--td-error-color-6);
+  margin-top: 4px;
+  position: relative;
+}
+
+.popup-menu-item.delete::before,
+.popup-menu-item.danger::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  background: var(--td-component-stroke);
+}
+
+.popup-menu-item.delete .menu-icon,
+.popup-menu-item.danger .menu-icon {
+  color: var(--td-error-color-6);
+}
+
+.popup-menu-item.delete:hover,
+.popup-menu-item.danger:hover {
+  background: var(--td-error-color-1);
+  color: var(--td-error-color-6);
+}
+
+.popup-menu-item.delete:hover .menu-icon,
+.popup-menu-item.danger:hover .menu-icon {
+  color: var(--td-error-color-6);
+}
+
+.popup-menu-item.delete:active,
+.popup-menu-item.danger:active {
+  background: var(--td-error-color-2);
+}
+
+/* ============================================================================
+ * 2. SpaceAvatar.vue（scoped → 原样平移；ListSpaceSidebar 组织条目用）
+ * ========================================================================== */
+
+.space-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  box-shadow: var(--td-shadow-2);
+  overflow: hidden;
+}
+
+.space-avatar.space-avatar-small {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.space-avatar.space-avatar-small .space-avatar-letter {
+  font-size: 11px;
+}
+
+.space-avatar.space-avatar-small .space-avatar-decoration {
+  display: none;
+}
+
+.space-avatar.space-avatar-large {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.space-avatar.space-avatar-large .space-avatar-letter {
+  font-size: 20px;
+}
+
+.space-avatar-decoration {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 55%;
+  height: 55%;
+  opacity: 0.35;
+  color: rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
+
+.space-avatar-letter {
+  position: relative;
+  z-index: 1;
+  color: var(--td-text-color-anti);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--app-font-family);
+}
+
+/* ============================================================================
+ * 3. ResourceOriginBadge.vue（scoped → 原样平移）
+ * ========================================================================== */
+
+.resource-origin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 500;
+  max-width: 140px;
+}
+
+.resource-origin-badge .badge-icon {
+  flex-shrink: 0;
+}
+
+.resource-origin-badge .badge-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-origin-badge.origin-mine {
+  color: var(--td-brand-color);
+  background: var(--td-success-color-light);
+}
+
+.resource-origin-badge.origin-tenant {
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.resource-origin-badge.origin-creator {
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.resource-origin-badge.origin-space {
+  color: var(--td-warning-color-7, #b86e02);
+  background: var(--td-warning-color-1, #fff7e6);
+}
+
+.resource-origin-badge.origin-shared {
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+/* ============================================================================
+ * 4. KbWikiBadge.vue（scoped → 原样平移；类名自带唯一前缀）
+ * ========================================================================== */
+
+.kb-wiki-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+}
+
+.kb-wiki-badge svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* ============================================================================
+ * 5. ListSpaceSidebar.vue（scoped → 根类前缀 .list-space-sidebar）
+ * ========================================================================== */
+
+.list-space-sidebar {
+  width: 56px;
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  z-index: 10;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  /* playbook §2.6（pilot 实证）：React 页面渲染在 PlatformShell（21px 行高）
+     内，Vue 端直挂 #app（body line-height normal）——侧栏根显式归位。 */
+  line-height: normal;
+}
+
+.list-space-sidebar.expanded {
+  width: 208px;
+  margin-right: 0;
+}
+
+.list-space-sidebar.dragging {
+  transition: none;
+}
+
+.list-space-sidebar .resize-handle {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  width: 12px;
+  cursor: col-resize;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.list-space-sidebar .resize-handle:hover .resize-handle-line,
+.list-space-sidebar.dragging .resize-handle .resize-handle-line {
+  opacity: 1;
+  background: var(--td-brand-color);
+}
+
+.list-space-sidebar .resize-handle-line {
+  width: 2px;
+  height: 40px;
+  border-radius: 1px;
+  background: var(--td-bg-color-component-disabled);
+  opacity: 0.45;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.list-space-sidebar .icon-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 56px;
+  padding: 12px 0 6px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.list-space-sidebar .icon-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.list-space-sidebar .icon-item-labeled {
+  width: 46px;
+  padding: 5px 0 2px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  color: var(--td-text-color-secondary);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.list-space-sidebar .icon-item-labeled:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.list-space-sidebar .icon-item-labeled.active {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .icon-item-labeled.active:hover {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.list-space-sidebar .icon-item-labeled.active .icon-label {
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .icon-item-labeled .space-avatar {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+
+.list-space-sidebar .icon-label {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--td-text-color-secondary);
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  transition: color 0.15s ease;
+}
+
+.list-space-sidebar .icon-strip-divider {
+  width: 24px;
+  height: 1px;
+  background: var(--td-bg-color-secondarycontainer);
+  margin: 3px 0;
+  flex-shrink: 0;
+}
+
+.list-space-sidebar .expanded-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  border-right: 1px solid var(--td-component-stroke);
+}
+
+.list-space-sidebar .expanded-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.list-space-sidebar .sidebar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 7px;
+  color: var(--td-text-color-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.list-space-sidebar .sidebar-item .item-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.list-space-sidebar .sidebar-item .item-icon {
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+  transition: color 0.15s ease;
+}
+
+.list-space-sidebar .sidebar-item .item-avatar {
+  flex-shrink: 0;
+}
+
+.list-space-sidebar .sidebar-item .item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 430;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.list-space-sidebar .sidebar-item .item-count {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  margin-left: 6px;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.list-space-sidebar .sidebar-item:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.list-space-sidebar .sidebar-item:hover .item-icon {
+  color: var(--td-text-color-primary);
+}
+
+.list-space-sidebar .sidebar-item:hover .item-count {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+}
+
+.list-space-sidebar .sidebar-item.active {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .sidebar-item.active .item-icon {
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .sidebar-item.active .item-count {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.list-space-sidebar .sidebar-item.active:hover {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.list-space-sidebar .sidebar-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--td-component-stroke);
+}
+
+.list-space-sidebar .sidebar-section {
+  padding: 8px 6px 2px;
+  margin-top: 2px;
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.list-space-sidebar .sidebar-section .section-title {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* ============================================================================
+ * 6. KnowledgeBaseList.vue（scoped 块 → 根类前缀 .kb-list-container）
+ * ========================================================================== */
+
+/* playbook §2.6（pilot 实证）：React 页面渲染在 PlatformShell（继承 21px 行高）
+   内，Vue 端页面直挂 #app（body line-height normal）——页面根显式归位，
+   否则 nav/label 全线 +1px/行漂移。 */
+.kb-list-container {
+  margin: 0;
+  height: 100%;
+  box-sizing: border-box;
+  flex: 1;
+  display: flex;
+  position: relative;
+  min-height: 0;
+  line-height: normal;
+  /* Vue App.vue:301 全局 -webkit-font-smoothing: antialiased（subpixel→灰阶），
+     React 默认 auto 会让所有文本渲染偏粗——页面根继承启用（原
+     knowledge-list.css 的 .kb-list-page 覆盖段随本文件收口）。 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.kb-list-container .kb-list-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px 0 0 28px;
+}
+
+.kb-list-container .header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-right: 28px;
+}
+
+.kb-list-container .header .header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kb-list-container .header .title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kb-list-container .header h2 {
+  margin: 0;
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+.kb-list-container .kb-create-btn {
+  background: linear-gradient(135deg, var(--td-brand-color) 0%, #00a67e 100%);
+  border: none;
+  color: var(--td-text-color-anti);
+}
+
+.kb-list-container .kb-create-btn:hover {
+  background: linear-gradient(135deg, var(--td-brand-color) 0%, var(--td-brand-color-active) 100%);
+}
+
+.kb-list-container .kb-list-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 顶部不留 padding，sticky 的分组标题 (top: 0) 才能贴到容器最顶；
+     底部 padding 保留，避免最后一行卡片紧贴边。 */
+  padding: 0 28px 8px 0;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+.kb-list-container .kb-list-main-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 12px;
+  background: var(--td-bg-color-container);
+}
+
+.kb-list-container .shared-by-me-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  background: rgba(7, 192, 95, 0.1);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--td-brand-color);
+  margin-left: 6px;
+}
+
+.kb-list-container .header-subtitle {
+  margin: 0;
+  color: var(--td-text-color-placeholder);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.kb-list-container .header-action-btn {
+  padding: 0 !important;
+  min-width: 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--td-bg-color-secondarycontainer) !important;
+  border: 1px solid var(--td-component-stroke) !important;
+  border-radius: 6px !important;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--td-bg-color-container) 72%, transparent);
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.kb-list-container .header-action-btn:hover {
+  background: var(--td-bg-color-secondarycontainer) !important;
+  border-color: var(--td-component-stroke) !important;
+  color: var(--td-text-color-primary);
+}
+
+.kb-list-container .header-action-btn .t-icon,
+.kb-list-container .header-action-btn .btn-icon-wrapper {
+  color: var(--td-brand-color);
+}
+
+/* Tab 切换样式（已由左侧菜单替代，保留以备兼容） */
+.kb-list-container .kb-tabs {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  margin-bottom: 20px;
+}
+
+.kb-list-container .kb-tabs .tab-item {
+  padding: 12px 0;
+  cursor: pointer;
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  user-select: none;
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.kb-list-container .kb-tabs .tab-item:hover {
+  color: var(--td-text-color-primary);
+}
+
+.kb-list-container .kb-tabs .tab-item.active {
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.kb-list-container .kb-tabs .tab-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--td-brand-color);
+  border-radius: 1px;
+}
+
+/* 共享标识（文档类型默认绿色，位置贴右上角） */
+.kb-list-container .shared-badge {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(7, 192, 95, 0.1);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.kb-list-container .shared-badge .t-icon {
+  color: var(--td-brand-color);
+}
+
+/* 来源组织（空间图标 + 空间名） */
+.kb-list-container .org-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: rgba(7, 192, 95, 0.06);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--td-text-color-secondary);
+  max-width: 140px;
+  transition: background-color 0.15s ease;
+}
+
+.kb-list-container .org-source span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.kb-list-container .org-source .org-source-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.kb-list-container .org-source .t-icon {
+  color: var(--td-brand-color);
+  flex-shrink: 0;
+}
+
+/* 「我的」知识库标签（与 .org-source 同套样式） */
+.kb-list-container .personal-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: rgba(7, 192, 95, 0.06);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--td-text-color-secondary);
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.kb-list-container .personal-source span {
+  font-weight: 500;
+}
+
+.kb-list-container .personal-source .t-icon {
+  color: var(--td-brand-color);
+  flex-shrink: 0;
+}
+
+.kb-list-container .shared-kb-card {
+  position: relative;
+}
+
+.kb-list-container .shared-kb-card.kb-type-document {
+  background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(7, 192, 95, 0.04) 100%) !important;
+}
+
+.kb-list-container .shared-kb-card.kb-type-document:hover {
+  border-color: var(--td-brand-color) !important;
+  box-shadow: 0 4px 12px rgba(7, 192, 95, 0.12) !important;
+  background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(7, 192, 95, 0.08) 100%) !important;
+}
+
+.kb-list-container .shared-kb-card.kb-type-document::after {
+  background: linear-gradient(135deg, rgba(7, 192, 95, 0.08) 0%, transparent 100%) !important;
+}
+
+.kb-list-container .shared-kb-card.kb-type-faq {
+  background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(0, 82, 217, 0.04) 100%) !important;
+}
+
+.kb-list-container .shared-kb-card.kb-type-faq:hover {
+  border-color: var(--td-brand-color) !important;
+  box-shadow: 0 4px 12px rgba(0, 82, 217, 0.12) !important;
+  background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(0, 82, 217, 0.08) 100%) !important;
+}
+
+.kb-list-container .shared-kb-card.kb-type-faq::after {
+  background: linear-gradient(135deg, rgba(0, 82, 217, 0.08) 0%, transparent 100%) !important;
+}
+
+/* FAQ 类型共享标识使用蓝色 */
+.kb-list-container .shared-kb-card.kb-type-faq .shared-badge {
+  background: rgba(0, 82, 217, 0.1);
+  color: var(--td-brand-color);
+}
+
+.kb-list-container .shared-kb-card.kb-type-faq .shared-badge .t-icon {
+  color: var(--td-brand-color);
+}
+
+.kb-list-container .shared-kb-card .org-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  border-color: rgba(0, 82, 217, 0.15);
+  color: var(--td-brand-color);
+  background: rgba(0, 82, 217, 0.04);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  max-width: fit-content;
+}
+
+.kb-list-container .warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  background: var(--td-warning-color-light);
+  border: 1px solid var(--td-warning-color-focus);
+  border-radius: 6px;
+  color: var(--td-warning-color);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+}
+
+.kb-list-container .warning-banner .t-icon {
+  color: var(--td-warning-color);
+  flex-shrink: 0;
+}
+
+.kb-list-container .upload-progress-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.kb-list-container .upload-progress-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  background: var(--td-bg-color-container);
+}
+
+.kb-list-container .upload-progress-icon {
+  color: var(--td-brand-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kb-list-container .upload-progress-content {
+  flex: 1;
+}
+
+.kb-list-container .progress-title {
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+  margin-bottom: 2px;
+}
+
+.kb-list-container .progress-subtitle {
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.kb-list-container .progress-subtitle.secondary {
+  color: var(--td-text-color-placeholder);
+  margin-top: 2px;
+}
+
+.kb-list-container .progress-subtitle.error {
+  color: var(--td-error-color);
+  margin-top: 4px;
+}
+
+.kb-list-container .progress-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--td-bg-color-secondarycontainer);
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.kb-list-container .progress-bar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, var(--td-brand-color-active) 0%, var(--td-brand-color) 100%);
+  transition: width 0.2s ease;
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.kb-list-container .kb-card-wrap {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+  animation: contentFadeIn 0.32s ease-out;
+}
+
+.kb-list-container .kb-section-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 整行只用来铺背景实现 sticky；点击事件靠子元素冒泡触发。 */
+  pointer-events: none;
+}
+
+.kb-list-container .kb-section-header > * {
+  pointer-events: auto;
+}
+
+.kb-list-container .kb-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--td-bg-color-container);
+  /* 用 box-shadow 把背景再往上"延伸"8px，封掉 sticky 与容器顶之间任何
+     subpixel 残缝；第二条 shadow 在下方也再补一点。 */
+  box-shadow: 0 -8px 0 0 var(--td-bg-color-container),
+    0 4px 0 0 var(--td-bg-color-container);
+  padding: 6px 4px 6px 0;
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.kb-list-container .kb-section-header:hover {
+  color: var(--td-text-color-primary);
+}
+
+.kb-list-container .kb-section-header:focus-visible {
+  box-shadow: 0 0 0 2px var(--td-brand-color-focus, rgba(0, 82, 217, 0.2));
+}
+
+/* Icons inherit the section header's text color so the whole row reads as one
+   muted secondary tone（Vue :2245-2252）. */
+.kb-list-container .kb-section-header .t-icon {
+  color: inherit;
+}
+
+.kb-list-container .kb-section-header .kb-section-toggle {
+  margin-left: 4px;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+/* 共享给我的两个子分组共用主图标 usergroup-add，子图标（edit / browse）
+   区分权限，向左挤靠主图标。 */
+.kb-list-container .kb-section-header .kb-section-subicon {
+  margin-left: -4px;
+  opacity: 0.75;
+}
+
+.kb-list-container .kb-section-header .kb-section-count {
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.kb-list-container .kb-section-header:hover .kb-section-toggle {
+  opacity: 1;
+}
+
+.kb-list-container .kb-card {
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: var(--td-bg-color-container);
+  position: relative;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  height: 136px;
+  min-height: 136px;
+}
+
+.kb-list-container .kb-card.kb-card-skeleton {
+  cursor: default;
+}
+
+.kb-list-container .kb-card.kb-card-skeleton .card-header {
+  margin-bottom: 12px;
+}
+
+.kb-list-container .kb-card.kb-card-skeleton .card-content {
+  flex: 1;
+}
+
+.kb-list-container .kb-card.kb-card-skeleton .card-bottom {
+  margin-top: auto;
+}
+
+.kb-list-container .kb-card:hover {
+  border-color: var(--td-brand-color);
+  box-shadow: 0 4px 12px rgba(7, 192, 95, 0.12);
+}
+
+.kb-list-container .kb-card.uninitialized {
+  opacity: 0.9;
+}
+
+/* 文档类型样式 */
+.kb-list-container .kb-card.kb-type-document {
+  background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(7, 192, 95, 0.04) 100%);
+}
+
+.kb-list-container .kb-card.kb-type-document:hover {
+  border-color: var(--td-brand-color);
+  background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(7, 192, 95, 0.08) 100%);
+}
+
+.kb-list-container .kb-card.kb-type-document::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, rgba(7, 192, 95, 0.08) 0%, transparent 100%);
+  border-radius: 0 12px 0 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 问答类型样式 */
+.kb-list-container .kb-card.kb-type-faq {
+  background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(0, 82, 217, 0.04) 100%);
+}
+
+.kb-list-container .kb-card.kb-type-faq:hover {
+  border-color: var(--td-brand-color);
+  box-shadow: 0 4px 12px rgba(0, 82, 217, 0.12);
+  background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(0, 82, 217, 0.08) 100%);
+}
+
+.kb-list-container .kb-card.kb-type-faq::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, rgba(0, 82, 217, 0.08) 0%, transparent 100%);
+  border-radius: 0 12px 0 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.kb-list-container .kb-card .kb-favorite-star {
+  /* 浮在卡片右上角顶角。 */
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  padding: 0;
+}
+
+.kb-list-container .kb-card .kb-favorite-star:hover {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-warning-color, #e37318);
+}
+
+.kb-list-container .kb-card .kb-favorite-star.is-favorited {
+  opacity: 1;
+  color: var(--td-warning-color, #e37318);
+}
+
+/* Reveal the star on card hover; favorited state forces it visible. */
+.kb-list-container .kb-card:hover .kb-favorite-star {
+  opacity: 1;
+}
+
+/* 确保内容在装饰之上 */
+.kb-list-container .kb-card .card-header,
+.kb-list-container .kb-card .card-content,
+.kb-list-container .kb-card .card-bottom {
+  position: relative;
+  z-index: 1;
+}
+
+.kb-list-container .kb-card .card-header {
+  margin-bottom: 6px;
+}
+
+.kb-list-container .kb-card .card-title {
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.kb-list-container .kb-card .card-content {
+  margin-bottom: 6px;
+}
+
+.kb-list-container .kb-card .card-description {
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.kb-list-container .kb-card .card-bottom {
+  padding-top: 6px;
+}
+
+.kb-list-container .kb-card .more-wrap {
+  width: 28px;
+  height: 28px;
+}
+
+.kb-list-container .kb-card .more-wrap .more-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.kb-list-container .kb-card .card-more-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.kb-list-container .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.kb-list-container .card-header .card-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kb-list-container .card-header .card-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-list-container .card-header .card-more-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--td-text-color-placeholder);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.kb-list-container .card-header .card-more-btn:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-secondary);
+}
+
+.kb-list-container .card-header .permission-tag {
+  flex-shrink: 0;
+}
+
+.kb-list-container .card-title {
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.kb-list-container .more-wrap {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  justify-content: center;
+  align-items: center;
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.kb-list-container .kb-card:hover .more-wrap {
+  opacity: 0.6;
+}
+
+.kb-list-container .more-wrap:hover {
+  background: var(--td-bg-color-container-hover);
+  opacity: 1 !important;
+}
+
+.kb-list-container .more-wrap.active-more {
+  background: var(--td-bg-color-container-hover);
+  opacity: 1 !important;
+}
+
+.kb-list-container .more-wrap .more-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.kb-list-container .card-content {
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 三个列表卡片统一：描述字体 */
+.kb-list-container .card-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.kb-list-container .card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: .5px solid var(--td-component-stroke);
+}
+
+.kb-list-container .bottom-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.kb-list-container .bottom-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.kb-list-container .bottom-right .card-time {
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+}
+
+.kb-list-container .feature-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kb-list-container .feature-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  cursor: default;
+  transition: background 0.2s ease;
+}
+
+.kb-list-container .feature-badge.type-document {
+  background: rgba(7, 192, 95, 0.08);
+  color: var(--td-brand-color-active);
+  width: auto;
+  padding: 0 6px;
+  gap: 3px;
+}
+
+.kb-list-container .feature-badge.type-document:hover {
+  background: rgba(7, 192, 95, 0.12);
+}
+
+.kb-list-container .feature-badge.type-document .badge-count {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.kb-list-container .feature-badge.type-document .processing-icon {
+  animation: spin 1s linear infinite;
+}
+
+.kb-list-container .feature-badge.type-faq {
+  background: rgba(0, 82, 217, 0.08);
+  color: var(--td-brand-color);
+  width: auto;
+  padding: 0 6px;
+  gap: 3px;
+}
+
+.kb-list-container .feature-badge.type-faq:hover {
+  background: rgba(0, 82, 217, 0.12);
+}
+
+.kb-list-container .feature-badge.type-faq .badge-count {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.kb-list-container .feature-badge.type-faq .processing-icon {
+  animation: spin 1s linear infinite;
+}
+
+.kb-list-container .feature-badge.kg {
+  background: rgba(124, 77, 255, 0.08);
+  color: var(--td-brand-color);
+}
+
+.kb-list-container .feature-badge.kg:hover {
+  background: rgba(124, 77, 255, 0.12);
+}
+
+.kb-list-container .feature-badge.multimodal {
+  background: rgba(255, 152, 0, 0.08);
+  color: var(--td-warning-color);
+}
+
+.kb-list-container .feature-badge.multimodal:hover {
+  background: rgba(255, 152, 0, 0.12);
+}
+
+.kb-list-container .feature-badge.question {
+  background: rgba(0, 150, 136, 0.08);
+  color: var(--td-success-color);
+}
+
+.kb-list-container .feature-badge.question:hover {
+  background: rgba(0, 150, 136, 0.12);
+}
+
+.kb-list-container .feature-badge.shared {
+  background: rgba(0, 82, 217, 0.08);
+  color: var(--td-brand-color);
+}
+
+.kb-list-container .feature-badge.shared:hover {
+  background: rgba(0, 82, 217, 0.12);
+}
+
+.kb-list-container .feature-badge.role-admin {
+  background: rgba(7, 192, 95, 0.1);
+  color: var(--td-brand-color-active);
+}
+
+.kb-list-container .feature-badge.role-admin:hover {
+  background: rgba(7, 192, 95, 0.15);
+}
+
+.kb-list-container .feature-badge.role-editor {
+  background: rgba(255, 152, 0, 0.1);
+  color: var(--td-warning-color);
+}
+
+.kb-list-container .feature-badge.role-editor:hover {
+  background: rgba(255, 152, 0, 0.15);
+}
+
+.kb-list-container .feature-badge.role-viewer {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-secondary);
+}
+
+.kb-list-container .feature-badge.role-viewer:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes highlightFlash {
+  0% {
+    border-color: var(--td-brand-color);
+    box-shadow: 0 0 0 0 rgba(7, 192, 95, 0.4);
+    transform: scale(1);
+  }
+
+  50% {
+    border-color: var(--td-brand-color);
+    box-shadow: 0 0 0 8px rgba(7, 192, 95, 0);
+    transform: scale(1.02);
+  }
+
+  100% {
+    border-color: var(--td-brand-color);
+    box-shadow: 0 0 0 0 rgba(7, 192, 95, 0);
+    transform: scale(1);
+  }
+}
+
+.kb-list-container .kb-card.highlight-flash {
+  animation: highlightFlash 0.6s ease-in-out 3;
+  border-color: var(--td-brand-color) !important;
+  box-shadow: 0 0 12px rgba(7, 192, 95, 0.3) !important;
+}
+
+.kb-list-container .card-time {
+  color: var(--td-text-color-placeholder);
+  font-family: var(--app-font-family);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.kb-list-container .empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 20px;
+}
+
+.kb-list-container .empty-state .empty-img {
+  width: 162px;
+  height: 162px;
+  margin-bottom: 20px;
+}
+
+.kb-list-container .empty-state .empty-txt {
+  color: var(--td-text-color-placeholder);
+  font-family: var(--app-font-family);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 26px;
+  margin-bottom: 8px;
+}
+
+.kb-list-container .empty-state .empty-desc {
+  color: var(--td-text-color-disabled);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  margin-bottom: 0;
+}
+
+.kb-list-container .empty-state .empty-state-btn {
+  margin-top: 20px;
+}
+
+/* 响应式布局 */
+@media (min-width: 900px) {
+  .kb-list-container .kb-card-wrap {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1250px) {
+  .kb-list-container .kb-card-wrap {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1600px) {
+  .kb-list-container .kb-card-wrap {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1900px) {
+  .kb-list-container .kb-card-wrap {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (min-width: 2200px) {
+  .kb-list-container .kb-card-wrap {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 6b. KnowledgeBaseList.vue 弹层（del-knowledge-dialog 渲染到 body；scoped
+ *     穿透 → 以 dialogClassName 限定作用域，语义与 [data-v] 属性选择器等价）
+ * ------------------------------------------------------------------------- */
+
+.del-knowledge-dialog {
+  padding: 0px !important;
+  border-radius: 6px !important;
+}
+
+.del-knowledge-dialog .t-dialog__header {
+  display: none;
+}
+
+.del-knowledge-dialog .t-dialog__body {
+  padding: 16px;
+}
+
+.del-knowledge-dialog .t-dialog__footer {
+  padding: 0;
+}
+
+/* Vue :deep(.t-dialog__position.t-dialog--top)：删除确认弹窗上移（40vh）。
+   弹层渲染在 body 下，Vue scoped 穿透规则在 portal DOM 上等效全局——按
+   agents.td.css 同源处理原样落全局（同 pilot 先例）。 */
+.t-dialog__position.t-dialog--top {
+  padding-top: 40vh !important;
+}
+
+.del-knowledge-dialog .circle-wrap .dialog-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.del-knowledge-dialog .circle-wrap .circle-img {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+}
+
+.del-knowledge-dialog .circle-wrap .circle-title {
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.del-knowledge-dialog .circle-wrap .del-circle-txt {
+  color: var(--td-text-color-placeholder);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  display: inline-block;
+  margin-left: 29px;
+  margin-bottom: 21px;
+}
+
+.del-knowledge-dialog .circle-wrap .circle-btn {
+  height: 22px;
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.del-knowledge-dialog .circle-wrap .circle-btn-txt {
+  color: var(--td-text-color-primary);
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.del-knowledge-dialog .circle-wrap .circle-btn-txt:hover {
+  opacity: 0.8;
+}
+
+.del-knowledge-dialog .circle-wrap .circle-btn-txt.confirm {
+  color: var(--td-error-color);
+  margin-left: 40px;
+}
+
+.del-knowledge-dialog .circle-wrap .circle-btn-txt.confirm:hover {
+  opacity: 0.8;
+}
+
+/* ============================================================================
+ * 7. KnowledgeBaseList.vue unscoped 块（服务 body 弹层 / portal DOM，§2.5）
+ * ========================================================================== */
+
+/* 共享知识库卡片：详情触发（替代三点，用「查看详情」链接样式） */
+.shared-detail-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-brand-color);
+  font-size: 13px;
+  font-family: var(--app-font-family);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.shared-detail-trigger .t-icon {
+  flex-shrink: 0;
+}
+
+.shared-detail-trigger:hover {
+  background: rgba(7, 192, 95, 0.08);
+  color: var(--td-brand-color);
+}
+
+/* 右侧滑出：共享知识库详情面板 */
+.shared-detail-drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.shared-detail-drawer {
+  width: 360px;
+  max-width: 90vw;
+  height: 100%;
+  background: var(--td-bg-color-container);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--app-font-family);
+  /* body 弹层根：脱离 shell 行高链（§2.6）。 */
+  line-height: normal;
+}
+
+.shared-detail-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+}
+
+.shared-detail-drawer-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.shared-detail-drawer-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, color 0.2s ease;
+  padding: 0;
+}
+
+.shared-detail-drawer-close:hover {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+}
+
+.shared-detail-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.shared-detail-drawer-body .shared-detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shared-detail-drawer-body .shared-detail-label {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.4;
+}
+
+.shared-detail-drawer-body .shared-detail-value {
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.shared-detail-drawer-body .shared-detail-value.shared-detail-source-type {
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.shared-detail-drawer-body .shared-detail-value.shared-detail-org {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shared-detail-drawer-body .shared-detail-org-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.shared-detail-drawer-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--td-component-stroke);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+  background: var(--td-bg-color-container);
+}
+
+.shared-detail-drawer-footer .go-to-kb-btn .t-button__text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 右侧滑入动画（Vue <Transition name="shared-detail-drawer">） */
+.shared-detail-drawer-enter-active,
+.shared-detail-drawer-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.shared-detail-drawer-enter-active .shared-detail-drawer,
+.shared-detail-drawer-leave-active .shared-detail-drawer {
+  transition: transform 0.25s ease;
+}
+
+.shared-detail-drawer-enter,
+.shared-detail-drawer-enter-from,
+.shared-detail-drawer-leave-to {
+  opacity: 0;
+}
+
+.shared-detail-drawer-enter .shared-detail-drawer,
+.shared-detail-drawer-enter-from .shared-detail-drawer,
+.shared-detail-drawer-leave-to .shared-detail-drawer {
+  transform: translateX(100%);
+}
+
+/* 创建对话框样式优化（unscoped 兜底段，Vue 原样） */
+.create-kb-dialog .t-form-item__label {
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.create-kb-dialog .t-input,
+.create-kb-dialog .t-textarea {
+  font-family: var(--app-font-family);
+}
+
+/* ============================================================================
+ * 8. KnowledgeBaseEditorModal.vue（scoped → 根类前缀 .settings-overlay）
+ *    —— Teleport 到 body 的弹层，类名全局唯一（§2.5 + §2.6 createPortal）
+ * ========================================================================== */
+
+.settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+  /* body 弹层根：脱离 shell 行高链（§2.6 pilot 实证）。 */
+  line-height: normal;
+}
+
+.settings-modal {
+  position: relative;
+  width: 90vw;
+  max-width: 1000px;
+  height: 85vh;
+  max-height: 750px;
+  background: var(--td-bg-color-container);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--app-font-family);
+}
+
+.settings-overlay .editor-initializing {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--td-bg-color-container);
+}
+
+.settings-overlay .close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--td-text-color-secondary);
+  transition: all 0.2s ease;
+  z-index: 10;
+  padding: 0;
+}
+
+.settings-overlay .close-btn:hover {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .settings-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 左侧导航：与 AgentEditorModal 对齐 */
+.settings-overlay .settings-sidebar {
+  width: 208px;
+  background-color: var(--td-bg-color-settings-modal);
+  border-right: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-overlay .sidebar-header {
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+}
+
+.settings-overlay .sidebar-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .settings-nav {
+  flex: 1;
+  padding: 8px 8px 12px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.settings-overlay .nav-group-title {
+  padding: 6px 14px 2px;
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.settings-overlay .settings-nav .nav-group-title:first-child {
+  padding-top: 2px;
+}
+
+.settings-overlay .settings-nav .nav-group-title:not(:first-child) {
+  padding-top: 8px;
+}
+
+.settings-overlay .nav-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  margin-bottom: 2px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  user-select: none;
+}
+
+.settings-overlay .nav-item:hover {
+  background-color: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .nav-item.active {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.settings-overlay .nav-icon {
+  margin-right: 9px;
+  font-size: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.settings-overlay .nav-label {
+  flex: 1;
+}
+
+.settings-overlay .nav-badge {
+  flex-shrink: 0;
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.settings-overlay .settings-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-overlay .content-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+}
+
+.settings-overlay .section {
+  margin-bottom: 32px;
+}
+
+.settings-overlay .section:last-child {
+  margin-bottom: 0;
+}
+
+.settings-overlay .section-content .section-header {
+  margin-bottom: 16px;
+}
+
+.settings-overlay .section-content .section-title {
+  margin: 0 0 6px 0;
+  font-family: var(--app-font-family);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .section-content .section-desc {
+  margin: 0;
+  font-family: var(--app-font-family);
+  font-size: 14px;
+  color: var(--td-text-color-placeholder);
+  line-height: 22px;
+}
+
+.settings-overlay .section-content .section-body {
+  background: var(--td-bg-color-container);
+}
+
+.settings-overlay .form-item {
+  margin-bottom: 16px;
+}
+
+.settings-overlay .form-item:last-child {
+  margin-bottom: 0;
+}
+
+.settings-overlay .form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--app-font-family);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .form-label.required::after {
+  content: '*';
+  color: var(--td-error-color);
+  margin-left: 4px;
+}
+
+.settings-overlay .form-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+}
+
+.settings-overlay .kb-id-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  max-width: 480px;
+  margin-top: 8px;
+  padding: 6px 8px 6px 12px;
+  background: var(--td-bg-color-secondarycontainer);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 6px;
+}
+
+.settings-overlay .kb-id-field .kb-id-value {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: var(--app-font-family-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-overlay .kb-id-field .kb-id-copy {
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+}
+
+.settings-overlay .kb-id-field .kb-id-copy:hover {
+  color: var(--td-brand-color);
+}
+
+.settings-overlay .granularity-radio-group {
+  margin-top: 4px;
+}
+
+.settings-overlay .granularity-hint {
+  margin-top: 8px;
+  line-height: 1.6;
+  color: var(--td-text-color-secondary);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.settings-overlay .indexing-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.settings-overlay .indexing-check-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  background: var(--td-bg-color-container);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.settings-overlay .indexing-check-item:hover {
+  border-color: var(--td-brand-color);
+}
+
+.settings-overlay .indexing-check-item.is-checked {
+  border-color: var(--td-brand-color);
+  background: var(--td-brand-color-light);
+}
+
+.settings-overlay .indexing-check-item.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.settings-overlay .indexing-check-item.is-disabled:hover {
+  border-color: var(--td-component-stroke);
+}
+
+.settings-overlay .indexing-check-item.is-disabled.is-checked:hover {
+  border-color: var(--td-brand-color);
+}
+
+.settings-overlay .indexing-check-item .t-checkbox__label {
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.settings-overlay .locked-tip {
+  color: var(--td-warning-color);
+  margin-top: 8px;
+}
+
+/* 禁用内部 checkbox 自身的点击事件，统一由卡片处理 */
+.settings-overlay .indexing-check-box {
+  pointer-events: none;
+}
+
+.settings-overlay .indexing-check-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-overlay .indexing-new-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.4px;
+  color: var(--td-brand-color);
+  background: var(--td-brand-color-light);
+}
+
+.settings-overlay .indexing-check-desc {
+  margin: 0;
+  padding-left: 24px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--td-text-color-placeholder);
+}
+
+.settings-overlay .faq-guide {
+  margin-top: 20px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.settings-overlay .settings-footer {
+  padding: 12px 40px;
+  border-top: 1px solid var(--td-component-stroke);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.settings-overlay .settings-footer-note {
+  margin: 0;
+  margin-right: auto;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--td-text-color-secondary);
+}
+
+.settings-overlay .settings-footer-note strong {
+  margin-right: 4px;
+  color: var(--td-text-color-primary);
+  font-weight: 500;
+}
+
+.settings-overlay .settings-footer-note__icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--td-success-color);
+}
+
+.settings-overlay .settings-footer-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* 多模态配置内联样式（与子组件 KBStorageSettings/KBAdvancedSettings 一致） */
+.settings-overlay .kb-multimodal-settings {
+  width: 100%;
+}
+
+.settings-overlay .kb-multimodal-settings .section-header {
+  margin-bottom: 20px;
+}
+
+.settings-overlay .kb-multimodal-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 6px 0;
+}
+
+.settings-overlay .kb-multimodal-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.settings-overlay .kb-multimodal-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-overlay .kb-multimodal-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.settings-overlay .kb-multimodal-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.settings-overlay .kb-multimodal-settings .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.settings-overlay .kb-multimodal-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.settings-overlay .kb-multimodal-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.settings-overlay .kb-multimodal-settings .setting-control {
+  flex-shrink: 0;
+  min-width: 280px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.settings-overlay .kb-multimodal-settings .required {
+  color: var(--td-error-color);
+  margin-left: 2px;
+  font-weight: 500;
+}
+
+/* ============================================================================
+ * 9. 保留段落（old-stack 段 internals 的锚点规则，见任务报告边界说明）
+ *    —— 编辑器 models / vectorStore / parser / storage / chunking / graph /
+ *    advanced / datasource / share / activity 段仍为 R490 React 端口，其
+ *    Tailwind 字面值由 kb-editor-parity.css 留守段承接（随本页加载）。
+ * ========================================================================== */
+
+/* ============================================================================
+ * 10. Vue theme.css 全局 t-radio-button 选中态（frontend/src/assets/theme/
+ *     theme.css「全局 t-radio-button outline 选中态」块）——Vue 端是全局规则，
+ *     React 侧 tdesign-theme.css 只平移了 token；此处按页面作用域平移
+ *     （agents.td.css §9 同源，pilot R5 先例：未选中描边 component-stroke
+ *     #e7e7e7 vs React 默认 component-border #dcdcdc）。
+ * ========================================================================== */
+
+.settings-overlay .t-radio-group .t-radio-button {
+  border-color: var(--td-component-stroke);
+  transition: all 0.2s ease;
+}
+
+.settings-overlay .t-radio-group .t-radio-button:hover:not(.t-is-disabled) {
+  border-color: var(--td-brand-color);
+  color: var(--td-brand-color);
+}
+
+.settings-overlay .t-radio-group .t-radio-button.t-is-checked,
+.settings-overlay .t-radio-group .t-radio-button.t-is-checked .t-radio-button__label,
+.settings-overlay .t-radio-group .t-radio-button.t-is-checked > span {
+  background: var(--td-brand-color);
+  border-color: var(--td-brand-color);
+  color: var(--td-text-color-anti);
+}
+
+.settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled),
+.settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled) .t-radio-button__label,
+.settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled) > span {
+  background: var(--td-brand-color-active);
+  border-color: var(--td-brand-color-active);
+  color: var(--td-text-color-anti);
+}
+
+.settings-overlay .t-radio-group .t-radio-button.t-is-disabled {
+  background: var(--td-bg-color-component-disabled);
+  border-color: var(--td-component-border);
+  color: var(--td-text-color-disabled);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.settings-overlay .t-radio-group .t-radio-button.t-is-disabled .t-radio-button__label,
+.settings-overlay .t-radio-group .t-radio-button.t-is-disabled > span {
+  color: var(--td-text-color-disabled);
+}
+
+.settings-overlay .t-radio-group .t-radio-button.t-is-disabled.t-is-checked,
+.settings-overlay .t-radio-group .t-radio-button.t-is-disabled.t-is-checked .t-radio-button__label,
+.settings-overlay .t-radio-group .t-radio-button.t-is-disabled.t-is-checked > span {
+  background: var(--td-brand-color-disabled) !important;
+  border-color: var(--td-brand-color-disabled) !important;
+  color: var(--td-text-color-anti) !important;
+}

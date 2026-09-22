@@ -19,13 +19,21 @@ Object.assign(globalThis, {
   HTMLElement: dom.window.HTMLElement,
   HTMLInputElement: dom.window.HTMLInputElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   FocusEvent: dom.window.FocusEvent,
   NodeFilter: dom.window.NodeFilter,
   MouseEvent: dom.window.MouseEvent,
   MutationObserver: dom.window.MutationObserver,
+  KeyboardEvent: dom.window.KeyboardEvent,
   getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -82,7 +90,9 @@ test('tenant members exposes manager search, invite and role controls', () => {
   window.localStorage.setItem('locale', 'en-US');
   const html = renderToStaticMarkup(<TenantMembersPanel client={{} as never} tenantId={1} role="admin" initialMembers={{ items: [alice], total: 1 }} />);
   assert.match(html, /Add Member/);
-  assert.match(html, /Role for Alice/);
+  // T12a fix-1：tdesign Select（member-role-select）不透传 aria-label——
+  // 断言角色下拉控件本体存在（台账 #8 同类：Select 根不透传额外属性）。
+  assert.match(html, /member-role-select/);
   assert.match(html, /Remove/);
 });
 
@@ -91,7 +101,7 @@ test('member list header and localized search stay mounted during initial loadin
   const container = await mount(clientWithList(() => request.promise));
 
   const header = container.querySelector('.members-list-header');
-  const search = container.querySelector<HTMLInputElement>('input[type="search"]');
+  const search = container.querySelector<HTMLInputElement>('form.members-list-search input');
   assert.ok(header);
   assert.equal(header.querySelector('.members-list-title')?.textContent, 'Workspace members');
   assert.equal(header.querySelector('.members-list-count-badge')?.textContent, '0');
@@ -100,7 +110,7 @@ test('member list header and localized search stay mounted during initial loadin
 
   await act(async () => request.resolve({ items: [alice], total: 1 }));
   assert.strictEqual(container.querySelector('.members-list-header'), header);
-  assert.strictEqual(container.querySelector('input[type="search"]'), search);
+  assert.strictEqual(container.querySelector('form.members-list-search input'), search);
   assert.equal(header.querySelector('.members-list-count-badge')?.textContent, '1');
   assert.match(container.textContent ?? '', /Alice/);
 });
@@ -115,7 +125,7 @@ test('search remains mounted and clearing reloads the unfiltered member list', a
   });
   const container = await mount(client, { items: [alice], total: 1 }, 'admin');
   const header = container.querySelector('.members-list-header');
-  const search = container.querySelector<HTMLInputElement>('input[type="search"]');
+  const search = container.querySelector<HTMLInputElement>('form.members-list-search input');
   assert.ok(header && search);
   assert.ok(container.querySelector('button[aria-label="Add Member"]'), 'manager invite entry stays mounted');
 
@@ -128,16 +138,21 @@ test('search remains mounted and clearing reloads the unfiltered member list', a
   assert.equal(search.value, 'Bob');
   await act(async () => search.form?.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
   assert.strictEqual(container.querySelector('.members-list-header'), header);
-  assert.strictEqual(container.querySelector('input[type="search"]'), search);
+  assert.strictEqual(container.querySelector('form.members-list-search input'), search);
   assert.match(container.textContent ?? '', /Loading members/);
 
   await act(async () => searchRequest.resolve({ items: [bob], total: 1 }));
   assert.match(container.textContent ?? '', /Bob/);
-  const clear = container.querySelector<HTMLButtonElement>('button[aria-label="Clear search"]');
-  assert.ok(clear, 'a keyboard-focusable clear control should appear for a non-empty query');
-
-  await act(async () => clear.click());
+  // T12a：tdesign Input clearable 的清除图标（.t-input__suffix-clear）。
+  // tdesign clearable 图标 hover 才出现——按用户退格清空的行为驱动。
+  await act(async () => {
+    const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
+    setValue?.call(search, '');
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
   assert.equal(search.value, '');
+  // 清空后提交表单触发未过滤重载（旧 Clear 按钮的 reload 语义）。
+  await act(async () => search.form?.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
   assert.strictEqual(container.querySelector('.members-list-header'), header);
   assert.match(container.textContent ?? '', /Loading members/);
 
@@ -145,7 +160,7 @@ test('search remains mounted and clearing reloads the unfiltered member list', a
   assert.deepEqual(queries, ['Bob', undefined]);
   assert.match(container.textContent ?? '', /Alice/);
   assert.equal(header.querySelector('.members-list-count-badge')?.textContent, '2');
-  assert.equal(container.querySelector('button[aria-label="Clear search"]'), null);
+  assert.equal(container.querySelector('.t-input__suffix-clear'), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -228,7 +243,7 @@ test('zh-CN panel anatomy mirrors the Vue baseline: header row, two tables, page
   const inviteeCell = pendingShell.querySelector('.member-cell');
   assert.match(inviteeCell?.textContent ?? '', /通过链接邀请/);
   assert.match(inviteeCell?.textContent ?? '', /尚无成员加入/);
-  assert.match(pendingShell.querySelector('.status-tag')?.textContent ?? '', /生效中/);
+  assert.match(pendingShell.querySelectorAll('.t-tag')[1]?.textContent ?? '', /生效中/);
   assert.ok(pendingShell.querySelector('button[aria-label="复制邀请链接"]'), 'per-row copy action for an active share link');
   assert.ok(pendingShell.querySelector('button[aria-label="撤销"]'), 'per-row revoke action');
 
@@ -236,7 +251,7 @@ test('zh-CN panel anatomy mirrors the Vue baseline: header row, two tables, page
   const header = container.querySelector('.members-list-header');
   assert.equal(header?.querySelector('.members-list-title')?.textContent, '空间成员');
   assert.equal(header?.querySelector('.members-list-count-badge')?.textContent, '2');
-  const search = container.querySelector<HTMLInputElement>('input[type="search"]');
+  const search = container.querySelector<HTMLInputElement>('form.members-list-search input');
   assert.equal(search?.placeholder, '按姓名或邮箱搜索');
   const addBtn = container.querySelector<HTMLButtonElement>('button[aria-label="邀请成员"]');
   assert.match(addBtn?.getAttribute('aria-label') ?? '', /邀请成员/);
@@ -253,9 +268,9 @@ test('zh-CN panel anatomy mirrors the Vue baseline: header row, two tables, page
   assert.match(ownerCell?.textContent ?? '', /paritytester/);
   assert.match(ownerCell?.textContent ?? '', /parity-test@local.dev/);
   assert.match(rows[0].querySelector('.role-cell')?.textContent ?? '', /所有者/);
-  assert.equal(rows[0].querySelector('select'), null, 'self/owner row renders a role tag, not a select');
-  assert.match(rows[1].querySelector('.role-cell')?.textContent ?? '', /编辑/);
-  assert.ok(rows[1].querySelector('select'), 'other rows get the role dropdown');
+  assert.equal(rows[0].querySelector('.role-cell .t-select'), null, 'self/owner row renders a role tag, not a select');
+  assert.equal(rows[1].querySelector<HTMLInputElement>('.role-cell .t-input__inner')?.value, '编辑');
+  assert.ok(rows[1].querySelector('.role-cell .t-select'), 'other rows get the role dropdown');
   assert.ok(rows[1].querySelector('button[aria-label="移除"]'), 'remove icon button on non-self rows');
   assert.equal(rows[0].querySelector('button[aria-label="移除"]'), null);
   assert.match(rows[0].textContent ?? '', /2030\/01\/01/);
@@ -267,9 +282,9 @@ test('zh-CN panel anatomy mirrors the Vue baseline: header row, two tables, page
     assert.match(pager.textContent ?? '', /共 \d+ 条数据/);
     assert.match(pager.textContent ?? '', /跳至/);
     assert.match(pager.textContent ?? '', /\/ 1 页/);
-    const sizeSelect = pager.querySelector('select');
+    const sizeSelect = pager.querySelector('.t-select__wrap input');
     assert.ok(sizeSelect, 'page-size select is rendered');
-    assert.match(sizeSelect?.selectedOptions[0]?.textContent ?? '', /条\/页/);
+    assert.match(sizeSelect?.getAttribute('value') ?? '', /条\/页/);
   }
   assert.match(pagers[0].textContent ?? '', /共 1 条数据/);
   assert.match(pagers[1].textContent ?? '', /共 2 条数据/);
@@ -284,8 +299,15 @@ test('permissions popover and audit drawer open from the header row', async () =
   const { client, auditCalls } = parityClient({ members: { items: [alice], total: 1 }, currentUserId: 'u1' });
   const container = await mount(client, { items: [alice], total: 1 }, 'admin', 'zh-CN');
 
-  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="角色权限说明"]')?.click());
-  const popover = container.querySelector('[role="dialog"]');
+  const permTrigger = container.querySelector<HTMLButtonElement>('button[aria-label="角色权限说明"]');
+  assert.ok(permTrigger, 'permissions trigger renders');
+  await act(async () => {
+    permTrigger.dispatchEvent(new dom.window.MouseEvent('mouseenter', { bubbles: false }));
+    permTrigger.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+  // T12a：tdesign Popup hover 直译，弹层 portal 到 document.body。
+  const popover = document.body.querySelector('[role="dialog"]');
   assert.ok(popover, 'info trigger opens the role-permission matrix');
   assert.match(popover?.textContent ?? '', /角色权限说明/);
   for (const role of ['所有者', '管理员', '编辑', '访客']) assert.match(popover?.textContent ?? '', new RegExp(role));
@@ -355,18 +377,20 @@ test('pending invitation rows expose status badges and an inline revoke confirm'
   assert.equal(rows.length, 2);
   const directCells = rows[0].querySelectorAll('td');
   assert.match(rows[0].querySelector('.member-cell')?.textContent ?? '', /pending@example.com/);
-  assert.match(rows[0].querySelector('.status-tag')?.textContent ?? '', /待接受/);
+  assert.match(rows[0].querySelectorAll('.t-tag')[1]?.textContent ?? '', /待接受/);
   assert.match(directCells[1]?.textContent ?? '', /访客/);
 
   const revokeTrigger = rows[0].querySelector<HTMLButtonElement>('button[aria-label="撤销"]');
   assert.ok(revokeTrigger);
   await act(async () => revokeTrigger.click());
-  const confirm = rows[0].querySelector('[role="alertdialog"]');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  // T12a fix-1：tdesign Popconfirm 直译 Vue t-popconfirm，弹层 portal 到 body。
+  const confirm = document.body.querySelector('.t-popconfirm');
   assert.ok(confirm, 'inline popconfirm anchored to the revoke button');
   assert.match(confirm?.textContent ?? '', /撤销后，pending@example.com 将无法再接受此邀请/);
   assert.match(confirm?.textContent ?? '', /取消/);
-  const confirmButtons = confirm?.querySelectorAll<HTMLButtonElement>('button');
-  const confirmBtn = confirmButtons?.[confirmButtons.length - 1];
+  const confirmBtn = Array.from(confirm?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+    .find((button) => (button.textContent ?? '').includes('撤销邀请')) ?? confirm?.querySelectorAll<HTMLButtonElement>('button')[1];
   await act(async () => confirmBtn?.click());
   assert.deepEqual(revoked, [5]);
   assert.ok(invitationCalls.length >= 2, 'invitations reload after revoke');
@@ -384,12 +408,12 @@ test('members pager drives server-side pagination like the Vue table', async () 
   assert.ok(shell);
   assert.match(shell?.textContent ?? '', /共 25 条数据/);
   const pager = shell?.querySelector('.data-table-shell__pager');
-  const next = pager?.querySelector<HTMLButtonElement>('button[aria-label="下一步"]');
+  const next = pager?.querySelector<HTMLButtonElement>('.t-pagination__btn-next');
   await act(async () => next?.click());
   assert.deepEqual(memberCalls.at(-1), { q: undefined, page: 2, pageSize: 20 });
 
   // Jumper navigates (跳至 1) while still on pageSize 20.
-  const jumper = pager?.querySelector<HTMLInputElement>('input');
+  const jumper = pager?.querySelector<HTMLInputElement>('.t-pagination__jump input');
   assert.ok(jumper);
   await act(async () => {
     const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
@@ -401,13 +425,16 @@ test('members pager drives server-side pagination like the Vue table', async () 
   });
   assert.deepEqual(memberCalls.at(-1), { q: undefined, page: 1, pageSize: 20 });
 
-  const size = pager?.querySelector<HTMLSelectElement>('select');
-  assert.ok(size);
-  await act(async () => {
-    const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value')?.set;
-    setValue?.call(size, '50');
-    size.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
+  // T12a：tdesign Pagination 的页大小是 t-select——开弹层点 50 条/页。
+  const sizeTrigger = pager?.querySelector<HTMLElement>('.t-pagination__select .t-input');
+  assert.ok(sizeTrigger, 'page-size select renders');
+  await act(async () => { sizeTrigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const sizeOption = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'))
+    .find((el) => (el.textContent ?? '').trim() === '50 条/页');
+  assert.ok(sizeOption, '50 条/页 option renders');
+  await act(async () => { sizeOption.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.deepEqual(memberCalls.at(-1), { q: undefined, page: 1, pageSize: 50 });
 
   // With 25 records on 50 条/页 the jumper clamps out-of-range pages (no request).

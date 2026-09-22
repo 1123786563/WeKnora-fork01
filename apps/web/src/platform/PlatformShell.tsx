@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
 import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
@@ -36,12 +36,26 @@ import { PaletteRetrievalSettings } from './retrieval-settings-panel.tsx';
 // pulls it in by relative path. (shell.css is gone — all rules became
 // utilities in this file / session-sidebar.tsx.)
 import '../../../../packages/views/src/guides/guides.css';
-import weknoraLogo from '../auth/assets/weknora.png';
+// Task 9.5 — shell 层同构平移样式（menu.vue / UserMenu.vue / SessionSidebarRow.vue
+// 平移，见 platform-shell.td.css 头注）。Vue 端图标走 <img src> 资产（渲染为
+// 黑色 filled glyph、激活态换 -green.svg 变体），资产从 frontend/src/assets/img
+// 复制到 ./assets/img 保持逐字节一致。
+import './platform-shell.td.css';
+import { Icon as TIcon } from 'tdesign-icons-react';
+
+// Vue menu.vue getImgSrc 同款解析（new URL(..., import.meta.url)）：vite 资产
+// 管线在 dev/build 均支持；node 直算 href 不加载文件，测试无需 svg 拦截。
+const getImgSrc = (url: string): string => new URL(`./assets/img/${url}`, import.meta.url).href;
+const searchIconUrl = getImgSrc('search.svg');
+const weknoraLogo = getImgSrc('weknora.png');
 
 type Client = ReturnType<typeof createWeKnoraClient>;
 
-function handleInternalLink(event: ReactMouseEvent<HTMLAnchorElement>, path: string, afterNavigate?: () => void): void {
-  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+// Union param so the role="button" account card can reuse the anchor guard for
+// its Enter keydown; `button` is mouse-only, so read it through a narrowing cast
+// (identical expression after erasure — keyboard events keep the early return).
+function handleInternalLink(event: ReactMouseEvent<Element> | ReactKeyboardEvent<Element>, path: string, afterNavigate?: () => void): void {
+  if (event.defaultPrevented || (event as ReactMouseEvent<Element>).button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
   afterNavigate?.();
   navigate(path);
@@ -85,11 +99,53 @@ interface NavItem {
   key: string;
   href: string;
   label: string;
-  icon: ReactNode;
+  /** NAV_ICON_URLS key — the <img> asset pair (default/-green) per Vue menu.vue getIcon. */
+  icon: string;
+  /**
+   * React-only rail entries (experts / market / analytics) have no Vue menu
+   * asset to mirror — they keep their own inline svg glyphs here instead of
+   * borrowing another entry's <img> (which would erase their visual
+   * identity). Rendered when set; otherwise the Vue <img> pair is used.
+   */
+  iconNode?: ReactNode;
   match: (pathname: string) => boolean;
   /** Anchor for the welcome-tour spotlight (Vue menu.vue data-guide attrs). */
   guide?: string;
 }
+
+// React-only rail glyphs (pre-Task-9.5 geometry, restored): 24×24 stroke
+// drawings in the same visual family as the platform rail — these have no
+// Vue asset counterpart and must not fall back to a Vue entry's icon.
+function ReactOnlyNavIcon({ paths }: { paths: string[] }): ReactNode {
+  return (
+    <svg className="plat-shell__icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths.map((d, index) => <path key={`${d}-${index}`} d={d} />)}
+    </svg>
+  );
+}
+
+const REACT_ONLY_NAV_ICONS = {
+  // SP11 analytics entry — bar-chart glyph (stroke = currentColor).
+  chart: [
+    'M5 20V11',
+    'M12 20V5',
+    'M19 20V14',
+    'M3.5 20H20.5',
+  ],
+  // M2 experts entry — sparkles glyph (experts = preset templates that
+  // "spark" a new agent).
+  sparkles: [
+    'M12 3L13.7 7.8L18.5 9.5L13.7 11.2L12 16L10.3 11.2L5.5 9.5L10.3 7.8L12 3Z',
+    'M18.5 14.5L19.4 16.6L21.5 17.5L19.4 18.4L18.5 20.5L17.6 18.4L15.5 17.5L17.6 16.6L18.5 14.5Z',
+  ],
+  // M4 skills-market entry — shopping-bag glyph (the market = a bag of
+  // installable skills).
+  bag: [
+    'M6.3 8.2H17.7L18.9 19.1C19 20 18.3 20.8 17.4 20.8H6.6C5.7 20.8 5 20 5.1 19.1L6.3 8.2Z',
+    'M9 10.2V6.6C9 4.7 10.3 3.2 12 3.2C13.7 3.2 15 4.7 15 6.6V10.2',
+  ],
+};
 
 // Vue menu.vue:300-304 — platform-aware modifier label for shortcut hints
 // (⌘ on Apple platforms, Ctrl+ elsewhere). Groundwork for the logo-row ⌘K
@@ -124,72 +180,38 @@ export function kbScopeFromLocation(): { id: string; name: string } | null {
   }
 }
 
-function Icon({ path }: { path: string | string[] }): ReactNode {
-  const paths = Array.isArray(path) ? path : [path];
-  return (
-    <svg className="plat-shell__icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
-      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {paths.map((d, index) => <path key={`${d}-${index}`} d={d} />)}
-    </svg>
-  );
-}
-
-const ICONS = {
-  // These paths are ports of frontend/src/assets/img/{prefixIcon,zhishiku,agent,organization}.svg.
-  // Vue's filled/outlined geometry is the visual authority for the platform rail.
-  chat: [
-    'M1.875 2.5C1.875 2.15483 2.15482 1.875 2.5 1.875H17.5C17.8451 1.875 18.125 2.15483 18.125 2.5V13.75C18.125 14.0951 17.8451 14.375 17.5 14.375H9.04274L6.10514 17.9001C5.93669 18.1023 5.65965 18.1773 5.41224 18.0876C5.16481 17.9981 5 17.7631 5 17.5V14.375H2.5C2.15482 14.375 1.875 14.0951 1.875 13.75V2.5Z',
-    'M3.125 3.125V13.125H5.625C5.97017 13.125 6.25 13.4049 6.25 13.75V15.7738L8.26986 13.3499C8.38861 13.2074 8.56451 13.125 8.75 13.125H16.875V3.125H3.125Z',
-    'M9.375 5H10.625V8.44961L13.5154 10.762L12.7346 11.738L9.375 9.05039V5Z',
-  ],
-  book: [
-    'M9.17736 1.28207C9.32257 1.23367 9.4805 1.24024 9.6212 1.30054L18.3713 5.05054C18.5619 5.13222 18.6995 5.30316 18.7388 5.50681C18.778 5.71045 18.7136 5.9203 18.567 6.06694C18.5138 6.12012 18.4366 6.24314 18.3744 6.46076C18.3146 6.66994 18.2812 6.92361 18.2812 7.1875V13.4375C18.2812 13.7014 18.3146 13.955 18.3744 14.1642C18.4366 14.3819 18.5138 14.5049 18.567 14.558C18.709 14.7001 18.7741 14.9017 18.7419 15.1001C18.7097 15.2984 18.5843 15.4691 18.4045 15.559L12.1545 18.684C11.9886 18.767 11.7944 18.772 11.6245 18.6976L1.62449 14.3226C1.397 14.223 1.25 13.9983 1.25 13.75V4.375C1.25 4.106 1.42215 3.86715 1.67736 3.78207L9.17736 1.28207Z',
-    'M2.5 5.33064L10.9868 9.04362C10.826 9.58006 10.7812 9.95139 10.7812 10.3125V16.5625C10.7812 16.6986 10.7876 16.8361 10.8007 16.9728L2.5 13.3413V5.33064Z',
-    'M12.1275 17.3C12.0646 17.08 12.0312 16.8264 12.0312 16.5625V15.8358L17.0432 13.1146C17.0312 13.3304 17.076 13.7986 17.1725 14.5076L12.1275 17.3Z',
-  ],
-  bot: [
-    'M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z',
-    'M15.5 4L15.8 5.2C15.85 5.45 16.05 5.65 16.3 5.7L17.5 6L16.3 6.3C16.05 6.35 15.85 6.55 15.8 6.8L15.5 8L15.2 6.8C15.15 6.55 14.95 6.35 14.7 6.3L13.5 6L14.7 5.7C14.95 5.65 15.15 5.45 15.2 5.2L15.5 4Z',
-    'M4.5 13L4.8 14.2C4.85 14.45 5.05 14.65 5.3 14.7L6.5 15L5.3 15.3C5.05 15.35 4.85 15.55 4.8 15.8L4.5 17L4.2 15.8C4.15 15.55 3.95 15.35 3.7 15.3L2.5 15L3.7 14.7C3.95 14.45 4.15 14.45 4.2 14.2L4.5 13Z',
-  ],
-  users: 'M10 10C8.8 7.5 7.8 3.8 4.8 3.8C2.2 3.8 0.8 6.8 0.8 10C0.8 13.2 2.2 16.2 4.8 16.2C7.8 16.2 8.8 12.5 10 10C11.2 7.5 12.5 5.5 14.5 5.5C16.5 5.5 18 7.5 18 10C18 12.5 16.5 14.5 14.5 14.5C12.5 14.5 11.2 12.5 10 10Z',
-  // SP11 analytics entry — bar-chart glyph drawn to the same 24×24 stroke
-  // geometry as the ported icons above (stroke = currentColor).
-  chart: [
-    'M5 20V11',
-    'M12 20V5',
-    'M19 20V14',
-    'M3.5 20H20.5',
-  ],
-  // M2 experts entry — sparkles glyph in the same 24×24 stroke geometry
-  // (experts = preset templates that "spark" a new agent).
-  sparkles: [
-    'M12 3L13.7 7.8L18.5 9.5L13.7 11.2L12 16L10.3 11.2L5.5 9.5L10.3 7.8L12 3Z',
-    'M18.5 14.5L19.4 16.6L21.5 17.5L19.4 18.4L18.5 20.5L17.6 18.4L15.5 17.5L17.6 16.6L18.5 14.5Z',
-  ],
-  // M4 skills-market entry — shopping-bag glyph in the same 24×24 stroke
-  // geometry (the market = a bag of installable skills).
-  bag: [
-    'M6.3 8.2H17.7L18.9 19.1C19 20 18.3 20.8 17.4 20.8H6.6C5.7 20.8 5 20 5.1 19.1L6.3 8.2Z',
-    'M9 10.2V6.6C9 4.7 10.3 3.2 12 3.2C13.7 3.2 15 4.7 15 6.6V10.2',
-  ],
+// Task 9.5 — Vue menu.vue renders nav icons as <img> assets from
+// frontend/src/assets/img (menu.vue:87-89): the svg files carry their own
+// fill/stroke (currentColor → black in the <img> image context), and the
+// active section swaps to the -green.svg variant (menu.vue getIcon). The
+// assets are byte-identical copies; the rendered glyph is therefore the
+// same rasterization path as Vue (<img> of the same svg bytes).
+const NAV_ICON_URLS: Record<string, { default: string; active: string }> = {
+  creatChat: { default: getImgSrc('prefixIcon.svg'), active: getImgSrc('prefixIcon-green.svg') },
+  'knowledge-bases': { default: getImgSrc('zhishiku.svg'), active: getImgSrc('zhishiku-green.svg') },
+  agents: { default: getImgSrc('agent.svg'), active: getImgSrc('agent-green.svg') },
+  organizations: { default: getImgSrc('organization.svg'), active: getImgSrc('organization-green.svg') },
 };
 
 export function buildNavItems(t: (key: string) => string, labels: Record<string, string>): NavItem[] {
   return [
-    { key: 'newChat', href: '/platform/creatChat', label: labels.newChat, icon: <Icon path={ICONS.chat} />, match: (p: string) => p === '/platform/creatChat', guide: 'nav-creatChat' },
-    { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: <Icon path={ICONS.book} />, match: KB_ACTIVE, guide: 'nav-knowledge-bases' },
-    { key: 'agents', href: '/platform/agents', label: labels.agents, icon: <Icon path={ICONS.bot} />, match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
+    { key: 'newChat', href: '/platform/creatChat', label: labels.newChat, icon: 'creatChat', match: (p: string) => p === '/platform/creatChat', guide: 'nav-creatChat' },
+    { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: 'knowledge-bases', match: KB_ACTIVE, guide: 'nav-knowledge-bases' },
+    { key: 'agents', href: '/platform/agents', label: labels.agents, icon: 'agents', match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
     // M2 expert templates — a creation surface next to agents; unconditional
-    // (the GET /experts list is tenant-scoped, no admin gate).
-    { key: 'experts', href: '/platform/experts', label: labels.experts, icon: <Icon path={ICONS.sparkles} />, match: (p: string) => p.startsWith('/platform/experts') },
+    // (the GET /experts list is tenant-scoped, no admin gate). React-only
+    // entry: no Vue asset counterpart, keeps its own sparkles glyph.
+    { key: 'experts', href: '/platform/experts', label: labels.experts, icon: 'experts', iconNode: <ReactOnlyNavIcon paths={REACT_ONLY_NAV_ICONS.sparkles} />, match: (p: string) => p.startsWith('/platform/experts') },
     // M4 skills market — remote SkillHub search/rankings plus the
     // tenant-internal published list; visible to every member (Viewer+ reads
     // — routes_skill_market.go / routes_tenant_skill_market.go), the Admin+
-    // install/publish affordances gate inside the page.
-    { key: 'market', href: '/platform/market', label: labels.market, icon: <Icon path={ICONS.bag} />, match: (p: string) => p.startsWith('/platform/market') },
-    { key: 'organizations', href: '/platform/organizations', label: labels.organizations, icon: <Icon path={ICONS.users} />, match: (p: string) => p.startsWith('/platform/organizations') },
-    { key: 'analytics', href: '/platform/analytics', label: labels.analytics, icon: <Icon path={ICONS.chart} />, match: (p: string) => p.startsWith('/platform/analytics') },
+    // install/publish affordances gate inside the page. React-only entry:
+    // no Vue asset counterpart, keeps its own bag glyph.
+    { key: 'market', href: '/platform/market', label: labels.market, icon: 'market', iconNode: <ReactOnlyNavIcon paths={REACT_ONLY_NAV_ICONS.bag} />, match: (p: string) => p.startsWith('/platform/market') },
+    { key: 'organizations', href: '/platform/organizations', label: labels.organizations, icon: 'organizations', match: (p: string) => p.startsWith('/platform/organizations'), guide: 'nav-organizations' },
+    // SP11 analytics — React-only entry: no Vue asset counterpart, keeps its
+    // own bar-chart glyph.
+    { key: 'analytics', href: '/platform/analytics', label: labels.analytics, icon: 'analytics', iconNode: <ReactOnlyNavIcon paths={REACT_ONLY_NAV_ICONS.chart} />, match: (p: string) => p.startsWith('/platform/analytics') },
   ];
 }
 
@@ -848,6 +870,28 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     },
   }), []);
 
+  // Vue menu.vue:1151-1169 onDragHandleMouseDown — collapsed-rail drag handle:
+  // track the drag, expand once the pointer moves >40px to the right.
+  const onDragHandleMouseDown = (event: ReactMouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const expandThreshold = 40;
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (moveEvent.clientX - startX > expandThreshold) {
+        setCollapsed(false);
+        window.localStorage.setItem(COLLAPSE_STORAGE_KEY, 'false');
+        cleanup();
+      }
+    };
+    const onMouseUp = () => cleanup();
+    const cleanup = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
   const toggleCollapsed = () => {
     setCollapsed((current) => {
       window.localStorage.setItem(COLLAPSE_STORAGE_KEY, String(!current));
@@ -865,129 +909,112 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   return (
     // shell.css → utilities: .plat-shell (flex row, full viewport), .plat-shell__aside
     // (+ collapsed state swaps width/padding values rather than layering overrides).
+    // Task 9.5 — shell DOM 同构平移：Vue views/platform/index.vue .main >
+    // components/menu.vue .aside_box（logo_row / menu_top / menu_bottom）。
+    // 类名与结构 1:1（样式 platform-shell.td.css）；根容器与右侧 outlet 的
+    // 布局 utilities 维持原值（与 Vue .main/.platform-route-outlet 计算值一致）。
     <div className="flex items-stretch w-full h-screen min-w-[600px] bg-white">
-      <aside className={collapsed
-        // Vue .aside_box: bg --td-bg-color-sidebar #f9f9f9, border --td-component-stroke #e7e7e7.
-        ? 'box-border flex flex-col min-w-[60px] w-[60px] pt-[8px] px-[3px] pb-[6px] bg-[#f9f9f9] border-r border-[#e7e7e7] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'
-        : 'box-border flex flex-col min-w-[260px] w-[260px] pt-[8px] px-[6px] pb-[6px] bg-[#f9f9f9] border-r border-[#e7e7e7] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'}>
-        {/* Vue .logo_row is a 50px strip (menu.vue:1241); the 42px box lifted
-            every nav item 2px and the session list with it. */}
-        <div className="flex items-center justify-between h-[50px] shrink-0 pr-[10px] pl-[14px]">
-                <a className="flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora" onClick={(event) => {
-                  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                  event.preventDefault();
-                  navigate('/platform/knowledge-bases');
-                }}>
-            {!collapsed && <img className="block h-auto w-[128px]" src={weknoraLogo} alt="" />}
-            {/* Vue menu.vue:7 `<sup class="lite-badge">Lite</sup>` — edition
-                mark, untranslated; styles port menu.vue:1289-1297. */}
-            {!collapsed && isLiteEdition && (
-              <sup className="ml-[2px] mt-[2px] shrink-0 self-start select-none whitespace-nowrap text-[9px] font-semibold leading-none text-[var(--wk-color-text-placeholder,rgba(0,0,0,0.4))]">Lite</sup>
-            )}
+      <aside className={collapsed ? 'aside_box aside_box--collapsed' : 'aside_box'}>
+        {/* 展开时：Logo + 搜索/折叠按钮同行（Vue menu.vue logo_row）。 */}
+        {!collapsed ? <div className="logo_row">
+          <a className="logo_box" style={{ cursor: 'pointer' }} href="/platform/knowledge-bases" aria-label="WeKnora" onClick={(event) => {
+            if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            navigate('/platform/knowledge-bases');
+          }}>
+            <img className="logo" src={weknoraLogo} alt="" />
+            {/* Vue menu.vue:7 `<sup class="lite-badge">Lite</sup>` — edition mark, untranslated. */}
+            {isLiteEdition ? <sup className="lite-badge">Lite</sup> : null}
           </a>
-          {!collapsed && (
-            <div className="flex shrink-0 items-center gap-1">
-              {/* Vue .header-icon-btn (menu.vue:1844): 26px/6px radius, icon
-                  color --td-text-color-secondary rgba(0,0,0,0.6), hover bg
-                  --td-bg-color-container-hover #f3f3f3. */}
-              <button type="button" className="inline-flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-[rgba(0,0,0,0.6)] transition-colors hover:bg-[#f3f3f3]" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={t('menu.search')}>
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6.5" />
-                  <path d="m16 16 4.5 4.5" />
-                </svg>
-              </button>
-              <button type="button" className="inline-flex items-center justify-center w-[18px] h-[18px] border-none rounded-[4px] bg-transparent text-[rgba(0,0,0,0.6)] cursor-pointer hover:bg-[#f3f3f3]" onClick={toggleCollapsed} aria-label={t('menu.collapseSidebar')} title={t('menu.collapseSidebar')}>
-              <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
-                <rect x="1.5" y="1.5" width="17" height="17" rx="3" />
-                <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" />
-                <line x1="5" y1="10" x2="3" y2="8" strokeLinecap="round" />
-                <line x1="5" y1="10" x2="3" y2="12" strokeLinecap="round" />
+          <div className="logo_actions">
+            {/* Vue menu.vue:10-21 t-tooltip(.cmdk-tip) > .header-icon-btn > img search.svg。
+                tooltip 为 hover 态 DOM（静态不渲染），title 属性承接展开态提示。 */}
+            <button type="button" className="header-icon-btn" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={t('menu.search')}>
+              <img className="header-icon-img" src={searchIconUrl} alt="" />
+            </button>
+            <button type="button" className="sidebar-toggle" onClick={toggleCollapsed} aria-label={t('menu.collapseSidebar')} title={t('menu.collapseSidebar')}>
+              <svg viewBox="0 0 20 20" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="1.5" y="1.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="1.2" />
+                <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" stroke="currentColor" strokeWidth="1.2" />
+                <line x1="4" y1="7.5" x2="4" y2="12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
-              </button>
-            </div>
-          )}
-        </div>
-        {/* .plat-shell__item + --collapsed descendant override → utilities
-            (collapsed form: centered, 4px side margins, 9px/0 padding). */}
-        {collapsed && (
-          <button type="button" className="plat-shell__toggle-item flex items-center justify-center gap-[8px] mx-[4px] py-[9px] px-0 rounded-[8px] no-underline text-[rgba(0,0,0,0.6)] text-[14px] whitespace-nowrap hover:bg-[#f3f3f3]" onClick={toggleCollapsed} aria-label={t('menu.expandSidebar')} title={t('menu.expandSidebar')}>
-            <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
-              <rect x="1.5" y="1.5" width="17" height="17" rx="3" />
-              <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" />
-              <line x1="4" y1="7.5" x2="4" y2="12.5" strokeLinecap="round" />
-            </svg>
+            </button>
+          </div>
+        </div> : <>
+          {/* 折叠时：展开按钮（Vue menu.vue:33-50 t-tooltip > .menu_item.sidebar-toggle-item）。 */}
+          <button type="button" className="menu_item sidebar-toggle-item" onClick={toggleCollapsed} aria-label={t('menu.expandSidebar')} title={t('menu.expandSidebar')}>
+            <span className="menu_item-box">
+              <span className="menu_icon">
+                <svg className="icon" viewBox="0 0 20 20" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect x="1.5" y="1.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="1.2" />
+                  <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" stroke="currentColor" strokeWidth="1.2" />
+                  <line x1="5" y1="10" x2="3" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <line x1="5" y1="10" x2="3" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </span>
+            </span>
           </button>
-        )}
+          {/* 折叠时右侧拖拽展开手柄（Vue menu.vue:56 + onDragHandleMouseDown:1151-1169：
+              右拖 >40px 展开侧栏）。 */}
+          <div className="sidebar-drag-handle" onMouseDown={onDragHandleMouseDown} />
+        </>}
 
-        {/* Vue menu.vue keeps the global search entry available in the
-            collapsed rail (the expanded logo row is not mounted there). */}
-        {collapsed && (
-          <button type="button" className="mx-[4px] flex h-[38px] items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] hover:bg-[#f3f3f3]" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={`${t('menu.search')} ${platformModKeyLabel(navigator.platform)}K`}>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="6.5" />
-              <path d="m16 16 4.5 4.5" />
-            </svg>
-          </button>
-        )}
-
-        {/* .plat-shell__top / __nav → utilities. Item base styles from
-            .plat-shell__item; --active (+ :hover pin) and the collapsed
-            descendant override become state-swapped utilities keyed off
-            active/collapsed (aria-current="page" already marks the active
-            entry for semantics). --inset-x inlined: pl-[14px]. */}
-        <div className="flex-1 min-h-0 overflow-y-auto" onScroll={onSessionsScroll}>
-          <nav className="flex flex-col gap-[2px]" aria-label="Platform">
+        {/* 上半部分：新对话吸顶 + 知识库/智能体/共享空间/历史会话随滚动一起滚走
+            （Vue menu.vue .menu_top）。 */}
+        <div className="menu_top" onScroll={onSessionsScroll}>
+          {/* 全局搜索入口：折叠态保留为图标项（Vue menu.vue:62-78 .menu_box--cmdk）。 */}
+          {collapsed ? <div className="menu_box menu_box--cmdk">
+            <button type="button" className="menu_item menu_item--cmdk" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={`${t('menu.search')} ${platformModKeyLabel(navigator.platform)}K`}>
+              <span className="menu_item-box">
+                <span className="menu_icon"><img className="icon" src={searchIconUrl} alt="" /></span>
+              </span>
+            </button>
+          </div> : null}
+          <nav className="flex flex-col" aria-label="Platform">
             {visibleNavItems.map((item) => {
               const active = item.match(pathname);
+              // Vue menu.vue:79-84 — creatChat 带 children（childrenPath 'chat'）：
+              // 会话详情页给 menu_item_c_active（无底色、文字主色），本区首页给
+              // menu_item_active（底色 + 品牌色）。
+              const chatDetailActive = item.key === 'newChat' && /^\/platform\/chat\//.test(pathname);
+              const iconPair = NAV_ICON_URLS[item.icon];
               return (
-                <a key={item.key} href={item.href} onClick={(event) => {
-                  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                  event.preventDefault();
-                  navigate(item.href);
-                }} className={(collapsed
-                  ? 'justify-center mx-[4px] px-0 '
-                  : 'mx-0 pl-[14px] pr-[10px] ')
-                  // Vue .menu_item: h38, py8, radius 4; .menu_title: 14px/20px
-                  // w600 --td-text-color-primary rgba(0,0,0,0.9); active bg
-                  // --td-bg-color-secondarycontainer #f3f3f3 + brand text;
-                  // hover bg --td-bg-color-container-hover #f3f3f3.
-                  + 'box-border flex h-[38px] items-center gap-[8px] rounded-[4px] py-[8px] no-underline text-[14px] font-semibold leading-[20px] whitespace-nowrap '
-                  + (active
-                    ? 'bg-[#f3f3f3] hover:bg-[#f3f3f3] text-[#07c05f]'
-                    : 'text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]')}
-                  aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined} data-guide={item.guide}>
-                  {/* Vue .menu_icon color --td-text-color-secondary. */}
-                  <span className="inline-flex shrink-0 text-[rgba(0,0,0,0.6)]">{item.icon}</span>
-                  {!collapsed && <span className="overflow-hidden text-ellipsis">{item.label}</span>}
-                  {/* Vue menu.vue:93-98 — amber pending-join pill on the
-                      organizations entry, expanded rail only, raw count. */}
-                  {!collapsed && item.key === 'organizations' && orgPendingJoinRequestCount > 0 && (
-                    <span data-testid="org-pending-badge" title={t('organization.settings.pendingJoinRequestsBadge')}
-                      className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-[9px] bg-[rgba(250,173,20,0.2)] px-[5px] text-[12px] font-semibold leading-[18px] text-[#e37318]">
-                      {orgPendingJoinRequestCount}
+                <div key={item.key} className={item.key === 'newChat' && !collapsed ? 'menu_box menu_box--sticky' : 'menu_box'}>
+                  <a href={item.href} onClick={(event) => {
+                    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    event.preventDefault();
+                    navigate(item.href);
+                  }} className={'menu_item'
+                    + (chatDetailActive && !active ? ' menu_item_c_active' : '')
+                    + (active ? ' menu_item_active' : '')}
+                    aria-current={active ? 'page' : undefined}
+                    title={collapsed ? item.label : undefined}
+                    data-guide={item.guide}>
+                    <span className="menu_item-box">
+                      <span className="menu_icon">
+                        {item.iconNode ?? <img className="icon" src={iconPair ? (active ? iconPair.active : iconPair.default) : ''} alt="" />}
+                      </span>
+                      {!collapsed ? <>
+                        <span className="menu_title" title={item.label}>{item.label}</span>
+                        {/* Vue menu.vue:93-98 — amber pending-join pill on the
+                            organizations entry, expanded rail only, raw count. */}
+                        {item.key === 'organizations' && orgPendingJoinRequestCount > 0 ? (
+                          <span data-testid="org-pending-badge" title={t('organization.settings.pendingJoinRequestsBadge')} className="menu-pending-badge">
+                            {orgPendingJoinRequestCount}
+                          </span>
+                        ) : null}
+                      </> : null}
                     </span>
-                  )}
-                </a>
+                  </a>
+                </div>
               );
             })}
           </nav>
 
-          {/* Vue menu.vue .submenu: the grouped session list lives in the
-              sidebar on every protected page; collapsed sidebars hide it.
-              Keep the region label semantic-only; Vue renders dates and rows
-              here without a visible 我的对话 heading. */}
-          {/* .plat-shell__sessions / __sessions-title → utilities. Vue
-              .submenu has no top divider (padding-top 3px only → pt-[5px]
-              lands the first timeline header at Vue's y). Descendant
-              overrides snap the shared SessionSidebarList h3/rows onto the
-              Vue menu.vue styles: timeline_header is 11px w600
-              rgba(0,0,0,0.26), no tracking/case, zero margins; the session
-              row button is full-width (x6 w247) with Vue's 14px/10px side
-              padding (plus 24px reserved on the right for the in-flow
-              .menu-more-wrap ellipsis button the absolute React details
-              doesn't reserve), 6px vertical padding and 20px line-height. */}
-          {!collapsed && (
-            <nav className="mb-[4px] pt-[5px] [&_h3]:mt-0 [&_h3]:mb-0 [&_h3]:font-semibold [&_h3]:text-[rgba(0,0,0,0.26)] [&_h3]:tracking-normal [&_h3]:normal-case [&_li>button]:py-[6px] [&_li>button]:pl-[14px] [&_li>button]:pr-[34px] [&_li>button]:leading-[20px]" aria-label={labels.myChats}>
+          {/* Vue menu.vue .submenu：历史会话按日期分组（折叠态隐藏）。
+              SessionSidebarList 已按 SessionSidebarRow.vue 同构（packages/views）。 */}
+          {!collapsed ? (
+            <nav className="submenu" aria-label={labels.myChats}>
               {sessionsLoadError && !sessionsLoading ? <p className="mx-[14px] my-2 text-xs text-[#b42318]" role="status">
                 {labels.sessionLoadError}{' '}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-[#07c05f] underline" onClick={retryShellSessions}>{t('common.retry')}</button>
               </p> : null}
@@ -1010,221 +1037,152 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                 onShareSession={canShareSessions ? setShareSessionId : undefined}
               />
             </nav>
-          )}
+          ) : null}
         </div>
 
-        {/* .plat-shell__bottom / __user(+--open, unused marker dropped) /
-            __user-button / __avatar(+img) / __avatar-initial / __user-info /
-            __user-name / __user-email / __dropdown / __dropdown-item
-            (+ --danger swap) / __dropdown-divider → utilities. */}
-        {/* Vue menu.vue .menu_bottom is a 50px strip (py 1 around the 48px
-            button); the py-4 box made it 56px and lifted it 6px off the bottom. */}
-        <div className="shrink-0 px-[2px] py-[1px]">
-          <div ref={userMenuRef} className="relative">
-            {/* Vue menu_bottom: the name/email lines truncate 18px short of the
-                row edge (chevron overlay reserve) — pr 24px encodes that. */}
-            <button type="button" className="flex items-center gap-[6px] w-full pl-[6px] pr-[24px] py-[8px] border-none rounded-[8px] bg-transparent cursor-pointer text-left hover:bg-[#f3f3f3]" aria-haspopup="menu" aria-expanded={menuOpen}
-              data-guide="user-menu"
+        {/* 下半部分：用户菜单（Vue menu.vue .menu_bottom > UserMenu.vue）。 */}
+        <div className="menu_bottom">
+          <div ref={userMenuRef} className={collapsed ? 'user-menu user-menu--collapsed' : 'user-menu'}>
+            {/* Vue UserMenu.vue .user-button：头像 + (空间名/角色 | 昵称/邮箱) + chevron。 */}
+            <button type="button" className="user-button" data-guide="user-menu" aria-haspopup="menu" aria-expanded={menuOpen}
               onClick={() => setMenuOpen((open) => !open)}>
-              {/* Vue UserMenu .user-avatar: brand-green gradient disc with the
-                  account initial when no avatar URL (not a blue disc / favicon). */}
-              <span className="inline-flex items-center justify-center w-[24px] h-[24px] rounded-full overflow-hidden shrink-0 bg-[linear-gradient(135deg,var(--td-brand-color,#07c05f)_0%,var(--td-brand-color-active,#06b04d)_100%)]" aria-hidden="true">
-                {user.avatar ? <img src={user.avatar} alt="" className="w-full h-full object-cover" onError={(event) => { const img = event.currentTarget; if (!img.dataset.faviconFallback) { img.dataset.faviconFallback = '1'; img.src = '/favicon.ico'; } }} /> : <span className="text-white text-[12px] font-semibold leading-[1]">{initial}</span>}
+              <span className="user-avatar" aria-hidden="true">
+                {user.avatar ? <img src={user.avatar} alt="" onError={(event) => { const img = event.currentTarget; if (!img.dataset.faviconFallback) { img.dataset.faviconFallback = '1'; img.src = '/favicon.ico'; } }} /> : <span className="avatar-placeholder">{initial}</span>}
               </span>
-              {!collapsed && (
-                <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
+              {!collapsed ? <>
+                <span className="user-info">
                   {showTenantIdentityLine ? <>
-                    {/* Vue UserMenu .user-tenant-name / .user-meta colors are
-                        the td tokens: primary rgba(0,0,0,0.9) and secondary
-                        rgba(0,0,0,0.6). */}
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold tracking-[-0.01em] text-[rgba(0,0,0,0.9)]">{user.tenantName || user.name || '—'}</span>
-                    <span className="flex min-w-0 items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35] text-[rgba(0,0,0,0.6)]">
-                      {user.name && user.name !== user.tenantName ? <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{user.name}</span> : null}
-                      {user.name && user.name !== user.tenantName && roleLabel ? <span aria-hidden="true" className="text-[#8b97a8]">·</span> : null}
-                      {roleLabel ? <span className="shrink-0">{roleLabel}</span> : null}
+                    <span className="user-tenant-name" title={user.tenantName || user.name || undefined}>{user.tenantName || user.name || '—'}</span>
+                    <span className="user-tenant-meta">
+                      {user.name && user.name !== user.tenantName ? <span className="user-tenant-meta-name">{user.name}</span> : null}
+                      {user.name && user.name !== user.tenantName && roleLabel ? <span aria-hidden="true" className="user-tenant-meta-sep">·</span> : null}
+                      {roleLabel ? <span className="user-tenant-meta-role">{roleLabel}</span> : null}
                     </span>
                   </> : <>
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium text-[rgba(0,0,0,0.9)]">{user.name || '—'}</span>
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[rgba(0,0,0,0.6)]">{user.email}</span>
+                    <span className="user-name">{user.name || '—'}</span>
+                    <span className="user-email">{user.email}</span>
                   </>}
                 </span>
-              )}
-              {/* Vue UserMenu .dropdown-icon: 16px chevron that flips when the
-                  menu opens; the React button dropped it entirely. */}
-              {!collapsed ? <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className={'shrink-0 text-[rgba(0,0,0,0.6)] transition-transform duration-200 ' + (menuOpen ? 'rotate-180' : '')}><path d="M3.5 6l4.5 4.5L12.5 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
+                <TIcon name={menuOpen ? 'chevron-up' : 'chevron-down'} className="dropdown-icon" />
+              </> : null}
             </button>
-            {menuOpen && (
-              <div className="absolute bottom-[calc(100%_+_6px)] left-[-6px] right-[-7px] bg-white border border-[#e7ebf0] rounded-[8px] shadow-[0_4px_20px_rgba(0,0,0,0.12)] overflow-hidden z-[1000]" role="menu">
-                {/* Vue UserMenu.vue:44-56 — the dropdown opens with an account
-                    card (24px avatar at margin-left -4px, nickname row with a
-                    20px help-circle button that re-opens the welcome tour by
-                    dispatching weknora:open-new-user-guide, email below), then
-                    the current-tenant panel row. The whole card is clickable
-                    and lands on userprofile like handleQuickNav. */}
-                <div role="button" tabIndex={0} className="flex min-w-0 cursor-pointer items-center gap-[6px] px-[12px] py-[9px] transition-colors hover:bg-[#f2f5f9]"
+            {menuOpen ? (
+              <div className="user-dropdown" role="menu" onClick={(event) => event.stopPropagation()}>
+                {/* Vue UserMenu.vue:35-54 — 账号区（头像 + 昵称 + 重开引导按钮 + 邮箱），
+                    整卡可点跳 userprofile。 */}
+                <div role="button" tabIndex={0} className="dropdown-user-header is-clickable"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false))}
                   onKeyDown={(event) => { if (event.key === 'Enter') handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false)); }}>
-                  <span className="inline-flex h-[24px] w-[24px] shrink-0 -ml-[4px] items-center justify-center overflow-hidden rounded-full bg-[linear-gradient(135deg,#2e6de6_0%,#1f56c2_100%)]" aria-hidden="true">
-                    {user.avatar ? <img src={user.avatar} alt="" className="h-full w-full object-cover" onError={(event) => { const img = event.currentTarget; if (!img.dataset.faviconFallback) { img.dataset.faviconFallback = '1'; img.src = '/favicon.ico'; } }} /> : <span className="text-[12px] font-semibold leading-[1] text-white">{initial}</span>}
+                  <span className="dropdown-user-avatar" aria-hidden="true">
+                    {user.avatar ? <img src={user.avatar} alt="" onError={(event) => { const img = event.currentTarget; if (!img.dataset.faviconFallback) { img.dataset.faviconFallback = '1'; img.src = '/favicon.ico'; } }} /> : <span className="dropdown-user-avatar-placeholder">{initial}</span>}
                   </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="flex min-w-0 items-center gap-[2px]">
-                      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium leading-[1.35] text-[#1f2733]">{user.name || '—'}</span>
-                      <button type="button" data-testid="plat-shell-guide-reopen" aria-label={labels.reopenGuide} title={labels.reopenGuide}
-                        className="inline-flex h-[20px] w-[20px] shrink-0 cursor-pointer items-center justify-center rounded-[4px] border-none bg-transparent p-0 text-[#8b97a8] transition-colors hover:bg-[#e7ebf0] hover:text-[#66758b]"
+                  <span className="dropdown-user-meta">
+                    <span className="dropdown-user-name-row">
+                      <span className="dropdown-user-name">{user.name || '—'}</span>
+                      <button type="button" data-testid="plat-shell-guide-reopen" className="dropdown-guide-btn" aria-label={labels.reopenGuide} title={labels.reopenGuide}
                         onClick={(event) => { event.stopPropagation(); setMenuOpen(false); openNewUserGuide(); }}>
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-                          strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <circle cx="12" cy="12" r="9" />
-                          <path d="M9.4 9.4a2.6 2.6 0 1 1 3.7 2.4c-.8.4-1.1.9-1.1 1.7" />
-                          <line x1="12" y1="16.6" x2="12" y2="16.7" />
-                        </svg>
+                        <TIcon name="help-circle" size="14px" />
                       </button>
                     </span>
-                    {user.email ? <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35] text-[#66758b]">{user.email}</span> : null}
+                    {user.email ? <span className="dropdown-user-email">{user.email}</span> : null}
                   </span>
                 </div>
-                {/* Vue UserMenu.vue:59-63 — current tenant panel row between the
-                    account card and the quick links: leading system-sum icon,
-                    tenant name + role line, trailing swap glyph, top border. */}
-                {/* Vue UserMenu.vue:59 renders the panel whenever !isLiteMode;
-                    only the trailing swap glyph is gated on switchability
-                    (showTenantSwitcher). role="group" keeps the switcher
-                    tests' [role="group"] > button handle on the swap toggle. */}
-                {!isLiteEdition ? <div role="group" aria-label={t('tenant.switcher.menuLabel')} className="flex min-w-0 items-center gap-[10px] border-t border-[#e7ebf0] px-[12px] py-[9px] transition-colors hover:bg-[#f2f5f9]">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]">
-                    <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
-                    <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
-                    <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
-                    <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
-                  </svg>
-                  <span className="flex min-w-0 flex-1 flex-col gap-[1px]">
-                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium leading-[1.35] text-[#1f2733]">{user.tenantName || user.name || '—'}</span>
-                    {roleLabel ? <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35] text-[#66758b]">{roleLabel}</span> : null}
+                {/* Vue UserMenu.vue:56-74 — 当前工作区行（system-sum 图标 + 名称/角色
+                    + 切换 glyph）；租户子列表为 React 内联 listbox（行为见既有测试）。 */}
+                {!isLiteEdition ? <div role="group" aria-label={t('tenant.switcher.menuLabel')} className={'dropdown-tenant-panel' + (tenantSwitcherVisible ? ' is-clickable' : '') + (tenantMenuOpen ? ' is-open' : '')}>
+                  <TIcon name="system-sum" className="menu-icon" aria-hidden="true" />
+                  <span className="dropdown-tenant-panel-main">
+                    <span className="dropdown-tenant-panel-name" title={user.tenantName || user.name || undefined}>{user.tenantName || user.name || '—'}</span>
+                    {roleLabel ? <span className="dropdown-tenant-panel-role">{roleLabel}</span> : null}
                   </span>
                   {tenantSwitcherVisible ? <button type="button" aria-label={t('tenant.switcher.menuLabel')} title={t('tenant.switcher.menuLabel')} aria-expanded={tenantMenuOpen}
-                    className="inline-flex shrink-0 cursor-pointer items-center justify-center border-none bg-transparent p-0 text-[#8b97a8] transition-colors hover:text-[#66758b]"
-                    onClick={toggleTenantSubmenu}>
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M4 7h13m0 0-3-3m3 3-3 3" />
-                      <path d="M20 17H7m0 0 3-3m-3 3 3 3" />
-                    </svg>
+                    className="dropdown-tenant-panel-trail-btn" onClick={toggleTenantSubmenu}>
+                    <TIcon name="swap" className="dropdown-tenant-panel-trail" />
                   </button> : null}
                 </div> : null}
-                {tenantMenuOpen ? <div role="listbox" aria-label={t('tenant.switcher.menuLabel')} className="max-h-[180px] overflow-y-auto border-t border-[#eef1f5] px-[8px] py-[6px]">
-                  {user.memberships.map((membership) => <button key={membership.tenantId} type="button" role="option" aria-selected={membership.tenantId === activeTenantId} disabled={tenantSwitchPending !== null} className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[7px] text-left text-[13px] text-[#1f2733] cursor-pointer hover:bg-[#f2f5f9] disabled:cursor-wait disabled:opacity-60" onClick={() => void switchTenant(membership.tenantId)}>
-                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{membership.tenantName}</span><span className="shrink-0 text-[11px] text-[#8b97a8]">{membership.tenantId === activeTenantId ? '当前' : membership.role}</span>
+                {tenantMenuOpen ? <div role="listbox" aria-label={t('tenant.switcher.menuLabel')} className="tenant-submenu-inline">
+                  {user.memberships.map((membership) => <button key={membership.tenantId} type="button" role="option" aria-selected={membership.tenantId === activeTenantId} disabled={tenantSwitchPending !== null} onClick={() => void switchTenant(membership.tenantId)}>
+                    <span className="tenant-submenu-item-name">{membership.tenantName}</span><span className="tenant-submenu-role">{membership.tenantId === activeTenantId ? '当前' : membership.role}</span>
                   </button>)}
                 </div> : null}
-                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  href="/platform/settings?section=userprofile"
+                <div className="menu-divider" aria-hidden="true" />
+                <a role="menuitem" className="menu-item" href="/platform/settings?section=userprofile"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false))}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></svg>
-                  {labels.personalSettings}
+                  <TIcon name="user" className="menu-icon" />
+                  <span>{labels.personalSettings}</span>
                 </a>
-                {/* R450-A2 — Vue UserMenu.vue:81 gates the 「空间设置」
-                    quick link with !isLiteMode; lite deployments have no
-                    tenant surface to manage. */}
-                {!isLiteEdition && <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  href="/platform/settings?section=tenant"
+                {/* R450-A2 — Vue UserMenu.vue:81 gates the 「空间设置」 quick link
+                    with !isLiteMode; lite deployments have no tenant surface. */}
+                {!isLiteEdition ? <a role="menuitem" className="menu-item" href="/platform/settings?section=tenant"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=tenant', () => setMenuOpen(false))}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3.5" /><path d="M12 3.5v5M12 15.5v5M3.5 12h5M15.5 12h5" /></svg>
-                  {labels.workspaceSettings}
-                </a>}
-                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  href="/platform/settings?section=members"
+                  <TIcon name="user-circle" className="menu-icon" />
+                  <span>{labels.workspaceSettings}</span>
+                </a> : null}
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="menu-item" href="/platform/settings?section=members"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=members', () => setMenuOpen(false))}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="9" cy="8.5" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><circle cx="16.5" cy="9.5" r="2.5" /><path d="M15.5 14.2A5 5 0 0 1 20.5 19" /></svg>
-                  {labels.membersSettings}
+                  <TIcon name="usergroup" className="menu-icon" />
+                  <span>{labels.membersSettings}</span>
                 </a> : null}
-                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  href="/platform/settings?section=models"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="menu-item" href="/platform/settings?section=models"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=models', () => setMenuOpen(false))}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><path d="M4 8h16M4 16h16" /><circle cx="9" cy="8" r="2" /><circle cx="15" cy="16" r="2" /></svg>
-                  {labels.modelsSettings}
+                  <TIcon name="control-platform" className="menu-icon" />
+                  <span>{labels.modelsSettings}</span>
                 </a> : null}
-                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  href="/platform/settings?section=skills"
+                {canSeeAdminSessionSources && !isLiteEdition ? <a role="menuitem" className="menu-item" href="/platform/settings?section=skills"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=skills', () => setMenuOpen(false))}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><path d="M8.5 7 4 12l4.5 5" /><path d="M15.5 7 20 12l-4.5 5" /></svg>
-                  {labels.skillsSettings}
+                  <TIcon name="system-code" className="menu-icon" />
+                  <span>{labels.skillsSettings}</span>
                 </a> : null}
-                {/* Vue UserMenu.vue:96-100 — a divider closes the section
-                    quick-link group, then the unconditional 「全部设置」 entry
-                    opens the settings surface WITHOUT a section query
-                    (handleSettings → router.push('/platform/settings')). It
-                    renders for every role so viewer-only users keep a path to
-                    the read-only rosters and model lists. */}
-                <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
-                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  href="/platform/settings"
+                {/* Vue UserMenu.vue:99-103 — a divider closes the section quick-link
+                    group, then the unconditional 「全部设置」 entry (no section query). */}
+                <div className="menu-divider" aria-hidden="true" />
+                <a role="menuitem" className="menu-item" href="/platform/settings"
                   onClick={(event) => handleInternalLink(event, '/platform/settings', () => setMenuOpen(false))}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><circle cx="12" cy="12" r="3" /><path d="M12 2.8 13 5.6a6.6 6.6 0 0 1 2.2 1.3l2.9-.9 1.6 2.8-2.1 2.1a6.9 6.9 0 0 1 0 2.2l2.1 2.1-1.6 2.8-2.9-.9a6.6 6.6 0 0 1-2.2 1.3l-1 2.8h-2l-1-2.8a6.6 6.6 0 0 1-2.2-1.3l-2.9.9-1.6-2.8 2.1-2.1a6.9 6.9 0 0 1 0-2.2L4.3 8.8l1.6-2.8 2.9.9A6.6 6.6 0 0 1 11 5.6l1-2.8z" /></svg>
-                  {labels.allSettings}
+                  <TIcon name="setting" className="menu-icon" />
+                  <span>{labels.allSettings}</span>
                 </a>
-                {/* R449-A2 — Vue UserMenu.vue:104-113 renders 「系统管理」 only
-                    for is_system_admin users, between 全部设置 and a divider
-                    that precedes the docs entry. handleSystemAdmin lands on
-                    the settings modal opened at the system-global group
-                    (?section=system-global). UI gating only; the server-side
-                    RequireSystemAdmin middleware is the real boundary. */}
-                {user.isSystemAdmin ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  href="/platform/settings?section=system-global"
+                {/* R449-A2 — Vue UserMenu.vue:110-113 renders 「系统管理」 only for
+                    is_system_admin users. UI gating only; server middleware is the
+                    real boundary. */}
+                {user.isSystemAdmin ? <a role="menuitem" className="menu-item" href="/platform/settings?section=system-global"
                   onClick={(event) => handleInternalLink(event, '/platform/settings?section=system-global', () => setMenuOpen(false))}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[#66758b]"><rect x="3" y="4" width="18" height="7" rx="1.5" /><rect x="3" y="13" width="18" height="7" rx="1.5" /><path d="M7 7.5h.01M7 16.5h.01" /></svg>
-                  {labels.systemAdministration}
+                  <TIcon name="server" className="menu-icon" />
+                  <span>{labels.systemAdministration}</span>
                 </a> : null}
-                <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
-                <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  href="https://github.com/Tencent/WeKnora/tree/main/docs" target="_blank" rel="noreferrer"
+                <div className="menu-divider" aria-hidden="true" />
+                <a role="menuitem" className="menu-item" href="https://github.com/Tencent/WeKnora/tree/main/docs" target="_blank" rel="noreferrer"
                   onClick={() => setMenuOpen(false)}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M9.4 9.4a2.6 2.6 0 1 1 3.7 2.4c-.8.4-1.1.9-1.1 1.7" />
-                    <line x1="12" y1="16.6" x2="12" y2="16.7" />
-                  </svg>
-                  <span className="flex min-w-0 flex-1 items-center justify-between gap-[10px]">
+                  <TIcon name="help-circle" className="menu-icon" />
+                  <span className="menu-text-with-icon">
                     <span>{labels.helpAndDocs}</span>
-                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true" className="shrink-0 text-[rgba(0,0,0,0.26)]">
-                      <path d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Z" />
-                      <path d="M10 1.333h4a.667.667 0 0 1 .667.667v4a.667.667 0 0 1-1.334 0V3.609L8.138 8.805a.667.667 0 1 1-.943-.943l5.195-5.195H10a.667.667 0 1 1 0-1.334Z" />
+                    <svg className="menu-external-icon" viewBox="0 0 16 16" aria-hidden="true">
+                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
                     </svg>
                   </span>
                 </a>
-                <a role="menuitem" className="flex items-center gap-[10px] w-full border-none bg-transparent px-[12px] py-[9px] text-[14px] leading-[20px] box-border text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
-                  href="https://github.com/Tencent/WeKnora" target="_blank" rel="noreferrer" title={labels.githubStarTip}
+                <a role="menuitem" className="menu-item" href="https://github.com/Tencent/WeKnora" target="_blank" rel="noreferrer" title={labels.githubStarTip}
                   onClick={() => setMenuOpen(false)}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
-                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-                  </svg>
-                  <span className="flex min-w-0 flex-1 items-center justify-between gap-[10px]">
-                    <span className="flex min-w-0 items-center gap-[6px]">
-                      <span>{labels.github}</span>
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true" className="shrink-0 text-[#e37318]">
-                        <path d="m12 2.4 2.98 6.04 6.66.97-4.82 4.7 1.14 6.63L12 17.63l-5.96 3.14 1.14-6.63-4.82-4.7 6.66-.97L12 2.4Z" />
-                      </svg>
-                    </span>
-                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true" className="shrink-0 text-[rgba(0,0,0,0.26)]">
-                      <path d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Z" />
-                      <path d="M10 1.333h4a.667.667 0 0 1 .667.667v4a.667.667 0 0 1-1.334 0V3.609L8.138 8.805a.667.667 0 1 1-.943-.943l5.195-5.195H10a.667.667 0 1 1 0-1.334Z" />
+                  <TIcon name="logo-github" className="menu-icon" />
+                  <span className="menu-text-with-icon">
+                    <span>{labels.github}</span>
+                    <TIcon name="star-filled" className="menu-github-star-icon" size="16px" aria-hidden="true" />
+                    <svg className="menu-external-icon" viewBox="0 0 16 16" aria-hidden="true">
+                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
                     </svg>
                   </span>
                 </a>
-                {/* R450-A2 — Vue UserMenu.vue:136-144 keeps the divider and
-                    the logout item behind !isLiteMode: lite editions have no
-                    account session to end (Vue stores/auth.ts logout also
-                    clears the weknora_lite_mode key). */}
-                {!isLiteEdition && <>
-                  <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
-                  <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] leading-[20px] box-border text-[#d54941] no-underline hover:bg-[#fbe9e8]"
+                {/* R450-A2 — Vue UserMenu.vue:136-144 keeps the divider and the
+                    logout item behind !isLiteMode. */}
+                {!isLiteEdition ? <>
+                  <div className="menu-divider" aria-hidden="true" />
+                  <button type="button" role="menuitem" className="menu-item danger"
                     onClick={() => { setMenuOpen(false); void runShellLogout(onLogout); }}>
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0"><path d="M14 4h4a1.5 1.5 0 0 1 1.5 1.5v13A1.5 1.5 0 0 1 18 20h-4" /><path d="M10 8l-4 4 4 4" /><path d="M6 12h9" /></svg>
-                    {t('auth.logout')}
+                    <TIcon name="logout" className="menu-icon" />
+                    <span>{t('auth.logout')}</span>
                   </button>
-                </>}
+                </> : null}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </aside>

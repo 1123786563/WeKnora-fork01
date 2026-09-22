@@ -12,11 +12,22 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
+// T12b models 迁移：卡面/编辑器引入 tdesign Dropdown/Popconfirm/Tooltip/Tabs
+// （Popup 系），jsdom globals 扩展与 ResourceSettingsPanel.test 同款
+// （settings-error-ux.test T12a d1fba03aa 先例）。
 Object.assign(globalThis, {
   React,
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   Event: dom.window.Event,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
@@ -196,16 +207,18 @@ test('model cards render Vue vendor labels, dimensions, context windows and buil
   // Vision chip + builtin lock carry their Vue titles (ModelSettings.vue lines 69-71, 118-124).
   assert.match(html, /title="支持视觉\/多模态"/);
   assert.match(html, /title="内置"/);
-  // Builtin lock is a stroke SVG (t-icon lock-on counterpart), not an emoji.
-  assert.match(html, /<svg[^>]*width="13"[^>]*viewBox="0 0 24 24"[^>]*>[\s\S]*?<rect x="3" y="11"[\s\S]*?<\/svg>/);
-  // Tabs show localized labels with counts (ModelSettings.vue lines 39-45).
+  // Builtin lock renders the t-icon lock-on sprite glyph (ModelSettings.vue L71,
+  // t-icon name=lock-on → svg.t-icon.t-icon-lock-on).
+  assert.match(html, /class="t-icon t-icon-lock-on"/);
+  // Tabs show localized labels with counts (ModelSettings.vue lines 39-45,
+  // t-tabs label-only panels).
   assert.match(html, /全部\(4\)/);
   assert.match(html, /对话\(2\)/);
   assert.match(html, /视觉\(1\)/);
   // Admin card actions: delete is an affix icon button; 编辑/复制 live in the
-  // per-card ellipsis menu (ModelSettings.vue lines 73-102).
+  // per-card ellipsis menu (ModelSettings.vue lines 73-102, t-dropdown).
   assert.match(html, /模型测试/);
-  assert.match(html, /删除/);
+  assert.ok(html.includes('model-card__delete'), 'delete stays an affix action');
 });
 
 test('system-admin sees builtin edit affordances only', () => {
@@ -218,10 +231,11 @@ test('system-admin sees builtin edit affordances only', () => {
       ] as never}
     />,
   );
-  // System-admin builtin edit affordance is an SVG pencil (t-icon edit-1 counterpart).
-  assert.match(html, /<svg[^>]*width="13"[^>]*viewBox="0 0 24 24"[^>]*>[\s\S]*?<path d="M17 3a2\.85[\s\S]*?<\/svg>/);
-  assert.doesNotMatch(html, /复制<\/button>/);
-  assert.doesNotMatch(html, /删除<\/button>/);
+  // System-admin builtin lock swaps to the t-icon edit-1 glyph
+  // (ModelSettings.vue L71: isSystemAdmin ? 'edit-1' : 'lock-on').
+  assert.match(html, /class="t-icon t-icon-edit-1"/);
+  assert.ok(!html.includes('复制'), 'builtin cards expose no copy action');
+  assert.ok(!html.includes('model-card__delete'), 'builtin cards expose no delete action');
 });
 
 test('add editor renders Vue sections, provider fallback and thinking defaults', async () => {
@@ -538,10 +552,11 @@ test('edit prefill restores stored fields and routes credentials through the sub
     credentials: { api_key: { configured: true }, app_secret: { configured: false } },
   } as never;
   const container = await mount(client, 'admin', [record]);
-  const more = container.querySelector('.wk-vmodel-card [aria-haspopup="menu"]');
-  assert.ok(more);
+  const more = container.querySelector('.model-card .model-card__more');
+  assert.ok(more, 'the per-card ellipsis menu trigger renders');
   await click(more);
-  const edit = container.querySelector('.wk-vmodel-card [role="menuitem"]');
+  // t-dropdown 弹层 portal 到 body（台账 #8：不透传 attrs，走 li 文本断言）。
+  const edit = Array.from(document.body.querySelectorAll('.t-dropdown__item')).find((item) => (item.textContent ?? '').includes('编辑'));
   assert.ok(edit);
   await click(edit);
 
@@ -589,10 +604,10 @@ test('connection test uses the per-type route and edit-mode modelId passthrough'
     credentials: { api_key: { configured: true } },
   } as never;
   const container = await mount(client, 'admin', [record]);
-  const more = container.querySelector('.wk-vmodel-card [aria-haspopup="menu"]');
+  const more = container.querySelector('.model-card .model-card__more');
   assert.ok(more);
   await click(more);
-  const edit = container.querySelector('.wk-vmodel-card [role="menuitem"]');
+  const edit = Array.from(document.body.querySelectorAll('.t-dropdown__item')).find((item) => (item.textContent ?? '').includes('编辑'));
   assert.ok(edit);
   await click(edit);
   const test = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '测试连接');
@@ -623,14 +638,14 @@ test('panel header keeps only the Vue title, subtitle and debug trigger', async 
     await act(async () => {
       root.render(<ModelSettingsPanel client={{} as never} role="admin" initialModels={[]} />);
     });
-    const heading = container.querySelector('[data-testid="model-settings"] > div');
-    assert.ok(heading, 'the panel renders its own heading');
+    const heading = container.querySelector('.model-settings > .section-header');
+    assert.ok(heading, 'the panel renders its own Vue section-header');
     assert.equal(heading.querySelector('h2')?.textContent, '模型配置');
-    assert.ok((heading.querySelector('p')?.textContent ?? '').includes('管理不同类型的 AI 模型，支持 Ollama 本地模型和远程 API'));
-    const headingButtons = Array.from(heading.querySelectorAll('button')).map((button) => button.textContent ?? '');
+    assert.ok((heading.querySelector('.section-description')?.textContent ?? '').includes('管理不同类型的 AI 模型，支持 Ollama 本地模型和远程 API'));
+    const headingButtons = Array.from(heading.querySelectorAll('button')).map((button) => (button.textContent ?? '').trim());
     assert.deepEqual(headingButtons, ['模型测试']);
-    assert.ok(heading.querySelector('button'), 'debug trigger keeps the Vue trigger class');
-    assert.ok((heading.querySelector('button') as HTMLElement | null)?.querySelector('svg'), 'the trigger carries the Vue play icon');
+    assert.ok(heading.querySelector('button.model-test-trigger'), 'debug trigger keeps the Vue trigger class');
+    assert.ok((heading.querySelector('button.model-test-trigger') as HTMLElement | null)?.querySelector('svg.t-icon-play-circle'), 'the trigger carries the Vue play icon');
     // The dashed add tile replaces the header add button (ModelSettings.vue lines 128-139).
     const addTile = findAddTile(container);
     assert.ok(addTile, 'the dashed add tile renders for admins');
@@ -658,24 +673,24 @@ test('model cards use the Vue card markup with a per-card action menu', async ()
     { id: 'm4', name: 'builtin-vlm', type: 'VLLM', source: 'remote', is_builtin: true, parameters: { provider: 'weknoracloud' } },
   ] as never);
   try {
-    const card = container.querySelector('.wk-vmodel-card');
+    const card = container.querySelector('.model-card');
     assert.ok(card, 'cards render the Vue model-card structure');
     assert.ok(card.querySelector('div[aria-label]'), 'type badge renders');
-    assert.equal(card.querySelector('h3')?.textContent, 'gpt-4o');
-    assert.ok((card.querySelector('p')?.textContent ?? '').includes('OpenAI·128K'));
+    assert.equal(card.querySelector('h3.model-card__title')?.textContent, 'gpt-4o');
+    assert.ok((card.querySelector('.model-card__subtitle')?.textContent ?? '').includes('OpenAI·128K'));
     // Tenant model: the menu holds 编辑/复制; delete stays an affix action.
-    await click(card.querySelector('[aria-haspopup="menu"]')!);
-    const menu = card.querySelector('[role="menu"]');
-    assert.ok(menu, 'the ellipsis menu opens');
+    await click(card.querySelector('.model-card__more')!);
+    const menu = document.body.querySelector('.t-dropdown__menu');
+    assert.ok(menu, 'the ellipsis menu opens (portal to body)');
     assert.ok((menu.textContent ?? '').includes('编辑'));
     assert.ok((menu.textContent ?? '').includes('复制'));
-    assert.ok(card.querySelector('button[aria-label]'), 'delete stays an affix action');
+    assert.ok(card.querySelector('.model-card__delete'), 'delete stays an affix action');
     // Builtin model: lock icon, no menu, no delete (ModelSettings.vue lines 741-749).
-    const builtin = Array.from(container.querySelectorAll('.wk-vmodel-card')).find((node) => (node.textContent ?? '').includes('builtin-vlm'));
+    const builtin = Array.from(container.querySelectorAll('.model-card')).find((node) => (node.textContent ?? '').includes('builtin-vlm'));
     assert.ok(builtin);
     assert.ok(builtin.querySelector('span[title]'), 'builtin cards show the lock');
-    assert.equal(builtin.querySelector('[aria-haspopup="menu"]'), null);
-    assert.equal(builtin.querySelector('button[aria-label]'), null);
+    assert.equal(builtin.querySelector('.model-card__more'), null);
+    assert.equal(builtin.querySelector('.model-card__delete'), null);
   } finally {
     await act(async () => mountedRoot?.unmount());
     mountedRoot = undefined;
@@ -809,9 +824,9 @@ test('an initial sub-section preselects the matching type tab', () => {
       { id: 'm2', name: 'gpt-4o', type: 'KnowledgeQA', source: 'remote', parameters: { provider: 'openai' } },
     ] as never} initialSubSection="embedding" />,
   );
-  const tabs = html.slice(html.indexOf('wk-model-tabs'));
-  const activeAt = tabs.indexOf('is-active');
+  const tabs = html.slice(html.indexOf('model-type-tabs'));
+  const activeAt = tabs.indexOf('t-is-active');
   assert.ok(activeAt >= 0, 'a tab is active');
-  const activeLabel = tabs.slice(activeAt, activeAt + 60);
+  const activeLabel = tabs.slice(activeAt, activeAt + 220);
   assert.ok(activeLabel.includes('Embedding(1)'), 'the embedding tab is the active one');
 });

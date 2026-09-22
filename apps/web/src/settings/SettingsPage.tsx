@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { isCapabilitySupported, type CapabilityMap } from '@weknora/domain';
 import { integrationTabForSection, integrationSettingsQuery, selectSettingsQuery } from '@weknora/views/integrations/settings-route';
@@ -9,16 +9,20 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views/settings/registry';
 import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views/settings/registry';
 import { Button, Status, Alert } from '@weknora/ui';
+// TDesign 同构迁移（T12a）：图标走 tdesign-icons-react 本地 sprite（= Vue 端
+// `Icon as TIcon`，与 Vue t-icon 同源同字形，台账 #10）。
+import { Icon as TIcon } from 'tdesign-icons-react';
 import { pushSettingsToast, SettingsToastHost } from './settings-toast.tsx';
 import { modelFormatMessage } from './model-settings.ts';
 import { navigate } from '../platform/navigation.ts';
-import { profilePasswordPatch, settingsCloseMode, settingsSectionHeading, settingsSectionMeta, tenantEditState, tenantPatch } from './surface.ts';
-const TenantDeleteZone = lazy(() => import('./TenantDeleteZone.tsx').then((m) => ({ default: m.TenantDeleteZone })));
+import { profilePasswordPatch, settingsCloseMode, settingsSectionHeading, settingsSectionMeta, tenantPatch } from './surface.ts';
 const MemoryWorkspacePanel = lazy(() => import('./PersonalMemoryPanel.tsx').then((m) => ({ default: m.MemoryWorkspacePanel })));
 const PersonalMemorySettingsPanel = lazy(() => import('./PersonalMemorySettingsPanel.tsx').then((m) => ({ default: m.PersonalMemorySettingsPanel })));
 const ResourceSettingsPanel = lazy(() => import('./ResourceSettingsPanel.tsx').then((m) => ({ default: m.ResourceSettingsPanel })));
 import type { SettingsModelOption } from './ConfigSettingsPanel.tsx';
 const ConfigSettingsPanel = lazy(() => import('./ConfigSettingsPanel.tsx').then((m) => ({ default: m.ConfigSettingsPanel })));
+// T12b：chathistory 分区平移 ChatHistorySettings.vue（自带 section-header，直挂 .section）。
+const ChatHistorySettingsPanel = lazy(() => import('./ChatHistorySettingsPanel.tsx').then((m) => ({ default: m.ChatHistorySettingsPanel })));
 const OllamaSettingsPanel = lazy(() => import('./OllamaSettingsPanel.tsx').then((m) => ({ default: m.OllamaSettingsPanel })));
 const ParserEngineSettingsPanel = lazy(() => import('./ParserEngineSettingsPanel.tsx').then((m) => ({ default: m.ParserEngineSettingsPanel })));
 const CloudSettingsPanel = lazy(() => import('./CloudSettingsPanel.tsx').then((m) => ({ default: m.CloudSettingsPanel })));
@@ -42,6 +46,7 @@ import { SystemGlobalSettingsPanel } from './SystemGlobalSettingsPanel.tsx';
 const PlatformApiKeysPanel = lazy(() => import('./PlatformApiKeysPanel.tsx').then((m) => ({ default: m.PlatformApiKeysPanel })));
 const SystemAuditLogPanel = lazy(() => import('./SystemAuditLogPanel.tsx').then((m) => ({ default: m.SystemAuditLogPanel })));
 import './settings-wrapper.css';
+import './settings.td.css';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 
@@ -69,6 +74,10 @@ function errorText(error: unknown, fallback: string): string { return error inst
  *                  错误态由面板负责（页级不出错误 UI）。
  * - 'inline'       其余分区维持裸 Status 行为（本轮未对齐范围）。
  * 共同点：错误态下分区标题保持渲染（R470 缺陷 4）。
+ *
+ * T12a（TDesign 同构迁移）：各 section 面板按 Vue SFC 自持 loading/error
+ * 态（UserProfile.vue/TenantInfo.vue 等各自 fetch）迁移时，把对应键加进
+ * SELF_ERROR_SECTIONS 并同步锚定测试（settings-error-ux.test.tsx）。
  */
 export type SettingsSectionErrorMode = 'inline' | 'toast-keep' | 'toast-retry' | 'banner-retry' | 'silent';
 
@@ -79,6 +88,19 @@ export function sectionErrorMode(key: string): SettingsSectionErrorMode {
   if (key === 'storage' || key === 'vectorstore' || key === 'websearch' || key === 'weknoracloud' || key === 'ollama' || key === 'retrieval') return 'silent';
   return 'inline';
 }
+
+// Sections whose panels own their Vue loading/error states (fetch inside the
+// panel like the Vue SFC does); the shell keeps its silent refresh behavior.
+// T12a 各 section 提交时按 Vue SFC 实况增删（userprofile/tenant/mymemory/
+// envvars 待各自面板提交时改为自持错误态并同步锚定测试）。
+const SELF_ERROR_SECTIONS = new Set(['members']);
+
+// Panels migrated to the Vue DOM (T12a): they render their own section-header
+// and their styles live in settings.td.css — they mount directly inside the
+// shell .section container like Vue Settings.vue does (no wk-settings-section
+// wrapper, no shell heading). Integration sections have been self-headered
+// since R490 (handled separately via sectionIntegrationTab).
+const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory', 'memory', 'ollama', 'weknoracloud', 'models', 'parser', 'sandbox', 'skills']);
 
 const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
@@ -218,7 +240,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           // 面板保持渲染（默认空态），不透传后端原文、不清空骨架。
           setError(null);
           pushSettingsToast(modelFormatMessage(locale, 'model.editor.loadModelListFailed'));
-        } else if (mode === 'toast-retry' || selectedKey === 'members' || mode === 'silent') {
+        } else if (mode === 'toast-retry' || SELF_ERROR_SECTIONS.has(selectedKey) || mode === 'silent') {
           // skills/mcp/members 面板自加载并渲染各自的 Vue 对齐错误态
           // （toast+空态+重试 / 横幅+重试）；中央失败不得顶替内容区，
           // 面板以 undefined 初始数据自拉。
@@ -227,8 +249,8 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           // 无横幅、无 toast、无重试；面板以 null payload 渲染。
           setError(null);
         } else if (mode === 'banner-retry') {
-          // parser/system/userprofile（R480 锚定）：壳层横幅透传后端原文 +
-          // 重试，替换内容区（Vue SystemInfo.vue:13-20、UserProfile.vue:14-21、
+          // parser/system（R480 锚定）：壳层横幅透传后端原文 +
+          // 重试，替换内容区（Vue SystemInfo.vue:13-20、
           // ParserEngineSettings.vue:14-21 的 t-alert theme=error 形态）。
           setError(errorText(reason, t('common.error')));
         } else {
@@ -352,11 +374,10 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   }, []);
 
   // Keep-alive: once a section has been opened its panel stays mounted and is
-  // merely hidden on switch. Panels re-run their own requests on every
-  // remount (skills need catalog + sandbox configs; memory/ollama fetch
-  // internally), which read as a flicker on every revisit. Keeping them alive
-  // also preserves in-panel form state; everything unmounts when the drawer
-  // closes (the route leaves /platform/settings).
+  // merely hidden on switch (Vue Settings.vue uses v-if per section — panels
+  // unmount on switch; the keep-alive here is the React-side flicker guard.
+  // Hidden sections go display:none (v-show semantics) so the CSS fadeIn
+  // animation replays on revisit like a Vue remount).
   const [visitedSections, setVisitedSections] = useState<string[]>(() => [selectedKey]);
   useEffect(() => {
     setVisitedSections((prev) => (prev.includes(selectedKey) ? prev : [...prev, selectedKey]));
@@ -370,9 +391,18 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const isActive = key === selectedKey;
     const sectionError = isActive ? error : null;
     const sectionLoading = isActive && loading;
-    const sectionDenied = sectionRoleDenied
-      ? <div data-testid="role-denied-panel"><Status tone="error">{t('settings.roleDenied.title')}</Status><p className="wk-muted text-muted">{t('settings.roleDenied.desc')}</p></div>
-      : null;
+    // Vue Settings.vue:88-94 — role-denied renders only the role-denied
+    // block (class "section role-denied" directly inside content-wrapper, no
+    // panel component mounts).
+    if (sectionRoleDenied) {
+      return (
+        <div key={key} className="section role-denied" style={isActive ? undefined : { display: 'none' }} data-testid="role-denied-panel">
+          <div className="role-denied-icon"><TIcon name="lock-on" size="48px" /></div>
+          <div className="role-denied-title">{t('settings.roleDenied.title')}</div>
+          <div className="role-denied-desc">{t('settings.roleDenied.desc')}</div>
+        </div>
+      );
+    }
     // SP14 Task 1 — general 分区传入 client：GeneralPreferencesPanel 顶部套餐
     // 卡片用它拉 client.commercial.summary()（失败静默隐藏整卡）。
     const generalPanel = key === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} client={client} /> : null;
@@ -384,19 +414,20 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
       : null;
     const configPanel = key === 'retrieval'
       ? <ConfigSettingsPanel client={client} section="retrieval" initialValue={sectionPayload} models={models} />
-      : key === 'chathistory'
-        ? <ConfigSettingsPanel
-            client={client}
-            section="chathistory"
-            initialValue={((sectionPayload as Record<string, unknown> | null)?.config)}
-            models={models}
-            embeddingLocked={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined)?.has_indexed_messages === true}
-            stats={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined) ?? null}
-            onSaved={() => void load(true)}
-          />
-        : key === 'parser'
-          ? <ParserEngineSettingsPanel client={client} />
-          : null;
+      : key === 'parser'
+        ? <ParserEngineSettingsPanel client={client} />
+        : null;
+    // Vue ChatHistorySettings.vue 自持 section-header 与统计区（T12b 平移）。
+    const chatHistoryPanel = key === 'chathistory'
+      ? <ChatHistorySettingsPanel
+          client={client}
+          initialValue={((sectionPayload as Record<string, unknown> | null)?.config)}
+          models={models}
+          embeddingLocked={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined)?.has_indexed_messages === true}
+          stats={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined) ?? null}
+          onSaved={() => void load(true)}
+        />
+      : null;
     const ollamaPanel = key === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={sectionPayload} /> : null;
     const usagePanel = key === 'usage' ? <UsagePanel client={client} locale={locale} /> : null;
     const queryHistoryPanel = key === 'query-history' ? <QueryHistoryPanel client={client} locale={locale} role={role} /> : null;
@@ -437,28 +468,38 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           ? <PortedSectionsPanel section={key} />
           : <LiveSectionsPanel client={client} section={key} payload={sectionPayload} />)
       : null;
+    // Vue Settings.vue 渲染结构：content-wrapper > div.section > 面板根元素。
+    // 已迁面板自带 section-header + 平移样式，直挂 .section（T12a 各面板提交
+    // 时把 key 加进 SELF_HEADER_SECTIONS）；未迁面板仍由 wk-settings-section
+    // 壳层 wrapper + heading 承载（settings-wrapper.css 旧栈样式，待各自批次
+    // 迁移时收编）。integration 面板从 R490 起即自持 header，无壳层 wrapper。
+    if (SELF_HEADER_SECTIONS.has(key) || sectionIntegrationTab) {
+      const content = sectionIntegrationTab
+        ? <IntegrationsRoutePage key={`${tenantId}:${sectionIntegrationTab}`} client={client} tenantId={String(tenantId)} activeTab={sectionIntegrationTab} embedded canEdit={roleAtLeast(role, 'admin')} onTabChange={(nextTab) => {
+            // R490 C5 (R489 M3 D8 尾巴) — Vue integration tabs ARE settings
+            // sections: the chrome/claw landing「打开 API 信息」button pushes
+            // ?section=integration-api (ChromeExtensionLanding.vue openApiSettings
+            // L119-122), moving the URL, the section and the sidebar highlight
+            // together. Route tab switches through the section select so the
+            // address bar tracks the visible section instead of going stale.
+            select('integration-' + nextTab);
+          }} />
+        : <Suspense fallback={<Status>{t('common.loading')}</Status>}>{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? chatHistoryPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'memory' ? <MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</Suspense>;
+      return (
+        <div key={key} className="section" style={isActive ? undefined : { display: 'none' }}>
+          {content}
+        </div>
+      );
+    }
     return (
-      <div key={key} style={isActive
-        ? { visibility: 'visible' }
-        // Hidden sections stay mounted but are taken out of flow with
-        // visibility+position instead of display:none — toggling display
-        // would reset and replay the .wks-section fade-in animation on every
-        // revisit, which read as a flicker.
-        : { position: 'absolute', top: 0, left: 0, width: '100%', visibility: 'hidden', pointerEvents: 'none' }} className={`wks-content-wrapper${key === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(key) || sectionIntegrationTab ? ' wks-content-wrapper--full' : '')}`}>
-        {sectionIntegrationTab ? (sectionDenied ?? <IntegrationsRoutePage key={`${tenantId}:${sectionIntegrationTab}`} client={client} tenantId={String(tenantId)} activeTab={sectionIntegrationTab} embedded canEdit={roleAtLeast(role, 'admin')} onTabChange={(nextTab) => {
-          // R490 C5 (R489 M3 D8 尾巴) — Vue integration tabs ARE settings
-          // sections: the chrome/claw landing「打开 API 信息」button pushes
-          // ?section=integration-api (ChromeExtensionLanding.vue openApiSettings
-          // L119-122), moving the URL, the section and the sidebar highlight
-          // together. Route tab switches through the section select so the
-          // address bar tracks the visible section instead of going stale.
-          select('integration-' + nextTab);
-        }} />) : <div className="wk-settings-section wks-section">
+      <div key={key} className="section" style={isActive ? undefined : { display: 'none' }}>
+        <div className="wk-settings-section wks-section">
           {/* Panels owning their full Vue section header render it themselves:
               general/models here, and members — TenantMembers.vue:8-65 renders
               the h2 + permissions popover + audit entry + section-description
-              with the RBAC doc link, so a wrapper heading would duplicate it
-              (previously it also leaked the registry apiDomain as the text);
+              with the RBAC doc link, so a wrapper heading would duplicate it;
+              memory/mymemory — MemoryWorkspaceSettings.vue / MemorySettings.vue
+              render the h2 + hint trigger + description themselves;
               skills — SkillSettings.vue:3-11 renders the h2 + help-circle
               tooltip + section-description itself; envvars — R484 G4 D3,
               EnvVarSettings.vue:3-25 renders the h2 + help-circle hover popup
@@ -470,11 +511,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               Vue Settings.vue:88-94 renders ONLY the role-denied block when
               canSeeSection fails (the section component, and with it its
               h2/description, never mounts). */}
-          {/* Integration sections (IntegrationSettingsSection.vue) own their
-              headings: im/embed/api render the section-header h2 themselves
-              and the cli/chrome/claw landings render the hero title, so the
-              wrapper heading would duplicate it (same R484 D3 pattern). */}
-          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' && key !== 'envvars' && key !== 'system-global' && key !== 'weknoracloud' && key !== 'system-audit-log' && !sectionIntegrationTab && !sectionRoleDenied ? (
+          {key !== 'general' && key !== 'models' && key !== 'members' && key !== 'memory' && key !== 'mymemory' && key !== 'mcp' && key !== 'skills' && key !== 'envvars' && key !== 'system-global' && key !== 'weknoracloud' && key !== 'system-audit-log' ? (
             /* Vue panels own their section-header (TenantInfo.vue:682-697 et
                al.): 20px/600 h2 with an 8px gap, 14px/1.5 secondary
                description, then a bare 32px margin — no divider line. */
@@ -485,86 +522,89 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               </div>
             </div>
           ) : null}
-          {/* R481 A1 — banner-retry（parser/system/userprofile）：壳层浅红横幅
-              透传后端原文 + 重试按钮替代内容区（R480 锚定：Vue
-              ParserEngineSettings.vue:14-21 / SystemInfo.vue:13-20 /
-              UserProfile.vue:14-21 的 t-alert theme=error + 内嵌重试）；分区
-              标题由上方 heading 保留。members 的横幅在 TenantMembersPanel
-              自加载内渲染（页级 setError(null)）；storage 已按 R480 基线改判
-              静默（StorageBackendSettings.vue 空列表+添加按钮，零错误 UI）。 */}
-          {sectionDenied ?? (
+          {systemAdminOnlyPanelDenied ? null : (
           sectionError && sectionErrorMode(key) === 'banner-retry' ? (
             <div data-testid="settings-section-error-banner" role="alert" className="mb-1 flex flex-wrap items-center gap-2">
               <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
               <Button type="button" onClick={() => { void load(true); }}>{key === 'members' || key === 'storage' ? t('settings.storage.retry') : t('settings.parser.retry')}</Button>
             </div>
-          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
-          {key === 'tenant' && role === 'owner' && !sectionDenied && !sectionError && !sectionLoading ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(sectionPayload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
-        </div>}
+          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? chatHistoryPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'memory' ? <MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
+        </div>
       </div>
     );
   }
+
+  const wrapperModifier = selectedKey === 'members'
+    ? 'content-wrapper--wide wks-content-wrapper--wide'
+    : SYSTEM_ADMIN_SECTIONS.has(selectedKey) || integrationTab
+      ? 'content-wrapper--full wks-content-wrapper--full'
+      : '';
+
   return createPortal((
-    <main className="wk-settings-drawer-root">
+    <div className="wk-settings-drawer-root">
       {/* R472 A2 — settings 域错误 toast 宿主（对齐 Vue MessagePlugin 右上角
           浮动 + 3s 自动消失语义）。 */}
       <SettingsToastHost />
-      <div className="wks-overlay">
-        <div ref={modalRef} className="wks-modal" role="dialog" aria-modal="true" aria-label={t('general.settings')} onKeyDown={handleDialogKeyDown}>
+      {/* Vue Settings.vue 壳层 DOM（Teleport to body → createPortal）：
+          settings-overlay > settings-modal > close-btn + settings-container
+          (settings-sidebar[sidebar-header + settings-nav] + settings-content
+          > content-wrapper > section)。样式平移在 settings.td.css §1。 */}
+      <div className="settings-overlay">
+        <div ref={modalRef} className="settings-modal wks-modal" role="dialog" aria-modal="true" aria-label={t('general.settings')} onKeyDown={handleDialogKeyDown}>
           <button
             ref={closeButtonRef}
             type="button"
-            className="wks-close focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/35"
+            className="close-btn"
             aria-label={t('general.close')}
             data-testid="settings-close"
             onClick={closeSettings}
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
               <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
-          <div className="wks-container">
-            <nav aria-label="Settings sections" className="wks-sidebar">
-              <div className="wks-sidebar-header"><h2 className="wks-sidebar-title leading-[22px]">{t('general.settings')}</h2></div>
-              <div className="wks-nav">
+          <div className="settings-container">
+            <div className="settings-sidebar">
+              <div className="sidebar-header"><h2 className="sidebar-title">{t('general.settings')}</h2></div>
+              <div className="settings-nav">
                 {settingsNavGroups(locale, visibleSections.map((item) => item.key)).map((group) => (
                   <div key={group.key}>
-                    <div className="wks-nav-group-title leading-[17px]">{group.label}</div>
+                    <div className="nav-group-title">{group.label}</div>
                     {group.items.map((item) => (
-                      // leading-[20px] reproduces Vue .nav-item line-height
-                      // normal (20px @14px) — tailwind's 1.5 layer default made
-                      // rows 1px taller and accumulated drift.
-                      <button
+                      <div
                         key={item.key}
-                        type="button"
-                        // Vue .nav-item heights are label-line-driven: pure
-                        // latin/emoji label rows are 29px, CJK rows 32px.
-                        data-nav-icon-size={NAV_LATIN_LABEL_SECTIONS.has(item.key) ? '17' : undefined}
-                        className={`wks-nav-item leading-[20px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/35${item.key === selectedKey ? ' is-active' : ''}`}
+                        className={'nav-item' + (item.key === selectedKey ? ' active' : '')}
+                        role="button"
+                        tabIndex={0}
                         aria-current={item.key === selectedKey ? 'page' : undefined}
+                        data-settings-nav={item.key}
                         onClick={() => select(item.key)}
+                        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(item.key); } }}
                       >
-                        <span className="wks-nav-icon">{item.icon}</span>
-                        <span className="wks-nav-label">{item.label}</span>
-                      </button>
+                        <SettingsNavIcon itemKey={item.key} />
+                        <span className="nav-label">{item.label}</span>
+                      </div>
                     ))}
                   </div>
                 ))}
               </div>
-            </nav>
-            <section className="wks-content" aria-live="polite" style={{ position: 'relative' }}>
-              {visitedSections.map((key) => renderSectionPanel(key))}
-            </section>
+            </div>
+            <div className="settings-content">
+              <div className={'content-wrapper wks-content-wrapper' + (wrapperModifier ? ' ' + wrapperModifier : '')}>
+                {visitedSections.map((key) => renderSectionPanel(key))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </main>
+    </div>
   ), document.body);
 }
 
-// BEGIN settings nav grouping + inline lucide-style icons (ported from
+/* ==== Settings nav（Settings.vue navGroups/navItems 平移） ==== */
+
+// BEGIN settings nav grouping + tdesign sprite icons (ported from
 // frontend/src/views/settings/Settings.vue navGroups/navItems).
-import type { ReactNode } from 'react';
 import { formatMessage, type Locale } from '@weknora/i18n';
 
 // Ported from frontend/src/views/settings/Settings.vue navGroups (账户 / 空间 /
@@ -572,7 +612,6 @@ import { formatMessage, type Locale } from '@weknora/i18n';
 // must land in one of these groups; anything unknown falls into the fallback
 // group at the bottom so role gating can still surface it.
 // Localized section titles (settings.* keys exist in packages/i18n/src/settings.ts).
-
 
 const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: readonly string[] }> = [
   { key: 'account', labelKey: 'settings.navGroups.account', sections: ['general', 'userprofile', 'mymemory', 'envvars', 'usage'] },
@@ -636,7 +675,6 @@ const SECTION_LABEL_KEYS: Record<string, string> = {
 export interface SettingsNavItem {
   readonly key: string;
   readonly label: string;
-  readonly icon: ReactNode;
 }
 
 export interface SettingsNavGroupView {
@@ -653,94 +691,75 @@ export function settingsSectionLabel(locale: Locale, key: string): string {
   return settingsSectionMeta(key)?.title ?? key;
 }
 
-// Inline lucide-style stroke icons (24x24 viewBox), mirroring the t-icon names
-// used by Settings.vue (setting / user / usergroup / key / chat / server / …).
-function icon(paths: ReactNode): ReactNode {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {paths}
-    </svg>
-  );
-}
-
-// Exact t-icon replicas (tdesign-icons-vue-next): transparent fills + 1px
-// square-capped currentColor strokes on the 24px grid — the lucide-style
-// approximations above leave visible glyph deltas in the drawer rail.
-function tdIcon(fills: string[], strokes: string[]): ReactNode {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      {fills.map((d) => <path key={'f' + d.slice(0, 24)} fill="transparent" d={d} />)}
-      {strokes.map((d) => <path key={'s' + d.slice(0, 24)} stroke="currentColor" strokeWidth="1" strokeLinecap="square" d={d} />)}
-    </svg>
-  );
-}
-
-const SECTION_ICONS: Record<string, ReactNode> = {
-  general: tdIcon(
-    ['M20.6604 7L12.0001 2L3.33984 7V17L12.0001 22L20.6604 17V7ZM12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z', 'M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z'],
-    ['M12.0001 2L20.6604 7V17L12.0001 22L3.33984 17V7L12.0001 2Z', 'M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z'],
-  ),
-  userprofile: tdIcon([], ['M16.5 7.5C16.5 9.98528 14.4853 12 12 12C9.51472 12 7.5 9.98528 7.5 7.5C7.5 5.01472 9.51472 3 12 3C14.4853 3 16.5 5.01472 16.5 7.5Z', 'M20 21V19C20 16.7909 18.2091 15 16 15H8C5.79086 15 4 16.7909 4 19V21H20Z']),
-  // SP14 Task 4 — 会话偏好：sliders（lucide sliders-horizontal 风格）。
-  'chat-preferences': icon(<><line x1="21" y1="4" x2="14" y2="4" /><line x1="10" y1="4" x2="3" y2="4" /><line x1="21" y1="12" x2="12" y2="12" /><line x1="8" y1="12" x2="3" y2="12" /><line x1="21" y1="20" x2="16" y2="20" /><line x1="12" y1="20" x2="3" y2="20" /><line x1="14" y1="2" x2="14" y2="6" /><line x1="8" y1="10" x2="8" y2="14" /><line x1="16" y1="18" x2="16" y2="22" /></>),
-  mymemory: tdIcon(['M5 4H19V21L12 16L5 21V4Z'], ['M5 4H19V21L12 16L5 21V4Z']),
-  envvars: tdIcon(['M11.5355 15.5355C9.58291 17.4882 6.41709 17.4882 4.46447 15.5355C2.51184 13.5829 2.51184 10.4171 4.46447 8.46447C6.41709 6.51184 9.58291 6.51184 11.5355 8.46447C13.4882 10.4171 13.4882 13.5829 11.5355 15.5355Z'], ['M14 12H21M16.5 14.9985V12M19.5 14V12M11.5355 15.5355C9.58291 17.4882 6.41709 17.4882 4.46447 15.5355C2.51184 13.5829 2.51184 10.4171 4.46447 8.46447C6.41709 6.51184 9.58291 6.51184 11.5355 8.46447C13.4882 10.4171 13.4882 13.5829 11.5355 15.5355Z']),
-  usage: icon(<><path d="M3 3v18h18" /><path d="M7 15v-4M12 15V8M17 15v-7" /></>),
-  tenant: icon(<><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M9 16h.01M15 16h.01" /></>),
-  members: icon(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>),
-  chathistory: icon(<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />),
-  memory: icon(<><circle cx="5" cy="6" r="1.4" /><circle cx="5" cy="12" r="1.4" /><circle cx="5" cy="18" r="1.4" /><path d="M9 6h11M9 12h11M9 18h11" /></>),
-  models: icon(<><rect x="5" y="5" width="14" height="14" rx="2" /><rect x="9.5" y="9.5" width="5" height="5" /><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" /></>),
-  ollama: icon(<><rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" /><path d="M7 7.5h.01M7 16.5h.01" /></>),
-  weknoracloud: (
-    <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="15" height="15" rx="3.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M4.5 5.5L6.5 12.5L9 7.5L11.5 12.5L13.5 5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
-  vectorstore: icon(<><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5" /><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" /></>),
-  parser: icon(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><circle cx="11" cy="13" r="2.5" /><path d="M13 15l2.5 2.5" /></>),
-  storage: icon(<path d="M17.5 19a4.5 4.5 0 0 0 .38-8.98 7 7 0 0 0-13.76 1.86A4 4 0 0 0 6 19z" />),
-  sandbox: (
-    <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <rect x="2.5" y="3" width="13" height="12" rx="2" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M2.5 6.5h13" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5.5 10h4M5.5 12.5h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  ),
-  skills: icon(<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />),
-  websearch: (
-    <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M 9 2 A 3.5 7 0 0 0 9 16" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M 9 2 A 3.5 7 0 0 1 9 16" stroke="currentColor" strokeWidth="1.2" />
-      <line x1="2.94" y1="5.5" x2="15.06" y2="5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <line x1="2.94" y1="12.5" x2="15.06" y2="12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  ),
-  mcp: icon(<><path d="M14.7 6.3a4.5 4.5 0 0 0 6 6l-7.4 7.4a2.1 2.1 0 0 1-3-3z" /><path d="M14.7 6.3l3-3 3 3-3 3" /></>),
-  system: icon(<><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></>),
-  'system-global': icon(<><rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" /><path d="M7 7.5h.01M7 16.5h.01" /></>),
-  'runtime-queues': icon(<><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></>),
-  'platform-api-keys': icon(<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9.5 12l2 2 3.5-3.5" /></>),
-  'system-audit-log': icon(<><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 3" /></>),
-  // Integration nav icons mirror frontend/src/config/integrations.ts
-  // INTEGRATION_PREVIEW_ITEMS (chat-message / code / secured / extension /
-  // the claw lobster emoji).
-  'integration-im': icon(<><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></>),
-  'integration-embed': icon(<><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" /></>),
-  'integration-api': icon(<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />),
-  'integration-cli': icon(<><path d="M4 17l6-6-6-6M12 19h8" /></>),
-  'integration-chrome': icon(<><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" /><path d="M21.2 8H12M6.8 6.4L10 12M8 21.2L12.5 14" /></>),
-  'integration-claw': <span className="nav-icon-emoji" aria-hidden="true">🦞</span>,
+// Vue Settings.vue navItems icon names（t-icon sprite 名）；websearch /
+// weknoracloud / sandbox 为自定义 svg，claw 为 emoji（见 SettingsNavIcon）。
+const NAV_ICON_NAMES: Record<string, string> = {
+  general: 'setting',
+  userprofile: 'user',
+  mymemory: 'bookmark',
+  envvars: 'key',
+  tenant: 'user-circle',
+  members: 'usergroup',
+  chathistory: 'chat',
+  memory: 'bulletpoint',
+  models: 'control-platform',
+  ollama: 'server',
+  vectorstore: 'data-base',
+  parser: 'file-search',
+  storage: 'cloud',
+  // SKILL_ICON（frontend/src/types/mention.ts:4）
+  skills: 'system-code',
+  mcp: 'tools',
+  system: 'info-circle',
+  'system-global': 'server',
+  'runtime-queues': 'queue',
+  'platform-api-keys': 'secured',
+  'system-audit-log': 'history',
+  'integration-im': 'chat-message',
+  'integration-embed': 'code',
+  'integration-api': 'secured',
+  'integration-cli': 'code',
+  'integration-chrome': 'extension',
 };
 
-const FALLBACK_ICON = icon(<circle cx="12" cy="12" r="9" />);
+// Settings.vue navItems: claw 的 icon 是 emoji（INTEGRATION_PREVIEW_ITEMS）。
+const NAV_EMOJI_ICONS: Record<string, string> = { 'integration-claw': '🦞' };
 
-// Vue .nav-item heights follow the label line box: pure latin/emoji labels
-// (Ollama, WeKnora Cloud, CLI, 🦞Claw Skill) get the smaller latin line box and
-// a 29px row, while CJK labels render with CJK font metrics and a 32px row.
-const NAV_LATIN_LABEL_SECTIONS = new Set(['ollama', 'weknoracloud', 'integration-cli', 'integration-claw']);
+// Vue Settings.vue navItems 自定义 svg 图标逐字复刻（websearch / weknoracloud
+// / sandbox——避免与 Ollama / 系统设置共用 server 图标）。
+function SettingsNavIcon({ itemKey }: { itemKey: string }) {
+  if (itemKey === 'websearch') {
+    return (
+      <svg width="17" height="17" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="nav-icon">
+        <circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.2" fill="none" />
+        <path d="M 9 2 A 3.5 7 0 0 0 9 16" stroke="currentColor" strokeWidth="1.2" fill="none" />
+        <path d="M 9 2 A 3.5 7 0 0 1 9 16" stroke="currentColor" strokeWidth="1.2" fill="none" />
+        <line x1="2.94" y1="5.5" x2="15.06" y2="5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        <line x1="2.94" y1="12.5" x2="15.06" y2="12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (itemKey === 'weknoracloud') {
+    return (
+      <svg width="17" height="17" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="nav-icon">
+        <rect x="1.5" y="1.5" width="15" height="15" rx="3.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
+        <path d="M4.5 5.5L6.5 12.5L9 7.5L11.5 12.5L13.5 5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </svg>
+    );
+  }
+  if (itemKey === 'sandbox') {
+    return (
+      <svg width="17" height="17" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="nav-icon">
+        <rect x="2.5" y="3" width="13" height="12" rx="2" stroke="currentColor" strokeWidth="1.2" fill="none" />
+        <path d="M2.5 6.5h13" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M5.5 10h4M5.5 12.5h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  const emoji = NAV_EMOJI_ICONS[itemKey];
+  if (emoji) return <span className="nav-icon nav-icon-emoji">{emoji}</span>;
+  return <TIcon name={NAV_ICON_NAMES[itemKey] ?? 'setting'} className="nav-icon" />;
+}
 
 export function settingsNavGroups(locale: Locale, visibleKeys: readonly string[]): SettingsNavGroupView[] {
   const navKeys = visibleKeys.filter((key) => !NAV_HIDDEN_SECTIONS.has(key));
@@ -750,14 +769,14 @@ export function settingsNavGroups(locale: Locale, visibleKeys: readonly string[]
     label: formatMessage(locale, def.labelKey),
     items: def.sections
       .filter((key) => labels.has(key))
-      .map((key) => ({ key, label: labels.get(key)!, icon: SECTION_ICONS[key] ?? FALLBACK_ICON })),
+      .map((key) => ({ key, label: labels.get(key)! })),
   })).filter((group) => group.items.length > 0);
   // Unknown registry sections keep a fallback group so role-gated entries are
   // never silently dropped from the drawer navigation.
   const assigned = new Set(NAV_GROUP_DEFS.flatMap((def) => def.sections as readonly string[]));
   const unknown = navKeys.filter((key) => !assigned.has(key));
   if (unknown.length > 0) {
-    groups.push({ key: 'other', label: formatMessage(locale, 'settings.navGroups.platform'), items: unknown.map((key) => ({ key, label: labels.get(key)!, icon: SECTION_ICONS[key] ?? FALLBACK_ICON })) });
+    groups.push({ key: 'other', label: formatMessage(locale, 'settings.navGroups.platform'), items: unknown.map((key) => ({ key, label: labels.get(key)! })) });
   }
   return groups;
 }

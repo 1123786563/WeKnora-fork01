@@ -1,7 +1,26 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, Fragment, useContext, useEffect, useRef, useState } from 'react';
 import type { ChatSession } from '@weknora/contracts';
-import { sessionSourceBadge } from '@weknora/domain/chat/session-grouping';
 import { formatChatCopy, resolveChatCopy, resolveChatLocale, sessionGroupLabel, type ChatCopyTable } from './chat-copy.ts';
+
+/**
+ * Vue SessionSidebarRow.vue apiOwnerTag（合成主体徽标）：api_external_user /
+ * api_tenant_key 前缀的会话在标题旁渲染提问人小徽标；普通账号不渲染。
+ */
+const API_EXTERNAL_USER_PREFIX = 'api_external_user:';
+const API_TENANT_KEY_PREFIX = 'api_tenant_key:';
+function apiOwnerTagOf(session: ChatSession): { kind: 'user' | 'key'; label: string; full: string } | null {
+  const uid = (session as { user_id?: string }).user_id || '';
+  if (uid.startsWith(API_EXTERNAL_USER_PREFIX)) {
+    const tail = uid.slice(API_EXTERNAL_USER_PREFIX.length);
+    const segments = tail.split(':').filter(Boolean);
+    const label = segments.length ? segments[segments.length - 1]! : tail;
+    return label ? { kind: 'user', label, full: uid } : null;
+  }
+  if (uid.startsWith(API_TENANT_KEY_PREFIX)) {
+    return { kind: 'key', label: 'API', full: uid };
+  }
+  return null;
+}
 
 export interface SessionGroupView {
   key: string;
@@ -96,6 +115,14 @@ export function isShareActionAvailable(onShareSession?: SessionSidebarListProps[
  * The grouped list body shared by the in-page chat sidebar and the platform
  * shell sidebar: time group headers (已置顶/今天/昨天/近7天/近30天/更早), full
  * titles, green active row, hover ⋯ menu (置顶/重命名会话/分享/清空消息/删除会话).
+ *
+ * Task 9.5 — DOM is a 1:1 port of the Vue anatomy (frontend/src/components/
+ * menu.vue .submenu + SessionSidebarRow.vue): the visible chrome uses the Vue
+ * class vocabulary (.timeline_header / .submenu_item_p.session-chat-row /
+ * .session-list-row(--flat) / .submenu_item / .submenu_title), with the shell
+ * porting the styles in apps/web/src/platform/platform-shell.td.css. React
+ * keeps semantic hooks the tests rely on: role/aria anchors, the <details>
+ * ⋯ menu, and the wk-* hook classes; the package stays css-import-free.
  */
 export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete, onShareSession, onBatchDelete, source, sourceOptions, onSourceChange }: SessionSidebarListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
@@ -204,17 +231,9 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
     }
   };
   /*
-   * shell.css → utilities. Effective values verified against the built css
-   * bundle: for elements whose classes also matched styles.css rules, the
-   * styles.css declaration won the unlayered cascade (bundle order) — the
-   * group <h3> renders uppercase #66758b .78rem (styles.css) with the shell
-   * css contributing only font-weight/line-height, so those are the values
-   * encoded here. Row hover/active greens come from the deleted shell rules
-   * (group/item hover keeps rgba(0,0,0,0.04); an active row stays green on
-   * hover, matching the css source order). is-active / is-danger /
-   * is-im|is-embed|is-api remain as state markers without css.
-   * The shell-context ul indent (padding 0 6px) lives in PlatformShell's
-   * sessions nav as [&_ul]:px-[6px]; this shared list stays flush outside.
+   * Vue 事实源 DOM（menu.vue .submenu + SessionSidebarRow.vue），样式由
+   * apps/web/src/platform/platform-shell.td.css 平移承载。React 侧保留的
+   * 语义钩点：role/aria 锚点、details ⋯ 菜单、wk-* hook 类、input aria-label。
    */
   return <>
     {!batchMode && sourceOptions && onSourceChange ? <label className="grid gap-[0.25rem] mx-[4px] my-[0.55rem] text-[rgba(0,0,0,0.4)] text-[12px]">{t.sourceLabel}<select aria-label={t.sourceSelectLabel} className="w-full box-border rounded-[6px] border border-[#cbd5e1] bg-white p-[0.45rem] text-[rgba(0,0,0,0.9)] text-[13px]" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
@@ -231,83 +250,123 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
     {/* Vue menu.vue:113-131 renders four gradient skeleton rows while the
         first bucket loads (never a text "Loading..." label); menu.vue:162-167
         shows a small spinner below the rows while a later page streams in.
-        The i18n 加载中... copy stays as the sr-only announcement so screen
-        readers keep the old status text. */}
-    {loading && totalItems === 0 ? <div role="status" className="m-[4px]">
+        The i18n copy stays as the sr-only announcement for screen readers. */}
+    {loading && totalItems === 0 ? <div role="status">
       <span className="sr-only">{t.loadingSessions}</span>
-      {[0, 1, 2, 3].map((row) => <div key={row} aria-hidden="true" className="flex items-center rounded-[8px] px-[10px] py-[11px]">
-        <span className="block h-[14px] w-full rounded-[4px] bg-[#eceff3] motion-safe:animate-pulse" />
+      {[0, 1, 2, 3].map((row) => <div key={row} aria-hidden="true" className="submenu_item_p session-chat-row">
+        <div className="session-list-row session-list-row--flat">
+          <div className="session-list-row__body t-skeleton t-skeleton--animate">
+            <div className="t-skeleton__row"><div className="t-skeleton__col t-skeleton--type-text t-skeleton--animation-gradient" style={{ width: '100%', height: '14px' }} /></div>
+          </div>
+        </div>
       </div>)}
     </div> : null}
-    {loading && totalItems > 0 ? <div role="status" className="flex items-center justify-center py-[8px]">
+    {loading && totalItems > 0 ? <div className="session-list-loading session-list-row session-list-row--flat" role="status">
       <span className="sr-only">{t.loadingSessions}</span>
-      <span aria-hidden="true" className="block h-[14px] w-[14px] rounded-full border-[1.5px] border-[rgba(0,0,0,0.4)] border-t-transparent motion-safe:animate-spin" />
+      <span className="session-list-row__body" aria-hidden="true">
+        <span className="t-loading t-loading--default t-size-s wk-chat-session-loading">
+          <span className="t-loading__spinner wk-chat-session-loading-spinner" />
+        </span>
+      </span>
     </div> : null}
-    {!loading && totalItems === 0 && emptyLabel ? <p className="my-[10px] mx-[4px] text-[rgba(0,0,0,0.4)] text-[12px]" role="status">{emptyLabel}</p> : null}
-    {visibleGroups.map((group) => <section key={group.key}>
-      {/* Vue menu.vue .timeline_header: 11px/16px label with 4/10/1/14 padding
-          sitting flush on the group rows (the 1rem/0.35rem box ran 8px loose
-          per group and 1.5px large type). */}
-      {group.label ? <h3 className="mt-[5px] mx-0 pt-[4px] pb-[1px] pl-[14px] pr-[10px] text-[#66758b] text-[11px] font-normal tracking-[0.04em] leading-[16px] uppercase">{sessionGroupLabel(t, group.label)}</h3> : null}
-      <ul className="list-none m-0 p-0">{group.items.map((session) => {
-        const badge = sessionSourceBadge(session);
-        const active = session.id === selectedSessionId;
-          return <li key={session.id} className={'group/item flex items-center rounded-[6px] relative' + (active ? ' is-active' : '')}>
-          {batchMode ? <input type="checkbox" aria-label={formatChatCopy(t, 'batchSelectSession', { title: session.title || untitledLabel || t.untitledChat })} checked={selectedIds.has(session.id)} onChange={() => toggleSelected(session.id)} disabled={batchBusy} className="mx-[4px] shrink-0" /> : null}
-          {editingSessionId === session.id ? <div className="flex min-w-0 flex-1 flex-col gap-[2px] px-[6px] py-[4px]">
-            <input type="text" aria-label={t.renameSession} value={editingTitle} maxLength={80} autoFocus disabled={renameSubmitting.current}
-              className="w-full min-w-0 box-border rounded-[5px] border border-[#07c05f] bg-white px-[7px] py-[4px] text-[14px] leading-[20px] outline-none"
-              onChange={(event) => setEditingTitle(event.target.value)}
-              onClick={(event) => event.stopPropagation()}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') { event.preventDefault(); cancelRename(); }
-                if (event.key === 'Enter') { event.preventDefault(); void submitRename(session); }
-              }}
-              onBlur={() => { void submitRename(session); }} />
-            {renameError ? <span role="alert" className="text-[11px] leading-[16px] text-[#e34d59]">{renameError}</span> : null}
-          </div> : <button type="button" aria-current={active ? 'page' : undefined} onClick={() => { if (batchMode) toggleSelected(session.id); else onSelect(session.id); }}
-            className={'flex h-[36px] flex-1 items-center min-w-0 gap-[6px] px-[10px] border-0 rounded-[6px] cursor-pointer text-left text-[14px] leading-[22px] overflow-hidden transition-[background-color,color] duration-[150ms] ease-[ease] '
-            + /* Vue menu.vue 1632-1641: active bg = --td-bg-color-container-hover
-                 (neutral #f3f3f3), only the title turns brand green; hover same
-                 neutral grey, not a green tint. */
-            (active ? 'bg-[var(--td-bg-color-container-hover,#f3f3f3)] text-[#07c05f]' : 'bg-transparent text-[rgba(0,0,0,0.9)] group-hover/item:bg-[var(--td-bg-color-container-hover,#f3f3f3)]')}>
-            {session.running === true ? <span role="status" aria-label={t.sessionInProgress} title={t.sessionInProgress} className="wk-chat-session-running inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center text-[#07c05f]"><span aria-hidden="true" className="wk-chat-session-running-spinner block h-[12px] w-[12px] rounded-full border-[1.5px] border-current border-t-transparent motion-safe:animate-[wk-chat-session-spin_0.8s_linear_infinite]" /></span> : null}
-            {session.is_pinned ? <span className="shrink-0 text-[rgba(0,0,0,0.4)] text-[12px]" aria-hidden="true">★</span> : null}
-            {session.parent_session_id ? <span role="img" aria-label={t.forkBadgeTooltip} title={t.forkBadgeTooltip} className="shrink-0 text-[11px] text-[rgba(0,0,0,0.4)]">⑂</span> : null}
-            <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{session.title || untitledLabel || t.untitledChat}</span>
-            {badge.kind ? <span className={badge.kind + ' shrink-0 text-[10px] font-semibold tracking-[0.03em] leading-[1.4] uppercase text-[rgba(0,0,0,0.4)] bg-[#eee] rounded-[4px] px-[4px]'} title={t.sourceLabel}>{badge.label}</span> : null}
-          </button>}
-          {/* Vue session-row-menu-wrap overlays the row's right edge (absolute,
-              4px inset) instead of flexing beside the title — the flex slot
-              narrowed every title 32px and forced early ellipsis. The active
-              row keeps the ⋯ visible like the Vue menu-more. */}
-          {!batchMode && hasMenu ? <details className={'group/menu absolute right-[4px] top-1/2 z-[2] -translate-y-1/2' + (active ? ' is-active' : '')}>
-            {/* Vue SessionSidebarRow.vue:26 leaves the row ⋯ button without an
-                accessible name (aria-haspopup only), so the sidebar never
-                advertises 更多…; the header menu owns that name. */}
-            <summary
-              className="inline-flex items-center justify-center h-[24px] w-[24px] rounded-[5px] bg-white/0 text-[rgba(0,0,0,0.26)] cursor-pointer list-none opacity-0 transition-[opacity,background-color,color] duration-[150ms] ease-[ease] hover:bg-[rgba(0,0,0,0.06)] hover:text-[rgba(0,0,0,0.9)] group-hover/item:opacity-100 group-hover/item:bg-white focus-visible:opacity-100 group-open/menu:opacity-100 group-[.is-active]/menu:opacity-100 [&::-webkit-details-marker]:hidden">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
-            </summary>
-            <div className="absolute right-0 top-[26px] z-30 flex min-w-[120px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
-              {/* .wk-chat-session-menu-list button (+ .is-danger) → utilities. */}
-              {onTogglePin ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? t.unpin : t.pin}</button> : null}
-              {onRename ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => startRename(session)}>{t.renameSession}</button> : null}
-              {onShareSession ? <button type="button" role="menuitem" data-share-session={session.id} className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => onShareSession(session.id)}>{t.shareSession}</button> : null}
-              {onClear ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => { setSessionDangerAction({ type: 'clear', sessionId: session.id }); setSessionDangerError(null); }}>{t.clearMessages}</button> : null}
-              {onBatchDelete ? <button type="button" role="menuitem" aria-label={formatChatCopy(t, 'batchManage')} className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={toggleBatchMode}>{formatChatCopy(t, 'batchManage')}</button> : null}
-              {onDelete ? <button type="button" role="menuitem" className="is-danger min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[#e34d59] hover:bg-[#fdecee]" onClick={() => { setSessionDangerAction({ type: 'delete', sessionId: session.id }); setSessionDangerError(null); }}>{t.deleteRecord}</button> : null}
-              {sessionDangerAction?.sessionId === session.id ? <div className="wk-chat-session-confirm mt-[2px] border-t border-[#e7e7e7] pt-[6px]" role="dialog" aria-label={sessionDangerAction.type === 'clear' ? t.clearMessages : t.deleteSession}>
-                <strong className="block px-[6px] text-[12px]">{sessionDangerAction.type === 'clear' ? t.clearConfirmTitle : t.deleteConfirmTitle}</strong>
-                <p className="m-0 px-[6px] py-[5px] text-[12px] text-[rgba(0,0,0,0.6)]">{sessionDangerAction.type === 'clear' ? t.clearConfirmBody : t.deleteConfirmBody}</p>
-                {sessionDangerError ? <p role="alert" className="m-0 px-[6px] pb-[4px] text-[11px] text-[#e34d59]">{sessionDangerError}</p> : null}
-                <div className="flex justify-end gap-[4px] px-[6px]"><button type="button" className="min-h-[28px] border-0 bg-transparent px-[7px] text-[12px]" onClick={() => setSessionDangerAction(null)} disabled={sessionDangerBusy}>{t.renameCancel}</button><button type="button" className="min-h-[28px] rounded-[5px] border-0 bg-[#e34d59] px-[7px] text-[12px] text-white" onClick={() => void submitSessionDangerAction()} disabled={sessionDangerBusy}>{sessionDangerAction.type === 'clear' ? t.clearConfirmAction : t.deleteConfirmAction}</button></div>
-              </div> : null}
+    {!loading && totalItems === 0 && emptyLabel ? <p className="submenu_empty" role="status">{emptyLabel}</p> : null}
+    <div className="session-filtered-list">
+      {visibleGroups.map((group) => <Fragment key={group.key}>
+        {/* Vue menu.vue .timeline_header：11px/16px 分组标题，随源类平移。 */}
+        {group.label ? <div className="timeline_header session-list-row session-list-row--flat">
+          <span className="session-list-row__body"><span className="timeline_header-label">{sessionGroupLabel(t, group.label)}</span></span>
+        </div> : null}
+        {group.items.map((session) => {
+          const active = session.id === selectedSessionId;
+          return <div key={session.id} className={'submenu_item_p session-chat-row'
+            + (!batchMode && active ? ' session-chat-row--active' : '')
+            + (batchMode && selectedIds.has(session.id) ? ' session-chat-row--selected' : '')}>
+            <div className="session-list-row session-list-row--flat">
+              <div className="session-list-row__body">
+                {/* Vue SessionSidebarRow .submenu_item（div + @click；React 保留
+                    role/tabindex/aria-current 语义锚点）。 */}
+                <div
+                  className={'submenu_item' + (active ? ' submenu_item_active' : '') + (batchMode ? ' submenu_item_batch' : '')}
+                  role="button" tabIndex={0} aria-current={active ? 'page' : undefined}
+                  onClick={() => { if (batchMode) toggleSelected(session.id); else onSelect(session.id); }}
+                  onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (batchMode) toggleSelected(session.id); else onSelect(session.id); } }}>
+                  {editingSessionId === session.id ? <form className="session-title-edit" onSubmit={(event) => { event.preventDefault(); void submitRename(session); }} onClick={(event) => event.stopPropagation()}>
+                    <input aria-label={t.renameSession} className="session-title-edit__input" value={editingTitle} maxLength={80} autoFocus disabled={renameSubmitting.current}
+                      onChange={(event) => setEditingTitle(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') { event.preventDefault(); cancelRename(); }
+                        if (event.key === 'Enter') { event.preventDefault(); void submitRename(session); }
+                      }}
+                      onBlur={() => { void submitRename(session); }} />
+                    {renameError ? <span role="alert" className="text-[11px] leading-[16px] text-[#e34d59]">{renameError}</span> : null}
+                  </form> : <>
+                    {batchMode ? <input type="checkbox" className="batch-checkbox" aria-label={formatChatCopy(t, 'batchSelectSession', { title: session.title || untitledLabel || t.untitledChat })} checked={selectedIds.has(session.id)} onChange={() => toggleSelected(session.id)} onClick={(event) => event.stopPropagation()} disabled={batchBusy} /> : null}
+                    <span className={batchMode ? 'submenu_title submenu_title--batch' : 'submenu_title'} title={session.title || untitledLabel || t.untitledChat}>
+                      {session.is_pinned ? <svg className="t-icon submenu_pin_icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href="#t-icon-pin" /></svg> : null}
+                      <span className="submenu_title-text">{session.title || untitledLabel || t.untitledChat}</span>
+                      {apiOwnerTagOf(session) ? <span className={'session-owner-tag session-owner-tag--' + apiOwnerTagOf(session)!.kind} title={apiOwnerTagOf(session)!.full}>{apiOwnerTagOf(session)!.label}</span> : null}
+                    </span>
+                  </>}
+                  {session.running === true ? <span className="session-running-indicator wk-chat-session-running" role="status" aria-label={t.sessionInProgress} title={t.sessionInProgress}><span className="session-running-indicator__spinner wk-chat-session-running-spinner" aria-hidden="true" /></span> : null}
+                  {!batchMode && hasMenu ? <div className="session-row-menu-wrap" onClick={(event) => event.stopPropagation()}>
+                    <details className="session-row-menu">
+                      {/* Vue SessionSidebarRow.vue:26 leaves the row ⋯ button
+                          without an accessible name (aria-haspopup only). */}
+                      <summary className="menu-more-wrap" aria-haspopup="menu">
+                        <svg className="t-icon t-icon-ellipsis menu-more" viewBox="0 0 24 24" width="1em" height="1em" style={{ fontSize: '13.3333px' }} fill="none" aria-hidden="true"><use href="#t-icon-ellipsis" /></svg>
+                      </summary>
+                      <div className="session-action-menu-panel" role="menu">
+                        <div className="session-action-menu">
+                          {onTogglePin ? <button type="button" role="menuitem" className="session-action-menu__item" onClick={() => void onTogglePin(session.id, !session.is_pinned)}>
+                            <span className="session-action-menu__icon"><svg className="t-icon" viewBox="0 0 24 24" width="16px" height="16px" fill="none" aria-hidden="true"><use href={session.is_pinned ? '#t-icon-pin-filled' : '#t-icon-pin'} /></svg></span>
+                            <span>{session.is_pinned ? t.unpin : t.pin}</span>
+                          </button> : null}
+                          {onRename ? <button type="button" role="menuitem" className="session-action-menu__item" onClick={() => startRename(session)}>
+                            <span className="session-action-menu__icon"><svg className="t-icon" viewBox="0 0 24 24" width="16px" height="16px" fill="none" aria-hidden="true"><use href="#t-icon-edit-1" /></svg></span>
+                            <span>{t.renameSession}</span>
+                          </button> : null}
+                          {onShareSession ? <button type="button" role="menuitem" data-share-session={session.id} className="session-action-menu__item" onClick={() => onShareSession(session.id)}>
+                            <span className="session-action-menu__icon"><svg className="t-icon" viewBox="0 0 24 24" width="16px" height="16px" fill="none" aria-hidden="true"><use href="#t-icon-share" /></svg></span>
+                            <span>{t.shareSession}</span>
+                          </button> : null}
+                          {onClear ? <>
+                            <div className="session-action-menu__divider" />
+                            <button type="button" role="menuitem" className="session-action-menu__item" onClick={() => { setSessionDangerAction({ type: 'clear', sessionId: session.id }); setSessionDangerError(null); }}>
+                              <span className="session-action-menu__icon"><svg className="t-icon" viewBox="0 0 24 24" width="16px" height="16px" fill="none" aria-hidden="true"><use href="#t-icon-clear" /></svg></span>
+                              <span>{t.clearMessages}</span>
+                            </button>
+                          </> : null}
+                          {onBatchDelete ? <button type="button" role="menuitem" aria-label={formatChatCopy(t, 'batchManage')} className="session-action-menu__item" onClick={toggleBatchMode}>
+                            <span className="session-action-menu__icon"><svg className="t-icon" viewBox="0 0 24 24" width="16px" height="16px" fill="none" aria-hidden="true"><use href="#t-icon-queue" /></svg></span>
+                            <span>{formatChatCopy(t, 'batchManage')}</span>
+                          </button> : null}
+                          {onDelete ? <>
+                            <div className="session-action-menu__divider" />
+                            <button type="button" role="menuitem" className="session-action-menu__item is-danger" onClick={() => { setSessionDangerAction({ type: 'delete', sessionId: session.id }); setSessionDangerError(null); }}>
+                              <span className="session-action-menu__icon"><svg className="t-icon" viewBox="0 0 24 24" width="16px" height="16px" fill="none" aria-hidden="true"><use href="#t-icon-delete" /></svg></span>
+                              <span>{t.deleteRecord}</span>
+                            </button>
+                          </> : null}
+                          {sessionDangerAction?.sessionId === session.id ? <div className="session-action-confirm wk-chat-session-confirm" role="dialog" aria-label={sessionDangerAction.type === 'clear' ? t.clearMessages : t.deleteSession}>
+                            <div className="session-action-confirm__title">{sessionDangerAction.type === 'clear' ? t.clearConfirmTitle : t.deleteConfirmTitle}</div>
+                            <div className="session-action-confirm__body">{sessionDangerAction.type === 'clear' ? t.clearConfirmBody : t.deleteConfirmBody}</div>
+                            {sessionDangerError ? <p role="alert" className="m-0 px-[6px] pb-[4px] text-[11px] text-[#e34d59]">{sessionDangerError}</p> : null}
+                            <div className="session-action-confirm__footer">
+                              <button type="button" className="session-action-confirm__btn" onClick={() => setSessionDangerAction(null)} disabled={sessionDangerBusy}>{t.renameCancel}</button>
+                              <button type="button" className="session-action-confirm__btn is-danger" onClick={() => void submitSessionDangerAction()} disabled={sessionDangerBusy}>{sessionDangerAction.type === 'clear' ? t.clearConfirmAction : t.deleteConfirmAction}</button>
+                            </div>
+                          </div> : null}
+                        </div>
+                      </div>
+                    </details>
+                  </div> : null}
+                </div>
+              </div>
             </div>
-          </details> : null}
-        </li>;
-      })}</ul>
-    </section>)}
+          </div>;
+        })}
+      </Fragment>)}
+    </div>
   </>;
 }
 

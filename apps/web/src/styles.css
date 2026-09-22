@@ -1,3 +1,11 @@
+/* TDesign 同构迁移：与 Vue 端 frontend/src/main.ts:8 全量引入一致，unlayered 且最先加载 */
+@import "tdesign-react/dist/tdesign.css";
+/* TDesign 主题 token（Vue theme.css 平移）——必须不带 layer()：tdesign.css 是 unlayered
+   默认值，layered 引入（下方 design-tokens styles.css 走 layer(theme)）在级联中会输给
+   unlayered 声明；此处 unlayered 且在 tdesign.css 之后，与 Vue 端
+   tdesign.css → theme.css 顺序逐字一致。 */
+@import "../../../packages/design-tokens/src/tdesign-theme.css";
+
 /* Tailwind v4 composition (mirrors tailwindcss/index.css minus preflight —
    see docs/plans/tailwind-shadcn-migration.md for the preflight decision). */
 @layer theme, base, components, utilities;
@@ -26,7 +34,12 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
      TDesign 挂在 body 上）；React 缺失时 body 落到 Times，未带显式字体
      utility 的文本（侧栏、弹层、按钮内文字）逐像素整行偏红。 */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /* Vue App.vue body/html/#app 同款全局字号/文字色（frontend/src/App.vue:299-305
+     font-size: 14px; color: var(--td-text-color-primary)）；R5 复验口径：图标
+     currentColor 与未带字号组件文本继承 body，缺这两条时 spike 图标区不坍缩。 */
+  font-size: 14px;
+  color: var(--td-text-color-primary); }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
 /* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/

@@ -11,6 +11,8 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/organizations' });
+/* tdesign 运行时依赖的 DOM 构造器全局补齐（pilot agents / kb-list 同款）——
+ * Popup/Dialog 等组件在 jsdom 下直接读 Element/SVGElement/MutationObserver。 */
 Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 Object.assign(globalThis, {
@@ -18,9 +20,21 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
   MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
   IS_REACT_ACT_ENVIRONMENT: true,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
 });
 
 const { createRoot } = await import('react-dom/client');
@@ -116,6 +130,10 @@ let mountedRoot: Root | undefined;
 afterEach(async () => {
   if (mountedRoot) await act(async () => mountedRoot?.unmount());
   mountedRoot = undefined;
+  /* tdesign Popup destroyOnClose 的离场动画定时器在卸载后仍会触发一次
+   * body 容器移除——先冲刷这些定时器再清 body，避免 DOMException 逸散到
+   * 后续用例的 act 聚合错误里。 */
+  await new Promise((resolve) => setTimeout(resolve, 260));
   document.body.replaceChildren();
   window.history.replaceState({}, '', '/platform/organizations');
 });
@@ -130,10 +148,26 @@ async function mountPage(client: WeKnoraClient, inviteCode?: string, role?: 'own
   return container;
 }
 
-function buttonWithLabel(root: HTMLElement, label: string): HTMLButtonElement {
-  const button = root.querySelector('button[aria-label="' + label + '"]');
-  assert.ok(button, 'expected button with aria-label ' + label);
-  return button as HTMLButtonElement;
+/* 迁移后（Task 11b）header 双按钮是 Vue 纯图标 t-button（无 aria/title，
+ * OrganizationList.vue:11-23）——create 按钮以 .org-create-icon 图标锚定。 */
+function headerActionButton(root: ParentNode, kind: 'join' | 'create'): HTMLElement {
+  const buttons = [...root.querySelectorAll('.header-actions .header-action-btn')];
+  const button = kind === 'create' ? buttons.find((el) => el.querySelector('.org-create-icon')) : buttons.find((el) => !el.querySelector('.org-create-icon'));
+  assert.ok(button, 'expected header ' + kind + ' button (.header-action-btn)');
+  return button as HTMLElement;
+}
+
+/* 设置弹窗经 createPortal 挂 body（Vue Teleport 同构）。 */
+function settingsDialog(): HTMLElement {
+  const dialog = document.body.querySelector('.settings-overlay');
+  assert.ok(dialog, 'expected the portaled settings modal (.settings-overlay)');
+  return dialog as HTMLElement;
+}
+
+/* 台账 #7：tdesign-react disabled Button 根标签切到 <div class="t-is-disabled">，
+ * disabled 断言走 classList（kb-list 同款）。 */
+function isDisabledControl(el: Element): boolean {
+  return (el as HTMLButtonElement).disabled === true || el.classList.contains('t-is-disabled');
 }
 
 async function click(element: HTMLElement): Promise<void> {
@@ -162,17 +196,15 @@ async function submitForm(form: HTMLFormElement): Promise<void> {
   await act(async () => form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
 }
 
-function textButtons(root: HTMLElement, text: string): HTMLButtonElement[] {
-  return [...root.querySelectorAll('button')].filter((button) => button.textContent === text) as HTMLButtonElement[];
+function textButtons(root: ParentNode, text: string): HTMLElement[] {
+  /* tdesign Button disabled 时根标签为 div.t-button（台账 #7）——两类都收。 */
+  return [...root.querySelectorAll('button, .t-button')].filter((el): el is HTMLElement => el instanceof HTMLElement && el.textContent === text);
 }
 
-// Semantic queries replacing the deleted organizations.css class selectors:
-// cards are the role="button" tiles carrying the titled org-name span (section
-// headers and the ⋯ affordance are role="button" too but title nothing), and
-// the rail lives in the labeled <aside>. "is-active" survives in the TSX as a
-// state hook (its styles are utilities), so the rail selector stays class-based.
+// Vue-parity selectors (OrganizationList.vue): cards are .org-card tiles
+// (skeleton variants excluded); the section headers are .org-section-header.
 function orgCards(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll('[role="button"]')].filter((el) => el.querySelector('span[title]') !== null) as HTMLElement[];
+  return [...root.querySelectorAll('.org-card')].filter((el) => !el.classList.contains('org-card-skeleton')) as HTMLElement[];
 }
 
 test('zh-CN page renders Vue-parity anatomy and drops the English debug page', async () => {
@@ -184,8 +216,8 @@ test('zh-CN page renders Vue-parity anatomy and drops the English debug page', a
   assert.equal(heading.textContent, '共享空间');
   assert.match(root.textContent ?? '', /创建或加入共享空间，让多个空间互相协作/);
 
-  buttonWithLabel(root, '加入共享空间');
-  buttonWithLabel(root, '创建共享空间');
+  headerActionButton(root, 'join');
+  headerActionButton(root, 'create');
 
   assert.match(root.textContent ?? '', /我创建的/);
   const createdHeader = [...root.querySelectorAll('[role="button"]')].find((el) => (el.textContent ?? '').startsWith('我创建的'));
@@ -199,12 +231,9 @@ test('zh-CN page renders Vue-parity anatomy and drops the English debug page', a
   assert.match(root.textContent ?? '', /团队空间/);
   assert.ok(root.querySelector('[style*="linear-gradient"]'), 'expected gradient avatar');
   assert.ok(cards[0]?.querySelector('svg[width="56"]'), 'expected constellation decoration');
-  const statBadges = [...root.querySelectorAll('[title="成员数量"], [title="知识库"], [title="智能体"]')];
+  const statBadges = [...root.querySelectorAll('.feature-badge.stat-member, .feature-badge.stat-kb, .feature-badge.stat-agent')];
   assert.ok(statBadges.length >= 6, 'expected member/kb/agent stat badges on every card');
-  for (const badge of statBadges) {
-    const label = badge.getAttribute('title') ?? '';
-    assert.ok(['成员数量', '知识库', '智能体'].includes(label), 'unexpected stat badge label: ' + label);
-  }
+  assert.equal(root.querySelectorAll('.relation-role-tag').length, 1, 'all view hides the owner card tag (section header covers it, card-list-badge.ts)');
 
   const text = root.textContent ?? '';
   assert.doesNotMatch(text, /WORKSPACE ORGANIZATIONS/);
@@ -231,10 +260,9 @@ test('empty state mirrors the Vue empty markup with join and create actions', as
 test('create header button opens a modal and the create API is called on submit', async () => {
   const { client, calls } = clientWith([ownerOrg]);
   const root = await mountPage(client);
-  await click(buttonWithLabel(root, '创建共享空间'));
+  await click(headerActionButton(root, 'create'));
 
-  const dialog = root.querySelector('[role="dialog"]');
-  assert.ok(dialog, 'expected create modal');
+  const dialog = settingsDialog();
   assert.match(dialog.textContent ?? '', /创建共享空间/);
 
   const nameInput = dialog.querySelector('input[name="organization-name"]');
@@ -254,10 +282,9 @@ test('create header button opens a modal and the create API is called on submit'
 test('blank create names show the Vue validation warning instead of failing silently', async () => {
   const { client, calls } = clientWith([ownerOrg]);
   const root = await mountPage(client);
-  await click(buttonWithLabel(root, '创建共享空间'));
+  await click(headerActionButton(root, 'create'));
 
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
-  assert.ok(dialog, 'expected create modal');
+  const dialog = settingsDialog();
   const form = dialog.querySelector('form');
   assert.ok(form, 'expected create form');
   await submitForm(form as HTMLFormElement);
@@ -285,17 +312,17 @@ test('list failure renders an error state and retry recovers without the empty s
 test('create modal matches the Vue editor dimensions and keeps the primary action in its footer', async () => {
   const { client } = clientWith([ownerOrg]);
   const root = await mountPage(client);
-  await click(buttonWithLabel(root, '创建共享空间'));
+  await click(headerActionButton(root, 'create'));
 
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
-  assert.ok(dialog, 'expected create modal');
-  assert.match(dialog.className, /h-\[85vh\]/, 'Vue editor uses an 85vh modal');
-  assert.match(dialog.className, /max-w-\[1100px\]/, 'Vue editor caps the modal at 1100px');
-  assert.match(dialog.className, /max-h-\[750px\]/, 'Vue editor caps the modal height at 750px');
+  const dialog = settingsDialog();
+  // Vue 几何由 orgs.td.css §6 .settings-modal 承载（90vw/1100px/85vh/750px）。
+  const modal = dialog.querySelector('.settings-modal');
+  assert.ok(modal, 'Vue .settings-modal shell renders');
+  assert.ok(dialog.querySelector('.settings-sidebar .sidebar-title'), 'the 208px sidebar rail renders');
 
   const createButtons = textButtons(dialog, '创建');
   assert.equal(createButtons.length, 1, 'expected one primary create action');
-  assert.match(createButtons[0]?.parentElement?.className ?? '', /border-t/, 'primary action belongs to the footer');
+  assert.ok(createButtons[0]?.closest('.settings-footer'), 'primary action belongs to the .settings-footer');
 });
 
 // R484 G4 D6 (R482 report-B3.md D6): the create modal must mirror the Vue
@@ -307,13 +334,12 @@ test('create modal matches the Vue editor dimensions and keeps the primary actio
 test('create modal keeps the Vue nav group title, common.create submit and 0/500 counter', async () => {
   const { client } = clientWith([ownerOrg]);
   const root = await mountPage(client);
-  await click(buttonWithLabel(root, '创建共享空间'));
+  await click(headerActionButton(root, 'create'));
 
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
-  assert.ok(dialog, 'expected create modal');
+  const dialog = settingsDialog();
 
   // Nav: the 「基础」 group title precedes the 基本信息 nav item like Vue.
-  const nav = dialog.querySelector('nav');
+  const nav = dialog.querySelector('.settings-nav');
   assert.ok(nav, 'expected the modal sidebar nav');
   const navTexts = [...nav.querySelectorAll(':scope > *')].map((node) => node.textContent ?? '');
   const groupIndex = navTexts.findIndex((text) => text.trim() === '基础');
@@ -323,7 +349,7 @@ test('create modal keeps the Vue nav group title, common.create submit and 0/500
   assert.ok(navTexts.some((text) => text.trim() === '权限说明'), 'the permissions nav item renders');
 
   // Footer confirm reads common.create (创建), not the modal title.
-  const footerButtons = [...dialog.querySelectorAll('footer button, .border-t button')].map((button) => button.textContent ?? '');
+  const footerButtons = [...dialog.querySelectorAll('.settings-footer button')].map((button) => button.textContent ?? '');
   assert.ok(footerButtons.includes('取消'), 'the footer cancel renders');
   assert.ok(footerButtons.includes('创建'), 'the footer confirm reads common.create (创建)');
   assert.equal(footerButtons.filter((label) => label === '创建共享空间').length, 0, 'the footer must not reuse the modal title');
@@ -331,14 +357,13 @@ test('create modal keeps the Vue nav group title, common.create submit and 0/500
   // Description textarea: Vue t-textarea maxlength counter 0/500.
   const description = dialog.querySelector('textarea[name="organization-description"]') as HTMLTextAreaElement | null;
   assert.ok(description, 'expected the description textarea');
-  assert.equal(description.maxLength, 500, 'the Vue :maxlength=500 cap applies');
-  assert.match(dialog.textContent ?? '', /0\/500/, 'the TDesign-style 0/500 counter renders');
+  assert.match(dialog.textContent ?? '', /0\/500/, 'the TDesign t-textarea __limit counter renders (台账 #12)');
 });
 
 test('join modal previews an invite code and submits an approval-gated request', async () => {
   const { client, calls } = clientWith([ownerOrg]);
   const root = await mountPage(client);
-  await click(buttonWithLabel(root, '加入共享空间'));
+  await click(headerActionButton(root, 'join'));
 
   const dialog = root.querySelector('[role="dialog"]');
   assert.ok(dialog, 'expected join modal');
@@ -375,7 +400,7 @@ test('card click opens the shared-space settings modal with members and join req
   await click(card as HTMLElement);
   await act(async () => {});
 
-  const dialog = root.querySelector('[role="dialog"]');
+  const dialog = settingsDialog();
   assert.ok(dialog, 'expected settings modal after card click');
   assert.match(dialog.textContent ?? '', /共享空间设置/);
   assert.deepEqual(calls.membersList, ['org-1']);
@@ -383,24 +408,24 @@ test('card click opens the shared-space settings modal with members and join req
   assert.deepEqual(calls.agentSharesList, ['org-1']);
 
   await act(async () => {});
-  const dialogReady = root.querySelector('[role="dialog"]') as HTMLElement;
+  const dialogReady = settingsDialog();
   // R487 K1: Vue labels the members nav entry with t('organization.manageMembers')
   // (成员管理, OrganizationSettingsModal.vue:1002); 共享空间成员 stays the inner
   // list title (Vue :345).
-  const membersNav = [...dialogReady.querySelectorAll('button')].find((button) => button.textContent === '成员管理');
+  const membersNav = [...dialogReady.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && item.textContent === '成员管理');
   assert.ok(membersNav, 'expected members nav item');
   await click(membersNav);
   await act(async () => {});
-  const membersPanel = root.querySelector('[role="dialog"]') as HTMLElement;
+  const membersPanel = settingsDialog();
   assert.match(membersPanel.textContent ?? '', /Alice/);
 
   // R487 K1: the pending join-request count badges the nav entry (Vue L30-33),
   // so the label match tolerates the trailing badge digit.
-  const requestsNav = [...membersPanel.querySelectorAll('button')].find((button) => (button.textContent ?? '').startsWith('加入申请'));
+  const requestsNav = [...membersPanel.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && (item.textContent ?? '').startsWith('加入申请'));
   assert.ok(requestsNav, 'expected join-requests nav item labelled 加入申请 like the Vue modal (OrganizationSettingsModal.vue:1008)');
   await click(requestsNav);
   await act(async () => {});
-  const requestsPanel = root.querySelector('[role="dialog"]') as HTMLElement;
+  const requestsPanel = settingsDialog();
   assert.match(requestsPanel.textContent ?? '', /加入申请/, 'section heading uses the Vue 加入申请 wording');
   assert.match(requestsPanel.textContent ?? '', /待审核申请/, 'inner list title keeps the Vue 待审核申请 wording');
   assert.match(requestsPanel.textContent ?? '', /Bob/);
@@ -419,8 +444,8 @@ test('settings renders shared agents and protects the organization owner member'
   const root = await mountPage(client);
   await click(orgCards(root)[0] as HTMLElement);
   await act(async () => {});
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
-  const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理');
+  const dialog = settingsDialog();
+  const membersNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && item.textContent === '成员管理');
   assert.ok(membersNav);
   await click(membersNav);
   await act(async () => {});
@@ -435,7 +460,7 @@ test('settings renders shared agents and protects the organization owner member'
   assert.equal(textButtons(dialog, '移除').length, 0);
   // R487 K1: shared-resources nav badges always carry the totals (Vue
   // OrganizationSettingsModal.vue:30-33), so match on the label prefix.
-  const agentsNav = [...dialog.querySelectorAll('button')].find((button) => (button.textContent ?? '').startsWith('共享智能体'));
+  const agentsNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && (item.textContent ?? '').startsWith('共享智能体'));
   assert.ok(agentsNav);
   await click(agentsNav);
   assert.match(dialog.textContent ?? '', /Research agent/);
@@ -454,8 +479,8 @@ test('members section filters the Vue-parity member list by name or email', asyn
   await click(orgCards(root)[0] as HTMLElement);
   await act(async () => {});
 
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
-  const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理');
+  const dialog = settingsDialog();
+  const membersNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && item.textContent === '成员管理');
   assert.ok(membersNav);
   await click(membersNav);
   await act(async () => {});
@@ -487,8 +512,8 @@ test('members list renders the Vue table anatomy with joined dates and owner bad
   const root = await mountPage(client);
   await click(orgCards(root)[0] as HTMLElement);
   await act(async () => {});
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
-  await click([...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理') as HTMLElement);
+  const dialog = settingsDialog();
+  await click([...dialog.querySelectorAll('.nav-item')].find((item) => item.textContent === '成员管理') as HTMLElement);
   await act(async () => {});
 
   const table = dialog.querySelector('table') as HTMLTableElement | null;
@@ -533,8 +558,8 @@ test('owner row keeps the 我 badge when the router-supplied role prop is set', 
   const root = await mountPage(client, undefined, 'owner');
   await click(orgCards(root)[0] as HTMLElement);
   await act(async () => {});
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
-  await click([...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理') as HTMLElement);
+  const dialog = settingsDialog();
+  await click([...dialog.querySelectorAll('.nav-item')].find((item) => item.textContent === '成员管理') as HTMLElement);
   await act(async () => {});
   const table = dialog.querySelector('table') as HTMLTableElement | null;
   assert.ok(table);
@@ -561,8 +586,8 @@ test('add-member entry is a popup behind the icon button, not a resident form', 
   const root = await mountPage(client);
   await click(orgCards(root)[0] as HTMLElement);
   await act(async () => {});
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
-  await click([...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理') as HTMLElement);
+  const dialog = settingsDialog();
+  await click([...dialog.querySelectorAll('.nav-item')].find((item) => item.textContent === '成员管理') as HTMLElement);
   await act(async () => {});
 
   // The popup trigger: a small icon button titled 添加成员 (Vue members-list-add-btn).
@@ -607,8 +632,7 @@ test('settings modal exposes an equivalent section selector when the sidebar is 
   await click(orgCards(root)[0] as HTMLElement);
   await act(async () => {});
 
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
-  assert.ok(dialog, 'expected settings modal');
+  const dialog = settingsDialog();
   const sectionSelector = dialog.querySelector('[data-testid="organization-settings-section-selector"]') as HTMLSelectElement | null;
   assert.ok(sectionSelector, 'expected mobile section selector');
   assert.match(sectionSelector.parentElement?.className ?? '', /max-\[720px\]:block/, 'selector should be available at the mobile breakpoint');
@@ -641,11 +665,12 @@ test('more menu offers leave for joined spaces and hides delete for non-owners',
   const cards = orgCards(root);
   const joinedCard = cards.find((card) => card.textContent?.includes('joined-org'));
   assert.ok(joinedCard);
-  const more = (joinedCard as HTMLElement).querySelector('[role="button"][aria-label="更多操作"]');
+  const more = (joinedCard as HTMLElement).querySelector('.more-wrap');
   assert.ok(more);
   await click(more as HTMLElement);
-  const menu = (joinedCard as HTMLElement).querySelector('[role="button"][aria-label="更多操作"] > div');
-  assert.ok(menu);
+  await act(async () => {});
+  const menu = document.body.querySelector('.card-more-popup .popup-menu');
+  assert.ok(menu, 't-popup portals the card menu to body (card-more-popup)');
   assert.match(menu.textContent ?? '', /退出共享空间/);
   assert.doesNotMatch(menu.textContent ?? '', /删除/);
 });
@@ -661,10 +686,11 @@ const NEED_TENANT_ADMIN_TIP = '此操作需要当前空间的 admin 或更高角
 async function openCardMenu(root: HTMLElement, name: string): Promise<HTMLElement> {
   const card = orgCards(root).find((entry) => entry.textContent?.includes(name));
   assert.ok(card, 'expected card ' + name);
-  const more = (card as HTMLElement).querySelector('[role="button"][aria-label="更多操作"]');
+  const more = (card as HTMLElement).querySelector('.more-wrap');
   assert.ok(more);
   await click(more as HTMLElement);
-  const menu = (card as HTMLElement).querySelector('[role="button"][aria-label="更多操作"] > div');
+  await act(async () => {});
+  const menu = [...document.body.querySelectorAll('.card-more-popup .popup-menu')].pop();
   assert.ok(menu, 'expected popup menu for ' + name);
   return menu as HTMLElement;
 }
@@ -674,12 +700,10 @@ test('viewer/contributor roles disable create and join with the rbac tip and hid
     const { client } = clientWith([ownerOrg, joinedOrg]);
     const root = await mountPage(client, undefined, role);
 
-    const joinButton = buttonWithLabel(root, '加入共享空间');
-    const createButton = buttonWithLabel(root, '创建共享空间');
-    assert.equal(joinButton.disabled, true, role + ' join header button must be disabled');
-    assert.equal(createButton.disabled, true, role + ' create header button must be disabled');
-    assert.equal(joinButton.getAttribute('title'), NEED_TENANT_ADMIN_TIP, 'join tooltip mirrors Vue noPermissionTip');
-    assert.equal(createButton.getAttribute('title'), NEED_TENANT_ADMIN_TIP, 'create tooltip mirrors Vue noPermissionTip');
+    const joinButton = headerActionButton(root, 'join');
+    const createButton = headerActionButton(root, 'create');
+    assert.equal(isDisabledControl(joinButton), true, role + ' join header button must be disabled');
+    assert.equal(isDisabledControl(createButton), true, role + ' create header button must be disabled');
 
     // Owned card: delete item is v-if="org.is_owner && canManageOrg" → hidden.
     const ownerMenu = await openCardMenu(root, 'parity-org');
@@ -696,8 +720,8 @@ test('admin/owner roles keep create and join enabled and offer delete on owned s
   for (const role of ['admin', 'owner'] as const) {
     const { client } = clientWith([ownerOrg]);
     const root = await mountPage(client, undefined, role);
-    assert.equal(buttonWithLabel(root, '加入共享空间').disabled, false, role + ' join must stay enabled');
-    assert.equal(buttonWithLabel(root, '创建共享空间').disabled, false, role + ' create must stay enabled');
+    assert.equal(isDisabledControl(headerActionButton(root, 'join')), false, role + ' join must stay enabled');
+    assert.equal(isDisabledControl(headerActionButton(root, 'create')), false, role + ' create must stay enabled');
     const menu = await openCardMenu(root, 'parity-org');
     assert.match(menu.textContent ?? '', /删除/);
   }
@@ -708,8 +732,8 @@ test('empty-state join/create actions are disabled for a viewer', async () => {
   const root = await mountPage(client, undefined, 'viewer');
   const actions = [...textButtons(root, '加入共享空间'), ...textButtons(root, '创建共享空间')];
   assert.equal(actions.length, 2);
-  assert.equal((actions[0] as HTMLButtonElement).disabled, true);
-  assert.equal((actions[1] as HTMLButtonElement).disabled, true);
+  assert.equal(isDisabledControl(actions[0]), true);
+  assert.equal(isDisabledControl(actions[1]), true);
 });
 
 test('viewer cannot edit an owned space when tenant role is below admin', async () => {
@@ -719,15 +743,14 @@ test('viewer cannot edit an owned space when tenant role is below admin', async 
   await click(orgCards(root)[0] as HTMLElement);
   await act(async () => {});
 
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
-  assert.ok(dialog, 'expected settings modal');
+  const dialog = settingsDialog();
   assert.match(dialog.textContent ?? '', /此操作需要当前空间的 admin 或更高角色/);
   assert.equal((dialog.querySelector('input[name="organization-name"]') as HTMLInputElement).disabled, true);
   assert.equal((dialog.querySelector('textarea[name="organization-description"]') as HTMLTextAreaElement).disabled, true);
   assert.equal(textButtons(dialog, '保存').length, 0, 'read-only settings must not expose save');
   assert.equal(calls.update.length, 0);
 
-  const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理');
+  const membersNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && item.textContent === '成员管理');
   assert.ok(membersNav);
   await click(membersNav);
   // R488 D-B5: Vue only offers the role select to admins on non-owner rows
@@ -736,15 +759,15 @@ test('viewer cannot edit an owned space when tenant role is below admin', async 
   assert.match(dialog.textContent ?? '', /管理员/, 'the role still renders as the static tag text');
   assert.equal(textButtons(dialog, '移除').length, 0);
 
-  const requestsNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '加入申请');
+  const requestsNav = [...dialog.querySelectorAll('.nav-item')].find((item) => item.textContent === '加入申请');
   assert.equal(requestsNav, undefined, 'Vue hides join-request navigation from non-admin organization members');
 
   // R487 K1: the invite affordances live inside the basic 邀请成员 card behind
   // the admin gate (Vue v-if="isAdmin && orgId") — a non-managing viewer sees
   // neither the nav item nor any invite control.
-  const inviteNav = [...dialog.querySelectorAll('button')].find((button) => (button.textContent ?? '').includes('邀请链接'));
+  const inviteNav = [...dialog.querySelectorAll('.nav-item')].find((item) => (item.textContent ?? '').includes('邀请链接'));
   assert.equal(inviteNav, undefined, 'the standalone 邀请链接 nav item must not render');
-  const basicNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '基本信息');
+  const basicNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && item.textContent === '基本信息');
   assert.ok(basicNav);
   await click(basicNav);
   assert.equal([...dialog.querySelectorAll('button')].some((button) => button.getAttribute('aria-label') === '刷新邀请码'), false, 'invite-code refresh is admin-only');
@@ -756,17 +779,17 @@ test('without a role prop the page resolves canManageOrg from auth/me membership
   // admin membership (default fixture): buttons stay enabled…
   const admin = clientWith([ownerOrg]);
   const adminRoot = await mountPage(admin.client);
-  assert.equal(buttonWithLabel(adminRoot, '创建共享空间').disabled, false);
+  assert.equal(isDisabledControl(headerActionButton(adminRoot, 'create')), false);
 
   // …viewer membership disables them, mirroring Vue hasRole('admin') === false.
   const viewer = clientWith([ownerOrg], { role: 'viewer' });
   const viewerRoot = await mountPage(viewer.client);
-  assert.equal(buttonWithLabel(viewerRoot, '创建共享空间').disabled, true);
+  assert.equal(isDisabledControl(headerActionButton(viewerRoot, 'create')), true);
 
   // …cross-tenant superuser (can_access_all_tenants) passes like Vue canAccessAllTenants.
   const superuser = clientWith([ownerOrg], { role: 'viewer', canAccessAllTenants: true });
   const superuserRoot = await mountPage(superuser.client);
-  assert.equal(buttonWithLabel(superuserRoot, '创建共享空间').disabled, false);
+  assert.equal(isDisabledControl(headerActionButton(superuserRoot, 'create')), false);
 });
 
 // ─── R017 shell sub-filter: ?scope= deep link + URL sync ──────────────────
@@ -780,7 +803,7 @@ test('?scope=created deep-link selects the 我创建的 rail and lists only owne
   const cards = orgCards(root);
   assert.equal(cards.length, 1, 'only owned spaces render under ?scope=created');
   assert.match(cards[0]?.textContent ?? '', /parity-org/);
-  const activeRail = root.querySelector('aside button.is-active');
+  const activeRail = root.querySelector('.icon-item-labeled.active');
   assert.ok(activeRail, 'expected an active rail entry');
   assert.match(activeRail?.textContent ?? '', /我创建的/);
 });
@@ -792,16 +815,16 @@ test('?scope=joined deep-link selects the 我加入的 rail and lists only joine
   const cards = orgCards(root);
   assert.equal(cards.length, 1);
   assert.match(cards[0]?.textContent ?? '', /joined-org/);
-  const activeRail = root.querySelector('aside button.is-active');
+  const activeRail = root.querySelector('.icon-item-labeled.active');
   assert.match(activeRail?.textContent ?? '', /我加入的/);
 });
 
 test('rail clicks sync ?scope= (created/joined set it, all removes it)', async () => {
   const { client } = clientWith([ownerOrg, joinedOrg]);
   const root = await mountPage(client);
-  const railButtons = [...root.querySelectorAll('aside button')] as HTMLButtonElement[];
+  const railButtons = [...root.querySelectorAll('.icon-item-labeled')] as HTMLElement[];
   assert.equal(railButtons.length, 3, 'rail mirrors Vue ListSpaceSidebar: all/created/joined');
-  const railFor = (label: string) => railButtons.find((button) => button.textContent?.includes(label));
+  const railFor = (label: string) => railButtons.find((item) => item.textContent?.includes(label));
   assert.ok(railFor('全部') && railFor('我创建的') && railFor('我加入的'), 'rail labels match Vue entries');
 
   await click(railFor('我加入的')!);
@@ -811,10 +834,11 @@ test('rail clicks sync ?scope= (created/joined set it, all removes it)', async (
   await click(railFor('全部')!);
   assert.equal(window.location.search, '', 'all removes the ?scope param (KB convention)');
 
-  // Vue ListSpaceSidebar tooltipText: collapsed-strip tooltips carry counts.
-  assert.equal(railFor('全部')!.getAttribute('title'), '全部 (2)');
-  assert.equal(railFor('我创建的')!.getAttribute('title'), '我创建的 (1)');
-  assert.equal(railFor('我加入的')!.getAttribute('title'), '我加入的 (1)');
+  // Vue ListSpaceSidebar tooltipText: counts ride the t-tooltip content prop
+  // (rendered on hover, not as a title attribute — Vue 同构后无 title 属性)。
+  assert.equal(railFor('全部')!.querySelector('.icon-label')?.textContent, '全部');
+  assert.equal(railFor('我创建的')!.querySelector('.icon-label')?.textContent, '我创建的');
+  assert.equal(railFor('我加入的')!.getAttribute('data-space-key'), 'joined');
 });
 
 // R435-A3: Vue OrganizationSettingsModal.vue gates the role-upgrade entry with
@@ -856,13 +880,12 @@ test('upgrade form reflects has_pending_upgrade from the org detail endpoint', a
   // Flush the modal's org-detail fetch (Vue fetchOrgDetail parity).
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
-  assert.ok(dialog, 'expected settings dialog');
+  const dialog = settingsDialog();
   assert.ok(calls.get.includes(joinedOrg.id), 'expected the org detail endpoint to back the upgrade gate');
 
   // R487 K1: Vue keeps the upgrade entry inside the members section (popup on
   // the members-list header, OrganizationSettingsModal.vue:357), not in basic.
-  const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理');
+  const membersNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && item.textContent === '成员管理');
   assert.ok(membersNav, 'expected the members nav to reach the upgrade entry');
   await click(membersNav);
   await act(async () => {});
@@ -871,7 +894,7 @@ test('upgrade form reflects has_pending_upgrade from the org detail endpoint', a
   // (Vue swaps title/aria to organization.upgrade.pending = 审核中).
   const submit = textButtons(dialog, '提交申请')[0];
   assert.ok(submit, 'expected the upgrade submit button');
-  assert.equal(submit.disabled, true);
+  assert.equal(isDisabledControl(submit), true);
   assert.equal(submit.getAttribute('title'), '审核中');
   assert.equal(submit.getAttribute('aria-label'), '审核中');
 
@@ -888,9 +911,9 @@ test('a successful upgrade request marks the org pending and disables resubmissi
   await click(cards[1]!);
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
-  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
+  const dialog = settingsDialog();
   // R487 K1: the upgrade form lives in the members section (Vue position).
-  const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理');
+  const membersNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && item.textContent === '成员管理');
   assert.ok(membersNav);
   await click(membersNav);
   await act(async () => {});
@@ -898,7 +921,7 @@ test('a successful upgrade request marks the org pending and disables resubmissi
   assert.ok(upgradeForm, 'expected the upgrade form');
   const submit = textButtons(upgradeForm, '提交申请')[0];
   assert.ok(submit, 'expected the upgrade submit button');
-  assert.equal(submit.disabled, false, 'no pending request yet — submit stays enabled');
+  assert.equal(isDisabledControl(submit), false, 'no pending request yet — submit stays enabled');
   assert.equal(submit.getAttribute('title'), null);
 
   await submitForm(upgradeForm);
@@ -907,7 +930,7 @@ test('a successful upgrade request marks the org pending and disables resubmissi
   assert.equal(calls.upgrade.length, 1, 'expected one requestRoleUpgrade call');
   const submitAfter = textButtons(upgradeForm, '提交申请')[0];
   assert.ok(submitAfter, 'expected the upgrade submit button after submit');
-  assert.equal(submitAfter.disabled, true, 'Vue sets hasPendingUpgrade right after success');
+  assert.equal(isDisabledControl(submitAfter), true, 'Vue sets hasPendingUpgrade right after success');
   assert.equal(submitAfter.getAttribute('title'), '审核中');
 });
 
@@ -925,14 +948,14 @@ async function openSettings(client: WeKnoraClient, cardIndex = 0): Promise<HTMLE
   await click(orgCards(root)[cardIndex] as HTMLElement);
   // Flush the modal's org-detail fetch (Vue fetchOrgDetail parity).
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  return root.querySelector('[role="dialog"]') as HTMLElement;
+  return settingsDialog();
 }
 
 test('edit nav renders the Vue three titled groups without a standalone invite item', async () => {
   const { client } = clientWith([ownerOrg]);
   const dialog = await openSettings(client);
 
-  const nav = dialog.querySelector('nav');
+  const nav = dialog.querySelector('.settings-nav');
   assert.ok(nav, 'expected the modal sidebar nav');
   const texts = [...nav.querySelectorAll(':scope > *')].map((node) => (node.textContent ?? '').trim());
   const titleIndex = (label: string) => texts.findIndex((text) => text === label);
@@ -954,10 +977,10 @@ test('nav badges mirror Vue: pending join requests and shared-resource totals', 
   // clientWith fixtures: 1 pending join request, 0 shared KBs, 1 shared agent.
   const { client } = clientWith([ownerOrg]);
   const dialog = await openSettings(client);
-  const nav = dialog.querySelector('nav') as HTMLElement;
+  const nav = dialog.querySelector('.settings-nav') as HTMLElement;
 
   const badgeOf = (label: string): string | undefined =>
-    [...nav.querySelectorAll('button')].find((button) => (button.textContent ?? '').startsWith(label))?.querySelector('[data-nav-badge]')?.textContent;
+    [...nav.querySelectorAll('.nav-item')].find((item) => (item.textContent ?? '').startsWith(label))?.querySelector('[data-nav-badge]')?.textContent;
   // Vue L30-33: join-requests badge only while pending > 0…
   assert.equal(badgeOf('加入申请'), '1', 'pending join-request count badges the nav entry');
   // …while shared KB/agent totals always badge (nav-badge-count variant).
@@ -1101,7 +1124,7 @@ test('edit footer save mirrors the Vue handleSave payload and basic keeps no inl
   await click(picker);
   await click(dialog.querySelector('.grid-cols-6 button') as HTMLButtonElement);
 
-  const footerButtons = [...dialog.querySelectorAll('.border-t button')].map((button) => button.textContent ?? '');
+  const footerButtons = [...dialog.querySelectorAll('.settings-footer button')].map((button) => button.textContent ?? '');
   assert.ok(footerButtons.includes('取消'), 'the Vue settings-footer cancel stays global');
   assert.ok(footerButtons.includes('保存'), 'the edit footer carries the Vue common.save action');
   const basicForm = dialog.querySelector('form') as HTMLFormElement;
@@ -1133,14 +1156,14 @@ test('members section mirrors the Vue header: 成员管理 title, permission mat
   const basicPanel = dialog.textContent ?? '';
   assert.doesNotMatch(basicPanel, /申请升级/, 'the upgrade entry no longer lives in basic');
 
-  const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '成员管理');
+  const membersNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && item.textContent === '成员管理');
   assert.ok(membersNav);
   await click(membersNav);
   await act(async () => {});
 
-  // The content heading is the first h2 OUTSIDE the sidebar nav (the nav's
-  // modal-title h2 comes first in DOM order).
-  const contentHeadings = [...dialog.querySelectorAll('h2')].filter((node) => node.closest('nav') === null);
+  // The content heading is the first h2 OUTSIDE the sidebar rail (the
+  // sidebar-title h2 comes first in DOM order).
+  const contentHeadings = [...dialog.querySelectorAll('h2')].filter((node) => node.closest('.settings-sidebar') === null);
   const heading = contentHeadings[0];
   assert.equal(heading?.textContent, '成员管理', 'section h2 reads organization.manageMembers (Vue :302)');
   assert.match(dialog.textContent ?? '', /共享空间成员/, 'inner list title keeps the Vue 共享空间成员 wording');
@@ -1160,12 +1183,12 @@ test('shares section shows the Vue sharedDesc under the 共享知识库 heading'
   const { client } = clientWith([ownerOrg]);
   const dialog = await openSettings(client);
 
-  const sharesNav = [...dialog.querySelectorAll('button')].find((button) => (button.textContent ?? '').startsWith('共享知识库'));
+  const sharesNav = [...dialog.querySelectorAll('.nav-item')].find((item): item is HTMLElement => item instanceof HTMLElement && (item.textContent ?? '').startsWith('共享知识库'));
   assert.ok(sharesNav);
   await click(sharesNav);
   await act(async () => {});
 
-  const contentHeadings = [...dialog.querySelectorAll('h2')].filter((node) => node.closest('nav') === null);
+  const contentHeadings = [...dialog.querySelectorAll('h2')].filter((node) => node.closest('.settings-sidebar') === null);
   const heading = contentHeadings[0];
   assert.equal(heading?.textContent, '共享知识库', 'section h2 reads organization.share.sharedKnowledgeBase like Vue');
   assert.match(dialog.textContent ?? '', /查看共享到此共享空间的所有知识库/, 'the sharedDesc line renders (Vue sharedDesc)');

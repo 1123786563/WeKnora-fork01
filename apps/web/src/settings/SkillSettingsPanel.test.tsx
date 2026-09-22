@@ -18,6 +18,40 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
+// ---- jsdom 环境（必须在动态 import 面板之前就位：SkillSettingsPanel 现引
+// tdesign-react，其 listener/popup 模块在加载期探测 document，之后渲染的
+// TTooltip/TPopup 依赖 MutationObserver/requestAnimationFrame/getComputedStyle
+// 全局垫片——同 SandboxSettingsPanel.test 的顺序约定）。 ----
+const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  ShadowRoot: dom.window.ShadowRoot,
+  Event: dom.window.Event,
+  CustomEvent: dom.window.CustomEvent,
+  FocusEvent: dom.window.FocusEvent,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+if (typeof (globalThis as { crypto?: unknown }).crypto === 'undefined') {
+  (globalThis as { crypto?: unknown }).crypto = dom.window.crypto;
+}
+// tdesign popup 定时器/观测器走全局符号（node 无实现，测试垫片）。
+(globalThis as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame
+  = (globalThis as unknown as { requestAnimationFrame?: unknown }).requestAnimationFrame
+  ?? ((cb: (t: number) => void) => setTimeout(() => cb(Date.now()), 16));
+(globalThis as unknown as { cancelAnimationFrame?: unknown }).cancelAnimationFrame
+  = (globalThis as unknown as { cancelAnimationFrame?: unknown }).cancelAnimationFrame
+  ?? ((id: ReturnType<typeof setTimeout>) => clearTimeout(id));
+
 const { SkillSettingsPanel } = await import('./SkillSettingsPanel.tsx');
 const {
   MAX_ENV_VALUE_BYTES, adminSkillEnvClearPayload, buildSkillFileTree, canClearAdminSkillEnv, canDeleteCatalog,
@@ -90,7 +124,10 @@ test('catalog section header renders the Vue title with the help-circle tooltip 
   assert.match(html, /技能管理/);
   const helpLabel = formatMessage('zh-CN', 'settings.skills.helpTooltip');
   assert.match(html, new RegExp(`aria-label="${helpLabel}"`), 'help icon carries the tooltip copy as its accessible name');
-  assert.match(html, /cursor-help/, 'help icon uses the Vue cursor: help affordance');
+  // Vue .section-header__help 承载 cursor:help（SkillSettings.vue:1250-1253，
+  // 平移 CSS 在 settings.td.css skills §）；静态标记断言落在类名上。
+  assert.match(html, /section-header__help/, 'help icon uses the Vue .section-header__help affordance class');
+  assert.match(html, /t-icon-help-circle/, 'trigger is the TDesign help-circle glyph');
   assert.doesNotMatch(html, new RegExp(`>${helpLabel}</`), 'tooltip content stays closed (portal) in static markup');
 });
 
@@ -300,28 +337,8 @@ test('frontmatter parsing unquotes values and pretty-prints JSON', () => {
   assert.deepEqual(splitMarkdownFrontmatter('# just markdown').fields, []);
 });
 
-// ---- jsdom interaction coverage: Vue SkillInstallTimeline + progress SSE parity ----
-const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
-const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
-Object.assign(globalThis, {
-  window: dom.window,
-  document: dom.window.document,
-  HTMLElement: dom.window.HTMLElement,
-  Element: dom.window.Element,
-  Node: dom.window.Node,
-  ShadowRoot: dom.window.ShadowRoot,
-  Event: dom.window.Event,
-  CustomEvent: dom.window.CustomEvent,
-  FocusEvent: dom.window.FocusEvent,
-  KeyboardEvent: dom.window.KeyboardEvent,
-  MouseEvent: dom.window.MouseEvent,
-  IS_REACT_ACT_ENVIRONMENT: true,
-});
-Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
-if (typeof (globalThis as { crypto?: unknown }).crypto === 'undefined') {
-  (globalThis as { crypto?: unknown }).crypto = dom.window.crypto;
-}
-
+// ---- jsdom interaction coverage: Vue SkillInstallTimeline + progress SSE parity
+//（jsdom 全局与垫片已在文件头就位，先于面板动态 import。） ----
 const { createRoot } = await import('react-dom/client');
 const { act } = await import('react');
 
@@ -412,23 +429,24 @@ async function openManageDrawer(client: unknown) {
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver = (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver ?? ResizeObserverStub;
 
-test('the header help icon opens and closes the Vue tooltip on focus', async () => {
+test('the header help icon opens and closes the Vue tooltip on hover', async () => {
   const { client } = skillStubClient();
   const { container, root } = await openManageDrawer(client);
   try {
     const helpLabel = formatMessage('zh-CN', 'settings.skills.helpTooltip');
-    const trigger = container.querySelector<HTMLButtonElement>(`button[aria-label="${helpLabel}"]`);
+    const trigger = container.querySelector('.section-header__help') as SVGElement | null;
     assert.ok(trigger, 'help-circle icon sits next to the section title');
-    assert.equal(trigger!.getAttribute('data-state'), 'closed', 'tooltip stays closed until interaction');
-    await act(async () => trigger!.focus());
-    await settle();
-    // Radix reflects the open tooltip on its trigger (portal DOM mounting is
-    // not reliably observable under node --test, so assert the open contract).
-    assert.equal(trigger!.getAttribute('data-state'), 'instant-open', 'focusing the help icon opens the tooltip (no delay, like the Vue t-tooltip)');
-    assert.ok(trigger!.getAttribute('aria-describedby'), 'trigger links the tooltip content by id');
-    await act(async () => trigger!.blur());
-    await settle();
-    assert.equal(trigger!.getAttribute('data-state'), 'closed', 'tooltip closes again on blur');
+    assert.ok(trigger!.getAttribute('aria-label') === helpLabel, 'trigger carries the tooltip copy as its accessible name');
+    assert.equal(document.body.textContent?.includes(helpLabel), false, 'tooltip stays closed until interaction (portal unmounted)');
+    // t-tooltip trigger=hover（两端默认一致）：mouseenter 打开、mouseleave 关闭，
+    // 弹层 portal 到 body（.skill-settings__help-tooltip）。
+    await act(async () => trigger!.dispatchEvent(new dom.window.MouseEvent('mouseenter', { bubbles: false })));
+    await settle(320);
+    assert.equal(document.body.textContent?.includes(helpLabel), true, 'hovering the help icon opens the tooltip');
+    assert.equal(Boolean(document.querySelector('.skill-settings__help-tooltip')), true, 'popup renders with the Vue overlay class');
+    await act(async () => trigger!.dispatchEvent(new dom.window.MouseEvent('mouseleave', { bubbles: false })));
+    await settle(520);
+    assert.equal(document.body.textContent?.includes(helpLabel), false, 'tooltip closes again on mouseleave');
   } finally {
     await act(async () => root.unmount());
     document.body.replaceChildren();

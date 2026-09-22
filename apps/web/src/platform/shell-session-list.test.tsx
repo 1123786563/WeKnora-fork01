@@ -111,12 +111,13 @@ async function mountShell(options: { client?: Record<string, unknown>; children?
   return container;
 }
 
-// Class names became Tailwind utilities (shell.css is gone); queries use the
-// semantic anchors instead: the sessions nav by its aria-label, group headers
-// as h3, and the title span as the only button span without aria-hidden/title.
+// Task 9.5 — the session list DOM mirrors Vue menu.vue/SessionSidebarRow.vue
+// (classes ported in platform-shell.td.css); queries ride the Vue class
+// vocabulary: group headers as .timeline_header, titles as .submenu_title-text,
+// rows as .session-chat-row > .session-list-row > .__body > .submenu_item.
 const shellList = () => document.querySelector('nav[aria-label="我的对话"]');
-const groupHeaders = () => [...document.querySelectorAll('nav[aria-label="我的对话"] h3')].map((node) => node.textContent);
-const rowTitles = () => [...document.querySelectorAll('nav[aria-label="我的对话"] li button span:not([aria-hidden]):not([title])')].map((node) => node.textContent);
+const groupHeaders = () => [...document.querySelectorAll('nav[aria-label="我的对话"] .timeline_header')].map((node) => node.textContent);
+const rowTitles = () => [...document.querySelectorAll('nav[aria-label="我的对话"] .submenu_title-text')].map((node) => node.textContent);
 
 test('(a) shell sidebar renders the grouped session list on a chat route', async () => {
   await mountShell();
@@ -128,7 +129,7 @@ test('(a) shell sidebar renders the grouped session list on a chat route', async
 
 test('(b) active session follows the route (/platform/chat/:id)', async () => {
   await mountShell();
-  const activeButtons = [...document.querySelectorAll('nav[aria-label="我的对话"] button[aria-current="page"]')];
+  const activeButtons = [...document.querySelectorAll('nav[aria-label="我的对话"] .submenu_item[aria-current="page"]')];
   assert.equal(activeButtons.length, 1, 'exactly one active row');
   assert.equal(activeButtons[0]?.getAttribute('aria-current'), 'page');
   assert.equal(activeButtons[0]?.textContent?.includes('昨天的会话'), true, 'session-2 (from the URL) is the active row');
@@ -141,8 +142,8 @@ test('(c) selecting a session on a chat route asks the chat page for an in-place
     events.push((event as CustomEvent<{ sessionId?: string }>).detail?.sessionId ?? '');
   };
   window.addEventListener('weknora:session-route-change', listener);
-  const target = [...document.querySelectorAll('nav[aria-label="我的对话"] li button')]
-    .find((node) => node.textContent === '今天的会话') as HTMLButtonElement;
+  const target = [...document.querySelectorAll('nav[aria-label="我的对话"] .session-chat-row .submenu_item')]
+    .find((node) => node.querySelector('.submenu_title-text')?.textContent === '今天的会话') as HTMLElement;
   assert.ok(target);
   await act(async () => { target.click(); await new Promise((resolve) => setTimeout(resolve, 5)); });
   window.removeEventListener('weknora:session-route-change', listener);
@@ -162,10 +163,10 @@ test('(d) row ⋯ menu wires 置顶/取消置顶/清空消息/删除记录 to th
   window.confirm = () => { nativeConfirmCalls += 1; return true; };
   try {
     await mountShell({ client });
-    const menus = [...document.querySelectorAll('nav[aria-label="我的对话"] li details')];
+    const menus = [...document.querySelectorAll('nav[aria-label="我的对话"] .session-chat-row details')];
     assert.equal(menus.length, 5, 'each row carries the hover ⋯ menu');
     const menuOf = (title: string) => {
-      const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')]
+      const row = [...document.querySelectorAll('nav[aria-label="我的对话"] .session-chat-row')]
         .find((node) => node.textContent?.includes(title));
       return row?.querySelector('details') as HTMLDetailsElement | null;
     };
@@ -233,7 +234,7 @@ test('(e) deleting a non-active session only refreshes the shell list; no in-pag
     // …while the shell list renders exactly one session list.
     assert.equal(document.querySelectorAll('nav[aria-label="我的对话"]').length, 1);
     // Deleting a non-active session removes it from the shell list without navigation.
-    const menu3 = [...document.querySelectorAll('nav[aria-label="我的对话"] li')]
+    const menu3 = [...document.querySelectorAll('nav[aria-label="我的对话"] .session-chat-row')]
       .find((node) => node.textContent?.includes('更早的会话'))
       ?.querySelector('details') as HTMLDetailsElement;
     assert.ok(menu3);
@@ -485,7 +486,7 @@ test('(i) renaming a session uses an inline editor with Vue normalization and co
     return { ...SESSIONS.find((s) => s.id === id), title: input.title };
   }});
   const container = await mountShell({ client });
-  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')].find((node) => node.textContent?.includes('今天的会话'))!;
+  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] .session-chat-row')].find((node) => node.textContent?.includes('今天的会话'))!;
   const details = row.querySelector('details') as HTMLDetailsElement;
   details.open = true;
   const rename = [...details.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '修改标题') as HTMLButtonElement;
@@ -505,7 +506,7 @@ test('(j) Escape cancels inline rename and blur submits only once', async () => 
   let calls = 0;
   const client = fakeClient({ update: async (id: string, input: { title: string }) => { calls += 1; return { ...SESSIONS.find((s) => s.id === id), title: input.title }; } });
   await mountShell({ client });
-  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')].find((node) => node.textContent?.includes('今天的会话'))!;
+  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] .session-chat-row')].find((node) => node.textContent?.includes('今天的会话'))!;
   const details = row.querySelector('details') as HTMLDetailsElement;
   details.open = true;
   const rename = [...details.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '修改标题') as HTMLButtonElement;
@@ -526,7 +527,7 @@ test('(j) Escape cancels inline rename and blur submits only once', async () => 
 test('(k) failed rename keeps the editor open with a recoverable error', async () => {
   const client = fakeClient({ update: async () => { throw new Error('rename failed'); } });
   await mountShell({ client });
-  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')].find((node) => node.textContent?.includes('今天的会话'))!;
+  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] .session-chat-row')].find((node) => node.textContent?.includes('今天的会话'))!;
   const details = row.querySelector('details') as HTMLDetailsElement;
   details.open = true;
   const rename = [...details.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '修改标题') as HTMLButtonElement;
@@ -551,7 +552,7 @@ test('(l) a renamed session keeps its title when a later page is appended', asyn
     },
   });
   const container = await mountShell({ client });
-  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')].find((node) => node.textContent?.includes('今天的会话'))!;
+  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] .session-chat-row')].find((node) => node.textContent?.includes('今天的会话'))!;
   const details = row.querySelector('details') as HTMLDetailsElement;
   details.open = true;
   const rename = [...details.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '修改标题') as HTMLButtonElement;

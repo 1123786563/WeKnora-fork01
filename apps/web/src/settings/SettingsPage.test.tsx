@@ -16,7 +16,20 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -131,14 +144,19 @@ test('settings drawer is portalled to body like the Vue Teleport shell', async (
   assert.equal(drawer.parentElement, document.body, 'the drawer is a direct body child like Vue Teleport');
 });
 
-test('settings shell controls expose the shared visible-focus contract', async () => {
+test('settings shell controls follow the Vue drawer focus contract', async () => {
   const container = await mountPage(makeClient(), '?section=general');
+  // T12a：壳层平移为 Vue Settings.vue DOM（close-btn / nav-item），焦点环
+  // 由 html:not(.wk-kbd-nav) 抑制规则接管（settings-wrapper.css），导航项是
+  // div[role=button]（Vue 模板即 div），键盘 Enter/Space 可激活。
   const closeButton = container.querySelector('[data-testid="settings-close"]');
-  const navigationButton = container.querySelector('.wks-nav-item');
-  assert.ok(closeButton?.classList.contains('focus-visible:outline-2'), 'close control uses the shared focus token');
-  assert.ok(closeButton?.classList.contains('focus-visible:outline-accent/35'), 'close control uses the shared focus color');
-  assert.ok(navigationButton?.classList.contains('focus-visible:outline-2'), 'navigation controls use the shared focus token');
-  assert.ok(navigationButton?.classList.contains('focus-visible:outline-accent/35'), 'navigation controls use the shared focus color');
+  assert.equal(closeButton?.className, 'close-btn', 'close control uses the Vue close-btn class');
+  assert.ok(closeButton?.getAttribute('aria-label'), 'close control keeps its aria label');
+  const navigationItem = container.querySelector('.nav-item');
+  assert.ok(navigationItem, 'navigation items render with the Vue nav-item class');
+  assert.equal(navigationItem?.getAttribute('role'), 'button', 'nav items are role=button like the Vue clickable div');
+  const drawerRoot = document.body.querySelector('.wk-settings-drawer-root');
+  assert.ok(drawerRoot, 'the focus-ring suppression scope (wk-kbd-nav) still wraps the drawer');
 });
 
 test('settings navigation hides the Vue-unlisted retrieval deep-link section', () => {
@@ -184,13 +202,19 @@ test('tenant deletion accepts a space-padded confirmation name like the Vue dial
   assert.ok(openDelete, 'the owner danger-zone action renders');
   await act(async () => openDelete.click());
   await act(async () => {});
-  const input = container.querySelector<HTMLInputElement>('[role="dialog"] input');
+  // T12a：tdesign Dialog portal 到 body（Vue t-dialog 同构）。
+  const input = document.body.querySelector<HTMLInputElement>('.t-dialog input');
   assert.ok(input, 'the confirmation dialog input renders');
   await act(async () => {
     Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, '  Parity 空间  ');
     input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   });
-  assert.equal(container.querySelector<HTMLButtonElement>('[data-testid="tenant-delete-button"]')?.disabled, false,
+  await act(async () => {});
+  // tdesign 确认按钮（台账 #7：disabled 渲染 t-is-disabled 类而非 disabled 属性）。
+  const confirm = Array.from(document.body.querySelectorAll<HTMLElement>('.t-dialog__confirm'))
+    .find((button) => (button.textContent ?? '').includes('确认删除'));
+  assert.ok(confirm, 'the destructive confirm button renders');
+  assert.equal(confirm.classList.contains('t-is-disabled'), false,
     'Vue enables deletion after trim() matches the tenant name');
 });
 
@@ -198,7 +222,7 @@ test('an unsupported settings section falls back to general and is absent from t
   const container = await mountPage(makeClient(), '?section=sandbox', 'owner', { 'settings.sandbox': { supported: false } });
   await act(async () => {});
   assert.ok(container.querySelector('[data-testid="general-preferences-panel"]'), 'unsupported deep links fall back to general');
-  assert.equal(Array.from(container.querySelectorAll('.wks-nav-label')).some((node) => node.textContent === '沙箱'), false,
+  assert.equal(Array.from(container.querySelectorAll('.nav-label')).some((node) => node.textContent === '沙箱'), false,
     'unsupported settings sections are not navigable');
   assert.equal(dom.window.location.search, '?section=general', 'the normalized section is reflected in the URL');
 });
@@ -227,7 +251,9 @@ test('userprofile section shows the Vue rows and localized change-password copy'
 test('loading state uses localized shared copy without leaking the API domain', async () => {
   const container = await mountPage(makeClient({ tenant: new Promise(() => {}) }), '?section=tenant');
   const text = container.textContent ?? '';
-  assert.ok(text.includes('加载中'), 'the localized loading copy renders');
+  // T12a：tenant 面板自持 Vue loading 态（TenantInfo.vue loading-inline =
+  // t('tenant.loadingInfo') 正在加载信息...）。
+  assert.ok(text.includes('正在加载信息'), 'the localized loading copy renders');
   assert.equal(text.includes('Loading from'), false, 'no English loading copy');
   assert.equal(text.includes('configuration'), false, 'no API domain leak');
 });
@@ -236,8 +262,8 @@ test('ignores a stale section error after navigating to another section', async 
   let rejectTenant!: (reason: Error) => void;
   const staleTenant = new Promise<never>((_, reject) => { rejectTenant = reject; });
   const container = await mountPage(makeClient({ tenant: staleTenant }), '?section=tenant');
-  const generalButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wks-nav-item'))
-    .find((button) => button.textContent?.includes('常规设置'));
+  const generalButton = Array.from(container.querySelectorAll<HTMLElement>('.nav-item'))
+    .find((item) => item.textContent?.includes('常规设置'));
   assert.ok(generalButton, 'the general settings navigation item renders');
 
   await act(async () => generalButton?.click());
@@ -250,8 +276,8 @@ test('ignores a stale section error after navigating to another section', async 
 
 test('settings navigation clears focus after switching sections like the Vue drawer', async () => {
   const container = await mountPage(makeClient(), '?section=general');
-  const navigationButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wks-nav-item'))
-    .find((button) => button.getAttribute('aria-current') !== 'page');
+  const navigationButton = Array.from(container.querySelectorAll<HTMLElement>('.nav-item'))
+    .find((item) => item.getAttribute('aria-current') !== 'page');
   assert.ok(navigationButton, 'a second settings section is available');
   await act(async () => navigationButton?.click());
   assert.notEqual(document.activeElement, navigationButton, 'section navigation should not retain focus on the old drawer control');
@@ -424,9 +450,9 @@ test('a subsection query param preselects the model type tab', async () => {
   const container = await mountPage(makeClient({ models: [
     { id: 'm1', name: 'bge-m3', type: 'Embedding', source: 'remote', parameters: {} },
   ] }), '?section=models&subsection=embedding');
-  const tabs = container.querySelector('.wk-model-tabs');
+  const tabs = container.querySelector('.model-type-tabs');
   assert.ok(tabs, 'the model type tabs render');
-  const active = tabs.querySelector('.is-active');
+  const active = tabs.querySelector('.t-tabs__nav-item.t-is-active');
   assert.ok(active);
   assert.ok((active.textContent ?? '').includes('Embedding(1)'), 'the embedding tab is preselected');
 });
@@ -435,9 +461,9 @@ test('the Vue knowledgeqa settings entry preselects the chat model tab', async (
   const container = await mountPage(makeClient({ models: [
     { id: 'm1', name: 'gpt-test', type: 'KnowledgeQA', source: 'remote', parameters: {} },
   ] }), '?section=models&subsection=knowledgeqa');
-  const tabs = container.querySelector('.wk-model-tabs');
+  const tabs = container.querySelector('.model-type-tabs');
   assert.ok(tabs, 'the model type tabs render');
-  const active = tabs.querySelector('.is-active');
+  const active = tabs.querySelector('.t-tabs__nav-item.t-is-active');
   assert.ok(active);
   assert.ok((active.textContent ?? '').includes('对话(1)'), 'the chat tab is preselected');
 });

@@ -1,0 +1,4169 @@
+/* ============================================================================
+ * settings.td.css — Settings 域 TDesign 同构迁移平移样式
+ *
+ * 事实源：frontend/src/views/settings/Settings.vue（壳层 scoped 块）与各
+ * section 子组件 SFC 的 <style> 块，按 playbook §2 逐条平移。
+ *
+ * 作用域策略：壳层规则统一挂 `.wk-settings-drawer-root .settings-overlay`
+ * 前缀（特异性 0,3,0）——`.settings-overlay`/`.settings-modal`/`.nav-item`
+ * 等类名同时被 kb-list.td.css / orgs.td.css / agents.td.css 的编辑器弹窗
+ * 平移块以裸 `.settings-overlay …`（0,2,0）使用，靠 bundle 注入顺序分胜负
+ * 不确定；本前缀保证设置抽屉的规则确定性胜出且不影响那些弹层
+ * （它们不在 .wk-settings-drawer-root 子树内）。
+ * ========================================================================== */
+
+/* ==== 1. Settings.vue scoped 块（壳层：遮罩/弹窗/侧栏导航/内容区） ==== */
+
+/* body 弹层根：脱离 shell 行高链（playbook §2.6）。 */
+.wk-settings-drawer-root .settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  line-height: normal;
+}
+
+.wk-settings-drawer-root .settings-modal {
+  position: relative;
+  width: 100%;
+  /* 1080×780 trades a touch of small-screen real estate for noticeably
+     less cramped tables (member list, system settings rows). Outer
+     padding is 20px so 1080 + 40 = 1120, comfortably within typical
+     laptops (1280+). Below 1100px viewport the `width: 100%` kicks in
+     and the modal shrinks to fit minus the 20px padding. */
+  max-width: 1080px;
+  height: 780px;
+  max-height: calc(100vh - 40px);
+  background: var(--td-bg-color-container);
+  border-radius: 12px;
+  box-shadow: 0 6px 28px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-settings-drawer-root .close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 10;
+  padding: 0;
+  /* 全局未分层 button{font-family:Arial} 归位（playbook §2.6）。 */
+  font-family: inherit;
+}
+
+.wk-settings-drawer-root .close-btn:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .settings-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 左侧导航栏：略紧凑于最初版，字号与留白适中 */
+.wk-settings-drawer-root .settings-sidebar {
+  width: 208px;
+  background-color: var(--td-bg-color-settings-modal);
+  border-right: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wk-settings-drawer-root .sidebar-header {
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .settings-nav {
+  padding: 8px 8px 12px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.wk-settings-drawer-root .nav-group-title {
+  padding: 9px 14px 4px;
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.wk-settings-drawer-root .nav-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  margin-bottom: 2px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.wk-settings-drawer-root .nav-item:hover {
+  background-color: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .nav-item.active {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .nav-icon {
+  margin-right: 9px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.wk-settings-drawer-root .nav-icon-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.wk-settings-drawer-root .nav-label {
+  flex: 1;
+}
+
+.wk-settings-drawer-root .expand-icon {
+  margin-left: 4px;
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+/* 子菜单 */
+.wk-settings-drawer-root .submenu {
+  margin-left: 28px;
+  margin-bottom: 3px;
+  overflow: hidden;
+}
+
+.wk-settings-drawer-root .submenu-item {
+  padding: 5px 12px;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.wk-settings-drawer-root .submenu-item:hover {
+  background-color: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .submenu-item.active {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .submenu-label {
+  display: block;
+}
+
+/* 子菜单动画 */
+.wk-settings-drawer-root .submenu-enter-active,
+.wk-settings-drawer-root .submenu-leave-active {
+  transition: all 0.2s ease;
+}
+
+.wk-settings-drawer-root .submenu-enter-from {
+  opacity: 0;
+  max-height: 0;
+}
+
+.wk-settings-drawer-root .submenu-enter-to {
+  opacity: 1;
+  max-height: 300px;
+}
+
+.wk-settings-drawer-root .submenu-leave-from {
+  opacity: 1;
+  max-height: 300px;
+}
+
+.wk-settings-drawer-root .submenu-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+/* 右侧内容区域 */
+.wk-settings-drawer-root .settings-content {
+  flex: 1;
+  overflow-y: auto;
+  background-color: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .content-wrapper {
+  /* Bumped from 600 to 760 when the modal grew from 900→1080 (see
+     .settings-modal). Without this, single-column panes (General,
+     Tenant, API key, …) leave a wide right-hand gutter inside the
+     wider modal. 760 keeps comfortable reading-width on long
+     descriptions without the form fields stretching to the full
+     panel width — which would look stranger than a small gutter. */
+  max-width: 760px;
+  padding: 40px 48px;
+}
+
+/* 成员 / 审计表格列多，600px 会把操作列挤到贴边；铺满右侧内容列更稳。 */
+.wk-settings-drawer-root .content-wrapper--wide {
+  max-width: none;
+  width: 100%;
+  padding: 32px 36px 40px;
+  box-sizing: border-box;
+}
+
+.wk-settings-drawer-root .content-wrapper--full {
+  max-width: none;
+  width: 100%;
+  padding: 30px 34px 40px;
+  box-sizing: border-box;
+}
+
+.wk-settings-drawer-root .section {
+  animation: fadeIn 0.3s ease;
+}
+
+/* @keyframes 名保留 Vue 端原名 fadeIn（playbook §2.4；当前 bundle 内无同名定义）。 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 弹窗动画（Vue Transition name="modal"；稳态扫描无影响） */
+.wk-settings-drawer-root .modal-enter-active,
+.wk-settings-drawer-root .modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.wk-settings-drawer-root .modal-enter-active .settings-modal,
+.wk-settings-drawer-root .modal-leave-active .settings-modal {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.wk-settings-drawer-root .modal-enter-from,
+.wk-settings-drawer-root .modal-leave-to {
+  opacity: 0;
+}
+
+.wk-settings-drawer-root .modal-enter-from .settings-modal,
+.wk-settings-drawer-root .modal-leave-to .settings-modal {
+  transform: scale(0.95);
+  opacity: 0;
+}
+
+/* 滚动条样式 */
+.wk-settings-drawer-root .settings-nav::-webkit-scrollbar,
+.wk-settings-drawer-root .settings-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wk-settings-drawer-root .settings-nav::-webkit-scrollbar-track {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.wk-settings-drawer-root .settings-nav::-webkit-scrollbar-thumb {
+  background: var(--td-gray-color-5);
+  border-radius: 3px;
+}
+
+.wk-settings-drawer-root .settings-nav::-webkit-scrollbar-thumb:hover {
+  background: var(--td-gray-color-6);
+}
+
+.wk-settings-drawer-root .settings-content::-webkit-scrollbar-track {
+  background: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .settings-content::-webkit-scrollbar-thumb {
+  background: var(--td-gray-color-5);
+  border-radius: 3px;
+}
+
+.wk-settings-drawer-root .settings-content::-webkit-scrollbar-thumb:hover {
+  background: var(--td-gray-color-6);
+}
+
+.wk-settings-drawer-root .role-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 64px 24px;
+  gap: 12px;
+  min-height: 240px;
+}
+
+.wk-settings-drawer-root .role-denied .role-denied-icon {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .role-denied .role-denied-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .role-denied .role-denied-desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  max-width: 360px;
+  line-height: 1.6;
+}
+
+/* ==== 2. GeneralSettings.vue scoped 块平移（settings-general 分区） ==== */
+
+.wk-settings-drawer-root .general-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .general-settings .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .general-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .general-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .general-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .general-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .general-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .general-settings .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .general-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .general-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .general-settings .setting-control {
+  flex-shrink: 0;
+  min-width: 280px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* 字体行：select 之下叠一条实时预览（GeneralSettings.vue :348-355）。 */
+.wk-settings-drawer-root .general-settings .setting-control--stacked {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .general-settings .font-preview {
+  width: 280px;
+  padding: 8px 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: var(--td-radius-medium);
+  background: var(--td-bg-color-container);
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+/* 等宽预览防折行（GeneralSettings.vue :369-374）。 */
+.wk-settings-drawer-root .general-settings .font-preview--mono {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* React-only 套餐与额度卡（SP14 Task 1，GeneralSettings.vue 无对应块——
+   豁免传导项，样式沿用迁移前 utilities 值：卡片 8px 圆角/#dce3ed 边/白底
+   /16px 内边距，mb-4，flex-wrap，列间距 24px 行间距 6px）。 */
+.wk-settings-drawer-root .general-settings .general-billing-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 24px;
+  row-gap: 6px;
+  margin-bottom: 16px;
+  border: 1px solid #dce3ed;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.wk-settings-drawer-root .general-settings .general-billing-card__title {
+  width: 100%;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(23, 26, 29, 0.92);
+}
+
+.wk-settings-drawer-root .general-settings .general-billing-card__item {
+  font-size: 13px;
+  color: rgba(23, 26, 29, 0.92);
+}
+
+.wk-settings-drawer-root .general-settings .general-billing-card__label {
+  color: rgba(23, 26, 29, 0.6);
+}
+
+/* 卡内按钮沿用迁移前 ui Button default 的 13px 横向内边距（tdesign 默认
+ * 20px 会让按钮宽 ~14px——豁免块内部保持 React 侧既有视觉）。 */
+.wk-settings-drawer-root .general-settings .general-billing-card .t-button {
+  padding: 0 13px;
+}
+
+/* ==== 2b. Vue theme.css 全局 t-radio-button 选中态（general 字体大小行） ====
+ * 与 agents.td.css §9 同一事实源（frontend/src/assets/theme.css 全局块）；
+ * agents chunk 懒加载时设置抽屉不依赖它，按抽屉作用域重复平移。 */
+
+.wk-settings-drawer-root .settings-overlay .t-radio-group .t-radio-button {
+  border-color: var(--td-component-stroke);
+  transition: all 0.2s ease;
+}
+
+.wk-settings-drawer-root .settings-overlay .t-radio-group .t-radio-button:hover:not(.t-is-disabled) {
+  border-color: var(--td-brand-color);
+  color: var(--td-brand-color);
+}
+
+.wk-settings-drawer-root .settings-overlay .t-radio-group .t-radio-button.t-is-checked,
+.wk-settings-drawer-root .settings-overlay .t-radio-group .t-radio-button.t-is-checked .t-radio-button__label,
+.wk-settings-drawer-root .settings-overlay .t-radio-group .t-radio-button.t-is-checked > span {
+  background: var(--td-brand-color);
+  border-color: var(--td-brand-color);
+  color: var(--td-text-color-anti);
+}
+
+.wk-settings-drawer-root .settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled),
+.wk-settings-drawer-root .settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled) .t-radio-button__label,
+.wk-settings-drawer-root .settings-overlay .t-radio-group .t-radio-button.t-is-checked:hover:not(.t-is-disabled) > span {
+  background: var(--td-brand-color-active);
+  border-color: var(--td-brand-color-active);
+  color: var(--td-text-color-anti);
+}
+
+/* ==== 3. UserProfile.vue scoped 块平移（settings-userprofile 分区） ==== */
+
+.wk-settings-drawer-root .user-profile {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .user-profile .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .user-profile .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .user-profile .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .user-profile .loading-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+  justify-content: center;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+}
+
+.wk-settings-drawer-root .user-profile .error-inline {
+  padding: 20px 0;
+}
+
+.wk-settings-drawer-root .user-profile .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .user-profile .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .user-profile .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .user-profile .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .user-profile .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .user-profile .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .user-profile .setting-control {
+  flex-shrink: 0;
+  min-width: 280px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .user-profile .setting-control .info-value {
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  text-align: right;
+  word-break: break-word;
+}
+
+.wk-settings-drawer-root .user-profile .setting-control .info-value--muted {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .user-profile .setting-control .edit-btn {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .user-profile .password-mask {
+  letter-spacing: 0.12em;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-inner {
+  max-width: 100%;
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px;
+  line-height: 1.35;
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-form .t-form__item {
+  margin-bottom: 14px;
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-form .t-form__item:last-child {
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ==== 3b. UserProfile.vue unscoped 块（body 弹层，§2.5 原样平移不加前缀） ==== */
+/* t-popup 挂到 body，需全局样式；z-index 需高于设置全屏遮罩（2000）。 */
+.user-profile-password-popup-overlay {
+  z-index: 3050 !important;
+}
+
+.user-profile-password-popup-overlay .t-popup__content {
+  padding: 14px 16px !important;
+  min-width: 300px;
+  max-width: min(392px, calc(100vw - 24px));
+  border-radius: 12px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+}
+
+:root[theme-mode='dark'] .user-profile-password-popup-overlay .t-popup__content {
+  background: rgba(36, 36, 36, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.28) !important;
+}
+
+/* ==== 4. EnvVarSettings.vue scoped 块平移（settings-envvars 分区；编辑器
+ * 表单分支为 React 侧保留实现，样式仍由其 utilities 承载，见 task-12a
+ * 报告偏离项） ==== */
+
+.wk-settings-drawer-root .env-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .env-settings .section-header {
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .env-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .env-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+
+.wk-settings-drawer-root .env-settings .section-header__titlewrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wk-settings-drawer-root .env-settings .hint-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: help;
+  line-height: 1;
+  /* §2.6 button Arial 归位。 */
+  font-family: inherit;
+}
+
+.wk-settings-drawer-root .env-settings .hint-trigger:hover,
+.wk-settings-drawer-root .env-settings .hint-trigger:focus-visible {
+  color: var(--td-brand-color);
+}
+
+/* hint 弹层 portal 到 body——按 §2.5 类名已带语义前缀，原样平移不加前缀。 */
+.hint-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 340px;
+}
+
+.hint-popover__title {
+  margin: 0;
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hint-popover__text {
+  margin: 4px 0 0;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.env-empty {
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 10px;
+  padding: 24px;
+  text-align: center;
+}
+
+.env-empty--soft {
+  padding: 16px;
+}
+
+.env-empty__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  margin: 0 0 4px 0;
+}
+
+.env-empty__desc {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+}
+
+/* ==== 5. TenantInfo.vue scoped 块平移（settings-tenant 分区） ==== */
+
+.wk-settings-drawer-root .tenant-info {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .tenant-info .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .tenant-info .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .tenant-info .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .tenant-info .loading-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+  justify-content: center;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+}
+
+.wk-settings-drawer-root .tenant-info .error-inline {
+  padding: 20px 0;
+}
+
+.wk-settings-drawer-root .tenant-info .tenant-info-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-settings-drawer-root .tenant-info .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .tenant-info .setting-row:last-child {
+  border-bottom: none;
+}
+
+/* Vue :737-745——标签列不参与剩余空间分配（width: max-content）。 */
+.wk-settings-drawer-root .tenant-info .setting-info {
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 140px;
+  max-width: 40%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Vue :763-786——内容列吃剩余空间，去掉 280px 硬约束。 */
+.wk-settings-drawer-root .tenant-info .setting-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-control .info-value {
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  text-align: right;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-info .setting-control .edit-btn {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit-input {
+  max-width: 220px;
+  flex: 1;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit-description {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit-textarea {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .tenant-info .inline-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .tenant-info .description-value {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wk-settings-drawer-root .tenant-info .description-value.is-empty {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel {
+  margin-top: 4px;
+}
+
+.wk-settings-drawer-root .tenant-info .delete-space-panel {
+  margin-top: 12px;
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--td-component-stroke);
+  background-color: var(--td-bg-color-secondarycontainer);
+  box-sizing: border-box;
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-text {
+  flex: 1;
+  min-width: 0;
+  max-width: min(65%, 28rem);
+  padding-right: 8px;
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .tenant-info .leave-space-panel-action {
+  flex-shrink: 0;
+}
+
+@media (max-width: 560px) {
+  .wk-settings-drawer-root .tenant-info .leave-space-panel-inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wk-settings-drawer-root .tenant-info .leave-space-panel-text {
+    max-width: none;
+    padding-right: 0;
+  }
+
+  .wk-settings-drawer-root .tenant-info .leave-space-panel-action {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+.wk-settings-drawer-root .tenant-info .usage-control .usage-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  min-width: 50px;
+  text-align: right;
+}
+
+/* TenantInfo.vue :912-922 delete dialog 确认文案（t-dialog portal 到 body，
+   类名带语义前缀按 §2.5 原样平移）。 */
+.delete-tenant-confirm-body {
+  margin: 0 0 10px;
+  color: var(--td-text-color-primary);
+  line-height: 1.6;
+}
+
+.delete-tenant-confirm-hint {
+  margin: 0 0 12px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.5;
+}
+
+/* ==== 6. MemorySettings.vue scoped 块平移（settings-mymemory 分区；记忆行
+ * 编辑/分页为 React 侧保留实现，见 task-12a 报告偏离项） ==== */
+
+.wk-settings-drawer-root .memory-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .memory-settings .section-header {
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .memory-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .memory-settings .section-header-titlewrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .memory-settings .usage-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  line-height: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  /* §2.6 button Arial 归位。 */
+  font-family: inherit;
+}
+
+.wk-settings-drawer-root .memory-settings .usage-trigger-btn .t-icon {
+  display: block;
+}
+
+.wk-settings-drawer-root .memory-settings .usage-trigger-btn:hover {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.wk-settings-drawer-root .memory-settings .usage-trigger-btn:focus-visible {
+  outline: 2px solid var(--td-brand-color-focus);
+  outline-offset: 1px;
+}
+
+.wk-settings-drawer-root .memory-settings .notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  background: var(--td-warning-color-1);
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .memory-settings .status-hint {
+  margin: 12px 0 0;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.wk-settings-drawer-root .memory-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-settings-drawer-root .memory-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .memory-settings .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .memory-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .memory-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .memory-settings .setting-control {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wk-settings-drawer-root .memory-settings .list-section {
+  margin-top: 28px;
+}
+
+.wk-settings-drawer-root .memory-settings .list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.wk-settings-drawer-root .memory-settings .list-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .memory-settings .list-title h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .list-count {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .memory-settings .list-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* status-tabs（Vue :deep 规则展平，选择器换等价后代写法） */
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__header {
+  margin: 0;
+  background: transparent;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__nav-item {
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .status-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__nav-item-wrapper {
+  padding: 0 12px;
+  margin: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__bar + .t-tabs__nav-item .t-tabs__nav-item-wrapper {
+  padding-left: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__bar {
+  height: 2px;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__operations {
+  display: none;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__content {
+  display: none;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__nav-container {
+  padding: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .empty {
+  padding: 32px 0;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .memory-settings .empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  margin: 0 0 4px 0;
+}
+
+.wk-settings-drawer-root .memory-settings .empty-desc {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .memory-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ==== 6b. MemorySettings.vue unscoped 弹层块（§2.5 原样平移） ==== */
+.memory-usage-popup-overlay {
+  z-index: 3050 !important;
+}
+
+.memory-usage-popup-overlay .t-popup__content {
+  padding: 0 !important;
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  border-radius: 12px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+}
+
+.memory-usage-popup-overlay .usage-popup {
+  padding: 14px 16px 12px;
+}
+
+.memory-usage-popup-overlay .usage-popup-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.memory-usage-popup-overlay .usage-popup-intro {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-placeholder);
+}
+
+.memory-usage-popup-overlay .usage-popup-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.memory-usage-popup-overlay .usage-popup-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  line-height: 1.5;
+}
+
+.memory-usage-popup-overlay .usage-popup-label {
+  flex: 0 0 88px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.memory-usage-popup-overlay .usage-popup-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+:root[theme-mode='dark'] .memory-usage-popup-overlay .t-popup__content {
+  background: rgba(36, 36, 36, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.28) !important;
+}
+
+.memory-add-popup-overlay {
+  z-index: 3050;
+}
+
+.memory-add-popup-overlay .t-popup__content {
+  padding: 14px 16px !important;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  border-radius: 12px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+}
+
+.memory-add-popup-overlay .add-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.memory-add-popup-overlay .add-popup-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.memory-add-popup-overlay .add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-add-popup-overlay .add-label {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.memory-add-popup-overlay .add-kind-hint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--td-text-color-placeholder);
+}
+
+.memory-add-popup-overlay .add-popup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* kind 下拉挂在 body，需高于打开它的 popup。 */
+.memory-add-kind-popup {
+  z-index: 6200;
+}
+
+:root[theme-mode='dark'] .memory-add-popup-overlay .t-popup__content {
+  background: rgba(36, 36, 36, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.28) !important;
+}
+
+/* ==== 7. TenantMembers.vue scoped 块平移（settings-members 分区；表格
+ * 单元格内容为 React 保留实现，见 task-12a 报告偏离项） ==== */
+
+.wk-settings-drawer-root .tenant-members {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header {
+  margin-bottom: 20px;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header .section-description {
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 8px 0 0;
+  max-width: 52rem;
+}
+
+/* Vue theme.css 全局 .doc-link（按页面作用域平移）。 */
+.wk-settings-drawer-root .tenant-members .section-description .doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 450;
+  color: var(--td-brand-color);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.wk-settings-drawer-root .tenant-members .section-description .doc-link:hover {
+  color: var(--td-brand-color-active);
+  text-decoration: underline;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header-titlewrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header-titlewrap h2 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.wk-settings-drawer-root .tenant-members .header-audit-btn {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .permissions-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  line-height: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  /* §2.6 button Arial 归位。 */
+  font-family: inherit;
+}
+
+.wk-settings-drawer-root .tenant-members .permissions-trigger-btn .t-icon {
+  display: block;
+}
+
+.wk-settings-drawer-root .tenant-members .permissions-trigger-btn:hover {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--td-component-stroke);
+  background-color: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell thead th {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell td,
+.wk-settings-drawer-root .tenant-members .data-table-shell th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell.data-table-shell--with-footer {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell.data-table-shell--with-footer .data-table-shell__scroll {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell.data-table-shell--with-footer .data-table-shell__pager {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--td-component-stroke);
+  background-color: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell.data-table-shell--with-footer .data-table-shell__pager .t-pagination {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 8px;
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-table.data-table-shell.data-table-shell--with-footer .data-table-shell__pager {
+  background-color: transparent;
+}
+
+/* 待接受区块整体浅底（TenantMembers.vue :2065-2067）。 */
+.wk-settings-drawer-root .tenant-members .pending-invitations-table.data-table-shell {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+/* members 列表头（Vue :1620-1703 平移）。 */
+.wk-settings-drawer-root .tenant-members .members-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+  flex-wrap: wrap;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-titlewrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Vue html 根字号 14px → 14rem = 196px（React 根 16px，写字面量）。 */
+.wk-settings-drawer-root .tenant-members .members-list-search {
+  flex: 0 0 196px;
+  width: 196px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-search .t-input {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-add-btn {
+  flex-shrink: 0;
+}
+
+/* 待接受区块头（Vue :2030-2063 平移）。 */
+.wk-settings-drawer-root .tenant-members .pending-invitations-section {
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-titlewrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-desc {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .tenant-members .members-tab-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+/* theme.css .doc-link .link-icon（font-size:1em + flex-shrink 0）。 */
+.wk-settings-drawer-root .tenant-members .section-description .doc-link .link-icon {
+  font-size: 1em;
+  flex-shrink: 0;
+}
+
+/* ==== 7b. TenantMembers.vue 表格单元格（fix-1 两表迁 tdesign Table） ==== */
+.wk-settings-drawer-root .tenant-members .member-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.wk-settings-drawer-root .tenant-members .member-cell .member-name {
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-settings-drawer-root .tenant-members .member-cell .member-email {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--td-text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-settings-drawer-root .tenant-members .role-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.wk-settings-drawer-root .tenant-members .role-cell .member-role-select.t-select {
+  width: 100%;
+}
+
+/* 角色下拉（Vue :2495-2509 unscoped 块按 §2.5 原样平移）。 */
+.tenant-members-role-select-popup {
+  z-index: 6200 !important;
+}
+
+.tenant-members-role-select-popup .role-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tenant-members-role-select-popup .role-option-icon {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+}
+
+/* ==== 7c. 复审 fix-2 追补 ==== */
+/* vue-next .t-table 基础规则带 background-color: var(--td-bg-color-container)
+ * （表格区盖住待接受壳的灰底），tdesign-react 同规则缺该声明——库 CSS 差
+ * 按页面作用域补齐（原 settings-wrapper.css 遗留 slice 的唯一存活规则，
+ * 收编自 table{background:#fff} 硬编码）。 */
+.wk-settings-drawer-root .tenant-members .data-table-shell .t-table {
+  background-color: var(--td-bg-color-container);
+}
+
+/* Vue TenantMembers.vue:2022-2028 .share-link-title（fix-2 ③：此前平移缺漏）。
+ * 注意 color 不随源规则平移：Vue 端 .member-cell .member-name（0,2,0）盖过
+ * .share-link-title（0,1,0）的 var(--td-brand-color)，实测生效色 = 文字主色
+ * rgba(0,0,0,0.9)——平移复刻生效结果。display:inline-flex + gap:4px 使
+ * 「图标+文字」间距来自 gap（flex 匿名项裁前导空格，故 JSX 不写手工空格）。 */
+.wk-settings-drawer-root .tenant-members .member-cell .share-link-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+}
+
+/* ==== 8. ChatHistorySettings.vue scoped 块平移（settings-chathistory 分区，T12b） ==== */
+
+.wk-settings-drawer-root .chat-history-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .chat-history-settings .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .chat-history-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .chat-history-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .chat-history-settings .warning-text {
+  color: var(--td-warning-color) !important;
+  margin-top: 4px !important;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-control {
+  flex-shrink: 0;
+  min-width: 280px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* Stats section */
+.wk-settings-drawer-root .chat-history-settings .stats-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 16px 0;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stat-card {
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--td-brand-color);
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stat-label {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-empty {
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  margin: 0 0 4px 0;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-empty-desc {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+}
+
+/* ==== 8b. ModelSelector.vue scoped 块（chat-history-settings 的 Embedding
+ * 选择器；.model-option/.model-ctx 服务于 portal 到 body 的 t-select 弹层，
+ * §2.5 同款不加根类前缀——类名带组件语义前缀，全局无冲突）。 ==== */
+
+.wk-settings-drawer-root .model-selector {
+  width: 100%;
+}
+
+.model-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-option .model-icon {
+  font-size: 14px;
+  color: var(--td-brand-color);
+}
+
+.model-option .add-icon {
+  font-size: 14px;
+  color: var(--td-brand-color);
+}
+
+.model-option .model-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-option .model-raw-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-option .model-ctx {
+  margin-left: auto;
+}
+
+.model-option.add .model-name {
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.model-ctx {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-secondarycontainer);
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 18px;
+}
+
+.model-ctx--default {
+  color: var(--td-text-color-placeholder);
+}
+
+.selected-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.selected-model__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==== 9. MemoryWorkspaceSettings.vue scoped 块平移（settings-memory 分区，T12b） ==== */
+
+.wk-settings-drawer-root .memory-workspace-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .section-header {
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .intro-icon {
+  color: var(--td-brand-color);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .intro-title {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .intro-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-info .hint {
+  margin-top: 4px !important;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-control {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* The custom prompt needs room to read, so this row stacks instead of putting a
+   paragraph of rules into a narrow right-hand column. */
+.wk-settings-drawer-root .memory-workspace-settings .instructions-row {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .instructions-row .setting-info {
+  max-width: 100%;
+  padding-right: 0;
+  margin-bottom: 10px;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .instructions-control {
+  width: 100%;
+  justify-content: stretch;
+}
+
+/* ==== 10. OllamaSettings.vue scoped 块平移（settings-ollama 分区，T12b） ==== */
+
+.wk-settings-drawer-root .ollama-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .ollama-settings .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .ollama-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .ollama-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-info {
+  flex: 1;
+  padding-right: 32px;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.wk-settings-drawer-root .ollama-settings .setting-control {
+  flex-shrink: 0;
+  min-width: 360px;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.wk-settings-drawer-root .ollama-settings .status-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wk-settings-drawer-root .ollama-settings .status-display .status-icon.spinning {
+  /* keyframes 名保留 Vue 原名 spin（scoped 不改名；kb-list.td.css 已有同名
+     同值定义，重复声明等价）。 */
+  animation: spin 1s linear infinite;
+}
+
+.wk-settings-drawer-root .ollama-settings .url-control-group {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-category-section {
+  margin-top: 32px;
+  margin-bottom: 32px;
+  padding-top: 32px;
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .ollama-settings .model-category-section:first-of-type {
+  margin-top: 24px;
+  padding-top: 24px;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-category-section:last-child {
+  margin-bottom: 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .category-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .ollama-settings .category-header .header-info {
+  flex: 1;
+}
+
+.wk-settings-drawer-root .ollama-settings .category-header .header-info h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 6px 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .category-header .header-info p {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .ollama-settings .loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 0;
+  color: var(--td-text-color-placeholder);
+  font-size: 14px;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-list-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .wk-settings-drawer-root .ollama-settings .model-list-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wk-settings-drawer-root .ollama-settings .model-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 6px;
+  background: var(--td-bg-color-secondarycontainer);
+  transition: all 0.2s;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-card:hover {
+  border-color: var(--td-brand-color);
+  background: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .ollama-settings .model-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .ollama-settings .model-info .model-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  margin-bottom: 4px;
+  font-family: var(--app-font-family-mono);
+}
+
+.wk-settings-drawer-root .ollama-settings .model-info .model-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content .input-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content .input-group .download-btn {
+  flex-shrink: 0;
+  height: 32px;
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content .download-progress {
+  padding: 16px;
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 8px;
+  border: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .ollama-settings .download-content .download-progress .progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--td-text-color-primary);
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .ollama-settings .empty-state {
+  padding: 48px 0;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .ollama-settings .empty-state .empty-text {
+  font-size: 14px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+}
+
+/* ==== 11. WeKnoraCloudSettings.vue scoped 块平移（settings-weknoracloud 分区，T12b） ==== */
+
+.wk-settings-drawer-root .weknoracloud-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .section-header {
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0 0 10px 0;
+  line-height: 1.5;
+}
+
+/* Vue theme.css 全局 .doc-link（按页面作用域平移，§2.6 共享规则同款）。 */
+.wk-settings-drawer-root .weknoracloud-settings .section-description .doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 450;
+  color: var(--td-brand-color);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .section-description .doc-link:hover {
+  color: var(--td-brand-color-active);
+  text-decoration: underline;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .section-description .doc-link .link-icon {
+  font-size: 1em;
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .credential-warning {
+  margin-bottom: 20px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-left: 3px solid #f97316;
+  border-radius: 6px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .credential-warning .warning-text {
+  font-size: 13px;
+  color: #9a3412;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .credential-status {
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .credential-status.unconfigured {
+  background: var(--td-bg-color-secondarycontainer);
+  border: 1px solid var(--td-component-stroke);
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .credential-status.success {
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .credential-status .status-text {
+  flex: 1;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .setting-row.action-row {
+  padding-top: 20px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .setting-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .setting-info .setting-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .setting-info .setting-desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .setting-control {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .models-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  background: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .models-section--disabled {
+  opacity: 0.92;
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .models-section__header {
+  margin-bottom: 14px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .models-section__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .models-section__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .models-section__batch {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .models-section__ready {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--td-success-color, #2ba471);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .models-section__ready-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .model-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .model-row:first-child {
+  padding-top: 4px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .model-row__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .model-row__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  min-width: 88px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .model-row__id {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-secondarycontainer);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .model-row__action {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .model-row__pending {
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .usage-hint {
+  padding: 14px 16px;
+  background: var(--td-bg-color-secondarycontainer);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .usage-hint .hint-title {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .weknoracloud-settings .usage-hint .hint-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.8;
+}
+
+/* ==== 12. ModelSettings.vue scoped 块平移（settings-models 分区，T12b） ==== */
+
+.wk-settings-drawer-root .model-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .model-settings .section-header {
+  margin-bottom: 28px;
+}
+
+.wk-settings-drawer-root .model-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .model-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.wk-settings-drawer-root .model-settings .section-header__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.wk-settings-drawer-root .model-settings .model-test-trigger {
+  --td-bg-color-container-hover: transparent;
+  flex-shrink: 0;
+  padding-left: 0;
+  padding-right: 0;
+  font-weight: 600;
+}
+
+.wk-settings-drawer-root .model-settings .model-test-trigger:hover,
+.wk-settings-drawer-root .model-settings .model-test-trigger:focus,
+.wk-settings-drawer-root .model-settings .model-test-trigger.t-is-active,
+.wk-settings-drawer-root .model-settings .model-test-trigger:active {
+  background-color: transparent !important;
+  color: var(--td-brand-color-hover);
+}
+
+.wk-settings-drawer-root .model-settings .model-test-trigger:active {
+  color: var(--td-brand-color-active);
+}
+
+.wk-settings-drawer-root .model-settings .builtin-models-hint {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--td-bg-color-secondarycontainer);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 6px;
+}
+
+.wk-settings-drawer-root .model-settings .builtin-hint-label {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--td-text-color-placeholder);
+  letter-spacing: 0.02em;
+}
+
+.wk-settings-drawer-root .model-settings .builtin-hint-text {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .model-settings .builtin-models-hint .doc-link {
+  font-size: 13px;
+}
+
+/* theme.css 全局 .doc-link 家族（Vue 端全局生效；React 侧按 §2.6 共享散装
+   规则页面作用域平移——members §7 同源先例）。 */
+.wk-settings-drawer-root .model-settings .doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 450;
+  color: var(--td-brand-color);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.wk-settings-drawer-root .model-settings .doc-link:hover {
+  color: var(--td-brand-color-active);
+  text-decoration: underline;
+}
+
+.wk-settings-drawer-root .model-settings .doc-link .link-icon {
+  font-size: 1em;
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .model-settings .model-list-loading {
+  min-height: 120px;
+}
+
+.wk-settings-drawer-root .model-settings .model-type-tabs {
+  margin-bottom: 16px;
+}
+
+.wk-settings-drawer-root .model-settings .model-type-tabs .t-tabs__nav-item {
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .model-settings .model-type-tabs .t-tabs__nav-item-wrapper {
+  padding: 0 12px;
+  margin: 0;
+}
+
+.wk-settings-drawer-root .model-settings .model-type-tabs .t-tabs__operations {
+  display: none;
+}
+
+.wk-settings-drawer-root .model-settings .model-type-tabs .t-tabs__nav-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wk-settings-drawer-root .model-settings .model-type-tabs .t-tabs__nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.wk-settings-drawer-root .model-settings .model-type-tabs .t-tabs__content {
+  display: none;
+}
+
+.wk-settings-drawer-root .model-settings .model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.wk-settings-drawer-root .model-settings .model-grid .model-card--add {
+  width: 100%;
+  height: 100%;
+}
+
+/* 模型卡片 —— 可选类型徽章（仅「全部」Tab）+ 标题 + 一行副标题 */
+.wk-settings-drawer-root .model-settings .model-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 10px;
+  background: var(--td-bg-color-container);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .model-settings .model-card:hover {
+  border-color: var(--td-brand-color-3, var(--td-brand-color));
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.wk-settings-drawer-root .model-settings .model-card.model-card--add {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 68px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .model-settings .model-card.model-card--add:hover,
+.wk-settings-drawer-root .model-settings .model-card.model-card--add:focus-visible {
+  color: var(--td-brand-color);
+  border-color: var(--td-brand-color);
+  background: color-mix(in srgb, var(--td-brand-color) 6%, transparent);
+  box-shadow: none;
+}
+
+.wk-settings-drawer-root .model-settings .model-card.model-card--add:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
+}
+
+.wk-settings-drawer-root .model-settings .model-card--add__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--td-brand-color) 10%, transparent);
+  color: var(--td-brand-color);
+  font-size: 18px;
+}
+
+.wk-settings-drawer-root .model-settings .model-card--add__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.wk-settings-drawer-root .model-settings .model-card.model-card--builtin {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.wk-settings-drawer-root .model-settings .model-card.model-card--builtin:hover {
+  box-shadow: none;
+  border-color: var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .model-settings .model-card.model-card--clickable {
+  cursor: pointer;
+}
+
+.wk-settings-drawer-root .model-settings .model-card.model-card--clickable:hover {
+  border-color: var(--td-brand-color-3, var(--td-brand-color));
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.wk-settings-drawer-root .model-settings .model-card.model-card--clickable:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__badge {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  /* 默认底色，被 type 修饰覆盖 */
+  background: rgba(0, 82, 217, 0.1);
+  color: #0052D9;
+}
+
+/* 5 种类型的徽章配色 —— 比原 tag 配色饱和度低一档，避免炫光 */
+.wk-settings-drawer-root .model-settings .model-card--chat .model-card__badge {
+  background: rgba(0, 82, 217, 0.1);
+  color: #0052D9;
+}
+
+.wk-settings-drawer-root .model-settings .model-card--embedding .model-card__badge {
+  background: rgba(98, 53, 187, 0.1);
+  color: #6235BB;
+}
+
+.wk-settings-drawer-root .model-settings .model-card--rerank .model-card__badge {
+  background: rgba(184, 92, 0, 0.1);
+  color: #B85C00;
+}
+
+.wk-settings-drawer-root .model-settings .model-card--vllm .model-card__badge {
+  background: rgba(201, 62, 62, 0.1);
+  color: #C93E3E;
+}
+
+.wk-settings-drawer-root .model-settings .model-card--asr .model-card__badge {
+  background: rgba(17, 128, 83, 0.1);
+  color: #118053;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Built-in lock indicator：默认弱化，hover 点亮 */
+.wk-settings-drawer-root .model-settings .model-card__lock {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--td-text-color-placeholder);
+  opacity: 0.6;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__lock .t-icon {
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .model-settings .model-card:hover .model-card__lock {
+  opacity: 1;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .model-settings .model-card__subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__sep {
+  margin: 0 4px;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .model-settings .model-card__vision {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__ctx {
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__ctx--default {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .model-settings .model-card__actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__action-btn {
+  flex-shrink: 0;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.wk-settings-drawer-root .model-settings .model-card__more {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .model-settings .model-card__more:hover,
+.wk-settings-drawer-root .model-settings .model-card__more:focus-visible {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+}
+
+/* Hover / 键盘焦点 时显示操作按钮，避免静态卡片上有「杂物」。 */
+.wk-settings-drawer-root .model-settings .model-card:hover .model-card__action-btn,
+.wk-settings-drawer-root .model-settings .model-card:focus-within .model-card__action-btn,
+.wk-settings-drawer-root .model-settings .model-card__actions:focus-within .model-card__action-btn {
+  opacity: 1;
+}
+
+.wk-settings-drawer-root .model-settings .empty-state {
+  padding: 64px 0;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .model-settings .empty-state .t-empty__description {
+  font-size: 14px;
+  color: var(--td-text-color-placeholder);
+  margin-bottom: 16px;
+}
+
+/* ==== 13. ParserEngineSettings.vue scoped 块平移（settings-parser 分区） ====
+ * 列表域规则（section-header / loading / error / empty / engine-cards 卡片族）
+ * 按 §2.2-2.3 展平；根类 .parser-engine-settings 前缀换成共享锚
+ * .wk-settings-drawer-root .parser-engine-settings（§2/§12 同款）。
+ * 抽屉域规则（.form-item/.docreader-block/.inline-alert/.file-types 等）
+ * 不平移——配置抽屉沿用 React 表单栈（批次先例：resource/mcp/models
+ * 编辑器同口径，扫描稳态不可达），待抽屉收编时随迁。 */
+
+.wk-settings-drawer-root .parser-engine-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .section-header {
+  margin-bottom: 28px;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 0;
+  color: var(--td-text-color-placeholder);
+  font-size: 14px;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .error-inline {
+  padding: 16px 0;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .empty-state {
+  padding: 48px 0;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .empty-state .empty-text {
+  font-size: 14px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+}
+
+/* ---- 引擎卡片布局（grid auto-fill 320px） ---- */
+.wk-settings-drawer-root .parser-engine-settings .engine-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+
+/* 与 ModelSettings / WebSearchSettings / McpSettings 同形的提供者卡片：
+   整卡 button、active 品牌色描边（Vue :779-803）。 */
+.wk-settings-drawer-root .parser-engine-settings .engine-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 14px 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 10px;
+  background: var(--td-bg-color-container);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card:hover {
+  border-color: var(--td-brand-color-3, var(--td-brand-color));
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+/* Vue scoped 下 :hover 与 --active 同特异性、--active 靠后胜出（active 卡
+   hover 时描边仍是品牌色主值）；平移后补 .engine-card 复合前缀对齐级联。 */
+.wk-settings-drawer-root .parser-engine-settings .engine-card.engine-card--active {
+  border-color: var(--td-brand-color);
+  background: var(--td-brand-color-1, rgba(7, 192, 95, 0.06));
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__badge {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(0, 82, 217, 0.1);
+  color: #0052D9;
+}
+
+/* 解析引擎徽章配色（Vue :821-841）：内置/官方系绿，外部工具按性质各取一色。 */
+.wk-settings-drawer-root .parser-engine-settings .engine-card--builtin .engine-card__badge,
+.wk-settings-drawer-root .parser-engine-settings .engine-card--weknoracloud .engine-card__badge {
+  background: rgba(7, 192, 95, 0.12);
+  color: #07C05F;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card--simple .engine-card__badge {
+  background: rgba(70, 70, 70, 0.1);
+  color: #464646;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card--markitdown .engine-card__badge {
+  background: rgba(0, 137, 255, 0.12);
+  color: #0089FF;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card--mineru .engine-card__badge,
+.wk-settings-drawer-root .parser-engine-settings .engine-card--mineru_cloud .engine-card__badge,
+.wk-settings-drawer-root .parser-engine-settings .engine-card--paddleocr_vl .engine-card__badge,
+.wk-settings-drawer-root .parser-engine-settings .engine-card--paddleocr_vl_cloud .engine-card__badge {
+  background: rgba(98, 53, 187, 0.12);
+  color: #6235BB;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 与 McpSettings 一致的 dot+文字状态徽章（Vue :871-905）。 */
+.wk-settings-drawer-root .parser-engine-settings .engine-card__status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px 1px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  border-radius: 10px;
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__status--on {
+  color: var(--td-success-color-7, #118053);
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__status--on .engine-card__status-dot {
+  background: var(--td-success-color, #118053);
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__status--err {
+  color: var(--td-error-color-7, #C93E3E);
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__status--err .engine-card__status-dot {
+  background: var(--td-error-color, #C93E3E);
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__status--help {
+  cursor: help;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.wk-settings-drawer-root .parser-engine-settings .engine-card__desc {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ==== 14. SandboxSettings.vue scoped 块平移（settings-sandbox 分区，批次 2 收尾） ====
+ * 列表域规则（section-header / setting-row 脚本开关 / sandbox-type-tabs /
+ * sandbox-grid 卡片族）按 §2.2-2.3 展平；根类前缀换成共享锚
+ * .wk-settings-drawer-root .sandbox-settings（§12/§13 同款）。
+ * 抽屉域（inventory 编辑器等）沿用 React 表单栈（批次先例：parser/mcp/models
+ * 同口径，扫描稳态不可达），inventory 的弹入动画 keyframes 随迁供保留抽屉引用。 */
+
+.wk-settings-drawer-root .sandbox-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header {
+  margin-bottom: 20px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-description {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .header-action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--td-brand-color);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .header-action-link:hover {
+  color: var(--td-brand-color-hover);
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header__titlewrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header__titlewrap h2 {
+  margin-bottom: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .hint-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: help;
+  line-height: 1;
+}
+
+.wk-settings-drawer-root .sandbox-settings .hint-trigger:hover,
+.wk-settings-drawer-root .sandbox-settings .hint-trigger:focus-visible {
+  color: var(--td-brand-color);
+}
+
+/* hint-popover 服务 t-popup portal 到 body 的内容（§2.5：原样平移不加前缀）。 */
+.hint-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 340px;
+}
+
+.hint-popover__title {
+  margin: 0;
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hint-popover__text {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-list-loading {
+  min-height: 120px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 0 16px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-info label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-info .desc {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-control {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-tabs-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__nav-item {
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__nav-item-wrapper {
+  padding: 0 12px;
+  margin: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__operations {
+  display: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__nav-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__content {
+  display: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-grid .sandbox-card--add {
+  width: 100%;
+  height: 100%;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 14px 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 10px;
+  background: var(--td-bg-color-container);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--clickable {
+  cursor: pointer;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--clickable:hover {
+  border-color: var(--td-brand-color-3, var(--td-brand-color));
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--clickable:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 68px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add:hover,
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add:focus-visible {
+  color: var(--td-brand-color);
+  border-color: var(--td-brand-color);
+  box-shadow: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--td-brand-color) 10%, transparent);
+  color: var(--td-brand-color);
+  font-size: 18px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__subtitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--td-text-color-secondary);
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__type {
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__sep {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__url {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--td-text-color-placeholder);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__warnings li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--td-warning-color-7, var(--td-warning-color));
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__actions {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__more {
+  flex-shrink: 0;
+  padding: 2px;
+  color: var(--td-text-color-placeholder);
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__more:hover,
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__more:focus-visible {
+  color: var(--td-text-color-primary);
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card:hover .sandbox-card__more,
+.wk-settings-drawer-root .sandbox-settings .sandbox-card:focus-within .sandbox-card__more,
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__actions:focus-within .sandbox-card__more {
+  opacity: 1;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-docker-banner {
+  margin-bottom: 12px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-docker-disabled {
+  padding: 48px 16px 24px;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-empty-hint {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-docker-disabled .sandbox-empty-hint {
+  margin-top: 8px;
+}
+
+/* ---- SandboxBackendBadge.vue scoped 块平移（SFC 根类已全局唯一，§2.2 根规则不加前缀） ---- */
+
+.sandbox-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: rgba(0, 82, 217, 0.1);
+  color: #0052d9;
+}
+
+.sandbox-badge--md {
+  width: 36px;
+  height: 36px;
+  font-size: 17px;
+}
+
+.sandbox-badge--sm {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+.sandbox-badge--xs {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.sandbox-badge--e2b {
+  background: rgba(98, 53, 187, 0.1);
+  color: #6235bb;
+}
+
+.sandbox-badge--docker {
+  background: rgba(29, 99, 237, 0.1);
+  color: #1d63ed;
+}
+
+.sandbox-badge--mono::before {
+  content: '';
+  background-color: currentColor;
+  -webkit-mask-image: var(--logo-url);
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-image: var(--logo-url);
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.sandbox-badge--md.sandbox-badge--mono::before {
+  width: 22px;
+  height: 22px;
+}
+
+.sandbox-badge--sm.sandbox-badge--mono::before {
+  width: 16px;
+  height: 16px;
+}
+
+.sandbox-badge--xs.sandbox-badge--mono::before {
+  width: 10px;
+  height: 10px;
+}
+
+/* ---- 保留 inventory 抽屉（React 栈）的弹入动画（原 sandbox-settings.css 随迁） ---- */
+
+@keyframes wk-sandbox-inventory-enter { from { transform: translateX(18px); opacity: .7; } to { transform: translateX(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .wk-sandbox-inventory-drawer { animation: none; } }
+
+/* ==== 15. SkillSettings.vue scoped 块平移（settings-skills 分区，批次 2 收官） ====
+   卡片树规则挂 .wk-settings-drawer-root .skill-settings 前缀（§2.2）；
+   chip 弹层（.skill-install-panel*）与 tooltip 弹层按 §2.5 原样平移不加前缀
+   （t-popup attach=body 的 portal DOM）；.skill-card__entry-dot /
+   .skill-card__entry--ready .skill-card__entry-status 两条为卡内与弹层共用，
+   同样不加前缀。安装/管理抽屉沿用 React 表单栈，其 Vue 样式段
+   （sandbox-pick-* / skill-add-step* / file-upload-* 等）待收编时再平移。 */
+
+.wk-settings-drawer-root .skill-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .skill-settings .section-header {
+  margin-bottom: 28px;
+}
+
+.wk-settings-drawer-root .skill-settings .section-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wk-settings-drawer-root .skill-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .skill-settings .section-header__help {
+  color: var(--td-text-color-placeholder);
+  font-size: 16px;
+  cursor: help;
+  transition: color 0.15s ease;
+}
+
+.wk-settings-drawer-root .skill-settings .section-header__help:hover {
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .skill-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.wk-settings-drawer-root .skill-settings .loading-container {
+  padding: 40px 0;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .skill-settings .empty-state {
+  padding: 80px 0;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .skill-settings .empty-state .t-empty__description {
+  font-size: 14px;
+  color: var(--td-text-color-placeholder);
+  margin-bottom: 16px;
+}
+
+.wk-settings-drawer-root .skill-settings .empty-hint {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .skill-settings .empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 10px;
+  background: var(--td-bg-color-container);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  min-width: 0;
+  height: 100%;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card--focused {
+  border-color: var(--td-brand-color);
+  box-shadow: 0 0 0 2px var(--td-brand-color-focus, rgba(0, 168, 112, 0.18));
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card--installed .skill-card__badge {
+  background: color-mix(in srgb, var(--td-brand-color) 12%, transparent);
+  color: var(--td-brand-color);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card--add {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  min-height: 88px;
+  padding: 12px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card--add:hover,
+.wk-settings-drawer-root .skill-settings .skill-card--add:focus-visible {
+  color: var(--td-brand-color);
+  border-color: var(--td-brand-color);
+  background: color-mix(in srgb, var(--td-brand-color) 6%, transparent);
+  box-shadow: none;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card--add:hover .skill-card--add__icon,
+.wk-settings-drawer-root .skill-settings .skill-card--add:focus-visible .skill-card--add__icon {
+  background: color-mix(in srgb, var(--td-brand-color) 10%, transparent);
+  color: var(--td-brand-color);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card--add__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  font-size: 18px;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card--add__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__main {
+  display: flex;
+  align-items: stretch;
+  padding: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__badge {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__badge .t-icon {
+  display: block;
+  line-height: 1;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 28px;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__icon-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--td-text-color-placeholder);
+  cursor: pointer;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__icon-btn svg {
+  display: block;
+  overflow: visible;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__icon-btn:hover:not(:disabled) {
+  color: var(--td-text-color-primary);
+  background: var(--td-bg-color-container-hover);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__icon-btn--danger:hover:not(:disabled) {
+  color: var(--td-error-color);
+  background: color-mix(in srgb, var(--td-error-color) 8%, transparent);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__type {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-secondary);
+  overflow-wrap: anywhere;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__installs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-top: auto;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__installs-label {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip:hover:not(:disabled) {
+  color: var(--td-text-color-primary);
+  background: var(--td-bg-color-container-hover);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip--idle {
+  color: var(--td-brand-color);
+  background: color-mix(in srgb, var(--td-brand-color) 10%, transparent);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip--idle:hover:not(:disabled) {
+  color: var(--td-brand-color);
+  background: color-mix(in srgb, var(--td-brand-color) 16%, transparent);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip--idle .skill-card__chip-go {
+  color: var(--td-brand-color);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip.skill-card__entry--off {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip--installed .skill-card__entry-status {
+  color: var(--td-success-color, var(--td-brand-color));
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip.skill-card__entry--stale {
+  background: color-mix(in srgb, var(--td-warning-color) 10%, transparent);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip.skill-card__entry--stale .skill-card__entry-status {
+  color: var(--td-warning-color);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip.skill-card__entry--failed {
+  background: color-mix(in srgb, var(--td-error-color) 10%, transparent);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip.skill-card__entry--failed .skill-card__entry-status {
+  color: var(--td-error-color);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip.skill-card__entry--busy .skill-card__entry-dot {
+  background: var(--td-warning-color);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card button:focus-visible,
+.wk-settings-drawer-root .skill-settings .skill-card--add:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: -2px;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip-go,
+.wk-settings-drawer-root .skill-settings .skill-card__entry-status {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip-go {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .skill-settings .skill-card__chip:hover:not(:disabled) .skill-card__chip-go {
+  color: currentColor;
+}
+
+/* ---- 卡内与 chip 弹层（body portal）共用，§2.5 不加前缀 ---- */
+
+.skill-card__entry--ready .skill-card__entry-status {
+  color: var(--td-success-color, var(--td-brand-color));
+}
+
+.skill-card__entry-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: skill-chip-dot 1.2s ease-in-out infinite;
+}
+
+/* ---- SkillSettings.vue unscoped :global 块 + chip 弹层（§2.5 原样平移，服务 body 弹层） ---- */
+
+.skill-settings__help-tooltip .t-popup__content {
+  max-width: 340px;
+  line-height: 1.55;
+}
+
+.skill-install-panel-overlay {
+  z-index: 3050 !important;
+}
+
+.skill-install-panel-overlay .t-popup__content {
+  padding: 0 !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--td-component-stroke) !important;
+  background: var(--td-bg-color-container) !important;
+  box-shadow: var(--td-shadow-2, 0 3px 14px 2px rgba(0, 0, 0, 0.05)) !important;
+}
+
+.skill-install-panel {
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  max-width: calc(100vw - 32px);
+  max-height: min(360px, 70vh);
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.skill-install-panel__group {
+  margin: 0;
+  padding: 6px 12px 4px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--td-text-color-placeholder);
+}
+
+.skill-install-panel__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--td-text-color-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 22px;
+  text-align: left;
+}
+
+.skill-install-panel__item:hover:not(:disabled) {
+  background: var(--td-bg-color-container-hover);
+}
+
+.skill-install-panel__item:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.skill-install-panel__item.skill-card__entry--stale .skill-card__entry-status {
+  color: var(--td-warning-color);
+}
+
+.skill-install-panel__item.skill-card__entry--failed .skill-card__entry-status {
+  color: var(--td-error-color);
+}
+
+.skill-install-panel__item.skill-card__entry--busy .skill-card__entry-dot {
+  background: var(--td-warning-color);
+}
+
+.skill-install-panel__item--available {
+  color: var(--td-text-color-secondary);
+}
+
+.skill-install-panel__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-install-panel__add {
+  flex-shrink: 0;
+  color: var(--td-text-color-placeholder);
+}
+
+.skill-install-panel__item--available:hover .skill-install-panel__add {
+  color: var(--td-brand-color);
+}
+
+.skill-install-panel__split {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--td-component-stroke);
+}
+
+/* @keyframes 名保留 Vue 端原名 skill-chip-dot（§2.4；原 skill-settings.css 随迁后删除）。 */
+@keyframes skill-chip-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}

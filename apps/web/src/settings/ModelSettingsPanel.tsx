@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import * as React from "react";
 import type {
   ModelConfiguration,
   WeKnoraClient,
 } from "@weknora/api-client";
 import { Button, Card, Input, NumberInput, Status, Switch } from "@weknora/ui";
+import { Icon as TIcon } from "tdesign-icons-react";
+import {
+  Button as TButton,
+  Dropdown as TDropdown,
+  Empty as TEmpty,
+  Loading as TLoading,
+  Popconfirm as TPopconfirm,
+  Tabs,
+  Tooltip as TTooltip,
+} from "tdesign-react";
 import { roleAtLeast } from "@weknora/views/settings/registry";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
 import { ModelOptionSelect } from "./ModelOptionSelect.tsx";
@@ -51,14 +60,13 @@ type Props = {
   initialSubSection?: string;
 };
 const TYPES: ModelType[] = ["chat", "embedding", "rerank", "vllm", "asr"];
-// Tailwind 迁移：原 settings-wrapper.css 的 .model-card--<type> .model-card__badge
-// 配色改为静态映射 utilities（rgba/hex 任意值精确还原）。
-const CARD_BADGE_TONE: Record<ModelType, string> = {
-  chat: "bg-[rgba(0,82,217,0.1)] text-[#0052d9]",
-  embedding: "bg-[rgba(98,53,187,0.1)] text-[#6235bb]",
-  rerank: "bg-[rgba(184,92,0,0.12)] text-[#b85c00]",
-  vllm: "bg-[rgba(201,62,62,0.1)] text-[#c93e3e]",
-  asr: "bg-[rgba(17,128,83,0.1)] text-[#118053]",
+// Vue ModelSettings.vue typeIcon（L395-404）：TDesign 自带 icon name 直译。
+const TYPE_ICON: Record<ModelType, string> = {
+  chat: "chat",
+  embedding: "chart-bubble",
+  rerank: "filter-sort",
+  vllm: "image",
+  asr: "sound",
 };
 const BUILTIN_MODELS_DOC = "https://github.com/Tencent/WeKnora/blob/main/docs/BUILTIN_MODELS.md";
 const THINKING_CONTROL_OPTIONS: Array<{ value: string; key: string }> = [
@@ -128,8 +136,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
   // Ollama combobox dropdown state (ModelEditorDialog.vue filterable select).
   const [ollamaOpen, setOllamaOpen] = useState(false);
   const [ollamaHighlight, setOllamaHighlight] = useState(0);
-  // Which card action menu is open (ModelSettings.vue ellipsis dropdown).
-  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [usageConflict, setUsageConflict] = useState<{ modelName: string; details: ModelUsageDetails } | null>(null);
   const [ollamaStatus, setOllamaStatus] = useState<boolean | null>(null);
   const [ollamaModels, setOllamaModels] = useState<Awaited<ReturnType<WeKnoraClient["settings"]["ollama"]["models"]>>>([]);
@@ -676,7 +682,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
 
   async function remove(model: ModelConfiguration) {
     if (!canCreate || isBuiltin(model) || busy) return;
-    if (!window.confirm(t("modelSettings.confirmDelete", { name: label(model) }))) return;
+    // Vue 侧确认由卡面 t-popconfirm 承载（ModelSettings.vue L82-91），此处直删。
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -842,19 +848,9 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
     }
   }
 
-  // Type badge icons per ModelSettings.vue typeIcon (lines 395-404) —
-  // stroke SVGs mirroring the t-icon names (chat / chart-bubble /
-  // filter-sort / image / sound).
-  function badgeIcon(type: ModelType): ReactNode {
-    const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-    const map: Record<ModelType, ReactNode> = {
-      chat: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>,
-      embedding: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M5 20V10M12 20V4M19 20v-7" /></svg>,
-      rerank: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M3 6h13M3 12h9M3 18h5" /><path d="M16 14l4 4 4-4" transform="scale(0.75) translate(4 4)" /></svg>,
-      vllm: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>,
-      asr: <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}><path d="M11 5L6 9H2v6h4l5 4V5z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14" /></svg>,
-    };
-    return map[type];
+  // Type badge icon per ModelSettings.vue typeIcon (L395-404) — t-icon glyph 直译。
+  function typeIconName(type: ModelType): string {
+    return TYPE_ICON[type];
   }
   function typeLabelOf(type: ModelType): string {
     return t(`modelSettings.typeShort.${type}`);
@@ -917,61 +913,52 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
   })), [t]);
 
   return (
-    <section className="grid gap-4" data-testid="model-settings">
-      {/* Vue ModelSettings.vue section-header: mb28, h2 20/600 mb8 normal,
-          desc 14px lh1.6 secondary; the builtin-models-hint box lives INSIDE
-          the header (mt12, pad 10/12, radius 6) so the mb28 → tabs chain
-          lands on Vue's t-tabs y=245.5. */}
+    <div className="model-settings" data-testid="model-settings">
+      {/* Vue ModelSettings.vue section-header 逐节点平移（T12b）：h2 + 描述 +
+          模型测试 t-button（#icon slot → icon prop；label 前导空格单文本节点，
+          台账 #11/#13 先例）+ builtin-models-hint 提示盒。样式 settings.td.css §12。 */}
       <div className="section-header">
-        <div className="flex items-center justify-between gap-5 max-[720px]:flex-col max-[720px]:items-start">
-        <div>
-          <h2>{t("modelSettings.title")}</h2>
-          <p className="section-description m-0">{t("modelSettings.description")}</p>
+        <div className="section-header__top">
+          <div>
+            <h2>{t("modelSettings.title")}</h2>
+            <p className="section-description">{t("modelSettings.description")}</p>
+          </div>
+          {canCreate ? (
+            <TButton type="button" theme="primary" variant="text" size="medium" className="model-test-trigger" icon={<TIcon name="play-circle" />} onClick={() => setDebugOpen(true)}>
+              {` ${t("modelSettings.actions.debugModel")}`}
+            </TButton>
+          ) : null}
         </div>
-        {canCreate ? (
-          <button type="button" className="inline-flex cursor-pointer items-center gap-2 border-0 bg-transparent px-0 py-[6px] font-[inherit] text-sm font-semibold text-[#07c05f] hover:text-[#06b04d] focus-visible:text-[#06b04d]" onClick={() => setDebugOpen(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M10 8.8v6.4l5.4-3.2z" fill="currentColor" /></svg>
-            {t("modelSettings.actions.debugModel")}
-          </button>
-        ) : null}
-        </div>
-        <div className="mt-3 rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-3 py-[10px] leading-[18px]" role="note">
-          <p className="m-0 mb-1 text-xs font-medium leading-[17px] tracking-[0.02em] text-[rgba(0,0,0,0.4)]"><strong className="font-medium">{t("modelSettings.builtinModels.title")}</strong></p>
-          <p className="m-0 mb-[6px] text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">
+        <div className="builtin-models-hint" role="note">
+          <p className="builtin-hint-label">{t("modelSettings.builtinModels.title")}</p>
+          <p className="builtin-hint-text">
             {t(role === "system-admin" ? "modelSettings.builtinModels.descriptionAdmin" : "modelSettings.builtinModels.description")}
           </p>
-          <a className="inline-flex items-center gap-1 align-top text-[13px] leading-[18px] text-[var(--wk-brand,#07c05f)] no-underline hover:underline" href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
-            {t("modelSettings.builtinModels.viewGuide")}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7" /><path d="M14 10a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7" /></svg>
+          {/* Vue 文本插值与 t-icon 间换行缩进＝尾部空格文本节点，单文本节点复刻。 */}
+          <a className="doc-link" href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
+            {`${t("modelSettings.builtinModels.viewGuide")} `}
+            <TIcon name="link" className="link-icon" />
           </a>
         </div>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {usageConflict ? <ModelUsageNotice modelName={usageConflict.modelName} details={usageConflict.details} onClose={() => setUsageConflict(null)} /> : null}
-      <nav className="wk-model-tabs flex flex-wrap gap-0 border-b border-b-[#e7e7e7]" aria-label={t("model.editor.typeLabel")}>
-        <button
-          type="button"
-          className={filter === "all" ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
-          onClick={() => setFilter("all")}
-        >
-          {t("common.all")}({models.length})
-        </button>
+      {/* Vue t-tabs（v-model=activeTypeFilter）：label-only 面板，content 区
+          display:none（§12 :deep 平移）。 */}
+      <Tabs value={filter} onChange={(value) => setFilter(value as "all" | ModelType)} className="model-type-tabs">
+        <Tabs.TabPanel value="all" label={`${t("common.all")}(${models.length})`} />
         {TYPES.map((type) => (
-          <button
-            type="button"
-            key={type}
-            className={filter === type ? "cursor-pointer border-0 border-b-[3px] border-b-[#07c05f]! bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078] text-[#07c05f]! is-active" : "cursor-pointer border-0 border-b-[3px] border-b-transparent bg-transparent px-3 py-3 text-[13px] leading-[20px] text-[#506078]"}
-            onClick={() => setFilter(type)}
-          >
-            {typeLabelOf(type)}({models.filter((item) => modelType(item) === type).length})
-          </button>
+          <Tabs.TabPanel key={type} value={type} label={`${typeLabelOf(type)}(${models.filter((item) => modelType(item) === type).length})`} />
         ))}
-      </nav>
+      </Tabs>
+      <TLoading loading={false} size="small" className="model-list-loading">
       {!canCreate && visible.length === 0 ? (
-        <Status>{emptyHint}</Status>
+        <div className="empty-state">
+          <TEmpty description={emptyHint} />
+        </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))]! gap-3!">
+        <div className="model-grid">
           {visible.map((model) => {
             const type = modelType(model);
             const modelParams = params(model);
@@ -985,72 +972,70 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 : undefined;
             const contextWindow = typeof modelParams.context_window === "number" ? modelParams.context_window : undefined;
             const supportsVision = modelParams.supports_vision === true;
-            const menuOpen = menuFor === model.id;
             return (
               <div
-                key={model.id}
-                className={"wk-vmodel-card group/card relative box-border flex min-w-0 items-start gap-3 rounded-[10px] border border-[#e7e7e7] px-4 py-[14px] transition-[border-color,box-shadow] duration-[180ms] ease-[ease]"
-                  + (builtin ? " bg-[#f3f3f3] hover:border-[#e7e7e7] hover:shadow-none" : " bg-white")
-                  + (canEdit ? " cursor-pointer" : "")
-                  + (canEdit && !builtin ? " hover:border-[rgba(7,192,95,0.65)] hover:shadow-[0_4px_14px_rgba(15,23,42,0.08)] hover:outline-none focus-visible:border-[rgba(7,192,95,0.65)] focus-visible:shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus-visible:outline-none" : "")}
+                key={`${type}-${model.id}`}
+                className={"model-card model-card--" + type
+                  + (builtin ? " model-card--builtin" : "")
+                  + (canEdit ? " model-card--clickable" : "")}
+                role={canEdit ? "button" : undefined}
+                tabIndex={canEdit ? 0 : undefined}
                 onClick={canEdit ? () => openEdit(model) : undefined}
+                onKeyDown={canEdit ? (event) => { if (event.key === "Enter") openEdit(model); } : undefined}
               >
-                <div className={"mt-px flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-base " + CARD_BADGE_TONE[type]} aria-label={typeLabelOf(type)}>{badgeIcon(type)}</div>
-                <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <h3 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold leading-[1.4]">{label(model)}</h3>
+                <div className="model-card__badge" aria-label={typeLabelOf(type)}>
+                  <TIcon name={typeIconName(type)} size="18px" />
+                </div>
+                <div className="model-card__body">
+                  <div className="model-card__header">
+                    <h3 className="model-card__title">{label(model)}</h3>
                     {builtin ? (
-                      <span className="shrink-0 text-[13px] text-[#8a97ab] opacity-60 group-hover/card:opacity-100" title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
-                        {role === "system-admin"
-                          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
-                          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>}
+                      <span className="model-card__lock" title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
+                        <TIcon name={role === "system-admin" ? "edit-1" : "lock-on"} />
                       </span>
                     ) : null}
                     {canEdit ? (
-                      <div className="group/actions relative flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="cursor-pointer border-0 bg-transparent px-1.5 py-[2px] text-sm opacity-0 transition-opacity duration-150 ease-[ease] group-focus-within/actions:opacity-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 text-[#7a879c]"
-                          aria-haspopup="menu"
-                          aria-expanded={menuOpen}
-                          onClick={() => setMenuFor(menuOpen ? null : model.id)}
+                      <div className="model-card__actions" onClick={(event) => event.stopPropagation()}>
+                        {/* Vue getModelOptions：builtin（system-admin）→仅编辑；
+                            非 builtin（admin）→编辑+复制。 */}
+                        <TDropdown
+                          options={builtin
+                            ? [{ content: t("common.edit"), value: "edit" }]
+                            : [{ content: t("common.edit"), value: "edit" }, { content: t("common.copy"), value: "copy" }]}
+                          placement="bottom-right"
+                          trigger="click"
+                          onClick={(data) => {
+                            const value = String(data?.value ?? "");
+                            if (value === "edit") openEdit(model);
+                            else if (value === "copy") void copyModel(model);
+                          }}
                         >
-                          {/* Vue card menu is an icon glyph (no text node). */}
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></svg>
-                        </button>
-                        {menuOpen ? (
-                          <div className="absolute right-0 top-[26px] z-[5] flex min-w-[96px] flex-col rounded-lg border border-[rgba(120,135,155,0.3)] bg-white shadow-[0_8px_24px_rgba(23,32,51,0.16)]" role="menu">
-                            <button type="button" role="menuitem" className="cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-[inherit] text-[13px] hover:bg-[rgba(127,142,166,0.1)] disabled:cursor-default disabled:text-[#9aa6b8]" onClick={() => { setMenuFor(null); openEdit(model); }}>
-                              {t("common.edit")}
-                            </button>
-                            {!builtin ? (
-                              <button type="button" role="menuitem" disabled={busy} className="cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-[inherit] text-[13px] hover:bg-[rgba(127,142,166,0.1)] disabled:cursor-default disabled:text-[#9aa6b8]" onClick={() => { setMenuFor(null); void copyModel(model); }}>
-                                {t("common.copy")}
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
+                          <TButton variant="text" shape="square" size="small" className="model-card__action-btn model-card__more">
+                            <TIcon name="ellipsis" />
+                          </TButton>
+                        </TDropdown>
                         {!builtin ? (
-                          <button
-                            type="button"
-                            className="cursor-pointer border-0 bg-transparent px-1.5 py-[2px] text-sm opacity-0 transition-opacity duration-150 ease-[ease] group-focus-within/actions:opacity-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 text-[#c23434]"
-                            title={t("common.delete")}
-                            aria-label={t("common.delete")}
-                            disabled={busy}
-                            onClick={() => void remove(model)}
+                          <TPopconfirm
+                            content={t("modelSettings.confirmDelete", { name: label(model) })}
+                            confirmBtn={{ content: t("common.delete"), theme: "danger" }}
+                            cancelBtn={{ content: t("common.cancel") }}
+                            placement="bottom-right"
+                            onConfirm={() => void remove(model)}
                           >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6" /></svg>
-                          </button>
+                            <TTooltip content={t("common.delete")} placement="top">
+                              <TButton theme="danger" shape="square" variant="text" size="small" className="model-card__action-btn model-card__delete" icon={<TIcon name="delete" />} onClick={(event) => event.stopPropagation()} />
+                            </TTooltip>
+                          </TPopconfirm>
                         ) : null}
                       </div>
                     ) : null}
                   </div>
-                  <p className="m-0 mt-[2px] truncate text-xs leading-[1.5] text-[#5c6b83]">
+                  <p className="model-card__subtitle">
                     <span>{vendorLabel(model)}</span>
                     {type === "embedding" && typeof dimension === "number" ? (
                       <>
-                        <span className="mx-[4px] text-[#97a3b6]">·</span>
-                        <span>{t("model.editor.dimensionLabel")} {dimension}</span>
+                        <span className="model-card__sep">·</span>
+                        <span>{`${t("model.editor.dimensionLabel")} ${dimension}`}</span>
                       </>
                     ) : null}
                     {/* Vue ModelSettings.vue L110-117 renders the ctx chip for
@@ -1058,9 +1043,9 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         the 200K default (dimmed) when no value is stored. */}
                     {(type === "chat" || type === "vllm") ? (
                       <>
-                        <span className="mx-[4px] text-[#97a3b6]">·</span>
+                        <span className="model-card__sep">·</span>
                         <span
-                          className="tabular-nums"
+                          className={"model-card__ctx" + (isDefaultContextWindow(contextWindow) ? " model-card__ctx--default" : "")}
                           title={isDefaultContextWindow(contextWindow)
                             ? t("model.editor.contextWindowDefaultHint", { value: formatContextWindow(contextWindow) })
                             : t("model.editor.contextWindowTokens", { count: effectiveContextWindow(contextWindow) })}
@@ -1071,8 +1056,10 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     ) : null}
                     {type === "chat" && supportsVision ? (
                       <>
-                        <span className="mx-[4px] text-[#97a3b6]">·</span>
-                        <span className="model-card__vision" title={t("model.editor.supportsVisionLabel")} aria-label={t("model.editor.supportsVisionLabel")}>👁</span>
+                        <span className="model-card__sep">·</span>
+                        <span className="model-card__vision" title={t("model.editor.supportsVisionLabel")} aria-label={t("model.editor.supportsVisionLabel")}>
+                          <TIcon name="image" size="12px" />
+                        </span>
                       </>
                     ) : null}
                   </p>
@@ -1081,13 +1068,16 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
             );
           })}
           {canCreate ? (
-            <button type="button" className="flex min-h-[68px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[#e7e7e7] bg-transparent px-4 py-[14px] font-[inherit] text-[rgba(0,0,0,0.4)] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f] focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,0.06)] focus-visible:text-[#07c05f]" onClick={openAdd}>
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[#07c05f]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
-              <span className="text-[13px] font-medium leading-[18px]">{t("modelSettings.actions.addModel")}</span>
+            <button type="button" className="model-card model-card--add" data-guide="settings-add-model" onClick={openAdd}>
+              <span className="model-card--add__icon" aria-hidden="true">
+                <TIcon name="add" />
+              </span>
+              <span className="model-card--add__label">{t("modelSettings.actions.addModel")}</span>
             </button>
           ) : null}
         </div>
       )}
+      </TLoading>
       {draft ? (
         <div
           className="wk-model-editor-overlay fixed inset-0 z-[1300] flex items-stretch justify-end bg-[rgba(23,32,51,.34)]"
@@ -1549,6 +1539,6 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           onClose={() => setDebugOpen(false)}
         />
       ) : null}
-    </section>
+    </div>
   );
 }

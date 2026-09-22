@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { formatMessage } from '@weknora/i18n';
-import { Button, Card, Status, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@weknora/ui';
+import { Button, Card, Status } from '@weknora/ui';
+import { Alert as TAlert, Button as TButton, Popconfirm as TPopconfirm, Table as TTable, Tag as TTag } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import { appDigest, appErrorMessage, appRows, appShort, appStatus, type AppRow } from './model.ts';
 import { pollBackoffDelayMs } from './pollBackoff.ts';
 import { actionControls, type ActionViewModel } from './actionState.ts';
 import { navigate } from '../platform/navigation.ts';
 import { usePreferredLocale } from '../locale.ts';
+import './apps.td.css';
 
 type AppMode = 'catalog' | 'connections' | 'authorization' | 'action';
 type Props = { client: WeKnoraClient; mode: AppMode; id?: string; role?: string };
@@ -59,19 +62,6 @@ function Tag({ theme = 'default', children }: { theme?: 'success' | 'warning' | 
   return <span className={`inline-flex box-border h-5 shrink-0 items-center rounded-[3px] border border-transparent px-1 text-xs leading-5 ${palette}`}>{children}</span>;
 }
 
-/* Vue TDesign table cell metrics (AppsView.vue/ConnectionsView.vue + t-table):
-   th 14px/22px py12 px16, box 47 with its 1px #dcdcdc bottom rule; td 14px/22px
-   py12 px16 with a 1px #dcdcdc bottom rule per row; TDesign uses a FIXED
-   layout so Vue's column widths are literal border-box widths and the
-   widthless columns split the rest. */
-const TDESIGN_TABLE = 'table-fixed [&_thead]:border-[#dcdcdc] [&_th]:box-border [&_th]:h-[47px] [&_th]:px-4 [&_th]:py-0 [&_th]:text-[14px] [&_th]:leading-[22px] [&_th]:font-normal [&_th]:align-middle [&_th]:text-[rgba(0,0,0,0.4)] [&_td]:box-border [&_td]:border-b [&_td]:border-[#dcdcdc] [&_td]:px-4 [&_td]:py-3 [&_td]:text-[14px] [&_td]:leading-[22px] [&_td]:align-middle [&_td]:text-[rgba(0,0,0,0.9)]';
-
-/* Vue t-table empty prop: a borderless 120px flex-centered placeholder cell,
-   14px/22px text in the placeholder gray — no cell padding of its own. */
-function EmptyCell({ colSpan, text }: { colSpan: number; text: string }) {
-  return <TableCell colSpan={colSpan} className="text-center" style={{ padding: 0, borderBottom: 'none' }}><div className="flex h-[120px] items-center justify-center text-[14px] leading-[22px] text-[rgba(0,0,0,0.26)]">{text}</div></TableCell>;
-}
-
 /* TDesign t-popconfirm counterpart: an anchored confirm bubble with a danger
    confirm button (loading supported) and a default cancel button. */
 function Popconfirm({ content, confirmLabel, cancelLabel, busy, onConfirm, children }: { content: string; confirmLabel: string; cancelLabel: string; busy: boolean; onConfirm: () => void; children: ReactNode }) {
@@ -97,9 +87,9 @@ function Popconfirm({ content, confirmLabel, cancelLabel, busy, onConfirm, child
   </span>;
 }
 
-/* Vue page shells: AppsView gap 20px vs ConnectionsView gap 16px (gapClass);
-   title 20px/28, desc 13px on 18px lines; the refresh control is Vue's
-   medium outline button (32px, icon + label). */
+/* 留守段 frame（authorization/action 两页，R490 React 端口自持）：
+   apps/apps-connections 两页已迁 Vue DOM（.apps-view/.connections-view +
+   apps.td.css），此 frame 仅供未扫描的两页沿用旧布局。 */
 function PageFrame({ title, description, loading, onReload, refreshLabel, loadingLabel, gapClass = 'gap-5', children }: { title: string; description: string; loading: boolean; onReload: () => void; refreshLabel: string; loadingLabel: string; gapClass?: string; children: ReactNode }) {
   return <main className={`wk-page flex h-full flex-col overflow-y-auto p-6 [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] ${gapClass}`}><header className="flex items-start justify-between gap-4"><div><h1 className="m-0 text-xl font-semibold leading-[28px] text-[rgba(0,0,0,0.9)]">{title}</h1><p className="m-0 mt-1 max-w-[640px] text-[13px] leading-[18px] text-[rgba(0,0,0,0.6)]">{description}</p></div><Button aria-label={refreshLabel} disabled={loading} onClick={onReload} loading={loading} className="h-8 shrink-0 gap-[8px] rounded-[3px] border-[#dcdcdc] px-[15px] text-[14px] leading-[22px] text-[rgba(0,0,0,0.9)]"><IconRefresh size={14} />{refreshLabel}</Button></header>{loading ? <div role="status"><Status>{loadingLabel}</Status></div> : null}{children}</main>;
 }
@@ -111,25 +101,88 @@ function useAppsCopy() {
 }
 type AppsTranslate = (key: string, values?: Record<string, string | number>) => string;
 
-function CatalogTable({ rows, empty, t }: { rows: AppRow[]; empty: string; t: AppsTranslate }) {
-  const fields = [['action_id', t('apps.catalog.colAction')], ['app_id', t('apps.catalog.colApp')], ['app_version', t('apps.catalog.colVersion')], ['provider', t('apps.catalog.colProvider')], ['risk', t('apps.catalog.colRisk')], ['required_scopes', t('apps.catalog.colPermissions')], ['schema_digest', t('apps.catalog.colSchemaDigest')], ['published', t('apps.catalog.colPublished')]] as const;
-  // Vue AppsView catalogColumns 显式列宽（fixed 布局，border-box 字面宽度）
-  const widths: Partial<Record<(typeof fields)[number][0], number>> = { app_version: 110, provider: 120, risk: 100, schema_digest: 150, published: 110 };
-  return <Table className={TDESIGN_TABLE}><TableHead><TableRow>{fields.map(([field, title]) => <TableHeader key={title} style={widths[field] ? { width: widths[field] } : undefined}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><EmptyCell colSpan={fields.length} text={empty} /></TableRow> : rows.map((row, index) => <TableRow key={String(row.action_id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'required_scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'risk' ? (() => { const risk = String(value ?? '').trim(); const raw = t(`apps.risk.${risk}`); const label = risk ? (raw === `apps.risk.${risk}` ? risk : raw) : '—'; const tone = risk === 'read' ? 'success' : risk === 'write' ? 'warning' : risk === 'send' || risk === 'delete' ? 'danger' : 'default'; return <Tag theme={tone as 'success' | 'warning' | 'danger' | 'default'}>{label}</Tag>; })() : field === 'schema_digest' ? appDigest(value) : field === 'published' ? <Tag theme={value ? 'success' : 'default'}>{value ? t('apps.catalog.published') : t('apps.catalog.unpublished')}</Tag> : appShort(value); return <TableCell key={field} title={String(value ?? '')}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
+/* ---- CatalogPage —— AppsView.vue DOM 1:1（Task 11b，playbook §3） ----------
+   t-table 直译（columns + cell 渲染函数）、t-tag 风险/发布态、t-alert 加载失败、
+   header 刷新 t-button（variant outline）。 */
+function catalogColumns(t: AppsTranslate) {
+  return [
+    { colKey: 'action_id', title: t('apps.catalog.colAction'), ellipsis: true, cell: ({ row }: { row: AppRow }) => appShort(row.action_id) },
+    { colKey: 'app_id', title: t('apps.catalog.colApp'), ellipsis: true, cell: ({ row }: { row: AppRow }) => appShort(row.app_id) },
+    { colKey: 'app_version', title: t('apps.catalog.colVersion'), width: 110, cell: ({ row }: { row: AppRow }) => appShort(row.app_version) },
+    { colKey: 'provider', title: t('apps.catalog.colProvider'), width: 120, ellipsis: true, cell: ({ row }: { row: AppRow }) => appShort(row.provider) },
+    { colKey: 'risk', title: t('apps.catalog.colRisk'), width: 100, cell: ({ row }: { row: AppRow }) => { const risk = String(row.risk ?? '').trim(); return risk ? <TTag theme={riskThemeOf(risk)} size="small">{riskLabelOf(risk, t)}</TTag> : '—'; } },
+    { colKey: 'required_scopes', title: t('apps.catalog.colPermissions'), ellipsis: true, cell: ({ row }: { row: AppRow }) => <span>{Array.isArray(row.required_scopes) && row.required_scopes.length ? row.required_scopes.join(', ') : '—'}</span> },
+    { colKey: 'schema_digest', title: t('apps.catalog.colSchemaDigest'), width: 150, cell: ({ row }: { row: AppRow }) => <span title={String(row.schema_digest ?? '')}>{appDigest(row.schema_digest)}</span> },
+    { colKey: 'published', title: t('apps.catalog.colPublished'), width: 110, cell: ({ row }: { row: AppRow }) => row.published ? <TTag theme="success" size="small">{t('apps.catalog.published')}</TTag> : <TTag theme="default" size="small">{t('apps.catalog.unpublished')}</TTag> },
+  ];
 }
 
-function InstallationsTable({ rows, empty, t }: { rows: AppRow[]; empty: string; t: AppsTranslate }) {
-  const fields = [['app_key', t('apps.catalog.colApp')], ['version', t('apps.catalog.colVersion')], ['state', t('apps.catalog.colState')], ['scopes', t('apps.catalog.colScopes')]] as const;
-  // Vue installationColumns 列宽（fixed 布局，其余列平分剩余空间）
-  const widths: Partial<Record<(typeof fields)[number][0], number>> = { version: 110, state: 110 };
-  return <Table className={TDESIGN_TABLE}><TableHead><TableRow>{fields.map(([field, title]) => <TableHeader key={title} style={widths[field] ? { width: widths[field] } : undefined}>{title}</TableHeader>)}</TableRow></TableHead><TableBody>{rows.length === 0 ? <TableRow><EmptyCell colSpan={fields.length} text={empty} /></TableRow> : rows.map((row, index) => <TableRow key={String(row.id ?? index)}>{fields.map(([field]) => { const value = row[field]; const content = field === 'scopes' && Array.isArray(value) ? value.join(', ') || '—' : field === 'state' ? (() => { const state = String(value ?? '').trim(); const label = state === 'active' ? t('apps.common.stateActive') : state === 'disabled' ? t('apps.common.stateDisabled') : state ? t('apps.common.stateOther', { state }) : '—'; const tone = state === 'active' ? 'success' : 'default'; return <Tag theme={tone}>{label}</Tag>; })() : appStatus(value); return <TableCell key={field}>{content}</TableCell>; })}</TableRow>)}</TableBody></Table>;
+function installationColumns(t: AppsTranslate) {
+  return [
+    { colKey: 'app_key', title: t('apps.catalog.colApp'), ellipsis: true, cell: ({ row }: { row: AppRow }) => appShort(row.app_key) },
+    { colKey: 'version', title: t('apps.catalog.colVersion'), width: 110, cell: ({ row }: { row: AppRow }) => appShort(row.version) },
+    { colKey: 'state', title: t('apps.catalog.colState'), width: 110, cell: ({ row }: { row: AppRow }) => { const state = String(row.state ?? '').trim(); const label = state === 'active' ? t('apps.common.stateActive') : state === 'disabled' ? t('apps.common.stateDisabled') : state ? t('apps.common.stateOther', { state }) : '—'; return <TTag theme={state === 'active' ? 'success' : 'default'} size="small">{label}</TTag>; } },
+    { colKey: 'scopes', title: t('apps.catalog.colScopes'), ellipsis: true, cell: ({ row }: { row: AppRow }) => <span>{Array.isArray(row.scopes) && row.scopes.length ? row.scopes.join(', ') : '—'}</span> },
+  ];
+}
+
+function riskThemeOf(risk: string): 'success' | 'warning' | 'danger' | 'default' {
+  if (risk === 'read') return 'success';
+  if (risk === 'write') return 'warning';
+  if (risk === 'send' || risk === 'delete') return 'danger';
+  return 'default';
+}
+
+function riskLabelOf(risk: string, t: AppsTranslate): string {
+  const key = 'apps.risk.' + risk;
+  const label = t(key);
+  return label === key ? risk : label;
 }
 
 function CatalogPage({ client, t }: { client: WeKnoraClient; t: (key: string, values?: Record<string, string | number>) => string }) {
   const [catalog, setCatalog] = useState<AppRow[]>([]); const [installed, setInstalled] = useState<AppRow[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(false); const generation = useRef(0); const request = useRef<AbortController | null>(null);
   const load = async () => { request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setError(false); try { const [catalogResponse, installedResponse] = await Promise.all([client.request({ method: 'GET', path: '/api/v1/apps/catalog', signal: controller.signal }), client.request({ method: 'GET', path: '/api/v1/apps/installations', signal: controller.signal })]); if (run !== generation.current) return; setCatalog(appRows(catalogResponse)); setInstalled(appRows(installedResponse)); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setCatalog([]); setInstalled([]); setError(true); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
   useEffect(() => { void load(); return () => { generation.current += 1; request.current?.abort(); }; }, [client]);
-  return <PageFrame title={t('apps.catalog.title')} description={t('apps.catalog.description')} loading={loading} onReload={() => void load()} refreshLabel={t('apps.catalog.refresh')} loadingLabel={t('common.loading')}>{error ? <Status tone="error">{t('apps.catalog.loadFailed')}</Status> : null}<section aria-label={t('apps.catalog.title')} className="flex flex-col gap-2"><CatalogTable rows={catalog} empty={t('apps.catalog.empty')} t={t} /></section><section aria-label={t('apps.catalog.installedTitle')} className="flex flex-col gap-2"><h3 className="m-0 mb-1 text-[15px] font-semibold leading-[21px] text-[rgba(0,0,0,0.9)]">{t('apps.catalog.installedTitle')}</h3><InstallationsTable rows={installed} empty={t('apps.catalog.installedEmpty')} t={t} /></section></PageFrame>;
+  return (
+    <div className="apps-view">
+      <div className="apps-view__header">
+        <div className="apps-view__heading">
+          <h2 className="apps-view__title">{t('apps.catalog.title')}</h2>
+          <p className="apps-view__desc">{t('apps.catalog.description')}</p>
+        </div>
+        <TButton variant="outline" disabled={loading} aria-label={t('apps.catalog.refresh')} onClick={() => void load()} icon={<TIcon name="refresh" />}>
+          {t('apps.catalog.refresh')}
+        </TButton>
+      </div>
+      {error ? <TAlert theme="error" message={t('apps.catalog.loadFailed')} className="apps-view__error" /> : null}
+      <section className="apps-view__section" aria-label={t('apps.catalog.title')}>
+        <TTable
+          rowKey="action_id"
+          data={catalog}
+          columns={catalogColumns(t)}
+          loading={loading}
+          empty={t('apps.catalog.empty')}
+          hover
+          /* 台账 #14：vue-next 仅内容溢出才启用固定表头（空态 th 继承白底）；
+           * tdesign-react 有 maxHeight 即固定表头（th 涂灰）。空数据不传
+           * maxHeight 对齐 Vue 空态 DOM/视觉。 */
+          maxHeight={catalog.length ? 520 : undefined}
+        />
+      </section>
+      <section className="apps-view__section" aria-label={t('apps.catalog.installedTitle')}>
+        <h3 className="apps-view__subtitle">{t('apps.catalog.installedTitle')}</h3>
+        <TTable
+          rowKey="id"
+          data={installed}
+          columns={installationColumns(t)}
+          loading={loading}
+          empty={t('apps.catalog.installedEmpty')}
+          hover
+          maxHeight={installed.length ? 360 : undefined}
+        />
+      </section>
+    </div>
+  );
 }
 
 /* Vue shortId (ConnectionsView/AuthorizationView): 14 chars, then an ellipsis. */
@@ -138,6 +191,9 @@ function vueShortId(id: unknown): string {
   return text.length > 14 ? text.slice(0, 14) + '…' : text || '—';
 }
 
+/* ---- ConnectionsPage —— ConnectionsView.vue DOM 1:1（Task 11b，playbook §3） --
+   t-table 直译（#id 等宽短 id / #kind/#state t-tag / #ops 双操作 + t-popconfirm）、
+   t-alert error/info 双提示、header 刷新 t-button。 */
 function ConnectionsPage({ client, role, t, showToast }: { client: WeKnoraClient; role?: string; t: (key: string, values?: Record<string, string | number>) => string; showToast: (tone: ToastTone, text: string) => void }) {
   const [data, setData] = useState<AppRow[]>([]); const [loading, setLoading] = useState(true); const [loadError, setLoadError] = useState(false); const [revokingId, setRevokingId] = useState(''); const generation = useRef(0); const request = useRef<AbortController | null>(null); const canManage = role === 'owner' || role === 'admin';
   const load = async () => { request.current?.abort(); const run = ++generation.current; const controller = new AbortController(); request.current = controller; setLoading(true); setLoadError(false); try { const value = await client.request({ method: 'GET', path: '/api/v1/apps/connections', signal: controller.signal }); if (run === generation.current) setData(appRows(value)); } catch (cause) { if (run === generation.current && !isAbortError(cause)) { setData([]); setLoadError(true); } } finally { if (run === generation.current) { setLoading(false); request.current = null; } } };
@@ -153,7 +209,44 @@ function ConnectionsPage({ client, role, t, showToast }: { client: WeKnoraClient
   const accountLabel = (row: AppRow): string => { if (row.kind === 'space') return t('apps.connections.accountSpace'); const owner = String(row.owner_id ?? '').trim(); return owner ? vueShortId(owner) : t('apps.connections.accountUnknown'); };
   const accountTitle = (row: AppRow): string => row.kind === 'space' ? t('apps.connections.accountSpace') : String(row.owner_id ?? '') || '';
   const stateLabel = (state: unknown): string => { const text = String(state ?? ''); if (text === 'active') return t('apps.common.stateActive'); if (text === 'revoked') return t('apps.common.stateRevoked'); return t('apps.common.stateOther', { state: text }); };
-  return <PageFrame title={t('apps.connections.title')} description={t('apps.connections.description')} loading={loading} onReload={() => void load()} refreshLabel={t('apps.connections.refresh')} loadingLabel={t('common.loading')} gapClass="gap-4">{loadError ? <Status tone="error">{t('apps.connections.loadFailed')}</Status> : null}{!canManage ? <Status>{t('apps.connections.memberCannotManage')}</Status> : null}<Table className={TDESIGN_TABLE}><TableHead><TableRow>{[[t('apps.connections.colId'), 170], [t('apps.connections.colKind'), 100], [t('apps.connections.colAccount'), undefined], [t('apps.connections.colState'), 110], [t('apps.connections.colActions'), 260]].map(([header, width]) => <TableHeader key={header as string} style={width ? { width } : undefined}>{header as string}</TableHeader>)}</TableRow></TableHead><TableBody>{data.length === 0 ? <TableRow><EmptyCell colSpan={5} text={t('apps.connections.empty')} /></TableRow> : data.map((row) => <TableRow key={String(row.id)}><TableCell title={String(row.id ?? '')}><span className="font-mono">{vueShortId(row.id)}</span></TableCell><TableCell><Tag theme={row.kind === 'space' ? 'primary' : 'default'}>{kindLabel(row.kind)}</Tag></TableCell><TableCell title={accountTitle(row)}>{accountLabel(row)}</TableCell><TableCell><Tag theme={row.state === 'active' ? 'success' : row.state === 'revoked' ? 'danger' : 'default'}>{stateLabel(row.state)}</Tag></TableCell><TableCell><span className="flex items-center gap-[4px]">{canManage && row.state === 'active' ? <><Button variant="text" size="small" className="h-6 min-h-6 px-2 text-[14px] text-[rgba(0,0,0,0.9)]" onClick={() => void startAuthorization(row)}>{t('apps.connections.startAuthorization')}</Button><Popconfirm content={t('apps.connections.revokeConfirmContent')} confirmLabel={t('apps.connections.revoke')} cancelLabel={t('apps.common.cancel')} busy={revokingId === String(row.id)} onConfirm={() => void revoke(row)}><Button variant="text" size="small" disabled={revokingId !== ''} className="h-6 min-h-6 px-2 text-[14px] text-[#d54941]">{t('apps.connections.revoke')}</Button></Popconfirm></> : row.state === 'revoked' ? <span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t('apps.connections.remoteCleanupNote')}</span> : '—'}</span></TableCell></TableRow>)}</TableBody></Table></PageFrame>;
+  const columns = [
+    { colKey: 'id', title: t('apps.connections.colId'), width: 170, cell: ({ row }: { row: AppRow }) => <span title={String(row.id ?? '')} className="connections-view__mono">{vueShortId(row.id)}</span> },
+    { colKey: 'kind', title: t('apps.connections.colKind'), width: 100, cell: ({ row }: { row: AppRow }) => <TTag theme={row.kind === 'space' ? 'primary' : 'default'} size="small">{kindLabel(row.kind)}</TTag> },
+    { colKey: 'owner', title: t('apps.connections.colAccount'), ellipsis: true, cell: ({ row }: { row: AppRow }) => <span title={accountTitle(row)}>{accountLabel(row)}</span> },
+    { colKey: 'state', title: t('apps.connections.colState'), width: 110, cell: ({ row }: { row: AppRow }) => <TTag theme={row.state === 'active' ? 'success' : row.state === 'revoked' ? 'danger' : 'default'} size="small">{stateLabel(row.state)}</TTag> },
+    { colKey: 'ops', title: t('apps.connections.colActions'), width: 260, cell: ({ row }: { row: AppRow }) => (
+      <div className="connections-view__ops">
+        {canManage && row.state === 'active' ? (<>
+          <TButton size="small" variant="text" aria-label={t('apps.connections.startAuthorization')} onClick={() => void startAuthorization(row)}>{t('apps.connections.startAuthorization')}</TButton>
+          <TPopconfirm
+            content={t('apps.connections.revokeConfirmContent')}
+            confirmBtn={{ content: t('apps.connections.revoke'), theme: 'danger', loading: revokingId === String(row.id) }}
+            cancelBtn={{ content: t('apps.common.cancel'), theme: 'default' }}
+            placement="left"
+            onConfirm={() => void revoke(row)}
+          >
+            <TButton size="small" variant="text" theme="danger" disabled={revokingId !== ''} aria-label={t('apps.connections.revoke')}>{t('apps.connections.revoke')}</TButton>
+          </TPopconfirm>
+        </>) : row.state === 'revoked' ? <span className="connections-view__cleanup-note">{t('apps.connections.remoteCleanupNote')}</span> : '—'}
+      </div>
+    ) },
+  ];
+  return (
+    <div className="connections-view">
+      <div className="connections-view__header">
+        <div className="connections-view__heading">
+          <h2 className="connections-view__title">{t('apps.connections.title')}</h2>
+          <p className="connections-view__desc">{t('apps.connections.description')}</p>
+        </div>
+        <TButton variant="outline" disabled={loading} aria-label={t('apps.connections.refresh')} onClick={() => void load()} icon={<TIcon name="refresh" />}>
+          {t('apps.connections.refresh')}
+        </TButton>
+      </div>
+      {loadError ? <TAlert theme="error" message={t('apps.connections.loadFailed')} className="connections-view__error" /> : null}
+      {!canManage ? <TAlert theme="info" message={t('apps.connections.memberCannotManage')} className="connections-view__error" /> : null}
+      <TTable rowKey="id" data={data} columns={columns} loading={loading} empty={t('apps.connections.empty')} hover />
+    </div>
+  );
 }
 
 /* Vue formatTime: locale date string, em dash when absent. */

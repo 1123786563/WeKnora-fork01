@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import './sandbox-settings.css';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import {
   parseSandboxConfigurationConflict,
   type CubeSandboxConfig,
@@ -13,8 +12,27 @@ import {
   type WeKnoraClient,
 } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Button, Card, Checkbox, Input, NumberInput, Radio, Select, Status } from '@weknora/ui';
+// TDesign 同构迁移（批次 2 收尾）：列表域（section-header / setting-row 开关 /
+// sandbox-type-tabs / 卡片网格 / 卡片菜单）按 SandboxSettings.vue 逐节点平移，
+// 组件换 tdesign-react；SandboxConfigEditor 与 inventory 抽屉沿用 React 表单栈
+// （批次先例：parser/mcp/models 编辑器同口径，扫描稳态不可达，待后续批次收编），
+// @weknora/ui 仅剩保留域使用。
+import { Button, Checkbox, Input, NumberInput, Radio, Select, Status } from '@weknora/ui';
+import { Icon as TIcon } from 'tdesign-icons-react';
+import {
+  Alert as TAlert,
+  Button as TButton,
+  Dropdown as TDropdown,
+  Empty as TEmpty,
+  Loading as TLoading,
+  Popconfirm as TPopconfirm,
+  Popup as TPopup,
+  Switch as TSwitch,
+  Tabs as TTabs,
+  Tag as TTag,
+} from 'tdesign-react';
 import { roleAtLeast, type SettingsRole } from '../../../../packages/views/src/settings/registry.ts';
+import { providerLogo } from './providerLogos.ts';
 import { useAppLocale } from '../i18n.ts';
 
 /*
@@ -1601,6 +1619,30 @@ function buildCardWarnings(record: SandboxConfigRecord, dockerBackendEnabled: bo
   return warnings;
 }
 
+/* Vue SandboxBackendBadge.vue（frontend/src/components/settings/）：同一枚
+   后端徽章供列表卡与（后续收编的）配置抽屉复用；有 mono logo（docker）时
+   用 ::before mask，否则回落 TDesign glyph（cube→server、其余→cloud）。 */
+function SandboxBackendBadge({ type, size = 'md' }: { type: string; size?: 'xs' | 'sm' | 'md' }) {
+  const logo = providerLogo('sandbox', type);
+  const iconName = type === 'cube' ? 'server' : type === 'disabled' ? 'minus-circle' : 'cloud';
+  const className = `sandbox-badge sandbox-badge--${type} sandbox-badge--${size}${logo?.mode === 'mono' ? ' sandbox-badge--mono' : ''}`;
+  const style = logo?.mode === 'mono' ? { '--logo-url': `url("${logo.url}")` } as CSSProperties : undefined;
+  return <span className={className} style={style} aria-hidden="true">{logo ? null : <TIcon name={iconName} />}</span>;
+}
+
+/** SandboxSettings.vue cardMenu (292-304): edit / inventory (cube+e2b) / delete. */
+function cardMenuOptions(record: SandboxConfigRecord, t: SandboxT): Array<{ content: string; value: string; theme?: 'error' }> {
+  if (!isNamedSandboxBackend(record.sandbox_type)) {
+    return [{ content: t('common.delete'), value: 'delete', theme: 'error' }];
+  }
+  const options: Array<{ content: string; value: string; theme?: 'error' }> = [{ content: t('common.edit'), value: 'edit' }];
+  if (record.sandbox_type === 'cube' || record.sandbox_type === 'e2b') {
+    options.push({ content: t('settings.sandbox.viewSandboxes'), value: 'inventory' });
+  }
+  options.push({ content: t('common.delete'), value: 'delete', theme: 'error' });
+  return options;
+}
+
 export function SandboxSettingsPanel({ client, role, initialData, dockerBackendEnabled = true, onOpenSession }: Props) {
   const canEdit = roleAtLeast(role, 'admin');
   const locale = useAppLocale();
@@ -1613,8 +1655,6 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
   const [editing, setEditing] = useState<{ record: SandboxConfigRecord | null; presetType: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteAgents, setDeleteAgents] = useState<Record<string, string[]>>({});
-  /** SandboxSettings.vue:43-55 — only switching execution OFF pops the warning confirm. */
-  const [confirmingDisable, setConfirmingDisable] = useState(false);
   const [inventory, setInventory] = useState<{ record: SandboxConfigRecord; data: SandboxInventory; notice: 'blocked' | 'unverifiable' } | null>(null);
   /** SandboxSettings.vue sessionTitles (315): id -> trimmed title. */
   const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
@@ -1648,6 +1688,13 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
   function openEdit(record: SandboxConfigRecord): void {
     if (isLegacyRecord(record)) return;
     setEditing({ record, presetType: '' });
+  }
+
+  /** SandboxSettings.vue onMenuAction (489-501): card menu dispatch. */
+  async function onMenuAction(action: string, record: SandboxConfigRecord): Promise<void> {
+    if (action === 'edit') { openEdit(record); return; }
+    if (action === 'inventory') { await inspect(record); return; }
+    if (action === 'delete') { await requestRemove(record); }
   }
 
   /** SandboxSettings.vue loadSessionTitles (323-339): one GET per unique id in
@@ -1741,35 +1788,44 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
     } finally { setBusy(false); }
   }
 
-  if (loading) {
-    return <Card data-testid="sandbox-settings"><Status>{t('settings.sandbox.loading')}</Status></Card>;
-  }
-
+  /* Vue SandboxSettings.vue:2-134 列表域逐节点平移：section-header（t-popup
+     悬浮 hint + header-action-link）→ setting-row（t-popconfirm + t-switch 的
+     工作区脚本开关）→ sandbox-tabs-row（t-tabs label-only 面板，content 区
+     display:none 走 §14 :deep 平移）→ t-loading 内的 docker 告警/禁用空态/
+     sandbox-grid 卡片（SandboxBackendBadge + t-tag + t-dropdown 菜单 +
+     sandbox-card--add 虚线卡）→ sandbox-empty-hint。样式在 settings.td.css §14。 */
+  const dockerTabDisabled = filter === 'docker' && !dockerBackendEnabled;
   return (
-    <section className="wk-sandbox-settings" data-testid="sandbox-settings">
-      {/* Vue SandboxSettings.vue:8-30 — the panel owns its header: (i) hint
-          inline after the h2, description below, green guide link on the
-          right; no bordered 添加沙箱 button in the header (add = the dashed
-          card in the empty grid). */}
+    <div className="sandbox-settings" data-testid="sandbox-settings">
       <div className="section-header">
-        <div className="flex items-center justify-between gap-5 max-[720px]:flex-col max-[720px]:items-start">
-        <div>
-          <div className="flex items-center gap-[6px]">
-          <h2 className="m-0!">{t('settings.sandbox.title')}</h2>
-          {/* Page hint popover (SandboxSettings.vue:8-19). */}
-          <details className="wk-sandbox-hint relative inline-block align-middle">
-            <summary aria-label={t('settings.sandbox.pageHintTitle')} className="inline-flex items-center justify-center p-[2px] text-[rgba(0,0,0,0.4)] hover:text-[#07c05f]"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 8h.01M12 12v4" /></svg></summary>
-            <div>
-              <p className="m-0"><strong>{t('settings.sandbox.pageHintTitle')}</strong></p>
-              <p className="wk-muted text-muted m-0">{t('settings.sandbox.pageHint')}</p>
+        <div className="section-header__top">
+          <div>
+            <div className="section-header__titlewrap">
+              <h2>{t('settings.sandbox.title')}</h2>
+              {/* Vue placement="bottom-start"（台账 #15：React 无 -start 粒度，
+                  以 bottom-left 近似，hover-only 稳态扫描不可见）。 */}
+              <TPopup
+                placement="bottom-left"
+                trigger="hover"
+                overlayInnerStyle={{ maxWidth: '380px' }}
+                content={<div className="hint-popover">
+                  <p className="hint-popover__title">{t('settings.sandbox.pageHintTitle')}</p>
+                  <p className="hint-popover__text">{t('settings.sandbox.pageHint')}</p>
+                </div>}
+              >
+                <button type="button" className="hint-trigger" aria-label={t('settings.sandbox.pageHintTitle')}>
+                  <TIcon name="info-circle" size="16px" />
+                </button>
+              </TPopup>
             </div>
-          </details>
+            <p className="section-description">{t('settings.sandbox.description')}</p>
           </div>
-          <p className="section-description m-0">{t('settings.sandbox.description')}</p>
-        </div>
-        <div className="wk-list-actions flex items-center justify-end gap-[0.5rem]">
-          <a className="inline-flex items-center gap-[5px] text-[14px] font-semibold leading-[20px] text-[#07c05f] no-underline hover:underline" href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 015.8 1c0 2-3 2.4-3 4M12 17h.01" /></svg>{t('settings.sandbox.viewClusterGuide')}</a>
-        </div>
+          <div className="header-actions">
+            <a className="header-action-link" href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer">
+              <TIcon name="help-circle" />
+              {t('settings.sandbox.viewClusterGuide')}
+            </a>
+          </div>
         </div>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
@@ -1782,109 +1838,124 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
             <p className="desc">{t('settings.sandbox.scriptPolicyDesc')}</p>
           </div>
           <div className="setting-control">
-          {data?.workspaceScriptsDisabled ? (
-            <button type="button" role="switch" aria-checked="false"
-              className="relative h-5 w-8 flex-none cursor-pointer rounded-[10px] border-none bg-[var(--wks-border-strong,#d9d9d9)] p-0 transition-[background] duration-200 ease-[ease] disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={busy}
-              aria-label={t('settings.sandbox.scriptPolicyLabel')}
-              onClick={() => void setScriptsDisabled(false)}>
-              <span className="absolute left-[2px] top-[2px] h-[15px] w-[15px] rounded-full bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[transform] duration-200 ease-[ease]" aria-hidden="true" />
-            </button>
-          ) : confirmingDisable ? (
-            <div role="alertdialog" aria-label={t('settings.sandbox.disableScriptsConfirm')} data-confirm="disable-scripts"
-              className="flex items-center gap-[10px] rounded-[8px] border border-[var(--wks-warning-border,#ffe1c7)] bg-[var(--wks-warning-bg,#fff7ec)] px-[12px] py-[8px] text-[13px] text-[var(--wks-text-primary,#1f2937)]">
-              <p className="m-0">{t('settings.sandbox.disableScriptsConfirm')}</p>
-              <div className="flex gap-2">
-                <button type="button" className="cursor-pointer rounded-[6px] border border-[var(--wks-border,#e5e7eb)] bg-surface px-[10px] py-[3px]" disabled={busy} onClick={() => setConfirmingDisable(false)}>{t('common.cancel')}</button>
-                <button type="button" className="cursor-pointer rounded-[6px] border-none bg-[var(--wks-danger,#e34d59)] px-[10px] py-1 text-white" disabled={busy}
-                  onClick={() => { setConfirmingDisable(false); void setScriptsDisabled(true); }}>{t('settings.sandbox.disableScripts')}</button>
-              </div>
-            </div>
-          ) : (
-            <button type="button" role="switch" aria-checked="true"
-              className="relative h-5 w-8 flex-none cursor-pointer rounded-[10px] border-none bg-[#07c05f] p-0 transition-[background] duration-200 ease-[ease] disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={busy}
-              aria-label={t('settings.sandbox.scriptPolicyLabel')}
-              onClick={() => setConfirmingDisable(true)}>
-              <span className="absolute left-[2px] top-[2px] h-[15px] w-[15px] translate-x-[10.9px] rounded-full bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[transform] duration-200 ease-[ease]" aria-hidden="true" />
-            </button>
-          )}
+            {/* SandboxSettings.vue:47-55 — only switching execution off pops the
+                warning popconfirm; :value one-way keeps the switch from flipping
+                until the change is accepted. */}
+            {!data?.workspaceScriptsDisabled ? (
+              <TPopconfirm
+                theme="warning"
+                content={t('settings.sandbox.disableScriptsConfirm')}
+                confirmBtn={{ content: t('settings.sandbox.disableScripts'), theme: 'danger' }}
+                cancelBtn={{ content: t('common.cancel') }}
+                placement="left"
+                onConfirm={() => void setScriptsDisabled(true)}
+              >
+                <TSwitch value={true} loading={busy} />
+              </TPopconfirm>
+            ) : (
+              <TSwitch value={false} loading={busy} onChange={() => void setScriptsDisabled(false)} />
+            )}
           </div>
         </div>
       ) : null}
 
-      <nav className="wk-model-tabs mb-[15px] flex flex-wrap border-b border-b-[#e7e7e7]" aria-label={t('settings.sandbox.backendType')}>
-        {/* Vue t-tabs：active 也是 400 常规字重（t-is-active 仅变绿）；按钮需
-            [font:inherit]，否则 UA 的 button 字体（Arial）让文字变窄错位。 */}
-        <button type="button" className={filter === 'all' ? 'border-b-[#07c05f]! text-[13px] text-[#07c05f]! is-active bg-transparent border-0 border-b-[3px] border-b-[#07c05f]! text-[rgba(0,0,0,0.6)] cursor-pointer h-12 px-[0.75rem] leading-[48px] [font-family:inherit]' : 'text-[13px] bg-transparent border-0 border-b-[3px] border-b-transparent text-[rgba(0,0,0,0.6)] cursor-pointer h-12 px-[0.75rem] leading-[48px] [font-family:inherit]'} onClick={() => setFilter('all')}>{t('common.all')}({items.length})</button>
-        {SANDBOX_BACKENDS.map((type) => (
-          <button type="button" key={type} className={filter === type ? 'border-b-[#07c05f]! text-[13px] text-[#07c05f]! is-active bg-transparent border-0 border-b-[3px] border-b-transparent text-[rgba(0,0,0,0.6)] cursor-pointer h-12 px-[0.75rem] leading-[48px] [font-family:inherit]' : 'text-[13px] bg-transparent border-0 border-b-[3px] border-b-transparent text-[rgba(0,0,0,0.6)] cursor-pointer h-12 px-[0.75rem] leading-[48px] [font-family:inherit]'} onClick={() => setFilter(type)}>
-            {backendLabel(type)}({countByType(type)})
-          </button>
-        ))}
-      </nav>
+      <div className="sandbox-tabs-row">
+        <TTabs value={filter} onChange={(value) => setFilter(value as 'all' | SandboxBackendType)} className="sandbox-type-tabs">
+          <TTabs.TabPanel value="all" label={`${t('common.all')}(${items.length})`} />
+          {SANDBOX_BACKENDS.map((type) => (
+            <TTabs.TabPanel key={type} value={type} label={`${backendLabel(type)}(${countByType(type)})`} />
+          ))}
+        </TTabs>
+      </div>
 
-      {items.length === 0 ? <div>
-        {canEdit ? <div className="wk-sandbox-grid wk-sandbox-grid--empty"><button type="button" className="flex h-full min-h-[68px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[rgba(120,135,155,0.45)] bg-transparent pl-[12px] pr-[14px] py-[14px] font-[inherit] text-[rgba(0,0,0,0.4)] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f]" onClick={openCreate}>
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[#07c05f]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg></span>
-          <span className="text-[13px] font-medium leading-[1.4]">{t('settings.sandbox.addConfig')}</span>
-        </button></div> : null}
-        <p className="mb-0 mt-4 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.4)]">{t('settings.sandbox.noConfigs')}</p>
-      </div> : (
-        <div className="wk-sandbox-grid">
-          {filtered.map((item) => {
-            const warnings = buildCardWarnings(item, dockerBackendEnabled);
-            const summary = targetSummary(item);
-            const cardInteractive = canEdit && !isLegacyRecord(item);
-            return (
-              <Card
-                key={item.id}
-                className={`wk-sandbox-card${cardInteractive ? ' cursor-pointer' : ''}`}
-                {...(cardInteractive ? {
-                  role: 'button',
-                  tabIndex: 0,
-                  onClick: () => openEdit(item),
-                  onKeyDown: (event: KeyboardEvent) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      openEdit(item);
-                    }
-                  },
-                } : {})}
-              >
-                <div className="wk-sandbox-card-header">
-                  <div>
-                    <span className="wk-muted text-muted">{backendLabel(item.sandbox_type)}</span>
-                    <h4>{item.name}</h4>
-                    {isLegacyRecord(item) ? <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.legacyConfig')}</span> : null}
-                  </div>
-                  {canEdit ? (
-                    <div
-                      className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"
-                      onClick={(event) => event.stopPropagation()}
-                      onKeyDown={(event) => event.stopPropagation()}
-                    >
-                      {!isLegacyRecord(item) ? <Button type="button" onClick={() => openEdit(item)}>{t('common.edit')}</Button> : null}
-                      {/* Vue cardMenu offers inventory for cube/e2b only (SandboxSettings.vue:299-301). */}
-                      {item.sandbox_type === 'cube' || item.sandbox_type === 'e2b' ? (
-                        <Button type="button" disabled={busy} onClick={() => void inspect(item)}>{t('settings.sandbox.viewSandboxes')}</Button>
+      <TLoading loading={loading} size="small" className="sandbox-list-loading">
+        {/* Vue t-alert #description 槽在 vue-next Alert 中不被读取（renderDescription
+            只消费 default 槽/message prop），故 React 仅传 message。 */}
+        {!loading && dockerTabDisabled && filtered.length > 0 ? (
+          <TAlert theme="warning" className="sandbox-docker-banner" message={t('settings.sandbox.dockerDisabledAlert')} />
+        ) : null}
+        {!loading && dockerTabDisabled && filtered.length === 0 ? (
+          <div className="sandbox-docker-disabled">
+            <TEmpty description={t('settings.sandbox.dockerDisabledAlert')} />
+            <p className="sandbox-empty-hint">{t('settings.sandbox.dockerDisabledHint')}</p>
+          </div>
+        ) : !loading ? (
+          <div className="sandbox-grid">
+            {filtered.map((item) => {
+              const warnings = buildCardWarnings(item, dockerBackendEnabled);
+              const summary = targetSummary(item);
+              const interactive = canEdit && !isLegacyRecord(item);
+              return (
+                <div
+                  key={item.id}
+                  className={`sandbox-card wk-sandbox-card sandbox-card--${item.sandbox_type}${interactive ? ' sandbox-card--clickable' : ''}`}
+                  {...(interactive ? {
+                    role: 'button',
+                    tabIndex: 0,
+                    onClick: () => openEdit(item),
+                    onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => { if (event.key === 'Enter') openEdit(item); },
+                  } : {})}
+                >
+                  <SandboxBackendBadge type={item.sandbox_type} />
+                  <div className="sandbox-card__body">
+                    <div className="sandbox-card__header">
+                      <h3 className="sandbox-card__title" title={item.name}>{item.name}</h3>
+                      {isLegacyRecord(item) ? (
+                        <TTag theme="warning" variant="light" size="small">{t('settings.sandbox.legacyConfig')}</TTag>
                       ) : null}
-                      <Button type="button" disabled={busy} onClick={() => void requestRemove(item)}>{t('common.delete')}</Button>
+                      {canEdit ? (
+                        <div
+                          className="sandbox-card__actions"
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
+                          <TDropdown
+                            options={cardMenuOptions(item, t)}
+                            placement="bottom-right"
+                            trigger="click"
+                            onClick={(data) => { void onMenuAction(String(data?.value ?? ''), item); }}
+                          >
+                            <TButton variant="text" shape="square" size="small" className="sandbox-card__more">
+                              <TIcon name="ellipsis" />
+                            </TButton>
+                          </TDropdown>
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                    <div className="sandbox-card__subtitle">
+                      <span className="sandbox-card__type">{backendLabel(item.sandbox_type)}</span>
+                      {item.description ? (<>
+                        <span className="sandbox-card__sep">·</span>
+                        <span className="sandbox-card__desc" title={item.description}>{item.description}</span>
+                      </>) : null}
+                    </div>
+                    {summary ? <div className="sandbox-card__url" title={summary}>{summary}</div> : null}
+                    {warnings.length ? (
+                      <ul className="sandbox-card__warnings">
+                        {warnings.map((warning) => (
+                          <li key={warning.key}>
+                            <TIcon name="error-circle" size="12px" />
+                            <span>{t(warning.textKey)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
                 </div>
-                <p className="wk-muted text-muted">{item.description || ''}</p>
-                {summary ? <p className="wk-sandbox-target" title={summary}>{summary}</p> : null}
-                {warnings.length ? (
-                  <ul className="wk-sandbox-warnings">
-                    {warnings.map((warning) => <li key={warning.key}>⚠ <span>{t(warning.textKey)}</span></li>)}
-                  </ul>
-                ) : null}
-              </Card>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+            {canEdit && !dockerTabDisabled ? (
+              <button type="button" className="sandbox-card sandbox-card--add" onClick={openCreate}>
+                <span className="sandbox-card--add__icon" aria-hidden="true"><TIcon name="add" /></span>
+                <span className="sandbox-card--add__label">{t('settings.sandbox.addConfig')}</span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {!loading && !dockerTabDisabled && items.length === 0 ? (
+          <p className="sandbox-empty-hint">{t('settings.sandbox.noConfigs')}</p>
+        ) : null}
+      </TLoading>
 
       {inventory ? (
         <div className="wk-sandbox-inventory-overlay fixed inset-0 z-[1250] bg-[rgb(23_32_51_/_35%)]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setInventory(null); }}>
@@ -1945,6 +2016,6 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           onSaved={() => { setNotice(t('common.saveSuccess')); void load(); }}
         />
       ) : null}
-    </section>
+    </div>
   );
 }
