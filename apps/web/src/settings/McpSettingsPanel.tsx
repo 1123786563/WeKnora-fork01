@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as React from "react";
 import type { McpConfiguration, WeKnoraClient } from "@weknora/api-client";
 import { Button, Card, Checkbox, Input, Select, Status, Textarea } from "@weknora/ui";
+import { Icon as TIcon } from "tdesign-icons-react";
 import { McpToolsDirectory } from "./McpToolsDirectory.tsx";
 import { EmptyState } from "./EmptyState.tsx";
 import { pushSettingsToast } from "./settings-toast.tsx";
@@ -989,7 +990,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
           ))}
           {/* Vue McpSettings.vue:308-334 — add 卡为 --td-component-stroke #e7e7e7
               虚线、占位色文字 rgba(0,0,0,.4)；图标块 #f3f3f3 底 + secondary 色。 */}
-          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#e7e7e7] border-dashed bg-transparent p-3 text-center text-[rgba(0,0,0,0.4)] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f3f3] text-[rgba(0,0,0,0.6)]" aria-hidden="true"><McpCardIcon name="add" size={18} /></span><span className="text-[13px] font-medium leading-[1.4]">{t("mcpSettings.addService")}</span></button> : null}
+          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#e7e7e7] border-dashed bg-transparent p-3 text-center text-[rgba(0,0,0,0.4)] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f3f3] text-[18px] text-[rgba(0,0,0,0.6)]" aria-hidden="true">{/* Vue add-icon（tdesign AddIcon，strokeWidth 2 square cap）——TIcon 直译（台账 #10 glyph 同源）。 */}<TIcon name="add" /></span><span className="text-[13px] font-medium leading-[1.4]">{t("mcpSettings.addService")}</span></button> : null}
         </div>
       )}
       {draft ? (
