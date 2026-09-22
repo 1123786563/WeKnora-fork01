@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Status } from '@weknora/ui';
+// S6：Status 无 TDesign 对应（playbook §1 附行），走 shared/wk-legacy。
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 // T12a：可见面直译 MemorySettings.vue 的 t-popup / t-button / t-select /
 // t-textarea / t-switch / t-tabs / t-loading / t-popconfirm；记忆行与分页
 // 暂保留 React 实现（parity 空态不可见，见 task-12a 报告偏离项）。

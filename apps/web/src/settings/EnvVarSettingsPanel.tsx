@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Status } from '@weknora/ui';
+// S6：Status 无 TDesign 对应（playbook §1 附行），走 shared/wk-legacy。
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 // T12a：可见面（section-header + hint popup + 空态）直译 EnvVarSettings.vue
 // 的 t-popup / t-icon / t-button / t-input / t-select；编辑器分支同组件换
 // tdesign（结构保留 React 侧表单，见 task-12a 报告偏离项）。

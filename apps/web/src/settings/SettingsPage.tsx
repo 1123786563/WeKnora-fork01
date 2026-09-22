@@ -8,7 +8,8 @@ const IntegrationsRoutePage = lazy(() => import('../integrations/IntegrationsRou
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views/settings/registry';
 import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views/settings/registry';
-import { Button, Status, Alert } from '@weknora/ui';
+import { Alert as TAlert, Button as TButton } from 'tdesign-react';
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 // TDesign 同构迁移（T12a）：图标走 tdesign-icons-react 本地 sprite（= Vue 端
 // `Icon as TIcon`，与 Vue t-icon 同源同字形，台账 #10）。
 import { Icon as TIcon } from 'tdesign-icons-react';
@@ -530,8 +531,8 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
           {systemAdminOnlyPanelDenied ? null : (
           sectionError && sectionErrorMode(key) === 'banner-retry' ? (
             <div data-testid="settings-section-error-banner" role="alert" className="mb-1 flex flex-wrap items-center gap-2">
-              <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
-              <Button type="button" onClick={() => { void load(true); }}>{key === 'members' || key === 'storage' ? t('settings.storage.retry') : t('settings.parser.retry')}</Button>
+              <TAlert theme="error" className="min-w-0 flex-1" message={sectionError} />
+              <TButton type="button" onClick={() => { void load(true); }}>{key === 'members' || key === 'storage' ? t('settings.storage.retry') : t('settings.parser.retry')}</TButton>
             </div>
           ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? chatHistoryPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'memory' ? <MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
         </div>

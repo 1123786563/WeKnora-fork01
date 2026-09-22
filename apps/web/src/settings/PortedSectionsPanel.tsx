@@ -1,5 +1,5 @@
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Card, Status } from '@weknora/ui';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { settingsValueEntries } from './surface.ts';
 

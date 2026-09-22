@@ -19,7 +19,8 @@ import type {
 } from '@weknora/contracts';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { roleAtLeast, type SettingsRole } from '@weknora/views/settings/registry';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button as TButton } from 'tdesign-react';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { clampAnalyticsRange, defaultAnalyticsRange, type AnalyticsDateRange } from '../analytics/analytics-range.ts';
 
 export const QUERY_HISTORY_PAGE_SIZE = 50;
@@ -483,25 +484,25 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
       <div className="flex flex-wrap items-center gap-[8px]">
         <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
           {t('settings.queryHistory.filterUser')}
-          <input type="text" className={QH_TEXT_INPUT} value={userIdInput} onChange={(event) => setUserIdInput(event.target.value)} data-testid="query-history-user-input" />
+          <input type="text" className={QH_TEXT_INPUT} value={userIdInput} onChange={(value) => setUserIdInput(String(value))} data-testid="query-history-user-input" />
         </label>
         <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
           {t('settings.usage.rangeFrom')}
-          <input type="date" className={QH_DATE_INPUT} value={fromInput} onChange={(event) => setFromInput(event.target.value)} />
+          <input type="date" className={QH_DATE_INPUT} value={fromInput} onChange={(value) => setFromInput(String(value))} />
         </label>
         <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
           {t('settings.usage.rangeTo')}
-          <input type="date" className={QH_DATE_INPUT} value={toInput} onChange={(event) => setToInput(event.target.value)} />
+          <input type="date" className={QH_DATE_INPUT} value={toInput} onChange={(value) => setToInput(String(value))} />
         </label>
         <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
           {t('settings.queryHistory.filterFeedback')}
-          <select className={QH_DATE_INPUT} value={feedbackInput} onChange={(event) => setFeedbackInput(event.target.value as QueryHistoryFeedbackFilter)} data-testid="query-history-feedback-select">
+          <select className={QH_DATE_INPUT} value={feedbackInput} onChange={(value) => setFeedbackInput(String(value) as QueryHistoryFeedbackFilter)} data-testid="query-history-feedback-select">
             <option value="all">{t('settings.queryHistory.feedbackAll')}</option>
             <option value="like">{t('settings.queryHistory.feedbackLike')}</option>
             <option value="dislike">{t('settings.queryHistory.feedbackDislike')}</option>
           </select>
         </label>
-        <Button type="button" onClick={applyFilter}>{t('settings.usage.apply')}</Button>
+        <TButton type="button" onClick={applyFilter}>{t('settings.usage.apply')}</TButton>
       </div>
 
       {loading ? (
@@ -509,7 +510,7 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
       ) : loadError ? (
         <div role="alert" className="flex flex-wrap items-center gap-2">
           <Status tone="error">{loadError}</Status>
-          <Button type="button" onClick={() => void load(page, filter)}>{t('common.retry')}</Button>
+          <TButton type="button" onClick={() => void load(page, filter)}>{t('common.retry')}</TButton>
         </div>
       ) : rows.length === 0 ? (
         <Status>{t('common.empty')}</Status>
@@ -556,25 +557,25 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Button type="button" onClick={() => setPage(prevPage(page))} disabled={loading || !canGoPrevPage(page)}>{t('settings.queryHistory.prevPage')}</Button>
+          <TButton type="button" onClick={() => setPage(prevPage(page))} disabled={loading || !canGoPrevPage(page)}>{t('settings.queryHistory.prevPage')}</TButton>
           <span className="text-[13px] text-[rgba(23,26,29,0.6)]" data-testid="query-history-page-indicator">{t('settings.queryHistory.pageIndicator', { page, totalPages })}</span>
-          <Button type="button" onClick={() => setPage(nextPage(page, totalPages))} disabled={loading || !canGoNextPage(page, totalPages)}>{t('settings.queryHistory.nextPage')}</Button>
+          <TButton type="button" onClick={() => setPage(nextPage(page, totalPages))} disabled={loading || !canGoNextPage(page, totalPages)}>{t('settings.queryHistory.nextPage')}</TButton>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {exportPhase === 'done' ? (
             <>
-              <Button type="button" onClick={() => void downloadExport()} data-testid="query-history-export-download">{t('settings.queryHistory.exportDownload')}</Button>
-              <Button type="button" onClick={resetExport}>{t('settings.queryHistory.exportReset')}</Button>
+              <TButton type="button" onClick={() => void downloadExport()} data-testid="query-history-export-download">{t('settings.queryHistory.exportDownload')}</TButton>
+              <TButton type="button" onClick={resetExport}>{t('settings.queryHistory.exportReset')}</TButton>
             </>
           ) : exportPhase === 'failed' ? (
             <>
-              <Button type="button" onClick={() => void startExport()}>{t('settings.queryHistory.exportRetry')}</Button>
-              <Button type="button" onClick={resetExport}>{t('settings.queryHistory.exportReset')}</Button>
+              <TButton type="button" onClick={() => void startExport()}>{t('settings.queryHistory.exportRetry')}</TButton>
+              <TButton type="button" onClick={resetExport}>{t('settings.queryHistory.exportReset')}</TButton>
             </>
           ) : (
-            <Button type="button" onClick={() => void startExport()} disabled={exportPhase === 'starting' || exportPhase === 'polling'} data-testid="query-history-export-start">
+            <TButton type="button" onClick={() => void startExport()} disabled={exportPhase === 'starting' || exportPhase === 'polling'} data-testid="query-history-export-start">
               {exportPhase === 'starting' || exportPhase === 'polling' ? t('settings.queryHistory.exportPending') : t('settings.queryHistory.exportButton')}
-            </Button>
+            </TButton>
           )}
           {exportError ? <Status tone="error" >{exportError}</Status> : null}
         </div>
@@ -594,7 +595,7 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
       {snapshotSession && snapshotError ? (
         <div role="alert" className="flex flex-wrap items-center gap-2">
           <Status tone="error">{snapshotError}</Status>
-          <Button type="button" onClick={() => { void openSnapshot(snapshotSession); }}>{t('common.retry')}</Button>
+          <TButton type="button" onClick={() => { void openSnapshot(snapshotSession); }}>{t('common.retry')}</TButton>
         </div>
       ) : null}
     </div>

@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { AuditLog, TenantInvitation, TenantMember, TenantRole, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Dialog, Input, Select, Status } from '@weknora/ui';
+import { Dialog as TDialog } from 'tdesign-react';
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 // T12a：可见面直译 TenantMembers.vue 的 t-tag / t-pagination / t-popup /
 // t-button / t-icon；表格暂保留原生实现（偏离项见 task-12a 报告）。
 import { Icon as TIcon } from 'tdesign-icons-react';
@@ -848,7 +849,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
           <span className="pending-invitations-desc">{tr('tenantInvitation.pendingSectionDesc', { days: INVITATION_TTL_DAYS })}</span>
         </div>
         {invitationsLoading ? <div className="flex items-center gap-2"><Status>{tr('tenantMember.loading')}</Status></div>
-          : invitationsError ? <div className="flex items-center gap-2"><Status tone="error">{invitationsError}</Status><Button type="button" onClick={() => void loadInvitations()}>{tr('tenantMember.retry')}</Button></div>
+          : invitationsError ? <div className="flex items-center gap-2"><Status tone="error">{invitationsError}</Status><TButton type="button" onClick={() => void loadInvitations()}>{tr('tenantMember.retry')}</TButton></div>
           : invitationsTotal === 0 ? <div className="rounded-[8px] border border-dashed border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-3 py-2.5 text-[0.8125rem] text-[rgba(0,0,0,0.6)]">{tr('tenantInvitation.pendingEmpty')}</div>
           : <div className="data-table-shell data-table-shell--with-footer pending-invitations-table">
               <div className="data-table-shell__scroll">
@@ -884,7 +885,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         </div>
         {/* R472 A2 — Vue TenantMembers.vue:313-318 t-alert theme=error + retry：
             浅红横幅透传后端原文 + 重试按钮（load() 重发同请求）。 */}
-        {error ? <div data-testid="tenant-members-error" role="alert" className="flex items-center gap-2"><Status tone="error">{error}</Status><Button type="button" onClick={() => void load()}>{tr('tenantMember.retry')}</Button></div> : null}
+        {error ? <div data-testid="tenant-members-error" role="alert" className="flex items-center gap-2"><Status tone="error">{error}</Status><TButton type="button" onClick={() => void load()}>{tr('tenantMember.retry')}</TButton></div> : null}
         {notice ? <Status tone="success">{notice}</Status> : null}
         {loading && members.length === 0 ? <Status>{tr('tenantMember.loading')}</Status>
           : total === 0 ? <div className="py-2"><Status>{query.trim() ? tr('tenantMember.emptySearch', { q: query }) : tr('tenantMember.empty')}</Status></div>
@@ -913,11 +914,11 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3.5">
         <div className="flex items-center justify-between gap-3 rounded-card bg-[var(--wk-canvas,#f7f9fc)] px-4 py-3">
           <span className="min-w-0 flex-1 text-[13px] text-[rgba(0,0,0,0.6)]">{tr('tenantMember.audit.description')}</span>
-          <Button type="button" variant="text" size="small" className="shrink-0" loading={auditLoading} disabled={auditLoading} onClick={() => void loadAudit(true)}>
+          <TButton type="button" variant="text" size="small" className="shrink-0" loading={auditLoading} disabled={auditLoading} onClick={() => void loadAudit(true)}>
             <Icon name="refresh" /> {tr('tenantMember.audit.refresh')}
-          </Button>
+          </TButton>
         </div>
-        {auditError ? <div className="flex flex-1 flex-col items-start"><div className="flex items-center gap-2"><Status tone="error">{auditError}</Status><Button type="button" onClick={() => void loadAudit(true)}>{tr('tenantMember.retry')}</Button></div></div>
+        {auditError ? <div className="flex flex-1 flex-col items-start"><div className="flex items-center gap-2"><Status tone="error">{auditError}</Status><TButton type="button" onClick={() => void loadAudit(true)}>{tr('tenantMember.retry')}</TButton></div></div>
           : !auditLoading && audit.length === 0 ? <div className="flex flex-1 flex-col items-center justify-center px-3 py-6"><EmptyState description={tr('tenantMember.audit.empty')} /></div>
           : <div ref={auditScrollRef} className="audit-scroll-area min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               <div className="overflow-hidden rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)]">
@@ -1008,52 +1009,48 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       </div>
     </TenantAuditDrawer>
 
-    <Dialog open={inviteOpen} title={tr('tenantMember.add.dialogTitle')} onClose={() => setInviteOpen(false)} closeLabel={tr('common.close')}>
+    <TDialog footer={false} visible={inviteOpen} header={tr('tenantMember.add.dialogTitle')} onClose={() => setInviteOpen(false)}>
       <form className="flex flex-col gap-3" onSubmit={submitInvite}>
         <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[rgba(0,0,0,0.9)]">{tr('tenantMember.add.emailLabel')}</span>
-          <Input required type="email" className="w-full rounded-md! px-[0.55rem]! py-[0.45rem]! text-[rgba(0,0,0,0.9)]!" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder')}
-            onChange={(event) => setInviteEmail(event.target.value)} />
+          <TInput type="text" className="w-full rounded-md! px-[0.55rem]! py-[0.45rem]! text-[rgba(0,0,0,0.9)]!" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder')}
+            onChange={(value) => setInviteEmail(String(value))} />
         </label>
         <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[rgba(0,0,0,0.9)]">{tr('tenantMember.add.roleLabel')}</span>
-          <Select className="w-full [font:inherit]" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as TenantRole)}>
-            {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
-          </Select>
+          <TSelect className="wk-tenant-sel-invite-role" value={inviteRole} options={roles.map((item) => ({ value: item, label: tr('tenantMember.role.' + item) }))} onChange={(value) => setInviteRole(String(value) as TenantRole)} />
         </label>
         <div className="mt-1 flex justify-end gap-2">
-          <Button type="button" disabled={busy} onClick={() => setInviteOpen(false)}>{tr('common.cancel')}</Button>
-          <Button type="submit" loading={busy}>{tr('tenantInvitation.inviteSubmit')}</Button>
+          <TButton type="button" disabled={busy} onClick={() => setInviteOpen(false)}>{tr('common.cancel')}</TButton>
+          <TButton type="submit" loading={busy}>{tr('tenantInvitation.inviteSubmit')}</TButton>
         </div>
       </form>
-    </Dialog>
+    </TDialog>
 
-    <Dialog open={shareLinkOpen} title={shareLink ? tr('tenantInvitation.shareLink.resultTitle') : tr('tenantInvitation.shareLink.dialogTitle')} onClose={() => setShareLinkOpen(false)} closeLabel={tr('common.close')}>
+    <TDialog footer={false} visible={shareLinkOpen} header={shareLink ? tr('tenantInvitation.shareLink.resultTitle') : tr('tenantInvitation.shareLink.dialogTitle')} onClose={() => setShareLinkOpen(false)}>
       {shareLink ? <div className="flex flex-col gap-3">
         <p className="m-0 text-[0.8125rem] leading-[1.5] text-[rgba(0,0,0,0.6)]">{tr('tenantInvitation.shareLink.resultBody')}</p>
         <div className="flex items-center gap-2">
-          <Input className="min-w-0 flex-[1_1_auto] rounded-md! px-[0.55rem]! py-[0.45rem]! text-[0.8125rem]! read-only:text-muted" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
-            onFocus={(event) => event.currentTarget.select()} />
-          <Button type="button" onClick={() => void copyText(shareLink.invite_url ?? '')}>
+          <TInput className="min-w-0 flex-[1_1_auto] rounded-md! px-[0.55rem]! py-[0.45rem]! text-[0.8125rem]! read-only:text-muted" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
+            onFocus={(_, context) => { const input = (context.e.target as HTMLInputElement | null); input?.select?.(); }} />
+          <TButton type="button" onClick={() => void copyText(shareLink.invite_url ?? '')}>
             <Icon name="copy" /> {tr('tenantInvitation.copyLink')}
-          </Button>
+          </TButton>
         </div>
         <div className="mt-1 flex justify-end gap-2">
-          <Button type="button" onClick={() => setShareLinkOpen(false)}>{tr('common.close')}</Button>
+          <TButton type="button" onClick={() => setShareLinkOpen(false)}>{tr('common.close')}</TButton>
         </div>
       </div> : <div className="flex flex-col gap-3">
         <p className="m-0 text-[0.8125rem] leading-[1.5] text-[rgba(0,0,0,0.6)]">{tr('tenantInvitation.shareLink.description', { days: INVITATION_TTL_DAYS })}</p>
         <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[rgba(0,0,0,0.9)]">{tr('tenantMember.add.roleLabel')}</span>
-          <Select className="w-full [font:inherit]" value={shareLinkRole} onChange={(event) => setShareLinkRole(event.target.value as TenantRole)}>
-            {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
-          </Select>
+          <TSelect className="wk-tenant-sel-share-role" value={shareLinkRole} options={roles.map((item) => ({ value: item, label: tr('tenantMember.role.' + item) }))} onChange={(value) => setShareLinkRole(String(value) as TenantRole)} />
         </label>
         <div className="mt-1 flex justify-end gap-2">
-          <Button type="button" disabled={busy} onClick={() => setShareLinkOpen(false)}>{tr('common.cancel')}</Button>
-          <Button type="button" loading={busy} onClick={() => void submitShareLink()}>{tr('tenantInvitation.shareLink.generate')}</Button>
+          <TButton type="button" disabled={busy} onClick={() => setShareLinkOpen(false)}>{tr('common.cancel')}</TButton>
+          <TButton type="button" loading={busy} onClick={() => void submitShareLink()}>{tr('tenantInvitation.shareLink.generate')}</TButton>
         </div>
       </div>}
-    </Dialog>
+    </TDialog>
   </section>;
 }

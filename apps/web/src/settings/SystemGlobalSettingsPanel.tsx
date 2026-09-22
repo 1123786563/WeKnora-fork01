@@ -1,5 +1,5 @@
 import type { SystemAdminUser, SystemSetting, WeKnoraClient } from '@weknora/api-client';
-import { Button as WkButton, Checkbox, Dialog, Input as WkInput } from '@weknora/ui';
+import { Button as TButton, Checkbox as TCheckbox, Dialog as TDialog, Input as TInput, Switch as TSwitch } from 'tdesign-react';
 // T12c：SystemSettings.vue 控制域平移——t-tabs/t-select/t-switch/
 // t-input-number/t-tag-input/t-button/t-tag/t-loading + t-icon sprite
 // glyph；样式平移至 settings.td.css §17（.system-settings scoped 块）。
@@ -430,7 +430,7 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
                 <p className="desc">{t('system.globalSettings.passwordReset.description')}</p>
               </div>
               <div className="setting-control">
-                <Button theme="danger" variant="text" className="password-reset-trigger" icon={<TIcon name="lock-on" />} onClick={() => setResetPasswordVisible(true)}>{t('system.globalSettings.passwordReset.action')}</Button>
+                <TButton theme="danger" variant="text" className="password-reset-trigger" icon={<TIcon name="lock-on" />} onClick={() => setResetPasswordVisible(true)}>{t('system.globalSettings.passwordReset.action')}</TButton>
               </div>
             </div>
             <div className="setting-row setting-row--create-user">
@@ -442,7 +442,7 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
                 <p className="desc">{t('system.globalSettings.createUser.description')}</p>
               </div>
               <div className="setting-control">
-                <Button theme="primary" variant="text" className="create-user-trigger" icon={<TIcon name="user-add" />} onClick={() => setCreateUserVisible(true)}>{t('system.globalSettings.createUser.action')}</Button>
+                <TButton theme="primary" variant="text" className="create-user-trigger" icon={<TIcon name="user-add" />} onClick={() => setCreateUserVisible(true)}>{t('system.globalSettings.createUser.action')}</TButton>
               </div>
             </div>
           </> : null}
@@ -466,20 +466,20 @@ export function SystemGlobalSettingsPanel({ client, initialSettings }: { client:
               <div className="setting-control">
                 <div className="setting-control-row">
                   {item.value_type === 'bool'
-                    ? <Switch value={current === true} disabled={itemSaving} aria-label={keyLabel(item.key)} onChange={(value) => requestPersist(item, value)} />
+                    ? <TSwitch value={current === true} disabled={itemSaving} aria-label={keyLabel(item.key)} onChange={(value) => requestPersist(item, value)} />
                     : enums.length > 0
                       ? <Select className="setting-input" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} options={enums.map((option) => ({ label: enumLabel(item.key, option), value: option }))} onChange={(value) => requestPersist(item, value)} />
                       : item.value_type === 'int'
                         ? <InputNumber className="setting-input" value={typeof current === 'number' ? current : Number(current ?? 0)} min={minimumFor(item.key)} disabled={itemSaving} aria-label={keyLabel(item.key)} theme="normal" step={1} placeholder={t('system.globalSettings.tagInputPlaceholder')} onChange={(value) => { draftRef.current[item.key] = value; setEditValues((state) => ({ ...state, [item.key]: value })); }} onBlur={(value) => { const parsed = value === '' || value === null || value === undefined ? null : Number(value); if (parsed !== null && !Number.isNaN(parsed)) void persist(item, parsed); }} />
                         : item.value_type === 'string_list'
                           ? <TagInput value={Array.isArray(current) ? (current as string[]) : []} placeholder={t('system.globalSettings.tagInputPlaceholder')} aria-label={keyLabel(item.key)} disabled={itemSaving} className="setting-input setting-input--wide" clearable onChange={(value) => { setEditValues((state) => ({ ...state, [item.key]: value })); onSsrfTagsCommit(value as string[]); }} />
-                          : <Input className="setting-input" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} clearable placeholder={t('system.globalSettings.tagInputPlaceholder')} onChange={(value) => { draftRef.current[item.key] = value; setEditValues((state) => ({ ...state, [item.key]: value })); }} onBlur={() => { const draft = draftRef.current[item.key]; void persist(item, typeof draft === 'string' ? draft : String(current ?? '')); }} />}
+                          : <TInput className="setting-input" value={String(current ?? '')} disabled={itemSaving} aria-label={keyLabel(item.key)} clearable placeholder={t('system.globalSettings.tagInputPlaceholder')} onChange={(value) => { draftRef.current[item.key] = value; setEditValues((state) => ({ ...state, [item.key]: value })); }} onBlur={() => { const draft = draftRef.current[item.key]; void persist(item, typeof draft === 'string' ? draft : String(current ?? '')); }} />}
                   {itemSaving ? <div className="setting-save-state" role="status"><Loading size="small" /><span>{t('system.globalSettings.saving')}</span></div> : null}
                   {savedKey === item.key ? <div className="setting-save-state setting-save-state--success" role="status"><TIcon name="check-circle-filled" /><span>{t('system.globalSettings.saved')}</span></div> : null}
                 </div>
                 {hasOverride(item) || item.key === 'tenant.default_storage_quota_gb' ? <div className="setting-control-actions">
-                  {item.key === 'tenant.default_storage_quota_gb' ? <Button variant="text" size="small" className="setting-bulk-btn" icon={<TIcon name="usergroup" />} disabled={itemSaving || dirty} title={t('system.globalSettings.bulkApply.tooltip')} onClick={() => runBulkAction(item)}>{t('system.globalSettings.bulkApply.label')}</Button> : null}
-                  {hasOverride(item) ? <Button variant="text" size="small" className="setting-reset-btn" icon={<TIcon name="refresh" />} disabled={itemSaving} title={t('system.globalSettings.reset.tooltip')} onClick={() => resetSetting(item)}>{t('system.globalSettings.reset.label')}</Button> : null}
+                  {item.key === 'tenant.default_storage_quota_gb' ? <TButton variant="text" size="small" className="setting-bulk-btn" icon={<TIcon name="usergroup" />} disabled={itemSaving || dirty} title={t('system.globalSettings.bulkApply.tooltip')} onClick={() => runBulkAction(item)}>{t('system.globalSettings.bulkApply.label')}</TButton> : null}
+                  {hasOverride(item) ? <TButton variant="text" size="small" className="setting-reset-btn" icon={<TIcon name="refresh" />} disabled={itemSaving} title={t('system.globalSettings.reset.tooltip')} onClick={() => resetSetting(item)}>{t('system.globalSettings.reset.label')}</TButton> : null}
                 </div> : null}
               </div>
             </div>;
@@ -543,25 +543,25 @@ function ResetPasswordDialog({ client, open, onClose, onAnnounced, onFailed }: {
       onFailed(error instanceof Error && error.message ? error.message : t('system.globalSettings.passwordReset.failed'));
     } finally { setSubmitting(false); }
   };
-  return <Dialog open={open} title={t('system.globalSettings.passwordReset.dialogTitle')} onClose={() => { if (!submitting) onClose(); }} className="wk-reset-password-dialog">
+  return <TDialog footer={false} visible={open} header={t('system.globalSettings.passwordReset.dialogTitle')} onClose={() => { if (!submitting) onClose(); }} dialogClassName="wk-reset-password-dialog">
     <p className="wk-muted m-0 mt-1 mb-3 text-[13px] leading-normal text-muted">{t('system.globalSettings.passwordReset.warning')}</p>
     <div className="grid gap-3">
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.passwordReset.emailLabel')}
-        <WkInput value={email} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.emailPlaceholder')} onChange={(event) => setEmail(event.target.value)} />
+        <TInput value={email} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.emailPlaceholder')} onChange={(value) => setEmail(String(value))} />
       </label>
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.passwordReset.newPasswordLabel')}
-        <WkInput type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.newPasswordPlaceholder')} onChange={(event) => setNewPassword(event.target.value)} />
+        <TInput type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.newPasswordPlaceholder')} onChange={(value) => setNewPassword(String(value))} />
       </label>
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.passwordReset.confirmPasswordLabel')}
-        <WkInput type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.confirmPasswordPlaceholder')} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void submit(); }} />
+        <TInput type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.passwordReset.confirmPasswordPlaceholder')} onChange={(value) => setConfirmPassword(String(value))} onKeydown={(_, context) => { if (context.e.key === 'Enter') void submit(); }} />
       </label>
       {errors.length > 0 ? <div role="alert" className="grid gap-0.5 text-[12px] text-danger">{errors.map((error) => <span key={error}>{error}</span>)}</div> : null}
       <div className="mt-1 flex justify-end gap-2">
-        <WkButton type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</WkButton>
-        <WkButton type="button" className="wk-reset-password-submit !bg-danger !text-white" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.passwordReset.confirmBtn')}</WkButton>
+        <TButton type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</TButton>
+        <TButton type="button" className="wk-reset-password-submit !bg-danger !text-white" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.passwordReset.confirmBtn')}</TButton>
       </div>
     </div>
-  </Dialog>;
+  </TDialog>;
 }
 
 interface CreatedReveal { username: string; email: string; generatedPassword: string }
@@ -620,7 +620,7 @@ function CreateUserDialog({ client, open, onClose, onAnnounced, onFailed }: { cl
     const text = `${reveal.username} / ${reveal.email} / ${reveal.generatedPassword}`;
     try { await navigator.clipboard?.writeText(text); onAnnounced(t('system.globalSettings.createUser.generated.copySuccess')); } catch { /* clipboard is best-effort */ }
   };
-  return <Dialog open={open} title={reveal ? t('system.globalSettings.createUser.generated.successTitle') : t('system.globalSettings.createUser.dialogTitle')} onClose={() => { if (!locked) onClose(); }} className="wk-create-user-dialog">
+  return <TDialog footer={false} visible={open} header={reveal ? t('system.globalSettings.createUser.generated.successTitle') : t('system.globalSettings.createUser.dialogTitle')} onClose={() => { if (!locked) onClose(); }} dialogClassName="wk-create-user-dialog">
     <p className="wk-muted m-0 mt-1 mb-3 text-[13px] leading-normal text-muted">{reveal ? t('system.globalSettings.createUser.generated.successBody') : t('system.globalSettings.createUser.warning')}</p>
     {reveal ? <>
       <dl className="wk-create-user-reveal grid gap-2 border border-line-soft rounded-lg bg-surface-alt p-3 text-[13px]">
@@ -629,33 +629,33 @@ function CreateUserDialog({ client, open, onClose, onAnnounced, onFailed }: { cl
         <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3"><dt className="font-medium text-muted">{t('system.globalSettings.createUser.generated.passwordLabel')}</dt><dd className="m-0 break-all font-mono">{reveal.generatedPassword}</dd></div>
       </dl>
       <div className="mt-3 flex justify-end gap-2">
-        <WkButton type="button" onClick={() => void copyDetails()}>{t('system.globalSettings.createUser.generated.copyBtn')}</WkButton>
-        <WkButton type="button" className="wk-create-user-acknowledge !bg-accent !text-white" onClick={() => { setReveal(null); onClose(); }}>{t('system.globalSettings.createUser.generated.acknowledgeBtn')}</WkButton>
+        <TButton type="button" onClick={() => void copyDetails()}>{t('system.globalSettings.createUser.generated.copyBtn')}</TButton>
+        <TButton type="button" className="wk-create-user-acknowledge !bg-accent !text-white" onClick={() => { setReveal(null); onClose(); }}>{t('system.globalSettings.createUser.generated.acknowledgeBtn')}</TButton>
       </div>
     </> : <div className="grid gap-3">
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.createUser.usernameLabel')}
-        <WkInput value={username} disabled={submitting} placeholder={t('system.globalSettings.createUser.usernamePlaceholder')} onChange={(event) => setUsername(event.target.value)} />
+        <TInput value={username} disabled={submitting} placeholder={t('system.globalSettings.createUser.usernamePlaceholder')} onChange={(value) => setUsername(String(value))} />
       </label>
       <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.createUser.emailLabel')}
-        <WkInput value={email} disabled={submitting} placeholder={t('system.globalSettings.createUser.emailPlaceholder')} onChange={(event) => setEmail(event.target.value)} />
+        <TInput value={email} disabled={submitting} placeholder={t('system.globalSettings.createUser.emailPlaceholder')} onChange={(value) => setEmail(String(value))} />
       </label>
       <label className="flex items-center gap-2 text-[13px] text-ink">
-        <Checkbox checked={autoGenerate} disabled={submitting} onChange={(event) => setAutoGenerate(event.target.checked)} />
+        <TCheckbox checked={autoGenerate} disabled={submitting} onChange={(value) => setAutoGenerate(Boolean(value))} />
         {t('system.globalSettings.createUser.autoGenerateLabel')}
       </label>
       {!autoGenerate ? <>
         <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.createUser.newPasswordLabel')}
-          <WkInput type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.newPasswordPlaceholder')} onChange={(event) => setNewPassword(event.target.value)} />
+          <TInput type="password" value={newPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.newPasswordPlaceholder')} onChange={(value) => setNewPassword(String(value))} />
         </label>
         <label className="grid gap-1 text-[13px] font-medium text-ink">{t('system.globalSettings.createUser.confirmPasswordLabel')}
-          <WkInput type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.confirmPasswordPlaceholder')} onChange={(event) => setConfirmPassword(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void submit(); }} />
+          <TInput type="password" value={confirmPassword} disabled={submitting} placeholder={t('system.globalSettings.createUser.confirmPasswordPlaceholder')} onChange={(value) => setConfirmPassword(String(value))} onKeydown={(_, context) => { if (context.e.key === 'Enter') void submit(); }} />
         </label>
       </> : null}
       {errors.length > 0 ? <div role="alert" className="grid gap-0.5 text-[12px] text-danger">{errors.map((error) => <span key={error}>{error}</span>)}</div> : null}
       <div className="mt-1 flex justify-end gap-2">
-        <WkButton type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</WkButton>
-        <WkButton type="button" className="wk-create-user-submit !bg-accent !text-white" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.createUser.confirmBtn')}</WkButton>
+        <TButton type="button" disabled={submitting} onClick={onClose}>{t('system.globalSettings.confirm.cancelBtn')}</TButton>
+        <TButton type="button" className="wk-create-user-submit !bg-accent !text-white" disabled={submitting} onClick={() => void submit()}>{t('system.globalSettings.createUser.confirmBtn')}</TButton>
       </div>
     </div>}
-  </Dialog>;
+  </TDialog>;
 }

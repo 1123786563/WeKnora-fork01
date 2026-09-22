@@ -7,7 +7,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { CommercialSummary, UsageRow } from '@weknora/contracts';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button as TButton } from 'tdesign-react';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { clampAnalyticsRange, defaultAnalyticsRange, type AnalyticsDateRange } from '../analytics/analytics-range.ts';
 import { formatBillingSummary } from './GeneralPreferencesPanel.tsx';
 
@@ -118,13 +119,13 @@ export function UsagePanel({ client, locale = 'zh-CN' }: { client: WeKnoraClient
       <div className="flex flex-wrap items-center gap-[8px]">
         <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
           {t('settings.usage.rangeFrom')}
-          <input type="date" className={USAGE_DATE_INPUT} value={fromInput} onChange={(event) => setFromInput(event.target.value)} />
+          <input type="date" className={USAGE_DATE_INPUT} value={fromInput} onChange={(value) => setFromInput(String(value))} />
         </label>
         <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
           {t('settings.usage.rangeTo')}
-          <input type="date" className={USAGE_DATE_INPUT} value={toInput} onChange={(event) => setToInput(event.target.value)} />
+          <input type="date" className={USAGE_DATE_INPUT} value={toInput} onChange={(value) => setToInput(String(value))} />
         </label>
-        <Button type="button" onClick={applyRange}>{t('settings.usage.apply')}</Button>
+        <TButton type="button" onClick={applyRange}>{t('settings.usage.apply')}</TButton>
       </div>
 
       {budget && budgetCopy ? (
@@ -140,7 +141,7 @@ export function UsagePanel({ client, locale = 'zh-CN' }: { client: WeKnoraClient
       ) : error ? (
         <div role="alert" className="flex flex-wrap items-center gap-2">
           <Status tone="error">{error}</Status>
-          <Button type="button" onClick={() => void load()}>{t('common.retry')}</Button>
+          <TButton type="button" onClick={() => void load()}>{t('common.retry')}</TButton>
         </div>
       ) : modelRows.length === 0 ? (
         <Status>{t('common.empty')}</Status>

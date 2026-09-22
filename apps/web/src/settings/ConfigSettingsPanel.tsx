@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Card, Input, Range, Select, Status, Switch } from '@weknora/ui';
+import { Button as TButton, Input as TInput, Select as TSelect, Slider as TSlider, Switch as TSwitch } from 'tdesign-react';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { settingsConfigPatch, tenantModelIds } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
@@ -138,18 +139,17 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, onS
     finally { setBusy(false); }
   }
 
-  const modelSelect = (key: 'rerank_model_id', disabled: boolean) => <Select
-    data-testid={key}
+  const modelSelect = (key: 'rerank_model_id', disabled: boolean) => <TSelect
+    className={"wk-config-sel-" + key}
     value={String(values[key] ?? '')}
     disabled={disabled}
-    onChange={(event) => setValue(key, event.target.value)}
-  >
-    <option value="">—</option>
-    {modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name ? model.name + ' (' + model.id + ')' : model.id}</option>)}
-  </Select>;
+    clearable
+    options={[{ value: '', label: '—' }, ...modelOptions.map((model) => ({ value: model.id, label: model.name ? model.name + ' (' + model.id + ')' : model.id }))]}
+    onChange={(value) => setValue(key, String(value))}
+  />;
 
   const parserToggle = (key: string, label: string) => <label className="flex items-center gap-2 text-sm font-normal">
-    <Switch checked={values[key] === true} disabled={busy} onCheckedChange={(checked) => setValue(key, checked)} aria-label={label} />
+    <TSwitch value={values[key] === true} disabled={busy} onChange={(checked) => setValue(key, Boolean(checked))} aria-label={label} />
     {label}
   </label>;
 
@@ -157,7 +157,7 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, onS
     const value = number(values[key], min);
     return <label className="grid gap-2 border-b border-line-soft py-4 last:border-b-0">
       <span className="flex items-center justify-between text-sm font-medium text-ink"><span>{label}</span><output className="font-mono text-[13px] font-semibold text-accent">{format(value)}</output></span>
-      <Range min={min} max={max} step={step} value={value} disabled={busy} aria-label={label} onChange={(event) => setValue(key, Number(event.target.value))} />
+      <TSlider min={min} max={max} step={step} value={value} disabled={busy} aria-label={label} onChange={(value) => setValue(key, Number(value))} />
     </label>;
   };
 
@@ -175,35 +175,35 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, onS
       {slider('keyword_threshold', 0, 1, 0.05, t('retrievalSettings.keywordThresholdLabel'), (value) => value.toFixed(2))}
       {slider('rerank_top_k', 1, 100, 1, t('retrievalSettings.rerankTopKLabel'))}
       {slider('rerank_threshold', -10, 10, 0.1, t('retrievalSettings.rerankThresholdLabel'), (value) => value.toFixed(2))}
-      {modelOptions.length === 0 ? <label>{t('retrievalSettings.rerankModelLabel')}<Input value={String(values.rerank_model_id)} onChange={(event) => setValue('rerank_model_id', event.target.value)} /></label> : null}
+      {modelOptions.length === 0 ? <label>{t('retrievalSettings.rerankModelLabel')}<TInput value={String(values.rerank_model_id)} onChange={(value) => setValue('rerank_model_id', String(value))} /></label> : null}
     </> : <>
       <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">MinerU</h3>
-        <label>{t('settings.parser.selfHostedEndpoint')}<Input data-testid="mineru-endpoint" type="url" value={String(values.mineru_endpoint)} placeholder={t('settings.parser.mineruEndpointPlaceholder')} onChange={(event) => setValue('mineru_endpoint', event.target.value)} /></label>
-        <label>Backend<Select data-testid="mineru-model" value={String(values.mineru_model)} onChange={(event) => setValue('mineru_model', event.target.value)}><option value="pipeline">pipeline</option><option value="vlm-auto-engine">vlm-auto-engine</option><option value="vlm-http-client">vlm-http-client</option><option value="hybrid-auto-engine">hybrid-auto-engine</option><option value="hybrid-http-client">hybrid-http-client</option></Select></label>
-        <label>vLLM {t('settings.parser.serverUrl')}<Input data-testid="mineru-vllm-server-url" type="url" value={String(values.mineru_vlm_server_url)} placeholder={t('settings.parser.vlmServerUrlPlaceholder')} onChange={(event) => setValue('mineru_vlm_server_url', event.target.value)} /></label>
-        <label>{t('settings.parser.parseMethodLabel')}<Select data-testid="mineru-parse-method" value={String(values.mineru_parse_method)} onChange={(event) => setValue('mineru_parse_method', event.target.value)}><option value="auto">{t('settings.parser.parseMethodAuto')}</option><option value="ocr">{t('settings.parser.parseMethodOCR')}</option><option value="txt">{t('settings.parser.parseMethodText')}</option></Select></label>
+        <label>{t('settings.parser.selfHostedEndpoint')}<TInput data-testid="mineru-endpoint" type="url" value={String(values.mineru_endpoint)} placeholder={t('settings.parser.mineruEndpointPlaceholder')} onChange={(value) => setValue('mineru_endpoint', String(value))} /></label>
+        <label>Backend<TSelect className="wk-config-sel-mineru-model" value={String(values.mineru_model)} options={[{ value: 'pipeline', label: 'pipeline' }, { value: 'vlm-auto-engine', label: 'vlm-auto-engine' }, { value: 'vlm-http-client', label: 'vlm-http-client' }, { value: 'hybrid-auto-engine', label: 'hybrid-auto-engine' }, { value: 'hybrid-http-client', label: 'hybrid-http-client' }]} onChange={(value) => setValue('mineru_model', String(value))} /></label>
+        <label>vLLM {t('settings.parser.serverUrl')}<TInput data-testid="mineru-vllm-server-url" type="url" value={String(values.mineru_vlm_server_url)} placeholder={t('settings.parser.vlmServerUrlPlaceholder')} onChange={(value) => setValue('mineru_vlm_server_url', String(value))} /></label>
+        <label>{t('settings.parser.parseMethodLabel')}<TSelect className="wk-config-sel-mineru-parse-method" value={String(values.mineru_parse_method)} options={[{ value: 'auto', label: t('settings.parser.parseMethodAuto') }, { value: 'ocr', label: t('settings.parser.parseMethodOCR') }, { value: 'txt', label: t('settings.parser.parseMethodText') }]} onChange={(value) => setValue('mineru_parse_method', String(value))} /></label>
         <div className="flex flex-wrap gap-4">{parserToggle('mineru_enable_formula', t('settings.parser.formulaRecognition'))}{parserToggle('mineru_enable_table', t('settings.parser.tableRecognition'))}</div>
-        <label>{t('settings.parser.language')}<Input data-testid="mineru-language" value={String(values.mineru_language)} placeholder={t('settings.parser.languagePlaceholder')} onChange={(event) => setValue('mineru_language', event.target.value)} /></label>
+        <label>{t('settings.parser.language')}<TInput data-testid="mineru-language" value={String(values.mineru_language)} placeholder={t('settings.parser.languagePlaceholder')} onChange={(value) => setValue('mineru_language', String(value))} /></label>
       </section>
       <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">MinerU Cloud</h3>
-        <label>{t('settings.sandbox.apiKey')}<Input type="password" autoComplete="new-password" placeholder={t('settings.parser.mineruCloudApiKeyPlaceholder')} value={String(values.mineru_api_key)} onChange={(event) => setValue('mineru_api_key', event.target.value)} /></label>
-        <label>Model Version<Select data-testid="mineru-cloud-model" value={String(values.mineru_cloud_model)} onChange={(event) => setValue('mineru_cloud_model', event.target.value)}><option value="pipeline">pipeline</option><option value="vlm">VLM</option><option value="MinerU-HTML">MinerU-HTML</option></Select></label>
+        <label>{t('settings.sandbox.apiKey')}<TInput type="password" autocomplete="new-password" placeholder={t('settings.parser.mineruCloudApiKeyPlaceholder')} value={String(values.mineru_api_key)} onChange={(value) => setValue('mineru_api_key', String(value))} /></label>
+        <label>Model Version<TSelect className="wk-config-sel-mineru-cloud-model" value={String(values.mineru_cloud_model)} options={[{ value: 'pipeline', label: 'pipeline' }, { value: 'vlm', label: 'VLM' }, { value: 'MinerU-HTML', label: 'MinerU-HTML' }]} onChange={(value) => setValue('mineru_cloud_model', String(value))} /></label>
         <div className="flex flex-wrap gap-4">{parserToggle('mineru_cloud_enable_formula', t('settings.parser.formulaRecognition'))}{parserToggle('mineru_cloud_enable_table', t('settings.parser.tableRecognition'))}{parserToggle('mineru_cloud_enable_ocr', 'OCR')}</div>
-        <label>{t('settings.parser.language')}<Input value={String(values.mineru_cloud_language)} placeholder={t('settings.parser.languagePlaceholder')} onChange={(event) => setValue('mineru_cloud_language', event.target.value)} /></label>
+        <label>{t('settings.parser.language')}<TInput value={String(values.mineru_cloud_language)} placeholder={t('settings.parser.languagePlaceholder')} onChange={(value) => setValue('mineru_cloud_language', String(value))} /></label>
       </section>
       <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">PaddleOCR-VL</h3>
-        <label>{t('settings.parser.selfHostedEndpoint')}<Input data-testid="paddleocr-vl-endpoint" type="url" value={String(values.paddleocr_vl_endpoint)} placeholder={t('settings.parser.paddleOcrEndpointPlaceholder')} onChange={(event) => setValue('paddleocr_vl_endpoint', event.target.value)} /></label>
+        <label>{t('settings.parser.selfHostedEndpoint')}<TInput data-testid="paddleocr-vl-endpoint" type="url" value={String(values.paddleocr_vl_endpoint)} placeholder={t('settings.parser.paddleOcrEndpointPlaceholder')} onChange={(value) => setValue('paddleocr_vl_endpoint', String(value))} /></label>
         <div className="flex flex-wrap gap-4">{parserToggle('paddleocr_vl_use_seal_recognition', t('settings.parser.sealRecognition'))}{parserToggle('paddleocr_vl_use_chart_recognition', t('settings.parser.chartRecognition'))}</div>
       </section>
       <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">PaddleOCR-VL Cloud</h3>
-        <label>Access Token<Input type="password" autoComplete="new-password" value={String(values.paddleocr_vl_cloud_token)} onChange={(event) => setValue('paddleocr_vl_cloud_token', event.target.value)} /></label>
-        <label>Model<Select data-testid="paddleocr-vl-cloud-model" value={String(values.paddleocr_vl_cloud_model)} onChange={(event) => setValue('paddleocr_vl_cloud_model', event.target.value)}><option value="PaddleOCR-VL-1.6">PaddleOCR-VL-1.6</option><option value="PaddleOCR-VL-1.5">PaddleOCR-VL-1.5</option></Select></label>
+        <label>Access Token<TInput type="password" autocomplete="new-password" value={String(values.paddleocr_vl_cloud_token)} onChange={(value) => setValue('paddleocr_vl_cloud_token', String(value))} /></label>
+        <label>Model<TSelect className="wk-config-sel-paddleocr-vl-cloud-model" value={String(values.paddleocr_vl_cloud_model)} options={[{ value: 'PaddleOCR-VL-1.6', label: 'PaddleOCR-VL-1.6' }, { value: 'PaddleOCR-VL-1.5', label: 'PaddleOCR-VL-1.5' }]} onChange={(value) => setValue('paddleocr_vl_cloud_model', String(value))} /></label>
         <div className="flex flex-wrap gap-4">{parserToggle('paddleocr_vl_cloud_use_seal_recognition', t('settings.parser.sealRecognition'))}{parserToggle('paddleocr_vl_cloud_use_chart_recognition', t('settings.parser.chartRecognition'))}</div>
       </section><p className="wk-muted text-muted">{parserCopy}</p></>}{/* R490 B6 — Vue RetrievalSettings saves debounced exactly like
           ChatHistorySettings (RetrievalSettings.vue handleParamChange →
           debouncedSave), so neither surface renders a save button; only the
           parser section keeps its explicit 保存 + test-connection footer. */}
-          {section === 'parser' ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button><Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button></div> : null}</form></Card>
+          {section === 'parser' ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><TButton type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</TButton><TButton type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</TButton></div> : null}</form></Card>
     </>
   );
   return content;

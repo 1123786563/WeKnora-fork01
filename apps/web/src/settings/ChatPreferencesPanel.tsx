@@ -12,7 +12,8 @@
 // first model).
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Status } from '@weknora/ui';
+// S6：Status 无 TDesign 对应（playbook §1 附行），走 shared/wk-legacy。
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { ModelOptionSelect, type ModelOption } from './ModelOptionSelect.tsx';
 import { listChatModels, resolveChatModelOptions, type ChatModelLike } from '../chat/model-chip.ts';
 import { navigate } from '../platform/navigation.ts';

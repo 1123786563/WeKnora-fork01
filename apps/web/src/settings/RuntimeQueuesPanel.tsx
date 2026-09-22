@@ -1,5 +1,6 @@
 import type { RuntimeQueues, WeKnoraClient } from '@weknora/api-client';
-import { Status } from '@weknora/ui';
+// S6：Status 无 TDesign 对应（playbook §1 附行），走 shared/wk-legacy。
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 // T12c：t-switch（size small）与 t-icon sprite glyph 对齐 Vue 端
 // （RuntimeQueues.vue:12-16 / :26-33 / :77 / :138 / :145）。
 import { Switch } from 'tdesign-react';

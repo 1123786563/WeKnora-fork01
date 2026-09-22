@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Input, Select, Sheet, Status, Switch } from '@weknora/ui';
+import { Button as TButton, Drawer as TDrawer, Dropdown as TDropdown, Input as TInput, Select as TSelect, Switch as TSwitch, Tag as TTag } from 'tdesign-react';
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { Icon as TIcon } from 'tdesign-icons-react';
-import { Button as TButton, Dropdown as TDropdown, Tag as TTag } from 'tdesign-react';
 import { roleAtLeast, type SettingsRole } from '@weknora/views/settings/registry';
 import { settingsResourceRows, settingsSectionHeading } from './surface.ts';
 import { providerLogo } from './providerLogos.ts';
@@ -221,20 +221,17 @@ function setBagValue(setter: React.Dispatch<React.SetStateAction<Record<string, 
 function VectorSchemaField({ field, value, label, onChange, tlsWarning }: { field: VectorFieldSchema; value: unknown; label: string; onChange: (value: unknown) => void; tlsWarning?: string }) {
   if (field.type === 'boolean') {
     return <FormItem label={label} required={field.required} desc={field.name === 'insecure_skip_verify' && value === true ? tlsWarning : undefined} warn>
-      <Switch checked={value === true} onCheckedChange={onChange} />
+      <TSwitch value={value === true} onChange={(checked) => onChange(Boolean(checked))} />
     </FormItem>;
   }
   if (field.type === 'number') {
     const raw = value == null || value === '' ? '' : String(value);
     return <FormItem label={label} required={field.required}>
-      <Input
-        type="number"
+      <TInput
         value={raw}
-        min={field.min ?? 1}
-        max={field.max ?? (isReplicaField(field.name) ? 10 : 64)}
         placeholder={field.default != null ? String(field.default) : ''}
-        onChange={(event) => {
-          const text = event.target.value.trim();
+        onChange={(value) => {
+          const text = String(value).trim();
           if (!text) { onChange(undefined); return; }
           const parsed = Number(text);
           onChange(Number.isFinite(parsed) ? parsed : text);
@@ -244,18 +241,16 @@ function VectorSchemaField({ field, value, label, onChange, tlsWarning }: { fiel
   }
   if (field.enum && field.enum.length > 0) {
     return <FormItem label={label} required={field.required}>
-      <Select value={typeof value === 'string' ? value : ''} onChange={(event) => onChange(event.target.value)}>
-        {field.enum.map((option) => <option key={option} value={option}>{option}</option>)}
-      </Select>
+      <TSelect value={typeof value === 'string' ? value : ''} options={field.enum.map((option) => ({ value: option, label: option }))} onChange={(value) => onChange(String(value))} />
     </FormItem>;
   }
   return <FormItem label={label} required={field.required}>
-    <Input
+    <TInput
       type={field.sensitive ? 'password' : 'text'}
       value={typeof value === 'string' ? value : ''}
       placeholder={field.sensitive ? '********' : (field.default?.toString() || '')}
-      maxLength={128}
-      onChange={(event) => onChange(event.target.value)}
+      maxlength={128}
+      onChange={(value) => onChange(String(value))}
     />
   </FormItem>;
 }
@@ -662,7 +657,7 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
       <DrawerSection title={t('vectorStoreSettings.basicSection')}>
         <p className="m-0 rounded-[8px] bg-[#f6f8fa] px-[12px] py-[10px] text-[13px] leading-[1.5] text-[#101828]">{t('vectorStoreSettings.immutableNotice')}</p>
         <FormItem label={t('vectorStoreSettings.nameLabel')} required>
-          <Input value={name} placeholder={t('vectorStoreSettings.namePlaceholder')} onChange={(event) => setName(event.target.value)} />
+          <TInput value={name} placeholder={t('vectorStoreSettings.namePlaceholder')} onChange={(value) => setName(String(value))} />
         </FormItem>
         <div className="grid gap-0 rounded-[8px] bg-[#f6f8fa] px-[12px] py-[10px]">
           <div className="flex items-baseline gap-2 border-b border-[#eef0f3] py-[4px] text-[12px] last:border-b-0">
@@ -692,12 +687,10 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     <>
       <DrawerSection title={t('vectorStoreSettings.basicSection')}>
         <FormItem label={t('vectorStoreSettings.engineTypeLabel')} required>
-          <Select value={type} onChange={(event) => onTypeChange(event.target.value)}>
-            {vectorTypes.map((entry) => <option key={entry.type} value={entry.type}>{entry.display_name}</option>)}
-          </Select>
+          <TSelect value={type} options={vectorTypes.map((entry) => ({ value: entry.type, label: entry.display_name }))} onChange={(value) => onTypeChange(String(value))} />
         </FormItem>
         <FormItem label={t('vectorStoreSettings.nameLabel')} required>
-          <Input value={name} placeholder={t('vectorStoreSettings.namePlaceholder')} onChange={(event) => { setName(event.target.value); resetConnectionHint(); }} />
+          <TInput value={name} placeholder={t('vectorStoreSettings.namePlaceholder')} onChange={(value) => { setName(String(value)); resetConnectionHint(); }} />
         </FormItem>
       </DrawerSection>
       {selectedVectorType ? <DrawerSection title={t('vectorStoreSettings.connectionInfo')}>
@@ -737,12 +730,10 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     <>
       <DrawerSection title={t('settings.storageBackend.basicSection')}>
         <FormItem label={t('settings.storageBackend.nameLabel')} required>
-          <Input value={name} placeholder={t('settings.storageBackend.namePlaceholder')} onChange={(event) => setName(event.target.value)} />
+          <TInput value={name} placeholder={t('settings.storageBackend.namePlaceholder')} onChange={(value) => setName(String(value))} />
         </FormItem>
         <FormItem label={t('settings.storageBackend.providerLabel')} required>
-          <Select value={type} disabled={storageDisabled} onChange={(event) => onTypeChange(event.target.value)}>
-            {storageProviders.map((provider) => <option key={provider} value={provider}>{provider.toUpperCase()}</option>)}
-          </Select>
+          <TSelect value={type} disabled={storageDisabled} options={storageProviders.map((provider) => ({ value: provider, label: provider.toUpperCase() }))} onChange={(value) => onTypeChange(String(value))} />
         </FormItem>
         {type === 'minio' ? <FormItem label={t('settings.storageBackend.modeLabel')}>
           <div className="inline-flex gap-[4px] rounded-[8px] border border-[#e4e7ec] bg-surface p-[3px]">
@@ -753,48 +744,48 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
       </DrawerSection>
       <DrawerSection title={t('settings.storageBackend.connectionSection')}>
         {needsEndpoint ? <FormItem label="Endpoint" required>
-          <Input value={storageConfig.endpoint} disabled={storageDisabled} placeholder={type === 'minio' ? 'storage.example.com:9000' : 'https://storage.example.com'} onChange={(event) => setStorageConfig({ ...storageConfig, endpoint: event.target.value })} />
+          <TInput value={storageConfig.endpoint} disabled={storageDisabled} placeholder={type === 'minio' ? 'storage.example.com:9000' : 'https://storage.example.com'} onChange={(value) => setStorageConfig({ ...storageConfig, endpoint: String(value) })} />
         </FormItem> : null}
         {needsRegion ? <FormItem label="Region" required>
-          <Input value={storageConfig.region} disabled={storageDisabled} onChange={(event) => setStorageConfig({ ...storageConfig, region: event.target.value })} />
+          <TInput value={storageConfig.region} disabled={storageDisabled} onChange={(value) => setStorageConfig({ ...storageConfig, region: String(value) })} />
         </FormItem> : null}
         {needsCredentials ? <>
           <FormItem label="Access Key / Secret ID" required>
-            <Input value={storageConfig.access_key_id} disabled={storageDisabled} placeholder="***" onChange={(event) => setStorageConfig({ ...storageConfig, access_key_id: event.target.value })} />
+            <TInput value={storageConfig.access_key_id} disabled={storageDisabled} placeholder="***" onChange={(value) => setStorageConfig({ ...storageConfig, access_key_id: String(value) })} />
           </FormItem>
           <FormItem label="Secret Key" required>
-            <Input type="password" value={storageConfig.secret_access_key} disabled={storageDisabled} placeholder="***" onChange={(event) => setStorageConfig({ ...storageConfig, secret_access_key: event.target.value })} />
+            <TInput type="password" value={storageConfig.secret_access_key} disabled={storageDisabled} placeholder="***" onChange={(value) => setStorageConfig({ ...storageConfig, secret_access_key: String(value) })} />
           </FormItem>
         </> : null}
         {type !== 'local' ? <FormItem label="Bucket" required>
-          <Input value={storageConfig.bucket_name} disabled={storageDisabled} onChange={(event) => setStorageConfig({ ...storageConfig, bucket_name: event.target.value })} />
+          <TInput value={storageConfig.bucket_name} disabled={storageDisabled} onChange={(value) => setStorageConfig({ ...storageConfig, bucket_name: String(value) })} />
         </FormItem> : null}
         {type === 'cos' ? <FormItem label="App ID">
-          <Input value={storageConfig.app_id || ''} disabled={storageDisabled} placeholder={t('settings.storageBackend.optionalPlaceholder')} onChange={(event) => setStorageConfig({ ...storageConfig, app_id: event.target.value })} />
+          <TInput value={storageConfig.app_id || ''} disabled={storageDisabled} placeholder={t('settings.storageBackend.optionalPlaceholder')} onChange={(value) => setStorageConfig({ ...storageConfig, app_id: String(value) })} />
         </FormItem> : null}
       </DrawerSection>
       <DrawerSection title={t('settings.storageBackend.advancedSection')}>
         <FormItem label={t('settings.storageBackend.pathPrefixLabel')}>
-          <Input value={storageConfig.path_prefix} disabled={storageDisabled} placeholder="weknora/" onChange={(event) => setStorageConfig({ ...storageConfig, path_prefix: event.target.value })} />
+          <TInput value={storageConfig.path_prefix} disabled={storageDisabled} placeholder="weknora/" onChange={(value) => setStorageConfig({ ...storageConfig, path_prefix: String(value) })} />
         </FormItem>
         {type === 'minio' ? <div className="flex items-center gap-2">
-          <Switch checked={storageConfig.use_ssl} onCheckedChange={(checked) => setStorageConfig({ ...storageConfig, use_ssl: checked })} />
+          <TSwitch value={storageConfig.use_ssl} onChange={(checked) => setStorageConfig({ ...storageConfig, use_ssl: Boolean(checked) })} />
           <span className="text-[12px] text-muted">{t('settings.storageBackend.useSslDesc')}</span>
         </div> : null}
         {type === 's3' ? <div className="flex items-center gap-2">
-          <Switch checked={storageConfig.force_path_style === true} onCheckedChange={(checked) => setStorageConfig({ ...storageConfig, force_path_style: checked })} />
+          <TSwitch value={storageConfig.force_path_style === true} onChange={(checked) => setStorageConfig({ ...storageConfig, force_path_style: Boolean(checked) })} />
           <span className="text-[12px] text-muted">{t('settings.storageBackend.forcePathStyleDesc')}</span>
         </div> : null}
         {type === 'oss' ? <div className="flex items-center gap-2">
-          <Switch checked={storageConfig.use_temp_bucket === true} onCheckedChange={(checked) => setStorageConfig({ ...storageConfig, use_temp_bucket: checked })} />
+          <TSwitch value={storageConfig.use_temp_bucket === true} onChange={(checked) => setStorageConfig({ ...storageConfig, use_temp_bucket: Boolean(checked) })} />
           <span className="text-[12px] text-muted">{t('settings.storageBackend.useTempBucketDesc')}</span>
         </div> : null}
         {['cos', 'tos'].includes(type) || (type === 'oss' && storageConfig.use_temp_bucket) ? <>
           <FormItem label={t('settings.storageBackend.tempBucketLabel')}>
-            <Input value={storageConfig.temp_bucket_name || ''} placeholder={t('settings.storageBackend.tempBucketPlaceholder')} onChange={(event) => setStorageConfig({ ...storageConfig, temp_bucket_name: event.target.value })} />
+            <TInput value={storageConfig.temp_bucket_name || ''} placeholder={t('settings.storageBackend.tempBucketPlaceholder')} onChange={(value) => setStorageConfig({ ...storageConfig, temp_bucket_name: String(value) })} />
           </FormItem>
           <FormItem label={t('settings.storageBackend.tempRegionLabel')}>
-            <Input value={storageConfig.temp_region || ''} placeholder={t('settings.storageBackend.tempRegionPlaceholder')} onChange={(event) => setStorageConfig({ ...storageConfig, temp_region: event.target.value })} />
+            <TInput value={storageConfig.temp_region || ''} placeholder={t('settings.storageBackend.tempRegionPlaceholder')} onChange={(value) => setStorageConfig({ ...storageConfig, temp_region: String(value) })} />
           </FormItem>
         </> : null}
       </DrawerSection>
@@ -810,20 +801,18 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
       </p> : null}
       <DrawerSection title={t('webSearchSettings.basicSection')}>
         <FormItem label={t('webSearchSettings.providerTypeLabel')} required>
-          <Select value={type} disabled={Boolean(editingId)} onChange={(event) => onTypeChange(event.target.value)}>
-            {webTypes.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-          </Select>
+          <TSelect value={type} disabled={Boolean(editingId)} options={webTypes.map((entry) => ({ value: entry.id, label: entry.name }))} onChange={(value) => onTypeChange(String(value))} />
         </FormItem>
         <FormItem label={t('webSearchSettings.providerNameLabel')}>
-          <Input value={name} placeholder={selectedWebType?.name || t('webSearchSettings.providerNamePlaceholder')} onChange={(event) => { setName(event.target.value); resetConnectionHint(); }} />
+          <TInput value={name} placeholder={selectedWebType?.name || t('webSearchSettings.providerNamePlaceholder')} onChange={(value) => { setName(String(value)); resetConnectionHint(); }} />
         </FormItem>
         <FormItem label={t('webSearchSettings.providerDescLabel')}>
-          <Input value={description} placeholder={t('webSearchSettings.providerDescPlaceholder')} onChange={(event) => setDescription(event.target.value)} />
+          <TInput value={description} placeholder={t('webSearchSettings.providerDescPlaceholder')} onChange={(value) => setDescription(String(value))} />
         </FormItem>
       </DrawerSection>
       {webCredentialFields ? <DrawerSection title={t('webSearchSettings.credentialsSection')}>
         {selectedWebType?.requires_base_url ? <FormItem label={t('webSearchSettings.baseUrlLabel')} required>
-          <Input value={baseUrl} placeholder={t('webSearchSettings.baseUrlPlaceholder')} onChange={(event) => { setBaseUrl(event.target.value); resetConnectionHint(); }} />
+          <TInput value={baseUrl} placeholder={t('webSearchSettings.baseUrlPlaceholder')} onChange={(value) => { setBaseUrl(String(value)); resetConnectionHint(); }} />
         </FormItem> : null}
         {selectedWebType?.requires_api_key || selectedWebType?.supports_optional_api_key ? (
           <FormItem label={selectedWebType?.supports_optional_api_key && !selectedWebType?.requires_api_key ? t('webSearchSettings.apiKeyOptionalLabel') : t('webSearchSettings.apiKeyLabel')} required={selectedWebType?.requires_api_key}>
@@ -833,16 +822,16 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
               // decoupled from this form's submit.
               credentialStep === 'editing' ? (
                 <div className="grid gap-[6px]">
-                  <Input
+                  <TInput
                     type="password"
                     value={credentialDraft}
                     placeholder={t('dataSource.credential.inputPlaceholder')}
-                    onChange={(event) => setCredentialDraft(event.target.value)}
-                    onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCredential(); } }}
+                    onChange={(value) => setCredentialDraft(String(value))}
+                    onKeydown={(_, context) => { if (context.e.key === 'Enter') { context.e.preventDefault(); void saveCredential(); } }}
                   />
                   <div className="flex items-center justify-end gap-[4px]">
-                    <Button type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={cancelCredentialEdit}>{t('common.cancel')}</Button>
-                    <Button type="button" variant="primary" size="small" loading={credentialBusy === 'save'} disabled={!credentialDraft} onClick={() => void saveCredential()}>{t('common.save')}</Button>
+                    <TButton type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={cancelCredentialEdit}>{t('common.cancel')}</TButton>
+                    <TButton type="button" theme="primary" size="small" loading={credentialBusy === 'save'} disabled={!credentialDraft} onClick={() => void saveCredential()}>{t('common.save')}</TButton>
                   </div>
                 </div>
               ) : credentialConfigured ? (
@@ -851,9 +840,9 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
                     <span className="flex-none text-danger" aria-hidden="true">⚠</span>
                     <span className="min-w-0 flex-1 truncate font-medium text-danger">{t('dataSource.credential.confirmRemovePrompt')}</span>
                     <div className="flex flex-none items-center gap-[2px]">
-                      <Button type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={() => setCredentialStep('idle')}>{t('common.cancel')}</Button>
+                      <TButton type="button" variant="text" size="small" disabled={credentialBusy !== null} onClick={() => setCredentialStep('idle')}>{t('common.cancel')}</TButton>
                       <span className="h-[14px] w-px bg-line" />
-                      <Button type="button" variant="danger" size="small" loading={credentialBusy === 'remove'} onClick={() => void removeCredential()}>{t('dataSource.credential.confirmRemove')}</Button>
+                      <TButton type="button" theme="danger" size="small" loading={credentialBusy === 'remove'} onClick={() => void removeCredential()}>{t('dataSource.credential.confirmRemove')}</TButton>
                     </div>
                   </div>
                 ) : (
@@ -861,9 +850,9 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
                     <span className="flex-none text-success-text" aria-hidden="true">✓</span>
                     <span className="min-w-0 flex-1 truncate">{t('dataSource.credential.configured')}</span>
                     <div className="flex flex-none items-center gap-[2px]">
-                      <Button type="button" variant="text" size="small" onClick={enterCredentialEdit}>{t('dataSource.credential.update')}</Button>
+                      <TButton type="button" variant="text" size="small" onClick={enterCredentialEdit}>{t('dataSource.credential.update')}</TButton>
                       <span className="h-[14px] w-px bg-line" />
-                      <Button type="button" variant="danger" size="small" onClick={() => setCredentialStep('confirm-remove')}>{t('dataSource.credential.remove')}</Button>
+                      <TButton type="button" theme="danger" size="small" onClick={() => setCredentialStep('confirm-remove')}>{t('dataSource.credential.remove')}</TButton>
                     </div>
                   </div>
                 )
@@ -871,34 +860,32 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
                 <div data-kind="unconfigured" className={`flex h-[32px] items-center gap-[8px] rounded-[6px] border px-[12px] text-[13px] ${credentialFlashRemoved ? 'border-[#9edec0] bg-[#e8f8f2]' : 'border-line-soft bg-surface'}`}>
                   {credentialFlashRemoved ? <span className="flex-none text-[#0a7f43]" aria-hidden="true">✓</span> : null}
                   <span className={`min-w-0 flex-1 truncate ${credentialFlashRemoved ? 'text-[#0a7f43]' : 'text-muted'}`}>{credentialFlashRemoved ? t('dataSource.credential.removedToast') : t('dataSource.credential.unconfigured')}</span>
-                  {credentialFlashRemoved ? null : <Button type="button" variant="text" size="small" className="flex-none" onClick={enterCredentialEdit}>{t('dataSource.credential.configure')}</Button>}
+                  {credentialFlashRemoved ? null : <TButton type="button" variant="text" size="small" className="flex-none" onClick={enterCredentialEdit}>{t('dataSource.credential.configure')}</TButton>}
                 </div>
               )
             ) : (
               // Create mode keeps the plain password input (Vue L239-246) —
               // the key rides the initial POST only.
-              <Input type="password" value={apiKey} placeholder={t('webSearchSettings.apiKeyPlaceholder')} onChange={(event) => { setApiKey(event.target.value); resetConnectionHint(); }} />
+              <TInput type="password" value={apiKey} placeholder={t('webSearchSettings.apiKeyPlaceholder')} onChange={(value) => { setApiKey(String(value)); resetConnectionHint(); }} />
             )}
           </FormItem>
         ) : null}
         {selectedWebType?.requires_engine_id ? <FormItem label={t('webSearchSettings.engineIdLabel')} required>
-          <Input value={engineId} placeholder={t('webSearchSettings.engineIdLabel')} onChange={(event) => { setEngineId(event.target.value); resetConnectionHint(); }} />
+          <TInput value={engineId} placeholder={t('webSearchSettings.engineIdLabel')} onChange={(value) => { setEngineId(String(value)); resetConnectionHint(); }} />
         </FormItem> : null}
         {(selectedWebType?.config_fields ?? []).map((field) => (
           <FormItem key={field.key} label={webSearchConfigText(t, field.label_key, field.label)} required={field.required} desc={field.description ? webSearchConfigText(t, field.description_key, field.description) : undefined}>
-            <Select value={extraConfig[field.key] ?? field.default ?? ''} onChange={(event) => setExtraConfig({ ...extraConfig, [field.key]: event.target.value })}>
-              {(field.options.length > 0 ? field.options : [{ label: field.default || '', value: field.default || '' }]).map((option) => <option key={option.value} value={option.value}>{webSearchConfigText(t, option.label_key, option.label)}</option>)}
-            </Select>
+            <TSelect value={extraConfig[field.key] ?? field.default ?? ''} options={(field.options.length > 0 ? field.options : [{ label: field.default || '', value: field.default || '' }]).map((option) => ({ value: option.value, label: webSearchConfigText(t, option.label_key, option.label) }))} onChange={(value) => setExtraConfig({ ...extraConfig, [field.key]: String(value) })} />
           </FormItem>
         ))}
       </DrawerSection> : null}
       <DrawerSection title={t('webSearchSettings.optionsSection')}>
         {selectedWebType?.supports_proxy ? <FormItem label={t('webSearchSettings.proxyUrlLabel')} desc={t('webSearchSettings.proxyUrlHelp')}>
-          <Input value={proxyUrl} placeholder={t('webSearchSettings.proxyUrlPlaceholder')} onChange={(event) => setProxyUrl(event.target.value)} />
+          <TInput value={proxyUrl} placeholder={t('webSearchSettings.proxyUrlPlaceholder')} onChange={(value) => setProxyUrl(String(value))} />
         </FormItem> : null}
         <FormItem label={t('webSearchSettings.setAsDefault')}>
           <div className="flex items-center gap-2">
-            <Switch checked={isDefault} onCheckedChange={setIsDefault} />
+            <TSwitch value={isDefault} onChange={(checked) => setIsDefault(Boolean(checked))} />
             <span className="text-[12px] text-muted">{t('webSearchSettings.setAsDefaultDesc')}</span>
           </div>
         </FormItem>
@@ -1003,31 +990,33 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
         vectorstore v-if="form.engine_type", storage always, websearch
         v-if="selectedProviderType". The websearch initial comes from the type
         display name (Vue providerInitial), the other two from the raw id. */}
-    <Sheet
-      open={drawerOpen}
-      title={editingId ? t(keys.edit) : t(keys.add)}
-      headerIcon={type ? drawerHeaderBadge(section, type, section === 'websearch' ? (providerTypes.find((entry) => entry.id === type)?.name || type).trim().charAt(0).toUpperCase() : providerInitial(type)) : undefined}
+    <TDrawer footer={false}
+      visible={drawerOpen}
+      header={type
+        ? <span className="resource-drawer-header">{drawerHeaderBadge(section, type, section === 'websearch' ? (providerTypes.find((entry) => entry.id === type)?.name || type).trim().charAt(0).toUpperCase() : providerInitial(type))}{editingId ? t(keys.edit) : t(keys.add)}</span>
+        : (editingId ? t(keys.edit) : t(keys.add))}
       onClose={closeDrawer}
-      width="460px"
+      size="460px"
+      placement="right"
     >
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       <form className="my-4 grid gap-[16px]" onSubmit={(event) => void save(event)}>
         {section === 'vectorstore' ? vectorDrawerBody : section === 'storage' ? storageDrawerBody : webDrawerBody}
         <div className="wk-list-actions mt-[4px] flex flex-wrap items-center gap-[0.5rem]">
-          <Button type="button" loading={testing} disabled={!canTestConnection || busy} onClick={() => void testConnection()}>{testing ? t('vectorStoreSettings.testing') : t(keys.test)}</Button>
-          {editingId && api.setDefault && section === 'storage' ? <Button type="button" disabled={!editingId || busy} onClick={() => void setDefault(editingId)}>{t(keys.setDefault)}</Button> : null}
-          {editingId ? <Button type="button" disabled={busy} onClick={() => void remove(editingId)}>{t('common.delete')}</Button> : null}
+          <TButton type="button" loading={testing} disabled={!canTestConnection || busy} onClick={() => void testConnection()}>{testing ? t('vectorStoreSettings.testing') : t(keys.test)}</TButton>
+          {editingId && api.setDefault && section === 'storage' ? <TButton type="button" disabled={!editingId || busy} onClick={() => void setDefault(editingId)}>{t(keys.setDefault)}</TButton> : null}
+          {editingId ? <TButton type="button" disabled={busy} onClick={() => void remove(editingId)}>{t('common.delete')}</TButton> : null}
           <span className="flex-1" />
           {/* R490 C3 (R489 M3-N1) — mirror the Vue SettingDrawer footer
               (SettingDrawer.vue L45-61): footer-left 测试连接, then the
               right pair in 取消 → 保存 order; none of the three Vue engine
               drawers override confirmText, so create AND edit both read
               common.save (was t(keys.add), e.g. 添加数据库, on create). */}
-          <Button type="button" disabled={busy} onClick={closeDrawer}>{t('common.cancel')}</Button>
-          <Button type="submit" loading={busy}>{t('common.save')}</Button>
+          <TButton type="button" disabled={busy} onClick={closeDrawer}>{t('common.cancel')}</TButton>
+          <TButton type="submit" loading={busy}>{t('common.save')}</TButton>
         </div>
       </form>
-    </Sheet>
+    </TDrawer>
   </div>;
 }
