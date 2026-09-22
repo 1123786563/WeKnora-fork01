@@ -476,9 +476,10 @@ test('the manage drawer mounts the install timeline and live progress from the S
     assert.match(timeline?.textContent ?? '', /待处理/);
     const composer = timeline?.querySelector('textarea');
     assert.ok(composer, 'guidance composer renders while live');
-    const send = Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('发送说明'));
+    // S6：disabled 的 tdesign Button 渲染 div.t-button（台账 #7），经类查询。
+    const send = Array.from(document.querySelectorAll('.t-button')).find((button) => (button.textContent ?? '').includes('发送说明'));
     assert.ok(send, 'send guidance button renders');
-    assert.equal((send as HTMLButtonElement).disabled, true, 'send disabled until text is entered');
+    assert.equal(send.classList.contains('t-is-disabled'), true, 'send disabled until text is entered');
   } finally {
     await act(async () => root.unmount());
     document.body.replaceChildren();
@@ -498,7 +499,7 @@ test('guidance text is steered into the live run with the Vue payload and append
       setter?.call(textarea, 'pin apt version');
       textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     });
-    const send = Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('发送说明')) as HTMLButtonElement;
+    const send = Array.from(document.querySelectorAll('.t-button')).find((button) => (button.textContent ?? '').includes('发送说明')) as HTMLButtonElement;
     await act(async () => { send.click(); });
     await settle();
     assert.equal(calls.steer.length, 1);
@@ -536,15 +537,17 @@ test('a failed run replays the durable history and reinstalls with guidance on r
     assert.ok(timeline, 'timeline renders');
     assert.match(timeline?.querySelector('.skill-timeline__prompt')?.textContent ?? '', /Install pdf-skill/);
     assert.match(timeline?.textContent ?? '', /earlier run output/);
-    const retry = Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('携带说明重新安装')) as HTMLButtonElement;
-    assert.ok(retry, 'retry composer button renders when the run can be retried');
+    const retryOf = () => Array.from(document.querySelectorAll('.t-button')).find((button) => (button.textContent ?? '').includes('携带说明重新安装'));
+    assert.ok(retryOf(), 'retry composer button renders when the run can be retried');
     const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
     const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')?.set;
     await act(async () => {
       setter?.call(textarea, 'install libxml first');
       textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     });
-    await act(async () => { retry.click(); });
+    // S6：disabled→enabled 会把 tdesign Button 的根标签从 div 换回 button
+    // （台账 #7），输入后重新查询再点击。
+    await act(async () => { retryOf()?.click(); });
     await settle();
     assert.deepEqual(calls.reinstall, [['cfg-1', 'sk-1', 'install libxml first']]);
   } finally {
