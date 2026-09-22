@@ -1,0 +1,8 @@
+# 缺陷 fixture：legacy path 使用通配符（治理文件只允许精确仓库路径）。
+legacy_files:
+  - path: internal/application/service/*.go
+    module: conversation
+    plan: 35-conversation-program
+    destination: internal/modules/conversation/service
+    integration_owner: ""
+    delete_barrier: ib3
