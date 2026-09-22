@@ -73,7 +73,8 @@ test('integration page exposes permission and async state contracts', async () =
   const { dirname, join } = await import('node:path');
   const { fileURLToPath } = await import('node:url');
   const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'IntegrationsPage.tsx'), 'utf8');
-  for (const marker of ['<Sheet open', 'role="tabpanel"', 'aria-selected', 'tabIndex={active === tab ? 0 : -1}', 'tabRefs.current', 'trigger.current?.focus()', 'Loading integration settings', 'Retry', 'runPlaygroundRequest', 'No API keys configured', 'canEdit', 'Unable to save']) {
+  // S6：向导抽屉 Sheet→tdesign Drawer（footer=false/visible）。
+  for (const marker of ['<TDrawer footer={false} visible=', 'role="tabpanel"', 'aria-selected', 'tabIndex={active === tab ? 0 : -1}', 'tabRefs.current', 'trigger.current?.focus()', 'Loading integration settings', 'Retry', 'runPlaygroundRequest', 'No API keys configured', 'canEdit', 'Unable to save']) {
     assert.match(source, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 });

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
-import { Input } from '@weknora/ui/input';
-import { Textarea } from '@weknora/ui/textarea';
+// S6：@weknora/ui 离栈（T15 硬前置）。agent combobox 与 query 字段是自研
+// 原生控件（ARIA 契约 + 原生驱动测试锚点，同 ModelSettingsPanel Ollama
+// combobox 先例），保留原生 input/textarea，仅移除旧栈包装。
 
 import { consumeApiPlaygroundSSE } from './apiPlaygroundSSE.ts';
 import {
@@ -79,7 +80,7 @@ function ApiPlaygroundAgentSelect({ agents, value, loading, placeholder, loading
     setOpen(false);
   }
   return <div ref={rootRef} className="wk-api-playground-agent-select" style={{ position: 'relative' }}>
-    <Input
+    <input
       ref={inputRef}
       className="wk-api-playground-agent box-border"
       role="combobox"
@@ -91,7 +92,7 @@ function ApiPlaygroundAgentSelect({ agents, value, loading, placeholder, loading
       placeholder={loading ? loadingLabel : placeholder}
       onFocus={() => { setOpen(true); setFilter(''); setActiveIndex(0); }}
       onChange={(event) => { setFilter(event.target.value); setOpen(true); setActiveIndex(0); }}
-      onKeyDown={(event) => {
+      onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) => {
         if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setActiveIndex((index) => Math.min(index + 1, Math.max(options.length - 1, 0))); }
         else if (event.key === 'ArrowUp') { event.preventDefault(); setActiveIndex((index) => Math.max(index - 1, 0)); }
         else if (event.key === 'Enter' && open && options[activeIndex]) { event.preventDefault(); choose(options[activeIndex]); }
@@ -337,12 +338,12 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
             {agentsError ? <p className="wk-api-playground-field-error" role="alert">{agentsError}</p> : null}
             <label className="wk-api-playground-field text-[13px]" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundExternalUser')}
-              <Input className="wk-api-playground-external-user box-border" type="text" value={form.externalUserId} disabled={mode === 'tenant'} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, externalUserId: event.target.value }))} style={fieldStyle} />
+              <input className="wk-api-playground-external-user box-border" type="text" value={form.externalUserId} disabled={mode === 'tenant'} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, externalUserId: event.target.value }))} style={fieldStyle} />
             </label>
             <p className="wk-api-playground-hint wk-muted text-muted">{t(externalUserHintKey(mode), { headerName: DEFAULT_DIRECT_HEADER_NAME })}</p>
             <label className="wk-api-playground-field text-[13px]" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundQuestion')}
-              <Textarea ref={queryRef} className="wk-api-playground-query box-border" rows={2} value={form.query} placeholder={t('integrations.api.playgroundQuestionPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, query: event.target.value }))} style={fieldStyle} />
+              <textarea ref={queryRef} className="wk-api-playground-query box-border" rows={2} value={form.query} placeholder={t('integrations.api.playgroundQuestionPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, query: event.target.value }))} style={fieldStyle} />
             </label>
           </section>
 
