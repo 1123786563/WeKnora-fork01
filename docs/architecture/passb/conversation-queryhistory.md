@@ -1,8 +1,10 @@
 # Pass B Brief — conversation-queryhistory（任务 B-conversation 之查询历史/审计面）
 
-来源：`docs/architecture/moves/conversation.yaml`（scope 事实源）+ Pass A task A10 交付。
-本文是 Pass B 义务拆分之一；会话面见
-`docs/architecture/passb/conversation-session.md`。
+> child plan：**35-conversation-program**（B0.3 裁定标注，framework:71；会话面与
+> 查询历史面同属 35 的两个义务拆分，见 conversation-session.md）。
+> 来源：`docs/architecture/moves/conversation.yaml`（scope 事实源）+ Pass A task A10 交付。
+> 本文是 Pass B 义务拆分之一；会话面见
+> `docs/architecture/passb/conversation-session.md`。
 
 ## Scope（scope）
 
@@ -41,7 +43,9 @@ Admin+ 异步查询历史 CSV 导出（审计 listing 平铺为 CSV）成为 con
    repository 归属，不动注册行（处理器参数 `params.QueryHistoryExport.ProcessExport`
    的类型路径若变，需在 Pass B 计划单列 router 装配评审）。
 4. **删除别名**（与 session 面共用前置）：IA3 切换 `container.go:52` 后删除
-   `internal/application/service/chat_pipeline/alias.go`（本面无直接引用，属
-   B-conversation 共同义务，删除动作二选一执行、不得重复）。
+   `internal/application/service/chat_pipeline/alias.go`（本面无直接引用）。
+   **B0.3 裁定：删除动作由 conversation-session.md 义务 1 独占执行**（同一属主
+   35-conversation-program，单一执行面）；本面不执行删除、不重复认领该义务，
+   仅以删除完成为共享门面前置。
 5. **横向包纪律**：同 conversation-session.md 义务 4——拆出后 host 包不留转发声明；
    `internal/handler/session` 为多模块共享 host 包，拆分顺序需协调。

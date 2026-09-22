@@ -11,6 +11,23 @@
 # 知识域 K1-K4 与 Agent Runtime R1-R4 按 brief scope 清单逐文件归属；
 # internal/application/repository/knowledge.go 显式归 24-knowledge-process
 # （escapeLikeKeyword 跨 owner 消费见 knowledge-process.md 消歧注记）。
+#
+# B0.3 裁定（freeze Task B0.3，passbguard CheckRulings/CheckBriefClaims 机器校验）：
+# 1. Agent Runtime：native_archive 双文件（service + handler/session）独占归
+#    34-agentruntime-protocol；native_recovery 与全部 native repository 状态/
+#    lease/pending/usage 族及引擎侧审批、Run/Attempt 文件归 33-agentruntime-engine；
+#    纯 native/nativecontract/nativeprobe/trpc/opencode/recoverytest 协议包归 34。
+# 2. 共享宿主 internal/handler/session 全部 36 文件逐路径唯一属主（见
+#    tools/passbguard/overlap.go HandlerSessionRuling）；browserskill.go、
+#    sandbox_terminal_ws.go、sandbox_terminal_bridge.go 归 13-execution——三者挂在
+#    conversation 属主 *Handler 上的方法拆出时去方法化，残差登记 Integration
+#    Brief 推迟 IB1（conventions §7.4 / DAG b1-execution required_contracts）。
+# 3. knowledge_housekeeping.go 业务清扫规则留 Knowledge（24）；System
+#    （42-system-policy）经窄 KnowledgeHousekeeping port 拥有调度/生命周期调用，
+#    不得出现第二套清扫实现（见 knowledge-process.md 裁定注记）。
+# 4. 通用分页/上传限制/错误判定 helper（internal/handler/list_pagination.go、
+#    upload_limit.go）保持 platform，任何子计划不得认领，直至独立消费者抽取计划
+#    另行裁定。
 legacy_files:
   - path: internal/application/repository/agent_checkpoint.go
     module: agentruntime
@@ -1166,7 +1183,7 @@ legacy_files:
     delete_barrier: ib3
   - path: internal/application/service/native_archive.go
     module: agentruntime
-    plan: 33-agentruntime-engine
+    plan: 34-agentruntime-protocol
     destination: internal/modules/agentruntime/service
     integration_owner: ib3
     delete_barrier: ib3

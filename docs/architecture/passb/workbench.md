@@ -1,7 +1,8 @@
 # Pass B Brief — workbench（任务 B-workbench）
 
-来源：`docs/architecture/moves/workbench.yaml`（scope 事实源）+ Pass A task A12 交付。
-集成面事实快照见 `docs/architecture/integration/workbench.md`。
+> child plan：**40-workbench**（B0.3 裁定标注，framework:71）。
+> 来源：`docs/architecture/moves/workbench.yaml`（scope 事实源）+ Pass A task A12 交付。
+> 集成面事实快照见 `docs/architecture/integration/workbench.md`。
 
 ## Scope（scope）
 
@@ -57,6 +58,10 @@ workbench 成为不依赖横向包的自洽纵向切片。
 6. **横向包纪律**：拆出后 host 包不留转发声明；与其他模块的 legacy 拆分共享 host
    包时按 manifest 归属逐文件搬移，不得整包搬 `internal/handler`、
    `internal/handler/session`、`internal/application/repository`。
+   **\*Handler 去方法化（B0.3 Step 3 + IB1 裁定）**：`artifact_download.go` 等
+   handler/session 文件挂在 conversation 属主 `*Handler`（handler.go:24）上的方法，
+   拆出时必须去方法化（自带 receiver/独立构造）；确无法当场消除的残差登记
+   Integration Brief 推迟 IB1 收口，禁止遗留为 conversation handler 的常驻方法。
 7. **跨模块耦合收敛**：service/workbench 6 文件对 agentruntime/commercial/execution
    模块内部包的 14 条既有耦合（A12 guard 发现，见 evidence §7）在 Pass B 收敛为
    模块根公共门面依赖或窄端口；收敛前若 guard 仍报，按集成期例外机制登记，不得

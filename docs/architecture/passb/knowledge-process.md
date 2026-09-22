@@ -1,7 +1,8 @@
 # Pass B Brief — B-knowledge-process（knowledge 处理流水线域文件拆分）
 
-Manifest：`docs/architecture/moves/knowledge.yaml`（模块 knowledge）。本 brief 只覆盖
-其 legacy_files 的**处理流水线子集**（28 文件）。
+> child plan：**24-knowledge-process**（K4；B0.3 裁定标注，framework:71）。
+> Manifest：`docs/architecture/moves/knowledge.yaml`（模块 knowledge）。本 brief 只覆盖
+> 其 legacy_files 的**处理流水线子集**（28 文件）。
 
 ## Scope（legacy_files 子集，28 文件）
 
@@ -25,6 +26,16 @@ knowledge_replace.go、knowledge_span_tracker.go、knowledge_summary_refresh.go�
 knowledge_task_options.go、knowledge_util.go、knowledge_write.go、knowledge_transfer.go
 
 handler（4）：kb_access.go、knowledge.go、knowledge_download.go、task_progress_auth.go
+
+> **Housekeeping 裁定（B0.3 Step 4，freeze:207-209）**：上述 service 侧
+> `knowledge_housekeeping.go` 及其业务清扫规则**独占归 Knowledge / 本 brief
+> （24-knowledge-process）**，ownership-matrix 已登记同值；System 侧
+> （**42-system-policy**）只拥有调度/生命周期调用——经窄端口
+> **`KnowledgeHousekeeping`**（模块门面暴露）触发，调度挂点
+> `startHousekeepingService`（container.go:642，func at :2389，system.yaml:50）
+> 随 B-container/bootstrap 收敛任务切到该端口。**不得出现第二套清扫实现**：
+> System 不复制清扫规则，Knowledge 不自建调度循环；两侧装配变更走
+> Integration Brief 由集成工程师执行。
 
 （完整路径前缀：repository=`internal/application/repository/`、
 service=`internal/application/service/`、handler=`internal/handler/`。）
