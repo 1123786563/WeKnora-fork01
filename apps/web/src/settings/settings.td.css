@@ -1026,3 +1026,374 @@
   color: var(--td-text-color-secondary);
   line-height: 1.5;
 }
+
+/* ==== 6. MemorySettings.vue scoped 块平移（settings-mymemory 分区；记忆行
+ * 编辑/分页为 React 侧保留实现，见 task-12a 报告偏离项） ==== */
+
+.wk-settings-drawer-root .memory-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .memory-settings .section-header {
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .memory-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .memory-settings .section-header-titlewrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .memory-settings .usage-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  line-height: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  /* §2.6 button Arial 归位。 */
+  font-family: inherit;
+}
+
+.wk-settings-drawer-root .memory-settings .usage-trigger-btn .t-icon {
+  display: block;
+}
+
+.wk-settings-drawer-root .memory-settings .usage-trigger-btn:hover {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.wk-settings-drawer-root .memory-settings .usage-trigger-btn:focus-visible {
+  outline: 2px solid var(--td-brand-color-focus);
+  outline-offset: 1px;
+}
+
+.wk-settings-drawer-root .memory-settings .notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  background: var(--td-warning-color-1);
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .memory-settings .status-hint {
+  margin: 12px 0 0;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.wk-settings-drawer-root .memory-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-settings-drawer-root .memory-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .memory-settings .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .memory-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .memory-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .memory-settings .setting-control {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wk-settings-drawer-root .memory-settings .list-section {
+  margin-top: 28px;
+}
+
+.wk-settings-drawer-root .memory-settings .list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.wk-settings-drawer-root .memory-settings .list-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .memory-settings .list-title h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .list-count {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .memory-settings .list-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* status-tabs（Vue :deep 规则展平，选择器换等价后代写法） */
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__header {
+  margin: 0;
+  background: transparent;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__nav-item {
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .status-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__nav-item-wrapper {
+  padding: 0 12px;
+  margin: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__bar + .t-tabs__nav-item .t-tabs__nav-item-wrapper {
+  padding-left: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__bar {
+  height: 2px;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__operations {
+  display: none;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__content {
+  display: none;
+}
+
+.wk-settings-drawer-root .memory-settings .status-tabs .t-tabs__nav-container {
+  padding: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .empty {
+  padding: 32px 0;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .memory-settings .empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  margin: 0 0 4px 0;
+}
+
+.wk-settings-drawer-root .memory-settings .empty-desc {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .memory-settings .memory-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ==== 6b. MemorySettings.vue unscoped 弹层块（§2.5 原样平移） ==== */
+.memory-usage-popup-overlay {
+  z-index: 3050 !important;
+}
+
+.memory-usage-popup-overlay .t-popup__content {
+  padding: 0 !important;
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  border-radius: 12px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+}
+
+.memory-usage-popup-overlay .usage-popup {
+  padding: 14px 16px 12px;
+}
+
+.memory-usage-popup-overlay .usage-popup-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.memory-usage-popup-overlay .usage-popup-intro {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-placeholder);
+}
+
+.memory-usage-popup-overlay .usage-popup-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.memory-usage-popup-overlay .usage-popup-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  line-height: 1.5;
+}
+
+.memory-usage-popup-overlay .usage-popup-label {
+  flex: 0 0 88px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.memory-usage-popup-overlay .usage-popup-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+:root[theme-mode='dark'] .memory-usage-popup-overlay .t-popup__content {
+  background: rgba(36, 36, 36, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.28) !important;
+}
+
+.memory-add-popup-overlay {
+  z-index: 3050;
+}
+
+.memory-add-popup-overlay .t-popup__content {
+  padding: 14px 16px !important;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  border-radius: 12px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+}
+
+.memory-add-popup-overlay .add-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.memory-add-popup-overlay .add-popup-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.memory-add-popup-overlay .add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-add-popup-overlay .add-label {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.memory-add-popup-overlay .add-kind-hint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--td-text-color-placeholder);
+}
+
+.memory-add-popup-overlay .add-popup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* kind 下拉挂在 body，需高于打开它的 popup。 */
+.memory-add-kind-popup {
+  z-index: 6200;
+}
+
+:root[theme-mode='dark'] .memory-add-popup-overlay .t-popup__content {
+  background: rgba(36, 36, 36, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.28) !important;
+}
