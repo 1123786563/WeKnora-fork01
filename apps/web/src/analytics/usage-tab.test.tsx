@@ -1,8 +1,8 @@
 // SP12 Task 8 — analytics 用量 tab（/platform/analytics?tab=usage）。
 // The web suite runs under `node --import tsx --test`; these tests stay
-// DOM-free (SkillSettingsPanel.test.tsx preamble: .css imports from
-// @weknora/ui's barrel resolve to an empty module) and pin the pure helper
-// the by-user table relies on: cost-descending, stable, non-mutating sort.
+// DOM-free (css imports resolve to an empty module via the resolve hook) and
+// pin the pure helper the by-user table relies on: cost-descending, stable,
+// non-mutating sort.
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import test from 'node:test';
