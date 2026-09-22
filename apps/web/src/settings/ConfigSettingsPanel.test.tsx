@@ -221,6 +221,13 @@ test('chat history save failure surfaces the backend message and keeps the form 
   // UI stays intact: the switch reflects the draft change and remains operable.
   const toggleAfter = container.querySelector('button[role="switch"]') as HTMLButtonElement | null;
   assert.ok(toggleAfter, 'the switch must stay rendered after a failed save');
+  // T12b fix round（评审 Minor-1）：恢复迁移时丢失的「draft 变更保留」断言。
+  // tdesign Switch 选中态经 .t-is-checked 类表达（台账 #2：React 根标签
+  // button role="switch"，断言走 classList 而非 aria-checked；sandbox 先例同款）。
+  assert.equal(
+    toggleAfter?.classList.contains('t-is-checked'), true,
+    'the draft toggle state survives the failed save (Vue keeps the editable draft)',
+  );
 });
 
 test('parser connection-check failure falls back to the localized checkFailed message (R021)', async () => {

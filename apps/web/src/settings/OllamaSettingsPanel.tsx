@@ -78,7 +78,7 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
     setTesting(true);
     setStatus(null);
     try {
-      const [nextStatus] = await Promise.all([client.settings.ollama.status()]);
+      const nextStatus = await client.settings.ollama.status();
       if (typeof nextStatus.baseUrl === 'string' && nextStatus.baseUrl && nextStatus.baseUrl !== localBaseUrl) setLocalBaseUrl(nextStatus.baseUrl);
       setStatus(nextStatus);
       if (nextStatus.available === true) {
