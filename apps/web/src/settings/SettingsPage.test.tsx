@@ -450,9 +450,9 @@ test('a subsection query param preselects the model type tab', async () => {
   const container = await mountPage(makeClient({ models: [
     { id: 'm1', name: 'bge-m3', type: 'Embedding', source: 'remote', parameters: {} },
   ] }), '?section=models&subsection=embedding');
-  const tabs = container.querySelector('.wk-model-tabs');
+  const tabs = container.querySelector('.model-type-tabs');
   assert.ok(tabs, 'the model type tabs render');
-  const active = tabs.querySelector('.is-active');
+  const active = tabs.querySelector('.t-tabs__nav-item.t-is-active');
   assert.ok(active);
   assert.ok((active.textContent ?? '').includes('Embedding(1)'), 'the embedding tab is preselected');
 });
@@ -461,9 +461,9 @@ test('the Vue knowledgeqa settings entry preselects the chat model tab', async (
   const container = await mountPage(makeClient({ models: [
     { id: 'm1', name: 'gpt-test', type: 'KnowledgeQA', source: 'remote', parameters: {} },
   ] }), '?section=models&subsection=knowledgeqa');
-  const tabs = container.querySelector('.wk-model-tabs');
+  const tabs = container.querySelector('.model-type-tabs');
   assert.ok(tabs, 'the model type tabs render');
-  const active = tabs.querySelector('.is-active');
+  const active = tabs.querySelector('.t-tabs__nav-item.t-is-active');
   assert.ok(active);
   assert.ok((active.textContent ?? '').includes('对话(1)'), 'the chat tab is preselected');
 });

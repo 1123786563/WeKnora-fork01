@@ -100,7 +100,7 @@ const SELF_ERROR_SECTIONS = new Set(['members']);
 // shell .section container like Vue Settings.vue does (no wk-settings-section
 // wrapper, no shell heading). Integration sections have been self-headered
 // since R490 (handled separately via sectionIntegrationTab).
-const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory', 'memory', 'ollama', 'weknoracloud']);
+const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory', 'memory', 'ollama', 'weknoracloud', 'models']);
 
 const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);

@@ -410,12 +410,10 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 .wk-settings-section .wk-sandbox-settings .setting-info label { font-size: 14px; }
 .wk-settings-section .wk-sandbox-settings .setting-control { min-width: 0; }
 /* SandboxSettings.vue .sandbox-grid：添加卡片与记录卡同网格（auto-fill 320px） */
-.wk-sandbox-settings .wk-sandbox-grid--empty { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-/* ModelSettings.vue section-header：mb28，容器自带 grid gap-4(16px)，补差 12px */
-.wk-settings-section [data-testid="model-settings"] .section-header { margin-bottom: 12px; }
-/* ModelSettings.vue .section-description：line-height 1.6（wrapper 共享规则是 1.5，
-   22px vs 21px 会把 hint/tabs/卡片链整体抬高 1px） */
-.wk-settings-section [data-testid="model-settings"] .section-header .section-description { line-height: 1.6; }
+.wk-settings-section .wk-sandbox-grid--empty { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+/* （原 ModelSettings.vue section-header 深修 slice 两条已删——T12b models 迁移
+   SELF_HEADER 直挂 .section 后不再经过 .wk-settings-section wrapper，
+   样式由 settings.td.css §12 平移块自持。） */
 
 /* ==== B 组深修（settings-vectorstore/storage/websearch — ResourceSettingsPanel）
    Vue 三个资源面板（VectorStore/StorageBackend/WebSearchSettings.vue）都自持
