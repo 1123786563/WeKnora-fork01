@@ -252,3 +252,45 @@
 .wk-wiki-img-preview-image {
   transition: transform 0.15s ease;
 }
+
+/* ── 侧栏搜索（Vue WikiBrowser.vue .wiki-sidebar-header t-input 平移段）── */
+.wk-wiki-search {
+  display: block;
+  width: 100%;
+}
+
+.wk-wiki-search .wk-wiki-search-input.t-input__wrap,
+.wk-wiki-search-input {
+  width: 100%;
+}
+
+.wk-wiki-search .t-input {
+  height: 32px;
+  border-radius: 3px;
+  border-color: #dcdcdc;
+  background: #fff;
+  font-size: 14px;
+}
+
+.wk-wiki-search .t-input:hover {
+  border-color: var(--td-brand-color);
+}
+
+.wk-wiki-search .t-input.t-is-focused {
+  border-color: var(--td-brand-color);
+  box-shadow: none;
+}
+
+.wk-wiki-search .t-input .t-input__inner {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-wiki-search .t-input .t-input__inner::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-wiki-search .t-input__prefix-icon {
+  color: rgba(0, 0, 0, 0.4);
+  margin-right: 8px;
+}
