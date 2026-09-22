@@ -1,0 +1,360 @@
+/* ============================================================================
+ * settings.td.css — Settings 域 TDesign 同构迁移平移样式
+ *
+ * 事实源：frontend/src/views/settings/Settings.vue（壳层 scoped 块）与各
+ * section 子组件 SFC 的 <style> 块，按 playbook §2 逐条平移。
+ *
+ * 作用域策略：壳层规则统一挂 `.wk-settings-drawer-root .settings-overlay`
+ * 前缀（特异性 0,3,0）——`.settings-overlay`/`.settings-modal`/`.nav-item`
+ * 等类名同时被 kb-list.td.css / orgs.td.css / agents.td.css 的编辑器弹窗
+ * 平移块以裸 `.settings-overlay …`（0,2,0）使用，靠 bundle 注入顺序分胜负
+ * 不确定；本前缀保证设置抽屉的规则确定性胜出且不影响那些弹层
+ * （它们不在 .wk-settings-drawer-root 子树内）。
+ * ========================================================================== */
+
+/* ==== 1. Settings.vue scoped 块（壳层：遮罩/弹窗/侧栏导航/内容区） ==== */
+
+/* body 弹层根：脱离 shell 行高链（playbook §2.6）。 */
+.wk-settings-drawer-root .settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  line-height: normal;
+}
+
+.wk-settings-drawer-root .settings-modal {
+  position: relative;
+  width: 100%;
+  /* 1080×780 trades a touch of small-screen real estate for noticeably
+     less cramped tables (member list, system settings rows). Outer
+     padding is 20px so 1080 + 40 = 1120, comfortably within typical
+     laptops (1280+). Below 1100px viewport the `width: 100%` kicks in
+     and the modal shrinks to fit minus the 20px padding. */
+  max-width: 1080px;
+  height: 780px;
+  max-height: calc(100vh - 40px);
+  background: var(--td-bg-color-container);
+  border-radius: 12px;
+  box-shadow: 0 6px 28px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-settings-drawer-root .close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 10;
+  padding: 0;
+  /* 全局未分层 button{font-family:Arial} 归位（playbook §2.6）。 */
+  font-family: inherit;
+}
+
+.wk-settings-drawer-root .close-btn:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .settings-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 左侧导航栏：略紧凑于最初版，字号与留白适中 */
+.wk-settings-drawer-root .settings-sidebar {
+  width: 208px;
+  background-color: var(--td-bg-color-settings-modal);
+  border-right: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wk-settings-drawer-root .sidebar-header {
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .settings-nav {
+  padding: 8px 8px 12px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.wk-settings-drawer-root .nav-group-title {
+  padding: 9px 14px 4px;
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.wk-settings-drawer-root .nav-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  margin-bottom: 2px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.wk-settings-drawer-root .nav-item:hover {
+  background-color: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .nav-item.active {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .nav-icon {
+  margin-right: 9px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.wk-settings-drawer-root .nav-icon-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.wk-settings-drawer-root .nav-label {
+  flex: 1;
+}
+
+.wk-settings-drawer-root .expand-icon {
+  margin-left: 4px;
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+/* 子菜单 */
+.wk-settings-drawer-root .submenu {
+  margin-left: 28px;
+  margin-bottom: 3px;
+  overflow: hidden;
+}
+
+.wk-settings-drawer-root .submenu-item {
+  padding: 5px 12px;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.wk-settings-drawer-root .submenu-item:hover {
+  background-color: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .submenu-item.active {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .submenu-label {
+  display: block;
+}
+
+/* 子菜单动画 */
+.wk-settings-drawer-root .submenu-enter-active,
+.wk-settings-drawer-root .submenu-leave-active {
+  transition: all 0.2s ease;
+}
+
+.wk-settings-drawer-root .submenu-enter-from {
+  opacity: 0;
+  max-height: 0;
+}
+
+.wk-settings-drawer-root .submenu-enter-to {
+  opacity: 1;
+  max-height: 300px;
+}
+
+.wk-settings-drawer-root .submenu-leave-from {
+  opacity: 1;
+  max-height: 300px;
+}
+
+.wk-settings-drawer-root .submenu-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+/* 右侧内容区域 */
+.wk-settings-drawer-root .settings-content {
+  flex: 1;
+  overflow-y: auto;
+  background-color: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .content-wrapper {
+  /* Bumped from 600 to 760 when the modal grew from 900→1080 (see
+     .settings-modal). Without this, single-column panes (General,
+     Tenant, API key, …) leave a wide right-hand gutter inside the
+     wider modal. 760 keeps comfortable reading-width on long
+     descriptions without the form fields stretching to the full
+     panel width — which would look stranger than a small gutter. */
+  max-width: 760px;
+  padding: 40px 48px;
+}
+
+/* 成员 / 审计表格列多，600px 会把操作列挤到贴边；铺满右侧内容列更稳。 */
+.wk-settings-drawer-root .content-wrapper--wide {
+  max-width: none;
+  width: 100%;
+  padding: 32px 36px 40px;
+  box-sizing: border-box;
+}
+
+.wk-settings-drawer-root .content-wrapper--full {
+  max-width: none;
+  width: 100%;
+  padding: 30px 34px 40px;
+  box-sizing: border-box;
+}
+
+.wk-settings-drawer-root .section {
+  animation: fadeIn 0.3s ease;
+}
+
+/* @keyframes 名保留 Vue 端原名 fadeIn（playbook §2.4；当前 bundle 内无同名定义）。 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 弹窗动画（Vue Transition name="modal"；稳态扫描无影响） */
+.wk-settings-drawer-root .modal-enter-active,
+.wk-settings-drawer-root .modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.wk-settings-drawer-root .modal-enter-active .settings-modal,
+.wk-settings-drawer-root .modal-leave-active .settings-modal {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.wk-settings-drawer-root .modal-enter-from,
+.wk-settings-drawer-root .modal-leave-to {
+  opacity: 0;
+}
+
+.wk-settings-drawer-root .modal-enter-from .settings-modal,
+.wk-settings-drawer-root .modal-leave-to .settings-modal {
+  transform: scale(0.95);
+  opacity: 0;
+}
+
+/* 滚动条样式 */
+.wk-settings-drawer-root .settings-nav::-webkit-scrollbar,
+.wk-settings-drawer-root .settings-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wk-settings-drawer-root .settings-nav::-webkit-scrollbar-track {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.wk-settings-drawer-root .settings-nav::-webkit-scrollbar-thumb {
+  background: var(--td-gray-color-5);
+  border-radius: 3px;
+}
+
+.wk-settings-drawer-root .settings-nav::-webkit-scrollbar-thumb:hover {
+  background: var(--td-gray-color-6);
+}
+
+.wk-settings-drawer-root .settings-content::-webkit-scrollbar-track {
+  background: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .settings-content::-webkit-scrollbar-thumb {
+  background: var(--td-gray-color-5);
+  border-radius: 3px;
+}
+
+.wk-settings-drawer-root .settings-content::-webkit-scrollbar-thumb:hover {
+  background: var(--td-gray-color-6);
+}
+
+.wk-settings-drawer-root .role-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 64px 24px;
+  gap: 12px;
+  min-height: 240px;
+}
+
+.wk-settings-drawer-root .role-denied .role-denied-icon {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .role-denied .role-denied-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .role-denied .role-denied-desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  max-width: 360px;
+  line-height: 1.6;
+}
