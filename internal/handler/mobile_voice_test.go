@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
+	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/workbench/voice"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/voice"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -598,7 +598,7 @@ func TestPriceVersionVoiceAdmission(t *testing.T) {
 	}
 	withAudio := func(string) (domain.PriceVersionRates, error) {
 		return domain.PriceVersionRates{Version: "v1", Rates: map[string]domain.DimensionRate{
-			domain.DimensionModel:         {RateMicro: 1500, Units: 1000},
+			domain.DimensionModel:        {RateMicro: 1500, Units: 1000},
 			domain.DimensionAudioSeconds: {RateMicro: 1001, Units: 60},
 		}}, nil
 	}

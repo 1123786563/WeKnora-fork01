@@ -24,8 +24,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	domcom "github.com/Tencent/WeKnora/internal/commercial"
+	domcom "github.com/Tencent/WeKnora/internal/modules/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

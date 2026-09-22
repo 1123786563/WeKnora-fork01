@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 )
 
 // NativeRecoveryLeaseStore is the small P2.2 repository seam. Recovery

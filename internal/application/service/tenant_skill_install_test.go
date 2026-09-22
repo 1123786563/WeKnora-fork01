@@ -20,15 +20,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/event"
-	"github.com/Tencent/WeKnora/internal/models/asr"
-	"github.com/Tencent/WeKnora/internal/models/chat"
-	"github.com/Tencent/WeKnora/internal/models/embedding"
-	"github.com/Tencent/WeKnora/internal/models/rerank"
-	"github.com/Tencent/WeKnora/internal/models/vlm"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/asr"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/vlm"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -224,8 +224,10 @@ func TestSkillTreeVerifyCommandQuotesPaths(t *testing.T) {
 func TestVerifySkillTreeIssuesOneCommandRegardlessOfScriptCount(t *testing.T) {
 	fx := newInstallFixture(t)
 	files := map[string][]byte{"SKILL.md": []byte(validSkillMD)}
-	rels := []string{"run.sh", "scripts/a.py", "scripts/b.py",
-		"scripts/c.py", "scripts/d.py", "scripts/e.py"}
+	rels := []string{
+		"run.sh", "scripts/a.py", "scripts/b.py",
+		"scripts/c.py", "scripts/d.py", "scripts/e.py",
+	}
 	for _, rel := range rels {
 		files[rel] = []byte("pass\n")
 	}
@@ -3393,7 +3395,9 @@ func (s *installModelService) GetChatModel(_ context.Context, modelID string) (c
 	}
 	return installChat{id: modelID}, nil
 }
+
 func (s *installModelService) GetVLMModel(context.Context, string) (vlm.VLM, error) { return nil, nil }
+
 func (s *installModelService) GetASRModel(context.Context, string) (asr.ASR, error) { return nil, nil }
 
 type installChat struct{ id string }
@@ -3446,6 +3450,7 @@ func (s installFileService) SaveBytes(_ context.Context, data []byte, _ uint64, 
 	}
 	return "file://bundle.zip", nil
 }
+
 func (s installFileService) GetFile(_ context.Context, ref string) (io.ReadCloser, error) {
 	if s.fx != nil {
 		s.fx.getFileCalls.Add(1)

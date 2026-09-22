@@ -1,0 +1,148 @@
+# MOVE-MANIFEST datasource — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: datasource
+description: 外部知识源、连接器注册、同步、取消、重试、进度、凭据元数据、调度（§5.9/§5.18）
+move_packages:
+  - from: internal/datasource
+    to: internal/modules/datasource
+  - from: internal/datasource/connector/confluence
+    to: internal/modules/datasource/connector/confluence
+  - from: internal/datasource/connector/dingtalk
+    to: internal/modules/datasource/connector/dingtalk
+  - from: internal/datasource/connector/feishu/core
+    to: internal/modules/datasource/connector/feishu/core
+  - from: internal/datasource/connector/feishu/drive
+    to: internal/modules/datasource/connector/feishu/drive
+  - from: internal/datasource/connector/feishu/wiki
+    to: internal/modules/datasource/connector/feishu/wiki
+  - from: internal/datasource/connector/gitlab
+    to: internal/modules/datasource/connector/gitlab
+  - from: internal/datasource/connector/ima
+    to: internal/modules/datasource/connector/ima
+  - from: internal/datasource/connector/moauth
+    to: internal/modules/datasource/connector/moauth
+  - from: internal/datasource/connector/notion
+    to: internal/modules/datasource/connector/notion
+  - from: internal/datasource/connector/rss
+    to: internal/modules/datasource/connector/rss
+  - from: internal/datasource/connector/yuque
+    to: internal/modules/datasource/connector/yuque
+alias_obligations:
+  - old_import_path: internal/datasource
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/confluence
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/dingtalk
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/feishu/core
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/feishu/drive
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/feishu/wiki
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/gitlab
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/ima
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/moauth
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/notion
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/rss
+    passb_task: B-datasource
+  - old_import_path: internal/datasource/connector/yuque
+    passb_task: B-datasource
+legacy_files:
+  - path: internal/application/repository/datasource_repo.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Datasource repo (application/repository)
+    passb_task: B-datasource
+  - path: internal/application/service/datasource_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Datasource service (application/service)
+    passb_task: B-datasource
+  - path: internal/handler/datasource.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Datasource (handler)
+    passb_task: B-datasource
+  - path: internal/handler/datasource_credentials.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Datasource credentials (handler)
+    passb_task: B-datasource
+owned_files:
+  move_sources:
+  - internal/datasource
+  - internal/datasource/connector/confluence
+  - internal/datasource/connector/dingtalk
+  - internal/datasource/connector/feishu/core
+  - internal/datasource/connector/feishu/drive
+  - internal/datasource/connector/feishu/wiki
+  - internal/datasource/connector/gitlab
+  - internal/datasource/connector/ima
+  - internal/datasource/connector/moauth
+  - internal/datasource/connector/notion
+  - internal/datasource/connector/rss
+  - internal/datasource/connector/yuque
+  move_targets:
+    - internal/modules/datasource
+    - internal/modules/datasource/connector/confluence
+    - internal/modules/datasource/connector/dingtalk
+    - internal/modules/datasource/connector/feishu/core
+    - internal/modules/datasource/connector/feishu/drive
+    - internal/modules/datasource/connector/feishu/wiki
+    - internal/modules/datasource/connector/gitlab
+    - internal/modules/datasource/connector/ima
+    - internal/modules/datasource/connector/moauth
+    - internal/modules/datasource/connector/notion
+    - internal/modules/datasource/connector/rss
+    - internal/modules/datasource/connector/yuque
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/datasource
+    - internal/datasource/connector/confluence
+    - internal/datasource/connector/dingtalk
+    - internal/datasource/connector/feishu/core
+    - internal/datasource/connector/feishu/drive
+    - internal/datasource/connector/feishu/wiki
+    - internal/datasource/connector/gitlab
+    - internal/datasource/connector/ima
+    - internal/datasource/connector/moauth
+    - internal/datasource/connector/notion
+    - internal/datasource/connector/rss
+    - internal/datasource/connector/yuque
+  importers:
+  - internal/application/service
+  - internal/container
+  - internal/datasource/connector/confluence
+  - internal/datasource/connector/dingtalk
+  - internal/datasource/connector/feishu/core
+  - internal/datasource/connector/feishu/drive
+  - internal/datasource/connector/feishu/wiki
+  - internal/datasource/connector/gitlab
+  - internal/datasource/connector/ima
+  - internal/datasource/connector/moauth
+  - internal/datasource/connector/notion
+  - internal/datasource/connector/rss
+  - internal/datasource/connector/yuque
+  - internal/handler
+  module_files:
+    - internal/modules/datasource/README.md
+    - internal/modules/datasource/module.go
+    - internal/modules/datasource/legacy/README.md
+test_commands:
+  - go test ./internal/modules/datasource/... -count=1
+integration_points:
+  routes:
+  - RegisterDataSourceRoutes — internal/router/routes_infra.go:301
+  workers:
+  - TypeDataSourceSync
+  - TypeDataSourcePurge
+  lifecycle_hooks:
+  - injectDataSourceTaskInspector — internal/container/container.go:636 (func at container.go:2366)
+  - startDataSourceScheduler — internal/container/container.go:637 (func at container.go:2373)
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

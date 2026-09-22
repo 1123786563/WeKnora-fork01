@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,9 +21,13 @@ func durableOAuthFixture(t *testing.T) (*NativeOAuthRepository, nativecontract.S
 	detail.ExpiresAt = now.Add(time.Hour)
 	detail.OAuth = &nativecontract.PendingOAuth{ServiceID: detail.Service.ServiceID, State: "required"}
 	require.NoError(t, pending.Create(context.Background(), key.Run, detail))
-	attempt := NativeOAuthAttempt{Binding: NativeOAuthBinding{Key: key, Principal: scope.Principal, SessionOwnerID: scope.SessionOwnerID,
-		ServiceID: "svc-1", PendingRevision: 1, RedirectURI: "https://app.example/callback", ExpiresAt: now.Add(5 * time.Minute)},
-		AttemptID: "attempt-1", StateHash: strings.Repeat("a", 64)}
+	attempt := NativeOAuthAttempt{
+		Binding: NativeOAuthBinding{
+			Key: key, Principal: scope.Principal, SessionOwnerID: scope.SessionOwnerID,
+			ServiceID: "svc-1", PendingRevision: 1, RedirectURI: "https://app.example/callback", ExpiresAt: now.Add(5 * time.Minute), //nolint:lll // 预存长行,import 修复入 range
+		},
+		AttemptID: "attempt-1", StateHash: strings.Repeat("a", 64),
+	}
 	return NewNativeOAuthRepository(pending.db, func() time.Time { return now }), scope, attempt, &now
 }
 

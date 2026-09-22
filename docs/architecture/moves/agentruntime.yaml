@@ -1,0 +1,377 @@
+# MOVE-MANIFEST agentruntime — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: agentruntime
+description: Agent 执行引擎、Run/Attempt、工具、审批、Compaction、Memory、Model Context、native/tRPC/OpenCode 协议（§5.5/§5.18）
+move_packages:
+  - from: internal/agent
+    to: internal/modules/agentruntime/agent
+  - from: internal/agent/approval
+    to: internal/modules/agentruntime/agent/approval
+  - from: internal/agent/compaction
+    to: internal/modules/agentruntime/agent/compaction
+  - from: internal/agent/experts
+    to: internal/modules/agentruntime/agent/experts
+  - from: internal/agent/native
+    to: internal/modules/agentruntime/agent/native
+  - from: internal/agent/nativecontract
+    to: internal/modules/agentruntime/agent/nativecontract
+  - from: internal/agent/nativeprobe
+    to: internal/modules/agentruntime/agent/nativeprobe
+  - from: internal/agent/opencode
+    to: internal/modules/agentruntime/agent/opencode
+  - from: internal/agent/persona
+    to: internal/modules/agentruntime/agent/persona
+  - from: internal/agent/recoverytest
+    to: internal/modules/agentruntime/agent/recoverytest
+  - from: internal/agent/recoverytest/provider
+    to: internal/modules/agentruntime/agent/recoverytest/provider
+  - from: internal/agent/runtime
+    to: internal/modules/agentruntime/agent/runtime
+  - from: internal/agent/skills
+    to: internal/modules/agentruntime/agent/skills
+  - from: internal/agent/skills/skillhub
+    to: internal/modules/agentruntime/agent/skills/skillhub
+  - from: internal/agent/subagents
+    to: internal/modules/agentruntime/agent/subagents
+  - from: internal/agent/token
+    to: internal/modules/agentruntime/agent/token
+  - from: internal/agent/tools
+    to: internal/modules/agentruntime/agent/tools
+  - from: internal/agent/trpc
+    to: internal/modules/agentruntime/agent/trpc
+  - from: internal/application/service/memory
+    to: internal/modules/agentruntime/memory
+  - from: internal/modelcontext
+    to: internal/modules/agentruntime/modelcontext
+alias_obligations:
+  - old_import_path: internal/agent
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/approval
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/compaction
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/experts
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/native
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/nativecontract
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/nativeprobe
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/opencode
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/persona
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/recoverytest
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/recoverytest/provider
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/runtime
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/skills
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/skills/skillhub
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/subagents
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/token
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/tools
+    passb_task: B-agentruntime
+  - old_import_path: internal/agent/trpc
+    passb_task: B-agentruntime
+  - old_import_path: internal/application/service/memory
+    passb_task: B-agentruntime
+  - old_import_path: internal/modelcontext
+    passb_task: B-agentruntime
+legacy_files:
+  - path: internal/application/repository/agent_checkpoint.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent checkpoint (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_run.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent run (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_run_decisions.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent run decisions (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_run_events.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent run events (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_run_inputs.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent run inputs (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_run_lifecycle.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent run lifecycle (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_run_snapshot.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent run snapshot (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/agent_run_tools.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Agent run tools (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/mcp_tool_approval_repository.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Mcp tool approval repository (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/memory.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Memory (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/memory_extraction.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Memory extraction (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/memory_lifecycle.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Memory lifecycle (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/memory_vector.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Memory vector (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_commit.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native commit (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_events.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native events (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_lease.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native lease (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_memory.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native memory (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_oauth.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native oauth (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_pending.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native pending (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_schema.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native schema (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_session.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native session (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_tool_journal.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native tool journal (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/repository/native_usage.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Native usage (application/repository)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_capabilities.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent capabilities (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_history.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent history (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_run_decisions.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent run decisions (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_run_graph.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent run graph (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_run_lifecycle.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent run lifecycle (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_run_projection.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent run projection (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_run_resources.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent run resources (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_run_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent run service (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_run_worker.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent run worker (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/agent_web_pages.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Agent web pages (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/mcp_tool_approval_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Mcp tool approval service (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/native_admission.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Native admission (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/native_archive.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Native archive (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/native_oauth.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Native oauth (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/native_pending.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Native pending (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/native_recovery.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Native recovery (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/native_usage.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Native usage (application/service)
+    passb_task: B-agentruntime
+  - path: internal/application/service/subagent_delegate.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Subagent delegate (application/service)
+    passb_task: B-agentruntime
+  - path: internal/handler/memory.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Memory (handler)
+    passb_task: B-agentruntime
+  - path: internal/handler/session/agent_run.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Agent run (handler/session)
+    passb_task: B-agentruntime
+  - path: internal/handler/session/agent_stream_handler.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Agent stream handler (handler/session)
+    passb_task: B-agentruntime
+  - path: internal/handler/session/native_archive.go
+    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
+    navigation_label: Native archive (handler/session)
+    passb_task: B-agentruntime
+owned_files:
+  move_sources:
+  - internal/agent
+  - internal/agent/approval
+  - internal/agent/compaction
+  - internal/agent/experts
+  - internal/agent/native
+  - internal/agent/nativecontract
+  - internal/agent/nativeprobe
+  - internal/agent/opencode
+  - internal/agent/persona
+  - internal/agent/recoverytest
+  - internal/agent/recoverytest/provider
+  - internal/agent/runtime
+  - internal/agent/skills
+  - internal/agent/skills/skillhub
+  - internal/agent/subagents
+  - internal/agent/token
+  - internal/agent/tools
+  - internal/agent/trpc
+  - internal/application/service/memory
+  - internal/modelcontext
+  move_targets:
+    - internal/modules/agentruntime/agent
+    - internal/modules/agentruntime/agent/approval
+    - internal/modules/agentruntime/agent/compaction
+    - internal/modules/agentruntime/agent/experts
+    - internal/modules/agentruntime/agent/native
+    - internal/modules/agentruntime/agent/nativecontract
+    - internal/modules/agentruntime/agent/nativeprobe
+    - internal/modules/agentruntime/agent/opencode
+    - internal/modules/agentruntime/agent/persona
+    - internal/modules/agentruntime/agent/recoverytest
+    - internal/modules/agentruntime/agent/recoverytest/provider
+    - internal/modules/agentruntime/agent/runtime
+    - internal/modules/agentruntime/agent/skills
+    - internal/modules/agentruntime/agent/skills/skillhub
+    - internal/modules/agentruntime/agent/subagents
+    - internal/modules/agentruntime/agent/token
+    - internal/modules/agentruntime/agent/tools
+    - internal/modules/agentruntime/agent/trpc
+    - internal/modules/agentruntime/memory
+    - internal/modules/agentruntime/modelcontext
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/agent
+    - internal/agent/approval
+    - internal/agent/compaction
+    - internal/agent/experts
+    - internal/agent/native
+    - internal/agent/nativecontract
+    - internal/agent/nativeprobe
+    - internal/agent/opencode
+    - internal/agent/persona
+    - internal/agent/recoverytest
+    - internal/agent/recoverytest/provider
+    - internal/agent/runtime
+    - internal/agent/skills
+    - internal/agent/skills/skillhub
+    - internal/agent/subagents
+    - internal/agent/token
+    - internal/agent/tools
+    - internal/agent/trpc
+    - internal/application/service/memory
+    - internal/modelcontext
+  importers:
+  - internal/agent
+  - internal/agent/approval
+  - internal/agent/compaction
+  - internal/agent/experts
+  - internal/agent/native
+  - internal/agent/opencode
+  - internal/agent/recoverytest/provider
+  - internal/agent/subagents
+  - internal/agent/tools
+  - internal/agent/trpc
+  - internal/application/repository
+  - internal/application/service
+  - internal/application/service/appconnector
+  - internal/application/service/chat_pipeline
+  - internal/application/service/workbench
+  - internal/container
+  - internal/craft
+  - internal/handler
+  - internal/handler/session
+  - internal/im
+  - internal/types/interfaces
+  module_files:
+    - internal/modules/agentruntime/README.md
+    - internal/modules/agentruntime/module.go
+    - internal/modules/agentruntime/legacy/README.md
+test_commands:
+  - go test ./internal/modules/agentruntime/... -count=1
+  - "go test -race ./internal/modules/agentruntime/agent/recoverytest -count=1 -v  # mirrors .github/workflows/agent-recovery.yml"
+integration_points:
+  routes:
+  - RegisterMemoryRoutes — internal/router/routes_memory.go:17
+  - RegisterNativeArchiveRoutes — internal/router/routes_native_archive.go:11
+  - "agent-run session 子路由 ×4 — internal/router/routes_chat.go (RegisterSessionRoutes 内 /sessions/:id/runs/*)"
+  workers:
+  - TypeMemoryExtract
+  lifecycle_hooks:
+  - registerAgentRunResourceProtection — internal/container/container.go:257 (func at container.go:2462)
+  - wire AgentRunStore cleaner (inline) — internal/container/container.go:693
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

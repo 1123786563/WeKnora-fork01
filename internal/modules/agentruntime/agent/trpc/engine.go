@@ -1,0 +1,224 @@
+package trpc
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/types"
+	"trpc.group/trpc-go/trpc-agent-go/agent"
+	"trpc.group/trpc-go/trpc-agent-go/agent/graphagent"
+	"trpc.group/trpc-go/trpc-agent-go/graph"
+	"trpc.group/trpc-go/trpc-agent-go/model"
+	"trpc.group/trpc-go/trpc-agent-go/runner"
+	"trpc.group/trpc-go/trpc-agent-go/session/noop"
+	"trpc.group/trpc-go/trpc-agent-go/tool"
+)
+
+// RunEventSink persists run events during graph execution. Emissions are
+// best-effort at the graph layer: the repository assigns sequence numbers
+// under the run fence, and a failed append never masks a tool or model error.
+type RunEventSink interface {
+	AppendEvent(context.Context, agentruntime.Fence, agentruntime.RunEvent) (agentruntime.RunEvent, error)
+}
+
+type GraphBindings struct {
+	Model           model.Model
+	Store           agentruntime.RunStore
+	Tools           *agentruntime.ToolExecutor
+	Finalize        func(context.Context, agentruntime.Fence, json.RawMessage) error
+	InitialState    State
+	WaitForDecision func(context.Context, agentruntime.Fence, string) error
+	Capabilities    CapabilitySnapshot
+	Events          RunEventSink
+	// ModelTools is the frozen model-facing tool projection for this run.
+	// Deferred MCP discovery later in the run does not widen it: a resumed
+	// plan must see the same advertised set the checkpoint recorded.
+	ModelTools map[string]tool.Tool
+	// Inputs lists durable steering inputs. Inject inputs are consumed at the
+	// model node boundary; after inputs stay pending for follow-up runs.
+	Inputs RunInputSource
+}
+
+// RunInputSource reads durable steering inputs for one run.
+type RunInputSource interface {
+	ListPendingInputs(context.Context, agentruntime.RunKey, string) ([]agentruntime.RunInput, error)
+}
+
+// registryTool adapts a registry function definition to the SDK tool
+// declaration surface used by model requests.
+type registryTool struct{ decl *tool.Declaration }
+
+func (t registryTool) Declaration() *tool.Declaration { return t.decl }
+
+// DeclarationTools converts registry function definitions into the SDK tool
+// map. The definitions are the stable model-facing projection of the
+// request-scoped registry.
+func DeclarationTools(defs []types.FunctionDefinition) (map[string]tool.Tool, error) {
+	out := make(map[string]tool.Tool, len(defs))
+	for _, def := range defs {
+		if def.Name == "" {
+			return nil, fmt.Errorf("tool declaration requires a name")
+		}
+		schema := &tool.Schema{}
+		if len(def.Parameters) > 0 {
+			if err := json.Unmarshal(def.Parameters, schema); err != nil {
+				return nil, fmt.Errorf("tool %s input schema: %w", def.Name, err)
+			}
+		}
+		out[def.Name] = registryTool{decl: &tool.Declaration{
+			Name: def.Name, Description: def.Description, InputSchema: schema,
+		}}
+	}
+	return out, nil
+}
+
+// emitRunEvent appends a durable run event. Failures are logged by the caller
+// through the returned error only when they would hide state loss; event
+// delivery must never block graph progress.
+func (b GraphBindings) emitRunEvent(ctx context.Context, evt agentruntime.RunEvent) {
+	if b.Events == nil || evt.Type == "" {
+		return
+	}
+	payload := evt.Payload
+	if len(payload) == 0 {
+		payload = json.RawMessage("{}")
+	}
+	fenced := b.fenceFromContext(ctx)
+	event := agentruntime.RunEvent{AttemptID: evt.AttemptID, Type: evt.Type, Payload: payload}
+	if _, err := b.Events.AppendEvent(ctx, fenced, event); err != nil {
+		_ = err // event loss is tolerated; seq gaps are visible to replay clients
+	}
+}
+
+type GraphRunner struct{ bindings GraphBindings }
+
+// graphExecutionError retains the structured code carried by the SDK event so
+// callers can continue using errors.Is after graph execution has ended.
+type graphExecutionError struct{ response *model.ResponseError }
+
+func (e graphExecutionError) Error() string {
+	if e.response == nil {
+		return "graph execution failed"
+	}
+	return "graph execution: " + e.response.Message
+}
+
+func (e graphExecutionError) Is(target error) bool {
+	if e.response == nil || e.response.Code == nil || *e.response.Code == "" {
+		return false
+	}
+	targetWithCode, ok := target.(interface{ ErrorCode() string })
+	return ok && *e.response.Code == targetWithCode.ErrorCode()
+}
+
+func NewGraphRunner(b GraphBindings) (*GraphRunner, error) {
+	if b.Model == nil {
+		return nil, fmt.Errorf("model is required")
+	}
+	if b.Store == nil {
+		return nil, fmt.Errorf("run store is required")
+	}
+	if b.InitialState.Version == 0 {
+		b.InitialState.Version = StateVersion
+	}
+	if !b.InitialState.Capabilities.IsEmpty() && !b.Capabilities.IsEmpty() {
+		if err := b.InitialState.Capabilities.CompatibleWith(b.Capabilities); err != nil {
+			return nil, fmt.Errorf("capability compatibility: %w", err)
+		}
+	}
+	if b.InitialState.Capabilities.IsEmpty() {
+		b.InitialState.Capabilities = b.Capabilities
+	}
+	cloned, err := cloneState(b.InitialState)
+	if err != nil {
+		return nil, fmt.Errorf("clone initial state: %w", err)
+	}
+	b.InitialState = cloned
+	if b.Tools != nil && b.WaitForDecision != nil {
+		b.Tools.SetWaitForDecision(b.WaitForDecision)
+	}
+	return &GraphRunner{bindings: b}, nil
+}
+
+func (r *GraphRunner) Run(ctx context.Context, fence agentruntime.Fence) error {
+	if r == nil || fence.TenantID == 0 || fence.RunID == "" || fence.Owner == "" || fence.Epoch <= 0 {
+		return fmt.Errorf("invalid graph run fence")
+	}
+	saver := NewCheckpointSaver(r.bindings.Store, fence)
+	g, err := buildGraph(graphBindingsWithFence(r.bindings, fence))
+	if err != nil {
+		return err
+	}
+	ag, err := graphagent.New("weknora-trpc", g, graphagent.WithCheckpointSaver(saver))
+	if err != nil {
+		return err
+	}
+	rr := runner.NewRunner("weknora-trpc", ag, runner.WithSessionService(noop.NewService()))
+	defer rr.Close()
+	state := map[string]any{graph.CfgKeyLineageID: fence.RunID, graph.CfgKeyCheckpointNS: CheckpointNamespace(fence.RunKey)}
+	if latest, e := graph.NewCheckpointManager(saver).Latest(ctx, fence.RunID, CheckpointNamespace(fence.RunKey)); e != nil {
+		return e
+	} else if latest != nil {
+		state[graph.CfgKeyCheckpointID] = latest.Checkpoint.ID
+	}
+	initial := r.bindings.InitialState
+	msg := model.NewUserMessage("")
+	if len(initial.Messages) > 0 {
+		for _, m := range initial.Messages {
+			if m.Role == model.RoleUser {
+				msg = m
+				break
+			}
+		}
+	}
+	events, err := rr.Run(withFence(ctx, fence), fence.Owner, fence.RunID, msg, agent.WithRuntimeState(state))
+	if err != nil {
+		return err
+	}
+	for evt := range events {
+		if evt == nil {
+			continue
+		}
+		if evt.Error != nil {
+			return graphExecutionError{response: evt.Error}
+		}
+	}
+	return nil
+}
+func graphBindingsWithFence(b GraphBindings, f agentruntime.Fence) GraphBindings { return b }
+
+func cloneState(in State) (State, error) {
+	out := in
+	out.Messages = make([]model.Message, len(in.Messages))
+	for i, msg := range in.Messages {
+		raw, err := json.Marshal(msg)
+		if err != nil {
+			return State{}, err
+		}
+		if err := json.Unmarshal(raw, &out.Messages[i]); err != nil {
+			return State{}, err
+		}
+	}
+	out.PendingCallIDs = append([]string(nil), in.PendingCallIDs...)
+	out.AppliedCallIDs = map[string]bool{}
+	for k, v := range in.AppliedCallIDs {
+		out.AppliedCallIDs[k] = v
+	}
+	out.CompactionState = append(json.RawMessage(nil), in.CompactionState...)
+	out.UsageAttempts = map[string]json.RawMessage{}
+	for k, v := range in.UsageAttempts {
+		out.UsageAttempts[k] = append(json.RawMessage(nil), v...)
+	}
+	out.Capabilities.ToolIdentities = append([]string(nil), in.Capabilities.ToolIdentities...)
+	out.Capabilities.DeferredNames = append([]string(nil), in.Capabilities.DeferredNames...)
+	out.Capabilities.ImageReferences = append([]string(nil), in.Capabilities.ImageReferences...)
+	if in.Capabilities.SkillDigests != nil {
+		out.Capabilities.SkillDigests = map[string]string{}
+		for k, v := range in.Capabilities.SkillDigests {
+			out.Capabilities.SkillDigests[k] = v
+		}
+	}
+	return out, nil
+}

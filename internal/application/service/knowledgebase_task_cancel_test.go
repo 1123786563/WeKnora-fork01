@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/application/service/retriever"
-	"github.com/Tencent/WeKnora/internal/models/embedding"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/hibiken/asynq"
@@ -289,12 +289,15 @@ func (kbDeleteDeferredRegistry) GetRetrieveEngineService(types.RetrieverEngineTy
 ) {
 	return nil, nil
 }
+
 func (kbDeleteDeferredRegistry) GetAllRetrieveEngineServices() []interfaces.RetrieveEngineService {
 	return nil
 }
+
 func (kbDeleteDeferredRegistry) GetByStoreID(string) (interfaces.RetrieveEngineService, error) {
 	return nil, errors.New("store not in registry")
 }
+
 func (r kbDeleteDeferredRegistry) GetOrLoadByStoreID(
 	context.Context, uint64, string,
 ) (interfaces.RetrieveEngineService, error) {

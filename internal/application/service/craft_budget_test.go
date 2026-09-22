@@ -9,11 +9,10 @@ import (
 	"testing"
 	"time"
 
-	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
-	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
-	"github.com/Tencent/WeKnora/internal/commercial"
-	domain "github.com/Tencent/WeKnora/internal/commercial"
-	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/modules/commercial"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -103,8 +102,8 @@ func craftAccountRow(t *testing.T, db *gorm.DB, tenant uint64) repocommercial.Bu
 	return acct
 }
 
-func domainReservationStateDispatched() string { return domain.ReservationStateDispatched }
-func domainReservationStateReleased() string   { return domain.ReservationStateReleased }
+func domainReservationStateDispatched() string { return commercial.ReservationStateDispatched }
+func domainReservationStateReleased() string   { return commercial.ReservationStateReleased }
 
 // TestCraftBudgetAdmitRegistersGrantAndCommercialTaskBudget is the admission
 // contract: Admit issues a durable grant AND registers the G4 task budget

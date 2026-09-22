@@ -1,0 +1,421 @@
+// Package native provides controlled SDK facades for the native Agent path.
+package native
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
+	"trpc.group/trpc-go/trpc-agent-go/memory"
+	memorytool "trpc.group/trpc-go/trpc-agent-go/memory/tool"
+	"trpc.group/trpc-go/trpc-agent-go/session"
+	"trpc.group/trpc-go/trpc-agent-go/tool"
+)
+
+var (
+	ErrMemoryScopeDenied          = errors.New("native memory scope denied")
+	ErrMemoryWriteDenied          = errors.New("native memory write denied")
+	ErrMemorySearchUnsupported    = errors.New("native memory search option unsupported")
+	ErrMemoryExtractorUnavailable = errors.New("native memory extractor unavailable")
+	ErrMemorySessionScopeDenied   = errors.New("native memory session scope denied")
+)
+
+// MemoryWrite is a bounded extractor output. The job stores only its source
+// boundary; it never persists a transcript for a later unrestricted reread.
+type MemoryWrite struct {
+	ID, Content string
+	Metadata    map[string]any
+}
+type MemoryExtractor func(context.Context, nativecontract.MemoryJob) ([]MemoryWrite, error)
+
+// MemoryService is the selected SDK memory.Service facade. The repository is
+// authoritative for permission, generation and tombstone checks; the optional
+// backend is a projection only and is never called for a rejected stale job.
+type MemoryService struct {
+	resolver           nativecontract.ScopeResolver
+	repo               *repository.NativeMemoryRepository
+	backend            memory.Service
+	extractor          MemoryExtractor
+	claimRenewInterval time.Duration
+}
+
+var (
+	_ memory.Service                  = (*MemoryService)(nil)
+	_ nativecontract.MemoryGovernance = (*MemoryService)(nil)
+)
+
+func NewMemoryService(resolver nativecontract.ScopeResolver, repo *repository.NativeMemoryRepository, backend memory.Service) *MemoryService {
+	return &MemoryService{resolver: resolver, repo: repo, backend: backend, claimRenewInterval: 30 * time.Second}
+}
+func (s *MemoryService) SetExtractor(extractor MemoryExtractor) { s.extractor = extractor }
+func AcceptMemoryWrite(enabled bool, currentGeneration, jobGeneration int64) bool {
+	return enabled && currentGeneration == jobGeneration
+}
+
+func (s *MemoryService) scope(ctx context.Context) (nativecontract.Scope, error) {
+	if s.resolver == nil {
+		return nativecontract.Scope{}, ErrMemoryScopeDenied
+	}
+	scope, err := s.resolver.Resolve(ctx)
+	if err != nil {
+		return nativecontract.Scope{}, ErrMemoryScopeDenied
+	}
+	scope, err = s.resolver.Recheck(ctx, scope, nil)
+	if err != nil {
+		return nativecontract.Scope{}, errors.Join(ErrMemoryScopeDenied, err)
+	}
+	return scope, nil
+}
+
+func (s *MemoryService) authorize(ctx context.Context, scope nativecontract.Scope) (nativecontract.Scope, error) {
+	fresh, err := s.scope(ctx)
+	if err != nil {
+		return nativecontract.Scope{}, err
+	}
+	if fresh.TenantID != scope.TenantID || fresh.MemorySubjectID != scope.MemorySubjectID {
+		return nativecontract.Scope{}, ErrMemoryScopeDenied
+	}
+	return fresh, nil
+}
+
+func matches(scope nativecontract.Scope, key memory.UserKey) bool {
+	expected, err := nativecontract.MemoryKey(scope)
+	return err == nil && expected == key
+}
+
+func (s *MemoryService) keyScope(ctx context.Context, key memory.UserKey) (nativecontract.Scope, error) {
+	scope, err := s.scope(ctx)
+	if err != nil || !matches(scope, key) {
+		return nativecontract.Scope{}, ErrMemoryScopeDenied
+	}
+	return scope, nil
+}
+
+func (s *MemoryService) SetEnabled(ctx context.Context, scope nativecontract.Scope, enabled bool) error {
+	scope, err := s.authorize(ctx, scope)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.EnsureScope(ctx, scope); err != nil {
+		return err
+	}
+	return s.repo.SetEnabled(ctx, scope, enabled)
+}
+
+func (s *MemoryService) Delete(ctx context.Context, scope nativecontract.Scope, id string) error {
+	scope, err := s.authorize(ctx, scope)
+	if err != nil {
+		return err
+	}
+	return s.repo.Delete(ctx, scope, id)
+}
+
+func (s *MemoryService) Clear(ctx context.Context, scope nativecontract.Scope) error {
+	scope, err := s.authorize(ctx, scope)
+	if err != nil {
+		return err
+	}
+	return s.repo.Clear(ctx, scope)
+}
+
+func (s *MemoryService) Enqueue(ctx context.Context, job nativecontract.MemoryJob) error {
+	scope, err := s.authorize(ctx, job.Scope)
+	if err != nil {
+		return err
+	}
+	job.Scope = scope
+	return s.repo.Enqueue(ctx, job)
+}
+
+// keepClaimAlive binds extraction to its durable attempt. If the claim cannot
+// be renewed (for example, a recovery worker has already reclaimed it), the
+// extractor receives cancellation and its result is never committed.
+func (s *MemoryService) keepClaimAlive(ctx context.Context, job nativecontract.MemoryJob) (context.Context, func() error) {
+	extractionCtx, cancelExtraction := context.WithCancel(ctx)
+	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
+	done := make(chan struct{})
+	errCh := make(chan error, 1)
+	interval := s.claimRenewInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				if heartbeatCtx.Err() != nil {
+					return
+				}
+				renewed, err := s.repo.Renew(heartbeatCtx, job)
+				if heartbeatCtx.Err() != nil {
+					return
+				}
+				if err == nil && renewed {
+					continue
+				}
+				if err == nil {
+					err = ErrMemoryWriteDenied
+				}
+				errCh <- err
+				cancelExtraction()
+				return
+			}
+		}
+	}()
+	return extractionCtx, func() error {
+		stopHeartbeat()
+		<-done
+		cancelExtraction()
+		select {
+		case err := <-errCh:
+			return err
+		default:
+			return nil
+		}
+	}
+}
+
+func (s *MemoryService) Execute(ctx context.Context, job nativecontract.MemoryJob) error {
+	job, claimed, err := s.repo.Claim(ctx, job)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return ErrMemoryWriteDenied
+	}
+	scope, err := s.authorize(ctx, job.Scope)
+	if err != nil {
+		return errors.Join(err, s.repo.Discard(ctx, job))
+	}
+	job.Scope = scope
+	state, err := s.repo.State(ctx, scope)
+	if err != nil {
+		return err
+	}
+	if !AcceptMemoryWrite(state.Enabled, state.Generation, job.Generation) || state.PolicyRevision != job.PolicyRevision {
+		_, err = s.repo.CommitWrites(ctx, job, []repository.NativeMemoryEntry{{ID: "discard", Content: "discard"}})
+		return err
+	}
+	if s.extractor == nil {
+		return errors.Join(ErrMemoryExtractorUnavailable, s.repo.Fail(ctx, job, ErrMemoryExtractorUnavailable))
+	}
+	extractionCtx, finishHeartbeat := s.keepClaimAlive(ctx, job)
+	writes, err := s.extractor(extractionCtx, job)
+	if heartbeatErr := finishHeartbeat(); heartbeatErr != nil {
+		return errors.Join(ErrMemoryWriteDenied, heartbeatErr)
+	}
+	if err != nil {
+		return errors.Join(err, s.repo.Fail(ctx, job, err))
+	}
+	// Re-resolve after extraction. A worker can spend meaningful time outside
+	// the transaction; its initial authorization is never a commit permit.
+	fresh, err := s.authorize(ctx, job.Scope)
+	if err != nil {
+		return errors.Join(err, s.repo.Discard(ctx, job))
+	}
+	job.Scope = fresh
+	entries := make([]repository.NativeMemoryEntry, 0, len(writes))
+	for _, write := range writes {
+		entries = append(entries, repository.NativeMemoryEntry{ID: write.ID, Content: write.Content, Metadata: write.Metadata})
+	}
+	_, err = s.repo.CommitWrites(ctx, job, entries)
+	if err != nil {
+		return errors.Join(err, s.repo.Fail(ctx, job, err))
+	}
+	return err
+}
+
+func (s *MemoryService) ReadMemories(ctx context.Context, key memory.UserKey, limit int) ([]*memory.Entry, error) {
+	scope, err := s.keyScope(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := s.repo.Read(ctx, scope, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*memory.Entry, 0, len(entries))
+	for _, entry := range entries {
+		m := &memory.Memory{Memory: entry.Content}
+		if topics, ok := entry.Metadata["topics"].([]any); ok {
+			for _, topic := range topics {
+				if text, ok := topic.(string); ok {
+					m.Topics = append(m.Topics, text)
+				}
+			}
+		}
+		if kind, ok := entry.Metadata["kind"].(string); ok {
+			m.Kind = memory.Kind(kind)
+		}
+		if location, ok := entry.Metadata["location"].(string); ok {
+			m.Location = location
+		}
+		if participants, ok := entry.Metadata["participants"].([]any); ok {
+			for _, person := range participants {
+				if text, ok := person.(string); ok {
+					m.Participants = append(m.Participants, text)
+				}
+			}
+		}
+		if eventTime, ok := entry.Metadata["event_time"].(string); ok {
+			if parsed, parseErr := time.Parse(time.RFC3339Nano, eventTime); parseErr == nil {
+				m.EventTime = &parsed
+			}
+		}
+		out = append(out, &memory.Entry{ID: entry.ID, AppName: key.AppName, UserID: key.UserID, Memory: m})
+	}
+	return out, nil
+}
+
+func (s *MemoryService) SearchMemories(ctx context.Context, key memory.UserKey, query string, opts ...memory.SearchOption) ([]*memory.Entry, error) {
+	options := memory.ResolveSearchOptions(query, opts)
+	if options.TimeAfter != nil || options.TimeBefore != nil || options.OrderByEventTime || options.KindFallback || options.Deduplicate || options.HybridSearch || options.SimilarityThreshold != 0 || options.HybridRRFK != 0 {
+		return nil, ErrMemorySearchUnsupported
+	}
+	limit := options.MaxResults
+	if limit <= 0 {
+		limit = 100
+	}
+	entries, err := s.ReadMemories(ctx, key, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*memory.Entry, 0, len(entries))
+	for _, entry := range entries {
+		if (options.Kind == "" || entry.Memory.Kind == options.Kind) && strings.Contains(strings.ToLower(entry.Memory.Memory), strings.ToLower(query)) {
+			out = append(out, entry)
+		}
+	}
+	return out, nil
+}
+
+func memoryID(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+func memoryMetadata(topics []string, metadata *memory.Metadata) map[string]any {
+	out := map[string]any{"topics": topics}
+	if metadata == nil {
+		return out
+	}
+	out["kind"] = string(metadata.Kind)
+	out["location"] = metadata.Location
+	out["participants"] = metadata.Participants
+	if metadata.EventTime != nil {
+		out["event_time"] = metadata.EventTime.UTC().Format(time.RFC3339Nano)
+	}
+	return out
+}
+
+func (s *MemoryService) AddMemory(ctx context.Context, key memory.UserKey, value string, topics []string, opts ...memory.AddOption) error {
+	scope, err := s.keyScope(ctx, key)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.EnsureScope(ctx, scope); err != nil {
+		return err
+	}
+	state, err := s.repo.State(ctx, scope)
+	if err != nil {
+		return err
+	}
+	if !AcceptMemoryWrite(state.Enabled, state.Generation, state.Generation) {
+		return ErrMemoryWriteDenied
+	}
+	if err := s.repo.Write(ctx, scope, state.Generation, memoryID(value), value, memoryMetadata(topics, memory.ResolveAddOptions(opts))); err != nil {
+		if errors.Is(err, repository.ErrNativeMemoryWriteRejected) {
+			return ErrMemoryWriteDenied
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *MemoryService) UpdateMemory(ctx context.Context, key memory.Key, value string, topics []string, opts ...memory.UpdateOption) error {
+	scope, err := s.keyScope(ctx, memory.UserKey{AppName: key.AppName, UserID: key.UserID})
+	if err != nil {
+		return err
+	}
+	state, err := s.repo.State(ctx, scope)
+	if err != nil {
+		return err
+	}
+	newID := memoryID(value)
+	if err := s.repo.Replace(ctx, scope, state.Generation, key.MemoryID, repository.NativeMemoryEntry{ID: newID, Content: value, Metadata: memoryMetadata(topics, memory.ResolveUpdateOptions(opts))}); err != nil {
+		if errors.Is(err, repository.ErrNativeMemoryWriteRejected) {
+			return ErrMemoryWriteDenied
+		}
+		return err
+	}
+	if result := memory.ResolveUpdateResult(opts); result != nil {
+		result.MemoryID = newID
+	}
+	return nil
+}
+
+func (s *MemoryService) DeleteMemory(ctx context.Context, key memory.Key) error {
+	scope, err := s.keyScope(ctx, memory.UserKey{AppName: key.AppName, UserID: key.UserID})
+	if err != nil {
+		return err
+	}
+	return s.repo.Delete(ctx, scope, key.MemoryID)
+}
+
+func (s *MemoryService) ClearMemories(ctx context.Context, key memory.UserKey) error {
+	scope, err := s.keyScope(ctx, key)
+	if err != nil {
+		return err
+	}
+	return s.repo.Clear(ctx, scope)
+}
+
+func (s *MemoryService) Tools() []tool.Tool {
+	// These constructors resolve the configured MemoryService and app/user
+	// from invocation context. They therefore enter this facade's keyScope
+	// checks instead of exposing a raw backend tool.
+	return []tool.Tool{
+		memorytool.NewAddTool(), memorytool.NewUpdateTool(), memorytool.NewDeleteTool(),
+		memorytool.NewClearTool(), memorytool.NewSearchTool(), memorytool.NewLoadTool(),
+	}
+}
+
+func (s *MemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.Session) error {
+	if sess == nil {
+		return errors.New("session is required")
+	}
+	scope, err := s.scope(ctx)
+	if err != nil {
+		return err
+	}
+	expected, err := nativecontract.SessionKey(scope, sess.ID)
+	if err != nil || expected.AppName != sess.AppName || expected.UserID != sess.UserID {
+		return ErrMemorySessionScopeDenied
+	}
+	if len(sess.Events) == 0 || sess.Events[len(sess.Events)-1].ID == "" {
+		return ErrMemorySessionScopeDenied
+	}
+	state, err := s.repo.State(ctx, scope)
+	if err != nil {
+		return err
+	}
+	throughEventID := sess.Events[len(sess.Events)-1].ID
+	return s.Enqueue(ctx, nativecontract.MemoryJob{ID: memoryID(sess.AppName + "\x00" + sess.UserID + "\x00" + sess.ID + "\x00" + throughEventID), Scope: scope, SessionKey: expected, Generation: state.Generation, PolicyRevision: state.PolicyRevision, ThroughEventID: throughEventID})
+}
+
+func (s *MemoryService) Close() error {
+	if s.backend != nil {
+		return s.backend.Close()
+	}
+	return nil
+}

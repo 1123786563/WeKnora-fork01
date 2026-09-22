@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/service"
-	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
@@ -575,6 +575,8 @@ func TestCraftPreviewVerdictChannelAndEvidence(t *testing.T) {
 
 // previewTask builds the delegation task the evidence source receives.
 func previewTask(scope craft.Scope, ws, run string) craft.Task {
-	return craft.Task{Scope: scope, WorkspaceID: ws,
-		Fence: agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: scope.TenantID, RunID: run}, Owner: "worker", Epoch: 1}}
+	return craft.Task{
+		Scope: scope, WorkspaceID: ws,
+		Fence: agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: scope.TenantID, RunID: run}, Owner: "worker", Epoch: 1}, //nolint:lll // 预存长行,import 修复入 range
+	}
 }

@@ -7,14 +7,14 @@ import (
 	"sync"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
-	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
 	"github.com/Tencent/WeKnora/internal/config"
-	"github.com/Tencent/WeKnora/internal/craft"
-	"github.com/Tencent/WeKnora/internal/execution"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/modules/execution"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"gorm.io/gorm"
 )
 
@@ -330,6 +330,7 @@ func (r *AgentRuntime) Start(ctx context.Context) error {
 	}()
 	return nil
 }
+
 func (r *AgentRuntime) Drain() {
 	r.once.Do(func() {
 		if r != nil && r.Worker != nil {

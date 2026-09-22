@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -24,6 +24,7 @@ type nativeArchiveHandlerScopeFake struct {
 func (f nativeArchiveHandlerScopeFake) Resolve(context.Context) (nativecontract.Scope, error) {
 	return f.scope, f.err
 }
+
 func (f *nativeArchiveHandlerScopeFake) Recheck(context.Context, nativecontract.Scope, []nativecontract.ResourceGrant) (nativecontract.Scope, error) {
 	f.recheckCalls++
 	if f.recheckErr != nil {
@@ -51,10 +52,12 @@ func (f *nativeArchiveHandlerReaderFake) List(_ context.Context, scope nativecon
 	f.query = query
 	return f.page, f.err
 }
+
 func (f *nativeArchiveHandlerReaderFake) Read(_ context.Context, scope nativecontract.Scope, _ string) (nativecontract.ArchiveRecord, error) {
 	f.readScope = scope
 	return f.record, f.err
 }
+
 func (f *nativeArchiveHandlerReaderFake) ReadArtifact(_ context.Context, scope nativecontract.Scope, _ string) (nativecontract.ArtifactRef, error) {
 	f.artifactScope = scope
 	return f.artifact, f.err

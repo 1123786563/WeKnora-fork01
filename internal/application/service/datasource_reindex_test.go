@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/datasource"
-	"github.com/Tencent/WeKnora/internal/datasource/connector/ima"
+	"github.com/Tencent/WeKnora/internal/modules/datasource"
+	"github.com/Tencent/WeKnora/internal/modules/datasource/connector/ima"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"

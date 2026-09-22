@@ -1,0 +1,82 @@
+# MOVE-MANIFEST policy — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: policy
+description: 跨域配额、限流、存储白名单、embed/access policy、capability gate（§5.16/§5.18）
+move_packages:
+  - from: internal/application/access
+    to: internal/modules/policy/access
+  - from: internal/embedpolicy
+    to: internal/modules/policy/embedpolicy
+  - from: internal/ipclass
+    to: internal/modules/policy/ipclass
+  - from: internal/ratelimit
+    to: internal/modules/policy/ratelimit
+  - from: internal/storageallowlist
+    to: internal/modules/policy/storageallowlist
+alias_obligations:
+  - old_import_path: internal/application/access
+    passb_task: B-policy
+  - old_import_path: internal/embedpolicy
+    passb_task: B-policy
+  - old_import_path: internal/ipclass
+    passb_task: B-policy
+  - old_import_path: internal/ratelimit
+    passb_task: B-policy
+  - old_import_path: internal/storageallowlist
+    passb_task: B-policy
+legacy_files:
+  - path: internal/handler/storage_allowlist.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Storage allowlist (handler)
+    passb_task: B-policy
+owned_files:
+  move_sources:
+  - internal/application/access
+  - internal/embedpolicy
+  - internal/ipclass
+  - internal/ratelimit
+  - internal/storageallowlist
+  move_targets:
+    - internal/modules/policy/access
+    - internal/modules/policy/embedpolicy
+    - internal/modules/policy/ipclass
+    - internal/modules/policy/ratelimit
+    - internal/modules/policy/storageallowlist
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/application/access
+    - internal/embedpolicy
+    - internal/ipclass
+    - internal/ratelimit
+    - internal/storageallowlist
+  importers:
+  - internal/application/service
+  - internal/container
+  - internal/handler
+  - internal/handler/session
+  - internal/im
+  - internal/im/yunzhijia
+  - internal/middleware
+  - internal/router
+  - internal/sandbox
+  - internal/types
+  - internal/utils
+  module_files:
+    - internal/modules/policy/README.md
+    - internal/modules/policy/module.go
+    - internal/modules/policy/legacy/README.md
+test_commands:
+  - go test ./internal/modules/policy/... -count=1
+integration_points:
+  routes:
+  - embedFrameAncestorsMiddleware — internal/router/router.go:195-197 (embed 页面 frame-ancestors 策略，使用 internal/embedpolicy；无独立业务路由)
+  workers:
+    []
+  lifecycle_hooks:
+    []
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

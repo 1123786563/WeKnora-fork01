@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -80,10 +80,12 @@ func nativeOAuthBindingHash(b NativeOAuthBinding) string {
 
 func nativeOAuthRowFor(a NativeOAuthAttempt) nativeOAuthRow {
 	b := a.Binding
-	return nativeOAuthRow{TenantID: b.Key.Run.TenantID, RunID: b.Key.Run.RunID, PendingID: b.Key.PendingID, AttemptID: a.AttemptID,
+	return nativeOAuthRow{
+		TenantID: b.Key.Run.TenantID, RunID: b.Key.Run.RunID, PendingID: b.Key.PendingID, AttemptID: a.AttemptID,
 		SessionID: b.Key.Run.SessionID, OwnerID: b.SessionOwnerID, PrincipalType: b.Principal.Type, PrincipalID: b.Principal.ID,
 		ServiceID: b.ServiceID, InstallationID: b.InstallationID, RedirectURI: b.RedirectURI, PendingRevision: b.PendingRevision,
-		ExpiresAt: b.ExpiresAt.UTC().Truncate(time.Microsecond), BindingHash: nativeOAuthBindingHash(b), StateHash: a.StateHash, Revision: 1}
+		ExpiresAt: b.ExpiresAt.UTC().Truncate(time.Microsecond), BindingHash: nativeOAuthBindingHash(b), StateHash: a.StateHash, Revision: 1, //nolint:lll // 预存长行,import 修复入 range
+	}
 }
 
 func (row nativeOAuthRow) metadata() NativeOAuthMetadata {
@@ -91,9 +93,11 @@ func (row nativeOAuthRow) metadata() NativeOAuthMetadata {
 		normalized := row.ConsumedAt.UTC()
 		row.ConsumedAt = &normalized
 	}
-	return NativeOAuthMetadata{Binding: NativeOAuthBinding{Key: nativecontract.PendingKey{Run: nativecontract.RunIdentity{TenantID: row.TenantID, RunID: row.RunID, SessionID: row.SessionID}, PendingID: row.PendingID},
+	return NativeOAuthMetadata{Binding: NativeOAuthBinding{
+		Key:       nativecontract.PendingKey{Run: nativecontract.RunIdentity{TenantID: row.TenantID, RunID: row.RunID, SessionID: row.SessionID}, PendingID: row.PendingID}, //nolint:lll // 预存长行,import 修复入 range
 		Principal: nativecontract.Principal{Type: row.PrincipalType, ID: row.PrincipalID}, SessionOwnerID: row.OwnerID, ServiceID: row.ServiceID, InstallationID: row.InstallationID, RedirectURI: row.RedirectURI,
-		PendingRevision: row.PendingRevision, ExpiresAt: row.ExpiresAt.UTC()}, AttemptID: row.AttemptID, Revision: row.Revision, ConsumedAt: row.ConsumedAt}
+		PendingRevision: row.PendingRevision, ExpiresAt: row.ExpiresAt.UTC(),
+	}, AttemptID: row.AttemptID, Revision: row.Revision, ConsumedAt: row.ConsumedAt}
 }
 
 func (r *NativeOAuthRepository) validate(scope nativecontract.Scope, a NativeOAuthAttempt) error {

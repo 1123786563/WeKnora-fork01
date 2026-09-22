@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -141,9 +141,9 @@ func TestCreateWorkbenchArtifactSignedURLMintsScopedGrant(t *testing.T) {
 	require.Equal(t, http.StatusOK, c.Writer.Status())
 	var body struct {
 		Data struct {
-			URL        string                 `json:"url"`
-			ExpiresAt  string                 `json:"expires_at"`
-			Artifact   workbenchArtifactItem  `json:"artifact"`
+			URL       string                `json:"url"`
+			ExpiresAt string                `json:"expires_at"`
+			Artifact  workbenchArtifactItem `json:"artifact"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))

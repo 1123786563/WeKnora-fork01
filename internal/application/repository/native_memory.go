@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/nativecontract"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/nativecontract"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"trpc.group/trpc-go/trpc-agent-go/session"
@@ -152,9 +152,11 @@ func (r *NativeMemoryRepository) State(ctx context.Context, scope nativecontract
 func (r *NativeMemoryRepository) SetEnabled(ctx context.Context, scope nativecontract.Scope, enabled bool) error {
 	return r.mutateScope(ctx, scope, enabled, false)
 }
+
 func (r *NativeMemoryRepository) Clear(ctx context.Context, scope nativecontract.Scope) error {
 	return r.mutateScope(ctx, scope, false, true)
 }
+
 func (r *NativeMemoryRepository) mutateScope(ctx context.Context, scope nativecontract.Scope, enabled, clear bool) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		row, subject, err := r.state(tx, scope)
@@ -347,6 +349,7 @@ func (r *NativeMemoryRepository) Write(ctx context.Context, scope nativecontract
 func (r *NativeMemoryRepository) Commit(ctx context.Context, job nativecontract.MemoryJob, id, content string, metadata map[string]any) (bool, error) {
 	return r.commit(ctx, job, []NativeMemoryEntry{{ID: id, Content: content, Metadata: metadata}}, true)
 }
+
 func (r *NativeMemoryRepository) CommitWrites(ctx context.Context, job nativecontract.MemoryJob, entries []NativeMemoryEntry) (bool, error) {
 	return r.commit(ctx, job, entries, true)
 }
@@ -497,6 +500,7 @@ func (r *NativeMemoryRepository) Read(ctx context.Context, scope nativecontract.
 	}
 	return out, nil
 }
+
 func (r *NativeMemoryRepository) Entry(ctx context.Context, scope nativecontract.Scope, id string) (NativeMemoryEntry, error) {
 	_, subject, err := r.state(r.db.WithContext(ctx), scope)
 	if err != nil {
@@ -510,6 +514,7 @@ func (r *NativeMemoryRepository) Entry(ctx context.Context, scope nativecontract
 	_ = json.Unmarshal([]byte(row.Metadata), &metadata)
 	return NativeMemoryEntry{ID: row.MemoryID, Content: row.Content, Generation: int64(row.Generation), Tombstoned: row.Tombstoned, Metadata: metadata}, nil
 }
+
 func (r *NativeMemoryRepository) JobStatus(ctx context.Context, job nativecontract.MemoryJob) (string, error) {
 	_, subject, err := r.state(r.db.WithContext(ctx), job.Scope)
 	if err != nil {

@@ -7,16 +7,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
-	"testing"
+	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 
-	workbenchservice "github.com/Tencent/WeKnora/internal/application/service/workbench"
+	"github.com/Tencent/WeKnora/internal/modules/workbench"
+	workbenchservice "github.com/Tencent/WeKnora/internal/modules/workbench/service/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/workbench"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -28,6 +28,7 @@ type approvalHTTPChecker struct{}
 func (approvalHTTPChecker) IsRequired(context.Context, uint64, string, string) (bool, error) {
 	return true, nil
 }
+
 func (approvalHTTPChecker) IsEnabled(context.Context, uint64, string, string) (bool, error) {
 	return true, nil
 }
@@ -40,9 +41,11 @@ type commandStore struct {
 func (s *commandStore) List(context.Context, uint64, string, string) ([]workbench.InteractionDecision, error) {
 	return []workbench.InteractionDecision{s.current}, nil
 }
+
 func (s *commandStore) Get(context.Context, uint64, string, string) (workbench.InteractionDecision, error) {
 	return s.current, nil
 }
+
 func (s *commandStore) Decide(_ context.Context, _ uint64, _ string, _ string, input workbench.InteractionDecision) (workbench.InteractionDecision, error) {
 	s.decided = input
 	return input, nil

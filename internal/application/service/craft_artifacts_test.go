@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
-	"github.com/Tencent/WeKnora/internal/craft"
-	"github.com/Tencent/WeKnora/internal/sandbox"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
+	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/stretchr/testify/require"
 )
 
@@ -301,8 +301,10 @@ func TestCraftArtifactCollectRejectsHostileOutput(t *testing.T) {
 		config   CraftArtifactConfig
 	}{
 		"traversal": {
-			entries: []sandbox.RemoteDirEntry{{Name: "secret.txt", Path: "/workspace/output/../secret.txt",
-				Type: sandbox.RemoteEntryFile, Size: 2, ModTime: sameModTime}},
+			entries: []sandbox.RemoteDirEntry{{
+				Name: "secret.txt", Path: "/workspace/output/../secret.txt",
+				Type: sandbox.RemoteEntryFile, Size: 2, ModTime: sameModTime,
+			}},
 			contents: map[string][]byte{"/workspace/output/../secret.txt": []byte("x")},
 		},
 		"credential file": {
@@ -310,8 +312,10 @@ func TestCraftArtifactCollectRejectsHostileOutput(t *testing.T) {
 			contents: map[string][]byte{craftTestOutputDir + "/.env": []byte("KEY=1")},
 		},
 		"symlink entry": {
-			entries: []sandbox.RemoteDirEntry{{Name: "link", Path: craftTestOutputDir + "/link",
-				Type: sandbox.RemoteEntryOther, Size: 1, ModTime: sameModTime}},
+			entries: []sandbox.RemoteDirEntry{{
+				Name: "link", Path: craftTestOutputDir + "/link",
+				Type: sandbox.RemoteEntryOther, Size: 1, ModTime: sameModTime,
+			}},
 			contents: map[string][]byte{craftTestOutputDir + "/link": []byte("x")},
 		},
 		"oversize file": {

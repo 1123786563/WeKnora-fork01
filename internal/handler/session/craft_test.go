@@ -17,11 +17,11 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
-	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
@@ -702,8 +702,10 @@ func (env *snapshotHTTPEnv) snapshotReadySession(t *testing.T, key string) (sess
 	ref := "resource://http-version/v1"
 	env.files.blobs[ref] = []byte(content)
 	sum := sha256.Sum256([]byte(content))
-	files := []craft.File{{Path: "index.html", Ref: ref,
-		SHA256: hex.EncodeToString(sum[:]), MIME: "text/html", Bytes: int64(len(content))}}
+	files := []craft.File{{
+		Path: "index.html", Ref: ref,
+		SHA256: hex.EncodeToString(sum[:]), MIME: "text/html", Bytes: int64(len(content)),
+	}}
 	digest, err := craft.ManifestDigest(files)
 	require.NoError(t, err)
 	version, err := repository.NewCraftVersionStore(env.db).Publish(ctx, scope, craft.Version{

@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/application/service/retriever"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
-	"github.com/Tencent/WeKnora/internal/storageallowlist"
+	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
+	"github.com/Tencent/WeKnora/internal/modules/policy/access"
+	"github.com/Tencent/WeKnora/internal/modules/policy/storageallowlist"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/assert"
@@ -56,7 +56,9 @@ func (f *fakeRegistry) Register(_ interfaces.RetrieveEngineService) error { retu
 func (f *fakeRegistry) GetRetrieveEngineService(_ types.RetrieverEngineType) (interfaces.RetrieveEngineService, error) {
 	return nil, nil
 }
+
 func (f *fakeRegistry) GetAllRetrieveEngineServices() []interfaces.RetrieveEngineService { return nil }
+
 func (f *fakeRegistry) GetByStoreID(storeID string) (interfaces.RetrieveEngineService, error) {
 	if _, ok := f.registered[storeID]; ok {
 		return nil, nil

@@ -1,0 +1,149 @@
+# MOVE-MANIFEST identity — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: identity
+description: 认证、用户、Tenant、成员、邀请、API Key、Organization、RBAC、审计日志（§5.1/§5.18）
+move_packages:
+  []
+alias_obligations:
+  []
+legacy_files:
+  - path: internal/application/repository/audit_log.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Audit log (application/repository)
+    passb_task: B-identity
+  - path: internal/application/repository/mobile_auth_exchange.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Mobile auth exchange (application/repository)
+    passb_task: B-identity
+  - path: internal/application/repository/organization.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Organization (application/repository)
+    passb_task: B-identity
+  - path: internal/application/repository/tenant.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Tenant (application/repository)
+    passb_task: B-identity
+  - path: internal/application/repository/tenant_api_key.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Tenant api key (application/repository)
+    passb_task: B-identity
+  - path: internal/application/repository/tenant_invitation.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Tenant invitation (application/repository)
+    passb_task: B-identity
+  - path: internal/application/repository/tenant_member.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Tenant member (application/repository)
+    passb_task: B-identity
+  - path: internal/application/repository/user.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: User (application/repository)
+    passb_task: B-identity
+  - path: internal/application/service/audit_log.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Audit log (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/audit_log_retention.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Audit log retention (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/organization.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Organization (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/password_policy.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Password policy (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/tenant.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/tenant_api_key.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant api key (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/tenant_invitation.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant invitation (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/tenant_member.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Tenant member (application/service)
+    passb_task: B-identity
+  - path: internal/application/service/user.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: User (application/service)
+    passb_task: B-identity
+  - path: internal/handler/audit_log.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Audit log (handler)
+    passb_task: B-identity
+  - path: internal/handler/auth.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Auth (handler)
+    passb_task: B-identity
+  - path: internal/handler/auth_register_by_invite.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Auth register by invite (handler)
+    passb_task: B-identity
+  - path: internal/handler/organization.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Organization (handler)
+    passb_task: B-identity
+  - path: internal/handler/rbac_lookups.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Rbac lookups (handler)
+    passb_task: B-identity
+  - path: internal/handler/tenant.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Tenant (handler)
+    passb_task: B-identity
+  - path: internal/handler/tenant_invitation.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Tenant invitation (handler)
+    passb_task: B-identity
+  - path: internal/handler/tenant_invite_link.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Tenant invite link (handler)
+    passb_task: B-identity
+  - path: internal/handler/tenant_member.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Tenant member (handler)
+    passb_task: B-identity
+  - path: internal/handler/tenant_policy.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Tenant policy (handler)
+    passb_task: B-identity
+owned_files:
+  move_sources:
+    []
+  move_targets:
+    []
+  importers:
+    []
+  module_files:
+    - internal/modules/identity/README.md
+    - internal/modules/identity/module.go
+    - internal/modules/identity/legacy/README.md
+test_commands:
+  - go test ./internal/modules/identity/... -count=1
+integration_points:
+  routes:
+  - RegisterAuthRoutes — internal/router/routes_auth_tenant.go:206
+  - "RegisterTenantRoutes — internal/router/routes_auth_tenant.go:43 (split: members/invitations/api-keys/audit-log 归 identity)"
+  - RegisterMyInvitationRoutes — internal/router/routes_auth_tenant.go:164
+  - RegisterOrganizationRoutes — internal/router/routes_agent.go:96
+  - audit-log admin endpoints (inside RegisterSystemAdminRoutes) — internal/router/routes_auth_tenant.go:279 (仅 /system/admin 下审计端点)
+  workers:
+    []
+  lifecycle_hooks:
+  - startAuditLogRetention — internal/container/container.go:639 (func at container.go:2452)
+  - wire AuthHandler + repository.MobileExchangeStore (inline) — internal/container/container.go:751
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

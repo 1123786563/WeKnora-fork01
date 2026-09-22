@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 )
@@ -96,6 +96,7 @@ func (h *Handler) GetAgentRun(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": runViewWithSeq(run, h.latestRunSeq(ctx, key))})
 }
+
 func (h *Handler) latestRunSeq(ctx context.Context, key agentruntime.RunKey) int64 {
 	runs := h.runService()
 	if runs == nil {
@@ -119,6 +120,7 @@ func (h *Handler) latestRunSeq(ctx context.Context, key agentruntime.RunKey) int
 	}
 	return seq
 }
+
 func runView(r agentruntime.Run) gin.H {
 	v := gin.H{"run_id": r.Key.RunID, "session_id": r.SessionID, "status": r.Status, "wait_reason": r.WaitReason, "revision": r.Revision, "epoch": r.Epoch, "seq": int64(0), "capabilities": gin.H{"engine_type": "trpc", "durable_recovery": true}}
 	if r.Status == "waiting_user" && r.WaitReason != "" {
@@ -126,6 +128,7 @@ func runView(r agentruntime.Run) gin.H {
 	}
 	return v
 }
+
 func runViewWithSeq(r agentruntime.Run, seq int64) gin.H { v := runView(r); v["seq"] = seq; return v }
 
 func (h *Handler) GetAgentRunEvents(c *gin.Context) {
@@ -269,6 +272,7 @@ func (h *Handler) PostAgentRunDecision(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": runView(run)})
 }
+
 func (h *Handler) CancelAgentRun(c *gin.Context) {
 	ctx, key, _, ok := h.ownedRun(c)
 	if !ok {

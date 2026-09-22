@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/stretchr/testify/require"
 )
 

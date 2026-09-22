@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/workbench"
+	"github.com/Tencent/WeKnora/internal/modules/workbench"
 )
 
 // MX-004 跨语言字节合同：本测试用真实 writer 原语产出 SSE 字节流，

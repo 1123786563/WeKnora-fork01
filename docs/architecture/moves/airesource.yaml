@@ -1,0 +1,279 @@
+# MOVE-MANIFEST airesource — Task F1 (Pass A)。schema: docs/architecture/moves/README.md
+module: airesource
+description: 模型、Provider 凭据、MCP、Web Search、Vector Store、Storage Backend、租户能力配置（§5.12/§5.18）
+move_packages:
+  - from: internal/infrastructure/web_search
+    to: internal/modules/airesource/web_search
+  - from: internal/mcp
+    to: internal/modules/airesource/mcp
+  - from: internal/models/asr
+    to: internal/modules/airesource/models/asr
+  - from: internal/models/chat
+    to: internal/modules/airesource/models/chat
+  - from: internal/models/embedding
+    to: internal/modules/airesource/models/embedding
+  - from: internal/models/limiter
+    to: internal/modules/airesource/models/limiter
+  - from: internal/models/provider
+    to: internal/modules/airesource/models/provider
+  - from: internal/models/rerank
+    to: internal/modules/airesource/models/rerank
+  - from: internal/models/utils
+    to: internal/modules/airesource/models/utils
+  - from: internal/models/utils/ollama
+    to: internal/modules/airesource/models/utils/ollama
+  - from: internal/models/vlm
+    to: internal/modules/airesource/models/vlm
+  - from: internal/storageurl
+    to: internal/modules/airesource/storageurl
+alias_obligations:
+  - old_import_path: internal/infrastructure/web_search
+    passb_task: B-airesource
+  - old_import_path: internal/mcp
+    passb_task: B-airesource
+  - old_import_path: internal/models/asr
+    passb_task: B-airesource
+  - old_import_path: internal/models/chat
+    passb_task: B-airesource
+  - old_import_path: internal/models/embedding
+    passb_task: B-airesource
+  - old_import_path: internal/models/limiter
+    passb_task: B-airesource
+  - old_import_path: internal/models/provider
+    passb_task: B-airesource
+  - old_import_path: internal/models/rerank
+    passb_task: B-airesource
+  - old_import_path: internal/models/utils
+    passb_task: B-airesource
+  - old_import_path: internal/models/utils/ollama
+    passb_task: B-airesource
+  - old_import_path: internal/models/vlm
+    passb_task: B-airesource
+  - old_import_path: internal/storageurl
+    passb_task: B-airesource
+legacy_files:
+  - path: internal/application/repository/mcp_metadata.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Mcp metadata (application/repository)
+    passb_task: B-airesource
+  - path: internal/application/repository/mcp_oauth.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Mcp oauth (application/repository)
+    passb_task: B-airesource
+  - path: internal/application/repository/mcp_service.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Mcp service (application/repository)
+    passb_task: B-airesource
+  - path: internal/application/repository/model.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Model (application/repository)
+    passb_task: B-airesource
+  - path: internal/application/repository/resource.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Resource (application/repository)
+    passb_task: B-airesource
+  - path: internal/application/repository/resource_references.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Resource references (application/repository)
+    passb_task: B-airesource
+  - path: internal/application/repository/storagebackend.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Storagebackend (application/repository)
+    passb_task: B-airesource
+  - path: internal/application/repository/vectorstore.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Vectorstore (application/repository)
+    passb_task: B-airesource
+  - path: internal/application/repository/web_search_provider.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Web search provider (application/repository)
+    passb_task: B-airesource
+  - path: internal/application/service/mcp_metadata.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Mcp metadata (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/mcp_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Mcp service (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/model.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Model (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/resource.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Resource (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/storagebackend.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Storagebackend (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/vectorstore.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Vectorstore (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/vectorstore_healthcheck.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Vectorstore healthcheck (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/web_search.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Web search (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/web_search_provider.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Web search provider (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/web_search_state.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Web search state (application/service)
+    passb_task: B-airesource
+  - path: internal/application/service/weknoracloud.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Weknoracloud (application/service)
+    passb_task: B-airesource
+  - path: internal/handler/mcp_credentials.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Mcp credentials (handler)
+    passb_task: B-airesource
+  - path: internal/handler/mcp_metadata.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Mcp metadata (handler)
+    passb_task: B-airesource
+  - path: internal/handler/mcp_oauth.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Mcp oauth (handler)
+    passb_task: B-airesource
+  - path: internal/handler/mcp_service.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Mcp service (handler)
+    passb_task: B-airesource
+  - path: internal/handler/mcp_usage_instructions.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Mcp usage instructions (handler)
+    passb_task: B-airesource
+  - path: internal/handler/model.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Model (handler)
+    passb_task: B-airesource
+  - path: internal/handler/model_credentials.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Model credentials (handler)
+    passb_task: B-airesource
+  - path: internal/handler/storagebackend.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Storagebackend (handler)
+    passb_task: B-airesource
+  - path: internal/handler/vectorstore.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Vectorstore (handler)
+    passb_task: B-airesource
+  - path: internal/handler/web_search.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Web search (handler)
+    passb_task: B-airesource
+  - path: internal/handler/web_search_provider.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Web search provider (handler)
+    passb_task: B-airesource
+  - path: internal/handler/web_search_provider_credentials.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Web search provider credentials (handler)
+    passb_task: B-airesource
+  - path: internal/handler/weknoracloud.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Weknoracloud (handler)
+    passb_task: B-airesource
+owned_files:
+  move_sources:
+  - internal/infrastructure/web_search
+  - internal/mcp
+  - internal/models/asr
+  - internal/models/chat
+  - internal/models/embedding
+  - internal/models/limiter
+  - internal/models/provider
+  - internal/models/rerank
+  - internal/models/utils
+  - internal/models/utils/ollama
+  - internal/models/vlm
+  - internal/storageurl
+  move_targets:
+    - internal/modules/airesource/web_search
+    - internal/modules/airesource/mcp
+    - internal/modules/airesource/models/asr
+    - internal/modules/airesource/models/chat
+    - internal/modules/airesource/models/embedding
+    - internal/modules/airesource/models/limiter
+    - internal/modules/airesource/models/provider
+    - internal/modules/airesource/models/rerank
+    - internal/modules/airesource/models/utils
+    - internal/modules/airesource/models/utils/ollama
+    - internal/modules/airesource/models/vlm
+    - internal/modules/airesource/storageurl
+    # alias (no-logic forwarding) packages left at the old paths above, deleted in Pass B:
+    - internal/infrastructure/web_search
+    - internal/mcp
+    - internal/models/asr
+    - internal/models/chat
+    - internal/models/embedding
+    - internal/models/limiter
+    - internal/models/provider
+    - internal/models/rerank
+    - internal/models/utils
+    - internal/models/utils/ollama
+    - internal/models/vlm
+    - internal/storageurl
+  importers:
+  - internal/agent
+  - internal/agent/compaction
+  - internal/agent/recoverytest/provider
+  - internal/agent/subagents
+  - internal/agent/token
+  - internal/agent/tools
+  - internal/agent/trpc
+  - internal/application/service
+  - internal/application/service/chat_pipeline
+  - internal/application/service/memory
+  - internal/application/service/retriever
+  - internal/container
+  - internal/handler
+  - internal/handler/session
+  - internal/im
+  - internal/infrastructure/docparser
+  - internal/modelcontext
+  - internal/models/chat
+  - internal/models/embedding
+  - internal/models/rerank
+  - internal/models/vlm
+  - internal/types/interfaces
+  - semantic/experiments/model_gateway
+  module_files:
+    - internal/modules/airesource/README.md
+    - internal/modules/airesource/module.go
+    - internal/modules/airesource/legacy/README.md
+test_commands:
+  - go test ./internal/modules/airesource/... -count=1
+integration_points:
+  routes:
+  - RegisterModelRoutes — internal/router/routes_infra.go:23
+  - RegisterMCPServiceRoutes — internal/router/routes_infra.go:145
+  - RegisterWebSearchRoutes — internal/router/routes_infra.go:215
+  - RegisterWebSearchProviderRoutes — internal/router/routes_infra.go:230
+  - RegisterVectorStoreRoutes — internal/router/routes_infra.go:261
+  - RegisterStorageBackendRoutes — internal/router/routes_infra.go:280
+  - RegisterWeKnoraCloudRoutes — internal/router/routes_infra.go:363
+  workers:
+    []
+  lifecycle_hooks:
+  - registerWebSearchProviders — internal/container/container.go:439 (func at container.go:2263)
+  - registerModelConcurrencyLimiter — internal/container/container.go:604 (func at container.go:1216)
+  - registerLiteModelConcurrencyLimiter — internal/container/container.go:615 (func at container.go:1232)
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/
