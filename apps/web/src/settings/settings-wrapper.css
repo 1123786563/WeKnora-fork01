@@ -183,19 +183,6 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 .wk-settings-ollama .setting-info { padding-right: 32px; }
 .wk-settings-ollama .setting-info .desc { line-height: 1.6; }
 
-/* ChatHistorySettings.vue 的行不在 620px 窄表单里：settings-group 全宽
-   （启用开关右缘贴面板右缘 x≈1116，分割线全宽），行间距由 20px 行内边距
-   提供（Vue .settings-group gap 0，无表单 grid gap）。 */
-.wk-chathistory-settings .wk-settings-editor { max-width: none; gap: 0; margin-bottom: 0; }
-
-/* ChatHistorySettings.vue 用 t-switch size-m（32.4×20 轨道、15px 旋钮、
-   2.5px 内边距；unchecked 轨道 --td-bg-color-secondarycontainer ≈ #e3e3e3），
-   而共享 <Switch> 是 40×20/16px 旋钮/track-off 蓝灰——按 Vue 实测覆盖。 */
-.wk-chathistory-settings [role="switch"] { width: 32.4px; background: #e3e3e3; }
-.wk-chathistory-settings [role="switch"][data-state="checked"] { background: #07c05f; }
-.wk-chathistory-settings [role="switch"] span { width: 15px; height: 15px; margin-left: 2.5px; translate: none; }
-.wk-chathistory-settings [role="switch"][data-state="checked"] span { translate: 12.4px; }
-
 /* SystemAuditLog.vue:627-650 — 面板自持 section-header，下边距 20px（非
    共享的 32px），无分割线；刷新按钮 20×20、图标 12px、占位色。 */
 .wk-system-audit .section-header { margin-bottom: 20px; }

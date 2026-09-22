@@ -21,6 +21,8 @@ const PersonalMemorySettingsPanel = lazy(() => import('./PersonalMemorySettingsP
 const ResourceSettingsPanel = lazy(() => import('./ResourceSettingsPanel.tsx').then((m) => ({ default: m.ResourceSettingsPanel })));
 import type { SettingsModelOption } from './ConfigSettingsPanel.tsx';
 const ConfigSettingsPanel = lazy(() => import('./ConfigSettingsPanel.tsx').then((m) => ({ default: m.ConfigSettingsPanel })));
+// T12b：chathistory 分区平移 ChatHistorySettings.vue（自带 section-header，直挂 .section）。
+const ChatHistorySettingsPanel = lazy(() => import('./ChatHistorySettingsPanel.tsx').then((m) => ({ default: m.ChatHistorySettingsPanel })));
 const OllamaSettingsPanel = lazy(() => import('./OllamaSettingsPanel.tsx').then((m) => ({ default: m.OllamaSettingsPanel })));
 const ParserEngineSettingsPanel = lazy(() => import('./ParserEngineSettingsPanel.tsx').then((m) => ({ default: m.ParserEngineSettingsPanel })));
 const CloudSettingsPanel = lazy(() => import('./CloudSettingsPanel.tsx').then((m) => ({ default: m.CloudSettingsPanel })));
@@ -98,7 +100,7 @@ const SELF_ERROR_SECTIONS = new Set(['members']);
 // shell .section container like Vue Settings.vue does (no wk-settings-section
 // wrapper, no shell heading). Integration sections have been self-headered
 // since R490 (handled separately via sectionIntegrationTab).
-const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory']);
+const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory']);
 
 const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
@@ -412,19 +414,20 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
       : null;
     const configPanel = key === 'retrieval'
       ? <ConfigSettingsPanel client={client} section="retrieval" initialValue={sectionPayload} models={models} />
-      : key === 'chathistory'
-        ? <ConfigSettingsPanel
-            client={client}
-            section="chathistory"
-            initialValue={((sectionPayload as Record<string, unknown> | null)?.config)}
-            models={models}
-            embeddingLocked={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined)?.has_indexed_messages === true}
-            stats={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined) ?? null}
-            onSaved={() => void load(true)}
-          />
-        : key === 'parser'
-          ? <ParserEngineSettingsPanel client={client} />
-          : null;
+      : key === 'parser'
+        ? <ParserEngineSettingsPanel client={client} />
+        : null;
+    // Vue ChatHistorySettings.vue 自持 section-header 与统计区（T12b 平移）。
+    const chatHistoryPanel = key === 'chathistory'
+      ? <ChatHistorySettingsPanel
+          client={client}
+          initialValue={((sectionPayload as Record<string, unknown> | null)?.config)}
+          models={models}
+          embeddingLocked={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined)?.has_indexed_messages === true}
+          stats={((sectionPayload as Record<string, unknown> | null)?.stats as Record<string, unknown> | undefined) ?? null}
+          onSaved={() => void load(true)}
+        />
+      : null;
     const ollamaPanel = key === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={sectionPayload} /> : null;
     const usagePanel = key === 'usage' ? <UsagePanel client={client} locale={locale} /> : null;
     const queryHistoryPanel = key === 'query-history' ? <QueryHistoryPanel client={client} locale={locale} role={role} /> : null;
@@ -481,7 +484,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
             // address bar tracks the visible section instead of going stale.
             select('integration-' + nextTab);
           }} />
-        : <Suspense fallback={<Status>{t('common.loading')}</Status>}>{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</Suspense>;
+        : <Suspense fallback={<Status>{t('common.loading')}</Status>}>{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? chatHistoryPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</Suspense>;
       return (
         <div key={key} className="section" style={isActive ? undefined : { display: 'none' }}>
           {content}
@@ -525,7 +528,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
               <Button type="button" onClick={() => { void load(true); }}>{key === 'members' || key === 'storage' ? t('settings.storage.retry') : t('settings.parser.retry')}</Button>
             </div>
-          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
+          ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? chatHistoryPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /></div> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
         </div>
       </div>
     );

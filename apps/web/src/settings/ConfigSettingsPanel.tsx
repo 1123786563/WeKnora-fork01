@@ -1,11 +1,11 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Card, Input, Range, Select, Status, Switch } from '@weknora/ui';
 import { settingsConfigPatch, tenantModelIds } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
-type ConfigSection = 'retrieval' | 'chathistory' | 'parser';
+type ConfigSection = 'retrieval' | 'parser';
 type ConfigValues = Record<string, unknown>;
 
 export interface SettingsModelOption { readonly id: string; readonly name?: string }
@@ -36,7 +36,6 @@ function initialValues(section: ConfigSection, value: unknown): ConfigValues {
     rerank_threshold: number(row.rerank_threshold, 0.2),
     rerank_model_id: text(row.rerank_model_id),
   };
-  if (section === 'chathistory') return { enabled: row.enabled === true, embedding_model_id: text(row.embedding_model_id) };
   return {
     mineru_endpoint: text(row.mineru_endpoint), mineru_api_key: '', mineru_model: text(row.mineru_model) || 'pipeline',
     mineru_vlm_server_url: text(row.mineru_vlm_server_url), mineru_enable_formula: row.mineru_enable_formula !== false,
@@ -54,7 +53,6 @@ function initialValues(section: ConfigSection, value: unknown): ConfigValues {
 
 function configApi(client: WeKnoraClient, section: ConfigSection) {
   if (section === 'retrieval') return client.settings.retrieval;
-  if (section === 'chathistory') return client.settings.chatHistory.config;
   return client.settings.parser.config;
 }
 
@@ -62,22 +60,19 @@ function isDirty(section: ConfigSection, saved: ConfigValues, current: ConfigVal
   return Object.keys(saved).some((key) => String(saved[key]) !== String(current[key]));
 }
 
-export function ConfigSettingsPanel({ client, section, initialValue, models, embeddingLocked, stats, onSaved }: {
+export function ConfigSettingsPanel({ client, section, initialValue, models, onSaved }: {
   client: WeKnoraClient;
   section: ConfigSection;
   initialValue: unknown;
   models?: readonly SettingsModelOption[];
-  embeddingLocked?: boolean;
-  /** ChathistorySettings.vue stats block (getChatHistoryKBStats). */
-  stats?: unknown;
   onSaved?: () => void;
 }) {
   const api = configApi(client, section);
   const locale = readInitialLocale();
   const t = settingsT(locale);
   const parserCopy = PARSER_COPY[locale];
-  const saveSuccessKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveSuccess' : section === 'chathistory' ? 'chatHistorySettings.toasts.saveSuccess' : 'settings.parser.saveSuccess';
-  const saveFailedKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveFailed' : section === 'chathistory' ? 'chatHistorySettings.toasts.saveFailed' : 'settings.parser.saveFailed';
+  const saveSuccessKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveSuccess' : 'settings.parser.saveSuccess';
+  const saveFailedKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveFailed' : 'settings.parser.saveFailed';
   const savedValues = useMemo(() => initialValues(section, initialValue), [section, initialValue]);
   const [values, setValues] = useState<ConfigValues>(savedValues);
   const [busy, setBusy] = useState(false);
@@ -109,10 +104,10 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
     } finally { savingRef.current = false; setBusy(false); }
   }
 
-  // Vue RetrievalSettings and ChatHistorySettings persist changes after a
-  // 500ms debounce; retain the existing submit path for parser settings only.
+  // Vue RetrievalSettings persists changes after a 500ms debounce; retain the
+  // existing submit path for parser settings only.
   useEffect(() => {
-    if (section !== 'retrieval' && section !== 'chathistory') return;
+    if (section !== 'retrieval') return;
     if (!dirty || savingRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => { saveTimer.current = null; void saveValues(values); }, 500);
@@ -143,7 +138,7 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
     finally { setBusy(false); }
   }
 
-  const modelSelect = (key: 'rerank_model_id' | 'embedding_model_id', disabled: boolean) => <Select
+  const modelSelect = (key: 'rerank_model_id', disabled: boolean) => <Select
     data-testid={key}
     value={String(values[key] ?? '')}
     disabled={disabled}
@@ -166,16 +161,9 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
     </label>;
   };
 
-  // Vue ChatHistorySettings.vue renders the enable row + stats directly on the
-  // panel background — no outer card (only retrieval/parser keep it).
-  const Shell: typeof Card | typeof Fragment = section === 'chathistory' ? Fragment : Card;
-  // ChathistorySettings.vue rows sit on the full-width settings-group (the
-  // enable switch hugs the panel's right edge); the .wk-chathistory-settings
-  // root lets settings-wrapper.css drop the shared 620px form cap and grid
-  // gap for this section only.
   const content = (
     <>
-    <Shell>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}{/* R490 B6 — Vue RetrievalSettings.vue:3-6 section-header: the h2 title plus
+    <Card>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}{/* R490 B6 — Vue RetrievalSettings.vue:3-6 section-header: the h2 title plus
     the 配置知识库搜索和消息搜索的全局检索参数 description under it. */}
     {section === 'retrieval' ? <div className="section-header mb-2 grid gap-1">
       <h2 className="m-0 text-base font-semibold text-ink">{t('retrievalSettings.title')}</h2>
@@ -188,26 +176,6 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
       {slider('rerank_top_k', 1, 100, 1, t('retrievalSettings.rerankTopKLabel'))}
       {slider('rerank_threshold', -10, 10, 0.1, t('retrievalSettings.rerankThresholdLabel'), (value) => value.toFixed(2))}
       {modelOptions.length === 0 ? <label>{t('retrievalSettings.rerankModelLabel')}<Input value={String(values.rerank_model_id)} onChange={(event) => setValue('rerank_model_id', event.target.value)} /></label> : null}
-    </> : section === 'chathistory' ? <>
-      <div className="setting-row">
-        <div className="setting-info">
-          <label>{t('chatHistorySettings.enableLabel')}</label>
-          <p className="desc">{t('chatHistorySettings.enableDescription')}</p>
-        </div>
-        <div className="setting-control">
-          <Switch checked={values.enabled === true} disabled={busy} onCheckedChange={(checked) => setValue('enabled', checked)} aria-label={t('chatHistorySettings.enableLabel')} />
-        </div>
-      </div>
-      {values.enabled === true ? <div className="setting-row">
-        <div className="setting-info">
-          <label>{t('chatHistorySettings.embeddingModelLabel')}</label>
-          <p className="desc">{t('chatHistorySettings.embeddingModelDescription')}</p>
-          {embeddingLocked === true ? <p className="desc warning-text text-[#b26a08]" data-testid="embedding-locked-note">{t('chatHistorySettings.embeddingModelLocked')}</p> : null}
-        </div>
-        <div className="setting-control setting-control--model">
-          {modelOptions.length > 0 ? modelSelect('embedding_model_id', embeddingLocked === true) : <Input value={String(values.embedding_model_id)} disabled={embeddingLocked === true} onChange={(event) => setValue('embedding_model_id', event.target.value)} />}
-        </div>
-      </div> : null}
     </> : <>
       <section className="grid gap-3 rounded-lg border border-[#dce3ed] p-4"><h3 className="m-0 text-base">MinerU</h3>
         <label>{t('settings.parser.selfHostedEndpoint')}<Input data-testid="mineru-endpoint" type="url" value={String(values.mineru_endpoint)} placeholder={t('settings.parser.mineruEndpointPlaceholder')} onChange={(event) => setValue('mineru_endpoint', event.target.value)} /></label>
@@ -234,31 +202,9 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
       </section><p className="wk-muted text-muted">{parserCopy}</p></>}{/* R490 B6 — Vue RetrievalSettings saves debounced exactly like
           ChatHistorySettings (RetrievalSettings.vue handleParamChange →
           debouncedSave), so neither surface renders a save button; only the
-          parser section keeps its explicit 保存 + test-connection footer.
-          R5xx 清扫：chathistory/retrieval 不再渲染空的操作行——空的 12px
-          margin 会让 stats-section 整体下移（Vue 无此行）。 */}
-          {section === 'parser' ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button><Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button></div> : null}</form></Shell>
-    {section === 'chathistory' ? (
-      <div className="stats-section mt-5" data-testid="chat-history-stats">
-        <h3 className="stats-title m-0 mb-4 text-[15px] font-semibold [line-height:normal]">{t('chatHistorySettings.statsTitle')}</h3>
-        {stats !== null && stats !== undefined && typeof stats === 'object' && (stats as Record<string, unknown>).enabled === true && (stats as Record<string, unknown>).knowledge_base_id ? (
-          <div className="stats-grid grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
-            <div className="stat-card rounded-[10px] border border-[rgba(120,135,155,0.3)] bg-white p-4 text-center">
-              <div className="stat-value text-[22px] font-semibold [font-variant-numeric:tabular-nums]">{String((stats as Record<string, unknown>).indexed_message_count ?? 0)}</div>
-              <div className="stat-label mt-1 text-xs text-[#5c6b83]">{t('chatHistorySettings.statsIndexedMessages')}</div>
-            </div>
-          </div>
-        ) : (
-          <div className="stats-empty rounded-[8px] bg-[#f3f3f3] px-6 py-6 text-center [border:0]">
-            <p className="stats-empty-title m-0 mb-1 font-medium [line-height:normal]">{t('chatHistorySettings.statsNotConfigured')}</p>
-            <p className="stats-empty-desc m-0 text-[13px] leading-[normal] text-[rgba(0,0,0,0.4)]">{t('chatHistorySettings.statsNotConfiguredDesc')}</p>
-          </div>
-        )}
-      </div>
-    ) : null}
+          parser section keeps its explicit 保存 + test-connection footer. */}
+          {section === 'parser' ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button><Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button></div> : null}</form></Card>
     </>
   );
-  return section === 'chathistory'
-    ? <div className="wk-chathistory-settings">{content}</div>
-    : content;
+  return content;
 }

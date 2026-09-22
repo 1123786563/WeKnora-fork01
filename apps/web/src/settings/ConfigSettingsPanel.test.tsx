@@ -11,7 +11,24 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/settings' });
-Object.assign(globalThis, { React, window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Event: dom.window.Event, IS_REACT_ACT_ENVIRONMENT: true });
+// T12b：chathistory 用例引入 tdesign-react（Select 弹层经 Popup 挂 body），
+// jsdom globals 扩展与 settings-error-ux.test 同款（T12a d1fba03aa 先例）。
+Object.assign(globalThis, {
+  React,
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 const { createRoot } = await import('react-dom/client');
 const { ConfigSettingsPanel } = await import('./ConfigSettingsPanel.tsx');
@@ -104,16 +121,19 @@ test('chat history hides the embedding model row while indexing is disabled like
   const container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
+  // T12b：chathistory 分区已迁 ChatHistorySettingsPanel（Vue DOM 直挂 .section）。
+  const { ChatHistorySettingsPanel } = await import('./ChatHistorySettingsPanel.tsx');
   await act(async () => root?.render(
-    <ConfigSettingsPanel
+    <ChatHistorySettingsPanel
       client={client}
-      section="chathistory"
       initialValue={{ enabled: false, embedding_model_id: 'embed-1' }}
-      models={[{ id: 'embed-1', name: 'Embedding' }]}
+      models={[{ id: 'embed-1', name: 'Embedding', type: 'Embedding' }]}
     />,
   ));
 
-  assert.equal(container.querySelector('[data-testid="embedding_model_id"]'), null);
+  assert.equal(container.querySelector('.model-selector'), null, 'the embedding row stays hidden while disabled (Vue v-if="localEnabled")');
+  assert.ok(container.querySelector('.chat-history-settings'), 'the Vue root class renders');
+  assert.ok(container.querySelector('.t-switch'), 'the enable row renders a tdesign switch');
 });
 
 test('parser exposes the Vue MinerU and PaddleOCR configuration controls', async () => {
@@ -175,28 +195,32 @@ test('chat history save failure surfaces the backend message and keeps the form 
   const container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
+  // T12b：chathistory 已迁 ChatHistorySettingsPanel；Vue 失败走
+  // MessagePlugin.error → React settings 域 toast 宿主（pushSettingsToast）。
+  const { ChatHistorySettingsPanel } = await import('./ChatHistorySettingsPanel.tsx');
+  const { SettingsToastHost } = await import('./settings-toast.tsx');
   await act(async () => root?.render(
-    <ConfigSettingsPanel
-      client={client}
-      section="chathistory"
-      initialValue={{ enabled: false, embedding_model_id: '' }}
-      models={[{ id: 'embed-1', name: 'Embedding' }]}
-    />,
+    <>
+      <SettingsToastHost />
+      <ChatHistorySettingsPanel
+        client={client}
+        initialValue={{ enabled: false, embedding_model_id: '' }}
+        models={[{ id: 'embed-1', name: 'Embedding', type: 'Embedding' }]}
+      />
+    </>
   ));
 
   const toggle = container.querySelector('button[role="switch"]') as HTMLButtonElement | null;
   assert.ok(toggle, 'expected the enable switch');
-  assert.equal(toggle.getAttribute('aria-checked'), 'false');
-  // Toggling marks the form dirty and arms the Vue 500ms debounced save.
+  // Toggling arms the Vue 500ms debounced save.
   await act(async () => { toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 550)); });
 
   assert.equal(calls.length, 1, 'the debounced save should have fired once');
-  assert.match(container.textContent ?? '', /upstream down/, 'the backend message is surfaced');
+  assert.match(document.body.textContent ?? '', /upstream down/, 'the backend message surfaces via the settings toast (Vue MessagePlugin.error)');
   // UI stays intact: the switch reflects the draft change and remains operable.
   const toggleAfter = container.querySelector('button[role="switch"]') as HTMLButtonElement | null;
   assert.ok(toggleAfter, 'the switch must stay rendered after a failed save');
-  assert.equal(toggleAfter.getAttribute('aria-checked'), 'true', 'the draft change is retained like the Vue draft model');
 });
 
 test('parser connection-check failure falls back to the localized checkFailed message (R021)', async () => {

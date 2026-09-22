@@ -1733,3 +1733,221 @@
   gap: 4px;
   font-weight: 500;
 }
+
+/* ==== 8. ChatHistorySettings.vue scoped 块平移（settings-chathistory 分区，T12b） ==== */
+
+.wk-settings-drawer-root .chat-history-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .chat-history-settings .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .chat-history-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .chat-history-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .chat-history-settings .warning-text {
+  color: var(--td-warning-color) !important;
+  margin-top: 4px !important;
+}
+
+.wk-settings-drawer-root .chat-history-settings .setting-control {
+  flex-shrink: 0;
+  min-width: 280px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* Stats section */
+.wk-settings-drawer-root .chat-history-settings .stats-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 16px 0;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stat-card {
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--td-brand-color);
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stat-label {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-empty {
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  margin: 0 0 4px 0;
+}
+
+.wk-settings-drawer-root .chat-history-settings .stats-empty-desc {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+}
+
+/* ==== 8b. ModelSelector.vue scoped 块（chat-history-settings 的 Embedding
+ * 选择器；.model-option/.model-ctx 服务于 portal 到 body 的 t-select 弹层，
+ * §2.5 同款不加根类前缀——类名带组件语义前缀，全局无冲突）。 ==== */
+
+.wk-settings-drawer-root .model-selector {
+  width: 100%;
+}
+
+.model-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-option .model-icon {
+  font-size: 14px;
+  color: var(--td-brand-color);
+}
+
+.model-option .add-icon {
+  font-size: 14px;
+  color: var(--td-brand-color);
+}
+
+.model-option .model-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-option .model-raw-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-option .model-ctx {
+  margin-left: auto;
+}
+
+.model-option.add .model-name {
+  color: var(--td-brand-color);
+  font-weight: 500;
+}
+
+.model-ctx {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-secondarycontainer);
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 18px;
+}
+
+.model-ctx--default {
+  color: var(--td-text-color-placeholder);
+}
+
+.selected-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.selected-model__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
