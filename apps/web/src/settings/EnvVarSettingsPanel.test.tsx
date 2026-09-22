@@ -19,7 +19,17 @@ Object.assign(globalThis, {
   HTMLElement: dom.window.HTMLElement,
   HTMLInputElement: dom.window.HTMLInputElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   MouseEvent: dom.window.MouseEvent,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
@@ -67,13 +77,16 @@ test('renders the Vue section header and the sandbox-secrets help popup content'
       .find((button) => button.getAttribute('aria-label') === '沙箱密钥说明');
     assert.ok(helpTrigger, 'the help-circle hint trigger renders (envVarSettings.helpAria)');
 
-    // The popup content is hidden until hover, like the Vue t-popup trigger="hover".
-    assert.equal(host.textContent?.includes('只属于你'), false, 'popup copy stays hidden before hover');
+    // The popup content is hidden until hover, like the Vue t-popup trigger="hover"
+    // （T12a：tdesign Popup 直译，弹层 portal 到 document.body）。
+    assert.equal(document.body.textContent?.includes('只属于你'), false, 'popup copy stays hidden before hover');
 
     await act(async () => {
+      helpTrigger.dispatchEvent(new dom.window.MouseEvent('mouseenter', { bubbles: false }));
       helpTrigger.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
     });
-    const popover = host.querySelector('[data-testid="envvar-help-popover"]');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
+    const popover = document.body.querySelector('[data-testid="envvar-help-popover"]');
     assert.ok(popover, 'hovering the hint trigger opens the popup');
     const popoverText = popover.textContent ?? '';
     assert.ok(popoverText.includes('只属于你'), 'introPersonalTitle renders');
@@ -141,7 +154,9 @@ test('rejects an empty value with the localized valueRequired message and skips 
   root = createRoot(container);
   await act(async () => root?.render(React.createElement(EnvVarSettingsPanel, { client, initialPayload: [] })));
 
-  const inputs = [...container.querySelectorAll('input')];
+  // T12a：tdesign Select 的 trigger 也是 input[type=text]（readOnly）——
+  // 只取可写文本框（scope id / name 顺序）。
+  const inputs = [...container.querySelectorAll<HTMLInputElement>('input[type="text"]')].filter((input) => !input.readOnly);
   setInputValue(inputs[0] as HTMLInputElement, 'skill-1');
   setInputValue(inputs[1] as HTMLInputElement, 'API_TOKEN');
   // Leave the password value empty — the guard must reject before any API call.
@@ -168,7 +183,9 @@ test('rejects a value over MAX_ENV_VALUE_BYTES with the localized valueTooLong m
   root = createRoot(container);
   await act(async () => root?.render(React.createElement(EnvVarSettingsPanel, { client, initialPayload: [] })));
 
-  const inputs = [...container.querySelectorAll('input')];
+  // T12a：tdesign Select 的 trigger 也是 input[type=text]（readOnly）——
+  // 只取可写文本框（scope id / name 顺序）。
+  const inputs = [...container.querySelectorAll<HTMLInputElement>('input[type="text"]')].filter((input) => !input.readOnly);
   setInputValue(inputs[0] as HTMLInputElement, 'skill-1');
   setInputValue(inputs[1] as HTMLInputElement, 'API_TOKEN');
   setInputValue(inputByType(container, 'password'), 'x'.repeat(8193));
@@ -196,7 +213,9 @@ test('surfaces the backend error message first when saving fails and keeps the v
     initialPayload: [{ skill_id: 'skill-1', name: 'API_TOKEN', value: 'stored' }],
   })));
 
-  const inputs = [...container.querySelectorAll('input')];
+  // T12a：tdesign Select 的 trigger 也是 input[type=text]（readOnly）——
+  // 只取可写文本框（scope id / name 顺序）。
+  const inputs = [...container.querySelectorAll<HTMLInputElement>('input[type="text"]')].filter((input) => !input.readOnly);
   setInputValue(inputs[0] as HTMLInputElement, 'skill-1');
   setInputValue(inputs[1] as HTMLInputElement, 'API_TOKEN');
   setInputValue(inputByType(container, 'password'), 'fresh-value');
@@ -222,7 +241,9 @@ test('falls back to the localized saveFailed message when the backend rejects wi
   root = createRoot(container);
   await act(async () => root?.render(React.createElement(EnvVarSettingsPanel, { client, initialPayload: [] })));
 
-  const inputs = [...container.querySelectorAll('input')];
+  // T12a：tdesign Select 的 trigger 也是 input[type=text]（readOnly）——
+  // 只取可写文本框（scope id / name 顺序）。
+  const inputs = [...container.querySelectorAll<HTMLInputElement>('input[type="text"]')].filter((input) => !input.readOnly);
   setInputValue(inputs[0] as HTMLInputElement, 'skill-1');
   setInputValue(inputs[1] as HTMLInputElement, 'API_TOKEN');
   setInputValue(inputByType(container, 'password'), 'fresh-value');

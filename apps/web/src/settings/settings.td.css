@@ -695,3 +695,101 @@
     0 2px 4px rgba(0, 0, 0, 0.12),
     0 8px 32px rgba(0, 0, 0, 0.28) !important;
 }
+
+/* ==== 4. EnvVarSettings.vue scoped 块平移（settings-envvars 分区；编辑器
+ * 表单分支为 React 侧保留实现，样式仍由其 utilities 承载，见 task-12a
+ * 报告偏离项） ==== */
+
+.wk-settings-drawer-root .env-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .env-settings .section-header {
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .env-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+}
+
+.wk-settings-drawer-root .env-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+
+.wk-settings-drawer-root .env-settings .section-header__titlewrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wk-settings-drawer-root .env-settings .hint-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: help;
+  line-height: 1;
+  /* §2.6 button Arial 归位。 */
+  font-family: inherit;
+}
+
+.wk-settings-drawer-root .env-settings .hint-trigger:hover,
+.wk-settings-drawer-root .env-settings .hint-trigger:focus-visible {
+  color: var(--td-brand-color);
+}
+
+/* hint 弹层 portal 到 body——按 §2.5 类名已带语义前缀，原样平移不加前缀。 */
+.hint-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 340px;
+}
+
+.hint-popover__title {
+  margin: 0;
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hint-popover__text {
+  margin: 4px 0 0;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.env-empty {
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 10px;
+  padding: 24px;
+  text-align: center;
+}
+
+.env-empty--soft {
+  padding: 16px;
+}
+
+.env-empty__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  margin: 0 0 4px 0;
+}
+
+.env-empty__desc {
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+  margin: 0;
+}

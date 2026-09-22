@@ -438,11 +438,8 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 /* SystemInfo.vue：面板自持 header */
 .wk-settings-section:has(.system-info) > .wk-settings-panel-heading { display: none; }
 /* EnvVarSettings.vue 覆盖：header margin-bottom 24px，desc margin 8px 0 0 / lh1.6 */
-.wk-settings-section:has(.env-settings) .section-header { margin-bottom: 24px; }
-.wk-settings-section:has(.env-settings) .section-header .section-description { margin: 8px 0 0; line-height: 1.6; }
 /* EnvVarSettings.vue scoped h2 { margin: 0 }：tsx 上的 m-0 会被上方共享
    .section-header h2 的 margin 0 0 8px 以更高优先级压掉，导致 desc 下移 8px。 */
-.wk-settings-section:has(.env-settings) .section-header h2 { margin: 0; }
 /* SandboxSettings.vue 覆盖：header margin-bottom 20px，desc lh1.6 */
 .wk-settings-section .wk-sandbox-settings .section-header { margin-bottom: 20px; }
 .wk-settings-section .wk-sandbox-settings .section-header .section-description { line-height: 1.6; }

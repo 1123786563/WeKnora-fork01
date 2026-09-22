@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Input, Select, Status } from '@weknora/ui';
+import { Status } from '@weknora/ui';
+// T12a：可见面（section-header + hint popup + 空态）直译 EnvVarSettings.vue
+// 的 t-popup / t-icon / t-button / t-input / t-select；编辑器分支同组件换
+// tdesign（结构保留 React 侧表单，见 task-12a 报告偏离项）。
+import { Icon as TIcon } from 'tdesign-icons-react';
+import { Button, Input, Popup, Select } from 'tdesign-react';
 import { MAX_ENV_VALUE_BYTES, isValidEnvValueLength } from '../configuration/management.ts';
 import { envVarRemove, envVarSet, type EnvVarScope } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
@@ -52,10 +57,6 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
   // no workspace sandbox backend there is nothing to bind values to, so the
   // form is replaced by the noConfig notice.
   const [sandboxes, setSandboxes] = useState<SandboxConfigOption[] | null>(null);
-  // R484 G4 D3 — the Vue section header carries a help-circle hint trigger
-  // (EnvVarSettings.vue lines 6-22) opening a hover popup with the two intro
-  // blocks; React keeps the same hover semantics via mouseover/mouseleave.
-  const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -98,49 +99,36 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
     void run(remove, t('envVarSettings.deleteSuccess'));
   }
 
-  // Section header ported from EnvVarSettings.vue lines 3-25: the panel owns
-  // its h2 + help popup + description (the settings shell heading is skipped
-  // for envvars) so the hint entry matches the Vue baseline in every state,
-  // including the noConfig notice below.
+  // T12a：EnvVarSettings.vue :3-25 逐节点复刻——section-header__titlewrap
+  // （h2 + hint-trigger t-icon help-circle + t-popup hover）+ description。
   const sectionHeader = <div className="section-header">
-    <div className="relative w-full">
-      <div className="flex items-center gap-[6px]">
-        <h2 className="m-0 text-[20px] font-semibold leading-[normal] text-[#27364d]">{t('envVarSettings.title')}</h2>
-        <span className="relative inline-flex" onMouseLeave={() => setHelpOpen(false)}>
-          <button
-            type="button"
-            className="inline-flex cursor-help items-center justify-center border-0 bg-transparent p-[2px] text-[#8a8a8a] hover:text-accent focus-visible:text-accent focus-visible:outline-none"
-            aria-label={t('envVarSettings.helpAria')}
-            aria-expanded={helpOpen}
-            onMouseOver={() => setHelpOpen(true)}
-            onFocus={() => setHelpOpen(true)}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-              <path d="M12 17h.01" />
-            </svg>
-          </button>
-          {helpOpen ? (
-            <div
-              data-testid="envvar-help-popover"
-              role="tooltip"
-              className="absolute left-[calc(100%+6px)] top-0 z-30 grid w-[340px] max-w-[380px] gap-3 rounded-[8px] border border-[#e7e7e7] bg-white p-3 text-left shadow-[0_8px_24px_rgba(23,32,51,.14)]"
-            >
-              <div>
-                <p className="m-0 text-[13px] font-semibold text-[#27364d]">{t('envVarSettings.introPersonalTitle')}</p>
-                <p className="m-0 mt-1 text-[12px] leading-[1.55] text-[#66758b]">{t('envVarSettings.introPersonalBody')}</p>
-              </div>
-              <div>
-                <p className="m-0 text-[13px] font-semibold text-[#27364d]">{t('envVarSettings.introRuntimeTitle')}</p>
-                <p className="m-0 mt-1 text-[12px] leading-[1.55] text-[#66758b]">{t('envVarSettings.introRuntimeBody')}</p>
-              </div>
+    <div className="section-header__titlewrap">
+      <h2>{t('envVarSettings.title')}</h2>
+      <Popup
+        // Vue placement="bottom-start"；react 1.18.3 PopupPlacement 无 -start
+        // 粒度（库间差异，hover 弹层几何才有影响，稳态扫描不可见）。
+        placement="bottom-left"
+        trigger="hover"
+        overlayInnerStyle={{ maxWidth: '380px' }}
+        content={(
+          <div className="hint-popover" data-testid="envvar-help-popover">
+            <div className="hint-popover__block">
+              <p className="hint-popover__title">{t('envVarSettings.introPersonalTitle')}</p>
+              <p className="hint-popover__text">{t('envVarSettings.introPersonalBody')}</p>
             </div>
-          ) : null}
-        </span>
-      </div>
-      <p className="section-description m-0">{t('envVarSettings.description')}</p>
+            <div className="hint-popover__block">
+              <p className="hint-popover__title">{t('envVarSettings.introRuntimeTitle')}</p>
+              <p className="hint-popover__text">{t('envVarSettings.introRuntimeBody')}</p>
+            </div>
+          </div>
+        )}
+      >
+        <button type="button" className="hint-trigger" aria-label={t('envVarSettings.helpAria')}>
+          <TIcon name="help-circle" size="16px" />
+        </button>
+      </Popup>
     </div>
+    <p className="section-description">{t('envVarSettings.description')}</p>
   </div>;
 
   if (sandboxes !== null && sandboxes.length === 0) {
@@ -149,34 +137,33 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
       {sectionHeader}
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
-      <div className="rounded-[10px] bg-[#f3f3f3] px-6 py-6 text-center">
-        <p className="m-0 mb-[4px] text-[14px] font-medium leading-[normal] text-[rgba(0,0,0,0.6)]">{t('envVarSettings.noConfigTitle')}</p>
-        <p className="m-0 text-[13px] leading-[normal] text-[rgba(0,0,0,0.4)]">{t('envVarSettings.noConfigDescription')}</p>
+      <div className="env-empty">
+        <p className="env-empty__title">{t('envVarSettings.noConfigTitle')}</p>
+        <p className="env-empty__desc">{t('envVarSettings.noConfigDescription')}</p>
       </div>
     </div>;
   }
 
-  return <Card className="env-settings" data-testid="envvar-panel">
+  return <div className="env-settings" data-testid="envvar-panel">
     {sectionHeader}
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
     <form className="wk-settings-editor my-4 grid max-w-[620px] gap-[.8rem] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold" onSubmit={setVariable}>
       <label>{t('envVarSettings.sandboxPick')}
-        <Select value={scope} onChange={(event) => setScope(event.target.value as EnvVarScope)}>
-          <option value="skill">{t('envVarSettings.skillTitle')}</option>
-          <option value="sandbox">{t('envVarSettings.sandboxTitle')}</option>
+        <Select value={scope} onChange={(next) => setScope(String(next) as EnvVarScope)}>
+          <Select.Option value="skill" label={t('envVarSettings.skillTitle')}>{t('envVarSettings.skillTitle')}</Select.Option>
+          <Select.Option value="sandbox" label={t('envVarSettings.sandboxTitle')}>{t('envVarSettings.sandboxTitle')}</Select.Option>
         </Select>
       </label>
       <label>{scope === 'skill' ? t('envVarSettings.skillOnSandbox', { name: 'ID' }) : t('envVarSettings.sandboxPick')}
         {scope === 'sandbox'
-          ? <Select required value={scopeId} onChange={(event) => setScopeId(event.target.value)}>
-              <option value="" disabled>{t('envVarSettings.sandboxPick')}</option>
-              {(sandboxes ?? []).map((option) => <option key={option.id} value={option.id}>{option.name || option.id}</option>)}
+          ? <Select value={scopeId} onChange={(next) => setScopeId(String(next))}>
+              {(sandboxes ?? []).map((option) => <Select.Option key={option.id} value={option.id} label={option.name || option.id}>{option.name || option.id}</Select.Option>)}
             </Select>
-          : <Input required value={scopeId} onChange={(event) => setScopeId(event.target.value)} />}
+          : <Input value={scopeId} onChange={(next) => setScopeId(String(next ?? ''))} />}
       </label>
-      <label>{t('envVarSettings.namePlaceholder')}<Input required value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>{t('envVarSettings.valuePlaceholder')}<Input type="password" autoComplete="new-password" required value={value} onChange={(event) => setValue(event.target.value)} /></label>
+      <label>{t('envVarSettings.namePlaceholder')}<Input value={name} onChange={(next) => setName(String(next ?? ''))} /></label>
+      <label>{t('envVarSettings.valuePlaceholder')}<Input type="password" autocomplete="new-password" value={value} onChange={(next) => setValue(String(next ?? ''))} /></label>
       <Button type="submit" loading={busy}>{t('envVarSettings.save')}</Button>
     </form>
     {rows(initialPayload).length === 0
@@ -187,5 +174,5 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
           <Button type="button" disabled={busy} onClick={() => removeVariable(row)}>{t('envVarSettings.delete')}</Button>
         </li>
       ))}</ul>}
-  </Card>;
+  </div>;
 }
