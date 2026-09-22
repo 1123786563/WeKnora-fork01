@@ -46,6 +46,7 @@ function remote(overrides: Partial<RuntimeRemote> = {}): RuntimeRemote {
     oidcExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
     oidcNativeExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
     refresh: async () => ({ access_token: 'access-1', refresh_token: 'refresh-1' }),
+    switchTenant: async (input) => ({ credential: { token: `tenant-${input.tenantId}-access`, refreshToken: `refresh-${input.tenantId}` }, tenant: { id: `tenant-${input.tenantId}` } }),
     ...overrides,
   };
 }
@@ -91,7 +92,7 @@ test('boot restores Task 2 credentials before identity and capabilities', async 
 
   assert.deepEqual(store.calls, [`read:${DEPLOYMENT.origin}`]);
   assert.deepEqual(order, ['me:stored-access', 'capabilities:stored-access']);
-  assert.deepEqual(runtime.snapshot(), { surface: 'authorized', deployment: DEPLOYMENT, identity: { userId: 'user-1', activeTenantId: 'tenant-1' } });
+  assert.deepEqual(runtime.snapshot(), { surface: 'authorized', deployment: DEPLOYMENT, identity: { userId: 'user-1', activeTenantId: 'tenant-1', tenants: [{ id: 'tenant-1' }] } });
 });
 
 test('boot restores the persisted deployment and verifies stored credentials before authorizing', async () => {
@@ -171,7 +172,7 @@ test('a delayed boot cannot override a later manual sign-in', async () => {
 
   assert.deepEqual(runtime.snapshot(), {
     surface: 'authorized', deployment: manual,
-    identity: { userId: manual.origin, activeTenantId: manual.origin },
+    identity: { userId: manual.origin, activeTenantId: manual.origin, tenants: [{ id: manual.origin }] },
   });
 });
 
@@ -437,7 +438,7 @@ test('a refresh that settles after a deployment change cannot persist or authori
 
   assert.deepEqual(await store.read(DEPLOYMENT.origin), { token: 'expired-access', refreshToken: 'refresh-1' });
   assert.deepEqual(runtime.snapshot(), {
-    surface: 'authorized', deployment: other, identity: { userId: 'other-user', activeTenantId: 'other-tenant' },
+    surface: 'authorized', deployment: other, identity: { userId: 'other-user', activeTenantId: 'other-tenant', tenants: [{ id: 'other-tenant' }] },
   });
 });
 
@@ -534,4 +535,105 @@ test('OIDC consumes and rejects a callback outside its exact registered redirect
   assert.deepEqual(pending.calls, ['consume']);
   assert.equal(pending.value, undefined);
   assert.deepEqual(runtime.snapshot(), { surface: 'upgrade-required', deployment: { origin: DEPLOYMENT.origin, label: DEPLOYMENT.origin }, reason: 'authentication-required' });
+});
+
+test('activateTenant re-issues the credential, publishes the new active tenant, and revokes the prior lease', async () => {
+  const store = fakeStore();
+  const switches: Array<{ tenantId: string; refreshToken: string }> = [];
+  const runtime = createMobileRuntime(ports(store, () => remote({
+    me: async (token) => ({ user: { id: 'user-1' }, tenant: { id: token === 'tenant-2-access' ? 'tenant-2' : 'tenant-1' } }),
+    switchTenant: async (input) => {
+      switches.push(input);
+      return { credential: { token: 'tenant-2-access', refreshToken: 'rotated-refresh' }, tenant: { id: 'tenant-2' } };
+    },
+  })));
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const priorLease = runtime.scopeLease();
+  assert.ok(priorLease);
+
+  const snapshot = await runtime.activateTenant('2');
+
+  assert.deepEqual(switches, [{ tenantId: '2', refreshToken: 'refresh-1' }]);
+  assert.equal(snapshot.identity?.activeTenantId, 'tenant-2');
+  assert.notEqual(runtime.scopeLease(), priorLease);
+  assert.equal(runtime.snapshot().identity?.activeTenantId, 'tenant-2');
+  assert.deepEqual(await store.read(DEPLOYMENT.origin), { token: 'tenant-2-access', refreshToken: 'rotated-refresh' });
+});
+
+test('the authorized snapshot lists tenant options parsed from memberships', async () => {
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote({
+    me: async () => ({
+      user: { id: 'user-1' }, tenant: { id: 7 },
+      memberships: [{ tenant_id: 7, tenant_name: 'Acme', role: 'owner' }, { tenant_id: 9, tenant_name: 'Beta', role: 'viewer' }],
+    }),
+  })));
+  const snapshot = await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  assert.deepEqual(snapshot.identity, {
+    userId: 'user-1', activeTenantId: '7',
+    tenants: [{ id: '7', name: 'Acme' }, { id: '9', name: 'Beta' }],
+  });
+});
+
+test('a snapshot without memberships still exposes the active tenant as the sole option', async () => {
+  const runtime = createMobileRuntime(ports(fakeStore()));
+  const snapshot = await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  assert.deepEqual(snapshot.identity, { userId: 'user-1', activeTenantId: 'tenant-1', tenants: [{ id: 'tenant-1' }] });
+});
+
+test('activateTenant without an authorized surface issues no switch request', async () => {
+  let switches = 0;
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote({
+    switchTenant: async () => { switches += 1; return { credential: { token: 'x', refreshToken: 'y' }, tenant: { id: 't' } }; },
+  })));
+  const before = runtime.snapshot();
+
+  const snapshot = await runtime.activateTenant('2');
+  await runtime.activateTenant('');
+  await runtime.activateTenant('   ');
+
+  assert.equal(switches, 0);
+  assert.equal(snapshot, before);
+});
+
+test('a rejected tenant switch fails closed without keeping the prior lease', async () => {
+  const store = fakeStore();
+  const runtime = createMobileRuntime(ports(store, () => remote({
+    switchTenant: async () => { throw new Error('no membership'); },
+  })));
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const priorLease = runtime.scopeLease();
+  assert.ok(priorLease);
+
+  const snapshot = await runtime.activateTenant('404');
+
+  assert.deepEqual(snapshot, { surface: 'upgrade-required', deployment: DEPLOYMENT, reason: 'authentication-required' });
+  assert.notEqual(runtime.scopeLease(), priorLease);
+  assert.equal(runtime.scopeLease(), undefined);
+  assert.deepEqual(await store.read(DEPLOYMENT.origin), { token: 'access-1', refreshToken: 'refresh-1' });
+});
+
+test('a late tenant verification cannot override a completed later switch', async () => {
+  const store = fakeStore();
+  const meStarted = deferred<void>();
+  const releaseMe = deferred<{ user: { id: string }; tenant: { id: string } }>();
+  let meCalls = 0;
+  const runtime = createMobileRuntime(ports(store, () => remote({
+    me: async (token) => {
+      meCalls += 1;
+      if (meCalls === 2) { meStarted.resolve(); return releaseMe.promise; }
+      const tenantId = token === 'tenant-2-access' ? 'tenant-2' : token === 'tenant-3-access' ? 'tenant-3' : 'tenant-1';
+      return { user: { id: 'user-1' }, tenant: { id: tenantId } };
+    },
+  })));
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+
+  const first = runtime.activateTenant('2');
+  await meStarted.promise;
+  const second = await runtime.activateTenant('3');
+  releaseMe.resolve({ user: { id: 'user-1' }, tenant: { id: 'tenant-2' } });
+  const firstSnapshot = await first;
+
+  assert.equal(second.identity?.activeTenantId, 'tenant-3');
+  assert.equal(runtime.snapshot().identity?.activeTenantId, 'tenant-3');
+  assert.equal(firstSnapshot.identity?.activeTenantId, 'tenant-3');
 });

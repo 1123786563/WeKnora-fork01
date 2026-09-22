@@ -1,8 +1,7 @@
 import { clientGate, validateAuthReturn } from '@weknora/domain/mobile';
 import type { MobileRuntimePorts, StoredCredential } from './ports.ts';
+import { RuntimeScopeLease } from './scope-lease.ts';
 import type { Deployment, DeploymentInput, MobileRuntime, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
-
-const scopeLeaseBrand = Symbol('ScopeLease');
 
 function normalizeDeployment(input: DeploymentInput): Deployment {
   if (!input || typeof input.origin !== 'string' || input.origin.trim() === '') throw new Error('deployment origin is required');
@@ -30,6 +29,30 @@ function tenantId(value: unknown): string | undefined {
   return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? String(id) : undefined;
 }
 
+function membershipTenantId(value: unknown): string | undefined {
+  const id = typeof value === 'object' && value !== null ? (value as { tenant_id?: unknown }).tenant_id : undefined;
+  if (typeof id === 'string' && id.trim() !== '') return id.trim();
+  return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? String(id) : undefined;
+}
+
+function membershipTenantName(value: unknown): string | undefined {
+  const name = typeof value === 'object' && value !== null ? (value as { tenant_name?: unknown }).tenant_name : undefined;
+  return typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined;
+}
+
+function tenantOptions(memberships: unknown, activeTenantId: string): { tenants: Array<{ id: string; name?: string }> } {
+  if (!Array.isArray(memberships)) return { tenants: [{ id: activeTenantId }] };
+  const tenants: Array<{ id: string; name?: string }> = [];
+  for (const membership of memberships) {
+    const id = membershipTenantId(membership);
+    if (!id || tenants.some((option) => option.id === id)) continue;
+    const name = membershipTenantName(membership);
+    tenants.push(name ? { id, name } : { id });
+  }
+  if (!tenants.some((option) => option.id === activeTenantId)) tenants.unshift({ id: activeTenantId });
+  return { tenants };
+}
+
 function base64Url(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -55,12 +78,6 @@ async function codeChallenge(verifier: string): Promise<string> {
 
 function serverOidcCallback(deployment: Deployment): string {
   return `${deployment.origin}/api/v1/auth/oidc/callback`;
-}
-
-class RuntimeScopeLease {
-  readonly [scopeLeaseBrand] = undefined;
-  #active = true;
-  revoke(): void { this.#active = false; }
 }
 
 export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
@@ -160,9 +177,9 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       if (gate.mode !== 'full') return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
       await mutateDeployment(async () => { await ports.deploymentStore?.write(deployment); });
       if (!current(requestEpoch, deployment)) return state;
-      revocableLease = new RuntimeScopeLease();
-      lease = revocableLease as unknown as ScopeLease;
-      return publish({ surface: 'authorized', deployment, identity: { userId: authenticatedUserId, activeTenantId } });
+      revocableLease = new RuntimeScopeLease({ deploymentOrigin: deployment.origin, userId: authenticatedUserId, tenantId: activeTenantId });
+      lease = revocableLease.asScopeLease();
+      return publish({ surface: 'authorized', deployment, identity: { userId: authenticatedUserId, activeTenantId, ...tenantOptions(me.memberships, activeTenantId) } });
     } catch {
       return safe(requestEpoch, deployment, 'authentication-required');
     }
@@ -277,6 +294,23 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     },
     scopeLease: () => lease,
     signOut,
+    async activateTenant(tenantId: string): Promise<RuntimeSnapshot> {
+      if (typeof tenantId !== 'string' || tenantId.trim() === '') return state;
+      const deployment = activeDeployment;
+      if (!deployment || state.surface !== 'authorized') return state;
+      const requestEpoch = begin(deployment);
+      try {
+        const credential = await ports.credentialStore.read(deployment.origin);
+        if (!current(requestEpoch, deployment)) return state;
+        if (!credential) return safe(requestEpoch, deployment, 'authentication-required');
+        const switched = await ports.remoteFor(deployment.origin).switchTenant({ tenantId: tenantId.trim(), refreshToken: credential.refreshToken });
+        if (!current(requestEpoch, deployment)) return state;
+        if (!await persistCredential(requestEpoch, deployment, switched.credential)) return state;
+        return await authenticate(requestEpoch, deployment, switched.credential);
+      } catch {
+        return safe(requestEpoch, deployment, 'authentication-required');
+      }
+    },
     dispose(): void {
       epoch += 1;
       revoke();
