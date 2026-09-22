@@ -383,8 +383,6 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 /* PlatformAPIKeys.vue owns its section header; suppress the wrapper heading
    (old registry copy) when this panel is mounted. */
 .wk-settings-section:has(.platform-api-keys) > .wk-settings-panel-heading { display: none; }
-/* SandboxSettings.vue owns its header (title + (i) + guide link). */
-.wk-settings-section:has(.wk-sandbox-settings) > .wk-settings-panel-heading { display: none; }
 
 /* ==== A 组深修（settings-members/parser/ollama/envvars/sandbox/system/models）
    以下规则与既有 runtime-queues / platform-api-keys 的「面板自持 section-header」
@@ -398,18 +396,8 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 /* EnvVarSettings.vue 覆盖：header margin-bottom 24px，desc margin 8px 0 0 / lh1.6 */
 /* EnvVarSettings.vue scoped h2 { margin: 0 }：tsx 上的 m-0 会被上方共享
    .section-header h2 的 margin 0 0 8px 以更高优先级压掉，导致 desc 下移 8px。 */
-/* SandboxSettings.vue 覆盖：header margin-bottom 20px，desc lh1.6 */
-.wk-settings-section .wk-sandbox-settings .section-header { margin-bottom: 20px; }
-.wk-settings-section .wk-sandbox-settings .section-header .section-description { line-height: 1.6; }
-/* SandboxSettings.vue scoped .setting-row：padding 0 0 16px + margin-bottom 8px
-   （wrapper 共享 20px 上下 padding 是 TenantInfo 系的），setting-info 不限宽、
-   label 14px（共享规则 15px），setting-control 无 280px min-width。 */
-.wk-settings-section .wk-sandbox-settings .setting-row { gap: 24px; padding: 0 0 16px; margin-bottom: 8px; }
-.wk-settings-section .wk-sandbox-settings .setting-info { max-width: none; }
-.wk-settings-section .wk-sandbox-settings .setting-info label { font-size: 14px; }
-.wk-settings-section .wk-sandbox-settings .setting-control { min-width: 0; }
-/* SandboxSettings.vue .sandbox-grid：添加卡片与记录卡同网格（auto-fill 320px） */
-.wk-settings-section .wk-sandbox-grid--empty { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+/* （原 SandboxSettings.vue 深修 slice 六条已删——sandbox 已迁 SELF_HEADER
+   直挂 .section，样式由 settings.td.css §14 平移块自持。） */
 /* （原 ModelSettings.vue section-header 深修 slice 两条已删——T12b models 迁移
    SELF_HEADER 直挂 .section 后不再经过 .wk-settings-section wrapper，
    样式由 settings.td.css §12 平移块自持。） */

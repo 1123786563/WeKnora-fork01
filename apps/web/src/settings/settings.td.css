@@ -3177,3 +3177,472 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ==== 14. SandboxSettings.vue scoped 块平移（settings-sandbox 分区，批次 2 收尾） ====
+ * 列表域规则（section-header / setting-row 脚本开关 / sandbox-type-tabs /
+ * sandbox-grid 卡片族）按 §2.2-2.3 展平；根类前缀换成共享锚
+ * .wk-settings-drawer-root .sandbox-settings（§12/§13 同款）。
+ * 抽屉域（inventory 编辑器等）沿用 React 表单栈（批次先例：parser/mcp/models
+ * 同口径，扫描稳态不可达），inventory 的弹入动画 keyframes 随迁供保留抽屉引用。 */
+
+.wk-settings-drawer-root .sandbox-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header {
+  margin-bottom: 20px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-description {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .header-action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--td-brand-color);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .header-action-link:hover {
+  color: var(--td-brand-color-hover);
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header__titlewrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .section-header__titlewrap h2 {
+  margin-bottom: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .hint-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: help;
+  line-height: 1;
+}
+
+.wk-settings-drawer-root .sandbox-settings .hint-trigger:hover,
+.wk-settings-drawer-root .sandbox-settings .hint-trigger:focus-visible {
+  color: var(--td-brand-color);
+}
+
+/* hint-popover 服务 t-popup portal 到 body 的内容（§2.5：原样平移不加前缀）。 */
+.hint-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 340px;
+}
+
+.hint-popover__title {
+  margin: 0;
+  color: var(--td-text-color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hint-popover__text {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-list-loading {
+  min-height: 120px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 0 16px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-info label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-info .desc {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .sandbox-settings .setting-control {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-tabs-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__nav-item {
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__nav-item-wrapper {
+  padding: 0 12px;
+  margin: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__operations {
+  display: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__nav-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-type-tabs .t-tabs__content {
+  display: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-grid .sandbox-card--add {
+  width: 100%;
+  height: 100%;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 14px 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 10px;
+  background: var(--td-bg-color-container);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--clickable {
+  cursor: pointer;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--clickable:hover {
+  border-color: var(--td-brand-color-3, var(--td-brand-color));
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--clickable:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 68px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add:hover,
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add:focus-visible {
+  color: var(--td-brand-color);
+  border-color: var(--td-brand-color);
+  box-shadow: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--td-brand-color) 10%, transparent);
+  color: var(--td-brand-color);
+  font-size: 18px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card--add__label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__subtitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--td-text-color-secondary);
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__type {
+  font-weight: 500;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__sep {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__url {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--td-text-color-placeholder);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__warnings li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--td-warning-color-7, var(--td-warning-color));
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__actions {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__more {
+  flex-shrink: 0;
+  padding: 2px;
+  color: var(--td-text-color-placeholder);
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__more:hover,
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__more:focus-visible {
+  color: var(--td-text-color-primary);
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-card:hover .sandbox-card__more,
+.wk-settings-drawer-root .sandbox-settings .sandbox-card:focus-within .sandbox-card__more,
+.wk-settings-drawer-root .sandbox-settings .sandbox-card__actions:focus-within .sandbox-card__more {
+  opacity: 1;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-docker-banner {
+  margin-bottom: 12px;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-docker-disabled {
+  padding: 48px 16px 24px;
+  text-align: center;
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-empty-hint {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .sandbox-settings .sandbox-docker-disabled .sandbox-empty-hint {
+  margin-top: 8px;
+}
+
+/* ---- SandboxBackendBadge.vue scoped 块平移（SFC 根类已全局唯一，§2.2 根规则不加前缀） ---- */
+
+.sandbox-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: rgba(0, 82, 217, 0.1);
+  color: #0052d9;
+}
+
+.sandbox-badge--md {
+  width: 36px;
+  height: 36px;
+  font-size: 17px;
+}
+
+.sandbox-badge--sm {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+.sandbox-badge--xs {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.sandbox-badge--e2b {
+  background: rgba(98, 53, 187, 0.1);
+  color: #6235bb;
+}
+
+.sandbox-badge--docker {
+  background: rgba(29, 99, 237, 0.1);
+  color: #1d63ed;
+}
+
+.sandbox-badge--mono::before {
+  content: '';
+  background-color: currentColor;
+  -webkit-mask-image: var(--logo-url);
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-image: var(--logo-url);
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.sandbox-badge--md.sandbox-badge--mono::before {
+  width: 22px;
+  height: 22px;
+}
+
+.sandbox-badge--sm.sandbox-badge--mono::before {
+  width: 16px;
+  height: 16px;
+}
+
+.sandbox-badge--xs.sandbox-badge--mono::before {
+  width: 10px;
+  height: 10px;
+}
+
+/* ---- 保留 inventory 抽屉（React 栈）的弹入动画（原 sandbox-settings.css 随迁） ---- */
+
+@keyframes wk-sandbox-inventory-enter { from { transform: translateX(18px); opacity: .7; } to { transform: translateX(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .wk-sandbox-inventory-drawer { animation: none; } }

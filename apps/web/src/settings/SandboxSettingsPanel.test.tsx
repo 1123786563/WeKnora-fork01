@@ -12,11 +12,21 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
+// 批次 2 收尾迁移：列表域引入 tdesign Popup 系（Dropdown/Popconfirm/Popup/
+// Tabs），jsdom globals 扩展与 ModelSettingsPanel.test 同款（T12b 先例）。
 Object.assign(globalThis, {
   React,
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   Event: dom.window.Event,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
@@ -184,6 +194,26 @@ function submitEditor(editor: HTMLElement) {
   });
 }
 
+async function click(node: Element) {
+  await act(async () => node.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })));
+}
+
+/* 批次 2 收尾迁移：卡面操作改 t-dropdown（Vue cardMenu），弹层 portal 到
+   body（台账 #8），断言/点击走 li 文本（ModelSettingsPanel.test 同款）。 */
+async function openCardMenu(container: HTMLElement, itemText: string): Promise<void> {
+  const card = Array.from(container.querySelectorAll('.wk-sandbox-card')).find((node) => node.textContent?.includes(itemText));
+  assert.ok(card, `the ${itemText} card should render`);
+  await click(card.querySelector('.sandbox-card__more')!);
+  const menu = document.body.querySelector('.t-dropdown__menu');
+  assert.ok(menu, 'the card menu popup should mount to body');
+}
+
+async function clickMenuItem(label: string): Promise<void> {
+  const item = Array.from(document.body.querySelectorAll('.t-dropdown__item')).find((node) => (node.textContent ?? '') === label);
+  assert.ok(item, `the ${label} menu item should render in the popup`);
+  await click(item);
+}
+
 function fillCubeConnection(editor: HTMLElement) {
   const inputs = Array.from(editor.querySelectorAll('input')) as HTMLInputElement[];
   const nameInput = inputs.find((input) => input.placeholder === t('settings.sandbox.configNamePlaceholder'))!;
@@ -203,9 +233,13 @@ beforeEach(() => {
 
 // ---- list surface (SandboxSettings.vue) -------------------------------------
 
-test('sandbox list keeps the Vue loading copy before the first load resolves', () => {
+test('sandbox list keeps the Vue loading surface before the first load resolves', () => {
   const html = renderToStaticMarkup(<SandboxSettingsPanel client={{} as never} role="admin" />);
-  assert.match(html, new RegExp(t('settings.sandbox.loading')));
+  // Vue has no loading copy: t-loading keeps a spinner over a min-height area
+  // while the grid and empty hint stay unrendered (SandboxSettings.vue:66-134).
+  assert.match(html, /sandbox-list-loading/);
+  assert.doesNotMatch(html, /sandbox-grid/);
+  assert.doesNotMatch(html, new RegExp(t('settings.sandbox.noConfigs')));
 });
 
 test('sandbox list keeps viewers read-only with the Vue empty state copy', () => {
@@ -263,16 +297,16 @@ test('script policy disable requires confirmation while enable applies directly 
     role="admin"
     initialData={{ items: [], workspaceScriptsDisabled: false } as never}
   />);
-  // Enabled renders the one-way switch on; the warning popconfirm only exists
-  // after the user clicks the switch (Vue t-popconfirm on t-switch).
-  assert.match(enabledHtml, /role="switch" aria-checked="true"/);
+  // Enabled renders the one-way t-switch on (t-is-checked); the warning
+  // popconfirm only mounts its popup after the user clicks the switch.
+  assert.match(enabledHtml, /class="t-switch[^"]*t-is-checked/);
   assert.doesNotMatch(enabledHtml, /data-confirm="disable-scripts"/);
   const disabledHtml = renderToStaticMarkup(<SandboxSettingsPanel
     client={{} as never}
     role="admin"
     initialData={{ items: [], workspaceScriptsDisabled: true } as never}
   />);
-  assert.match(disabledHtml, /role="switch" aria-checked="false"/);
+  assert.match(disabledHtml, /class="t-switch(?![^"]*t-is-checked)/);
   assert.doesNotMatch(disabledHtml, /data-confirm="disable-scripts"/);
 });
 
@@ -316,8 +350,9 @@ test('docker wizard drops the template step and runs the shallow check on the co
   });
   const container = await mount(client);
   // Vue createPresetType (SandboxSettings.vue:251-255): the active tab presets the backend.
-  const dockerTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-model-tabs button')).find((button) => button.textContent!.startsWith('Docker'))!;
-  await act(async () => dockerTab.click());
+  // tdesign Tabs nav 无 role=tab 属性（库间 DOM 差异，PersonalMemory 先例）。
+  const dockerTab = Array.from(container.querySelectorAll<HTMLElement>('.sandbox-type-tabs .t-tabs__nav-item')).find((node) => (node.textContent ?? '').startsWith('Docker'))!;
+  await click(dockerTab);
   const editor = await openCreateEditor(container);
   const rail = editor.querySelector('nav')!;
   assert.deepEqual(Array.from(rail.querySelectorAll('.wk-sandbox-step__title')).map((node) => node.textContent), [
@@ -347,8 +382,8 @@ test('docker wizard drops the template step and runs the shallow check on the co
 test('edit mode unlocks every wizard step as a direct jump (drawer.vue:998-1006)', async () => {
   const { client } = makeClient(() => okCatalog([]), [cubeRecord]);
   const container = await mount(client, { initialData: { items: [cubeRecord], workspaceScriptsDisabled: false } });
-  const editButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === t('common.edit'))!;
-  await act(async () => editButton.click());
+  await openCardMenu(container, 'Cube cluster');
+  await clickMenuItem(t('common.edit'));
   const editor = container.querySelector<HTMLElement>('[data-testid="sandbox-editor"]')!;
   assert.equal(editor.getAttribute('aria-label'), t('settings.sandbox.editTitle'));
   const steps = Array.from(editor.querySelectorAll('nav .wk-sandbox-step'));
@@ -625,8 +660,8 @@ test('runtime save submits the exact Vue payload shape and closes on success', a
     return {};
   };
   const container = await mount(client, { initialData: { items: [cubeRecord], workspaceScriptsDisabled: false } });
-  const editButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === t('common.edit'))!;
-  await act(async () => editButton.click());
+  await openCardMenu(container, 'Cube cluster');
+  await clickMenuItem(t('common.edit'));
   const editor = container.querySelector<HTMLElement>('[data-testid="sandbox-editor"]')!;
   // Jump straight to runtime — every step is open while editing.
   const runtimeStep = Array.from(editor.querySelectorAll('nav .wk-sandbox-step'))[2] as HTMLButtonElement;
@@ -658,8 +693,8 @@ test('a sandboxes_still_live save refusal keeps the drawer open with the Vue con
     throw refusal;
   };
   const container = await mount(client, { initialData: { items: [cubeRecord], workspaceScriptsDisabled: false } });
-  const editButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === t('common.edit'))!;
-  await act(async () => editButton.click());
+  await openCardMenu(container, 'Cube cluster');
+  await clickMenuItem(t('common.edit'));
   const editor = container.querySelector<HTMLElement>('[data-testid="sandbox-editor"]')!;
   const runtimeStep = Array.from(editor.querySelectorAll('nav .wk-sandbox-step'))[2] as HTMLButtonElement;
   await act(async () => runtimeStep.click());
@@ -837,10 +872,8 @@ test('the panel renders English copy when the stored locale is en-US', async () 
 // ---- inventory session titles (SandboxSettings.vue:140-206, 312-344, 511-528) -
 
 async function openInventory(container: HTMLElement): Promise<void> {
-  const viewButton = Array.from(container.querySelectorAll('button'))
-    .find((button) => button.textContent === t('settings.sandbox.viewSandboxes'));
-  assert.ok(viewButton, 'cube cards offer the inventory entry');
-  await act(async () => viewButton!.click());
+  await openCardMenu(container, 'Cube cluster');
+  await clickMenuItem(t('settings.sandbox.viewSandboxes'));
 }
 
 test('inventory resolves session ids into titles with Vue fallbacks for failed lookups (SandboxSettings.vue:171-178, 323-339)', async () => {
