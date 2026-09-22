@@ -576,3 +576,52 @@ test('(l) a renamed session keeps its title when a later page is appended', asyn
   assert.equal(rowTitles().includes('持久标题'), true, 'pagination must not restore the pre-rename title');
   assert.equal(container.textContent?.includes('服务端旧标题'), false);
 });
+
+// Vue sessionActivity parity（menu.vue :running + stores/sessionActivityState）：
+// 会话行 running spinner 标记。JSDOM URL 固定在 /platform/chat/session-2，
+// 活跃会话即 session-2（「昨天的会话」）——正好复刻 ix-chat-mention 扫描里
+// 「打开一个 stuck-incomplete 会话」的形态。
+const chatMessages = (sessionId: string, assistantCompleted: boolean) => [
+  { id: 'm-user', session_id: sessionId, role: 'user' as const, content: 'q', is_completed: true },
+  { id: 'm-asst', session_id: sessionId, role: 'assistant' as const, content: assistantCompleted ? 'done' : 'partial', is_completed: assistantCompleted },
+];
+
+test('(o) active chat with a trailing incomplete assistant marks its sidebar row running', async () => {
+  window.history.pushState({}, '', '/platform/chat/session-2');
+  const client = fakeClient({
+    messages: async (sessionId: string) => sessionId === 'session-2' ? chatMessages(sessionId, false) : [],
+  });
+  await mountShell({ client });
+  const rows = [...document.querySelectorAll('nav[aria-label="我的对话"] .session-chat-row')];
+  const runningRows = rows.filter((node) => node.querySelector('.session-running-indicator'));
+  assert.equal(runningRows.length, 1, 'only the stuck-incomplete session row shows the spinner');
+  assert.equal(runningRows[0]?.textContent?.includes('昨天的会话'), true, 'the marker sits on the active session-2 row');
+  const indicator = runningRows[0]?.querySelector('.session-running-indicator');
+  assert.equal(indicator?.getAttribute('role'), 'status', 'SessionSidebarRow.vue role=status parity');
+  assert.ok(indicator?.querySelector('.session-running-indicator__spinner'), 'inner 12px spinner ring renders');
+});
+
+test('(p) a fully completed history keeps the sidebar free of running markers', async () => {
+  window.history.pushState({}, '', '/platform/chat/session-2');
+  const client = fakeClient({
+    messages: async (sessionId: string) => chatMessages(sessionId, true),
+  });
+  await mountShell({ client });
+  assert.equal(document.querySelectorAll('nav[aria-label="我的对话"] .session-running-indicator').length, 0,
+    'no marker when the trailing assistant message is completed');
+});
+
+test('(q) the 5s poll clears the marker once the assistant message completes', async () => {
+  window.history.pushState({}, '', '/platform/chat/session-2');
+  let assistantCompleted = false;
+  const client = fakeClient({
+    messages: async (sessionId: string) => chatMessages(sessionId, assistantCompleted),
+  });
+  await mountShell({ client });
+  assert.equal(document.querySelectorAll('nav[aria-label="我的对话"] .session-running-indicator').length, 1,
+    'marker present while the message streams');
+  assistantCompleted = true;
+  await settle(5300); // menu.vue:977 5s interval → sessionActivityState.refresh
+  assert.equal(document.querySelectorAll('nav[aria-label="我的对话"] .session-running-indicator').length, 0,
+    'marker cleared after the poll observes completion');
+});

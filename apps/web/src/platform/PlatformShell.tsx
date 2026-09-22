@@ -31,6 +31,13 @@ import {
   type PaletteDeploymentCapabilities,
 } from './deployment-capabilities.ts';
 import { PaletteRetrievalSettings } from './retrieval-settings-panel.tsx';
+// Vue sessionActivity 同构纯核心（侧栏会话行 running spinner 标记的转移规则）。
+import {
+  detectRunningMessageId,
+  refreshSessionActivityEntry,
+  refreshSessionActivityError,
+  type SessionActivityEntries,
+} from './session-activity.ts';
 // Welcome-tour styles live with the component in @weknora/views; the package
 // itself must stay css-import-free for the shared typecheck, so the shell
 // pulls it in by relative path. (shell.css is gone — all rules became
@@ -223,6 +230,18 @@ export function shouldShowTenantSwitcher(options: {
 }): boolean {
   return options.hasSwitchHandler && options.canAccessAllTenants && !options.collapsed;
 }
+
+// Vue composables/useRoleLabel.ts ROLE_ICONS — 角色前缀图标映射（受限集合，
+// 只收录已随包发行的图标名，避免冷门角色触发 icon-not-found）。
+const ROLE_ICONS: Record<string, string> = {
+  owner: 'secured',
+  admin: 'user-circle',
+  contributor: 'edit',
+  viewer: 'browse',
+};
+
+// Vue menu.vue:977 — sessionActivity 轮询周期（setInterval(..., 5000)）。
+const SESSION_ACTIVITY_REFRESH_MS = 5000;
 
 // Vue stores/ui.ts:23,123-126 persists the collapsed rail under the Vue-era
 // key `sidebar_collapsed` and re-reads it on boot; keep the same key so the
@@ -493,11 +512,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     () => <PaletteRetrievalSettings client={client} locale={locale} />,
     [client, locale],
   );
-  const tenantSwitcherVisible = !isLiteEdition && shouldShowTenantSwitcher({
-    canAccessAllTenants: user.canAccessAllTenants,
-    collapsed,
-    hasSwitchHandler: Boolean(onTenantSwitch),
-  });
+  // Vue UserMenu.vue:375-382 — showTenantSwitcher 只看 memberships 数（>=1 即
+  // 显示切换 glyph：单空间用户也要能从子菜单看到当前空间/创建入口）。它不看
+  // canAccessAllTenants——超管额外走侧栏 TenantSelector（Vue-only 挂载），不收紧
+  // 此处门控。shouldShowTenantSwitcher 仍保留给未来的侧栏 TenantSelector 挂载。
+  const tenantSwitcherVisible = !isLiteEdition && user.memberships.length > 0;
   const switchTenant = useCallback(async (tenantId: string) => {
     if (!onTenantSwitch || tenantSwitchPending) return;
     // Vue UserMenu.switchToTenant closes both the account menu and its
@@ -698,13 +717,110 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     void loadShellSessionPage(1, sessionsGenerationRef.current);
   }, [loadShellSessionPage]);
 
+  const activeChatId = chatSessionIdFromPath(pathname);
+
+  // Vue sessionActivity 通路（menu.vue + stores/sessionActivity）：会话行的
+  // running spinner 标记。Vue 由 chat/index.vue 的 isReplying watcher 写入
+  // store（update(id, true)），menu.vue 只负责 5s refresh 与渲染；React chat
+  // 域（禁改域）既无写入方也无对外事件，故 shell 承担最小对齐：活跃会话
+  // 切换时跑 chat 视图同款「末位未完成 assistant」检测（session-activity.ts
+  // 纯核心，复刻 sessionActivityState 的转移规则），此后按 menu.vue:977 的
+  // 5s 口径轮询条目直到消息完成/消失/连续失败清除。已知残差：同会话内发
+  // 起新一轮生成（路由不变）时 React 侧标记要等下次检测，不像 Vue 的
+  // watcher 即时——补齐它需要 chat 域暴露生成态事件，超出本壳层范围。
+  const [sessionActivityEntries, setSessionActivityEntries] = useState<SessionActivityEntries>({});
+  const sessionActivityRef = useRef<SessionActivityEntries>({});
+  sessionActivityRef.current = sessionActivityEntries;
+  // Client/tenant identity change → clear (Vue store watches
+  // [auth.user.id, auth.effectiveTenantId] with flush:'sync').
+  const sessionActivityClientRef = useRef<Client | null>(null);
+  useEffect(() => {
+    const clientChanged = sessionActivityClientRef.current !== null && sessionActivityClientRef.current !== client;
+    sessionActivityClientRef.current = client;
+    if (clientChanged) setSessionActivityEntries({});
+  }, [client]);
+  // Active chat switch → one-shot detection (chat/index.vue onAfterMsgList).
+  // Defensive probe: host clients without the chat history API keep the shell
+  // mounted without the marker (same convention as the queryHistory probing).
+  // Memoized: a fresh function per render would re-arm the effects below into
+  // a fetch/render loop.
+  const sessionsMessagesApi = useMemo(
+    () => typeof client.sessions.messages === 'function' ? client.sessions.messages.bind(client.sessions) : null,
+    [client],
+  );
+  useEffect(() => {
+    if (!activeChatId || !sessionsMessagesApi) return;
+    let active = true;
+    sessionsMessagesApi(activeChatId, { limit: 20 }).then((messages) => {
+      if (!active) return;
+      const messageId = detectRunningMessageId(messages);
+      setSessionActivityEntries((prev) => {
+        if (messageId) {
+          const current = prev[activeChatId];
+          if (current && current.messageId === messageId && current.failures === 0) return prev;
+          return { ...prev, [activeChatId]: { messageId, failures: 0 } };
+        }
+        if (!(activeChatId in prev)) return prev;
+        const next = { ...prev };
+        delete next[activeChatId];
+        return next;
+      });
+    }).catch(() => { /* transient failure: the poll below re-checks */ });
+    return () => { active = false; };
+  }, [activeChatId, sessionsMessagesApi]);
+  // menu.vue:977 — unconditional 5s refresh while mounted; empty entries are
+  // a no-op (sessionActivityState.refresh only iterates entries).
+  useEffect(() => {
+    if (!sessionsMessagesApi) return;
+    const timer = window.setInterval(() => {
+      const entries = sessionActivityRef.current;
+      const ids = Object.keys(entries);
+      if (ids.length === 0) return;
+      void (async () => {
+        const settled = await Promise.all(ids.map(async (sessionId) => {
+          try {
+            const messages = await sessionsMessagesApi(sessionId, { limit: 20 });
+            return [sessionId, refreshSessionActivityEntry(entries[sessionId], messages)] as const;
+          } catch (cause) {
+            const status = (cause as { status?: number })?.status;
+            return [sessionId, refreshSessionActivityError(entries[sessionId], status)] as const;
+          }
+        }));
+        setSessionActivityEntries((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          for (const [sessionId, entry] of settled) {
+            if (!entry) {
+              if (sessionId in next) { delete next[sessionId]; changed = true; }
+            } else {
+              const current = next[sessionId];
+              if (!current || current.messageId !== entry.messageId || current.failures !== entry.failures) {
+                next[sessionId] = entry;
+                changed = true;
+              }
+            }
+          }
+          return changed ? next : prev;
+        });
+      })();
+    }, SESSION_ACTIVITY_REFRESH_MS);
+    return () => { window.clearInterval(timer); };
+  }, [sessionsMessagesApi]);
+
   // Vue menu.vue groups the list by date unconditionally (groupSessionsByDate
   // → 已置顶/今天/昨天/近7天/近30天/更早), with the route as the selection.
+  // Session rows additionally carry the sessionActivity running marker
+  // (SessionSidebarRow.vue :running — see sessionActivityEntries above).
   const sessionListGroups: readonly SessionGroupView[] = useMemo(
-    () => sessionGroups(sessions, new Date(), 'date'),
-    [sessions],
+    () => sessionGroups(
+      Object.keys(sessionActivityEntries).length === 0
+        ? sessions
+        : sessions.map((session) => sessionActivityEntries[session.id] ? { ...session, running: true } : session),
+      new Date(),
+      'date',
+    ),
+    [sessionActivityEntries, sessions],
   );
-  const activeChatId = chatSessionIdFromPath(pathname);
 
   const openShellSession = useCallback((sessionId: string) => {
     const current = window.location.pathname;
@@ -740,10 +856,24 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
 
   async function clearShellSessionMessages(sessionId: string): Promise<void> {
     try { await client.sessions.clear(sessionId); } catch { /* messages reload on the next visit */ }
+    // Vue menu.vue handleSessionMutation — messagesCleared → sessionActivity.update(id, false).
+    setSessionActivityEntries((prev) => {
+      if (!(sessionId in prev)) return prev;
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
   }
 
   async function deleteShellSession(sessionId: string): Promise<void> {
     try { await client.sessions.remove(sessionId); } catch { return; }
+    // Vue menu.vue handleSessionMutation — removed → sessionActivity.update(id, false).
+    setSessionActivityEntries((prev) => {
+      if (!(sessionId in prev)) return prev;
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
     sessionsRef.current = sessionsRef.current.filter((session) => session.id !== sessionId);
     sessionsTotalRef.current = Math.max(0, sessionsTotalRef.current - 1);
     setSessions(sessionsRef.current);
@@ -756,6 +886,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   async function deleteShellSessions(sessionIds: readonly string[]): Promise<boolean> {
     await client.sessions.batchRemove(sessionIds);
     const selected = new Set(sessionIds);
+    setSessionActivityEntries((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const sessionId of selected) {
+        if (sessionId in next) { delete next[sessionId]; changed = true; }
+      }
+      return changed ? next : prev;
+    });
     sessionsRef.current = sessionsRef.current.filter((session) => !selected.has(session.id));
     sessionsTotalRef.current = Math.max(0, sessionsTotalRef.current - sessionIds.length);
     setSessions(sessionsRef.current);
@@ -905,6 +1043,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   // the tenant switcher, so the switcher collapses with it (UserMenu.vue:56).
   const showTenantIdentityLine = !isLiteEdition && (!collapsed && !user.canAccessAllTenants && user.membershipsCount > 1 || (!collapsed && user.canAccessAllTenants));
   const roleLabel = user.role ? formatMessage(locale, `tenantMember.role.${user.role}`) : '';
+  // Vue composables/useRoleLabel.ts ROLE_ICONS — 角色标签的 12px 前缀图标
+  // （owner=secured/admin=user-circle/contributor=edit/viewer=browse），颜色随
+  // 所在行文本（user-tenant-meta-icon / dropdown-tenant-panel-role-icon 均
+  // color:inherit）。
+  const roleIcon = user.role && ROLE_ICONS[user.role] ? ROLE_ICONS[user.role] : '';
 
   return (
     // shell.css → utilities: .plat-shell (flex row, full viewport), .plat-shell__aside
@@ -1056,6 +1199,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     <span className="user-tenant-meta">
                       {user.name && user.name !== user.tenantName ? <span className="user-tenant-meta-name">{user.name}</span> : null}
                       {user.name && user.name !== user.tenantName && roleLabel ? <span aria-hidden="true" className="user-tenant-meta-sep">·</span> : null}
+                      {roleIcon ? <TIcon name={roleIcon} size="12px" className="user-tenant-meta-icon" aria-hidden="true" /> : null}
                       {roleLabel ? <span className="user-tenant-meta-role">{roleLabel}</span> : null}
                     </span>
                   </> : <>
@@ -1093,7 +1237,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   <TIcon name="system-sum" className="menu-icon" aria-hidden="true" />
                   <span className="dropdown-tenant-panel-main">
                     <span className="dropdown-tenant-panel-name" title={user.tenantName || user.name || undefined}>{user.tenantName || user.name || '—'}</span>
-                    {roleLabel ? <span className="dropdown-tenant-panel-role">{roleLabel}</span> : null}
+                    {roleLabel ? <span className="dropdown-tenant-panel-role">
+                      {roleIcon ? <TIcon name={roleIcon} size="12px" className="dropdown-tenant-panel-role-icon" aria-hidden="true" /> : null}
+                      {roleLabel}
+                    </span> : null}
                   </span>
                   {tenantSwitcherVisible ? <button type="button" aria-label={t('tenant.switcher.menuLabel')} title={t('tenant.switcher.menuLabel')} aria-expanded={tenantMenuOpen}
                     className="dropdown-tenant-panel-trail-btn" onClick={toggleTenantSubmenu}>
@@ -1156,7 +1303,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   <span className="menu-text-with-icon">
                     <span>{labels.helpAndDocs}</span>
                     <svg className="menu-external-icon" viewBox="0 0 16 16" aria-hidden="true">
-                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
+                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334A1.333 1.333 0 0 0 4.667 13.333h6a1.333 1.333 0 0 0 1.333-1.333v-4A.667.667 0 0 1 12.667 8Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
                     </svg>
                   </span>
                 </a>
@@ -1167,7 +1314,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                     <span>{labels.github}</span>
                     <TIcon name="star-filled" className="menu-github-star-icon" size="16px" aria-hidden="true" />
                     <svg className="menu-external-icon" viewBox="0 0 16 16" aria-hidden="true">
-                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334a1.333 1.333 0 0 0 1.333 1.333h6a1.333 1.333 0 0 0 1.333-1.333v-4a.667.667 0 0 1 .667-.667Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
+                      <path fill="currentColor" d="M12.667 8a.667.667 0 0 1 .666.667v4a2.667 2.667 0 0 1-2.666 2.666H4.667A2.667 2.667 0 0 1 2 12.667V5.333a2.667 2.667 0 0 1 2.667-2.666h4a.667.667 0 1 1 0 1.333h-4a1.333 1.333 0 0 0-1.333 1.333v7.334A1.333 1.333 0 0 0 4.667 13.333h6a1.333 1.333 0 0 0 1.333-1.333v-4A.667.667 0 0 1 12.667 8Zm2.666-6.667v4a.667.667 0 0 1-1.333 0V3.276l-5.195 5.195a.667.667 0 0 1-.943-.943l5.195-5.195h-2.057a.667.667 0 0 1 0-1.333h4a.667.667 0 0 1 .666.666Z" />
                     </svg>
                   </span>
                 </a>
