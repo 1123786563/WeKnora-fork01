@@ -1,4 +1,4 @@
-.PHONY: help build run test clean verify-module-moves check-backend-architecture docker-build-app docker-build-docreader docker-build-frontend docker-build-all docker-run migrate-up migrate-down docker-restart docker-stop start-all stop-all start-ollama stop-ollama build-images build-images-app build-images-docreader build-images-frontend clean-images check-env list-containers pull-images show-platform dev-start dev-stop dev-restart dev-logs dev-status dev-app dev-frontend docs install-swagger build-lite run-lite package-lite anydoc-lib build-anydoc
+.PHONY: help build run test clean verify-module-moves check-backend-architecture check-passb-readiness docker-build-app docker-build-docreader docker-build-frontend docker-build-all docker-run migrate-up migrate-down docker-restart docker-stop start-all stop-all start-ollama stop-ollama build-images build-images-app build-images-docreader build-images-frontend clean-images check-env list-containers pull-images show-platform dev-start dev-stop dev-restart dev-logs dev-status dev-app dev-frontend docs install-swagger build-lite run-lite package-lite anydoc-lib build-anydoc
 
 # Show help
 help:
@@ -254,6 +254,13 @@ verify-module-moves:
 # 校验 manifest 覆盖、注册唯一性、Redis/Lite 一致、模块间禁互导、横向目录遗留文件。
 check-backend-architecture:
 	go run ./tools/architectureguard
+
+# Pass B 治理就绪守卫（B0.6，docs/plans/passb/00-contract-and-ownership-freeze.md）：
+# 严格 schema 加载 ownership-matrix/contracts/event-catalog/exception-ledger，
+# 对照 manifest 与 Go 树校验 396 legacy / 105 exception 全量单属主、
+# 契约符号/消费方、事件 schema 与 B0.3 裁定；零诊断打印就绪行并退出 0。
+check-passb-readiness:
+	go run ./tools/passbguard -root .
 
 # Install dependencies
 deps:

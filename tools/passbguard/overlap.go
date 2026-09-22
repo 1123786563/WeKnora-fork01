@@ -1,4 +1,4 @@
-package passbguard
+package main
 
 import (
 	"fmt"
@@ -201,9 +201,11 @@ func CheckAmbiguity(root string) ([]Diagnostic, error) {
 			for _, phrase := range ForbiddenPhrases {
 				if strings.Contains(line, phrase) {
 					ds = append(ds, Diagnostic{
-						Check:   "ambiguous-phrase",
-						Path:    slash,
-						Message: fmt.Sprintf("line %d: ambiguous ownership phrase %q; every file must have exactly one child-plan owner (freeze B0.3 Step 1)", lineNo+1, phrase),
+						Check: "ambiguous-phrase",
+						Path:  slash,
+						Message: fmt.Sprintf("line %d: ambiguous ownership phrase %q; "+
+							"every file must have exactly one child-plan owner (freeze B0.3 Step 1)",
+							lineNo+1, phrase),
 					})
 				}
 			}
@@ -234,17 +236,24 @@ func checkRulings(g *Governance, rulings map[string]PlanID, platform []string) [
 		got, ok := owner[p]
 		switch {
 		case !ok:
-			ds = append(ds, Diagnostic{Check: "ruling-missing", Path: p,
-				Message: fmt.Sprintf("B0.3 ruled path has no ownership-matrix row (want owner %q)", want)})
+			ds = append(ds, Diagnostic{
+				Check: "ruling-missing", Path: p,
+				Message: fmt.Sprintf(
+					"B0.3 ruled path has no ownership-matrix row (want owner %q)", want),
+			})
 		case got != want:
-			ds = append(ds, Diagnostic{Check: "ruling-owner", Path: p,
-				Message: fmt.Sprintf("owner %q violates B0.3 ruling (want %q)", got, want)})
+			ds = append(ds, Diagnostic{
+				Check: "ruling-owner", Path: p,
+				Message: fmt.Sprintf("owner %q violates B0.3 ruling (want %q)", got, want),
+			})
 		}
 	}
 	for _, p := range platform {
 		if _, claimed := owner[p]; claimed {
-			ds = append(ds, Diagnostic{Check: "ruling-platform-claimed", Path: p,
-				Message: "platform-preserved generic helper must not be claimed by any child plan (B0.3 Step 3)"})
+			ds = append(ds, Diagnostic{
+				Check: "ruling-platform-claimed", Path: p,
+				Message: "platform-preserved generic helper must not be claimed by any child plan (B0.3 Step 3)",
+			})
 		}
 	}
 	return sortDiagnosticsDiag(ds)
@@ -264,7 +273,7 @@ func briefClaimsPath(text, path string) bool {
 		start := i + idx
 		end := start + len(basename)
 		i = end
-		prevOK := start == 0 || !(isWordRune(text[start-1]) || text[start-1] == '.')
+		prevOK := start == 0 || (!isWordRune(text[start-1]) && text[start-1] != '.')
 		if !prevOK || end > len(text) {
 			continue
 		}
@@ -345,12 +354,18 @@ func checkBriefClaims(root string, rulings map[string]PlanID) ([]Diagnostic, err
 				claimed = true
 				continue
 			}
-			ds = append(ds, Diagnostic{Check: "brief-claim-conflict", Path: name,
-				Message: fmt.Sprintf("claims ruled file %s owned by %q (B0.3 ruling); remove the claim or the ruling owner changes via baseline change", p, want)})
+			ds = append(ds, Diagnostic{
+				Check: "brief-claim-conflict", Path: name,
+				Message: fmt.Sprintf("claims ruled file %s owned by %q (B0.3 ruling); "+
+					"remove the claim or the ruling owner changes via baseline change", p, want),
+			})
 		}
 		if !claimed {
-			ds = append(ds, Diagnostic{Check: "brief-claim-missing", Path: p,
-				Message: fmt.Sprintf("ruling owner %q brief does not claim this file (B0.3 Step 2/3/4)", want)})
+			ds = append(ds, Diagnostic{
+				Check: "brief-claim-missing", Path: p,
+				Message: fmt.Sprintf(
+					"ruling owner %q brief does not claim this file (B0.3 Step 2/3/4)", want),
+			})
 		}
 	}
 	return sortDiagnosticsDiag(ds), nil

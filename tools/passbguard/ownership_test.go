@@ -1,4 +1,4 @@
-package passbguard
+package main
 
 import (
 	"os"
@@ -322,7 +322,11 @@ func TestRealRepoKnowledgeRepositoryFileHasExplicitKOwner(t *testing.T) {
 	require.NoError(t, err)
 	for _, row := range g.Legacy {
 		if row.Path == "internal/application/repository/knowledge.go" {
-			require.Contains(t, []PlanID{"21-knowledge-ingest", "22-knowledge-retrieval", "23-knowledge-wikifaq", "24-knowledge-process"}, row.Plan,
+			kPlans := []PlanID{
+				"21-knowledge-ingest", "22-knowledge-retrieval",
+				"23-knowledge-wikifaq", "24-knowledge-process",
+			}
+			require.Contains(t, kPlans, row.Plan,
 				"knowledge.go 必须显式归属 K1-K4 之一")
 			return
 		}

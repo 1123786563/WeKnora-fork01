@@ -1,4 +1,4 @@
-package passbguard
+package main
 
 import (
 	"fmt"
@@ -119,7 +119,8 @@ func CheckOwnership(g *Governance, d *Discovery) []Diagnostic {
 		case !declared:
 			emit("legacy-undeclared", row.Path, "not declared by any manifest legacy_files")
 		case manifest != row.Module:
-			emit("legacy-manifest-module", row.Path, "matrix module %q disagrees with manifest owner %q", row.Module, manifest)
+			emit("legacy-manifest-module", row.Path,
+				"matrix module %q disagrees with manifest owner %q", row.Module, manifest)
 		}
 		if !goFileSet[row.Path] {
 			emit("legacy-nonexistent", row.Path, "path does not exist on disk")
@@ -135,17 +136,24 @@ func CheckOwnership(g *Governance, d *Discovery) []Diagnostic {
 			continue
 		}
 		if !containsModule(info.Modules, row.Module) {
-			emit("legacy-plan-module", row.Path, "plan %q (modules %s) cannot own a %q file", row.Plan, strings.Join(info.Modules, "/"), row.Module)
+			emit("legacy-plan-module", row.Path,
+				"plan %q (modules %s) cannot own a %q file",
+				row.Plan, strings.Join(info.Modules, "/"), row.Module)
 		}
 		wantPrefix := modulesDirPrefix + row.Module + "/"
 		if !strings.HasPrefix(row.Destination, wantPrefix) {
-			emit("legacy-destination", row.Path, "destination %q is outside owning module tree %q", row.Destination, wantPrefix)
+			emit("legacy-destination", row.Path,
+				"destination %q is outside owning module tree %q", row.Destination, wantPrefix)
 		}
 		if row.DeleteBarrier != info.Barrier {
-			emit("legacy-barrier", row.Path, "delete_barrier %q does not match plan %q phase barrier %q", row.DeleteBarrier, row.Plan, info.Barrier)
+			emit("legacy-barrier", row.Path,
+				"delete_barrier %q does not match plan %q phase barrier %q",
+				row.DeleteBarrier, row.Plan, info.Barrier)
 		}
 		if row.IntegrationOwner != "" && knownBarrier(row.IntegrationOwner) && row.IntegrationOwner != info.Barrier {
-			emit("legacy-integration-owner", row.Path, "integration_owner %q must be the owning plan phase barrier %q when set to a barrier", row.IntegrationOwner, info.Barrier)
+			emit("legacy-integration-owner", row.Path,
+				"integration_owner %q must be the owning plan phase barrier %q when set to a barrier",
+				row.IntegrationOwner, info.Barrier)
 		}
 	}
 	for path, module := range manifestLegacy {
@@ -175,14 +183,19 @@ func CheckOwnership(g *Governance, d *Discovery) []Diagnostic {
 		seenAlias[row.OldImportPath] = true
 		info, ok := KnownPlans[row.Plan]
 		if !ok {
-			emit("alias-plan-unknown", row.OldImportPath, "plan %q is not a framework plan that can own files", row.Plan)
+			emit("alias-plan-unknown", row.OldImportPath,
+				"plan %q is not a framework plan that can own files", row.Plan)
 			continue
 		}
 		if declared && module != "" && !containsModule(info.Modules, module) {
-			emit("alias-plan-module", row.OldImportPath, "plan %q (modules %s) cannot own an alias of module %q", row.Plan, strings.Join(info.Modules, "/"), module)
+			emit("alias-plan-module", row.OldImportPath,
+				"plan %q (modules %s) cannot own an alias of module %q",
+				row.Plan, strings.Join(info.Modules, "/"), module)
 		}
 		if row.DeleteBarrier != "" && row.DeleteBarrier != info.Barrier {
-			emit("alias-barrier", row.OldImportPath, "delete_barrier %q does not match plan %q phase barrier %q", row.DeleteBarrier, row.Plan, info.Barrier)
+			emit("alias-barrier", row.OldImportPath,
+				"delete_barrier %q does not match plan %q phase barrier %q",
+				row.DeleteBarrier, row.Plan, info.Barrier)
 		}
 	}
 	for path, module := range aliasModule {
@@ -203,25 +216,37 @@ func CheckOwnership(g *Governance, d *Discovery) []Diagnostic {
 		key := excKey{x.From, x.To}
 		de, registered := discovered[key]
 		if !registered {
-			emit("exception-unregistered", x.From, "%s → %s is not registered in %s importExceptions", x.From, x.To, architectureGuardCheckFile)
+			emit("exception-unregistered", x.From,
+				"%s → %s is not registered in %s importExceptions",
+				x.From, x.To, architectureGuardCheckFile)
 		} else {
 			if x.Reason != de.Reason {
-				emit("exception-reason-drift", x.From, "reason drift for %s → %s: ledger %q vs guard %q", x.From, x.To, x.Reason, de.Reason)
+				emit("exception-reason-drift", x.From,
+					"reason drift for %s → %s: ledger %q vs guard %q",
+					x.From, x.To, x.Reason, de.Reason)
 			}
 			taskModule := PassBTaskModule[de.PassBTask]
 			info, ok := KnownPlans[x.Plan]
 			if !ok {
-				emit("exception-plan-unknown", x.From, "plan %q is not a framework plan that can own exceptions", x.Plan)
+				emit("exception-plan-unknown", x.From,
+					"plan %q is not a framework plan that can own exceptions", x.Plan)
 			} else if taskModule == "" {
-				emit("exception-task-module", x.From, "guard PassBTask %q has no module mapping", de.PassBTask)
+				emit("exception-task-module", x.From,
+					"guard PassBTask %q has no module mapping", de.PassBTask)
 			} else if !containsModule(info.Modules, taskModule) {
-				emit("exception-plan-module", x.From, "plan %q (modules %s) cannot remove an exception bound to task %q", x.Plan, strings.Join(info.Modules, "/"), de.PassBTask)
+				emit("exception-plan-module", x.From,
+					"plan %q (modules %s) cannot remove an exception bound to task %q",
+					x.Plan, strings.Join(info.Modules, "/"), de.PassBTask)
 			} else {
 				if x.RemoveAt != info.Barrier {
-					emit("exception-barrier", x.From, "remove_at %q does not match plan %q phase barrier %q", x.RemoveAt, x.Plan, info.Barrier)
+					emit("exception-barrier", x.From,
+						"remove_at %q does not match plan %q phase barrier %q",
+						x.RemoveAt, x.Plan, info.Barrier)
 				}
 				if x.RemoveAt == "b5" && info.Barrier != "b5" {
-					emit("exception-b5-escape", x.From, "exception deferred to b5 while plan %q can remove it at %q", x.Plan, info.Barrier)
+					emit("exception-b5-escape", x.From,
+						"exception deferred to b5 while plan %q can remove it at %q",
+						x.Plan, info.Barrier)
 				}
 			}
 		}
@@ -233,7 +258,9 @@ func CheckOwnership(g *Governance, d *Discovery) []Diagnostic {
 	}
 	for key := range discovered {
 		if _, owned := ledger[key]; !owned {
-			emit("exception-missing", key.from, "no exception-ledger entry for %s → %s registered in %s", key.from, key.to, architectureGuardCheckFile)
+			emit("exception-missing", key.from,
+				"no exception-ledger entry for %s → %s registered in %s",
+				key.from, key.to, architectureGuardCheckFile)
 		}
 	}
 
@@ -277,7 +304,8 @@ var (
 	// （形如 "— internal/router/routes_x.go:43"，行号可缺省）。
 	entryFileRE = regexp.MustCompile(`([A-Za-z0-9_./-]+\.go)(:\d+)?`)
 	// façade 注释提取：门面操作行与「当前 N 项」计数句式（module.go 包注释）。
-	facadeOpRE      = regexp.MustCompile(`(?m)^//\t(?:\(m \*Module\) )?(NewModule|RegisterRoutes|RegisterWorkers|Start|Stop)\(`)
+	facadeOpRE = regexp.MustCompile(
+		`(?m)^//\t(?:\(m \*Module\) )?(NewModule|RegisterRoutes|RegisterWorkers|Start|Stop)\(`)
 	facadeRoutesRE  = regexp.MustCompile(`当前 (\d+) 项入口`)
 	facadeWorkersRE = regexp.MustCompile(`当前 (\d+) 项，见 integration_points\.workers`)
 	facadeHooksRE   = regexp.MustCompile(`当前 (\d+) 项生命周期挂点`)
@@ -351,7 +379,8 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 	}
 
 	// ---- 组合基线：三行 composition.baseline-* 必须在册且与台账一致 ----
-	led, ledErr := parseCompositionBaseline(filepath.Join(d.Root, filepath.FromSlash("docs/architecture/evidence/pass-a-acceptance.md")))
+	acceptanceLedgerRel := filepath.FromSlash("docs/architecture/evidence/pass-a-acceptance.md")
+	led, ledErr := parseCompositionBaseline(filepath.Join(d.Root, acceptanceLedgerRel))
 	if ledErr != nil {
 		emit("contract-baseline-ledger", "", "cannot parameterize baseline counts: %v", ledErr)
 	}
@@ -477,7 +506,8 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 				inItems, inDeclared := containsExact(row.Items, op), declared[op]
 				if inItems != inDeclared {
 					emit("contract-facade-shape-drift", string(row.ID),
-						"façade operation %s: frozen=%v but module.go declares %v (absence must be explicit, not inferred)", op, inItems, inDeclared)
+						"façade operation %s: frozen=%v but module.go declares %v "+
+							"(absence must be explicit, not inferred)", op, inItems, inDeclared)
 				}
 			}
 			for _, cc := range []struct {
@@ -553,7 +583,8 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 		}
 		for _, p := range c.CharacterizationTests {
 			if !goFileSet[p] {
-				emit("contract-characterization-missing", string(c.ID), "characterization test %s does not exist on disk", p)
+				emit("contract-characterization-missing", string(c.ID),
+					"characterization test %s does not exist on disk", p)
 			}
 		}
 
@@ -582,7 +613,10 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 //     （与 architectureguard forbidden-import 同口径；exception-ledger 在册对
 //     除外——那是已有删除属主的已知债务，不是新漂移）。平台 legacy 文件导入
 //     模块子包是 Pass A 已接受状态（guard 只扫 modules 目录），不在此报告。
-func scanConsumerImports(g *Governance, c Contract, consumers []string, d *Discovery, emit func(check, path, format string, args ...any)) {
+func scanConsumerImports(
+	g *Governance, c Contract, consumers []string, d *Discovery,
+	emit func(check, path, format string, args ...any),
+) {
 	excepted := map[string]bool{}
 	for _, x := range g.Exceptions {
 		excepted[x.From+"→"+x.To] = true
@@ -611,12 +645,14 @@ func scanConsumerImports(g *Governance, c Contract, consumers []string, d *Disco
 			}
 			if strings.HasPrefix(sub, "adapters/") || sub == "adapters" {
 				emit("contract-consumer-adapters-import", p,
-					"consumer of %s imports non-public adapters subpackage %q (route via module root façade or export a narrow port)", string(c.ID), imp)
+					"consumer of %s imports non-public adapters subpackage %q "+
+						"(route via module root façade or export a narrow port)", string(c.ID), imp)
 				continue
 			}
 			if consumerModule != "" && !excepted[p+"→"+imp] {
 				emit("contract-consumer-module-import", p,
-					"consumer of %s imports module %s non-public subpackage %q without a ledgered exception", string(c.ID), targetModule, imp)
+					"consumer of %s imports module %s non-public subpackage %q without a ledgered exception",
+					string(c.ID), targetModule, imp)
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-package passbguard
+package main
 
 import (
 	"os"
@@ -161,8 +161,10 @@ func TestBriefClaimChecks(t *testing.T) {
 				conflicts[d.Path] = true
 			}
 		}
-		require.True(t, conflicts["agentruntime-protocol.md"], "want protocol conflict on native_recovery.go, got: %v", diags)
-		require.True(t, conflicts["agentruntime-engine.md"], "want engine conflict on native_archive.go, got: %v", diags)
+		require.True(t, conflicts["agentruntime-protocol.md"],
+			"want protocol conflict on native_recovery.go, got: %v", diags)
+		require.True(t, conflicts["agentruntime-engine.md"],
+			"want engine conflict on native_archive.go, got: %v", diags)
 	})
 	t.Run("substring basename is not a claim", func(t *testing.T) {
 		root := t.TempDir()
@@ -208,7 +210,8 @@ func TestRealRepoAgentRuntimeNativeOwnersFollowRuling(t *testing.T) {
 	}
 	// 纯协议包（native/nativecontract/nativeprobe/trpc/opencode/recoverytest）
 	// 的边界收敛归协议计划：协议 brief 必须逐一列名。
-	protocolBrief, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(GovernanceDir), "agentruntime-protocol.md"))
+	protocolBrief, err := os.ReadFile(filepath.Join(
+		root, filepath.FromSlash(GovernanceDir), "agentruntime-protocol.md"))
 	require.NoError(t, err)
 	for _, pkg := range ProtocolFamilyPackages {
 		require.Contains(t, string(protocolBrief), pkg,

@@ -1,4 +1,4 @@
-package passbguard
+package main
 
 import (
 	"os"
@@ -185,7 +185,8 @@ func TestContractRenderedSignatureNormalization(t *testing.T) {
 	require.Equal(t, "interface", fact.DeclKind)
 	require.Equal(t, "github.com/Tencent/WeKnora/internal/types/interfaces", fact.ImportPath)
 	require.Equal(t,
-		"interface { CreateTenant(ctx context.Context, name string) error; GetTenantByID(ctx context.Context, id uint64) (string, error) }",
+		"interface { CreateTenant(ctx context.Context, name string) error; "+
+			"GetTenantByID(ctx context.Context, id uint64) (string, error) }",
 		fact.Signature)
 }
 

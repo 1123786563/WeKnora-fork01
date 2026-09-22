@@ -1,11 +1,11 @@
-// Package passbguard 提供 Pass B 治理文件（ownership-matrix.yaml / contracts.yaml /
+// Package main 提供 Pass B 治理文件（ownership-matrix.yaml / contracts.yaml /
 // event-catalog.yaml / exception-ledger.yaml）的严格 schema 模型、跨文件稳定 ID
-// 与结构校验。
+// 与结构校验，并经 main.go 聚合为 passbguard CLI。
 //
-// B0.1–B0.5 期间本目录是库包（B0 各任务逐份生成治理文件，由测试直接消费）；
-// B0.6 落地 CLI 时创建 main.go 并把整目录翻转为 package main
+// B0.1–B0.5 期间本目录是库包 passbguard（B0 各任务逐份生成治理文件，由测试
+// 直接消费）；B0.6 落地 CLI 时创建 main.go 并把整目录翻转为 package main
 // （`go run ./tools/passbguard` 要求 main 包），模型与校验逻辑保持不变。
-package passbguard
+package main
 
 import (
 	"fmt"
@@ -246,12 +246,14 @@ func validate(g *Governance) []string {
 			diags = append(diags, fmt.Sprintf("%s.path: duplicate legacy path %q", field, l.Path))
 		}
 		if !knownModule(l.Module) {
-			diags = append(diags, fmt.Sprintf("%s.module: unknown module id %q (known: %s)", field, l.Module, strings.Join(KnownModules, " ")))
+			diags = append(diags, fmt.Sprintf(
+				"%s.module: unknown module id %q (known: %s)", field, l.Module, strings.Join(KnownModules, " ")))
 		}
 		if l.Plan == "" {
 			diags = append(diags, fmt.Sprintf("%s.plan: plan owner must not be empty", field))
 		} else if !validPlanID(l.Plan) {
-			diags = append(diags, fmt.Sprintf("%s.plan: invalid plan id %q (want NN-name form, e.g. 10-identity)", field, l.Plan))
+			diags = append(diags, fmt.Sprintf(
+				"%s.plan: invalid plan id %q (want NN-name form, e.g. 10-identity)", field, l.Plan))
 		}
 		if d := checkRepoPath(field+".destination", l.Destination, false); d != "" {
 			diags = append(diags, d)
@@ -259,10 +261,14 @@ func validate(g *Governance) []string {
 			diags = append(diags, fmt.Sprintf("%s.destination: destination must not be empty", field))
 		}
 		if l.IntegrationOwner != "" && !validPlanID(PlanID(l.IntegrationOwner)) && !knownBarrier(l.IntegrationOwner) {
-			diags = append(diags, fmt.Sprintf("%s.integration_owner: %q must be a plan id or barrier (%s)", field, l.IntegrationOwner, strings.Join(KnownBarriers, "/")))
+			diags = append(diags, fmt.Sprintf(
+				"%s.integration_owner: %q must be a plan id or barrier (%s)",
+				field, l.IntegrationOwner, strings.Join(KnownBarriers, "/")))
 		}
 		if !knownBarrier(l.DeleteBarrier) {
-			diags = append(diags, fmt.Sprintf("%s.delete_barrier: %q must be one of %s", field, l.DeleteBarrier, strings.Join(KnownBarriers, "/")))
+			diags = append(diags, fmt.Sprintf(
+				"%s.delete_barrier: %q must be one of %s",
+				field, l.DeleteBarrier, strings.Join(KnownBarriers, "/")))
 		}
 	}
 
@@ -272,15 +278,19 @@ func validate(g *Governance) []string {
 			diags = append(diags, d)
 		}
 		if i > 0 && g.Aliases[i-1].OldImportPath == a.OldImportPath {
-			diags = append(diags, fmt.Sprintf("%s.old_import_path: duplicate alias old_import_path %q", field, a.OldImportPath))
+			diags = append(diags, fmt.Sprintf(
+				"%s.old_import_path: duplicate alias old_import_path %q", field, a.OldImportPath))
 		}
 		if a.Plan == "" {
 			diags = append(diags, fmt.Sprintf("%s.plan: plan owner must not be empty", field))
 		} else if !validPlanID(a.Plan) {
-			diags = append(diags, fmt.Sprintf("%s.plan: invalid plan id %q (want NN-name form, e.g. 10-identity)", field, a.Plan))
+			diags = append(diags, fmt.Sprintf(
+				"%s.plan: invalid plan id %q (want NN-name form, e.g. 10-identity)", field, a.Plan))
 		}
 		if a.DeleteBarrier != "" && !knownBarrier(a.DeleteBarrier) {
-			diags = append(diags, fmt.Sprintf("%s.delete_barrier: %q must be one of %s", field, a.DeleteBarrier, strings.Join(KnownBarriers, "/")))
+			diags = append(diags, fmt.Sprintf(
+				"%s.delete_barrier: %q must be one of %s",
+				field, a.DeleteBarrier, strings.Join(KnownBarriers, "/")))
 		}
 	}
 
@@ -293,10 +303,13 @@ func validate(g *Governance) []string {
 			diags = append(diags, fmt.Sprintf("%s.id: duplicate contract id %q", field, c.ID))
 		}
 		if !knownModule(c.Owner) {
-			diags = append(diags, fmt.Sprintf("%s.owner: unknown module id %q (known: %s)", field, c.Owner, strings.Join(KnownModules, " ")))
+			diags = append(diags, fmt.Sprintf(
+				"%s.owner: unknown module id %q (known: %s)", field, c.Owner, strings.Join(KnownModules, " ")))
 		}
 		if !knownContractKind(c.Kind) {
-			diags = append(diags, fmt.Sprintf("%s.kind: unknown contract kind %q (known: %s)", field, c.Kind, strings.Join(KnownContractKinds, " ")))
+			diags = append(diags, fmt.Sprintf(
+				"%s.kind: unknown contract kind %q (known: %s)",
+				field, c.Kind, strings.Join(KnownContractKinds, " ")))
 		}
 		if c.Symbol == "" {
 			diags = append(diags, fmt.Sprintf("%s.symbol: symbol must not be empty", field))
@@ -327,15 +340,20 @@ func validate(g *Governance) []string {
 		if e.ID == "" {
 			diags = append(diags, fmt.Sprintf("%s.id: event id must not be empty", field))
 		} else if !eventIDRE.MatchString(string(e.ID)) {
-			diags = append(diags, fmt.Sprintf("%s.id: event id %q must be dot-separated lowercase snake segments (at least 2 segments, e.g. conversation.message.appended)", field, e.ID))
+			diags = append(diags, fmt.Sprintf(
+				"%s.id: event id %q must be dot-separated lowercase snake segments "+
+					"(at least 2 segments, e.g. conversation.message.appended)", field, e.ID))
 		} else if v := imperativeEventVerb(string(e.ID)); v != "" {
-			diags = append(diags, fmt.Sprintf("%s.id: event id %q contains imperative command verb %q; events record facts, commands stay synchronous ports", field, e.ID, v))
+			diags = append(diags, fmt.Sprintf(
+				"%s.id: event id %q contains imperative command verb %q; "+
+					"events record facts, commands stay synchronous ports", field, e.ID, v))
 		}
 		if i > 0 && g.Events[i-1].ID == e.ID {
 			diags = append(diags, fmt.Sprintf("%s.id: duplicate event id %q", field, e.ID))
 		}
 		if e.Version < 1 {
-			diags = append(diags, fmt.Sprintf("%s.version: version must be a positive integer, got %d", field, e.Version))
+			diags = append(diags, fmt.Sprintf(
+				"%s.version: version must be a positive integer, got %d", field, e.Version))
 		}
 		if e.Producer == "" {
 			diags = append(diags, fmt.Sprintf("%s.producer: producer must not be empty", field))
@@ -377,18 +395,22 @@ func validate(g *Governance) []string {
 		if hasMeta("tenant_id") {
 			for _, key := range []string{"occurred_at", "event_id"} {
 				if !hasMeta(key) {
-					diags = append(diags, fmt.Sprintf("%s.required_metadata: tenant-scoped event must also require %q", field, key))
+					diags = append(diags, fmt.Sprintf(
+						"%s.required_metadata: tenant-scoped event must also require %q", field, key))
 				}
 			}
 		}
 		for j, m := range e.RequiredMetadata {
 			if !metadataRE.MatchString(m) {
-				diags = append(diags, fmt.Sprintf("%s.required_metadata[%d]: metadata key %q must be lower snake_case", field, j, m))
+				diags = append(diags, fmt.Sprintf(
+					"%s.required_metadata[%d]: metadata key %q must be lower snake_case", field, j, m))
 			}
 		}
 		pair := fmt.Sprintf("%s/v%d", e.Producer, e.Version)
 		if first, dup := seenProducerVersion[pair]; dup {
-			diags = append(diags, fmt.Sprintf("%s.id: duplicate event producer/version pair %q (first declared at events[%d])", field, pair, first))
+			diags = append(diags, fmt.Sprintf(
+				"%s.id: duplicate event producer/version pair %q (first declared at events[%d])",
+				field, pair, first))
 		} else {
 			seenProducerVersion[pair] = i
 		}
@@ -411,10 +433,13 @@ func validate(g *Governance) []string {
 		if x.Plan == "" {
 			diags = append(diags, fmt.Sprintf("%s.plan: plan owner must not be empty", field))
 		} else if !validPlanID(x.Plan) {
-			diags = append(diags, fmt.Sprintf("%s.plan: invalid plan id %q (want NN-name form, e.g. 10-identity)", field, x.Plan))
+			diags = append(diags, fmt.Sprintf(
+				"%s.plan: invalid plan id %q (want NN-name form, e.g. 10-identity)", field, x.Plan))
 		}
 		if !knownBarrier(x.RemoveAt) {
-			diags = append(diags, fmt.Sprintf("%s.remove_at: %q must be one of %s", field, x.RemoveAt, strings.Join(KnownBarriers, "/")))
+			diags = append(diags, fmt.Sprintf(
+				"%s.remove_at: %q must be one of %s",
+				field, x.RemoveAt, strings.Join(KnownBarriers, "/")))
 		}
 		if x.Reason == "" {
 			diags = append(diags, fmt.Sprintf("%s.reason: reason must not be empty", field))

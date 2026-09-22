@@ -1,4 +1,4 @@
-package passbguard
+package main
 
 import (
 	"fmt"
@@ -262,7 +262,8 @@ func TestEventSchemaRejectsCommandNames(t *testing.T) {
 		"usage.record.update",
 	} {
 		t.Run(id, func(t *testing.T) {
-			err := loadEventCatalogFixture(t, validEventYAML(id, "internal/application/repository/message.go:CreateMessage"))
+			sym := "internal/application/repository/message.go:CreateMessage"
+			err := loadEventCatalogFixture(t, validEventYAML(id, sym))
 			require.Error(t, err, "事件 id %s 是命令式命名，必须被拒绝", id)
 			require.Contains(t, err.Error(), "imperative")
 		})
