@@ -918,7 +918,7 @@ function FileUnknownIcon({ size = 18, className }: { size?: number; className?: 
 
 // Vue 全屏/收起 preview-toolbar 按钮（document-preview.vue:497-505 t-icon fullscreen）。
 function FullscreenIcon({ size = 15 }: { size?: number }) {
-  // t-icon fullscreen-1（sprite）
+  // t-icon fullscreen（sprite）
   return <Icon size={size} cap="square"><path d="M6.343 17.657 17.657 6.343M18.5 11V5.5H13M5.5 13v5.5H11" /></Icon>;
 }
 

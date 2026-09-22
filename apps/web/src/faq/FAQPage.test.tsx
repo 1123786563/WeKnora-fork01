@@ -362,6 +362,7 @@ test('editor drawer mirrors the Vue form: labels, per-field desc copy, required 
   const html = await mountView(baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm }));
   assert.ok(html.includes('faq-editor-drawer'), 'drawer shell present');
   assert.ok(html.includes('t-drawer__body'), 'tdesign drawer body');
+  assert.ok(html.includes('标准问'), 'standard question label');
   assert.ok(html.includes(t('knowledgeEditor.faq.standardQuestionDesc')), 'standard question desc key');
   assert.ok(html.includes(t('knowledgeEditor.faq.similarQuestionsDesc')), 'similar questions desc key');
   assert.ok(html.includes(t('knowledgeEditor.faq.negativeQuestionsDesc')), 'negative questions desc key');
