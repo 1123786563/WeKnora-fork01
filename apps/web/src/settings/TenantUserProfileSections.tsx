@@ -4,6 +4,13 @@ import { Button, Input, Status, Textarea } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { profilePasswordPatch, tenantPatch } from './surface.ts';
 
+// T12a：UserProfileSection 直译 UserProfile.vue 的 t-popup / t-alert /
+// t-loading / t-button / t-form / t-input（TenantInfoSection 仍走旧栈，
+// settings-tenant 提交时迁移）。
+import { Icon as TIcon } from 'tdesign-icons-react';
+import { Alert, Button as TButton, Form, Input as TInput, Loading, Popup } from 'tdesign-react';
+import { pushSettingsToast } from './settings-toast.tsx';
+
 // ---------------------------------------------------------------------------
 // Localized tenant + userprofile sections (item A5). Ported from
 // frontend/src/views/settings/TenantInfo.vue (read-only setting rows with
@@ -233,8 +240,13 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
   );
 }
 
-// UserProfile.vue password rules: the shared auth.* message keys mirror the
-// newPasswordRules table (frontend/src/utils/passwordPolicy.ts).
+// UserProfileSection —— T12a TDesign 同构迁移：逐节点复刻
+// frontend/src/views/settings/UserProfile.vue（section-header + loading-inline
+// / error-inline t-alert + settings-group 行 + 密码行 popup 编辑）。样式走
+// settings.td.css §3（UserProfile.vue scoped 块平移）。
+
+// UserProfile.vue passwordRules 的 newPasswordRules 表（frontend/src/utils/
+// passwordPolicy.ts）——tdesign Form rules 直接产出同一批 auth.* 文案。
 const PASSWORD_SPECIAL_CHARS = '!@#$%^&*()_+-=[]{}|;:,.<>?';
 
 function newPasswordError(value: string, complexEnabled: boolean): string | null {
@@ -257,184 +269,180 @@ function newPasswordError(value: string, complexEnabled: boolean): string | null
   return null;
 }
 
-export function UserProfileSection({ client, locale, payload }: {
+export function UserProfileSection({ client, locale, payload, error: loadError, loading, onRetry }: {
   client: WeKnoraClient;
   locale: Locale;
   payload: unknown;
+  /** 壳层读取失败原文（UserProfile.vue error 态：t-alert theme=error + 重试）。 */
+  error?: string | null;
+  /** 壳层首载中（UserProfile.vue loading 态：t-loading size=small）。 */
+  loading?: boolean;
+  onRetry?: () => void;
 }) {
-  const t = (key: string, values?: Record<string, string | number>) => formatMessage(locale, key, values);
+  const t = (key: string) => formatMessage(locale, key);
   const info = payload !== null && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
   const [complexPasswordEnabled, setComplexPasswordEnabled] = useState(false);
   // Vue UserProfile: the change-password form lives in a click popup off the
-  // masked row's edit button, not inline below the settings rows.
+  // masked row's edit button (t-popup destroy-on-close).
   const [passwordPopupOpen, setPasswordPopupOpen] = useState(false);
-  const [form, setForm] = useState({ oldPassword: '', newPassword: '', confirmation: '' });
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
+  const [form, setForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    // Vue 在 popup 打开时才拉 getAuthConfig 的 complex_password_enabled。
+    if (!passwordPopupOpen) return;
+    let active = true;
     void client.auth.registrationConfig()
-      .then((config) => setComplexPasswordEnabled(config.complexPasswordEnabled === true))
-      .catch(() => setComplexPasswordEnabled(false));
-  }, [client]);
+      .then((config) => { if (active) setComplexPasswordEnabled(config.complexPasswordEnabled === true); })
+      .catch(() => { if (active) setComplexPasswordEnabled(false); });
+    return () => { active = false; };
+  }, [client, passwordPopupOpen]);
 
-  type Field = 'oldPassword' | 'newPassword' | 'confirmation';
-  function validateField(field: Field, value: string, current: typeof form): string | null {
-    if (field === 'oldPassword') return value ? null : t('userProfile.changePassword.currentRequired');
-    if (field === 'newPassword') {
-      const policy = newPasswordError(value, complexPasswordEnabled);
-      if (policy) return t(policy);
-      if (value && value === current.oldPassword) return t('userProfile.changePassword.sameAsCurrent');
-      return null;
-    }
-    if (!value) return t('auth.confirmPasswordRequired');
-    if (value !== current.newPassword) return t('auth.passwordMismatch');
-    return null;
-  }
+  function resetPasswordForm() { setForm({ oldPassword: '', newPassword: '', confirmPassword: '' }); }
 
-  function blurField(field: Field) {
-    setFieldErrors((current) => ({ ...current, [field]: validateField(field, form[field], form) }));
-  }
-
-  function update(field: Field, value: string) {
-    setForm((current) => {
-      const next = { ...current, [field]: value };
-      setFieldErrors((errors) => ({
-        ...errors,
-        [field]: errors[field] ? null : errors[field],
-        ...(field === 'newPassword' && errors.confirmation ? { confirmation: null } : {}),
-        ...(field === 'oldPassword' && errors.newPassword && next.newPassword !== errors.newPassword ? { newPassword: null } : {}),
-      }));
-      return next;
-    });
-  }
-
-  function resetForm() {
-    setForm({ oldPassword: '', newPassword: '', confirmation: '' });
-    setFieldErrors({});
-  }
-
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitPasswordChange() {
     if (submitting) return;
-    const errors = {
-      oldPassword: validateField('oldPassword', form.oldPassword, form),
-      newPassword: validateField('newPassword', form.newPassword, form),
-      confirmation: validateField('confirmation', form.confirmation, form),
-    };
-    setFieldErrors(errors);
-    if (errors.oldPassword || errors.newPassword || errors.confirmation) return;
-    setSubmitting(true); setError(null); setNotice(null);
+    const policyError = newPasswordError(form.newPassword, complexPasswordEnabled);
+    const mismatch = !form.oldPassword
+      ? t('userProfile.changePassword.currentRequired')
+      : policyError ? t(policyError)
+        : form.newPassword === form.oldPassword ? t('userProfile.changePassword.sameAsCurrent')
+          : !form.confirmPassword ? t('auth.confirmPasswordRequired')
+            : form.confirmPassword !== form.newPassword ? t('auth.passwordMismatch')
+              : null;
+    if (mismatch) { pushSettingsToast(mismatch, 'error'); return; }
+    setSubmitting(true);
     try {
-      const patch = profilePasswordPatch(form.oldPassword, form.newPassword, form.confirmation, { complexPasswordEnabled });
+      const patch = profilePasswordPatch(form.oldPassword, form.newPassword, form.confirmPassword, { complexPasswordEnabled });
       await client.settings.profile.changePassword(patch);
-      setNotice(t('userProfile.changePassword.success'));
-      resetForm();
+      setPasswordPopupOpen(false);
+      resetPasswordForm();
+      pushSettingsToast(t('userProfile.changePassword.success'), 'success');
     } catch (reason) {
-      setError(reason instanceof Error && reason.message ? reason.message : t('userProfile.changePassword.failed'));
+      pushSettingsToast(reason instanceof Error && reason.message ? reason.message : t('userProfile.changePassword.failed'), 'error');
     } finally { setSubmitting(false); }
   }
 
+  const passwordInput = (field: 'oldPassword' | 'newPassword' | 'confirmPassword', autocomplete: string, enterSubmit = false) => (
+    <TInput
+      type="password"
+      autocomplete={autocomplete}
+      disabled={submitting}
+      placeholder={t('userProfile.changePassword.' + (field === 'oldPassword' ? 'currentPlaceholder' : field === 'newPassword' ? 'newPlaceholder' : 'confirmPlaceholder'))}
+      value={form[field]}
+      onChange={(value) => setForm((current) => ({ ...current, [field]: String(value ?? '') }))}
+      {...(enterSubmit ? { onEnter: () => { void submitPasswordChange(); } } : {})}
+    />
+  );
+
   return (
     <div className="user-profile" data-testid="user-profile-section">
-      {error ? <Status tone="error">{error}</Status> : null}
-      <div className="settings-group">
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('tenant.api.userIdLabel')}</label>
-            <p className="desc">{t('tenant.api.userIdDescription')}</p>
-          </div>
-          <div className="setting-control"><span className="info-value">{text(info.id) || '-'}</span></div>
-        </div>
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('tenant.api.usernameLabel')}</label>
-            <p className="desc">{t('tenant.api.usernameDescription')}</p>
-          </div>
-          <div className="setting-control"><span className="info-value">{text(info.username) || '-'}</span></div>
-        </div>
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('tenant.api.emailLabel')}</label>
-            <p className="desc">{t('tenant.api.emailDescription')}</p>
-          </div>
-          <div className="setting-control"><span className="info-value">{text(info.email) || '-'}</span></div>
-        </div>
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('tenant.api.createdAtLabel')}</label>
-            <p className="desc">{t('tenant.api.createdAtDescription')}</p>
-          </div>
-          <div className="setting-control"><span className="info-value">{formatDateTime(info.created_at, locale)}</span></div>
-        </div>
-        <div className="setting-row">
-          <div className="setting-info">
-            <label>{t('userProfile.changePassword.label')}</label>
-            <p className="desc">{t('userProfile.changePassword.description')}</p>
-          </div>
-          <div className="setting-control flex items-center gap-2">
-            <span className="info-value password-mask" aria-hidden="true">••••••••</span>
-            <button type="button" className="edit-btn inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-[#87909d] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" aria-label={t('userProfile.changePassword.label')} title={t('userProfile.changePassword.label')} aria-expanded={passwordPopupOpen} onClick={() => setPasswordPopupOpen((open) => !open)}>
-              {/* t-icon "edit" counterpart */}
-              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
-            </button>
-          </div>
-        </div>
+      <div className="section-header">
+        <h2>{t('userProfile.title')}</h2>
+        <p className="section-description">{t('userProfile.description')}</p>
       </div>
-      {passwordPopupOpen ? (
-      <div className="user-profile-password-popup relative ml-auto w-full max-w-[360px] rounded-[10px] border border-[#e7e7ea] bg-white p-4 shadow-[0_6px_24px_rgba(15,23,42,0.12)]">
-        <div className="text-[14px] font-semibold text-ink">{t('userProfile.changePassword.label')}</div>
-        <p className="m-0 mb-2 mt-1 text-[12px] text-muted-strong">{t('userProfile.changePassword.description')}</p>
-      <form className="grid gap-3" onSubmit={(event) => void submit(event)}>
-        <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
-          {t('userProfile.changePassword.currentLabel')}
-          <Input
-            className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
-            type="password"
-            autoComplete="current-password"
-            placeholder={t('userProfile.changePassword.currentPlaceholder')}
-            value={form.oldPassword}
-            onChange={(event) => update('oldPassword', event.target.value)}
-            onBlur={() => blurField('oldPassword')}
-          />
-          {fieldErrors.oldPassword ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{fieldErrors.oldPassword}</span> : null}
-        </label>
-        <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
-          {t('userProfile.changePassword.newLabel')}
-          <Input
-            className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
-            type="password"
-            autoComplete="new-password"
-            placeholder={t('userProfile.changePassword.newPlaceholder')}
-            value={form.newPassword}
-            onChange={(event) => update('newPassword', event.target.value)}
-            onBlur={() => blurField('newPassword')}
-          />
-          {fieldErrors.newPassword ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{fieldErrors.newPassword}</span> : null}
-        </label>
-        <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
-          {t('userProfile.changePassword.confirmLabel')}
-          <Input
-            className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
-            type="password"
-            autoComplete="new-password"
-            placeholder={t('userProfile.changePassword.confirmPlaceholder')}
-            value={form.confirmation}
-            onChange={(event) => update('confirmation', event.target.value)}
-            onBlur={() => blurField('confirmation')}
-          />
-          {fieldErrors.confirmation ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{fieldErrors.confirmation}</span> : null}
-        </label>
-        <div className="inline-edit-actions">
-          <Button type="button" disabled={submitting} onClick={() => { resetForm(); setPasswordPopupOpen(false); }}>{t('common.cancel')}</Button>
-          <Button type="submit" loading={submitting}>{t('userProfile.changePassword.submit')}</Button>
+
+      {loading ? (
+        <div className="loading-inline">
+          <Loading size="small" />
+          <span>{t('tenant.loadingInfo')}</span>
         </div>
-      </form>
-      </div>
-      ) : null}
-      {notice ? <Status tone="success">{notice}</Status> : null}
+      ) : loadError ? (
+        <div className="error-inline">
+          <Alert
+            theme="error"
+            message={loadError}
+            operation={<TButton size="small" onClick={() => onRetry?.()}>{t('tenant.retry')}</TButton>}
+          />
+        </div>
+      ) : (
+        <div className="settings-group">
+          <div className="setting-row">
+            <div className="setting-info">
+              <label>{t('tenant.api.userIdLabel')}</label>
+              <p className="desc">{t('tenant.api.userIdDescription')}</p>
+            </div>
+            <div className="setting-control"><span className="info-value">{text(info.id) || '-'}</span></div>
+          </div>
+          <div className="setting-row">
+            <div className="setting-info">
+              <label>{t('tenant.api.usernameLabel')}</label>
+              <p className="desc">{t('tenant.api.usernameDescription')}</p>
+            </div>
+            <div className="setting-control"><span className="info-value">{text(info.username) || '-'}</span></div>
+          </div>
+          <div className="setting-row">
+            <div className="setting-info">
+              <label>{t('tenant.api.emailLabel')}</label>
+              <p className="desc">{t('tenant.api.emailDescription')}</p>
+            </div>
+            <div className="setting-control"><span className="info-value">{text(info.email) || '-'}</span></div>
+          </div>
+          <div className="setting-row">
+            <div className="setting-info">
+              <label>{t('tenant.api.createdAtLabel')}</label>
+              <p className="desc">{t('tenant.api.createdAtDescription')}</p>
+            </div>
+            <div className="setting-control"><span className="info-value">{formatDateTime(info.created_at, locale)}</span></div>
+          </div>
+          <div className="setting-row">
+            <div className="setting-info">
+              <label>{t('userProfile.changePassword.label')}</label>
+              <p className="desc">{t('userProfile.changePassword.description')}</p>
+            </div>
+            <div className="setting-control">
+              <span className="info-value password-mask" aria-hidden="true">••••••••</span>
+              <Popup
+                trigger="click"
+                // Vue placement="bottom-end"：tdesign-react 1.18.3 的
+                // PopupPlacement 无 -end 粒度（库间差异，弹层开启态几何才有
+                // 影响，稳态扫描不可见），bottom-right 同为右缘对齐。
+                placement="bottom-right"
+                destroyOnClose
+                visible={passwordPopupOpen}
+                onVisibleChange={(visible) => { if (!submitting) { setPasswordPopupOpen(visible); if (!visible) resetPasswordForm(); } }}
+                overlayClassName="user-profile-password-popup-overlay"
+                content={(
+                  <div className="password-popup-inner" onClick={(event) => event.stopPropagation()}>
+                    <div className="password-popup-title">{t('userProfile.changePassword.label')}</div>
+                    <p className="password-popup-hint">{t('userProfile.changePassword.description')}</p>
+                    <Form labelAlign="top" className="password-popup-form" onSubmit={(ctx) => { ctx.e?.preventDefault(); void submitPasswordChange(); }}>
+                      <Form.FormItem label={t('userProfile.changePassword.currentLabel')} name="oldPassword">
+                        {passwordInput('oldPassword', 'current-password')}
+                      </Form.FormItem>
+                      <Form.FormItem label={t('userProfile.changePassword.newLabel')} name="newPassword">
+                        {passwordInput('newPassword', 'new-password')}
+                      </Form.FormItem>
+                      <Form.FormItem label={t('userProfile.changePassword.confirmLabel')} name="confirmPassword">
+                        {passwordInput('confirmPassword', 'new-password', true)}
+                      </Form.FormItem>
+                    </Form>
+                    <div className="password-popup-footer">
+                      <TButton variant="outline" disabled={submitting} onClick={() => { setPasswordPopupOpen(false); resetPasswordForm(); }}>
+                        {t('common.cancel')}
+                      </TButton>
+                      <TButton theme="primary" loading={submitting} onClick={() => { void submitPasswordChange(); }}>
+                        {t('userProfile.changePassword.submit')}
+                      </TButton>
+                    </div>
+                  </div>
+                )}
+              >
+                <TButton
+                  theme="default"
+                  variant="text"
+                  shape="square"
+                  size="small"
+                  className="edit-btn"
+                  title={t('userProfile.changePassword.label')}
+                  aria-label={t('userProfile.changePassword.label')}
+                  icon={<TIcon name="edit" />}
+                />
+              </Popup>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

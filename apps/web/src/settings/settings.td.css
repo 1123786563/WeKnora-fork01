@@ -525,3 +525,173 @@
   border-color: var(--td-brand-color-active);
   color: var(--td-text-color-anti);
 }
+
+/* ==== 3. UserProfile.vue scoped 块平移（settings-userprofile 分区） ==== */
+
+.wk-settings-drawer-root .user-profile {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .user-profile .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .user-profile .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .user-profile .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .user-profile .loading-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+  justify-content: center;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+}
+
+.wk-settings-drawer-root .user-profile .error-inline {
+  padding: 20px 0;
+}
+
+.wk-settings-drawer-root .user-profile .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .user-profile .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .user-profile .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .user-profile .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .user-profile .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .user-profile .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .user-profile .setting-control {
+  flex-shrink: 0;
+  min-width: 280px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .user-profile .setting-control .info-value {
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  text-align: right;
+  word-break: break-word;
+}
+
+.wk-settings-drawer-root .user-profile .setting-control .info-value--muted {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .user-profile .setting-control .edit-btn {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .user-profile .password-mask {
+  letter-spacing: 0.12em;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-inner {
+  max-width: 100%;
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px;
+  line-height: 1.35;
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-form .t-form__item {
+  margin-bottom: 14px;
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-form .t-form__item:last-child {
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .user-profile .password-popup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ==== 3b. UserProfile.vue unscoped 块（body 弹层，§2.5 原样平移不加前缀） ==== */
+/* t-popup 挂到 body，需全局样式；z-index 需高于设置全屏遮罩（2000）。 */
+.user-profile-password-popup-overlay {
+  z-index: 3050 !important;
+}
+
+.user-profile-password-popup-overlay .t-popup__content {
+  padding: 14px 16px !important;
+  min-width: 300px;
+  max-width: min(392px, calc(100vw - 24px));
+  border-radius: 12px !important;
+  background: var(--td-bg-color-container) !important;
+  border: 0.5px solid var(--td-component-stroke) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+}
+
+:root[theme-mode='dark'] .user-profile-password-popup-overlay .t-popup__content {
+  background: rgba(36, 36, 36, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.28) !important;
+}
