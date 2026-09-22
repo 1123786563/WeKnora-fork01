@@ -1951,3 +1951,125 @@
   white-space: nowrap;
 }
 
+/* ==== 9. MemoryWorkspaceSettings.vue scoped 块平移（settings-memory 分区，T12b） ==== */
+
+.wk-settings-drawer-root .memory-workspace-settings {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .section-header {
+  margin-bottom: 24px;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .intro-icon {
+  color: var(--td-brand-color);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .intro-title {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .intro-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .settings-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-info .hint {
+  margin-top: 4px !important;
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .setting-control {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* The custom prompt needs room to read, so this row stacks instead of putting a
+   paragraph of rules into a narrow right-hand column. */
+.wk-settings-drawer-root .memory-workspace-settings .instructions-row {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .instructions-row .setting-info {
+  max-width: 100%;
+  padding-right: 0;
+  margin-bottom: 10px;
+}
+
+.wk-settings-drawer-root .memory-workspace-settings .instructions-control {
+  width: 100%;
+  justify-content: stretch;
+}
+

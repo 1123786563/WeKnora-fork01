@@ -1,115 +1,289 @@
+// Memory workspace settings — TDesign 同构迁移（T12b）平移自
+// frontend/src/views/settings/MemoryWorkspaceSettings.vue（Settings.vue 挂载于
+// "memory" 分区，长期记忆空间级开关）。DOM/类名/文案逐节点对照 Vue SFC；
+// 样式在 settings.td.css §9（scoped 块以 .memory-workspace-settings 根类限定）。
+// 保存走 Vue debouncedSave(500ms) + MessagePlugin toast（pushSettingsToast）。
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { NumberInput, Status, Switch, Textarea } from '@weknora/ui';
-import { ModelOptionSelect } from './ModelOptionSelect.tsx';
+import { Icon as TIcon } from 'tdesign-icons-react';
+import { InputNumber, Radio, RadioGroup, Switch as TSwitch, Textarea as TTextarea } from 'tdesign-react';
+import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 import { navigate } from '../platform/navigation.ts';
 import { memoryWorkspacePatch } from './surface.ts';
-import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
+import { pushSettingsToast } from './settings-toast.tsx';
+import { ModelSelector, type ModelSelectorModel } from './ModelSelector.tsx';
 
 type MemoryRow = Record<string, unknown>;
 
-function rowId(row: MemoryRow): string { return typeof row.id === 'string' || typeof row.id === 'number' ? String(row.id) : ''; }
-function rowContent(row: MemoryRow): string { return typeof row.content === 'string' ? row.content : ''; }
+interface MemoryDraft {
+  enabled: boolean;
+  write_mode: 'explicit_only' | 'auto';
+  extract_model_id: string;
+  max_items: number;
+  extract_delay_seconds: number;
+  extract_min_interval_seconds: number;
+  extract_instructions: string;
+  interest_threshold: number;
+  retrieval_conditioning: boolean;
+  embedding_model_id: string;
+  vector_recall: boolean;
+}
+
+const DEFAULT_DRAFT: MemoryDraft = {
+  enabled: false,
+  write_mode: 'explicit_only',
+  extract_model_id: '',
+  max_items: 200,
+  extract_delay_seconds: 90,
+  extract_min_interval_seconds: 300,
+  extract_instructions: '',
+  interest_threshold: 3,
+  retrieval_conditioning: true,
+  embedding_model_id: '',
+  vector_recall: true,
+};
+
+// Vue loadConfig 的字段回退（cfg.x || default / !== false）。
+function readDraft(value: unknown): MemoryDraft {
+  const row = value !== null && typeof value === 'object' && !Array.isArray(value) ? value as MemoryRow : {};
+  const num = (key: string, fallback: number): number => (typeof row[key] === 'number' && row[key] !== 0 ? row[key] as number : fallback);
+  return {
+    enabled: row.enabled === true,
+    write_mode: row.write_mode === 'auto' ? 'auto' : 'explicit_only',
+    extract_model_id: typeof row.extract_model_id === 'string' && row.extract_model_id ? row.extract_model_id : '',
+    max_items: num('max_items', 200),
+    extract_delay_seconds: num('extract_delay_seconds', 90),
+    extract_min_interval_seconds: num('extract_min_interval_seconds', 300),
+    extract_instructions: typeof row.extract_instructions === 'string' && row.extract_instructions ? row.extract_instructions : '',
+    interest_threshold: num('interest_threshold', 3),
+    retrieval_conditioning: row.retrieval_conditioning !== false,
+    embedding_model_id: typeof row.embedding_model_id === 'string' && row.embedding_model_id ? row.embedding_model_id : '',
+    vector_recall: row.vector_recall !== false,
+  };
+}
 
 export function MemoryWorkspacePanel({ client, initialConfig, canEdit = true }: { client: WeKnoraClient; initialConfig: unknown; canEdit?: boolean }) {
   const t = settingsT(readInitialLocale());
-  const row = initialConfig !== null && typeof initialConfig === 'object' && !Array.isArray(initialConfig) ? initialConfig as MemoryRow : {};
-  const [enabled, setEnabled] = useState(row.enabled === true);
-  const [writeMode, setWriteMode] = useState(row.write_mode === 'auto' ? 'auto' : 'explicit_only');
-  const [maxItems, setMaxItems] = useState(typeof row.max_items === 'number' ? row.max_items : 200);
-  const [extractModelId, setExtractModelId] = useState(typeof row.extract_model_id === 'string' ? row.extract_model_id : '');
-  const [extractDelaySeconds, setExtractDelaySeconds] = useState(typeof row.extract_delay_seconds === 'number' ? row.extract_delay_seconds : 90);
-  const [extractMinIntervalSeconds, setExtractMinIntervalSeconds] = useState(typeof row.extract_min_interval_seconds === 'number' ? row.extract_min_interval_seconds : 300);
-  const [extractInstructions, setExtractInstructions] = useState(typeof row.extract_instructions === 'string' ? row.extract_instructions : '');
-  const [interestThreshold, setInterestThreshold] = useState(typeof row.interest_threshold === 'number' ? row.interest_threshold : 3);
-  const [embeddingModelId, setEmbeddingModelId] = useState(typeof row.embedding_model_id === 'string' ? row.embedding_model_id : '');
-  const [models, setModels] = useState<Array<{ id: string; name: string; type?: string }>>([]);
-  const [vectorRecall, setVectorRecall] = useState(row.vector_recall !== false);
-  const [retrievalConditioning, setRetrievalConditioning] = useState(row.retrieval_conditioning !== false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [draft, setDraft] = useState<MemoryDraft>(() => readDraft(initialConfig));
+  const [models, setModels] = useState<ModelSelectorModel[]>([]);
   const saveTimerRef = useRef<number | null>(null);
-  const pendingSaveRef = useRef<Parameters<typeof save>[0]>({});
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
-  useEffect(() => {
-    setEnabled(row.enabled === true); setWriteMode(row.write_mode === 'auto' ? 'auto' : 'explicit_only'); setMaxItems(typeof row.max_items === 'number' ? row.max_items : 200); setExtractModelId(typeof row.extract_model_id === 'string' ? row.extract_model_id : ''); setExtractDelaySeconds(typeof row.extract_delay_seconds === 'number' ? row.extract_delay_seconds : 90); setExtractMinIntervalSeconds(typeof row.extract_min_interval_seconds === 'number' ? row.extract_min_interval_seconds : 300); setExtractInstructions(typeof row.extract_instructions === 'string' ? row.extract_instructions : ''); setInterestThreshold(typeof row.interest_threshold === 'number' ? row.interest_threshold : 3); setEmbeddingModelId(typeof row.embedding_model_id === 'string' ? row.embedding_model_id : ''); setVectorRecall(row.vector_recall !== false); setRetrievalConditioning(row.retrieval_conditioning !== false);
-  }, [initialConfig]);
+  useEffect(() => { setDraft(readDraft(initialConfig)); }, [initialConfig]);
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
   }, []);
 
-  useEffect(() => { void client.configuration.models.list().then((items) => setModels(items.map((item) => ({ id: item.id, name: item.name, type: typeof item.type === 'string' ? item.type : undefined })))).catch(() => setModels([])); }, [client]);
+  // Vue ModelSelector 未收到 allModels 时自拉（chatResources.ensureModels →
+  // configuration.models.list）。
+  useEffect(() => {
+    void client.configuration.models.list()
+      .then((items) => setModels(items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        display_name: typeof item.display_name === 'string' ? item.display_name : undefined,
+        is_builtin: item.is_builtin === true,
+        is_default: item.is_default === true,
+        type: typeof item.type === 'string' ? item.type : undefined,
+        parameters: (item.parameters ?? null) as Record<string, unknown> | null,
+      }))))
+      .catch(() => setModels([]));
+  }, [client]);
 
-  async function save(next: { enabled?: boolean; writeMode?: string; maxItems?: number; extractModelId?: string; extractDelaySeconds?: number; extractMinIntervalSeconds?: number; extractInstructions?: string; interestThreshold?: number; embeddingModelId?: string; vectorRecall?: boolean; retrievalConditioning?: boolean }) {
-    if (!canEdit) return;
-    const values = { enabled: next.enabled ?? enabled, writeMode: next.writeMode ?? writeMode, maxItems: next.maxItems ?? maxItems, extractModelId: next.extractModelId ?? extractModelId, extractDelaySeconds: next.extractDelaySeconds ?? extractDelaySeconds, extractMinIntervalSeconds: next.extractMinIntervalSeconds ?? extractMinIntervalSeconds, extractInstructions: next.extractInstructions ?? extractInstructions, interestThreshold: next.interestThreshold ?? interestThreshold, embeddingModelId: next.embeddingModelId ?? embeddingModelId, vectorRecall: next.vectorRecall ?? vectorRecall, retrievalConditioning: next.retrievalConditioning ?? retrievalConditioning };
-    setBusy(true); setError(null); setNotice(null);
-    try { await client.settings.memory.workspace.update(memoryWorkspacePatch(values.enabled, values.writeMode, values.maxItems, values.vectorRecall, values.retrievalConditioning, values)); setEnabled(values.enabled); setWriteMode(values.writeMode); setMaxItems(values.maxItems); setExtractModelId(values.extractModelId); setExtractDelaySeconds(values.extractDelaySeconds); setExtractMinIntervalSeconds(values.extractMinIntervalSeconds); setExtractInstructions(values.extractInstructions); setInterestThreshold(values.interestThreshold); setEmbeddingModelId(values.embeddingModelId); setVectorRecall(values.vectorRecall); setRetrievalConditioning(values.retrievalConditioning); setNotice(t('memoryWorkspaceSettings.toasts.saveSuccess')); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t('common.operationFailed')); }
-    finally { setBusy(false); }
+  function update(patch: Partial<MemoryDraft>) {
+    setDraft((current) => ({ ...current, ...patch }));
   }
 
-  function debouncedSave(next: Parameters<typeof save>[0] = {}) {
+  // Vue saveConfig（debouncedSave 500ms，isInitializing/canEdit 抑制）。
+  function debouncedSave() {
     if (!canEdit) return;
-    pendingSaveRef.current = { ...pendingSaveRef.current, ...next };
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
-      const pending = pendingSaveRef.current;
-      pendingSaveRef.current = {};
       saveTimerRef.current = null;
-      void save(pending);
+      void (async () => {
+        const next = draftRef.current;
+        try {
+          await client.settings.memory.workspace.update(memoryWorkspacePatch(
+            next.enabled, next.write_mode, next.max_items, next.vector_recall, next.retrieval_conditioning,
+            {
+              extractModelId: next.extract_model_id,
+              extractDelaySeconds: next.extract_delay_seconds,
+              extractMinIntervalSeconds: next.extract_min_interval_seconds,
+              extractInstructions: next.extract_instructions,
+              interestThreshold: next.interest_threshold,
+              embeddingModelId: next.embedding_model_id,
+            },
+          ) as never);
+          pushSettingsToast(t('memoryWorkspaceSettings.toasts.saveSuccess'), 'success');
+        } catch (reason) {
+          const message = reason instanceof Error ? reason.message : '';
+          pushSettingsToast(t('memoryWorkspaceSettings.toasts.saveFailed', { message }));
+        }
+      })();
     }, 500);
   }
 
-  const options = (types: string[]) => models.filter((model) => types.includes((model.type ?? '').toLowerCase())).map((model) => ({ value: model.id, label: model.name }));
-  const setting = (label: string, description: string, control: ReactNode, hint?: string) => <div className="flex items-start justify-between border-b border-[#e7e7e7] py-5 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2"><div className="max-w-[65%] flex-1 pr-6 max-[720px]:max-w-full max-[720px]:pr-0"><label className="mb-1 block text-[15px] font-medium leading-[normal] text-[rgba(0,0,0,0.9)]">{label}</label><p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{description}</p>{hint ? <p className="m-0 mt-1 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.4)]">{hint}</p> : null}</div><div className="flex shrink-0 items-center justify-end">{control}</div></div>;
-  const autoFields = writeMode === 'auto' ? <>
-    {setting(t('memoryWorkspaceSettings.extractModelLabel'), t('memoryWorkspaceSettings.extractModelDescription'), <ModelOptionSelect value={extractModelId} options={options(['chat', 'vllm'])} disabled={!canEdit || busy} addModelLabel={t('model.addModelInSettings')} onAddModel={() => navigate('/platform/settings?section=models&subsection=chat')} onChange={(value) => debouncedSave({ extractModelId: value })} />)}
-    {setting(t('memoryWorkspaceSettings.extractDelayLabel'), t('memoryWorkspaceSettings.extractDelayDescription'), <NumberInput min={5} max={3600} step={15} value={extractDelaySeconds} disabled={!canEdit || busy} onValueChange={(value) => setExtractDelaySeconds(Number(value))} onBlur={() => debouncedSave()} />)}
-    {setting(t('memoryWorkspaceSettings.extractMinIntervalLabel'), t('memoryWorkspaceSettings.extractMinIntervalDescription'), <NumberInput min={0} max={86400} step={60} value={extractMinIntervalSeconds} disabled={!canEdit || busy} onValueChange={(value) => setExtractMinIntervalSeconds(Number(value))} onBlur={() => debouncedSave()} />)}
-    {setting(t('memoryWorkspaceSettings.interestThresholdLabel'), t('memoryWorkspaceSettings.interestThresholdDescription'), <NumberInput min={1} max={20} step={1} value={interestThreshold} disabled={!canEdit || busy} onValueChange={(value) => setInterestThreshold(Number(value))} onBlur={() => debouncedSave()} />)}
-  </> : null;
-
-  // Vue MemoryWorkspaceSettings.vue: bare section on the drawer background —
-  // h2 header, neutral intro box with brand icon, bordered setting rows, and a
-  // stacked full-width custom-prompt row.
-  return <div className="w-full text-[rgba(0,0,0,0.9)]">
-    <div className="mb-6">
-      <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[28px] text-[rgba(0,0,0,0.9)]">{t('memoryWorkspaceSettings.title')}</h2>
-      <p className="m-0 text-sm leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('memoryWorkspaceSettings.description')}</p>
-    </div>
-    <div className="mb-2 flex items-start gap-2.5 rounded-lg bg-[#f3f3f3] px-4 py-[14px]" role="note">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mt-0.5 shrink-0 text-[#07c05f]"><circle cx="8" cy="8" r="6.25" /><line x1="8" y1="7.4" x2="8" y2="11.2" /><line x1="8" y1="4.9" x2="8" y2="5.1" /></svg>
-      <div>
-        <p className="m-0 mb-1 text-sm font-medium text-[rgba(0,0,0,0.9)]">{t('memoryWorkspaceSettings.introTitle')}</p>
-        <p className="m-0 text-[13px] leading-[1.6] text-[rgba(0,0,0,0.6)]">{t('memoryWorkspaceSettings.introDescription')}</p>
+  return (
+    <div className="memory-workspace-settings">
+      <div className="section-header">
+        <h2>{t('memoryWorkspaceSettings.title')}</h2>
+        <p className="section-description">{t('memoryWorkspaceSettings.description')}</p>
       </div>
-    </div>
-    {error ? <Status tone="error">{error}</Status> : null}
-    {notice ? <Status tone="success">{notice}</Status> : null}
-    <div className="flex flex-col">
-      {setting(t('memoryWorkspaceSettings.enableLabel'), t('memoryWorkspaceSettings.enableDescription'), <Switch checked={enabled} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ enabled: checked })} aria-label={t('memoryWorkspaceSettings.enableLabel')} />)}
-      {enabled ? <>{setting(t('memoryWorkspaceSettings.writeModeLabel'), t('memoryWorkspaceSettings.writeModeDescription'), <div className="inline-flex overflow-hidden rounded-[3px] border border-[#e7e7e7]" role="radiogroup" aria-label={t('memoryWorkspaceSettings.writeModeLabel')}>
-        <button type="button" role="radio" aria-checked={writeMode === 'explicit_only'} className={'h-7 cursor-pointer border-0 bg-transparent px-4 py-0 font-[inherit] text-[length:inherit] leading-[inherit]' + (writeMode === 'explicit_only' ? ' is-active bg-[#07c05f] text-white hover:bg-[#06b04d]' : ' hover:text-[#07c05f]')} disabled={!canEdit || busy} onClick={() => debouncedSave({ writeMode: 'explicit_only' })}>{t('memoryWorkspaceSettings.writeModeExplicit')}</button>
-        <button type="button" role="radio" aria-checked={writeMode === 'auto'} className={'h-7 cursor-pointer border-0 bg-transparent px-4 py-0 font-[inherit] text-[length:inherit] leading-[inherit] border-l border-l-[#e7e7e7]' + (writeMode === 'auto' ? ' is-active bg-[#07c05f] text-white border-l-[#07c05f] hover:bg-[#06b04d]' : ' hover:border-l-[#07c05f] hover:text-[#07c05f]')} disabled={!canEdit || busy} onClick={() => debouncedSave({ writeMode: 'auto' })}>{t('memoryWorkspaceSettings.writeModeAuto')}</button>
-      </div>, writeMode === 'auto' ? t('memoryWorkspaceSettings.writeModeAutoHint') : t('memoryWorkspaceSettings.writeModeExplicitHint'))}{autoFields}
-        <div className="flex flex-col items-stretch border-b border-[#e7e7e7] py-5 last:border-b-0">
-          <div className="mb-2.5 max-w-full flex-1 pr-0">
-            <label className="mb-1 block text-[15px] font-medium leading-[normal] text-[rgba(0,0,0,0.9)]">{t('memoryWorkspaceSettings.instructionsLabel')}</label>
-            <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('memoryWorkspaceSettings.instructionsDescription')}</p>
+
+      {/* The switch defaults to off because memory retains what users say
+          across sessions. That makes the feature easy to miss, so the intro
+          states plainly what turning it on does. */}
+      <div className="intro">
+        <TIcon name="info-circle" className="intro-icon" />
+        <div>
+          <p className="intro-title">{t('memoryWorkspaceSettings.introTitle')}</p>
+          <p className="intro-desc">{t('memoryWorkspaceSettings.introDescription')}</p>
+        </div>
+      </div>
+
+      <div className="settings-group">
+        <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.enableLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.enableDescription')}</p>
           </div>
-          <div className="flex w-full items-center justify-stretch">
-            <Textarea className="w-full min-h-[72px] resize-y" maxLength={1000} rows={3} value={extractInstructions} disabled={!canEdit || busy} placeholder={t('memoryWorkspaceSettings.instructionsPlaceholder')} onChange={(event) => setExtractInstructions(event.target.value)} onBlur={() => debouncedSave()} />
+          <div className="setting-control">
+            <TSwitch value={draft.enabled} disabled={!canEdit} onChange={(value) => { update({ enabled: value === true }); debouncedSave(); }} />
           </div>
         </div>
-        {setting(t('memoryWorkspaceSettings.vectorRecallLabel'), t('memoryWorkspaceSettings.vectorRecallDescription'), <Switch checked={vectorRecall} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ vectorRecall: checked })} aria-label={t('memoryWorkspaceSettings.vectorRecallLabel')} />)}
-        {vectorRecall ? setting(t('memoryWorkspaceSettings.embeddingModelLabel'), t('memoryWorkspaceSettings.embeddingModelDescription'), <ModelOptionSelect value={embeddingModelId} options={options(['embedding'])} disabled={!canEdit || busy} clearable clearLabel={t('common.remove')} addModelLabel={t('model.addModelInSettings')} onAddModel={() => navigate('/platform/settings?section=models&subsection=embedding')} onChange={(value) => debouncedSave({ embeddingModelId: value })} />) : null}
-        {setting(t('memoryWorkspaceSettings.conditioningLabel'), t('memoryWorkspaceSettings.conditioningDescription'), <Switch checked={retrievalConditioning} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ retrievalConditioning: checked })} aria-label={t('memoryWorkspaceSettings.conditioningLabel')} />)}
-        {setting(t('memoryWorkspaceSettings.maxItemsLabel'), t('memoryWorkspaceSettings.maxItemsDescription'), <NumberInput min={10} max={2000} step={10} value={maxItems} disabled={!canEdit || busy} onValueChange={(value) => setMaxItems(Number(value))} onBlur={() => debouncedSave()} />)}
-      </> : null}
+
+        {draft.enabled ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.writeModeLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.writeModeDescription')}</p>
+            <p className="desc hint">
+              {draft.write_mode === 'auto' ? t('memoryWorkspaceSettings.writeModeAutoHint') : t('memoryWorkspaceSettings.writeModeExplicitHint')}
+            </p>
+          </div>
+          <div className="setting-control">
+            <RadioGroup value={draft.write_mode} disabled={!canEdit} onChange={(value) => { update({ write_mode: value === 'auto' ? 'auto' : 'explicit_only' }); debouncedSave(); }}>
+              <Radio.Button value="explicit_only">{t('memoryWorkspaceSettings.writeModeExplicit')}</Radio.Button>
+              <Radio.Button value="auto">{t('memoryWorkspaceSettings.writeModeAuto')}</Radio.Button>
+            </RadioGroup>
+          </div>
+        </div> : null}
+
+        {draft.enabled && draft.write_mode === 'auto' ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.extractModelLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.extractModelDescription')}</p>
+          </div>
+          <div className="setting-control" style={{ minWidth: '280px' }}>
+            <ModelSelector
+              modelType="KnowledgeQA"
+              selectedModelId={draft.extract_model_id}
+              disabled={!canEdit}
+              allModels={models}
+              onChange={(modelId) => { update({ extract_model_id: modelId }); debouncedSave(); }}
+              onAddModel={() => navigate('/platform/settings?section=models&subsection=chat')}
+            />
+          </div>
+        </div> : null}
+
+        {draft.enabled && draft.write_mode === 'auto' ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.extractDelayLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.extractDelayDescription')}</p>
+          </div>
+          <div className="setting-control">
+            <InputNumber value={draft.extract_delay_seconds} min={5} max={3600} step={15} suffix="s" disabled={!canEdit} onChange={(value) => { update({ extract_delay_seconds: Number(value) }); debouncedSave(); }} />
+          </div>
+        </div> : null}
+
+        {draft.enabled && draft.write_mode === 'auto' ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.extractMinIntervalLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.extractMinIntervalDescription')}</p>
+          </div>
+          <div className="setting-control">
+            <InputNumber value={draft.extract_min_interval_seconds} min={0} max={86400} step={60} suffix="s" disabled={!canEdit} onChange={(value) => { update({ extract_min_interval_seconds: Number(value) }); debouncedSave(); }} />
+          </div>
+        </div> : null}
+
+        {draft.enabled ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.vectorRecallLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.vectorRecallDescription')}</p>
+          </div>
+          <div className="setting-control">
+            <TSwitch value={draft.vector_recall} disabled={!canEdit} onChange={(value) => { update({ vector_recall: value === true }); debouncedSave(); }} />
+          </div>
+        </div> : null}
+
+        {draft.enabled && draft.vector_recall ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.embeddingModelLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.embeddingModelDescription')}</p>
+          </div>
+          <div className="setting-control" style={{ minWidth: '280px' }}>
+            <ModelSelector
+              modelType="Embedding"
+              selectedModelId={draft.embedding_model_id}
+              disabled={!canEdit}
+              clearable
+              allModels={models}
+              onChange={(modelId) => { update({ embedding_model_id: modelId }); debouncedSave(); }}
+              onAddModel={() => navigate('/platform/settings?section=models&subsection=embedding')}
+            />
+          </div>
+        </div> : null}
+
+        {draft.enabled ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.conditioningLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.conditioningDescription')}</p>
+          </div>
+          <div className="setting-control">
+            <TSwitch value={draft.retrieval_conditioning} disabled={!canEdit} onChange={(value) => { update({ retrieval_conditioning: value === true }); debouncedSave(); }} />
+          </div>
+        </div> : null}
+
+        {draft.enabled && draft.write_mode === 'auto' ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.interestThresholdLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.interestThresholdDescription')}</p>
+          </div>
+          <div className="setting-control">
+            <InputNumber value={draft.interest_threshold} min={1} max={20} step={1} disabled={!canEdit} onChange={(value) => { update({ interest_threshold: Number(value) }); debouncedSave(); }} />
+          </div>
+        </div> : null}
+
+        {draft.enabled && draft.write_mode === 'auto' ? <div className="setting-row instructions-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.instructionsLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.instructionsDescription')}</p>
+          </div>
+          <div className="setting-control instructions-control">
+            <TTextarea
+              value={draft.extract_instructions}
+              autosize={{ minRows: 3, maxRows: 8 }}
+              maxlength={1000}
+              disabled={!canEdit}
+              placeholder={t('memoryWorkspaceSettings.instructionsPlaceholder')}
+              count={({ count, maxLength }) => <span className="t-textarea__limit">{`${count}/${maxLength}`}</span>}
+              onChange={(value) => update({ extract_instructions: String(value ?? '') })}
+              onBlur={debouncedSave}
+            />
+          </div>
+        </div> : null}
+
+        {draft.enabled ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{t('memoryWorkspaceSettings.maxItemsLabel')}</label>
+            <p className="desc">{t('memoryWorkspaceSettings.maxItemsDescription')}</p>
+          </div>
+          <div className="setting-control">
+            <InputNumber value={draft.max_items} min={10} max={2000} step={10} disabled={!canEdit} onChange={(value) => { update({ max_items: Number(value) }); debouncedSave(); }} />
+          </div>
+        </div> : null}
+      </div>
     </div>
-  </div>;
+  );
 }
