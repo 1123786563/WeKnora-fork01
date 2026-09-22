@@ -39,4 +39,13 @@ Object.assign(globalThis, {
   cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
 });
 
+
+// tdesign 命令式 API（MessagePlugin 等）需要 renderAdapter 注入 createRoot
+// （agents 先例；import 期 document 已就位后方可执行）。
+{
+  const { renderAdapter } = nodeModule.createRequire(import.meta.url)('tdesign-react/lib/_util/react-render.js') as { renderAdapter: (renderer: unknown) => void };
+  const { createRoot } = nodeModule.createRequire(import.meta.url)('react-dom/client') as { createRoot: (container: Element) => unknown };
+  renderAdapter?.(createRoot);
+}
+
 export const tdomWindow = dom.window;

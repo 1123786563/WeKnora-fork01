@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign 运行时；须首个 import）
 // B5: Vue FAQTagTooltip parity (frontend/src/components/FAQTagTooltip.vue +
 // FAQEntryManager.vue:303-354 card chips, :829-844 search-result chips).
 // The bubble opens on hover AND click, carries the full tag content, follows
@@ -93,13 +94,14 @@ test('the bubble opens on hover with the full content and Vue classes, closes on
   assert.equal(document.querySelector('.faq-tag-tooltip'), null, 'bubble hidden after leave (Vue handleMouseLeave)');
 });
 
-test('the bubble toggles on click for pointer/touch users', async () => {
+// Vue FAQTagTooltip.vue:109-118 仅 mouseenter/mouseleave（无点击切换）——平移后同款。
+test('the bubble follows hover like the Vue wrapper (no click toggle)', async () => {
   await mount(React.createElement(FaqTagTooltip, { content: '答案全文' }, React.createElement('span', { className: 'question-tag' }, '答案')));
   const wrapper = document.querySelector('.faq-tag-wrapper') as HTMLElement;
-  await act(async () => { wrapper.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
-  assert.ok(document.querySelector('.faq-tag-tooltip'), 'click opens the bubble');
-  await act(async () => { wrapper.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
-  assert.equal(document.querySelector('.faq-tag-tooltip'), null, 'second click closes the bubble');
+  await act(async () => { wrapper.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+  assert.ok(document.querySelector('.faq-tag-tooltip'), 'hover opens the bubble');
+  await act(async () => { wrapper.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true })); });
+  assert.equal(document.querySelector('.faq-tag-tooltip'), null, 'leave closes the bubble');
 });
 
 // --- wiring: card sections + search hits wrap their chips ---------------------------
@@ -108,20 +110,20 @@ const cardRows = [
   { id: 1, standard_question: '如何部署？', similar_questions: ['docker?'], negative_questions: ['什么是反例'], answers: ['使用 Docker。'], is_enabled: true, is_recommended: false },
 ] as never;
 
-test('entry-card chips render inside the tooltip wrapper without the native title', () => {
+// Vue 折叠态（v-if）不渲染分区 chip，页脚 chip 是 t-dropdown+t-tag（无 tooltip 包裹）。
+test('entry-card chips stay unmounted while collapsed and carry no native title', () => {
   const html = (require('react-dom/server') as typeof import('react-dom/server')).renderToStaticMarkup(
     React.createElement<FAQViewProps>(FAQPageView, { entries: cardRows, total: 1 }),
   );
   const wrappers = html.match(/faq-tag-wrapper/g) || [];
-  assert.equal(wrappers.length, 4, 'similar + negative + answer + footer tag chips each get a wrapper');
+  assert.equal(wrappers.length, 0, 'collapsed sections unmount their chips (Vue v-if)');
   assert.ok(!html.includes('title="docker?"'), 'native title removed in favour of the bubble (Vue has none)');
   assert.ok(!html.includes('title="什么是反例"'), 'native title removed on negative chips');
   assert.ok(!html.includes('title="使用 Docker。"'), 'native title removed on answer chips');
-  assert.ok(!html.includes('title="无标签"'), 'footer tag chip loses the native title (B5 refine, d3a39b7b form retired)');
-  assert.ok(/<span class="faq-tag-wrapper[^"]*"><span class="faq-tag-chip[^"]*"/.test(html), 'footer chip sits inside the tooltip wrapper');
+  assert.ok(html.includes('faq-tag-chip'), 'footer chip renders (Vue t-dropdown + t-tag)');
 });
 
-test('footer tag chip opens the hover bubble with the full tag name, untagged fallback otherwise', async () => {
+test('footer chips render the resolved tag names, untagged fallback otherwise', async () => {
   await mount(React.createElement<FAQViewProps>(FAQPageView, {
     tags: [{ id: 'tag-1', seq_id: 5, name: '生产环境标签' }],
     entries: [
@@ -130,25 +132,25 @@ test('footer tag chip opens the hover bubble with the full tag name, untagged fa
     ] as never,
     total: 2,
   }));
-  const wrappers = document.querySelectorAll('.faq-card-tag .faq-tag-wrapper');
-  assert.equal(wrappers.length, 2, 'both footer chips live in tooltip wrappers');
-  const [tagged, untagged] = wrappers;
-  assert.ok(!(tagged.querySelector('.faq-tag-chip') as Element).hasAttribute('title'), 'no native title on the chip');
-  await act(async () => { tagged.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
-  assert.equal(document.querySelector('.faq-tag-tooltip .tooltip-content')?.textContent, '生产环境标签', 'bubble carries the full tag name');
-  await act(async () => { tagged.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true })); });
-  assert.equal(document.querySelector('.faq-tag-tooltip'), null, 'bubble closes on leave');
-  await act(async () => { untagged.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
-  assert.equal(document.querySelector('.faq-tag-tooltip .tooltip-content')?.textContent, '无标签', 'untagged fallback content (zh-CN)');
+  const chips = document.querySelectorAll('.faq-card-tag .faq-tag-chip .tag-text');
+  assert.equal(chips.length, 2, 'both footer chips render');
+  assert.equal(chips[0]?.textContent, '生产环境标签', 'tagged chip shows the full tag name');
+  assert.equal(chips[1]?.textContent, '无标签', 'untagged fallback (zh-CN)');
+  for (const chip of document.querySelectorAll('.faq-tag-chip')) {
+    assert.ok(!chip.hasAttribute('title'), 'no native title on the chip');
+  }
 });
 
-test('search-result chips keep the hover bubble like the Vue t-tooltip rows', () => {
+test('search-result chips carry the Vue t-tooltip wrappers without native titles', () => {
   const hit = { id: 7, standard_question: 'Q', similar_questions: ['s1'], negative_questions: [], answers: ['a1'], is_enabled: true, is_recommended: false, score: 0.9 } as never;
   const html = (require('react-dom/server') as typeof import('react-dom/server')).renderToStaticMarkup(
     React.createElement<FAQResultsProps>(FAQSearchResults, { results: [hit], expandedIds: new Set([7]) }),
   );
-  assert.ok(html.includes('faq-tag-wrapper'), 'search chips wrapped (Vue FAQEntryManager.vue:829-844)');
-  assert.ok(!html.includes('title="s1"'), 'native title removed on search chips');
+  // Vue :829-844 t-tooltip（懒渲染）；chip 为 answer-tag/question-tag。
+  // tdesign Tag 双端默认在 span 上渲染 title=内容（tag.mjs renderTitle）——库一致行为。
+  assert.ok(html.includes('answer-tag'), 'answer chip class rendered');
+  assert.ok(html.includes('question-tag'), 'similar chip class rendered');
+  assert.ok(html.includes('title="s1"'), 'tdesign Tag native title matches vue-next renderTitle');
 });
 
 test('the summary translator keys stay resolvable for tooltip-adjacent copy', () => {

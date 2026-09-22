@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign 运行时；须首个 import）
 // FAQ route document-type gate + loading reset (R464 A2):
 //   Vue KnowledgeBase.vue:88 `isFAQ = (kbInfo?.type || '') === 'faq'` — the FAQ
 //   manager only mounts on the v-else branch of `v-if="!isFAQ"`, so a document
@@ -156,5 +157,6 @@ test('a failing list load settles loading and never auto-retries (no 400 storm)'
   assert.equal(fake.listCalls(), 1, 'exactly one request — the empty-list auto-append must stop after a failure');
   assert.equal(container.querySelector('.faq-card-skeleton'), null, 'loading skeleton must settle');
   assert.equal(container.querySelector('.faq-load-more'), null, 'the 加载中 load-more affordance must not linger');
-  assert.match(container.textContent || '', /该知识库类型不支持 FAQ 接口/, 'the failure surfaces as an error message');
+  // Vue 走 MessagePlugin toast（body portal），页面容器不再有内联错误块。
+  assert.match(document.body.textContent || '', /该知识库类型不支持 FAQ 接口/, 'the failure surfaces as a MessagePlugin toast');
 });
