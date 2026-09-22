@@ -113,3 +113,7 @@
 4. #30 正文与评论均无 `#NN` Issue 引用、无 T 编号引用，评论数为 0 → 无额外声明的子任务；#31–#71 正文除 Parent/Blocked by 段外亦无其它 `#NN` 引用。评论中仅 #58 第 4 条评论存在一处自引用（"Ticket #58"）。
 5. 关联 PR: #30–#71 的 timeline 中无任何来自 PR 的 cross-referenced 事件；仓库仅有的 PR #1、#2（MERGED，miniprogram QA 回归修复）与本系列无关。
 6. #58（T28）为唯一 closed Issue，历经 关闭→重开→再关闭（详见 issue-58.md 评论摘要）；#31（T01）open 但评论表明实现已集成分支、验收开放。
+
+## 下游产物
+
+- 依赖 DAG（拓扑批次 / readyOrder / 阻塞节点 / 状态总表）: [../dag.md](../dag.md)
