@@ -3,6 +3,9 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Input, Select, Sheet, Status, Switch } from '@weknora/ui';
+import { Icon as TIcon } from 'tdesign-icons-react';
+import { Button as TButton, Dropdown as TDropdown, Tag as TTag } from 'tdesign-react';
+import { roleAtLeast, type SettingsRole } from '@weknora/views/settings/registry';
 import { settingsResourceRows, settingsSectionHeading } from './surface.ts';
 import { providerLogo } from './providerLogos.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
@@ -636,7 +639,7 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
   // Vue VectorStoreSettings marks .env-sourced stores with a DEFAULT pill.
   // Vue .store-card__pill: no border, warning-tint bg/text (L1019-1028).
   const envPill = (row: ResourceRow) => row.source === 'env' ? (
-    <span className="shrink-0 rounded-[3px] bg-[#fef3e6] px-[6px] py-px text-[11px] font-medium leading-4 text-[#b85c00]">{t('vectorStoreSettings.envTag')}</span>
+    <span className="shrink-0 rounded-[3px] bg-[#fef3e6] px-[6px] py-px text-[11px] font-medium leading-4 text-[var(--td-warning-color-7,#B85C00)]">{t('vectorStoreSettings.envTag')}</span>
   ) : null;
   // vectorstore/websearch panels keep an inner list title (storesTitle /
   // providersTitle); storage's card grid sits directly under the section
@@ -934,7 +937,7 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
           onKeyDown={(event) => { if (event.key === 'Enter') edit(row); }}
         >
           {logo ? (
-            <div className="backend-card__badge mt-px inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-white shadow-[inset_0_0_0_1px_#e7e7e7]" style={{ color: brand.color }} aria-label={provider}>
+            <div className="backend-card__badge mt-px inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] shadow-[inset_0_0_0_1px_#e7e7e7]" style={{ backgroundColor: brand.bg, color: brand.color }} aria-label={provider}>
               {logo.mode === 'color'
                 ? <img src={logo.url} alt="" className="h-6 w-6 object-contain" />
                 : <span style={monoLogoMask(logo.url)} aria-hidden="true" />}
@@ -949,13 +952,33 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
               <h3 className="backend-card__title m-0 min-w-0 flex-1 truncate text-sm font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]" title={nameValue}>{nameValue}</h3>
               {section !== 'storage' && row.source === 'env' ? envPill(row) : null}
               {/* Vue t-tag small light：h20/lh20、padding 0 4px、radius 3px，且因标题 flex:1 靠右 */}
-              {isDefault ? <span className="shrink-0 rounded-[3px] bg-[rgba(7,192,95,0.1)] px-[4px] text-[12px] leading-[20px] text-[#07c05f]">{copy.defaultLabel}</span> : null}
+              {/* Vue StorageBackendSettings.vue:48 t-tag theme=primary variant=light size=small（直译，playbook §1 #13 tone 换算）。 */}
+              {isDefault ? <TTag theme="primary" variant="light" size="small" className="shrink-0">{copy.defaultLabel}</TTag> : null}
+              {/* Vue websearch 卡 header 尾部对 admin 常驻 provider-card__actions
+                 （t-dropdown ellipsis，编辑/删除；WebSearchSettings.vue:46-61）。 */}
+              {section === 'websearch' && roleAtLeast(role as SettingsRole, 'admin') ? <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
+                <TDropdown
+                  options={[
+                    { content: t('common.edit'), value: 'edit' },
+                    { content: t('common.delete'), value: 'delete', theme: 'error' as never },
+                  ]}
+                  placement="bottom-right"
+                  trigger="click"
+                  onClick={(data) => {
+                    const value = String(data?.value ?? '');
+                    if (value === 'edit') edit(row);
+                    else if (value === 'delete') void remove(rowId(row));
+                  }}
+                >
+                  <TButton variant="text" shape="square" size="small" style={{ color: 'var(--td-text-color-placeholder, rgba(0, 0, 0, 0.4))', opacity: 0 }} icon={<TIcon name="ellipsis" />} />
+                </TDropdown>
+              </span> : null}
               {/* Vue 每张 storage 卡尾部都有 opacity:0 的 24px 操作按钮
                  （.backend-card__action-btn，hover 才显形）——不可见但参与布局：
                   把 header 撑到 24px 高、默认徽标右侧留出 24+6px。 */}
               {section === 'storage' ? <span className="h-6 w-6 shrink-0" aria-hidden="true" /> : null}
             </div>
-            <p className={`backend-card__subtitle m-0 flex items-center truncate text-xs ${section === 'storage' ? 'mt-[4px] leading-[18px] text-[rgba(0,0,0,0.6)]' : 'mt-1 leading-[1.4] text-muted'}`}>
+            <p className={`backend-card__subtitle m-0 flex items-center truncate text-xs ${section === 'storage' ? 'mt-[4px] leading-[18px] text-[rgba(0,0,0,0.6)]' : 'mt-1 leading-[1.4] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]'}`}>
               {/* Vue storage 版 type 无加粗（vectorstore .store-card__type 才是 500），
                   sep margin 0 6px、颜色 placeholder token rgba(0,0,0,0.4) */}
               <span className={section === 'storage' ? 'font-normal' : 'font-medium'}>{provider ? (section === 'websearch' ? providerTypeLabel(provider) : providerLabel(provider)) : copy.typeUnavailable}</span>
@@ -966,11 +989,11 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
       })}
       <button
         type="button"
-        className={`backend-card backend-card--add flex min-h-[68px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[#e7e7e7] bg-transparent text-[rgba(0,0,0,0.4)] transition-colors hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f] ${section === 'storage' ? 'px-4 py-[14px]' : 'py-[14px] pr-[14px] pl-3'}`}
+        className={`backend-card backend-card--add flex min-h-[68px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[#e7e7e7] bg-transparent text-[rgba(0,0,0,0.4)] [font:inherit] transition-colors hover:bg-[rgba(7,192,95,0.06)] hover:text-[#07c05f] ${section === 'storage' ? 'px-4 py-[14px]' : 'py-[14px] pr-[14px] pl-3'}`}
         onClick={openCreate}
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[#07c05f]" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg></span>
-        <span className="text-[13px] font-medium leading-[18px]">{t(keys.add)}</span>
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[18px] text-[#07c05f]" aria-hidden="true"><TIcon name="add" /></span>
+        <span className="text-[13px] font-medium leading-[1.4]">{t(keys.add)}</span>
       </button>
     </div>
     {/* Vue WebSearchSettings L13: the empty-state hint only renders for

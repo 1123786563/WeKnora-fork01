@@ -18,11 +18,21 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
+// T12b：websearch 卡引入 tdesign Dropdown（Popup），jsdom globals 扩展与
+// settings-error-ux.test 同款（T12a d1fba03aa 先例）。
 Object.assign(globalThis, {
   React,
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   Event: dom.window.Event,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
