@@ -100,7 +100,9 @@ const SELF_ERROR_SECTIONS = new Set(['members']);
 // shell .section container like Vue Settings.vue does (no wk-settings-section
 // wrapper, no shell heading). Integration sections have been self-headered
 // since R490 (handled separately via sectionIntegrationTab).
-const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory', 'memory', 'ollama', 'weknoracloud', 'models', 'parser', 'sandbox', 'skills']);
+// T12c：system 面板自持 section-header 与 loading/error 态（SystemInfo.vue
+// loading-inline/error-inline），userprofile 同款自持先例。
+const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory', 'memory', 'ollama', 'weknoracloud', 'models', 'parser', 'sandbox', 'skills', 'system']);
 
 const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
@@ -432,7 +434,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const usagePanel = key === 'usage' ? <UsagePanel client={client} locale={locale} /> : null;
     const queryHistoryPanel = key === 'query-history' ? <QueryHistoryPanel client={client} locale={locale} role={role} /> : null;
     const cloudPanel = key === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={sectionPayload} /> : null;
-    const systemPanel = key === 'system' ? <SystemInfoPanel payload={sectionPayload} locale={locale} /> : null;
+    const systemPanel = key === 'system' ? <SystemInfoPanel payload={sectionPayload} locale={locale} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : null;
     // Vue Settings.vue: these two sections stay nav-visible but render no panel
     // content without the system-admin role (the content area is simply empty).
     const systemAdminOnlyPanelDenied = key === 'system-global' || key === 'runtime-queues' ? role !== 'system-admin' : false;

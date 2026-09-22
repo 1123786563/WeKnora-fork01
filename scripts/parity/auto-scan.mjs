@@ -322,6 +322,17 @@ async function main() {
   try {
     const vuePage = await newAuthedPage(await browser.newContext(), VUE, auth);
     const reactPage = await newAuthedPage(await browser.newContext(), REACT, auth);
+    // T12c：settings-system 的「服务运行时长」行 = live(Date.now()-started_at)，
+    // 两端顺序截图（相隔数秒）必差秒数文本。login/register freezeCarousel 同款
+    // 确定性处理：全 run 冻结一次时钟字面量，经 addInitScript 注入（URL guard
+    // 只在 section=system 生效，其余页面不受影响）；两端同一冻结值 → 运行时长
+    // 文本完全一致。
+    const scanClock = Date.now();
+    for (const authedPage of [vuePage, reactPage]) {
+      // 精确匹配 section 参数（'system' 而非 'system-global' 等前缀子串，
+      // 避免误冻结其他系统管理分区的轮询/计时逻辑）。
+      await authedPage.addInitScript(`if (new URLSearchParams(location.search).get('section') === 'system') { const frozen = ${scanClock}; Date.now = () => frozen; }`);
+    }
     // 免登录页（login/register 等）：全新 context，不注入任何会话
     const anonVue = await (await browser.newContext()).newPage();
     const anonReact = await (await browser.newContext()).newPage();

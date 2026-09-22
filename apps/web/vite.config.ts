@@ -3,22 +3,30 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 import { execSync } from 'node:child_process';
-import pkg from './package.json' with { type: 'json' };
+import { readFileSync } from 'node:fs';
 
-// UI 版本 for the system info panel (frontend/vite.config.ts:14-30 parity).
-const FRONTEND_VERSION = pkg.version ?? 'unknown';
+// UI 版本 for the system info panel（frontend/vite.config.ts:14-30 parity）。
+// T12c：版本号与 Vue 端同源——直接读 frontend/package.json（apps/web 自己的
+// package.json version=0.0.0，与 Vue 端 0.8.0 不同源，system 分区前端版本行
+// 像素对比因此必差）；commit 短哈希长度也对齐 Vue 端 `--short`（auto）而非
+// 固定 8 位，两端在同一 HEAD 启动 dev server 时字符串完全一致。
+const FRONTEND_VERSION = (() => {
+  try {
+    const frontendPkg = JSON.parse(readFileSync(new URL('../../frontend/package.json', import.meta.url), 'utf8')) as { version?: string };
+    return frontendPkg.version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
 
 function resolveFrontendCommit(): string {
   const fromEnv = process.env.VITE_FRONTEND_COMMIT || process.env.GITHUB_SHA;
   if (fromEnv) {
-    try {
-      return execSync(`git rev-parse --short=8 ${fromEnv}`).toString().trim();
-    } catch {
-      return fromEnv.slice(0, 8);
-    }
+    // Vue frontend/vite.config.ts:22-25 parity: env-supplied hashes shorten to 7.
+    return fromEnv.slice(0, 7);
   }
   try {
-    return execSync('git rev-parse --short=8 HEAD').toString().trim();
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return 'unknown';
   }

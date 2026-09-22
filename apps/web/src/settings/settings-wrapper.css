@@ -391,8 +391,8 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
    范围），故挂载对应面板时隐藏壳层 heading。 ==== */
 /* （原 ParserEngineSettings.vue 三条深修 slice 已删——parser 已迁
    SELF_HEADER 直挂 .section，样式由 settings.td.css §13 平移块自持。） */
-/* SystemInfo.vue：面板自持 header */
-.wk-settings-section:has(.system-info) > .wk-settings-panel-heading { display: none; }
+/* （原 SystemInfo.vue header 隐藏 slice 已删——T12c system 迁移 SELF_HEADER
+   直挂 .section，样式由 settings.td.css §16 平移块自持。） */
 /* EnvVarSettings.vue 覆盖：header margin-bottom 24px，desc margin 8px 0 0 / lh1.6 */
 /* EnvVarSettings.vue scoped h2 { margin: 0 }：tsx 上的 m-0 会被上方共享
    .section-header h2 的 margin 0 0 8px 以更高优先级压掉，导致 desc 下移 8px。 */

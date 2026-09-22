@@ -4167,3 +4167,142 @@
     opacity: 0.35;
   }
 }
+
+/* ==== 16. SystemInfo.vue scoped 块平移（settings-system 分区，T12c） ====
+ * frontend/src/views/settings/SystemInfo.vue :316-450 <style scoped> 按
+ * §2.2-2.3 展平，根类 .system-info 前缀换成共享锚
+ * .wk-settings-drawer-root .system-info（§2/§12 同款）。 */
+
+.wk-settings-drawer-root .system-info {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .system-info .section-header {
+  margin-bottom: 32px;
+}
+
+.wk-settings-drawer-root .system-info .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 8px 0;
+}
+
+.wk-settings-drawer-root .system-info .section-header .section-description {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .system-info .loading-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+  justify-content: center;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+}
+
+.wk-settings-drawer-root .system-info .error-inline {
+  padding: 20px 0;
+}
+
+.wk-settings-drawer-root .system-info .settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wk-settings-drawer-root .system-info .setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .system-info .setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-settings-drawer-root .system-info .setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-settings-drawer-root .system-info .setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-settings-drawer-root .system-info .setting-info .desc {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wk-settings-drawer-root .system-info .migration-error-row {
+  display: block;
+  padding: 0 0 20px 0;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.wk-settings-drawer-root .system-info .migration-error-desc {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .system-info .migration-error-detail {
+  margin: 0 0 12px 0;
+  padding: 8px 12px;
+  background: var(--td-bg-color-container-hover);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow: auto;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .system-info .migration-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .system-info .migration-error-actions .migration-error-actions-sep {
+  color: var(--td-text-color-placeholder);
+}
+
+.wk-settings-drawer-root .system-info .setting-control {
+  flex-shrink: 0;
+  min-width: 280px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wk-settings-drawer-root .system-info .setting-control .info-value {
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  text-align: right;
+  word-break: break-word;
+}
+
+.wk-settings-drawer-root .system-info .setting-control .info-value .commit-info {
+  color: var(--td-text-color-placeholder);
+  font-size: 12px;
+  margin-left: 6px;
+}
