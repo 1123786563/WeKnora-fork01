@@ -160,11 +160,15 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
       const session = sessions.get(scopeKey);
       const oldKey = session && !session.destroyed ? session.key : await ports.keyStore.readWrappedKey(scopeKey);
       if (!oldKey) return;
-      const newKey = randomBytes(KEY_LENGTH);
+      // 两阶段原子 rotate：任一行解密失败时在任何写入之前中止，健康行保持旧 key 可读。
+      const decrypted: Array<{ id: string; entry: DraftEntry }> = [];
       for (const id of await readIndex(scopeKey)) {
         const raw = await ports.storage.read(rowKey(scopeKey, id));
         if (raw === null) continue;
-        const entry = await openRow(oldKey, raw);
+        decrypted.push({ id, entry: await openRow(oldKey, raw) });
+      }
+      const newKey = randomBytes(KEY_LENGTH);
+      for (const { id, entry } of decrypted) {
         await ports.storage.write(rowKey(scopeKey, id), await sealRow(newKey, entry));
       }
       await ports.keyStore.writeWrappedKey(scopeKey, newKey);

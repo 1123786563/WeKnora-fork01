@@ -140,6 +140,29 @@ test('a failing encryption adapter rejects the write and leaves no row behind', 
   assert.equal([...storage.entries().keys()].filter((key) => key.endsWith('.draft-1')).length, 0, 'no row may be written when sealing fails');
 });
 
+test('rotate aborts atomically on a corrupt row, leaving healthy rows readable under the old key', async () => {
+  const { vault: scoped, keyStore, storage } = vault();
+  const scopeKey = scopeKeyOf(SCOPE_A);
+  const store = await scoped.open(lease(SCOPE_A));
+  await store.drafts.put({ id: 'draft-1', body: 'healthy' });
+  await store.drafts.put({ id: 'draft-2', body: 'doomed' });
+
+  const row1Before = storage.entries().get(`${scopeKey}.drafts.draft-1`)!;
+  const keyBefore = new Uint8Array(keyStore.entries().get(scopeKey)!);
+  const row2 = `${scopeKey}.drafts.draft-2`;
+  const bytes = Buffer.from(storage.entries().get(row2)!, 'base64');
+  bytes[bytes.length - 1] ^= 0xff;
+  (storage.entries() as Map<string, string>).set(row2, Buffer.from(bytes).toString('base64'));
+
+  await assert.rejects(scoped.rotate(lease(SCOPE_A)), /VAULT_DECRYPT/);
+
+  // 原子中止：未换 key、未重封任何行，损坏只停留在损坏的那一行
+  assert.deepEqual([...keyStore.entries().get(scopeKey)!], [...keyBefore]);
+  assert.equal(storage.entries().get(`${scopeKey}.drafts.draft-1`), row1Before);
+  const reader = await scoped.open(lease(SCOPE_A));
+  assert.equal((await reader.drafts.get('draft-1'))?.body, 'healthy');
+});
+
 test('draft ids outside the safe alphabet are rejected before any storage write', async () => {
   const { vault: scoped, storage } = vault();
   const store = await scoped.open(lease(SCOPE_A));
