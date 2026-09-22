@@ -5,9 +5,8 @@
 
 /* 保留规则索引（Tailwind 迁移后本文件仅剩以下保留段，其余规则已收编为消费方
  * 元素 utilities）：
- * 1. @keyframes wk-audit-spin — SystemAuditLogPanel 刷新按钮的
- *    animate-[wk-audit-spin_0.8s_linear_infinite] 任意值引用（keyframes 无法用
- *    utilities 表达）。
+ * 1.（已删）@keyframes wk-audit-spin ——S1 评审回收后 audit 刷新钮改用
+ *    settings.td.css §18 平移的 Vue 原名 rq-refresh-rotate/rq-refresh-spin。
  * 2. .wk-audit-detail pre — 长报文滚动容器（max-height/overflow）。
  * 3. 抽屉级 select chrome（.wks-modal .wks-content-wrapper select:not([multiple])
  *    的 base/hover/focus/disabled 四条 + 720px 媒体查询内的宽度覆盖）— 本轮保留。
@@ -24,8 +23,6 @@
  *      邀请角色/分享链接角色）、SkillSettingsPanel.tsx ×1（安装抽屉内的
  *      InstallerModelSelect）
  *    以及今后落入抽屉的任何裸 <select>。 */
-@keyframes wk-audit-spin { to { transform: rotate(360deg); } }
-
 /* Vue McpSettings.service-card anatomy. */
 .wk-mcp-service-card { display: flex; height: 100%; flex-direction: column; }
 .wk-mcp-service-card-body { gap: 8px; }
@@ -177,14 +174,9 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
   --color-surface-wash: #f3f3f3;
 }
 
-/* SystemAuditLog.vue:627-650 — 面板自持 section-header，下边距 20px（非
-   共享的 32px），无分割线；刷新按钮 20×20、图标 12px、占位色。 */
-.wk-system-audit .section-header { margin-bottom: 20px; }
-/* Vue audit-page-header h2 为 20px/28px（无 lh:normal 撑高），保证空态/表格
-   body 落在 Vue 的 y=127（header 57px + 20px margin，不再叠加 grid gap）。 */
-.wk-system-audit .section-header h2 { line-height: 28px; }
-.wk-system-audit .wk-audit-refresh { width: 20px; height: 20px; font-size: 12px; color: rgba(0, 0, 0, 0.4); }
-.wk-system-audit .wk-audit-empty { min-height: 280px; }
+/* （原 .wk-system-audit 手搓 slice 已删——S1 评审回收：面板可见域真迁
+   tdesign 组件 + Vue 类名，样式由 settings.td.css §18 平移块自持
+   （.system-audit-log scoped 语义）；刷新钮几何随共用 .rq-refresh 规则。） */
 
 /* Vue RuntimeQueues.vue (frontend/src/views/system/RuntimeQueues.vue) — rq-* slice.
    Vue td tokens mapped: --td-text-color-primary→--color-ink, secondary→--color-muted,

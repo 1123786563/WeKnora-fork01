@@ -104,7 +104,10 @@ const SELF_ERROR_SECTIONS = new Set(['members']);
 // loading-inline/error-inline），userprofile 同款自持先例。
 const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory', 'memory', 'ollama', 'weknoracloud', 'models', 'parser', 'sandbox', 'skills', 'system']);
 
-const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
+// S1 评审回收：system-global/runtime-queues/platform-api-keys/system-audit-log
+// 四个死条目已删——T12c 后它们在 portedPanel 三元链上有显式分支，永不落入
+// PARTIALLY_PORTED 兜底路径。
+const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills']);
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 // Keep the ordinary settings sections behind the same deployment gates as
 // Settings.vue's SETTINGS_SECTION_CAPABILITY map. Integrations are described

@@ -4661,3 +4661,91 @@
     max-width: none;
   }
 }
+
+/* ==== 18. SystemAuditLog.vue scoped 块平移（settings-system-audit-log 分区，S1 评审回收） ====
+ * frontend/src/views/system/SystemAuditLog.vue :616-733 <style scoped> 中扫描
+ * 可见域（根/header/body/error/empty 分支）按 §2.2-2.3 展平，根类
+ * .system-audit-log 全局唯一直接限定（scoped 语义等价；AdministrationPage
+ * 移动端挂载同享）。刷新按钮几何随 wrapper 共用 .rq-refresh 系列规则
+ * （RuntimeQueues 先例）；表格/明细抽屉为 React 保留实现不迁。 */
+
+.system-audit-log {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.system-audit-log .section-header {
+  margin-bottom: 20px;
+}
+
+.system-audit-log .audit-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Vue h2 继承 body line-height normal（20px 字 → 28px 行盒）；React 壳
+   body 1.5 会撑到 30px 使空态落点偏 2px，显式 28px 对齐（§16 同款归并）。 */
+.system-audit-log .audit-page-header h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  line-height: 28px;
+}
+
+.system-audit-log .audit-page-header .section-description {
+  margin: 0;
+  color: var(--td-text-color-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.system-audit-log .audit-page-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.system-audit-log .audit-page-branch {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.system-audit-log .audit-page-branch--error {
+  justify-content: flex-start;
+}
+
+.system-audit-log .audit-page-branch--empty {
+  justify-content: center;
+  align-items: center;
+  min-height: 280px;
+}
+
+/* §18 附：rq-refresh-spin 旋转（Vue SystemAuditLog.vue:686-696 原名平移；
+   keyframes 名保留 Vue 端原名，替换已删的 wrapper wk-audit-spin 改名版）。
+   刷新钮稳态色对齐 Vue --td-text-color-placeholder（wrapper 共用 .rq-refresh
+   的 --color-faint 在 audit 子树无重映射会落到蓝灰 #98a2b8）。 */
+.system-audit-log .rq-refresh {
+  color: var(--td-text-color-placeholder);
+}
+
+.system-audit-log .rq-refresh-spin {
+  animation: rq-refresh-rotate 0.8s linear infinite;
+}
+
+@keyframes rq-refresh-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
