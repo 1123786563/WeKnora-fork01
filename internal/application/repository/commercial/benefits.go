@@ -100,6 +100,22 @@ func (s *BenefitsStore) EnsureSchema(ctx context.Context) error {
 	)`).Error; err != nil {
 		return err
 	}
+	// AUTOINCREMENT 是 SQLite 方言，PostgreSQL 下是语法错误（42601）导致启动 panic；
+	// 非 sqlite 方言按规范迁移（migrations/versioned/000183）的 BIGSERIAL 建自增主键。
+	if s.db.Dialector != nil && s.db.Dialector.Name() != "sqlite" {
+		return s.db.WithContext(ctx).Exec(`CREATE TABLE IF NOT EXISTS commercial_credit_batches (
+			id            BIGSERIAL   NOT NULL PRIMARY KEY,
+			tenant_id     INTEGER  NOT NULL,
+			period        TEXT     NOT NULL,
+			command_key   TEXT     NOT NULL,
+			wallet_ref    TEXT     NOT NULL DEFAULT '',
+			granted_micro INTEGER  NOT NULL,
+			expires_at    DATETIME NOT NULL,
+			state         TEXT     NOT NULL,
+			created_at    DATETIME NOT NULL,
+			CONSTRAINT uq_credit_batch_tenant_period UNIQUE (tenant_id, period)
+		)`).Error
+	}
 	return s.db.WithContext(ctx).Exec(`CREATE TABLE IF NOT EXISTS commercial_credit_batches (
 		id            INTEGER  NOT NULL PRIMARY KEY AUTOINCREMENT,
 		tenant_id     INTEGER  NOT NULL,
