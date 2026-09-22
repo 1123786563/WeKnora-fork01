@@ -3,7 +3,8 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { CommercialSummary, CommercialUsageRow } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button } from 'tdesign-react';
+import { Card, Status } from './surface.tsx';
 
 export type CommercialSummaryState =
   | { status: 'success'; summary: CommercialSummary }
@@ -85,7 +86,7 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
           <h1>{spaceName} · 账单与套餐</h1>
           <p className="wk-muted">Live data from GET /api/v1/commercial/summary</p>
         </div>
-        <Button type="button" onClick={() => setReloadToken((value) => value + 1)}>Reload</Button>
+        <Button type="button" theme="default" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>Reload</Button>
       </header>
       <Card>
         <p className="wk-debug">scope key: {JSON.stringify(queryKey)}</p>
@@ -93,7 +94,7 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
         {state.status === 'error' && state.message !== 'Loading…' ? (
           <>
             <Status tone="error">{state.message}</Status>
-            <Button type="button" onClick={() => setReloadToken((value) => value + 1)}>Try again</Button>
+            <Button type="button" theme="default" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>Try again</Button>
           </>
         ) : null}
         {state.status === 'success' ? (

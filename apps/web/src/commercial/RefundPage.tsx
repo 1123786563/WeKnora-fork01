@@ -3,7 +3,8 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { RefundView } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button } from 'tdesign-react';
+import { Card, Status } from './surface.tsx';
 import { refundMessage } from './refund-state.ts';
 
 function formatCny(amountFen: string): string {
@@ -63,7 +64,7 @@ export function RefundPage({ client, scopeController, refundId, orderId }: Refun
           <h1>退款进度</h1>
           <p className="wk-muted">Scoped refund status from GET /api/v1/commercial/refunds/:id</p>
         </div>
-        <Button type="button" onClick={() => setReloadToken((value) => value + 1)}>重新核对（同一退款单）</Button>
+        <Button type="button" theme="default" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>重新核对（同一退款单）</Button>
       </header>
       <Card>
         <p className="wk-debug">scope key: {JSON.stringify(queryKey)}</p>
@@ -71,7 +72,7 @@ export function RefundPage({ client, scopeController, refundId, orderId }: Refun
         {state.status === 'error' ? (
           <>
             <Status tone="error">{state.message}</Status>
-            <Button type="button" onClick={() => setReloadToken((value) => value + 1)}>重试（复用原退款单号，不新建退款）</Button>
+            <Button type="button" theme="default" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>重试（复用原退款单号，不新建退款）</Button>
           </>
         ) : null}
         {state.status === 'ready' ? (
@@ -96,7 +97,7 @@ export function RefundPage({ client, scopeController, refundId, orderId }: Refun
                 <p className="wk-muted">
                   渠道退款已成功、权益撤回仍在处理。下面的重试只针对原退款单 {state.refund.id} 重查/重驱权益调整，不产生新的退款业务操作。
                 </p>
-                <Button type="button" onClick={() => setReloadToken((value) => value + 1)}>重试权益调整（原退款单 {state.refund.id}）</Button>
+                <Button type="button" theme="default" variant="outline" onClick={() => setReloadToken((value) => value + 1)}>重试权益调整（原退款单 {state.refund.id}）</Button>
               </section>
             ) : null}
           </>

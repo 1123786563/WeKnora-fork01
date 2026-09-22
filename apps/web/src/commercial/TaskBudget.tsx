@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button } from 'tdesign-react';
+import { Card, Status } from './surface.tsx';
 
 export interface TaskBudgetSnapshot {
   /** 批准上限（credits） */
@@ -113,7 +114,7 @@ export function TaskBudget({ client, taskId, snapshot }: TaskBudgetProps) {
           />
           我确认追加此任务预算（仅预算决定，不包含任何外部发送授权）
         </label>
-        <Button type="button" aria-label="追加任务预算" disabled={busy} onClick={() => void extend()}>追加预算</Button>
+        <Button type="button" theme="default" variant="outline" aria-label="追加任务预算" disabled={busy} onClick={() => void extend()}>追加预算</Button>
       </div>
     </Card>
   );
