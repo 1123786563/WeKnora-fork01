@@ -161,11 +161,12 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 
 /* —— R5xx settings 面板清扫切片 —————————————————————————————————————— */
 
-/* ParserEngineSettings.vue 卡片走 TDesign 中性灰 token（--td-text-color-*
-   rgba(0,0,0,.9/.6/.4)、--td-component-stroke #e7e7e7、
-   --td-bg-color-secondarycontainer #f3f3f3），而 React 全局 --color-* 系
-   蓝-gray（#172033/#66758b/#edf0f5），是 parser 面板全文本/边线泛红的根因。
-   仅在面板子树重映射（同 .runtime-queues 先例）。 */
+/* CSS retention criteria（settings-parser TDesign 迁移后仅剩此块）：列表域
+   已迁 tdesign（settings.td.css §13，--td-* token 直用）；配置抽屉沿用
+   React 表单栈（批次先例：resource/mcp/models 编辑器同口径），其 Tailwind
+   色 utilities（text-ink/text-muted/border-line-soft/bg-surface-wash…）仍
+   读 --color-* 蓝-gray 系（#172033/#66758b/#edf0f5），而 Vue SettingDrawer
+   抽屉是 TDesign 中性灰 token——保留子树重映射对齐抽屉，待抽屉收编时删除。 */
 .parser-engine-settings {
   --color-ink: rgba(0, 0, 0, 0.9);
   --color-ink-strong: rgba(0, 0, 0, 0.9);
@@ -390,10 +391,8 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
    模式同构：Vue 面板各自渲染 section-header（无底部分隔线、专属 margin），而
    SettingsPage 壳层 wrapper heading 自带 border-b（SettingsPage.tsx 不在本代理
    范围），故挂载对应面板时隐藏壳层 heading。 ==== */
-/* ParserEngineSettings.vue：面板自持 header，margin-bottom 28px，desc lh1.6 */
-.wk-settings-section:has(.parser-engine-settings) > .wk-settings-panel-heading { display: none; }
-.wk-settings-section .parser-engine-settings .section-header { margin-bottom: 28px; }
-.wk-settings-section .parser-engine-settings .section-header .section-description { line-height: 1.6; }
+/* （原 ParserEngineSettings.vue 三条深修 slice 已删——parser 已迁
+   SELF_HEADER 直挂 .section，样式由 settings.td.css §13 平移块自持。） */
 /* SystemInfo.vue：面板自持 header */
 .wk-settings-section:has(.system-info) > .wk-settings-panel-heading { display: none; }
 /* EnvVarSettings.vue 覆盖：header margin-bottom 24px，desc margin 8px 0 0 / lh1.6 */

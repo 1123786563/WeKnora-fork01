@@ -8,7 +8,27 @@ const hooks = createRequire(import.meta.url)('node:module') as typeof import('no
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
-Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/settings?section=parser' });
+// 列表域迁 tdesign（Tooltip/Alert/Loading，Popup 系）后 jsdom globals 扩展
+// 与 ModelSettingsPanel.test 同款——必须在动态 import 面板前就位（tdesign
+// listener 在模块加载期探测 document.addEventListener，晚于 import 会锁死
+// attachEvent 旧分支）。
+Object.assign(globalThis, {
+  React,
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  Event: dom.window.Event,
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
 const { ParserEngineSettingsPanel } = await import('./ParserEngineSettingsPanel.tsx');
 
 const ENGINES = [
@@ -35,10 +55,6 @@ function makeClient() {
 }
 
 async function mountPanel(): Promise<{ container: HTMLElement; cleanup: () => Promise<void> }> {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/settings?section=parser' });
-  const previousWindow = globalThis.window;
-  const previousDocument = globalThis.document;
-  Object.assign(globalThis, { window: dom.window, document: dom.window.document });
   const { createRoot } = await import('react-dom/client');
   const container = dom.window.document.createElement('div');
   dom.window.document.body.appendChild(container);
@@ -52,8 +68,7 @@ async function mountPanel(): Promise<{ container: HTMLElement; cleanup: () => Pr
     container,
     cleanup: async () => {
       await act(async () => { root.unmount(); });
-      Object.assign(globalThis, { window: previousWindow, document: previousDocument });
-      dom.window.close();
+      container.remove();
     },
   };
 }
