@@ -1397,3 +1397,264 @@
     0 2px 4px rgba(0, 0, 0, 0.12),
     0 8px 32px rgba(0, 0, 0, 0.28) !important;
 }
+
+/* ==== 7. TenantMembers.vue scoped 块平移（settings-members 分区；表格
+ * 单元格内容为 React 保留实现，见 task-12a 报告偏离项） ==== */
+
+.wk-settings-drawer-root .tenant-members {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header {
+  margin-bottom: 20px;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header .section-description {
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 8px 0 0;
+  max-width: 52rem;
+}
+
+/* Vue theme.css 全局 .doc-link（按页面作用域平移）。 */
+.wk-settings-drawer-root .tenant-members .section-description .doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 450;
+  color: var(--td-brand-color);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.wk-settings-drawer-root .tenant-members .section-description .doc-link:hover {
+  color: var(--td-brand-color-active);
+  text-decoration: underline;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header-titlewrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .section-header-titlewrap h2 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.wk-settings-drawer-root .tenant-members .header-audit-btn {
+  flex-shrink: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .permissions-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  cursor: pointer;
+  line-height: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  /* §2.6 button Arial 归位。 */
+  font-family: inherit;
+}
+
+.wk-settings-drawer-root .tenant-members .permissions-trigger-btn .t-icon {
+  display: block;
+}
+
+.wk-settings-drawer-root .tenant-members .permissions-trigger-btn:hover {
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color);
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--td-component-stroke);
+  background-color: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell thead th {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell td,
+.wk-settings-drawer-root .tenant-members .data-table-shell th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell.data-table-shell--with-footer {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell.data-table-shell--with-footer .data-table-shell__scroll {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell.data-table-shell--with-footer .data-table-shell__pager {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--td-component-stroke);
+  background-color: var(--td-bg-color-container);
+}
+
+.wk-settings-drawer-root .tenant-members .data-table-shell.data-table-shell--with-footer .data-table-shell__pager .t-pagination {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 8px;
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-table.data-table-shell.data-table-shell--with-footer .data-table-shell__pager {
+  background-color: transparent;
+}
+
+/* 待接受区块整体浅底（TenantMembers.vue :2065-2067）。 */
+.wk-settings-drawer-root .tenant-members .pending-invitations-table.data-table-shell {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+/* members 列表头（Vue :1620-1703 平移）。 */
+.wk-settings-drawer-root .tenant-members .members-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+  flex-wrap: wrap;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-titlewrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background-color: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Vue html 根字号 14px → 14rem = 196px（React 根 16px，写字面量）。 */
+.wk-settings-drawer-root .tenant-members .members-list-search {
+  flex: 0 0 196px;
+  width: 196px;
+  min-width: 0;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-search .t-input {
+  width: 100%;
+}
+
+.wk-settings-drawer-root .tenant-members .members-list-add-btn {
+  flex-shrink: 0;
+}
+
+/* 待接受区块头（Vue :2030-2063 平移）。 */
+.wk-settings-drawer-root .tenant-members .pending-invitations-section {
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-titlewrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+}
+
+.wk-settings-drawer-root .tenant-members .pending-invitations-desc {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.wk-settings-drawer-root .tenant-members .members-tab-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+/* theme.css .doc-link .link-icon（font-size:1em + flex-shrink 0）。 */
+.wk-settings-drawer-root .tenant-members .section-description .doc-link .link-icon {
+  font-size: 1em;
+  flex-shrink: 0;
+}
