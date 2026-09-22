@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
@@ -9,6 +9,7 @@ import { TenantDeleteZone } from './TenantDeleteZone.tsx';
 // t-loading / t-button / t-form / t-input（TenantInfoSection 仍走旧栈，
 // settings-tenant 提交时迁移）。
 import { Icon as TIcon } from 'tdesign-icons-react';
+import type { FormInstanceFunctions } from 'tdesign-react/es/form/type';
 import { Alert, Button as TButton, Form, Input as TInput, Loading, Popup, Progress, Tag, Textarea } from 'tdesign-react';
 import { pushSettingsToast } from './settings-toast.tsx';
 
@@ -317,7 +318,31 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload, err
   );
 }
 
-// UserProfileSection —— T12a TDesign 同构迁移：逐节点复刻
+/** Vue newPasswordRules（frontend/src/utils/passwordPolicy.ts）：长度 8-32 +
+ * 复杂度按 complex 开关，附加 extraRules（sameAsCurrent 等页面规则）。 */
+function newPasswordRules(t: (key: string) => string, complexEnabled: boolean, extraRules: Array<{ validator: (val: string) => boolean; message: string; type: 'error' }>): Array<Record<string, unknown>> {
+  const base: Array<Record<string, unknown>> = [
+    { required: true, message: t('auth.passwordRequired'), type: 'error' },
+    { min: 8, message: t('auth.passwordMinLength'), type: 'error' },
+    { max: 32, message: t('auth.passwordMaxLength'), type: 'error' },
+  ];
+  if (complexEnabled) {
+    base.push(
+      { pattern: /[a-z]/, message: t('auth.passwordMustContainLowercaseLetter'), type: 'error' },
+      { pattern: /[A-Z]/, message: t('auth.passwordMustContainUppercaseLetter'), type: 'error' },
+      { pattern: /\d/, message: t('auth.passwordMustContainNumber'), type: 'error' },
+      { pattern: new RegExp('[' + PASSWORD_SPECIAL_CHARS.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&') + ']'), message: t('auth.passwordMustContainSpecialChar'), type: 'error' },
+    );
+  } else {
+    base.push(
+      { pattern: /[a-zA-Z]/, message: t('auth.passwordMustContainLetter'), type: 'error' },
+      { pattern: /\d/, message: t('auth.passwordMustContainNumber'), type: 'error' },
+    );
+  }
+  return [...base, ...extraRules];
+}
+
+// UserProfileSection —— T12a TDesign 同构迁移// UserProfileSection —— T12a TDesign 同构迁移：逐节点复刻
 // frontend/src/views/settings/UserProfile.vue（section-header + loading-inline
 // / error-inline t-alert + settings-group 行 + 密码行 popup 编辑）。样式走
 // settings.td.css §3（UserProfile.vue scoped 块平移）。
@@ -326,25 +351,6 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload, err
 // passwordPolicy.ts）——tdesign Form rules 直接产出同一批 auth.* 文案。
 const PASSWORD_SPECIAL_CHARS = '!@#$%^&*()_+-=[]{}|;:,.<>?';
 
-function newPasswordError(value: string, complexEnabled: boolean): string | null {
-  if (!value) return 'auth.passwordRequired';
-  if (value.length < 8) return 'auth.passwordMinLength';
-  if (value.length > 32) return 'auth.passwordMaxLength';
-  const hasLower = value.split('').some((ch) => ch >= 'a' && ch <= 'z');
-  const hasUpper = value.split('').some((ch) => ch >= 'A' && ch <= 'Z');
-  const hasDigit = value.split('').some((ch) => ch >= '0' && ch <= '9');
-  const hasSpecial = value.split('').some((ch) => PASSWORD_SPECIAL_CHARS.includes(ch));
-  if (complexEnabled) {
-    if (!hasLower) return 'auth.passwordMustContainLowercaseLetter';
-    if (!hasUpper) return 'auth.passwordMustContainUppercaseLetter';
-    if (!hasDigit) return 'auth.passwordMustContainNumber';
-    if (!hasSpecial) return 'auth.passwordMustContainSpecialChar';
-  } else {
-    if (!hasLower && !hasUpper) return 'auth.passwordMustContainLetter';
-    if (!hasDigit) return 'auth.passwordMustContainNumber';
-  }
-  return null;
-}
 
 export function UserProfileSection({ client, locale, payload, error: loadError, loading, onRetry }: {
   client: WeKnoraClient;
@@ -364,6 +370,10 @@ export function UserProfileSection({ client, locale, payload, error: loadError, 
   const [passwordPopupOpen, setPasswordPopupOpen] = useState(false);
   const [form, setForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [submitting, setSubmitting] = useState(false);
+  // 评审 fix：t-form :rules 逐字段行内校验（UserProfile.vue:109-148 +
+  // passwordRules :228-248——newPasswordRules 表 + sameAsCurrent/
+  // confirmPassword 校验，错误文案走 t-form-item 行内 tips 而非 toast）。
+  const passwordFormRef = useRef<FormInstanceFunctions | null>(null);
 
   useEffect(() => {
     // Vue 在 popup 打开时才拉 getAuthConfig 的 complex_password_enabled。
@@ -375,19 +385,40 @@ export function UserProfileSection({ client, locale, payload, error: loadError, 
     return () => { active = false; };
   }, [client, passwordPopupOpen]);
 
-  function resetPasswordForm() { setForm({ oldPassword: '', newPassword: '', confirmPassword: '' }); }
+  // Vue passwordRules（UserProfile.vue:228-248）：oldPassword 必填；
+  // newPassword = newPasswordRules(t, complex, [sameAsCurrent])；confirmPassword
+  // 必填 + 一致（trigger blur）。
+  const passwordRules = {
+    oldPassword: [{ required: true, message: t('userProfile.changePassword.currentRequired'), type: 'error' as const }],
+    newPassword: newPasswordRules(t, complexPasswordEnabled, [
+      {
+        validator: (val: string) => val !== form.oldPassword,
+        message: t('userProfile.changePassword.sameAsCurrent'),
+        type: 'error' as const,
+      },
+    ]),
+    confirmPassword: [
+      { required: true, message: t('auth.confirmPasswordRequired'), type: 'error' as const },
+      {
+        validator: (val: string) => val === form.newPassword,
+        message: t('auth.passwordMismatch'),
+        type: 'error' as const,
+        trigger: 'blur' as const,
+      },
+    ],
+  };
+
+  function resetPasswordForm() {
+    setForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    passwordFormRef.current?.clearValidate();
+  }
 
   async function submitPasswordChange() {
     if (submitting) return;
-    const policyError = newPasswordError(form.newPassword, complexPasswordEnabled);
-    const mismatch = !form.oldPassword
-      ? t('userProfile.changePassword.currentRequired')
-      : policyError ? t(policyError)
-        : form.newPassword === form.oldPassword ? t('userProfile.changePassword.sameAsCurrent')
-          : !form.confirmPassword ? t('auth.confirmPasswordRequired')
-            : form.confirmPassword !== form.newPassword ? t('auth.passwordMismatch')
-              : null;
-    if (mismatch) { pushSettingsToast(mismatch, 'error'); return; }
+    // Vue submitPasswordChange（UserProfile.vue:297-299）：validate() 不通过
+    // 即返回，错误以行内 tips 呈现；通过才发 changePassword。
+    const result = await passwordFormRef.current?.validate();
+    if (result !== true) return;
     setSubmitting(true);
     try {
       const patch = profilePasswordPatch(form.oldPassword, form.newPassword, form.confirmPassword, { complexPasswordEnabled });
@@ -483,7 +514,14 @@ export function UserProfileSection({ client, locale, payload, error: loadError, 
                   <div className="password-popup-inner" onClick={(event) => event.stopPropagation()}>
                     <div className="password-popup-title">{t('userProfile.changePassword.label')}</div>
                     <p className="password-popup-hint">{t('userProfile.changePassword.description')}</p>
-                    <Form labelAlign="top" className="password-popup-form" onSubmit={(ctx) => { ctx.e?.preventDefault(); void submitPasswordChange(); }}>
+                    <Form
+                      ref={passwordFormRef}
+                      initialData={form}
+                      rules={passwordRules}
+                      labelAlign="top"
+                      className="password-popup-form"
+                      onSubmit={(ctx) => { ctx.e?.preventDefault(); void submitPasswordChange(); }}
+                    >
                       <Form.FormItem label={t('userProfile.changePassword.currentLabel')} name="oldPassword">
                         {passwordInput('oldPassword', 'current-password')}
                       </Form.FormItem>

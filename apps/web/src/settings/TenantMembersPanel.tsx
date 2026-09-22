@@ -1,11 +1,11 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { AuditLog, TenantInvitation, TenantMember, TenantRole, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Dialog, Input, Select, Status } from '@weknora/ui';
 // T12a：可见面直译 TenantMembers.vue 的 t-tag / t-pagination / t-popup /
 // t-button / t-icon；表格暂保留原生实现（偏离项见 task-12a 报告）。
 import { Icon as TIcon } from 'tdesign-icons-react';
-import { Button as TButton, Input as TInput, Pagination, Popup as TPopup, Tag } from 'tdesign-react';
+import { Button as TButton, Input as TInput, Pagination, Popconfirm as TPopconfirm, Popup as TPopup, Select as TSelect, Table, Tag } from 'tdesign-react';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { TenantAuditDrawer } from './TenantAuditDrawer.tsx';
 import { EmptyState } from './EmptyState.tsx';
@@ -278,6 +278,15 @@ function pageWindow(current: number, max: number): Array<number | 'ellipsis'> {
   return out;
 }
 
+/** Vue roleMatrixIcon（TenantMembers.vue:721-729）：crown 不在图标库，owner 用 user-vip-filled。 */
+function roleIcon(role: TenantRole | string): string {
+  if (role === 'owner') return 'user-vip-filled';
+  if (role === 'admin') return 'user-safety';
+  if (role === 'contributor') return 'edit';
+  if (role === 'viewer') return 'user';
+  return 'user';
+}
+
 function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
   total: number; page: number; pageSize: number;
   onPage: (page: number) => void; onPageSize: (size: number) => void; tr: Translate;
@@ -294,6 +303,8 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
 
   // Vue t-pagination 实测：内容行高 24px、上下 padding 10px（border-t +
   // 灰底区 294~337），邀请表 pager 透出 shell 灰底、成员表白底。
+  
+
   // T12a：tdesign Pagination 直译 Vue t-pagination（size=small +
   // show-jumper show-page-number show-page-size，页脚壳样式走 settings.td.css §7）。
   return <div className="data-table-shell__pager">
@@ -302,6 +313,12 @@ function TablePager({ total, page, pageSize, onPage, onPageSize, tr }: {
       current={page}
       pageSize={pageSize}
       size="small"
+      // 评审 fix-2（台账 #13 模式）：默认渲染分支 t(locale.total, total) 的
+      // 插值路径与 vue-next 字节不同（total 文本宽 ~1.2px → 其后 select/
+      // 页码/跳至整体左移）。totalContent 函数分支整体替换默认渲染
+      // （useTotal.js:41-51），返回单字符串=单文本节点，与 vue-next
+      // （pagination.mjs:349 createVNode div > t(total) 单串 child）同构。
+      totalContent={((count: number) => tr('tenantMembersPanel.pager.total', { total: count })) as unknown as ReactNode}
       showJumper
       showPageNumber
       showPageSize
@@ -672,6 +689,106 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
 
   const maxMembersPage = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
 
+// T12a fix-1：两表迁 tdesign Table（playbook §1 #12 直译，列定义对照
+  // TenantMembers.vue:734-743/:863-870；无 maxHeight → 不触发台账 #14）。
+  const invitationTableColumns = useMemo(() => ([
+    {
+      colKey: 'invitee', title: tr('tenantInvitation.columns.invitee'), ellipsis: true, minWidth: 160,
+      cell: ({ row }: { row: TenantInvitation }) => (
+        <div className="member-cell">
+          {row.is_share_link ? <>
+            <span className="member-name share-link-title"><TIcon name="link" size="14px" />{' ' + tr('tenantInvitation.shareLink.cellTitle')}</span>
+            <span className="member-email">
+              {(row.accepted_count ?? 0) > 0 ? tr('tenantInvitation.shareLink.cellAccepted', { count: row.accepted_count ?? 0 }) : tr('tenantInvitation.shareLink.cellEmpty')}
+            </span>
+          </> : <>
+            <span className="member-name">{inviteePrimary(row)}</span>
+            {row.invitee_email && row.invitee_name ? <span className="member-email">{row.invitee_email}</span> : null}
+          </>}
+        </div>
+      ),
+    },
+    { colKey: 'role', title: tr('tenantInvitation.columns.role'), width: 110, cell: ({ row }: { row: TenantInvitation }) => <Tag theme={roleTagTone(row.role)} size="small">{tr('tenantMember.role.' + row.role)}</Tag> },
+    { colKey: 'inviter', title: tr('tenantInvitation.columns.inviter'), ellipsis: true, minWidth: 140, cell: ({ row }: { row: TenantInvitation }) => <span>{inviterPrimary(row)}</span> },
+    { colKey: 'expires_at', title: tr('tenantInvitation.columns.expiresAt'), width: 160, cell: ({ row }: { row: TenantInvitation }) => formatDate(row.expires_at, locale) },
+    { colKey: 'status', title: tr('tenantInvitation.columns.status'), width: 100, cell: ({ row }: { row: TenantInvitation }) => <Tag theme={invitationStatusTone(row.status)} size="small">{row.is_share_link && row.status === 'pending' ? tr('tenantInvitation.status.shareLinkActive') : tr('tenantInvitation.status.' + row.status)}</Tag> },
+    ...(canManage ? [{
+      colKey: 'actions', title: tr('tenantInvitation.columns.operations'), width: 120, align: 'left' as const,
+      cell: ({ row }: { row: TenantInvitation }) => (
+        <>
+          {row.status === 'pending' && row.invite_url ? (
+            <TButton shape="square" variant="text" size="small" aria-label={tr('tenantInvitation.copyLink')} title={tr('tenantInvitation.copyLink')} onClick={() => void copyText(row.invite_url ?? '')} icon={<TIcon name="copy" />} />
+          ) : null}
+          {row.status === 'pending' ? (
+            <TPopconfirm
+              theme="warning"
+              content={row.is_share_link ? tr('tenantInvitation.shareLink.revokeConfirm') : tr('tenantInvitation.revoke.confirmBody', { email: row.invitee_email || row.invitee_user_id })}
+              confirmBtn={{ content: tr('tenantInvitation.revoke.confirm'), theme: 'danger' }}
+              cancelBtn={{ content: tr('common.cancel') }}
+              placement="left"
+              onConfirm={() => { void revoke(row); }}
+            >
+              <TButton theme="danger" shape="square" variant="text" size="small" aria-label={tr('tenantInvitation.revoke.button')} title={tr('tenantInvitation.revoke.button')} icon={<TIcon name="close" />} />
+            </TPopconfirm>
+          ) : null}
+        </>
+      ),
+    }] : []),
+  ]), [tr, canManage, locale]);
+
+  const memberTableColumns = useMemo(() => ([
+    {
+      colKey: 'member', title: tr('tenantMember.columns.member'), ellipsis: true, minWidth: 132,
+      cell: ({ row }: { row: TenantMember }) => (
+        <div className="member-cell">
+          <span className="member-name">{memberPrimary(row)}</span>
+          {memberSecondary(row) ? <span className="member-email">{memberSecondary(row)}</span> : null}
+        </div>
+      ),
+    },
+    {
+      colKey: 'role', title: tr('tenantMember.columns.role'), width: 128,
+      cell: ({ row }: { row: TenantMember }) => (
+        <div className="role-cell">
+          {canManage && row.user_id !== currentUserId ? (
+            <TSelect
+              className="member-role-select"
+              size="small"
+              value={row.role}
+              disabled={busy}
+              aria-label={'Role for ' + row.username}
+              popupProps={{ zIndex: 6200, overlayClassName: 'tenant-members-role-select-popup' }}
+              onChange={(value) => { void update(row, String(value) as TenantRole); }}
+            >
+              {roles.map((item) => (
+                <TSelect.Option key={item} value={item} label={tr('tenantMember.role.' + item)}>
+                  <span className="role-option"><TIcon name={roleIcon(item)} className="role-option-icon" /><span>{tr('tenantMember.role.' + item)}</span></span>
+                </TSelect.Option>
+              ))}
+            </TSelect>
+          ) : (
+            <Tag theme={roleTagTone(row.role)} size="small">{tr('tenantMember.role.' + row.role)}</Tag>
+          )}
+        </div>
+      ),
+    },
+    { colKey: 'joined_at', title: tr('tenantMember.columns.joinedAt'), width: 154, cell: ({ row }: { row: TenantMember }) => formatDate(row.joined_at, locale) },
+    ...(canManage ? [{
+      colKey: 'actions', title: tr('tenantMember.columns.operations'), width: 88, align: 'left' as const,
+      cell: ({ row }: { row: TenantMember }) => row.user_id !== currentUserId ? (
+        <TPopconfirm
+          content={tr('tenantMember.remove.confirmBody', { name: row.username || row.email })}
+          confirmBtn={{ content: tr('tenantMember.remove.confirm'), theme: 'danger' }}
+          cancelBtn={{ content: tr('common.cancel') }}
+          placement="left"
+          onConfirm={() => { void remove(row); }}
+        >
+          <TButton theme="danger" shape="square" variant="text" size="small" aria-label={tr('tenantMember.remove.button')} title={tr('tenantMember.remove.button')} icon={<TIcon name="user-clear" />} />
+        </TPopconfirm>
+      ) : null,
+    }] : []),
+  ]), [tr, canManage, currentUserId, busy, locale]);
+
   return <section className="tenant-members" data-testid="tenant-members-settings">
     <div className="section-header">
       <div className="section-header-row">
@@ -717,7 +834,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       <p className="section-description">
         {tr('tenantMember.sectionDescription')}{' '}
         <a className="doc-link" href={RBAC_DOC_URL} target="_blank" rel="noopener noreferrer">
-          {tr('tenantMember.learnRbacGuide')} <TIcon name="link" className="link-icon" />
+          {tr('tenantMember.learnRbacGuide')} <TIcon name="link" size="13px" className="link-icon" />
         </a>
       </p>
     </div>
@@ -733,58 +850,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         {invitationsLoading ? <div className="flex items-center gap-2"><Status>{tr('tenantMember.loading')}</Status></div>
           : invitationsError ? <div className="flex items-center gap-2"><Status tone="error">{invitationsError}</Status><Button type="button" onClick={() => void loadInvitations()}>{tr('tenantMember.retry')}</Button></div>
           : invitationsTotal === 0 ? <div className="rounded-[8px] border border-dashed border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-3 py-2.5 text-[0.8125rem] text-[rgba(0,0,0,0.6)]">{tr('tenantInvitation.pendingEmpty')}</div>
-          : <div className="data-table-shell data-table-shell--with-footer pending-invitations-table overflow-hidden rounded-card">
-              <div className="overflow-x-auto">
-                <table className={TBL}>
-                  <thead><tr>
-                    <th className={TH}>{tr('tenantInvitation.columns.invitee')}</th>
-                    <th className={TH} style={{ width: 110 }}>{tr('tenantInvitation.columns.role')}</th>
-                    <th className={TH}>{tr('tenantInvitation.columns.inviter')}</th>
-                    <th className={TH} style={{ width: 160 }}>{tr('tenantInvitation.columns.expiresAt')}</th>
-                    <th className={TH} style={{ width: 100 }}>{tr('tenantInvitation.columns.status')}</th>
-                    <th className={TH} style={{ width: 120 }}>{tr('tenantInvitation.columns.operations')}</th>
-                  </tr></thead>
-                  <tbody>
-                    {invitations.map((invitation) => {
-                      const isShareLink = invitation.is_share_link === true;
-                      const statusLabel = isShareLink && invitation.status === 'pending'
-                        ? tr('tenantInvitation.status.shareLinkActive')
-                        : tr('tenantInvitation.status.' + invitation.status);
-                      return <tr key={invitation.id} className={TR_HOVER}>
-                        <td className={TD}>
-                          <div className="member-cell flex flex-col gap-[2px] min-w-0 py-[2px]">
-                            {isShareLink ? <>
-                              <span className="inline-flex items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-[22px] text-[rgba(0,0,0,0.9)]"><TIcon name="link" size="14px" /> {tr('tenantInvitation.shareLink.cellTitle')}</span>
-                              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-[1.35] text-[rgba(0,0,0,0.6)]">{(invitation.accepted_count ?? 0) > 0 ? tr('tenantInvitation.shareLink.cellAccepted', { count: invitation.accepted_count ?? 0 }) : tr('tenantInvitation.shareLink.cellEmpty')}</span>
-                            </> : <>
-                              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-[22px] text-[rgba(0,0,0,0.9)]">{inviteePrimary(invitation)}</span>
-                              {invitation.invitee_email && invitation.invitee_name ? <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-[1.35] text-[rgba(0,0,0,0.6)]">{invitation.invitee_email}</span> : null}
-                            </>}
-                          </div>
-                        </td>
-                        <td className={TD}><Tag theme={roleTagTone(invitation.role)} size="small">{tr('tenantMember.role.' + invitation.role)}</Tag></td>
-                        <td className={TD}><span>{inviterPrimary(invitation)}</span></td>
-                        <td className={TD}>{formatDate(invitation.expires_at, locale)}</td>
-                        <td className={TD}><Tag theme={invitationStatusTone(invitation.status)} size="small">{statusLabel}</Tag></td>
-                        <td className={TD}>
-                          <div className="inline-flex items-center gap-0">
-                            {invitation.status === 'pending' && invitation.invite_url ? <TButton shape="square" variant="text" size="small" aria-label={tr('tenantInvitation.copyLink')} title={tr('tenantInvitation.copyLink')} onClick={() => void copyText(invitation.invite_url ?? '')} icon={<TIcon name="copy" />} /> : null}
-                            {invitation.status === 'pending' ? <span className="relative inline-flex">
-                              <TButton theme="danger" shape="square" variant="text" size="small" aria-label={tr('tenantInvitation.revoke.button')} title={tr('tenantInvitation.revoke.button')} onClick={() => setRevokeConfirmKey(revokeConfirmKey === invitation.id ? null : invitation.id)} icon={<TIcon name="close" />} />
-                              {revokeConfirmKey === invitation.id ? <div className="absolute left-0 top-[calc(100%_+_0.3rem)] z-[25] box-border w-max max-w-[16rem] rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-[0.65rem] py-[0.55rem] text-xs text-[rgba(0,0,0,0.9)] shadow-[0_10px_28px_rgb(23_32_51/18%)]" role="alertdialog" aria-label={tr('tenantInvitation.revoke.button')}>
-                                <p className="m-0 mb-[0.45rem]">{isShareLink ? tr('tenantInvitation.shareLink.revokeConfirm') : tr('tenantInvitation.revoke.confirmBody', { email: invitation.invitee_email || invitation.invitee_user_id })}</p>
-                                <div className="flex justify-end gap-[0.4rem]">
-                                  <Button type="button" onClick={() => setRevokeConfirmKey(null)}>{tr('common.cancel')}</Button>
-                                  <Button type="button" className="text-[#b3352f]! hover:border-[rgb(217_83_79/45%)]!" disabled={busy} onClick={() => void revoke(invitation)}>{tr('tenantInvitation.revoke.confirm')}</Button>
-                                </div>
-                              </div> : null}
-                            </span> : null}
-                          </div>
-                        </td>
-                      </tr>;
-                    })}
-                  </tbody>
-                </table>
+          : <div className="data-table-shell data-table-shell--with-footer pending-invitations-table">
+              <div className="data-table-shell__scroll">
+                <Table rowKey="id" data={invitations} columns={invitationTableColumns} size="medium" hover />
               </div>
               <TablePager total={invitationsTotal} page={invitationsPage} pageSize={invitationsPageSize}
                 onPage={(next) => void loadInvitations(next)} onPageSize={(size) => void loadInvitations(1, size)} tr={tr} />
@@ -820,54 +888,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         {notice ? <Status tone="success">{notice}</Status> : null}
         {loading && members.length === 0 ? <Status>{tr('tenantMember.loading')}</Status>
           : total === 0 ? <div className="py-2"><Status>{query.trim() ? tr('tenantMember.emptySearch', { q: query }) : tr('tenantMember.empty')}</Status></div>
-          : <div className="data-table-shell data-table-shell--with-footer overflow-hidden rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)]">
-              <div className="overflow-x-auto">
-                <table className={TBL}>
-                  <thead><tr>
-                    <th className={TH}>{tr('tenantMember.columns.member')}</th>
-                    <th className={TH} style={{ width: 128 }}>{tr('tenantMember.columns.role')}</th>
-                    <th className={TH} style={{ width: 154 }}>{tr('tenantMember.columns.joinedAt')}</th>
-                    <th className={TH} style={{ width: 88 }}>{tr('tenantMember.columns.operations')}</th>
-                  </tr></thead>
-                  <tbody>
-                    {members.map((member) => {
-                      const isSelf = member.user_id === currentUserId;
-                      return <tr key={member.user_id} className={TR_HOVER + (isSelf ? ' bg-[#f3f3f3]' : '')}>
-                        <td className={TD}>
-                          <div className="member-cell flex flex-col gap-[2px] min-w-0 py-[2px]">
-                            <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-[22px] text-[rgba(0,0,0,0.9)]">{memberPrimary(member)}</span>
-                            {memberSecondary(member) ? <span className="overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-[1.35] text-[rgba(0,0,0,0.6)]">{memberSecondary(member)}</span> : null}
-                          </div>
-                        </td>
-                        <td className={TD}>
-                          <div className="role-cell inline-flex items-center">
-                            {canManage && !isSelf ? <Select className="disabled:opacity-60 w-full [font:inherit]" aria-label={'Role for ' + member.username} value={member.role} disabled={busy}
-                              onChange={(event) => void update(member, event.target.value as TenantRole)}>
-                              {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
-                            </Select>
-                            : <Tag theme={roleTagTone(member.role)} size="small">{tr('tenantMember.role.' + member.role)}</Tag>}
-                          </div>
-                        </td>
-                        <td className={TD}>{formatDate(member.joined_at, locale)}</td>
-                        <td className={TD}>
-                          {canManage && !isSelf ? <span className="relative inline-flex">
-                            <Button type="button" className="h-6! w-6! min-h-6! min-w-6! bg-transparent! border-transparent! shadow-none! p-0! text-[#e34d59]! hover:bg-[rgba(227,77,89,0.08)]!" aria-label={tr('tenantMember.remove.button')} title={tr('tenantMember.remove.button')}
-                              onClick={() => setRemoveConfirmKey(removeConfirmKey === member.user_id ? null : member.user_id)}>
-                              <Icon name="user-clear" />
-                            </Button>
-                            {removeConfirmKey === member.user_id ? <div className="absolute left-0 top-[calc(100%_+_0.3rem)] z-[25] box-border w-max max-w-[16rem] rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-[0.65rem] py-[0.55rem] text-xs text-[rgba(0,0,0,0.9)] shadow-[0_10px_28px_rgb(23_32_51/18%)]" role="alertdialog" aria-label={tr('tenantMember.remove.button')}>
-                              <p className="m-0 mb-[0.45rem]">{tr('tenantMember.remove.confirmBody', { name: member.username || member.email })}</p>
-                              <div className="flex justify-end gap-[0.4rem]">
-                                <Button type="button" onClick={() => setRemoveConfirmKey(null)}>{tr('common.cancel')}</Button>
-                                <Button type="button" className="text-[#b3352f]! hover:border-[rgb(217_83_79/45%)]!" disabled={busy} onClick={() => void remove(member)}>{tr('tenantMember.remove.confirm')}</Button>
-                              </div>
-                            </div> : null}
-                          </span> : null}
-                        </td>
-                      </tr>;
-                    })}
-                  </tbody>
-                </table>
+          : <div className="data-table-shell data-table-shell--with-footer">
+              <div className="data-table-shell__scroll">
+                <Table rowKey="user_id" data={members} columns={memberTableColumns} size="medium" hover stripe loading={loading} />
               </div>
               <TablePager total={total} page={page} pageSize={pageSize}
                 onPage={(next) => void load(next)} onPageSize={(size) => void load(1, query, size)} tr={tr} />

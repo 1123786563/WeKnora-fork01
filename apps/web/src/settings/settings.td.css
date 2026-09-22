@@ -1658,3 +1658,57 @@
   font-size: 1em;
   flex-shrink: 0;
 }
+
+/* ==== 7b. TenantMembers.vue 表格单元格（fix-1 两表迁 tdesign Table） ==== */
+.wk-settings-drawer-root .tenant-members .member-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.wk-settings-drawer-root .tenant-members .member-cell .member-name {
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-settings-drawer-root .tenant-members .member-cell .member-email {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--td-text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-settings-drawer-root .tenant-members .role-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.wk-settings-drawer-root .tenant-members .role-cell .member-role-select.t-select {
+  width: 100%;
+}
+
+/* 角色下拉（Vue :2495-2509 unscoped 块按 §2.5 原样平移）。 */
+.tenant-members-role-select-popup {
+  z-index: 6200 !important;
+}
+
+.tenant-members-role-select-popup .role-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tenant-members-role-select-popup .role-option-icon {
+  font-size: 14px;
+  color: var(--td-text-color-secondary);
+}

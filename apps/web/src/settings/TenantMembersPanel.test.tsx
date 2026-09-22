@@ -90,7 +90,9 @@ test('tenant members exposes manager search, invite and role controls', () => {
   window.localStorage.setItem('locale', 'en-US');
   const html = renderToStaticMarkup(<TenantMembersPanel client={{} as never} tenantId={1} role="admin" initialMembers={{ items: [alice], total: 1 }} />);
   assert.match(html, /Add Member/);
-  assert.match(html, /Role for Alice/);
+  // T12a fix-1：tdesign Select（member-role-select）不透传 aria-label——
+  // 断言角色下拉控件本体存在（台账 #8 同类：Select 根不透传额外属性）。
+  assert.match(html, /member-role-select/);
   assert.match(html, /Remove/);
 });
 
@@ -266,9 +268,9 @@ test('zh-CN panel anatomy mirrors the Vue baseline: header row, two tables, page
   assert.match(ownerCell?.textContent ?? '', /paritytester/);
   assert.match(ownerCell?.textContent ?? '', /parity-test@local.dev/);
   assert.match(rows[0].querySelector('.role-cell')?.textContent ?? '', /所有者/);
-  assert.equal(rows[0].querySelector('select'), null, 'self/owner row renders a role tag, not a select');
-  assert.match(rows[1].querySelector('.role-cell')?.textContent ?? '', /编辑/);
-  assert.ok(rows[1].querySelector('select'), 'other rows get the role dropdown');
+  assert.equal(rows[0].querySelector('.role-cell .t-select'), null, 'self/owner row renders a role tag, not a select');
+  assert.equal(rows[1].querySelector<HTMLInputElement>('.role-cell .t-input__inner')?.value, '编辑');
+  assert.ok(rows[1].querySelector('.role-cell .t-select'), 'other rows get the role dropdown');
   assert.ok(rows[1].querySelector('button[aria-label="移除"]'), 'remove icon button on non-self rows');
   assert.equal(rows[0].querySelector('button[aria-label="移除"]'), null);
   assert.match(rows[0].textContent ?? '', /2030\/01\/01/);
@@ -381,12 +383,14 @@ test('pending invitation rows expose status badges and an inline revoke confirm'
   const revokeTrigger = rows[0].querySelector<HTMLButtonElement>('button[aria-label="撤销"]');
   assert.ok(revokeTrigger);
   await act(async () => revokeTrigger.click());
-  const confirm = rows[0].querySelector('[role="alertdialog"]');
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  // T12a fix-1：tdesign Popconfirm 直译 Vue t-popconfirm，弹层 portal 到 body。
+  const confirm = document.body.querySelector('.t-popconfirm');
   assert.ok(confirm, 'inline popconfirm anchored to the revoke button');
   assert.match(confirm?.textContent ?? '', /撤销后，pending@example.com 将无法再接受此邀请/);
   assert.match(confirm?.textContent ?? '', /取消/);
-  const confirmButtons = confirm?.querySelectorAll<HTMLButtonElement>('button');
-  const confirmBtn = confirmButtons?.[confirmButtons.length - 1];
+  const confirmBtn = Array.from(confirm?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+    .find((button) => (button.textContent ?? '').includes('撤销邀请')) ?? confirm?.querySelectorAll<HTMLButtonElement>('button')[1];
   await act(async () => confirmBtn?.click());
   assert.deepEqual(revoked, [5]);
   assert.ok(invitationCalls.length >= 2, 'invitations reload after revoke');
