@@ -158,21 +158,8 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 
 /* —— R5xx settings 面板清扫切片 —————————————————————————————————————— */
 
-/* CSS retention criteria（settings-parser TDesign 迁移后仅剩此块）：列表域
-   已迁 tdesign（settings.td.css §13，--td-* token 直用）；配置抽屉沿用
-   React 表单栈（批次先例：resource/mcp/models 编辑器同口径），其 Tailwind
-   色 utilities（text-ink/text-muted/border-line-soft/bg-surface-wash…）仍
-   读 --color-* 蓝-gray 系（#172033/#66758b/#edf0f5），而 Vue SettingDrawer
-   抽屉是 TDesign 中性灰 token——保留子树重映射对齐抽屉，待抽屉收编时删除。 */
-.parser-engine-settings {
-  --color-ink: rgba(0, 0, 0, 0.9);
-  --color-ink-strong: rgba(0, 0, 0, 0.9);
-  --color-muted: rgba(0, 0, 0, 0.6);
-  --color-muted-strong: rgba(0, 0, 0, 0.9);
-  --color-faint: rgba(0, 0, 0, 0.4);
-  --color-line-soft: #e7e7e7;
-  --color-surface-wash: #f3f3f3;
-}
+/* （parser --color-* 子树重映射块已删——S6 抽屉收编：配置抽屉 Tailwind
+   utilities 全数平移 settings.td.css §S6 语义类，直写 TDesign 中性灰值。）
 
 /* （原 .wk-system-audit 手搓 slice 已删——S1 评审回收：面板可见域真迁
    tdesign 组件 + Vue 类名，样式由 settings.td.css §18 平移块自持
