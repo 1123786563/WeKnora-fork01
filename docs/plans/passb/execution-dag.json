@@ -25,7 +25,54 @@
     "CORR-1 b2-k-integration 补前置 b2-k-wikifaq：骨架原仅依赖 b2-k-process，会漏掉 K3 的 18 个 legacy 文件、wiki_fixer_scope.go 与对应别名；K5 是 K1–K4 全量汇聚（framework:119-120）。",
     "CORR-2 b2-datasource 增加 b2-k-integration 前置：datasource→knowledge 存在 5 条同宿主包（internal/application/service）跨 owner 未导出调用（kbActivityTrigger/recordKBActivity/withKBActivitySuppressed/withKBActivityTask/withKnowledgeCleanup，定义于 knowledge 属主 kb_activity.go 等，调用方含 datasource 属主 datasource_service.go；本会话 grep 实证，kb_activity.go 归属见 docs/architecture/moves/knowledge.yaml:155、datasource_service.go 见 datasource.yaml:59）。datasource 4 文件先于 knowledge 门面落地搬迁会编译断链，保守取串行；若 IB1 裁定改为共享 shim/提前导出端口，可降级回并行并按基线变更流程回写本 DAG。",
     "CORR-3 b3-conv-session 保守串行于 b3-conv-queryhistory：framework:179 允许 35a/35b application 层并行、装配串行（QueryHistory 先集成），但 handler/session 宿主包存在 agentcatalog↔conversation 未导出互耦（7 条）且 conversation/module.go 门面由 35a/35b 共享，DAG 层取串行为默认，application 层并行由 35 计划内部安排。",
-    "CORR-4 30-agentruntime-program 的 R0（engine/protocol 所有权 SERIAL CHECK）不设独立节点：其裁定已由 B0.3 Step 2 冻结（native_archive→34、native_recovery→33，freeze:193-196），作为 ib2→b3-r-* 派发前置检查写入各节点 required_contracts。"
+    "CORR-4 30-agentruntime-program 的 R0（engine/protocol 所有权 SERIAL CHECK）不设独立节点：其裁定已由 B0.3 Step 2 冻结（native_archive→34、native_recovery→33，freeze:193-196），作为 ib2→b3-r-* 派发前置检查写入各节点 required_contracts。",
+    "CORR-5（审校 F1）K 面 plan 级归属修正：kb_activity.go 归 K2 retrieval（knowledge-retrieval.md:11 service 19 文件清单含它），不归 K1（knowledge-ingest.md:8-16 的 9 文件清单不含）；kb_activity 4 函数（kbActivityTrigger/recordKBActivity/withKBActivitySuppressed/withKBActivityTask）的导出义务随之移到 b2-k-retrieval，withKnowledgeCleanup 定义于 knowledge_delete_plan.go:22 归 K4 process（knowledge-process.md:12）。b2-datasource 依赖边 [ib1, b2-k-integration] 不变——该边同时覆盖 K2（kb_activity 4 函数）与 K4（withKnowledgeCleanup）。"
+  ],
+  "package_private_couplings": {
+    "methodology": "符号级分析（本会话执行）：三个宿主包 internal/application/service、internal/application/repository、internal/handler/session 的非测试 .go 文件，剥离注释与字符串字面量后，收集各文件定义的未导出顶层 func，再匹配同包裸标识符调用；文件属主取自 16 份 moves/*.yaml legacy_files（未登记者记 platform）。结果：59 条 (caller_owner→def_owner, symbol) 跨 owner 未导出调用、108 个调用点、29 个 owner 对，全部为模块↔模块（无 platform 调用方）。审稿人同法独立得到 54 条/102 调用点，差异来自注释剥离与关键字过滤的实现细节；本表以本会话可复现命令结果为准。",
+    "reproduce": "见 docs/plans/passb/execution-dag.md「package-private 耦合全量表」节所附脚本（python3，go/parser 不可用时以正则近似；定义行已掩码避免把定义计为调用）。",
+    "totals": { "symbol_level_pairs": 59, "call_sites": 108, "owner_pairs": 29 },
+    "pairs": [
+      { "from": "datasource", "to": "knowledge", "sites": 24, "symbols": ["kbActivityTrigger", "recordKBActivity", "withKBActivitySuppressed", "withKBActivityTask", "withKnowledgeCleanup"], "def_plan": "kb_activity.go 4 函数→K2(retrieval)；withKnowledgeCleanup→K4(process) knowledge_delete_plan.go:22" },
+      { "from": "conversation", "to": "knowledge", "sites": 11, "symbols": ["buildVLMCaptionPrompt", "deleteReferencedKnowledge", "escapeLikeKeyword", "isValidFileType", "kbReadPermissions", "sanitizeOCRText"], "def_plan": "image_multimodal.go/ocr_sanitizer.go→K1；knowledgebase_access.go→K2；knowledge_delete_plan.go:36/knowledge_util.go:62→K4；escapeLikeKeyword 定义 repository/knowledge.go:22（knowledge.yaml:87，无 K brief 枚举——B0.2 必须显式分配，见 b0 notes）" },
+      { "from": "agentcatalog", "to": "conversation", "sites": 10, "symbols": ["resolveSandboxForExecution", "sandboxConfigForExistingSandbox", "sessionSandboxFileStore", "sessionSandboxInstallShellExecutor", "sessionSandboxShellExecutor", "sessionUserIDFromContext", "uniqueNonEmptyStrings"], "def_plan": "定义于 internal/application/service/{session_sandbox_pin,session_attachment_staging,session,session_knowledge_qa}.go（conversation 属主）→35b" },
+      { "from": "conversation", "to": "execution", "sites": 10, "symbols": ["browserSkillScope", "resolveTenantSandboxForConfig"], "def_plan": "tenant_sandbox_resolve.go:70 等（execution.yaml:55→13-execution）" },
+      { "from": "execution", "to": "agentcatalog", "sites": 5, "symbols": ["matchSnapshotByName", "skillSnapshotNamePrefix", "snapshotsNotFromOtherConfig", "validateUserEnvName"], "def_plan": "tenant_skill_reaper.go 等→25b" },
+      { "from": "agentcatalog", "to": "commercial", "sites": 5, "symbols": ["customAgentModelUsageBindings", "scopeCustomAgentsByModelID", "scopeCustomAgentsBySandboxConfigID"], "def_plan": "commercial 属主（model_usage 绑定族）→12-commercial" },
+      { "from": "craft", "to": "agentruntime", "sites": 5, "symbols": ["runScope", "runView", "toolCallScope"], "def_plan": "internal/application/repository/agent_run.go→R 面" },
+      { "from": "knowledge", "to": "commercial", "sites": 4, "symbols": ["knowledgeBaseModelUsageBindings", "scopeKnowledgeBasesByModelID", "semanticBudgetFailure"], "def_plan": "commercial 属主→12-commercial" },
+      { "from": "agentcatalog", "to": "knowledge", "sites": 3, "symbols": ["applyTenantRoleCap"], "def_plan": "kbshare.go:70→K2" },
+      { "from": "execution", "to": "identity", "sites": 3, "symbols": ["getJwtSecret", "tenantIDFromClaims"], "def_plan": "user.go:81 等（identity.yaml:73→10-identity）；消费方 sandbox_terminal_ticket.go（execution.yaml:47）" },
+      { "from": "conversation", "to": "agentcatalog", "sites": 2, "symbols": ["agentRequiresRerankModel", "skillsForRun"], "def_plan": "agentcatalog 属主→25a/25b" },
+      { "from": "knowledge", "to": "conversation", "sites": 2, "symbols": ["getParserEngineOverridesFromContext", "isValidFileType"], "def_plan": "attachment_processor.go:334 等（conversation 属主）→35b" },
+      { "from": "airesource", "to": "workbench", "sites": 2, "symbols": ["isUniqueViolation"], "def_plan": "isUniqueViolation 在多属主文件中各有定义（重复 helper），消费方按同包解析到 workbench 属主定义" },
+      { "from": "system", "to": "identity", "sites": 2, "symbols": ["auditActor"], "def_plan": "tenant_member.go:162（identity.yaml:69）" },
+      { "from": "knowledge", "to": "identity", "sites": 2, "symbols": ["auditActor", "auditActorRole"], "def_plan": "tenant_member.go:162 等（identity 属主）" },
+      { "from": "identity", "to": "knowledge", "sites": 2, "symbols": ["escapeLikeKeyword"], "def_plan": "repository/knowledge.go:22（knowledge.yaml:87，无 K brief 枚举——B0.2 必须显式分配）" },
+      { "from": "agentcatalog", "to": "workbench", "sites": 2, "symbols": ["isUniqueViolation"], "def_plan": "同 isUniqueViolation 重复 helper 族" },
+      { "from": "agentcatalog", "to": "airesource", "sites": 2, "symbols": ["isUniqueViolation"], "def_plan": "同 isUniqueViolation 重复 helper 族" },
+      { "from": "agentruntime", "to": "workbench", "sites": 2, "symbols": ["artifactHandle", "rewriteArtifactReferences"], "def_plan": "artifact_download.go:442（workbench 属主，freeze:201）+ artifact_reference.go:56（workbench.yaml:67）→40-workbench" },
+      { "from": "airesource", "to": "knowledge", "sites": 1, "symbols": ["deleteReferencedKnowledge"], "def_plan": "knowledge_delete_plan.go:36→K4" },
+      { "from": "insights", "to": "knowledge", "sites": 1, "symbols": ["deleteReferencedKnowledge"], "def_plan": "knowledge_delete_plan.go:36→K4" },
+      { "from": "craft", "to": "conversation", "sites": 1, "symbols": ["safeFileName"], "def_plan": "artifact_collector.go:518（conversation.yaml:35）→35b" },
+      { "from": "execution", "to": "conversation", "sites": 1, "symbols": ["resolveSandboxForExecution"], "def_plan": "session_sandbox_pin.go（conversation 属主）→35b" },
+      { "from": "agentruntime", "to": "agentcatalog", "sites": 1, "symbols": ["agentRequiresRerankModel"], "def_plan": "agentcatalog 属主→25a/25b" },
+      { "from": "agentcatalog", "to": "execution", "sites": 1, "symbols": ["resolveTenantSandboxForConfig"], "def_plan": "tenant_sandbox_resolve.go:70（execution 属主）" },
+      { "from": "agentruntime", "to": "identity", "sites": 1, "symbols": ["forUpdateClause"], "def_plan": "identity 属主 repository 文件" },
+      { "from": "workbench", "to": "airesource", "sites": 1, "symbols": ["isUniqueViolation"], "def_plan": "同 isUniqueViolation 重复 helper 族" },
+      { "from": "craft", "to": "workbench", "sites": 1, "symbols": ["paramSessionID"], "def_plan": "workbench 属主→40-workbench" },
+      { "from": "agentruntime", "to": "conversation", "sites": 1, "symbols": ["searchResultFromMap"], "def_plan": "helpers.go:471（conversation.yaml:139）→35b；调用点仅 agent_stream_handler.go:431" }
+    ]
+  },
+  "review_fixes": [
+    "F1 K 面归属矛盾：kb_activity.go 由 K1 改归 K2（knowledge-retrieval.md:11 / knowledge-ingest.md:8-16），kb_activity 4 函数导出义务移至 b2-k-retrieval；withKnowledgeCleanup 归 K4（knowledge-process.md:12）；b2-datasource 依赖边不变（CORR-5）。",
+    "F2 耦合枚举补全：新增 top-level package_private_couplings 全量表（26 owner 对/59 符号对/108 调用点，含审校前漏列的 conversation→execution、agentcatalog→commercial、execution→identity 等 ~29 条），各节点 notes/required_contracts 同步补全并指向全量表。",
+    "F3 b1-identity 归属修正：getJwtSecret 的跨 owner 消费方是 execution 属主 sandbox_terminal_ticket.go（execution.yaml:47），非 system；isStorageProviderAllowed 定义 internal/handler/storage_allowlist.go:13 归 policy.yaml:27（b4-systempolicy），移出 identity 契约；identity 实际被消费符号=auditActor/auditActorRole/tenantIDFromClaims/getJwtSecret/forUpdateClause/escapeLikeKeyword（identity→knowledge）。",
+    "F4 b3-r-protocol 事实修正：internal/handler/session/native_archive.go 定义独立 NativeArchiveHandler（:16 struct、:23 构造、:27/45/58 方法），非共享 *Handler 方法文件，搬迁风险低于原描述。",
+    "F5 b3-r-engine 引用修正：searchResultFromMap 定义 helpers.go:471（:190 是 buildStreamResponse）；调用点仅 agent_stream_handler.go:431（:471 为 h.mu.Unlock()，无调用）；rewriteArtifactReferences 定义 artifact_reference.go:56（workbench.yaml:67），artifactHandle 定义 artifact_download.go:442——两者均 workbench 属主但分属两文件。",
+    "F6 引用计数改为可复现双口径：import/例外口径（105 条 importExceptions 全量解析，本会话 python3 实测）agentruntime→airesource 32、conversation→airesource 6、knowledge→airesource 4、agentruntime→execution 13；包限定符口径（本会话脚本按 import 别名计数）agentruntime→airesource 203、conversation→airesource 37、knowledge→airesource 10、agentruntime→execution 99。原 67/7/7/31 作废。",
+    "F7 b2-datasource 范围修正：internal/datasource 已不存在（12 个 move_packages 已在 Pass A 完成），本节点仅剩 4 条 legacy 文件搬迁 + 别名删除。",
+    "F8 b2-k0 写权限澄清：contracts.yaml 对 K0 只读，knowledge 契约区状态回写归 ib2（与 conventions §3 一致）；K0 冻结产物写入 20 计划分配表与共享类型代码。conventions §3 补充子程序 freeze 节点写权限条款。"
   ],
   "nodes": [
     {
@@ -113,7 +160,8 @@
           "where": "docs/plans/passb/00-contract-and-ownership-freeze.md:335-339（B0.6 Step 2），对照 Makefile:1/250/255",
           "ruling": "修正 :335-339：新增目标时不写局部 .PHONY，改为把 check-passb-readiness 追加到 Makefile:1 的汇总 .PHONY 行末尾，目标体保持 `go run ./tools/passbguard -root .` 不变，且不触碰现有任何目标（与计划 :49 『existing targets remain unchanged』一致）。"
         },
-        "base_sha 说明：任务书称 main@29c1e5635，实际 HEAD 为 b1a3d6dd8（多 2 个纯前端 parity 提交，不触及本节点文件），b0 按本会话实证的 b1a3d6dd8 起算。"
+        "base_sha 说明：任务书称 main@29c1e5635，实际 HEAD 为 b1a3d6dd8（多 2 个纯前端 parity 提交，不触及本节点文件），b0 按本会话实证的 b1a3d6dd8 起算。",
+        "审校补充发现（B0.2 必须处理）：internal/application/repository/knowledge.go 在 knowledge.yaml:87 登记为 knowledge legacy 文件，但 4 份 K brief 的 scope 清单均未枚举它（本会话 grep knowledge-ingest/retrieval/wikifaq/process.md 零命中）——escapeLikeKeyword（:22）定义于此且被 identity/conversation 属主文件跨 owner 调用。B0.2 生成 ownership-matrix 时必须为其显式分配 K1-K4 归属并在 brief 消歧，不得悬空。"
       ]
     },
     {
@@ -131,7 +179,7 @@
       ],
       "required_contracts": [
         "Identity actor/tenant/member/RBAC/audit 决策契约（contracts.yaml kind=capability-port，B0.4 Step 4）",
-        "system→identity 未导出函数导出/shim 裁定（getJwtSecret/auditActor/resolveDefaultTenantMode/isStorageProviderAllowed 等，定义于 user.go 等，消费方 system 属主文件）"
+        "identity 定义、被跨 owner 消费的未导出符号导出/shim 裁定（完整清单见 top-level package_private_couplings，审校 F3 修正）：execution→identity getJwtSecret/tenantIDFromClaims（user.go:81 等，identity.yaml:73；消费方 sandbox_terminal_ticket.go=execution.yaml:47）、system→identity auditActor（tenant_member.go:162，identity.yaml:69）、knowledge→identity auditActor/auditActorRole、agentruntime→identity forUpdateClause"
       ],
       "produced_artifacts": [
         "identity 模块边界 + 特征化测试 + 别名删除 + 例外删除（identity 相关行）",
@@ -155,7 +203,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "四份 B1 计划文件不相交、b0 后可并发（framework:95）。未导出耦合：system 属主文件调用本包 user.go 等定义的 getJwtSecret 等（本会话 grep 实证定义于 internal/application/service/user.go）——identity 先搬，须按 B0.3/IB1 裁定导出端口或留 shim，跨 owner 调用点修改走 Integration Brief 由集成工程师执行，禁止复制实现（framework:38）。"
+      "notes": "四份 B1 计划文件不相交、b0 后可并发（framework:95）。审校 F3 修正：getJwtSecret 的跨 owner 消费方是 execution 属主 sandbox_terminal_ticket.go（execution.yaml:47），宿主包内无任何 system 属主文件调用它；isStorageProviderAllowed 定义于 internal/handler/storage_allowlist.go:13、归属 policy.yaml:27（b4-systempolicy 属主），均不在本节点契约面。identity 侧另有一条反向消费：identity→knowledge escapeLikeKeyword（repository/knowledge.go:22，见 package_private_couplings）。本节点属主文件（user.go/tenant_member.go/auth.go=identity.yaml:69/73/81）先搬，上述消费方断链处理按裁定导出端口，跨 owner 调用点修改走 Integration Brief 由集成工程师执行，禁止复制实现（framework:38）。"
     },
     {
       "id": "b1-airesource",
@@ -195,7 +243,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "下游消费最重的基础门面：非测试模块引用 agentruntime→airesource 67 处、conversation→7、knowledge→7、channels→airesource{mcp,storageurl}、workbench/craft/appconnector 各若干（架构事实）。IB1 必须把其 capability 契约冻结为 current，否则 B2/B3 全部阻塞。"
+      "notes": "下游消费最重的基础门面（审校 F6 双口径，本会话实测）：import/例外口径（105 条 importExceptions 全量解析）agentruntime→airesource 32、conversation→airesource 6、knowledge→airesource 4；包限定符口径 agentruntime→airesource 203、conversation→airesource 37、knowledge→airesource 10。IB1 必须把其 capability 契约冻结为 current，否则 B2/B3 全部阻塞。未导出互耦（package_private_couplings）：workbench→airesource 与 agentcatalog→airesource 各有 isUniqueViolation（重复 helper 族），airesource→workbench isUniqueViolation、airesource→knowledge deleteReferencedKnowledge——搬迁时按单一归属收口，禁双实现。"
     },
     {
       "id": "b1-commercial",
@@ -235,7 +283,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "knowledge→commercial 3 条未导出调用（model_usage 绑定函数，service 宿主包）：本节点先搬，须导出端口供 B2-knowledge 消费；workbench→commercial 4、appconnector→commercial 3-4 引用走 IB1 冻结门面。payment/usage 属高风险差分面（framework:40），差分证据必交。"
+      "notes": "knowledge→commercial 3 符号（knowledgeBaseModelUsageBindings/scopeKnowledgeBasesByModelID/semanticBudgetFailure，4 调用点）与 agentcatalog→commercial 3 符号（customAgentModelUsageBindings/scopeCustomAgentsByModelID/scopeCustomAgentsBySandboxConfigID，5 调用点，package_private_couplings 全量）：本节点先搬，须导出 model_usage 绑定族端口供 B2-knowledge/agentcatalog 消费；workbench→commercial 5、appconnector→commercial 4（例外口径）引用走 IB1 冻结门面。payment/usage 属高风险差分面（framework:40），差分证据必交。"
     },
     {
       "id": "b1-execution",
@@ -253,7 +301,8 @@
       ],
       "required_contracts": [
         "Execution sandbox/target/workspace/terminal/browser lifecycle 契约（contracts.yaml，B0.4 Step 4）",
-        "execution→agentcatalog 4 条未导出调用处理裁定（matchSnapshotByName/skillSnapshotNamePrefix/snapshotsNotFromOtherConfig/validateUserEnvName，定义于 agentcatalog 属主 tenant_skill_reaper.go 等）",
+        "execution 定义、被跨 owner 消费的未导出符号导出/shim 裁定：conversation→execution browserSkillScope/resolveTenantSandboxForConfig（10 调用点，定义 tenant_sandbox_resolve.go:70 等=execution.yaml:55）、agentcatalog→execution resolveTenantSandboxForConfig",
+        "execution 消费他 owner 未导出符号的断链处理裁定：execution→agentcatalog 4 符号（matchSnapshotByName/skillSnapshotNamePrefix/snapshotsNotFromOtherConfig/validateUserEnvName，tenant_skill_reaper.go 等 25b 属主）、execution→identity getJwtSecret/tenantIDFromClaims（user.go:81，消费方 sandbox_terminal_ticket.go=execution.yaml:47）、execution→conversation resolveSandboxForExecution",
         "*Handler 方法文件（browserskill.go、sandbox_terminal_ws.go）去方法化/Handler 拆分裁定（B0.3 Step 3 + IB1）"
       ],
       "produced_artifacts": [
@@ -278,7 +327,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "两个跨 owner 断链风险（本会话 grep 实证定义位置）：(1) execution 属主文件调用 agentcatalog 属主未导出函数 4 条（tenant_skill_reaper.go 等，agentcatalog B2 才搬）——本节点先搬会在宿主包留下断链调用方，须 B0.3/IB1 裁定导出/shim 或该批调用方文件随迁；(2) internal/handler/session/{browserskill.go,sandbox_terminal_ws.go} 是 handler.go（conversation 属主，67 字段）*Handler 的方法——搬出方法所在包即编译断链，须按裁定去方法化或推迟。agentruntime→execution{sandbox,browserskill}=31 处引用走 IB1 冻结门面。"
+      "notes": "跨 owner 断链风险（完整清单见 package_private_couplings，定义位置本会话 grep 实证）：(1) 本节点属主文件调用 agentcatalog 属主未导出函数 4 符号 5 调用点（tenant_skill_reaper.go 等，agentcatalog B2 才搬）；(2) sandbox_terminal_ticket.go（execution.yaml:47）调用 identity 属主 getJwtSecret（user.go:81）；(3) internal/handler/session/{browserskill.go,sandbox_terminal_ws.go} 是 handler.go（conversation 属主，67 字段）*Handler 的方法——搬出方法所在包即编译断链；(4) 反向：conversation→execution browserSkillScope/resolveTenantSandboxForConfig 10 调用点消费本节点属主 tenant_sandbox_resolve.go（execution.yaml:55）——本节点先搬须导出。agentruntime→execution 引用（例外口径 13 对/包限定符 99 处，审校 F6 实测）走 IB1 冻结门面。"
     },
     {
       "id": "ib1",
@@ -340,7 +389,7 @@
         "internal/modules/knowledge/**（仅 K0 范围）"
       ],
       "shared_resources": [
-        "docs/architecture/passb/contracts.yaml（knowledge 契约区，只读后回写状态）"
+        "docs/architecture/passb/contracts.yaml（knowledge 契约区，只读——状态回写归 ib2，与 conventions §3 一致，审校 F8 澄清；K0 冻结产物写入 20 计划分配表与共享类型代码，不改 contracts.yaml）"
       ],
       "required_contracts": [
         "ib1 冻结的 AI Resource capability（knowledge→airesource embedding/models 7 处引用）",
@@ -375,15 +424,15 @@
       "depends_on": ["b2-k0"],
       "plan_path": "docs/plans/passb/21-knowledge-ingest.md",
       "owned_files": [
-        "manifest:docs/architecture/moves/knowledge.yaml legacy_files 中归属 K1 的 9 条（含 internal/application/service/kb_activity.go，knowledge.yaml:155）",
+        "manifest:docs/architecture/moves/knowledge.yaml legacy_files 中归属 K1 的 9 条（knowledge-ingest.md:8-16：repository/chunk.go、service/chunk.go、chunk_write.go、extract.go、image_multimodal.go、ocr_sanitizer.go、parser_url_security.go、handler/chunk.go、chunker_debug.go——不含 kb_activity.go，其归 K2）",
         "internal/modules/knowledge/**（ingest 面）"
       ],
       "shared_resources": [
-        "internal/application/service 宿主包（kb_activity.go 的跨 owner 调用方：datasource/conversation，见 notes）"
+        "internal/application/service 宿主包（image_multimodal.go/ocr_sanitizer.go 定义符号的跨 owner 调用方，见 notes）"
       ],
       "required_contracts": [
         "K0 共享类型/端口",
-        "kb_activity 5 函数（kbActivityTrigger/recordKBActivity/withKBActivitySuppressed/withKBActivityTask/withKnowledgeCleanup）导出/shim 裁定"
+        "K1 定义、被跨 owner 消费的未导出符号导出/shim 裁定：buildVLMCaptionPrompt（image_multimodal.go）、sanitizeOCRText（ocr_sanitizer.go:29），消费方 conversation（package_private_couplings conversation→knowledge 11 调用点中的 K1 部分）"
       ],
       "produced_artifacts": [
         "ingest 边界 + 差分证据 + 别名/例外删除（ingest 相关行）",
@@ -407,7 +456,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "kb_activity.go 搬出宿主包时，留在宿主包的跨 owner 调用方（datasource 属主 datasource_service.go 等 5 条、conversation 面部分调用）会断链——须导出端口/留 shim 并更新调用点；跨 owner 调用点修改走 Integration Brief，集成工程师执行（本会话 grep 实证）。knowledge deletion/indexing 属高风险差分面（framework:40）。"
+      "notes": "审校 F1 修正：kb_activity.go 不在 K1 brief 9 文件清单（knowledge-ingest.md:8-16），归 K2 retrieval（knowledge-retrieval.md:11）——kb_activity 4 函数的导出义务在本 DAG 移至 b2-k-retrieval，withKnowledgeCleanup 归 b2-k-process。本节点义务：image_multimodal.go（buildVLMCaptionPrompt）与 ocr_sanitizer.go:29（sanitizeOCRText）搬出宿主包时为 conversation 调用方导出端口/留 shim，跨 owner 调用点修改走 Integration Brief，集成工程师执行（本会话 grep 实证）。knowledge deletion/indexing 属高风险差分面（framework:40）。"
     },
     {
       "id": "b2-k-retrieval",
@@ -416,15 +465,16 @@
       "depends_on": ["b2-k0"],
       "plan_path": "docs/plans/passb/22-knowledge-retrieval.md",
       "owned_files": [
-        "manifest:docs/architecture/moves/knowledge.yaml legacy_files 中归属 K2 的 29 条",
+        "manifest:docs/architecture/moves/knowledge.yaml legacy_files 中归属 K2 的 29 条（knowledge-retrieval.md:5-16：repository 6 = kbshare/semantic_model_invocation/semantic_model_policy/semantic_outbox/semantic_scope_epoch/tag；service 19 = graph、kb_activity.go、kbshare、knowledgebase、knowledgebase_access、knowledgebase_search*×6、semantic_model、semantic_model_capability、semantic_model_policy、semantic_scope、slug_fuzzy、tag、tag_access；handler 4）",
         "internal/modules/knowledge/**（retrieval 面）"
       ],
       "shared_resources": [
-        "internal/application/service 宿主包"
+        "internal/application/service 宿主包（kb_activity.go/knowledgebase_access.go 定义符号的跨 owner 调用方，见 notes）"
       ],
       "required_contracts": [
         "K0 共享类型/端口",
-        "Knowledge retrieval 契约（conversation→knowledge/searchutil=10 处引用消费）"
+        "Knowledge retrieval 契约（conversation→knowledge/searchutil 例外口径 9 对；包限定符口径见 package_private_couplings）",
+        "K2 定义、被跨 owner 消费的未导出符号导出/shim 裁定：kb_activity 4 函数（kbActivityTrigger:36/recordKBActivity:95/withKBActivitySuppressed:87/withKBActivityTask:27，kb_activity.go，消费方 datasource 24 调用点）、kbReadPermissions（knowledgebase_access.go:14，消费方 conversation）、applyTenantRoleCap（kbshare.go:70，消费方 agentcatalog）"
       ],
       "produced_artifacts": [
         "retrieval 边界 + 差分证据 + 别名/例外删除（conversation→knowledge 9 条例外中 retrieval 相关行）",
@@ -448,7 +498,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "conversation→knowledge 5 条未导出调用中归 K2 文件定义的（buildVLMCaptionPrompt/deleteReferencedKnowledge/kbReadPermissions/sanitizeOCRText/escapeLikeKeyword，本会话 grep 实证 buildVLMCaptionPrompt 定义于 image_multimodal.go）：搬出时为宿主包 conversation 调用方导出端口/留 shim，禁复制实现。"
+      "notes": "审校 F1 修正：kb_activity.go（knowledge.yaml:155）按 K2 brief 归本节点（knowledge-retrieval.md:11 service 19 文件清单）——kb_activity 4 函数为本节点导出义务（消费方 datasource，见 b2-datasource CORR-2）。conversation→knowledge 11 调用点中归 K2 文件的：kbReadPermissions（knowledgebase_access.go:14）；escapeLikeKeyword 定义于 repository/knowledge.go:22（knowledge.yaml:87，无 K brief 枚举——B0.2 必须显式分配归属，见 b0 notes）。搬出时为宿主包 conversation/datasource/agentcatalog 调用方导出端口/留 shim，禁复制实现。"
     },
     {
       "id": "b2-k-wikifaq",
@@ -507,7 +557,8 @@
       ],
       "required_contracts": [
         "K1 ingest 门面（已冻结）",
-        "K2 retrieval 门面（已冻结）"
+        "K2 retrieval 门面（已冻结）",
+        "K4 定义、被跨 owner 消费的未导出符号导出/shim 裁定（审校 F1 补）：withKnowledgeCleanup（knowledge_delete_plan.go:22，消费方 datasource）、deleteReferencedKnowledge（knowledge_delete_plan.go:36，消费方 conversation/airesource/insights）、isValidFileType（knowledge_util.go:62，消费方 conversation）——均 knowledge-process.md:12/16 归 K4"
       ],
       "produced_artifacts": [
         "process 状态机边界 + 18 worker handler 实现 + 差分证据",
@@ -589,7 +640,8 @@
       ],
       "required_contracts": [
         "Agent Catalog immutable version/capability/install sets 契约（contracts.yaml，B0.4 Step 5）",
-        "agentcatalog→conversation 7 条未导出调用导出/shim 裁定（resolveSandboxForExecution/sandboxConfigForExistingSandbox/sessionSandboxFileStore/sessionSandboxShellExecutor/sessionUserIDFromContext/uniqueNonEmptyStrings 等，定义于 internal/application/service/{session_sandbox_pin.go,session_attachment_staging.go,session.go,session_knowledge_qa.go}，conversation 属主）"
+        "agentcatalog 定义、被跨 owner 消费的未导出符号导出/shim 裁定（完整清单见 package_private_couplings）：conversation→agentcatalog agentRequiresRerankModel/skillsForRun、agentruntime→agentcatalog agentRequiresRerankModel——agentcatalog 先于两者搬迁，须导出",
+        "agentcatalog 消费他 owner 未导出符号的断链处理裁定：→conversation 7 符号 10 调用点（resolveSandboxForExecution/sandboxConfigForExistingSandbox/sessionSandboxFileStore/sessionSandboxInstallShellExecutor/sessionSandboxShellExecutor/sessionUserIDFromContext/uniqueNonEmptyStrings，定义 internal/application/service/{session_sandbox_pin,session_attachment_staging,session,session_knowledge_qa}.go，conversation 属主 35b）、→commercial 3 符号 5 调用点（customAgentModelUsageBindings 族，IB1 已导出）、→knowledge applyTenantRoleCap（kbshare.go:70，K2）、→execution resolveTenantSandboxForConfig、→workbench/airesource isUniqueViolation（重复 helper 族）"
       ],
       "produced_artifacts": [
         "definition/version 边界 + 特征化测试 + 别名/例外删除",
@@ -613,7 +665,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "与 25b 并行前提：共享 immutable-version 契约冻结（framework:139）。断链风险（本会话 grep 实证定义文件）：agentcatalog 属主文件调用 conversation 属主未导出函数 7 条（session_*.go 系），而 conversation B3 才搬——本节点先搬必断链，须 B0.3/IB1 裁定：conversation 属主函数提前导出（跨 owner 写，走 Integration Brief）或该批调用方文件推迟搬迁；agentcatalog→execution 6 条改为消费 IB1 已冻结 execution 门面。"
+      "notes": "与 25b 并行前提：共享 immutable-version 契约冻结（framework:139）。断链面（完整清单见 package_private_couplings，本会话 grep 实证定义文件）：agentcatalog 属主文件调用 conversation 属主未导出函数 7 符号 10 调用点（session_*.go 系，conversation B3 才搬）——本节点先搬必断链，须 B0.3/IB1 裁定：conversation 属主函数提前导出（跨 owner 写，走 Integration Brief）或该批调用方文件推迟搬迁；agentcatalog→commercial 3 符号改为消费 IB1 已导出 model_usage 绑定族。反向义务：agentRequiresRerankModel（agentcatalog 属主）被 conversation/agentruntime 消费——本节点先搬须导出。"
     },
     {
       "id": "b2-ac-skills",
@@ -703,8 +755,7 @@
       "plan_path": "docs/plans/passb/26-datasource.md",
       "owned_files": [
         "manifest:docs/architecture/moves/datasource.yaml legacy_files 4 条（含 internal/application/service/datasource_service.go，datasource.yaml:59）",
-        "internal/datasource→internal/modules/datasource 全量搬迁（move_packages）",
-        "internal/modules/datasource/**"
+        "internal/modules/datasource/**（Pass A 已完成 12 个 move_packages 搬迁、internal/datasource 目录已不存在——审校 F7 修正：本节点仅经手 4 条 legacy 文件与别名删除，不含目录级再搬迁）"
       ],
       "shared_resources": [
         "internal/application/service 宿主包（datasource_service.go 调用 knowledge 属主 kb_activity.go 未导出函数）"
@@ -735,7 +786,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "CORR-2：骨架修正——由 [ib1] 增加 b2-k-integration 前置。datasource→knowledge 5 条同宿主包未导出调用（kbActivityTrigger/recordKBActivity/withKBActivitySuppressed/withKBActivityTask/withKnowledgeCleanup；调用方 datasource_service.go 归属 datasource.yaml:59，定义方 kb_activity.go 归属 knowledge.yaml:155，本会话 grep 双向实证）。若 IB1 裁定共享 shim/提前导出，可回写本 DAG 降级为并行（基线变更流程）。"
+      "notes": "CORR-2：骨架修正——由 [ib1] 增加 b2-k-integration 前置。datasource→knowledge 5 符号 24 调用点同宿主包未导出调用（调用方 datasource_service.go 归属 datasource.yaml:59；定义方审校 F1 修正后分两处：kb_activity 4 函数在 kb_activity.go=K2 retrieval（knowledge-retrieval.md:11）、withKnowledgeCleanup 在 knowledge_delete_plan.go:22=K4 process（knowledge-process.md:12），本会话 grep 双向实证）——依赖 b2-k-integration 同时覆盖 K2 与 K4，边不变。若 IB1 裁定共享 shim/提前导出，可回写本 DAG 降级为并行（基线变更流程）。"
     },
     {
       "id": "b2-appconnector",
@@ -866,7 +917,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "与 R2 并行（framework:165）。agentruntime→airesource 67 处引用须改走 ib1 冻结门面，禁止保留/新增例外（framework:38）。"
+      "notes": "与 R2 并行（framework:165）。agentruntime→airesource 引用（审校 F6 双口径，本会话实测）：import/例外口径 32 对、包限定符口径 203 处——须改走 ib1 冻结门面，禁止保留/新增例外（framework:38）。另按 package_private_couplings：agentruntime→identity forUpdateClause（R 面消费 identity 属主未导出，identity B1 已搬，须消费其 IB1 导出端口）。"
     },
     {
       "id": "b3-r-tools",
@@ -922,14 +973,13 @@
         "internal/modules/agentruntime/**（engine 面）"
       ],
       "shared_resources": [
-        "internal/handler/session 宿主包（agent_run.go 等为 *Handler 方法文件；helpers.go:190 searchResultFromMap 被 agent_stream_handler.go:431/471 调用——架构事实）",
+        "internal/handler/session 宿主包（agent_run.go 等为 *Handler 方法文件；helpers.go:471 searchResultFromMap 被 agent_stream_handler.go:431 调用——审校 F5 修正行号）",
         "internal/application/service 宿主包"
       ],
       "required_contracts": [
         "R1/R2 门面",
         "B1/B2 冻结门面（framework:166）",
-        "agentruntime↔conversation 未导出互耦（searchResultFromMap/agentRequiresRerankModel）导出/shim 裁定",
-        "agentruntime→workbench 2 条（artifactHandle/rewriteArtifactReferences，定义 handler/session/artifact_download.go，workbench 属主——本会话 grep 实证）端口方向裁定（IB3）",
+        "agentruntime 消费他 owner 未导出符号的断链处理裁定（审校 F5 修正行号/文件）：→conversation searchResultFromMap（定义 helpers.go:471，conversation.yaml:139；调用点仅 agent_stream_handler.go:431——:471 为 h.mu.Unlock() 无调用；另 helpers.go:190 是 buildStreamResponse 定义，勿混淆）、→workbench artifactHandle（artifact_download.go:442）/rewriteArtifactReferences（artifact_reference.go:56，workbench.yaml:67——两符号均 workbench 属主但分属两文件）、→agentcatalog agentRequiresRerankModel（agentcatalog 属主，B2 已导出）",
         "*Handler 方法文件（agent_run.go 等）去方法化/Handler 拆分裁定"
       ],
       "produced_artifacts": [
@@ -954,7 +1004,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "三处跨 owner 断链风险（定义位置本会话 grep 实证）：(1) 调用 conversation 属主 helpers.go 未导出 searchResultFromMap（agent_stream_handler.go:431/471）；(2) 调用 workbench 属主 artifact_download.go 未导出 artifactHandle/rewriteArtifactReferences（workbench B4 才搬）；(3) agent_run.go 等自身为 conversation 属主 *Handler 方法。均须裁定后搬迁；Agent Run recovery 属高风险差分面（framework:40）。"
+      "notes": "跨 owner 断链风险（行号/文件经审校 F5 修正，本会话复验）：(1) 调用 conversation 属主 helpers.go:471 searchResultFromMap，调用点仅 agent_stream_handler.go:431；(2) 调用 workbench 属主 artifact_download.go:442 artifactHandle 与 artifact_reference.go:56 rewriteArtifactReferences（workbench B4 才搬）；(3) agent_run.go 等自身为 conversation 属主 *Handler 方法文件。均须裁定后搬迁；Agent Run recovery 属高风险差分面（framework:40）。完整耦合清单见 top-level package_private_couplings。"
     },
     {
       "id": "b3-r-protocol",
@@ -967,7 +1017,7 @@
         "internal/modules/agentruntime/**（protocol 面）"
       ],
       "shared_resources": [
-        "internal/handler/session 宿主包（native_archive.go 为 *Handler 方法文件）"
+        "internal/handler/session 宿主包（native_archive.go 自带独立 handler 类型，见 notes）"
       ],
       "required_contracts": [
         "R3 状态所有权（framework:167）",
@@ -995,7 +1045,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "engine/protocol 所有权以 B0.3 Step 2 精确清单为准，不得出现『先合并者得』类歧义表述（freeze:187）。"
+      "notes": "审校 F4 修正：internal/handler/session/native_archive.go 定义独立的 NativeArchiveHandler struct（:16）、NewNativeArchiveHandler 构造（:23）及其方法（:27/45/58），并非共享 conversation 属主 *Handler（handler.go:24）上的方法文件——搬迁不涉及 Handler 拆分，实际风险低于早先描述。engine/protocol 所有权以 B0.3 Step 2 精确清单为准，不得出现『先合并者得』类歧义表述（freeze:187）。"
     },
     {
       "id": "b3-r-integration",
@@ -1125,7 +1175,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "CORR-3：framework:179 允许 35a/35b application 层并行（装配串行、QueryHistory 先集成），但 handler/session 宿主包 agentcatalog↔conversation 未导出互耦 + module.go 门面共享，DAG 层保守串行；35 计划内部可安排 application 层并行预写。session stream 属高风险差分面（framework:40）。"
+      "notes": "CORR-3：framework:179 允许 35a/35b application 层并行（装配串行、QueryHistory 先集成），但 handler/session 宿主包 agentcatalog↔conversation 未导出互耦 + module.go 门面共享，DAG 层保守串行；35 计划内部可安排 application 层并行预写。session stream 属高风险差分面（framework:40）。conversation 侧完整耦合面（package_private_couplings）：出向 →knowledge 6 符号 11 调用点、→execution browserSkillScope/resolveTenantSandboxForConfig 10 调用点、→agentcatalog agentRequiresRerankModel/skillsForRun；入向 agentcatalog→conversation 7 符号 10 调用点、knowledge→conversation getParserEngineOverridesFromContext（attachment_processor.go:334）/isValidFileType、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35）、execution→conversation resolveSandboxForExecution——本节点是 conversation 属主符号导出化与 *Handler（handler.go 67 字段）拆分收口的最终落点。"
     },
     {
       "id": "b3-channels",
@@ -1205,7 +1255,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "可与 R1/R2、conversation application 层并行（framework:186）。analytics 方言测试属 IB3 必测（framework:192）。"
+      "notes": "可与 R1/R2、conversation application 层并行（framework:186）。analytics 方言测试属 IB3 必测（framework:192）。未导出耦合：insights→knowledge deleteReferencedKnowledge（knowledge_delete_plan.go:36，K4 已导出，package_private_couplings）。"
     },
     {
       "id": "ib3",
@@ -1295,7 +1345,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "与 craft 并行的前提：B0/IB3 冻结共享 Task/Artifact 契约且 handler/session 文件所有权精确不相交（framework:204）。测试夹具随迁：workbench 测试→agentruntime(7)/commercial(4)/execution(1)（架构事实）。"
+      "notes": "与 craft 并行的前提：B0/IB3 冻结共享 Task/Artifact 契约且 handler/session 文件所有权精确不相交（framework:204）。测试夹具随迁：workbench 测试→agentruntime(7)/commercial(4)/execution(1)（架构事实）。未导出耦合（package_private_couplings）：入向 agentruntime→workbench artifactHandle（artifact_download.go:442）/rewriteArtifactReferences（artifact_reference.go:56，workbench.yaml:67）、airesource→workbench 与 agentcatalog→workbench isUniqueViolation、craft→workbench paramSessionID；出向 workbench→airesource isUniqueViolation——isUniqueViolation 重复 helper 族在 IB3 收口为单一实现。"
     },
     {
       "id": "b4-craft",
@@ -1337,7 +1387,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "Craft Artifact 行为属高风险差分面（framework:40）。craft 测试→commercial(1) 夹具随迁（架构事实）。"
+      "notes": "Craft Artifact 行为属高风险差分面（framework:40）。craft 测试→commercial(1) 夹具随迁（架构事实）。未导出耦合（package_private_couplings）：craft→agentruntime runScope/toolCallScope/runView 5 调用点（repository/agent_run.go，B3 已导出）、craft→conversation safeFileName（artifact_collector.go:518=conversation.yaml:35，B3 已导出）、craft→workbench paramSessionID（workbench 同期搬迁，IB4 收口）。"
     },
     {
       "id": "b4-systempolicy",
@@ -1380,7 +1430,7 @@
         ["make", "check-backend-architecture"],
         ["make", "verify-module-moves"]
       ],
-      "notes": "housekeeping：knowledge_housekeeping.go 业务清扫规则归 Knowledge，System 只经窄端口调度（freeze:209，禁双实现）。system→identity/policy 未导出调用（getJwtSecret 等，定义 user.go——identity B1 已搬）须消费 IB1 已导出端口。"
+      "notes": "housekeeping：knowledge_housekeeping.go 业务清扫规则归 Knowledge，System 只经窄端口调度（freeze:209，禁双实现）。审校 F3 修正：system→identity 的未导出调用仅 auditActor（tenant_member.go:162=identity.yaml:69，IB1 已导出）；isStorageProviderAllowed 定义于 internal/handler/storage_allowlist.go:13、归属 policy.yaml:27=本节点属主文件（policy 1 条 legacy），其跨 owner 消费方处理随本节点。channels→policy 例外（ipclass/ratelimit 2 对）随本节点删除或改走门面。"
     },
     {
       "id": "ib4",
