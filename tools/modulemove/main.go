@@ -12,12 +12,23 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
+
+	"github.com/Tencent/WeKnora/tools/internal/movemanifest"
 )
 
 const defaultRoot = "."
 
-// ManifestsDir 是相对仓库根的 manifest 目录。
-const ManifestsDir = "docs/architecture/moves"
+// MoveManifest 是共享库类型的包内别名（manifest schema 自 F1-a 起单一事实源
+// 于 tools/internal/movemanifest，本包不再持有副本）。
+type MoveManifest = movemanifest.MoveManifest
+
+// sortStrings 就地排序并返回（诊断排序复用）。
+func sortStrings(in []string) []string {
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	return out
+}
 
 func main() {
 	args := os.Args[1:]
@@ -38,13 +49,13 @@ func main() {
 
 	var mods []*MoveManifest
 	if *all {
-		ids, err := ListManifestModules(*root)
+		ids, err := movemanifest.ListManifestModules(*root)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "modulemove: %v\n", err)
 			os.Exit(2)
 		}
 		for _, id := range ids {
-			m, err := LoadManifestStrict(ManifestPath(*root, id))
+			m, err := movemanifest.LoadManifestStrict(movemanifest.ManifestPath(*root, id))
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "modulemove: %v\n", err)
 				os.Exit(2)
@@ -52,11 +63,11 @@ func main() {
 			mods = append(mods, m)
 		}
 	} else {
-		if !validModuleID(*module) {
+		if !movemanifest.ValidModuleID(*module) {
 			fmt.Fprintf(os.Stderr, "modulemove: 非法模块 id %q\n", *module)
 			os.Exit(2)
 		}
-		m, err := LoadManifestStrict(ManifestPath(*root, *module))
+		m, err := movemanifest.LoadManifestStrict(movemanifest.ManifestPath(*root, *module))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "modulemove: %v\n", err)
 			os.Exit(2)

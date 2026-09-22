@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Tencent/WeKnora/tools/internal/movemanifest"
 )
 
 func TestLoadManifestStrictAcceptsCompleteManifest(t *testing.T) {
@@ -13,7 +15,7 @@ func TestLoadManifestStrictAcceptsCompleteManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := LoadManifestStrict(path)
+	m, err := movemanifest.LoadManifestStrict(path)
 	if err != nil {
 		t.Fatalf("合法 manifest 不应报错: %v", err)
 	}
@@ -44,7 +46,7 @@ func TestLoadManifestStrictRejectsUnknownField(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := LoadManifestStrict(path)
+	_, err := movemanifest.LoadManifestStrict(path)
 	if err == nil {
 		t.Fatal("schema 外字段（bogus_field）必须被 KnownFields(true) 拒绝")
 	}
@@ -62,7 +64,7 @@ func TestLoadManifestStrictRejectsUnknownNestedField(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := LoadManifestStrict(path)
+	_, err := movemanifest.LoadManifestStrict(path)
 	if err == nil {
 		t.Fatal("嵌套 mapping 中的 schema 外字段同样必须被拒绝")
 	}
@@ -80,7 +82,7 @@ func TestListManifestModulesSortedAndSkipsReadme(t *testing.T) {
 		"docs/architecture/moves/not-a-move.txt": "skip me",
 	})
 
-	mods, err := ListManifestModules(root)
+	mods, err := movemanifest.ListManifestModules(root)
 	if err != nil {
 		t.Fatal(err)
 	}

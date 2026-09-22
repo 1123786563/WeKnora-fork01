@@ -1,4 +1,7 @@
-package main
+// Package movemanifest 是 Pass A 搬迁清单（docs/architecture/moves/*.yaml）schema
+// 与严格加载器的单一事实源：tools/modulemove 与 tools/passbguard 共同消费
+// （Pass B 执行 DAG 节点 b0 note F1 方案 a：提取共享库，禁止双实现漂移）。
+package movemanifest
 
 import (
 	"fmt"
@@ -9,6 +12,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// ManifestsDir 是相对仓库根的 manifest 目录。
+const ManifestsDir = "docs/architecture/moves"
 
 // MoveManifest 与 docs/architecture/moves/README.md 的 LOCKED schema 一一对应。
 // 字段加载必须走 KnownFields(true)（见 LoadManifestStrict）：schema 外字段即报错。
@@ -103,8 +109,8 @@ func ManifestPath(root, module string) string {
 	return root + "/" + ManifestsDir + "/" + module + ".yaml"
 }
 
-// validModuleID 校验模块 id 形态（小写字母数字，可含连字符）。
-func validModuleID(id string) bool {
+// ValidModuleID 校验模块 id 形态（小写字母数字，可含连字符）。
+func ValidModuleID(id string) bool {
 	if id == "" || strings.ContainsAny(id, "/\\") {
 		return false
 	}
@@ -117,11 +123,4 @@ func validModuleID(id string) bool {
 		}
 	}
 	return true
-}
-
-// sortStrings 就地排序并返回（诊断排序复用）。
-func sortStrings(in []string) []string {
-	out := append([]string(nil), in...)
-	sort.Strings(out)
-	return out
 }
