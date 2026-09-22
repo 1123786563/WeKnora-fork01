@@ -90,8 +90,13 @@ const ALL_PAGES = [
   // login/register 的展示轮播（SLIDES 自动切换）相位在两端独立，截图会落在
   // 不同 slide 上产生假差异。截图前冻结动画（pause/play 接口或 animation-play-state），
   // 并等待首帧 slide 稳定，使两端定格在同一张。
-  { id: 'login', path: '/login', auth: false, settle: 3200, freezeCarousel: true },
-  { id: 'register', path: '/register', auth: false, settle: 3200, freezeCarousel: true },
+  // syncAnimPhase：.animated-bg 装饰动画（nodePulse/lineFlow 纯 CSS 循环动画）在
+  // settle 后 pause 的暂停相位是任意的，双端冻结相位不同 → run 间 275↔1387px 波动。
+  // 确定性处理：把每条无限循环 CSS 动画 seek 到 keyframe 0% 相位（currentTime=
+  // effect.delay，见 waitForSteady 注释——React 端 delay 类未生成规则故全部 0，
+  // Vue 端 0~3s 错峰，seek 到各自 delay 才能让双端统一落在同一 keyframe 相位）。
+  { id: 'login', path: '/login', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true },
+  { id: 'register', path: '/register', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true },
   // —— 重定向行为（两端应落到同一目标页） ——
   { id: 'redirect-system', path: '/platform/system' },
   { id: 'redirect-integrations', path: '/platform/integrations' },
@@ -293,14 +298,46 @@ function pixdiff(vuePng, reactPng, diffPng) {
 // 触发的入场过渡会被冻在开头（实测：新建知识库对话框半透明幽灵态 46% 伪差）。
 // noFreeze：getAnimations().pause() 会把 spinner/进度条等循环动画冻在中间态，
 // 若某页确证因此抬差，在 ALL_PAGES 该项加 noFreeze:true 跳过动画冻结。
-async function waitForSteady(page, settleMs, noFreeze) {
+// syncPhase（页标志 syncAnimPhase:true）：pause 只保证动画停在"某个"相位——
+// 暂停时刻取决于双端各自的导航时序，是任意的。装饰循环动画（login/register
+// .animated-bg 的 nodePulse/lineFlow）因此 run 间波动（275↔1387px）。确定性
+// 定格：把每条无限循环 CSS 动画 seek 到 currentTime = effect.delay（= 该动画
+// keyframe 0% 相位）。注意不能统一 currentTime=0——delay>0 的动画在 0 时刻
+// 处于 fill:none 延迟期渲染基线态，而 delay=0 的落在 keyframe 0%，两端 delay
+// 不一致时会系统性分叉（实证：React auth 页 [animation-delay:${...}] 模板
+// 插值类 Tailwind 未生成规则，全部 delay=0；Vue 端 0~3s 错峰 → currentTime=0
+// 双端 44k px 分叉）。seek 到各自 delay 后双端统一落在 keyframe 0%（nodePulse
+// opacity .65/scale 1、lineFlow dashoffset 0），与端侧 delay 是否生效无关。
+//   - 仅 iterations===Infinity 的 CSSAnimation 参与 seek：一次性入场/切换动画
+//     必须保持 pause 末态（fill:forwards 已稳定），seek 回 0 会回退 UI 状态。
+//   - CSSTransition 一律不 seek（归零会把已完成过渡回退到过渡前状态，破坏
+//     freezeCarousel 已定格的轮播态）。
+//   - SVG SMIL：根 svg.setCurrentTime(0)（无 SMIL 元素时为无害 no-op）。
+//   - rAF/canvas：本仓库无此类装饰动画（headless 探针实证 login 双端 24 个
+//     全为 CSSAnimation），如未来出现需页面侧提供确定性时间源，扫描器无法注入。
+async function waitForSteady(page, settleMs, noFreeze, syncPhase) {
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   await page.waitForTimeout(settleMs);
   if (!noFreeze) {
-    await page.evaluate(() => {
-      document.getAnimations().forEach(a => a.pause?.());
-    }).catch(() => {});
+    await page.evaluate((syncPhase) => {
+      document.getAnimations().forEach(a => {
+        a.pause?.();
+        if (!syncPhase) return;
+        if (typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation) {
+          const t = a.effect?.getTiming?.();
+          // 无限循环装饰动画：seek 到 keyframe 0% 相位（delay 起点，负 delay 钳 0）
+          if (t && t.iterations === Infinity) {
+            try { a.currentTime = Math.max(0, t.delay || 0); } catch { /* 不可 seek 则保持 pause 态 */ }
+          }
+        }
+      });
+      if (syncPhase) {
+        for (const svg of document.querySelectorAll('svg')) {
+          if (typeof svg.setCurrentTime === 'function') { try { svg.setCurrentTime(0); } catch { /* next */ } }
+        }
+      }
+    }, !!syncPhase).catch(() => {});
   }
 }
 
@@ -386,7 +423,7 @@ async function main() {
           // dev server 首次编译/HMR full-reload 会打断首帧；稳态门（网络空闲 +
           // 字体就绪 + 动画冻结）后走每页差异化 settle，消除瞬态白屏/字体/过渡
           // 动画伪差（R5xx chat 页间歇 93% 假阳性的根因是网络瞬态）。
-          await waitForSteady(active, p.settle ?? 2400, p.noFreeze);
+          await waitForSteady(active, p.settle ?? 2400, p.noFreeze, p.syncAnimPhase);
           // T12c：集成页展示的 API base URL 取 window.location.origin（Vue
           // :5174 / React :5175 各自渲染），双端文本必差。截图前把双端
           // localhost:端口 统一替换为同一字面量（chrome connect 输入框值、
@@ -424,7 +461,7 @@ async function main() {
               const ok = await clickFirst(active, action);
               if (!ok) warnings.push(tag + ' 未命中 ' + JSON.stringify(action));
               // 点击可能触发新的过渡动画/数据请求，截图前再过一遍稳态门定格。
-              await waitForSteady(active, 1100, p.noFreeze);
+              await waitForSteady(active, 1100, p.noFreeze, p.syncAnimPhase);
             }
           }
           const file = join(outDir, `${p.id}-${tag}.png`);
