@@ -368,9 +368,16 @@
    #f3f3f3 底、radius 6）；弹窗内边距 0，wkbs-modal 铺满整个面板。 */
 .wk-kb-settings-dialog {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0 !important;
   border: 0 !important;
   border-radius: 12px;
+  /* Vue .settings-modal box-shadow（KnowledgeBaseEditorModal.vue）：内层
+     .wkbs-modal 的阴影被上面 box-shadow:none!important 关掉（避免双层阴影
+     叠加），投影只能落在宿主弹窗上，否则四角与 Vue 差一道 0 8px 32px。 */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 .wk-kb-settings-dialog .wk-dialog-header {
   position: absolute;
@@ -391,8 +398,20 @@
   border-radius: 6px;
   background: var(--wk-color-surface-hover, #f3f3f3);
   color: rgba(0, 0, 0, 0.6);
-  font-size: 20px;
-  line-height: 1;
+  /* Vue 关闭钮是 svg X（20x20、stroke 2、round cap，KnowledgeBase
+     EditorModal .close-btn）；文本 "×" 字形与 svg 像素 diff 整块红：
+     字号清零藏掉文本，::after 以 mask 复刻同几何 svg。 */
+  font-size: 0;
+  line-height: 0;
+}
+.wk-kb-settings-dialog .wk-dialog-close::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M15 5L5 15M5 5L15 15' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M15 5L5 15M5 5L15 15' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / contain;
 }
 .wk-kb-settings-dialog .wk-dialog-body {
   margin-top: 0 !important;
