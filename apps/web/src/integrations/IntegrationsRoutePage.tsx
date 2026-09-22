@@ -4,8 +4,26 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { IntegrationAgentOption, IntegrationKnowledgeBaseOption, IntegrationWeChatQrPorts, APIPrincipalConfig, IntegrationResource } from '@weknora/views/integrations/page';
 import type { ApiKeyRow } from '@weknora/views/integrations/apiKeys';
 import type { IntegrationKey } from '@weknora/views/integrations/registry';
-import { IntegrationsPage } from '@weknora/views/integrations/page';
+import { IntegrationsPage, setIntegrationSpriteIconRenderer } from '@weknora/views/integrations/page';
 import { integrationKeyFromQuery } from '@weknora/views/integrations/registry';
+// T12c：向集成视图注入 tdesign sprite 图标渲染器（本地镜像 0.4.5 与 Vue 端
+// t-icon glyph 同构，台账 #10）——@weknora/views 无 tdesign-icons-react 依赖，
+// 未注入时视图回退内置手绘 path。模块加载时注册一次。
+import { Icon as TIcon } from 'tdesign-icons-react';
+import './integrations.td.css';
+
+try {
+  // tdesign-icons-react dist 未带 .t-icon{width/height:1em} 基础规则
+  //（tdesign-vue-next dist 有，见 integrations.td.css 注记），inline 显式
+  // 宽高兜底，确保 sprite 图标方形（file-copy 实测曾塌缩为 10x16）。
+  setIntegrationSpriteIconRenderer((name, size) => {
+    const px = typeof size === 'number' ? `${size}px` : (size ?? '16px');
+    // 与 Vue t-icon 渲染路径一致：仅 font-size（1em 方形由 integrations.td.css
+    // 的 .t-icon 基础规则提供）；inline width/height 会引入亚像素光栅化差
+    //（chevron-down 实测 12-14px 单级 AA 残差）。
+    return <TIcon name={name} size={px} />;
+  });
+} catch { /* keeps fallback paths when injection is unavailable */ }
 import { parseIntegrationTenantId } from './tenant.ts';
 import { ApiPlaygroundDrawer } from './ApiPlaygroundDrawer.tsx';
 import { EmbedPreviewModal } from './EmbedPreviewModal.tsx';

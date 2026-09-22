@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import * as nodeModule from 'node:module';
 
-import { buildIntegrationPath, parseIntegrationRoute } from './route.ts';
-import { restoreApiPlaygroundFocus, resolveIntegrationsTab } from './IntegrationsRoutePage.tsx';
-import { nextTab, visibleChannels } from './state.ts';
+// T12c：IntegrationsRoutePage 引入 integrations.td.css（域平移样式）——
+// node:test 直跑需短路 css 解析（settings 各 test 同款 stub）。
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+
+const { buildIntegrationPath, parseIntegrationRoute } = await import('./route.ts');
+const { restoreApiPlaygroundFocus, resolveIntegrationsTab } = await import('./IntegrationsRoutePage.tsx');
+const { nextTab, visibleChannels } = await import('./state.ts');
 
 test('maps the Vue integrations history URL to the canonical settings section', () => {
   assert.deepEqual(parseIntegrationRoute('/platform/integrations?tab=cli'), {

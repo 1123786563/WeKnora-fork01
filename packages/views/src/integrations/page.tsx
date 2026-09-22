@@ -16,6 +16,20 @@ import {
   type ApiKeyCreatePayload,
   type ApiKeyRow,
 } from './apiKeys.ts';
+// T12c：图标对齐 Vue t-icon sprite glyph（台账 #10 本地镜像 0.4.5）——
+// 手绘 path 近似版（LandingIcon/CopyIcon/JumpIcon/PlusIcon/⧉ 文本）全数改走
+// 注入式 sprite 渲染器（apps/web 侧 setIntegrationSpriteIconRenderer 注入
+// tdesign-icons-react Icon；名称按 Vue 各组件 capabilityIcons/template
+// #icon 映射：url→link、manual/notes→edit、browse→view-list、qa→
+// chat-bubble、clip→file-copy、shortcuts→jump）。@weknora/views 无
+// tdesign-icons-react 依赖，未注入时回退原手绘 path（本包测试直渲染口径）。
+type SpriteIconRenderer = (name: string, size?: number | string) => React.ReactNode;
+let spriteIconRenderer: SpriteIconRenderer | null = null;
+export function setIntegrationSpriteIconRenderer(renderer: SpriteIconRenderer | null): void { spriteIconRenderer = renderer; }
+function SpriteIcon({ name, size, fallback }: { name: string; size?: number | string; fallback?: React.ReactNode }) {
+  if (spriteIconRenderer) return <>{spriteIconRenderer(name, size)}</>;
+  return <>{fallback}</>;
+}
 import { buildCLIConnectCommand } from './cli.ts';
 import { integrationsLocale, integrationsT } from './messages.ts';
 import { imPlatformLabel, imPlatformOrder, integrationSectionCopy } from './view.ts';
@@ -491,7 +505,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
         to outrank the global unlayered h1 rule still in styles.css. Vue settings
         embeds the section inside .content-wrapper--full (30px 34px 40px), so the
         embedded mode drops the route-shell paddings. */}
-    <main className={'mx-auto max-w-[1040px] [-webkit-font-smoothing:antialiased]' + (embedded ? '' : ' px-[1rem] py-[2rem]')}>
+    <main className={'integrations-settings mx-auto max-w-[1040px] [-webkit-font-smoothing:antialiased]' + (embedded ? '' : ' px-[1rem] py-[2rem]')}>
       {!embedded ? <><header className="flex items-start justify-between gap-[1rem] mb-[1.25rem]">
         <div><h1 className="m-0!">{t('integrations.title')}</h1><p className="wk-muted text-muted">{t('integrations.agentEditor.desc')}</p></div>
         {onReload ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onReload}>{t('common.retry')}</button> : null}
@@ -509,8 +523,10 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
         {!section.external ? <div className="wk-int-section-heading mb-[18px]">
             <h2 className="m-0 mb-[6px] text-[rgba(0,0,0,0.9)] text-[18px] font-semibold leading-[1.35]">{copy.heading}</h2>
             <p className="m-0 text-[13px] leading-[1.6] text-[rgba(0,0,0,0.6)]">
-              {copy.description}
-              {copy.docLinkLabel && copy.docUrl ? <a className="ml-[6px] inline-flex items-center gap-[3px] text-[#07c05f] no-underline hover:underline" href={copy.docUrl} target="_blank" rel="noreferrer noopener">{copy.docLinkLabel}<LandingIcon name="url" size={13} /></a> : null}
+              {/* Vue 模板凝结：描述文本与尾随空格为单一文本节点（"…云之家 "），
+                  JSX 单表达式拼接防跨节点 kerning 漂移（台账 #11 同族）。 */}
+              {copy.docLinkLabel && copy.docUrl ? copy.description + ' ' : copy.description}
+              {copy.docLinkLabel && copy.docUrl ? <a className="ml-[6px] inline-flex items-center gap-[3px] font-[450] text-[#07c05f] no-underline hover:underline" href={copy.docUrl} target="_blank" rel="noreferrer noopener">{copy.docLinkLabel}<LandingIcon name="url" size={13} /></a> : null}
             </p>
           </div> : null}
         {loading ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.loading')}</p> : null}
@@ -865,9 +881,10 @@ function AgentFilterButton({ agents, value, locale, onPick }: { agents: readonly
       className={'flex cursor-pointer items-center gap-[4px] rounded-[6px] border-0 bg-transparent px-[4px] py-[2px] pr-[6px] [font:inherit] [transition:background_.2s_ease,color_.2s_ease] ' + (value ? 'bg-[#f3f3f3] text-[#07c05f]' : 'text-[rgba(0,0,0,0.4)] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.6)]')}
       onClick={() => setOpen((current) => !current)}
     >
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M19.5 4H4.5L10.5 12.5V20H13.5V12.5L19.5 4Z" /></svg>
+      {/* Vue IntegrationsAgentFilter.vue:6/8 — t-icon filter 14px + chevron-down 12px。 */}
+      <SpriteIcon name="filter" size="14px" fallback={<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M19.5 4H4.5L10.5 12.5V20H13.5V12.5L19.5 4Z" /></svg>} />
       {selectedName ? <span className="max-w-[150px] truncate text-[12px] leading-[14px]">{selectedName}</span> : null}
-      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M17.5 9.5L12 15L6.5 9.5" /></svg>
+      <SpriteIcon name="chevron-down" size="12px" fallback={<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M17.5 9.5L12 15L6.5 9.5" /></svg>} />
     </button>
     {open ? <div role="listbox" aria-label={label} className="absolute top-[calc(100%+4px)] left-0 z-[30] max-h-[280px] min-w-[160px] max-w-[240px] overflow-auto rounded-[6px] border border-solid border-[#e7e7e7] bg-surface py-[4px] shadow-[0_4px_16px_rgba(15,23,42,0.12)]">
       {[{ id: '', name: integrationsT(locale, 'integrations.filterAllAgents') }, ...agents].map((agent) => (
@@ -969,7 +986,7 @@ function ChannelListPanel({ variant, copy, locale, items, agents, agentFilter, o
         </article>;
       })}
       {canEdit ? <button type="button" className={CHANNEL_CARD_ADD_CLASS} onClick={onToggleCreate}>
-        <span className={CHANNEL_BADGE_ADD_CLASS} aria-hidden="true">+</span>
+        <span className={CHANNEL_BADGE_ADD_CLASS} aria-hidden="true"><SpriteIcon name="add" size="20px" fallback="+" /></span>
         <div className={CHANNEL_CARD_BODY_CLASS}>
           <div className={CHANNEL_CARD_HEADER_CLASS}>
             <span className={CHANNEL_CARD_TITLE_ADD_CLASS}>{copy.addTileLabel}</span>
@@ -1127,7 +1144,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
         <label>{t('agentEditor.im.callbackUrl')}
           <span className={CODE_TOOLBAR_CLASS}>
             <input className="wk-mono-input min-w-0 flex-1 max-w-[420px] bg-canvas! [font:0.85rem_ui-monospace,_monospace]!" readOnly value={imCallbackUrl(editing.id, apiBaseUrl)} />
-            <button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(imCallbackUrl(editing.id, apiBaseUrl)).catch(() => undefined); }}>⧉</button>
+            <button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(imCallbackUrl(editing.id, apiBaseUrl)).catch(() => undefined); }}><CopyIcon /></button>
           </span>
         </label>
       </fieldset> : null}
@@ -1421,7 +1438,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       <div className="wk-channel-key-control">
         <input className="wk-mono-input min-w-0 flex-1 max-w-[420px] bg-canvas! [font:0.85rem_ui-monospace,_monospace]! wk-embed-key-input" readOnly type="text" value={embedChannelKeyDisplay(token, revealed)} placeholder={token ? '' : t('embedPublish.channelKeyUnavailable')} aria-label={t('embedPublish.channelKey')} />
         {token ? <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" title={revealed ? t('embedPublish.hideKey') : t('embedPublish.revealKey')} onClick={onReveal}>{revealed ? '🙈' : '👁'}</button> : null}
-        {token ? <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" title={t('embedPublish.copyChannelKeyTitle')} onClick={() => { void navigator.clipboard.writeText(token).catch(() => undefined); }}>⧉</button> : null}
+        {token ? <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" title={t('embedPublish.copyChannelKeyTitle')} onClick={() => { void navigator.clipboard.writeText(token).catch(() => undefined); }}><CopyIcon /></button> : null}
         {canSubmit ? <button className="wk-button wk-button--text wk-button--danger cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-danger! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" title={t('embedPublish.resetKeyTitle')} disabled={busy} onClick={() => onRotate(channelId)}>{busy ? t('common.loading') : '↻'}</button> : null}
       </div>
       {!token ? <p className="wk-muted text-muted">{t('embedPublish.channelKeyHint')}</p> : null}
@@ -1505,8 +1522,8 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.api.baseUrlDesc')}</p>
         </div>
         <div className="flex min-w-0 items-center gap-[8px]">
-          <input className="h-[32px] min-w-0 flex-1 rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[8px] text-[12px] text-[rgba(0,0,0,0.9)] [font:12px_ui-monospace,_SFMono-Regular,_Menlo,_monospace] focus:outline-none" readOnly value={apiBaseDisplay} aria-label={t('integrations.api.baseUrl')} />
-          <button className="flex h-[32px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent px-[10px] text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-[#f3f3f3]" type="button" title={t('integrations.api.copy')} aria-label={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseDisplay).catch(() => undefined); }}><CopyIcon /></button>
+          <input className="box-border h-[32px]! min-w-0 flex-1 rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[8px] text-[12px] text-[rgba(0,0,0,0.9)] [font:12px_ui-monospace,_SFMono-Regular,_Menlo,_monospace] focus:outline-none" readOnly value={apiBaseDisplay} aria-label={t('integrations.api.baseUrl')} />
+          <button className="flex h-[32px] w-[46px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.9)] [font-family:inherit] hover:bg-[#f3f3f3]" type="button" title={t('integrations.api.copy')} aria-label={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseDisplay).catch(() => undefined); }}><CopyIcon /></button>
         </div>
       </div>
       {/* Vue .row--doc renders unconditionally (ApiIntegrationSettings.vue
@@ -1523,7 +1540,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
             <label className="mb-[6px] block text-[15px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.api.apiKeys')}</label>
             <p className="m-0 text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">{t('integrations.api.apiKeysDesc')}</p>
           </div>
-          <button className="flex h-[24px] shrink-0 cursor-pointer items-center gap-[8px] rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[7px] text-[12px] text-[rgba(0,0,0,0.9)] [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:border-primary!" type="button" onClick={() => setShowApiKeyForm?.(!showApiKeyForm)}><PlusIcon />{t('integrations.api.createApiKey')}</button>
+          <button className="flex h-[24px] shrink-0 cursor-pointer items-center gap-[8px] rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[7px] py-0 text-[12px]! leading-[20px] text-[rgba(0,0,0,0.9)] [font-family:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:border-primary!" type="button" onClick={() => setShowApiKeyForm?.(!showApiKeyForm)}><PlusIcon />{` ${t('integrations.api.createApiKey')}`}</button>
         </div>
       {freshApiKeyId !== null ? <p className="wk-status wk-status-ok my-[0.25rem]! text-[13px] text-success-text!" role="status">{t('integrations.api.apiKeyCreated')} · {t('integrations.api.secretSavedCopyHint')}</p> : null}
       {showApiKeyForm ? <ApiKeyCreateForm t={t} busy={busy} knowledgeBases={knowledgeBases ?? []} canSubmit={Boolean(actions.onCreateApiKey)} onCreate={onCreateApiKey} onCancel={() => setShowApiKeyForm?.(false)} /> : null}
@@ -1567,11 +1584,11 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
       <div>
         <label className="mb-[6px] block text-[15px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.api.principalMode')}</label>
         <p className="m-0 text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">{t('integrations.api.principalModeDesc')}</p>
-        <p className="m-0 mt-[6px]! text-[12px]! text-[rgba(0,0,0,0.4)]!">{t('integrations.api.principalScope')}</p>
+        <p className="m-0 mt-[6px]! text-[12px]! leading-[18.6px] text-[rgba(0,0,0,0.4)]!">{t('integrations.api.principalScope')}</p>
       </div>
       <div className="flex w-fit max-w-full" role="radiogroup" aria-label={t('integrations.api.principalMode')}>
         {([['tenant', 'integrations.api.modeTenant'], ['direct_header', 'integrations.api.modeDirect'], ['signed_token', 'integrations.api.modeSigned']] as const).map(([value, key], index) => (
-          <button key={value} type="button" role="radio" aria-checked={principalMode === value} className={'flex h-[32px] cursor-pointer items-center border border-solid px-[16px] text-[14px] [font:inherit] last:rounded-r-[3px] first:rounded-l-[3px] ' + (index > 0 ? '-ml-px ' : '') + (principalMode === value ? 'z-[1] border-[#07c05f] bg-[#07c05f] text-white' : 'border-[#dcdcdc] bg-surface text-[rgba(0,0,0,0.9)] hover:border-primary!')} onClick={() => setPrincipalMode(value)}>{t(key)}</button>
+          <button key={value} type="button" role="radio" aria-checked={principalMode === value} className={'flex h-[32px] cursor-pointer items-center border border-solid px-[16px] text-[14px] [font:inherit] last:rounded-r-[3px] first:rounded-l-[3px] ' + (index > 0 ? '-ml-px ' : '') + (principalMode === value ? 'z-[1] border-[#07c05f] bg-[#07c05f] text-white' : 'border-[#e7e7e7] bg-surface text-[rgba(0,0,0,0.9)] hover:border-primary!') + (index === 2 ? ' border-r-[#dcdcdc]' : '')} onClick={() => setPrincipalMode(value)}><span>{t(key)}</span></button>
         ))}
       </div>
       {principalMode === 'direct_header' ? <div className="grid w-full max-w-[760px] gap-[12px]">
@@ -1601,7 +1618,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
         <div className="overflow-hidden rounded-[8px] border border-solid border-[#e7e7e7] bg-[#f3f3f3]">
           <div className="flex items-center justify-between gap-[8px] border-b border-[#e7e7e7] bg-surface px-[10px] py-[8px]">
             <span className="text-[12px] font-medium text-[rgba(0,0,0,0.6)]">{t('integrations.api.requestExample')}</span>
-            <button className="flex shrink-0 cursor-pointer items-center border-0 bg-transparent px-[7px] py-0 text-[12px] text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-[#f3f3f3]" type="button" onClick={() => { void navigator.clipboard.writeText(requestExample).catch(() => undefined); }}><CopyIcon />{t('integrations.api.copy')}</button>
+            <button className="flex h-6 shrink-0 cursor-pointer items-center gap-[8px] border-0 bg-transparent pl-[6px] pr-[8px] py-0 text-[12px]! leading-[20px] text-[rgba(0,0,0,0.9)] [font-family:inherit] hover:bg-[#f3f3f3]" type="button" onClick={() => { void navigator.clipboard.writeText(requestExample).catch(() => undefined); }}><SpriteIcon name="file-copy" size="14px" fallback={<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M14 2V8H20M14 2H7V18H20V8" /><path d="M3 6L3 22H14" /></svg>} />{t('integrations.api.copy')}</button>
           </div>
           <pre className="m-0 overflow-auto px-[12px] py-[10px] text-left text-[12px] leading-[1.5] text-[rgba(0,0,0,0.9)] [font:12px/1.5_ui-monospace,_SFMono-Regular,_Menlo,_monospace]">{requestExample}</pre>
         </div>
@@ -1746,7 +1763,7 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
             would otherwise leave the label/hint on the UA button font (Arial).
             The body column carries Vue's gap:1px + justify-center. */}
         <button type="button" className="ext-cta mt-[14px] flex min-h-[52px] w-full items-center gap-3 rounded-[8px] border border-dashed bg-[rgba(255,255,255,0.55)] px-3 py-[10px] text-left text-[rgba(0,0,0,0.9)] [font-family:inherit]" style={{ borderColor: ctaBorder }} onClick={openExternal}>
-          <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[8px] text-[14px] leading-[0]" style={{ background: isClaw ? 'rgba(232,93,42,0.12)' : 'rgba(7,192,95,0.1)', color: brandDark }}>{tab === 'cli' ? <LandingIcon name="code" size={14} /> : tab === 'chrome' ? <LandingIcon name="extension" size={18} /> : <span aria-hidden="true" className="block text-[17px] leading-[17px]">🦞</span>}</span>
+          <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[8px] text-[14px] leading-[0]" style={{ background: isClaw ? 'color-mix(in srgb, #e85d2a 12%, #fff)' : 'color-mix(in srgb, #07c05f 10%, #fff)', color: brandDark }}>{tab === 'cli' ? <LandingIcon name="code" size={14} /> : tab === 'chrome' ? <LandingIcon name="extension" size={18} /> : <span aria-hidden="true" className="block text-[17px] leading-[17px]">🦞</span>}</span>
           <span className="flex min-w-0 flex-1 flex-col justify-center gap-[1px]"><span className="text-[13px] font-semibold leading-[1.35]">{cta.label}</span><span className="text-[11px] leading-[1.4] text-[rgba(0,0,0,0.4)]">{cta.hint}</span></span>
           <span aria-hidden="true" className="flex size-[30px] items-center justify-center rounded-[7px] text-[14px]" style={{ background: isClaw ? 'rgba(232,93,42,0.1)' : 'rgba(7,192,95,0.08)', color: isClaw ? '#c44d1f' : 'rgba(0,0,0,0.6)' }}><JumpIcon /></span>
         </button>
@@ -1774,12 +1791,12 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
     {false && tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-[rgba(0,0,0,0.9)]">{t('integrations.cli.commandsTitle')}</h4>
       <p className="wk-muted text-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.commandsDesc')}</p>
-      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('weknora doc upload')}>⧉</button></div>
+      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('weknora doc upload')}><CopyIcon /></button></div>
     </section> : null}
     {false && tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-[rgba(0,0,0,0.9)]">{t('integrations.cli.mcpTitle')}</h4>
       <p className="wk-muted text-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.mcpDesc')}</p>
-      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}>⧉</button></div>
+      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}><CopyIcon /></button></div>
     </section> : null}
     {tab === 'chrome' ? <section className="flex flex-col gap-3 pb-[10px] pt-[10px]">
       <LandingSectionHead label={t('integrations.chrome.capabilitiesTitle')} count={chromeCapabilities.length} />
@@ -1804,10 +1821,10 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
       </ol>
     </section> : null}
     {tab === 'claw' ? <section className="flex flex-col gap-3 pb-[10px] pt-[10px]">
-      <LandingSectionHead label={t('integrations.claw.capabilitiesTitle')} count={clawCapabilities.length} accent={accent} />
+      <LandingSectionHead label={t('integrations.claw.capabilitiesTitle')} count={clawCapabilities.length} accent={accent} barColor="#e85d2a" />
       <div className="grid grid-cols-2 gap-[10px]">
         {clawCapabilities.map((key, index) => <div key={key} className={'flex flex-col gap-2 rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3] p-3' + (isClaw && index === clawCapabilities.length - 1 && clawCapabilities.length % 2 === 1 ? ' col-span-2' : '')}>
-          <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[7px] bg-surface" style={accent ? { color: accent, background: 'rgba(232,93,42,0.1)' } : undefined}><LandingIcon name={key} size={14} /></span>
+          <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[7px] bg-surface" style={accent ? { color: accent, background: 'color-mix(in srgb, #e85d2a 10%, #fff)' } : undefined}><LandingIcon name={key} size={14} /></span>
           <h5 className="m-0 text-[13px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.claw.capabilities.' + key + '.title')}</h5>
           <p className="m-0 text-[12px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.claw.capabilities.' + key + '.desc')}</p>
         </div>)}
@@ -1830,7 +1847,7 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
         {tab === 'cli' ? <>
           <section className="flex flex-col gap-3 border-b border-[#e7e7e7] pb-[14px] pt-[10px]"><LandingSectionHead label={t('integrations.cli.commandsTitle')} /><p className="m-0 text-[12px] leading-[1.55] text-[rgba(0,0,0,0.4)]">{t('integrations.cli.commandsDesc')}</p><LandingCodeToolbar code={'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'} copyLabel={t('integrations.cli.copy')} onCopy={() => copy('weknora doc upload')} /></section>
           <section className="flex flex-col gap-3 pb-[10px] pt-[12px]"><LandingSectionHead label={t('integrations.cli.mcpTitle')} /><p className="m-0 text-[12px] leading-[1.55] text-[rgba(0,0,0,0.4)]">{t('integrations.cli.mcpDesc')}</p><LandingCodeToolbar code={JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)} copyLabel={t('integrations.cli.copy')} onCopy={() => copy('mcp')} /></section>
-        </> : tab === 'chrome' ? <section className="flex flex-col gap-3 pb-[10px] pt-[10px]"><LandingSectionHead label={t('integrations.chrome.stepsTitle')} /><ol className="m-0 flex list-none flex-col p-0">{chromeSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(7,192,95,0.12)] text-[11px] font-semibold text-[#07c05f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.chrome.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.chrome.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-[3px]! border border-solid border-[#dcdcdc]! bg-surface mt-[8px]! px-[7px]! py-0! text-[12px]! text-[rgba(0,0,0,0.9)]! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiSettings}>{t('integrations.chrome.openApiSettings')}</button> : null}{key === 'connect' ? <div className="mt-2 flex items-center gap-1"><input readOnly value={apiBaseDisplay} aria-label={apiBaseDisplay} className="h-[30px] min-w-0 flex-1 rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[8px] py-0 text-[14px] text-[rgba(0,0,0,0.9)]" /><button className="flex h-6 w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border border-solid border-transparent bg-transparent text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-hover-wash" type="button" title={t('integrations.chrome.copy')} aria-label={t('integrations.chrome.copy')} onClick={() => copy(apiBaseDisplay)}><CopyIcon /></button></div> : null}</div></li>)}</ol></section> : <section className="flex flex-col gap-3 pb-[10px] pt-[10px]"><LandingSectionHead label={t('integrations.claw.stepsTitle')} accent={accent} /><ol className="m-0 flex list-none flex-col p-0">{clawSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(232,93,42,.14)] text-[11px] font-semibold text-[#c44d1f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.claw.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.claw.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-[3px]! border border-solid bg-surface mt-[8px]! px-[7px]! py-0! text-[12px]! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55!" style={{ color: 'rgba(0, 0, 0, 0.9)', borderColor: '#dcdcdc' }} type="button" onClick={onOpenApiSettings}>{t('integrations.claw.openApiSettings')}</button> : null}{key === 'env' ? <div className="mt-2"><LandingCodeToolbar code={envExample} copyLabel={t('integrations.claw.copy')} onCopy={() => copy(envExample)} /></div> : null}{key === 'install' ? <div className="mt-2"><LandingCodeToolbar code={'openclaw skills install @lyingbug/weknora'} copyLabel={t('integrations.claw.copy')} onCopy={() => copy('openclaw skills install @lyingbug/weknora')} /></div> : null}</div></li>)}</ol></section>}
+        </> : tab === 'chrome' ? <section className="flex flex-col gap-3 pb-[10px] pt-[10px]"><LandingSectionHead label={t('integrations.chrome.stepsTitle')} /><ol className="m-0 flex list-none flex-col p-0">{chromeSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(7,192,95,0.12)] text-[11px] font-semibold text-[#07c05f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.chrome.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.chrome.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-[3px]! border border-solid border-[#dcdcdc]! bg-surface mt-[8px]! px-[7px]! py-0! text-[12px]! leading-[20px]! text-[rgba(0,0,0,0.9)]! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiSettings}>{t('integrations.chrome.openApiSettings')}</button> : null}{key === 'connect' ? <div className="mt-2 flex items-center gap-1"><input readOnly value={apiBaseDisplay} aria-label={apiBaseDisplay} className="h-[30px] min-w-0 flex-1 rounded-[3px] border border-solid border-[#dcdcdc] bg-surface px-[8px] py-0 text-[14px] text-[rgba(0,0,0,0.9)] [font-family:inherit]" /><button className="flex h-6 w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border border-solid border-transparent bg-transparent text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-hover-wash" type="button" title={t('integrations.chrome.copy')} aria-label={t('integrations.chrome.copy')} onClick={() => copy(apiBaseDisplay)}><CopyIcon /></button></div> : null}</div></li>)}</ol></section> : <section className="flex flex-col gap-3 pb-[10px] pt-[10px]"><LandingSectionHead label={t('integrations.claw.stepsTitle')} accent={accent} barColor="#e85d2a" /><ol className="m-0 flex list-none flex-col p-0">{clawSteps.map((key, index) => <li key={key} className="flex min-w-0 gap-[10px] border-b border-[#e7e7e7] py-[9px] first:pt-0 last:border-b-0 last:pb-0"><span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[rgba(232,93,42,.14)] text-[11px] font-semibold text-[#c44d1f]">{index + 1}</span><div className="min-w-0 flex-1"><div className="mb-[2px] text-[12px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{t('integrations.claw.steps.' + key + '.title')}</div><p className="m-0 text-[11px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('integrations.claw.steps.' + key + '.desc')}</p>{key === 'api' && onOpenApiSettings ? <button className="wk-button h-6! cursor-pointer rounded-[3px]! border border-solid bg-surface mt-[8px]! px-[7px]! py-0! text-[12px]! leading-[20px]! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55!" style={{ color: 'rgba(0, 0, 0, 0.9)', borderColor: '#dcdcdc' }} type="button" onClick={onOpenApiSettings}>{t('integrations.claw.openApiSettings')}</button> : null}{key === 'env' ? <div className="mt-2"><LandingCodeToolbar code={envExample} copyLabel={t('integrations.claw.copy')} onCopy={() => copy(envExample)} /></div> : null}{key === 'install' ? <div className="mt-2"><LandingCodeToolbar code={'openclaw skills install @lyingbug/weknora'} copyLabel={t('integrations.claw.copy')} onCopy={() => copy('openclaw skills install @lyingbug/weknora')} /></div> : null}</div></li>)}</ol></section>}
       </div></aside>
     </div>
     {tab === 'chrome' ? <footer className="text-[11px] leading-[16px] text-[rgba(0,0,0,0.4)]">{t('integrations.chrome.storeMeta')}</footer> : tab === 'claw' ? <footer className="rounded-[8px] border bg-[#f2eae7] px-3 py-[10px] text-[12px] text-[rgba(0,0,0,0.6)]" style={{ borderColor: '#e6cabd' }}><p className="m-0 mb-1 leading-[1.55]">{t('integrations.claw.ecosystemNote')}</p><span className="block text-right text-[11px] leading-[13px] text-[rgba(148,58,23,0.73)]">{t('integrations.claw.hubMeta')}</span></footer> : null}
@@ -1843,9 +1860,12 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, onOpenApiS
 // line-height: normal box (Tailwind's 1.5 layer default made it 20px and
 // pushed every step row below down 2px); the count pill is a 13px line box
 // (1px 7px padding → 15px tall, same as Vue).
-function LandingSectionHead({ label, count, accent }: { label: string; count?: number; accent?: string }) {
+function LandingSectionHead({ label, count, accent, barColor }: { label: string; count?: number; accent?: string; barColor?: string }) {
+  // Vue .setting-drawer__section-title::before 条色：默认 brand，claw 用
+  // @claw-accent #e85d2a（integration-landing.less:234-238）；文字/计数 pill
+  // 才是 accent-dark。barColor 单独传避免混用。
   return <h4 className="m-0 flex items-center gap-2 text-[13px] font-semibold leading-[18px] text-[rgba(0,0,0,0.9)]">
-    <span aria-hidden="true" className="shrink-0 rounded-[2px]" style={{ width: 3, height: 14, background: accent || '#07c05f' }} />
+    <span aria-hidden="true" className="shrink-0 rounded-[2px]" style={{ width: 3, height: 14, background: barColor || '#07c05f' }} />
     <span className="min-w-0 leading-[18px]">{label}</span>
     {typeof count === 'number' ? <span className="ml-auto rounded-[10px] px-[7px] py-px text-[11px] font-medium leading-[13px]" style={accent ? { color: accent, background: '#f2e0db' } : { color: 'rgba(0,0,0,0.26)', background: '#f3f3f3' }}>{count}</span> : null}
   </h4>;
@@ -1860,7 +1880,7 @@ function LandingSectionHead({ label, count, accent }: { label: string; count?: n
 function LandingCodeToolbar({ code, copyLabel, onCopy }: { code: string; copyLabel: string; onCopy(): void }) {
   return <div className="flex items-center overflow-hidden rounded-[8px] border border-[#e7e7e7] bg-[#f3f3f3]">
     <pre className="m-0 min-w-0 flex-1 overflow-x-auto whitespace-pre px-3 py-[10px] text-left text-[rgba(0,0,0,0.9)] [font:11px/1.55_ui-monospace,_SFMono-Regular,_Menlo,_monospace]">{code}</pre>
-    <button className="mx-1 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[3px] border border-solid border-transparent bg-transparent text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-hover-wash" type="button" title={copyLabel} aria-label={copyLabel} onClick={onCopy}><CopyIcon /></button>
+    <button className="mx-1 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[3px] border border-solid border-transparent bg-transparent p-0 text-[rgba(0,0,0,0.9)] [font:inherit] hover:bg-hover-wash" type="button" title={copyLabel} aria-label={copyLabel} onClick={onCopy}><CopyIcon /></button>
   </div>;
 }
 
@@ -1884,26 +1904,42 @@ const LANDING_ICON_PATHS: Record<string, React.ReactNode> = {
   shortcuts: <path d="M9 4L4 4L4 20L20 20L20 15M19.25 4.75L12 12M14 4H20L20 10" />,
 };
 
+// React 侧 key → Vue t-icon 名称（ClawSkillLanding.vue L122-126 /
+// ChromeExtensionLanding.vue L108-113 capabilityIcons + 各 template #icon）。
+const LANDING_ICON_TDESIGN_NAMES: Record<string, string> = {
+  upload: 'upload',
+  url: 'link',
+  manual: 'edit',
+  search: 'search',
+  browse: 'view-list',
+  qa: 'chat-bubble',
+  clip: 'file-copy',
+  notes: 'edit',
+  shortcuts: 'jump',
+  code: 'code',
+  extension: 'extension',
+};
+
 function LandingIcon({ name, size = 14 }: { name: string; size?: number }) {
-  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">{LANDING_ICON_PATHS[name] ?? null}</svg>;
+  return <SpriteIcon name={LANDING_ICON_TDESIGN_NAMES[name] ?? name} size={`${size}px`} fallback={<svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">{LANDING_ICON_PATHS[name] ?? null}</svg>} />;
 }
 
-// Vue t-icon "file-copy" (TDesign path, 16px) used by every code-toolbar copy
-// button and the connect-row copy control.
+// Vue t-icon "file-copy" 16px used by every code-toolbar copy button and the
+// connect-row copy control.
 function CopyIcon() {
-  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M14 2V8H20M14 2H15L20 7V8M14 2H7V18H20V8" /><path d="M3 6L3 22H14" /></svg>;
+  return <SpriteIcon name="file-copy" size="16px" fallback={<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M14 2V8H20M14 2H15L20 7V8M14 2H7V18H20V8" /><path d="M3 6L3 22H14" /></svg>} />;
 }
 
-// Vue t-icon "add" (TDesign path, 14px) on the small 创建 API Key outline button.
+// Vue t-icon "add" (14px) on the small 创建 API Key outline button.
 function PlusIcon() {
-  return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
+  return <SpriteIcon name="add" size="14px" fallback={<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>} />;
 }
 
-// Vue t-icon "jump" (TDesign path) in the ext-cta arrow wrap (1em = 14px).
+// Vue t-icon "jump" in the ext-cta arrow wrap (1em = 14px).
 function JumpIcon() {
-  return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M9 4L4 4L4 20L20 20L20 15" /><path d="M19.25 4.75L12 12M14 4H20L20 10" /></svg>;
+  return <SpriteIcon name="jump" size="15px" fallback={<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M9 4L4 4L4 20L20 20L20 15" /><path d="M19.25 4.75L12 12M14 4H20L20 10" /></svg>} />;
 }
 
 function copyButtonForExternal(t: Translator, key: string, copy: (value: string) => void, value: string) {
-  return <button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t(key)} aria-label={t(key)} onClick={() => copy(value)}>⧉</button>;
+  return <button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t(key)} aria-label={t(key)} onClick={() => copy(value)}><CopyIcon /></button>;
 }
