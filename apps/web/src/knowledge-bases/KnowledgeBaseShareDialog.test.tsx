@@ -14,6 +14,8 @@ const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM:
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
 Object.assign(globalThis, {
   React,
+  // S6：tdesign Input 挂载期调用 rAF（autoWidth 校准），jsdom 非 visual 无此全局。
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
@@ -114,11 +116,13 @@ async function openInlineShareForm(container: HTMLElement) {
 }
 
 function button(container: HTMLElement, label: string) {
-  return [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.includes(label));
+  // S6：disabled 的 tdesign Button 渲染 div.t-button（台账 #7），双查询。
+  return [...container.querySelectorAll<HTMLElement>('button, .t-button')].find((item) => item.textContent?.includes(label));
 }
 
 function labelledButton(container: HTMLElement, label: string) {
-  return container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  // S6：disabled 的 tdesign Button 渲染 div.t-button（台账 #7），双查询。
+  return container.querySelector<HTMLElement>(`button[aria-label="${label}"], .t-button[aria-label="${label}"]`);
 }
 
 async function select(container: HTMLElement, label: string, value: string) {
@@ -242,7 +246,7 @@ test('resets the share form after a successful share like Vue', async () => {
 
   assert.equal(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent, 'Read-only');
   assert.equal(container.querySelector<HTMLSelectElement>('select')?.value, '', 'Vue clears the organization after sharing');
-  assert.equal(button(container, 'Confirm')?.disabled, true, 'the cleared form cannot be submitted again');
+  assert.equal(button(container, 'Confirm')?.classList.contains('t-is-disabled'), true, 'the cleared form cannot be submitted again');
 });
 
 test('renders Vue-shaped organization options and shared-list actions', async () => {
@@ -306,7 +310,7 @@ test('shows the create failure and does not fire the change callback', async () 
   assert.match(container.textContent ?? '', /share request failed/);
   assert.doesNotMatch(container.textContent ?? '', /Knowledge base shared/);
   assert.equal(changed, 0);
-  assert.equal(button(container, 'Confirm')?.disabled, false);
+  assert.equal(button(container, 'Confirm')?.classList.contains('t-is-disabled'), false);
 });
 
 test('prevents duplicate removal while the mutation is busy', async () => {
@@ -326,7 +330,8 @@ test('prevents duplicate removal while the mutation is busy', async () => {
     remove?.click();
   });
   assert.deepEqual(calls, ['share-1']);
-  assert.equal(remove?.disabled, true);
+  // S6：busy 后重查（div↔button 根标签切换，台账 #7）。
+  assert.equal(labelledButton(container, 'Remove share')?.classList.contains('t-is-disabled'), true);
 
   await act(async () => removal.resolve());
 });
@@ -361,7 +366,7 @@ test('shows an unshare failure without firing the change callback', async () => 
   assert.match(container.textContent ?? '', /remove request failed/);
   assert.doesNotMatch(container.textContent ?? '', /Share cancelled/);
   assert.equal(changed, 0);
-  assert.equal(labelledButton(container, 'Remove share')?.disabled, false);
+  assert.equal(labelledButton(container, 'Remove share')?.classList.contains('t-is-disabled'), false);
 });
 
 test('ignores a stale load when the knowledge base changes while requests are pending', async () => {
@@ -432,7 +437,7 @@ test('inline share inside the outer save form submits without nested forms and k
 
   const confirm = button(container, 'Confirm');
   assert.ok(confirm);
-  assert.equal(confirm?.disabled, false, 'confirm enables once an organization is picked');
+  assert.equal(confirm?.classList.contains('t-is-disabled'), false, 'confirm enables once an organization is picked');
   await act(async () => confirm?.click());
   assert.deepEqual(payloads, [{ organization_id: 'org-editor', permission: 'viewer' }], 'clicking confirm still submits the share like Vue handleShare');
 });
