@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import * as React from 'react';
 import type { McpTestResult, McpTool } from '@weknora/api-client';
-import { Checkbox } from '@weknora/ui/checkbox';
+import { Checkbox as TCheckbox } from 'tdesign-react';
 
 type PolicyField = 'enabled' | 'requireApproval';
 type Props = { result: McpTestResult | null; approvals?: { toolName: string; enabled: boolean; requireApproval: boolean }[]; busy?: boolean; onPolicyChange?: (name: string, field: PolicyField, value: boolean) => void };
@@ -17,7 +17,7 @@ export function McpTestResultBody({ result, approvals = [], busy = false, onPoli
     {result.success && result.description ? <div><span>Description</span><p>{result.description}</p></div> : null}
     {result.success && tools.length ? <section aria-label="MCP tools"><h5>Tools ({tools.length})</h5><ul className="m-0 mt-2 list-none p-0">{tools.map((tool, index) => <li key={`${tool.name}-${index}`} className="[border-top:1px_solid_color-mix(in_srgb,currentColor_18%,transparent)] py-[.55rem]">
       <button type="button" aria-expanded={expanded === index} className="border-0 bg-transparent p-0 cursor-pointer [font:inherit] [color:inherit] font-semibold" onClick={() => setExpanded(expanded === index ? null : index)}>{tool.name} <span>{expanded === index ? '▴' : '▾'}</span></button>
-      <div className="wk-mcp-test-policy"><label><Checkbox disabled={busy || !onPolicyChange} checked={approvals.find((row) => row.toolName === tool.name)?.enabled ?? true} onChange={(event) => onPolicyChange?.(tool.name, 'enabled', event.target.checked)} /> Enabled</label><label><Checkbox disabled={busy || !onPolicyChange} checked={approvals.find((row) => row.toolName === tool.name)?.requireApproval ?? false} onChange={(event) => onPolicyChange?.(tool.name, 'requireApproval', event.target.checked)} /> Approval</label></div>
+      <div className="wk-mcp-test-policy"><label><TCheckbox disabled={busy || !onPolicyChange} checked={approvals.find((row) => row.toolName === tool.name)?.enabled ?? true} onChange={(checked) => onPolicyChange?.(tool.name, 'enabled', Boolean(checked))} /> Enabled</label><label><TCheckbox disabled={busy || !onPolicyChange} checked={approvals.find((row) => row.toolName === tool.name)?.requireApproval ?? false} onChange={(checked) => onPolicyChange?.(tool.name, 'requireApproval', Boolean(checked))} /> Approval</label></div>
       {tool.description ? <p className="my-1">{tool.description}</p> : null}
       {expanded === index && tool.inputSchema ? <pre className="mt-2 mb-0 mx-0 max-h-64 overflow-auto whitespace-pre-wrap">{JSON.stringify(tool.inputSchema, null, 2)}</pre> : null}
     </li>)}</ul></section> : null}

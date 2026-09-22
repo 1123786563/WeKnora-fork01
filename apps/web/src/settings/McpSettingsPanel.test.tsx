@@ -18,6 +18,24 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
+// ---- jsdom interaction coverage: Vue McpServiceDialog drawer parity ----
+const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  Event: dom.window.Event,
+  MouseEvent: dom.window.MouseEvent,
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+// S6：tdesign 组件挂载依赖（Input 的 rAF、listener 的 document）——必须在动态
+// import 面板前就位（tdesign 模块加载期探测 window，晚于 import 会锁死
+// useEventCallback 的 noop 分支 / attachEvent 旧分支）。
+Object.assign(globalThis, {
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+});
 const { McpSettingsPanel, importMcpConfig, validateMcpDraft, buildMcpConnectionPayload, clampMcpDrawerWidth, normalizeMcpAdvancedNumber } = await import('./McpSettingsPanel.tsx');
 const { formatMessage } = await import('@weknora/i18n');
 
@@ -161,19 +179,6 @@ test('MCP create payload carries the add-mode secret inline exactly like Vue bui
   assert.ok(!('api_key' in (edit.auth_config as Record<string, unknown>)));
 });
 
-// ---- jsdom interaction coverage: Vue McpServiceDialog drawer parity ----
-const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
-const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
-Object.assign(globalThis, {
-  window: dom.window,
-  document: dom.window.document,
-  HTMLElement: dom.window.HTMLElement,
-  Event: dom.window.Event,
-  MouseEvent: dom.window.MouseEvent,
-  IS_REACT_ACT_ENVIRONMENT: true,
-});
-Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
-
 const { createRoot } = await import('react-dom/client');
 const { act } = await import('react');
 
@@ -299,7 +304,11 @@ test('MCP metadata refresh keeps cached tool policies interactive like Vue', asy
 });
 
 function findButton(label: string): HTMLButtonElement | undefined {
-  return Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes(label)) as HTMLButtonElement | undefined;
+  // S6：tdesign Button 的 disabled 态渲染 div.t-button（台账 #7），经类查询。
+  return Array.from(document.querySelectorAll('button, .t-button')).find((button) => (button.textContent ?? '').includes(label)) as HTMLButtonElement | undefined;
+}
+function buttonDisabled(label: string): boolean | undefined {
+  return findButton(label)?.classList.contains('t-is-disabled');
 }
 
 function setInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
@@ -440,16 +449,16 @@ test('step 2 gates save on tool sync and shows the Vue usage counter, hint and g
     assert.match(text, /0\/16000/);
     assert.match(text, /根据已同步且启用的 Tools 生成精简说明/);
     const saveButton = findButton('保存');
-    assert.ok(saveButton?.disabled, 'save is gated until tools are synced (Vue confirm-disabled)');
+    assert.ok(buttonDisabled('保存'), 'save is gated until tools are synced (Vue confirm-disabled)');
     const generateButton = findButton('AI 生成');
-    assert.ok(generateButton?.disabled, 'AI generate is gated until tools are synced');
+    assert.ok(buttonDisabled('AI 生成'), 'AI generate is gated until tools are synced');
     assert.ok(dialog?.querySelector('section[aria-label="Tools 清单"]'), 'step 2 mounts the metadata panel');
     await act(async () => {
       metadataGate.resolve({ serviceId: 'svc-1', tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', instructions: 'Use the documentation tools.', serverDescription: 'Documentation server', syncedAt: '2026-09-13T00:00:00Z', stale: false });
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    assert.ok(!findButton('保存')?.disabled, 'save unlocks once the tool catalog syncs');
-    assert.ok(!findButton('AI 生成')?.disabled, 'AI generate unlocks once the tool catalog syncs');
+    assert.ok(!buttonDisabled('保存'), 'save unlocks once the tool catalog syncs');
+    assert.ok(!buttonDisabled('AI 生成'), 'AI generate unlocks once the tool catalog syncs');
     const docsTrigger = findButton('服务端原始说明');
     assert.ok(docsTrigger, 'server documentation trigger mirrors the Vue metadata popup');
     await act(async () => { docsTrigger?.click(); });

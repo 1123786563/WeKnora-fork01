@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import * as React from "react";
 import type { McpConfiguration, WeKnoraClient } from "@weknora/api-client";
-import { Button, Card, Checkbox, Input, Select, Status, Textarea } from "@weknora/ui";
+// S6 抽屉收编：MCP 编辑面离开 @weknora/ui 表单栈（T15 硬前置）。
+import { Button as TButton, Checkbox as TCheckbox, Input as TInput, Select as TSelect, Textarea as TTextarea } from "tdesign-react";
+import { WkCard as Card, WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { Icon as TIcon } from "tdesign-icons-react";
 import { McpToolsDirectory } from "./McpToolsDirectory.tsx";
 import { EmptyState } from "./EmptyState.tsx";
@@ -488,13 +490,13 @@ function McpMetadataSection({
           <p className="wk-muted text-muted m-0">{t("mcpMetadata.cacheHint")}</p>
         </div>
         <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-          <Button
+          <TButton
             type="button"
             disabled={busy || disabled}
             onClick={() => void load(true)}
           >
             {metadata ? t("mcpMetadata.refresh") : t("mcpMetadata.fetch")}
-          </Button>
+          </TButton>
         </div>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
@@ -594,7 +596,7 @@ function McpOAuthControl({
         <span className={oauth?.authorized ? mcpBadgeOk : oauth?.state === "refreshable" ? mcpBadgeInfo : mcpBadgeWarn}>
           {oauth?.authorized ? t("mcpServiceDialog.oauthAuthorized") : oauth?.state === "refreshable" ? t("mcpServiceDialog.oauthRefreshable") : t("mcpServiceDialog.oauthUnauthorized")}
         </span>
-        <Button
+        <TButton
           type="button"
           className="h-7 rounded-[6px] px-3 text-[12px]"
           disabled={busy || authorizing}
@@ -602,11 +604,11 @@ function McpOAuthControl({
           onClick={() => void onRequestAuthorize()}
         >
           {oauth?.state === "reauth_required" ? t("mcpServiceDialog.oauthAuthorize") : t("mcpServiceDialog.oauthReauthorize")}
-        </Button>
+        </TButton>
         {oauth && oauth.state !== "reauth_required" ? (
-          <Button type="button" className="h-7 rounded-[6px] px-3 text-[12px]" disabled={busy || authorizing} onClick={() => void revoke()}>
+          <TButton type="button" className="h-7 rounded-[6px] px-3 text-[12px]" disabled={busy || authorizing} onClick={() => void revoke()}>
             {t("mcpServiceDialog.oauthRevoke")}
-          </Button>
+          </TButton>
         ) : null}
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
@@ -950,7 +952,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       {loadError ? (
         <div data-testid="settings-load-empty" className="flex flex-col items-center justify-center px-4 py-16 text-center">
           <EmptyState description={loadError}>
-            <Button type="button" variant="primary" onClick={() => { void load(); }}>{t("common.retry")}</Button>
+            <TButton type="button" theme="primary" onClick={() => { void load(); }}>{t("common.retry")}</TButton>
           </EmptyState>
         </div>
       ) : services.length === 0 && !canEdit ? (
@@ -1056,13 +1058,13 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <p className="wk-muted text-muted">
                       {t("mcpServiceDialog.codeImport.hint")}
                     </p>
-                    <Textarea
+                    <TTextarea
                       rows={5}
                       value={draft.codeImport}
                       placeholder={'{\n  "mcpServers": { "my-server": { "url": "https://example.com/sse" } }\n}'}
-                      onChange={(event) => setField("codeImport", event.target.value)}
+                      onChange={(value) => setField("codeImport", String(value))}
                     />
-                    <Button
+                    <TButton
                       type="button"
                       onClick={() =>
                         setDraft((current) =>
@@ -1073,7 +1075,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       }
                     >
                       {t("mcpServiceDialog.codeImport.parse")}
-                    </Button>
+                    </TButton>
                     {draft.codeImportError ? (
                       <Status tone="error">{draft.codeImportError}</Status>
                     ) : null}
@@ -1082,20 +1084,18 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <legend className="wk-mcp-group-title">{t("mcpServiceDialog.basicSection")}</legend>
                     <label className="wk-mcp-required">
                       <span className="wk-mcp-label-text">{t("mcpServiceDialog.name")}</span>
-                      <Input
-                        required
-                        maxLength={128}
+                      <TInput
+                        maxlength={128}
                         value={draft.name}
                         placeholder={t("mcpServiceDialog.namePlaceholder")}
-                        onChange={(event) => setField("name", event.target.value)}
+                        onChange={(value) => setField("name", String(value))}
                       />
                     </label>
                     <div className="flex flex-wrap items-center gap-[.6rem]">
                       <label className="wk-checkbox flex-none mt-0 whitespace-nowrap">
-                        <Checkbox
-                          type="checkbox"
+                        <TCheckbox
                           checked={draft.enabled}
-                          onChange={(event) => setField("enabled", event.target.checked)}
+                          onChange={(value) => setField("enabled", Boolean(value))}
                         />{" "}
                         {t("mcpServiceDialog.enableService")}
                       </label>
@@ -1117,18 +1117,17 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     </label>
                     <label className="wk-mcp-required">
                       <span className="wk-mcp-label-text">{t("mcpServiceDialog.serviceUrl")}</span>
-                      <Input
+                      <TInput
                         type="url"
-                        required
                         value={draft.url}
                         placeholder={t("mcpServiceDialog.serviceUrlPlaceholder")}
-                        onChange={(event) => setField("url", event.target.value)}
+                        onChange={(value) => setField("url", String(value))}
                         />
                     </label>
                     <fieldset className="wk-mcp-custom-headers flex min-w-0 flex-col gap-[.7rem] border-0 p-0">
                       <legend className="flex w-full items-center justify-between gap-3 p-0 text-[13px] font-semibold leading-[18px]">
                         <span>{t("mcpServiceDialog.customHeaders.label")}</span>
-                        <Button
+                        <TButton
                           type="button"
                           className="inline-flex shrink-0 items-center gap-1 border-0 bg-transparent px-1.5 py-0.5 text-[12px] font-medium leading-[18px] text-[#07c05f] [font:inherit] hover:bg-[rgba(7,192,95,.08)] hover:outline-none focus-visible:bg-[rgba(7,192,95,.08)] focus-visible:outline-none"
                           onClick={() =>
@@ -1139,40 +1138,40 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                           }
                         >
                           <McpCardIcon name="add" size={14} /> {t("mcpServiceDialog.customHeaders.add")}
-                        </Button>
+                        </TButton>
                       </legend>
                       <p className="wk-muted text-muted">{t("mcpServiceDialog.customHeaders.desc")}</p>
                       {draft.headers.map((header, index) => (
                         <div className="wk-mcp-header-row" key={index}>
-                          <Input
+                          <TInput
                             placeholder={t("mcpServiceDialog.customHeaders.keyPlaceholder")}
                             value={header.key}
-                            onChange={(event) =>
+                            onChange={(value) =>
                               setField(
                                 "headers",
                                 draft.headers.map((item, itemIndex) =>
                                   itemIndex === index
-                                    ? { ...item, key: event.target.value }
+                                    ? { ...item, key: String(value) }
                                     : item,
                                 ),
                               )
                             }
                         />
-                          <Input
+                          <TInput
                             placeholder={t("mcpServiceDialog.customHeaders.valuePlaceholder")}
                             value={header.value}
-                            onChange={(event) =>
+                            onChange={(value) =>
                               setField(
                                 "headers",
                                 draft.headers.map((item, itemIndex) =>
                                   itemIndex === index
-                                    ? { ...item, value: event.target.value }
+                                    ? { ...item, value: String(value) }
                                     : item,
                                 ),
                               )
                             }
                           />
-                          <Button
+                          <TButton
                             type="button"
                             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[#66758b] hover:bg-[#f3f5f8] hover:text-[#245a9b] hover:outline-none focus-visible:bg-[#f3f5f8] focus-visible:text-[#245a9b] focus-visible:outline-none"
                             onClick={() =>
@@ -1185,7 +1184,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                             }
                           >
                             <McpCardIcon name="delete" size={14} /><span className="wk-sr-only">{t("common.delete")}</span>
-                          </Button>
+                          </TButton>
                         </div>
                       ))}
                     </fieldset>
@@ -1206,11 +1205,11 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       <>
                         <label>
                           {t("mcpServiceDialog.oauthScopes")}
-                          <Input
+                          <TInput
                             value={draft.oauthScopes}
                             placeholder={t("mcpServiceDialog.optional")}
-                            onChange={(event) =>
-                              setField("oauthScopes", event.target.value)
+                            onChange={(value) =>
+                              setField("oauthScopes", String(value))
                             }
                           />
                         </label>
@@ -1228,16 +1227,16 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       <>
                         <label>
                           {t("mcpServiceDialog.apiKeyHeader")}
-                          <Input
+                          <TInput
                             value={draft.apiKeyHeader}
                             placeholder="X-API-Key"
-                            onChange={(event) =>
-                              setField("apiKeyHeader", event.target.value)
+                            onChange={(value) =>
+                              setField("apiKeyHeader", String(value))
                             }
                           />
                         </label>
                         <p className="wk-muted text-muted">{t("mcpServiceDialog.apiKeyHeaderDesc")}</p>
-                        {draft.id ? <div className="wk-mcp-credential-card grid gap-[.65rem] rounded-[7px] border border-[#dce3ed] bg-[#f7f9fc] p-3"><div className="flex items-center justify-between gap-3"><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={`text-[.8rem] text-[#66758b] ${draft.credentialConfigured ? "text-[#16845b]! font-semibold" : ""}`}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<Input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>{draft.credentialConfigured ? <Button type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</Button> : null}</div> : <label>{t("mcpServiceDialog.credentialValue")}<Input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>}
+                        {draft.id ? <div className="wk-mcp-credential-card grid gap-[.65rem] rounded-[7px] border border-[#dce3ed] bg-[#f7f9fc] p-3"><div className="flex items-center justify-between gap-3"><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={`text-[.8rem] text-[#66758b] ${draft.credentialConfigured ? "text-[#16845b]! font-semibold" : ""}`}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<TInput type="password" autocomplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(value) => setField("apiKey", String(value))} /></label>{draft.credentialConfigured ? <TButton type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</TButton> : null}</div> : <label>{t("mcpServiceDialog.credentialValue")}<TInput type="password" autocomplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(value) => setField("apiKey", String(value))} /></label>}
                       </>
                     ) : null}
                   </fieldset>
@@ -1246,13 +1245,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <label>
                       {t("mcpServiceDialog.timeoutSec")}
                       <div className="relative">
-                        <Input
-                          className="pr-9"
-                          type="number"
-                          min={1}
-                          max={300}
-                          value={draft.timeout}
-                          onChange={(event) => setField("timeout", event.target.value === "" ? "" : Number(event.target.value))}
+                        <TInput
+                          className="pr-9 wk-mcp-number-input"
+                          value={draft.timeout === "" ? "" : String(draft.timeout)}
+                          onChange={(value) => setField("timeout", String(value) === "" ? "" : Number(String(value)))}
                           onBlur={() => setField("timeout", normalizeMcpAdvancedNumber(draft.timeout, 30, 1, 300))}
                         />
                         <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#98a2b8]">{t("mcpServiceDialog.unitSecond")}</span>
@@ -1261,13 +1257,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <label>
                       {t("mcpServiceDialog.retryCount")}
                       <div className="relative">
-                        <Input
-                          className="pr-9"
-                          type="number"
-                          min={0}
-                          max={10}
-                          value={draft.retryCount}
-                          onChange={(event) => setField("retryCount", event.target.value === "" ? "" : Number(event.target.value))}
+                        <TInput
+                          className="pr-9 wk-mcp-number-input"
+                          value={draft.retryCount === "" ? "" : String(draft.retryCount)}
+                          onChange={(value) => setField("retryCount", String(value) === "" ? "" : Number(String(value)))}
                           onBlur={() => setField("retryCount", normalizeMcpAdvancedNumber(draft.retryCount, 3, 0, 10))}
                         />
                         <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#98a2b8]">{t("mcpServiceDialog.unitTimes")}</span>
@@ -1276,13 +1269,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <label>
                       {t("mcpServiceDialog.retryDelaySec")}
                       <div className="relative">
-                        <Input
-                          className="pr-9"
-                          type="number"
-                          min={0}
-                          max={60}
-                          value={draft.retryDelay}
-                          onChange={(event) => setField("retryDelay", event.target.value === "" ? "" : Number(event.target.value))}
+                        <TInput
+                          className="pr-9 wk-mcp-number-input"
+                          value={draft.retryDelay === "" ? "" : String(draft.retryDelay)}
+                          onChange={(value) => setField("retryDelay", String(value) === "" ? "" : Number(String(value)))}
                           onBlur={() => setField("retryDelay", normalizeMcpAdvancedNumber(draft.retryDelay, 1, 0, 60))}
                         />
                         <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[12px] text-[#98a2b8]">{t("mcpServiceDialog.unitSecond")}</span>
@@ -1303,7 +1293,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       <label className="wk-form-label text-ink font-semibold wk-mcp-required">
                         <span className="wk-mcp-label-text">{t("mcpMetadata.usageInstructions")}</span>
                       </label>
-                      <Button
+                      <TButton
                         type="button"
                         disabled={
                           !toolsSynced || metadataBusy || saving || generatingUsage
@@ -1312,16 +1302,15 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         onClick={() => void generateUsage()}
                       >
                         {t("mcpMetadata.generateUsage")}
-                      </Button>
+                      </TButton>
                     </div>
-                    <Textarea
-                      required
+                    <TTextarea
                       rows={5}
                       maxLength={16000}
                       value={draft.usageInstructions}
                       placeholder={t("mcpMetadata.instructionsPlaceholder")}
-                      onChange={(event) =>
-                        setField("usageInstructions", event.target.value)
+                      onChange={(value) =>
+                        setField("usageInstructions", String(value))
                       }
                     />
                     <span className="wk-muted text-muted block text-right text-[.78rem]">
@@ -1343,24 +1332,24 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             <div className="wk-mcp-footer sticky bottom-0 -mx-[18px] mt-[1.2rem] flex min-h-[53px] shrink-0 box-border items-center justify-between gap-3 border-t border-[#edf0f5] bg-white px-[18px] pt-[.6rem] pb-[.2rem]">
                 <div className="flex flex-1">
                   {step === 1 ? (
-                    <Button
+                    <TButton
                       type="button"
                       disabled={dialogBusy}
                       onClick={() => setStep(0)}
                     >
                       {t("mcpMetadata.previous")}
-                    </Button>
+                    </TButton>
                   ) : null}
                 </div>
                 <div className="flex gap-[.6rem]">
-                  <Button
+                  <TButton
                     type="button"
                     disabled={saving}
                     onClick={closeEditor}
                   >
                     {t("common.cancel")}
-                  </Button>
-                  <Button
+                  </TButton>
+                  <TButton
                     type="submit"
                     loading={saving}
                     disabled={
@@ -1370,7 +1359,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     }
                   >
                     {step === 0 ? t("mcpMetadata.saveNext") : t("common.save")}
-                  </Button>
+                  </TButton>
                 </div>
               </div>
             </form>

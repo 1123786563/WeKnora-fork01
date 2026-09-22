@@ -547,7 +547,7 @@ test('a failed run replays the durable history and reinstalls with guidance on r
     });
     // S6：disabled→enabled 会把 tdesign Button 的根标签从 div 换回 button
     // （台账 #7），输入后重新查询再点击。
-    await act(async () => { retryOf()?.click(); });
+    await act(async () => { (retryOf() as HTMLButtonElement | undefined)?.click(); });
     await settle();
     assert.deepEqual(calls.reinstall, [['cfg-1', 'sk-1', 'install libxml first']]);
   } finally {
