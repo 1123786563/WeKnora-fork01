@@ -391,6 +391,9 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
           {showSeparator ? <ConversationTimestamp copy={t} value={message.created_at} /> : null}
           {message.role === 'user' ? (
             <div className="message-row wk-chat-message-row wk-chat-message-row--user" data-message-id={message.id || undefined}>
+              {/* steer retry/remove：宿主 steer 回调（onSteerRetry/onSteerRemove）经
+                  ChatRoutePage 作用于队列 chip；消息行内的失败重试/移除入口当前无
+                  host 接线（占位 no-op），Vue usermsg steer-failure 面保留结构。 */}
               <UserMessageFace
                 copy={t}
                 message={message}
@@ -409,6 +412,8 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
                 content={historyThink?.answer ?? message.content ?? ''}
                 onBookmark={onBookmark}
                 onCitationClick={onCitationClick}
+                onToggleReferences={onToggleReferences}
+                referencesOpen={referencesOpen}
               />
               <ArtifactList
                 copy={t}

@@ -185,6 +185,10 @@ export function RagPipelineProgressFace(props: {
   copy: ChatCopyTable;
   message: ChatMessage;
   liveStatusText: string;
+  /** Vue toggleExpanded：折叠根切换共享引用抽屉（旧 React 行为对齐）。缺省只读。 */
+  onToggle?(): void;
+  /** 引用抽屉当前开合态（aria-expanded + chevron 方向）。 */
+  referencesOpen?: boolean;
 }) {
   const row = props.message as Record<string, unknown>;
   const refs = [...(Array.isArray(row.knowledge_references) ? row.knowledge_references as unknown[] : []),
@@ -193,9 +197,12 @@ export function RagPipelineProgressFace(props: {
   const docCount = groups.flatMap((group) => (group.kind === 'document' ? group.items : [])).length;
   const webCount = groups.flatMap((group) => (group.kind === 'web' ? group.items : [])).length;
   if (docCount === 0 && webCount === 0) return null;
-  const referenceText = docCount > 0
-    ? props.copy.referencesDocCount.replace('{count}', String(docCount))
-    : `引用了${webCount}个网页`;
+  // Vue RagPipelineProgress.vue:502-515 三分支：doc+web 组合文案 / doc / web。
+  const referenceText = docCount > 0 && webCount > 0
+    ? props.copy.referencesDocAndWebCount.replace('{docCount}', String(docCount)).replace('{webCount}', String(webCount))
+    : docCount > 0
+      ? props.copy.referencesDocCount.replace('{count}', String(docCount))
+      : props.copy.referencesWebCount.replace('{count}', String(webCount));
   return (
     <div className="rag-pipeline-progress">
       <div className="sr-only" role="status" aria-live="polite">{props.liveStatusText}</div>
@@ -203,10 +210,16 @@ export function RagPipelineProgressFace(props: {
         <div className="tool-event">
           <div className="action-card tree-root">
             <div className="tree-root-toolbar">
-              <button type="button" className="tree-root-expand" aria-label={props.copy.searchDone}>
+              <button
+                type="button"
+                className="tree-root-expand"
+                aria-label={props.copy.searchDone}
+                aria-expanded={props.referencesOpen === true}
+                onClick={props.onToggle}
+              >
                 <span className="tree-root-status">{props.copy.searchDone}</span>
                 <span className="tree-root-reference">{referenceText}</span>
-                <SpriteIcon name="chevron-right" className="tree-root-expand__icon" />
+                <SpriteIcon name={props.referencesOpen === true ? 'chevron-down' : 'chevron-right'} className="tree-root-expand__icon" />
               </button>
             </div>
           </div>
@@ -253,14 +266,18 @@ function RequestInfoButton(props: { copy: ChatCopyTable; message: ChatMessage; s
               </button>
             ) : null}
           </div>
-          <div className="chat-request-card-body">
-            {rows.map((item) => (
-              <div key={item.label} className="chat-request-row">
-                <span className="chat-request-label">{item.label}</span>
-                <span className="chat-request-value">{item.value}</span>
-              </div>
-            ))}
-          </div>
+          {rows.length === 0 ? (
+            <div className="chat-request-empty">{props.copy.requestInfoEmpty}</div>
+          ) : (
+            <div className="chat-request-card-body">
+              {rows.map((item) => (
+                <div key={item.label} className="chat-request-row">
+                  <span className="chat-request-label">{item.label}</span>
+                  <span className="chat-request-value">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
     </span>
@@ -386,13 +403,23 @@ export function BotMessageFace(props: {
   content: string;
   onBookmark?(messageId: string): void | Promise<void>;
   onCitationClick?(citationId: string): void;
+  /** Vue ChatReferencesDrawer 入口：折叠根「检索完成」切换共享引用面板。 */
+  onToggleReferences?(): void;
+  /** 共享引用面板当前开合态（折叠根 aria-expanded + chevron 方向）。 */
+  referencesOpen?: boolean;
 }) {
   const liveStatus = props.copy.searchDone;
   return (
     <div className="bot_msg wk-chat-bot-message">
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div className="rag-answer-stack">
-          <RagPipelineProgressFace copy={props.copy} message={props.message} liveStatusText={liveStatus} />
+          <RagPipelineProgressFace
+            copy={props.copy}
+            message={props.message}
+            liveStatusText={liveStatus}
+            onToggle={props.onToggleReferences}
+            referencesOpen={props.referencesOpen}
+          />
           <AgentStreamAnswerFace
             copy={props.copy}
             message={props.message}
