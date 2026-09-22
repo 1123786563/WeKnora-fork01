@@ -4,7 +4,7 @@
 // A kind outside the server gate disables its card WITH the reason.
 import React from 'react';
 import type { CraftSessionKind } from '@weknora/contracts';
-import { Button } from '@weknora/ui';
+import { Button } from './td.tsx';
 import { craftKindDisabledReason, type CraftViewCapabilities } from '@weknora/domain/craft/capabilities';
 import './craft.css';
 

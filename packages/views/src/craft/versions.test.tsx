@@ -53,8 +53,9 @@ test('v1 (snapshot) restores; v2 (no snapshot) keeps download, disables restore 
   assert.match(v1, /从此版本继续/);
   assert.ok(!/disabled=""[^>]*>从此版本继续/.test(v1) || v1.indexOf('disabled') > v1.indexOf('从此版本继续'), 'v1 restore enabled');
   // v2: download enabled, restore disabled with the snapshot reason
+  // (tdesign Button DOM: children wrap in <span class="t-button__text">)
   assert.match(v2, /no_complete_recovery_snapshot/, 'the block reason stays readable');
-  const v2Buttons = v2.match(/<button[^>]*>(?:下载|从此版本继续)<\/button>/g) ?? [];
+  const v2Buttons = v2.match(/<button[^>]*>(?:<span[^>]*>)?(?:下载|从此版本继续)(?:<\/span>)?<\/button>/g) ?? [];
   const downloadBtn = v2Buttons.find((b) => b.includes('下载'));
   const restoreBtn = v2Buttons.find((b) => b.includes('从此版本继续'));
   assert.ok(downloadBtn && !downloadBtn.includes('disabled=""'), 'download stays available without a snapshot');

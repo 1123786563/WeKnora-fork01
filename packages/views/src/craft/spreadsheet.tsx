@@ -8,7 +8,7 @@
 // callbacks only; no global state, no localStorage (W05 contract).
 import React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button } from '@weknora/ui';
+import { Button } from './td.tsx';
 import { craftStrings, type CraftLocale } from './presentation.ts';
 
 /** Mirrors the skill's preview.json sheet entry (skills/craft-spreadsheet). */

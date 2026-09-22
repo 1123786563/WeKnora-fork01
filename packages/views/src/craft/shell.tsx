@@ -1,11 +1,12 @@
-// CFT-S00-T004: the craft host shell — composed from the EXISTING
-// @weknora/ui primitives. Sheet already owns focus trapping, Escape and
-// focus restore; Button already owns the disabled semantics; nothing here
-// rebuilds a second focus or dialog system. This layer only fixes craft's
-// composition defaults: the .wk-craft scope, the overflow guard, the
-// 460px drawer, and notices that speak state as text (never color-only).
+// CFT-S00-T004: the craft host shell — composed from the craft-local
+// tdesign-isomorphic primitives (td.tsx). The td Drawer owns focus trapping,
+// Escape and focus restore (t-drawer DOM + the Sheet interaction contract);
+// the td Button owns the disabled semantics; nothing here rebuilds a second
+// focus or dialog system. This layer only fixes craft's composition defaults:
+// the .wk-craft scope, the overflow guard, the 460px drawer, and notices that
+// speak state as text (never color-only).
 import React, { type ReactNode } from 'react';
-import { Button, Sheet } from '@weknora/ui';
+import { Button, Drawer } from './td.tsx';
 
 /**
  * Page shell: carries the craft token scope (T003) and clips unexpected
@@ -86,7 +87,8 @@ export function CraftNotice({ kind, children }: { kind: CraftNoticeKind; childre
 
 /**
  * The craft drawer: the hifi design's 460px side panel (full width under
- * 760px via CSS). Delegates focus/Escape entirely to the shared Sheet.
+ * 760px via CSS). Delegates focus/Escape entirely to the tdesign-isomorphic
+ * Drawer (td.tsx).
  */
 export function CraftDrawer({ open, title, onClose, children }: {
   open: boolean;
@@ -95,8 +97,8 @@ export function CraftDrawer({ open, title, onClose, children }: {
   children: ReactNode;
 }) {
   return (
-    <Sheet open={open} title={title} onClose={onClose} side="right" width="460px" className="wk-craft-drawer">
+    <Drawer open={open} title={title} onClose={onClose} size="460px" placement="right" className="wk-craft-drawer">
       {children}
-    </Sheet>
+    </Drawer>
   );
 }

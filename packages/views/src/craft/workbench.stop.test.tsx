@@ -48,8 +48,7 @@ Object.assign(globalThis, {
   dispatchEvent: () => false,
 }) as MediaQueryList;
 dom.window.HTMLElement.prototype.scrollTo = function (): void {};
-// CSS short-circuit (workbench.tsx imports craft.css; @weknora/ui imports
-// theme.css) — the same node module resolve hook as shell.test.tsx.
+// CSS short-circuit (workbench.tsx imports craft.css)// theme.css) — the same node module resolve hook as shell.test.tsx.
 import * as nodeModule from 'node:module';
 const hooks = nodeModule as typeof nodeModule & {
   registerHooks?: (h: { resolve: (specifier: string, context: unknown, nextResolve: (s: string, c: unknown) => unknown) => unknown }) => void;
