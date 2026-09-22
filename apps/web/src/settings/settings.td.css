@@ -4749,3 +4749,228 @@
     transform: rotate(360deg);
   }
 }
+
+/* —— §S6 编辑抽屉收编（task-s6）：@weknora/ui 表单栈离开后的样式平移段 ————
+   值逐项取自被删的 Tailwind utility 串（其级联结果），语义类名为既有查询
+   锚点（.wk-list-actions/.wk-field-error/.wk-muted 等，styles.css:97 头注先例）。 */
+
+/* 通用：编辑抽屉内的次级说明文本（原 text-muted utility，--color-muted #66758b）。 */
+.wk-settings-drawer-root .wk-muted {
+  color: #66758b;
+}
+
+/* 通用：抽屉表单尾部动作行（原 mb-[0.75rem] flex items-center justify-end gap-[0.5rem]）。 */
+.wk-settings-drawer-root .wk-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+/* 通用：字段级错误文本（原 text-xs leading-[1.4] text-[#c23434]）。 */
+.wk-settings-drawer-root .wk-field-error {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #c23434;
+}
+
+/* 通用：t-switch 行（原 mt-1 flex min-h-[22px] cursor-pointer flex-wrap items-center gap-x-2）。 */
+.wk-settings-drawer-root .wk-switch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.5rem;
+  min-height: 22px;
+  margin-top: 0.25rem;
+  cursor: pointer;
+}
+.wk-settings-drawer-root .wk-switch-row__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.9);
+}
+.wk-settings-drawer-root .wk-switch-row__desc {
+  flex-basis: 100%;
+  margin-top: 2px;
+  margin-left: 2.75rem;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8a8a8a;
+}
+
+/* 通用：凭据已配置标记（原 mr-auto text-[0.85rem] text-muted）。 */
+.wk-settings-drawer-root .wk-cred-configured {
+  margin-right: auto;
+  font-size: 0.85rem;
+  color: #66758b;
+}
+
+/* 通用：抽屉表单布局（原 my-4 grid gap-[.8rem] max-w-[620px] + label 网格；
+   [&_input]/[&_textarea] 边框段随旧栈组件消亡，由 tdesign 控件自带 chrome 接管）。 */
+.wk-settings-drawer-root .wk-settings-editor {
+  display: grid;
+  gap: 0.8rem;
+  max-width: 620px;
+  margin: 1rem 0;
+}
+.wk-settings-drawer-root .wk-settings-editor label {
+  display: grid;
+  gap: 0.35rem;
+  color: #27364d;
+  font-weight: 600;
+}
+
+/* models 编辑器 overlay + 抽屉面板（ModelSettingsPanel 留守段原 utility 串）。 */
+.wk-settings-drawer-root .wk-model-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  background: rgba(23, 32, 51, 0.34);
+}
+.wk-settings-drawer-root .wk-model-editor-drawer {
+  box-sizing: border-box;
+  height: 100%;
+  width: 560px;
+  max-width: 100%;
+  overflow-y: auto;
+  border-left: 1px solid #dce3ed;
+  background: #ffffff;
+  padding: 1.25rem 1.5rem 2rem 1.5rem;
+  box-shadow: -10px 0 30px rgba(23, 32, 51, 0.12);
+}
+.wk-settings-drawer-root .wk-settings-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #eef1f5;
+  padding-top: 1.25rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+  position: sticky;
+  top: -1.25rem;
+  z-index: 1;
+  background: #ffffff;
+}
+@media (max-width: 720px) {
+  .wk-settings-drawer-root .wk-model-editor-drawer {
+    width: 100%;
+    padding: 1rem;
+  }
+  .wk-settings-drawer-root .wk-settings-panel-heading {
+    flex-direction: column;
+    top: -1rem;
+    padding-top: 1rem;
+  }
+}
+
+/* Ollama 模型 combobox 弹层（原 ModelSettingsPanel utility 串）。 */
+.wk-settings-drawer-root .wk-ollama-combobox-wrap {
+  position: relative;
+  display: grid;
+  width: 100%;
+  gap: 0.25rem;
+}
+.wk-settings-drawer-root .wk-ollama-listbox {
+  position: relative;
+  z-index: 6;
+  display: grid;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 135, 155, 0.35);
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(23, 32, 51, 0.14);
+}
+.wk-settings-drawer-root .wk-ollama-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  background: transparent;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.wk-settings-drawer-root .wk-ollama-option:hover,
+.wk-settings-drawer-root .wk-ollama-option.is-active {
+  background: rgba(7, 192, 95, 0.1);
+}
+.wk-settings-drawer-root .wk-ollama-option__check {
+  font-size: 12px;
+  color: #0a8f4c;
+}
+.wk-settings-drawer-root .wk-ollama-option__name {
+  flex: 1;
+  font-size: 13px;
+}
+.wk-settings-drawer-root .wk-ollama-option__download {
+  color: #0a8f4c;
+}
+.wk-settings-drawer-root .wk-ollama-option__size {
+  font-size: 12px;
+  color: #7a879c;
+}
+
+/* Ollama combobox 原生 input：chrome 对齐相邻 t-input（32px 高 / token 描边）。 */
+.wk-settings-drawer-root .wk-ollama-combobox-wrap input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--td-component-stroke, #e7e7e7);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--td-text-color-primary, rgba(0, 0, 0, 0.9));
+  font: inherit;
+  font-size: 14px;
+}
+.wk-settings-drawer-root .wk-ollama-combobox-wrap input:focus {
+  outline: none;
+  border-color: var(--td-brand-color, #07c05f);
+}
+
+/* 模型测试面板（ModelDebugPanel，原 utility 串平移）。 */
+.wk-settings-drawer-root .wk-debug-panel {
+  margin-top: 1rem;
+  max-width: 720px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 1rem;
+  box-shadow: 0 10px 30px rgba(23, 32, 51, 0.12);
+}
+.wk-settings-drawer-root .wk-debug-heading {
+  position: static;
+  top: auto;
+  padding-top: 0;
+}
+.wk-settings-drawer-root .wk-debug-fieldset {
+  display: grid;
+  gap: 0.7rem;
+  border: 1px solid #edf0f5;
+  border-radius: 6px;
+  padding: 0.8rem;
+}
+.wk-settings-drawer-root .wk-debug-result {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  border-radius: 6px;
+  padding: 0.8rem;
+}
+.wk-settings-drawer-root .wk-debug-result--ok { border: 1px solid #86efac; }
+.wk-settings-drawer-root .wk-debug-result--error { border: 1px solid #fca5a5; }
+.wk-settings-drawer-root .wk-debug-pre {
+  max-height: 18rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #f7f9fc;
+  padding: 0.7rem;
+}

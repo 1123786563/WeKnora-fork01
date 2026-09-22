@@ -21,6 +21,11 @@ Object.assign(globalThis, {
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+// S6：tdesign Input 挂载期调用 requestAnimationFrame（autoWidth 校准），
+// jsdom 非 visual 模式无该全局——与 ModelSettingsPanel.test.tsx:30 同款 polyfill。
+Object.assign(globalThis, {
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+});
 
 const { createRoot } = await import('react-dom/client');
 const { ModelDebugPanel } = await import('./ModelDebugPanel.tsx');
@@ -108,7 +113,8 @@ test('model debug clears thinking after selecting a model that does not support 
   const thinkingToggle = container.querySelector<HTMLButtonElement>('[role="switch"]');
   assert.ok(thinkingToggle);
   await click(thinkingToggle);
-  assert.equal(thinkingToggle.getAttribute('aria-checked'), 'true');
+  // S6：tdesign Switch 以 t-is-checked 类承载选中态（台账 #7 先例）。
+  assert.equal(thinkingToggle.classList.contains('t-is-checked'), true);
 
   const selectModel = async (modelId: string) => {
     const combobox = container.querySelector<HTMLButtonElement>('[role="combobox"]');
@@ -122,7 +128,7 @@ test('model debug clears thinking after selecting a model that does not support 
   await selectModel('chat-1');
   assert.equal(container.querySelector('[role="switch"]'), null, 'OpenAI does not expose thinking controls');
   await selectModel('chat-2');
-  assert.equal(container.querySelector<HTMLButtonElement>('[role="switch"]')?.getAttribute('aria-checked'), 'false');
+  assert.equal(container.querySelector<HTMLButtonElement>('[role="switch"]')?.classList.contains('t-is-checked'), false);
 });
 
 test('model debug reselects an available type when refreshed models remove the active type', async () => {
@@ -143,16 +149,18 @@ test('model debug rerank asks for documents and ranks only with both inputs', as
   const text = container.textContent ?? '';
   assert.match(text, /候选文档/);
   assert.match(text, /每个非空行会作为一个独立文档发送给 ReRank 模型/);
-  const run = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '运行测试');
+  // S6：disabled 的 tdesign Button 渲染 div.t-button（台账 #7），经类查询。
+  const findRun = () => Array.from(container.querySelectorAll('.t-button')).find((button) => button.textContent === '运行测试');
+  const run = findRun();
   assert.ok(run);
-  assert.equal((run as HTMLButtonElement).disabled, true);
+  assert.equal(run.classList.contains('t-is-disabled'), true);
 
   const textareas = Array.from(container.querySelectorAll('textarea'));
   assert.equal(textareas.length, 2);
   await setInput(textareas[0]!, '什么是 WeKnora');
-  assert.equal((run as HTMLButtonElement).disabled, true, 'documents are still missing');
+  assert.equal(findRun()?.classList.contains('t-is-disabled'), true, 'documents are still missing');
   await setInput(textareas[1]!, 'WeKnora 是一个 RAG 知识库\n另一个文档');
-  assert.equal((run as HTMLButtonElement).disabled, false);
+  assert.equal(findRun()?.classList.contains('t-is-disabled'), false);
 });
 
 test('model debug run shows the Vue result banner, metrics and history labels', async () => {
@@ -168,7 +176,10 @@ test('model debug run shows the Vue result banner, metrics and history labels', 
   const textarea = container.querySelector('textarea');
   assert.ok(textarea);
   await setInput(textarea, '你好');
-  const run = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '运行测试');
+  // S6：tdesign Button 的 disabled/loading 态会在 div/button 间换根标签
+  // （台账 #7），交互后重新查询而非持旧引用。
+  const runOf = () => Array.from(container.querySelectorAll('.t-button')).find((button) => button.textContent === '运行测试');
+  const run = runOf();
   assert.ok(run);
   await click(run);
   await act(async () => {});
@@ -190,7 +201,9 @@ test('model debug run shows the Vue result banner, metrics and history labels', 
   const thinkingToggle = container.querySelector<HTMLButtonElement>('[role="switch"]');
   assert.ok(thinkingToggle);
   await click(thinkingToggle);
-  await click(run);
+  const runAgain = runOf();
+  assert.ok(runAgain, 'the run action re-renders after the first run');
+  await click(runAgain);
   await act(async () => {});
   assert.equal(inputs.length, 2);
   assert.deepEqual(inputs[1].options, { systemPrompt: undefined, temperature: 0.7, topP: 1, maxTokens: 1024, thinking: true });
