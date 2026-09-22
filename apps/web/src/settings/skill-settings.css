@@ -1,7 +1,0 @@
-/* Skill settings parity CSS — all rules migrated to SkillSettingsPanel.tsx
-   utilities. Only the @keyframes consumed via animate-[...] arbitrary values
-   remain (skill-chip-dot: busy install entry dot pulse, ex-catalog cards). */
-@keyframes skill-chip-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
