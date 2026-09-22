@@ -380,6 +380,38 @@ async function main() {
           // 字体就绪 + 动画冻结）后走每页差异化 settle，消除瞬态白屏/字体/过渡
           // 动画伪差（R5xx chat 页间歇 93% 假阳性的根因是网络瞬态）。
           await waitForSteady(active, p.settle ?? 2400, p.noFreeze);
+          // T12c：集成页展示的 API base URL 取 window.location.origin（Vue
+          // :5174 / React :5175 各自渲染），双端文本必差。截图前把双端
+          // localhost:端口 统一替换为同一字面量（chrome connect 输入框值、
+          // claw env 示例、cli/api tab 的 base 展示）。输入框走原型级 value
+          // setter 拦截——React remount/受控回写会重置直接赋值。确定性归一
+          // 同款于 system 时钟冻结。仅 integration-* 分区执行。
+          if (p.id.startsWith('settings-integration-')) {
+            await active.evaluate(() => {
+              const fix = (str) => str.replace(/localhost:\d{2,5}/g, 'localhost:port');
+              const walk = (node) => {
+                for (const child of node.childNodes) {
+                  if (child.nodeType === 3 && child.textContent && child.textContent.includes('localhost:')) {
+                    child.textContent = fix(child.textContent);
+                  } else if (child.nodeType === 1) {
+                    walk(child);
+                  }
+                }
+              };
+              walk(document.body);
+              for (const proto of [HTMLInputElement.prototype, HTMLTextAreaElement.prototype]) {
+                const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                if (!desc || !desc.set) continue;
+                Object.defineProperty(proto, 'value', {
+                  ...desc,
+                  set(v) { desc.set.call(this, typeof v === 'string' && v.includes('localhost:') ? fix(v) : v); },
+                });
+              }
+              for (const input of document.querySelectorAll('input, textarea')) {
+                if (typeof input.value === 'string' && input.value.includes('localhost:')) input.value = fix(input.value);
+              }
+            }).catch(() => {});
+          }
           if (p.actions) {
             for (const action of p.actions) {
               const ok = await clickFirst(active, action);
