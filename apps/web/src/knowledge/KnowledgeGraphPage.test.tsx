@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign Popup 运行时）
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import * as React from 'react';
@@ -332,20 +333,15 @@ test('graph header mirrors the Vue KB page chrome: breadcrumb, tab row, info/set
   // tabGraphTip concept-clarification tooltip. Hrefs reuse the canonical
   // KB route form (/knowledgeBase/<id>?tab=…) — the same URLs the documents
   // page nav links to; no new routes.
-  const tabs = [...breadcrumb.querySelectorAll('a.breadcrumb-tab')].map((tab) => ({ label: tab.textContent?.trim(), href: tab.getAttribute('href') }));
-  assert.deepEqual(tabs, [
-    { label: '文档', href: '/knowledgeBase/kb-1' },
-    { label: 'Wiki', href: '/knowledgeBase/kb-1?tab=wiki' },
-    { label: '图谱', href: '/knowledgeBase/kb-1?tab=graph' },
-  ]);
+  // tdesign 平移：Vue breadcrumb-tab 是 span（点击 onNavigate，无 href）；
+  // 激活态品牌绿由 documents.td.css .breadcrumb-tab.active 承载。
+  const tabLabels = [...breadcrumb.querySelectorAll('.breadcrumb-tab')].map((tab) => tab.textContent?.trim());
+  assert.deepEqual(tabLabels, ['文档', 'Wiki', '图谱']);
   const separators = [...breadcrumb.querySelectorAll('.breadcrumb-tab-sep')].map((sep) => sep.textContent?.trim());
   assert.deepEqual(separators, ['/', '/']);
-  const active = breadcrumb.querySelector('a.breadcrumb-tab.is-active');
+  const active = breadcrumb.querySelector('.breadcrumb-tab.active');
   assert.ok(active);
-  assert.equal(active.getAttribute('aria-current'), 'page');
   assert.equal(active.textContent?.trim(), '图谱');
-  assert.match(active.className, /text-\[var\(--wk-brand,#07c05f\)\]/, 'active tab uses the brand green highlight');
-  assert.match(active.getAttribute('title') ?? '', /引用关系图/);
 
   // Title-row actions: ⓘ info popover + ⚙ settings gear (kb-title-actions).
   assert.ok(container.querySelector('.kb-title-actions .kb-info-button'), 'ⓘ info button present');

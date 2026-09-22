@@ -166,6 +166,12 @@ const KB_ACTIVE = (pathname: string): boolean =>
   /^\/platform\/knowledge-bases\/[^/]+/.test(pathname) ||
   /^\/knowledgeBase(\/|$)/.test(pathname);
 
+/** Vue menu.vue:434 — KB 内新建对话（kbCreatChat 路由）激活「新对话」菜单项，
+ * 不点亮「知识库」；KB_ACTIVE 亦不匹配该子路径。 */
+const NEW_CHAT_ACTIVE = (pathname: string): boolean =>
+  pathname === '/platform/creatChat' ||
+  /^\/platform\/knowledge-bases\/[^/]+\/creatChat$/.test(pathname);
+
 /**
  * R464-A1 — seed the command palette's KB scope chip from the KB detail
  * route, mirroring Vue GlobalCommandPalette.vue's `route.params.kbId`
@@ -202,8 +208,8 @@ const NAV_ICON_URLS: Record<string, { default: string; active: string }> = {
 
 export function buildNavItems(t: (key: string) => string, labels: Record<string, string>): NavItem[] {
   return [
-    { key: 'newChat', href: '/platform/creatChat', label: labels.newChat, icon: 'creatChat', match: (p: string) => p === '/platform/creatChat', guide: 'nav-creatChat' },
-    { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: 'knowledge-bases', match: KB_ACTIVE, guide: 'nav-knowledge-bases' },
+    { key: 'newChat', href: '/platform/creatChat', label: labels.newChat, icon: 'creatChat', match: NEW_CHAT_ACTIVE, guide: 'nav-creatChat' },
+    { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: 'knowledge-bases', match: (p: string) => KB_ACTIVE(p) && !/\/creatChat$/.test(p), guide: 'nav-knowledge-bases' },
     { key: 'agents', href: '/platform/agents', label: labels.agents, icon: 'agents', match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
     // M2 expert templates — a creation surface next to agents; unconditional
     // (the GET /experts list is tenant-scoped, no admin gate). React-only

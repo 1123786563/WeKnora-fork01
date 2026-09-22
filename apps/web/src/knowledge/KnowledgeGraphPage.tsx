@@ -6,6 +6,7 @@ import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, fitGraphViewpo
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { navigate } from '../platform/navigation.ts';
 import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from '../documents/DocumentsPageChrome.tsx';
+import '../documents/documents.td.css';
 import { computeSupportedFileTypes, computeUnsupportedFileTypes } from '../documents/page-chrome.ts';
 import { KnowledgeSettingsPage, type KnowledgeSettingsSectionKey } from '../knowledge-settings/KnowledgeSettingsPage.tsx';
 import { canUploadKnowledgeDocuments, kbWikiTabFallbackPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from './permissions.ts';
@@ -593,8 +594,9 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     /* Vue App.vue also renders text with -webkit-font-smoothing: antialiased
        (inherited); the platform shell lacks it, so the page root re-arms it
        to keep glyph rasterization identical. */
-    <main className="wk-page [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] flex min-h-0 flex-1 flex-col box-border pl-[36px] pr-[28px] pt-6 pb-5">
-      <header className="wk-header mb-5">
+    <div className="knowledge-layout">
+      <div className="document-header">
+        <div className="document-header-title">
         <DocumentsBreadcrumb
           t={t}
           knowledgeBaseId={knowledgeBaseId}
@@ -613,20 +615,20 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
         {/* Vue keeps the document upload subtitle under every tab — the
             document-subtitle line is unconditional in KnowledgeBase.vue, and
             .document-header-title's 4px gap offsets it from the title row. */}
-        <p className="document-subtitle m-0 mt-[4px] text-[14px] font-normal leading-[20px] text-[rgba(0,0,0,0.4)]">{t('knowledgeEditor.document.subtitle')}</p>
+        <p className="document-subtitle">{t('knowledgeEditor.document.subtitle')}</p>
         {/* Vue parser-hint warning line (KnowledgeBase.vue:2458-2465): types
             advertised by an engine but unresolved by the KB rules render the
             banner + 前往配置 link on every KB detail tab. The wrapper margin
             (collapsing with the hint's own 2px) yields Vue's 6px gap after
             the .document-header-title 4px offset above. */}
-        <div className="mt-[6px]">
-          <ParserHint t={t} types={unsupportedFileTypes} onConfigure={openParserSettings} />
+        <ParserHint t={t} types={unsupportedFileTypes} onConfigure={openParserSettings} />
         </div>
-      </header>
+      </div>
       {/* Vue .wiki-main-area: flex:1 / min-height:0 / overflow:hidden with no
           border or radius — the Card chrome (rounded-card + border) is a
           React-only addition, so the surface renders as a plain flex region. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="wiki-main-area">
+      <div className="flex min-h-0 h-full w-full flex-1 flex-col overflow-hidden">
         <div ref={surfaceRef} data-testid="knowledge-graph-surface" className="relative min-h-[420px] flex-1 overflow-hidden bg-white max-[720px]:min-h-[26rem]">
           {status.kind === 'success' && graph && visible && visible.nodes.length > 0 ? (
             <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={cancelGraphGesture} onClick={(event) => {
@@ -854,6 +856,9 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} initialSection={settingsSection} />
         </Dialog>
       ) : null}
-    </main>
+      </div>
+      {/* Vue DocContent 宿主（关闭态 0 高度，参与 knowledge-layout gap 布局）。 */}
+      <div className="doc_content" />
+    </div>
   );
 }

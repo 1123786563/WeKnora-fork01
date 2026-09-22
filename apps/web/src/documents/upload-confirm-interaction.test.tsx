@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign Popup 运行时）
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import test, { afterEach } from 'node:test';
@@ -89,7 +90,8 @@ async function renderPage(client: WeKnoraClient): Promise<Root> {
 }
 
 function dropFiles(files: File[]): void {
-  const zone = document.querySelector('.wk-dropzone');
+  // tdesign 平移后拖放面 = .knowledge-main（Vue 全局拖放语义）。
+  const zone = document.querySelector('.knowledge-main');
   assert.ok(zone, 'documents dropzone is mounted');
   const event = new dom.window.Event('drop', { bubbles: true, cancelable: true });
   Object.defineProperty(event, 'dataTransfer', { value: { files } });

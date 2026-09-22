@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign Popup 运行时）
 // R490 B2 — TagManageDialog interaction coverage: the delete/rename/create
 // flows against the injected actions, mirroring the Vue drawer's behaviors
 // (confirm before delete, Enter submits, unchanged rename cancels).

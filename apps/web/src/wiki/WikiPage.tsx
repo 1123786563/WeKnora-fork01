@@ -8,6 +8,8 @@ import type {
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
 import { Button, Card, Dialog, Input, Status, Textarea } from "@weknora/ui";
+import { Input as TdInput } from "tdesign-react";
+import { Icon as TIcon } from "tdesign-icons-react";
 import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from "../documents/DocumentsPageChrome.tsx";
 import { computeSupportedFileTypes, computeUnsupportedFileTypes, documentsKBSettingsPath } from "../documents/page-chrome.ts";
 import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
@@ -22,6 +24,7 @@ import {
   wikiSlugDisplayName,
 } from "./markdown.ts";
 import "./wiki-reader.css";
+import "../documents/documents.td.css";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { navigate } from "../platform/navigation.ts";
 import { pagerState } from "../pagination.ts";
@@ -1070,8 +1073,8 @@ export function WikiPage({
   // (radius 4); the active button gets the brand tint + a hairline shadow.
   const viewToggle = (
     <div className="wiki-view-toggle inline-flex items-center rounded-[6px] border border-[#e7e7e7] bg-white p-[2px]" role="group" aria-label={t("wikiBrowser.viewModeToggle")}>
-      <button type="button" className={`flex h-[22px] w-[24px] cursor-pointer items-center justify-center rounded-[4px] border-0 p-0 [font:inherit] transition-colors duration-150 ${viewMode === "tree" ? "bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "bg-transparent text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)]"}`} aria-pressed={viewMode === "tree"} aria-label={t("wikiBrowser.viewTree")} title={t("wikiBrowser.viewTree")} onClick={() => switchViewMode("tree")}><WikiGlyph kind="tree" size={15} /></button>
-      <button type="button" className={`flex h-[22px] w-[24px] cursor-pointer items-center justify-center rounded-[4px] border-0 p-0 [font:inherit] transition-colors duration-150 ${viewMode === "list" ? "bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "bg-transparent text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)]"}`} aria-pressed={viewMode === "list"} aria-label={t("wikiBrowser.viewList")} title={t("wikiBrowser.viewList")} onClick={() => switchViewMode("list")}><WikiGlyph kind="list" size={15} /></button>
+      <button type="button" className={`flex h-[22px] w-[24px] cursor-pointer items-center justify-center rounded-[4px] border-0 p-0 [font:inherit] transition-colors duration-150 ${viewMode === "tree" ? "bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "bg-transparent text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)]"}`} aria-pressed={viewMode === "tree"} aria-label={t("wikiBrowser.viewTree")} title={t("wikiBrowser.viewTree")} onClick={() => switchViewMode("tree")}><TIcon name="tree-list" size="15px" /></button>
+      <button type="button" className={`flex h-[22px] w-[24px] cursor-pointer items-center justify-center rounded-[4px] border-0 p-0 [font:inherit] transition-colors duration-150 ${viewMode === "list" ? "bg-white text-[#07c05f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" : "bg-transparent text-[rgba(0,0,0,0.6)] hover:text-[rgba(0,0,0,0.9)]"}`} aria-pressed={viewMode === "list"} aria-label={t("wikiBrowser.viewList")} title={t("wikiBrowser.viewList")} onClick={() => switchViewMode("list")}><TIcon name="view-list" size="15px" /></button>
     </div>
   );
   // Vue .wiki-tab-bar-action: borderless 26×26 icon buttons (15px icon).
@@ -1140,7 +1143,7 @@ export function WikiPage({
           ) : (
             <>
               <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-[6px] border-0 bg-transparent p-0 text-left [font:inherit]" onClick={() => toggleDirectory(row.folder)}>
-                <span className={`wiki-folder-chevron flex h-[15px] w-[15px] shrink-0 items-center justify-center text-[rgba(0,0,0,0.4)] transition-transform ${expandedDirs.has(row.folder.path) ? "rotate-90" : ""}`} aria-hidden><WikiGlyph kind="chevron" size={15} /></span>
+                <span className={`wiki-folder-chevron flex h-[15px] w-[15px] shrink-0 items-center justify-center text-[rgba(0,0,0,0.4)] transition-transform ${expandedDirs.has(row.folder.path) ? "rotate-90" : ""}`} aria-hidden><TIcon name="chevron-right" size="15px" /></span>
                 <span className="wiki-directory-title min-w-0 flex-1 truncate text-[13px] font-semibold leading-[18px] text-[rgba(0,0,0,0.9)]">{row.folder.name}</span>
                 {/* Vue reserves a 15px hover-reveal slot after the count
                     (wiki-directory-action--reveal), so the count sits 17px in
@@ -1169,58 +1172,52 @@ export function WikiPage({
   );
 
   return (
-    /* Vue KnowledgeBase.vue page shell: .knowledge-layout = margin 0 16px 0 4px
-       + padding 24px 32px 0 + gap 20px between header / .wiki-main-area / a
-       trailing 0-height sibling — mirrored with the pl/pr/pb utilities below
-       so the wiki surface lands on the same box as the Vue screenshot. */
-    /* Vue App.vue also renders text with -webkit-font-smoothing: antialiased
-       (inherited); the platform shell lacks it, so the page root re-arms it
-       to keep glyph rasterization identical. */
-    <main className="wk-page [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] flex min-h-0 flex-1 flex-col box-border pl-[36px] pr-[28px] pt-6 pb-5">
-      <header className="wk-header mb-5">
-        <DocumentsBreadcrumb
-          t={t}
-          knowledgeBaseId={knowledgeBaseId}
-          kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
-          kbList={kbList}
-          kbMeta={{
-            type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
-            description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
-            createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
-          }}
-          supportedFileTypes={supportedFileTypes}
-          canManage={canManage}
-          onOpenSettings={() => setSettingsOpen(true)}
-          tabs={kbTabs}
-        />
-        {/* Vue .document-header-title gap 4px offsets the subtitle from the
-            title row; the wrapper margin (collapsing with ParserHint's own
-            2px) yields the 6px hint gap. */}
-        <p className="document-subtitle m-0 mt-[4px] text-[14px] font-normal leading-[20px] text-[rgba(0,0,0,0.4)]">{t("knowledgeEditor.document.subtitle")}</p>
-        <div className="mt-[6px]">
+    /* Vue KnowledgeBase.vue page shell: .knowledge-layout（margin 0 16px 0 4px
+       + padding 24px 32px 0 + gap 20px）> .document-header + .wiki-main-area；
+       样式平移在 documents/documents.td.css（breadcrumb/容器同源共享）。 */
+    <div className="knowledge-layout">
+      <div className="document-header">
+        <div className="document-header-title">
+          <DocumentsBreadcrumb
+            t={t}
+            knowledgeBaseId={knowledgeBaseId}
+            kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
+            kbList={kbList}
+            kbMeta={{
+              type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
+              description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
+              createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
+            }}
+            supportedFileTypes={supportedFileTypes}
+            canManage={canManage}
+            onOpenSettings={() => setSettingsOpen(true)}
+            tabs={kbTabs}
+          />
+          <p className="document-subtitle">{t("knowledgeEditor.document.subtitle")}</p>
           <ParserHint
             t={t}
             types={unsupportedFileTypes}
             onConfigure={() => navigate(documentsKBSettingsPath(knowledgeBaseId))}
           />
         </div>
-      </header>
-      {/* Vue .wiki-browser: a full-bleed white flex row (sidebar + reader
-          separated by the sidebar's 1px right border — no gap, no card
-          chrome). */}
-      <div className="wk-wiki-layout flex min-h-0 flex-1 items-stretch bg-white max-[720px]:flex-col">
+      </div>
+      {/* Vue .wiki-main-area：flex:1 + overflow hidden；.wiki-browser 全出血白底行。 */}
+      <div className="wiki-main-area">
+      <div className="wk-wiki-layout flex min-h-0 h-full w-full flex-1 items-stretch bg-white max-[720px]:flex-col">
         <aside className="wk-wiki-sidebar flex w-[280px] min-w-[240px] shrink-0 flex-col border-r border-[#e7e7e7] bg-white max-[720px]:w-full">
           <div className="wk-wiki-sidebar-header pb-2 pr-[10px]">
-            {/* Vue sidebar search = a single 32px t-input (border #dcdcdc,
-                radius 3, 16px prefix icon, 8px gaps). box-border keeps the
-                32px height inclusive of the 1px border (no preflight here). */}
-            <form className="wk-wiki-search box-border flex h-8 w-full items-center gap-2 rounded-[3px] border border-[#dcdcdc] bg-white px-2 text-[rgba(0,0,0,0.4)]" role="search" aria-label={t("wikiBrowser.page.search")} onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
-              <WikiGlyph kind="search" size={16} />
-              <Input
-                className="h-full min-w-0 flex-1 rounded-[3px]! border-0! bg-transparent! p-0! text-[14px] shadow-none! outline-none! focus-visible:outline-none! focus:shadow-none placeholder:text-[rgba(0,0,0,0.4)]"
+            {/* Vue sidebar search = a single t-input（prefix t-icon-search sprite，
+                border #dcdcdc、radius 3）；几何由平移 CSS .wk-wiki-search-input 段承载。 */}
+            <form className="wk-wiki-search" role="search" aria-label={t("wikiBrowser.page.search")} onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
+              <TdInput
+                className="wk-wiki-search-input"
                 value={searchDraft}
-                onChange={(event) => setSearchDraft(event.target.value)}
+                onChange={(value: unknown) => setSearchDraft(String(value ?? ""))}
+                clearable
                 placeholder={t("wikiBrowser.searchPlaceholder")}
+                prefixIcon={<TIcon name="search" />}
+                onEnter={() => submitSearch()}
+                onClear={() => setSearchDraft("")}
               />
             </form>
           </div>
@@ -1236,7 +1233,7 @@ export function WikiPage({
             <WikiGlyph kind="index" size={16} />
             <span className="wiki-nav-text text-[14px] font-normal leading-[20px]">{t("wikiBrowser.indexTitle")}</span>
           </button>
-          <div className="wiki-sidebar-divider my-[6px] border-t border-[#e7e7e7]" aria-hidden />
+          <div className="wiki-sidebar-divider my-[6px] mr-2 border-t border-[#e7e7e7]" aria-hidden />
           <nav className="wk-wiki-page-list flex flex-1 flex-col overflow-y-auto pr-2 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={t('wikiBrowser.pageActions')}>
             {directory}
               {viewMode === "list" ? listPages.filter((page) => pageInBucket(page, activeBucket)).map((page) => (
@@ -1620,6 +1617,9 @@ export function WikiPage({
           </div>
         </Card>
       ) : null}
-    </main>
+      </div>
+      {/* Vue DocContent 宿主（关闭态 0 高度，参与 knowledge-layout gap 布局）。 */}
+      <div className="doc_content" />
+    </div>
   );
 }

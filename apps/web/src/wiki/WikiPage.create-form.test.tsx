@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign Popup 运行时）
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import * as React from 'react';

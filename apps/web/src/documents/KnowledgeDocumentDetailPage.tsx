@@ -787,12 +787,12 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
         Vue section: padding 12px 0 16px, flex-column gap 14px, first-child
         padding-top 0 (doc-content.vue:2284-2299); the measured Vue rhythm
         leaves ~19px under the dl before the section border. */}
-    <section className="wk-document-metadata-section flex flex-col gap-[14px] border-b border-line-soft pb-[19px]">
+    <section className="wk-document-metadata-section flex flex-col gap-[14px] border-b border-line-soft pb-4">
       <h4 className={sectionTitleClass}>{t('knowledgeBase.detailSectionMeta')}</h4>
       <dl className="wk-document-metadata m-0 flex flex-col gap-[10px] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dd]:text-[13px] [&_dd]:leading-[1.6] [&_dt]:w-[72px] [&_dt]:shrink-0 [&_dt]:text-[12px] [&_dt]:leading-[1.6] [&_dt]:text-muted">
         {documentTime ? <div className="doc-detail-row flex items-start gap-3"><dt>{timeLabel}</dt><dd>{formatDetailTime(documentTime)}</dd></div> : null}
-        <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.infoCard.type')}</dt><dd>{/* Vue doc-content.vue:1648 t-tag variant="light" — 浅灰底无边框，非描边盒。 */}
-<span className="doc-type-tag inline-flex rounded-[3px] bg-surface-muted px-[6px] py-0 text-[12px] leading-[20px] text-[rgba(0,0,0,0.9)]">{typeLabel}</span></dd></div>
+        <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.infoCard.type')}</dt><dd className="flex">{/* Vue doc-content.vue:1648 t-tag variant="light" — 浅灰底无边框，非描边盒；行盒 20px（t-tag 高）。 */}
+<span className="doc-type-tag inline-flex justify-center rounded-[3px] bg-surface-muted px-[5px] py-0 text-[12px] leading-[20px] text-[rgba(0,0,0,0.9)]">{typeLabel}</span></dd></div>
         {document.channel && document.channel !== 'web' ? <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.infoCard.source')}</dt><dd>{String(document.channel)}</dd></div> : null}
         {rawTags.length > 0 ? <div className="doc-detail-row flex items-start gap-3"><dt>{t('knowledgeBase.tagLabel')}</dt><dd className="flex flex-wrap gap-1">{rawTags.map((tag) => <span key={String(tag.id ?? tag.name)} className="doc-tag-chip rounded-full border border-line-soft px-2 py-0.5 text-[11px] text-muted">{tag.name}</span>)}</dd></div> : null}
       </dl>
@@ -800,7 +800,7 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
     {/* ── 自定义元数据 (Vue metadata-section) ── */}
     <section className="flex flex-col gap-[14px] border-b border-line-soft pt-3 pb-4" aria-label={t('knowledgeBase.customMetadata')}>
       <div className="flex items-center justify-between gap-2">
-        <h4 className={sectionTitleClass}>{t('knowledgeBase.customMetadata')}<InfoOutlineIcon size={14} className="text-muted" /></h4>
+        <h4 className={sectionTitleClass}>{t('knowledgeBase.customMetadata')}<InfoOutlineIcon size={14} className="text-[rgba(0,0,0,0.4)]" /></h4>
         {canEdit && !metadataEditing ? <IconActionButton label={t('common.edit')} onClick={() => { setDetailsError(null); const rows = metadataRowsFromObject(document.custom_metadata as Record<string, unknown> | undefined); setMetadataDraft(rows.length ? rows : [metadataRow()]); setMetadataEditing(true); }}><EditIcon size={15} /></IconActionButton> : null}
       </div>
       {metadataEditing ? <MetadataEditor rows={metadataDraft} saving={detailsSaving} onChange={setMetadataDraft} onCancel={() => { setMetadataEditing(false); setDetailsError(null); }} onSave={(value) => void saveDetails({ custom_metadata: value })} />
@@ -809,10 +809,10 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
       : <span className="text-[13px] text-muted">{t('knowledgeBase.noCustomMetadata')}</span>}
     </section>
     {/* ── 摘要 (Vue summary-section) ── */}
-    <section className="flex flex-col gap-[14px] border-b border-line-soft pt-4 pb-[21px]" aria-label={t('knowledgeBase.documentSummary')}>
+    <section className="flex flex-col gap-[14px] border-b border-line-soft pt-3 pb-4" aria-label={t('knowledgeBase.documentSummary')}>
       <div className="flex items-center justify-between gap-2">
         <h4 className={sectionTitleClass}>{t('knowledgeBase.documentSummary')}</h4>
-        {canEdit && !summaryEditing ? <span className="flex items-center gap-1">
+        {canEdit && !summaryEditing ? <span className="summary-title-actions flex items-center">
           <IconActionButton label={t('common.edit')} onClick={() => { setSummaryDraft(String(document.description || '')); setSummaryEditing(true); }}><EditIcon size={15} /></IconActionButton>
           <IconActionButton label={t('knowledgeBase.regenerateSummary')} onClick={() => {}}><RefreshIcon size={15} /></IconActionButton>
         </span> : null}
@@ -822,16 +822,16 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
       : <div className="summary_loading box-border flex min-h-[67px] items-center gap-2 rounded-[6px] border border-dashed border-[var(--wk-border,#e4e7ec)] bg-surface p-3 text-[13px] text-muted">
           <FileUnknownIcon size={18} className="shrink-0" />
           <span>{t('knowledgeBase.noDocumentSummary')}</span>
-          {canEdit ? <button type="button" aria-label={t('knowledgeBase.generateSummary')} className="flex cursor-pointer items-center gap-[8px] border-0 bg-transparent pl-[7px] pr-0 py-0 text-[12px] leading-[20px] text-muted hover:text-[#07c05f]"><RefreshIcon size={14} /><span>{t('knowledgeBase.generateSummary')}</span></button> : null}
+          {canEdit ? <button type="button" aria-label={t('knowledgeBase.generateSummary')} className="flex h-[24px] cursor-pointer items-center gap-[8px] rounded-[3px] border-0 bg-transparent px-[7px] py-0 text-[12px] leading-[20px] text-[rgba(0,0,0,0.9)] hover:text-[#07c05f]"><RefreshIcon size={14} /><span>{t('knowledgeBase.generateSummary')}</span></button> : null}
         </div>}
     </section>
     {/* ── 文件内容 (Vue doc-content-section: last section — gap 12px, no bottom border/padding) ── */}
     <section className="doc-content-section flex flex-col gap-3 pt-3">
       <div className="doc-content-section-head flex flex-wrap items-center justify-between gap-3">
-        <div className="doc-content-section-head-left flex min-w-0 flex-1 items-center gap-2">
+        <div className="doc-content-section-head-left flex min-w-0 flex-1 items-center gap-2 pr-1">
           <h4 className={sectionTitleClass}>{contentLabel}</h4>
         </div>
-        <div className="view-mode-buttons flex items-center gap-2">
+        <div className="view-mode-buttons flex items-center gap-1">
           {canPreviewDocument(document) ? <button type="button" className={'view-mode-btn h-[28px] min-w-[60px] cursor-pointer rounded-[3px] px-[7px] py-0 text-[12px] leading-[20px] ' + (contentView === 'preview' ? 'border border-[#07c05f] bg-[#07c05f] text-white' : 'border border-[var(--wk-border,#dcdcdc)] bg-surface text-[rgba(0,0,0,0.9)] hover:border-[#07c05f]/40')} onClick={() => onContentViewChange('preview')}>{tabs.preview}</button> : null}
           {/* Vue doc-content.vue:1821-1830 — the 全文 tab renders ONLY when
               the document is not previewable (canPreview() false branch);
@@ -853,7 +853,7 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
             {/* Vue preview-toolbar (inline): a bordered row ~38px tall with the
                 fullscreen toggle right-aligned, 8px above the preview card. */}
             <div className="preview-toolbar-actions mt-[10px] mb-2 flex h-[38px] items-center justify-end border-b border-[var(--wk-border,#e7e7e7)] bg-surface">
-              <button type="button" className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:bg-[#e9f8ec] hover:text-[#07c05f]" aria-label={copy.fullscreen} title={copy.fullscreen} onClick={togglePreviewFullscreen}><FullscreenIcon size={15} /></button>
+              <button type="button" className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:bg-[#e9f8ec] hover:text-[#07c05f]" aria-label={copy.fullscreen} title={copy.fullscreen} onClick={togglePreviewFullscreen}><FullscreenIcon size={14} /></button>
             </div>
             <div className='wk-document-md-preview max-h-[calc(100vh-200px)] overflow-auto rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-surface'><DocumentMarkdownBody markdown={previewState.text} labels={MERMAID_VIEWER_COPY[locale]} className='md-content min-w-0 text-[14px] leading-[1.7] text-ink [overflow-wrap:anywhere]' /></div>
           </div>
@@ -875,46 +875,56 @@ function IconActionButton({ label, onClick, children }: { label: string; onClick
   return <button type="button" aria-label={label} title={label} className="icon-action-btn inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] hover:bg-[#e9f8ec] hover:text-[#07c05f]" onClick={onClick}>{children}</button>;
 }
 
-/** Vue header doc icon (doc-drawer-header-icon): green file glyph on the light brand wash. */
+/** Vue header doc icon (doc-drawer-header-icon): t-icon file 字形（本地 sprite
+ * d，stroke 2 / 默认 miter / butt cap —— 自绘 path 在像素 diff 下整块红）。 */
 function FileDetailIcon({ size = 16 }: { size?: number }) {
-  return <Icon size={size}><path d="M6 2.5h7l4.5 4.5v13a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 20V4A1.5 1.5 0 016 2.5z" /><path d="M13 2.5V7h4.5" /></Icon>;
+  return <Icon size={size} cap="butt"><path d="M14 2v6h6m-6-6h1l5 5v1m-6-6H4v20h16V8" /></Icon>;
 }
 
 function EditIcon({ size = 15 }: { size?: number }) {
-  return <Icon size={size}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 013 3L8 18l-4 1 1-4z" /></Icon>;
+  // t-icon edit（sprite）：单 path，square cap。
+  return <Icon size={size} cap="square"><path d="m14.105 6.004-9.318 9.318L3.998 20l4.679-.79 9.317-9.317m-3.89-3.889 3.89 3.89m-3.89-3.89 3.058-3.057 3.889 3.89-3.057 3.056" /></Icon>;
 }
 
 function DownloadIcon({ size = 16 }: { size?: number }) {
-  return <Icon size={size}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></Icon>;
+  // t-icon download（sprite）
+  return <Icon size={size} cap="square"><path d="M16.5 10.5 12 15l-4.5-4.5m4.5 3.25V4M20.5 15v5h-17v-5" /></Icon>;
 }
 
 function ChartLineIcon({ size = 16 }: { size?: number }) {
-  return <Icon size={size}><path d="M3 3v18h18" /><path d="M7 14l4-4 3 3 5-6" /></Icon>;
+  // t-icon chart-line（sprite）
+  return <Icon size={size} cap="square"><path d="M21 21H3V3" /><path d="m20.5 8-5 5-4-4-5 5" /></Icon>;
 }
 
 function RefreshIcon({ size = 15 }: { size?: number }) {
-  return <Icon size={size}><path d="M21 4v6h-6" /><path d="M3 20v-6h6" /><path d="M21 10a9 9 0 00-15-5.5L3 7" /><path d="M3 14a9 9 0 0015 5.5L21 17" /></Icon>;
+  // t-icon refresh（sprite）
+  return <Icon size={size} cap="square"><path d="M21.448 13c-.5 4.777-4.539 8.5-9.448 8.5A9.501 9.501 0 0 1 3.38 16m-.88 4.5v-5h3M2.552 11C3.052 6.223 7.09 2.5 12 2.5A9.501 9.501 0 0 1 20.62 8m.88-4.5v5h-3" /></Icon>;
 }
 
 function InfoOutlineIcon({ size = 14, className }: { size?: number; className?: string }) {
-  return <Icon size={size} className={className}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icon>;
+  // t-icon info-circle（sprite）
+  return <Icon size={size} cap="square" className={className}><path d="M2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12Z" /><path d="M12 16.5V11m0-3.5h-.004v-.004H12V7.5Z" /></Icon>;
 }
 
 function PlusIcon({ size = 15 }: { size?: number }) {
-  return <Icon size={size}><path d="M12 5v14M5 12h14" /></Icon>;
+  // t-icon add（sprite）
+  return <Icon size={size} cap="square"><path d="M12 5v14m7-7H5" /></Icon>;
 }
 
 function FileUnknownIcon({ size = 18, className }: { size?: number; className?: string }) {
-  return <Icon size={size} className={className}><path d="M6 2.5h7l4.5 4.5v13a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 20V4A1.5 1.5 0 016 2.5z" /><path d="M13 2.5V7h4.5" /><path d="M9.5 13a2.5 2.5 0 114 2c-.8.6-1.5 1-1.5 2" /><path d="M12 19.5h.01" /></Icon>;
+  // t-icon file-unknown（sprite）
+  return <Icon size={size} cap="square" className={className}><path d="M20 10.5V7l-5-5H4v20h9.5M14 2v6h6" /><path d="M15.5 16.249C15.5 15.007 16.62 14 18 14s2.5 1.007 2.5 2.249c0 .61-.27 1.164-.71 1.57L18 19.506v.115m-.001 3.374h.004V23h-.004v-.004Z" /></Icon>;
 }
 
 // Vue 全屏/收起 preview-toolbar 按钮（document-preview.vue:497-505 t-icon fullscreen）。
 function FullscreenIcon({ size = 15 }: { size?: number }) {
-  return <Icon size={size}><path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3" /></Icon>;
+  // t-icon fullscreen-1（sprite）
+  return <Icon size={size} cap="square"><path d="M6.343 17.657 17.657 6.343M18.5 11V5.5H13M5.5 13v5.5H11" /></Icon>;
 }
 
-function Icon({ size = 16, stroke, className, children }: { size?: number; stroke?: number; className?: string; children: React.ReactNode }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke ?? 2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" className={className}>{children}</svg>;
+function Icon({ size = 16, stroke, cap, className, children }: { size?: number; stroke?: number; cap?: 'round' | 'square' | 'butt'; className?: string; children: React.ReactNode }) {
+  // tdesign sprite 图标无 stroke-linejoin（默认 miter）；cap 逐图标传入。
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke ?? 2} strokeLinecap={cap ?? 'round'} aria-hidden="true" focusable="false" className={className}>{children}</svg>;
 }
 
 /** Vue formatStringDate (frontend/src/utils/index.ts L55): local YYYY-MM-DD HH:mm:ss. */
