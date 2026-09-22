@@ -8,6 +8,15 @@ Manifest：`docs/architecture/moves/knowledge.yaml`（模块 knowledge）。本 
 repository（5）：knowledge.go、knowledge_span_repo.go、knowledge_tag.go、
 knowledge_transfer.go、knowledgebase.go
 
+> **消歧注记（B0.2，b0 notes 审校补充发现）**：上述 repository 侧 `knowledge.go`
+> 即全路径 `internal/application/repository/knowledge.go`（knowledge.yaml:87 登记，
+> 4 份 K brief 此前均未以全路径枚举）。它**显式归属本 brief / K4
+> （24-knowledge-process）**，ownership-matrix 已登记同值。注意其内定义的
+> `escapeLikeKeyword`（:22）被 identity 属主（repository/tenant.go:85,90）与
+> conversation 属主（repository/message.go:215、session.go:209）文件跨 owner 调用：
+> K4 搬出该文件时须按 package_private_couplings 裁定导出窄端口或留薄 shim，
+> 跨 owner 调用点修改走 Integration Brief 由集成工程师执行，禁复制实现。
+
 service（19）：knowledge.go、knowledge_auto_tag.go、knowledge_clone_move.go、
 knowledge_create.go、knowledge_delete.go、knowledge_delete_plan.go、
 knowledge_housekeeping.go、knowledge_index_content.go、knowledge_post_process.go、

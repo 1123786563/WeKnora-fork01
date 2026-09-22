@@ -1,0 +1,637 @@
+# Pass B exception ledger — 105 条 Pass A 精确路径 import 例外的删除属主与期限（B0.2 生成）。
+# 事实源：tools/architectureguard/check.go importExceptions 复合字面量（go/ast 解析，
+# F1 裁定）：from=ImporterFile、to=ImportedPath、reason 逐字复制；plan 按 importer
+# 文件所属子计划归属（guard 源 PassBTask 的模块绑定由 passbguard 校验）；
+# remove_at=属主计划阶段屏障（禁止无更早属主时推给 b5）。
+# 任何一侧缺失/多出/reason 漂移/属主期限错配均为诊断。
+exceptions:
+  - id: exc-0001
+    from: internal/modules/agentruntime/agent/commercial_adapter.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0002
+    from: internal/modules/agentruntime/agent/commercial_adapter.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0003
+    from: internal/modules/agentruntime/agent/compaction/compactor.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0004
+    from: internal/modules/agentruntime/agent/compaction/cutpoint.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0005
+    from: internal/modules/agentruntime/agent/compaction/fileops.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0006
+    from: internal/modules/agentruntime/agent/compaction/prepare.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0007
+    from: internal/modules/agentruntime/agent/compaction/serialize.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0008
+    from: internal/modules/agentruntime/agent/context_debug.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0009
+    from: internal/modules/agentruntime/agent/engine.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0010
+    from: internal/modules/agentruntime/agent/finalize.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0011
+    from: internal/modules/agentruntime/agent/finalize.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0012
+    from: internal/modules/agentruntime/agent/image_requirement.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0013
+    from: internal/modules/agentruntime/agent/image_requirement.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0014
+    from: internal/modules/agentruntime/agent/observe.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0015
+    from: internal/modules/agentruntime/agent/opencode/executor.go
+    to: "github.com/Tencent/WeKnora/internal/modules/craft"
+    plan: 34-agentruntime-protocol
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0016
+    from: internal/modules/agentruntime/agent/opencode/normalizer.go
+    to: "github.com/Tencent/WeKnora/internal/modules/craft"
+    plan: 34-agentruntime-protocol
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0017
+    from: internal/modules/agentruntime/agent/recoverytest/provider/main.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 34-agentruntime-protocol
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0018
+    from: internal/modules/agentruntime/agent/recoverytest/provider/main.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama"
+    plan: 34-agentruntime-protocol
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0019
+    from: internal/modules/agentruntime/agent/skills/manager.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0020
+    from: internal/modules/agentruntime/agent/skills/shell_environment.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0021
+    from: internal/modules/agentruntime/agent/skills/shell_staging.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0022
+    from: internal/modules/agentruntime/agent/skills/tenant_source.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0023
+    from: internal/modules/agentruntime/agent/steer.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0024
+    from: internal/modules/agentruntime/agent/subagents/executor.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0025
+    from: internal/modules/agentruntime/agent/subagents/tools.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0026
+    from: internal/modules/agentruntime/agent/think.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0027
+    from: internal/modules/agentruntime/agent/token/estimator.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0028
+    from: internal/modules/agentruntime/agent/tools/app_connector.go
+    to: "github.com/Tencent/WeKnora/internal/modules/appconnector"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0029
+    from: internal/modules/agentruntime/agent/tools/browserskill.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0030
+    from: internal/modules/agentruntime/agent/tools/browserskill_result.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/browserskill"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0031
+    from: internal/modules/agentruntime/agent/tools/craft_delegate.go
+    to: "github.com/Tencent/WeKnora/internal/modules/craft"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0032
+    from: internal/modules/agentruntime/agent/tools/grep_chunks.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0033
+    from: internal/modules/agentruntime/agent/tools/knowledge_search.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0034
+    from: internal/modules/agentruntime/agent/tools/knowledge_search.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0035
+    from: internal/modules/agentruntime/agent/tools/list_knowledge_chunks.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0036
+    from: internal/modules/agentruntime/agent/tools/mcp_exposure.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0037
+    from: internal/modules/agentruntime/agent/tools/mcp_oauth.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0038
+    from: internal/modules/agentruntime/agent/tools/mcp_tool.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0039
+    from: internal/modules/agentruntime/agent/tools/output_links.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0040
+    from: internal/modules/agentruntime/agent/tools/sandbox_edit.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0041
+    from: internal/modules/agentruntime/agent/tools/sandbox_ls.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0042
+    from: internal/modules/agentruntime/agent/tools/sandbox_write.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0043
+    from: internal/modules/agentruntime/agent/tools/sanitize_messages.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0044
+    from: internal/modules/agentruntime/agent/tools/shell_exec.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0045
+    from: internal/modules/agentruntime/agent/tools/skill_file.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0046
+    from: internal/modules/agentruntime/agent/tools/wiki_read_source_doc.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0047
+    from: internal/modules/agentruntime/agent/tools/workspace_reader.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
+    plan: 32-agentruntime-tools
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0048
+    from: internal/modules/agentruntime/agent/trpc/model.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 34-agentruntime-protocol
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0049
+    from: internal/modules/agentruntime/memory/consolidate.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0050
+    from: internal/modules/agentruntime/memory/extract.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0051
+    from: internal/modules/agentruntime/memory/topic_resolve.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 33-agentruntime-engine
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0052
+    from: internal/modules/agentruntime/modelcontext/mcp.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 31-agentruntime-memory
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0053
+    from: internal/modules/agentruntime/modelcontext/registry.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 31-agentruntime-memory
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0054
+    from: internal/modules/agentruntime/modelcontext/resources.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 31-agentruntime-memory
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0055
+    from: internal/modules/agentruntime/modelcontext/sources.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 31-agentruntime-memory
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0056
+    from: internal/modules/agentruntime/modelcontext/tool_policy.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 31-agentruntime-memory
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0057
+    from: internal/modules/airesource/models/chat/usage.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 11-airesource
+    remove_at: ib1
+    reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：models/chat/usage.go 消费 commercial 根包，Pass A 不改边界"
+  - id: exc-0058
+    from: internal/modules/appconnector/adapter.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 27-appconnector
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界"
+  - id: exc-0059
+    from: internal/modules/appconnector/service/appconnector/action.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 27-appconnector
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界"
+  - id: exc-0060
+    from: internal/modules/appconnector/service/appconnector/oc_recovery.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 27-appconnector
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass A 前 appconnector 消费 internal/commercial 根包，A2 import 修复改写为模块路径），Pass A 不改边界"
+  - id: exc-0061
+    from: internal/modules/appconnector/service/appconnector/oc_recovery.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+    plan: 27-appconnector
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，oc_recovery 直接消费 commercial service），Pass A 不改边界"
+  - id: exc-0062
+    from: internal/modules/channels/im/cmd_search.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+    plan: 36-channels
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0063
+    from: internal/modules/channels/im/service.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+    plan: 36-channels
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0064
+    from: internal/modules/channels/im/service.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
+    plan: 36-channels
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：im/service.go 消费 airesource 的 mcp 包，Pass A 不改边界"
+  - id: exc-0065
+    from: internal/modules/channels/im/service.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/storageurl"
+    plan: 36-channels
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：im/service.go 消费 airesource 的 storageurl 包，Pass A 不改边界"
+  - id: exc-0066
+    from: internal/modules/channels/im/service.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
+    plan: 36-channels
+    remove_at: ib3
+    reason: "预存横向包耦合（channels→docparser 图像解析依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0067
+    from: internal/modules/channels/im/service.go
+    to: "github.com/Tencent/WeKnora/internal/modules/policy/ratelimit"
+    plan: 36-channels
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：im/service.go 消费 policy 的 ratelimit 包，Pass A 不改边界"
+  - id: exc-0068
+    from: internal/modules/channels/im/yunzhijia/url.go
+    to: "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
+    plan: 36-channels
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：im/yunzhijia/url.go 消费 policy 的 ipclass 包，Pass A 不改边界"
+  - id: exc-0069
+    from: internal/modules/conversation/chat_pipeline/common.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0070
+    from: internal/modules/conversation/chat_pipeline/common.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0071
+    from: internal/modules/conversation/chat_pipeline/data_analysis.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0072
+    from: internal/modules/conversation/chat_pipeline/data_analysis.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0073
+    from: internal/modules/conversation/chat_pipeline/extract_entity.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0074
+    from: internal/modules/conversation/chat_pipeline/into_chat_message.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0075
+    from: internal/modules/conversation/chat_pipeline/merge.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0076
+    from: internal/modules/conversation/chat_pipeline/merge_expand.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0077
+    from: internal/modules/conversation/chat_pipeline/merge_history.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0078
+    from: internal/modules/conversation/chat_pipeline/merge_overlap.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0079
+    from: internal/modules/conversation/chat_pipeline/query_understand.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0080
+    from: internal/modules/conversation/chat_pipeline/references.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0081
+    from: internal/modules/conversation/chat_pipeline/references.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0082
+    from: internal/modules/conversation/chat_pipeline/rerank.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/rerank"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0083
+    from: internal/modules/conversation/chat_pipeline/rerank.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0084
+    from: internal/modules/conversation/chat_pipeline/search.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0085
+    from: internal/modules/conversation/chat_pipeline/search_entity.go
+    to: "github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
+    plan: 35-conversation-program
+    remove_at: ib3
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0086
+    from: internal/modules/craft/contracts.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+    plan: 41-craft
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0087
+    from: internal/modules/execution/sandbox/url_guard.go
+    to: "github.com/Tencent/WeKnora/internal/modules/policy/ipclass"
+    plan: 13-execution
+    remove_at: ib1
+    reason: "预存横向包耦合（Pass A 前为横向包互引，搬迁后显形）：execution/sandbox/url_guard.go 消费 policy 的 ipclass 包，Pass A 不改边界"
+  - id: exc-0088
+    from: internal/modules/knowledge/docparser/weknoracloud_http_reader.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils"
+    plan: 21-knowledge-ingest
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0089
+    from: internal/modules/knowledge/retriever/composite.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0090
+    from: internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0091
+    from: internal/modules/knowledge/retriever/keywords_vector_hybrid_indexer.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/utils"
+    plan: 22-knowledge-retrieval
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a3 搬迁后显形），Pass A 不改边界"
+  - id: exc-0092
+    from: internal/modules/workbench/service/workbench/admission.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0093
+    from: internal/modules/workbench/service/workbench/admission.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0094
+    from: internal/modules/workbench/service/workbench/admission.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0095
+    from: internal/modules/workbench/service/workbench/admission.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0096
+    from: internal/modules/workbench/service/workbench/interaction.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0097
+    from: internal/modules/workbench/service/workbench/interaction.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0098
+    from: internal/modules/workbench/service/workbench/notification.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0099
+    from: internal/modules/workbench/service/workbench/notification_worker.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0100
+    from: internal/modules/workbench/service/workbench/remote_dispatch.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0101
+    from: internal/modules/workbench/service/workbench/remote_dispatch.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0102
+    from: internal/modules/workbench/service/workbench/remote_usage.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0103
+    from: internal/modules/workbench/service/workbench/remote_usage.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0104
+    from: internal/modules/workbench/service/workbench/remote_usage.go
+    to: "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0105
+    from: internal/modules/workbench/service/workbench/remote_usage.go
+    to: "github.com/Tencent/WeKnora/internal/modules/execution"
+    plan: 40-workbench
+    remove_at: ib4
+    reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
