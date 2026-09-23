@@ -242,6 +242,24 @@ func (s *OrderStore) GetOrder(ctx context.Context, id string) (OrderRow, error) 
 	return row, err
 }
 
+// GetOrderByQuote returns the order opened against one quote (#81): the
+// retry idempotency surface — a replayed purchase resolves the EXISTING
+// order instead of opening a second channel request. Both bounds are
+// parameter-bound; an order of another tenant is simply not found.
+func (s *OrderStore) GetOrderByQuote(ctx context.Context, tenantID uint64, quoteID string) (OrderRow, error) {
+	var row OrderRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND quote_id = ?", tenantID, quoteID).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OrderRow{}, ErrOrderNotFound
+	}
+	if err != nil {
+		return OrderRow{}, err
+	}
+	return row, nil
+}
+
 // RegisterAttempt records the merchant-side attempt before any payment
 // result arrives; ConfirmPayment only accepts facts whose merchant and
 // attempt were registered this way.

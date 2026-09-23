@@ -54,10 +54,10 @@ type QuoteLineItem struct {
 // them as zero values, and the purchase path refuses legacy snapshots with
 // ErrQuoteLegacySnapshot (re-quote) instead of guessing.
 type quoteSnapshot struct {
-	PlanKey      string `json:"plan_key"`
-	PlanVersion  int64  `json:"plan_version"`
-	PriceFen     int64  `json:"price_fen"`
-	CreditsMicro int64  `json:"credits_micro"`
+	PlanKey      string          `json:"plan_key"`
+	PlanVersion  int64           `json:"plan_version"`
+	PriceFen     int64           `json:"price_fen"`
+	CreditsMicro int64           `json:"credits_micro"`
 	Currency     string          `json:"currency"` // "CNY"
 	Features     map[string]bool `json:"features,omitempty"`
 	LineItems    []QuoteLineItem `json:"line_items,omitempty"` // 首期恰一行 subscription_fee
@@ -145,12 +145,12 @@ func normalizeMigratedCommercialUniques(db *gorm.DB) error {
 // LineItems are the additive #81 AC1 freeze: the customer sees exactly the
 // currency, entitlements and invoice lines the quote commits to.
 type QuoteView struct {
-	ID           string `json:"id"`
-	PlanKey      string `json:"plan_key"`
-	PlanVersion  int64  `json:"plan_version"`
-	AmountFen    int64  `json:"amount_fen"`
-	CreditsMicro int64  `json:"credits_micro"`
-	ExpiresAt    string `json:"expires_at"`
+	ID           string          `json:"id"`
+	PlanKey      string          `json:"plan_key"`
+	PlanVersion  int64           `json:"plan_version"`
+	AmountFen    int64           `json:"amount_fen"`
+	CreditsMicro int64           `json:"credits_micro"`
+	ExpiresAt    string          `json:"expires_at"`
 	Currency     string          `json:"currency,omitempty"`
 	Features     map[string]bool `json:"features,omitempty"`
 	LineItems    []QuoteLineItem `json:"line_items,omitempty"`
@@ -248,6 +248,13 @@ func (s *OrderService) CreateOrder(ctx context.Context, tenantID uint64, quoteID
 		return OrderView{}, err
 	}
 	return s.openOrder(ctx, tenantID, q, providerName, snap.PriceFen, domain.OrderKindPurchase, nil)
+}
+
+// QuoteSnapshotForTenant is the public quote read (#81): the purchase path
+// loads the same guarded snapshot the order path consumes. quoteForTenant
+// keeps the historical private name so existing call sites stay untouched.
+func (s *OrderService) QuoteSnapshotForTenant(ctx context.Context, tenantID uint64, quoteID string) (repocommercial.QuoteRow, quoteSnapshot, error) {
+	return s.quoteForTenant(ctx, tenantID, quoteID)
 }
 
 // quoteForTenant loads and validates the quote snapshot for a tenant.
