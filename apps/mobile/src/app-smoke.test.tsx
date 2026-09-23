@@ -163,12 +163,12 @@ test('surface routing keeps upgrade-required free of authorized controls and gua
   assert.equal(homeButtons.includes('Open Resources'), true, 'removing the landing screen must not take away the only /resources entry');
   const homeText = descendants(homeElement).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
   assert.equal(homeText.includes('Acme'), true);
-  assert.equal((authorized.props as { key?: string }).key, 'tenant-1', 'the home screen is keyed by the active tenant');
+  assert.equal((authorized.props as { key?: string }).key, 'https://weknora.example.test::tenant-1', 'the home screen is keyed by deployment origin + active tenant');
   const switched = RuntimeSurface({
     snapshot: { surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1', activeTenantId: 'tenant-2', tenants: [{ id: 'tenant-2', name: 'Beta' }] } },
     onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {}, onActivateTenant: async () => {},
   });
-  assert.equal((switched.props as { key?: string }).key, 'tenant-2', 'switching tenants must remount the screen so the previous tenant content cannot survive');
+  assert.equal((switched.props as { key?: string }).key, 'https://weknora.example.test::tenant-2', 'switching tenants must remount the screen so the previous tenant content cannot survive');
 });
 
 test('mobile startup invokes Runtime boot exactly once', async () => {
@@ -179,6 +179,23 @@ test('mobile startup invokes Runtime boot exactly once', async () => {
   bootRuntimeOnce(runtime, booted);
   bootRuntimeOnce(runtime, booted);
   assert.equal(calls, 1);
+});
+
+test('switching deployments with equal tenant ids remounts Home and Tasks with fresh closures (R1-F48/F49)', async () => {
+  const { RuntimeSurface, deploymentScopeKey } = await import('./composition.ts');
+  const props = (origin: string) => ({
+    snapshot: {
+      surface: 'authorized', reason: undefined,
+      deployment: { origin, label: origin },
+      identity: { userId: 'user-1', activeTenantId: '1', tenants: [{ id: '1' }] },
+    },
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {}, onActivateTenant: async () => {},
+  } as never);
+  const first = RuntimeSurface(props('https://a.example.test'));
+  const second = RuntimeSurface(props('https://b.example.test'));
+  // 两部署租户 id 相同（自增小整数常见）：key 必须因 origin 维度而不同
+  assert.notEqual((first.props as { key?: unknown }).key, (second.props as { key?: unknown }).key);
+  assert.notEqual(deploymentScopeKey('https://a.example.test', '1'), deploymentScopeKey('https://b.example.test', '1'));
 });
 
 test('pnpm --filter @weknora/mobile typecheck resolves the package', () => {

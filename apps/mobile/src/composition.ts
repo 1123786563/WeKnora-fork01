@@ -99,6 +99,12 @@ export interface RuntimeSurfaceProps {
 
 const taskOffices = new Map<string, TaskOffice>();
 
+/** remount key 必须含 deployment origin（R1-F48/F49）：两部署租户 id 相同（自增小整数常见）时
+ * 跨部署切换也必须 remount，否则 useEffect(load,[]) 不重跑、旧闭包命中已撤销 lease。 */
+export function deploymentScopeKey(origin: string, activeTenantId: string): string {
+  return `${origin}::${activeTenantId}`;
+}
+
 /** Task Office 按 deployment origin 记忆化；lease 由 Runtime 提供，切租户即 fail closed。 */
 function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice {
   let office = taskOffices.get(origin);
@@ -123,7 +129,7 @@ export function MobileTasks({ onOpenTask }: { onOpenTask?: (taskId: string, runI
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return null;
   return createElement(TasksScreen, {
-    key: snapshot.identity.activeTenantId,
+    key: deploymentScopeKey(snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
     taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin),
     ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string; runId: string }) => onOpenTask(card.taskId, card.runId) }),
   });
@@ -141,7 +147,7 @@ export function activeTaskOffice(): TaskOffice | undefined {
 export function RuntimeSurface({ snapshot, deployments, onSignIn, onBeginOidc, onSignOut, onActivateTenant, onSwitchDeployment }: RuntimeSurfaceProps) {
   if (snapshot.surface === 'authorized' && snapshot.deployment && snapshot.identity?.userId && snapshot.identity.activeTenantId) {
     return createElement(HomeScreen, {
-      key: snapshot.identity.activeTenantId,
+      key: deploymentScopeKey(snapshot.deployment.origin, snapshot.identity.activeTenantId),
       deploymentLabel: snapshot.deployment.label,
       tenants: snapshot.identity.tenants ?? [{ id: snapshot.identity.activeTenantId }],
       activeTenantId: snapshot.identity.activeTenantId,
