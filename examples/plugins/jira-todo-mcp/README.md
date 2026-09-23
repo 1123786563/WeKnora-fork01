@@ -34,7 +34,7 @@
 服务端固定 JQL（不接受任何输入拼接）：
 
 ```
-assignee = currentUser() AND resolution = Unresolved AND due >= startOfWeek() ORDER BY due ASC
+assignee = currentUser() AND resolution = Unresolved AND due >= startOfWeek() AND due < startOfWeek("+1w") ORDER BY due ASC
 ```
 
 ## 自托管部署

@@ -15,11 +15,11 @@ import (
 	mcp "github.com/mark3labs/mcp-go/mcp"
 )
 
-// jqlMyWeek 是服务端固定的 JQL 模板（切片计划 Task 4 逐字规定的契约，
-// T05/T13 复刻消费）：本人 + 未解决 + 截止日期不早于本周开始（只有下界
-// due >= startOfWeek()，无上界——含下周及以后的待办）。绝不接受任何调用方
-// 输入拼接——工具 schema 无参数，从根上排除 JQL 注入。
-const jqlMyWeek = "assignee = currentUser() AND resolution = Unresolved AND due >= startOfWeek() ORDER BY due ASC"
+// jqlMyWeek 是服务端固定的 JQL 模板（T05/T13 复刻消费的权威契约，OCR
+// T04-R1-8 修复后含上下界）：本人 + 未解决 + 截止日期在本周内
+// （due >= startOfWeek() 且 due < startOfWeek("+1w")，不含下周及以后）。
+// 绝不接受任何调用方输入拼接——工具 schema 无参数，从根上排除 JQL 注入。
+const jqlMyWeek = "assignee = currentUser() AND resolution = Unresolved AND due >= startOfWeek() AND due < startOfWeek(\"+1w\") ORDER BY due ASC"
 
 // jiraSearchFields 是搜索时请求的字段白名单（最小化披露）。
 var jiraSearchFields = []string{"summary", "status", "duedate"}

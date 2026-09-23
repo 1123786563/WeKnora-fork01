@@ -42,7 +42,7 @@ const (
 	// toolName 是本服务唯一工具名。
 	toolName = "search_my_week_issues"
 	// toolDescription 描述工具用途；不含任何凭据。
-	toolDescription = "查询当前授权成员自本周起（due >= startOfWeek()，含未来）未解决的 Jira 待办事项，" +
+	toolDescription = "查询当前授权成员本周内（due >= startOfWeek() 且 due < startOfWeek(\"+1w\")）未解决的 Jira 待办事项，" +
 		"返回事项标识、标题、状态、截止日期与来源链接。工具不接受任何参数；" +
 		"JQL 由服务端固定，成员身份来自个人 OAuth 授权。"
 	// canonicalToolInputSchema 是工具唯一合法输入 schema：无参数、拒绝一切

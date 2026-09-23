@@ -372,3 +372,37 @@ func TestReferenceManifestDigestMatchesComputed(t *testing.T) {
 		plugins.ToolSchemaDigest([]byte(canonicalToolInputSchema)),
 		Manifest("https://reference.example").Tools[0].InputSchemaDigest)
 }
+
+// --- OCR T04-R1-8：JQL 必须界定"本周"（下界 + 上界），不得含未来待办 ---
+
+// TestSearchJQLIsWeekBounded 断言服务端发给 Jira 的 JQL 精确等于带上下界
+// 的固定模板（主流程否决 R1-8 豁免后的权威契约；T05/T13 复刻消费）。
+func TestSearchJQLIsWeekBounded(t *testing.T) {
+	const wantJQL = "assignee = currentUser() AND resolution = Unresolved AND " +
+		`due >= startOfWeek() AND due < startOfWeek("+1w") ORDER BY due ASC`
+	require.Equal(t, wantJQL, jqlMyWeek, "jqlMyWeek 必须与带界契约一致")
+
+	sawJQL := ""
+	base, _ := newTestService(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/3/myself":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"emailAddress": "member@example.com", "displayName": "Member"})
+		case "/rest/api/3/search/jql":
+			var body struct {
+				JQL string `json:"jql"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			sawJQL = body.JQL
+			_ = json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{}})
+		default:
+			t.Errorf("unexpected jira path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	accessToken, _ := testOAuthFlow(t, base, "https://client.example/callback", "member@example.com", "tok")
+	result, err := callToolWithToken(t, base, accessToken)
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Content)
+	require.Equal(t, wantJQL, sawJQL, "服务端发出的 JQL 必须精确等于带界模板")
+}
