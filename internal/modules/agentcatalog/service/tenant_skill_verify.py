@@ -97,10 +97,13 @@ def skill_script_path(relative):
     """Absolute path of one skill-relative source, refused if it escapes root.
 
     The Go side refuses traversal before a path reaches this argv; this keeps
-    the invariant locally instead of trusting the caller.
+    the invariant locally instead of trusting the caller. A backslash is a
+    literal filename character here (exactly what os.path.join would have
+    received before this helper existed): only "/" separates segments, so a
+    bundle key like `scripts\\run.py` resolves to the one file of that literal
+    name, matching the pre-migration join behaviour.
     """
-    normalized = relative.replace("\\", "/")
-    parts = [part for part in normalized.split("/") if part not in ("", ".")]
+    parts = [part for part in relative.split("/") if part not in ("", ".")]
     if not parts or any(part == ".." for part in parts):
         return None
     script = os.path.normpath(os.path.join(root, *parts))
