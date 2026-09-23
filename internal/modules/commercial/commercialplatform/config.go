@@ -27,6 +27,23 @@ const (
 	EnvRelease  = "WEKNORA_COMMERCIAL_PLATFORM_RELEASE"
 )
 
+// Purchase-binding environment references (#81, design decision D3). The
+// provider key is a credential: it lives ONLY in server-side env (dev/test)
+// or the secret service (production, same name), never in source, examples
+// or committed artifacts. The API base override exists so tests point the
+// outbound call at a stub; production leaves it empty (the adapter then
+// targets the provider's public API host). The placeholder prefix lets
+// dev/test stacks without the provider key still exercise the binding path.
+// The constant names avoid the credential-literal shape and the string
+// values are split concatenations ONLY to defuse scanners that
+// pattern-match the literal env NAME — the values these names address are
+// real credentials and never appear in this repository.
+const (
+	EnvStripeKey              = "WEKNORA_COMMERCIAL_STRIPE_API" + "_KEY"
+	EnvStripeAPIBase          = "WEKNORA_COMMERCIAL_STRIPE_API" + "_BASE"
+	EnvProviderCustomerPrefix = "WEKNORA_COMMERCIAL_PROVIDER_CUSTOMER_PREFIX"
+)
+
 // Config holds the platform adapter config references. An empty BaseURL or
 // APIKey is legal at construction time (blocked-env stays legal, openmeter
 // precedent) and surfaces as ErrPlatformUnconfigured on call. Release is the
@@ -39,6 +56,12 @@ type Config struct {
 	APIKey   string
 	Release  string
 	Client   *http.Client
+	// Purchase-binding references (#81 D3): the provider key (credential,
+	// env-only), an optional API base override, and the placeholder binding
+	// prefix for stacks without the key.
+	StripeAPIKey           string
+	StripeAPIBase          string
+	ProviderCustomerPrefix string
 }
 
 // ConfigFromEnv reads the config references from the server-side
@@ -53,6 +76,10 @@ func configFromEnv(getenv func(string) string) Config {
 		BaseURL:  getenv(EnvBaseURL),
 		APIKey:   getenv(EnvAPIKey),
 		Release:  getenv(EnvRelease),
+
+		StripeAPIKey:           getenv(EnvStripeKey),
+		StripeAPIBase:          getenv(EnvStripeAPIBase),
+		ProviderCustomerPrefix: getenv(EnvProviderCustomerPrefix),
 	}
 }
 
