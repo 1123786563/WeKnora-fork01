@@ -10,6 +10,8 @@ export interface HomeScreenProps {
   onActivateTenant(tenantId: string): void;
   onSignOut(): Promise<void>;
   taskOffice: TaskOffice;
+  otherDeployments?: Array<{ origin: string; label: string }>;
+  onSwitchDeployment?(origin: string): Promise<void>;
 }
 
 function errorMessage(error: unknown): string {
@@ -17,7 +19,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** Home 一级入口：三段聚合视图（module-seams §5.2 home(query)），只消费 Task Office 视图。 */
-export function HomeScreen({ deploymentLabel, tenants, activeTenantId, onActivateTenant, onSignOut, taskOffice }: HomeScreenProps) {
+export function HomeScreen({ deploymentLabel, tenants, activeTenantId, onActivateTenant, onSignOut, taskOffice, otherDeployments, onSwitchDeployment }: HomeScreenProps) {
   const [view, setView] = useState<HomeView | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -35,6 +37,9 @@ export function HomeScreen({ deploymentLabel, tenants, activeTenantId, onActivat
             <Button key={tenant.id} title={tenant.name ?? tenant.id} onPress={() => onActivateTenant(tenant.id)} />
           ))
         : <Text>{tenants[0]?.name ?? activeTenantId}</Text>}
+      {(otherDeployments ?? []).map((deployment) => (
+        <Button key={deployment.origin} title={`Switch to ${deployment.label}`} onPress={() => { void onSwitchDeployment?.(deployment.origin); }} />
+      ))}
       <Button title="Sign out" onPress={() => { void onSignOut(); }} />
       <Button title="View all tasks" onPress={() => router.push('/tasks')} />
       {/* /resources 屏（#32 交付）的常驻入口：占位屏删除后不得丢失可达性。 */}

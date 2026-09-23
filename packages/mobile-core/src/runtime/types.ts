@@ -18,7 +18,7 @@ export interface ScopeLease {
   readonly [scopeLeaseBrand]: never;
 }
 
-export type RuntimeSurface = 'deployment-login' | 'upgrade-required' | 'authorized';
+export type RuntimeSurface = 'deployment-login' | 'upgrade-required' | 'authorized' | 'read-only';
 export type RuntimeReason = 'protocol-mismatch' | 'unknown-capability' | 'tenant-required' | 'authentication-required';
 
 /** Presentation-safe tenant switcher option; ids match activateTenant input. */
@@ -60,6 +60,12 @@ export interface MobileRuntime {
   resourceShelf(): ResourceShelfHandle | undefined;
   /** Atomically switches the Active Tenant: revokes the prior scope, re-issues the credential server-side, re-verifies identity. */
   activateTenant(tenantId: string): Promise<RuntimeSnapshot>;
+  /** 登记实例清单（presentation-safe）；未提供 registry 端口时返回空数组。 */
+  listDeployments(): Promise<Deployment[]>;
+  /** 原子切换 Active Deployment：撤销旧 scope，恢复目标实例已存凭据并重新验证身份；未登记、畸形 origin 或无凭据时 fail closed。 */
+  switchDeployment(origin: string): Promise<RuntimeSnapshot>;
+  /** 移除一个登记实例并清除其凭据；移除活动实例等价于登出。 */
+  forgetDeployment(origin: string): Promise<void>;
   signOut(): Promise<void>;
   dispose(): void;
 }

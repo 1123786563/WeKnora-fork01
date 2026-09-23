@@ -3,8 +3,10 @@ import { Button, Text, TextInput, View } from 'react-native';
 
 export interface DeploymentLoginScreenProps {
   officialCloudOrigin?: string;
+  deployments?: Array<{ origin: string; label: string }>;
   onSignIn(input: { origin: string; email: string; password: string }): Promise<void>;
   onBeginOidc(input: { origin: string }): Promise<void>;
+  onSwitchDeployment?(origin: string): Promise<void>;
 }
 
 /** Accepts a deployment only when it can safely become the Runtime origin. */
@@ -19,7 +21,7 @@ export function validatedDeploymentOrigin(value: string): string | undefined {
 }
 
 /** Collects deployment and credentials, then delegates every auth decision to Runtime. */
-export function DeploymentLoginScreen({ officialCloudOrigin, onSignIn, onBeginOidc }: DeploymentLoginScreenProps) {
+export function DeploymentLoginScreen({ officialCloudOrigin, deployments, onSignIn, onBeginOidc, onSwitchDeployment }: DeploymentLoginScreenProps) {
   const [origin, setOrigin] = useState(officialCloudOrigin ?? '');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,6 +37,14 @@ export function DeploymentLoginScreen({ officialCloudOrigin, onSignIn, onBeginOi
   return (
     <View>
       <Text>Sign in to WeKnora</Text>
+      {deployments && deployments.length > 0 ? (
+        <View>
+          <Text>Registered deployments</Text>
+          {deployments.map((deployment) => (
+            <Button key={deployment.origin} title={deployment.label} onPress={() => { void onSwitchDeployment?.(deployment.origin); }} />
+          ))}
+        </View>
+      ) : null}
       {officialCloudOrigin ? <Button title="Use WeKnora Cloud" onPress={() => { setOrigin(officialCloudOrigin); setError(undefined); }} /> : null}
       <TextInput value={origin} onChangeText={(value) => { setOrigin(value); setError(undefined); }} placeholder="https://weknora.example.com" autoCapitalize="none" />
       <TextInput value={email} onChangeText={setEmail} placeholder="Email" autoCapitalize="none" keyboardType="email-address" />

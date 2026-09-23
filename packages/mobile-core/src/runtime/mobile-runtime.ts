@@ -4,7 +4,7 @@ import type { ScopedVault, VaultRevokeReason } from '../vault/scoped-vault.ts';
 import { RuntimeScopeLease } from './scope-lease.ts';
 import { createResourceShelf } from '../shelf/resource-shelf.ts';
 import type { ResourceShelfHandle } from '../shelf/types.ts';
-import type { Deployment, DeploymentInput, MobileRuntime, RuntimeAuthorizedRequest, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
+import type { Deployment, DeploymentInput, MobileRuntime, RuntimeAuthorizedRequest, RuntimeReason, RuntimeSnapshot, RuntimeSurface, ScopeLease } from './types.ts';
 
 function normalizeDeployment(input: DeploymentInput): Deployment {
   if (!input || typeof input.origin !== 'string' || input.origin.trim() === '') throw new Error('deployment origin is required');
@@ -201,7 +201,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   };
   const accessTokenFor = async (origin: string, options?: { refresh?: boolean }): Promise<string> => {
     const deployment = activeDeployment;
-    if (!deployment || deployment.origin !== origin || state.surface !== 'authorized' || !activeCredential) throw new Error('SHELF_SCOPE');
+    if (!deployment || deployment.origin !== origin || (state.surface !== 'authorized' && state.surface !== 'read-only') || !activeCredential) throw new Error('SHELF_SCOPE');
     if (!options?.refresh) return activeCredential.token;
     const refreshed = await refreshedCredential(epoch, deployment, activeCredential);
     if (!refreshed) throw new Error('SHELF_AUTH');
@@ -230,8 +230,14 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       const capabilities = await remote.deploymentCapabilities(verifiedCredential.token);
       if (!current(requestEpoch, deployment)) return state;
       const gate = clientGate(ports.clientVersion, capabilities);
-      if (gate.mode !== 'full') return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
-      await mutateDeployment(async () => { await ports.deploymentStore?.write(deployment); });
+      if (gate.mode !== 'full' && gate.mode !== 'server_upgrade_required') {
+        return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
+      }
+      const surface: RuntimeSurface = gate.mode === 'full' ? 'authorized' : 'read-only';
+      await mutateDeployment(async () => {
+        await ports.deploymentStore?.write(deployment);
+        await ports.deploymentRegistry?.upsert(deployment);
+      });
       if (!current(requestEpoch, deployment)) return state;
       revocableLease = new RuntimeScopeLease({ deploymentOrigin: deployment.origin, userId: authenticatedUserId, tenantId: activeTenantId });
       lease = revocableLease.asScopeLease();
@@ -239,7 +245,12 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       activeShelf = ports.resourceShelf
         ? createResourceShelf({ remote: ports.resourceShelf.remoteFor(deployment.origin), accessTokenFor }).open({ lease })
         : undefined;
-      return publish({ surface: 'authorized', deployment, identity: { userId: authenticatedUserId, activeTenantId, ...tenantOptions(me.memberships, activeTenantId) } });
+      return publish({
+        surface,
+        deployment,
+        identity: { userId: authenticatedUserId, activeTenantId, ...tenantOptions(me.memberships, activeTenantId) },
+        ...(surface === 'read-only' ? { reason: 'protocol-mismatch' as const } : {}),
+      });
     } catch {
       return safe(requestEpoch, deployment, 'authentication-required');
     }
@@ -327,7 +338,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       if (!ports.pendingOidcStore) return state;
       const pending = await mutatePendingOidc(async () => await ports.pendingOidcStore!.consumePending());
       if (!pending) {
-        if (state.surface === 'authorized' && lease) return state;
+        if ((state.surface === 'authorized' || state.surface === 'read-only') && lease) return state;
         if (!activeDeployment) return state;
         const requestEpoch = begin(activeDeployment);
         return safe(requestEpoch, activeDeployment, 'authentication-required');
@@ -394,6 +405,48 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         } catch {
           return safe(requestEpoch, deployment, 'authentication-required');
         }
+      } finally {
+        await vaultTail;
+      }
+    },
+    async listDeployments(): Promise<Deployment[]> {
+      return ports.deploymentRegistry ? await ports.deploymentRegistry.list() : [];
+    },
+    async switchDeployment(origin: string): Promise<RuntimeSnapshot> {
+      try {
+        if (typeof origin !== 'string' || origin.trim() === '') return state;
+        if (!ports.deploymentRegistry) return state;
+        let target: Deployment | undefined;
+        try { target = normalizeDeployment({ origin }); } catch { target = undefined; }
+        if (!target) return state;
+        const record = (await ports.deploymentRegistry.list()).find((entry) => entry.origin === target!.origin);
+        if (!record) return state;
+        const deployment = normalizeDeployment({ origin: record.origin, label: record.label });
+        const requestEpoch = begin(deployment);
+        try {
+          const credential = await ports.credentialStore.read(deployment.origin);
+          if (!current(requestEpoch, deployment)) return state;
+          if (!credential) return publish({ surface: 'deployment-login', deployment, reason: 'authentication-required' });
+          return await authenticate(requestEpoch, deployment, credential);
+        } catch {
+          return safe(requestEpoch, deployment, 'authentication-required');
+        }
+      } finally {
+        await vaultTail;
+      }
+    },
+    async forgetDeployment(origin: string): Promise<void> {
+      let target: Deployment | undefined;
+      try { if (typeof origin === 'string' && origin.trim() !== '') target = normalizeDeployment({ origin }); } catch { target = undefined; }
+      if (!target) return;
+      const deployment = target;
+      try {
+        if (activeDeployment?.origin === deployment.origin) {
+          await signOut();
+        } else {
+          await mutateCredential(async () => { await ports.credentialStore.clear(deployment.origin); });
+        }
+        await mutateDeployment(async () => { await ports.deploymentRegistry?.remove(deployment.origin); });
       } finally {
         await vaultTail;
       }
