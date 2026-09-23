@@ -9,13 +9,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
+	"github.com/Tencent/WeKnora/internal/utils"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	mcp "github.com/mark3labs/mcp-go/mcp"
@@ -515,4 +520,199 @@ func TestRegisterBoundsRedirectURIs(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "3000-byte redirect_uri must be rejected")
+}
+
+// --- 整分支终评（R4）：跨轮转交安全 findings 回归 ---
+
+// TestAuthorizeAndTokenFormBodiesBounded：/authorize 与 /token 的表单解析必须有
+// 体积上限（终评 r3-006/r3-007/r4-006/r4-007，此前四次报告未处置）。/authorize
+// 用**有效 state + 有效凭据**放大请求体——上限缺失（RED）时会走完凭据验证并
+// 302 放行；/token 以 error 字段区分「体积拒绝（invalid_request）」与
+// 「grant_type 缺失（unsupported_grant_type）」。
+func TestAuthorizeAndTokenFormBodiesBounded(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirect := "https://client.example/cb"
+	clientID := testRegisterClient(t, base, redirect)
+	_, challenge := testPKCE(t)
+	state := "big-form-state"
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, clientID, redirect, state, challenge))
+
+	form := url.Values{}
+	form.Set("state", state)
+	form.Set("email", "member@example.com")
+	form.Set("api_token", "tok")
+	form.Set("pad", strings.Repeat("x", 1<<20)) // >1MiB 表单体
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	resp, err := noRedirect.PostForm(base+"/authorize", form)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode,
+		"oversized /authorize form must be rejected before credential verification, not 302-accepted")
+
+	resp2, err := noRedirect.PostForm(base+"/token", form)
+	require.NoError(t, err)
+	payload := map[string]any{}
+	_ = json.NewDecoder(resp2.Body).Decode(&payload)
+	_ = resp2.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp2.StatusCode)
+	require.Equal(t, "invalid_request", payload["error"],
+		"oversized /token body must fail on size (invalid_request), not reach grant_type parsing")
+}
+
+// TestAuthorizeStateConsumedExactlyOnceUnderConcurrency：state 消费必须原子——
+// 凭据验证（跨网络调用）与消费之间不得留下 TOCTOU 窗口，两个并发同 state 提交
+// 只能发出一个授权码（终评 r2-004/r3-008/r4-009，三次报告未处置）。
+func TestAuthorizeStateConsumedExactlyOnceUnderConcurrency(t *testing.T) {
+	inner := testJiraAuthOK(t, "member@example.com", "tok", nil)
+	var myselfHits int32
+	slowJira := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/rest/api/3/myself" {
+			time.Sleep(250 * time.Millisecond) // 保证两请求在凭据验证阶段重叠
+			atomic.AddInt32(&myselfHits, 1)
+		}
+		inner(w, r)
+	})
+	base, _ := newTestService(t, slowJira)
+	redirect := "https://client.example/cb"
+	clientID := testRegisterClient(t, base, redirect)
+	_, challenge := testPKCE(t)
+	state := "race-state"
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, clientID, redirect, state, challenge))
+
+	const workers = 2
+	statuses := make([]int, workers)
+	locations := make([]string, workers)
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			form := url.Values{}
+			form.Set("state", state)
+			form.Set("email", "member@example.com")
+			form.Set("api_token", "tok")
+			resp, err := noRedirect.PostForm(base+"/authorize", form)
+			if err != nil {
+				t.Errorf("worker %d: %v", i, err)
+				return
+			}
+			statuses[i] = resp.StatusCode
+			locations[i] = resp.Header.Get("Location")
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+		}(i)
+	}
+	wg.Wait()
+
+	redirects, conflicts := 0, 0
+	for i, s := range statuses {
+		switch s {
+		case http.StatusFound:
+			redirects++
+			require.NotEmpty(t, locations[i], "the winning submit must carry the code")
+		case http.StatusConflict:
+			conflicts++
+		default:
+			t.Fatalf("unexpected status %d (location %q)", s, locations[i])
+		}
+	}
+	require.Equal(t, 1, redirects, "exactly one authorization code must be issued per state")
+	require.Equal(t, 1, conflicts, "the losing concurrent submit must be a conflict")
+	require.GreaterOrEqual(t, atomic.LoadInt32(&myselfHits), int32(2),
+		"both submits must reach credential verification (overlap ensured by delay)")
+}
+
+// TestAuthorizeFormShowsClientAndRedirectTarget：同意页必须在提交凭据前展示
+// 请求方（client_name，缺失回落 client_id）与授权码跳转目的地（终评
+// r2-012/r4-008：开放注册 + 信任注册 redirect_uri 的深链钓鱼链路，透明化是
+// 成员识别伪造授权请求的前提）。client_name 是不可信输入，必须转义渲染。
+func TestAuthorizeFormShowsClientAndRedirectTarget(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+
+	authorizePage := func(t *testing.T, clientID, redirect, state string) string {
+		t.Helper()
+		_, challenge := testPKCE(t)
+		q := url.Values{}
+		q.Set("response_type", "code")
+		q.Set("client_id", clientID)
+		q.Set("redirect_uri", redirect)
+		q.Set("state", state)
+		q.Set("code_challenge", challenge)
+		q.Set("code_challenge_method", "S256")
+		page, err := http.Get(base + "/authorize?" + q.Encode())
+		require.NoError(t, err)
+		body, _ := io.ReadAll(page.Body)
+		_ = page.Body.Close()
+		require.Equal(t, http.StatusOK, page.StatusCode)
+		return string(body)
+	}
+
+	// 带恶意 client_name 的注册：名字必须转义后出现在同意页。
+	evilRedirect := "https://evil.example.com/cb"
+	body, err := json.Marshal(map[string]any{
+		"redirect_uris": []string{evilRedirect},
+		"client_name":   "Evil <script>alert(1)</script>",
+	})
+	require.NoError(t, err)
+	resp, err := http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+	require.NoError(t, err)
+	var reg struct {
+		ClientID string `json:"client_id"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&reg)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NotEmpty(t, reg.ClientID)
+
+	pageHTML := authorizePage(t, reg.ClientID, evilRedirect, "phish-state")
+	require.Contains(t, pageHTML, "Evil &lt;script&gt;", "client name must be displayed HTML-escaped")
+	require.Contains(t, pageHTML, "evil.example.com", "redirect target host must be displayed")
+	require.NotContains(t, pageHTML, "<script>alert(1)</script>", "raw client name must not inject markup")
+
+	// 未提供 client_name 的注册：回落展示 client_id。
+	plain := testRegisterClient(t, base, "https://client.example/cb2")
+	pageHTML2 := authorizePage(t, plain, "https://client.example/cb2", "plain-state")
+	require.Contains(t, pageHTML2, plain, "unnamed client must fall back to client_id")
+}
+
+// TestRegisterRestrictedToAllowedRedirectHosts：装配 AllowedRedirectHosts 后，
+// /register 仅接受 host 在名单内的 redirect_uri（终评 r2-012/r4-008 的部署侧
+// 缓解：生产启用即切断「任意注册方 + 任意跳转地」的钓鱼组合）。
+func TestRegisterRestrictedToAllowedRedirectHosts(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	fakeJira := httptest.NewServer(testJiraAuthOK(t, "member@example.com", "tok", nil))
+	t.Cleanup(fakeJira.Close)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	base := "http://" + ln.Addr().String()
+	handler, err := NewHandler(Options{
+		BaseURL:              base,
+		JiraBaseURL:          fakeJira.URL,
+		AllowedRedirectHosts: []string{"good.example.com"},
+	})
+	require.NoError(t, err)
+	svc := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = svc.Serve(ln) }()
+	t.Cleanup(func() { _ = svc.Shutdown(context.Background()) })
+
+	register := func(uri string) int {
+		body, err := json.Marshal(map[string]any{"redirect_uris": []string{uri}})
+		require.NoError(t, err)
+		resp, err := http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode
+	}
+	require.Equal(t, http.StatusCreated, register("https://good.example.com/cb"))
+	require.Equal(t, http.StatusBadRequest, register("https://evil.example.com/cb"),
+		"redirect host outside the allowlist must be rejected at registration")
 }

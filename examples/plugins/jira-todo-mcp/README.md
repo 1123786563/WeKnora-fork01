@@ -46,6 +46,7 @@ assignee = currentUser() AND resolution = Unresolved AND due >= startOfWeek() AN
 | `PLUGIN_JIRA_BASE_URL` | ✅ | Jira REST API base URL（如 `https://your-company.atlassian.net`）。**缺失时服务拒绝启动（fail-closed），不猜测默认值。** |
 | `PLUGIN_BASE_URL` | ❌ | 本服务对外可达的 base URL（如 `https://plugins.your-company.com`）。用于 OAuth 元数据、`WWW-Authenticate` 与清单端点；缺省用监听地址拼接。 |
 | `PLUGIN_LISTEN_ADDR` | ❌ | 监听地址，默认 `:8020`。 |
+| `PLUGIN_ALLOWED_REDIRECT_HOSTS` | ❌ | 逗号分隔的 redirect_uri 主机名白名单（如 `plugins.your-company.com,weknora.your-company.com`）。**设置后 `/register` 仅接受 host 在名单内的 `redirect_uri`**——开放动态注册下任何人都可注册 client，深链诱导成员在本服务授权页提交 Jira 凭据后，授权码会按注册的 `redirect_uri` 跳转（配合注册方自己的 PKCE 可兑换出 30 天 refresh 的 Bearer）。生产部署**强烈建议**设置本名单。缺省空 = 不限制（教学示例语义）。 |
 
 > 本服务对 Jira 的出站请求统一走 SSRF-safe HTTP client（仅 http/https，拒绝
 > 环回/私有/保留地址）。自托管内网 Jira 需经 `SSRF_WHITELIST` 显式放行。
@@ -108,6 +109,23 @@ digest）；它无法、也不承诺锁定远端服务的内部代码行为。�
 端点（`POST /authorize`）**没有速率限制或失败锁定**，每次提交都会触发一次对
 Jira `/myself` 的出站验证，可被用作成员凭据的在线猜测代理与出站请求放大器——
 生产部署必须置于限流 / WAF / 失败锁定之后。
+
+### 钓鱼链路与同意页透明化（部署必读）
+
+`/register` 是开放动态注册：**任何能访问本服务的人都能注册自己的 client**。
+攻击者可注册携带自身 `redirect_uri` 的 client，构造指向 `GET /authorize` 的
+深链诱导成员在授权页提交 Jira 凭据——凭据验证通过后授权码按注册的
+`redirect_uri` 跳转给攻击者（注册方自带 PKCE，可自行兑换出 access/refresh
+token，refresh 有效期 30 天）。两层缓解：
+
+1. **同意页透明化（默认启用）**：授权页展示请求方应用名（注册名，缺失回落
+   `client_id`）与授权码跳转目的地，并提示成员核对——成员应拒绝为不认识的
+   应用输入凭据。请把它纳入成员安全宣导。
+2. **注册白名单（建议生产启用）**：设置 `PLUGIN_ALLOWED_REDIRECT_HOSTS` 后，
+   `/register` 只接受名单内 host 的 `redirect_uri`，从源头切断任意跳转地。
+
+`/authorize`、`/token` 的表单体上限 1MiB（与 `/register` 注册体一致）；`state`
+在凭据验证成功后一次性原子消费，并发重复提交同一 `state` 只会发出一个授权码。
 
 ## 测试
 

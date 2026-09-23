@@ -43,6 +43,10 @@ const (
 	maxRedirectURIsPerRegistration = 16
 	// maxRedirectURIBytes 封顶单条注册 redirect_uri 长度（OCR T04-R2-8）。
 	maxRedirectURIBytes = 2048
+	// maxFormBodyBytes 封顶 /authorize 与 /token 的表单体大小（整分支终评
+	// r3-006/r3-007/r4-006/r4-007）：两个端点都是未认证输入面，ParseForm
+	// 前必须套 http.MaxBytesReader——与 /register 的 1MiB JSON 注册体对齐。
+	maxFormBodyBytes = 1 << 20
 )
 
 // maxPendingAuths 封顶窗口内未消费的授权表单 state 数量（OCR T04-R2-3：
@@ -64,6 +68,11 @@ var maxPendingAuths = 1024
 type oauthServer struct {
 	baseURL     string
 	jiraBaseURL string
+	// allowedRedirectHosts 非空时（装配项 Options.AllowedRedirectHosts，env
+	// PLUGIN_ALLOWED_REDIRECT_HOSTS），/register 仅接受 host 在名单内的
+	// redirect_uri（整分支终评 r2-012/r4-008 部署侧缓解：切断「任意注册方 +
+	// 任意跳转地」的钓鱼组合；缺省空 = 教学示例语义，不限制）。
+	allowedRedirectHosts map[string]struct{}
 
 	mu sync.Mutex
 	// clients: 动态注册的 client_id -> 注册信息（含绑定的 redirect_uris）。
@@ -79,8 +88,10 @@ type oauthServer struct {
 	refreshTokens map[string]refreshEntry
 }
 
-// registeredClient 记录一次动态注册。
+// registeredClient 记录一次动态注册（ClientName 供同意页展示请求方——
+// 整分支终评 r2-012/r4-008：成员必须在提交凭据前识别请求方）。
 type registeredClient struct {
+	ClientName   string
 	RedirectURIs []string
 }
 
@@ -127,15 +138,20 @@ type refreshEntry struct {
 // sessionContextKey 是会话注入 context 的键类型（不与 SDK 冲突）。
 type sessionContextKey struct{}
 
-func newOAuthServer(baseURL, jiraBaseURL string) *oauthServer {
+func newOAuthServer(baseURL, jiraBaseURL string, allowedRedirectHosts []string) *oauthServer {
+	allowlist := make(map[string]struct{}, len(allowedRedirectHosts))
+	for _, host := range allowedRedirectHosts {
+		allowlist[strings.ToLower(strings.TrimSpace(host))] = struct{}{}
+	}
 	return &oauthServer{
-		baseURL:       baseURL,
-		jiraBaseURL:   jiraBaseURL,
-		clients:       make(map[string]registeredClient),
-		pendingAuths:  make(map[string]pendingAuth),
-		codes:         make(map[string]issuedCode),
-		tokens:        make(map[string]tokenEntry),
-		refreshTokens: make(map[string]refreshEntry),
+		baseURL:              baseURL,
+		jiraBaseURL:          jiraBaseURL,
+		allowedRedirectHosts: allowlist,
+		clients:              make(map[string]registeredClient),
+		pendingAuths:         make(map[string]pendingAuth),
+		codes:                make(map[string]issuedCode),
+		tokens:               make(map[string]tokenEntry),
+		refreshTokens:        make(map[string]refreshEntry),
 	}
 }
 
@@ -281,6 +297,16 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		// 整分支终评 r2-012/r4-008：装配了 AllowedRedirectHosts 时，注册即
+		// 拒绝名单外 host——授权码的目的地在注册期收敛，而非到同意页才告警。
+		if len(s.allowedRedirectHosts) > 0 {
+			if _, ok := s.allowedRedirectHosts[strings.ToLower(parsed.Hostname())]; !ok {
+				writeJSON(w, http.StatusBadRequest, map[string]any{
+					"error": "invalid_redirect_uri", "error_description": "redirect_uri host is not in the operator allowlist",
+				})
+				return
+			}
+		}
 	}
 	clientID := "jtm-" + randomToken()
 	s.mu.Lock()
@@ -291,7 +317,10 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	s.clients[clientID] = registeredClient{RedirectURIs: registration.RedirectURIs}
+	s.clients[clientID] = registeredClient{
+		ClientName:   registration.ClientName,
+		RedirectURIs: registration.RedirectURIs,
+	}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"client_id":           clientID,
@@ -323,7 +352,8 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 		CodeChallenge:       q.Get("code_challenge"),
 		CodeChallengeMethod: q.Get("code_challenge_method"),
 	}
-	if err := s.validateAuthorizationRequest(req, q.Get("response_type")); err != nil {
+	client, err := s.validateAuthorizationRequest(req, q.Get("response_type"))
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -356,13 +386,28 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 	}
 	s.pendingAuths[state] = pendingAuth{Request: req, ExpiresAt: now.Add(pendingAuthTTL)}
 	s.mu.Unlock()
+	// 同意页透明化（整分支终评 r2-012/r4-008）：开放动态注册意味着任何人
+	// 都能成为「请求方」——成员提交凭据前必须看到请求方（注册名，缺失回落
+	// client_id）与授权码跳转目的地，才能识别深链诱导的伪造授权请求。
+	// client_name 是不可信输入，渲染前一律 html.EscapeString。
+	displayName := client.ClientName
+	if strings.TrimSpace(displayName) == "" {
+		displayName = req.ClientID
+	}
+	redirectDisplay := ""
+	if parsed, err := url.Parse(req.RedirectURI); err == nil {
+		redirectDisplay = parsed.Scheme + "://" + parsed.Host
+	}
 	// 表单把授权参数（含 state）藏在隐藏字段；凭据字段仅在提交瞬间经
 	// HTTPS 到达本服务，不进入任何存储。
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>Jira 授权</title></head>
 <body>
-<h1>授权 WeKnora 查询你的本周 Jira 待办</h1>
+<h1>授权访问你的 Jira 账号</h1>
+<p>请求方应用：<strong>%s</strong></p>
+<p>授权通过后结果将跳转至：<code>%s</code></p>
+<p>⚠ 请核对以上请求方与跳转地址；不认识请勿输入凭据。</p>
 <p>输入你的 Jira 邮箱与 API token（仅用于本次授权验证，服务不保存凭据）。</p>
 <form method="POST" action="/authorize">
 <input type="hidden" name="state" value=%q>
@@ -370,28 +415,30 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 <label>API token <input type="password" name="api_token" required autocomplete="off"></label><br>
 <button type="submit">授权</button>
 </form>
-</body></html>`, html.EscapeString(state))
+</body></html>`,
+		html.EscapeString(displayName), html.EscapeString(redirectDisplay), html.EscapeString(state))
 }
 
 // validateAuthorizationRequest 校验授权请求：response_type=code、client 已
 // 注册、redirect_uri 与该 client 注册值**精确匹配**（RFC 6749 §3.1.2.3 公共
-// 客户端语义，OCR T04-R1-1）、PKCE S256。
-func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, responseType string) error {
+// 客户端语义，OCR T04-R1-1）、PKCE S256。返回注册信息（含 ClientName，供
+// 同意页展示请求方——整分支终评 r2-012/r4-008）。
+func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, responseType string) (registeredClient, error) {
 	if responseType != "code" {
-		return fmt.Errorf("response_type must be \"code\"")
+		return registeredClient{}, fmt.Errorf("response_type must be \"code\"")
 	}
 	s.mu.Lock()
 	client, registered := s.clients[req.ClientID]
 	s.mu.Unlock()
 	if !registered {
-		return fmt.Errorf("unknown client_id")
+		return registeredClient{}, fmt.Errorf("unknown client_id")
 	}
 	redirect, err := url.Parse(req.RedirectURI)
 	if err != nil || redirect.Scheme == "" || redirect.Host == "" {
-		return fmt.Errorf("redirect_uri must be an absolute http(s) URL")
+		return registeredClient{}, fmt.Errorf("redirect_uri must be an absolute http(s) URL")
 	}
 	if redirect.Scheme != "http" && redirect.Scheme != "https" {
-		return fmt.Errorf("redirect_uri must use http or https")
+		return registeredClient{}, fmt.Errorf("redirect_uri must use http or https")
 	}
 	// 精确匹配注册值：杜绝注册后把授权码发给任意第三方地址的劫持路径。
 	registeredURI := false
@@ -402,15 +449,15 @@ func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, res
 		}
 	}
 	if !registeredURI {
-		return fmt.Errorf("redirect_uri does not match the registered redirect_uris for this client")
+		return registeredClient{}, fmt.Errorf("redirect_uri does not match the registered redirect_uris for this client")
 	}
 	if req.CodeChallenge == "" {
-		return fmt.Errorf("code_challenge is required (PKCE)")
+		return registeredClient{}, fmt.Errorf("code_challenge is required (PKCE)")
 	}
 	if req.CodeChallengeMethod != "S256" {
-		return fmt.Errorf("code_challenge_method must be S256")
+		return registeredClient{}, fmt.Errorf("code_challenge_method must be S256")
 	}
-	return nil
+	return client, nil
 }
 
 // submitAuthorizeForm 处理凭据提交：凭据经 Jira /rest/api/3/myself 验证成功
@@ -422,6 +469,8 @@ func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, res
 // 凭据的在线猜测代理与出站请求放大器——教学级实现，生产部署必须置于
 // 限流/防护之后（见 README）。
 func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request) {
+	// 整分支终评 r3-006/r4-007：表单体必须封顶后再解析（未认证输入面）。
+	r.Body = http.MaxBytesReader(w, r.Body, maxFormBodyBytes)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
@@ -463,16 +512,31 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 <body><h1>Jira 服务暂不可用</h1><p>授权验证依赖的 Jira 服务当前不可达或出错，请稍后重试或联系部署管理员。</p></body></html>`)
 		return
 	}
-	// 验证成功：此刻才一次性消费 state 并签发授权码。
+	// 验证成功：此刻才一次性消费 state 并签发授权码。消费必须原子——上面的
+	// 存在性检查与这里的消费之间隔着一次跨网络调用（Myself，最长 30s），
+	// 并发同 state 双提交会双双通过检查（整分支终评 r2-004/r3-008/r4-009）：
+	// 复查存在性并消费放进同一临界区，输者 409，保证一个 state 恰发一个码。
 	code := randomToken()
 	s.mu.Lock()
-	delete(s.pendingAuths, state)
-	s.codes[code] = issuedCode{
-		Session:   oauthSession{Email: email, APIToken: apiToken},
-		Request:   pending.Request,
-		ExpiresAt: now.Add(authCodeTTL),
+	consumed, still := s.pendingAuths[state]
+	if still && now.After(consumed.ExpiresAt) {
+		delete(s.pendingAuths, state)
+		still = false
+	}
+	if still {
+		delete(s.pendingAuths, state)
+		s.codes[code] = issuedCode{
+			Session:   oauthSession{Email: email, APIToken: apiToken},
+			Request:   consumed.Request,
+			ExpiresAt: now.Add(authCodeTTL),
+		}
 	}
 	s.mu.Unlock()
+	if !still {
+		http.Error(w, "state is already consumed or expired; start a new authorization request", http.StatusConflict)
+		return
+	}
+	pending = consumed
 	redirect, err := url.Parse(pending.Request.RedirectURI)
 	if err != nil {
 		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
@@ -496,6 +560,8 @@ func (s *oauthServer) handleToken(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
 		return
 	}
+	// 整分支终评 r3-007/r4-006：表单体必须封顶后再解析（未认证输入面）。
+	r.Body = http.MaxBytesReader(w, r.Body, maxFormBodyBytes)
 	if err := r.ParseForm(); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_request"})
 		return

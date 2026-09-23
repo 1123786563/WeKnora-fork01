@@ -77,6 +77,10 @@ type JiraIssue struct {
 }
 
 // jiraSearchResponse 是搜索响应的最小映射（含分页游标 nextPageToken）。
+// 字段值键名按 Atlassian 官方 API 参考核实为 `fields`（无下划线）：
+// developer.atlassian.com/cloud/jira/platform/rest/v3/
+// api-group-issue-search/#api-rest-api-3-search-jql-post——OCR r3-005 主张的
+// `_fields` 不成立（整分支终评 R4 轮核实，裁决见 rulings.md R3）。
 type jiraSearchResponse struct {
 	Issues []struct {
 		Key    string `json:"key"`

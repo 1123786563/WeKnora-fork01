@@ -70,6 +70,12 @@ type Options struct {
 	JiraBaseURL string
 	// ListenAddr 是监听地址；Run() 中为空时使用 defaultListenAddr。
 	ListenAddr string
+	// AllowedRedirectHosts 非空时，/register 仅接受 host 在名单内的
+	// redirect_uri（整分支终评 r2-012/r4-008：开放动态注册下，任何人都能
+	// 注册 client 并深链诱导成员提交 Jira 凭据；生产部署设置本名单即把
+	// 授权码的目的地收敛到运营者认可的主机）。缺省空 = 不限制（教学示例
+	// 语义；同意页仍会展示请求方与跳转目的地）。
+	AllowedRedirectHosts []string
 }
 
 // Run 启动示例服务并阻塞直到 ctx 取消。校验失败（如 JiraBaseURL 缺失）
@@ -127,6 +133,23 @@ func validateBaseURL(where, raw string) error {
 	return nil
 }
 
+// parseHostList 解析逗号分隔的 host 名单（PLUGIN_ALLOWED_REDIRECT_HOSTS）：
+// 逐项去空白并小写化；空串或全空白 → nil（不限制）。名单项不含 scheme/path
+// ——与 /register 的 redirect_uri host 匹配（小写主机名比较）。
+func parseHostList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	hosts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if host := strings.ToLower(strings.TrimSpace(part)); host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
+}
+
 // NewHandler 校验 Options 并组装完整 HTTP handler：/mcp（MCP 端点）、
 // OAuth 端点集与 /manifest.json。
 func NewHandler(opts Options) (http.Handler, error) {
@@ -137,7 +160,7 @@ func NewHandler(opts Options) (http.Handler, error) {
 	if err := validateBaseURL("JiraBaseURL", opts.JiraBaseURL); err != nil {
 		return nil, err
 	}
-	oauthSrv := newOAuthServer(opts.BaseURL, opts.JiraBaseURL)
+	oauthSrv := newOAuthServer(opts.BaseURL, opts.JiraBaseURL, opts.AllowedRedirectHosts)
 
 	mcpServer := sdkserver.NewMCPServer(serverName, pluginVersion)
 	tool := mcp.NewToolWithRawSchema(toolName, toolDescription, json.RawMessage(canonicalToolInputSchema))
@@ -220,9 +243,10 @@ func bearerToken(header string) string {
 
 func main() {
 	opts := Options{
-		BaseURL:     strings.TrimRight(os.Getenv("PLUGIN_BASE_URL"), "/"),
-		JiraBaseURL: strings.TrimRight(os.Getenv("PLUGIN_JIRA_BASE_URL"), "/"),
-		ListenAddr:  os.Getenv("PLUGIN_LISTEN_ADDR"),
+		BaseURL:              strings.TrimRight(os.Getenv("PLUGIN_BASE_URL"), "/"),
+		JiraBaseURL:          strings.TrimRight(os.Getenv("PLUGIN_JIRA_BASE_URL"), "/"),
+		ListenAddr:           os.Getenv("PLUGIN_LISTEN_ADDR"),
+		AllowedRedirectHosts: parseHostList(os.Getenv("PLUGIN_ALLOWED_REDIRECT_HOSTS")),
 	}
 	// PLUGIN_BASE_URL 缺省用监听地址拼一个 base（仅当监听地址含具体 host
 	// 如 127.0.0.1:8020 时可得到合法 URL；通配 ":8020" 拼出的
