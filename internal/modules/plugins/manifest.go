@@ -231,7 +231,13 @@ func validateScopes(scopes []string, where string) error {
 //     sorts keys, drops whitespace and keeps number literals unchanged.
 //  5. strings are emitted WITHOUT Go's default HTML escaping: '<', '>' and
 //     '&' appear literally, never as \u003c/\u003e/\u0026 (JSON.stringify and
-//     most non-Go serializers behave the same way).
+//     most non-Go serializers behave the same way). EXCEPTION: U+2028 and
+//     U+2029 (LINE/PARAGRAPH SEPARATOR) are ALWAYS emitted as \u2028/\u2029 —
+//     Go's encoder escapes them unconditionally (JSONSP compatibility) and
+//     SetEscapeHTML(false) does not change that, while JSON.stringify
+//     (ES2019+) keeps them literal. Non-Go reimplementations MUST escape
+//     these two code points or digests over documents containing them will
+//     disagree (locked by TestCanonicalJSONAlwaysEscapesLineSeparators).
 func CanonicalJSON(v any) []byte {
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -291,6 +297,19 @@ func ToolSchemaDigest(schema []byte) string {
 // self-referential content_digest field excluded, so the digest can be
 // embedded in the document it certifies. Uses the CanonicalJSON algorithm
 // (sorted keys, no whitespace, verbatim number literals — see CanonicalJSON).
+//
+// DIGEST DOMAIN — structural, not document-level (protocol contract): the
+// input is the parsed PluginManifest struct, so the digest covers exactly
+// the semantic fields WeKnora consumes. Explicitly-empty optional fields
+// ("description": "", "scopes": [], "auth": null) and UNKNOWN extension
+// keys present in the raw document do NOT participate — they are invisible
+// to the struct round-trip. This differs from ToolSchemaDigest, which is a
+// document-level digest of the raw schema JSON. A manifest whose raw JSON
+// carries extra keys or explicit empties digests the same as its semantic
+// twin, and a content_digest computed per these rules verifies cleanly
+// (locked by TestManifestContentDigestIgnoresUnknownAndEmptyOptionalFields).
+// Precomputing: parse the document into the manifest shape above, drop
+// content_digest, then apply the CanonicalJSON algorithm.
 // An unserializable input yields "" (the ToolSchemaDigest failure
 // convention), never the valid SHA-256 of empty input that would make two
 // different failures compare equal.

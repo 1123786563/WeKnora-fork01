@@ -147,3 +147,48 @@ func TestManifestContentDigestExcludesSelf(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &round))
 	require.Equal(t, m.ContentDigest, ManifestContentDigest(&round))
 }
+
+// TestCanonicalJSONAlwaysEscapesLineSeparators (OCR T01-ocr-r3-004) pins a
+// protocol-contract detail the doc comment now states: Go's encoder escapes
+// U+2028/U+2029 UNCONDITIONALLY (JSONSP compatibility) even with
+// SetEscapeHTML(false), while JSON.stringify (ES2019+) keeps them literal.
+// The canonical output therefore ALWAYS carries these two code points in
+// escaped form, never as literal code points — non-Go reimplementations
+// that keep them literal will compute different digests over documents
+// containing them.
+func TestCanonicalJSONAlwaysEscapesLineSeparators(t *testing.T) {
+	// Built via rune()/concatenation on purpose: the code points and their
+	// escape sequences are invisible/unreliable as literals in source.
+	ls := string(rune(0x2028))
+	ps := string(rune(0x2029))
+	canonical := canonicalizeJSON([]byte(`{"a":"x` + ls + `y` + ps + `z"}`))
+	s := string(canonical)
+	require.Contains(t, s, `\`+`u2028`)
+	require.Contains(t, s, `\`+`u2029`)
+	require.NotContains(t, s, ls)
+	require.NotContains(t, s, ps)
+}
+
+// TestManifestContentDigestIgnoresUnknownAndEmptyOptionalFields (OCR
+// T01-ocr-r3-009) pins the STRUCTURAL digest domain of content_digest: the
+// digest covers the parsed manifest's semantic fields, so an unknown
+// extension key or an explicitly-empty-but-equivalent optional field in the
+// raw document does not change it — such documents verify cleanly instead
+// of being rejected as content_digest mismatches. (Injecting "auth": null
+// over a manifest whose Auth is set would CHANGE semantics — a nil-vs-set
+// pointer is a real difference and must digest differently.) ToolSchemaDigest,
+// by contrast, is document-level (raw schema bytes).
+func TestManifestContentDigestIgnoresUnknownAndEmptyOptionalFields(t *testing.T) {
+	base := validManifest()
+	raw, err := json.Marshal(base)
+	require.NoError(t, err)
+	var doc map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &doc))
+	doc["x_extension"] = json.RawMessage(`{"v":1}`)
+	doc["description"] = json.RawMessage(`""`) // base.Description == "" — equivalent
+	extended, err := json.Marshal(doc)
+	require.NoError(t, err)
+	var parsed types.PluginManifest
+	require.NoError(t, json.Unmarshal(extended, &parsed))
+	require.Equal(t, ManifestContentDigest(base), ManifestContentDigest(&parsed))
+}
