@@ -55,6 +55,19 @@ test('a late home response after the scope lease was revoked never resolves with
   await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
 });
 
+test('a delayed task list from the previous tenant is rejected after switching leases', async () => {
+  const first = leased();
+  const second = leased();
+  const leaseRef: { lease?: ScopeLease } = { lease: first.lease };
+  const gate = deferred<TaskBackendPage>();
+  const { office } = officeWith(leaseRef, { list: () => gate.promise });
+  const pending = office.tasks({});
+  first.revocable.revoke();
+  leaseRef.lease = second.lease;
+  gate.resolve({ items: [backendRun('tenant-1-private') ] });
+  await assert.rejects(pending, (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+});
+
 test('a newer tasks query supersedes an in-flight older one', async () => {
   const leaseRef: { lease?: ScopeLease } = {};
   leaseRef.lease = leased().lease;

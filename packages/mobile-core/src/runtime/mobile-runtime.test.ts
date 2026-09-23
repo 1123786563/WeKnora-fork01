@@ -652,6 +652,29 @@ test('authorizedRequest carries the credential and refreshes exactly once on a 4
   ]);
 });
 
+test('an expired Task Office session with failed refresh rejects the protected request and exposes no data', async () => {
+  const store = fakeStore();
+  let sends = 0;
+  let refreshes = 0;
+  const runtime = createMobileRuntime({
+    credentialStore: store,
+    remoteFor: () => remote({ refresh: async () => { refreshes += 1; throw new Error('refresh expired'); } }),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedTransport: () => async () => {
+      sends += 1;
+      const error = new Error('HTTP 401');
+      error.name = 'ApiError';
+      (error as unknown as { status?: number }).status = 401;
+      throw error;
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  await assert.rejects(runtime.authorizedRequest({ method: 'GET', path: '/api/v1/tasks' }), /RUNTIME_UNAUTHORIZED/);
+  assert.equal(refreshes, 1, 'expired credentials trigger one refresh attempt');
+  assert.equal(sends, 1, 'a failed refresh never replays the Task request');
+  runtime.dispose();
+});
+
 test('a late authorized response after a scope change is dropped', async () => {
   const release = deferred<void>();
   const runtime = createMobileRuntime({

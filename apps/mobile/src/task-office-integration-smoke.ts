@@ -3,7 +3,7 @@ import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
-import { createInMemoryCredentialStore, createMobileRuntime, createTaskOffice, type RuntimeSnapshot, type TaskOffice } from '@weknora/mobile-core';
+import { createInMemoryCredentialStore, createMobileRuntime, createTaskOffice, TaskOfficeError, type RuntimeSnapshot, type TaskOffice } from '@weknora/mobile-core';
 
 export type TaskOfficeIntegrationConfig =
   | { enabled: true; deploymentOrigin: string; email: string; password: string }
@@ -16,7 +16,58 @@ export interface TaskOfficeIntegrationEvidence {
   sections: { needsMe: number; running: number; recentlyCompleted: number; unreadNotifications: number } | 'unavailable';
   listSearch: 'matched' | 'no-match' | 'failed';
   archiveRoundtrip: 'archived-restored' | 'unavailable' | 'failed';
+  archiveRestore: 'restored' | 'failed' | 'not-attempted';
   commandTimestamp: string;
+}
+
+/** A pre-login denial counts only when the Task Office rejects for its missing scope lease. */
+export async function probeUnauthenticatedRead(office: TaskOffice): Promise<'rejected' | 'failed-open'> {
+  try {
+    await office.tasks({});
+    return 'failed-open';
+  } catch (error) {
+    return error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED' ? 'rejected' : 'failed-open';
+  }
+}
+
+/** Archive at most one live task, and always attempt to restore it after a successful archive. */
+export async function runArchiveRoundtrip(
+  office: TaskOffice,
+  taskId: string,
+): Promise<Pick<TaskOfficeIntegrationEvidence, 'archiveRoundtrip' | 'archiveRestore'>> {
+  try {
+    await office.archive(taskId);
+  } catch {
+    return { archiveRoundtrip: 'failed', archiveRestore: 'not-attempted' };
+  }
+  let archivedVisible = false;
+  let restoredVisible = false;
+  let listFailed = false;
+  let restoreFailed = false;
+  try {
+    const archivedPage = await office.tasks({ archived: true });
+    archivedVisible = archivedPage.items.some((card) => card.taskId === taskId);
+  } catch {
+    listFailed = true;
+  } finally {
+    // Do not allow an intermediate read failure to leave a user's task archived.
+    try {
+      await office.restore(taskId);
+    } catch {
+      restoreFailed = true;
+    }
+  }
+  if (restoreFailed) return { archiveRoundtrip: 'failed', archiveRestore: 'failed' };
+  try {
+    const restoredPage = await office.tasks({});
+    restoredVisible = restoredPage.items.some((card) => card.taskId === taskId);
+  } catch {
+    listFailed = true;
+  }
+  return {
+    archiveRoundtrip: !listFailed && archivedVisible && restoredVisible ? 'archived-restored' : 'failed',
+    archiveRestore: 'restored',
+  };
 }
 
 /** 与 T01 mobileRuntimeIntegrationConfig 相同的 opt-in 语义（自包含，不跨计划 import）。 */
@@ -49,6 +100,7 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
     sections: 'unavailable',
     listSearch: 'failed',
     archiveRoundtrip: 'unavailable',
+    archiveRestore: 'not-attempted',
     commandTimestamp: new Date().toISOString(),
   };
   const fetcher: FetchLike = (input, init) => fetch(input, init as RequestInit);
@@ -73,11 +125,7 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
     }),
     lease: () => runtime.scopeLease(),
   });
-  try {
-    await unauthenticatedOffice.tasks({});
-  } catch {
-    evidence.unauthenticatedRead = 'rejected';
-  }
+  evidence.unauthenticatedRead = await probeUnauthenticatedRead(unauthenticatedOffice);
   if (evidence.unauthenticatedRead !== 'rejected') { runtime.dispose(); return evidence; }
   let snapshot: RuntimeSnapshot;
   try {
@@ -119,13 +167,11 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
     const activePage = await office.tasks({});
     if (activePage.items.length === 0) return evidence;
     const target = activePage.items[0]!;
-    await office.archive(target.taskId);
-    const archivedPage = await office.tasks({ archived: true });
-    const archivedVisible = archivedPage.items.some((card) => card.taskId === target.taskId);
-    await office.restore(target.taskId);
-    const restoredPage = await office.tasks({});
-    const restoredVisible = restoredPage.items.some((card) => card.taskId === target.taskId);
-    evidence.archiveRoundtrip = archivedVisible && restoredVisible ? 'archived-restored' : 'failed';
+    try {
+      Object.assign(evidence, await runArchiveRoundtrip(office, target.taskId));
+    } catch {
+      evidence.archiveRoundtrip = 'failed';
+    }
   } catch {
     evidence.home = evidence.home === 'loaded' ? evidence.home : 'failed';
   } finally {
