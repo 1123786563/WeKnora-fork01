@@ -37,15 +37,30 @@ var (
 // enough for a human to pay; short enough that a price change lands soon.
 const quoteValidity = 30 * time.Minute
 
+// QuoteLineItem is one frozen invoice line of the offer (#81 AC1): the
+// first slice prices exactly one subscription fee; integer fen only.
+type QuoteLineItem struct {
+	Kind      string `json:"kind"`       // 闭合 "subscription_fee"
+	Name      string `json:"name"`       // plan 显示名
+	AmountFen int64  `json:"amount_fen"` // 整数分
+}
+
 // quoteSnapshot is the exact offer frozen at quote time: the published plan
-// version it buys, its exact price in fen and the monthly credits it grants.
-// The order is priced from THIS snapshot, never re-read from the (possibly
-// republished) catalog at order time.
+// version it buys, its exact price in fen, the monthly credits it grants
+// and — additive #81 fields — the closed currency, the frozen entitlement
+// features and the line items. The order is priced from THIS snapshot,
+// never re-read from the (possibly republished) catalog at order time.
+// New fields are JSON-backward-compatible: a legacy snapshot unmarshals
+// them as zero values, and the purchase path refuses legacy snapshots with
+// ErrQuoteLegacySnapshot (re-quote) instead of guessing.
 type quoteSnapshot struct {
 	PlanKey      string `json:"plan_key"`
 	PlanVersion  int64  `json:"plan_version"`
 	PriceFen     int64  `json:"price_fen"`
 	CreditsMicro int64  `json:"credits_micro"`
+	Currency     string          `json:"currency"` // "CNY"
+	Features     map[string]bool `json:"features,omitempty"`
+	LineItems    []QuoteLineItem `json:"line_items,omitempty"` // 首期恰一行 subscription_fee
 }
 
 // OrderService implements the order pipeline over the repository stores:
@@ -126,7 +141,9 @@ func normalizeMigratedCommercialUniques(db *gorm.DB) error {
 	return nil
 }
 
-// QuoteView is the produced quote projection.
+// QuoteView is the produced quote projection. Currency, Features and
+// LineItems are the additive #81 AC1 freeze: the customer sees exactly the
+// currency, entitlements and invoice lines the quote commits to.
 type QuoteView struct {
 	ID           string `json:"id"`
 	PlanKey      string `json:"plan_key"`
@@ -134,6 +151,9 @@ type QuoteView struct {
 	AmountFen    int64  `json:"amount_fen"`
 	CreditsMicro int64  `json:"credits_micro"`
 	ExpiresAt    string `json:"expires_at"`
+	Currency     string          `json:"currency,omitempty"`
+	Features     map[string]bool `json:"features,omitempty"`
+	LineItems    []QuoteLineItem `json:"line_items,omitempty"`
 }
 
 // CreateQuote cuts an offer for the LATEST PUBLISHED version of planKey in
@@ -164,6 +184,13 @@ func (s *OrderService) CreateQuote(ctx context.Context, tenantID uint64, planKey
 		PlanVersion:  plan.Version,
 		PriceFen:     int64(plan.Price),
 		CreditsMicro: int64(plan.Monthly),
+		// #81 AC1 freeze: closed currency, the version's entitlements and the
+		// single first-period subscription-fee line (no pay-in-advance
+		// charges exist on publishable plans — usage charges are
+		// pay-in-arrears and never enter the first invoice).
+		Currency:  domain.CurrencyCNY,
+		Features:  plan.Features,
+		LineItems: []QuoteLineItem{{Kind: "subscription_fee", Name: plan.Name, AmountFen: int64(plan.Price)}},
 	}
 	snapJSON, err := json.Marshal(snap)
 	if err != nil {
@@ -184,6 +211,7 @@ func (s *OrderService) CreateQuote(ctx context.Context, tenantID uint64, planKey
 		ID: id, PlanKey: snap.PlanKey, PlanVersion: snap.PlanVersion,
 		AmountFen: snap.PriceFen, CreditsMicro: snap.CreditsMicro,
 		ExpiresAt: expires.UTC().Format(time.RFC3339),
+		Currency:  snap.Currency, Features: snap.Features, LineItems: snap.LineItems,
 	}, nil
 }
 
