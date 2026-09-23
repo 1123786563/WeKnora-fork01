@@ -456,6 +456,52 @@ async function main() {
               }
             }).catch(() => {});
           }
+          // T12c：settings-system 的「UI 版本」行 commit 后缀 = 各自 dev server
+          // 启动时 vite define 烘进的 git HEAD 短哈希（frontend/ 树与 tdm-int
+          // worktree 树不同 HEAD，dev server 长驻进程、无法按轮注入），双端渲染
+          // `0.8.0 (176704368)` / `0.8.0 (754bfb5d0)` 必差。确定性归一（同
+          // system 时钟冻结 / integration localhost 归一先例）：截图前把匹配
+          // `v\d+\.\d+\.\d+(-\w+)?\s*\(?[0-9a-f]{7,9}\)?` 的文本统一替换为固定
+          // 字面量 v0.0.0 (parity)。作用域仅 section=system（URLSearchParams
+          // 精确匹配，不误伤 system-global / runtime-queues 等分区）。注意两端
+          // 版本与 commit 均为独立文本节点（"0.8.0 " 文本节点 + span.commit-info
+          // "(hash)"），合并正则在单节点内匹配不到，需按节点分别归一：
+          // commit-info span 整体替换为 "(parity)"（顺带抹平 React JSX 前导
+          // 空格差），其前邻版本文本节点归一为 v0.0.0。MutationObserver 兜底
+          // 轮询重渲染回写原始哈希（归一幂等，重入无害）。
+          if (p.id === 'settings-system') {
+            await active.evaluate(() => {
+              if (new URLSearchParams(location.search).get('section') !== 'system') return;
+              // test 与 replace 分用字面量：/g 正则的 test 有 lastIndex 状态，
+              // 循环里会跨节点泄漏命中位置（replace 则始终从头扫描）。
+              const COMBINED_T = /v?\d+\.\d+\.\d+(-\w+)?\s*\(?[0-9a-f]{7,9}\)?/;
+              const COMBINED = /v?\d+\.\d+\.\d+(-\w+)?\s*\(?[0-9a-f]{7,9}\)?/g;
+              const VERSION_T = /v?\d+\.\d+\.\d+(-\w+)?/;
+              const VERSION = /v?\d+\.\d+\.\d+(-\w+)?/g;
+              // 括号锚定：避免误伤纯数字行（如数据库迁移版本号）；"(unknown)" 不匹配。
+              const COMMIT = /\([0-9a-f]{7,9}\)/;
+              const normalize = () => {
+                // 1) 合并形态：单节点内完整的 "v1.2.3 (a1b2c3d)"。
+                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                  if (COMBINED_T.test(n.textContent)) {
+                    n.textContent = n.textContent.replace(COMBINED, 'v0.0.0 (parity)');
+                  }
+                }
+                // 2) 分裂节点形态（当前双端实况）：span.commit-info + 前邻版本文本节点。
+                for (const ci of document.querySelectorAll('.commit-info')) {
+                  if (COMMIT.test(ci.textContent || '')) ci.textContent = '(parity)';
+                  let prev = ci.previousSibling;
+                  while (prev && !(prev.nodeType === 3 && prev.textContent.trim())) prev = prev.previousSibling;
+                  if (prev && VERSION_T.test(prev.textContent)) {
+                    prev.textContent = prev.textContent.replace(VERSION, 'v0.0.0');
+                  }
+                }
+              };
+              normalize();
+              new MutationObserver(normalize).observe(document.body, { childList: true, subtree: true, characterData: true });
+            }).catch(() => {});
+          }
           if (p.actions) {
             for (const action of p.actions) {
               const ok = await clickFirst(active, action);
