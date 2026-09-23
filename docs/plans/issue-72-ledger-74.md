@@ -219,3 +219,11 @@ AC1–AC3 回 blocked/fail 并另立任务。
 4. 本机复跑依赖 `~/.zcode/issue72-stripe.env`（本机测试凭据，不入库）；CI/他人复跑自备 TEST key。
 5. 计划声明「不改动 lab 代码」的前提被真实运行推翻：本次为对齐 Lago v1.53.0/Stripe 现行契约修复了实验工具（提交 `52e22b366`+`4aa74ce34`，60 离线测试全程保持绿，判据只对齐真实契约未放松）；若主 Agent 认定越权，revert 这两个提交即回到计划 fail 分支。
 6. 新增的重要运行时事实（供 #81/#82 直接消费，DECISION.md 已更新）：① v1.53.0 把 `open`/`closed` 发票列为 API 不可见（INVISIBLE_STATUS），未决 gating invoice 无法经 API 观察；② 重复注册 POST 返回 200 且同一订阅（幂等），但曾观测到数分钟后的延迟 terminate+续订发票——调用方必须自幂等、绝不重放注册；③ Stripe 现行 TEST 政策拒绝 attach decline 类 token 与 raw PAN，负对照只能用 3DS 卡的 off-session 失败；④ `timeout_hours: 0` 意为永不超时，`canceled(payment_failed)` 仅在非零 timeout 的 hourly clock 后出现；⑤ 订阅 DELETE 需显式 `?status=`（默认 active）。
+
+## 后续裁决记录（2026-09-23，架构师补录）
+
+「上报事项」第 1/2 条所等待的裁决已由用户作出，经当日编排任务指令送达；此前仓库内无书面留痕（final report §9.3 曾记出处无法溯源/待确认，该记录早于裁决到达，已被取代）。本节为补录留痕，出处即该指令原文：
+
+1. **T02 三选项 → 选项 (b) 受支持 Provider 作真实扣款轨道**（Stripe TEST 通道已由本票 run11 `5d06a277` 实证）；推荐意见 (a) Premium manual 不采纳。裁决记录已补录至 `docs/migrations/lago/t02-payment-activation/DECISION.md` §5 末「裁决记录」段。#81/#82 解锁，按受支持 Provider 轨道实施。
+2. **#75-a2 → 选项 B 协调层承载并发**：ADR-0012 修订（提交 `552d98d12`）的裁决获用户确认，出处注记已补入 `docs/adr/0012-lago-as-commercial-billing-authority.md`。#85 起充值链解锁。
+3. #74 GitHub 关票仍待编排侧执行（2026-09-23 实测仍 OPEN）。

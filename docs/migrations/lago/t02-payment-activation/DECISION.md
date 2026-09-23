@@ -146,6 +146,13 @@ key~~ (resolved by the re-run: all phases `pass`);
 (Premium is out of scope for this lab); (iii) commercial terms of Premium
 are outside the lab's competence.
 
+### 裁决记录（2026-09-23，补录）
+
+T02 三选一已由用户裁决为**选项 (b)——受支持 Provider 作真实扣款轨道**（Stripe TEST 通道已在本 lab 实证：run11 `5d06a277` 九阶段全 pass，流程验证 run `3dc51207` 21/21 逐 AC 断言）；本 lab 的推荐意见 (a)（采购 Premium、以 manual Payment 录入渠道事实）**不采纳**。
+
+- **出处**：2026-09-23 编排任务指令转述的用户裁决（原文要点：『T02 三选一已裁决为选项②（受支持 Provider，Stripe TEST 已在 #74 实证）』）。此前过程文档未留书面裁决记录——`docs/plans/issue-72-final-report.md` §1/§9.3 曾记『T02 三选项裁决仍未提供』，该记录早于本裁决到达，已被取代；本段由 issue-72 架构师补录以闭合溯源缺口（DAG 审查 2026-09-23 high finding），未改动上方 §5 的原始论证与推荐意见。
+- **影响**：#81/#82 的裁决型阻塞解除——payment-gated 订阅的激活通道定型为受支持 Provider 轨道；WeKnora 自有微信/支付宝渠道事实与 provider 轨道的并存口径（选项 (b) 行内已声明 Stripe 不能服务微信/支付宝原生流）由 #81/#82 实施票按 spec 细化。
+
 ## 6. Acceptance-criterion mapping
 
 | #74 acceptance criterion | Evidence files |
