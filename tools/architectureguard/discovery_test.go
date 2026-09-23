@@ -181,13 +181,15 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // 实测（代码为事实源）：564 literal + 69 + 0 = 633 —— 文档的 line-sweep 在
 // routes_knowledge.go 少数 1 个 GET（该文件在 f4acb2154 基线修正时即为 90 处调用，
 // 文档表记 89；全仓仅 GET 222 vs 文档 221 一处之差，其余方法全部吻合）。
+// issue #106 新增 routes_plugins.go 的 /plugins/installations/preview（literal POST）：
+// 565 literal + 69 + 0 = 634。
 // worker 23+23 两侧一致；hooks 58。 ----
 
 const (
-	wantRouteLiteral  = 564
+	wantRouteLiteral  = 565
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 633
+	wantRouteTotal    = 634
 	wantWorkersPerMix = 23
 	wantHooks         = 58
 )

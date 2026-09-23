@@ -24,6 +24,14 @@ alias_obligations:
   - old_import_path: internal/connectorcontrol
     passb_task: B-appconnector
 legacy_files:
+  - path: internal/application/repository/plugin.go
+    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
+    navigation_label: Plugin (application/repository)
+    passb_task: B-appconnector
+  - path: internal/application/service/plugin_service.go
+    reason: trapped in horizontal service package internal/application/service (Pass B file split)
+    navigation_label: Plugin service (application/service)
+    passb_task: B-appconnector
   - path: internal/handler/app_connector.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: App connector (handler)
@@ -51,6 +59,10 @@ legacy_files:
   - path: internal/handler/app_connector_sync.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: App connector sync (handler)
+    passb_task: B-appconnector
+  - path: internal/handler/plugin.go
+    reason: trapped in horizontal handler package internal/handler (Pass B file split)
+    navigation_label: Plugin (handler)
     passb_task: B-appconnector
 owned_files:
   move_sources:
@@ -90,6 +102,7 @@ test_commands:
 integration_points:
   routes:
   - RegisterAppConnectorRoutes — internal/router/routes_app_connectors.go:20
+  - RegisterPluginRoutes — internal/router/routes_plugins.go:16
   workers:
     []
   lifecycle_hooks:
