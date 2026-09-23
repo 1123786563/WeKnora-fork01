@@ -99,7 +99,7 @@ test('MCP settings renders the Vue dashed add-service tile in the owner empty st
   }));
   assert.doesNotMatch(html, /暂无 MCP 服务/);
   assert.match(html, /添加服务/);
-  assert.match(html, /border-dashed/, 'tile keeps the Vue dashed service-card--add border');
+  assert.match(html, /wk-mcp-add-tile/, 'tile keeps the Vue dashed service-card--add border hook');
 });
 
 test('MCP settings renders service metadata and admin actions', () => {
@@ -114,7 +114,7 @@ test('MCP settings renders service metadata and admin actions', () => {
   assert.match(html, /删除/);
   assert.match(html, /添加服务/);
   assert.match(html, /wk-mcp-page-header/);
-  assert.match(html, /text-\[20px\]/);
+  assert.match(html, /wk-mcp-page-header h2|<h2>/);
 });
 
 test('MCP settings uses shared Vue-derived Chinese copy for the default locale', () => {
@@ -360,7 +360,7 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
     assert.ok(subtitle, 'the drawer subtitle renders');
     assert.match(subtitle.textContent ?? '', /SSE/, 'the transport label prefixes the chip');
     assert.match(subtitle.textContent ?? '', /已启用/, 'the enabled chip renders');
-    const unitText = Array.from(dialog?.querySelectorAll('span.pointer-events-none') ?? []).map((node) => node.textContent).join('');
+    const unitText = Array.from(dialog?.querySelectorAll('span.wk-mcp-unit') ?? []).map((node) => node.textContent).join('');
     assert.equal(unitText, '秒次秒', 'advanced inputs show Vue unit suffixes');
     const transportGroup = dialog?.querySelector('[role="radiogroup"][aria-label="传输类型"]');
     assert.ok(transportGroup, 'Vue segmented transport group renders');

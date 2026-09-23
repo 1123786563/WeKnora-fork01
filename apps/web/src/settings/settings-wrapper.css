@@ -654,3 +654,169 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 @media (max-width: 720px) {
   .wk-settings-values-row { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* ==== S6 Tailwind 收编：McpSettingsPanel 页面/编辑抽屉（settings 域收尾） ====
+ * 取值 = 原 utility 串字面量；但落在 tdesign 组件 className / [&_input] 后代
+ * 上的 utility 在 v4 utilities layer 中本就输给 unlayered 的 .t-button* /
+ * .t-input__inner / select chrome 规则（死样式）——这些不移植，仅保留语义
+ * hook，现渲染不变（McpSettingsPanel.tsx 头注同款说明）。 */
+.wk-settings-drawer-root .wk-mcp-page { display: grid; gap: 16px; }
+.wk-settings-drawer-root .wk-mcp-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.wk-settings-drawer-root .wk-mcp-page-header h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; line-height: normal; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-mcp-page-header p { margin: 0; font-size: 14px; line-height: 1.6; color: rgba(0, 0, 0, 0.6); }
+.wk-settings-drawer-root .wk-mcp-load-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px 16px; text-align: center; }
+.wk-settings-drawer-root .wk-mcp-card-grid { display: grid; align-items: stretch; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.wk-settings-drawer-root .wk-mcp-service-card { min-width: 0; overflow: hidden; border: 1px solid #dce3ed; border-radius: 10px; background: #fff; }
+.wk-settings-drawer-root .wk-mcp-service-card-main { display: flex; min-width: 0; flex: 1 1 0%; align-items: stretch; padding: 12px; }
+.wk-settings-drawer-root .wk-mcp-card-icon { display: inline-flex; width: 26px; height: 26px; flex-shrink: 0; align-items: center; justify-content: center; align-self: flex-start; border-radius: 7px; background: #f3f5f8; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-service-card-body { display: flex; min-width: 0; flex: 1 1 0%; flex-direction: column; }
+.wk-settings-drawer-root .wk-mcp-service-card-header { display: flex; min-height: 28px; align-items: center; justify-content: space-between; }
+.wk-settings-drawer-root .wk-mcp-service-card-header h4 { margin: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 20px; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-mcp-builtin { font-size: 0.75rem; color: #2e6de6; }
+.wk-settings-drawer-root .wk-mcp-card-actions { display: flex; flex-shrink: 0; align-items: center; gap: 2px; }
+.wk-settings-drawer-root .wk-mcp-icon-btn { width: 24px; height: 24px; cursor: pointer; border: 0; border-radius: 6px; background: transparent; padding: 0; font-size: 16px; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-icon-btn:hover,
+.wk-settings-drawer-root .wk-mcp-icon-btn:focus-visible { background: #f3f5f8; color: #245a9b; outline: none; }
+.wk-settings-drawer-root .wk-mcp-icon-btn--danger:hover,
+.wk-settings-drawer-root .wk-mcp-icon-btn--danger:focus-visible { color: #b42318; }
+.wk-settings-drawer-root .wk-mcp-service-card-desc { min-height: 2.6rem; overflow-wrap: anywhere; }
+.wk-settings-drawer-root .wk-mcp-add-usage { display: flex; align-items: center; align-self: flex-start; border: 0; background: transparent; padding: 0; color: #245a9b; font-family: inherit; font-size: 0.82rem; cursor: pointer; }
+.wk-settings-drawer-root .wk-mcp-add-usage:hover,
+.wk-settings-drawer-root .wk-mcp-add-usage:focus-visible { text-decoration: underline; }
+.wk-settings-drawer-root .wk-mcp-no-usage { font-size: 0.82rem; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-service-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; }
+.wk-settings-drawer-root .wk-mcp-card-meta { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 6px; }
+.wk-settings-drawer-root .wk-mcp-tools-link { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: 4px; border: 0; border-radius: 6px; background: #f3f5f8; padding: 2px 6px; text-align: left; font-family: inherit; font-size: 12px; line-height: 18px; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-tools-link:hover { background: #f3f5f8; color: rgba(0, 0, 0, 0.9); outline: none; }
+.wk-settings-drawer-root .wk-mcp-tools-link:focus-visible { color: #245a9b; outline: none; }
+.wk-settings-drawer-root .wk-mcp-tools-link.is-stale { background: #fffaeb; color: #b42318; }
+.wk-settings-drawer-root .wk-mcp-type { flex-shrink: 0; font-size: 11px; line-height: 18px; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-status-btn { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; cursor: pointer; border: 0; border-radius: 6px; background: transparent; padding: 2px 4px; font-family: inherit; font-size: 12px; line-height: 18px; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-status-btn:hover { background: #f3f5f8; }
+.wk-settings-drawer-root .wk-mcp-status-btn:disabled { cursor: wait; }
+.wk-settings-drawer-root .wk-mcp-status-btn.is-on { color: #137333; }
+.wk-settings-drawer-root .wk-mcp-status-dot { display: inline-block; width: 5px; height: 5px; border-radius: 9999px; background: #98a2b8; }
+.wk-settings-drawer-root .wk-mcp-status-dot.is-on { background: #07c05f; }
+.wk-settings-drawer-root .wk-mcp-add-tile { display: flex; min-height: 88px; cursor: pointer; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 1px dashed #e7e7e7; border-radius: 10px; background: transparent; padding: 12px; text-align: center; color: rgba(0, 0, 0, 0.4); font-family: inherit; transition: border-color 0.18s ease, background-color 0.18s ease; }
+.wk-settings-drawer-root .wk-mcp-add-tile:hover,
+.wk-settings-drawer-root .wk-mcp-add-tile:focus-visible { border-color: #07c05f; background: rgba(7, 192, 95, 0.06); color: #07c05f; outline: none; }
+.wk-settings-drawer-root .wk-mcp-add-tile__icon { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: 8px; background: #f3f3f3; font-size: 18px; color: rgba(0, 0, 0, 0.6); }
+.wk-settings-drawer-root .wk-mcp-add-tile__label { font-size: 13px; font-weight: 500; line-height: 1.4; }
+
+/* 编辑抽屉：overlay z（原 z-[1200]! important 胜 .wks-overlay 的 1100）、
+ * 吸顶头（104px，-18px 负 margin 抵 .wks-mcp-drawer 的 0 18px padding）、
+ * 步骤条、表单布局。display/gap/margin-bottom 由共享 .wk-settings-panel-heading
+ * 规则继续供给（原 utility 与其冲突时 unlayered 恒胜，不重复声明）。 */
+.wk-settings-drawer-root .wks-mcp-overlay { z-index: 1200; }
+.wk-settings-drawer-root .wk-mcp-drawer-head { position: sticky; top: 0; z-index: 1; box-sizing: border-box; height: 104px; flex-shrink: 0; flex-direction: column; margin-inline: -18px; border-bottom: 1px solid #eef1f5; background: #fff; padding: 14px 18px 12px; }
+.wk-settings-drawer-root .wk-mcp-drawer-title-row { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.wk-settings-drawer-root .wk-mcp-drawer-icon { display: inline-flex; width: 32px; height: 32px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 9px; }
+.wk-settings-drawer-root .wk-mcp-drawer-icon--http { background: rgba(0, 82, 217, 0.1); color: #0052d9; }
+.wk-settings-drawer-root .wk-mcp-drawer-icon--sse { background: rgba(17, 128, 83, 0.12); color: #118053; }
+.wk-settings-drawer-root .wk-mcp-drawer-title-text { display: flex; min-width: 0; flex: 1 1 0%; flex-direction: column; gap: 1px; }
+.wk-settings-drawer-root .wk-mcp-drawer-title-text h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; line-height: 21px; }
+.wk-settings-drawer-root .wk-mcp-drawer-title-text p { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; line-height: 18px; }
+.wk-settings-drawer-root .wk-mcp-badge { border-radius: 9999px; padding: 0.1rem 8px; font-size: 0.72rem; }
+.wk-settings-drawer-root .wk-mcp-badge--ok { background: #ecfdf3; color: #137333; }
+.wk-settings-drawer-root .wk-mcp-badge--info { background: #e8f1ff; color: #2e6de6; }
+.wk-settings-drawer-root .wk-mcp-badge--warn { background: #fffaeb; color: #b54708; }
+.wk-settings-drawer-root .wk-mcp-badge--muted { background: #f2f4f8; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-drawer-steps { display: flex; height: 24px; align-items: center; gap: 8px; }
+.wk-settings-drawer-root .wk-mcp-step-btn { display: flex; min-width: 0; align-items: center; gap: 8px; cursor: pointer; border: 0; background: transparent; padding: 0; font-family: inherit; font-size: 13px; font-weight: 500; color: #98a2b8; }
+.wk-settings-drawer-root .wk-mcp-step-btn:disabled { cursor: default; opacity: 0.6; }
+.wk-settings-drawer-root .wk-mcp-step-btn.is-active { color: #07c05f; }
+.wk-settings-drawer-root .wk-mcp-step-btn.is-done { color: #506078; }
+.wk-settings-drawer-root .wk-mcp-step-btn--grow { flex: 1 1 0%; }
+.wk-settings-drawer-root .wk-mcp-step-marker { display: inline-flex; width: 22px; height: 22px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid; border-radius: 9999px; font-size: 11px; font-weight: 600; line-height: 1; }
+.wk-settings-drawer-root .wk-mcp-step-marker.is-current { border-color: #07c05f; background: #07c05f; color: #fff; }
+.wk-settings-drawer-root .wk-mcp-step-marker.is-done { border-color: #07c05f; background: rgba(7, 192, 95, 0.12); color: #07c05f; }
+.wk-settings-drawer-root .wk-mcp-step-marker.is-idle { border-color: #cbd5e1; color: #98a2b8; }
+.wk-settings-drawer-root .wk-mcp-step-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-settings-drawer-root .wk-mcp-step-line { height: 1px; min-width: 16px; flex: 1 1 0%; margin-inline: 4px; background: #dcdcdc; }
+.wk-settings-drawer-root .wk-mcp-step-line.is-done { background: rgba(7, 192, 95, 0.35); }
+
+/* 表单：grid 骨架 + 内层原生 input/textarea/select。边框/内距/底色由
+ * unlayered 的 tdesign .t-input__inner / select chrome 拥有（原 [&_input]
+ * utilities 为死样式），仅平移实际生效的 width/height。 */
+.wk-settings-drawer-root .wk-mcp-editor-form { margin-block: 1rem; display: grid; gap: 0.8rem; max-width: none; }
+.wk-settings-drawer-root .wk-mcp-editor-form input { width: 100%; height: 32px; }
+.wk-settings-drawer-root .wk-mcp-editor-form textarea { width: 100%; }
+.wk-settings-drawer-root .wk-mcp-editor-form select { width: 100%; }
+
+/* 段内结构：enable 行 / 自定义 headers / oauth / 凭据卡 / 高级参数单位 /
+ * 用法编辑行 / 底部动作条。 */
+.wk-settings-drawer-root .wk-mcp-enable-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.wk-settings-drawer-root .wk-mcp-form .wk-checkbox { flex: none; white-space: nowrap; }
+.wk-settings-drawer-root .wk-mcp-custom-headers { display: flex; min-width: 0; flex-direction: column; gap: 0.7rem; border: 0; padding: 0; margin: 0; }
+.wk-settings-drawer-root .wk-mcp-custom-headers legend { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 0; font-size: 13px; font-weight: 600; line-height: 18px; }
+.wk-settings-drawer-root .wk-mcp-source-options { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #dce3ed; border-radius: 8px; background: #f2f4f8; padding: 3px; }
+.wk-settings-drawer-root .wk-mcp-source-options--wrap { max-width: 100%; flex-wrap: wrap; }
+.wk-settings-drawer-root .wk-mcp-source-option { display: inline-flex; height: 28px; cursor: pointer; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; padding: 5px 12px; font-size: 13px; line-height: 1; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-source-option:hover { background: #f3f5f8; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-mcp-source-option:focus-visible { outline: 2px solid #07c05f; outline-offset: 1px; }
+.wk-settings-drawer-root .wk-mcp-source-option.is-active { border-color: #07c05f; background: #fff; font-weight: 500; color: #07c05f; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
+.wk-settings-drawer-root .wk-mcp-oauth { display: grid; gap: 8px; }
+.wk-settings-drawer-root .wk-mcp-oauth-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wk-settings-drawer-root .wk-mcp-oauth-hint { margin: 0; font-size: 12px; line-height: 1.5; }
+.wk-settings-drawer-root .wk-mcp-credential-card { display: grid; gap: 0.65rem; border: 1px solid #dce3ed; border-radius: 7px; background: #f7f9fc; padding: 12px; }
+.wk-settings-drawer-root .wk-mcp-credential-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.wk-settings-drawer-root .wk-mcp-credential-state { font-size: 0.8rem; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-credential-state.is-set { color: #16845b; font-weight: 600; }
+.wk-settings-drawer-root .wk-mcp-number-field { position: relative; }
+.wk-settings-drawer-root .wk-mcp-unit { position: absolute; top: 0; bottom: 0; right: 12px; display: inline-flex; align-items: center; pointer-events: none; font-size: 12px; color: #98a2b8; }
+.wk-settings-drawer-root .wk-mcp-sticky-head { position: sticky; top: 0; z-index: 1; background: #fff; border-bottom: 1px solid #eef1f5; padding-block: 0.25rem 1rem; }
+.wk-settings-drawer-root .wk-mcp-head-desc { margin: 0; }
+.wk-settings-drawer-root .wk-mcp-sync-line { position: relative; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-sync-line.is-stale { color: #b54708; font-size: 0.85rem; }
+.wk-settings-drawer-root .wk-mcp-metadata { margin-top: 1.1rem; border-top: 1px solid #edf0f5; padding-top: 1rem; }
+.wk-settings-drawer-root .wk-mcp-docs-btn { margin-left: 8px; border: 0; border-radius: 4px; background: transparent; padding: 1px 4px; color: #2e6de6; cursor: pointer; font-family: inherit; }
+.wk-settings-drawer-root .wk-mcp-docs-btn:hover { background: #eef4ff; }
+.wk-settings-drawer-root .wk-mcp-docs-popover { position: absolute; z-index: 20; top: 100%; margin-top: 0.4rem; left: 0; display: grid; width: min(360px, calc(100vw - 2rem)); gap: 8px; border: 1px solid #dce3ed; border-radius: 7px; background: #fff; padding: 12px; box-shadow: 0 12px 30px rgb(23 32 51 / 18%); white-space: normal; color: #172033; }
+.wk-settings-drawer-root .wk-mcp-docs-popover pre { margin: 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font-family: inherit; }
+.wk-settings-drawer-root .wk-mcp-usage-row { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; }
+.wk-settings-drawer-root .wk-mcp-usage-count { display: block; text-align: right; font-size: 0.78rem; }
+.wk-settings-drawer-root .wk-mcp-footer { position: sticky; bottom: 0; margin-block: 1.2rem 0; margin-inline: -18px; display: flex; min-height: 53px; flex-shrink: 0; box-sizing: border-box; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #edf0f5; background: #fff; padding: 0.6rem 18px 0.2rem; }
+.wk-settings-drawer-root .wk-mcp-footer-prev { display: flex; flex: 1 1 0%; }
+.wk-settings-drawer-root .wk-mcp-footer-actions { display: flex; gap: 0.6rem; }
+
+/* 拖宽柄（原 group/mcp-resize + bg-primary utilities；--color-primary 存在于
+ * packages/ui theme.css，为 live utility）。 */
+.wk-settings-drawer-root .wk-mcp-resize-handle { position: fixed; top: 0; bottom: 0; right: var(--mcp-drawer-width); z-index: 2600; width: 12px; cursor: col-resize; }
+.wk-settings-drawer-root .wk-mcp-resize-bar { width: 2px; height: 100%; margin: 0 auto; background: transparent; }
+.wk-settings-drawer-root .wk-mcp-resize-handle:hover .wk-mcp-resize-bar,
+.wk-settings-drawer-root .wk-mcp-resize-bar.is-active { background: var(--color-primary, #2e6de6); }
+
+/* ==== S6 Tailwind 收编：McpToolsDirectory（MCP 编辑抽屉 step-2 工具目录） ====
+ * 列表区在抽屉 body 内（scoped）；详情弹层 wk-mcp-tool-detail-popup 经
+ * createPortal 挂 body（unscoped，§2.5）。 */
+.wk-settings-drawer-root .wk-mcp-directory { display: flex; flex-direction: column; gap: 0.65rem; }
+.wk-settings-drawer-root .wk-mcp-directory-error { display: flex; flex-direction: column; gap: 0.65rem; }
+.wk-settings-drawer-root .wk-mcp-directory-search { display: grid; gap: 4px; }
+/* 原 rounded-[6px] p-[.45rem]! important utilities（胜 .t-input chrome）。 */
+.wk-mcp-directory-search-input.t-input,
+.wk-settings-drawer-root .wk-mcp-directory-search-input.t-input { border-radius: 6px; padding: 0.45rem; }
+.wk-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.wk-settings-drawer-root .wk-mcp-directory-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid #edf0f5; }
+.wk-settings-drawer-root .wk-mcp-directory-item { min-width: 0; border-bottom: 1px solid #edf0f5; padding-block: 0.875rem; }
+.wk-settings-drawer-root .wk-mcp-directory-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.wk-settings-drawer-root .wk-mcp-directory-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.wk-settings-drawer-root .wk-mcp-directory-heading strong { min-width: 0; font-size: 13px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.wk-settings-drawer-root .wk-mcp-directory-details { flex-shrink: 0; cursor: pointer; border: 0; background: transparent; padding: 0; font-family: inherit; font-size: 12px; line-height: 1.7; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-directory-details:hover,
+.wk-settings-drawer-root .wk-mcp-directory-details:focus-visible { color: #07c05f; outline: none; }
+.wk-settings-drawer-root .wk-mcp-directory-details.is-open { color: #07c05f; }
+.wk-settings-drawer-root .wk-mcp-directory-desc { display: -webkit-box; margin: 6px 0 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: 12px; line-height: 1.65; color: #506078; overflow-wrap: anywhere; }
+.wk-settings-drawer-root .wk-mcp-directory-policy { display: flex; margin-top: 10px; flex-wrap: wrap; gap: 24px; font-size: 12px; color: #506078; }
+.wk-settings-drawer-root .wk-mcp-directory-policy label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; line-height: 20px; font-size: 12px; }
+.wk-settings-drawer-root .wk-mcp-directory-pager { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; }
+/* 详情弹层（portal 挂 body）。 */
+.wk-mcp-tool-detail-popup { position: fixed; z-index: 3100; width: min(400px, calc(100vw - 24px)); }
+.wk-mcp-tool-detail-card { margin: 0; overflow: hidden; border: 1px solid #dce3ed; border-radius: 8px; background: #fff; padding: 0; box-shadow: 0 12px 30px rgb(23 32 51 / 16%); }
+.wk-mcp-tool-detail-tabs { display: flex; gap: 16px; border-bottom: 1px solid #dce3ed; padding: 0 14px; }
+.wk-mcp-tool-detail-tab { cursor: pointer; border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 10px 0 8px; margin-bottom: -1px; color: #66758b; font-family: inherit; font-size: 13px; line-height: 1.2; }
+.wk-mcp-tool-detail-tab:hover,
+.wk-mcp-tool-detail-tab:focus-visible { color: #172033; outline: none; }
+.wk-mcp-tool-detail-tab.is-active { border-bottom-color: #07c05f; font-weight: 500; color: #172033; }
+.wk-mcp-tool-detail-panel { margin: 0; }
+.wk-mcp-tool-detail-body { margin: 0; padding: 12px 14px 14px; }
+.wk-mcp-tool-detail-schema { max-height: 256px; overflow: auto; white-space: pre-wrap; }
