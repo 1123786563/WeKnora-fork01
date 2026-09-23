@@ -156,16 +156,17 @@ T03 的实现必须把 `unknown` 收窄成版本化判别联合类型并在契�
 
 ### Task 8: T08/#146 粘贴 JD 形成岗位机会与快照
 
-**Depends:** #141。**Owner/validator:** backend_implementer + frontend_implementer / backend_validator + frontend_validator。**Files:** `internal/modules/career/service/opportunity.go`、`internal/modules/career/service/opportunity_test.go`、`apps/web/src/career/opportunity.tsx`。**Consumes:** 已集成的前置 Task 合同与认证 scope。**Produces:** `CareerRemote.act({kind: "import_jd", payload}, requestId, expectedRevision): Promise<CareerReceipt>`。**Parallel:** 仅与同 DAG 波次且文件、数据库、端口和构建目录隔离的 Task 同时执行；否则串行。
+**Depends:** #141 完整验证并集成，且 T03 SQLite 启动修复通过。**Owner/validator:** backend_implementer + frontend_implementer / backend_validator + frontend_validator。**Files:** `internal/modules/career/opportunity.go` 与测试、Career handler/read 路由、机会迁移、`packages/career-core/src/contracts.ts` 与 fixture、`apps/web/src/career/opportunity.tsx` 与测试；共享 Chat host 路由由主控协调。**Consumes:** T03 owner-only scope、request-ID 收据及已集成 Web Career 路由。**Produces:** 独立于 profile revision 的 `import_jd` 类型化命令、`opportunity_imported` 收据与按 opportunityId/snapshotId 读取的证据视图。**Parallel:** 与 T07 后端共享 Career 合同/迁移而串行；Web 在后端类型合同经审查集成后实现。
 
 **验收：** 原文与抽取字段分开保存，缺字段标为未知；同一请求 ID 重放返回同一机会或回执；岗位原文中的指令不能获得 Agent 工具权限；页面可从对话结果进入岗位证据详情
 
-- [ ] **Step 1:** 先在 `opportunity_test.go` 写服务端公共 seam 的失败测试，逐条覆盖本 Task 验收与 request ID、revision、Tenant 隔离；运行 `go test ./internal/modules/career/...`，预期 RED。
-- [ ] **Step 2:** 在 `opportunity.go` 实现最小持久业务行为及封闭 intent；输入只消费已确认事实和不可变快照，外部副作用用收据对账，不能把未知结果当成功。
-- [ ] **Step 3:** 为 Web `opportunity.tsx` 写用户可观察行为测试，显示来源、权限、失败和恢复状态；运行 `pnpm typecheck:web && pnpm test:web`，预期 GREEN。
-- [ ] **Step 4:** 运行 `go test ./internal/modules/career/...` 与 Web 检查；保存 API fixture、数据库迁移及浏览器证据；后端和前端分别验证，独立 reviewer 给出 Spec 与质量结论后提交。
+- [ ] **Step 1:** 按 `docs/plans/issue-140/task-8-research.md` 和 `task-8-architecture.md` 冻结 Go/TS wire：精确 `rawText`、`manual_paste` 来源、服务器取得时间、显式 known/unknown 字段、稳定 opportunity/observation/snapshot ID、`stored|needs_review` 状态。`import_jd` 不是 T03 profile `act(expectedRevision)`，不能传虚构的档案 revision。
+- [ ] **Step 2:** RED：在 Office/HTTP 公共 seam 测试同 ID 同正文仅一份快照与原回执、同 ID 改正文冲突、跨 User/Tenant 拒绝、缺字段为 unknown、提取失败仍能按固定 snapshotId 重新打开原文、后来观察不改旧快照、恶意 JD 不触发工具/网络/授权；运行 `go test ./internal/modules/career/...`，预期新测试失败。
+- [ ] **Step 3:** GREEN：在同一数据库事务持久化机会、来源观察、不可变 JD 快照和收据；先按 scoped request ID 查重放，再做保守抽取。原文不作为系统提示、工具参数或 URL 抓取目标；抽取不确定时返回 `needs_review` 且保留原文。独立机会读接口按 ID 与 snapshotId 鉴权，profile revision 和 `/changes` 不因 JD 导入推进。
+- [ ] **Step 4:** 写 Go/TS 固定 fixture 与解码测试；异常网络/提交结果以原 request ID 查收据。Web RED/GREEN：C 对话结果仅携类型化 opportunityId/snapshotId 的显式动作，证据页面转义展示原文、来源、取得时间和未知标记；复制/刷新/重新打开仍指向原快照。不要从助理文本或 JD 解析路由。
+- [ ] **Step 5:** 跑 Career/handler/数据库/路由测试及 `pnpm typecheck:web && pnpm test:web && pnpm build:web`；在隔离服务与浏览器走粘贴→对话结果→证据→刷新、恶意 JD 与跨 Tenant 拒绝。后端/前端验证者分别核验，独立 reviewer 给出 Spec/质量双结论后集成。
 
-**验证命令：** `go test ./internal/modules/career/...`；`pnpm typecheck:web && pnpm test:web`。**原始证据：** - Career Office 合同测试覆盖原文快照、重复提交和恶意 JD。 - Web E2E 证明粘贴到再次打开内容一致。。**失败处理：** 提取失败保留原文并提示补充，不生成虚构岗位条件。
+**验证命令：** `go test ./internal/modules/career/... ./internal/handler/... ./internal/database/... ./internal/router/...`；`pnpm typecheck:web && pnpm test:web && pnpm build:web`；浏览器证据链。**原始证据：** 固定 ID/摘要、原文与抽取分离、同 ID 重放、恶意 JD 无副作用、Web 粘贴到再次打开完全一致。**失败处理：** 提取失败保留原文和 `needs_review`，不生成虚构岗位条件；提交未知时按 request ID 对账。
 
 ### Task 9: T09/#149 链接导入与不完整来源回退
 
