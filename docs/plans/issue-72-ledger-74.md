@@ -130,9 +130,23 @@
 | DB 投影核验（`runs/db-watch-20260923T050452Z.tsv`，500 采样） | `DB-WATCH: PASS`（succeeded 峰值=历史3+本轮1、sub-b active 不回退、sub-c 从未 active、A/C 均经历 incomplete） |
 | 晋升复核 `cmp` × 8 | `promoted 8 files, all byte-identical` |
 
+## 终检记录（Task 4，2026-09-23）
+
+| 检查 | 结果 |
+|---|---|
+| 离线回归最终跑 `python3 -m pytest test_lab.py test_phases.py -q` | `60 passed in 38.41s` |
+| 密钥真值扫描（`git grep -F $KEY $(git rev-list dafba8851..HEAD)`） | `commits: clean` |
+| 密钥真值扫描（工作树，排除 .git/lab.env/runs） | `worktree: clean` |
+| 密钥形状扫描（`sk_test_[0-9A-Za-z_-]{16,}` over `git diff dafba8851..HEAD -- docs/migrations deploy/lago-lab/payment-activation/evidence`） | `shape: clean` |
+| `lab.sh down`（保留卷） | exit 0；`docker compose -p weknora-lago-74 ps -q --all | wc -l` = 0 |
+| 兄弟栈复核（与 Task 1 基线 diff，过滤 `-74`） | 容器集合与健康状态完全一致（仅 Up 时长 10h→13h 自然增长）；#73 主栈 `weknora-lago` 与 WeKnora 开发容器未受影响 |
+| 工作树状态 | `git status --short` 干净（lab.env/runs/ 均被 .gitignore 覆盖，未入库） |
+
 ## 上报事项（主 Agent 处理）
 
 1. #74 证据完成后的关票决策；#81/#82 解锁（主链恢复）。
 2. DECISION.md §5 选项 (a) Premium manual vs (b) provider 轨道需 spec/ADR owner 确认（本票刷新 (b) 的运行时证据，(a) 仍源码级）。
 3. `clients.worktree-variant.py` 建议删除或归档（防误导）。
 4. 本机复跑依赖 `~/.zcode/issue72-stripe.env`（本机测试凭据，不入库）；CI/他人复跑自备 TEST key。
+5. 计划声明「不改动 lab 代码」的前提被真实运行推翻：本次为对齐 Lago v1.53.0/Stripe 现行契约修复了实验工具（提交 `52e22b366`+`4aa74ce34`，60 离线测试全程保持绿，判据只对齐真实契约未放松）；若主 Agent 认定越权，revert 这两个提交即回到计划 fail 分支。
+6. 新增的重要运行时事实（供 #81/#82 直接消费，DECISION.md 已更新）：① v1.53.0 把 `open`/`closed` 发票列为 API 不可见（INVISIBLE_STATUS），未决 gating invoice 无法经 API 观察；② 重复注册 POST 返回 200 且同一订阅（幂等），但曾观测到数分钟后的延迟 terminate+续订发票——调用方必须自幂等、绝不重放注册；③ Stripe 现行 TEST 政策拒绝 attach decline 类 token 与 raw PAN，负对照只能用 3DS 卡的 off-session 失败；④ `timeout_hours: 0` 意为永不超时，`canceled(payment_failed)` 仅在非零 timeout 的 hourly clock 后出现；⑤ 订阅 DELETE 需显式 `?status=`（默认 active）。
