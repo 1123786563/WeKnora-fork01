@@ -23,6 +23,9 @@ func TestArtifactVersionDownloadHandlerWired(t *testing.T) {
 		}{},
 		repository.NewArtifactVersionStore(nil),
 		repository.NewAgentRunStore(nil),
+		struct {
+			interfaces.TenantMemberRepository
+		}{},
 	)
 	t.Cleanup(func() { session.RegisterArtifactVersionDownloadHandler(nil) })
 	if session.RegisteredArtifactVersionDownloadHandler() == nil {

@@ -484,6 +484,11 @@ type ArtifactVersionDownloadHandler struct {
 	storage  interfaces.StorageBackendResolver
 	versions ArtifactVersionSource
 	runs     OwnedRunReader
+	members  artifactTenantMembershipReader
+}
+
+type artifactTenantMembershipReader interface {
+	Get(ctx context.Context, userID string, tenantID uint64) (*types.TenantMember, error)
 }
 
 // NewArtifactVersionDownloadHandler constructs the versioned download
@@ -500,6 +505,13 @@ func NewArtifactVersionDownloadHandler(
 	if len(runs) > 0 {
 		h.runs = runs[0]
 	}
+	return h
+}
+
+// WithTenantMembership installs the live membership lookup required by
+// credential-free artifact grants. A missing reader denies every grant.
+func (h *ArtifactVersionDownloadHandler) WithTenantMembership(members artifactTenantMembershipReader) *ArtifactVersionDownloadHandler {
+	h.members = members
 	return h
 }
 
@@ -638,12 +650,17 @@ func (h *ArtifactVersionDownloadHandler) DownloadArtifactVersionGrant(c *gin.Con
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-	if h.runs == nil || h.versions == nil {
+	if h.runs == nil || h.versions == nil || h.members == nil {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
 	run, err := h.runs.GetOwnedRun(c.Request.Context(), grant.TenantID, grant.OwnerID, grant.RunID)
 	if err != nil || run.UserID != grant.OwnerID || run.SessionID != grant.SessionID {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	member, err := h.members.Get(c.Request.Context(), grant.OwnerID, grant.TenantID)
+	if err != nil || member == nil || member.Status != types.TenantMemberStatusActive {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}

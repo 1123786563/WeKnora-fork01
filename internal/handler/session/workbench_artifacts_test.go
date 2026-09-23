@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +19,9 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // ─── stubs ───────────────────────────────────────────────────────────────────
@@ -69,6 +74,21 @@ func artifactRunStub() *workbenchRunReaderStub {
 	}}
 }
 
+type artifactMembershipStub struct {
+	member *types.TenantMember
+	err    error
+	calls  int
+	userID string
+	tenant uint64
+}
+
+func (s *artifactMembershipStub) Get(_ context.Context, userID string, tenantID uint64) (*types.TenantMember, error) {
+	s.calls++
+	s.userID = userID
+	s.tenant = tenantID
+	return s.member, s.err
+}
+
 func TestCreateWorkbenchArtifactVersionSignedURLBindsFixedReadyVersion(t *testing.T) {
 	signingEnv(t)
 	version := repository.ArtifactVersion{TenantID: 1, ID: "version-7", RunID: "run-1", SessionID: "sess-1", Digest: strings.Repeat("a", 64), ScanState: repository.ArtifactScanReady, Size: 42, MIME: "application/pdf"}
@@ -104,7 +124,7 @@ func TestDownloadArtifactVersionGrantRechecksOwnerAndRevocation(t *testing.T) {
 	query := "grant_type=artifact_version&tenant_id=1&owner_id=u1&run_id=run-1&session_id=sess-1&version_id=version-7&expires_at=" + strconv.FormatInt(grant.ExpiresAt, 10) + "&signature=" + signature
 	versions := &artifactVersionReaderStub{version: version}
 	runs := artifactRunStub()
-	versionHandler := NewArtifactVersionDownloadHandler(nil, nil, nil, nil, versions, runs)
+	versionHandler := NewArtifactVersionDownloadHandler(nil, nil, nil, nil, versions, runs).WithTenantMembership(&artifactMembershipStub{member: &types.TenantMember{UserID: "u1", TenantID: 1, Status: types.TenantMemberStatusActive}})
 	RegisterArtifactVersionDownloadHandler(versionHandler)
 	t.Cleanup(func() { RegisterArtifactVersionDownloadHandler(nil) })
 	h := &Handler{}
@@ -131,6 +151,101 @@ func TestDownloadArtifactVersionGrantRechecksOwnerAndRevocation(t *testing.T) {
 	h.DownloadWorkbenchArtifactGrant(c3)
 	require.Equal(t, http.StatusNotFound, c3.Writer.Status())
 	require.Zero(t, revokedOwner.versions.(*artifactVersionReaderStub).calls)
+}
+
+func TestDownloadArtifactVersionGrantRequiresCurrentActiveMembership(t *testing.T) {
+	signingEnv(t)
+	version := repository.ArtifactVersion{TenantID: 1, ID: "version-7", RunID: "run-1", SessionID: "sess-1", ScanState: repository.ArtifactScanReady}
+	grant := workbench.ArtifactVersionGrant{TenantID: 1, OwnerID: "u1", RunID: "run-1", SessionID: "sess-1", VersionID: version.ID, ExpiresAt: time.Now().Add(time.Minute).Unix()}
+	key, err := workbench.ArtifactSigningKeyFromEnv()
+	require.NoError(t, err)
+	signature, err := workbench.SignArtifactVersionGrant(key, grant)
+	require.NoError(t, err)
+	query := "grant_type=artifact_version&tenant_id=1&owner_id=u1&run_id=run-1&session_id=sess-1&version_id=version-7&expires_at=" + strconv.FormatInt(grant.ExpiresAt, 10) + "&signature=" + signature
+
+	for _, tc := range []struct {
+		name   string
+		member *types.TenantMember
+		err    error
+	}{
+		{name: "removed", member: nil},
+		{name: "suspended", member: &types.TenantMember{UserID: "u1", TenantID: 1, Status: types.TenantMemberStatusSuspended}},
+		{name: "reader error", err: context.DeadlineExceeded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			members := &artifactMembershipStub{member: tc.member, err: tc.err}
+			handler := NewArtifactVersionDownloadHandler(nil, nil, nil, nil, &artifactVersionReaderStub{version: version}, artifactRunStub()).WithTenantMembership(members)
+			RegisterArtifactVersionDownloadHandler(handler)
+			t.Cleanup(func() { RegisterArtifactVersionDownloadHandler(nil) })
+			c, _ := grantDownloadContext(query)
+			(&Handler{}).DownloadWorkbenchArtifactGrant(c)
+			require.Equal(t, http.StatusNotFound, c.Writer.Status())
+			require.Equal(t, 1, members.calls)
+			require.Equal(t, "u1", members.userID)
+			require.Equal(t, uint64(1), members.tenant)
+		})
+	}
+}
+
+func TestDownloadArtifactVersionGrantStreamsExactBytesAndRevokedIssuedLinkFails(t *testing.T) {
+	signingEnv(t)
+	ctx := context.Background()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	_, err = sqlDB.Exec(`CREATE TABLE agent_runs (tenant_id INTEGER NOT NULL, run_id TEXT NOT NULL, session_id TEXT NOT NULL)`)
+	require.NoError(t, err)
+	_, err = sqlDB.Exec(`INSERT INTO agent_runs (tenant_id, run_id, session_id) VALUES (1, 'run-1', 'sess-1')`)
+	require.NoError(t, err)
+	_, err = sqlDB.Exec(`CREATE TABLE artifact_versions (
+		tenant_id INTEGER NOT NULL, id TEXT NOT NULL, run_id TEXT NOT NULL, session_id TEXT NOT NULL,
+		digest TEXT NOT NULL, object_key TEXT NOT NULL, mime TEXT NOT NULL, scan_state TEXT NOT NULL,
+		size INTEGER NOT NULL, revoked BOOLEAN NOT NULL DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (tenant_id, id))`)
+	require.NoError(t, err)
+
+	data := []byte("exact artifact payload\n")
+	digest := sha256.Sum256(data)
+	version := repository.ArtifactVersion{TenantID: 1, ID: "version-7", RunID: "run-1", SessionID: "sess-1", Digest: hex.EncodeToString(digest[:]), ObjectKey: "artifact-key", MIME: "text/plain", ScanState: repository.ArtifactScanPending, Size: int64(len(data))}
+	versions := repository.NewArtifactVersionStore(db)
+	require.NoError(t, versions.Insert(ctx, version))
+	require.NoError(t, versions.MarkUploaded(ctx, 1, version.ID))
+	require.NoError(t, versions.MarkScanned(ctx, 1, version.ID, true))
+	require.NoError(t, versions.MarkReady(ctx, 1, version.ID))
+	version.ScanState = repository.ArtifactScanReady
+
+	grant := workbench.ArtifactVersionGrant{TenantID: 1, OwnerID: "u1", RunID: "run-1", SessionID: "sess-1", VersionID: version.ID, ExpiresAt: time.Now().Add(time.Minute).Unix()}
+	key, err := workbench.ArtifactSigningKeyFromEnv()
+	require.NoError(t, err)
+	signature, err := workbench.SignArtifactVersionGrant(key, grant)
+	require.NoError(t, err)
+	query := "grant_type=artifact_version&tenant_id=1&owner_id=u1&run_id=run-1&session_id=sess-1&version_id=version-7&expires_at=" + strconv.FormatInt(grant.ExpiresAt, 10) + "&signature=" + signature
+	file := &fakeArtifactFileService{url: version.ObjectKey, data: data}
+	members := &artifactMembershipStub{member: &types.TenantMember{UserID: "u1", TenantID: 1, Status: types.TenantMemberStatusActive}}
+	versionHandler := NewArtifactVersionDownloadHandler(nil, nil, file, nil, versions, artifactRunStub()).WithTenantMembership(members)
+	RegisterArtifactVersionDownloadHandler(versionHandler)
+	t.Cleanup(func() { RegisterArtifactVersionDownloadHandler(nil) })
+
+	serve := func() *httptest.ResponseRecorder {
+		c, recorder := grantDownloadContext(query)
+		(&Handler{}).DownloadWorkbenchArtifactGrant(c)
+		return recorder
+	}
+	response := serve()
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, data, response.Body.Bytes())
+	gotDigest := sha256.Sum256(response.Body.Bytes())
+	require.Equal(t, version.Digest, hex.EncodeToString(gotDigest[:]))
+	require.Equal(t, "text/plain", response.Header().Get("Content-Type"))
+	require.Contains(t, response.Header().Get("Content-Disposition"), "attachment; filename=\"artifact-version-7.txt\"")
+	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"))
+	require.Equal(t, strconv.Itoa(len(data)), response.Header().Get("Content-Length"))
+
+	require.NoError(t, versions.Revoke(ctx, 1, version.ID))
+	response = serve()
+	require.Equal(t, http.StatusNotFound, response.Code, "the already-issued link must fail after persisted revocation")
 }
 
 func artifactRefs() []types.SessionArtifactRef {

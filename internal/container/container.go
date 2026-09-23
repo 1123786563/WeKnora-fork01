@@ -2718,8 +2718,9 @@ func registerArtifactVersionHTTPHandlers(
 	storage interfaces.StorageBackendResolver,
 	versions *repository.ArtifactVersionStore,
 	runs *repository.AgentRunStore,
+	members interfaces.TenantMemberRepository,
 ) {
-	session.RegisterArtifactVersionDownloadHandler(session.NewArtifactVersionDownloadHandler(sessions, tenants, files, storage, versions, runs))
+	session.RegisterArtifactVersionDownloadHandler(session.NewArtifactVersionDownloadHandler(sessions, tenants, files, storage, versions, runs).WithTenantMembership(members))
 }
 
 // registerArtifactPreviewHTTPHandlers installs the W27 isolated artifact

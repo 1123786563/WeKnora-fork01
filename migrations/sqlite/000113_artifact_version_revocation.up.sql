@@ -1,0 +1,2 @@
+ALTER TABLE artifact_versions
+    ADD COLUMN revoked BOOLEAN NOT NULL DEFAULT FALSE;
