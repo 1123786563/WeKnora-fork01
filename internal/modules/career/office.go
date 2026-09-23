@@ -180,9 +180,10 @@ func (receipt) TableName() string                     { return "career_receipts"
 
 type Office struct {
 	db *gorm.DB
-	// These hooks only synchronize transaction-boundary tests.
+	// These hooks only synchronize transaction-boundary and error-path tests.
 	beforeFirstWrite    func()
 	afterReceiptPersist func()
+	beforeReplayReceipt func(context.Context)
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
@@ -512,6 +513,9 @@ func (o *Office) mutate(ctx context.Context, s Scope, kind, r string, rev uint64
 		}
 		if isReceiptRaceError(e) {
 			if replay, found, receiptErr := o.replayReceipt(operationCtx, s, r, fp); receiptErr != nil {
+				if operationCtx.Err() != nil || errors.Is(receiptErr, context.Canceled) || errors.Is(receiptErr, context.DeadlineExceeded) {
+					return Receipt{}, &OutcomeUnknownError{RequestID: r}
+				}
 				return Receipt{}, receiptErr
 			} else if found {
 				return replay, nil
@@ -536,6 +540,9 @@ func isReceiptRaceError(err error) bool {
 }
 
 func (o *Office) replayReceipt(ctx context.Context, s Scope, requestID, fingerprint string) (Receipt, bool, error) {
+	if o.beforeReplayReceipt != nil {
+		o.beforeReplayReceipt(ctx)
+	}
 	var stored receipt
 	err := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).First(&stored).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

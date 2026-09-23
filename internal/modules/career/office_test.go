@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -128,6 +130,91 @@ func TestRevisionConflictHasCurrentValueAndIdempotency(t *testing.T) {
 	var conflict *RevisionConflictError
 	require.ErrorAs(t, e, &conflict)
 	require.Equal(t, uint64(1), conflict.CurrentRevision)
+}
+
+func TestPostConflictReceiptLookupDeadlineReturnsUnknownWireError(t *testing.T) {
+	o, ctx := testOffice(t)
+	_, err := o.Confirm(ctx, "degree", "bachelor", "winner", 0, Source{Kind: "user"})
+	require.NoError(t, err)
+	entered := make(chan struct{})
+	o.beforeReplayReceipt = func(lookupCtx context.Context) {
+		close(entered)
+		<-lookupCtx.Done()
+	}
+	deadlineCtx, cancel := context.WithTimeout(ctx, 80*time.Millisecond)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, mutationErr := o.Confirm(deadlineCtx, "city", "Beijing", "loser", 0, Source{Kind: "user"})
+		result <- mutationErr
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("mutation did not reach post-conflict receipt lookup")
+	}
+	var mutationErr error
+	select {
+	case mutationErr = <-result:
+	case <-time.After(time.Second):
+		t.Fatal("post-conflict lookup did not obey deadline")
+	}
+	var unknown *OutcomeUnknownError
+	require.ErrorAs(t, mutationErr, &unknown)
+	require.Equal(t, "loser", unknown.RequestID)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	writeError(c, mutationErr)
+	require.Equal(t, 504, w.Code)
+	require.JSONEq(t, `{"error":{"code":"outcome_unknown","message":"career request outcome unknown","requestId":"loser"}}`, w.Body.String())
+}
+
+func TestPostConflictReceiptLookupCancellationReturnsUnknown(t *testing.T) {
+	o, ctx := testOffice(t)
+	_, err := o.Confirm(ctx, "degree", "bachelor", "winner", 0, Source{Kind: "user"})
+	require.NoError(t, err)
+	entered := make(chan struct{})
+	o.beforeReplayReceipt = func(lookupCtx context.Context) {
+		close(entered)
+		<-lookupCtx.Done()
+	}
+	canceledCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, mutationErr := o.Confirm(canceledCtx, "city", "Beijing", "loser", 0, Source{Kind: "user"})
+		result <- mutationErr
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("mutation did not reach post-conflict receipt lookup")
+	}
+	cancel()
+	select {
+	case mutationErr := <-result:
+		var unknown *OutcomeUnknownError
+		require.ErrorAs(t, mutationErr, &unknown)
+		require.Equal(t, "loser", unknown.RequestID)
+	case <-time.After(time.Second):
+		t.Fatal("post-conflict lookup did not obey cancellation")
+	}
+}
+
+func TestPostConflictReceiptLookupPreservesUnrelatedDatabaseError(t *testing.T) {
+	o, ctx := testOffice(t)
+	_, err := o.Confirm(ctx, "degree", "bachelor", "winner", 0, Source{Kind: "user"})
+	require.NoError(t, err)
+	var dropErr error
+	o.beforeReplayReceipt = func(context.Context) {
+		dropErr = o.db.Exec("DROP TABLE career_receipts").Error
+	}
+	_, err = o.Confirm(ctx, "city", "Beijing", "loser", 0, Source{Kind: "user"})
+	require.NoError(t, dropErr)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrOutcomeUnknown)
+	require.ErrorContains(t, err, "no such table")
 }
 
 func TestSlowConcurrentMutationAcrossSQLiteConnections(t *testing.T) {
