@@ -35,7 +35,7 @@
 
 Career Office 唯一写入：求职档案事实及确认版本、岗位来源观察与快照、资格和匹配评估、持续找岗规则、求职申请、结构化材料正文与版本、申请进展事件和投递版本绑定。数据库表、Worker、路由归这个 Module，迁移由它拥有；通用 Task、Run、成员、预算、通知投递和二进制 Artifact 的权威仍在现有 Module。
 
-Career Desk 唯一拥有三端共同的求职交互状态：当前 Tenant 的资料与申请视图、乐观修订号、待提交意图、未知结果对账、跨端变更提示、短期缓存失效和安全错误呈现。Web、Expo 与 Taro 页面只提供输入、渲染与平台动作；不直接编排多个传输调用。Mobile Runtime 的 Scope Lease 在原生端仍是身份与空间失效的权威，Career Desk 消费它而不重建一份。
+Career Desk 唯一拥有三端共同的求职交互状态：当前 Tenant 的资料与申请视图、乐观修订号、待提交意图、未知结果对账、跨端变更提示、短期缓存失效和安全错误呈现。Web、Expo 原生页面与 Taro 4 小程序页面只提供输入、渲染与平台动作；不直接编排多个传输调用。移动端仍须消费身份与空间失效的权威 Scope Lease；Expo 的 Task Office 占位页须补齐真实行为。
 
 不要为每张表建立一个公开 Module。档案、岗位、申请、材料彼此共享版本与证据规则，先作为 Career Office 的内部组织；只有出现独立调用者和真正不同的演进节奏时，才考虑把内部 seam 升为外部 Interface。
 
@@ -71,7 +71,7 @@ Interface 还包含以下调用约束：
 
 Career Desk 在内部持久化未完成意图与 requestID、管理 expectedRevision、收到 scope 撤销时丢弃迟到结果、在网络恢复后查询回执并重新读取视图。它返回可直接呈现的资格依据、材料状态、待办和操作限制；页面不读取原始 wire DTO。离线允许保留编辑草稿，联网后由用户确认提交；不静默提交申请状态或外部动作。
 
-Web、Expo、Taro 分别提供文件选择、系统分享、通知订阅、受控本地存储与导航 Adapter。三端共享行为，不强求相同布局。packages/contracts 解析传输字段，packages/api-client 负责请求，二者在 Career Desk 的传输 Adapter 后，页面不可直接混合使用它们。现有 packages/mobile-core 继续负责 Mobile Runtime/Task Office；不把求职状态机塞进去。
+Web、Expo／React Native 与 Taro 4 小程序 Adapter 分别提供文件选择、系统分享、通知订阅、受控本地存储与导航。iOS／Android 沿用 Expo；鸿蒙原生路径须先通过兼容性闸口；小程序沿用 Taro 4 Weapp 并接入 TDesign Miniprogram。移动端原生组件映射 TDesign Mobile React 视觉规范，不直接使用其移动 Web 组件。端能力差异留在 Adapter 中，不以条件分支散落业务页面。三端共享行为，不强求相同布局。packages/contracts 解析传输字段，packages/api-client 负责请求，二者在 Career Desk 的传输 Adapter 后，页面不可直接混合使用它们。现有 packages/mobile-core 的平台无关 Runtime/Task Office 契约可复用，但需要 Expo 适配、iOS／Android 验证及鸿蒙原生兼容性验证；不把求职状态机塞进去。
 
 ## 6. 内部 seam 与 Adapter
 
@@ -109,13 +109,13 @@ Career 拥有找岗规则与下次检查时间，通过 Platform 队列/Worker A
 
 测试应从 Career Office Interface 和 Career Desk Interface 观察行为，而非分别复述去重函数或页面状态实现。核心场景：2026 届对 2027 届岗位不符合但用户可显式继续；缺少毕业时间为待确认；同岗多来源和跨批次区分；岗位更新不改旧快照；未确认事实不能进入简历；两种导出对应同一内容；跨端版本冲突；网络 unknown 对账；额度不足不丢记录；Tenant 切换拒绝迟到结果；删除后旧授权不能下载。
 
-适配器契约另测：每个岗位来源的可用性与失败分类、真实 PDF/DOCX 导出、Workbench Artifact 授权、Identity 个人空间开通、WorkBench admission 与通知投递。三端各做真实设备流程验收；共享 Interface 测试不替代 iOS、Android、微信小程序的文件、分享和通知验证。
+适配器契约另测：每个岗位来源的可用性与失败分类、真实 PDF/DOCX 导出、Workbench Artifact 授权、Identity 个人空间开通、WorkBench admission 与通知投递。Web、Expo iOS、Expo Android、鸿蒙原生 App 与 Taro 4 微信小程序各做真实环境流程验收；共享 Interface 测试不替代各目标的认证、文件、分享、通知与受控存储验证。
 
 推荐实施前置顺序：
 
-1. 固定 Career 的领域合同与所有权，并完成 Identity 个人空间开通 Interface 和 Workbench 的通用 Artifact 版本下载 Interface；未提供这些前置能力时不以 UI 假数据掩盖。
+1. 并行验证 Expo iOS／Android 的受认证 Task、鸿蒙原生兼容性与 Taro 4 小程序的 TDesign Miniprogram 端能力；固定 Career 的领域合同与所有权，并完成 Identity 个人空间开通 Interface 和 Workbench 的通用 Artifact 版本下载 Interface。未提供这些前置能力时不以 UI 假数据掩盖。
 2. 建 Career Office 的档案、岗位、申请主链及持久化；先用手动 JD 和一个有资格的来源 Adapter 证明 Interface 的 depth，再扩展来源。
 3. 接入 Workbench Task/Run、预算、Artifact、Inbox，完成跨 Module 对账与失败恢复。
-4. 建 Career Desk 和三个呈现 Adapter，按同一契约验收全流程；原生 Task Office 现有缺口须同步补齐。
+4. 建 Career Desk、Web 呈现、Expo 原生求职呈现、Taro 4 + TDesign Miniprogram 小程序呈现及各目标 Adapter，按同一契约验收全流程；原生 Task Office 现有缺口须在 Expo 路径补齐。
 
 这是一份架构设计，不是逐文件实施计划。待本设计审阅后，再由实施计划确定具体类型、路由、迁移、来源清单、资源限额与任务拆分。

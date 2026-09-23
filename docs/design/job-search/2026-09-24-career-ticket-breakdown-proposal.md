@@ -1,84 +1,90 @@
-# 求职专业 Agent Ticket DAG 提案
+# 求职专业 Agent Ticket DAG 提案（Expo + TDesign Miniprogram）
 
-状态：待用户确认拆分与阻塞边；**尚未发布子 Issue**。父规格为 [#140](https://github.com/1123786563/WeKnora-fork01/issues/140)。依据已批准规格、ADR-0015～0017、C「对话指挥台」原型选择及当前仓库能力。
+状态：待用户确认拆分与阻塞边；尚未发布子 Issue。父规格为 [#140](https://github.com/1123786563/WeKnora-fork01/issues/140)。每个 Ticket 的独立验收清单、接口、验证与失败处理见 [Brief 索引](tickets-draft/README.md)。
 
-## 拆分规则与执行约束
+技术约束：Web 沿用 React/TDesign；iOS／Android 沿用 Expo／React Native，原生组件参照 TDesign Mobile React 视觉规范；鸿蒙原生 App 必须先通过 Expo 兼容性闸口；微信小程序沿用 Taro 4 并接入 TDesign Miniprogram。移动 Web 组件不直接用于 React Native。[ADR-0018](../../adr/0018-expo-tdesign-career-clients.md)记录依据与阻塞条件。
 
-- 每个 Ticket 交付一条用户可观察的纵向路径，包含该行为所需的数据、服务、三端中的目标呈现面与测试；目标是一位 Code Agent 在一个新上下文内完成并给出可复现验收。平台补齐 Ticket 使用已落地的共同服务，仍需完成真实端到端行为。
-- 表中的阻塞是**必须先完成**的直接依赖，不把“属于父规格”当执行边。满足阻塞条件后即可进入 frontier；共享包、同一页面导航、数据库迁移或同一测试端口冲突时，Code Agent 仍须以独立 Worktree、冻结接口和串行集成保证安全并行。
-- 01 固定 Career Office / Career Desk 的最小意图与视图契约；02～04 是可独立验收的现有能力补强。后续多条业务链可以同时推进。任何 Ticket 的失败／未知结果不得伪装成成功。
-- Ticket 中不写具体文件路径或实现代码；实施计划再确定文件所有权、迁移和测试命令。求职档案、岗位快照、求职申请、申请材料版本、申请进展事件等词遵循 CONTEXT.md。
+## 规则
 
-## Ticket 列表与直接阻塞边
+- 每个 Ticket 是可演示、可验证的纵向切片；平台补齐 Ticket 使用共同服务，但仍需真实目标的端到端行为。
+- Blocked by 只含真正的前置条件；前置实现须通过验证并集成，后续才能开始。
+- 同一理论前沿不等于可以在同一工作区同时改代码。独立 Worktree、模块写权限、共享契约冻结与串行集成是实际并行条件。
+- Ticket 不指定生产文件路径或实现代码；Code Agent 在详细计划里固定文件所有权、命令和检查点。
 
-| ID | 标题 | Blocked by | 交付的可观察行为与验收重点 |
-| --- | --- | --- | --- |
-| 01 | 个人求职空间与已确认基础档案 | 无 | Web 使用 WeKnora 身份进入单成员空间，确认毕业时间、学历、城市和意向；跨空间不可读，未确认内容不成为事实；Career Office/Desk 最小契约可测。 |
-| 02 | 固定版本 Artifact 授权下载 | 无 | 既有 Task 的确定产物可由所有者通过短时授权下载，删除或撤销后旧链接失效；不得仅靠 session/message/index 指向会漂移的材料。 |
-| 03 | 原生端 Task Office 可进入与恢复 | 无 | iOS/Android 用户可从已授权首页打开、恢复一个现有 Task 并看权威状态；空间切换丢弃旧结果，现有占位不再阻断后续求职页。 |
-| 04 | 小程序现有 Task 产物下载 | 无 | 已授权小程序用户能打开并保存一个真实 PDF/DOCX 产物，过期／越权返回可理解状态；不再提示只去 Web。 |
-| 05 | 简历上传、逐步建档与事实确认 | 01 | Web 上传简历或逐步填写后看到带来源的事实提案，逐项确认／拒绝；未确认经历、数字和证书不能进入求职档案或模型输入。 |
-| 06 | 粘贴 JD 形成岗位机会与快照 | 01 | Web 在 C 对话入口粘贴 JD 后看到原文、来源、获取时间和固定快照；重复提交幂等，恶意 JD 不能作为工具指令。 |
-| 07 | 链接导入与不完整来源回退 | 06 | Web 导入岗位 URL 并看到取得状态；登录阻断、摘要或缺失硬条件时保留原链接并请求粘贴 JD，不绕过来源限制。 |
-| 08 | 三值资格与证据化匹配 | 06 | Web 对已确认档案和固定 JD 显示符合／不符合／待确认，逐项硬条件、匹配依据及缺口；2026 届对 2027 届不符合，缺失毕业时间待确认，高分不掩盖冲突。 |
-| 09 | C 对话入口的一次性真实找岗 | 07、08 | 用户用自然语言找岗，至少一个经核验的真实来源返回岗位、资格、依据、原始链接与下一步；搜索为一次 Task，失败／额度状态可恢复。 |
-| 10 | 多来源去重、更新与来源覆盖 | 09 | 多个来源观察只在证据充分时合并；不同批次并列，过期／下架／JD 变化可见，旧申请快照仍可打开；发布实际来源与城市覆盖。 |
-| 11 | 可控的持续找岗规则 | 09 | 用户显式开启、修改、暂停、恢复规则并看频率与预估消耗；一次运行只提醒新岗位，关闭后不再触发。 |
-| 12 | 每份求职申请关联独立 Task | 08 | 用户从岗位建立申请，固定岗位快照和招聘批次并关联一个 Task；硬条件不符时可显式继续但警示常驻且不计合格申请；请求超时以同一 request ID 对账，重试不复制申请或 Task。 |
-| 13 | 可信结构化材料与版本 | 05、12 | Web 为一份申请生成、编辑、审阅简历和问答正文，显示事实来源与缺口；用户确认后形成不可覆盖版本，虚构数字被阻断。 |
-| 14 | 同版 PDF/DOCX 生成与验证 | 02、13 | 同一材料版本导出 PDF 和可编辑 DOCX；检查 PDF 文本／版面与 DOCX 内容／可编辑性；失败版不可用于投递，旧版本可下载。 |
-| 15 | 申请进展事件与阶段投影 | 12 | Web 记录测评、面试、Offer、拒绝、撤回和更正事件，保留不可覆盖时间线；当前阶段可筛选且更正不删除历史。 |
-| 16 | 本人投递确认与实际材料绑定 | 14、15 | 用户在外部平台亲自投递后记录渠道、时间及实际使用版本；未知版本明确未知，重试不重复事件，不发生自动提交或发信。 |
-| 17 | 求职信与基于投递版的面试准备 | 16 | Web 按需生成可审阅求职信与面试准备；只引用已确认事实及实际投递版，版本未知时明确提示。 |
-| 18 | 站内待办与隐私通知 | 11、15 | 申请跟进和新岗位有去重的站内待办；可选推送只提示同步，不在锁屏显示公司、岗位或面试详情。 |
-| 19 | 搜索与生成的额度预估及阻断 | 11、13 | 批量／持续找岗和高用量生成执行前展示额度与预估；超额停止新收费动作，旧档案和申请仍可读取，付费不改变匹配排序。 |
-| 20 | 求职数据导出与完整删除 | 14、15 | Web 导出档案、岗位快照、申请事件和材料；删除说明保留边界并撤销 Task/Artifact 下载与客户端缓存，外部平台资料明确不受影响。 |
-| 21 | 原生端 C 找岗、建档与分享导入 | 03、09 | iOS/Android 完成档案确认、粘贴／分享导入、对话找岗和岗位评估；窄屏显示资格冲突、依据与来源，和 Web 读取同一事实。 |
-| 22 | 小程序 C 找岗、建档与分享导入 | 09 | 微信绑定同一 WeKnora 用户；小程序完成档案确认、粘贴／分享导入、对话找岗和评估，窄屏不隐藏硬条件。 |
-| 23 | 原生端申请、材料与本人投递 | 16、21 | iOS/Android 建立申请、编辑同一结构化正文、比较版本、下载 PDF/DOCX，并记录本人投递与实际版本；离线草稿联网后仍需确认。 |
-| 24 | 小程序申请、材料与本人投递 | 04、16、22 | 小程序完成与 23 相同的业务闭环；文件下载使用获授权的实际产物，微信身份不产生第二份资料。 |
-| 25 | 原生端申请时间线与按需准备 | 17、23 | iOS/Android 记录、纠正和筛选进展事件，按实际投递版准备面试与求职信；跨端更新后显示当前版本。 |
-| 26 | 小程序申请时间线与按需准备 | 17、24 | 小程序完成与 25 相同的业务行为，阶段与历史同 Web／原生端一致。 |
-| 27 | 原生端持续规则、额度与提醒 | 11、18、19、21 | iOS/Android 管理持续规则和用量预估，查看待办与选择推送；空间切换清除敏感缓存，额度不足不影响历史读取。 |
-| 28 | 小程序持续规则、额度与提醒 | 11、18、19、22 | 小程序完成与 27 相同的业务行为并处理订阅消息授权，消息不泄露岗位详情。 |
-| 29 | 原生端导出与删除 | 20、21 | iOS/Android 下载完整求职数据并发起受权删除；删除后旧缓存和旧材料链接不可用。 |
-| 30 | 小程序导出与删除 | 20、22 | 小程序完成与 29 相同的导出、删除和授权失效行为。 |
-| 31 | 三端真实环境闭环与发布门槛 | 10、23～30 | Web、iOS、Android、微信小程序各自从建档走到找岗、材料、本人投递、跟进、导出／删除；真实设备检查分享、下载、通知、权限、失败恢复，并核验来源、数据处理和收费条件。 |
+## Ticket 与直接阻塞边
 
-## 可并行推进的前沿
+| ID | 标题 | Blocked by | 可观察交付 | 主责边界 |
+| --- | --- | --- | --- | --- |
 
-按直接阻塞边做拓扑校验后得到 31 个唯一节点、无环、10 层理论前沿：`01/02/03/04 → 05/06 → 07/08 → 09/12 → 10/11/13/15/21/22 → 14/18/19 → 16/20/27/28 → 17/23/24/29/30 → 25/26 → 31`。这是**依赖允许的最大并行**，不是要求 Code Agent 在同一工作区同时编辑这些节点；实际调度还要检查共享文件、接口与测试环境。
+| 01 | [Expo 鸿蒙原生兼容性闸口](tickets-draft/01-expo-harmony-compatibility-gate.md) | None (can start immediately)。 | 验证现有 Expo／React Native 工程是否能以可维护的适配方式在鸿蒙原生设备运行受认证 Task；形成可复现的技术裁定，供后续移动求职 Ticket 使用。 | Expo 鸿蒙适配可行性、原生构建与端能力探针；不接管 iOS／Android 页面或 Career 后端 |
+| 02 | [Expo iOS／Android 受认证 Task 薄切片](tickets-draft/02-expo-ios-android-task-proof.md) | None (can start immediately)。 | 复用仓库现有 Expo／React Native 工程，让同一位已登录用户在 iOS、Android 打开同一条获授权的现有 Task，固定可供求职页面复用的原生运行边界。 | 现有 Expo／React Native 移动运行面、iOS／Android Task 入口及平台 Adapter；不改 Career 后端业务规则 |
+| 03 | [个人求职空间与已确认基础档案](tickets-draft/03-personal-career-space.md) | None (can start immediately)。 | 求职者用 WeKnora 账号进入单成员个人求职空间，并确认毕业时间、学历、城市与意向；这些确认事实成为后续判断的唯一输入。 | Career Office、Career Desk、Identity；Web 首条完整路径 |
+| 04 | [固定版本 Artifact 授权下载](tickets-draft/04-versioned-artifact-grant.md) | None (can start immediately)。 | 已授权用户以固定产物身份取得短时下载授权，旧链接在撤销或删除后失效，为求职材料版本提供通用安全能力。 | Workbench Artifact；现有 Task 产物路径 |
+| 05 | [Expo 移动端 Task Office 可进入与恢复](tickets-draft/05-native-task-office-entry.md) | T01、T02。 | iOS、Android、鸿蒙用户可在已授权的活动空间中打开、恢复一个现有 Task，并看到服务端权威状态。 | Expo 移动 Task Office 与 Mobile Runtime |
+| 06 | [微信小程序（Taro 4 + TDesign Miniprogram）现有 Task 产物下载](tickets-draft/06-mini-task-artifact-download.md) | None (can start immediately)。 | 微信小程序（Taro 4 + TDesign Miniprogram）用户可从已拥有的现有 Task 获取真实 PDF 或 DOCX，而不被迫转到 Web。 | 微信小程序（Taro 4 + TDesign Miniprogram） Task 呈现与 Workbench 下载 Adapter |
+| 07 | [简历上传、逐步建档与事实确认](tickets-draft/07-resume-intake-confirmation.md) | T03。 | 求职者上传已有简历或逐步填写，审阅带来源的事实提案后逐项确认或拒绝。 | Career Profile Intake；Web 建档页 |
+| 08 | [粘贴 JD 形成岗位机会与快照](tickets-draft/08-paste-jd-snapshot.md) | T03。 | 用户粘贴招聘要求，得到可打开的岗位机会、原文快照、来源和获取时间。 | Career Opportunity；Web C 对话入口 |
+| 09 | [链接导入与不完整来源回退](tickets-draft/09-url-import-incomplete-fallback.md) | T08。 | 用户粘贴岗位链接时能看到来源取得状态；页面无法获得完整 JD 时清楚请求补充文本。 | Career Source Adapter；Web 对话导入 |
+| 10 | [三值资格与证据化匹配](tickets-draft/10-eligibility-and-evidence.md) | T08。 | 用户先看到硬性资格结论，再看到技能、项目与意向的证据化匹配和待核实项。 | Career Evaluation；Web C 岗位结果卡 |
+| 11 | [C 对话入口的一次性真实找岗](tickets-draft/11-one-shot-conversational-search.md) | T09、T10。 | 用户用一句话寻找岗位，从至少一个核验来源得到带资格、证据、来源和下一步动作的真实结果。 | Career Search、Agent Runtime、Workbench Task；Web C 主界面 |
+| 12 | [多来源去重、岗位更新与覆盖说明](tickets-draft/12-source-reconciliation.md) | T11。 | 用户能区分同一岗位的多个来源、不同招聘批次及后来变化的 JD。 | Career Source Observation；Web 岗位证据视图 |
+| 13 | [可控的持续找岗规则](tickets-draft/13-controlled-search-rule.md) | T11。 | 用户明确开启持续找岗，能查看、修改、暂停与恢复条件和频率。 | Career Search Rule、Workbench admission；Web 规则页 |
+| 14 | [每份求职申请关联独立 Task](tickets-draft/14-application-owned-task.md) | T10。 | 用户为一个确定岗位及招聘批次建立独立求职申请和 Task。 | Career Application 与 Workbench Task；Web 申请入口 |
+| 15 | [可信结构化材料与不可变版本](tickets-draft/15-truthful-structured-material.md) | T07、T14。 | 用户依据已确认档案和固定岗位快照生成、编辑、审阅简历及网申问答正文。 | Career Material 与 Agent Runtime；Web 材料编辑 |
+| 16 | [同版 PDF/DOCX 生成与验证](tickets-draft/16-validated-pdf-docx.md) | T04、T15。 | 用户从一份已确认材料版本取得内容一致的 PDF 和可编辑 DOCX。 | Career Material Export、Workbench Artifact；Web 文件获取 |
+| 17 | [申请进展事件与阶段投影](tickets-draft/17-progress-event-timeline.md) | T14。 | 用户按日期记录测评、笔试、面试、Offer、拒绝、撤回和更正，查看当前阶段及完整历史。 | Career Application Event；Web 进展视图 |
+| 18 | [本人投递确认与实际材料绑定](tickets-draft/18-manual-submission-binding.md) | T16、T17。 | 用户在招聘平台亲自投递后，记录渠道、时间和实际使用的材料版本。 | Career Application Submission；Web 申请详情 |
+| 19 | [求职信与基于投递版的面试准备](tickets-draft/19-cover-letter-interview-prep.md) | T18。 | 用户按需起草求职信，并按招聘方实际收到的材料准备面试。 | Career Preparation、Agent Runtime；Web 按需入口 |
+| 20 | [站内待办与隐私通知](tickets-draft/20-actionable-private-reminders.md) | T13、T17。 | 用户能看到申请下一步和新岗位待办，并按意愿接收平台提示。 | Career Attention、Workbench Inbox；Web 待办 |
+| 21 | [搜索与生成的额度预估及阻断](tickets-draft/21-usage-preview-quota.md) | T13、T15。 | 用户在持续扫描和高用量材料生成前看到预估，额度不足时保留历史访问。 | Career Usage 与 Workbench admission；Web 额度提示 |
+| 22 | [求职数据导出与完整删除](tickets-draft/22-career-export-deletion.md) | T16、T17。 | 用户能导出完整求职事实与历史，并按清楚的保留规则删除个人求职资料。 | Career Data Lifecycle、Identity、Workbench；Web 隐私入口 |
+| 23 | [Expo 移动端 C 找岗、建档与分享导入](tickets-draft/23-native-conversational-discovery.md) | T05、T11。 | iOS、Android、鸿蒙用户（鸿蒙以 T01 可运行路径为前置）完成档案确认、分享或粘贴导入、对话找岗与岗位评估。 | Expo 移动 Career 呈现与分享 Adapter；复用 Career Desk |
+| 24 | [微信小程序（Taro 4 + TDesign Miniprogram）C 找岗、建档与分享导入](tickets-draft/24-mini-conversational-discovery.md) | T06、T11。 | 微信小程序（Taro 4 + TDesign Miniprogram）用户绑定同一 WeKnora 用户，完成档案确认、分享或粘贴导入、对话找岗与评估。 | 微信小程序（Taro 4 + TDesign Miniprogram） Career 呈现与微信分享 Adapter；复用 Career Desk |
+| 25 | [Expo 移动端申请、材料与本人投递](tickets-draft/25-native-application-material-submission.md) | T18、T23。 | iOS、Android、鸿蒙用户（鸿蒙以 T01 可运行路径为前置）从岗位建立申请，编辑结构化材料、比较版本、取得 PDF/DOCX 并记录本人投递。 | Expo 移动 Career 申请和材料呈现；复用 Career Desk |
+| 26 | [微信小程序（Taro 4 + TDesign Miniprogram）申请、材料与本人投递](tickets-draft/26-mini-application-material-submission.md) | T06、T18、T24。 | 微信小程序（Taro 4 + TDesign Miniprogram）用户从岗位建立申请，编辑、比较、下载两种文件并记录本人投递。 | 微信小程序（Taro 4 + TDesign Miniprogram） Career 申请和材料呈现；复用 Career Desk |
+| 27 | [Expo 移动端申请时间线与按需准备](tickets-draft/27-native-progress-preparation.md) | T19、T25。 | iOS、Android、鸿蒙用户（鸿蒙以 T01 可运行路径为前置）可记录、更正并筛选进展，按实际投递版本准备面试与求职信。 | Expo 移动 Career 进展与准备呈现 |
+| 28 | [微信小程序（Taro 4 + TDesign Miniprogram）申请时间线与按需准备](tickets-draft/28-mini-progress-preparation.md) | T19、T26。 | 微信小程序（Taro 4 + TDesign Miniprogram）用户可记录、更正并筛选进展，按实际投递版本准备面试与求职信。 | 微信小程序（Taro 4 + TDesign Miniprogram） Career 进展与准备呈现 |
+| 29 | [Expo 移动端持续规则、额度与提醒](tickets-draft/29-native-rules-usage-reminders.md) | T13、T20、T21、T23。 | iOS、Android、鸿蒙用户（鸿蒙以 T01 可运行路径为前置）能管理持续找岗、查看额度与站内待办，并自主选择推送。 | Expo 移动 Career 规则、用量与通知 Adapter |
+| 30 | [微信小程序（Taro 4 + TDesign Miniprogram）持续规则、额度与提醒](tickets-draft/30-mini-rules-usage-reminders.md) | T13、T20、T21、T24。 | 微信小程序（Taro 4 + TDesign Miniprogram）用户能管理持续找岗、查看额度与站内待办，并自主选择订阅消息。 | 微信小程序（Taro 4 + TDesign Miniprogram） Career 规则、用量与订阅消息 Adapter |
+| 31 | [Expo 移动端导出与删除](tickets-draft/31-native-export-deletion.md) | T22、T23。 | iOS、Android、鸿蒙用户（鸿蒙以 T01 可运行路径为前置）下载完整求职数据并发起受权删除，旧内容随授权失效。 | Expo 移动 Career 隐私与文件 Adapter |
+| 32 | [微信小程序（Taro 4 + TDesign Miniprogram）导出与删除](tickets-draft/32-mini-export-deletion.md) | T22、T24。 | 微信小程序（Taro 4 + TDesign Miniprogram）用户下载完整求职数据并发起受权删除，旧内容随授权失效。 | 微信小程序（Taro 4 + TDesign Miniprogram） Career 隐私与文件 Adapter |
+| 33 | [五环境真实闭环与发布门槛](tickets-draft/33-cross-platform-launch-gate.md) | T12、T25、T26、T27、T28、T29、T30、T31、T32。 | Web、iOS、Android、鸿蒙和微信小程序分别从建档走到找岗、材料、本人投递、跟进、导出与删除，形成发布证据。 | 跨端验收与发布负责人；不代替前置 Ticket 的 Review |
 
-| 前沿 | 可以同时开工的 Ticket | 开工条件与集成注意 |
+## 理论并行前沿
+
+先满足单项真实阻塞边即可启动，不用等待整行全部完成；下表是按依赖拓扑分层的最大并行候选。
+
+| 层 | 可同时就绪的 Ticket | 共享状态注意 |
 | --- | --- | --- |
-| 起跑 | 01、02、03、04 | 分别归 Career/Identity、Workbench Artifact、原生 Task Office、小程序现有 Task；独立工作树。 |
-| 第一分叉 | 05、06 | 01 的最小合同已验证；档案 Intake 与岗位导入使用不同数据所有权。 |
-| 第二分叉 | 07、08 | 06 完成；来源读取与资格规则分开，统一岗位快照合同。 |
-| 主业务双线 | 09、12 | 08 完成；岗位搜索与申请 Task 共享已冻结合同，但各自有独立业务区域。 |
-| 申请双线 | 13、15 | 12 完成，且 05 已完成即可做 13；材料版本与事件时间线分开。 |
-| 端能力分流 | 10、11、21、22 | 09 完成；来源扩展、持续规则、原生 UI、小程序 UI 可并行；共享契约的修改须先整合。 |
-| 材料与运营 | 14、18、19、20 | 各自满足表中阻塞后；14 与 20 不能共用产物目录和测试存储。 |
-| 双端成型 | 23、24；随后 25、26、27、28、29、30 | 两端分独立工作树；同一端多个 Ticket 可逻辑就绪，但若改同一导航／共享组件应串行集成。 |
-| 收口 | 31 | 所有阻塞切片已合入同一受审查工作区；以真实环境证据关闭发布门槛。 |
+| G0 | 01、02、03、04、06 | 鸿蒙原生可行性、Expo 双端、Career/Identity、Artifact、小程序文件入口可分开；T01 和 T02 的 Mobile Runtime 变更由主控串行集成。 |
+| G1 | 05、07、08 | 使用独立 Worktree；对共享接口、导航、迁移、构建目录与测试资源先冻结所有权。 |
+| G2 | 09、10 | 使用独立 Worktree；对共享接口、导航、迁移、构建目录与测试资源先冻结所有权。 |
+| G3 | 11、14 | 使用独立 Worktree；对共享接口、导航、迁移、构建目录与测试资源先冻结所有权。 |
+| G4 | 12、13、15、17、23、24 | 使用独立 Worktree；对共享接口、导航、迁移、构建目录与测试资源先冻结所有权。 |
+| G5 | 16、20、21 | 使用独立 Worktree；对共享接口、导航、迁移、构建目录与测试资源先冻结所有权。 |
+| G6 | 18、22、29、30 | 使用独立 Worktree；对共享接口、导航、迁移、构建目录与测试资源先冻结所有权。 |
+| G7 | 19、25、26、31、32 | 使用独立 Worktree；对共享接口、导航、迁移、构建目录与测试资源先冻结所有权。 |
+| G8 | 27、28 | 使用独立 Worktree；对共享接口、导航、迁移、构建目录与测试资源先冻结所有权。 |
+| G9 | 33 | 五环境统一收口；鸿蒙闸口未通过时不能宣称完整发布。 |
 
 ## 父规格故事覆盖
 
 | 父规格用户故事 | 覆盖 Ticket |
 | --- | --- |
-| 1～6：统一身份、个人空间、建档与事实确认 | 01、05、21、22 |
-| 7～9：链接、JD 与移动分享导入 | 06、07、21、22 |
-| 10～16：指令找岗、持续规则、来源与更新 | 07、09、10、11、21、22 |
-| 17～21：硬条件、匹配证据和用户覆盖 | 08、12、21、22 |
-| 22～23：独立求职申请与固定岗位快照 | 12、23、24 |
-| 24～29：可信材料、编辑、版本、PDF/DOCX | 05、13、14、23、24 |
-| 30～35：求职信、本人投递、进展事件 | 15、16、17、25、26 |
-| 36～39：提醒、隐私通知与额度 | 11、18、19、27、28 |
-| 40～43：导出删除、失败恢复、范围隔离与证据审计 | 01、02、10、12、14、15、20、29、30、31 |
+| 1～6：统一身份、个人空间、建档与事实确认 | 01、02、03、07、23、24 |
+| 7～9：链接、JD 与分享导入 | 08、09、23、24 |
+| 10～16：指令找岗、持续规则、来源与更新 | 09、11、12、13、23、24 |
+| 17～21：硬条件、匹配证据与用户覆盖 | 10、14、23、24 |
+| 22～23：独立求职申请与固定快照 | 14、25、26 |
+| 24～29：可信材料、编辑、版本、PDF/DOCX | 07、15、16、25、26 |
+| 30～35：求职信、本人投递、进展事件 | 17、18、19、27、28 |
+| 36～39：提醒、隐私通知与额度 | 13、20、21、29、30 |
+| 40～43：导出删除、恢复、隔离与审计 | 03、04、05、12、14、16、17、22、31、32、33 |
 
-## 对 Code Agent 的交接要求
+## 对 Code Agent 的交接
 
-1. 先读父规格 #140、批准规格、CONTEXT.md 与 ADR-0015～0017；按真实 Issue 关系建 DAG，不按编号假设依赖。
-2. 每个 Ticket 固定端到端验收、最少必要接口、归属模块、文件所有权、验证命令和独立 Review。02～04 可作为 prefactor 先完成；没有固定合同前不平行修改同一个 Career 接口。
-3. 把 GitHub 原生 blocked-by 关系作为权威，并在 Issue 正文重复列出；只有 blocker 完成且已集成内容通过验证的 Ticket 才派发。
-4. 每个可并行实现流用独立 Worktree，禁止共享 stash；共享迁移、测试数据库、构建产物目录及端口视为写冲突。最终 31 统一验证完整差异、端到端行为与真实设备。
-5. 原型仅提供 C 的信息架构与 TDesign 配色，不把演示岗位、分数或按钮回执当业务合同。
+1. 读取父规格 #140、批准规格、CONTEXT.md 与 ADR-0015～0018；用真实 Issue 关系重建 DAG。
+2. T01 鸿蒙原生兼容性与 T02 Expo iOS／Android Task 可并行；Career/Identity、Artifact、小程序 TDesign 文件入口也可独立开工。鸿蒙若无可维护原生路径，只阻塞鸿蒙及含鸿蒙验收的移动任务，保留证据并请求技术裁定。
+3. 每个 Ticket 固定端到端验收、消费/交付合同、文件所有权、验证命令、独立 Review 和恢复检查点。
+4. 并行实现流各用独立 Worktree；共享迁移、导航、构建目录、端口和测试数据库视为写冲突。
+5. 以 T33 的 Web、iOS、Android、鸿蒙原生和微信小程序五环境证据结束；原型 C 提供信息架构与 TDesign 配色。
