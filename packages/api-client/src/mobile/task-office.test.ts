@@ -91,3 +91,79 @@ test('non-success envelopes and malformed origins fail loudly', async () => {
   await assert.rejects(remote.archive('t1'), /success/);
   assert.throws(() => createTaskOfficeRemote({ origin: 'http://insecure.example.test', request: async () => ({}) }), /HTTPS/);
 });
+
+test('detail maps the snapshot wire (with task section) onto the module DTO', async () => {
+  const execution = {
+    schema_version: 1, run_id: 'r1', session_id: 's1', revision: 7, driver: 'platform',
+    run_status: 'waiting_user', execution_status: 'waiting_user', settlement_status: 'pending', seq: 4, capabilities: {},
+  };
+  const wireEvent = { schema_version: 1, run_id: 'r1', attempt_id: 'a1', seq: 4, type: 'interaction.required', occurred_at: '2026-09-23T00:00:00Z', payload: { kind: 'tool_approval' } };
+  const remote = createTaskOfficeRemote({
+    origin: 'https://weknora.example.test',
+    request: async () => ({ success: true, data: { execution, watermark: 4, incomplete: false, confirmed_watermark: 4, events: [wireEvent], task: { task_id: 's1', title: '报告', attention: 'required', archived_at: '2026-09-23T01:00:00Z' } } }),
+  });
+  const detail = await remote.detail('r1');
+  assert.deepEqual(detail, {
+    taskId: 's1', runId: 'r1', title: '报告', attention: 'required', archivedAt: '2026-09-23T01:00:00Z',
+    execution: { runStatus: 'waiting_user', executionStatus: 'waiting_user', settlementStatus: 'pending', revision: 7, seq: 4 },
+    watermark: 4, incomplete: false,
+    events: [{ runId: 'r1', seq: 4, type: 'interaction.required', occurredAt: '2026-09-23T00:00:00Z', payload: { kind: 'tool_approval' } }],
+  });
+});
+
+test('detail defaults the task layer for a legacy server without the task section', async () => {
+  const execution = { schema_version: 1, run_id: 'r1', session_id: 's1', revision: 0, driver: 'platform', run_status: 'running', execution_status: 'running', settlement_status: 'pending', seq: 1, capabilities: {} };
+  const remote = createTaskOfficeRemote({
+    origin: 'https://weknora.example.test',
+    request: async () => ({ success: true, data: { execution, watermark: 1, incomplete: false, confirmed_watermark: 1, events: [] } }),
+  });
+  const detail = await remote.detail('r1');
+  assert.equal(detail.title, '');
+  assert.equal(detail.attention, 'none');
+  assert.equal('archivedAt' in detail, false);
+});
+
+test('the stream resumes from the cursor, routes control frames separately and never parses them as business events', async () => {
+  const business = { schema_version: 1, run_id: 'r1', attempt_id: 'a1', seq: 6, type: 'run.completed', occurred_at: '2026-09-23T00:00:00Z', payload: {} };
+  const seenRequests: Array<{ path: string; headers?: Record<string, string> }> = [];
+  const wire = [
+    ': heartbeat\n\n',
+    `id: 6\nevent: run.completed\ndata: ${JSON.stringify(business)}\n\n`,
+    `event: control\ndata: ${JSON.stringify({ code: 'cursor_expired', message: 'history trimmed' })}\n\n`,
+  ].join('');
+  const remote = createTaskOfficeRemote({
+    origin: 'https://weknora.example.test',
+    request: async () => { throw new Error('no JSON call expected'); },
+    stream: async (input, onChunk) => {
+      seenRequests.push({ path: input.path, headers: input.headers });
+      onChunk(wire.slice(0, 20));
+      onChunk(wire.slice(20));
+    },
+  });
+  const events: unknown[] = [];
+  const controls: Array<{ code: string; message: string }> = [];
+  await remote.stream({ runId: 'r1', cursor: 5, signal: new AbortController().signal, onEvent: (event) => events.push(event), onControl: (frame) => controls.push(frame) });
+  assert.equal(seenRequests[0]!.path, '/api/v1/workbench/executions/r1/events?version=2');
+  assert.equal(seenRequests[0]!.headers?.['Last-Event-ID'], '5', 'resume continues from the module cursor');
+  assert.deepEqual(events, [{ runId: 'r1', seq: 6, type: 'run.completed', occurredAt: '2026-09-23T00:00:00Z', payload: {} }]);
+  assert.deepEqual(controls, [{ code: 'cursor_expired', message: 'history trimmed' }], 'control frames classify separately');
+});
+
+test('a 409 stream failure is translated to TASK_STREAM_CURSOR_EXPIRED and missing transport fails closed', async () => {
+  const failing = async (): Promise<void> => {
+    const error = new Error('HTTP 409');
+    error.name = 'ApiError';
+    (error as unknown as { status?: number }).status = 409;
+    throw error;
+  };
+  const remote = createTaskOfficeRemote({ origin: 'https://weknora.example.test', request: async () => ({}), stream: failing });
+  await assert.rejects(
+    remote.stream({ runId: 'r1', cursor: 9, signal: new AbortController().signal, onEvent: () => {}, onControl: () => {} }),
+    (error: unknown) => (error as { code?: string }).code === 'TASK_STREAM_CURSOR_EXPIRED',
+  );
+  const unstreamed = createTaskOfficeRemote({ origin: 'https://weknora.example.test', request: async () => ({}) });
+  await assert.rejects(
+    unstreamed.stream({ runId: 'r1', cursor: 9, signal: new AbortController().signal, onEvent: () => {}, onControl: () => {} }),
+    /stream transport is required/,
+  );
+});
