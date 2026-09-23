@@ -81,9 +81,21 @@ func nil2raw(b []byte) []byte {
 	return b
 }
 
-func TestPluginFetchAndVerifyHappyPath(t *testing.T) {
+// narrowSSRFWhitelistToLoopback narrows the package TestMain whitelist
+// ("127.0.0.1,::1,localhost", see ssrf_test.go) to plain 127.0.0.1 for this
+// test and RESTORES the prior state afterwards. The previous pattern paired
+// the Set with utils.ResetSSRFWhitelistForTest, which CLEARS the whitelist
+// instead of restoring it — with -count>=2 the alphabetically-later engine
+// tests then ran with an empty whitelist and failed with
+// "hostname 127.0.0.1 is restricted".
+func narrowSSRFWhitelistToLoopback(t *testing.T) {
+	t.Helper()
+	t.Cleanup(utils.SnapshotSSRFWhitelistForTest())
 	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
-	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+}
+
+func TestPluginFetchAndVerifyHappyPath(t *testing.T) {
+	narrowSSRFWhitelistToLoopback(t)
 	m := pluginFixtureManifest()
 	manifestJSON, _ := json.Marshal(m)
 	base := newControlledPluginHost(t,
@@ -136,8 +148,7 @@ func TestPluginListerMapsOAuthRequiredToSentinel(t *testing.T) {
 // one slowly. With a shared client the first finisher disconnects while the
 // second request is still on the wire.
 func TestPluginConcurrentVerificationOfSameEndpointIsolated(t *testing.T) {
-	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
-	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	narrowSSRFWhitelistToLoopback(t)
 	inner := streamableMCPServer(t, "search_my_week_issues", []byte(pluginDeclaredNoArgSchema))
 	var toolsListArrivals atomic.Int32
 	secondArrived := make(chan struct{})
@@ -207,8 +218,7 @@ func TestPluginConcurrentVerificationOfSameEndpointIsolated(t *testing.T) {
 // cancels the in-flight handshake — observed here as the controlled endpoint
 // losing the initialize request mid-flight.
 func TestPluginEndpointListerRetiresPendingConnectionOnError(t *testing.T) {
-	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
-	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	narrowSSRFWhitelistToLoopback(t)
 	inner := streamableMCPServer(t, "search_my_week_issues", []byte(pluginDeclaredNoArgSchema))
 	var initializeAborted atomic.Bool
 	mcpHandler := func(w http.ResponseWriter, r *http.Request) {
