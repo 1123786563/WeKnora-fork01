@@ -109,6 +109,60 @@ func TestBuildVerifiedSnapshotRechecksDeclaredNameAndScopes(t *testing.T) {
 	require.NotContains(t, err.Error(), "missing from live endpoint")
 }
 
+// TestFetchBoundsRedirectErrorEcho (OCR T01-R4-F4): when the redirect
+// policy or hop limit rejects a fetch, net/http wraps the error as
+// *url.Error embedding the LAST redirect target verbatim — and the
+// Location header is attacker-controlled and NOT bounded by
+// maxManifestBytes (only by the transport's header limits). A hostile
+// manifest host redirecting to a ~100KiB URL used to balloon "manifest
+// fetch failed" into the 400 response via %w pass-through.
+func TestFetchBoundsRedirectErrorEcho(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	longTail := strings.Repeat("y", 100*1024)
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, srv.URL+"/hop"+longTail, http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+	lister := func(context.Context, string, string) ([]*types.MCPTool, error) {
+		t.Fatal("lister must not be called when the fetch itself fails")
+		return nil, nil
+	}
+	_, err := FetchAndVerify(context.Background(), srv.URL+"/manifest.json", lister)
+	require.Error(t, err)
+	require.Less(t, len(err.Error()), 2048, "redirect-target echo must be bounded")
+}
+
+// TestFetchBoundsListerErrorEcho (OCR T01-R4-F6): the non-OAuth lister
+// branch used to pass the adapter error through with %w — the production
+// adapter surfaces the remote MCP server's JSON-RPC error.message
+// verbatim, unbounded (tens of MB within the 30s timeout). Bound the echo;
+// the OAuth sentinel branch keeps its pass-through (both identities
+// preserved there by contract).
+func TestFetchBoundsListerErrorEcho(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	m := validManifest()
+	manifestJSON, _ := json.Marshal(m)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(manifestJSON)
+	}))
+	t.Cleanup(srv.Close)
+	// The manifest's declared endpoint only needs to PASS the SSRF gate —
+	// the lister below is a stub and never dials it.
+	m.Transport.Endpoint = srv.URL + "/mcp"
+	manifestJSON, _ = json.Marshal(m)
+	lister := func(context.Context, string, string) ([]*types.MCPTool, error) {
+		return nil, errors.New("remote says: " + strings.Repeat("z", 1<<20))
+	}
+	_, err := FetchAndVerify(context.Background(), srv.URL+"/manifest.json", lister)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrOAuthProtectedEndpoint)
+	require.Less(t, len(err.Error()), 2048, "remote JSON-RPC error message echo must be bounded")
+}
+
 func TestFetchRejectsNonHTTPAndPrivateManifestURLs(t *testing.T) {
 	lister := func(context.Context, string, string) ([]*types.MCPTool, error) {
 		t.Fatal("lister must not be called for rejected URLs")

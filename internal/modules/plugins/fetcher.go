@@ -111,7 +111,15 @@ func FetchAndVerify(ctx context.Context, manifestURL string, lister EndpointList
 			// pass it through unchanged.
 			return nil, err
 		}
-		return nil, fmt.Errorf("plugin endpoint verification failed: %w", err)
+		// The adapter surfaces the remote MCP server's JSON-RPC
+		// error.message verbatim, unbounded (tens of MB within the 30s
+		// timeout) — bound the echo before it reaches the admin-facing 400
+		// response (OCR T01-R4-F6). The OAuth sentinel branch above keeps
+		// its identity-preserving pass-through by contract; nothing
+		// downstream consumes this branch's error identity (verified: no
+		// errors.Is/As on "plugin endpoint verification failed" anywhere in
+		// internal/).
+		return nil, fmt.Errorf("plugin endpoint verification failed: %.512s", err)
 	}
 	snapshot, toolsDigest, err := BuildVerifiedSnapshot(&manifest, live)
 	if err != nil {
@@ -141,7 +149,14 @@ func fetchLimited(ctx context.Context, manifestURL string) ([]byte, error) {
 	req.Header.Set("Accept", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("manifest fetch failed: %w", err)
+		// *url.Error embeds the LAST request URL verbatim — on a redirect
+		// policy/hop-limit rejection that is the attacker-controlled
+		// Location target, NOT bounded by maxManifestBytes. Bound the echo
+		// (OCR T01-R4-F4); nothing downstream consumes this error's
+		// identity (no errors.Is/As on "manifest fetch failed" anywhere in
+		// internal/ — verified). %.512s truncates by runes, so the worst
+		// case stays a few KB.
+		return nil, fmt.Errorf("manifest fetch failed: %.512s", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {

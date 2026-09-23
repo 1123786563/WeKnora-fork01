@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -138,7 +139,19 @@ func ValidateManifest(m *types.PluginManifest) error {
 	// (localhost/loopback/private/reserved rejection) is FetchAndVerify's job.
 	endpoint, err := url.Parse(m.Transport.Endpoint)
 	if err != nil {
-		return fmt.Errorf("invalid transport endpoint: %w", err)
+		// Never pass *url.Error through: its message embeds the FULL
+		// original URL (remote-controlled, up to ~maxManifestBytes), which
+		// would bypass this file's bounded-echo discipline on its way into
+		// the admin-facing 400 response (OCR T01-R4-F3). Strip the wrapper
+		// and echo the endpoint truncated instead; the inner reason is the
+		// parser's fixed-size message family (worst case embeds a ~3-char
+		// escape fragment).
+		reason := err
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			reason = uerr.Err
+		}
+		return fmt.Errorf("invalid transport endpoint %s: %v", echoQuoted(m.Transport.Endpoint), reason)
 	}
 	if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
 		return fmt.Errorf("transport endpoint scheme must be http or https, got %s", echoQuoted(endpoint.Scheme))

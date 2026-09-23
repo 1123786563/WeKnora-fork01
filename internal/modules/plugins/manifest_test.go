@@ -98,6 +98,22 @@ func TestValidateManifestAcceptsScopedManifest(t *testing.T) {
 	require.NoError(t, ValidateManifest(m))
 }
 
+// TestValidateManifestBoundsURLErrorEcho (OCR T01-R4-F3): a url.Parse
+// failure on the transport endpoint used to be passed through with %w —
+// *url.Error embeds the FULL original URL (up to ~maxManifestBytes fetched
+// from the remote manifest), so a hostile endpoint ballooned the error into
+// the 400 response, bypassing this file's maxEchoRunes echo discipline.
+// JSON escapes (\u0000) carry control characters past the length checks and
+// into url.Parse.
+func TestValidateManifestBoundsURLErrorEcho(t *testing.T) {
+	m := validManifest()
+	m.Transport.Endpoint = "https://example.com/mcp" + strings.Repeat("x", 4096) + "\x00"
+	err := ValidateManifest(m)
+	require.Error(t, err)
+	require.Less(t, len(err.Error()), 1024, "url.Parse failure must not echo the full endpoint")
+	require.NotContains(t, err.Error(), strings.Repeat("x", 100))
+}
+
 // TestValidateManifestAcceptsMultilineDescription: newlines/tabs are legal in
 // free-text descriptions (multi-line tool docs are common); only other
 // control characters are rejected.
