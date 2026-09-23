@@ -78,7 +78,7 @@ export function TasksScreen({ taskOffice, onOpenTask }: TasksScreenProps) {
         <View key={card.runId}>
           <Text>{`${card.title || card.taskId} · ${card.runStatus}${card.attention === 'required' ? ' · needs you' : ''}`}</Text>
           <Button title={archived ? 'Restore' : 'Archive'} onPress={() => { archive(card.taskId, archived); }} />
-          {onOpenTask !== undefined && <Button title="详情" onPress={() => onOpenTask(card)} />}
+          {onOpenTask !== undefined && <Button title="Details" onPress={() => onOpenTask(card)} />}
         </View>
       ))}
       {hasMore && <Button title="Load more" onPress={loadMore} />}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, ScrollView, Text, View } from 'react-native';
 import type { TaskDetailView } from '@weknora/mobile-core';
 import { timelineKindLabel } from '@weknora/mobile-core';
@@ -12,15 +12,22 @@ export interface TaskDetailScreenProps {
 
 const CONNECTION_LABELS: Record<TaskDetailView['connection'], string> = { syncing: '同步中', live: '已连接', interrupted: '连接中断，可恢复', drained: '已同步' };
 const LIFECYCLE_LABELS: Record<TaskDetailView['lifecycle'], string> = { active: '进行中', completed: '已完成', canceled: '已取消', archived: '已归档' };
+/** interruption 原因 → 用户文案（B2-F40：不得直出内部码；Task 10 会为 'stream-unavailable' 追加条目）。 */
+const INTERRUPTION_COPY: Record<string, string> = { gap: '事件流出现缺口', 'cursor-expired': '同步游标过期', 'stream-error': '实时通道中断', 'stream-ended-nonterminal': '事件流提前结束', 'persist-failed': '本地保存失败' };
 
 /** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，时间线事实流在后；原始证据默认折叠、按需展开。 */
 export function TaskDetailScreen({ view, loading, error, onRefresh }: TaskDetailScreenProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
+  // B2-F41：expanded 以 runId 隔离——切换任务（组件复用）时不携带上一个任务的展开状态。
+  const runKey = view?.runId ?? '';
+  useEffect(() => { setExpanded(new Set()); }, [runKey]);
   if (view === undefined) {
     return (
       <View>
         <Text>{loading ? '正在读取服务端快照…' : '无法读取该任务'}</Text>
         {error !== undefined && <Text>{error}</Text>}
+        {/* B2-F38：controller.refresh() 支持从无 view 状态恢复，瞬时故障后必须留就地重试入口 */}
+        <Button title="重试" onPress={onRefresh} />
       </View>
     );
   }
@@ -36,7 +43,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh }: TaskDetail
     <ScrollView>
       <View>
         <Text>{view.title === '' ? view.taskId : view.title}</Text>
-        <Text>{CONNECTION_LABELS[view.connection]}{view.interruption !== undefined ? ` · ${view.interruption.reason}` : ''}</Text>
+        <Text>{CONNECTION_LABELS[view.connection]}{view.interruption !== undefined ? ` · ${INTERRUPTION_COPY[view.interruption.reason] ?? view.interruption.reason}` : ''}</Text>
         <View>
           <Text>任务：{LIFECYCLE_LABELS[view.lifecycle]}</Text>
           <Text>运行：{view.runStatus}</Text>
@@ -57,7 +64,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh }: TaskDetail
         </View>
       ))}
       {view.duplicateSeqs.length > 0 && <Text>已忽略重复事件：{view.duplicateSeqs.join(', ')}</Text>}
-      <Button title="重新同步快照" onPress={onRefresh} />
+      <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
       {error !== undefined && <Text>{error}</Text>}
     </ScrollView>
   );

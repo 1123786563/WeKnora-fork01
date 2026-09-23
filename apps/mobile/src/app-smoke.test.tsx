@@ -760,3 +760,43 @@ test('the home header hides switch entries without an onSwitchDeployment handler
   });
   assert.equal(descendants(element).some(({ type, props: p }) => type === 'Button' && p.title === 'Switch to Other'), false, '无 handler 时不渲染 Switch to … 按钮');
 });
+
+test('the no-view error branch keeps an in-place retry entry', async () => {
+  const { TaskDetailScreen } = await import('./screens/TaskDetailScreen.tsx');
+  hooks().__reset();
+  let refreshed = 0;
+  const tree = render(TaskDetailScreen, { view: undefined, loading: false, error: '任务参数缺失（taskId/runId），请从任务列表重新进入。', onRefresh: () => { refreshed += 1; } });
+  const retry = descendants(tree).find(({ type, props }) => type === 'Button' && props.title === '重试');
+  assert.ok(retry !== undefined, '错误分支必须提供就地重试入口（controller.refresh 支持从无 view 状态恢复）');
+  (retry!.props.onPress as () => void)();
+  assert.equal(refreshed, 1);
+});
+
+test('the refresh button is disabled while loading', async () => {
+  const { TaskDetailScreen } = await import('./screens/TaskDetailScreen.tsx');
+  hooks().__reset();
+  const view: import('@weknora/mobile-core').TaskDetailView = {
+    taskId: 't', runId: 'r', title: '', lifecycle: 'active', runStatus: 'running', attention: 'none',
+    executionStatus: 'running', settlementStatus: 'pending', revision: 1, cursor: 1, incomplete: false,
+    connection: 'live', timeline: [], duplicateSeqs: [],
+  };
+  const tree = render(TaskDetailScreen, { view, loading: true, error: undefined, onRefresh: () => {} });
+  const refresh = descendants(tree).find(({ type, props }) => type === 'Button' && props.title === '重新同步快照');
+  assert.equal((refresh!.props as { disabled?: boolean }).disabled, true, 'loading 期间刷新按钮必须禁用（B2-F39）');
+});
+
+test('the task detail error chain maps codes to copy instead of leaking raw internals', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const detailRoute = readFileSync(join(here, 'app/tasks/detail.tsx'), 'utf8');
+  const detailView = readFileSync(join(here, 'task-detail-view.ts'), 'utf8');
+  const screen = readFileSync(join(here, 'screens/TaskDetailScreen.tsx'), 'utf8');
+  const tasks = readFileSync(join(here, 'screens/TasksScreen.tsx'), 'utf8');
+  assert.match(`${detailRoute}${detailView}`, /TASK_OFFICE_INVALID_INPUT/, '路由 catch 必须按错误码分流（B2-F13）');
+  assert.match(`${detailRoute}${detailView}`, /TASK_OFFICE_DETAIL_UNAVAILABLE/, '详情端口缺失不得折叠为「请先登录」（B2-F13）');
+  assert.match(screen, /INTERRUPTION_COPY/, 'interruption 原因必须经文案映射（B2-F40）');
+  assert.match(screen, /INTERRUPTION_COPY\[view\.interruption\.reason\]/, '不得直出内部码');
+  assert.match(tasks, /title="Details"/, '打开按钮文案与同屏英文统一（B2-F5）');
+});
