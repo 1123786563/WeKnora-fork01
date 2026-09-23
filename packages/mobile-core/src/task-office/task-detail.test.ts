@@ -145,13 +145,15 @@ test('live events append serially, duplicates are idempotent and observable', as
   await settle();
   assert.equal(handle.view()!.cursor, 3);
   assert.deepEqual(handle.view()!.timeline.map((entry) => entry.seq), [1, 2, 3]);
-  assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 3, 'each commit persists before the cursor advances');
   stream.emit(event$(3)); // 服务端重复投递
   stream.emit(event$(2));
   await settle();
   assert.equal(handle.view()!.cursor, 3, 'duplicates never advance the cursor');
   assert.deepEqual(handle.view()!.duplicateSeqs, [3, 2], 'idempotent skips stay observable');
   assert.equal(handle.view()!.timeline.filter((entry) => entry.seq === 3).length, 1, 'no double render');
+  stream.emit(event$(4, 'run.completed')); // 终态强制 flush（R1-F23：stride 内合并，终态必落盘）
+  await settle();
+  assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 4, 'terminal events are durable before drain');
   handle.close();
 });
 
@@ -251,7 +253,7 @@ test('cursor trimming (409 or control frame) resyncs from a fresh snapshot', asy
   }
 });
 
-test('a persist failure never advances the committed cursor', async () => {
+test('a stride-boundary persist failure surfaces and recovers via authoritative resync (R1-F23 语义)', async () => {
   const leaseRef: { lease?: ScopeLease } = {};
   leaseRef.lease = leased().lease;
   const baseStore = createInMemoryTaskProjectionStore();
@@ -259,7 +261,7 @@ test('a persist failure never advances the committed cursor', async () => {
   const store: TaskProjectionStore = {
     load: (runId) => baseStore.load(runId),
     save: (projection) => {
-      if (!failedOnce && projection.cursor === 3) { failedOnce = true; return Promise.reject(new Error('quota exceeded')); }
+      if (!failedOnce && projection.cursor === 52) { failedOnce = true; return Promise.reject(new Error('quota exceeded')); }
       return baseStore.save(projection);
     },
   };
@@ -270,13 +272,14 @@ test('a persist failure never advances the committed cursor', async () => {
   const reasons: Array<string | undefined> = [];
   handle.updates((view) => reasons.push(view.interruption?.reason));
   await handle.hydrate();
-  backend.streams[0]!.emit(event$(3));
-  await settle();
+  for (let seq = 3; seq <= 52; seq += 1) backend.streams[0]!.emit(event$(seq)); // 50 事件跨度触发 stride persist
+  await settle(30);
   assert.ok(reasons.includes('persist-failed'), 'the failure is surfaced, never silent');
-  assert.equal(handle.view()!.cursor, 2, 'the committed cursor stays at the last persisted value while the resync is gated');
-  resyncGate.resolve(detail$({ watermark: 3, events: [event$(3, 'text.delta')] }));
+  assert.equal(handle.view()!.cursor, 52, 'R1-F23 语义：内存游标推进不再以 persist 成功为前提');
+  resyncGate.resolve(detail$({ watermark: 52, events: [] }));
   await settle();
-  assert.equal(handle.view()!.cursor, 3, 'the automatic resync re-persists authoritatively');
+  assert.equal(handle.view()!.cursor, 52, 'the automatic resync re-persists authoritatively');
+  assert.equal(baseStore.snapshot().find((row) => row.runId === 'run-1')!.cursor, 52);
   handle.close();
 });
 
@@ -353,6 +356,7 @@ test('scenario: app restart resumes from the persisted projection across server-
   backend.streams[0]!.emit(event$(4));
   await settle();
   first.close('app-killed');
+  await settle(); // close 的 best-effort flush 是异步落盘（R1-F23）
   assert.equal(store.snapshot().find((row) => row.runId === 'run-1')!.cursor, 4, 'the killed session leaves a durable projection');
   // 会话 2（同一 office 默认共享 store，模拟重启后读回持久化投影）
   const second = office.open({ taskId: 'task-1', runId: 'run-1' });
@@ -634,5 +638,52 @@ test('heartbeat control frames are benign (R1-F45)', async () => {
   await handle.hydrate();
   await settle();
   assert.equal(handle.view()?.connection, 'live'); // 心跳不打断流
+  handle.close();
+});
+
+test('persist coalesces bursts: one save per 50-event stride plus terminal flush (R1-F23)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const store = createInMemoryTaskProjectionStore();
+  let saves = 0;
+  const counting: TaskProjectionStore = {
+    load: (runId) => store.load(runId),
+    save: async (projection) => { saves += 1; await store.save(projection); },
+  };
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => detail$(),
+    stream: () => {
+      const scripted = createScriptedTaskStream();
+      queueMicrotask(() => {
+        for (let seq = 3; seq <= 62; seq += 1) scripted.emit(event$(seq, seq === 62 ? 'run.completed' : 'text.delta'));
+        scripted.end();
+      });
+      return scripted;
+    },
+  }, counting);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle(60);
+  assert.ok(saves <= 3, `expected coalesced saves, got ${saves}`); // 60 事件 ≤ hydrate 1 + stride 1 + 终态 flush 1
+  assert.equal(handle.view()?.cursor, 62);
+  assert.equal(handle.view()?.connection, 'drained');
+  const persisted = await store.load('run-1');
+  assert.equal(persisted?.cursor, 62); // 终态必已 flush
+  handle.close();
+});
+
+test('persist failure stays observable when the store keeps failing (R1-F23 语义保留)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const failing: TaskProjectionStore = { load: async () => undefined, save: async () => { throw new Error('disk full'); } };
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => detail$(),
+    stream: () => createScriptedTaskStream(),
+  }, failing);
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate(); // hydrate 内 persist 失败 → persist-failed interruption
+  const view = handle.view()!;
+  assert.equal(view.interruption?.reason, 'persist-failed');
+  assert.equal(view.connection, 'interrupted'); // 不静默
   handle.close();
 });

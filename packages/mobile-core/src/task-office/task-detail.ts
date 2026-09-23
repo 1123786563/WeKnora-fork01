@@ -84,6 +84,11 @@ export interface TaskDetailPorts {
 }
 
 const AUTO_RESYNC_LIMIT = 2;
+// persist 写放大治理（R1-F23）：内存态每事件推进，仅按 50 事件跨度或终态/中断落盘。
+// 崩溃安全权衡：重启丢失的窗口 ≤ 50 个事件，hydrate 的 mergeEventHistory 用权威快照兜底。
+const PERSIST_MIN_STRIDE = 50;
+// chain 背压上限：在途步骤超限时中止流并置 gap——无界排队会同时拖垮内存与游标一致性。
+const CHAIN_DEPTH_LIMIT = 1000;
 
 // input.taskId 契约（B2-F26）：仅用于调用方关联；持久化写入服务端权威的 detail.taskId
 // （persist 内 detail!.taskId），故本函数不读取 input.taskId，这是有意为之。
@@ -98,6 +103,8 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   let controller: AbortController | undefined;
   let streamEpoch = 0;
   let chain: Promise<void> = Promise.resolve();
+  let chainDepth = 0;
+  let persistedCursor = 0; // 最近一次成功落盘的游标（stride 合并的基准）
   let autoResyncs = 0;
   const listeners = new Set<(view: TaskDetailView) => void>();
 
@@ -172,6 +179,16 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   const persist = async (cursor: number, history: TaskBackendEvent[]): Promise<void> => {
     await ports.store.save({ taskId: detail!.taskId, runId: input.runId, cursor, events: history.slice(-TASK_DETAIL_HISTORY_LIMIT), savedAt: new Date().toISOString() });
   };
+  /** best-effort 强制 flush（终态/中断/close 前）：只补落未落盘的跨度，失败不抛——失败可见性由 interruption 表达。 */
+  const flushPersisted = async (): Promise<void> => {
+    if (committedCursor === persistedCursor || detail === undefined) return;
+    try {
+      await persist(committedCursor, events);
+      persistedCursor = committedCursor;
+    } catch {
+      /* best-effort：内存投影仍正确，重启后由 hydrate 兜底 */
+    }
+  };
   const hydrate = async (): Promise<TaskDetailView> => {
     requireOpen();
     const lease = requireLease();
@@ -190,6 +207,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     interruption = undefined;
     try {
       await persist(committedCursor, events);
+      persistedCursor = committedCursor; // stride 基准重置为水合成功落盘的水位
     } catch (cause) {
       interruption = { reason: 'persist-failed', message: cause instanceof Error ? cause.message : String(cause) };
     }
@@ -212,6 +230,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   };
   const interrupt = async (reason: TaskInterruptionReason, message?: string): Promise<void> => {
     abortStream();
+    await flushPersisted(); // 中断前强制落盘未持久跨度（R1-F23：best-effort）
     interruption = { reason, ...(message === undefined ? {} : { message }) };
     notify('interrupted'); // 缺口/裁剪/持久化失败先可见，绝不静默
     if (autoResyncs >= AUTO_RESYNC_LIMIT) return;
@@ -222,6 +241,15 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       /* 保持 interrupted 已通知状态；显式 resync() 可再试 */
     }
   };
+  const enqueueChain = (step: () => Promise<void>): void => {
+    if (chainDepth > CHAIN_DEPTH_LIMIT) {
+      abortStream();
+      void interrupt('gap', 'stream queue overflow');
+      return;
+    }
+    chainDepth += 1;
+    chain = chain.then(step).catch(() => undefined).finally(() => { chainDepth -= 1; });
+  };
   const startStream = (): void => {
     abortStream();
     const epoch = ++streamEpoch;
@@ -230,11 +258,11 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       runId: input.runId,
       cursor: committedCursor,
       signal: controller.signal,
-      onEvent: (event) => { if (epoch === streamEpoch) chain = chain.then(() => processEvent(event)).catch(() => undefined); },
-      onControl: (frame) => { if (epoch === streamEpoch) chain = chain.then(() => processControl(frame)).catch(() => undefined); },
+      onEvent: (event) => { if (epoch === streamEpoch) enqueueChain(() => processEvent(event)); },
+      onControl: (frame) => { if (epoch === streamEpoch) enqueueChain(() => processControl(frame)); },
     }).then(
-      () => { if (epoch === streamEpoch) chain = chain.then(() => streamEnded()).catch(() => undefined); },
-      (error) => { if (epoch === streamEpoch) chain = chain.then(() => streamFailed(error)).catch(() => undefined); },
+      () => { if (epoch === streamEpoch) enqueueChain(() => streamEnded()); },
+      (error) => { if (epoch === streamEpoch) enqueueChain(() => streamFailed(error)); },
     );
   };
   const processEvent = async (event: TaskBackendEvent): Promise<void> => {
@@ -258,17 +286,23 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       return;
     }
     const nextEvents = [...events, event].slice(-TASK_DETAIL_HISTORY_LIMIT);
-    try {
-      await persist(event.seq, nextEvents); // 先持久化，后推进已提交游标
-    } catch (cause) {
-      await interrupt('persist-failed', cause instanceof Error ? cause.message : String(cause));
-      return;
-    }
     // 挂起点期间被取代（resync 开了新流 / lease 撤销）：陈旧回写不得回退游标（R1-F43，对齐 hydrate 的既有守卫语义）。
     if (stepEpoch !== streamEpoch || !streamGuard()) return;
+    // R1-F23 写放大治理：内存先推进；仅跨度 ≥ 50 或终态时落盘（行为变更点——内存态推进
+    // 不再以 persist 成功为前提，崩溃窗口 ≤ 50 事件由 hydrate 的 mergeEventHistory 兜底）。
     events = nextEvents;
     committedCursor = event.seq;
     autoResyncs = 0;
+    const terminal = isTerminalRunStatus(terminalRunStatusOf(detail!.execution.runStatus, events));
+    if (terminal || event.seq - persistedCursor >= PERSIST_MIN_STRIDE) {
+      try {
+        await persist(event.seq, nextEvents);
+        persistedCursor = event.seq;
+      } catch (cause) {
+        await interrupt('persist-failed', cause instanceof Error ? cause.message : String(cause));
+        return;
+      }
+    }
     notify('live');
   };
   const processControl = async (frame: TaskStreamControlFrame): Promise<void> => {
@@ -283,6 +317,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   const streamEnded = async (): Promise<void> => {
     if (!streamGuard() || detail === undefined) return;
     if (isTerminalRunStatus(terminalRunStatusOf(detail.execution.runStatus, events))) {
+      await flushPersisted(); // 终态必已落盘（幂等：processEvent 已 flush 时跳过）
       interruption = undefined;
       notify('drained');
       return;
@@ -326,6 +361,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     close(reason?: string) {
       closed = true;
       abortStream();
+      void flushPersisted(); // close 强制落盘未持久跨度（best-effort，R1-F23）
       listeners.clear();
       void reason;
     },
