@@ -154,7 +154,7 @@ export function WikiImagePreview({ src, onClose }: { src: string; onClose: () =>
         >
           −
         </button>
-        <span className="wk-wiki-img-preview-scale tabular-nums wk-wiki-7">
+        <span className="wk-wiki-img-preview-scale wk-wiki-7">
           {Math.round(scale * 100)}%
         </span>
         <button
@@ -1153,7 +1153,7 @@ export function WikiPage({
                 {/* Vue reserves a 15px hover-reveal slot after the count
                     (wiki-directory-action--reveal), so the count sits 17px in
                     from the row's right inset. */}
-                <span className="tabular-nums wk-wiki-24">{row.folder.page_count}</span>
+                <span className="wk-wiki-24">{row.folder.page_count}</span>
               </button>
               {canContribute ? <span className="wk-wiki-folder-actions wk-wiki-25"><TButton type="button" aria-label={t("wikiBrowser.renameFolder")} title={t("wikiBrowser.renameFolder")} disabled={folderBusy} onClick={() => startRenameFolder(row.folder)}>✎</TButton><TButton type="button" aria-label={t("wikiBrowser.deleteFolder")} title={t("wikiBrowser.deleteFolder")} disabled={folderBusy} onClick={() => void deleteFolder(row.folder)}>🗑</TButton></span> : null}
             </>

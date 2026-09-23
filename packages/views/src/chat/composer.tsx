@@ -417,7 +417,7 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
         disabled={disabled}
         rows={2}
         placeholder={t.composerPlaceholder}
-        className="placeholder:text-[rgba(0,0,0,0.4)] wk-vc-composer-12"
+        className="wk-vc-composer-12"
       />
       {/* Vue .answers-input control row: 9px under the textarea, 13px to the
           shell bottom edge — the 8/12 pair left the whole composer 10px low
@@ -498,7 +498,7 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
                 <path d="M352 448a96 96 0 1 0 0-192 96 96 0 0 0 0 192z" />
                 <path d="M128 768l224-288 160 160 192-256L896 640v128H128z" />
               </svg>
-              {imageAttachmentCount > 0 ? <span className="wk-chat-image-count -right-[4px] -top-[4px] wk-vc-composer-21">{imageAttachmentCount}</span> : null}
+              {imageAttachmentCount > 0 ? <span className="wk-chat-image-count wk-vc-composer-21">{imageAttachmentCount}</span> : null}
             </button>
           </> : null}
           <input ref={attachmentInputRef} type="file" accept={attachmentAccept?.join(',')} multiple className="wk-vc-composer-19" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />

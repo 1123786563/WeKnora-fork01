@@ -14,7 +14,8 @@ export function Card({ children, className, ...props }: HTMLAttributes<HTMLDivEl
 
 /** 内联状态文本（视觉 = 实际生效的 .wk-status：13px，muted-strong）。 */
 export function Status({ tone = 'neutral', children }: { tone?: 'neutral' | 'error' | 'success' | 'warning'; children: ReactNode }) {
-  const toneClass = tone === 'error' ? 'text-danger' : tone === 'success' ? 'text-success-text' : tone === 'warning' ? 'text-warning-text' : '';
-  const classes = ['my-[0.25rem] text-[13px] text-muted-strong', toneClass].filter(Boolean).join(' ');
+  /* T15：旧栈 utility 串语义化为 .wk-dsui-status（含 tone 变体，见 data-sources-u.css）。 */
+  const toneClass = tone === 'error' ? 'wk-dsui-status--error' : tone === 'success' ? 'wk-dsui-status--success' : tone === 'warning' ? 'wk-dsui-status--warning' : '';
+  const classes = ['wk-dsui-status', toneClass].filter(Boolean).join(' ');
   return <p className={classes} role={tone === 'error' ? 'alert' : 'status'}>{children}</p>;
 }

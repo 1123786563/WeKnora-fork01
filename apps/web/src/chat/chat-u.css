@@ -468,3 +468,6 @@
   color: #fff;
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
+
+/* 标签勾选框品牌色（T15 语义化：原 accent-[#07c05f] 旧栈 utility）。 */
+.wk-bad-accent { accent-color: #07c05f; }

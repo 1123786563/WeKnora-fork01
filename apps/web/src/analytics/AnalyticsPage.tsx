@@ -81,7 +81,7 @@ const AN_BTN_PRIMARY = 'wk-anl-an-btn-primary';
 
 const AN_BTN_OUTLINE = 'wk-anl-an-btn-outline';
 
-const AN_TEXT_INPUT = 'wk-anl-an-text-input placeholder:text-[rgba(23,26,29,0.35)]';
+const AN_TEXT_INPUT = 'wk-anl-an-text-input';
 
 const AN_GRID = 'wk-anl-an-grid';
 
@@ -109,7 +109,7 @@ const AN_USAGE_TABLE = 'wk-anl-an-usage-table';
 
 const AN_USAGE_CELL = 'wk-anl-an-usage-cell';
 
-const AN_USAGE_NUM = AN_USAGE_CELL + ' tabular-nums wk-anl-an-usage-num';
+const AN_USAGE_NUM = AN_USAGE_CELL + ' wk-anl-an-usage-num';
 
 const AN_USAGE_PAGER = 'wk-anl-an-usage-pager';
 

@@ -17,16 +17,16 @@ import { KnowledgeSettingsPage, type KnowledgeSettingsSectionKey } from '../know
 import { canUploadKnowledgeDocuments, kbWikiTabFallbackPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe, type KBSurfaceTab } from './permissions.ts';
 import { useKbDetailGuideTrigger } from '../../../../packages/views/src/guides/use-kb-detail-guide-trigger.ts';
 
-/* Tailwind migration: static per-type classes replacing the former
-   .wk-graph-legend-dot.is-* / .wk-knowledge-graph-node.is-* css rules.
-   Colors mirror the Vue WikiBrowser canvas (nodeColorMap / legend dots). */
+/* 静态 per-type 语义类（原 .wk-graph-legend-dot.is-* / .wk-knowledge-graph-node.is-*；
+   T15：任意值 bg-[#…] utility 语义化进 knowledge-u.css .wk-kg-dot-bg--*）。
+   色值镜像 Vue WikiBrowser 画布（nodeColorMap / legend dots）。 */
 const GRAPH_TYPE_DOT_BG: Record<string, string> = {
-  summary: 'bg-[#0052d9]',
-  entity: 'bg-[#2ba471]',
-  concept: 'bg-[#e37318]',
-  synthesis: 'bg-[#0594fa]',
-  comparison: 'bg-[#d54941]',
-  index: 'bg-[#8c8c8c]',
+  summary: 'wk-kg-dot-bg--summary',
+  entity: 'wk-kg-dot-bg--entity',
+  concept: 'wk-kg-dot-bg--concept',
+  synthesis: 'wk-kg-dot-bg--synthesis',
+  comparison: 'wk-kg-dot-bg--comparison',
+  index: 'wk-kg-dot-bg--index',
 };
 
 const GRAPH_NODE_FILL: Record<string, string> = {
@@ -771,7 +771,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                 {t('wikiBrowser.legendFamiliar')}
               </div> : null}
             </div>
-            <div className="-mx-3 wk-kg-35" aria-hidden="true" />
+            <div className="wk-kg-35" aria-hidden="true" />
             <div className="wk-kg-32">
               <button type="button" className="wk-kg-36" title="Fit to View" onClick={() => flyViewportTo(fitGraphViewport(displayPositions, surfaceSize.width, surfaceSize.height, Boolean(drawerNode)))}>
                 <span className="wk-kg-37" aria-hidden="true">◎</span>

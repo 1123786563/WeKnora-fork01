@@ -28,6 +28,13 @@
   opacity: 0.55;
 }
 
+/* 加入组织弹框按钮实测内边距 15px（Vue 弹框按钮；基类 16px 差 1px）。
+   T15：原 !px-[15px] 旧栈 utility 语义化。与基类同为单类选择器，
+   依赖本文件内先后顺序覆盖（orgs.td.css 不改写这两个按钮）。 */
+.wk-org-org-btn--pad-15 {
+  padding-inline: 15px;
+}
+
 .wk-org-org-field {
   box-sizing: border-box;
   width: 100%;
@@ -128,6 +135,8 @@
   align-items: center;
   justify-content: center;
   background-color: rgba(0,0,0,0.5);
+  /* T15：原 backdrop-blur-[4px] 旧栈 utility 语义化（Vue 弹框遮罩模糊）。 */
+  backdrop-filter: blur(4px);
   padding: 20px;
 }
 

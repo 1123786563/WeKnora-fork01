@@ -932,6 +932,9 @@
 
 .wk-vc-composer-21 {
   position: absolute;
+  /* T15：原 -right-[4px] -top-[4px] 旧栈 utility 语义化（图片计数角标出血 4px）。 */
+  top: -4px;
+  right: -4px;
   display: flex;
   height: 14px;
   min-width: 14px;
@@ -2500,3 +2503,43 @@
 .wk-tool-row-title { font-size: 0.8rem; font-weight: 600; color: #1f2d3d; overflow-wrap: break-word; }
 .wk-tool-row-meta { color: #8a94a6; font-size: 0.7rem; }
 .wk-tool-snippet { margin: 0; color: #4a5568; font-size: 0.75rem; line-height: 1.45; overflow-wrap: break-word; }
+
+/* ---- 工具审批按钮（T15 语义化：原 cursor-pointer rounded-[8px] border
+   border-[#b9d1f2] bg-white px-[0.75rem] py-[0.3rem] text-[0.8rem]
+   text-[#245a9b] transition-[background-color,color] duration-[150ms]
+   wk-ease-ease enabled:hover:bg-[#eef5ff] disabled:cursor-not-allowed
+   disabled:opacity-55 旧栈 utility 串） ---- */
+.wk-chat-approval-btn {
+  cursor: pointer;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #b9d1f2;
+  background-color: #fff;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  color: #245a9b;
+  transition-property: background-color, color;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+.wk-chat-approval-btn:enabled:hover { background-color: #eef5ff; }
+.wk-chat-approval-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+
+/* 工具审批倒计时等宽数字（原 tabular-nums）。 */
+.wk-vc-tool-approval-12 { font-variant-numeric: tabular-nums; }
+
+/* 助手时间线工具行（原 flex items-baseline justify-between gap-[1rem]
+   border-b border-[#edf0f5] py-[0.9rem] 旧栈 utility 串）。 */
+.wk-chat-tool-list-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #edf0f5;
+  padding-block: 0.9rem;
+}
+
+/* ---- T15：输入占位符色语义化（原 placeholder:text-[rgba(...)]） ---- */
+.wk-vc-composer-12::placeholder { color: rgba(0, 0, 0, 0.4); }
+.wk-vc-session-sidebar-2::placeholder { color: rgba(0, 0, 0, 0.26); }

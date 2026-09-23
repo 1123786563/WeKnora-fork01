@@ -649,3 +649,12 @@
 .wk-mkt-49 {
   background-color: #07c05f;
 }
+
+/* T15 语义化：原 aria-selected:border-accent aria-selected:bg-accent-wash
+   aria-selected:text-accent / placeholder:text-[rgba(23,26,29,0.35)]。 */
+.wk-mkt-mk-tab[aria-selected="true"] {
+  border-color: #07c05f;
+  background-color: rgba(7, 192, 95, 0.08);
+  color: #07c05f;
+}
+.wk-mkt-mk-input::placeholder { color: rgba(23, 26, 29, 0.35); }

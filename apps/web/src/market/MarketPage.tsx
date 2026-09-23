@@ -48,7 +48,7 @@ const MK_TITLE = 'wk-mkt-mk-title';
 
 const MK_SUBTITLE = 'wk-mkt-mk-subtitle';
 
-const MK_TAB = 'wk-mkt-mk-tab aria-selected:border-accent aria-selected:bg-accent-wash aria-selected:text-accent';
+const MK_TAB = 'wk-mkt-mk-tab';
 
 const MK_GRID = 'wk-mkt-mk-grid';
 
@@ -68,7 +68,7 @@ const MK_BTN_PRIMARY = 'wk-mkt-mk-btn-primary';
 
 const MK_BTN_OUTLINE = 'wk-mkt-mk-btn-outline';
 
-const MK_INPUT = 'wk-mkt-mk-input placeholder:text-[rgba(23,26,29,0.35)]';
+const MK_INPUT = 'wk-mkt-mk-input';
 
 const MK_SECTION_TITLE = 'wk-mkt-mk-section-title';
 

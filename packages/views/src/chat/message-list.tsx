@@ -31,8 +31,8 @@ import {
  * wk-chat-messages / wk-chat-timestamp / wk-chat-message-row--user /
  * wk-chat-typing / wk-chat-scroll-bottom 等）。
  */
-/** .wk-list li effective values (the styles.css rule wins the unlayered tie) */
-export const TOOL_LIST_ITEM = 'flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[0.9rem]';
+/** 工具行（.wk-list li 生效值；T15 语义化为 .wk-chat-tool-list-item）。 */
+export const TOOL_LIST_ITEM = 'wk-chat-tool-list-item';
 
 export type AssistantTimelineItem =
   | { kind: 'tool'; id: string; name?: string; status: 'pending' | 'completed' | 'failed'; result?: unknown }

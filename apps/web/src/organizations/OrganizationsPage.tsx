@@ -72,7 +72,7 @@ const ORG_INVITE_VALIDITY_OPTIONS: Array<[number, string]> = [
   [30, 'organization.settings.validity30Days'],
   [0, 'organization.settings.validityNever'],
 ];
-const ORG_MODAL_OVERLAY = 'backdrop-blur-[4px] wk-org-org-modal-overlay';
+const ORG_MODAL_OVERLAY = 'wk-org-org-modal-overlay'; /* 遮罩 4px 模糊已语义化进该类 */
 const ORG_CLOSE_BTN = 'wk-org-org-close-btn';
 const FEATURE_BADGE_BASE = 'wk-org-feature-badge-base';
 const FEATURE_BADGE_TONES: Record<string, string> = {
@@ -1910,23 +1910,23 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
               )}
             </div>
             <div className="wk-org-91">
-              {/* T15 清单注记：下方加入组织弹框 6 处 !px-[15px]（ORG_BTN_* 叠加
-                  硬覆盖内边距）为 Vue 弹框按钮实测值，属 T15 收尾清理候选，
-                  本轮（T15 前置阻塞物清零）不删。 */}
+              {/* T15 处置：加入组织弹框 6 处按钮内边距为 Vue 弹框按钮实测值
+                  15px（ORG_BTN_* 基类 16px），已语义化为
+                  .wk-org-org-btn--pad-15（org-u.css）。 */}
               {joinPreview ? (
                 <>
-                  <button type="button" className={ORG_BTN_NEUTRAL + ' !px-[15px]'} onClick={() => { setJoinPreview(null); if (!joinCode) setJoinStep('search'); }}>{!joinCode ? t(locale, 'organization.join.backToSearch') : t(locale, 'common.cancel')}</button>
+                  <button type="button" className={ORG_BTN_NEUTRAL + ' wk-org-org-btn--pad-15'} onClick={() => { setJoinPreview(null); if (!joinCode) setJoinStep('search'); }}>{!joinCode ? t(locale, 'organization.join.backToSearch') : t(locale, 'common.cancel')}</button>
                   {!previewIsAlreadyMember ? (
-                    <button type="button" className={ORG_BTN_PRIMARY + ' !px-[15px]'} disabled={joining} onClick={() => void confirmJoin()}>{previewJoinMode === 'request' ? t(locale, 'organization.invite.submitRequest') : t(locale, 'organization.invite.primaryJoin')}</button>
-                  ) : <button type="button" className={ORG_BTN_PRIMARY + ' !px-[15px]'} onClick={viewOrganizationFromPreview}>{t(locale, 'organization.invite.viewOrganization')}</button>}
+                    <button type="button" className={ORG_BTN_PRIMARY + ' wk-org-org-btn--pad-15'} disabled={joining} onClick={() => void confirmJoin()}>{previewJoinMode === 'request' ? t(locale, 'organization.invite.submitRequest') : t(locale, 'organization.invite.primaryJoin')}</button>
+                  ) : <button type="button" className={ORG_BTN_PRIMARY + ' wk-org-org-btn--pad-15'} onClick={viewOrganizationFromPreview}>{t(locale, 'organization.invite.viewOrganization')}</button>}
                 </>
               ) : joinStep === 'invite' ? (
                 <>
-                  <button type="button" className={ORG_BTN_NEUTRAL + ' !px-[15px]'} onClick={closeJoin}>{t(locale, 'common.cancel')}</button>
-                  <button type="button" className={ORG_BTN_PRIMARY + ' !px-[15px]'} disabled={joinPreviewLoading} onClick={() => void doPreviewFromInput()}>{t(locale, 'organization.invite.previewAction')}</button>
+                  <button type="button" className={ORG_BTN_NEUTRAL + ' wk-org-org-btn--pad-15'} onClick={closeJoin}>{t(locale, 'common.cancel')}</button>
+                  <button type="button" className={ORG_BTN_PRIMARY + ' wk-org-org-btn--pad-15'} disabled={joinPreviewLoading} onClick={() => void doPreviewFromInput()}>{t(locale, 'organization.invite.previewAction')}</button>
                 </>
               ) : (
-                <button type="button" className={ORG_BTN_NEUTRAL + ' !px-[15px]'} onClick={closeJoin}>{t(locale, 'common.cancel')}</button>
+                <button type="button" className={ORG_BTN_NEUTRAL + ' wk-org-org-btn--pad-15'} onClick={closeJoin}>{t(locale, 'common.cancel')}</button>
               )}
             </div>
           </div>

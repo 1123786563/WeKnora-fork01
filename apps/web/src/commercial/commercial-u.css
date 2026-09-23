@@ -28,3 +28,14 @@
 .wk-bill-2 {
   font-weight: 600;
 }
+
+/* ---- Status 内联状态文本（T15 语义化：原 my-[0.25rem] text-[13px]
+   text-muted-strong (+ text-danger/text-success-text/text-warning-text)
+   旧栈 utility；视觉 = 既有 .wk-status：13px，muted-strong） ---- */
+.wk-cs-status { margin-block: 0.25rem; font-size: 13px; color: #506078; }
+.wk-cs-status--error { color: #b42318; }
+.wk-cs-status--success { color: #137333; }
+.wk-cs-status--warning { color: #9a6700; }
+
+/* T15 语义化：原 tabular-nums（用量数值单元格）。 */
+.wk-bill-usage-number-cell { font-variant-numeric: tabular-nums; }

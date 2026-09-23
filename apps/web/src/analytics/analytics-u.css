@@ -307,3 +307,7 @@
 .wk-anl-3 {
   font-weight: 600;
 }
+
+/* T15 语义化：原 placeholder:text-[rgba(23,26,29,0.35)] / tabular-nums 旧栈 utility。 */
+.wk-anl-an-text-input::placeholder { color: rgba(23, 26, 29, 0.35); }
+.wk-anl-an-usage-num { font-variant-numeric: tabular-nums; }

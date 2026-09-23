@@ -348,7 +348,7 @@ export function BookmarkAnswerDialog({ client, copy, open, initialTitle, initial
               <label key={tag.id} className="wk-bad-18">
                 <input
                   type="checkbox"
-                  className="accent-[#07c05f]"
+                  className="wk-bad-accent"
                   checked={tagIds.includes(tag.id)}
                   aria-label={tag.name}
                   onChange={() => toggleTag(tag.id)}

@@ -722,7 +722,7 @@ interface ChannelListCopy {
 // Vue channel-panel-list.less: .channel-card min-height is the static
 // calc(20px + 14px*1.4 + 4px + 12px*1.4) = 60.4px two-line body, so the add
 // tile matches the existing channel cards even in an empty list.
-const CHANNEL_CARD_CLASS = 'ease-[ease] wk-vi-channel-card-class';
+const CHANNEL_CARD_CLASS = 'wk-vi-channel-card-class'; /* 原 ease-[ease] 为死样式（unlayered CSS 已自带 timing） */
 
 const CHANNEL_CARD_CLICKABLE_CLASS = CHANNEL_CARD_CLASS + ' wk-vi-channel-card-clickable-class';
 
@@ -777,9 +777,8 @@ const CODE_TOOLBAR_BUTTON_CLASS = 'wk-vi-code-toolbar-button-class';
 // to shorthand expansion order.
 const CHIP_BASE = 'wk-vi-chip-base';
 
-const chip = (active: boolean) => (active
-  ? CHIP_BASE + ' border-primary bg-surface-wash text-primary-deep'
-  : CHIP_BASE + ' border-line bg-surface text-muted-strong');
+// T15：主题色 utility 语义化为 .wk-vi-chip--active/--idle（views-integrations-u.css）。
+const chip = (active: boolean) => (active ? CHIP_BASE + ' wk-vi-chip--active' : CHIP_BASE + ' wk-vi-chip--idle');
 const INTEGRATION_FORM_CLASS = 'wk-integration-form wk-vi-integration-form-class';
 
 // Tailwind port of the former .wk-integration-drawer family in apps/web

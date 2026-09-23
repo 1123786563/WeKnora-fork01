@@ -2334,3 +2334,17 @@
 .wk-vi-seg:only-child { border-radius: 3px; }
 /* 相邻 radio 重叠 1px（-ml-px 平移） */
 .wk-vi-seg-gap { margin-left: -1px; }
+
+/* ---- 连接模式 chips（T15 语义化：原 border-primary bg-surface-wash
+   text-primary-deep / border-line bg-surface text-muted-strong 旧栈
+   theme utility；token 值来自 ui theme.css） ---- */
+.wk-vi-chip--active {
+  border-color: #2e6de6;
+  background-color: #eff4ff;
+  color: #1849a9;
+}
+.wk-vi-chip--idle {
+  border-color: #dce3ed;
+  background-color: #ffffff;
+  color: #506078;
+}

@@ -507,6 +507,9 @@
 
 .wk-inv-3 {
   position: absolute;
+  /* T15：原 -right-2 -top-2 旧栈 utility 语义化（角标出血 8px）。 */
+  top: -8px;
+  right: -8px;
   display: inline-flex;
   min-width: 20px;
   align-items: center;
@@ -660,3 +663,23 @@
 /* sr-only（Tailwind utility 平移为语义类，a11y 惯用名保留为 DOM hook——
    views-chat-u.css:2476 同款版本，补齐 platform 域缺口）。 */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+
+/* ---- 命令面板条目行（T15 语义化：原 flex w-full cursor-pointer items-center
+   gap-2 border-none bg-transparent px-3.5 py-2 text-left text-sm
+   text-[#1f2733] hover:bg-[#f2f5f9] 旧栈 utility 串） ---- */
+.wk-cmdk-item-row {
+  display: flex;
+  width: 100%;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.5rem;
+  border-style: none;
+  background-color: transparent;
+  padding: 0.5rem 0.875rem;
+  text-align: left;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #1f2733;
+}
+.wk-cmdk-item-row:hover,
+.wk-cmdk-item-row--selected { background-color: #f2f5f9; }

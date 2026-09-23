@@ -406,3 +406,14 @@
 /* ui.tsx Card 壳：rounded-card border-line bg-surface p-4（theme token utilities）平移 */
   /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
 .wk-cfg-card { border-radius: 8px; border: 1px solid #e7e7e7; background-color: #ffffff; padding: 16px; }
+
+/* ---- Status 内联状态文本（T15 语义化：原 my-[0.25rem] text-[13px]
+   text-muted-strong (+ text-danger/text-success-text/text-warning-text)
+   旧栈 utility；视觉 = 既有 .wk-status：13px，muted-strong） ---- */
+.wk-cfg-status { margin-block: 0.25rem; font-size: 13px; color: #506078; }
+.wk-cfg-status--error { color: #b42318; }
+.wk-cfg-status--success { color: #137333; }
+.wk-cfg-status--warning { color: #9a6700; }
+
+/* 编辑器字段通栏（T15 语义化：原 w-full box-border 旧栈 utility）。 */
+.wk-cfg-field { width: 100%; box-sizing: border-box; }

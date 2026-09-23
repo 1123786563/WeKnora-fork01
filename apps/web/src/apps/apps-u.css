@@ -198,3 +198,14 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ---- Tag 色板（T15 语义化：原 bg-[#…]/text-white|text-[rgba(0,0,0,0.9)]
+   旧栈 utility；色值 = Vue t-tag variant dark 实色） ---- */
+.wk-apps-tag--success { background-color: #00a870; color: #fff; }
+.wk-apps-tag--warning { background-color: #e37318; color: #fff; }
+.wk-apps-tag--danger { background-color: #d54941; color: #fff; }
+.wk-apps-tag--primary { background-color: #0052d9; color: #fff; }
+.wk-apps-tag--default { background-color: #e7e7e7; color: rgba(0, 0, 0, 0.9); }
+
+/* PageFrame 纵向间距（原 gap-5 旧栈 utility；1.25rem = 20px）。 */
+.wk-apps-frame-gap { gap: 1.25rem; }

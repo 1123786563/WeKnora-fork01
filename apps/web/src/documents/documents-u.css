@@ -984,6 +984,8 @@
 }
 
 .wk-kd-84 {
+  /* T15：原 -mt-1 旧栈 utility 语义化（5000 计数行光学上移 4px）。 */
+  margin-top: -4px;
   align-self: flex-end;
   font-size: 0.75rem;
   line-height: 1.25;
@@ -3074,4 +3076,28 @@
 .wk-sheet-backdrop:has(.wk-document-detail-drawer),
 .wk-sheet-backdrop:has(.wk-kdd-9) {
   background: rgba(0, 0, 0, 0.6);
+}
+
+/* ---- 文档详情抽屉区块标题（T15 语义化：原 m-0 mb-1 flex items-center gap-2
+   text-[13px] font-semibold text-ink before:h-[14px] before:w-[3px]
+   before:shrink-0 before:rounded-[2px] before:bg-primary
+   before:content-[""] 旧栈 utility 串）——Vue doc-content.vue
+   .setting-drawer__section-title 的品牌色条节奏。 ---- */
+.wk-kdd-section-title {
+  margin: 0 0 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 13px;
+  font-weight: 600;
+  color: #172033;
+}
+.wk-kdd-section-title::before {
+  content: "";
+  display: block;
+  height: 14px;
+  width: 3px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background-color: #2e6de6;
 }

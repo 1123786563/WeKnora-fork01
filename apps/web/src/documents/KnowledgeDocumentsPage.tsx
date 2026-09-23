@@ -2549,7 +2549,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                     onChange={(value) => patch({ text: String(value) })}
                     style={{ width: "100%" }}
                   />
-                  <span className="wk-graph-text-limit -mt-1 wk-kd-84" aria-live="polite">{graphExtract.text.length}/5000</span>
+                  <span className="wk-graph-text-limit wk-kd-84" aria-live="polite">{graphExtract.text.length}/5000</span>
                 </div>
                 {!llmAvailable ? (
                   <p className="wk-graph-tip wk-kd-82">{t("graphSettings.completeModelConfig")}</p>

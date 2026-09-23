@@ -55,7 +55,7 @@ const XP_TITLE = 'wk-exp-xp-title';
 
 const XP_SUBTITLE = 'wk-exp-xp-subtitle';
 
-const XP_TAB = 'wk-exp-xp-tab aria-selected:border-accent aria-selected:bg-accent-wash aria-selected:text-accent';
+const XP_TAB = 'wk-exp-xp-tab';
 
 const XP_GRID = 'wk-exp-xp-grid';
 
@@ -79,9 +79,9 @@ const XP_BTN_OUTLINE = 'wk-exp-xp-btn-outline';
 
 const XP_BTN_DANGER = 'wk-exp-xp-btn-danger';
 
-const XP_INPUT = 'wk-exp-xp-input placeholder:text-[rgba(23,26,29,0.35)]';
+const XP_INPUT = 'wk-exp-xp-input';
 
-const XP_TEXTAREA = 'wk-exp-xp-textarea placeholder:text-[rgba(23,26,29,0.35)]';
+const XP_TEXTAREA = 'wk-exp-xp-textarea';
 
 const XP_SECTION_TITLE = 'wk-exp-xp-section-title';
 

@@ -56,7 +56,7 @@ const USAGE_TABLE = 'wk-bill-usage-table';
 
 const USAGE_TABLE_CELL = 'wk-bill-usage-table-cell';
 
-const USAGE_NUMBER_CELL = USAGE_TABLE_CELL + ' tabular-nums wk-bill-usage-number-cell';
+const USAGE_NUMBER_CELL = USAGE_TABLE_CELL + ' wk-bill-usage-number-cell';
 
 
 export function BillingPage({ client, scopeController }: BillingPageProps) {

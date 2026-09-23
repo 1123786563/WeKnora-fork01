@@ -383,7 +383,8 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
       : items.length === 0);
 
   const itemRowClass = (selected: boolean): string =>
-    `cmdk__item flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3.5 py-2 text-left text-sm text-[#1f2733] hover:bg-[#f2f5f9] ${selected ? 'bg-[#f2f5f9]' : ''}`;
+    // T15：旧栈 utility 串语义化为 .wk-cmdk-item-row（含 hover/选中态，platform-u.css）。
+    `cmdk__item wk-cmdk-item-row${selected ? ' wk-cmdk-item-row--selected' : ''}`;
   const shortcutBadge = (digit: number | undefined, selected: boolean): ReactNode =>
     digit !== undefined ? (
       <span className={`cmdk__item-shortcut wk-cmdk-36 ${selected ? 'wk-cmdk-37' : 'wk-cmdk-38'}`}><kbd>⌘</kbd><kbd>{digit}</kbd></span>

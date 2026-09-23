@@ -313,7 +313,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   // left, download / chart-line header actions at the right, then the drawer
   // close button. The Sheet close button follows the title node, so the
   // actions ride inside the title node's right group.
-  return <Sheet open onClose={onBack} closeLabel={t('common.close')} resizeLabel="Resize drawer" side="right" width="653px" resizable minWidth={480} maxWidth={1600} storageKey="weknora-doc-drawer-width" className="wk-document-detail-drawer [&header_h2]:w-full"
+  return <Sheet open onClose={onBack} closeLabel={t('common.close')} resizeLabel="Resize drawer" side="right" width="653px" resizable minWidth={480} maxWidth={1600} storageKey="weknora-doc-drawer-width" className="wk-document-detail-drawer"
     headerIcon={<span className="doc-drawer-header-icon wk-kdd-1"><FileDetailIcon size={16} /></span>}
     title={<span className="doc-drawer-header-inner wk-kdd-2">
       <span className="doc-drawer-header-title wk-kdd-3">{detailTitle}</span>
@@ -810,7 +810,9 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
   const contentLabel = document.type === 'url' ? t('knowledgeBase.webContent') : document.type === 'manual' ? t('knowledgeBase.documentContent') : t('knowledgeBase.fileContent');
   const customMetadata = (document.custom_metadata as Record<string, unknown> | undefined) ?? {};
   const hasCustomMetadata = Object.keys(customMetadata).length > 0;
-  const sectionTitleClass = 'm-0 mb-1 flex items-center gap-2 text-[13px] font-semibold text-ink before:h-[14px] before:w-[3px] before:shrink-0 before:rounded-[2px] before:bg-primary before:content-[""]';
+  /* T15：区块标题（Vue .setting-drawer__section-title 节奏）语义化为
+       .wk-kdd-section-title（documents-u.css，含 ::before 品牌色条）。 */
+  const sectionTitleClass = 'wk-kdd-section-title';
   const tabs = CONTENT_TABS[locale];
   return <>
     {detailsError ? <Status tone="error">{detailsError}</Status> : null}

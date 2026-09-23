@@ -364,9 +364,19 @@
 }
 
 .wk-kg-35 {
+  /* T15：原 -mx-3 旧栈 utility 语义化（legend 容器 12px 内边距的出血分隔线）。 */
+  margin-inline: -12px;
   height: 1px;
   background-color: #e7e7e7;
 }
+
+/* 图例类型圆点底色（Vue WikiBrowser nodeColorMap；T15 语义化自 bg-[#…]）。 */
+.wk-kg-dot-bg--summary { background-color: #0052d9; }
+.wk-kg-dot-bg--entity { background-color: #2ba471; }
+.wk-kg-dot-bg--concept { background-color: #e37318; }
+.wk-kg-dot-bg--synthesis { background-color: #0594fa; }
+.wk-kg-dot-bg--comparison { background-color: #d54941; }
+.wk-kg-dot-bg--index { background-color: #8c8c8c; }
 
 .wk-kg-36 {
   display: flex;

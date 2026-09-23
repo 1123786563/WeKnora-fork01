@@ -120,7 +120,7 @@ export function TagPickerDialog({
         {mode === 'batch' && typeof count === 'number' ? (
           <p className="batch-tag-subtitle wk-tpd-1">{t('knowledgeBase.batchTagSubtitle', { count })}</p>
         ) : null}
-        <section className="wk-tag-section first-of-type:border-t-0 wk-tpd-2">
+        <section className="wk-tag-section wk-tpd-2">
           <div className="wk-tag-section-head wk-tpd-3">
             <h4 className="wk-tpd-4">{t(copy.selected)}</h4>
             {selectedSet.size > 0 ? (
@@ -147,7 +147,7 @@ export function TagPickerDialog({
             <p className="wk-tag-section-empty wk-tpd-8">{t(copy.noSelected)}</p>
           )}
         </section>
-        <section className="wk-tag-section first-of-type:border-t-0 wk-tpd-2">
+        <section className="wk-tag-section wk-tpd-2">
           <div className="wk-tag-section-head wk-tpd-3">
             <h4 className="wk-tpd-4">{t(copy.available)}</h4>
           </div>

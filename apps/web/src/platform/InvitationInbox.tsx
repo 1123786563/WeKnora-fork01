@@ -121,7 +121,7 @@ export function InvitationInbox({ client }: InvitationInboxProps) {
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" />
         </svg>
-        <span className="-right-2 -top-2 wk-inv-3" aria-label={`${pendingCount}`}>{pendingCount > 99 ? '99+' : pendingCount}</span>
+        <span className="wk-inv-3" aria-label={`${pendingCount}`}>{pendingCount > 99 ? '99+' : pendingCount}</span>
       </button>
     </span> : null}
     <Dialog open={open} title={message(locale, 'auth.workspaceOnboarding.invitations')} onClose={closeDialog} closeLabel={message(locale, 'auth.workspaceOnboarding.close')} className="wk-inv-4">

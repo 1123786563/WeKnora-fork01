@@ -55,11 +55,12 @@ function IconRefresh({ size = 14 }: { size?: number }) {
 
 /* Vue t-tag (variant dark, size small): solid 20px chip, 12px text, radius 3. */
 function Tag({ theme = 'default', children }: { theme?: 'success' | 'warning' | 'danger' | 'primary' | 'default'; children: ReactNode }) {
-  const palette = theme === 'success' ? 'bg-[#00a870] text-white'
-    : theme === 'warning' ? 'bg-[#e37318] text-white'
-    : theme === 'danger' ? 'bg-[#d54941] text-white'
-    : theme === 'primary' ? 'bg-[#0052d9] text-white'
-    : 'bg-[#e7e7e7] text-[rgba(0,0,0,0.9)]';
+  /* T15：bg-[#…]/text-* 旧栈 utility 语义化为 .wk-apps-tag--*（apps-u.css）。 */
+  const palette = theme === 'success' ? 'wk-apps-tag--success'
+    : theme === 'warning' ? 'wk-apps-tag--warning'
+    : theme === 'danger' ? 'wk-apps-tag--danger'
+    : theme === 'primary' ? 'wk-apps-tag--primary'
+    : 'wk-apps-tag--default';
   return <span className={`wk-apps-25 ${palette}`}>{children}</span>;
 }
 
@@ -91,7 +92,7 @@ function Popconfirm({ content, confirmLabel, cancelLabel, busy, onConfirm, child
 /* 留守段 frame（authorization/action 两页，R490 React 端口自持）：
    apps/apps-connections 两页已迁 Vue DOM（.apps-view/.connections-view +
    apps.td.css），此 frame 仅供未扫描的两页沿用旧布局。 */
-function PageFrame({ title, description, loading, onReload, refreshLabel, loadingLabel, gapClass = 'gap-5', children }: { title: string; description: string; loading: boolean; onReload: () => void; refreshLabel: string; loadingLabel: string; gapClass?: string; children: ReactNode }) {
+function PageFrame({ title, description, loading, onReload, refreshLabel, loadingLabel, gapClass = 'wk-apps-frame-gap', children }: { title: string; description: string; loading: boolean; onReload: () => void; refreshLabel: string; loadingLabel: string; gapClass?: string; children: ReactNode }) {
   return <main className={`wk-page wk-apps-26 ${gapClass}`}><header className="wk-apps-5"><div><h1 className="wk-apps-6">{title}</h1><p className="wk-apps-7">{description}</p></div><TButton aria-label={refreshLabel} disabled={loading} onClick={onReload} loading={loading} className="wk-apps-8"><IconRefresh size={14} />{refreshLabel}</TButton></header>{loading ? <div role="status"><Status>{loadingLabel}</Status></div> : null}{children}</main>;
 }
 

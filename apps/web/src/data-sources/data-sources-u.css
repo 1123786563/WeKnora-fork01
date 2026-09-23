@@ -737,3 +737,29 @@
 .wk-ds-tone-danger { color: #b42318; }
 .wk-ds-tone-primary { color: #2e6de6; }
 .wk-ds-create-focus:focus-visible { outline: 2px solid var(--color-primary, #2e6de6); outline-offset: 2px; }
+
+/* ---- Status 内联状态文本（T15 语义化：原 my-[0.25rem] text-[13px]
+   text-muted-strong (+ text-danger/text-success-text/text-warning-text)
+   旧栈 utility；视觉 = 既有 .wk-status：13px，muted-strong） ---- */
+.wk-dsui-status { margin-block: 0.25rem; font-size: 13px; color: #506078; }
+.wk-dsui-status--error { color: #b42318; }
+.wk-dsui-status--success { color: #137333; }
+.wk-dsui-status--warning { color: #9a6700; }
+
+/* ---- T15 旧栈 utility 语义化 ---- */
+/* 连接器类型卡片键盘焦点环（原 focus-visible:outline-primary
+   focus-visible:outline-offset-2：仅色+偏移，宽度/样式沿用 UA :focus-visible
+   的 auto outline，与删除前渲染一致）。 */
+.wk-ds-2:focus-visible {
+  outline-color: #2e6de6;
+  outline-offset: 2px;
+}
+/* 资源树复选框键盘焦点环（原 peer + peer-focus-visible:outline-2
+   peer-focus-visible:outline-[#2e6de6] peer-focus-visible:outline-offset-2，
+   作用对象是紧随 input 的勾选示意 span）。 */
+.wk-ds-74:focus-visible ~ .wk-ds-80 {
+  outline: 2px solid #2e6de6;
+  outline-offset: 2px;
+}
+/* 同步结果指标 pill 等宽数字（原 tabular-nums）。 */
+.wk-ds-53 { font-variant-numeric: tabular-nums; }

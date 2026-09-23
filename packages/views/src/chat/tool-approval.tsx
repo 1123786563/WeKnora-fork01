@@ -158,7 +158,9 @@ export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprov
   /* chat.css → utilities: .wk-chat-approval-* card family; the wk-* classes
      remain DOM/test hooks. The approval-scoped button family overrides the
      base .wk-list-actions button recipe (which itself lives in utilities). */
-  const approvalButton = 'cursor-pointer rounded-[8px] border border-[#b9d1f2] bg-white px-[0.75rem] py-[0.3rem] text-[0.8rem] text-[#245a9b] transition-[background-color,color] duration-[150ms] wk-ease-ease enabled:hover:bg-[#eef5ff] disabled:cursor-not-allowed disabled:opacity-55';
+  /* T15：旧栈 utility 串语义化为 .wk-chat-approval-btn（含 enabled:hover /
+     disabled 态，views-chat-u.css）。 */
+  const approvalButton = 'wk-chat-approval-btn';
   return <div className="wk-chat-action-card wk-chat-approval-card wk-vc-tool-approval-1">
     <strong className="wk-vc-tool-approval-2">{copy?.approvalTitle ?? 'Tool approval'}: {approval.toolName ?? 'unknown tool'}</strong>
     {pending ? <div className="wk-chat-approval-editor wk-vc-tool-approval-3">
@@ -185,7 +187,7 @@ export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprov
             visible pinned at 0 after expiry and disappears once resolved. */}
         <span aria-hidden="true" className="wk-vc-tool-approval-10">·</span>
         <span
-          className={`wk-chat-approval-timer tabular-nums wk-vc-tool-approval-12 ${timerClass === 'wk-timer-warning' ? 'wk-timer-warning wk-vc-tool-approval-13' : timerClass === 'wk-timer-critical' ? 'wk-timer-critical wk-vc-tool-approval-14' : 'wk-vc-tool-approval-11'}`}
+          className={`wk-chat-approval-timer wk-vc-tool-approval-12 ${timerClass === 'wk-timer-warning' ? 'wk-timer-warning wk-vc-tool-approval-13' : timerClass === 'wk-timer-critical' ? 'wk-timer-critical wk-vc-tool-approval-14' : 'wk-vc-tool-approval-11'}`}
         >
           {formatApprovalCountdown(secondsLeft, copy)}
         </span>

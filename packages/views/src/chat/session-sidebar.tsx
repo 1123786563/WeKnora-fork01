@@ -393,7 +393,7 @@ export function SessionSidebar({ copy, sessions, selectedSessionId, loading = fa
       </button>
     </div>
     {sourceOptions && onSourceChange ? <label className="wk-vc-session-sidebar-15">{t.sourceLabel}<select aria-label={t.sourceSelectLabel} className="wk-vc-session-sidebar-2" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
-    {onKeywordChange ? <label className="wk-vc-session-sidebar-15">{t.searchSessions}<input className="placeholder:text-[rgba(0,0,0,0.26)] wk-vc-session-sidebar-2" value={keyword ?? ''} onChange={(event) => onKeywordChange(event.target.value)} placeholder={t.searchSessions} /></label> : null}
+    {onKeywordChange ? <label className="wk-vc-session-sidebar-15">{t.searchSessions}<input className="wk-vc-session-sidebar-2" value={keyword ?? ''} onChange={(event) => onKeywordChange(event.target.value)} placeholder={t.searchSessions} /></label> : null}
     {onGroupModeChange ? <label className="wk-vc-session-sidebar-15">{t.groupLabel}<select className="wk-vc-session-sidebar-2" value={groupMode ?? 'none'} onChange={(event) => onGroupModeChange(event.target.value === 'date' ? 'date' : 'none')}><option value="none">{t.groupAll}</option><option value="date">{t.groupByDate}</option></select></label> : null}
     <SessionSidebarList
       copy={t}

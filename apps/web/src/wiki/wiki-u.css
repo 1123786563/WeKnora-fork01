@@ -888,3 +888,6 @@
 .wiki-tab::after { content: ""; position: absolute; inset-inline: 2px; bottom: 1px; height: 2px; border-radius: 2px 2px 0 0; background: transparent; }
 .wiki-tab.is-active::after { background: #07c05f; }
 .wk-wiki-folder-row:hover .wk-wiki-folder-actions { display: flex; }
+
+/* T15 语义化：原 tabular-nums（图片缩放百分比 / 目录页数）。 */
+.wk-wiki-7, .wk-wiki-24 { font-variant-numeric: tabular-nums; }
