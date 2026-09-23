@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -47,7 +46,7 @@ const backendProxy = {
 };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
   server: { proxy: { '/api': backendProxy, '/files': backendProxy } },
   preview: { proxy: { '/api': backendProxy, '/files': backendProxy } },
   define: {
