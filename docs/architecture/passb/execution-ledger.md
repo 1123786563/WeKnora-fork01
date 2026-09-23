@@ -1829,3 +1829,16 @@
 
 
 
+---
+
+## 2026-09-24 01:46 CST · b0 第 5 轮修复合入 integration（合并 fc398bf6e；双门禁本会话实跑绿色）
+
+- **性质**：集成工程师合并动作（沿 18:53/d57a2fa70 先例）——执行 01:41 条目"后续（调度方事项）"：合并 `codex/passb-b0`（HEAD `17a77e8d3`）进 `codex/passb-integration`，使集成树含第 5 轮修复
+- **worktree**：`.worktrees/passb-int`（`codex/passb-integration`）；合并前先落盘前会话遗留登记 → docs 提交 `835162b72`（工作树清空后再合并，b0 提交只触 `tools/passbguard/**` 4 文件，与 docs 登记无重叠，ort 策略零冲突）
+- **merge commit**：**`fc398bf6ed115cffedd1cac1503aaee678e08b13`**（集成后 HEAD；父 = `835162b72` + `17a77e8d3`；带入 `tools/passbguard/` check.go +25−4 / contracts_test.go +31 / events_test.go +25 / model.go +5−1，即第 5 轮 R1 两条 medium 修复及 TDD 测试）
+- **双门禁（本会话实跑，非转录）**：`make -C .worktrees/passb-int check-passb-readiness` → EXIT=0，`legacy=396 aliases=99 exceptions=105 contracts=125 events=29 overlaps=0 missing=0`；`make -C .worktrees/passb-int check-backend-architecture` → EXIT=0，`literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16 | OK (0 violations)`（计数与 F5 三方一致口径 633/23+23/58/16 吻合）
+- **节点级状态未动**：b0 `status=done`、`head_sha=17a77e8d3`（分支头，01:41 调度方显式指令值）、`review_status=approved` 维持；**未按合并头覆盖 head_sha**——01:41 条目留痕明言"如合并后需以合并头再覆盖，由调度方显式指令"，本管家不自行迁移；integration 侧合并属集成工作，`ocr_covered` 亦不追加（b0 区间 [acd7b2401 → 17a77e8d3] 已在 01:39 登记，本次合并未引入新提交内容）
+- **Mimosa**：`835162b72` 提交钩子报 `scanner_enobufs`（未获完整扫描结论，按钩子兼容策略继续，不宣称项目安全审计通过）
+- **base → head（integration）**：`8c45a8815` → **`fc398bf6e`**（区间 2 提交：`835162b72` 遗留登记落盘 + `fc398bf6e` 合并）
+- **修复轮次**：0（合并动作，不构成修复轮）
+- **后续（调度方事项）**：(1) 如需以集成头 `fc398bf6e` 覆盖 b0.head_sha 或登记 b0 集成侧 ocr_covered，请显式指令；(2) B2 四节点（b2-k0/b2-ac-definition/b2-ac-skills/b2-appconnector）已 in_progress、base_sha=8c45a8815——合并后集成头已前移至 `fc398bf6e`，各节点回填 head 时以各自分支头为准，base 是否重置由调度方裁定
