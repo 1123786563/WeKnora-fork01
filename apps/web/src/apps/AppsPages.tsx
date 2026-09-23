@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { formatMessage } from '@weknora/i18n';
-import { Button, Card, Status } from '@weknora/ui';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { Alert as TAlert, Button as TButton, Popconfirm as TPopconfirm, Table as TTable, Tag as TTag } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { appDigest, appErrorMessage, appRows, appShort, appStatus, type AppRow } from './model.ts';
@@ -80,8 +80,8 @@ function Popconfirm({ content, confirmLabel, cancelLabel, busy, onConfirm, child
     {open ? <span className="absolute right-0 top-full z-[60] mt-[6px] flex w-[240px] flex-col gap-[8px] rounded-[8px] border border-[#e7e7ea] bg-white p-[12px] text-[13px] text-[rgba(23,26,29,0.92)] shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
       <span>{content}</span>
       <span className="flex items-center justify-end gap-[8px]">
-        <Button size="small" variant="text" onClick={() => setOpen(false)}>{cancelLabel}</Button>
-        <Button size="small" variant="text" loading={busy} className="text-[#d54941]" onClick={() => onConfirm()}>{confirmLabel}</Button>
+        <TButton size="small" variant="text" onClick={() => setOpen(false)}>{cancelLabel}</TButton>
+        <TButton size="small" variant="text" loading={busy} className="text-[#d54941]" onClick={() => onConfirm()}>{confirmLabel}</TButton>
       </span>
     </span> : null}
   </span>;
@@ -91,7 +91,7 @@ function Popconfirm({ content, confirmLabel, cancelLabel, busy, onConfirm, child
    apps/apps-connections 两页已迁 Vue DOM（.apps-view/.connections-view +
    apps.td.css），此 frame 仅供未扫描的两页沿用旧布局。 */
 function PageFrame({ title, description, loading, onReload, refreshLabel, loadingLabel, gapClass = 'gap-5', children }: { title: string; description: string; loading: boolean; onReload: () => void; refreshLabel: string; loadingLabel: string; gapClass?: string; children: ReactNode }) {
-  return <main className={`wk-page flex h-full flex-col overflow-y-auto p-6 [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] ${gapClass}`}><header className="flex items-start justify-between gap-4"><div><h1 className="m-0 text-xl font-semibold leading-[28px] text-[rgba(0,0,0,0.9)]">{title}</h1><p className="m-0 mt-1 max-w-[640px] text-[13px] leading-[18px] text-[rgba(0,0,0,0.6)]">{description}</p></div><Button aria-label={refreshLabel} disabled={loading} onClick={onReload} loading={loading} className="h-8 shrink-0 gap-[8px] rounded-[3px] border-[#dcdcdc] px-[15px] text-[14px] leading-[22px] text-[rgba(0,0,0,0.9)]"><IconRefresh size={14} />{refreshLabel}</Button></header>{loading ? <div role="status"><Status>{loadingLabel}</Status></div> : null}{children}</main>;
+  return <main className={`wk-page flex h-full flex-col overflow-y-auto p-6 [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] ${gapClass}`}><header className="flex items-start justify-between gap-4"><div><h1 className="m-0 text-xl font-semibold leading-[28px] text-[rgba(0,0,0,0.9)]">{title}</h1><p className="m-0 mt-1 max-w-[640px] text-[13px] leading-[18px] text-[rgba(0,0,0,0.6)]">{description}</p></div><TButton aria-label={refreshLabel} disabled={loading} onClick={onReload} loading={loading} className="h-8 shrink-0 gap-[8px] rounded-[3px] border-[#dcdcdc] px-[15px] text-[14px] leading-[22px] text-[rgba(0,0,0,0.9)]"><IconRefresh size={14} />{refreshLabel}</TButton></header>{loading ? <div role="status"><Status>{loadingLabel}</Status></div> : null}{children}</main>;
 }
 
 function useAppsCopy() {
@@ -308,7 +308,7 @@ function AuthorizationPage({ client, id, t }: { client: WeKnoraClient; id: strin
   }, [client, id]);
   const statusTheme = status === 'active' ? 'success' : status === 'failed' || status === 'expired' || status === 'revoked' ? 'danger' : polling ? 'warning' : 'neutral';
   const statusLabel = (() => { if (!status) return '—'; const label = t(`apps.authorization.status.${status}`); return label === `apps.authorization.status.${status}` ? t('apps.authorization.status.other', { state: status }) : label; })();
-  return <PageFrame title={t('apps.authorization.title')} description={t('apps.authorization.description')} loading={loading} onReload={() => void pollOnce()} refreshLabel={t('apps.authorization.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{t('apps.authorization.loadFailed')}</Status> : null}<Status>{t('apps.authorization.noUrlGuidance')}</Status><Card><div role="status" aria-live={polled ? 'polite' : 'off'} className="flex flex-col gap-[12px]"><dl className="m-0 grid gap-3 text-sm"><div><dt className="font-medium text-muted">{t('apps.authorization.attemptLabel')}</dt><dd className="m-0 font-mono">{id || '—'}</dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.connectionLabel')}</dt><dd className="m-0 font-mono" title={String(attempt.connection_id ?? '')}>{attempt.connection_id ? vueShortId(attempt.connection_id) : '—'}</dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.statusLabel')}</dt><dd className="m-0"><Tag theme={statusTheme as 'success' | 'danger' | 'warning' | 'default'}>{statusLabel}</Tag></dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.expiresLabel')}</dt><dd className="m-0">{formatTime(attempt.expires_at)}</dd></div></dl>{polling ? <p className="m-0 text-[13px] text-[rgba(23,26,29,0.6)]">{t('apps.authorization.pollingHint')}</p> : succeeded ? <p className="m-0 text-[13px] text-[#0a7f43]">{t('apps.authorization.completedHint')}</p> : null}</div></Card><Button variant="text" onClick={() => navigate('/platform/apps/connections')}>{t('apps.authorization.back')}</Button></PageFrame>;
+  return <PageFrame title={t('apps.authorization.title')} description={t('apps.authorization.description')} loading={loading} onReload={() => void pollOnce()} refreshLabel={t('apps.authorization.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{t('apps.authorization.loadFailed')}</Status> : null}<Status>{t('apps.authorization.noUrlGuidance')}</Status><Card><div role="status" aria-live={polled ? 'polite' : 'off'} className="flex flex-col gap-[12px]"><dl className="m-0 grid gap-3 text-sm"><div><dt className="font-medium text-muted">{t('apps.authorization.attemptLabel')}</dt><dd className="m-0 font-mono">{id || '—'}</dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.connectionLabel')}</dt><dd className="m-0 font-mono" title={String(attempt.connection_id ?? '')}>{attempt.connection_id ? vueShortId(attempt.connection_id) : '—'}</dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.statusLabel')}</dt><dd className="m-0"><Tag theme={statusTheme as 'success' | 'danger' | 'warning' | 'default'}>{statusLabel}</Tag></dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.expiresLabel')}</dt><dd className="m-0">{formatTime(attempt.expires_at)}</dd></div></dl>{polling ? <p className="m-0 text-[13px] text-[rgba(23,26,29,0.6)]">{t('apps.authorization.pollingHint')}</p> : succeeded ? <p className="m-0 text-[13px] text-[#0a7f43]">{t('apps.authorization.completedHint')}</p> : null}</div></Card><TButton variant="text" onClick={() => navigate('/platform/apps/connections')}>{t('apps.authorization.back')}</TButton></PageFrame>;
 }
 
 function ActionPage({ client, id, role, t, showToast }: { client: WeKnoraClient; id: string; role?: string; t: (key: string, values?: Record<string, string | number>) => string; showToast: (tone: ToastTone, text: string) => void }) {
@@ -371,7 +371,7 @@ function ActionPage({ client, id, role, t, showToast }: { client: WeKnoraClient;
       <div><dt className="font-medium text-muted">{t('apps.actions.fenceLabel')}</dt><dd className="m-0 font-mono">{appStatus(detail?.expected_version, '0')}</dd></div>
       <div><dt className="font-medium text-muted">{t('apps.actions.argsLabel')}</dt><dd className="m-0 whitespace-pre-wrap rounded-control bg-surface-muted p-3 font-mono text-[12px]" tabIndex={0}>{prettyArgs}</dd></div>
     </dl></Card>
-    <div className="flex items-center gap-[12px]">{controls.approve ? <Button loading={approving} onClick={() => void mutate('approve')}>{t('apps.actions.approve')}</Button> : null}{controls.execute ? <Button loading={submitting} onClick={() => void mutate('execute')}>{t('apps.actions.execute')}</Button> : null}{state === 'unknown' ? <p className="m-0 text-[13px] text-[#ad4b00]">{t('apps.actions.unknown')}</p> : null}</div>
+    <div className="flex items-center gap-[12px]">{controls.approve ? <TButton loading={approving} onClick={() => void mutate('approve')}>{t('apps.actions.approve')}</TButton> : null}{controls.execute ? <TButton loading={submitting} onClick={() => void mutate('execute')}>{t('apps.actions.execute')}</TButton> : null}{state === 'unknown' ? <p className="m-0 text-[13px] text-[#ad4b00]">{t('apps.actions.unknown')}</p> : null}</div>
     {state === 'unknown' ? <p className="m-0 text-[12px] text-[rgba(23,26,29,0.6)]">{t('apps.actions.noResendHint')}</p> : null}
     {!canDrive ? <Status>{t('apps.actions.memberCannotApprove')}</Status> : null}
   </> : null}</PageFrame>;

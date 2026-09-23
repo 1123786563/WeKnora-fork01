@@ -18,7 +18,8 @@ import { readReactPlatformState } from '../platform/legacy-session.ts';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
-import { Input as WkInput, Select as WkSelect, Switch as WkSwitch, Textarea as WkTextarea } from '@weknora/ui';
+// S6：@weknora/ui 离栈（T15 硬前置），换 tdesign。
+import { Input as TInput, Select as TSelect, Switch as TSwitch, Textarea as TTextarea } from 'tdesign-react';
 import { Button, Dialog, Input, Popup, Skeleton, Tag, Textarea, Tooltip } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
@@ -1325,15 +1326,11 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                 {/* React 韧性补充（<720px 时侧栏不可见时的等价 section 切换），
                     Vue 无对应物；桌面扫描态 display:none 零像素影响。 */}
                 <div className="hidden border-b border-[#e7e7ea] px-4 pb-3 pt-4 max-[720px]:block">
-                  <WkSelect
-                    data-testid="organization-settings-section-selector"
-                    aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}
-                    className="min-h-[34px]"
+                  <TSelect
+                    className="organization-settings-section-selector min-h-[34px]"
                     value={settingsSection}
-                    onChange={(event) => setSettingsSection(event.target.value)}
-                  >
-                    {settingsNavItems.map(([key, labelKey]) => <option key={key} value={key}>{t(locale, labelKey)}</option>)}
-                  </WkSelect>
+                    onChange={(value) => setSettingsSection(String(value))}
+                  options={settingsNavItems.map(([key, labelKey]) => ({ value: key, label: t(locale, labelKey) }))} />
                 </div>
                 <div className="content-wrapper">
                   {showSettingsRoleHint ? (
@@ -1461,7 +1458,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                               {settingsCanManage ? <span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.avatar')}</span> : null}
                               {avatarPickerOpen && settingsCanManage ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}
                             </div>
-                            <WkInput id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px] min-w-0 flex-1'} value={formName} onChange={(event) => setFormName(event.target.value)} required disabled={!settingsCanManage} />
+                            <input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px] min-w-0 flex-1'} value={formName} onChange={(event) => setFormName(event.target.value)} required disabled={!settingsCanManage} />
                           </div>
                         </div>
                         <div className={ORG_FORM_ITEM}>
@@ -1472,7 +1469,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           {/* Vue t-textarea :maxlength="500" (L102) — the edit
                               mode shows the same 0/500 counter as create. */}
                           <div className="min-w-0">
-                            <WkTextarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} disabled={!settingsCanManage} />
+                            <TTextarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} maxLength={500} value={formDescription} onChange={(value) => setFormDescription(String(value))} disabled={!settingsCanManage} />
                             <p className="m-0 mt-1 text-right text-[12px] text-[rgba(23,26,29,0.4)]">{formDescription.length}/500</p>
                           </div>
                         </div>
@@ -1532,7 +1529,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                 <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.requireApproval')}</strong>
                                 <span className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.requireApprovalDesc')}</span>
                               </div>
-                              <WkSwitch aria-label={t(locale, 'organization.settings.requireApproval')} checked={formRequireApproval} onCheckedChange={(value) => void handleApprovalToggle(value)} />
+                              <TSwitch aria-label={t(locale, 'organization.settings.requireApproval')} value={formRequireApproval} onChange={(value) => void handleApprovalToggle(Boolean(value))} />
                             </div>
                             {/* ⑤ 开放可被搜索：立即保存 */}
                             <div className="flex items-start justify-between gap-[12px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
@@ -1540,7 +1537,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                 <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.searchable')}</strong>
                                 <span className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.searchableDesc')}</span>
                               </div>
-                              <WkSwitch aria-label={t(locale, 'organization.settings.searchable')} checked={formSearchable} onCheckedChange={(value) => void handleSearchableToggle(value)} />
+                              <TSwitch aria-label={t(locale, 'organization.settings.searchable')} value={formSearchable} onChange={(value) => void handleSearchableToggle(Boolean(value))} />
                             </div>
                             {/* ⑥ 成员数量上限：0-10000 + 当前成员数 hint */}
                             <div className="flex flex-col gap-[6px] px-[12px] py-[10px]">
@@ -1551,7 +1548,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                     carries no stepper column; the ▲▼ glyphs were
                                     scrape noise. Clamping keeps the 0-10000
                                     contract (submitBasic payload unchanged). */}
-                                <WkInput type="number" aria-label={t(locale, 'organization.settings.memberLimit')} className={ORG_FIELD + ' min-h-[30px] w-[140px]'} min={0} max={10000} step={1} value={formMemberLimit === '' ? '' : String(formMemberLimit)} placeholder={t(locale, 'organization.settings.memberLimitPlaceholder')} onChange={(event) => { const raw = event.target.value; if (raw === '') { setFormMemberLimit(''); return; } const next = Math.min(10000, Math.max(0, Math.round(Number(raw)))); if (Number.isSafeInteger(next)) setFormMemberLimit(next); }} />
+                                <TInput type="number" aria-label={t(locale, 'organization.settings.memberLimit')} className={ORG_FIELD + ' min-h-[30px] w-[140px]'} value={formMemberLimit === '' ? '' : String(formMemberLimit)} placeholder={t(locale, 'organization.settings.memberLimitPlaceholder')} onChange={(value) => { const raw = String(value); if (raw === '') { setFormMemberLimit(''); return; } const next = Math.min(10000, Math.max(0, Math.round(Number(raw)))); if (Number.isSafeInteger(next)) setFormMemberLimit(next); }} />
                                 <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.memberLimitHint', { count: numOf(settingsOrg?.member_count) })}</span>
                               </div>
                             </div>
@@ -1607,7 +1604,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span>
                         </div>
                         <div className="flex items-center gap-[8px]">
-                          {detailFeeds.members.status === 'ready' && members.length > 0 ? <WkInput className={ORG_FIELD + ' min-h-[30px] w-[min(100%,200px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
+                          {detailFeeds.members.status === 'ready' && members.length > 0 ? <TInput className={ORG_FIELD + ' min-h-[30px] w-[min(100%,200px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(value) => setMemberSearchQuery(String(value))} /> : null}
                           {settingsCanManage ? (
                             <div className="relative">
                               <button type="button" className="box-border inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-[3px] border border-[rgba(7,192,95,0.5)] bg-surface text-accent [transition:all_.2s_ease] hover:border-accent hover:bg-accent-wash" aria-label={t(locale, 'organization.addMember.button')} title={t(locale, 'organization.addMember.button')} aria-expanded={addMemberPopupOpen} onClick={() => { setAddMemberPopupOpen((open) => !open); setSelectedInviteTenant(null); }}><IconUsergroupAdd size={16} /></button>
@@ -1617,7 +1614,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                   <p className="m-0 mb-[12px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.addMember.tipTenant')}</p>
                                   <div className="mb-[12px]">
                                     <label className={ORG_FORM_LABEL + ' mb-[4px]'}>{t(locale, 'organization.addMember.searchTenant')}</label>
-                                    <WkInput className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />
+                                    <TInput className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(value) => void searchMemberInviteCandidates(String(value))} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />
                                     <p className="m-0 mt-[4px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.addMember.searchTenantHint')}</p>
                                     {memberInviteLoading ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p> : memberInviteCandidates.map((candidate) => {
                                       const candidateId = String(candidate.tenant_id);
@@ -1632,9 +1629,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                   </div>
                                   <div className="mb-[12px]">
                                     <label className={ORG_FORM_LABEL + ' mb-[4px]'}>{t(locale, 'organization.addMember.selectRole')}</label>
-                                    <WkSelect className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
-                                      {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                                    </WkSelect>
+                                    <TSelect className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} options={roleOptions.map(([value, labelKey]) => ({ value, label: t(locale, labelKey) }))} onChange={(value) => setMemberInviteRole(String(value) as 'admin' | 'editor' | 'viewer')} />
                                   </div>
                                   <div className="flex items-center justify-end gap-[8px]">
                                     <button type="button" className={ORG_BTN_OUTLINE + ' min-h-[30px] px-[12px] text-[13px]'} onClick={() => setAddMemberPopupOpen(false)}>{t(locale, 'common.cancel')}</button>
@@ -1682,9 +1677,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                     </td>
                                     <td className={MEMBER_TD}>
                                       {settingsCanManage && !memberIsOwner ? (
-                                        <WkSelect className={ORG_FIELD + ' min-h-[28px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
-                                          {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                                        </WkSelect>
+                                        <TSelect className={'org-member-role-sel ' + ORG_FIELD + ' min-h-[28px] w-[116px]!'} value={member.role} options={roleOptions.map(([value, labelKey]) => ({ value, label: t(locale, labelKey) }))} onChange={(value) => void updateMemberRole(member, String(value) as 'admin' | 'editor' | 'viewer')} />
                                       ) : (
                                         <span className={MEMBER_ROLE_TAG + ' ' + (MEMBER_ROLE_TAG_TONES[member.role] ?? MEMBER_ROLE_TAG_TONES.viewer)}>{t(locale, 'organization.role.' + member.role)}</span>
                                       )}
@@ -1709,13 +1702,11 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-role">{t(locale, 'organization.upgrade.selectRole')}</label>
-                          <WkSelect id="upgrade-role" className={ORG_FIELD + ' min-h-[34px]'} value={upgradeRole} onChange={(event) => setUpgradeRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
-                            {upgradeChoices.map((value) => <option key={value} value={value}>{t(locale, 'organization.role.' + value)}</option>)}
-                          </WkSelect>
+                          <TSelect className={ORG_FIELD + ' min-h-[34px]'} value={upgradeRole} options={upgradeChoices.map((value) => ({ value, label: t(locale, 'organization.role.' + value) }))} onChange={(value) => setUpgradeRole(String(value) as 'admin' | 'editor' | 'viewer')} />
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-note">{t(locale, 'organization.upgrade.reason')}</label>
-                          <WkTextarea id="upgrade-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={upgradeNote} onChange={(event) => setUpgradeNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
+                          <TTextarea id="upgrade-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={upgradeNote} onChange={(value) => setUpgradeNote(clampApplicationNote(String(value)))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
                         </div>
                         <button type="submit" className={ORG_BTN_OUTLINE} disabled={hasPendingUpgrade} title={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined} aria-label={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined}>{t(locale, 'organization.upgrade.submitBtn')}</button>
                       </form> : null}
@@ -1840,13 +1831,11 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <div className="mt-[14px] flex flex-col gap-[12px] border-t border-dashed border-[#e7e7ea] pt-[14px]">
                             <div className={ORG_FORM_ITEM} style={{ marginBottom: '0' }}>
                               <label className={ORG_FORM_LABEL} htmlFor="join-request-role">{t(locale, 'organization.invite.requestRole')}</label>
-                              <WkSelect id="join-request-role" className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.invite.requestRole')} value={requestRole} onChange={(event) => setRequestRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
-                                {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                              </WkSelect>
+                              <TSelect className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.invite.requestRole')} value={requestRole} options={roleOptions.map(([value, labelKey]) => ({ value, label: t(locale, labelKey) }))} onChange={(value) => setRequestRole(String(value) as 'admin' | 'editor' | 'viewer')} />
                             </div>
                             <div className={ORG_FORM_ITEM} style={{ marginBottom: '0' }}>
                               <label className={ORG_FORM_LABEL} htmlFor="join-request-note">{t(locale, 'organization.invite.applicationNote')}</label>
-                              <WkTextarea id="join-request-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={requestNote} onChange={(event) => setRequestNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.invite.messagePlaceholder')} />
+                              <TTextarea id="join-request-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={requestNote} onChange={(value) => setRequestNote(clampApplicationNote(String(value)))} placeholder={t(locale, 'organization.invite.messagePlaceholder')} />
                             </div>
                           </div>
                         </>
@@ -1868,7 +1857,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <div className={ORG_FORM_ITEM}>
                         <label className={ORG_FORM_LABEL} htmlFor="join-code">{t(locale, 'organization.inviteCode')}</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.invite.inputDesc')}</p>
-                        <WkInput id="join-code" name="join-code" className={ORG_FIELD + ' min-h-[34px]'} value={joinInputCode} maxLength={32} placeholder={t(locale, 'organization.inviteCodePlaceholder')} onChange={(event) => setJoinInputCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void doPreviewFromInput(); }} />
+                        <TInput name="join-code" className={ORG_FIELD + ' min-h-[34px]'} value={joinInputCode} maxlength={32} placeholder={t(locale, 'organization.inviteCodePlaceholder')} onChange={(value) => setJoinInputCode(String(value))} onKeydown={(_, context) => { if (context.e.key === 'Enter') void doPreviewFromInput(); }} />
                         <p className="m-0 mt-[8px] text-[12px] leading-[1.45] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.inviteCodeTip')}</p>
                       </div>
                     </>
@@ -1878,7 +1867,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         <label className={ORG_FORM_LABEL} htmlFor="join-search">{t(locale, 'organization.join.searchSpaces')}</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.join.searchSpacesDesc')}</p>
                         <div style={{ position: 'relative' }}>
-                          <WkInput id="join-search" className={ORG_FIELD + ' min-h-[34px]'} value={searchQuery} placeholder={t(locale, 'organization.join.searchSpacesPlaceholder')} onChange={(event) => onSearchQueryChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') runSearch(searchQuery.trim()); }} />
+                          <TInput className={ORG_FIELD + ' min-h-[34px]'} value={searchQuery} placeholder={t(locale, 'organization.join.searchSpacesPlaceholder')} onChange={(value) => onSearchQueryChange(String(value))} onKeydown={(_, context) => { if (context.e.key === 'Enter') runSearch(searchQuery.trim()); }} />
                           <span style={{ position: 'absolute', right: '10px', top: '8px', color: 'rgba(23, 26, 29, 0.4)' }}><IconSearch /></span>
                         </div>
                       </div>
