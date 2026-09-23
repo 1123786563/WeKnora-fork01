@@ -8,7 +8,7 @@ import type { AttentionState } from './task-office.ts';
 export const TASK_DETAIL_HISTORY_LIMIT = 200;
 
 export type TaskConnectionState = 'syncing' | 'live' | 'interrupted' | 'drained';
-export type TaskInterruptionReason = 'gap' | 'cursor-expired' | 'stream-error' | 'stream-ended-nonterminal' | 'persist-failed';
+export type TaskInterruptionReason = 'gap' | 'cursor-expired' | 'stream-error' | 'stream-ended-nonterminal' | 'persist-failed' | 'stream-unavailable';
 
 export interface TaskBackendEvent {
   runId: string;
@@ -266,8 +266,16 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   };
   const streamFailed = async (error: unknown): Promise<void> => {
     if (closed) return;
-    const code = (error as { code?: unknown } | null)?.code;
     const message = error instanceof Error ? error.message : String(error);
+    if (message === 'RUNTIME_STREAM_UNAVAILABLE') {
+      // 流通道缺失（runtime authorizedStream 未解析出 transport）不是瞬时故障：
+      // 直接置为 interrupted 并停止自动 resync，REST 详情仍可用，显式 resync() 可再试。
+      interruption = { reason: 'stream-unavailable', message: '此部署未提供实时流通道，可手动刷新同步' };
+      autoResyncs = AUTO_RESYNC_LIMIT;
+      notify('interrupted');
+      return;
+    }
+    const code = (error as { code?: unknown } | null)?.code;
     if (code === 'TASK_STREAM_CURSOR_EXPIRED') {
       await interrupt('cursor-expired', message);
       return;

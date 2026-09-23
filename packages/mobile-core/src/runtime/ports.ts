@@ -54,7 +54,14 @@ export type AuthorizedTransport = (
   accessToken: string,
 ) => Promise<unknown>;
 
-/** Authorized SSE read channel. Contract: a pre-stream 401 rejects (ApiError, status 401) with no chunks emitted; normal end resolves. */
+/**
+ * Authorized SSE read channel. Contract:
+ * - a pre-stream 401 rejects (ApiError, status 401) with no chunks emitted;
+ * - normal end resolves;
+ * - transport resolution failure (per-origin factory returns undefined, fail closed) makes the
+ *   runtime reject with 'RUNTIME_STREAM_UNAVAILABLE' — the surface is already authorized, only
+ *   the stream channel is absent (REST surfaces remain usable).
+ */
 export type AuthorizedStreamTransport = (
   input: RuntimeAuthorizedRequest,
   accessToken: string,

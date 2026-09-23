@@ -379,8 +379,11 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     },
     async authorizedEventStream(input: RuntimeAuthorizedRequest, onChunk: (chunk: string) => void): Promise<void> {
       const deployment = activeDeployment;
-      const transport = deployment && state.surface === 'authorized' ? ports.authorizedStream?.(deployment.origin) : undefined;
-      if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
+      if (deployment === undefined || state.surface !== 'authorized') throw new Error('RUNTIME_UNAUTHORIZED');
+      // 已授权但平台/该实例无流通道（authorizedStream 工厂返回 undefined，fail closed）：
+      // 与未授权分流（B2-F34）——REST 详情仍可用，错误语义不得误导为「请先登录」。
+      const transport = ports.authorizedStream?.(deployment.origin);
+      if (!transport) throw new Error('RUNTIME_STREAM_UNAVAILABLE');
       const requestEpoch = epoch;
       const guardedChunk = (chunk: string): void => {
         if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');

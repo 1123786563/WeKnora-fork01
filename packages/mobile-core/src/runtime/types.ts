@@ -56,7 +56,9 @@ export interface MobileRuntime {
   /** Streams one authorized SSE endpoint through the active deployment (refresh-once on a pre-stream 401). */
   authorizedEventStream(input: RuntimeAuthorizedRequest, onChunk: (chunk: string) => void): Promise<void>;
   scopeLease(): ScopeLease | undefined;
-  /** Resource Shelf for the active scope; undefined unless authorized with ports.resourceShelf provided. */
+  /** Resource Shelf for the active scope. Undefined unless the surface carries a verified session
+   *  (authorized or read-only) AND ports.resourceShelf is provided — read-only browsing is served
+   *  from the same shelf seam as the authorized surface (authenticate opens it for both). */
   resourceShelf(): ResourceShelfHandle | undefined;
   /** Atomically switches the Active Tenant: revokes the prior scope, re-issues the credential server-side, re-verifies identity. */
   activateTenant(tenantId: string): Promise<RuntimeSnapshot>;

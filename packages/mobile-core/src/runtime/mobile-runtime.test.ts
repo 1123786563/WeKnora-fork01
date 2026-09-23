@@ -770,3 +770,13 @@ test('a stream still open when the scope dies stops delivering chunks and settle
   await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
   assert.deepEqual(chunks, ['id: 1\nevent: run.started\n\n'], 'pre-death frames were delivered; the post-death frame never flushes');
 });
+
+test('authorizedEventStream distinguishes an unavailable stream channel from unauthorized', async () => {
+  // 无 authorizedStream 端口（ports() 夹具不提供）：面已授权，仅流通道不可用
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote()));
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  await assert.rejects(
+    runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, () => {}),
+    /RUNTIME_STREAM_UNAVAILABLE/,
+  );
+});

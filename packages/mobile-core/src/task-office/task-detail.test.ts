@@ -474,3 +474,25 @@ test('events from a superseded stream are dropped after resync', async () => {
   assert.equal(reasons.includes('cursor-expired'), false, '迟到控制帧不得触发 cursor-expired interrupt');
   handle.close();
 });
+
+test('an unavailable stream channel interrupts without futile auto-resyncs', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  let detailCalls = 0;
+  const { backend, office } = officeWithDetail(leaseRef, {
+    detail: async () => { detailCalls += 1; return detail$(); },
+    stream: () => {
+      const failing = createScriptedTaskStream();
+      queueMicrotask(() => failing.fail(new Error('RUNTIME_STREAM_UNAVAILABLE')));
+      return failing;
+    },
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle(30);                                   // 给自动 resync 的窗口（对照既有 bounded-resync 用例的 settle(30)）
+  assert.equal(handle.view()!.connection, 'interrupted');
+  assert.equal(handle.view()!.interruption?.reason, 'stream-unavailable');
+  assert.equal(backend.streams.length, 1, '流通道不可用不是瞬时故障：不得触发 AUTO_RESYNC_LIMIT 次徒劳 resync');
+  assert.equal(detailCalls, 1);
+  handle.close();
+});
