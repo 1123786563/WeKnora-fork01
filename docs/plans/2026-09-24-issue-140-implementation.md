@@ -141,16 +141,18 @@ T03 的实现必须把 `unknown` 收窄成版本化判别联合类型并在契�
 
 ### Task 7: T07/#147 简历上传、逐步建档与事实确认
 
-**Depends:** #141。**Owner/validator:** backend_implementer + frontend_implementer / backend_validator + frontend_validator。**Files:** `internal/modules/career/service/profile_intake.go`、`internal/modules/career/service/profile_intake_test.go`、`apps/web/src/career/profile_intake.tsx`。**Consumes:** 已集成的前置 Task 合同与认证 scope。**Produces:** `CareerRemote.act({kind: "confirm_fact", payload}, requestId, expectedRevision): Promise<CareerReceipt>`。**Parallel:** 仅与同 DAG 波次且文件、数据库、端口和构建目录隔离的 Task 同时执行；否则串行。
+**Depends:** #141；Web 子任务还需 T03 Career Web 路由/API 经审查并集成。**Owner/validator:** backend_implementer + frontend_implementer / backend_validator + frontend_validator。**Files:** `internal/modules/career/profile_intake.go`、`profile_intake_test.go`、`model_input.go`、相邻 Career handler/test；共享解析/存储的窄 Adapter 由独立前置子任务拥有；`packages/career-core/src/contracts.ts` 与 fixture；`apps/web/src/career/profile_intake.tsx` 和测试。**Consumes:** T03 已确认事实、提案、修订、收据与 owner-only scope；现有文件校验、存储和解析能力。**Produces:** Career 持久来源版本、整批提案收据、单项确认/拒绝及目的限定的已确认事实模型输入。**Parallel:** T07 后端与 T08 后端共享 Career 表/合同/迁移，串行；Web 工作在 T03 路由稳定后进行。
 
 **验收：** 教育、经历、项目、技能、成果数字与证书均有来源和确认状态；拒绝或未确认的提案不能用于评估或材料生成；上传失败不覆盖已确认档案，修改保留版本和来源；送模型前遮蔽与当前目的无关的证件号码等字段
 
-- [ ] **Step 1:** 先在 `profile_intake_test.go` 写服务端公共 seam 的失败测试，逐条覆盖本 Task 验收与 request ID、revision、Tenant 隔离；运行 `go test ./internal/modules/career/...`，预期 RED。
-- [ ] **Step 2:** 在 `profile_intake.go` 实现最小持久业务行为及封闭 intent；输入只消费已确认事实和不可变快照，外部副作用用收据对账，不能把未知结果当成功。
-- [ ] **Step 3:** 为 Web `profile_intake.tsx` 写用户可观察行为测试，显示来源、权限、失败和恢复状态；运行 `pnpm typecheck:web && pnpm test:web`，预期 GREEN。
-- [ ] **Step 4:** 运行 `go test ./internal/modules/career/...` 与 Web 检查；保存 API fixture、数据库迁移及浏览器证据；后端和前端分别验证，独立 reviewer 给出 Spec 与质量结论后提交。
+- [ ] **Step 1:** 以 `docs/plans/issue-140/task-7-research.md` 与 `task-7-architecture.md` 为接口依据，先冻结 Career 来源记录、字段 key/类别、batch receipt、解析失败状态及私有资源句柄的 Go/TS wire fixture。抽取/存储 Adapter 仅暴露经校验的 scoped 存储结果与文本或 typed 失败，不把 24 小时 Session 临时文档 ID 当权威来源；预检共享 `container.go`、合同及迁移版本归属。
+- [ ] **Step 2:** RED：用教育、经历、项目、技能、数字成果、证书、缺失毕业时间、冲突任职日期和证件号 fixture，写来源不可变、整批提案原子性、相同 request ID 重放/不同正文冲突、expected revision、跨 Tenant/owner 拒绝、解析失败不改变已确认事实和历史的 Career 公共 seam 测试。运行 `go test ./internal/modules/career/...`，预期这些新测试先失败。
+- [ ] **Step 3:** GREEN：实现 Career 自有来源版本和 `processing|ready|failed` 状态；Blob/解析与 DB 不共享事务时用 sourceID 对账，完成批次与收据同事务写入，逐项复用 T03 `confirm_proposal`/`dismiss`。原始简历和未脱敏抽取文本只在私有来源路径读取；普通档案视图只暴露提案、来源和已确认事实。失败时保留此前事实；绝不把模型抽取直接确认为权威事实。
+- [ ] **Step 4:** 在服务端模型输入构造 seam 从已确认事实按用途白名单选取字段，并在最终序列化前遮蔽无关证件号码；测试最终载荷确实不含证件号、未确认/已拒提案或原始简历。固定原始文件保留时长不在本 Task 凭空制定，删除能力留给 T22 的保留策略。
+- [ ] **Step 5:** T03 Web 路由与 API 经审查集成后，RED/GREEN 实现上传进度、处理中/失败/重试、缺失和冲突提案逐项确认、旧事实与来源版本展示；可观察测试覆盖失败替换不清空档案、scope 切换清理、修订冲突和收据恢复。运行 `pnpm typecheck:web`、相关测试、`pnpm test:web`、`pnpm build:web`。
+- [ ] **Step 6:** 在隔离的本地服务/浏览器用上述 fixture 走上传、审阅、确认、刷新，并保存原始命令/状态/摘要与跨 Tenant 拒绝；运行 Career、handler、数据库迁移测试。后端/前端验证者分别核验后由独立 reviewer 给出 Spec 与质量双结论，再放行 T08/T15 消费该事实合同。
 
-**验证命令：** `go test ./internal/modules/career/...`；`pnpm typecheck:web && pnpm test:web`。**原始证据：** - Career Office 测试改变提案确认状态并观察后续可用事实。 - Web 用含缺失与冲突事实的样例简历完成审阅。。**失败处理：** 抽取失败允许手动继续；模型输出不能直接写权威事实。
+**验证命令：** `go test ./internal/modules/career/... ./internal/handler/... ./internal/database/...`；`pnpm typecheck:web && pnpm test:web && pnpm build:web`；隔离服务上的浏览器上传/审阅/刷新/越权记录。**原始证据：** Career Office 来源版本、批次幂等、失败不覆盖、模型输入脱敏测试及样例简历浏览器链路。**失败处理：** 上传/抽取失败保留旧事实和可见失败状态，允许手动建档；Blob 结果未知时以 sourceID 对账，不能重复产生提案。
 
 ### Task 8: T08/#146 粘贴 JD 形成岗位机会与快照
 
