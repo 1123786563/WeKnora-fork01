@@ -1,5 +1,6 @@
 import type { ScopedVault } from '../vault/scoped-vault.ts';
 import type { ResourceRemote } from '../shelf/ports.ts';
+import type { RuntimeAuthorizedRequest } from './types.ts';
 
 /** Exact credential fields returned by Task 2's `passwordLogin` adapter. */
 export interface StoredCredential {
@@ -46,6 +47,13 @@ export type AuthorizedTransport = (
   accessToken: string,
 ) => Promise<unknown>;
 
+/** Authorized SSE read channel. Contract: a pre-stream 401 rejects (ApiError, status 401) with no chunks emitted; normal end resolves. */
+export type AuthorizedStreamTransport = (
+  input: RuntimeAuthorizedRequest,
+  accessToken: string,
+  onChunk: (chunk: string) => void,
+) => Promise<void>;
+
 export interface PendingOidc {
   deploymentOrigin: string;
   state: string;
@@ -80,4 +88,6 @@ export interface MobileRuntimePorts {
   randomBytes?: (size: number) => Uint8Array;
   /** Authorized channel for child modules (Task Office &c.); omitted = fail closed. */
   authorizedTransport?: (deploymentOrigin: string) => AuthorizedTransport;
+  /** Authorized SSE channel for child modules; same token discipline as authorizedTransport. May return undefined when the platform has no streaming fetch (fail closed). */
+  authorizedStream?: (deploymentOrigin: string) => AuthorizedStreamTransport | undefined;
 }

@@ -361,6 +361,28 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         return retried;
       }
     },
+    async authorizedEventStream(input: RuntimeAuthorizedRequest, onChunk: (chunk: string) => void): Promise<void> {
+      const deployment = activeDeployment;
+      const transport = deployment && state.surface === 'authorized' ? ports.authorizedStream?.(deployment.origin) : undefined;
+      if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
+      const requestEpoch = epoch;
+      const send = async (token: string): Promise<void> => transport(input, token, onChunk);
+      const credential = await ports.credentialStore.read(deployment.origin);
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      if (!credential) throw new Error('RUNTIME_UNAUTHORIZED');
+      try {
+        await send(credential.token);
+        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+        return;
+      } catch (error) {
+        if (!unauthorizedStatus(error)) throw error;
+        const refreshed = await refreshedCredential(requestEpoch, deployment, credential);
+        if (!refreshed) throw new Error('RUNTIME_UNAUTHORIZED');
+        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+        await send(refreshed.token);
+        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      }
+    },
     scopeLease: () => lease,
     resourceShelf: () => activeShelf,
     signOut,

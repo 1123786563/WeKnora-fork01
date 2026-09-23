@@ -695,3 +695,54 @@ test('a late tenant verification cannot override a completed later switch', asyn
   assert.equal(runtime.snapshot().identity?.activeTenantId, 'tenant-3');
   assert.equal(firstSnapshot.identity?.activeTenantId, 'tenant-3');
 });
+
+test('authorizedEventStream rejects before any transport call when unauthorized', async () => {
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote()));
+  await assert.rejects(runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, () => {}), /RUNTIME_UNAUTHORIZED/);
+});
+
+test('authorizedEventStream delivers chunks with the active token and refreshes exactly once on a pre-stream 401', async () => {
+  const sentTokens: string[] = [];
+  const chunks: string[] = [];
+  const rotated = { token: 'access-2', refreshToken: 'refresh-2' };
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => remote({ refresh: async () => ({ access_token: rotated.token, refresh_token: rotated.refreshToken }) }),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedStream: () => async (_input, accessToken, onChunk) => {
+      sentTokens.push(accessToken);
+      if (accessToken === 'access-1') {
+        const error = new Error('HTTP 401');
+        error.name = 'ApiError';
+        (error as unknown as { status?: number }).status = 401;
+        throw error; // pre-stream 401：未产出任何 chunk
+      }
+      onChunk('id: 3\nevent: run.started\n');
+      onChunk('data: {}\n\n');
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  await runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, (chunk) => chunks.push(chunk));
+  assert.deepEqual(sentTokens, ['access-1', 'access-2']);
+  assert.equal(chunks.join(''), 'id: 3\nevent: run.started\ndata: {}\n\n');
+});
+
+test('a stream opened before a scope change is dropped, and its chunks never flush', async () => {
+  const release = deferred<void>();
+  const chunks: string[] = [];
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedStream: () => async (_input, _accessToken, onChunk) => {
+      await release.promise;
+      onChunk('late frame');
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const pending = runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, (chunk) => chunks.push(chunk));
+  await runtime.signOut();
+  release.resolve();
+  await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
+  assert.deepEqual(chunks, [], 'no late frame is delivered after the scope died');
+});

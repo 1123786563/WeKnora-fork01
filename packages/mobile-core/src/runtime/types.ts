@@ -53,6 +53,8 @@ export interface MobileRuntime {
   completeOidc(callbackUrl: string): Promise<RuntimeSnapshot>;
   /** Sends one request through the active deployment with the current credential (refresh-once on 401). Tokens never escape the Runtime. */
   authorizedRequest(input: RuntimeAuthorizedRequest): Promise<unknown>;
+  /** Streams one authorized SSE endpoint through the active deployment (refresh-once on a pre-stream 401). */
+  authorizedEventStream(input: RuntimeAuthorizedRequest, onChunk: (chunk: string) => void): Promise<void>;
   scopeLease(): ScopeLease | undefined;
   /** Resource Shelf for the active scope; undefined unless authorized with ports.resourceShelf provided. */
   resourceShelf(): ResourceShelfHandle | undefined;
