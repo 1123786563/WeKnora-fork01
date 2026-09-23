@@ -638,3 +638,19 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
   .wk-chat-prefs-row-copy { max-width: 100%; padding-right: 0; }
   .wk-chat-prefs-control { width: 100%; }
 }
+
+/* ==== PortedSections 留守面板（S6 Tailwind 收编） ==== */
+.wk-ported-note { color: var(--color-muted, #66758b); }
+.wk-settings-values { margin: 16px 0 0; display: grid; gap: 0.65rem; }
+.wk-settings-values-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr);
+  gap: 0.8rem;
+  border-bottom: 1px solid var(--color-line-soft, #edf0f5);
+  padding-block: 0.55rem;
+}
+.wk-settings-values-row > dt { color: var(--color-muted-strong, #506078); font-weight: 650; overflow-wrap: anywhere; }
+.wk-settings-values-row > dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+@media (max-width: 720px) {
+  .wk-settings-values-row { grid-template-columns: 1fr; gap: 4px; }
+}
