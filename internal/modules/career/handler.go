@@ -77,12 +77,21 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrProposalResolved):
 		status = 409
 		code = "proposal_resolved"
+	case errors.Is(e, ErrOutcomeUnknown):
+		status = 504
+		code = "outcome_unknown"
 	}
 	body := gin.H{"code": code, "message": e.Error()}
 	if errors.Is(e, ErrRevisionConflict) {
 		var ce *RevisionConflictError
 		if errors.As(e, &ce) {
 			body["currentRevision"] = ce.CurrentRevision
+		}
+	}
+	if errors.Is(e, ErrOutcomeUnknown) {
+		var unknown *OutcomeUnknownError
+		if errors.As(e, &unknown) {
+			body["requestId"] = unknown.RequestID
 		}
 	}
 	c.JSON(status, gin.H{"error": body})

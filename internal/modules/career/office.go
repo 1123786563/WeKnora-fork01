@@ -6,10 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	sqlite3 "github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -22,6 +25,7 @@ var (
 	ErrInvalidRequest      = errors.New("invalid career request")
 	ErrProposalNotFound    = errors.New("career proposal not found")
 	ErrProposalResolved    = errors.New("career proposal is no longer pending")
+	ErrOutcomeUnknown      = errors.New("career request outcome unknown")
 )
 
 type Scope struct {
@@ -159,6 +163,10 @@ type ChangeSet struct {
 	Changes  []Change `json:"changes"`
 }
 type RevisionConflictError struct{ CurrentRevision uint64 }
+type OutcomeUnknownError struct{ RequestID string }
+
+func (e *OutcomeUnknownError) Error() string        { return ErrOutcomeUnknown.Error() }
+func (e *OutcomeUnknownError) Is(target error) bool { return target == ErrOutcomeUnknown }
 
 func (e *RevisionConflictError) Error() string        { return ErrRevisionConflict.Error() }
 func (e *RevisionConflictError) Is(target error) bool { return target == ErrRevisionConflict }
@@ -172,9 +180,9 @@ func (receipt) TableName() string                     { return "career_receipts"
 
 type Office struct {
 	db *gorm.DB
-	// afterReceiptMiss synchronizes concurrency tests after the scoped receipt
-	// lookup misses. Production Offices leave this nil.
-	afterReceiptMiss func()
+	// These hooks only synchronize transaction-boundary tests.
+	beforeFirstWrite    func()
+	afterReceiptPersist func()
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
@@ -389,97 +397,133 @@ func (o *Office) mutate(ctx context.Context, s Scope, kind, r string, rev uint64
 	fb, _ := json.Marshal(fpInput)
 	hash := sha256.Sum256(fb)
 	fp := hex.EncodeToString(hash[:])
-	var out Receipt
-	e := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var old receipt
-		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, r).First(&old).Error
+	// Keep lock acquisition finite even when the HTTP client supplied no deadline.
+	operationCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	for {
+		var out Receipt
+		firstWriteBusy := false
+		transaction := func(tx *gorm.DB) error {
+			if o.beforeFirstWrite != nil {
+				o.beforeFirstWrite()
+			}
+			// This must be the first SQL statement: SQLite obtains its writer
+			// reservation before any receipt read snapshot. It also ensures the
+			// scoped profile exists before the revision CAS on PostgreSQL.
+			p := profile{TenantID: s.TenantID, UserID: s.UserID}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&p).Error; err != nil {
+				firstWriteBusy = isSQLiteBusy(err)
+				return err
+			}
+			var old receipt
+			e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, r).First(&old).Error
+			if e == nil {
+				if old.Fingerprint != fp {
+					return ErrIdempotencyConflict
+				}
+				return json.Unmarshal([]byte(old.Body), &out)
+			}
+			if !errors.Is(e, gorm.ErrRecordNotFound) {
+				return e
+			}
+			next := rev + 1
+			updated := tx.Model(&profile{}).Where("tenant_id=? AND user_id=? AND revision=?", s.TenantID, s.UserID, rev).Update("revision", next)
+			if updated.Error != nil {
+				return updated.Error
+			}
+			if updated.RowsAffected == 0 {
+				if e = tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&p).Error; e != nil {
+					return e
+				}
+				return &RevisionConflictError{p.Revision}
+			}
+			out, e = apply(tx, next)
+			if e != nil {
+				return e
+			}
+			out.RequestID = r
+			out.Revision = next
+			if event != nil {
+				event.Revision = next
+				if out.Proposal != nil {
+					event.Proposal = out.Proposal
+				}
+				if out.Fact != nil {
+					event.Fact = out.Fact
+				}
+				body, _ := json.Marshal(event)
+				if e = tx.Create(&change{TenantID: s.TenantID, UserID: s.UserID, Revision: next, Kind: kind, Body: string(body)}).Error; e != nil {
+					return e
+				}
+			} else if out.Proposal != nil {
+				event = &Change{Revision: next, Kind: kind, Proposal: out.Proposal}
+				body, _ := json.Marshal(event)
+				if e = tx.Create(&change{TenantID: s.TenantID, UserID: s.UserID, Revision: next, Kind: kind, Body: string(body)}).Error; e != nil {
+					return e
+				}
+			}
+			body, e := json.Marshal(out)
+			if e != nil {
+				return e
+			}
+			if err := tx.Create(&receipt{TenantID: s.TenantID, UserID: s.UserID, RequestID: r, Fingerprint: fp, Body: string(body)}).Error; err != nil {
+				return err
+			}
+			if o.afterReceiptPersist != nil {
+				o.afterReceiptPersist()
+			}
+			return nil
+		}
+		var e error
+		if o.db.Dialector.Name() == "sqlite" {
+			// SQLite's DSN busy handler can outlive a cancelled Go context.
+			// Limit it on this borrowed connection, then restore its setting.
+			e = o.db.WithContext(operationCtx).Connection(func(conn *gorm.DB) error {
+				var prior int
+				if err := conn.Raw("PRAGMA busy_timeout").Scan(&prior).Error; err != nil {
+					return fmt.Errorf("read sqlite busy timeout: %w", err)
+				}
+				if err := conn.Exec("PRAGMA busy_timeout=25").Error; err != nil {
+					return fmt.Errorf("set sqlite busy timeout: %w", err)
+				}
+				defer conn.WithContext(context.Background()).Exec("PRAGMA busy_timeout=" + strconv.Itoa(prior))
+				return conn.Session(&gorm.Session{NewDB: true}).Transaction(transaction)
+			})
+		} else {
+			e = o.db.WithContext(operationCtx).Transaction(transaction)
+		}
 		if e == nil {
-			if old.Fingerprint != fp {
-				return ErrIdempotencyConflict
+			return out, nil
+		}
+		if operationCtx.Err() != nil {
+			return Receipt{}, &OutcomeUnknownError{RequestID: r}
+		}
+		if firstWriteBusy {
+			// The failed transaction is rolled back. Retry only this known
+			// pre-read lock failure; a later failure may have different semantics.
+			timer := time.NewTimer(10 * time.Millisecond)
+			select {
+			case <-operationCtx.Done():
+				timer.Stop()
+				return Receipt{}, &OutcomeUnknownError{RequestID: r}
+			case <-timer.C:
 			}
-			return json.Unmarshal([]byte(old.Body), &out)
+			continue
 		}
-		if !errors.Is(e, gorm.ErrRecordNotFound) {
-			return e
-		}
-		if o.afterReceiptMiss != nil {
-			o.afterReceiptMiss()
-		}
-		p := profile{TenantID: s.TenantID, UserID: s.UserID}
-		if e = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&p).Error; e != nil {
-			return e
-		}
-		next := rev + 1
-		updated := tx.Model(&profile{}).Where("tenant_id=? AND user_id=? AND revision=?", s.TenantID, s.UserID, rev).Update("revision", next)
-		if updated.Error != nil {
-			return updated.Error
-		}
-		if updated.RowsAffected == 0 {
-			if e = tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&p).Error; e != nil {
-				return e
-			}
-			return &RevisionConflictError{p.Revision}
-		}
-		out, e = apply(tx, next)
-		if e != nil {
-			return e
-		}
-		out.RequestID = r
-		out.Revision = next
-		if event != nil {
-			event.Revision = next
-			if out.Proposal != nil {
-				event.Proposal = out.Proposal
-			}
-			if out.Fact != nil {
-				event.Fact = out.Fact
-			}
-			body, _ := json.Marshal(event)
-			if e = tx.Create(&change{TenantID: s.TenantID, UserID: s.UserID, Revision: next, Kind: kind, Body: string(body)}).Error; e != nil {
-				return e
-			}
-		} else if out.Proposal != nil {
-			event = &Change{Revision: next, Kind: kind, Proposal: out.Proposal}
-			body, _ := json.Marshal(event)
-			if e = tx.Create(&change{TenantID: s.TenantID, UserID: s.UserID, Revision: next, Kind: kind, Body: string(body)}).Error; e != nil {
-				return e
-			}
-		}
-		body, e := json.Marshal(out)
-		if e != nil {
-			return e
-		}
-		return tx.Create(&receipt{TenantID: s.TenantID, UserID: s.UserID, RequestID: r, Fingerprint: fp, Body: string(body)}).Error
-	})
-	if e != nil && isReceiptRaceError(e) {
-		// A concurrent retry can miss the receipt, lose the profile CAS (or
-		// hit the receipt's unique constraint), and roll back after the winner
-		// has committed. Resolve the request ID after leaving the transaction;
-		// transient lock/unique failures may occur before the winner commits.
-		for attempt := 0; attempt < 20; attempt++ {
-			if replay, found, receiptErr := o.replayReceipt(ctx, s, r, fp); receiptErr != nil {
+		if isReceiptRaceError(e) {
+			if replay, found, receiptErr := o.replayReceipt(operationCtx, s, r, fp); receiptErr != nil {
 				return Receipt{}, receiptErr
 			} else if found {
 				return replay, nil
 			}
-			if attempt < 19 {
-				timer := time.NewTimer(10 * time.Millisecond)
-				select {
-				case <-ctx.Done():
-					timer.Stop()
-					return Receipt{}, ctx.Err()
-				case <-timer.C:
-				}
-			}
 		}
-		if strings.Contains(strings.ToLower(e.Error()), "database is locked") {
-			var current profile
-			if lookupErr := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&current).Error; lookupErr == nil && current.Revision != rev {
-				return Receipt{}, &RevisionConflictError{CurrentRevision: current.Revision}
-			}
-		}
+		return Receipt{}, e
 	}
-	return out, e
+}
+
+func isSQLiteBusy(err error) bool {
+	var sqliteErr sqlite3.Error
+	return errors.As(err, &sqliteErr) && (sqliteErr.Code == sqlite3.ErrBusy || sqliteErr.Code == sqlite3.ErrLocked)
 }
 
 func isReceiptRaceError(err error) bool {

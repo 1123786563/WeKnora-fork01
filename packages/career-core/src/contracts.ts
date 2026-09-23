@@ -14,8 +14,10 @@ export type CareerAction =
   | { action: 'dismiss'; proposalId: string; source: CareerSource; requestId: string; expectedRevision: number }
 export type CareerChange = { revision: number; kind: 'proposed' | 'confirmed' | 'dismissed'; proposal?: CareerProposal; fact?: CareerFact }
 export type CareerChangeSet = { revision: number; changes: CareerChange[] }
-export type CareerErrorCode = 'forbidden' | 'revision_conflict' | 'idempotency_conflict' | 'invalid_request' | 'not_found' | 'proposal_resolved' | 'internal'
-export type CareerError = { error: { code: CareerErrorCode; message: string; currentRevision?: number } }
+export type CareerErrorCode = 'forbidden' | 'revision_conflict' | 'idempotency_conflict' | 'invalid_request' | 'not_found' | 'proposal_resolved' | 'outcome_unknown' | 'internal'
+export type CareerError =
+  | { error: { code: 'outcome_unknown'; message: string; requestId: string } }
+  | { error: { code: Exclude<CareerErrorCode, 'outcome_unknown'>; message: string; currentRevision?: number } }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' }
 function validSource(value: unknown): boolean { return isRecord(value) && typeof value.kind === 'string' && (value.label === undefined || typeof value.label === 'string') && (value.referenceId === undefined || typeof value.referenceId === 'string') }
 function validProposal(value: unknown): boolean {
@@ -37,7 +39,7 @@ export function decodeCareerReceipt(value: unknown): CareerReceipt {
 export function decodeCareerError(value: unknown): CareerError {
  if (!isRecord(value) || !isRecord(value.error)) throw new TypeError('invalid career error')
  const body = value.error
- const codes: CareerErrorCode[] = ['forbidden', 'revision_conflict', 'idempotency_conflict', 'invalid_request', 'not_found', 'proposal_resolved', 'internal']
- if (typeof body.message !== 'string' || !codes.includes(body.code as CareerErrorCode) || (body.currentRevision !== undefined && typeof body.currentRevision !== 'number')) throw new TypeError('invalid career error')
+ const codes: CareerErrorCode[] = ['forbidden', 'revision_conflict', 'idempotency_conflict', 'invalid_request', 'not_found', 'proposal_resolved', 'outcome_unknown', 'internal']
+ if (typeof body.message !== 'string' || !codes.includes(body.code as CareerErrorCode) || (body.currentRevision !== undefined && typeof body.currentRevision !== 'number') || (body.requestId !== undefined && typeof body.requestId !== 'string') || (body.code === 'outcome_unknown' && typeof body.requestId !== 'string')) throw new TypeError('invalid career error')
  return value as CareerError
 }

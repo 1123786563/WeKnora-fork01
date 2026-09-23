@@ -42,7 +42,8 @@ func TestHTTPErrorBodiesMatchSharedFixtures(t *testing.T) {
 		name    string
 		err     error
 		fixture string
-	}{{"missing", ErrReceiptNotFound, "not_found"}, {"conflict", &RevisionConflictError{CurrentRevision: 2}, "revision_conflict"}}
+		status  int
+	}{{"missing", ErrReceiptNotFound, "not_found", 404}, {"conflict", &RevisionConflictError{CurrentRevision: 2}, "revision_conflict", 409}, {"unknown", &OutcomeUnknownError{RequestID: "same"}, "outcome_unknown", 504}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
@@ -50,6 +51,7 @@ func TestHTTPErrorBodiesMatchSharedFixtures(t *testing.T) {
 			c, _ := gin.CreateTestContext(w)
 			writeError(c, tc.err)
 			require.JSONEq(t, string(fixtures[tc.fixture]), w.Body.String())
+			require.Equal(t, tc.status, w.Code)
 		})
 	}
 }

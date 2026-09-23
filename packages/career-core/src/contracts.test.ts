@@ -10,7 +10,11 @@ test('Go wire fixtures decode proposed and confirmed receipts without type ambig
  if (confirmed.kind === 'confirmed') { assert.equal(confirmed.fact.source.referenceId, 'file-1'); assert.equal(confirmed.proposal?.status, 'confirmed') }
  assert.throws(() => decodeCareerReceipt({ requestId: 'x', revision: 1, kind: 'proposed', fact: {} }))
 })
-test('Go HTTP error fixtures decode not found and revision conflict responses', () => {
+test('Go HTTP error fixtures decode not found, revision conflict, and unknown outcomes', () => {
  assert.equal(decodeCareerError(fixture.not_found).error.code, 'not_found')
  assert.equal(decodeCareerError(fixture.revision_conflict).error.currentRevision, 2)
+ const unknown = decodeCareerError(fixture.outcome_unknown)
+ assert.equal(unknown.error.code, 'outcome_unknown')
+ if (unknown.error.code === 'outcome_unknown') assert.equal(unknown.error.requestId, 'same')
+ assert.throws(() => decodeCareerError({ error: { code: 'outcome_unknown', message: 'unknown' } }))
 })
