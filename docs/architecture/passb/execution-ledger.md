@@ -784,6 +784,21 @@
 - **worktree**：`.worktrees/passb-b0`（`codex/passb-b0`，HEAD `971435df3`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `78193c4e5`）
 - **本次 JSON 变更**：**无字节级改动**（工单已在 18:09 登记；notes[11]/ocr_tail_base/review_status 均系他方所为且未触碰）。JSON 合法性本会话 `python3 json.load` 复验通过（33 节点；b0.status=in_progress、review_status=pending、notes 12 条、ocr_tail_base 字段在位）
 
+---
+
+## 2026-09-23 18:46 CST · b0 登记 OCR 覆盖：ocr_covered 追加 [1a5257003 → 971435df3]（审得 0 条需修 findings）
+
+- **节点**：b0 —— B0 契约与所有权冻结（passbguard + 4 份治理 yaml + 证据）
+- **登记内容**：b0 节点新增数组字段 `ocr_covered`，追加首条 `{base: "1a5257003d08f14ce7a8d7367801ab80aba0b616", head: "971435df33b52fe360e39d610924a17dfc3d7b5b"}`（全 40 位 SHA，调度指令口径：**审得 0 条需修 findings**）
+- **SHA 真实性核验**（本会话 git 实测，`.worktrees/passb-b0`）：`git rev-parse` 双双命中——`1a5257003`（16:23:26，fix: worker-set 消费方发现支持从 manifest 注册位点推导，R1 #7 修复）与 `971435df3`（17:05:04，fix: set 位点入集归一化+磁盘验证、裸名推导 entryFileRE 锚定，R2 r2-1/r2-2 修复）；区间 `1a5257003..971435df3` 含**恰 1 个提交**（即 `971435df3` 本身）
+- **与 ruling 的衔接**：本登记正是 `notes[11]` 用户裁定（18:41 条目转录）所定收口口径的覆盖记录——tail OCR 从 `1a5257003` 增量审，登记 base = `ocr_tail_base` 字段值、head = 审查时点分支 HEAD `971435df3`
+- **留痕（口径差异，待协调者如需澄清）**：(1) 18:31 条目终审全量 OCR 记录 9 findings / 调度裁定未关闭=1（未点名）；本次登记口径"审得 0 条需修 findings"——指令未说明两者关系（若系对终审 findings 的处置裁定为无需修，则实质推翻 18:31 的"未关闭=1"口径；若系另一次 tail 增量复审结果，其报告路径未附）。按指令原文如实登记，不自行判定；(2) **未提交工作树修改不在覆盖区间内**：b0 分支工作树仍有 2 个未提交修改（`discover.go` +85/−9、`discover_test.go` +58，18:41 条目登记）——ocr_covered 登记的是已提交 SHA 区间，在途修改落地后如需覆盖须另追加条目
+- **节点级状态未迁移**：`status=in_progress`、`review_status=pending`、`head_sha=null` 维持——节点 done / 合并 / head_sha 回填仍待调度方显式指令（本指令仅授权 ocr_covered 登记 + 台账留痕）
+- **修复轮次**：4（指令口径 0 条需修 findings；工单 b0-ocr-r3-1 未落分支、在途未提交修改 2 文件——其收编与终局处置由后续调度指令定）
+- **base/head SHA（节点级）**：`b1a3d6dd8` / null（未动）
+- **worktree**：`.worktrees/passb-b0`（`codex/passb-b0`，HEAD `971435df3`，工作树含 2 个未提交修改 + untracked 二进制）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `78193c4e5`）
+- **本次 JSON 变更**：b0 节点 `ocr_tail_base` 行后追加 `ocr_covered` 数组（6 行新增 + 1 行尾逗号）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/notes/task_status/base/head_sha 均未动）；`git diff` 相对 HEAD 累计 7+/1−（= 既有 notes #9-#12 + ocr_tail_base + 本次 ocr_covered，review_status 行与 HEAD 一致）
+
 
 
 

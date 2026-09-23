@@ -463,7 +463,13 @@
     "OCR R3-1 处理结论（2026-09-23 登记为修复工单——passb-b0 HEAD 971435df3 尚无对应修复提交，管家实读四处坐标确认 problem 属实）：b0-ocr-r3-1（tools/passbguard/check.go:510-518，low）——set 契约 recorded consumer 比对存在归一化不对称：discovered 侧经 setSiteCollector.add（check.go:854-868）做 filepath.Clean/ToSlash 归一化并对照 goFileSet 磁盘验证，而 row.Consumers 加载时仅由 normalizeRepoPath（load.go:108-113）剥前导 './'，checkRepoPath（model.go:196-214）不拒绝中间点段（调度指令 problem 文本于此截断、以调度方原文为准）。验收标准（acceptance，指令文本于『characterization tests c』处截断）：任选其一并满足全部——(a) 加载层把 normalizeRepoPath 改为 slash-Clean 基归一化（一次性覆盖 contracts consumers/characterization_tests、event consumers、ownership/exception 路径等全部位点）；或 (b) 在 check.go:510-522 及同构位点（symbol consumers check.go:624-632、characterization tests c…）比对侧补归一化（截断后内容以调度方原文为准）。管家实读核验（passb-b0@971435df3）：check.go:510-521 row.Consumers 直查 goFileSet/containsExact 未归一化、setSiteCollector.add 已归一化、normalizeRepoPath 仅剥前导 ./、checkRepoPath 拒空串/通配符/绝对路径/../遍历/反斜杠/尾分隔符但不拒 a/./b.go 与 a//b.go——problem 属实。",
     "Ruling(2026-09-23 用户裁定)：OCR 改为每个任务完成后即审；b0 六任务的全量 diff 已由 06:13-18:09 多轮节点级 OCR 覆盖（台账在案），免全量终审；收口=tail OCR 从 1a5257003 增量审（覆盖 r3 轮 1 个待修 finding 所在范围与在途修复）。"
    ],
-   "ocr_tail_base": "1a5257003d08f14ce7a8d7367801ab80aba0b616"
+   "ocr_tail_base": "1a5257003d08f14ce7a8d7367801ab80aba0b616",
+   "ocr_covered": [
+    {
+     "base": "1a5257003d08f14ce7a8d7367801ab80aba0b616",
+     "head": "971435df33b52fe360e39d610924a17dfc3d7b5b"
+    }
+   ]
   },
   {
    "id": "b1-identity",
