@@ -146,6 +146,45 @@ test('assembly: watchExecution installs the snapshot then appends streamed event
   assert.deepEqual(workbench.recentRuns().slice(0, 1), ['run-1'], 'watched run is remembered per scope');
 });
 
+test('assembly: Task artifacts are listed by owned run and receive a fresh signed grant on each download action', async () => {
+  let grants = 0;
+  await freshLogin({
+    'GET /api/v1/workbench/executions/run-1/artifacts': call => stub.succeed(call, { data: { success: true, data: { items: [
+      { index: 0, id: 'msg-1:0', name: 'report.pdf', mime: 'application/pdf', version: '1', size: 12, source_run: 'run-1' },
+      { index: 1, id: 'msg-2:0', name: 'resume.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', version: '1', size: 24, source_run: 'run-1' },
+    ] } } }),
+    'POST /api/v1/workbench/executions/run-1/artifacts/0/signed-url': call => {
+      grants++;
+      assert.equal(call.options.data, undefined, 'grant issuance has no client supplied scope or artifact identity');
+      stub.succeed(call, { data: { success: true, data: { url: `${ORIGIN}/api/v1/workbench/artifacts/download?signature=grant-${grants}`, expires_at: '2026-09-24T00:15:00Z' } } });
+    },
+  });
+  const items = await workbench.listTaskArtifacts('run-1');
+  assert.deepEqual(items.map(item => item.name), ['report.pdf', 'resume.docx']);
+  const first = await workbench.taskArtifactDownloadPath('run-1', items[0]);
+  const second = await workbench.taskArtifactDownloadPath('run-1', items[0]);
+  assert.equal(first, '/api/v1/workbench/artifacts/download?signature=grant-1');
+  assert.equal(second, '/api/v1/workbench/artifacts/download?signature=grant-2');
+  assert.equal(grants, 2, 'a short-lived URL is minted per user action and never cached');
+  stub.use(call => call.options.success({ statusCode: 200, tempFilePath: '/tmp/report.pdf' }));
+  const files = await import('../src/platform/files.ts');
+  await files.openProtectedDocument(second, items[0].name, true);
+  const download = stub.lastCall('downloadFile');
+  assert.equal(download.options.url, `${ORIGIN}${second}`);
+  assert.equal(authorization(download), 'Bearer t1');
+  assert.deepEqual(stub.state.openedDocuments, [{ filePath: '/tmp/report.pdf', showMenu: true }]);
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/report.pdf'], 'the temporary local copy is deleted after viewing');
+});
+
+test('assembly: Task artifact listing and grant failures preserve permission and expiry statuses', async () => {
+  await freshLogin({
+    'GET /api/v1/workbench/executions/run-1/artifacts': call => stub.succeed(call, { statusCode: 403, data: { success: false } }),
+  });
+  await assert.rejects(workbench.listTaskArtifacts('run-1'), error => error.status === 403);
+  stub.use(call => stub.succeed(call, { statusCode: 410, data: { success: false } }));
+  await assert.rejects(workbench.taskArtifactDownloadPath('run-1', { index: 0, name: 'report.pdf', mime: 'application/pdf', size: 12 }), error => error.status === 410);
+});
+
 test('assembly: startTask unknown after a lost response resubmits the SAME request id (D5)', async () => {
   let startCalls = [];
   const admit = call => {

@@ -9,7 +9,24 @@ import { storage } from '../platform/storage.ts';
 export interface TaskCard {runId:string;title:string;status:string;updatedAt:string}
 export interface Interaction {id:string;kind:string;argsHash:string;revision:number;decisionId:string;action:string}
 export interface Target {id:string;kind:string;state:string}
+export interface TaskArtifact {index:number;id:string;name:string;mime:string;version:string;size:number;sourceRun:string;createdAt:string}
 export async function targets():Promise<Target[]>{return rows(data(await client.request({method:'GET',path:'/api/v1/execution-targets'}))).map(r=>({id:identifier(r.id),kind:text(r.kind),state:text(r.state)})).filter(t=>t.state==='active')}
+/** Task-scoped artifact metadata is authorized by the server against the active user and space. */
+export async function listTaskArtifacts(runId:string):Promise<TaskArtifact[]>{
+ const value=record(data(await client.request({method:'GET',path:`/api/v1/workbench/executions/${encodeURIComponent(runId)}/artifacts`})));
+ if(!Array.isArray(value.items))throw new Error('Task artifact collection requires items');
+ return value.items.map(raw=>{const item=record(raw);const size=item.size;if(typeof size!=='number'||!Number.isFinite(size)||size<0)throw new Error('Invalid artifact size');
+  return {index:finiteInteger(item.index),id:text(item.id),name:text(item.name,'未命名文件'),mime:text(item.mime,'application/octet-stream'),version:text(item.version),size,sourceRun:text(item.source_run),createdAt:text(item.created_at)};
+ });
+}
+/** Mint a fresh short-lived URL for each explicit user action; never persist the grant. */
+export async function taskArtifactDownloadPath(runId:string,item:Pick<TaskArtifact,'index'>):Promise<string>{
+ const response=record(data(await client.request({method:'POST',path:`/api/v1/workbench/executions/${encodeURIComponent(runId)}/artifacts/${finiteInteger(item.index)}/signed-url`})));
+ const url=text(response.url);let parsed:URL;
+ try{parsed=new URL(url)}catch{throw new Error('Invalid signed artifact URL')}
+ if(!apiOrigin||parsed.origin!==apiOrigin||parsed.pathname!=='/api/v1/workbench/artifacts/download'||!parsed.searchParams.has('signature'))throw new Error('Untrusted signed artifact URL');
+ return `${parsed.pathname}${parsed.search}`;
+}
 /** Proposed list read contract; 404/501 are surfaced, never mapped to an empty list. */
 export async function listTasks(cursor='',status=''):Promise<{items:TaskCard[];nextCursor:string}>{
  const q=new URLSearchParams({limit:'20'});if(cursor)q.set('cursor',cursor);if(status)q.set('status',status);

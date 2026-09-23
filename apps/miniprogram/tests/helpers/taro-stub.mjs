@@ -5,6 +5,8 @@
 const state = {
   storage: new Map(),
   calls: [],
+  openedDocuments: [],
+  removedFiles: [],
   handler: null,
 };
 
@@ -46,6 +48,10 @@ function dispatch(kind, options) {
 const Taro = {
   request(options) { return dispatch('request', options); },
   uploadFile(options) { return dispatch('uploadFile', options); },
+  downloadFile(options) { return dispatch('downloadFile', options); },
+  getFileInfo(options) { return Promise.resolve({ size: 128 }); },
+  openDocument(options) { state.openedDocuments.push(options); return Promise.resolve(); },
+  getFileSystemManager() { return { unlinkSync(path) { state.removedFiles.push(path); } }; },
   getStorageSync(key) { return state.storage.has(key) ? state.storage.get(key) : ''; },
   setStorageSync(key, value) { state.storage.set(key, value); },
   removeStorageSync(key) { state.storage.delete(key); },
@@ -56,6 +62,8 @@ const Taro = {
 function reset() {
   state.storage.clear();
   state.calls.length = 0;
+  state.openedDocuments.length = 0;
+  state.removedFiles.length = 0;
   state.handler = null;
 }
 function lastCall(kind) {
