@@ -167,3 +167,16 @@ test('a 409 stream failure is translated to TASK_STREAM_CURSOR_EXPIRED and missi
     /stream transport is required/,
   );
 });
+
+test('a malformed SSE frame fails the stream as a transport error, not a bare SyntaxError', async () => {
+  const wire = 'event: control\ndata: {not-json}\n\n';
+  const remote = createTaskOfficeRemote({
+    origin: 'https://weknora.example.test',
+    request: async () => { throw new Error('no JSON call expected'); },
+    stream: async (_input, onChunk) => { onChunk(wire); },
+  });
+  await assert.rejects(
+    remote.stream({ runId: 'r1', cursor: 5, signal: new AbortController().signal, onEvent: () => {}, onControl: () => {} }),
+    /TASK_STREAM_MALFORMED_FRAME/,
+  );
+});

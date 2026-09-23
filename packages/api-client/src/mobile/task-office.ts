@@ -132,17 +132,28 @@ export function createTaskOfficeRemote(options: TaskOfficeRemoteOptions) {
       if (!transport) throw new Error('task office stream transport is required for event streams');
       const request = executionEventsRequest(input.runId, String(input.cursor));
       const parser = createServerSentEventParser((frame) => {
+        // 畸形帧守卫（B2-F8/F30 顺手）：JSON.parse 对破损 data 抛裸 SyntaxError 会击穿读取循环，
+        // 统一转成带 TASK_STREAM_MALFORMED_FRAME 消息的 transport error（进入 streamFailed → interrupted）。
+        // 只包 JSON.parse：消费方回调（如 runtime guardedChunk 的 RUNTIME_SCOPE_CHANGED）照常向上传播。
+        let payload: unknown;
+        try {
+          payload = JSON.parse(frame.data);
+        } catch {
+          throw new Error(`TASK_STREAM_MALFORMED_FRAME: ${frame.event ?? 'message'}`);
+        }
         if (frame.event === 'control') {
-          const payload = JSON.parse(frame.data) as { code?: string; message?: string };
-          input.onControl({ code: payload.code ?? 'stream_error', message: payload.message ?? '' });
+          const control = payload as { code?: string; message?: string };
+          input.onControl({ code: control.code ?? 'stream_error', message: control.message ?? '' });
           return;
         }
-        const event = parseExecutionEvent(JSON.parse(frame.data));
+        const event = parseExecutionEvent(payload);
         input.onEvent({ runId: event.run_id, seq: event.seq, type: event.type, occurredAt: event.occurred_at, payload: event.payload });
       });
       await transport({ method: request.method, path: request.path, headers: request.headers, signal: input.signal }, (chunk) => parser.push(chunk)).catch((error: unknown) => {
         const shape = error as { name?: unknown; status?: unknown } | null;
         if (typeof shape === 'object' && shape !== null && shape.name === 'ApiError' && shape.status === 409) {
+          // 'TASK_STREAM_CURSOR_EXPIRED' 是 api-client → mobile-core 的跨包契约码
+          // （mobile-core task-detail.ts 的 streamFailed 按 error.code 识别），不得改名或改用 ApiError 形态。
           const expired = new Error('workbench event stream cursor expired');
           (expired as unknown as { code?: string }).code = 'TASK_STREAM_CURSOR_EXPIRED';
           throw expired;
