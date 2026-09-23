@@ -379,7 +379,7 @@
    "execution_mode": "serial",
    "status": "done",
    "base_sha": "b1a3d6dd8",
-   "head_sha": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+   "head_sha": "17a77e8d32ab1bf6bb14a258feee61c98bb8b3de",
    "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/passb/b0-evidence.md",
@@ -461,13 +461,19 @@
     "OCR 误报裁定（2026-09-23 第 3 轮 R1，rejected 2 条点名，依据经管家在 passb-b0@97d8d2632 核验可查）：(1) ocr-r1-07『check.go:172-176 alias 回填恒不可达死代码』不成立——fixtureDiscovery()（ownership_test.go:17-46）构造 Discovery 填 Aliases 不填 Manifests，TestOwnershipHappyPathProducesNoDiagnostics（ownership_test.go:87-90）零诊断通过恰依赖该回填（删之则 aliasModule 空、g.Aliases 行 !declared 即 emit）；go test ./tools/passbguard ./tools/modulemove -count=1 复跑全绿。仅『DiscoverPassB 生产路径不经过该分支』（discover.go:89 同源填充）为真，降级为注释澄清项、非删除项。(2) ocr-r1-16『check.go:166-171 alias 跨 manifest 双声明 last-wins 为唯一检出点』不成立——modulemove VerifyManifest alias-1to1 双向锁定（verify.go:108-132：alias↔move_packages.from 双向强制）+ VerifyAll 跨 manifest 重复 from 报 ownership-overlap（verify.go:354-359），经 make verify-module-moves（Makefile:250-251）在 CI 执行，跨 manifest 双声明同一 old_import_path 必然触发其一；passbguard 内 last-wins 仅纵深防御缺口。本轮 confirmed=14 维持修复义务（16 findings − 2 误报）。",
     "OCR R3-a2 f1 处理结论（2026-09-23 登记为修复工单——passb-b0 HEAD 76a5a44f4 尚无对应修复提交，管家实读 check.go:687-691 确认 problem 属实）：ocr-r3-a2-f1（tools/passbguard/check.go:688-690，maintainability low）——event-producer-missing 诊断把文件不在发现树上的原因硬编码为『(dot-prefixed and testdata directories are pruned)』，但 !goFileSet[file] 分支同样命中 producer 文件被删除/移动的场景（goFileSet 由 d.GoFiles 构建，删除文件同样不在树上），此时输出剪枝提示误导排障。验收标准（acceptance，调度指令文本于此截断、以调度方原文为准）：改为中性表述（如『producer file %s is not in the discovered Go tree (only repository Go files count; dot-prefixed and testdata directories are pruned)』），或仅在文件磁盘存在（os.Stat 成功）但不在树上时附加剪枝提示；新增/扩展测试覆盖 producer 文件被删除场景并断言诊断不归因剪枝；现有 TestCheckEventsProducerOutsideGoTreeRejected（events_test.go:697）保持通过。",
     "OCR R3-1 处理结论（2026-09-23 登记为修复工单——passb-b0 HEAD 971435df3 尚无对应修复提交，管家实读四处坐标确认 problem 属实）：b0-ocr-r3-1（tools/passbguard/check.go:510-518，low）——set 契约 recorded consumer 比对存在归一化不对称：discovered 侧经 setSiteCollector.add（check.go:854-868）做 filepath.Clean/ToSlash 归一化并对照 goFileSet 磁盘验证，而 row.Consumers 加载时仅由 normalizeRepoPath（load.go:108-113）剥前导 './'，checkRepoPath（model.go:196-214）不拒绝中间点段（调度指令 problem 文本于此截断、以调度方原文为准）。验收标准（acceptance，指令文本于『characterization tests c』处截断）：任选其一并满足全部——(a) 加载层把 normalizeRepoPath 改为 slash-Clean 基归一化（一次性覆盖 contracts consumers/characterization_tests、event consumers、ownership/exception 路径等全部位点）；或 (b) 在 check.go:510-522 及同构位点（symbol consumers check.go:624-632、characterization tests c…）比对侧补归一化（截断后内容以调度方原文为准）。管家实读核验（passb-b0@971435df3）：check.go:510-521 row.Consumers 直查 goFileSet/containsExact 未归一化、setSiteCollector.add 已归一化、normalizeRepoPath 仅剥前导 ./、checkRepoPath 拒空串/通配符/绝对路径/../遍历/反斜杠/尾分隔符但不拒 a/./b.go 与 a//b.go——problem 属实。",
-    "Ruling(2026-09-23 用户裁定)：OCR 改为每个任务完成后即审；b0 六任务的全量 diff 已由 06:13-18:09 多轮节点级 OCR 覆盖（台账在案），免全量终审；收口=tail OCR 从 1a5257003 增量审（覆盖 r3 轮 1 个待修 finding 所在范围与在途修复）。"
+    "Ruling(2026-09-23 用户裁定)：OCR 改为每个任务完成后即审；b0 六任务的全量 diff 已由 06:13-18:09 多轮节点级 OCR 覆盖（台账在案），免全量终审；收口=tail OCR 从 1a5257003 增量审（覆盖 r3 轮 1 个待修 finding 所在范围与在途修复）。",
+    "OCR done 后复扫（2026-09-24 00:57 生成，13 selected items 全量复扫，调度口径 confirmed=2 / rejected=0）：(1) tools/passbguard/check.go:1018-1023 [bug·medium] fileReferencesIdent 对 parseFileFull 解析错误静默返回 false，与本包另两调用点（discover.go DiscoverSymbolConsumers 内两处）上抛口径不一致——worker-set 回退扫描（check.go:966 唯一消费点）遇 internal/router/ 注册文件全量 AST 解析失败（ImportsOnly 可过而全量不可过）时该文件从 discovered 集静默消失、已登记 consumers 批量误报 contract-consumer-vanished（解析错误伪装成治理漂移）；建议改返回 (bool, error)、由 discoverSetConsumers 转显式 setSiteIssue 诊断（如 contract-set-scan-failed）。(2) tools/passbguard/model.go:395-402 [bug·medium] tenant-scoped 事件级联校验缺 actor_origin——event-catalog.yaml 头注释（第 9 行）冻结约束『每条 tenant-scoped 事件强制 tenant_id/occurred_at/event_id/idempotency_key/actor_origin』、现有 30 条事件数据均含 actor_origin，但级联清单仅 occurred_at/event_id，未来新增/修订 tenant 事件漏登 actor_origin 时结构校验与 CheckEvents 均不拦截（fail-silent）；建议把 actor_origin 纳入同一级联清单。两条均落 tools/passbguard/**（b0 owned_files 范围）。处置：b0 已 done（head_sha=d57a2fa70 已回填、已合入 integration，见台账 18:47/18:53/18:56 条目；note 12 用户裁定曾『免全量终审』）——本复扫产出实质 finding，review_status approved → changes_requested（沿 10:49 先例）；status 保持 done 未动（状态机无 done 回退路径、本指令未授权），修复分支落点与节点重开方式待协调者裁定。报告附 LLM retry 摘要：29 请求中 1 次超时失败（Core review 首请求）。",
+    "OCR R2 low findings 处理结论（2026-09-24 登记为修复工单——passb-b0 HEAD 17a77e8d3 尚无对应修复提交，管家实读 check.go:966-979/510-523 与 discover.go:291-306 确认两条 problem 属实）：(1) b0-ocr-r2-1（tools/passbguard/check.go:973-978，low，真实问题·非阻塞·诊断精度）——回退扫描中 fileReferencesIdent 出错时该文件 f 仅产 contract-set-scan-failed 并被排除出 discovered 集（break 跳过 addVerified），但 check.go:510-523 仍对 row.Consumers 做 vanished 断言：f∈d.GoFiles 磁盘存在、又不在 discovered 中，若 f 为 recorded consumer 即同屏假 contract-consumer-vanished。验收标准（acceptance，调度指令文本于『若 』处截断、以调度方原文为准）：discoverSetConsumers 返回契约（或 setSiteIssue）携带 scan-failed 文件集，CheckContracts 对这些文件跳过 check.go:510-523 的 vanished 断言但保留 contract-set-scan-failed 诊断；新增 fixture 测试覆盖『scan-failed 文件同时是 recorded consumer 时产出 scan-failed 且不产出 contract-consumer-vani[shed]』（截断处按报告原文补全）。(2) b0-ocr-r2-2（同位点，low，真实问题·非阻塞·诊断噪音，机制成立但量级有误需修正）——机制确认：check.go:460（manifest 循环）/check.go:500（每个恰一行 set 契约各调一次 discoverSetConsumers）逐行重复执行回退扫描；parseFileFull（discover.go:291-306）仅成功解析入 astCache（line 304 在错误 return 之后），错误不缓存、逐行重复 parse——grep 确认 astCache 无其他写入点。验收标准（acceptance，调度指令文本于『修正一』处截断、以调度方原文为准）：scan-failed 按文件去重：同一破损文件跨多条 worker-set 行只产出一条诊断（Discovery 层按 (kind,file) 共享扫描结果，或首个遇到行 emit 后记录已报文件）；消除 \"cannot parse X: parse X:\" 措辞冗余（fileReferencesIdent 上抛去前缀错误或消息改用内部错误）；新增 fixture 测试断言多行共享单破损文件时 scan-failed 恰一条；go test ./tools/passbgua[rd ...]（截断处按惯例补全为 passbguard 全量测试）。"
    ],
    "ocr_tail_base": "1a5257003d08f14ce7a8d7367801ab80aba0b616",
    "ocr_covered": [
     {
      "base": "1a5257003d08f14ce7a8d7367801ab80aba0b616",
      "head": "971435df33b52fe360e39d610924a17dfc3d7b5b"
+    },
+    {
+     "base": "acd7b24011b57704d401c63f4d2fce1819e057fc",
+     "head": "17a77e8d32ab1bf6bb14a258feee61c98bb8b3de"
     }
    ]
   },
@@ -761,10 +767,16 @@
     "b1 各节点跨 owner 未导出耦合的导出/shim 落地记录"
    ],
    "execution_mode": "serial",
-   "status": "in_progress",
+   "status": "done",
    "base_sha": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
-   "head_sha": null,
-   "review_status": "pending",
+   "head_sha": "8c45a88153d0b20088252dbb29d2fb3815b253c2",
+   "ocr_covered": [
+    {
+     "base": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+     "head": "8c45a88153d0b20088252dbb29d2fb3815b253c2"
+    }
+   ],
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/ib1.md",
     "docs/architecture/passb/briefs/ib1.md"
@@ -800,7 +812,10 @@
      "golangci-lint run --new-from-rev=\"$PASSB_BASE_SHA\" ./..."
     ]
    ],
-   "notes": "F2 裁定落地处：今日 16 份 module.go 均为零逻辑注释骨架（本会话读 internal/modules/conversation/module.go 验证：仅注释声明 NewModule/RegisterRoutes/RegisterWorkers/Start/Stop，无实现无导入），门面在 IB1 前一律 planned；IB1 一次一支、审后合并（framework:28,101-105）。计数奇偶 633/23+23/58/537 按三方一致校验（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"
+   "notes": [
+    "F2 裁定落地处：今日 16 份 module.go 均为零逻辑注释骨架（本会话读 internal/modules/conversation/module.go 验证：仅注释声明 NewModule/RegisterRoutes/RegisterWorkers/Start/Stop，无实现无导入），门面在 IB1 前一律 planned；IB1 一次一支、审后合并（framework:28,101-105）。计数奇偶 633/23+23/58/537 按三方一致校验（F5）。 BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。",
+    "ib1 flake 判定（2026-09-23，调度指令口径）：判定 pass（在册 flake 类，非真实回归）。证据：(1) 重跑了屏障全测组原命令规模：go test ./internal/modules/... -count=1 -timeout=25m（repo 根，main@539406569）→ EXIT=0，93 包 ok / 0 FAIL；两个在册 unstable 包本轮均通过（agentruntime/agent/opencode ok 34.763s、agentruntime/agent/recoverytest ok 52.006s）。(2) 重跑 stderr 仅两条 ld: warning: ignoring dupli…（调度指令文本于此截断，完整原文以调度方为准）。管家留痕：证据所载重跑位于 main@539406569（repo 根），非 passb-int worktree（ib1 base=d57a2fa70）——重跑环境与屏障分支的差异如实登记；判定 pass 不改变节点 status（in_progress 维持，门禁流程继续）。"
+   ]
   },
   {
    "id": "b2-k0",
@@ -826,16 +841,37 @@
     "K1-K3 共享类型/端口分配表（K1-K3 并行的前提，framework:129）"
    ],
    "execution_mode": "serial",
-   "status": "pending",
-   "base_sha": null,
+   "status": "in_progress",
+   "base_sha": "8c45a88153d0b20088252dbb29d2fb3815b253c2",
    "head_sha": null,
+   "ocr_covered": [
+    {
+     "base": "59b13c61a727038aa9acc019967434d66da6bb14",
+     "head": "614409798fbdb05805504e7733154ec3a1ade960"
+    }
+   ],
    "review_status": "pending",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-k0.md",
     "docs/plans/passb/reports/b2-k0.md"
    ],
    "role": "work",
-   "task_ids": [],
+   "task_ids": [
+    "K0.1",
+    "K0.2",
+    "K0.3",
+    "K5.1",
+    "K5.2",
+    "K5.3"
+   ],
+   "task_status": {
+    "K0.1": "done",
+    "K0.2": "done",
+    "K0.3": "pending",
+    "K5.1": "pending",
+    "K5.2": "pending",
+    "K5.3": "pending"
+   },
    "gates": [
     [
      "sh",
@@ -1166,9 +1202,15 @@
     "docs/architecture/evidence/passb/b2-ac-definition.md"
    ],
    "execution_mode": "parallel",
-   "status": "pending",
-   "base_sha": null,
+   "status": "in_progress",
+   "base_sha": "8c45a88153d0b20088252dbb29d2fb3815b253c2",
    "head_sha": null,
+   "ocr_covered": [
+    {
+     "base": "02e7be617c041bbf796b7f0acff0a4fbb6402a38",
+     "head": "9f330903b0cb3025e98ec68f196a5b34e1b512e1"
+    }
+   ],
    "review_status": "pending",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-ac-definition.md",
@@ -1176,7 +1218,20 @@
     "docs/plans/passb/reviews/b2-ac-definition.md"
    ],
    "role": "work",
-   "task_ids": [],
+   "task_ids": [
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5"
+   ],
+   "task_status": {
+    "T1": "done",
+    "T2": "pending",
+    "T3": "pending",
+    "T4": "pending",
+    "T5": "pending"
+   },
    "gates": [
     [
      "sh",
@@ -1222,9 +1277,15 @@
     "docs/architecture/evidence/passb/b2-ac-skills.md"
    ],
    "execution_mode": "parallel",
-   "status": "pending",
-   "base_sha": null,
+   "status": "in_progress",
+   "base_sha": "8c45a88153d0b20088252dbb29d2fb3815b253c2",
    "head_sha": null,
+   "ocr_covered": [
+    {
+     "base": "8592f2aacbe49e43583bf433e045b98cefd44c6f",
+     "head": "406ed1c6a97403be2a71690cd966f558b9848b92"
+    }
+   ],
    "review_status": "pending",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-ac-skills.md",
@@ -1232,7 +1293,20 @@
     "docs/plans/passb/reviews/b2-ac-skills.md"
    ],
    "role": "work",
-   "task_ids": [],
+   "task_ids": [
+    "25b.1",
+    "25b.2",
+    "25b.3",
+    "25b.4",
+    "25b.5"
+   ],
+   "task_status": {
+    "25b.1": "done",
+    "25b.2": "pending",
+    "25b.3": "pending",
+    "25b.4": "pending",
+    "25b.5": "pending"
+   },
    "gates": [
     [
      "sh",
@@ -1390,9 +1464,15 @@
     "docs/architecture/evidence/passb/b2-appconnector.md"
    ],
    "execution_mode": "parallel",
-   "status": "pending",
-   "base_sha": null,
+   "status": "in_progress",
+   "base_sha": "8c45a88153d0b20088252dbb29d2fb3815b253c2",
    "head_sha": null,
+   "ocr_covered": [
+    {
+     "base": "ced88ecb17ed560a02a15464500a4b2fa8e2d508",
+     "head": "67ac22c964cecfc810578f1ee8d1289b78e7e083"
+    }
+   ],
    "review_status": "pending",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b2-appconnector.md",
@@ -1400,7 +1480,18 @@
     "docs/plans/passb/reviews/b2-appconnector.md"
    ],
    "role": "work",
-   "task_ids": [],
+   "task_ids": [
+    "B2-AC.1",
+    "B2-AC.2",
+    "B2-AC.3",
+    "B2-AC.4"
+   ],
+   "task_status": {
+    "B2-AC.1": "done",
+    "B2-AC.2": "pending",
+    "B2-AC.3": "pending",
+    "B2-AC.4": "pending"
+   },
    "gates": [
     [
      "sh",

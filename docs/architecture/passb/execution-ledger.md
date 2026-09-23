@@ -1182,6 +1182,646 @@
 - **Mimosa**：本会话 commit 钩子报 `scanner_enobufs`（未获完整扫描结论，按钩子兼容策略继续，不宣称项目安全审计通过）
 - **调度方后续事项**：(1) 裁定 ib1 收口口径（当前现实下"逐支合并+门禁"已完成、装配类产出悬置）——若确认"计划集成即本屏障本轮完成"，请显式指令 ib1 状态迁移口径；(2) `11-airesource.md` 入库指令（20:07 条目待办）；(3) B1 四支实施派发（含 airesource 33 文件搬迁与 exc-0057/exc-0087 消除）；(4) 32 节点 BLOCKED 残留文本批量清理（18:56 条目待办）
 
+---
+
+## 2026-09-23 21:07 CST · ib1 flake 判定登记：判定 pass（在册 flake 类，非真实回归）＋ ib1.notes 单字符损坏发现与修复
+
+- **节点**：ib1 —— IB1 基础能力集成 barrier（status=in_progress 维持，20:23 派发 / 20:47 屏障执行在案）
+- **判定登记（调度指令口径）**：**判定 pass（在册 flake 类，非真实回归）**。证据（指令转录，第 (2) 条于 stderr 处截断）：(1) 重跑了屏障全测组原命令规模：`go test ./internal/modules/... -count=1 -timeout=25m`（repo 根，main@539406569）→ **EXIT=0，93 包 ok / 0 FAIL**；两个在册 unstable 包本轮均通过（agentruntime/agent/opencode ok 34.763s、agentruntime/agent/recoverytest ok 52.006s）；(2) 重跑 stderr 仅两条 `ld: warning: ignoring dupli…`（**调度指令文本于此截断，完整原文以调度方为准**）
+- **管家留痕（重跑环境差异）**：证据所载重跑位于 **main@539406569（repo 根）**，非 passb-int worktree（ib1 base=`d57a2fa70`）——重跑环境与屏障分支的差异如实登记；且该命令为 `./internal/modules/...` 规模，非 ib1 gates 全量 `./internal/...`（20:47 条目 :1181 未跑项），判定 pass 的覆盖范围以指令口径为准
+- **判定效力**：pass 不改变节点状态——`status=in_progress`、`review_status=pending` 维持（门禁流程继续，done 迁移仍待调度方显式指令）
+- **⚠ ib1.notes 单字符损坏发现与修复（本会话处理，非本指令直接要求，如实登记）**：本会话准备向 ib1.notes 追加判定时实测 notes 数组 **292 条全部为单字符**——HEAD 提交中 ib1.`notes` 原为**字符串**（"F2 裁定落地处：……BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。"，292 字符），某次他方未提交编辑疑按字符迭代将其拆散为 292 条单字符数组（**数据损坏，非本管家所为**）。修复：`''.join` 机械拼回——还原文本以"F2 裁定落地处"起、"后恢复。"止、恰 292 字符，与 HEAD 提交中的字符串原文一致（逐字符无损）；随后升级为**数组结构** `[原note(292字符), flake判定条目]`（追加条目所需，沿 b0 notes 数组先例；string→array 的 schema 变更系追加动作副作用，在此留痕）。**建议调度方核查该编辑来源，防止同类脚本缺陷再次损坏其他节点 notes**
+- **本次 JSON 变更**（python 原子更新，Edit 后 `json.load` 复验合法、断言全过）：ib1.`notes` 由 292×单字符数组（损坏态）→ **2 条数组**（[还原原note, flake 判定]）；`status=in_progress`、`review_status=pending`、base/head SHA、gates 等其余字段未动。33 节点分布不变（5 done + 1 in_progress + 27 pending）；`git diff HEAD -- DAG` 净变更 4+/1−（= notes string→array 展开 + flake 条目）
+- **worktree**：`.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`——20:47 条目集成工程师已提交 ib1 屏障执行记录）；`.worktrees/passb-b1-*` 各分支无新提交
+- **修复轮次**：0（flake 判定 pass，不构成修复轮）
+
+---
+
+## 2026-09-23 21:25 CST · ib1 登记 OCR 覆盖：ocr_covered 追加 [d57a2fa70 → 8c45a8815]（审得 0 findings）
+
+- **节点**：ib1 —— IB1 基础能力集成 barrier（status=in_progress 未变，20:23 派发）
+- **登记内容**：ib1 节点新增数组字段 `ocr_covered`（该节点此前无此字段），追加首条 `{base: "d57a2fa708c3fecf5f0510553ea26db3de51d3c9", head: "8c45a88153d0b20088252dbb29d2fb3815b253c2"}`（全 40 位 SHA，调度指令口径：**审得 0 findings**）
+- **SHA 真实性核验**（本会话 git 实测）：`git rev-parse` 双双命中——base `d57a2fa70`（= 节点已回填 base_sha，屏障派发基准）与 head `8c45a8815`（20:49:05，ib1 屏障执行登记提交，**integration 当前 HEAD**）；区间 `d57a2fa70..8c45a8815` 含**恰 7 个提交**：`7b701512a`（固化调度台账）→ `1900e038a`（B1-ID 第 1/4 支合并）→ `f66dfb188`（B1-CM 3/4）→ `ca38afb7e`（B1-EX 4/4；B1-AI 为 no-op 无提交）→ 三个计划文档提交（8db61f8ae/4e481a63b/0044f54fc 随分支带入）→ `8c45a8815`（屏障执行登记）——**即 20:47 条目所载 ib1 屏障执行的全部集成工作**
+- **字段语义（沿 b0/b1 先例）**：ocr_covered 记录已审查覆盖的已提交 SHA 区间；base = 屏障派发基准、head = integration 当前头——ib1 截至 8c45a8815 的全部提交（含四支合并）均在审查覆盖范围内（审得 0 findings）；此后新提交落地须追加条目
+- **与 b1 节点登记的结构差异留痕**：ib1 的 ocr_covered 区间（base→integration HEAD）横跨**四个 B1 分支的合并提交**——各 B1 分支自身区间的覆盖登记已由各自 ocr_covered 承载（identity/execution/commercial 各 1 条、airesource 无登记），本条不重复承载分支内容，仅覆盖 integration 侧屏障工作
+- **节点级状态未迁移**：`status=in_progress`、`review_status=pending`、`head_sha=null` 维持——barrier done / head_sha 回填仍待调度方显式指令（本指令仅授权 ocr_covered 登记 + 台账留痕）
+- **修复轮次**：0（审得 0 findings，不构成修复轮）
+- **base/head SHA（节点级）**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`；工作树含本会话与 21:07 条目的未提交修改——DAG flake 判定/notes 修复 + ocr_covered + 台账各条目）；`.worktrees/passb-b1-*` 各分支无新提交
+- **本次 JSON 变更**：ib1 节点 `head_sha` 行后新增 `ocr_covered` 数组（7 行）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/base/head_sha/notes 2 条均未动）。33 节点分布不变（5 done + 1 in_progress + 27 pending）
+
+---
+
+## 2026-09-23 21:27 CST · ib1 OCR 第 1 次：confirmed=0 / rejected=0（完成态，0 findings——与 ocr_covered 登记口径一致）
+
+- **节点/轮次**：ib1 节点级架构审查 OCR 第 1 次（调度口径；20:23 派发后首轮）
+- **计划路径**：`docs/plans/passb/19-foundation-integration.md`
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/ib1/ocr-r1.txt`（本会话已读全文：**57 字节、mtime 21:25、1 行——"Review complete: 0 finding(s) across 1 selected item(s)."**；同目录 `ocr-context.md` 8,541 字节、mtime 21:22 在案）
+- **结论计数**：confirmed=0 / rejected=0（调度口径；与报告一致——**完成态**而非 skipped 态，区别于 B1 各节点首轮；报告为正常审查完成且零发现，非"未选中项跳过"）
+- **报告性质**：完成态 0 findings 与 21:25 条目 ocr_covered 登记 [d57a2fa70 → 8c45a8815]（审得 0 findings）口径闭环——覆盖区间（屏障派发基准至 integration 当前头，含四支合并与屏障登记提交）已审且零发现
+- **审查结论**：confirmed=0 → 不触发 changes_requested；`review_status=pending` 维持（未获 approved 指令；barrier 收口沿 conventions §9 属调度方指令权限）
+- **修复轮次**：0（0 findings，不构成修复轮）
+- **base/head SHA**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`——21:25 后无新提交）；21:07/21:25 两会话的未提交修改（DAG flake 判定/notes 修复/ocr_covered + 台账各条目）仍在工作树
+- **本次 JSON 变更**：**无字节级改动**——confirmed=0 时 `review_status` 目标值 `pending` 已在位；`status=in_progress`、base/head SHA、ocr_covered（1 条）、notes（2 条）均未动。JSON 合法性本会话 `python3 json.load` 复验通过
+- **备注**：(1) `ocr-context.md` 8,541 字节在案（未逐字审读）；(2) **首个完成态 OCR 零发现记录**：此前 B1 三节点 skipped/ib1 前无完成态报告，本条系 Pass B 首个 "Review complete" 且 0 findings 的节点级审查——ib1 覆盖区间内容（四支计划文档合并 + 屏障登记 docs）零发现与其纯 docs 性质相容；(3) ib1 收口（done/head_sha/装配切换补齐义务）仍待调度方口径（20:47 条目后续事项 1）
+
+---
+
+## 2026-09-23 21:28 CST · ib1 OCR 覆盖登记（区间已在 21:25 登记，不重复追加；口径补强为"0 条需修 findings"）
+
+- **节点**：ib1 —— IB1 基础能力集成 barrier（status=in_progress 未变）
+- **指令**：登记 ocr_covered 追加 `{base: "d57a2fa708c3fecf5f0510553ea26db3de51d3c9", head: "8c45a88153d0b20088252dbb29d2fb3815b253c2"}`（**审得 0 条需修 findings**；全 40 位 SHA）
+- **重复识别**：本会话 `python3 json.load` 实测——ib1.`ocr_covered` 已含**完全相同的条目**（base/head 与指令逐字符一致，21:25 条目所登记，当时调度口径"审得 0 findings"）。integration `8c45a8815..HEAD` 零新提交——区间自 21:25 登记后无演进（沿 b1-identity 20:10 / b1-execution 20:13 / b1-commercial 20:19 条目同型先例）
+- **JSON 处置**：**无字节级改动、不重复追加**——ocr_covered 数组语义为"已覆盖审查区间列表"，同区间双条目冗余且破坏数组区间语义。本会话 `python3 json.load` 复验合法（ocr_covered 仍 1 条；status=in_progress、review_status=pending、base/head_sha、notes 2 条均未动）
+- **口径关系留痕**：本次指令口径"0 条需修 findings"与 21:25 的"审得 0 findings"、21:27 条目完成态 OCR 报告（0 findings/1 selected item）三者一致——同一区间审查结论的三次确认，无矛盾
+- **审查结论**：`review_status=pending` 维持（本指令仅授权覆盖登记，未含 approved/done 迁移）
+- **修复轮次**：0（0 条需修 findings，不构成修复轮）
+- **base/head SHA（节点级）**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`，零新提交）
+- **后续**：integration 8c45a8815 之后的提交落地后，须以**新条目**追加 ocr_covered
+
+---
+
+## 2026-09-23 21:29 CST · ib1 → done（集成 HEAD 8c45a88 回填，全量回归+OCR 通过）——首个 barrier 收口
+
+- **节点**：ib1 —— IB1 基础能力集成 barrier（B1-ID→B1-AI→B1-CM→B1-EX 逐支合并）——**DAG 第六个 done 节点、首个 barrier 收口**
+- **计划路径**：`docs/plans/passb/19-foundation-integration.md`
+- **前置**：b1-identity/b1-airesource/b1-commercial/b1-execution（四节点 done，20:07–20:22 各条目）
+- **worktree**：`.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`——屏障工作即发生在 integration 分支，**head=集成 HEAD 与分支合一，无"分支头 vs 合并头"覆盖问题**，区别于 b0/b1 各节点）
+- **base → head**：`d57a2fa708c3fecf5f0510553ea26db3de51d3c9` → **`8c45a88153d0b20088252dbb29d2fb3815b253c2`**（指令短 SHA `8c45a88` 本会话 `git rev-parse` 解析为完整 40 位；即 integration 当前 HEAD；区间 7 提交构成见 21:25 条目）
+- **全量回归+OCR 通过**：调度指令口径（本管家未重跑，沿 b0 18:47 先例）。审查链条在案完整闭环：ocr_covered [d57a2fa70 → 8c45a8815] 登记（21:25）→ 完成态 OCR 0 findings（21:27，Pass B 首个完成态零发现）→ flake 判定 pass（21:07，重跑 93 包 ok / 0 FAIL）→ 本条 done
+- **审查结论**：approved（指令口径 → `review_status` pending → **approved**，推断迁移沿先例，在此留痕）
+- **修复轮次**：0（flake 判定 pass、OCR 0 findings，均不构成修复轮）
+- **留痕 1（20:47 条目上报事项的收口口径）**：20:47 屏障执行条目上报"装配切换等核心产出因 B1 零实施缺位"（router/container 装配、contracts.yaml 四门面 current 化、exception 删行、差分套件、全量 25m 测试+变更域 lint 的部分项）——本次调度方以"全量回归+OCR 通过"口径置 done，即**接受"计划集成即本屏障本轮完成"**（20:47 后续事项 1 的裁定落地）；缺位的实施类产出义务转移至 19 号计划 §4"待 B1 实施落地后的收尾动作"，由后续屏障动作或 B1 补齐轮承担，本条如实登记该义务转移
+- **留痕 2（task/装配悬置清单移交后续）**：(1) B1 四支实施派发（含 airesource 33 文件搬迁）；(2) `11-airesource.md` 入库；(3) exc-0057/exc-0087 删行（remove_at: ib1 条件未满足，顺延）；(4) contracts.yaml 四门面 current 化；(5) 32 节点 BLOCKED 残留文本批量清理
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 3 行）：(1) `status` in_progress → **done**；(2) `head_sha` null → **8c45a88153d0b20088252dbb29d2fb3815b253c2**；(3) `review_status` pending → **approved**。`base_sha`、ocr_covered（1 条）、notes（2 条）均未动。33 节点分布：**6 done（b0 + B1 四节点 + ib1）+ 27 pending；in_progress 归零**
+- **下游解锁**：ib1 done 后 B2 阶段入口节点解锁——b2-k0（K0 知识端口冻结，20-knowledge-program SERIAL 首）、b2-ac-definition（25a）、b2-ac-skills（25b）、b2-appconnector（27）四个 depends_on=[ib1] 节点可派发；base 取 `8c45a8815`（新集成头，沿 18:56 口径先例）
+
+---
+
+## 2026-09-23 21:32 CST · b2-k0 → in_progress（B2 阶段首节点派发）
+
+- **节点**：b2-k0 —— K0 Knowledge 端口/所有权冻结（20-knowledge-program 内 SERIAL 首）——**B2 阶段首节点**
+- **计划路径**：`docs/plans/passb/20-knowledge-program.md`
+- **前置**：ib1（done ✓，21:29 条目——首个 barrier 收口）
+- **worktree**：指令未附实施 worktree；本会话 `ls .worktrees/` 核验 **`passb-b2-k0` 尚不存在**（沿 b0 模式，建立后请以新条目补记）；另留痕：**B1 三 worktree 已清理**（`passb-b1-identity/-commercial/-execution` 不复存在，仅剩 passb-b0/passb-b1-airesource/passb-int——B1 分支已合并后的清理动作，非本管家所为）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **base SHA**：**`8c45a88153d0b20088252dbb29d2fb3815b253c2`**（派发时回填，conventions §9；沿 18:56 口径先例——ib1 done 后新集成头即下游派发基准）；**head SHA**：null（未回填——节点分支评审通过时回填）
+- **测试证据路径（计划）**：`docs/architecture/evidence/passb/b2-k0.md`、`docs/plans/passb/reports/b2-k0.md`（均尚未产出）
+- **审查结论**：pending（review_status 未请求）
+- **OCR 报告路径**：无（尚未进入审查轮）
+- **修复轮次**：0
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 2 行）：(1) b2-k0 `status` pending → **in_progress**；(2) `base_sha` null → **8c45a88153d0b20088252dbb29d2fb3815b253c2**。`head_sha=null`、`review_status=pending`、其余节点均未动。33 节点分布：**6 done + 1 in_progress（b2-k0）+ 26 pending**
+- **备注**：(1) 指令原文 "b2-k0 → running"，沿先例映射为 `in_progress`；(2) 节点定位：K0 为 20-knowledge-program SERIAL 首，K1–K3 并行以其共享类型/端口分配为前提（framework:129）；(3) 节点 notes 既有义务对实施者有效：K0 冻结产物写入 20 计划分配表与共享类型代码、contracts.yaml 对 K0 只读（状态回写归 ib2，审校 F8）；(4) notes 内 BLOCKED 残留文本待批量清理
+
+---
+
+## 2026-09-23 21:34 CST · b2-ac-definition → in_progress（B2 第二节点派发，与 b2-k0 并行）
+
+- **节点**：b2-ac-definition —— 25a Agent 定义/版本/人格/专家/子代理/收藏
+- **计划路径**：`docs/plans/passb/25a-agent-definition-version.md`
+- **前置**：ib1（done ✓，21:29 条目）
+- **worktree**：指令未附实施 worktree；本会话核验 **`passb-b2-ac-definition` 尚不存在**（沿 b0 模式，建立后请以新条目补记）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **base SHA**：**`8c45a88153d0b20088252dbb29d2fb3815b253c2`**（派发时回填，conventions §9；沿 21:32 b2-k0 同口径——ib1 后新集成头）；**head SHA**：null（未回填——节点分支评审通过时回填）
+- **测试证据路径（计划）**：`docs/architecture/evidence/passb/b2-ac-definition.md`、`docs/plans/passb/reports/b2-ac-definition.md`、`docs/plans/passb/reviews/b2-ac-definition.md`（均尚未产出）
+- **审查结论**：pending（review_status 未请求）
+- **OCR 报告路径**：无（尚未进入审查轮）
+- **修复轮次**：0
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 2 行）：(1) b2-ac-definition `status` pending → **in_progress**；(2) `base_sha` null → **8c45a88153d0b20088252dbb29d2fb3815b253c2**。`head_sha=null`、`review_status=pending`、其余节点均未动。33 节点分布：**6 done + 2 in_progress（b2-k0/b2-ac-definition）+ 25 pending**
+- **备注**：(1) 指令原文 "b2-ac-definition → running"，沿先例映射为 `in_progress`；(2) 与 b2-k0 并行合法（depends_on 均为 [ib1]，b2-ac-definition 不依赖 b2-k0——agentcatalog 面与 knowledge 面独立）；(3) 节点 notes 既有义务对实施者有效：agentcatalog↔conversation 7 符号 10 调用点互耦断链处置、agentRequiresRerankModel/skillsForRun 导出义务、与 25b 并行前提为共享 immutable-version 契约冻结（framework:139）；(4) notes 内 BLOCKED 残留文本待批量清理
+
+---
+
+## 2026-09-23 21:36 CST · b2-ac-skills → in_progress（B2 第三节点派发）
+
+- **节点**：b2-ac-skills —— 25b Skill 目录/安装/运行时验证/reaper
+- **计划路径**：`docs/plans/passb/25b-skill-catalog-install.md`
+- **前置**：ib1（done ✓，21:29 条目）
+- **worktree**：指令未附实施 worktree；本会话核验 **`passb-b2-ac-skills` 尚不存在**（沿 b0 模式，建立后请以新条目补记）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **base SHA**：**`8c45a88153d0b20088252dbb29d2fb3815b253c2`**（派发时回填，conventions §9；与 b2-k0/b2-ac-definition 同口径——ib1 后新集成头）；**head SHA**：null（未回填——节点分支评审通过时回填）
+- **测试证据路径（计划）**：`docs/architecture/evidence/passb/b2-ac-skills.md`、`docs/plans/passb/reports/b2-ac-skills.md`、`docs/plans/passb/reviews/b2-ac-skills.md`（均尚未产出）
+- **审查结论**：pending（review_status 未请求）
+- **OCR 报告路径**：无（尚未进入审查轮）
+- **修复轮次**：0
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 2 行）：(1) b2-ac-skills `status` pending → **in_progress**；(2) `base_sha` null → **8c45a88153d0b20088252dbb29d2fb3815b253c2**。`head_sha=null`、`review_status=pending`、其余节点均未动。33 节点分布：**6 done + 3 in_progress（b2-k0/b2-ac-definition/b2-ac-skills）+ 24 pending**
+- **备注**：(1) 指令原文 "b2-ac-skills → running"，沿先例映射为 `in_progress`；(2) 三节点并行合法（depends_on 均为 [ib1]，execution_mode=parallel）；(3) 节点 notes 既有义务对实施者有效：tenant_skill_reaper.go 若归本面则 b1-execution 遗留的 4 条 execution→agentcatalog 断链（matchSnapshotByName 等 4 符号）在此导出化收口、与 25a 共享 immutable-version 契约同时冻结（framework:139）；(4) notes 内 BLOCKED 残留文本待批量清理
+
+---
+
+## 2026-09-23 21:37 CST · b2-appconnector → in_progress（B2 第四节点派发，depends_on=[ib1] 四节点全部在途）
+
+- **节点**：b2-appconnector —— 27 App Connector（7 legacy handlers：install/OAuth/action/sync 路由 + 别名删除）
+- **计划路径**：`docs/plans/passb/27-appconnector.md`
+- **前置**：ib1（done ✓，21:29 条目）
+- **worktree**：指令未附实施 worktree；本会话核验 **`passb-b2-appconnector` 尚不存在**（沿 b0 模式，建立后请以新条目补记）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **base SHA**：**`8c45a88153d0b20088252dbb29d2fb3815b253c2`**（派发时回填，conventions §9；与 b2-k0/b2-ac-definition/b2-ac-skills 同口径）；**head SHA**：null（未回填——节点分支评审通过时回填）
+- **测试证据路径（计划）**：`docs/architecture/evidence/passb/b2-appconnector.md`、`docs/plans/passb/reports/b2-appconnector.md`、`docs/plans/passb/reviews/b2-appconnector.md`（均尚未产出）
+- **审查结论**：pending（review_status 未请求）
+- **OCR 报告路径**：无（尚未进入审查轮）
+- **修复轮次**：0
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 2 行）：(1) b2-appconnector `status` pending → **in_progress**；(2) `base_sha` null → **8c45a88153d0b20088252dbb29d2fb3815b253c2**。`head_sha=null`、`review_status=pending`、其余节点均未动。33 节点分布：**6 done + 4 in_progress（b2-k0/b2-ac-definition/b2-ac-skills/b2-appconnector）+ 23 pending**
+- **备注**：(1) 指令原文 "b2-appconnector → running"，沿先例映射为 `in_progress`；(2) **depends_on=[ib1] 的四个 B2 入口节点至此全部在途**；(3) 节点 notes 既有义务对实施者有效：Commercial 门面引用（appconnector→commercial 3-4 处）、AgentRuntime 引用裁定（2 处，若涉未导出符号须上报）、测试夹具随迁（commercial 7/agentruntime 2）、可与 Knowledge/AgentCatalog 并行（framework:146）；(4) notes 内 BLOCKED 残留文本待批量清理
+
+---
+
+## 2026-09-23 22:24 CST · b2-appconnector 计划完成审校通过（4 任务结构回填 DAG：B2-AC.1–B2-AC.4 全 pending）
+
+- **节点/事件**：b2-appconnector —— 计划文档 `docs/plans/passb/27-appconnector.md` 撰写完成并审校通过（调度指令口径，本管家未重跑审校）；**B2 四入口节点中首个完成计划撰写的节点**
+- **计划所在**：`.worktrees/passb-b2-appconnector`（分支 `codex/passb-b2-appconnector`，提交 **`ced88ecb1`** `docs(plan): passb b2-appconnector`（22:04:56）——`8c45a8815` 之后恰 1 提交、工作树干净，本会话 git log/status 核验）；**尚未合入 integration**（integration HEAD 仍 `8c45a8815`）
+- **计划结构核验**（本会话 grep/实读）：§5 任务分解恰 **4 任务**（T1–T4，双编号 B2-AC.1–B2-AC.4，与指令"任务 4 个"一致）——T1 特征化基线（installation/connection/sync/action 缺失测试补齐+基线冻结，仅测试文件零生产改动）、T2 handler 层搬迁（7+2 文件 git mv + ErrMissingTenantScope 本地副本 + 宿主过渡 shim）、T3 差分复跑比对 + 别名/例外核销证据（exc-0058..0061 现状+解除提案+IB2 期限裁决申请；exc-0028 零受影响声明）+ evidence 定稿、T4 Integration Brief + 实施报告 + 节点门禁收口；§6 高风险差分证据要求（Tenant/RBAC 面，conventions §6/framework:40）；§7 Integration Brief（含 5 条 alias 行已不存在核销登记）
+- **计划文件规模**：47,745 字节（mtime 22:03，本会话 ls 实测）
+- **任务结构回填依据**：沿 19:44 b1-commercial 先例（计划自陈 DAG task_ids 由协调者回填、conventions §9 写权限归调度管家）
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过）：b2-appconnector `task_ids` [] → **[B2-AC.1, B2-AC.2, B2-AC.3, B2-AC.4]**；新增 `task_status` 字段（4×**pending**，沿 b0/b1-commercial 先例的任务级字段语义）。`status=in_progress`、`base_sha=8c45a8815...`、`head_sha=null`、`review_status=pending` 及其余节点均未动（b2-k0/b2-ac-definition/b2-ac-skills 确认 task_ids 仍空、无 task_status——未被误改）；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-appconnector`（`codex/passb-b2-appconnector`，HEAD `ced88ecb1`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **测试证据路径**：尚无任务级产出（T1–T4 全部待执行）
+- **审查结论**：计划审校通过（调度指令口径）；节点级 review_status 仍 pending（任务执行+节点收口审查另计）
+- **OCR 报告路径**：无
+- **修复轮次**：0
+- **备注**：后续任务完成事件（B2-AC.1–B2-AC.4 逐个 done）按先例逐条登记；节点 done 待四任务全 done + 节点级审查 + 合并。**B2 各节点计划撰写进度对照**：b2-appconnector ✓（本条）/ b2-k0、b2-ac-definition、b2-ac-skills 未见计划提交
+
+---
+
+## 2026-09-23 22:58 CST · b2-appconnector / B2-AC.1 → done（SDD 审查通过，进入任务级 OCR）
+
+- **节点/任务**：b2-appconnector · B2-AC.1 —— T1 特征化基线（计划 `docs/plans/passb/27-appconnector.md` §5 T1；**B2 阶段首个完成的实施任务**）
+- **前置**：节点派发（21:37）+ 计划审校（22:24）
+- **worktree**：`.worktrees/passb-b2-appconnector`（`codex/passb-b2-appconnector`，本会话 git 核验）
+- **BASE → HEAD**：`ced88ecb1` → **`67ac22c96`**（1 commit：22:42:49 `test(passb): characterize app installation connection sync handlers before move`；`git show --stat` 实测恰 1 文件 +470 行——新增 `internal/handler/app_connector_lifecycle_test.go`（package handler，T2 随迁对象），纯测试零生产改动；BASE 与报告自陈一致）
+- **测试证据**（B2-AC.1-report.md §1 所载，本台账转录；全部实跑含退出码）：`go build ./...` 0；T1 计划 4 条命令 0（4 新用例族全 PASS：InstallationLifecycle/ConnectionCreateBranches/SyncStatusThreeStates/ActionPipelineUnwired；既有 20 顶层用例全 PASS；模块 5 包全 ok）；§6 基线补充 8 条全 0（含 `make check-backend-architecture` 633/23+23/58 基线一致、`make verify-module-moves` 16 manifests）；提交后复跑 4 条 T1 命令全过
+- **报告/审查证据路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-appconnector/B2-AC.1-report.md`（7,343 字节，本会话已读全文）；`B2-AC.1-review-pkg.md`（22,196 字节，在案）
+- **审查结论**：SDD 审查通过（调度指令裁定；本管家未重跑审查）→ **进入任务级 OCR**（指令原文；OCR 报告路径尚未产出，由后续条目回填）
+- **OCR 报告路径**：无（任务级 OCR 待运行）
+- **修复轮次**：0（SDD 一轮通过；OCR 轮次另计）
+- **报告遗留如实登记**：(1) evidence 草稿 `docs/architecture/evidence/passb/b2-appconnector.md` **untracked**（有意提交隔离 T1=test/T3=docs）——B2-AC.2/3 执行期间须保留，若被清理 T3 需按报告 §1 重建；(2) 既有用例计数：计划写 21、实测 20 顶层 + 1 用例内 4 子测试（未逐字对账，差分等价不受影响）；(3) sync 裸表 DDL 自建（计划 T1 步骤 1 预授权）；(4) 节点完整 gates 收口归 B2-AC.4
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过）：b2-appconnector.`task_status` **B2-AC.1 pending → done**（B2-AC.2/3/4 维持 pending）；节点级 `status=in_progress`、`review_status=pending`、`head_sha=null`（节点收口时回填）均未动；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **备注**：任务级 OCR 按 notes[11] ruling（b0 期用户裁定）"每任务完成后即审"口径运行；OCR 结果（confirmed/rejected 计数与报告路径）由后续指令登记
+
+---
+
+## 2026-09-23 22:58 CST · b2-k0 计划完成审校通过（6 任务结构回填 DAG：K0.1–K0.3 + K5.1–K5.3 全 pending）
+
+- **节点/事件**：b2-k0 —— 计划文档 `docs/plans/passb/20-knowledge-program.md` 撰写完成并审校通过（调度指令口径：任务 6 个；本管家未重跑审校）；**B2 知识程序计划（含 K5 交付物）就绪**
+- **计划所在**：`.worktrees/passb-b2-k0`（分支 `codex/passb-b2-k0`，**2 提交**——`5943921e9` 初稿 + `59b13c61a`（22:48:49）`docs(plan): passb b2-k0 审校修复（影子类型豁免/随迁归属纠偏/联动表全量枚举/坐标校准/F2 status 差异③）`；工作树干净，本会话 git log/status 核验）；**尚未合入 integration**（integration HEAD 仍 `8c45a8815`）
+- **计划结构核验**（本会话 grep/实读）：§8 任务分解共 **6 个 Task**（与指令"任务 6 个"一致）——**K0.1** 冻结分配表与联动裁定表（§5–§7：共享类型 Chunk/KnowledgeBase/Tag/semantic 分配表 + 跨 plan 未导出符号联动全表 + 契约/路由 11/worker 18/别名 18/例外 4 清单指针）、**K0.2** kbfreeze 守卫测试包（R0 与六 port 签名机器强制）、**K0.3** 前置差异上报、证据与报告、**K5.1** 装配切换 Integration Brief（b2-k-integration 交付物 1）、**K5.2** 别名/例外/shim 删除记录与收口核对、**K5.3** 差分汇总、门禁与节点收口；另 §9 K1–K4 子计划派发义务（冻结约束内嵌）、§13 计划自检记录（含审校修复轮）
+- **任务归属口径（本条目核心裁定留痕）**：§8 的 6 个 Task 分属两个 DAG 节点交付物（K0.x=b2-k0、K5.x=b2-k-integration），但**计划 Task K0.3 明确自陈回填建议「DAG b2-k0 建议置 review、task_ids=[K0.1,K0.2,K0.3,K5.1,K5.2,K5.3]」**——计划撰写者有意将 6 任务全挂 b2-k0 节点追踪（20 号计划执行主体为 b2-k0 SERIAL 首）。本次按指令"任务 6 个"+计划自陈口径回填 b2-k0；**b2-k-integration 节点不再单独回填任务结构**（其交付物经 b2-k0 的 K5.x 追踪），如实留痕防后续重复回填
+- **计划文件规模**：52,773 字节（mtime 22:47，本会话 ls 实测）
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过）：b2-k0 `task_ids` [] → **[K0.1, K0.2, K0.3, K5.1, K5.2, K5.3]**；新增 `task_status`（6×**pending**，沿先例任务级字段语义）。`status=in_progress`、`base_sha=8c45a8815...`、`head_sha=null`、`review_status=pending` 均未动（b2-ac-definition/b2-ac-skills 确认未误改）；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-k0`（`codex/passb-b2-k0`，HEAD `59b13c61a`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **测试证据路径**：尚无任务级产出（6 任务全部待执行）
+- **审查结论**：计划审校通过（调度指令口径；分支第 2 提交即审校修复轮）；节点级 review_status 仍 pending
+- **OCR 报告路径**：无
+- **修复轮次**：0
+- **备注**：(1) 计划已登记前置差异③（F2 status 字段未落盘：contracts.yaml 实测 0 处 `status:` 仅 125 处 `stability:`，K5 门面 current 化与 ib2 回写缺载体）——K0.3 将正式上报，裁决归属为协调者；(2) 后续任务完成事件按先例逐条登记；节点 done 待六任务全 done + 节点级审查 + 合并。**B2 计划撰写进度**：b2-appconnector ✓（22:24，B2-AC.1 已 done）/ b2-k0 ✓（本条）/ b2-ac-definition、b2-ac-skills 未见计划提交
+
+---
+
+## 2026-09-23 23:10 CST · b2-appconnector 登记 OCR 覆盖：ocr_covered 追加 [ced88ecb → 67ac22c96]（范围无可审项）
+
+- **节点**：b2-appconnector —— 27 App Connector（status=in_progress 未变；task_status B2-AC.1=done 维持）
+- **登记内容**：b2-appconnector 节点新增数组字段 `ocr_covered`（该节点此前无此字段），追加首条 `{base: "ced88ecb17ed560a02a15464500a4b2fa8e2d508", head: "67ac22c964cecfc810578f1ee8d1289b78e7e083"}`（全 40 位 SHA，调度指令口径：**范围无可审项**）
+- **SHA 真实性核验**（本会话 git 实测，`.worktrees/passb-b2-appconnector`）：`git rev-parse` 双双命中——base `ced88ecb`（计划提交，= 节点派发后首个提交、B2-AC.1 开工 BASE）与 head `67ac22c96`（22:42:49，B2-AC.1 特征化测试提交，= 分支当前 HEAD）；区间含**恰 1 个提交**（470 行纯测试文件）；`67ac22c96..HEAD` 零新提交
+- **口径并录留痕（调度方知悉）**：本指令口径"范围无可审项"，但该区间包含 B2-AC.1 交付提交（22:58 条目"进入任务级 OCR"）——两者关系指令未说明（若系任务级 OCR 选审范围无项/或 OCR 选审集不含纯测试文件的口径，则 skipped/无审项与"无可审项"自洽）；如实并录，不自行判定
+- **字段语义（沿先例）**：ocr_covered 记录已审查覆盖的已提交 SHA 区间；base = 任务开工 BASE、head = 分支当前头——b2-appconnector 截至目前的全部提交均在覆盖登记范围内；后续新提交落地后须追加条目
+- **节点级状态未迁移**：`status=in_progress`、`review_status=pending`、`head_sha=null` 维持
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA（节点级）**：`8c45a8815` / null（未动——base_sha 是节点派发基准，与 ocr_covered 的 base 不同层次：后者锚定任务区间）
+- **worktree**：`.worktrees/passb-b2-appconnector`（`codex/passb-b2-appconnector`，HEAD `67ac22c96`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **本次 JSON 变更**：b2-appconnector 节点 `head_sha` 行后新增 `ocr_covered` 数组（7 行，编辑定位用其特有的 produced_artifacts 文本避免与相邻 b2 节点混淆）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/base/head_sha/task_status 未动；b2-k0/b2-ac-definition/b2-ac-skills 确认无 ocr_covered 字段——**其余节点均未被误改**）
+
+---
+
+## 2026-09-23 23:16 CST · b2-ac-skills 计划完成审校通过（5 任务结构回填 DAG：25b.1–25b.5 全 pending）
+
+- **节点/事件**：b2-ac-skills —— 计划文档 `docs/plans/passb/25b-skill-catalog-install.md` 撰写完成并审校通过（调度指令口径：任务 5 个；本管家未重跑审校）
+- **计划所在**：`.worktrees/passb-b2-ac-skills`（分支 `codex/passb-b2-ac-skills`，**2 提交**——`a6afa4fb1` 初稿 + `8592f2aac` `docs(plan): passb b2-ac-skills 审校修复（补 tenant_skill_install:1849 消费点、unique 助手注入改道、测试计数措辞、派发 gate 现状、新包测试注册前提）`；工作树干净，本会话 git log/status 核验）；**尚未合入 integration**（integration HEAD 仍 `8c45a8815`）
+- **计划结构核验**（本会话 grep/实读）：任务分解恰 **5 任务**（T1–T5，双编号 25b.1–25b.5，与指令"任务 5 个"一致）——T1 特征化基线与证据骨架、T2 repository 层搬迁+残差、T3 service 层原子搬迁（17 文件 + 17 测试）+ HostAdapters + 5 符号导出化 + 全量残差、T4 handler 层搬迁（2 文件 + 2 测试）+ 残差、T5 差分证据收口 + Integration Brief + 实施报告 + 节点门禁
+- **计划文件规模**：67,010 字节（mtime 22:53，本会话 ls 实测）
+- **任务结构回填依据**：沿 19:44 b1-commercial / 22:24 b2-appconnector 先例
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过）：b2-ac-skills `task_ids` [] → **[25b.1, 25b.2, 25b.3, 25b.4, 25b.5]**；新增 `task_status`（5×**pending**，沿先例任务级字段语义）。`status=in_progress`、`base_sha=8c45a8815...`、`head_sha=null`、`review_status=pending` 均未动（b2-k0 6 项/b2-appconnector 4 项/b2-ac-definition 空——其余节点均未被误改）；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-ac-skills`（`codex/passb-b2-ac-skills`，HEAD `8592f2aac`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **测试证据路径**：尚无任务级产出（5 任务全部待执行）
+- **审查结论**：计划审校通过（调度指令口径；分支第 2 提交即审校修复轮）；节点级 review_status 仍 pending
+- **OCR 报告路径**：无
+- **修复轮次**：0
+- **备注**：后续任务完成事件（25b.1–25b.5 逐个 done）按先例逐条登记；节点 done 待五任务全 done + 节点级审查 + 合并。**B2 计划撰写进度对照**：b2-appconnector ✓（B2-AC.1 done）/ b2-k0 ✓（6 任务，K5.x 跨节点追踪）/ b2-ac-skills ✓（本条）/ **b2-ac-definition 未见计划提交**（B2 四入口节点中唯一未交计划）
+
+---
+
+## 2026-09-23 23:28 CST · b2-ac-definition 计划完成审校通过（5 任务结构回填 DAG：T1–T5 全 pending）
+
+- **节点/事件**：b2-ac-definition —— 计划文档 `docs/plans/passb/25a-agent-definition-version.md` 撰写完成并审校通过（调度指令口径：任务 5 个；本管家未重跑审校）；**B2 四入口节点计划全部就绪**
+- **计划所在**：`.worktrees/passb-b2-ac-definition`（分支 `codex/passb-b2-ac-definition`，**3 提交**——`896572167` 初稿 + `94fa5577d` review fixes + `02e7be617`（23:22:44）`docs(plan): passb b2-ac-definition review fixes r2`；工作树干净，本会话 git log/status 核验）；**尚未合入 integration**（integration HEAD 仍 `8c45a8815`）
+- **计划结构核验**（本会话 grep/实读）：任务分解恰 **5 个 Task**（T1–T5，计划内编号即 T 系列，无双编号后缀；与指令"任务 5 个"一致）——T1 基线锚定与预检、T2 repository 批次搬迁（#1–#4）+ 原路径 shim、T3 service + handler 批次搬迁（#5–#7）+ 哨兵重指向、T4 门禁全套 + 等价证据、T5 Integration Brief + 实施报告；另 §2 含 25a/25b/25c 拆分（55 总盘→22/20/13）与搬迁批次三重实证、①批次依赖核验、②批次 2 推迟件登记表（T5 Brief 核心）、③shim 逐符号清单（grep -rwn 全仓消费方审计）、④冻结契约兼容义务
+- **计划文件规模**：48,393 字节（mtime 23:22，本会话 ls 实测）
+- **task_ids 编号口径留痕**：该计划任务为 T1–T5（无 25a.x 双编号，区别于 25b.1–5/B2-AC.1–4），task_ids 沿计划自身编号回填
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过）：b2-ac-definition `task_ids` [] → **[T1, T2, T3, T4, T5]**；新增 `task_status`（5×**pending**，沿先例任务级字段语义）。`status=in_progress`、`base_sha=8c45a8815...`、`head_sha=null`、`review_status=pending` 均未动（b2-k0 6 项/b2-ac-skills 5 项/b2-appconnector 4 项——其余节点均未被误改）；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-ac-definition`（`codex/passb-b2-ac-definition`，HEAD `02e7be617`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **测试证据路径**：尚无任务级产出（5 任务全部待执行）
+- **审查结论**：计划审校通过（调度指令口径；分支含两轮 review fixes 提交）；节点级 review_status 仍 pending
+- **OCR 报告路径**：无
+- **修复轮次**：0
+- **备注**：后续任务完成事件（T1–T5 逐个 done）按先例逐条登记；节点 done 待五任务全 done + 节点级审查 + 合并。**B2 计划撰写进度终态**：四入口节点全部 ✓——b2-appconnector（4 任务，B2-AC.1 done）/ b2-k0（6 任务）/ b2-ac-skills（5 任务）/ b2-ac-definition（5 任务，本条）
+
+---
+
+## 2026-09-23 23:44 CST · b2-k0 / K0.1 → done（SDD 审查通过，进入任务级 OCR）
+
+- **节点/任务**：b2-k0 · K0.1 —— 冻结分配表与联动裁定表复核（计划 `docs/plans/passb/20-knowledge-program.md` §8 Task K0.1；**B2 阶段第二个完成的实施任务**）
+- **前置**：节点派发（21:32）+ 计划审校（22:58）
+- **worktree**：`.worktrees/passb-b2-k0`（`codex/passb-b2-k0`，本会话 git 核验工作树干净）
+- **BASE → HEAD**：`59b13c61a` → **`614409798`**（1 commit：23:31:08 `docs(passb): b2-k0 K0.1 冻结分配表与联动裁定表复核`；`git show --stat` 实测恰 1 文件 +5/−4——仅计划文件本体 §6.2 组 E 行与 §9 K4 行同步修订 + §13 复核轮登记）；**验证基线代码=8c45a8815**（报告 §0 实测 `git diff --name-only 8c45a8815..HEAD -- internal/ tools/ cmd/ go.mod go.sum migrations/ Makefile` 为空——代码零漂移）
+- **复核结论**（K0.1-report.md 所载，本台账转录）：§5 共享类型 25 处 file:line、六端口接口（ChunkService 18 方法/RetrieveEngineService 9 方法）逐一 grep 实测**零漂移**；§6.2 组 A–E 定义 20 符号与全部调用点行号逐项命中；84 行计数 {21:9, 22:29, 23:18, 24:28} 双副本一致；§7 路由 11/worker 18/hook/事件 4/别名 18/例外 4/契约行号锚点全中。**唯一修订**：组 E `getParserEngineOverridesFromContext` 实测同名异义无耦合（K4 自有方法两处），按 isValidFileType 先例改判"K4 直接随文件迁移、无需 R2 seam"，修订随 commit 入库并登记 §13
+- **上报协调者三项**（报告 §9，供调度方处置）：(a) ppc `knowledge→conversation` 条目 sites 2→0 修订工单（两符号同名伪影，不改 DAG 由协调者裁定）；(b) 差异②两工单收口确认（派发 K1–K3 前 P2 裁定）；(c) 差异③ F2 status 字段补落盘归属裁决（22:58 条目已预警）
+- **测试证据**（报告 §7）：`go build ./...` 绿；`go test ./tools/passbguard ./tools/modulemove -count=1` 仍绿（K0.1 未破坏治理校验）
+- **报告/审查证据路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-k0/K0.1-report.md`（14,018 字节，本会话已读）；`K0.1-review-pkg.md`（20,135 字节，在案）
+- **审查结论**：SDD 审查通过（调度指令裁定；本管家未重跑审查）→ **进入任务级 OCR**（OCR 报告由后续条目回填）
+- **修复轮次**：0（SDD 一轮通过；OCR 轮次另计）
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 1 行）：b2-k0.`task_status` **K0.1 pending → done**（K0.2/0.3/K5.1–3 维持 pending）；节点级 `status=in_progress`、`review_status=pending`、`head_sha=null` 均未动；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-k0`（HEAD `614409798`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+
+---
+
+## 2026-09-23 23:54 CST · b2-k0 登记 OCR 覆盖：ocr_covered 追加 [59b13c61a → 614409798]（范围无可审项）
+
+- **节点**：b2-k0 —— K0 Knowledge 端口/所有权冻结（status=in_progress 未变；task_status K0.1=done 维持）
+- **登记内容**：b2-k0 节点新增数组字段 `ocr_covered`（该节点此前无此字段），追加首条 `{base: "59b13c61a727038aa9acc019967434d66da6bb14", head: "614409798fbdb05805504e7733154ec3a1ade960"}`（全 40 位 SHA，调度指令口径：**范围无可审项**）
+- **SHA 真实性核验**（本会话 git 实测，`.worktrees/passb-b2-k0`）：`git rev-parse` 双双命中——base `59b13c61a`（计划审校修复提交，= K0.1 开工 BASE）与 head `614409798`（23:31:08，K0.1 冻结表复核提交 = 分支当前 HEAD）；区间含**恰 1 个提交**（仅计划文档修订）；`614409798..HEAD` 零新提交
+- **口径并录留痕（调度方知悉）**：本指令口径"范围无可审项"，但该区间包含 K0.1 交付提交（23:44 条目"进入任务级 OCR"）——与 b2-appconnector 23:10 条目同型：两者关系指令未说明（若系 OCR 选审集不含纯 docs 提交则自洽），如实并录不自行判定
+- **字段语义（沿先例）**：ocr_covered 记录已审查覆盖的已提交 SHA 区间；base = 任务开工 BASE、head = 分支当前头——b2-k0 截至目前的全部提交均在覆盖登记范围内；后续新提交落地后须追加条目
+- **节点级状态未迁移**：`status=in_progress`、`review_status=pending`、`head_sha=null` 维持
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA（节点级）**：`8c45a8815` / null（未动——节点派发基准与 ocr_covered 任务区间 base 分属不同层次，沿 23:10 b2-appconnector 条目说明）
+- **worktree**：`.worktrees/passb-b2-k0`（`codex/passb-b2-k0`，HEAD `614409798`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **本次 JSON 变更**：b2-k0 节点 `head_sha` 行后新增 `ocr_covered` 数组（7 行，编辑定位用其特有的 evidence_paths 双行结构——该节点无 reviews 行，区别于其余节点）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/base/head_sha/task_status 未动；b2-ac-definition/b2-ac-skills 0 条、b2-appconnector 1 条保持——**其余节点均未被误改**）
+
+---
+
+## 2026-09-23 23:56 CST · b2-k0 OCR 第 1 次：confirmed=0 / rejected=0（报告为"Review skipped"跳过态，如实登记）
+
+- **节点/轮次**：b2-k0 节点级架构审查 OCR 第 1 次（调度口径；21:32 派发后首轮，23:44 条目"进入任务级 OCR"后的运行）
+- **计划路径**：`docs/plans/passb/20-knowledge-program.md`
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-k0/ocr-r1.txt`（本会话已读全文：**40 字节、mtime 23:54、1 行——"Review skipped: no items were selected."**；同目录 `ocr-context.md` 7,798 字节、mtime 23:53 与 K0.1-report.md/K0.1-review-pkg.md 在案）
+- **结论计数**：confirmed=0 / rejected=0（调度口径；与报告字面一致——**跳过态非完成态**，沿 b1 三节点与 b2-appconnector 23:18 条目先例如实登记）
+- **报告性质留痕**：与 23:54 条目 ocr_covered 登记 [59b13c61a → 614409798] 的"范围无可审项"口径自洽（区间唯一提交为纯计划文档修订，OCR 选审集无项）；后续节点有生产代码提交（K0.2 kbfreeze 守卫测试包起）时 OCR 须以非 skipped 方式产出真实结论
+- **分支核验**（本会话 git 实测）：`.worktrees/passb-b2-k0` HEAD 仍 `614409798`（= ocr_covered 首条 head）、工作树干净——23:54 后无新提交
+- **审查结论**：confirmed=0 → 不触发 changes_requested；`review_status=pending` 维持（未获 approved 指令，跳过轮不构成通过依据）
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA**：`8c45a8815` / null（未动）
+- **worktree**：`.worktrees/passb-b2-k0`（`codex/passb-b2-k0`，HEAD `614409798`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **本次 JSON 变更**：**无字节级改动**——confirmed=0 时 `review_status` 目标值 `pending` 已在位；`status=in_progress`、base/head SHA、ocr_covered（1 条）、task_status（K0.1 done）均未动。JSON 合法性本会话 `python3 json.load` 复验通过
+- **备注**：(1) `ocr-context.md` 7,798 字节在案（未逐字审读）；(2) K0.1 为纯计划文档复核任务，skipped 与任务性质相容；K0.2（kbfreeze 守卫测试包，含代码与测试）为首个含代码的 b2-k0 任务，其 OCR 应产出实质结论
+
+---
+
+## 2026-09-23 23:58 CST · b2-k0 OCR 覆盖登记（区间已在 23:54 登记，不重复追加；口径补强为"0 条需修 findings"）
+
+- **节点**：b2-k0 —— K0 Knowledge 端口/所有权冻结（status=in_progress 未变）
+- **指令**：登记 ocr_covered 追加 `{base: "59b13c61a727038aa9acc019967434d66da6bb14", head: "614409798fbdb05805504e7733154ec3a1ade960"}`（**审得 0 条需修 findings**；全 40 位 SHA）
+- **重复识别**：本会话 `python3 json.load` 实测——b2-k0.`ocr_covered` 已含**完全相同的条目**（base/head 与指令逐字符一致，23:54 条目所登记，当时调度口径"范围无可审项"）。分支 `614409798..HEAD` 零新提交——区间自 23:54 登记后无演进（沿 b1-identity 20:10 / b1-execution 20:13 / b1-commercial 20:19 / b2-appconnector 23:20 条目同型先例）
+- **JSON 处置**：**无字节级改动、不重复追加**——ocr_covered 数组语义为"已覆盖审查区间列表"，同区间双条目冗余且破坏数组区间语义。本会话 `python3 json.load` 复验合法（ocr_covered 仍 1 条；status=in_progress、review_status=pending、base/head_sha、task_status 均未动）
+- **口径演进留痕**：同一区间 [59b13c61a → 614409798] 的审查结论由 23:54 的"范围无可审项"（对应 23:56 条目 OCR skipped 报告）补强为本次的"**审得 0 条需修 findings**"——语义上确认该区间已审且结论为零需修；差别以调度方本次口径为准，台账并录
+- **审查结论**：`review_status=pending` 维持（本指令仅授权覆盖登记，未含 approved/done 迁移）
+- **修复轮次**：0（0 条需修 findings，不构成修复轮）
+- **base/head SHA（节点级）**：`8c45a8815` / null（未动）
+- **worktree**：`.worktrees/passb-b2-k0`（HEAD `614409798`，本会话核验零新提交）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **后续**：节点分支 614409798 之后的实施提交落地后，须以**新条目**追加 ocr_covered
+- **B2 各节点 OCR 覆盖登记现状（本时点）**：b2-appconnector [ced88ecb→67ac22c96] 0 需修（B2-AC.1 收口确认）/ b2-k0 [59b13c61a→614409798] **0 需修（本条口径）** / b2-ac-definition、b2-ac-skills 无登记（暂无任务级提交）
+
+---
+
+## 2026-09-24 00:00 CST · b2-ac-skills / 25b.1 → done（SDD 审查通过，进入任务级 OCR）
+
+- **节点/任务**：b2-ac-skills · 25b.1 —— T1 特征化基线与证据骨架（计划 `docs/plans/passb/25b-skill-catalog-install.md` §6 T1；**B2 阶段第三个完成的实施任务**）
+- **前置**：节点派发（21:36）+ 计划审校（23:16）
+- **worktree**：`.worktrees/passb-b2-ac-skills`（`codex/passb-b2-ac-skills`，本会话 git 核验工作树干净）
+- **BASE → HEAD**：`8592f2aac` → **`406ed1c6a`**（1 commit：23:36:39 `test(passb): passb b2-ac-skills 特征化基线`；`git show --stat` 实测恰 2 文件 +99 行纯 docs——新增 `docs/architecture/evidence/passb/b2-ac-skills.md`（56 行）+ `docs/plans/passb/reports/b2-ac-skills.md`（43 行）；BASE 与报告自陈一致）
+- **测试证据**（25b.1-report.md §2 所载，8/8 全绿本台账转录）：`go build ./...` 0；`go test ./internal/application/service -count=1` ok（415.098s，计划基线 154.512s——耗时差异为机器负载，同为 ok 非行为差异）；Skill 定向测试 service/handler/router 三处 ok；`make check-backend-architecture` 633/23+23/58 逐项一致；`make verify-module-moves` 16 manifests；reaper `-v` 摘录 28/28 PASS（ReapStuckRuns 9/PruneSupersededSnapshots 17/ReconcileSnapshots 1 + 字面匹配的既有 Prune 用例，如实记录）；**未触发 conventions §5 停工上报，T2 起继续**
+- **前置条件核验**（报告 §1）：b0 done/ib1 done+approved/派发 BASE 一致——逐项满足；并实测确认节点 notes 尾条 BLOCKED 文本为历史残留
+- **报告/审查证据路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-skills/25b.1-report.md`（5,314 字节，本会话已读）；`25b.1-review-pkg.md`（8,710 字节，在案）
+- **审查结论**：SDD 审查通过（调度指令裁定；本管家未重跑审查）→ **进入任务级 OCR**（OCR 报告由后续条目回填）
+- **修复轮次**：0（SDD 一轮通过；OCR 轮次另计）
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 1 行）：b2-ac-skills.`task_status` **25b.1 pending → done**（25b.2–5 维持 pending）；节点级 `status=in_progress`、`review_status=pending`、`head_sha=null` 均未动；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-ac-skills`（HEAD `406ed1c6a`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+
+---
+
+## 2026-09-24 00:03 CST · b2-ac-definition / T1 → done（SDD 审查通过，进入任务级 OCR）
+
+- **节点/任务**：b2-ac-definition · T1 —— 基线锚定与预检（计划 `docs/plans/passb/25a-agent-definition-version.md` §6 Task T1；**B2 阶段第四个完成的实施任务，B2 四入口节点全部进入任务执行**）
+- **前置**：节点派发（21:34）+ 计划审校（23:28）
+- **worktree**：`.worktrees/passb-b2-ac-definition`（`codex/passb-b2-ac-definition`，本会话 git 核验工作树干净）
+- **BASE → HEAD**：`02e7be617` → **`9f330903b`**（1 commit：23:49:32 `test(passb): b2-ac-definition baseline characterization`；`git show --stat` 实测恰 1 文件 +62 行——新增 `docs/architecture/evidence/passb/b2-ac-definition.md` 骨架）；**基线口径留痕**（报告 §2）：ask 派发 BASE=`02e7be617`，计划正文基线=`8c45a8815`，二者差异经 `git diff --name-only` 实证仅为计划文档自身两次审校提交（无代码差异），后续差集核对统一采用派发 BASE（计划 §6-T1 条款授权）
+- **测试证据**（T1-report.md §1 所载，全部实跑含退出码）：`go build ./...` 0；四包测试 0（repository 489s/service 345s/handler 1.8s/agentcatalog 无测试文件）；`make check-backend-architecture` 633/23+23/58 逐项一致 0 violations；`make verify-module-moves` 16 manifests；特征化预跑 13 用例全 PASS（Share/Subagent 族）；`EXPORT-MISSING` 与 `execution/service 缺位` 非零退出——**与计划 §1.5 预期一致**（B1-CM/B1-EX 实施缺位，仅登记不阻塞批次 1）
+- **报告/审查证据路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-definition/T1-report.md`（5,415 字节，本会话已读）；`T1-review-pkg.md`（5,733 字节，在案）
+- **审查结论**：SDD 审查通过（调度指令裁定；本管家未重跑审查）→ **进入任务级 OCR**（OCR 报告由后续条目回填）
+- **修复轮次**：0（SDD 一轮通过；OCR 轮次另计）
+- **报告遗留如实登记**：(1) EXPORT-MISSING 登记待 T5 Brief（IB1 号称导出的两处实为 B1 零实施缺位，20:47 条目在案一致）；(2) evidence 差分/等价章节待 T4 补全，Brief 与节点级报告待 T5；(3) briefs/reports 空目录随 T3/T5 首个文件落地
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 1 行）：b2-ac-definition.`task_status` **T1 pending → done**（T2–5 维持 pending）；节点级 `status=in_progress`、`review_status=pending`、`head_sha=null` 均未动；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-ac-definition`（HEAD `9f330903b`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+
+---
+
+## 2026-09-24 00:08 CST · b2-ac-skills 登记 OCR 覆盖：ocr_covered 追加 [8592f2aac → 406ed1c6a]（范围无可审项）
+
+- **节点**：b2-ac-skills —— 25b Skill 目录/安装/运行时验证/reaper（status=in_progress 未变；task_status 25b.1=done 维持）
+- **登记内容**：b2-ac-skills 节点新增数组字段 `ocr_covered`（该节点此前无此字段），追加首条 `{base: "8592f2aacbe49e43583bf433e045b98cefd44c6f", head: "406ed1c6a97403be2a71690cd966f558b9848b92"}`（全 40 位 SHA，调度指令口径：**范围无可审项**）
+- **SHA 真实性核验**（本会话 git 实测，`.worktrees/passb-b2-ac-skills`）：`git rev-parse` 双双命中——base `8592f2aac`（计划审校修复提交，= 25b.1 开工 BASE）与 head `406ed1c6a`（23:36:39，25b.1 特征化基线提交 = 分支当前 HEAD）；区间含**恰 1 个提交**（99 行纯 docs：evidence 骨架 + 报告）；`406ed1c6a..HEAD` 零新提交
+- **口径并录留痕（调度方知悉）**：本指令口径"范围无可审项"，但该区间包含 25b.1 交付提交（00:00 条目"进入任务级 OCR"）——沿 b2-appconnector 23:10 / b2-k0 23:54 条目同型并录：两者关系指令未说明（若系 OCR 选审集不含纯 docs 提交则自洽），如实并录不自行判定
+- **字段语义（沿先例）**：ocr_covered 记录已审查覆盖的已提交 SHA 区间；base = 任务开工 BASE、head = 分支当前头——b2-ac-skills 截至目前的全部提交均在覆盖登记范围内；后续新提交落地后须追加条目
+- **节点级状态未迁移**：`status=in_progress`、`review_status=pending`、`head_sha=null` 维持
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA（节点级）**：`8c45a8815` / null（未动——节点派发基准与 ocr_covered 任务区间 base 分属不同层次）
+- **worktree**：`.worktrees/passb-b2-ac-skills`（`codex/passb-b2-ac-skills`，HEAD `406ed1c6a`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **本次 JSON 变更**：b2-ac-skills 节点 `head_sha` 行后新增 `ocr_covered` 数组（7 行，编辑定位用其特有 evidence_paths 三行结构避免与相邻节点混淆）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/base/head_sha/task_status 未动；b2-k0=1 条、b2-appconnector=1 条保持、b2-ac-definition=0 条——**其余节点均未被误改**）
+- **B2 各节点 ocr_covered 现状**：b2-appconnector 1 条 / b2-k0 1 条 / **b2-ac-skills 1 条（本条）** / b2-ac-definition 0 条
+
+---
+
+## 2026-09-24 00:09 CST · b2-ac-skills OCR 第 1 次：confirmed=0 / rejected=0（报告为"Review skipped"跳过态，如实登记）
+
+- **节点/轮次**：b2-ac-skills 节点级架构审查 OCR 第 1 次（调度口径；21:36 派发后首轮，00:00 条目"进入任务级 OCR"后的运行）
+- **计划路径**：`docs/plans/passb/25b-skill-catalog-install.md`
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-skills/ocr-r1.txt`（本会话已读全文：**40 字节、mtime 00:07、1 行——"Review skipped: no items were selected."**；同目录 `ocr-context.md` 8,715 字节、mtime 00:07 与 25b.1-report.md/25b.1-review-pkg.md 在案）
+- **结论计数**：confirmed=0 / rejected=0（调度口径；与报告字面一致——**跳过态非完成态**，沿 b1 三节点与 b2-appconnector 23:18 / b2-k0 23:56 条目先例如实登记）
+- **报告性质留痕**：与 00:08 条目 ocr_covered 登记 [8592f2aac → 406ed1c6a] 的"范围无可审项"口径自洽（区间唯一提交为 99 行纯 docs——evidence 骨架+报告，OCR 选审集无项）；后续节点有生产代码提交（25b.2 repository 层搬迁起）时 OCR 须以非 skipped 方式产出真实结论
+- **分支核验**（本会话 git 实测）：`.worktrees/passb-b2-ac-skills` HEAD 仍 `406ed1c6a`（= ocr_covered 首条 head）、工作树干净——00:08 后无新提交
+- **审查结论**：confirmed=0 → 不触发 changes_requested；`review_status=pending` 维持（未获 approved 指令，跳过轮不构成通过依据）
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA**：`8c45a8815` / null（未动）
+- **worktree**：`.worktrees/passb-b2-ac-skills`（`codex/passb-b2-ac-skills`，HEAD `406ed1c6a`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **本次 JSON 变更**：**无字节级改动**——confirmed=0 时 `review_status` 目标值 `pending` 已在位；`status=in_progress`、base/head SHA、ocr_covered（1 条）、task_status（25b.1 done）均未动。JSON 合法性本会话 `python3 json.load` 复验通过
+- **备注**：(1) `ocr-context.md` 8,715 字节在案（未逐字审读）；(2) 25b.1 为纯 docs 任务，skipped 与任务性质相容；25b.2（repository 层搬迁，首个含生产代码的 b2-ac-skills 任务）其 OCR 应产出实质结论
+
+---
+
+## 2026-09-24 00:11 CST · b2-ac-definition 登记 OCR 覆盖：ocr_covered 追加 [02e7be617 → 9f330903b]（范围无可审项）
+
+- **节点**：b2-ac-definition —— 25a Agent 定义/版本/人格/专家/子代理/收藏（status=in_progress 未变；task_status T1=done 维持）
+- **登记内容**：b2-ac-definition 节点新增数组字段 `ocr_covered`（该节点此前无此字段），追加首条 `{base: "02e7be617c041bbf796b7f0acff0a4fbb6402a38", head: "9f330903b0cb3025e98ec68f196a5b34e1b512e1"}`（全 40 位 SHA，调度指令口径：**范围无可审项**）
+- **SHA 真实性核验**（本会话 git 实测，`.worktrees/passb-b2-ac-definition`）：`git rev-parse` 双双命中——base `02e7be617`（计划 review fixes r2 提交，= T1 开工 BASE，即派发 BASE）与 head `9f330903b`（23:49:32，T1 基线锚定提交 = 分支当前 HEAD）；区间含**恰 1 个提交**（62 行纯 docs：evidence 骨架）；`9f330903b..HEAD` 零新提交
+- **口径并录留痕（调度方知悉）**：本指令口径"范围无可审项"，但该区间包含 T1 交付提交（00:03 条目"进入任务级 OCR"）——沿 b2-appconnector 23:10 / b2-k0 23:54 / b2-ac-skills 00:08 条目同型并录：两者关系指令未说明（若系 OCR 选审集不含纯 docs 提交则自洽），如实并录不自行判定
+- **字段语义（沿先例）**：ocr_covered 记录已审查覆盖的已提交 SHA 区间；base = 任务开工 BASE（亦即派发 BASE，该节点任务区间起点与节点 base 不同层次但本例任务紧随计划审校）、head = 分支当前头；后续新提交落地后须追加条目
+- **节点级状态未迁移**：`status=in_progress`、`review_status=pending`、`head_sha=null` 维持
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA（节点级）**：`8c45a8815` / null（未动）
+- **worktree**：`.worktrees/passb-b2-ac-definition`（`codex/passb-b2-ac-definition`，HEAD `9f330903b`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **本次 JSON 变更**：b2-ac-definition 节点 `head_sha` 行后新增 `ocr_covered` 数组（7 行，编辑定位用其特有 evidence_paths 三行结构）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/base/head_sha/task_status 未动；b2-k0/b2-ac-skills/b2-appconnector 各 1 条保持——**其余节点均未被误改**）
+- **B2 各节点 ocr_covered 现状终态**：**四入口节点全部 1 条**——b2-appconnector [ced88ecb→67ac22c96] / b2-k0 [59b13c61a→614409798] / b2-ac-skills [8592f2aac→406ed1c6a] / b2-ac-definition [02e7be617→9f330903b]（本条）
+
+---
+
+## 2026-09-24 00:12 CST · b2-ac-skills OCR 覆盖登记（区间已在 00:08 登记，不重复追加；口径补强为"0 条需修 findings"）
+
+- **节点**：b2-ac-skills —— 25b Skill 目录/安装/运行时验证/reaper（status=in_progress 未变）
+- **指令**：登记 ocr_covered 追加 `{base: "8592f2aacbe49e43583bf433e045b98cefd44c6f", head: "406ed1c6a97403be2a71690cd966f558b9848b92"}`（**审得 0 条需修 findings**；全 40 位 SHA）
+- **重复识别**：本会话 `python3 json.load` 实测——b2-ac-skills.`ocr_covered` 已含**完全相同的条目**（base/head 与指令逐字符一致，00:08 条目所登记，当时调度口径"范围无可审项"）。分支 `406ed1c6a..HEAD` 零新提交——区间自 00:08 登记后无演进（沿 b1-identity 20:10 / b1-execution 20:13 / b1-commercial 20:19 / b2-appconnector 23:20 / b2-k0 23:58 条目同型先例）
+- **JSON 处置**：**无字节级改动、不重复追加**——ocr_covered 数组语义为"已覆盖审查区间列表"，同区间双条目冗余且破坏数组区间语义。本会话 `python3 json.load` 复验合法（ocr_covered 仍 1 条；status=in_progress、review_status=pending、base/head_sha、task_status 均未动）
+- **口径演进留痕**：同一区间 [8592f2aac → 406ed1c6a] 的审查结论由 00:08 的"范围无可审项"补强为本次的"**审得 0 条需修 findings**"——语义上确认该区间已审且结论为零需修；差别以调度方本次口径为准，台账并录
+- **审查结论**：`review_status=pending` 维持（本指令仅授权覆盖登记，未含 approved/done 迁移）
+- **修复轮次**：0（0 条需修 findings，不构成修复轮）
+- **base/head SHA（节点级）**：`8c45a8815` / null（未动）
+- **worktree**：`.worktrees/passb-b2-ac-skills`（HEAD `406ed1c6a`，本会话核验零新提交）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **后续**：节点分支 406ed1c6a 之后的实施提交落地后，须以**新条目**追加 ocr_covered
+
+---
+
+## 2026-09-24 00:14 CST · b2-ac-definition OCR 第 1 次：confirmed=0 / rejected=0（报告为"Review skipped"跳过态，如实登记）
+
+- **节点/轮次**：b2-ac-definition 节点级架构审查 OCR 第 1 次（调度口径；21:34 派发后首轮，00:03 条目"进入任务级 OCR"后的运行）
+- **计划路径**：`docs/plans/passb/25a-agent-definition-version.md`
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-ac-definition/ocr-r1.txt`（本会话已读全文：**40 字节、mtime 00:10、1 行——"Review skipped: no items were selected."**；同目录 `ocr-context.md` 8,423 字节、mtime 00:09 与 T1-report.md/T1-review-pkg.md 在案）
+- **结论计数**：confirmed=0 / rejected=0（调度口径；与报告字面一致——**跳过态非完成态**，沿先例（b1 三节点 / b2-appconnector 23:18 / b2-k0 23:56 / b2-ac-skills 00:09）如实登记）
+- **报告性质留痕**：与 00:11 条目 ocr_covered 登记 [02e7be617 → 9f330903b] 的"范围无可审项"口径自洽（区间唯一提交为 62 行纯 docs evidence 骨架，OCR 选审集无项）；后续节点有生产代码提交（T2 repository 批次搬迁起）时 OCR 须以非 skipped 方式产出真实结论
+- **分支核验**（本会话 git 实测）：`.worktrees/passb-b2-ac-definition` HEAD 仍 `9f330903b`（= ocr_covered 首条 head）、工作树干净——00:11 后无新提交
+- **审查结论**：confirmed=0 → 不触发 changes_requested；`review_status=pending` 维持（未获 approved 指令，跳过轮不构成通过依据）
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA**：`8c45a8815` / null（未动）
+- **worktree**：`.worktrees/passb-b2-ac-definition`（`codex/passb-b2-ac-definition`，HEAD `9f330903b`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **本次 JSON 变更**：**无字节级改动**——confirmed=0 时 `review_status` 目标值 `pending` 已在位；`status=in_progress`、base/head SHA、ocr_covered（1 条）、task_status（T1 done）均未动。JSON 合法性本会话 `python3 json.load` 复验通过
+- **备注**：(1) `ocr-context.md` 8,423 字节在案（未逐字审读）；(2) T1 为纯 docs 任务，skipped 与任务性质相容；T2（repository 批次搬迁 #1–#4 + shim，首个含生产代码的 b2-ac-definition 任务）其 OCR 应产出实质结论
+- **B2 四入口节点 OCR 首轮全记录齐**：appconnector skipped（23:18）/ k0 skipped（23:56）/ ac-skills skipped（00:09）/ ac-definition skipped（本条）——四节点首个任务均为 docs/测试类或纯 docs，跳过态与进度自洽
+
+---
+
+## 2026-09-24 00:16 CST · b2-ac-definition OCR 覆盖登记（区间已在 00:11 登记，不重复追加；口径补强为"0 条需修 findings"）
+
+- **节点**：b2-ac-definition —— 25a Agent 定义/版本/人格/专家/子代理/收藏（status=in_progress 未变）
+- **指令**：登记 ocr_covered 追加 `{base: "02e7be617c041bbf796b7f0acff0a4fbb6402a38", head: "9f330903b0cb3025e98ec68f196a5b34e1b512e1"}`（**审得 0 条需修 findings**；全 40 位 SHA）
+- **重复识别**：本会话 `python3 json.load` 实测——b2-ac-definition.`ocr_covered` 已含**完全相同的条目**（base/head 与指令逐字符一致，00:11 条目所登记，当时调度口径"范围无可审项"）。分支 `9f330903b..HEAD` 零新提交——区间自 00:11 登记后无演进（沿 20:10/20:13/20:19/23:20/23:58/00:12 条目同型先例）
+- **JSON 处置**：**无字节级改动、不重复追加**——ocr_covered 数组语义为"已覆盖审查区间列表"，同区间双条目冗余且破坏数组区间语义。本会话 `python3 json.load` 复验合法（ocr_covered 仍 1 条；status=in_progress、review_status=pending、base/head_sha、task_status 均未动）
+- **口径演进留痕**：同一区间 [02e7be617 → 9f330903b] 的审查结论由 00:11 的"范围无可审项"（对应 00:14 条目 OCR skipped 报告）补强为本次的"**审得 0 条需修 findings**"——语义上确认该区间已审且结论为零需修；差别以调度方本次口径为准，台账并录
+- **审查结论**：`review_status=pending` 维持（本指令仅授权覆盖登记，未含 approved/done 迁移）
+- **修复轮次**：0（0 条需修 findings，不构成修复轮）
+- **base/head SHA（节点级）**：`8c45a8815` / null（未动）
+- **worktree**：`.worktrees/passb-b2-ac-definition`（HEAD `9f330903b`，本会话核验零新提交）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **后续**：节点分支 9f330903b 之后的实施提交落地后，须以**新条目**追加 ocr_covered
+- **B2 各节点覆盖登记现状（本时点）**：b2-appconnector 0 需修（B2-AC.1 收口确认）/ b2-k0 0 需修（K0.1 收口确认）/ b2-ac-skills 0 需修（25b.1 收口确认）/ b2-ac-definition **0 需修（本条口径，T1 收口确认待指令）**
+
+---
+
+## 2026-09-24 00:18 CST · b2-ac-definition / T1 收口确认（目标态已在位，JSON 无字节级改动）
+
+- **节点/任务**：b2-ac-definition · T1 —— 基线锚定与预检
+- **指令**：T1 → done（SDD+任务级 OCR 双通过，OCR 覆盖 02e7be6..9f33090）
+- **目标态核验**（本会话 `python3 json.load` 实测，**全部已在位**）：
+  1. `task_status.T1 = done`（00:03 条目 SDD 审查通过时所置）✓
+  2. OCR 覆盖 `ocr_covered = [{base: 02e7be617..., head: 9f330903b...}]`（00:11 登记区间 + 00:16 口径"0 条需修 findings"补强）✓
+  3. 审查链条完整：SDD 审查通过（00:03，报告 5,415B/审查包 5,733B 在案）→ ocr_covered 登记（00:11）→ 任务级 OCR skipped 轮 0 findings（00:14）→ 口径确认 0 需修（00:16）——**SDD+OCR 双通过闭环在案**
+- **JSON 处置**：**无字节级改动**——指令目标态与现值完全一致，无迁移动作。节点级 `status=in_progress`（T2–5 待执行）、`review_status=pending`、`head_sha=null` 维持
+- **本次 JSON 变更**：无。JSON 合法性本会话 `python3 json.load` 复验通过；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-ac-definition`（HEAD `9f330903b`，零新提交）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **修复轮次**：0（任务级维持；T2 起待执行）
+- **备注**：本条为 00:03（task done）/ 00:11（覆盖登记）/ 00:14（OCR skipped）/ 00:16（口径补强）四条目的指令级收口确认（沿 23:22/23:59/00:15 三次收口确认先例）；下一任务 T2（repository 批次搬迁 #1–#4 + shim，首个含生产代码的 b2-ac-definition 任务）开工后其 OCR 预计为非 skipped 实质审查
+- **B2 首批任务收口进度总览（本时点）**：**四入口节点首个任务全部收口完成**——B2-AC.1 ✓（23:22）/ K0.1 ✓（23:59）/ 25b.1 ✓（00:15）/ T1 ✓（本条）；各节点下一任务均为含生产代码的搬迁/实施类
+
+---
+
+## 2026-09-24 00:33 CST · b2-k0 / K0.2 → done（SDD 审查通过，进入任务级 OCR）
+
+- **节点/任务**：b2-k0 · K0.2 —— kbfreeze 守卫测试包（R0 与六 port 签名的机器强制；计划 `docs/plans/passb/20-knowledge-program.md` §8 Task K0.2）
+- **前置**：K0.1（done，23:44 条目）
+- **worktree**：`.worktrees/passb-b2-k0`（`codex/passb-b2-k0`，本会话 git 核验工作树干净）
+- **BASE → HEAD**：`614409798` → **`e4e7a1d8a`**（1 commit：00:13:45 `test(passb): b2-k0 知识共享类型与端口冻结守卫`；`git show --stat` 实测恰 1 文件 +220 行——新建 `internal/modules/knowledge/kbfreeze/freeze_test.go`，纯测试零生产代码）
+- **交付物核验**（K0.2-report.md §1 所载，本台账转录）：两条守卫测试——(1) `TestKnowledgeSharedTypesHaveNoShadowDefinitions`：遍历 knowledge 模块树对 §5 冻结的 30 类型名做影子定义检测（豁免表唯一条目 chunker/splitter.go→Chunk，与计划一致；repo 根经 runtime.Caller 推导）；(2) `TestFrozenCapabilityPortInterfacesUnchanged`：reflect 断言六端口——ChunkService 18 方法/KnowledgeTagService 7 方法集合精确相等 + 其余四端口锚点存在性（错误信息携带 contracts.yaml port id）；**包依赖仅 stdlib + internal/types/interfaces，未 import 任何 legacy 宿主包**（`go list -deps` + grep 验证零命中，满足计划验收条款）
+- **测试证据**（K0.2-report.md §2，7 条全实跑）：kbfreeze 测试 2/2 PASS（0.563s）；gofmt/vet 干净；`go build ./...` 0；`make check-backend-architecture` 633/23+23/58 一致 0 violations；`make verify-module-moves` 16 manifests；**RED 验证有记录**（计划规定方式：临时破坏输入→确认 FAIL→恢复）
+- **报告/审查证据路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-k0/K0.2-report.md`（8,063 字节，本会话已读）；`K0.2-review-pkg.md`（12,049 字节，在案）
+- **审查结论**：SDD 审查通过（调度指令裁定；本管家未重跑审查）→ **进入任务级 OCR**（OCR 报告由后续条目回填）
+- **修复轮次**：0（SDD 一轮通过；OCR 轮次另计）
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 1 行）：b2-k0.`task_status` **K0.2 pending → done**（K0.3/K5.1–3 维持 pending）；节点级 `status=in_progress`、`review_status=pending`、`head_sha=null` 均未动；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-k0`（HEAD `e4e7a1d8a`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **备注**：K0.2 为 b2-k0 首个含代码任务（纯测试代码），其任务级 OCR 预计为非 skipped 实质审查——结果由后续指令登记；K0.3（前置差异上报、证据与报告）为节点收口前最后任务
+
+---
+
+## 2026-09-24 00:15 CST · b2-ac-skills / 25b.1 收口确认（目标态已在位，JSON 无字节级改动）
+
+- **节点/任务**：b2-ac-skills · 25b.1 —— T1 特征化基线与证据骨架
+- **指令**：25b.1 → done（SDD+任务级 OCR 双通过，OCR 覆盖 8592f2a..406ed1c）
+- **目标态核验**（本会话 `python3 json.load` 实测，**全部已在位**）：
+  1. `task_status.25b.1 = done`（00:00 条目 SDD 审查通过时所置）✓
+  2. OCR 覆盖 `ocr_covered = [{base: 8592f2aac..., head: 406ed1c6a...}]`（00:08 登记区间 + 00:12 口径"0 条需修 findings"补强）✓
+  3. 审查链条完整：SDD 审查通过（00:00，报告 5,314B/审查包 8,710B 在案）→ ocr_covered 登记（00:08）→ 任务级 OCR skipped 轮 0 findings（00:09）→ 口径确认 0 需修（00:12）——**SDD+OCR 双通过闭环在案**
+- **JSON 处置**：**无字节级改动**——指令目标态与现值完全一致，无迁移动作。节点级 `status=in_progress`（25b.2–5 待执行）、`review_status=pending`、`head_sha=null` 维持
+- **本次 JSON 变更**：无。JSON 合法性本会话 `python3 json.load` 复验通过；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-ac-skills`（HEAD `406ed1c6a`，零新提交）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **修复轮次**：0（任务级维持；25b.2 起待执行）
+- **备注**：本条为 00:00（task done）/ 00:08（覆盖登记）/ 00:09（OCR skipped）/ 00:12（口径补强）四条目的指令级收口确认（沿 23:22 b2-appconnector/B2-AC.1 与 23:59 b2-k0/K0.1 收口确认先例）；下一任务 25b.2（repository 层搬迁，首个含生产代码的 b2-ac-skills 任务）开工后其 OCR 预计为非 skipped 实质审查
+
+---
+
+## 2026-09-23 23:59 CST · b2-k0 / K0.1 收口确认（目标态已在位，JSON 无字节级改动）
+
+- **节点/任务**：b2-k0 · K0.1 —— 冻结分配表与联动裁定表复核
+- **指令**：K0.1 → done（SDD+任务级 OCR 双通过，OCR 覆盖 59b13c6..6144097）
+- **目标态核验**（本会话 `python3 json.load` 实测，**全部已在位**）：
+  1. `task_status.K0.1 = done`（23:44 条目 SDD 审查通过时所置）✓
+  2. OCR 覆盖 `ocr_covered = [{base: 59b13c61a..., head: 614409798...}]`（23:54 登记区间 + 23:58 口径"0 条需修 findings"补强）✓
+  3. 审查链条完整：SDD 审查通过（23:44，报告 14,018B/审查包 20,135B 在案）→ ocr_covered 登记（23:54）→ 任务级 OCR skipped 轮 0 findings（23:56）→ 口径确认 0 需修（23:58）——**SDD+OCR 双通过闭环在案**
+- **JSON 处置**：**无字节级改动**——指令目标态与现值完全一致，无迁移动作。节点级 `status=in_progress`（K0.2/0.3/K5.1–3 待执行）、`review_status=pending`、`head_sha=null` 维持
+- **本次 JSON 变更**：无。JSON 合法性本会话 `python3 json.load` 复验通过；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-k0`（HEAD `614409798`，零新提交）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **修复轮次**：0（任务级维持；K0.2 起待执行）
+- **备注**：本条为 23:44（task done）/ 23:54（覆盖登记）/ 23:56（OCR skipped）/ 23:58（口径补强）四条目的指令级收口确认（沿 23:22 b2-appconnector/B2-AC.1 收口确认先例）；下一任务 K0.2（kbfreeze 守卫测试包，首个含代码的 b2-k0 任务）开工后其 OCR 预计为非 skipped 实质审查
+
+---
+
+## 2026-09-23 23:18 CST · b2-appconnector OCR 第 1 次：confirmed=0 / rejected=0（报告为"Review skipped"跳过态，如实登记）
+
+- **节点/轮次**：b2-appconnector 节点级架构审查 OCR 第 1 次（调度口径；21:37 派发后首轮，22:58 条目"进入任务级 OCR"后的运行）
+- **计划路径**：`docs/plans/passb/27-appconnector.md`
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b2-appconnector/ocr-r1.txt`（本会话已读全文：**40 字节、mtime 23:09、1 行——"Review skipped: no items were selected."**；同目录 `ocr-context.md` 8,593 字节、mtime 23:04 在案；另有 B2-AC.1-report.md / B2-AC.1-review-pkg.md 在案）
+- **结论计数**：confirmed=0 / rejected=0（调度口径；与报告字面一致——**跳过态非完成态**，沿 b1-identity 20:06 / b1-execution 20:09 / b1-commercial 20:16 条目先例如实登记）
+- **报告性质留痕**：与 23:10 条目 ocr_covered 登记 [ced88ecb → 67ac22c96] 的"范围无可审项"口径自洽（区间唯一提交为 470 行纯测试文件，OCR 选审集无项）；后续节点有生产代码提交时 OCR 须以非 skipped 方式产出真实结论
+- **分支核验**（本会话 git 实测）：`.worktrees/passb-b2-appconnector` HEAD 仍 `67ac22c96`（= ocr_covered 首条 head）、工作树含 evidence 草稿 untracked（22:58 条目已登记，提交隔离设计）——23:10 后无新提交
+- **审查结论**：confirmed=0 → 不触发 changes_requested；`review_status=pending` 维持（未获 approved 指令，跳过轮不构成通过依据）
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA**：`8c45a8815` / null（未动）
+- **worktree**：`.worktrees/passb-b2-appconnector`（`codex/passb-b2-appconnector`，HEAD `67ac22c96`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **本次 JSON 变更**：**无字节级改动**——confirmed=0 时 `review_status` 目标值 `pending` 已在位；`status=in_progress`、base/head SHA、ocr_covered（1 条）、task_status（B2-AC.1 done）均未动。JSON 合法性本会话 `python3 json.load` 复验通过
+- **备注**：(1) `ocr-context.md` 8,593 字节在案（未逐字审读）；(2) B2 首个任务级 OCR 为 skipped——任务级 OCR 有效的实质结论待后续含生产代码的任务（B2-AC.2 起）运行时产出
+
+---
+
+## 2026-09-23 23:20 CST · b2-appconnector OCR 覆盖登记（区间已在 23:10 登记，不重复追加；口径补强为"0 条需修 findings"）
+
+- **节点**：b2-appconnector —— 27 App Connector（status=in_progress 未变）
+- **指令**：登记 ocr_covered 追加 `{base: "ced88ecb17ed560a02a15464500a4b2fa8e2d508", head: "67ac22c964cecfc810578f1ee8d1289b78e7e083"}`（**审得 0 条需修 findings**；全 40 位 SHA）
+- **重复识别**：本会话 `python3 json.load` 实测——b2-appconnector.`ocr_covered` 已含**完全相同的条目**（base/head 与指令逐字符一致，23:10 条目所登记，当时调度口径"范围无可审项"）。分支 `67ac22c96..HEAD` 零新提交——区间自 23:10 登记后无演进（沿 b1-identity 20:10 / b1-execution 20:13 / b1-commercial 20:19 条目同型先例）
+- **JSON 处置**：**无字节级改动、不重复追加**——ocr_covered 数组语义为"已覆盖审查区间列表"，同区间双条目冗余且破坏数组区间语义。本会话 `python3 json.load` 复验合法（ocr_covered 仍 1 条；status=in_progress、review_status=pending、base/head_sha、task_status 均未动）
+- **口径演进留痕**：同一区间 [ced88ecb → 67ac22c96] 的审查结论由 23:10 的"范围无可审项"（对应 23:18 条目 OCR skipped 报告）补强为本次的"**审得 0 条需修 findings**"——语义上确认该区间已审且结论为零需修；差别以调度方本次口径为准，台账并录
+- **审查结论**：`review_status=pending` 维持（本指令仅授权覆盖登记，未含 approved/done 迁移）
+- **修复轮次**：0（0 条需修 findings，不构成修复轮）
+- **base/head SHA（节点级）**：`8c45a8815` / null（未动）
+- **worktree**：`.worktrees/passb-b2-appconnector`（HEAD `67ac22c96`，本会话核验零新提交）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **后续**：节点分支 67ac22c96 之后的实施提交落地后，须以**新条目**追加 ocr_covered
+
+---
+
+## 2026-09-23 23:22 CST · b2-appconnector / B2-AC.1 收口确认（目标态已在位，JSON 无字节级改动）
+
+- **节点/任务**：b2-appconnector · B2-AC.1 —— T1 特征化基线
+- **指令**：B2-AC.1 → done（SDD+任务级 OCR 双通过，OCR 覆盖 ced88ec..67ac22c）
+- **目标态核验**（本会话 `python3 json.load` 实测，**全部已在位**）：
+  1. `task_status.B2-AC.1 = done`（22:58 条目 SDD 审查通过时所置）✓
+  2. OCR 覆盖 `ocr_covered = [{base: ced88ecb..., head: 67ac22c96...}]`（23:10 登记区间 + 23:20 口径"0 条需修 findings"补强）✓
+  3. 审查链条完整：SDD 审查通过（22:58，报告 7,343B/审查包 22,196B 在案）→ ocr_covered 登记（23:10）→ 任务级 OCR skipped 轮 0 findings（23:18）→ 口径确认 0 需修（23:20）——**SDD+OCR 双通过闭环在案**
+- **JSON 处置**：**无字节级改动**——指令目标态与现值完全一致，无迁移动作。节点级 `status=in_progress`（B2-AC.2/3/4 待执行）、`review_status=pending`、`head_sha=null` 维持
+- **本次 JSON 变更**：无。JSON 合法性本会话 `python3 json.load` 复验通过；33 节点分布不变（6 done + 4 in_progress + 23 pending）
+- **worktree**：`.worktrees/passb-b2-appconnector`（HEAD `67ac22c96`，零新提交）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **修复轮次**：0（任务级维持；B2-AC.2 起待执行）
+- **备注**：本条为 22:58（task done）/ 23:10（覆盖登记）/ 23:18（OCR skipped）/ 23:20（口径补强）四条目的指令级收口确认；下一任务 B2-AC.2（handler 层搬迁 7+2 文件，首个含生产代码的任务）开工后其 OCR 预计为非 skipped 实质审查
+
+---
+
+## 2026-09-24 01:04 CST · b0 OCR done 后复扫第 1 次：confirmed=2 / rejected=0（→ changes_requested；done+changes_requested 组合态留痕）
+
+- **节点/轮次**：b0 OCR done 后复扫（调度口径"第 1 次"）；台账历史口径**第 16 次 OCR 运行**（07:09 / 07:29 / 07:45 / 08:28 / 09:30 / 10:41 / 11:36 / 12:04 / 12:14 / 12:34 / 13:47 / 16:02 / 16:39 / 17:29 / 18:28 / 本次 00:57）。**性质：b0 已于 18:47 收口 done（head acd7b24 → 集成后 d57a2fa70，18:53 合入 / 18:56 回填），本轮系 done 之后的全量复扫**（13 selected items = Makefile + tools/passbguard 6 源文件）
+- **计划路径**：`docs/plans/passb/00-contract-and-ownership-freeze.md`
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b0/ocr-r1.txt`（本会话已读全文：2,987 字节、45 行、mtime 2026-09-24 00:57；首行 "Review complete: 2 finding(s) across 13 selected item(s)."；**该路径第五次被覆盖**——07:04 版 9 findings → 08:28 版 14 → 10:41 版 16 → 13:47 版 7 → 本次 2；报告附 LLM retry 摘要：29 请求中 1 次超时失败后重试）
+- **结论计数**：confirmed=2 / rejected=0（调度指令口径；与报告 2 findings 一致）
+- **findings 清单**（报告全文转录，均 bug·medium，报告附修复建议 diff）：
+  1. `tools/passbguard/check.go:1018-1023` —— fileReferencesIdent 对 parseFileFull 解析错误静默返回 false，与本包另两调用点（discover.go DiscoverSymbolConsumers 内两处）上抛口径不一致；worker-set 回退扫描（check.go:966 唯一消费点）遇 internal/router/ 注册文件全量 AST 解析失败（ImportsOnly 可过而全量不可过）时该文件从 discovered 集静默消失、已登记 consumers 批量误报 contract-consumer-vanished（解析错误伪装成治理漂移）；建议改返回 `(bool, error)`、由 discoverSetConsumers 转显式 setSiteIssue 诊断（如 contract-set-scan-failed）。**历史对照：与 R1 #8（10:49 轮 check.go:737-741）/ 12:37 终审 #5（check.go:835-839）同源，行号历修复偏移后本轮再现**
+  2. `tools/passbguard/model.go:395-402` —— tenant-scoped 事件级联校验缺 actor_origin：event-catalog.yaml 头注释（第 9 行）冻结约束含 actor_origin、现有 30 条事件数据均含，但级联清单仅 occurred_at/event_id，未来新增/修订 tenant 事件漏登时结构校验与 CheckEvents 均不拦截（fail-silent）；建议纳入同一级联清单。**新列**
+- **审查结论**：OCR 本轮**未通过**——2/2 confirmed、0 rejected。`review_status` **approved → changes_requested**（沿 10:49 先例：复扫产出实质 finding 即回退；本轮系指令明示 confirmed=2）
+- **组合态留痕**：b0 现为 `status=done` + `review_status=changes_requested`——状态机（conventions §9）无 done 回退路径、本指令未授权改 status，故 status 保持 done 不动；两条 findings 均落 `tools/passbguard/**`（b0 owned_files 范围），修复分支落点（passb-b0 续提交 vs 新修复分支）与节点重开方式（是否回退 in_progress）**待协调者裁定**。另注：note 12 用户裁定（18:47 收口时）曾言明"免全量终审、每任务完成即审"——本轮 13 items 全量复扫产出实质 finding，该裁定与新复扫流的关系亦待协调者澄清
+- **修复轮次**：5（第 4 轮已于 18:46/18:47 闭环收口——16:10 R1 7 → `1a5257003` 修 1 → 16:44 R2 2 → `971435df3` 全修 → 17:29 R3 1 → 工单 18:09 登记/18:46 覆盖审得 0 需修 → done；**第 5 轮 = 本轮 2 findings，尚未启动**——本会话核验 `27d4b680a` 后 b0 分支 HEAD `acd7b2401` 无新修复提交）
+- **base/head SHA**：`b1a3d6dd8` / `d57a2fa70`（均已回填，未动）
+- **worktree**：b0 实施分支 `.worktrees/passb-b0`（`codex/passb-b0`，HEAD `acd7b2401`，本会话 git log 核验：27d4b680a 后 3 提交）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`——ib1 屏障已登记执行，B1 四节点与 ib1 均在 b0 之后推进）
+- **测试证据路径**：无新增（B0.1–B0.6 六任务证据链与 16:02–18:46 第 4 轮证据见前各条目；本轮 OCR 报告即上述路径）
+- **本次 JSON 变更**（python 原子更新，断言全过）：(1) b0 `review_status` approved → **changes_requested**；(2) b0 `notes` 数组追加第 13 条（本轮 2 findings 全文 + 组合态处置 + 待协调事项）；`status=done`、`task_status`、base/head SHA、其余 32 节点均未动。本会话 `python3 json.load` 复验合法（review 分布：1 changes_requested + 5 approved + 27 pending）
+- **待协调者处置**：(1) 两条 medium 的修复分支落点与第 5 轮启动方式；(2) done+changes_requested 组合态下节点重开或原位修复的裁定；(3) finding #1 系历史 R1 #8 同源再现——18:46 覆盖登记曾审得 0 需修，本轮复扫推翻，该扫描范围口径差异留痕备查
+
+---
+
+## 2026-09-24 01:35 CST · b0 OCR done 后复扫第 2 次：confirmed=2 / rejected=0（均为 low 非阻塞观察 → changes_requested 维持，JSON 无字节级改动）
+
+- **节点/轮次**：b0 OCR done 后复扫第 2 次（01:04 R1 2 medium 修复后的增量复审，2 selected items）；台账历史口径**第 17 次 OCR 运行**（07:09 / 07:29 / 07:45 / 08:28 / 09:30 / 10:41 / 11:36 / 12:04 / 12:14 / 12:34 / 13:47 / 16:02 / 16:39 / 17:29 / 18:28 / 00:57 / 本次 01:27）
+- **计划路径**：`docs/plans/passb/00-contract-and-ownership-freeze.md`
+- **第 5 轮 R1 修复核验**（本会话 git 实测）：`.worktrees/passb-b0`（`codex/passb-b0`）自 `acd7b2401` 后新增恰 1 个修复提交、工作树干净——`17a77e8d3`（2026-09-24 01:16:51，`git show` 本会话实读）`fix(passb): 回退扫描 parse 失败显式诊断不入集、tenant-scoped 事件级联强制 actor_origin`——**f1**：fileReferencesIdent 签名改 `(bool, error)`、错误原样上抛（与 DiscoverSymbolConsumers 口径一致），调用点收敛为 `setSiteIssue{Check: contract-set-scan-failed}`、失败文件不进 discovered 集；**f2**：tenant-scoped required_metadata 级联清单增加 actor_origin（对齐 event-catalog.yaml 头注释五元组；真实目录 29 条事件已合规，guard 自检 missing=0）。TDD RED→GREEN：TestDiscoverSetConsumersWorkerSetScanFailure / TestEventSchemaRequiresTenantScopedActorOrigin；passbguard 全量 + vet 通过（commit message 所载，本管家未重跑测试）。**即 01:04 R1 两条 medium 全部已修**
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b0/ocr-r2.txt`（本会话已读全文：1,999 字节、23 行、mtime 01:27；首行 "Review complete: 2 finding(s) across 2 selected item(s)."；**该路径第四次被覆盖**——07:29 版 0 findings → 09:30 版 0 → 11:36 版 6 → 12:14 版 1 → 本次 2）
+- **结论计数**：confirmed=2 / rejected=0（调度指令口径；与报告 2 findings 一致）
+- **findings 清单**（报告全文转录，均 `tools/passbguard/check.go:973-978`、[maintainability · low]，报告原文自陈两条均为"非阻塞观察"）：
+  1. scan 失败文件 f 被排除出 discovered 集后，check.go:510-523 仍用该（不完整）集对 row.Consumers 做 vanished 断言——若 f 恰为已登记 consumer，会与本条 scan-failed 同屏产出一条假 "contract-consumer-vanished"（事实只是解析结果未知；注释宣称的"不建立在未知基础上"仅对 unrecorded 方向成立），与 symbol 路径 check.go:613-616（err → emit 后 continue，跳过该符号全部 vanished 比较）口径不一致；报告自陈"CI 结果仍为失败、fail-loud 达成"，建议让 setSiteIssue 或返回契约携带 scan 失败文件集、调用方对这些文件跳过 510-523 的 vanished 断言（保留 scan-failed 诊断），或至少在本条消息中注明同文件的 vanished 诊断不可信。**系 `17a77e8d3` f1 修复引入形态的连带观察**
+  2. fallback 扫描按 worker-set 契约行逐一执行（check.go:460/500 每含 worker-set 行的 manifest 各调一次 discoverSetConsumers，contracts.yaml 现有 18 条 worker-set 行），且 parseFileFull 只缓存成功解析、错误不缓存（discover.go:295-302）——同一 internal/router 下不可完整解析的文件按模块重复 parse、对每条 worker-set 行各产出一条仅 row.ID 不同的 "contract-set-scan-failed"，一次破损放大为 ~18 条重复诊断；报告自陈"emit 已带各自 row.ID、语义上每行的扫描确实失败，不构成误报，仅是诊断噪音"，建议按文件路径去重或扫描结果在 Discovery 层按 (kind, file) 共享；另 err 已含 "parse <path>" 前缀（discover.go:301），消息读作 "cannot parse X: parse X:…" 纯措辞冗余。**同上连带观察**
+- **审查结论**：OCR 本轮**未通过**——2/2 confirmed、0 rejected（调度口径），但两条均为报告自陈的 maintainability low 非阻塞观察（fail-loud 已达成、不构成误报）；`review_status=changes_requested` **维持**（目标值已在位）
+- **修复轮次**：5（第 5 轮在途：01:04 R1 2 medium 已修 `17a77e8d3` → R2 增量复审 2 low 非阻塞观察——**未闭环**；finding 严重度轨迹 medium×2 → low×2）
+- **base/head SHA**：`b1a3d6dd8` / `d57a2fa70`（均已回填，未动）
+- **worktree**：`.worktrees/passb-b0`（`codex/passb-b0`，HEAD `17a77e8d3`，本会话 git log/status 核验工作树干净）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **测试证据路径**：无新增（修复提交自带 TDD 测试见上；本管家未重跑——本轮指令未要求）
+- **本次 JSON 变更**：**无字节级改动**——confirmed>0 时 `review_status` 目标值 `changes_requested` 已在位（01:04 条目所置）；`status=done`（组合态留痕如前）、`task_status`、base/head SHA、notes（13 条）、其余 32 节点均未动。JSON 合法性本会话 `python3 json.load` 复验通过（review 分布：1 changes_requested + 5 approved + 27 pending）
+- **备注**：(1) 两条 low 均为 `17a77e8d3` 修复触及面的连带观察，修复成本低（跳过断言/去重/措辞）；(2) b0 已 done 且 B1/ib1 已在其上推进——第 5 轮剩余修复的分支落点与节点重开方式继续待协调者裁定（01:04 条目待办顺延）
+
+---
+
+## 2026-09-24 01:37 CST · b0 OCR R2 low findings 处理结论登记（修复工单 ×2：scan-failed 文件跳过 vanished 断言 + 诊断按文件去重）
+
+- **节点/轮次**：b0 节点级审查第 5 轮 R2（01:35 条目）两条 confirmed low findings 的处理结论（调度方下发修复工单；**非完成报告**——分支 HEAD 仍 `17a77e8d3`，本会话 `git log 17a77e8d3..HEAD | wc -l` 实测 0 新提交，工单未落分支）
+- **计划路径**：`docs/plans/passb/00-contract-and-ownership-freeze.md`
+- **工单 1：b0-ocr-r2-1**（severity low，`tools/passbguard/check.go:973-978`；调度方裁定**真实问题（非阻塞，诊断精度）**）——problem：回退扫描中 fileReferencesIdent 出错时（check.go:966-979）该文件 f 仅产 contract-set-scan-failed 并被排除出 discovered 集（break 跳过 check.go:986 的 addVerified），但 check.go:510-523 仍对 row.Consumers 做 vanished 断言：因 f∈d.GoFiles 磁盘存在、又不在 discovered 中，若 f 为 recorded consumer 即同屏假 contract-consumer-vanished。**现状核实（本会话在 passb-b0@`17a77e8d3` 实读）**：check.go:972-982 诊断+break 分支在案、check.go:510-523 vanished 断言对 discovered 集逐个 `containsExact` 属实——problem 描述属实
+- **工单 1 验收标准**（acceptance 转录；**调度指令文本于「若 」处截断，如实保留**）：(1) discoverSetConsumers 返回契约（或 setSiteIssue）携带 scan-failed 文件集，CheckContracts 对这些文件跳过 check.go:510-523 的 vanished 断言但保留 contract-set-scan-failed 诊断；(2) 新增 fixture 测试覆盖"scan-failed 文件同时是 recorded consumer 时产出 scan-failed 且不产出 contract-consumer-vani[shed]"（截断处按 finding 语义补全，完整原文以调度方为准）
+- **工单 2：b0-ocr-r2-2**（同位点，severity low；调度方裁定**真实问题（非阻塞，诊断噪音），机制成立但量级有误需修正**）——problem 核实：check.go:460（manifest 循环）/check.go:500（每个恰一行 set 契约各调一次 discoverSetConsumers）逐行重复执行回退扫描；parseFileFull（discover.go:291-306）仅成功解析入 astCache（line 304 在错误 return 之后）、错误不缓存、逐行重复 parse——调度方 grep 确认 astCache 无其他写入点。**本会话实读同证**：check.go:500-502 每行调用 + discover.go:295-304 缓存仅在成功路径写入属实
+- **工单 2 验收标准**（acceptance 转录；**调度指令文本于「修正一」处截断，如实保留**）：(1) scan-failed 按文件去重：同一破损文件跨多条 worker-set 行只产出一条诊断（Discovery 层按 (kind,file) 共享扫描结果，或首个遇到行 emit 后记录已报文件）；(2) 消除 "cannot parse X: parse X:" 措辞冗余（fileReferencesIdent 上抛去前缀错误或消息改用内部错误）；(3) 新增 fixture 测试断言多行共享单破损文件时 scan-failed 恰一条；(4) go test ./tools/passbgua[rd …]（截断处按惯例补全为 passbguard 全量测试，完整原文以调度方为准）
+- **审查结论**：`review_status=changes_requested` **维持不变**（两条工单登记不改变审查状态；修复未完成）
+- **修复轮次**：5（第 5 轮 R2 两条 low 的修复工单在案待执行；R1 2 medium 已修 `17a77e8d3`）
+- **base/head SHA**：`b1a3d6dd8` / `d57a2fa70`（均已回填，未动）
+- **worktree**：修复应落 `.worktrees/passb-b0`（`codex/passb-b0`，HEAD `17a77e8d3`，本会话 git log/status 核验工作树干净）；DAG/台账所在 `.worktrees/passb-int`（HEAD `8c45a8815`）
+- **本次 JSON 变更**（python 原子更新，断言全过）：b0.`notes` 数组末尾追加 1 条字符串（第 14 条）——两条工单全文（problem + 验收标准 + 截断标注 + 现状核实结论），沿 12:17 条目先例；`review_status=changes_requested`、`status=done`（组合态维持）、`task_status`、base/head SHA、其余 32 节点均未动。本会话 `python3 json.load` 复验合法（notes 14 条；review 分布 1 changes_requested + 5 approved + 27 pending）
+- **备注**：(1) 工单 2 的量级修正系调度方对 01:35 转录的勘误——重复诊断条数取决于 manifest 行数而非固定 ~18；(2) 两条工单落点均在 `tools/passbguard/**`（b0 owned_files 范围），修复分支落点与 done+changes_requested 组合态的收口方式待协调者裁定（01:04 条目待办顺延）
+
+---
+
+## 2026-09-24 01:39 CST · b0 登记 OCR 覆盖：ocr_covered 追加 [acd7b2401 → 17a77e8d3]（口径"审得 0 条需修 findings"；与 01:37 工单并存留痕）
+
+- **节点**：b0 —— B0 契约与所有权冻结（passbguard + 4 份治理 yaml + 证据）
+- **登记内容**：b0 节点 `ocr_covered` 数组追加第 2 条 `{base: "acd7b24011b57704d401c63f4d2fce1819e057fc", head: "17a77e8d32ab1bf6bb14a258feee61c98bb8b3de"}`（全 40 位 SHA，调度指令口径：**审得 0 条需修 findings**）——首条 [1a5257003 → 971435df3]（18:46 条目登记）不变，现共 2 条
+- **SHA 真实性核验**（本会话 git 实测，`.worktrees/passb-b0`，`git rev-parse` 双双命中 40 位全 SHA）：`acd7b2401`（2026-09-23 18:46:59，fix(passbguard): 修复同包符号引用漏检 map 键与赋值左侧使用，R3 修复）与 `17a77e8d3`（2026-09-24 01:16:51，fix(passb): 回退扫描 parse 失败显式诊断不入集、tenant-scoped 事件级联强制 actor_origin，**第 5 轮 R1 两条 medium 修复**）；区间 `acd7b2401..17a77e8d3` 含**恰 1 个提交**（即 `17a77e8d3` 本身）；`17a77e8d3..HEAD` = 0（分支无更新提交，工作树干净）
+- **覆盖区间语义**：本登记覆盖的正是第 5 轮 R1 修复提交——01:35 OCR R2 增量复审（2 selected items）扫描的即为 `17a77e8d3` 触及面，产出 2 confirmed low（报告在案）
+- **留痕（口径差异，待协调者如需澄清）**：本轮口径"审得 0 条需修 findings"与 01:37 条目**并存**——01:35 R2 复审对该区间产出 2 confirmed low（非阻塞观察），01:37 调度方裁定"真实问题"并登记修复工单 ×2（notes 第 14 条在案）。本轮指令未说明两者关系：(a) 若系调度方对这 2 条 low 的处置裁定为无需修，则实质关闭 01:37 工单；(b) 若系另一次复审结果，其报告路径未附。按指令原文如实登记，不自行判定；**工单状态以调度方后续显式指令为准**
+- **节点级状态未迁移**：`status=done`、`review_status=changes_requested`（01:04 组合态维持）、`head_sha=d57a2fa70`、notes 14 条均未动——本指令仅授权 ocr_covered 登记 + 台账留痕
+- **修复轮次**：5（不变——第 5 轮 R2 两条 low 工单在案；其是否因本轮口径关闭待调度方澄清）
+- **base/head SHA（节点级）**：`b1a3d6dd8` / `d57a2fa70`（均已回填，未动）
+- **worktree**：`.worktrees/passb-b0`（`codex/passb-b0`，HEAD `17a77e8d3`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `8c45a8815`）
+- **本次 JSON 变更**（python 原子更新，断言全过）：b0.`ocr_covered` 追加第 2 条（现共 2 条，SHA 与指令逐字符一致）；`status=done`、`review_status=changes_requested`、`notes` 14 条、`task_status`、base/head SHA、其余 32 节点均未动。本会话 `python3 json.load` 复验合法（review 分布：1 changes_requested + 5 approved + 27 pending）
+
+---
+
+## 2026-09-24 01:41 CST · b0 → done（第 5 轮修复后重新收口：head 17a77e8 回填，门禁+OCR 通过）
+
+- **节点**：b0 —— B0 契约与所有权冻结（passbguard + 4 份治理 yaml + 证据）——第二次 done 收口（首次 18:47，其后经 01:04 done 后复扫 2 medium → 修复 → 01:35 复审 2 low（非阻塞）→ 01:39 覆盖口径 0 需修，本轮按调度方收口指令重新落 done 终态）
+- **计划路径**：`docs/plans/passb/00-contract-and-ownership-freeze.md`
+- **前置**：无（depends_on = []；b0 为 DAG 根）
+- **worktree**：`.worktrees/passb-b0`（`codex/passb-b0`，本会话 git 核验 HEAD `17a77e8d3`、工作树干净）
+- **base → head**：`b1a3d6dd8` → **`17a77e8d32ab1bf6bb14a258feee61c98bb8b3de`**（指令短 SHA `17a77e8`，本会话 `git rev-parse HEAD` 命中完整 40 位；`git merge-base --is-ancestor` 核验 base 是 head 祖先 ✓；分支自 base 累计 **20 提交** = 六任务 9 + 历轮 OCR 修复与测试迁移 10 + 第 5 轮 R1 修复 `17a77e8d3`）；head 提交内容：01:16:51 `fix(passb): 回退扫描 parse 失败显式诊断不入集、tenant-scoped 事件级联强制 actor_origin`（对应 01:04 复扫两条 medium；TDD 测试 commit message 在案）
+- **门禁+OCR 通过**：调度指令口径（本管家未重跑，沿 03:40/18:47 先例）；在案证据链 = 节点 5 项 gates（06:21 条目）+ 第 5 轮 R1 修复提交自带 TDD 测试（01:35 条目转录）+ OCR 覆盖登记（01:39 条目，ocr_covered 第 2 条口径 0 需修 findings）
+- **审查结论**：**approved**（指令口径"门禁+OCR 通过"→ `review_status` changes_requested → **approved**，沿 18:47 推断迁移先例在此留痕）；01:37 两条 low 修复工单按 01:39"0 条需修"口径与本轮"OCR 通过"收口指令**关闭**（第 5 轮闭环：R1 2 medium 已修 `17a77e8d3`，R2 2 low 非阻塞观察经覆盖口径不需修）
+- **OCR 报告路径**：历轮全录（ocr-r1/r2/r3/r3-a2/ocr-final 各版本，见各条目）；ocr_covered 现共 2 条：[1a5257003 → 971435df3]（18:46）+ [acd7b2401 → 17a77e8d3]（01:39）
+- **修复轮次**：5（全部闭环：第 1–4 轮见 18:47 条目；第 5 轮 = 01:04 R1 2 medium → `17a77e8d3` 全修 → 01:35 R2 2 low 非阻塞 → 01:39 覆盖口径不需修 → 本轮收口）
+- **测试证据路径**：B0.1–B0.6 六任务报告/审查包（03:40–06:21 各条目）+ 节点 5 项 gates（06:21）+ `17a77e8d3` 自带 TDD 测试（01:35 条目）+ ocr_covered 两条登记（18:46/01:39）
+- **本次 JSON 变更**（python 原子更新，断言全过，净变更 2 行）：(1) `review_status` changes_requested → **approved**；(2) `head_sha` `d57a2fa70…` → **`17a77e8d32ab1bf6bb14a258feee61c98bb8b3de`**。`status=done`（已在位，无改动）、`base_sha=b1a3d6dd8`、task_status 六任务 done、notes 14 条、ocr_covered 2 条、其余 32 节点均未动。本会话 `python3 json.load` 复验合法（33 节点分布：6 done + 4 in_progress + 23 pending；review：6 approved + 27 pending）
+- **留痕 1（head_sha 两度显式指令）**：现值原为 `d57a2fa70`（18:56 调度方显式指令以集成后 HEAD 覆盖）；本轮调度方又显式指令 `head 17a77e8`（分支 HEAD）——两次均为调度方权限内显式指令，按序执行如实登记。**语义注意：`17a77e8d3`（第 5 轮修复）尚未合入 `codex/passb-integration`**（integration HEAD 仍 `8c45a8815`），B0 第 5 轮成果的集成合并待集成工程师（沿 18:53 先例）；如合并后需以合并头再覆盖，由调度方显式指令
+- **留痕 2（工单关闭依据）**：01:37 工单 ×2 与 01:39"0 条需修"覆盖口径的并存关系（01:39 条目留痕待澄清）由本轮"门禁+OCR 通过"收口指令落定——调度方以覆盖口径为准，第 5 轮无剩余修复义务
+- **后续（调度方事项）**：合并 `codex/passb-b0`（HEAD `17a77e8d3`）进 `codex/passb-integration` 使集成树含第 5 轮修复（check.go/discover.go/model.go 变更）
+
 
 
 
