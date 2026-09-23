@@ -41,6 +41,7 @@ var versionedSQLiteTables = []string{
 	"agent_release_submissions",
 	"agent_release_reviews",
 	"agent_releases",
+	"plugin_previews", // 000110 twin of versioned 000189 (issue #108)
 }
 
 // versionedSQLiteColumns maps each existing table to the columns that the

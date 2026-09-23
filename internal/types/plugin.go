@@ -1,5 +1,11 @@
 package types
 
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"time"
+)
+
 // PluginManifest is the weknora.plugin/1 protocol document served by the
 // plugin developer at a stable URL. It describes ONE version; the endpoint
 // must stay reachable for that version's lifetime (spec: developers keep old
@@ -53,4 +59,61 @@ type PluginToolSnapshot struct {
 	ReadOnly             bool     `json:"read_only"`
 	RequiresPersonalAuth bool     `json:"requires_personal_auth"`
 	Scopes               []string `json:"scopes,omitempty"`
+}
+
+// PluginPreviewTools is the JSON column shape of plugin_previews.
+// tools_snapshot (JSONB on PostgreSQL, TEXT on the SQLite twin): the verified
+// tool directory the admin reviewed, exactly as FetchAndVerify computed it.
+type PluginPreviewTools []PluginToolSnapshot
+
+// Value implements driver.Valuer for PluginPreviewTools (JSON column).
+func (t PluginPreviewTools) Value() (driver.Value, error) {
+	if t == nil {
+		return nil, nil
+	}
+	return json.Marshal(t)
+}
+
+// Scan implements sql.Scanner for PluginPreviewTools (JSON column).
+func (t *PluginPreviewTools) Scan(value interface{}) error {
+	if value == nil {
+		*t = nil
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return nil
+	}
+	return json.Unmarshal(b, t)
+}
+
+// PluginPreview persists one verified manifest preview: the admin's review
+// artifact between "pasted a manifest URL" and "confirmed an installation".
+// It is TTL-bound and single-use — installation confirm (migration 000190)
+// consumes it exactly once; Expired() treats a consumed preview as expired.
+// A preview is review material, never an execution grant.
+type PluginPreview struct {
+	ID                  string             `json:"id"                   gorm:"type:varchar(36);primaryKey"`
+	TenantID            uint64             `json:"tenant_id"            gorm:"not null;index:idx_plugin_previews_tenant,priority:1"`
+	ManifestURL         string             `json:"manifest_url"         gorm:"type:varchar(512);not null"`
+	PluginID            string             `json:"plugin_id"            gorm:"type:varchar(128);not null;index:idx_plugin_previews_tenant,priority:2"`
+	Version             string             `json:"version"              gorm:"type:varchar(64);not null"`
+	Name                string             `json:"name"                 gorm:"type:varchar(255);not null"`
+	TransportType       string             `json:"transport_type"       gorm:"type:varchar(50);not null"`
+	EndpointURL         string             `json:"endpoint_url"         gorm:"type:varchar(512);not null"`
+	ToolsSnapshot       PluginPreviewTools `json:"tools_snapshot"       gorm:"type:json;not null"`
+	ToolsDigest         string             `json:"tools_digest"         gorm:"type:varchar(64);not null"`
+	IdentityFingerprint string             `json:"identity_fingerprint" gorm:"type:varchar(64);not null"`
+	CreatedBy           string             `json:"created_by"           gorm:"type:varchar(255);not null"`
+	ExpiresAt           time.Time          `json:"expires_at"`
+	ConsumedAt          *time.Time         `json:"consumed_at,omitempty"`
+	CreatedAt           time.Time          `json:"created_at"`
+}
+
+// Expired reports whether this preview can no longer be confirmed against.
+// A preview is dead when its TTL has passed OR when it was already consumed
+// — consumption is one-shot, so "already used" is the same verdict as
+// "too late". The boundary is inclusive: ExpiresAt == now is expired.
+func (p *PluginPreview) Expired(now time.Time) bool {
+	return p.ConsumedAt != nil || !now.Before(p.ExpiresAt)
 }
