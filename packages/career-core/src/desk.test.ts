@@ -54,3 +54,114 @@ test('forbidden open stays an error and does not retain prior tenant facts', asy
  await assert.rejects(desk.open(), (error: unknown) => (error as { code?: string }).code === 'forbidden')
  assert.equal(desk.snapshot, undefined)
 })
+
+test('dropped act response reconciles committed receipt and never sends a second request id', async () => {
+ const fact = { key: '城市', value: '上海', revision: 1, source: { kind: 'user' }, confirmation: { userId: 'u', confirmedAt: 'now' }, confirmedAt: 'now' }
+ const saved = { kind: 'confirmed', requestId: 'stable-rid', revision: 1, fact } satisfies CareerReceipt
+ let actCalls = 0
+ const desk = new CareerDesk(remote({
+  act: async () => { actCalls += 1; throw new TypeError('network connection lost after commit') },
+  receipt: async (id) => { assert.equal(id, 'stable-rid'); return saved },
+ }))
+ desk.activate('u', 't'); await desk.open()
+ const action: CareerAction = { action: 'confirm', key: '城市', value: '上海', source: { kind: 'user' }, requestId: 'stable-rid', expectedRevision: 0 }
+ assert.deepEqual(await desk.mutate(action), saved)
+ assert.equal(actCalls, 1)
+ assert.equal(desk.snapshot?.facts[0]?.value, '上海')
+})
+
+test('unresolved mutation gates new actions; same action can retry only with original id after receipt miss', async () => {
+ const sent: CareerAction[] = []
+ let receiptExists = false
+ const desk = new CareerDesk(remote({
+  act: async (action) => { sent.push(action); if (sent.length === 1) throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' }); return { kind: 'confirmed', requestId: action.requestId, revision: 1, fact: { key: action.key, value: action.value, revision: 1, source: action.source, confirmation: { userId: 'u', confirmedAt: 'now' }, confirmedAt: 'now' } } },
+  receipt: async (id) => { if (!receiptExists) throw Object.assign(new Error('not found'), { code: 'not_found' }); return { kind: 'confirmed', requestId: id, revision: 1, fact: { key: '学历', value: '本科', revision: 1, source: { kind: 'user' }, confirmation: { userId: 'u', confirmedAt: 'now' }, confirmedAt: 'now' } } },
+ }))
+ desk.activate('u', 't')
+ const action: CareerAction = { action: 'confirm', key: '学历', value: '本科', source: { kind: 'user' }, requestId: 'same-id', expectedRevision: 0 }
+ await assert.rejects(desk.mutate(action), (error: unknown) => (error as { code?: string }).code === 'outcome_unknown')
+ assert.deepEqual(desk.pendingAction, action)
+ await assert.rejects(desk.mutate({ ...action, key: '城市', value: '深圳', requestId: 'new-id' }), (error: unknown) => (error as { code?: string }).code === 'unresolved_action')
+ await assert.rejects(desk.retryUnknown({ ...action, value: '改过的值' }), (error: unknown) => (error as { code?: string }).code === 'retry_payload_mismatch')
+ receiptExists = true
+ await desk.retryUnknown(action)
+ assert.equal(sent.length, 2)
+ assert.equal(sent[0]?.requestId, 'same-id')
+ assert.equal(sent[1]?.requestId, 'same-id')
+})
+
+test('late list response cannot regress same-scope receipt facts or revision', async () => {
+ let resolveList!: (value: CareerView) => void
+ const confirmed = { key: '学历', value: '本科', revision: 2, source: { kind: 'user' }, confirmation: { userId: 'u', confirmedAt: 'now' }, confirmedAt: 'now' }
+ const desk = new CareerDesk(remote({
+  list: () => new Promise((resolve) => { resolveList = resolve }),
+  act: async (action) => ({ kind: 'confirmed', requestId: action.requestId, revision: 2, fact: confirmed }),
+ }))
+ desk.activate('u', 't'); await desk.open()
+ const refreshing = desk.refresh()
+ await desk.mutate({ action: 'confirm', key: '学历', value: '本科', source: { kind: 'user' }, requestId: 'r', expectedRevision: 0 })
+ resolveList(view(1))
+ await refreshing
+ assert.equal(desk.snapshot?.revision, 2)
+ assert.equal(desk.snapshot?.facts[0]?.value, '本科')
+})
+
+test('late changes response cannot regress a newer receipt revision', async () => {
+ let resolveChanges!: (value: CareerView extends never ? never : { revision: number; changes: CareerView['facts'] extends never ? never : Array<{ revision: number; kind: 'confirmed'; fact: CareerView['facts'][number] }> }) => void
+ const latest = { key: '学历', value: '本科', revision: 2, source: { kind: 'user' }, confirmation: { userId: 'u', confirmedAt: 'now' }, confirmedAt: 'now' }
+ const desk = new CareerDesk(remote({
+  changes: () => new Promise((resolve) => { resolveChanges = resolve }),
+  act: async (action) => ({ kind: 'confirmed', requestId: action.requestId, revision: 2, fact: latest }),
+ }))
+ desk.activate('u', 't'); await desk.open()
+ const syncing = desk.syncChanges()
+ await desk.mutate({ action: 'confirm', key: '学历', value: '本科', source: { kind: 'user' }, requestId: 'r', expectedRevision: 0 })
+ resolveChanges({ revision: 1, changes: [{ revision: 1, kind: 'confirmed', fact: { ...latest, value: '旧值', revision: 1 } }] })
+ await syncing
+ assert.equal(desk.snapshot?.revision, 2)
+ assert.equal(desk.snapshot?.facts[0]?.value, '本科')
+})
+
+test('forbidden same-scope refresh clears cached private view and pending action', async () => {
+ let forbidden = false
+ const desk = new CareerDesk(remote({
+  open: async () => view(1, [{ key: '学历', value: '本科', revision: 1, source: { kind: 'user' }, confirmation: { userId: 'u', confirmedAt: 'now' }, confirmedAt: 'now' }]),
+  list: async () => { if (forbidden) throw Object.assign(new Error('forbidden'), { code: 'forbidden' }); return view(1) },
+ }))
+ desk.activate('u', 't'); await desk.open(); forbidden = true
+ await assert.rejects(desk.refresh(), (error: unknown) => (error as { code?: string }).code === 'forbidden')
+ assert.equal(desk.snapshot, undefined)
+})
+
+
+test('forbidden read also discards an unresolved action in the same scope', async () => {
+ let forbidden = false
+ const desk = new CareerDesk(remote({
+  open: async () => view(1, [{ key: '学历', value: '本科', revision: 1, source: { kind: 'user' }, confirmation: { userId: 'u', confirmedAt: 'now' }, confirmedAt: 'now' }]),
+  act: async () => { throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' }) },
+  receipt: async () => { throw Object.assign(new Error('not found'), { code: 'not_found' }) },
+  list: async () => { if (forbidden) throw Object.assign(new Error('revoked'), { code: 'forbidden' }); return view(1) },
+ }))
+ desk.activate('u', 't'); await desk.open()
+ const action: CareerAction = { action: 'confirm', key: '学历', value: '本科', source: { kind: 'user' }, requestId: 'pending', expectedRevision: 1 }
+ await assert.rejects(desk.mutate(action), (error: unknown) => (error as { code?: string }).code === 'outcome_unknown')
+ assert.equal(desk.pendingAction?.requestId, 'pending')
+ forbidden = true
+ await assert.rejects(desk.refresh(), (error: unknown) => (error as { code?: string }).code === 'forbidden')
+ assert.equal(desk.snapshot, undefined)
+ assert.equal(desk.pendingAction, undefined)
+})
+
+test('same-id retry conflict safely resolves the unknown action and unlocks new edits', async () => {
+ let actCalls = 0
+ const desk = new CareerDesk(remote({
+  act: async () => { actCalls += 1; if (actCalls === 1) throw Object.assign(new Error('lost response'), { code: 'TIMEOUT' }); throw Object.assign(new Error('stale revision'), { code: 'revision_conflict', currentRevision: 3 }) },
+  receipt: async () => { throw Object.assign(new Error('not found'), { code: 'not_found' }) },
+ }))
+ desk.activate('u', 't'); await desk.open()
+ const action: CareerAction = { action: 'confirm', key: '学历', value: '本科', source: { kind: 'user' }, requestId: 'same', expectedRevision: 0 }
+ await assert.rejects(desk.mutate(action), (error: unknown) => (error as { code?: string }).code === 'outcome_unknown')
+ await assert.rejects(desk.retryUnknown(action), (error: unknown) => (error as { code?: string; currentRevision?: number }).code === 'revision_conflict' && (error as { currentRevision?: number }).currentRevision === 3)
+ assert.equal(desk.pendingAction, undefined)
+ await assert.rejects(desk.mutate({ ...action, requestId: 'next', expectedRevision: 3, value: '硕士' }), (error: unknown) => (error as { code?: string }).code !== 'unresolved_action')
+})
