@@ -76,7 +76,8 @@
 .wk-kg-10 {
   pointer-events: none;
   font-size: 11px;
-  fill: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  fill: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kg-11 {
@@ -295,12 +296,14 @@
 .wk-kg-29 {
   white-space: nowrap;
   font-weight: 500;
-  color: #172033;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kg-30 {
   margin: 0;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kg-31 {
@@ -343,7 +346,8 @@
   align-items: center;
   gap: 8px;
   font-size: 11px;
-  color: #506078;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kg-34 {
@@ -377,7 +381,8 @@
   text-align: left;
   font-size: 11px;
   line-height: 14px;
-  color: #506078;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
@@ -437,13 +442,15 @@
   white-space: nowrap;
   font-size: 12px;
   line-height: 4;
-  color: #172033;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kg-43 {
   font-size: 11px;
   line-height: 14px;
-  color: #506078;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kg-44 {
@@ -525,7 +532,8 @@
 }
 
 .wk-kg-50 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kg-51 {
@@ -546,12 +554,14 @@
   padding-inline: 8px;
   padding-block: 1px;
   font-size: 11px;
-  color: #506078;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kg-53 {
   font-size: 12px;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kg-54 {
@@ -563,7 +573,8 @@
   user-select: none;
   font-size: 12px;
   line-height: 4;
-  color: #506078;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kg-56 {
@@ -607,7 +618,8 @@
   padding-inline: 8px;
   text-align: left;
   font-size: 13px;
-  color: #172033;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kg-60:hover {
@@ -641,11 +653,13 @@
 }
 
 .wk-kg-63 {
-  color: #506078;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kg-63:hover {
-  color: #172033;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kg-64 {
@@ -674,4 +688,5 @@
 .wk-ds-self-start { justify-self: start; }
 
 /* 手工段：commercial/data-sources Card 壳（theme utilities → 语义类，configuration ui.tsx 同型） */
-.wk-cs-card, .wk-dsui-card { border-radius: 8px; border: 1px solid #dce3ed; background-color: #ffffff; padding: 16px; }
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+.wk-cs-card, .wk-dsui-card { border-radius: 8px; border: 1px solid #e7e7e7; background-color: #ffffff; padding: 16px; }

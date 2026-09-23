@@ -3,7 +3,8 @@
 
 
 .wk-cfg-ops-1 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-cfg-ops-2 {
@@ -48,7 +49,8 @@
   border-color: #cbd5e1;
   border-radius: 6px;
   background-color: #fff;
-  color: #172033;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -65,7 +67,8 @@
   border-color: #cbd5e1;
   border-radius: 6px;
   background-color: #fff;
-  color: #172033;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -76,11 +79,13 @@
 
 .wk-cfg-ops-5 {
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-bottom: 0.8rem;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 0.75rem;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   overflow-wrap: anywhere;
 }
 
@@ -106,7 +111,8 @@
 }
 
 .wk-cfg-ops-8 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   margin: 0;
 }
 
@@ -122,7 +128,8 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 0.9rem;
 }
 
@@ -135,7 +142,8 @@
 .wk-cfg-ops-12 {
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 0.8rem;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 
@@ -145,7 +153,8 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 0.9rem;
 }
 
@@ -158,7 +167,8 @@
 .wk-cfg-page-3 {
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 0.8rem;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-cfg-page-4 {
@@ -206,7 +216,8 @@
 }
 
 .wk-cfg-page-10 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-cfg-page-11 {
@@ -239,7 +250,8 @@
 }
 
 .wk-cfg-page-15 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   margin: 0;
 }
 
@@ -252,7 +264,8 @@
   background-color: #f4f3ff;
   margin-right: auto;
   font-size: 0.85rem !important;
-  color: #66758b !important;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6) !important;
 }
 
 
@@ -283,7 +296,8 @@
 }
 
 .wk-cfg-ed-3 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   margin: 0;
 }
 
@@ -327,7 +341,8 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 0.9rem;
 }
 
@@ -360,7 +375,8 @@
 }
 
 .wk-cfg-mun-3 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   margin: 0;
 }
 
@@ -376,14 +392,17 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 0.9rem;
 }
 
 .wk-cfg-mun-6 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 
 /* ui.tsx Card 壳：rounded-card border-line bg-surface p-4（theme token utilities）平移 */
-.wk-cfg-card { border-radius: 8px; border: 1px solid #dce3ed; background-color: #ffffff; padding: 16px; }
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+.wk-cfg-card { border-radius: 8px; border: 1px solid #e7e7e7; background-color: #ffffff; padding: 16px; }

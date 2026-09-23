@@ -10,19 +10,21 @@
 }
 
 .wk-kbl-2 {
+  /* Vue KnowledgeBaseEditorModal.vue .section-title color: var(--td-text-color-primary) */
   margin: 0;
   font-size: 20px;
   font-weight: 600;
   line-height: 7;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kbl-3 {
+  /* Vue .section-desc color: var(--td-text-color-placeholder) */
   margin: 0;
   margin-top: 4px;
   font-size: 14px;
   line-height: 22px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kbl-4 {
@@ -31,9 +33,10 @@
 }
 
 .wk-kbl-5 {
+  /* Vue .form-label color: var(--td-text-color-primary) */
   font-size: 15px;
   font-weight: 500;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kbl-6 {
@@ -42,24 +45,27 @@
 }
 
 .wk-kbl-7 {
+  /* Vue .form-tip color: var(--td-text-color-placeholder) */
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kbl-8 {
+  /* Vue .section-desc color: var(--td-text-color-placeholder) */
   margin: 0;
   font-size: 14px;
   line-height: 22px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kbl-9 {
+  /* Vue .form-tip color: var(--td-text-color-placeholder) */
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kbl-10 {
@@ -97,6 +103,7 @@
 }
 
 .wk-kba-2 {
+  /* Vue 弹层 .t-popup__content border: var(--td-component-stroke) */
   position: absolute;
   right: 0;
   top: calc(100%+4px);
@@ -106,7 +113,7 @@
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  border-color: #e7e7e7;
   background-color: #ffffff;
   padding: 4px;
   box-shadow: 0 8px 20px rgb(16 24 40/14%);
@@ -125,22 +132,25 @@
 }
 
 .wk-kba-5 {
+  /* Vue KnowledgeBaseActivitySettings.vue .section-title primary */
   margin: 0;
   font-size: 20px;
   font-weight: 600;
   line-height: 7;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kba-6 {
+  /* Vue .section-desc placeholder */
   margin: 0;
   margin-top: 4px;
   font-size: 14px;
   line-height: 22px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kba-7 {
+  /* Vue .kb-activity-filter-bar secondary */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -149,7 +159,7 @@
   padding-inline: 12px;
   padding-block: 8px;
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kba-8 {
@@ -157,7 +167,8 @@
   border-radius: 8px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  /* Vue KnowledgeBaseActivitySettings.vue .data-table-shell border: var(--td-component-stroke) */
+  border-color: #e7e7e7;
 }
 
 .wk-kba-9 {
@@ -168,12 +179,13 @@
 }
 
 .wk-kba-10 {
+  /* tdesign .t-table thead th: border var(--td-component-border); color var(--td-text-color-placeholder) */
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #dcdcdc;
   background-color: #f3f3f3;
   text-align: left;
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kba-11 {
@@ -188,9 +200,10 @@
 }
 
 .wk-kba-13 {
+  /* tdesign .t-table td border-bottom: var(--td-component-border) */
   cursor: pointer;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #dcdcdc;
 }
 
 .wk-kba-13:last-child {
@@ -210,14 +223,16 @@
 }
 
 .wk-kba-15 {
+  /* Vue .audit-target-diff secondary */
   display: block;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kba-16 {
+  /* Vue .audit-actor-name primary */
   padding-inline: 12px;
   padding-block: 8px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kba-17 {
@@ -230,9 +245,10 @@
 }
 
 .wk-kba-19 {
+  /* Vue .audit-end-hint color: var(--td-text-color-disabled) */
   margin: 0;
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.26);
 }
 
 .wk-kba-20 {
@@ -265,7 +281,8 @@
 }
 
 .wk-kba-24 {
-  color: #66758b;
+  /* Vue .audit-detail-field placeholder */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kba-25 {
@@ -288,13 +305,14 @@
 }
 
 .wk-kba-28 {
+  /* Vue .audit-detail-json border: var(--td-component-stroke) */
   margin: 0;
   max-height: 256px;
   overflow: auto;
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #e7e7e7;
   background-color: #f3f3f3;
   padding: 12px;
   font-size: 12px;
@@ -320,8 +338,9 @@
 }
 
 .wk-kba-31 {
+  /* Vue .kb-activity-filter-trigger secondary */
   border-color: transparent;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kba-31:hover {
@@ -351,14 +370,16 @@
 }
 
 .wk-kba-34 {
-  color: #172033;
+  /* Vue .audit-detail-json primary */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kba-35 {
+  /* tdesign .t-tag--default：文本 primary；描边 var(--td-component-stroke) */
   border-radius: 999px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #e7e7e7;
   padding-inline: 8px;
   padding-block: 4px;
   font-size: 12px;
@@ -390,6 +411,7 @@
 }
 
 .wk-kbs-2 {
+  /* Vue ShareKnowledgeBaseDialog.vue 选项文本 primary */
   box-sizing: border-box;
   display: flex;
   width: 100%;
@@ -406,7 +428,7 @@
   padding-inline: 0.55rem;
   padding-block: 0.35rem;
   text-align: left;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -414,10 +436,12 @@
 }
 
 .wk-kbs-3 {
-  color: #66758b;
+  /* Vue .org-option-meta placeholder */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kbs-4 {
+  /* Vue 弹层 border: var(--td-component-stroke) */
   position: absolute;
   top: calc(100% + 0.25rem);
   z-index: 30;
@@ -427,7 +451,7 @@
   border-radius: 7px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  border-color: #e7e7e7;
   background-color: #ffffff;
   padding: 0.25rem;
   box-shadow: 0 12px 30px rgb(23 32 51 / 18%);
@@ -447,6 +471,7 @@
 }
 
 .wk-kbs-7 {
+  /* Vue .share-panel-count-badge color: var(--td-text-color-primary) */
   border-radius: 999px;
   background-color: #eef1f6;
   padding-inline: 0.45rem;
@@ -454,16 +479,17 @@
   font-size: 0.72rem;
   font-weight: 600;
   white-space: nowrap;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kbs-8 {
+  /* Vue .org-option-meta placeholder */
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 0.75rem;
   font-weight: 400;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kbs-8 span {
@@ -493,6 +519,7 @@
 }
 
 .wk-kbs-11 {
+  /* Vue 选中项文本 primary */
   position: absolute;
   box-sizing: border-box;
   height: 1px;
@@ -505,7 +532,7 @@
   background-color: #ffffff;
   padding-inline: 0.65rem;
   padding-block: 0.55rem;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -515,6 +542,7 @@
 }
 
 .wk-kbs-12 {
+  /* Vue .permission-tip secondary */
   display: flex;
   align-items: flex-start;
   gap: 0.45rem;
@@ -525,16 +553,17 @@
   font-size: 0.8rem;
   font-weight: 400;
   line-height: 1.5;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kbs-13 {
+  /* Vue 分隔线 var(--td-component-stroke) */
   margin-top: 0.35rem;
   display: flex;
   align-items: center;
   gap: 0.6rem;
   border-top-style: solid;
-  border-top-width: 1px;border-color: #edf0f5;
+  border-top-width: 1px;border-color: #e7e7e7;
   padding-top: 16px;
 }
 
@@ -543,6 +572,7 @@
 }
 
 .wk-kbs-15 {
+  /* Vue .share-item border-color: var(--td-component-stroke) */
   display: grid;
   gap: 0.9rem;
   padding-top: 0.5rem;
@@ -624,18 +654,20 @@
 }
 
 .wk-kbs-23 {
+  /* Vue .share-panel-title primary */
   margin: 0;
   font-size: 20px;
   font-weight: 600;
   line-height: 7;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kbs-24 {
+  /* Vue .share-panel-desc secondary */
   margin: 0;
   font-size: 14px;
   line-height: 22px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kbs-25 {
@@ -735,8 +767,9 @@
 }
 
 .wk-kbs-35 {
+  /* tdesign .t-tag--default primary */
   background-color: #f3f3f3;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 

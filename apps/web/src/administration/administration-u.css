@@ -64,7 +64,8 @@
 }
 
 .wk-admin-5 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-admin-6 {
@@ -89,7 +90,8 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 0.9rem;
 }
 
@@ -102,7 +104,8 @@
 .wk-admin-11 {
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 0.8rem;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-admin-12 {
@@ -135,7 +138,8 @@
 }
 
 .wk-admin-16 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   margin: 0;
 }
 
@@ -172,10 +176,12 @@
   justify-content: flex-end;
   gap: 0.4rem;
   border-top-style: solid;
-  border-top-width: 1px;border-color: #edf0f5;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-top-width: 1px;border-color: #e7e7e7;
   padding-top: 12px;
   font-size: 12px;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 @media (max-width: 720px) {

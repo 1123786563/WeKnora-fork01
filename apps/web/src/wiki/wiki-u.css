@@ -173,7 +173,8 @@
   align-items: center;
   gap: 8px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 0.55rem;
 }
 
@@ -199,7 +200,8 @@
   gap: 4px;
   padding-bottom: 4px;
   font-size: 12px;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-wiki-19 {
@@ -208,7 +210,8 @@
   border-width: 0;
   background-color: transparent;
   padding: 0;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -523,7 +526,8 @@
 .wk-wiki-50 {
   margin-right: auto;
   font-size: 0.85rem;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-wiki-51 {
@@ -557,7 +561,8 @@
   display: block;
   font-size: 12px;
   line-height: 1.4;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-wiki-56 {
@@ -571,7 +576,8 @@
   background-color: #fff;
   padding-inline: 8px;
   font-size: 13px;
-  color: #172033;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-wiki-57 {
@@ -586,7 +592,8 @@
 }
 
 .wk-wiki-59 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-wiki-60 {
@@ -613,7 +620,8 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 0.9rem;
 }
 
@@ -639,7 +647,8 @@
 .wk-wiki-64 {
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 0.8rem;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-wiki-65 {

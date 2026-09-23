@@ -103,7 +103,8 @@
   background-color: #f2f5fa;
   font-size: 12px;
   font-weight: 600;
-  color: #506078;
+  /* 旧栈 muted 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);;
 }
 
 .wk-vi-channel-badge-add-class {
@@ -171,11 +172,13 @@
   border-radius: 999px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  /* 旧栈 line/line-soft 硬编码→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   background-color: #ffffff;
   padding-inline: .75rem;
   padding-block: .5rem;
-  color: #506078;
+  /* 旧栈 muted/muted-strong 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-vi-int-tab-active-class {
@@ -268,7 +271,8 @@
   border-color: #cbd5e1;
   border-radius: 6px;
   background-color: #ffffff;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -285,7 +289,8 @@
   border-color: #cbd5e1;
   border-radius: 6px;
   background-color: #ffffff;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -302,7 +307,8 @@
   border-color: #cbd5e1;
   border-radius: 6px;
   background-color: #ffffff;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -355,12 +361,14 @@
   padding-right: 8px;
   font-size: 18px !important;
   line-height: 1.45;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-vi-integration-drawer-class label {
   gap: 6px !important;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
   font-size: 13px;
   line-height: 1.4;
 }
@@ -442,7 +450,8 @@
   border-radius: 4px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  /* 旧栈 line/line-soft 硬编码→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   background-color: #ffffff;
   padding-inline: 8px;
   padding-block: 5px;
@@ -464,7 +473,8 @@
 
 .wk-vi-im-step-chrome .wk-im-step.is-done {
   border-style: solid;
-  border-color: #dce3ed;
+  /* 旧栈 line/line-soft 硬编码→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   background-color: #f3faf6;
   color: #07a951;
 }
@@ -477,7 +487,8 @@
   border-radius: 4px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  /* 旧栈 line/line-soft 硬编码→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   background-color: #ffffff;
   padding-inline: 8px;
   padding-block: 5px;
@@ -499,7 +510,8 @@
 
 .wk-vi-embed-step-chrome .wk-embed-step.is-done {
   border-style: solid;
-  border-color: #dce3ed;
+  /* 旧栈 line/line-soft 硬编码→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   background-color: #f3faf6;
   color: #07a951;
 }
@@ -516,7 +528,8 @@
 
 .wk-vi-integration-drawer-class-steps .wk-im-legend {
   margin-bottom: 2px;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
   font-size: 14px;
   font-weight: 600;
 }
@@ -554,12 +567,14 @@
 
 .wk-vi-integration-drawer-close-class:hover {
   background-color: #f3f4f6;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-vi-integration-drawer-close-class:focus-visible {
   background-color: #f3f4f6;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
   outline: 2px solid transparent;
   outline-offset: 2px;
 }
@@ -572,7 +587,8 @@
   border-radius: 12px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  /* 旧栈 line/line-soft 硬编码→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   background-color: #f5f7fa;
   box-shadow: 0 8px 24px rgba(15,23,42,.06);
 }
@@ -605,7 +621,8 @@
 }
 
 .wk-vi-3 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-vi-4 {
@@ -618,7 +635,8 @@
   background-color: #ffffff;
   padding-inline: 0.85rem !important;
   padding-block: 0.45rem !important;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -683,7 +701,8 @@
 .wk-vi-11 {
   margin-block: 0.25rem !important;
   font-size: 13px;
-  color: #506078;
+  /* 旧栈 muted/muted-strong 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-vi-12 {
@@ -731,7 +750,8 @@
   margin: 0;
   padding-right: 40px;
   font-size: 17px;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-vi-17 {
@@ -756,7 +776,8 @@
   border-radius: 8px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  /* 旧栈 line/line-soft 硬编码→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   background-color: #f5f7fa;
   padding-inline: 12px;
   padding-block: 10px;
@@ -770,7 +791,8 @@
   align-items: center;
   gap: 6px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #dce3ed;
+  /* 旧栈 line/line-soft 硬编码→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   background-color: #eef1f5;
   padding-inline: 14px;
   padding-block: 10px;
@@ -1042,7 +1064,8 @@
   background-color: transparent;
   padding-inline: 0.5rem !important;
   padding-block: 0.3rem !important;
-  color: #506078 !important;
+  /* 旧栈 muted/muted-strong 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6) !important;
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
@@ -1294,7 +1317,8 @@
   text-align: left;
   font-size: 12px;
   font-weight: 500;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-vi-71 {
@@ -1552,11 +1576,13 @@
 .wk-vi-97 {
   font-size: 13px;
   font-weight: 600;
-  color: #172033;
+  /* 旧栈 ink 硬编码→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-vi-98 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   margin: 0;
   margin-top: 2px;
 }
@@ -1789,7 +1815,8 @@
 }
 
 .wk-vi-123 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   margin: 0;
   margin-bottom: 0.6rem;
   font-size: 13px;
@@ -1872,7 +1899,8 @@
   margin-bottom: 0.5rem;
   font-size: 13px;
   line-height: 1.6;
-  color: #506078;
+  /* 旧栈 muted/muted-strong 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-vi-133 {
@@ -2279,7 +2307,8 @@
   background-color: transparent;
   padding-inline: 0.5rem !important;
   padding-block: 0.3rem !important;
-  color: #506078 !important;
+  /* 旧栈 muted/muted-strong 硬编码→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6) !important;
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;

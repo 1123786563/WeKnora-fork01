@@ -12,14 +12,16 @@
   overflow: hidden;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace) !important;
   font-size: 0.8rem !important;
-  color: #66758b !important;
+  /* Vue .card-tag-overflow color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4) !important;
 }
 
 .wk-kd-2 {
   max-width: 120px;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace) !important;
   font-size: 0.8rem !important;
-  color: #66758b !important;
+  /* Vue .card-tag-overflow color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4) !important;
   cursor: default;
   overflow: hidden;
   border-radius: 3px;
@@ -37,7 +39,8 @@
 .wk-kd-3 {
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace) !important;
   font-size: 0.8rem !important;
-  color: #66758b !important;
+  /* Vue .card-tag-overflow color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4) !important;
   display: inline-flex;
   height: 18px;
   min-width: 18px;
@@ -65,7 +68,8 @@
 .wk-kd-5 {
   margin-top: 4px;
   font-size: 12px;
-  color: #66758b;
+  /* Vue KnowledgeBase.vue .card-content-txt color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kd-6 {
@@ -76,7 +80,8 @@
   border-radius: 8px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  /* Vue KnowledgeBase.vue .knowledge-card-hover-popover border: var(--td-component-stroke) */
+  border-color: #e7e7e7;
   background-color: #ffffff;
   padding-inline: 16px;
   padding-block: 12px;
@@ -102,7 +107,8 @@
   overflow: hidden;
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  color: #66758b;
+  /* Vue KnowledgeBase.vue .card-popover-desc color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kd-9 {
@@ -114,7 +120,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #66758b;
+  /* Vue KnowledgeBase.vue .card-popover-meta color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kd-10 {
@@ -129,7 +136,8 @@
   align-items: center;
   column-gap: 12px;
   row-gap: 4px;
-  color: #66758b;
+  /* Vue KnowledgeBase.vue .card-popover-extra color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kd-12 {
@@ -143,17 +151,20 @@
   border-radius: 9999px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  /* Vue KnowledgeBase.vue .card-popover-tag-chip border-color: var(--td-component-stroke) */
+  border-color: #e7e7e7;
   padding-inline: 6px;
   padding-block: 2px;
   font-size: 11px;
-  color: #66758b;
+  /* Vue .card-popover-tag-chip color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kd-14 {
   margin-top: 8px;
   font-size: 11px;
-  color: #66758b;
+  /* Vue KnowledgeBase.vue 卡片脚注提示 color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kd-15 {
@@ -161,7 +172,8 @@
 }
 
 .wk-kd-16 {
-  color: #66758b;
+  /* Vue UploadConfirmDialog.vue .field-hint/.files-empty color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kd-17 {
@@ -505,7 +517,8 @@
 }
 
 .wk-kd-42 {
-  color: #66758b;
+  /* Vue UploadConfirmDialog.vue .setting-info .desc color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
   margin: 0;
   font-size: 12px;
 }
@@ -903,7 +916,8 @@
 }
 
 .wk-kd-77 {
-  color: #66758b;
+  /* Vue GraphSettings.vue .desc color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
   margin: 0;
   font-size: 0.8rem;
 }
@@ -1163,7 +1177,8 @@
 
 .wk-kd-107 {
   font-size: 0.8rem;
-  color: #66758b;
+  /* Vue KnowledgeBase.vue 文件夹计数 color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kd-108 {
@@ -1185,7 +1200,8 @@
   border-width: 1px;
   border-color: #cbd5e1;
   background-color: #ffffff;
-  color: #172033;
+  /* Vue t-select 选项文本 color: var(--td-text-color-primary) */
+  color: rgba(0, 0, 0, 0.9);
   padding-inline: 0.65rem;
   padding-block: 0.55rem;
   font-family: inherit;
@@ -1326,8 +1342,8 @@
   border-top-width: calc(1px * var(--tw-divide-y-reverse));
   border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));
   border-bottom-style: solid;
-  /* S7 残留 token 清理：divide-line-soft 平移（--color-line-soft #edf0f5）。 */
-  border-color: #edf0f5;
+  /* Vue 列表行分隔 border: var(--td-component-stroke)（question-item 同款） */
+  border-color: #e7e7e7;
 }
 
 .wk-kd-125 {
@@ -1355,7 +1371,8 @@
   border-style: solid;
   border-width: 0;
   background-color: transparent;
-  color: #66758b;
+  /* Vue knowledge-processing-timeline.vue .kp-tree-toggle color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kd-126:hover {
@@ -1381,7 +1398,8 @@
   padding: 0;
   text-align: left;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
-  color: #172033;
+  /* Vue .kp-name-text color: var(--td-text-color-primary) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kd-128:hover {
@@ -1394,7 +1412,8 @@
   text-align: right;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 11px;
-  color: #66758b;
+  /* Vue .kp-cell-dur color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kd-130 {
@@ -1415,11 +1434,12 @@
 }
 
 .wk-kd-132 {
+  /* Vue .kp-detail-name color: var(--td-text-color-primary) */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kd-133 {
@@ -1667,12 +1687,13 @@
 }
 
 .wk-kd-165 {
+  /* Vue KnowledgeBase.vue .doc-folder-path color: var(--td-text-color-secondary) */
   width: 100%;
   border-style: solid;
   border-width: 0;
   border-radius: 5px;
   background-color: transparent;
-  color: #506078;
+  color: rgba(0, 0, 0, 0.6);
   cursor: pointer;
   display: flex;
   justify-content: space-between;
@@ -1823,8 +1844,9 @@
 }
 
 .wk-kdd-14 {
+  /* Vue .kp-compact-caption color: var(--td-text-color-secondary) */
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kdd-15 {
@@ -1847,7 +1869,7 @@
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #e7e7e7;
   padding-inline: 12px;
   padding-block: 8px;
   font-size: 13px;
@@ -1889,6 +1911,7 @@
 }
 
 .wk-kdd-21 {
+  /* Vue .kp-tree-toggle color: var(--td-text-color-placeholder) */
   display: inline-flex;
   height: 24px;
   width: 24px;
@@ -1899,7 +1922,7 @@
   border-style: solid;
   border-width: 0;
   background-color: transparent;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kdd-21:hover {
@@ -1914,6 +1937,7 @@
 }
 
 .wk-kdd-23 {
+  /* Vue .kp-name-text color: var(--td-text-color-primary) */
   min-width: 0;
   flex: 1 1 0%;
   overflow: hidden;
@@ -1925,7 +1949,7 @@
   padding: 0;
   text-align: left;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kdd-23:hover {
@@ -1933,12 +1957,13 @@
 }
 
 .wk-kdd-24 {
+  /* Vue .kp-cell-dur color: var(--td-text-color-secondary) */
   width: 80px;
   flex-shrink: 0;
   text-align: right;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 11px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kdd-25 {
@@ -1998,7 +2023,8 @@
   min-width: 0;
   font-size: 13px;
   line-height: 1.65;
-  color: #172033;
+  /* Vue doc-content.vue .summary_content color: var(--td-text-color-primary) */
+  color: rgba(0, 0, 0, 0.9);
   overflow-wrap: anywhere;
 }
 
@@ -2059,13 +2085,15 @@
 .wk-kdd-32 blockquote {
   margin-block: 0.6em;
   border-left-style: solid;
-  border-left-width: 8px;border-color: #edf0f5;
+  /* Vue markdown.less blockquote border-left: 4px var(--td-brand-color)（宽度 4px 差异另行跟进） */
+  border-left-width: 8px;border-color: #07c05f;
   padding-left: 12px;
 }
 
 .wk-kdd-33 {
   font-size: 13px;
-  color: #66758b;
+  /* Vue doc-content.vue .metadata-empty color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kdd-34 {
@@ -2075,10 +2103,11 @@
 }
 
 .wk-kdd-35 {
+  /* Vue doc-content.vue .chunk-item border: var(--td-component-border) */
   border-radius: 8px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #dcdcdc;
   background-color: #ffffff;
   padding: 12px;
 }
@@ -2094,12 +2123,13 @@
 }
 
 .wk-kdd-38 {
+  /* Vue 编辑器文本 color: var(--td-text-color-primary) */
   min-height: 120px;
   width: 100%;
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #dcdcdc;
   padding: 8px;
 }
 
@@ -2110,17 +2140,19 @@
 }
 
 .wk-kdd-40 {
+  /* Vue .chunk 内容 color: var(--td-text-color-primary) */
   margin: 0;
   min-width: 0;
   font-size: 13px;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
   overflow-wrap: anywhere;
 }
 
 .wk-kdd-41 {
+  /* Vue .chunk-history-popup-head border-bottom: var(--td-component-stroke) */
   margin-top: 12px;
   border-top-style: solid;
-  border-top-width: 1px;border-color: #edf0f5;
+  border-top-width: 1px;border-color: #e7e7e7;
   padding-top: 12px;
 }
 
@@ -2150,16 +2182,18 @@
 }
 
 .wk-kdd-46 {
-  color: #66758b;
+  /* Vue .question-leading-icon color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kdd-47 {
+  /* Vue .chunk-context-popup-body color: var(--td-text-color-secondary) */
   margin: 0;
   min-width: 0;
   max-height: 480px;
   overflow: auto;
   font-size: 13px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
   overflow-wrap: anywhere;
 }
 
@@ -2183,8 +2217,9 @@
 }
 
 .wk-kdd-50 {
+  /* Vue .chunk-popup-count color: var(--td-text-color-placeholder) */
   font-weight: 400;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kdd-51 {
@@ -2195,12 +2230,13 @@
 }
 
 .wk-kdd-52 {
+  /* Vue doc-content.vue 输入框 border: var(--td-component-border) */
   min-width: 0;
   flex: 1 1 0%;
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #dcdcdc;
   padding-inline: 8px;
   padding-block: 4px;
   font-size: 13px;
@@ -2214,8 +2250,9 @@
 }
 
 .wk-kdd-54 {
+  /* Vue 前导图标 color: var(--td-text-color-secondary) */
   flex-shrink: 0;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kdd-55 {
@@ -2253,11 +2290,12 @@
 }
 
 .wk-kdd-60 {
+  /* Vue .questions-empty color: var(--td-text-color-placeholder) */
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kdd-61 {
@@ -2324,14 +2362,15 @@
 }
 
 .wk-kdd-67 {
+  /* Vue .doc-tag-chip border-color: var(--td-component-stroke); color: var(--td-text-color-secondary) */
   border-radius: 9999px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #e7e7e7;
   padding-inline: 8px;
   padding-block: 2px;
   font-size: 11px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kdd-68 {
@@ -2373,19 +2412,21 @@
 }
 
 .wk-kdd-73 {
+  /* Vue .metadata-item-key color: var(--td-text-color-placeholder) */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kdd-74 {
+  /* Vue .metadata-item-value color: var(--td-text-color-primary) */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kdd-75 {
@@ -2420,12 +2461,13 @@
 }
 
 .wk-kdd-77 {
+  /* Vue .summary_wrapper border: var(--td-component-border) */
   min-height: 100px;
   width: 100%;
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #dcdcdc;
   padding: 8px;
 }
 
@@ -2438,6 +2480,7 @@
 }
 
 .wk-kdd-79 {
+  /* Vue .summary_loading color: var(--td-text-color-placeholder) */
   box-sizing: border-box;
   display: flex;
   min-height: 67px;
@@ -2451,7 +2494,7 @@
   background-color: #ffffff;
   padding: 12px;
   font-size: 13px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kdd-80 {
@@ -2510,9 +2553,10 @@
 }
 
 .wk-kdd-86 {
+  /* Vue .audio-player-section border: var(--td-component-border) */
   margin-bottom: 12px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #dcdcdc;
   padding-bottom: 12px;
 }
 
@@ -2593,7 +2637,7 @@
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #dcdcdc;
   padding-inline: 8px;
   padding-block: 4px;
   font-size: 12px;
@@ -2603,7 +2647,7 @@
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  border-color: #dcdcdc;
   padding-inline: 8px;
   padding-block: 4px;
   font-size: 12px;
@@ -2962,12 +3006,12 @@
 /* preview.ts（createElement 对象形 className）手工平移 */
 .wk-pv-sheet { margin-bottom: 16px; }
 .wk-pv-sheet:last-child { margin-bottom: 0; }
-.wk-pv-sheet-title { margin-bottom: 8px; font-size: 14px; font-weight: 600; color: #172033; }
-.wk-pv-table-wrap { overflow-x: auto; border-radius: 6px; border: 1px solid #edf0f5; }
-.wk-pv-table { min-width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; color: #172033; }
+.wk-pv-sheet-title { margin-bottom: 8px; font-size: 14px; font-weight: 600; color: rgba(0, 0, 0, 0.9); }
+.wk-pv-table-wrap { overflow-x: auto; border-radius: 6px; border: 1px solid #e7e7e7; }
+.wk-pv-table { min-width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; color: rgba(0, 0, 0, 0.9); }
 .wk-pv-thead { background-color: #f3f3f3; }
-.wk-pv-th { border-bottom: 1px solid #edf0f5; padding: 12px; font-weight: 600; }
-.wk-pv-tr { border-bottom: 1px solid #edf0f5; }
+.wk-pv-th { border-bottom: 1px solid #e7e7e7; padding: 12px; font-weight: 600; }
+.wk-pv-tr { border-bottom: 1px solid #e7e7e7; }
 .wk-pv-tr:last-child { border-bottom-width: 0; }
 .wk-pv-td { padding: 12px; vertical-align: top; }
 .wk-pv-audio { display: block; width: 100%; max-width: 480px; }
@@ -2990,7 +3034,7 @@
 .wk-kdd-mdcontent { min-width: 0; font-size: 14px; line-height: 1.7; color: rgba(0,0,0,0.9); overflow-wrap: anywhere; }
 
 /* 手工段：trace timeline 分隔线（divide-y divide-line-soft） */
-.wk-kdd-trace-ol > :not([hidden]) ~ :not([hidden]) { border-bottom: 1px solid #edf0f5; }
+.wk-kdd-trace-ol > :not([hidden]) ~ :not([hidden]) { border-bottom: 1px solid #e7e7e7; }
 
 /* 手工段：合并正文 markdown 排版（[&_p:first/last-child] 任意子代变体） */
 .markdown-content > p:first-child { margin-top: 0; }

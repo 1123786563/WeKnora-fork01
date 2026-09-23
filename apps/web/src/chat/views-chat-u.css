@@ -1498,12 +1498,13 @@
 }
 
 .wk-vc-session-sidebar-4 {
+  /* Vue chat 侧栏工具行文本 secondary */
   border-style: solid;
   border-width: 0;
   background-color: transparent;
   padding: 0;
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
   cursor: pointer;
 }
 
@@ -1512,11 +1513,12 @@
 }
 
 .wk-vc-session-sidebar-5 {
+  /* Vue chat 侧栏检索标签 secondary */
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-vc-session-sidebar-6 {
@@ -1653,20 +1655,22 @@
 /* ---- tool-result.tsx ---- */
 
 .wk-vc-tool-result-1 {
+  /* Vue ToolResultRenderer.vue .fallback-label color: var(--td-text-color-secondary) */
   margin: 0;
   font-size: 0.78rem;
   font-style: italic;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-vc-tool-result-2 {
+  /* Vue .arguments-label/.fallback-label secondary */
   margin-right: 0.35rem;
   font-size: 0.7rem;
   font-weight: 600;
   color: #8a94a6;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace) !important;
   font-size: 0.8rem !important;
-  color: #66758b !important;
+  color: rgba(0, 0, 0, 0.6) !important;
 }
 
 .wk-vc-tool-result-3 {
@@ -1706,9 +1710,10 @@
 }
 
 .wk-vc-tool-result-8 {
+  /* Vue 工具元信息标签 secondary */
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace) !important;
   font-size: 0.8rem !important;
-  color: #66758b !important;
+  color: rgba(0, 0, 0, 0.6) !important;
 }
 
 .wk-vc-tool-result-9 {
@@ -1760,23 +1765,25 @@
 }
 
 .wk-vc-tool-result-14 {
+  /* Vue 工具元信息标签 secondary */
   min-width: 6rem;
   flex-shrink: 0;
   color: #52606d;
   font-weight: 500;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace) !important;
   font-size: 0.8rem !important;
-  color: #66758b !important;
+  color: rgba(0, 0, 0, 0.6) !important;
 }
 
 .wk-vc-tool-result-15 {
+  /* Vue 工具元信息标签 secondary */
   min-width: 0;
   flex: 1 1 0%;
   color: #24292f;
   overflow-wrap: break-word;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace) !important;
   font-size: 0.8rem !important;
-  color: #66758b !important;
+  color: rgba(0, 0, 0, 0.6) !important;
 }
 
 .wk-vc-tool-result-16 {
@@ -1844,13 +1851,15 @@
 }
 
 .wk-vc-tool-result-24 {
+  /* Vue 工具元信息标签 secondary */
   font-weight: 600;
   font-size: 0.8rem !important;
-  color: #66758b !important;
+  color: rgba(0, 0, 0, 0.6) !important;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace) !important;
 }
 
 .wk-vc-tool-result-25 {
+  /* Vue 工具元信息标签 secondary */
   white-space: nowrap;
   border-radius: 10px;
   border-style: solid;
@@ -1863,7 +1872,7 @@
   color: #52606d;
   font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace) !important;
   font-size: 0.8rem !important;
-  color: #66758b !important;
+  color: rgba(0, 0, 0, 0.6) !important;
 }
 
 .wk-vc-tool-result-26 {
@@ -1964,11 +1973,12 @@
 }
 
 .wk-vc-tool-result-40 {
+  /* Vue 行分隔 var(--td-component-stroke) */
   max-width: 24rem;
   overflow: hidden;
   border-bottom-style: solid;
   border-bottom-width: 1px;
-  border-bottom-color: #edf0f5;
+  border-bottom-color: #e7e7e7;
   padding-inline: 0.6rem;
   padding-block: 0.4rem;
   vertical-align: top;
@@ -2014,8 +2024,9 @@
 }
 
 .wk-vc-tool-result-44 {
+  /* Vue .detail-output-wrapper background: var(--td-bg-color-secondarycontainer) */
   border-radius: 3px;
-  background-color: #f1f5f9;
+  background-color: #f3f3f3;
   padding-inline: 0.3rem;
   padding-block: 0.1rem;
   font-size: 0.7rem;
@@ -2120,12 +2131,13 @@
 }
 
 .wk-vc-message-list-9 {
+  /* Vue 分隔线 var(--td-component-stroke) */
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 6px;
 }
 
@@ -2170,9 +2182,10 @@
 }
 
 .wk-vc-message-list-15 {
+  /* Vue 分隔线 var(--td-component-stroke) */
   margin-top: 0.7rem;
   border-top-style: solid;
-  border-top-width: 1px;border-color: #edf0f5;
+  border-top-width: 1px;border-color: #e7e7e7;
   padding-top: 0.5rem;
 }
 
@@ -2219,7 +2232,8 @@
 }
 
 .wk-vc-message-list-21 {
-  color: #66758b;
+  /* Vue botmsg.vue 附件提示 color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-vc-message-list-22 {
@@ -2265,6 +2279,7 @@
 }
 
 .wk-vc-message-list-26 {
+  /* Vue FollowUpSuggestions.vue border: var(--td-component-stroke) */
   margin-inline: 0;
   margin-block: 1rem;
   width: 100%;
@@ -2272,7 +2287,7 @@
   border-radius: 8px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  border-color: #e7e7e7;
   padding: 0.8rem;
 }
 
@@ -2312,6 +2327,7 @@
 }
 
 .wk-vc-message-list-31 {
+  /* Vue FollowUpSuggestions 建议项 border: var(--td-component-stroke) */
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2319,7 +2335,7 @@
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  border-color: #e7e7e7;
   background-color: #fff;
   padding: 0.65rem;
   text-align: left;
@@ -2336,10 +2352,11 @@
 }
 
 .wk-vc-message-list-32 {
+  /* Vue 建议项角标 color: var(--td-text-color-placeholder) */
   margin-left: 6px;
   margin-top: 0.25rem;
   display: block;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 @keyframes pulse { 50% { opacity: .5; } }
 
@@ -2477,7 +2494,8 @@
 
 /* tool-result.tsx 双引号常量 recipes（.trim()/双引号未走 codemod 的手工段） */
 .wk-tool-result-list { margin: 0; display: flex; max-height: 14rem; list-style-type: none; flex-direction: column; gap: 0.5rem; overflow-y: auto; padding: 0; }
-.wk-tool-result-item { display: flex; flex-direction: column; gap: 0.15rem; border-left: 2px solid #edf0f5; padding-left: 0.5rem; }
+/* Vue 工具行左侧 accent 条：var(--td-component-stroke) */
+.wk-tool-result-item { display: flex; flex-direction: column; gap: 0.15rem; border-left: 2px solid #e7e7e7; padding-left: 0.5rem; }
 .wk-tool-card { display: flex; flex-direction: column; gap: 0.3rem; border-radius: 6px; border: 1px solid #e3e8ef; padding: 0.7rem 0.5rem; }
 .wk-tool-row-title { font-size: 0.8rem; font-weight: 600; color: #1f2d3d; overflow-wrap: break-word; }
 .wk-tool-row-meta { color: #8a94a6; font-size: 0.7rem; }

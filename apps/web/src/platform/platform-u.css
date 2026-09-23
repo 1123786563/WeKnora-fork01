@@ -488,9 +488,11 @@
   border-radius: 10px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   background-color: #ffffff;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
   box-shadow: 0 2px 6px rgba(0,0,0,0.04);
 }
 
@@ -544,7 +546,8 @@
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   background-color: #ffffff;
   padding: 12px;
 }
@@ -559,14 +562,16 @@
 
 .wk-inv-10 {
   font-size: 12px;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-inv-11 {
   margin-top: 4px;
   display: block;
   font-size: 12px;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-inv-12 {

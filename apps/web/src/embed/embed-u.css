@@ -222,7 +222,8 @@
   border-style: solid;
   border-width: 1px;
   border-color: #eef1f5;
-  background-color: #f8fafc;
+  /* 旧栈浅底→Vue var(--td-bg-color-secondarycontainer)=#f3f3f3 */
+  background-color: #f3f3f3;
   padding: 12px;
 }
 

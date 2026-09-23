@@ -581,8 +581,15 @@ body.wkbs-dialog-open .wk-dialog-backdrop {
   border-radius: 6px;
 }
 .kb-id-value {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  flex: 1;
+  min-width: 0;
+  /* Vue KnowledgeBaseEditorModal.vue .kb-id-value: flex:1; min-width:0;
+     line-height:1.5（computed 19.5px）+ font-family var(--app-font-family-mono)。
+     缺 line-height 时行盒 15px，flex 居中使字形整体下移 1px（ix-kb-settings
+     弹层 y221-232 漂移根因，computed 双端对比实测）。 */
+  font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace);
   font-size: 13px;
+  line-height: 1.5;
   color: var(--wk-color-text, rgba(0, 0, 0, 0.9));
   overflow: hidden;
   text-overflow: ellipsis;

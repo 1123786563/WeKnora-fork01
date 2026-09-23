@@ -4911,7 +4911,7 @@
 
 /* 通用：编辑抽屉内的次级说明文本（原 text-muted utility，--color-muted #66758b）。 */
 .wk-muted {
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 /* 通用：抽屉表单尾部动作行（原 mb-[0.75rem] flex items-center justify-end gap-[0.5rem]）。 */
@@ -4958,7 +4958,7 @@
 .wk-settings-drawer-root .wk-cred-configured {
   margin-right: auto;
   font-size: 0.85rem;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 /* 通用：抽屉表单布局（原 my-4 grid gap-[.8rem] max-w-[620px] + label 网格；
@@ -4992,7 +4992,7 @@
   width: 560px;
   max-width: 100%;
   overflow-y: auto;
-  border-left: 1px solid #dce3ed;
+  border-left: 1px solid #e7e7e7;
   background: #ffffff;
   padding: 1.25rem 1.5rem 2rem 1.5rem;
   box-shadow: -10px 0 30px rgba(23, 32, 51, 0.12);
@@ -5109,7 +5109,7 @@
 .wk-settings-drawer-root .wk-debug-fieldset {
   display: grid;
   gap: 0.7rem;
-  border: 1px solid #edf0f5;
+  border: 1px solid #e7e7e7;
   border-radius: 6px;
   padding: 0.8rem;
 }
@@ -5126,7 +5126,7 @@
   max-height: 18rem;
   overflow: auto;
   white-space: pre-wrap;
-  background: #f7f9fc;
+  background: #f3f3f3;
   padding: 0.7rem;
 }
 
@@ -5185,14 +5185,14 @@
 .wk-settings-drawer-root .engine-drawer__desc {
   margin: 2px 0 0;
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 .wk-settings-drawer-root .engine-drawer__close {
   cursor: pointer;
   border: 0;
   background: transparent;
   padding: 4px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 .wk-settings-drawer-root .engine-drawer__body {
   min-height: 0;
@@ -5228,7 +5228,8 @@
   background: #f3f3f3;
   padding: 2px 8px;
   font-size: 11px;
-  color: #66758b;
+  /* Vue .file-type-chip color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 .wk-settings-drawer-root .engine-drawer__status-row {
   display: flex;
@@ -5243,7 +5244,7 @@
 .wk-settings-drawer-root .engine-drawer__hint {
   margin: 0.5rem 0 0;
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 .wk-settings-drawer-root .engine-drawer__cred-row {
   display: flex;
@@ -5339,7 +5340,7 @@
   width: min(400px, 100%);
   max-height: 100vh;
   overflow-y: auto;
-  border-left: 1px solid #dce3ed;
+  border-left: 1px solid #e7e7e7;
   background: #ffffff;
   padding: 1.25rem;
   box-shadow: -18px 0 48px rgba(23, 32, 51, 0.16);
@@ -5350,7 +5351,7 @@
   to { transform: translateX(0); opacity: 1; }
 }
 .wk-settings-drawer-root .wk-sandbox-inventory-kind {
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8rem;
 }
@@ -5359,13 +5360,13 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  border-bottom: 1px solid #edf0f5;
+  border-bottom: 1px solid #e7e7e7;
   padding: 0.9rem 0;
 }
 .wk-settings-drawer-root .wk-sandbox-inventory-arrow {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8rem;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 /* skills 抽屉（S6 平移段）：tdesign Dialog 宽度接管 + resize 手柄 + 预览卡/
@@ -5419,7 +5420,7 @@
   transition: border-color 180ms, box-shadow 180ms;
   min-width: 0;
   height: 100%;
-  border: 1px solid #edf0f5;
+  border: 1px solid #e7e7e7;
 }
 .parsed-skill__inner {
   display: flex;
@@ -5468,7 +5469,8 @@
   font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.25rem;
-  color: #172033;
+  /* Vue .skill-card__title color: var(--td-text-color-primary) */
+  color: rgba(0, 0, 0, 0.9);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5478,7 +5480,7 @@
   font-size: 11px;
   font-weight: 500;
   line-height: 18px;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 .parsed-skill__desc {
   display: -webkit-box;
@@ -5532,7 +5534,7 @@
   display: block;
   margin-top: 2px;
   font-size: 0.75rem;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.4);
 }
 /* sandbox pick 行族（SkillSettings.vue:1841-1953 视觉）。 */
 .sandbox-pick-list {
@@ -5623,13 +5625,13 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  border-bottom: 1px solid #edf0f5;
+  border-bottom: 1px solid #e7e7e7;
   padding: 0.9rem 0;
 }
 .wk-settings-drawer-root .wk-skill-viewer-desc {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8rem;
-  color: #66758b;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 /* ==== ModelOptionSelect Tailwind 收编（S6；models 编辑器配套下拉，原
@@ -5768,7 +5770,8 @@
 
 /* 上传进度（React 保留实现：Vue 端为 t-progress；外观对齐 t-progress 细条）。 */
 .skill-upload-progress { display: flex; flex-direction: column; gap: 4px; }
-.skill-upload-progress__bar { width: 100%; height: 4px; border-radius: 2px; background: #edf0f5; overflow: hidden; }
+/* Vue 进度槽底 var(--td-bg-color-secondarycontainer) */
+.skill-upload-progress__bar { width: 100%; height: 4px; border-radius: 2px; background: #e7e7e7; overflow: hidden; }
 .skill-upload-progress__fill { height: 100%; border-radius: 2px; background: #07c05f; transition: width 0.2s ease; }
 
 /* 安装时间线（SkillInstallTimeline；原 utilities 平移）。 */
@@ -5921,7 +5924,7 @@
 .skill-files-panel__meta {
   margin: 0 0 10px;
   padding: 10px 12px;
-  background: #f7f8fa;
+  background: #f3f3f3;
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-card, 8px);
   display: grid;
@@ -5963,7 +5966,7 @@
   padding: 10px 12px;
   overflow: auto;
   max-height: 380px;
-  background: #f7f8fa;
+  background: #f3f3f3;
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-card, 8px);
   font-size: 12px;

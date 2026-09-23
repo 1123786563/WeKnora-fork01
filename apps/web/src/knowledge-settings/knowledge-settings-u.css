@@ -34,7 +34,8 @@
   padding-inline: 0.4rem;
   padding-block: 0.05rem;
   font-size: 12px;
-  color: #66758b;
+  /* Vue KBShareSettings.vue .share-panel-count-badge color: var(--td-text-color-primary) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kss-6 {
@@ -53,7 +54,8 @@
   border-radius: 6px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  /* Vue share-to-space-panel.overlay.less .t-popup__content border: var(--td-component-stroke) */
+  border-color: #e7e7e7;
   background-color: #ffffff;
   padding: 12px;
   font-size: 12px;
@@ -100,7 +102,9 @@
   border-radius: 8px;
   border-style: solid;
   border-width: 1px;
-  border-color: #dce3ed;
+  /* Vue share-to-space-panel.overlay.less .share-add-popup-overlay .t-popup__content
+     border: var(--td-component-stroke) */
+  border-color: #e7e7e7;
   background-color: #ffffff;
   padding: 12px;
 }
@@ -119,7 +123,8 @@
 .wk-kss-14 {
   margin: 0;
   font-size: 12px;
-  color: #66758b;
+  /* Vue share-to-space-panel.overlay.less .member-form-hint color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kss-15 {
@@ -132,7 +137,8 @@
 .wk-kss-16 {
   margin: 0;
   font-size: 14px;
-  color: #66758b;
+  /* Vue share-to-space-panel.less .share-panel-loading color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kss-17 {
@@ -140,7 +146,8 @@
   border-radius: 8px;
   border-style: solid;
   border-width: 1px;
-  border-color: #edf0f5;
+  /* Vue share-to-space-panel.less .share-panel-table-shell border: var(--td-component-stroke) */
+  border-color: #e7e7e7;
 }
 
 .wk-kss-18 {
@@ -152,11 +159,13 @@
 
 .wk-kss-19 {
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* tdesign .t-table th border-bottom: var(--td-component-border) */
+  border-bottom-width: 1px;border-color: #dcdcdc;
   background-color: #f3f3f3;
   text-align: left;
   font-size: 12px;
-  color: #66758b;
+  /* tdesign .t-table thead th color: var(--td-text-color-placeholder) */
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-kss-20 {
@@ -166,7 +175,8 @@
 
 .wk-kss-21 {
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* tdesign .t-table td border-bottom: var(--td-component-border) */
+  border-bottom-width: 1px;border-color: #dcdcdc;
 }
 
 .wk-kss-21:last-child {
@@ -185,13 +195,15 @@
 }
 
 .wk-kss-24 {
-  color: #66758b;
+  /* Vue share-to-space-panel.less .share-space-meta color: var(--td-text-color-secondary) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-kss-25 {
   padding-inline: 12px;
   padding-block: 8px;
-  color: #66758b;
+  /* tdesign .t-table td 文本继承 var(--td-text-color-primary) */
+  color: rgba(0, 0, 0, 0.9);
 }
 
 .wk-kss-26 {
@@ -212,5 +224,7 @@
 
 .wk-kss-29 {
   background-color: #f3f3f3;
-  color: #66758b;
+  /* tdesign .t-tag--default color: var(--td-text-color-primary)（light 变体背景
+     secondarycontainer=#f3f3f3 保持不变） */
+  color: rgba(0, 0, 0, 0.9);
 }

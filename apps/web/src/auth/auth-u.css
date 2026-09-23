@@ -28,7 +28,8 @@
 }
 
 .wk-onb-3 {
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-onb-4 {
@@ -63,7 +64,8 @@
   border-radius: 6px;
   border-width: 1px;
   border-style: solid;
-  border-color: #b8c5d6;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
   padding: 0.55rem;
 }
 

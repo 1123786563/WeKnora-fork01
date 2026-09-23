@@ -91,7 +91,8 @@
 
 .wk-apps-11 {
   font-weight: 500;
-  color: #66758b;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .wk-apps-12 {
