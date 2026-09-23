@@ -14,21 +14,36 @@ import (
 // rejection, never a silent acceptance:
 //   - a declared tool missing from the live endpoint;
 //   - a declared tool whose live schema digest differs from the declaration;
-//   - a live tool the manifest never declared.
+//   - a live tool the manifest never declared;
+//   - a live tool name failing identifier hygiene (oversized or carrying
+//     control/format characters) — live names are untrusted remote data and
+//     are vetted with the same validateName rules as manifest names BEFORE
+//     any of them is quoted into the rejection message.
 //
-// The returned error names EVERY differing tool so the admin review surface
-// can show the exact divergence. Snapshot fields come from the manifest
-// declaration (read_only / requires_personal_auth / scopes) except
-// description and input_schema_digest, which are recomputed from the live
-// endpoint — the live data is the authority.
+// The returned error names EVERY differing tool — up to
+// maxVerificationProblems entries, with the remainder collapsed into a
+// counter, so a hostile endpoint cannot balloon the single joined error.
+// Snapshot fields come from the manifest declaration (read_only /
+// requires_personal_auth / scopes) except description and
+// input_schema_digest, which are recomputed from the live endpoint — the
+// live data is the authority.
 func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool) ([]types.PluginToolSnapshot, string, error) {
 	if manifest == nil {
 		return nil, "", fmt.Errorf("manifest is required")
 	}
 	var problems []string
 	liveByName := make(map[string]*types.MCPTool, len(live))
-	for _, tool := range live {
+	unvettedName := make(map[int]bool, len(live))
+	for i, tool := range live {
 		if tool == nil {
+			continue
+		}
+		// Vet the name up front, keyed by position (never by the untrusted
+		// name itself): everything that reaches an error message below has
+		// passed the same hygiene the manifest validator enforces.
+		if err := validateName(fmt.Sprintf("live tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
+			problems = append(problems, err.Error())
+			unvettedName[i] = true
 			continue
 		}
 		if _, dup := liveByName[tool.Name]; dup {
@@ -75,11 +90,15 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 			Scopes:               scopes,
 		})
 	}
-	for _, tool := range live {
-		if tool == nil || declared[tool.Name] {
+	for i, tool := range live {
+		if tool == nil || unvettedName[i] || declared[tool.Name] {
 			continue
 		}
 		problems = append(problems, fmt.Sprintf("undeclared tool %q present on endpoint", tool.Name))
+	}
+	if len(problems) > maxVerificationProblems {
+		problems = append(problems[:maxVerificationProblems],
+			fmt.Sprintf("...and %d more discrepancies", len(problems)-maxVerificationProblems))
 	}
 	if len(problems) > 0 {
 		return nil, "", fmt.Errorf("manifest and live endpoint disagree: %s", strings.Join(problems, "; "))

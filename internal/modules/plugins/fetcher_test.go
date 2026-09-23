@@ -153,6 +153,40 @@ func TestBuildVerifiedSnapshotRejectsBidiLiveDescription(t *testing.T) {
 	require.ErrorContains(t, err, "search_my_week_issues")
 }
 
+// TestBuildVerifiedSnapshotRejectsHostileLiveToolName (OCR T01-ocr-r1-001):
+// live tool names are untrusted remote data — they must pass the same
+// validateName hygiene as manifest names BEFORE any name is quoted into the
+// rejection message, so a hostile endpoint cannot balloon or bidi-poison the
+// admin-facing error with an oversized / invisible-character name.
+func TestBuildVerifiedSnapshotRejectsHostileLiveToolName(t *testing.T) {
+	m := validManifest()
+	oversized := []*types.MCPTool{{Name: strings.Repeat("a", 5000), InputSchema: []byte(declaredNoArgSchema)}}
+	_, _, err := BuildVerifiedSnapshot(m, oversized)
+	require.ErrorContains(t, err, "live tools[0].name")
+	require.NotContains(t, err.Error(), strings.Repeat("a", 200))
+
+	bidi := []*types.MCPTool{{Name: "evil\u202Ename", InputSchema: []byte(declaredNoArgSchema)}}
+	_, _, err = BuildVerifiedSnapshot(m, bidi)
+	require.ErrorContains(t, err, "live tools[0].name")
+	require.NotContains(t, err.Error(), "\u202E")
+}
+
+// TestBuildVerifiedSnapshotBoundsDiscrepancyList (OCR T01-ocr-r1-001): the
+// rejection message lists at most maxVerificationProblems discrepancies and
+// collapses the rest into a counter — a hostile endpoint returning a huge
+// undeclared directory must not grow the single joined error unboundedly.
+func TestBuildVerifiedSnapshotBoundsDiscrepancyList(t *testing.T) {
+	m := validManifest()
+	live := make([]*types.MCPTool, 0, 100)
+	for i := 0; i < 100; i++ {
+		live = append(live, &types.MCPTool{Name: fmt.Sprintf("extra%d", i), InputSchema: []byte(declaredNoArgSchema)})
+	}
+	_, _, err := BuildVerifiedSnapshot(m, live)
+	// 1 missing declared tool + 100 undeclared = 101 problems, capped at 32 + counter.
+	require.ErrorContains(t, err, "and 69 more discrepancies")
+	require.NotContains(t, err.Error(), "extra40")
+}
+
 // TestFetchAndVerifyFailsFastOnNilLister (OCR T01-R3-3): a nil lister is a
 // programming error; FetchAndVerify must reject it BEFORE any network I/O.
 func TestFetchAndVerifyFailsFastOnNilLister(t *testing.T) {

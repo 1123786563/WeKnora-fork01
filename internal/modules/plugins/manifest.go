@@ -40,6 +40,13 @@ const (
 
 	// maxScopeLen bounds a single scope token, in bytes.
 	maxScopeLen = 128
+
+	// maxVerificationProblems bounds how many discrepancies the
+	// BuildVerifiedSnapshot rejection message lists before collapsing the
+	// rest into a counter — the live tool directory is untrusted remote
+	// data and can be arbitrarily large, so the single joined error must
+	// stay bounded.
+	maxVerificationProblems = 32
 )
 
 var (
