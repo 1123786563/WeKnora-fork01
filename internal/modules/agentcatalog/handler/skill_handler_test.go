@@ -14,6 +14,11 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
+// testSkillTenantID mirrors the host test constant
+// (internal/handler/sandbox_skill_test.go:26); the module test binary cannot
+// reference host test files.
+const testSkillTenantID = uint64(42)
+
 type fakeUsableSkillLister struct {
 	tenantID uint64
 	configID string

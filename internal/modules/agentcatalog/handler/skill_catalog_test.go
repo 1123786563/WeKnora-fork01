@@ -6,17 +6,29 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Tencent/WeKnora/internal/application/service"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
 	"github.com/Tencent/WeKnora/internal/types"
 )
+
+// oversizedSkillSourceJSON mirrors the host test fixture
+// (internal/handler/upload_limit_test.go:153); the module test binary cannot
+// reference host test files, and the cap constant it overflows is this
+// package's skillSourceJSONMaxBytes (same name and 64 << 10 value).
+func oversizedSkillSourceJSON(extra int) []byte {
+	if extra < 1 {
+		extra = 1
+	}
+	return []byte(`{"source":"` + strings.Repeat("x", skillSourceJSONMaxBytes+extra) + `"}`)
+}
 
 type fakeSkillCatalog struct {
 	list         []service.SkillCatalogView
