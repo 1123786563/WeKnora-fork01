@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"mime/multipart"
+	"strings"
 	"sync"
 	"testing"
 
@@ -101,6 +102,10 @@ func TestGuardedDeletePreservesNewBindingDuringPhysicalDelete(t *testing.T) {
 	var resource types.StoredResource
 	require.NoError(t, db.Unscoped().Where("handle=?", ref[len(types.ResourceScheme):]).First(&resource).Error)
 	require.Equal(t, types.ResourceStateDeleted, resource.State)
+	deleted, err = guarded.DeleteUnbound(ctx, 7, ref)
+	require.NoError(t, err)
+	require.True(t, deleted, "same tenant may complete cleanup from terminal catalog state")
+	require.Equal(t, 1, physical.deletes, "terminal cleanup must not repeat physical deletion")
 }
 
 func TestGuardedDeleteRetainsRetryableStateAfterPhysicalFailure(t *testing.T) {
@@ -126,4 +131,34 @@ func TestGuardedDeleteRetainsRetryableStateAfterPhysicalFailure(t *testing.T) {
 	deleted, err = guarded.DeleteUnbound(ctx, 9, ref)
 	require.NoError(t, err)
 	require.False(t, deleted, "other tenant cannot delete")
+	deleted, err = guarded.DeleteUnbound(ctx, 7, types.BuildResourcePath(strings.Repeat("x", types.ResourceHandleLength)))
+	require.NoError(t, err)
+	require.False(t, deleted, "unknown handle has no terminal catalog state")
+	require.Equal(t, 2, physical.deletes)
+}
+
+func TestGuardedDeleteDoesNotTreatActiveOrUnknownDatabaseStateAsDeleted(t *testing.T) {
+	_, files, physical, db, ref := guardedFixture(t)
+	guarded := files.(guardedDeleteAPI)
+	ctx := context.Background()
+	// The active resource has a binding, so no physical deletion is allowed.
+	require.NoError(t, db.Create(&types.ResourceBinding{ResourceID: resourceIDForRef(t, db, ref), TenantID: 7, OwnerType: "other", OwnerID: "owner", Relation: types.ResourceRelationAttachment}).Error)
+	deleted, err := guarded.DeleteUnbound(ctx, 7, ref)
+	require.NoError(t, err)
+	require.False(t, deleted)
+	require.Equal(t, 0, physical.deletes)
+
+	// A catalog query failure is unknown, never proof that bytes are gone.
+	require.NoError(t, db.Migrator().DropTable(&types.StoredResource{}))
+	deleted, err = guarded.DeleteUnbound(ctx, 7, ref)
+	require.Error(t, err)
+	require.False(t, deleted)
+	require.Equal(t, 0, physical.deletes)
+}
+
+func resourceIDForRef(t *testing.T, db *gorm.DB, ref string) string {
+	t.Helper()
+	var resource types.StoredResource
+	require.NoError(t, db.Where("handle=?", strings.TrimPrefix(ref, types.ResourceScheme)).First(&resource).Error)
+	return resource.ID
 }

@@ -130,6 +130,17 @@ func (r *resourceRepository) ClaimUnboundResource(ctx context.Context, tenantID 
 	return &resource, true, nil
 }
 
+// IsDeletedResource checks the terminal tombstone after a source-row clear
+// failed. GORM's ordinary scope hides deleted rows, so this lookup is scoped
+// explicitly to the tenant, exact handle, and terminal state.
+func (r *resourceRepository) IsDeletedResource(ctx context.Context, tenantID uint64, handle string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Unscoped().Model(&types.StoredResource{}).
+		Where("tenant_id=? AND handle=? AND state=?", tenantID, handle, types.ResourceStateDeleted).
+		Count(&count).Error
+	return count == 1, err
+}
+
 func (r *resourceRepository) FinishUnboundResourceDelete(ctx context.Context, tenantID uint64, resourceID string) error {
 	res := r.db.WithContext(ctx).Model(&types.StoredResource{}).Where("id=? AND tenant_id=? AND state=?", resourceID, tenantID, types.ResourceStateDeleting).Updates(map[string]any{"state": types.ResourceStateDeleted, "deleted_at": time.Now().UTC()})
 	if res.Error != nil {

@@ -15,6 +15,7 @@ var ErrResourceUnavailable = errors.New("resource unavailable for binding")
 // their ordinary contract.
 type GuardedResourceDeleteRepository interface {
 	ClaimUnboundResource(ctx context.Context, tenantID uint64, handle string) (*types.StoredResource, bool, error)
+	IsDeletedResource(ctx context.Context, tenantID uint64, handle string) (bool, error)
 	FinishUnboundResourceDelete(ctx context.Context, tenantID uint64, resourceID string) error
 	RetryUnboundResourceDelete(ctx context.Context, tenantID uint64, resourceID string) error
 }
@@ -23,6 +24,7 @@ type GuardedResourceDeleteRepository interface {
 // decorator; Career callers use UnboundResourceDeleter and see only a result.
 type GuardedResourceDeleteCatalog interface {
 	ClaimUnbound(ctx context.Context, tenantID uint64, reference string) (*types.StoredResource, bool, error)
+	IsDeleted(ctx context.Context, tenantID uint64, reference string) (bool, error)
 	FinishUnboundDelete(ctx context.Context, tenantID uint64, resourceID string) error
 	RetryUnboundDelete(ctx context.Context, tenantID uint64, resourceID string) error
 }

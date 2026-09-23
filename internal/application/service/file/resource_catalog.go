@@ -174,8 +174,11 @@ func (s *resourceCatalogFileService) DeleteUnbound(ctx context.Context, tenantID
 		return false, fmt.Errorf("guarded resource deletion unavailable")
 	}
 	resource, claimed, err := guarded.ClaimUnbound(ctx, tenantID, reference)
-	if err != nil || !claimed {
+	if err != nil {
 		return false, err
+	}
+	if !claimed {
+		return guarded.IsDeleted(ctx, tenantID, reference)
 	}
 	if err = s.inner.DeleteFile(ctx, resource.PhysicalPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return false, errors.Join(err, guarded.RetryUnboundDelete(ctx, tenantID, resource.ID))

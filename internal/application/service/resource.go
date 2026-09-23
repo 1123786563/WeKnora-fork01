@@ -184,6 +184,18 @@ func (s *resourceCatalog) ClaimUnbound(ctx context.Context, tenantID uint64, ref
 	return repo.ClaimUnboundResource(ctx, tenantID, handle)
 }
 
+func (s *resourceCatalog) IsDeleted(ctx context.Context, tenantID uint64, reference string) (bool, error) {
+	handle, ok := types.ParseResourcePath(reference)
+	if !ok || tenantID == 0 {
+		return false, interfaces.ErrResourceUnavailable
+	}
+	repo, err := s.guardedDeleteRepo()
+	if err != nil {
+		return false, err
+	}
+	return repo.IsDeletedResource(ctx, tenantID, handle)
+}
+
 func (s *resourceCatalog) FinishUnboundDelete(ctx context.Context, tenantID uint64, resourceID string) error {
 	repo, err := s.guardedDeleteRepo()
 	if err != nil {
