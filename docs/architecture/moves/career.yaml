@@ -1,0 +1,26 @@
+# MOVE-MANIFEST career — existing Career ownership. Schema: docs/architecture/moves/README.md
+module: career
+description: Career Office 求职档案、岗位、申请、材料与来源管理
+move_packages: []
+alias_obligations: []
+legacy_files: []
+owned_files:
+  move_sources: []
+  move_targets: []
+  importers: []
+  module_files: []
+test_commands:
+  - go test ./internal/modules/career/... -count=1
+integration_points:
+  routes:
+    - RegisterCareerRoutes — internal/router/routes_career.go:8
+  workers: []
+  lifecycle_hooks: []
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/

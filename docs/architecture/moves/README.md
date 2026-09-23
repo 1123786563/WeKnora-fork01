@@ -126,3 +126,14 @@ legacy_files 分派进各模块 manifest；以下文件归 platform 本体（Pas
   RunAsynqServer/RegisterSyncHandlers Invoke（container.go:1044/1046）。
 - Migrations：`migrations/mysql/00-init-db.sql`、`000000_init` ×2、paradedb ×2、
   task_queue_and_dead_letters ×2（manifests 不含 migrations 字段；`migrations/` 全目录禁改）。
+
+## 2026-09-24 基线扩展：Career 与集成路由
+
+F0 的 16 份 manifest 与 633 条路由是原始历史快照，保持其原始口径。当前清单新增
+`career.yaml`，共 17 份 manifest；Career Office 及其路由由 `internal/modules/career`
+拥有，Workbench 不声明 Career 资产。Workbench 的三个 Task 状态文件仍列为
+`B-workbench` 的 Pass B legacy obligations。
+
+当前 architectureguard 基线为 644 条路由：F0 锁定的 633 条，加上基线后集成的 2 条
+Task archive 路由、2 条 T04 Artifact 路由和 7 条 Career 路由。代码发现计数为
+575 literal、69 apiKeyRoute、0 handle；Worker（Redis/Lite）仍为 23/23，hooks 仍为 58。

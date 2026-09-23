@@ -544,7 +544,7 @@ func TestRunRejectsManifestWorkerTypeMissingFromDiscovery(t *testing.T) {
 	}
 }
 
-// TestGuardCleanAtHead 是 F2 的总闸：在未搬迁的当前 HEAD 上（真实 16 manifest），
+// TestGuardCleanAtHead 是 F2 的总闸：当前仓库中的 17 份 manifest 必须覆盖全部已发现资产，
 // 守卫必须零诊断退出。任何后续 Pass A 搬迁引入的重复注册/越界 import/新横向文件都会打破它。
 func TestGuardCleanAtHead(t *testing.T) {
 	root := repoRoot(t)
@@ -552,8 +552,22 @@ func TestGuardCleanAtHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mods) != 16 {
-		t.Fatalf("应加载 16 份 manifest, got %d", len(mods))
+	if len(mods) != 17 {
+		t.Fatalf("应加载 17 份 manifest, got %d", len(mods))
+	}
+	careerOwnsRoutes := false
+	for _, mod := range mods {
+		if mod.Module != "career" {
+			continue
+		}
+		for _, route := range mod.RouteEntries {
+			if route == "RegisterCareerRoutes — internal/router/routes_career.go:8" {
+				careerOwnsRoutes = true
+			}
+		}
+	}
+	if !careerOwnsRoutes {
+		t.Fatal("Career manifest 必须声明 RegisterCareerRoutes — internal/router/routes_career.go:8")
 	}
 
 	rep, err := Run(root, mods)
