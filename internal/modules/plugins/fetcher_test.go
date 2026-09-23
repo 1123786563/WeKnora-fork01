@@ -53,10 +53,13 @@ func TestFetchRejectsNonHTTPAndPrivateManifestURLs(t *testing.T) {
 // ValidateManifest 的 ≤128 runes 前置，正是该不变量要防的调用形态）。
 func TestBuildVerifiedSnapshotDuplicateNameEchoIsBounded(t *testing.T) {
 	longName := strings.Repeat("x", 3000)
+	// digest 取合法 64-hex：本轮起 BuildVerifiedSnapshot 复检 digest 格式
+	// （OCR T01-R1-F4），非法 fixture 会在到达重复名路径前被拦——fixture
+	// 合法化让本测试仍聚焦其原本断言（长名回显截断）。
 	m := validManifest()
 	m.Tools = []types.PluginToolDecl{
-		{Name: longName, InputSchemaDigest: "d"},
-		{Name: longName, InputSchemaDigest: "d"},
+		{Name: longName, InputSchemaDigest: strings.Repeat("a", 64)},
+		{Name: longName, InputSchemaDigest: strings.Repeat("a", 64)},
 	}
 	_, _, err := BuildVerifiedSnapshot(m, nil)
 	require.ErrorContains(t, err, "duplicate tool name")
@@ -75,21 +78,27 @@ func TestBuildVerifiedSnapshotProblemEchoIsBounded(t *testing.T) {
 	schema := []byte(`{"type":"object","properties":{}}`)
 
 	// 场景 1：missing——未匹配 live 的 decl.Name 原样回显（无任何长度前置）。
+	// digest 取合法 64-hex（本轮起 digest 格式在 missing 检查前被复检，
+	// OCR T01-R1-F4），fixture 合法化以仍到达 missing 路径。
 	m := validManifest()
-	m.Tools = []types.PluginToolDecl{{Name: long, InputSchemaDigest: "d"}}
+	m.Tools = []types.PluginToolDecl{{Name: long, InputSchemaDigest: strings.Repeat("a", 64)}}
 	_, _, err := BuildVerifiedSnapshot(m, nil)
 	require.ErrorContains(t, err, "missing from live endpoint")
 	require.LessOrEqual(t, len(err.Error()), 400, "missing-tool echo must be truncated")
 	require.NotContains(t, err.Error(), long)
 
-	// 场景 2：digest mismatch——decl.InputSchemaDigest 是未审核字段，
-	// 恶意清单可声明任意长度假 digest。
+	// 场景 2：任意长度假 digest——原威胁（进 schema digest mismatch 回显）
+	// 已被本轮 digest 格式复检消灭：格式非法的声明在 mismatch 比较前即被
+	// 拒绝，且拒绝消息不回显无界的 digest 值（mismatch 回显自此天然有界：
+	// decl.Name 匹配 live 名 ≤128 前置、decl digest 恒 64-hex、liveDigest
+	// 本地计算）。此处锁定新拒绝行为的回显有界性。
 	m2 := validManifest()
 	m2.Tools = []types.PluginToolDecl{{Name: "search_my_week_issues", InputSchemaDigest: long}}
 	live := []*types.MCPTool{{Name: "search_my_week_issues", InputSchema: schema}}
 	_, _, err = BuildVerifiedSnapshot(m2, live)
-	require.ErrorContains(t, err, "schema digest mismatch")
-	require.LessOrEqual(t, len(err.Error()), 400, "declared-digest echo must be truncated")
+	require.ErrorContains(t, err, "input_schema_digest")
+	require.ErrorContains(t, err, "64 lowercase hex")
+	require.LessOrEqual(t, len(err.Error()), 400, "malformed-digest rejection must not echo the unbounded value")
 	require.NotContains(t, err.Error(), long)
 
 	// 场景 3：live description 校验失败的 where 前缀携带 decl.Name——
@@ -282,6 +291,36 @@ func TestBuildVerifiedSnapshotRejectsDuplicateDeclaredTool(t *testing.T) {
 	_, _, err := BuildVerifiedSnapshot(m, live)
 	require.ErrorContains(t, err, "duplicate")
 	require.ErrorContains(t, err, "search_my_week_issues")
+}
+
+// TestBuildVerifiedSnapshotRechecksDigestFormatAndEmptyTools (OCR T01-R1-F4):
+// BuildVerifiedSnapshot is exported and must not silently rely on the caller
+// having run ValidateManifest first. Two unchecked inputs currently break the
+// "snapshot digests are always 64-hex" invariant when the function is called
+// directly: (1) a declared InputSchemaDigest of "" matches a live tool whose
+// schema is unparseable (ToolSchemaDigest returns "" for both) and produces an
+// authoritative snapshot carrying an empty digest; (2) a manifest with no
+// tools yields an empty snapshot plus the well-formed digest of "[]" instead
+// of a rejection.
+func TestBuildVerifiedSnapshotRechecksDigestFormatAndEmptyTools(t *testing.T) {
+	// (1) Unvalidated manifest with an empty declared digest against a live
+	// tool whose schema does not parse: "" == "" must NOT count as a match.
+	m := validManifest()
+	m.Tools[0].InputSchemaDigest = "" // ValidateManifest would reject this
+	live := []*types.MCPTool{{Name: "search_my_week_issues", InputSchema: []byte(`{not-json`)}}
+	snapshot, _, err := BuildVerifiedSnapshot(m, live)
+	require.ErrorContains(t, err, "input_schema_digest")
+	require.ErrorContains(t, err, "64 lowercase hex")
+	require.Nil(t, snapshot, "a rejected verification must not produce a snapshot")
+
+	// (2) A manifest declaring no tools (ValidateManifest would reject it)
+	// must not produce an empty snapshot with a well-formed digest.
+	m2 := validManifest()
+	m2.Tools = nil
+	snapshot2, digest, err := BuildVerifiedSnapshot(m2, nil)
+	require.ErrorContains(t, err, "at least one tool")
+	require.Nil(t, snapshot2)
+	require.Empty(t, digest)
 }
 
 // TestValidateManifestTruncatesUntrustedEchoes (OCR T01-ocr-r4-011): fields

@@ -19,10 +19,14 @@ import (
 //     control/format characters) — live names are untrusted remote data and
 //     are vetted with the same validateName rules as manifest names BEFORE
 //     any of them is quoted into the rejection message;
-//   - a live directory larger than maxLiveTools, or a manifest declaring the
-//     same tool name twice — both are re-checked here (ValidateManifest
-//     already rejects duplicate declarations, but this function is exported
-//     and must not silently rely on the caller having validated first).
+//   - a live directory larger than maxLiveTools; a manifest declaring the
+//     same tool name twice, declaring no tools at all, or declaring a
+//     malformed (non-64-hex) input_schema_digest — all re-checked here
+//     (ValidateManifest already rejects each of them, but this function is
+//     exported and must not silently rely on the caller having validated
+//     first; an unchecked empty digest would ""==""-match ToolSchemaDigest's
+//     "" for an unparseable live schema and mint a snapshot whose digest is
+//     not 64-hex).
 //
 // The returned error names EVERY differing tool — up to
 // maxVerificationProblems entries, with the remainder collapsed into a
@@ -34,6 +38,14 @@ import (
 func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool) ([]types.PluginToolSnapshot, string, error) {
 	if manifest == nil {
 		return nil, "", fmt.Errorf("manifest is required")
+	}
+	// Re-check here instead of trusting the caller to have run
+	// ValidateManifest: an empty declaration list would otherwise produce an
+	// empty snapshot plus the well-formed digest of "[]" — silently breaking
+	// the "a verified snapshot always carries at least the declared tools"
+	// contract downstream installations rely on (OCR T01-R1-F4).
+	if len(manifest.Tools) == 0 {
+		return nil, "", fmt.Errorf("manifest must declare at least one tool")
 	}
 	// The live directory has no transport-level size bound (only the manifest
 	// download is capped at 1MiB) — refuse to process an oversized directory
@@ -74,6 +86,15 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 		// so a hostile manifest cannot balloon the error (整分支 OCR 一轮 F3).
 		if declared[decl.Name] {
 			return nil, "", fmt.Errorf("manifest declares duplicate tool name %s", echoQuoted(decl.Name))
+		}
+		// Re-check the digest format too: ToolSchemaDigest returns "" for an
+		// unparseable live schema, so an unchecked empty declared digest would
+		// ""=="" match it and mint an authoritative snapshot whose digest is
+		// not 64-hex — the invariant later install verification and drift
+		// detection compute against (OCR T01-R1-F4). The malformed digest
+		// value is not echoed: it is unbounded untrusted input.
+		if !schemaDigestPattern.MatchString(decl.InputSchemaDigest) {
+			return nil, "", fmt.Errorf("manifest tool %s input_schema_digest must be 64 lowercase hex chars (canonical-JSON SHA-256)", echoQuoted(decl.Name))
 		}
 		declared[decl.Name] = true
 	}

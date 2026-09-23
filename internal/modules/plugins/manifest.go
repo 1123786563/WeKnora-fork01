@@ -146,6 +146,16 @@ func ValidateManifest(m *types.PluginManifest) error {
 	if endpoint.Host == "" {
 		return fmt.Errorf("transport endpoint must include a host")
 	}
+	// Reject userinfo-embedded credentials (https://user:pass@host/mcp):
+	// ValidateURLForSSRF never looks at u.User (Hostname() strips it), so
+	// without this check the credential-bearing URL would be persisted to
+	// plugin_previews, echoed on the admin review surface, and sent as Basic
+	// Auth by the Go http client. Human review is this feature's core safety
+	// gate — credentials must not appear there (OCR T01-R1-F3). The message
+	// deliberately does not echo the URL, which contains the credentials.
+	if endpoint.User != nil {
+		return fmt.Errorf("transport endpoint must not embed userinfo credentials")
+	}
 	if len(m.Tools) == 0 {
 		return fmt.Errorf("manifest must declare at least one tool")
 	}
