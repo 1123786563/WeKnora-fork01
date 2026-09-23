@@ -1021,3 +1021,25 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 .wk-create-user-reveal-row dt { font-weight: 500; color: var(--color-muted, #66758b); }
 .wk-create-user-reveal-row dd { margin: 0; word-break: break-all; }
 .wk-create-user-reveal-row dd.is-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+/* ==== S6 Tailwind 收编：ConfigSettingsPanel（retrieval/parser 配置表单） ====
+ * 前任判例 #2 的 wk-settings-editor 同型表单——加作用域复用；其余为
+ * slider 行/分段卡/toggle 行的 utilities 平移。 */
+.wk-settings-drawer-root .wk-config-editor { margin-block: 1rem; display: grid; max-width: 620px; gap: 0.8rem; }
+.wk-settings-drawer-root .wk-config-editor label { display: grid; gap: 0.35rem; color: #27364d; font-weight: 600; }
+.wk-settings-drawer-root .wk-config-header { display: grid; gap: 4px; margin-bottom: 8px; }
+.wk-settings-drawer-root .wk-config-header h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--color-ink, #172033); }
+.wk-settings-drawer-root .wk-config-header .section-description { margin: 0; font-size: 12px; line-height: 20px; color: var(--color-muted, #66758b); }
+.wk-settings-drawer-root .wk-config-model-row { display: grid; gap: 4px; border-bottom: 1px solid var(--color-line-soft, #edf0f5); padding-block: 16px; }
+.wk-settings-drawer-root .wk-config-model-label { font-size: 14px; font-weight: 500; color: var(--color-ink, #172033); }
+.wk-settings-drawer-root .wk-config-star { color: var(--color-danger, #b42318); }
+.wk-settings-drawer-root .wk-config-model-desc { font-size: 12px; font-weight: 400; line-height: 20px; color: var(--color-muted, #66758b); }
+.wk-settings-drawer-root .wk-config-model-warn { font-size: 12px; font-weight: 400; color: var(--color-warning-text, #9a6700); }
+.wk-settings-drawer-root .wk-config-slider-row { display: grid; gap: 8px; border-bottom: 1px solid var(--color-line-soft, #edf0f5); padding-block: 16px; }
+.wk-settings-drawer-root .wk-config-slider-row:last-of-type { border-bottom: 0; }
+.wk-settings-drawer-root .wk-config-slider-head { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; color: var(--color-ink, #172033); }
+.wk-settings-drawer-root .wk-config-slider-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; font-weight: 600; color: var(--color-accent, #07c05f); }
+.wk-settings-drawer-root .wk-config-toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 400; }
+.wk-settings-drawer-root .wk-config-toggles { display: flex; flex-wrap: wrap; gap: 16px; }
+.wk-settings-drawer-root .wk-config-section { display: grid; gap: 12px; border: 1px solid #dce3ed; border-radius: 8px; padding: 16px; }
+.wk-settings-drawer-root .wk-config-section h3 { margin: 0; font-size: 16px; }
