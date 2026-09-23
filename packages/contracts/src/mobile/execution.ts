@@ -66,7 +66,7 @@ function snapshotTaskFacts(value: unknown): SnapshotTaskFacts {
     task_id: nonEmpty(row.task_id, 'task.task_id'),
     ...(title === undefined || title === null ? {} : { title }),
     attention,
-    ...(archivedAt === undefined || archivedAt === null ? {} : { archived_at: archivedAt }),
+    ...(archivedAt === undefined || archivedAt === null ? {} : { archived_at: isoTime(archivedAt, 'task.archived_at') }),
   };
 }
 
