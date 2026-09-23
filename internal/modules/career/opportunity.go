@@ -1,0 +1,292 @@
+package career
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+const (
+	OpportunityStored      = "stored"
+	OpportunityNeedsReview = "needs_review"
+	maxJDTextBytes         = 1024 * 1024
+)
+
+var ErrOpportunityNotFound = errors.New("career opportunity evidence not found")
+
+type opportunity struct {
+	ID        string `gorm:"primaryKey;size:36"`
+	TenantID  uint64 `gorm:"index:idx_career_opportunity_scope"`
+	UserID    string `gorm:"index:idx_career_opportunity_scope;size:512"`
+	CreatedAt time.Time
+}
+
+type opportunityObservation struct {
+	ID            string `gorm:"primaryKey;size:36"`
+	TenantID      uint64 `gorm:"index:idx_career_opportunity_observation_scope"`
+	UserID        string `gorm:"index:idx_career_opportunity_observation_scope;size:512"`
+	OpportunityID string `gorm:"size:36;index"`
+	SnapshotID    string `gorm:"size:36"`
+	SourceKind    string `gorm:"size:32"`
+	SourceLabel   string `gorm:"type:text"`
+	SourceRef     string `gorm:"type:text"`
+	AcquiredAt    time.Time
+	CreatedAt     time.Time
+}
+
+type opportunitySnapshot struct {
+	ID            string `gorm:"primaryKey;size:36"`
+	TenantID      uint64 `gorm:"index:idx_career_opportunity_snapshot_scope"`
+	UserID        string `gorm:"index:idx_career_opportunity_snapshot_scope;size:512"`
+	OpportunityID string `gorm:"size:36;index"`
+	ObservationID string `gorm:"size:36"`
+	RawText       string `gorm:"type:text;not null"`
+	RawSHA256     string `gorm:"size:64;not null"`
+	Extracted     string `gorm:"type:text;not null"`
+	Status        string `gorm:"size:32;not null"`
+	AcquiredAt    time.Time
+	CreatedAt     time.Time
+}
+
+type opportunityReceipt struct {
+	TenantID    uint64 `gorm:"uniqueIndex:career_opportunity_receipt_scope"`
+	UserID      string `gorm:"uniqueIndex:career_opportunity_receipt_scope;size:512"`
+	RequestID   string `gorm:"uniqueIndex:career_opportunity_receipt_scope;size:128"`
+	Fingerprint string `gorm:"size:64;not null"`
+	Body        string `gorm:"type:text;not null"`
+	CreatedAt   time.Time
+}
+
+func (opportunity) TableName() string            { return "career_opportunities" }
+func (opportunityObservation) TableName() string { return "career_opportunity_observations" }
+func (opportunitySnapshot) TableName() string    { return "career_opportunity_snapshots" }
+func (opportunityReceipt) TableName() string     { return "career_opportunity_receipts" }
+
+type ImportJDInput struct {
+	RequestID       string `json:"requestId"`
+	RawText         string `json:"rawText"`
+	SourceLabel     string `json:"sourceLabel,omitempty"`
+	SourceReference string `json:"sourceReference,omitempty"`
+}
+
+type ExtractedValue struct {
+	State string `json:"state"`
+	Value string `json:"value,omitempty"`
+}
+
+type OpportunityFields struct {
+	Title        ExtractedValue `json:"title"`
+	Company      ExtractedValue `json:"company"`
+	Location     ExtractedValue `json:"location"`
+	Batch        ExtractedValue `json:"batch"`
+	Requirements ExtractedValue `json:"requirements"`
+}
+
+type OpportunitySource struct {
+	Kind        string `json:"kind"`
+	Label       string `json:"label,omitempty"`
+	ReferenceID string `json:"referenceId,omitempty"`
+}
+
+type OpportunityEvidence struct {
+	OpportunityID string            `json:"opportunityId"`
+	ObservationID string            `json:"observationId"`
+	SnapshotID    string            `json:"snapshotId"`
+	RawText       string            `json:"rawText"`
+	RawSHA256     string            `json:"rawSha256"`
+	Extracted     OpportunityFields `json:"extracted"`
+	Source        OpportunitySource `json:"source"`
+	AcquiredAt    time.Time         `json:"acquiredAt"`
+	Status        string            `json:"status"`
+}
+
+type OpportunityReceipt struct {
+	Kind          string    `json:"kind"`
+	RequestID     string    `json:"requestId"`
+	OpportunityID string    `json:"opportunityId"`
+	ObservationID string    `json:"observationId"`
+	SnapshotID    string    `json:"snapshotId"`
+	Status        string    `json:"status"`
+	AcquiredAt    time.Time `json:"acquiredAt"`
+}
+
+type opportunityExtractor func(string) (OpportunityFields, error)
+
+func unknownOpportunityFields() OpportunityFields {
+	unknown := ExtractedValue{State: "unknown"}
+	return OpportunityFields{Title: unknown, Company: unknown, Location: unknown, Batch: unknown, Requirements: unknown}
+}
+
+func (o *Office) extractOpportunity(raw string) (OpportunityFields, string) {
+	extract := o.opportunityExtractor
+	if extract == nil {
+		// No extraction authority is configured yet. Preserve the source as evidence
+		// and ask the user to review it rather than guessing requirements.
+		return unknownOpportunityFields(), OpportunityNeedsReview
+	}
+	fields, err := extract(raw)
+	if err != nil {
+		return unknownOpportunityFields(), OpportunityNeedsReview
+	}
+	allKnown := true
+	for _, value := range []ExtractedValue{fields.Title, fields.Company, fields.Location, fields.Batch, fields.Requirements} {
+		if value.State != "known" && value.State != "unknown" {
+			return unknownOpportunityFields(), OpportunityNeedsReview
+		}
+		if value.State == "unknown" {
+			allKnown = false
+		}
+		if value.State == "known" && strings.TrimSpace(value.Value) == "" {
+			return unknownOpportunityFields(), OpportunityNeedsReview
+		}
+	}
+	if !allKnown {
+		return fields, OpportunityNeedsReview
+	}
+	return fields, OpportunityStored
+}
+
+func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (OpportunityReceipt, error) {
+	s, err := getScope(ctx)
+	if err != nil {
+		return OpportunityReceipt{}, err
+	}
+	if err = o.requireSpace(ctx, s); err != nil {
+		return OpportunityReceipt{}, err
+	}
+	input.RequestID = strings.TrimSpace(input.RequestID)
+	if input.RequestID == "" || len(input.RequestID) > 128 || strings.TrimSpace(input.RawText) == "" || len(input.RawText) > maxJDTextBytes || len(input.SourceLabel) > 512 || len(input.SourceReference) > 2048 {
+		return OpportunityReceipt{}, ErrInvalidRequest
+	}
+	fingerprintInput, err := json.Marshal(input)
+	if err != nil {
+		return OpportunityReceipt{}, err
+	}
+	fingerprintBytes := sha256.Sum256(fingerprintInput)
+	fingerprint := hex.EncodeToString(fingerprintBytes[:])
+	var result OpportunityReceipt
+	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing opportunityReceipt
+		err := tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).First(&existing).Error
+		if err == nil {
+			if existing.Fingerprint != fingerprint {
+				return ErrIdempotencyConflict
+			}
+			return json.Unmarshal([]byte(existing.Body), &result)
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		fields, status := o.extractOpportunity(input.RawText)
+		extracted, err := json.Marshal(fields)
+		if err != nil {
+			return err
+		}
+		acquiredAt := time.Now().UTC()
+		oppID, observationID, snapshotID := uuid.NewString(), uuid.NewString(), uuid.NewString()
+		rawDigest := sha256.Sum256([]byte(input.RawText))
+		source := OpportunitySource{Kind: "manual_paste", Label: input.SourceLabel, ReferenceID: input.SourceReference}
+		result = OpportunityReceipt{Kind: "opportunity_imported", RequestID: input.RequestID, OpportunityID: oppID, ObservationID: observationID, SnapshotID: snapshotID, Status: status, AcquiredAt: acquiredAt}
+		body, err := json.Marshal(result)
+		if err != nil {
+			return err
+		}
+		if err = tx.Create(&opportunity{ID: oppID, TenantID: s.TenantID, UserID: s.UserID, CreatedAt: acquiredAt}).Error; err != nil {
+			return err
+		}
+		if err = tx.Create(&opportunityObservation{ID: observationID, TenantID: s.TenantID, UserID: s.UserID, OpportunityID: oppID, SnapshotID: snapshotID, SourceKind: source.Kind, SourceLabel: source.Label, SourceRef: source.ReferenceID, AcquiredAt: acquiredAt, CreatedAt: acquiredAt}).Error; err != nil {
+			return err
+		}
+		if err = tx.Create(&opportunitySnapshot{ID: snapshotID, TenantID: s.TenantID, UserID: s.UserID, OpportunityID: oppID, ObservationID: observationID, RawText: input.RawText, RawSHA256: hex.EncodeToString(rawDigest[:]), Extracted: string(extracted), Status: status, AcquiredAt: acquiredAt, CreatedAt: acquiredAt}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&opportunityReceipt{TenantID: s.TenantID, UserID: s.UserID, RequestID: input.RequestID, Fingerprint: fingerprint, Body: string(body), CreatedAt: acquiredAt}).Error
+	})
+	if err == nil {
+		return result, nil
+	}
+	if errors.Is(err, ErrIdempotencyConflict) {
+		return OpportunityReceipt{}, err
+	}
+	// A concurrent identical import may have won the unique request key.
+	var existing opportunityReceipt
+	if lookupErr := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).First(&existing).Error; lookupErr == nil {
+		if existing.Fingerprint != fingerprint {
+			return OpportunityReceipt{}, ErrIdempotencyConflict
+		}
+		if decodeErr := json.Unmarshal([]byte(existing.Body), &result); decodeErr == nil {
+			return result, nil
+		}
+	}
+	return OpportunityReceipt{}, err
+}
+
+func (o *Office) OpportunityEvidence(ctx context.Context, opportunityID, snapshotID string) (OpportunityEvidence, error) {
+	s, err := getScope(ctx)
+	if err != nil {
+		return OpportunityEvidence{}, err
+	}
+	if err = o.requireSpace(ctx, s); err != nil {
+		return OpportunityEvidence{}, err
+	}
+	var row opportunitySnapshot
+	err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", s.TenantID, s.UserID, opportunityID, snapshotID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OpportunityEvidence{}, ErrOpportunityNotFound
+	}
+	if err != nil {
+		return OpportunityEvidence{}, err
+	}
+	var observation opportunityObservation
+	err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", s.TenantID, s.UserID, opportunityID, row.ObservationID).First(&observation).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OpportunityEvidence{}, ErrOpportunityNotFound
+	}
+	if err != nil {
+		return OpportunityEvidence{}, err
+	}
+	if observation.SnapshotID != row.ID {
+		return OpportunityEvidence{}, ErrOpportunityNotFound
+	}
+	var fields OpportunityFields
+	if err = json.Unmarshal([]byte(row.Extracted), &fields); err != nil {
+		return OpportunityEvidence{}, fmt.Errorf("decode opportunity extraction: %w", err)
+	}
+	return OpportunityEvidence{OpportunityID: opportunityID, ObservationID: observation.ID, SnapshotID: row.ID, RawText: row.RawText, RawSHA256: row.RawSHA256, Extracted: fields, Source: OpportunitySource{Kind: observation.SourceKind, Label: observation.SourceLabel, ReferenceID: observation.SourceRef}, AcquiredAt: row.AcquiredAt, Status: row.Status}, nil
+}
+
+func (o *Office) FindOpportunityReceipt(ctx context.Context, requestID string) (OpportunityReceipt, error) {
+	s, err := getScope(ctx)
+	if err != nil {
+		return OpportunityReceipt{}, err
+	}
+	if err = o.requireSpace(ctx, s); err != nil {
+		return OpportunityReceipt{}, err
+	}
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" || len(requestID) > 128 {
+		return OpportunityReceipt{}, ErrInvalidRequest
+	}
+	var row opportunityReceipt
+	err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return OpportunityReceipt{}, ErrReceiptNotFound
+	}
+	if err != nil {
+		return OpportunityReceipt{}, err
+	}
+	var result OpportunityReceipt
+	if err = json.Unmarshal([]byte(row.Body), &result); err != nil {
+		return OpportunityReceipt{}, fmt.Errorf("decode opportunity receipt: %w", err)
+	}
+	return result, nil
+}

@@ -82,7 +82,7 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrInvalidRequest):
 		status = 400
 		code = "invalid_request"
-	case errors.Is(e, ErrReceiptNotFound), errors.Is(e, ErrProposalNotFound), errors.Is(e, ErrSourceNotFound):
+	case errors.Is(e, ErrReceiptNotFound), errors.Is(e, ErrProposalNotFound), errors.Is(e, ErrSourceNotFound), errors.Is(e, ErrOpportunityNotFound):
 		status = 404
 		code = "not_found"
 	case errors.Is(e, ErrProposalResolved):
@@ -209,6 +209,54 @@ func (h *Handler) Changes(c *gin.Context) {
 		return
 	}
 	c.JSON(200, v)
+}
+
+// ImportJD stores user-pasted job text as inert evidence. It never dispatches
+// the content to an Agent, tool, URL fetcher, or authorization decision.
+func (h *Handler) ImportJD(c *gin.Context) {
+	ctx, ok := h.scope(c, true)
+	if !ok {
+		return
+	}
+	var req ImportJDInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.ImportJD(ctx, req)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// OpportunityEvidence reopens one fixed snapshot under the current owner's
+// authenticated Career scope.
+func (h *Handler) OpportunityEvidence(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	evidence, err := h.office.OpportunityEvidence(ctx, c.Param("opportunityId"), c.Query("snapshotId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, evidence)
+}
+
+func (h *Handler) OpportunityReceipt(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindOpportunityReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
 }
 
 func (h *Handler) Sources(c *gin.Context) {

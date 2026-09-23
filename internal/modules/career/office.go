@@ -208,7 +208,8 @@ func (receipt) TableName() string                     { return "career_receipts"
 func (sourceRevision) TableName() string              { return "career_source_revisions" }
 
 type Office struct {
-	db *gorm.DB
+	db                   *gorm.DB
+	opportunityExtractor opportunityExtractor
 	// These hooks only synchronize transaction-boundary and error-path tests.
 	beforeFirstWrite    func()
 	afterReceiptPersist func()
@@ -219,7 +220,7 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -256,14 +257,18 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 
 func validateSQLiteCareerSchema(db *gorm.DB) error {
 	requiredColumns := map[string][]string{
-		"career_profiles":         {"tenant_id", "user_id", "revision"},
-		"career_spaces":           {"tenant_id", "owner_user_id", "created_at"},
-		"career_facts":            {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "request_id", "created_at"},
-		"career_fact_versions":    {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "proposal_id", "request_id", "created_at"},
-		"career_proposals":        {"id", "public_id", "tenant_id", "user_id", "key", "value", "evidence", "source", "status", "resolved_at", "resolved_revision", "confirmation", "resolution_source", "created_at"},
-		"career_changes":          {"id", "tenant_id", "user_id", "revision", "kind", "body", "created_at"},
-		"career_receipts":         {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
-		"career_source_revisions": {"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "claim_token", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"},
+		"career_profiles":                 {"tenant_id", "user_id", "revision"},
+		"career_spaces":                   {"tenant_id", "owner_user_id", "created_at"},
+		"career_facts":                    {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "request_id", "created_at"},
+		"career_fact_versions":            {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "proposal_id", "request_id", "created_at"},
+		"career_proposals":                {"id", "public_id", "tenant_id", "user_id", "key", "value", "evidence", "source", "status", "resolved_at", "resolved_revision", "confirmation", "resolution_source", "created_at"},
+		"career_changes":                  {"id", "tenant_id", "user_id", "revision", "kind", "body", "created_at"},
+		"career_receipts":                 {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
+		"career_source_revisions":         {"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "claim_token", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"},
+		"career_opportunities":            {"id", "tenant_id", "user_id", "created_at"},
+		"career_opportunity_observations": {"id", "tenant_id", "user_id", "opportunity_id", "snapshot_id", "source_kind", "source_label", "source_ref", "acquired_at", "created_at"},
+		"career_opportunity_snapshots":    {"id", "tenant_id", "user_id", "opportunity_id", "observation_id", "raw_text", "raw_sha256", "extracted", "status", "acquired_at", "created_at"},
+		"career_opportunity_receipts":     {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -273,10 +278,11 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		}
 	}
 	for table, columns := range map[string][]string{
-		"career_facts":            {"tenant_id", "user_id", "key"},
-		"career_changes":          {"tenant_id", "user_id", "revision"},
-		"career_receipts":         {"tenant_id", "user_id", "request_id"},
-		"career_source_revisions": {"tenant_id", "user_id", "revision"},
+		"career_facts":                {"tenant_id", "user_id", "key"},
+		"career_changes":              {"tenant_id", "user_id", "revision"},
+		"career_receipts":             {"tenant_id", "user_id", "request_id"},
+		"career_source_revisions":     {"tenant_id", "user_id", "revision"},
+		"career_opportunity_receipts": {"tenant_id", "user_id", "request_id"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)

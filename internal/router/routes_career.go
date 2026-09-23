@@ -17,4 +17,7 @@ func RegisterCareerRoutes(r *gin.RouterGroup, h *career.Handler) {
 	g.GET("/sources", h.Sources)
 	g.POST("/sources/upload", h.Upload)
 	g.POST("/act", h.Act)
+	g.POST("/opportunities/import", h.ImportJD)
+	g.GET("/opportunities/receipt", h.OpportunityReceipt)
+	g.GET("/opportunities/:opportunityId", h.OpportunityEvidence)
 }
