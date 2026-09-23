@@ -299,6 +299,12 @@ test('switchDeployment onto the active origin short-circuits without re-authenti
   assert.equal(switched, signedIn, '快照对象不重建（短路返回当前 state）');
 });
 
+test('the in-memory registry normalizes labels like the secure adapter', async () => {
+  const deployments = createInMemoryDeploymentRegistry();
+  await deployments.upsert({ origin: 'https://weknora.example.test', label: '  ' }); // 空白 label → 兜底 origin
+  assert.deepEqual(await deployments.list(), [{ origin: 'https://weknora.example.test', label: 'https://weknora.example.test' }]);
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((next) => { resolve = next; });
