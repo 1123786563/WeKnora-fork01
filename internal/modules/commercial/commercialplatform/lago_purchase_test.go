@@ -66,6 +66,21 @@ func newPurchaseStub() *purchaseStub {
 	customers := func(w http.ResponseWriter, r *http.Request) {
 		blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		ext := strings.TrimPrefix(r.URL.Path, "/api/v1/customers/")
+		// F11: the authority's payment-method list — the binding ensure
+		// polls it until the default payment method is imported. The stub
+		// models an ALREADY-synced method for every bound customer (the
+		// async import lag is covered by the real-stack evidence).
+		if pm, cut := strings.CutSuffix(ext, "/payment_methods"); cut && r.Method == http.MethodGet {
+			s.mu.Lock()
+			_, held := s.customer[pm]
+			s.mu.Unlock()
+			if !held {
+				respond(w, r, &s.requests, &s.mu, http.StatusNotFound, `{"payment_methods":[]}`, nil)
+				return
+			}
+			respond(w, r, &s.requests, &s.mu, http.StatusOK, `{"payment_methods":[{"id":"pm_stub_1","type":"card"}]}`, nil)
+			return
+		}
 		switch {
 		case r.Method == http.MethodGet && ext != "": // GET /api/v1/customers/{id}
 			s.mu.Lock()

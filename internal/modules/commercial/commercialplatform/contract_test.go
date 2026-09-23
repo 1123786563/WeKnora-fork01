@@ -495,13 +495,13 @@ func runPurchaseContract(t *testing.T, name string, p commercial.CommercialPlatf
 	t.Helper()
 	tenant := uint64(910)
 	cmd := commercial.Command{
-		Kind: commercial.CommandKindCreatePurchaseSubscription,
-		Key:  commercial.CreatePurchaseSubscriptionCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), "weknora-contract-v1"),
+		Kind:  commercial.CommandKindCreatePurchaseSubscription,
+		Key:   commercial.CreatePurchaseSubscriptionCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), "weknora-contract-v1"),
 		Actor: "contract", Reason: "shared purchase contract",
 		Payload: commercial.CreatePurchaseSubscriptionPayload{
 			TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: "weknora-contract-v1", AmountFen: 4200, Currency: commercial.CurrencyCNY,
+			PlanCode:                       "weknora-contract-v1", AmountFen: 4200, Currency: commercial.CurrencyCNY,
 		},
 	}
 	t.Run(name+"/purchase create is idempotent by identity", func(t *testing.T) {
@@ -537,7 +537,7 @@ func runPurchaseContract(t *testing.T, name string, p commercial.CommercialPlatf
 		other.Payload = commercial.CreatePurchaseSubscriptionPayload{
 			TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
 			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
-			PlanCode: "weknora-other-v1", AmountFen: 9900, Currency: commercial.CurrencyCNY,
+			PlanCode:                       "weknora-other-v1", AmountFen: 9900, Currency: commercial.CurrencyCNY,
 		}
 		if _, err := p.SubmitCommand(context.Background(), other); !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
 			t.Fatalf("conflict expected, got %v", err)

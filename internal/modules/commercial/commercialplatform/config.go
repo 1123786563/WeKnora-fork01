@@ -42,6 +42,13 @@ const (
 	EnvStripeKey              = "WEKNORA_COMMERCIAL_STRIPE_API" + "_KEY"
 	EnvStripeAPIBase          = "WEKNORA_COMMERCIAL_STRIPE_API" + "_BASE"
 	EnvProviderCustomerPrefix = "WEKNORA_COMMERCIAL_PROVIDER_CUSTOMER_PREFIX"
+	// EnvStripePmToken (F11): the provider payment-method token attached as
+	// the tenant's default payment method during the binding ensure. Dev and
+	// test stacks set a PROVIDER TEST token (pm_card_*); production leaves
+	// it empty — the real card arrives through the provider checkout (#82),
+	// and a binding without a default payment method fails the gated create
+	// closed (no_default_payment_method, t09 evidence).
+	EnvStripePmToken = "WEKNORA_COMMERCIAL_STRIPE_PM" + "_TOKEN"
 )
 
 // Config holds the platform adapter config references. An empty BaseURL or
@@ -62,6 +69,9 @@ type Config struct {
 	StripeAPIKey           string
 	StripeAPIBase          string
 	ProviderCustomerPrefix string
+	// StripePmToken is the OPTIONAL provider payment-method token attached
+	// as default during the binding ensure (F11; dev/test only).
+	StripePmToken string
 }
 
 // ConfigFromEnv reads the config references from the server-side
@@ -80,6 +90,7 @@ func configFromEnv(getenv func(string) string) Config {
 		StripeAPIKey:           getenv(EnvStripeKey),
 		StripeAPIBase:          getenv(EnvStripeAPIBase),
 		ProviderCustomerPrefix: getenv(EnvProviderCustomerPrefix),
+		StripePmToken:          getenv(EnvStripePmToken),
 	}
 }
 

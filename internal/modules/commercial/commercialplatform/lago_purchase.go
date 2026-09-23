@@ -40,8 +40,24 @@ import (
 // identity read and the gated create.
 const purchaseRequestTimeout = subscriptionRequestTimeout + 10*time.Second
 
+// pmSyncWait bounds the poll for the authority's import of the tenant's
+// default payment method (F11: the gated create answers
+// no_default_payment_method until the authority's worker has pulled the
+// provider-side payment method; t09/t02 run evidence).
+var pmSyncWait = 20 * time.Second
+
+// pmSyncTick is the poll cadence for the payment-method import.
+var pmSyncTick = 500 * time.Millisecond
+
 // outboundProviderHost is the default host of the provider's public API.
 const outboundProviderHost = "https://api.stripe.com"
+
+// outboundProviderTimeout bounds ONE provider API round trip. It is
+// deliberately NOT the shared Lago client's health-grade 5 s budget: a
+// cross-continent TLS+HTTP round trip to the provider's public endpoint
+// routinely exceeds it (t09 run evidence: ~3.5 s), so the outbound call
+// rides its own client, never the Lago one.
+const outboundProviderTimeout = 15 * time.Second
 
 // validateOutboundHost enforces the S1 egress rule for every server-side
 // outbound request this adapter issues: the scheme must be http/https and
@@ -200,9 +216,15 @@ func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustome
 		"customer": map[string]any{
 			"external_id": externalCustomerID,
 			"name":        externalCustomerID,
+			// F11 contract shape (t02/t09 evidence): the linkage carries the
+			// provider, its registration code and the card payment-method
+			// class — the gated create then requires the authority's synced
+			// default payment method, polled below.
 			"billing_configuration": map[string]any{
-				"payment_provider":     "stripe",
-				"provider_customer_id": providerCustomerID,
+				"payment_provider":         "stripe",
+				"payment_provider_code":    "weknora-stripe",
+				"provider_customer_id":     providerCustomerID,
+				"provider_payment_methods": []string{"card"},
 			},
 		},
 	}
@@ -212,7 +234,10 @@ func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustome
 	}
 	switch {
 	case status >= 200 && status < 300:
-		return nil
+		// F11: the authority imports the provider payment method
+		// asynchronously; the gated create is refused with
+		// no_default_payment_method until the import lands. Poll bounded.
+		return a.waitForPaymentMethodSync(ctx, externalCustomerID)
 	case status == http.StatusUnprocessableEntity && strings.Contains(string(respBody), "payment_provider_not_found"):
 		// F2: the org has no registered provider — configuration, not a
 		// transient failure; fail closed and stop the purchase.
@@ -221,6 +246,40 @@ func (a *LagoAdapter) ensureProviderBinding(ctx context.Context, externalCustome
 		return fmt.Errorf("%w: provider binding unavailable", commercial.ErrPlatformUnreachable)
 	default:
 		return fmt.Errorf("%w: provider binding rejected", commercial.ErrPlatformInvalidResponse)
+	}
+}
+
+// waitForPaymentMethodSync polls the authority's payment-method list for the
+// tenant until the provider-side default payment method has been imported
+// (F11, bounded). An exhausted budget is the closed indeterminate
+// unreachable — the purchase replays safely by identity.
+func (a *LagoAdapter) waitForPaymentMethodSync(ctx context.Context, externalCustomerID string) error {
+	deadline := time.Now().Add(pmSyncWait)
+	for {
+		status, body, err := a.do(ctx, http.MethodGet,
+			"/api/v1/customers/"+url.PathEscape(externalCustomerID)+"/payment_methods", nil)
+		if err != nil {
+			return err
+		}
+		switch {
+		case status >= 200 && status < 300:
+			var parsed struct {
+				PaymentMethods []json.RawMessage `json:"payment_methods"`
+			}
+			if err := json.Unmarshal(body, &parsed); err == nil && len(parsed.PaymentMethods) > 0 {
+				return nil
+			}
+		case status >= 500:
+			return fmt.Errorf("%w: payment method read unavailable", commercial.ErrPlatformUnreachable)
+		default:
+			return fmt.Errorf("%w: payment method read rejected", commercial.ErrPlatformInvalidResponse)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%w: default payment method not imported in time", commercial.ErrPlatformUnreachable)
+		}
+		if err := sleepCtx(ctx, pmSyncTick); err != nil {
+			return fmt.Errorf("%w: payment method sync interrupted", commercial.ErrPlatformUnreachable)
+		}
 	}
 }
 
@@ -348,35 +407,13 @@ func (a *LagoAdapter) deriveProviderCustomerID(ctx context.Context, externalCust
 // header (Basic scheme). The idempotency key is the WeKnora external
 // customer id — a lost response replays to the same provider customer.
 func (a *LagoAdapter) providerCreateCustomer(ctx context.Context, externalCustomerID string) (string, error) {
-	base := a.cfg.StripeAPIBase
-	if base == "" {
-		base = outboundProviderHost
-	}
-	if err := validateOutboundHost(base); err != nil {
-		return "", fmt.Errorf("%w: outbound host policy violation", commercial.ErrPlatformUnconfigured)
-	}
-	payload, _ := json.Marshal(map[string]any{
-		"metadata": map[string]string{"weknora_customer": externalCustomerID},
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimSuffix(base, "/")+"/v1/customers", strings.NewReader(string(payload)))
+	status, data, err := a.providerOutboundCall(ctx, "/v1/customers",
+		"metadata[weknora_customer]="+url.QueryEscape(externalCustomerID), externalCustomerID)
 	if err != nil {
-		return "", fmt.Errorf("%w: outbound request invalid", commercial.ErrPlatformUnconfigured)
+		return "", err
 	}
-	// The provider's API authenticates with the key as the Basic username.
-	// The credential rides ONLY this header — never a URL, body, error or
-	// log.
-	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(a.cfg.StripeAPIKey+":")))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Idempotency-Key", externalCustomerID)
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("%w: provider customer create not reachable", commercial.ErrPlatformUnreachable)
-	}
-	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if resp.StatusCode >= 500 {
+	if status < 200 || status >= 300 {
+		if status >= 500 {
 			return "", fmt.Errorf("%w: provider customer create unavailable", commercial.ErrPlatformUnreachable)
 		}
 		return "", fmt.Errorf("%w: provider customer create rejected", commercial.ErrPlatformInvalidResponse)
@@ -387,5 +424,76 @@ func (a *LagoAdapter) providerCreateCustomer(ctx context.Context, externalCustom
 	if err := json.Unmarshal(data, &parsed); err != nil || parsed.ID == "" {
 		return "", fmt.Errorf("%w: provider customer create malformed", commercial.ErrPlatformInvalidResponse)
 	}
+	// F11 (dev/test stacks): a configured payment-method token is attached
+	// and set as the customer's default so the authority can import it and
+	// the gated create can pass. Production leaves the token empty — the
+	// real card arrives through the provider checkout (#82/#83) and a
+	// binding without a default payment method fails closed at the gated
+	// create.
+	if a.cfg.StripePmToken != "" {
+		if err := a.providerAttachDefaultPaymentMethod(parsed.ID, a.cfg.StripePmToken); err != nil {
+			return "", err
+		}
+	}
 	return parsed.ID, nil
+}
+
+// providerOutboundCall issues one pre-validated POST to the provider API
+// (S1 host check inside) with the credential ONLY in the Authorization
+// header.
+func (a *LagoAdapter) providerOutboundCall(ctx context.Context, path, form string, idempotencyKey string) (int, []byte, error) {
+	base := a.cfg.StripeAPIBase
+	if base == "" {
+		base = outboundProviderHost
+	}
+	if err := validateOutboundHost(base); err != nil {
+		return 0, nil, fmt.Errorf("%w: outbound host policy violation", commercial.ErrPlatformUnconfigured)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		strings.TrimSuffix(base, "/")+path, strings.NewReader(form))
+	if err != nil {
+		return 0, nil, fmt.Errorf("%w: outbound request invalid", commercial.ErrPlatformUnconfigured)
+	}
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(a.cfg.StripeAPIKey+":")))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
+	resp, err := (&http.Client{Timeout: outboundProviderTimeout}).Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("%w: outbound provider call not reachable", commercial.ErrPlatformUnreachable)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	return resp.StatusCode, data, nil
+}
+
+// providerAttachDefaultPaymentMethod attaches the payment-method token to
+// the provider customer and promotes it to the default (F11). The token is
+// a provider payment-method id (test mode pre-creates pm_card_*); the
+// provider CLONES it on attach and answers a customer-scoped pm_ id — the
+// default update must reference THAT id (the t02 evidence).
+func (a *LagoAdapter) providerAttachDefaultPaymentMethod(providerCustomerID, pmToken string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), outboundProviderTimeout)
+	defer cancel()
+	status, data, err := a.providerOutboundCall(ctx, "/v1/payment_methods/"+url.PathEscape(pmToken)+"/attach",
+		"customer="+url.QueryEscape(providerCustomerID), "")
+	if err != nil {
+		return err
+	}
+	var attached struct {
+		ID string `json:"id"`
+	}
+	if status < 200 || status >= 300 || json.Unmarshal(data, &attached) != nil || attached.ID == "" {
+		return fmt.Errorf("%w: provider payment method attach rejected", commercial.ErrPlatformInvalidResponse)
+	}
+	status, _, err = a.providerOutboundCall(ctx, "/v1/customers/"+url.PathEscape(providerCustomerID),
+		"invoice_settings[default_payment_method]="+url.QueryEscape(attached.ID), "")
+	if err != nil {
+		return err
+	}
+	if status < 200 || status >= 300 {
+		return fmt.Errorf("%w: provider default payment method update rejected", commercial.ErrPlatformInvalidResponse)
+	}
+	return nil
 }
