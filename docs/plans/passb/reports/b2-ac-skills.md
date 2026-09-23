@@ -54,18 +54,41 @@
 
 **T4 无红灯项，未触发 conventions §5 停工上报。**
 
-## T5（25b.5）— 差分证据收口 + Integration Brief + 节点门禁
+## T5（25b.5）— 差分证据收口 + Integration Brief + 节点门禁 ✅（2026-09-24）
 
-> 占位：未执行。
+**任务起点**：BASE=`4f8ff1de0`（T4 完成点），工作树干净（`git status --short` 空）。
 
-## 节点收尾核对（T5 定稿前逐条填写）
+**执行内容**（对应计划 §6 T5 全部步骤）：
 
-- [ ] `git diff --name-only "$BASE"...HEAD | sort` vs 计划 §1 白名单差集为空
-- [ ] `go build ./...` 0
-- [ ] `go test ./internal/modules/agentcatalog/... -count=1` ok
-- [ ] `go test ./internal/application/service ./internal/handler ./internal/router -count=1` ok（与 T1 基线同集合）
-- [ ] `make check-backend-architecture`（633/23+23/58/16）与 `make verify-module-moves`（16 manifests）0
-- [ ] parity 测试通过（计划 §7.2 覆盖）
-- [ ] 差分证据落盘（evidence §2–§4）
-- [ ] owned_files 逐条核对
-- [ ] 未完成项如实列出
+1. **双跑差分**（evidence §2 定稿）：
+   - 逐包双跑：基线 8 条命令终态复跑，7 条逐包 `ok/FAIL` 一致（build/make 数值逐项不变；耗时差异为机器负载）——详见 evidence §2.1 表。
+   - reaper 面逐例：终态新包 `go test ./internal/modules/agentcatalog/service -run 'TestReap|TestPrune|TestReconcile' -count=1 -v` → 27 RUN/27 PASS/0 FAIL；宿主字面复跑 `[no tests to run]`（27 例已迁出）；第 28 例 `TestPruneEmptyFolderChainsDeletesOnlyEmptyCandidateAncestors`（wiki 面 `wiki_page_test.go:17`，BASE 起未动、不属本面）宿主单跑 PASS。**28 = 27 + 1 逐例 1:1，双跑零 FAIL。**
+   - 【如实登记】evidence §1 命令 #8 字面含 `\|`（单引号），T5 探针实证该引写下 Go regexp 解析为字面竖线、模式 no-op（`no tests to run`）；基线 28 例 -v 日志实为纯竖线 OR 语义产出；T5 双跑统一纯竖线形式（evidence §2.2）。
+2. **公约 §1.2 命令全跑**：`PASSB_BASE_SHA=$(git merge-base origin/main HEAD)` → `b1a3d6dd8`；`git diff --stat b1a3d6dd8...HEAD` → 129 文件（29763+/9439−，含集成线上 b0/ib1 及其他节点产物，非本节点单独可归属）；节点口径以派发基线 `8592f2aac...HEAD` → **72 文件（11000 insertions / 9372 deletions）**；`go build ./...` → 0（重复 §2.1 #1）。
+3. **节点 gates 全跑**（DAG gates 4 条，全部退出码 0）：`go build ./...`；`go test ./internal/modules/agentcatalog/... -count=1`（handler `ok 0.763s` / repository `ok 1.264s` / service `ok 5.506s`）；`make check-backend-architecture`（`OK (0 violations)`，**633/23+23/58/16 逐项不变**）；`make verify-module-moves`（`OK (16 manifests verified)`）。
+4. **附加验收判据实测**：parity 终态 5/5 PASS；`go test ./internal/handler -count=1` 全量 `ok 1.197s`、`go test ./internal/router -count=1` 全量 `ok 1.565s`（§10.4 字面）；§10.9 导出名命中 4、旧名仅存残差；§10.10 新包生产文件零违禁 import（grep + 三包 `go list -f '{{.Imports}}'`）；§10.8 禁改目录 diff 零出现。
+5. **白名单差集核对**（§10.1）：72 文件 = 20 生产搬迁行（17 service + 1 repo + 2 handler，旧路径 M 残差/新路径 A）+ 随迁测试 20 个（R 80–100%，**计划列 19 实际 20——`repository/tenant_skill_test.go` 为 framework:29 义务随迁、计划 §1 glob 口径漏列，evidence §6 登记**）+ 节点产出 6（host_adapters.go、host_capability_test.go、export_parity_test.go、evidence、report、本 Brief）+ 治理裁定登记 6（exception-ledger.yaml、pass-a-acceptance.md、execution-ledger.md、tools/architectureguard/check.go、tools/passbguard/check.go——IMPORT-EXCEPTION-REGISTRY 裁定；tenant_skill_testsupport_test.go——TEST-SUPPORT-SHIM 裁定）。**无第三类文件，未登记白名单外改动为零。**
+6. **定稿 Brief**：`docs/architecture/passb/briefs/b2-ac-skills.md`（(a) 残差全删 20+2 清单、(b) 六组调用点切换表、(c) container 四行接线、(d) routes 切换、(e) contracts 回写 + check-passb-readiness 10 条 IB2 收口清单、(f) DAG 回写确认 2 项、(g) 例外台账如实口径——8 条裁定新增 exc-0106..0113 由 IB2 删除）。全部行号锚点终态实测。
+7. **定稿本报告与 evidence**：evidence §2（搬迁等价差分）/§4（T5 行）/§6（计数登记），本节 + 收尾核对。
+
+**T5 无红灯项，未触发 conventions §5 停工上报。**
+
+## 节点收尾核对（T5 定稿逐条核验，2026-09-24）
+
+- [x] `git diff --name-only 8592f2aac...HEAD | sort` vs 计划 §1 白名单差集为空（72 文件逐类核对，见 T5 第 5 条；白名单外 12 文件 = 节点产出 6 + 治理裁定登记 6，均有 evidence §5 立条；「第三类」为零）
+- [x] `go build ./...` → 退出码 0（仅既有 ld warning）
+- [x] `go test ./internal/modules/agentcatalog/... -count=1` → ok（handler 0.763s / repository 1.264s / service 5.506s）
+- [x] `go test ./internal/application/service -count=1` → `ok 75.289s`；`go test ./internal/handler -count=1` → `ok 1.197s`；`go test ./internal/router -count=1` → `ok 1.565s`（§10.4 字面全量；与 T1 基线同集合拆布于宿主+新包两处，比对见 evidence §2.3）
+- [x] `make check-backend-architecture` → `OK (0 violations)`，633/23+23/58/16 与基线逐项一致；`make verify-module-moves` → `OK (16 manifests verified)`
+- [x] parity 测试通过（5/5 PASS，终态复跑；覆盖 §7.2 全部符号与边界用例）
+- [x] 差分证据落盘（evidence §2 双跑比对 + §4 T5 行 + §2.2 引写语义登记）
+- [x] owned_files 逐条核对（DAG owned_files = manifest 25b 行 + `internal/modules/agentcatalog/**`；72 文件核对结论见 T5 第 5 条）
+- [x] 未完成项如实列出（见下）
+
+**未完成项 / 遗留（如实）**：
+
+1. `make check-passb-readiness` 回滚后红（10 条诊断）——非本节点 gate（公约 §2 barrier 追加项），10 条为计划 §8(e) 分给 IB2 的 contracts 回写义务，收口清单已登记（evidence §5.4 + Brief §e）。
+2. DAG `b2-ac-skills.review_status=changes_requested`（OCR finding：tenant_skill_verify.py 反斜杠归一）——已由 `7c76e7cf1` 修复（OCR 建议选项 a：保留字面反斜杠），`review_status` 流转归协调者/复扫，非 T5 范围。
+3. 随迁测试计划计数 19 vs 实际 20（`repository/tenant_skill_test.go` 漏列）——框架义务覆盖的多迁差异，evidence §6 登记，无需动作。
+4. evidence §1 命令 #8 引写语义（`\|` 单引写 no-op）——已实证并登记（evidence §2.2），基线结论不受影响（28 例 -v 日志为纯竖线语义产出）。
+5. 残差接缝（别名/转发/init 注册/占位/parity/shim）全部按 Brief (a) 待 IB2 删除；本节点按 framework:31 保留至装配切换（「legacy 删除前差分必须已通过」已满足，evidence §2.3）。

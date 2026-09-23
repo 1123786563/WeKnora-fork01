@@ -43,9 +43,33 @@
 
 - `-v` 原始输出暂存执行机 `/tmp/b2ac_reap_v.log`（T5 差分时以同命令重跑比对，不以该临时文件为事实源；事实源为本节摘录 + T5 终态重跑输出）。
 
-## 2. 搬迁等价差分（T5 填写）
+## 2. 搬迁等价差分（T5 终态双跑，2026-09-24，T5 起点 HEAD=`4f8ff1de0`）
 
-> 占位：T1 基线 vs T5 终态同命令双跑，逐包 `ok/FAIL` 比对结论（conventions §6；计划 §7.1）。legacy 残差删除前本节必须已通过。
+**集合位置口径（等价比对前提）**：随迁测试（实际 20 个，见 §6 计数登记）自宿主迁至 `internal/modules/agentcatalog/{repository,service,handler}`，同一测试集合在终态分布于宿主残差包与新包两处。按计划 §7.1「同集合双跑、逐包 ok/FAIL」+ reaper 面逐例三口径执行，结论全部一致。
+
+### 2.1 逐包双跑比对（命令原文 + 退出码；基线值摘自 §1）
+
+| # | 命令 | T1 基线（`8592f2aac`） | T5 终态（`4f8ff1de0`） | 比对结论 |
+|---|---|---|---|---|
+| 1 | `go build ./...` | 0 | 0（仅 cmd/desktop、cmd/server 既有 `ld: warning: ignoring duplicate libraries`） | 一致 |
+| 2 | `go test ./internal/application/service -count=1` | `ok 415.098s` | `ok 75.289s` | 同 `ok`；耗时差异为机器负载（T3 复跑 80.077s 同判）；集合拆分见 2.3 |
+| 3 | `go test ./internal/application/service -run 'Skill' -count=1` | `ok 5.106s` | `ok 1.140s` | 同 `ok` |
+| 4 | `go test ./internal/handler -run 'Skill' -count=1` | `ok 1.769s` | `ok 1.150s` | 同 `ok`（宿主残差面 + 新包侧见 §4） |
+| 5 | `go test ./internal/router -run 'ApiKey\|Skill' -count=1` | `ok 1.236s` | `ok 1.039s` | 同 `ok`（RegisterSkillRoutes RBAC 面零回归） |
+| 6 | `make check-backend-architecture` | `OK (0 violations)`，`633/23+23/58/16` | 同左，数值逐项不变 | 一致（计数断言不变） |
+| 7 | `make verify-module-moves` | `OK (16 manifests verified)` | 同左 | 一致 |
+
+### 2.2 reaper 面逐例双跑（命令 #8）与引写语义登记
+
+1. **引写语义实证（如实登记）**：§1 命令 #8 记录的字面形式含 `\|`（单引号）。T5 探针实证该引写下 Go regexp 将 `\|` 解析为**字面竖线**、整模式为 no-op：`go test ./internal/application/service -run 'TestPruneEmptyFolderChains\|TestReapStuckRunsIgnoresFreshRuns' -count=1 -v` → `testing: warning: no tests to run`（退出码 0）；纯竖线形式 `TestPruneEmptyFolderChains|TestReapStuckRunsIgnoresFreshRuns` → 2 例 RUN/PASS。基线 `-v` 日志（28 例，§1.2 留档 `/tmp/b2ac_reap_v.log`）实为纯竖线 OR 语义产出。T5 双跑统一按纯竖线形式执行。
+2. **终态新包跑**：`go test ./internal/modules/agentcatalog/service -run 'TestReap|TestPrune|TestReconcile' -count=1 -v` → 退出码 0，`=== RUN` 27 / `--- PASS` 27 / `--- FAIL` 0，`ok 0.648s`。
+3. **终态宿主字面复跑**：同命令对宿主包 → 退出码 0，`[no tests to run]`（27 例 skill 面用例已全部迁出宿主）。
+4. **第 28 例归属**：`TestPruneEmptyFolderChainsDeletesOnlyEmptyCandidateAncestors` 定义于 `wiki_page_test.go:17`（wiki 面，BASE 起未动、不属本面搬迁集合；§1.1 已注明为「命令字面匹配的非 reaper 面用例」），仍驻宿主且单跑 `--- PASS`（退出码 0）。
+5. **逐例比对**：基线 28 例名 − 终态新包 27 例名 = {TestPruneEmptyFolderChains…}（宿主 PASS）；终态新包例名 − 基线例名 = ∅（无新增、无改名、无丢失）。**28 = 27 + 1 逐例 1:1，双跑零 FAIL，等价成立。**
+
+### 2.3 宿主包集合差说明（非回归，登记口径）
+
+宿主 service 包终态用例集合 = 基线集合 − 迁出（20 个随迁测试文件承载的用例）+ 新增（parity 5 测试、shim 相关引用）。第 2 行命令同 `ok`、零 FAIL，即「宿主剩余集合零回归」；迁出用例的终态绿证据由 §2.2（reaper 逐例）与 §4（新包三包 ok）承载。两处合成即基线全集合，比对结论：**同一测试集合双跑结果一致（spec §14.2）**。legacy 残差删除前置条件（计划 §7.5）本节已通过。
 
 ## 3. 导出化差分（T3 实测，2026-09-24）
 
@@ -83,6 +107,18 @@ T4 终态实测（2026-09-24，HEAD=`7695a1c9e`，handler 搬迁后同命令复�
 | `make verify-module-moves` | 0 | `OK (16 manifests verified)` |
 | `go list -f '{{.Imports}}' ./internal/modules/agentcatalog/handler`（§10.10 判据） | 0 | 直接 import 集合 = context/errors/fmt/io/net/http/strings/gin + internal/{errors,types,utils} + agentcatalog/service；零 agentruntime、零 application/service、零 internal/handler |
 
+T5 终态实测（2026-09-24，T5 起点 HEAD=`4f8ff1de0`；双跑比对结论见 §2）：
+
+| 命令 | 退出码 | 结果 |
+|---|---|---|
+| `go test ./internal/modules/agentcatalog/... -count=1`（节点 gate） | 0 | handler `ok 0.763s`；repository `ok 1.264s`；service `ok 5.506s`；门面包 `[no test files]` |
+| `go test ./internal/application/service -run 'TestParity' -count=1 -v` | 0 | 5/5 `--- PASS`（§3 全部用例终态复跑） |
+| `go test ./internal/handler -count=1`（§10.4 字面，全量） | 0 | `ok 1.197s` |
+| `go test ./internal/router -count=1`（§10.4 字面，全量） | 0 | `ok 1.565s` |
+| `grep -E '^func (MatchSnapshotByName\|SkillSnapshotNamePrefix\|SnapshotsNotFromOtherConfig\|ValidateUserEnvName)\(' internal/modules/agentcatalog/service/`（§10.9） | 0 | 命中 4：env_declare.go:165、install.go:1683/1754、reaper.go:674；旧名仅存宿主残差 tenant_skill_service.go:148-160 与 tenant_skill_effective.go:15 |
+| 新包生产文件 grep 违禁 import + 三包 `go list -f '{{.Imports}}'`（§10.10） | 0 | 零 agentruntime、零 application/service、零 internal/handler 直接 import |
+| `git diff 8592f2aac...HEAD --name-only -- internal/container/ internal/router/ internal/bootstrap/ go.mod go.sum migrations/`（§10.8 抽验） | 0 | 空输出（禁改文件零出现） |
+
 ## 5. 治理裁定与偏差登记（T3，2026-09-24）
 
 1. **Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY**（协调者授权）：T3 搬迁后 8 个新包生产文件必然 import `execution/sandbox`（计划 §4.4-3「放行」断言与 guard 实际行为不符；探针实证 forbidden-import）。按裁定以独立 commit 登记 importExceptions 8 条（exc-0106..0113，plan=25-agentcatalog-program，remove_at=ib2）+ passbguard PassBTaskModule 补 `B-agentcatalog` 数据映射 + exception-ledger.yaml 105→113 + pass-a-acceptance.md 计数同步（公约 §8 三方一致）。
@@ -107,3 +143,7 @@ T4 终态实测（2026-09-24，HEAD=`7695a1c9e`，handler 搬迁后同命令复�
    - 【搬迁测试装置本地化】新包测试二进制不可引用宿主测试文件 → `testSkillTenantID`（对照 sandbox_skill_test.go:26）与 `oversizedSkillSourceJSON`（对照 upload_limit_test.go:153）在新包测试内本地再声明；宿主原件继续服务禁改测试（sandbox_skill_test/upload_limit_test/skill_market_test/tenant_*_market_test 零改动）。
    - 【传递依赖说明】`go list -deps ./internal/modules/agentcatalog/handler` 经 acatsvc → 宿主 `application/repository`、`types/interfaces` 传递命中 5 个 agentruntime 包（nativecontract/runtime/persona/skillhub/experts）；与 T3 已评审 service 包同计数（5），非本任务引入；§10.10 直接 import 判据为零违规。
    - 【流程合规】本任务全程 Write/Edit/rm/gofmt 落盘，无 Bash 内联改写源码；自查曾发现 skillTooLargeError 首版误写非 1:1 的格式化函数链，随即整文件重写为与宿主 :449 逐字等价的 `fmt.Sprintf` 版本（未进入任何 commit）。
+
+## 6. 随迁测试计数登记（T5 实测，`git diff --name-status -M 8592f2aac...HEAD`）
+
+计划 §1 列随迁测试 19 个（service 17 + handler 2）。实测随迁 **20 个**：上述 19 个全部 R 命中（相似度 80–100%）**另有 `internal/application/repository/tenant_skill_test.go` → `internal/modules/agentcatalog/repository/tenant_skill_test.go`（R100）**。该文件为 T2 搬迁 `repository/tenant_skill.go` 时按 framework:29「每搬一个生产文件随迁其 `_test.go`」义务随迁，计划 §1 的 19 清单漏列（`ls internal/application/service/tenant_skill*_test.go` glob 口径只扫 service 目录，未覆盖 repository）。差异 1 个、方向为多迁非少迁、框架义务覆盖，登记为计划清单偏差，无行为影响。
