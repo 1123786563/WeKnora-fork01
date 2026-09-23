@@ -836,6 +836,331 @@
 - **Mimosa**：本会话 2 次 git commit 钩子均报 `scanner_enobufs`（未获完整扫描结论，按钩子兼容策略继续提交，不宣称项目安全审计通过）
 - **集成后 HEAD**：本条目所在 docs 提交（完整 SHA 见 `git rev-parse HEAD`，已回报调度方）
 
+---
+
+## 2026-09-23 18:56 CST · b0 集成登记：head_sha 以集成后 HEAD d57a2fa70 覆盖（调度方显式指令）
+
+- **节点**：b0 —— B0 契约与所有权冻结（已 done，06:21 起全周期见前各条目）
+- **指令**：调度方下发"b0 已集成：合入 codex/passb-integration，集成后 HEAD SHA：`d57a"（指令文本于 SHA 处截断）
+- **SHA 解析与核验**（本会话 git 实测）：短 SHA `d57a` 在仓库内有歧义（1 commit + 2 tree 候选），commit 候选唯一 = **`d57a2fa708c3fecf5f0510553ea26db3de51d3c9`**（18:55:46，`docs(passb): 登记 b0 合入 integration（合并 0be903ef2；台账 77 行禁令自指措辞按 freeze B0.3 契约改写；双门禁绿色）`，即 integration 当前 HEAD）——按指令上下文"集成后 HEAD"采信该 commit；`git merge-base --is-ancestor acd7b2401 HEAD` ✓（b0 分支头已合入）
+- **与 18:53 条目的衔接**：集成工程师已完整登记合并事件（`1a85809ee` 固化工作树 → merge `0be903ef2` 无冲突 52 文件 +12832/−68 → 门禁 1 首跑 RED（台账 77 行禁令自指）→ 措辞按 freeze B0.3 上游契约改写 → 双门禁 GREEN），其 :834 明确"DAG 变更：无……如需以合并头覆盖 head_sha 由调度方显式指令，本次未获该指令，维持分支头口径"——**本指令即该显式指令**，覆盖生效
+- **head_sha 语义闭环**：18:47 条目留痕 1 所载 07:32 约定（"合并后置 done 并以合并头回填 head_sha"）与 06:21 条目 b0-evidence.md 声明（"B1 起点为本分支合并进 integration 后的头，不得以分支中间提交作为 B1 起点"）至此落地：head_sha 由分支头 `acd7b2401` 覆盖为集成后 HEAD `d57a2fa70`——B1 及后续节点派发时 base 应取此集成后头
+- **留痕（head_sha ≠ merge commit 本身）**：`d57a2fa70` 是 merge commit `0be903ef2` 之上登记集成的 docs 提交（18:53 条目 :837 自证"集成后 HEAD = 本条目所在 docs 提交"），非 merge commit 本身——语义为"集成完成后的 integration 分支头"（含台账登记与措辞修复提交）；如调度方后续要求改锚 `0be903ef2`，属显式再覆盖
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，diff 恰 1 行）：b0.`head_sha` `acd7b24011b57704d401c63f4d2fce1819e057fc` → **`d57a2fa708c3fecf5f0510553ea26db3de51d3c9`**；`status=done`、`review_status=approved`、`base_sha=b1a3d6dd8`、task_status 六任务 done、notes 12 条、ocr_tail_base/ocr_covered 均未动。33 节点分布不变（1 done + 32 pending）
+- **worktree**：DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`，合并后工作树全净——18:53 条目核验，本会话 `git status` 亦净）；b0 实施分支 `.worktrees/passb-b0`（`codex/passb-b0`，HEAD `acd7b2401`，已合入）
+- **调度方后续事项**（18:47 条目"后续"清单更新）：(1) 合并 b0 ——**已完成**（`0be903ef2`，18:53 条目）；(2) 32 节点 BLOCKED 文本清理——维持待办；(3) ocr_covered 区间补登（若适用）——维持待办；(4) **B1 四节点（b1-identity/b1-airesource/b1-commercial/b1-execution）已解锁可派发**，base 取 `d57a2fa70`
+
+---
+
+## 2026-09-23 18:58 CST · b1-identity → in_progress（B1 首节点派发）
+
+- **节点**：b1-identity —— B1-ID Identity 边界（27 legacy 文件：Actor/Tenant/RBAC/Audit 公共用例）——**b0 之后首个派发节点（B1 阶段开始）**
+- **计划路径**：`docs/plans/passb/10-identity.md`
+- **前置**：b0（done ✓，18:47 条目；head_sha 已按 18:56 条目以集成后 HEAD `d57a2fa70` 回填）
+- **worktree**：指令未附实施 worktree；本会话 `ls .worktrees/` 核验 **`passb-b1-identity` 尚不存在**——沿 b0 模式，实施分支/worktree 由调度方或实施者建立，建立后请以新条目补记；DAG/台账所在 integration worktree `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **base SHA**：**`d57a2fa708c3fecf5f0510553ea26db3de51d3c9`**（派发时回填，conventions §9——依据在案约定：06:21 条目 b0-evidence.md 声明"B1 起点为本分支合并进 integration 后的头"+ 18:56 条目"B1 四节点派发 base 取 `d57a2fa70`"；指令未另给 base 值，按唯一在案口径回填并在此留痕）；**head SHA**：null（未回填——节点分支评审通过时回填）
+- **测试证据路径（计划）**：`docs/architecture/evidence/passb/b1-identity.md`、`docs/plans/passb/reports/b1-identity.md`、`docs/plans/passb/reviews/b1-identity.md`（均尚未产出）
+- **审查结论**：pending（review_status 未请求）
+- **OCR 报告路径**：无（尚未进入审查轮；按 notes[11] ruling 新口径——每任务完成后即审，tail OCR 以 ocr_tail_base 为基准增量）
+- **修复轮次**：0
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过）：(1) b1-identity `status` pending → **in_progress**；(2) `base_sha` null → **d57a2fa708c3fecf5f0510553ea26db3de51d3c9**（派发时回填）。`head_sha=null`、`review_status=pending`、其余节点均未动。33 节点分布：**1 done（b0）+ 1 in_progress（b1-identity）+ 31 pending**
+- **备注**：(1) 指令原文 "b1-identity → running"；状态机（conventions §9）无 `running` 值，沿 03:18 起六次先例映射为规范值 `in_progress` 并在此留痕；(2) b1-identity notes 内既有「BLOCKED（2026-09-23）：前置 b0 阻塞……」文本（06:26 遗留）与本次 in_progress 并存——本指令未授权清理该节点 notes，留痕待批量清理指令（18:56 条目后续事项 2）；(3) 节点 notes 所载既有义务提示（identity 侧跨 owner 耦合处理、escapeLikeKeyword 反向消费等，见 DAG required_contracts）对实施者仍然有效
+
+---
+
+## 2026-09-23 18:59 CST · b1-airesource → in_progress（B1 第二节点派发；补记 b1-identity worktree 建立）
+
+- **节点**：b1-airesource —— B1-AI AI Resource 边界（33 legacy 文件：Model/MCP/Search/Vector/Storage 能力解析）
+- **计划路径**：`docs/plans/passb/11-airesource.md`
+- **前置**：b0（done ✓，18:47 条目）
+- **worktree**：指令未附实施 worktree；本会话 `ls .worktrees/` 核验 **`passb-b1-airesource` 尚不存在**（沿 b0 模式，实施分支/worktree 由调度方或实施者建立，建立后请以新条目补记）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **补记（18:58 条目 worktree 待办闭环）**：本会话核验 **`.worktrees/passb-b1-identity` 已建立**——分支 `codex/passb-b1-identity`、起点 `d57a2fa70`（= 已回填 base_sha，起点与台账登记一致 ✓）、工作树干净（本会话 git log/status 实测）
+- **base SHA**：**`d57a2fa708c3fecf5f0510553ea26db3de51d3c9`**（派发时回填，conventions §9；与 b1-identity 同口径：06:21 b0-evidence 声明 + 18:56 条目"B1 派发 base 取 `d57a2fa70`"）；**head SHA**：null（未回填——节点分支评审通过时回填）
+- **测试证据路径（计划）**：`docs/architecture/evidence/passb/b1-airesource.md`、`docs/plans/passb/reports/b1-airesource.md`、`docs/plans/passb/reviews/b1-airesource.md`（均尚未产出）
+- **审查结论**：pending（review_status 未请求）
+- **OCR 报告路径**：无（尚未进入审查轮）
+- **修复轮次**：0
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 2 行）：(1) b1-airesource `status` pending → **in_progress**；(2) `base_sha` null → **d57a2fa708c3fecf5f0510553ea26db3de51d3c9**。`head_sha=null`、`review_status=pending`、其余节点均未动。33 节点分布：**1 done（b0）+ 2 in_progress（b1-identity/b1-airesource）+ 30 pending**
+- **备注**：(1) 指令原文 "b1-airesource → running"，沿先例映射为 `in_progress`；(2) 与 b1-identity 并行合法（execution_mode=parallel，framework:95 四份 B1 计划文件不相交、b0 后可并发）；(3) 节点 notes 既有提示对实施者有效：airesource 为下游消费最重的基础门面（agentruntime→airesource 例外口径 32 对/包限定符 203 处，审校 F6 实测），IB1 前须冻结 capability 契约为 current；(4) notes 内 BLOCKED 残留文本同 b1-identity，待批量清理
+
+---
+
+## 2026-09-23 19:00 CST · b1-commercial → in_progress（B1 第三节点派发；补记 b1-airesource worktree 建立）
+
+- **节点**：b1-commercial —— B1-CM Commercial 边界（8 legacy 文件：Admission/Budget/Usage/Payment 门面）
+- **计划路径**：`docs/plans/passb/12-commercial.md`
+- **前置**：b0（done ✓，18:47 条目）
+- **worktree**：指令未附实施 worktree；本会话 `ls .worktrees/` 核验 **`passb-b1-commercial` 尚不存在**（沿 b0 模式，建立后请以新条目补记）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **补记（18:59 条目 worktree 待办闭环）**：本会话核验 **`.worktrees/passb-b1-airesource` 已建立**——分支 `codex/passb-b1-airesource`、起点 `d57a2fa70`（= 已回填 base_sha，起点与台账登记一致 ✓）、工作树干净（本会话 git log/status 实测）
+- **base SHA**：**`d57a2fa708c3fecf5f0510553ea26db3de51d3c9`**（派发时回填，conventions §9；与 b1-identity/b1-airesource 同口径）；**head SHA**：null（未回填——节点分支评审通过时回填）
+- **测试证据路径（计划）**：`docs/architecture/evidence/passb/b1-commercial.md`、`docs/plans/passb/reports/b1-commercial.md`、`docs/plans/passb/reviews/b1-commercial.md`（均尚未产出）
+- **审查结论**：pending（review_status 未请求）
+- **OCR 报告路径**：无（尚未进入审查轮）
+- **修复轮次**：0
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 2 行）：(1) b1-commercial `status` pending → **in_progress**；(2) `base_sha` null → **d57a2fa708c3fecf5f0510553ea26db3de51d3c9**。`head_sha=null`、`review_status=pending`、其余节点均未动。33 节点分布：**1 done（b0）+ 3 in_progress（b1-identity/b1-airesource/b1-commercial）+ 29 pending**
+- **备注**：(1) 指令原文 "b1-commercial → running"，沿先例映射为 `in_progress`；(2) 三节点并行合法（execution_mode=parallel）；(3) 节点 notes 既有提示对实施者有效：commercial 须导出 model_usage 绑定族端口供 B2-knowledge/agentcatalog 消费（knowledge→commercial 3 符号/agentcatalog→commercial 3 符号，package_private_couplings 在案），payment/usage 属高风险差分面（framework:40）差分证据必交；(4) notes 内 BLOCKED 残留文本待批量清理
+
+---
+
+## 2026-09-23 19:01 CST · b1-execution → in_progress（B1 第四节点派发，B1 四节点派发齐；补记 b1-commercial worktree 建立）
+
+- **节点**：b1-execution —— B1-EX Execution 边界（21 legacy 文件：Sandbox/Target/Workspace/Terminal/Browser 门面）
+- **计划路径**：`docs/plans/passb/13-execution.md`
+- **前置**：b0（done ✓，18:47 条目）
+- **worktree**：指令未附实施 worktree；本会话 `ls .worktrees/` 核验 **`passb-b1-execution` 尚不存在**（沿 b0 模式，建立后请以新条目补记）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **补记（19:00 条目 worktree 待办闭环）**：本会话核验 **`.worktrees/passb-b1-commercial` 已建立**——分支 `codex/passb-b1-commercial`、起点 `d57a2fa70`（= 已回填 base_sha，起点与台账登记一致 ✓）、工作树干净（本会话 git log/status 实测）
+- **base SHA**：**`d57a2fa708c3fecf5f0510553ea26db3de51d3c9`**（派发时回填，conventions §9；B1 四节点同口径）；**head SHA**：null（未回填——节点分支评审通过时回填）
+- **测试证据路径（计划）**：`docs/architecture/evidence/passb/b1-execution.md`、`docs/plans/passb/reports/b1-execution.md`、`docs/plans/passb/reviews/b1-execution.md`（均尚未产出）
+- **审查结论**：pending（review_status 未请求）
+- **OCR 报告路径**：无（尚未进入审查轮）
+- **修复轮次**：0
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 2 行）：(1) b1-execution `status` pending → **in_progress**；(2) `base_sha` null → **d57a2fa708c3fecf5f0510553ea26db3de51d3c9**。`head_sha=null`、`review_status=pending`、其余节点均未动。33 节点分布：**1 done（b0）+ 4 in_progress（B1 全部四节点）+ 28 pending**
+- **备注**：(1) 指令原文 "b1-execution → running"，沿先例映射为 `in_progress`；(2) **B1 四节点（identity/airesource/commercial/execution）至此全部派发**，均 base=`d57a2fa70`、execution_mode=parallel（framework:95 计划文件不相交、b0 后可并发），汇合点为 ib1（B1-ID→B1-AI→B1-CM→B1-EX 逐支合并）；(3) 节点 notes 既有提示对实施者有效：*Handler 方法文件（browserskill.go/sandbox_terminal_ws.go）去方法化裁定、conversation→execution browserSkillScope/resolveTenantSandboxForConfig 10 调用点须导出、agentruntime→execution 引用走 IB1 冻结门面；(4) notes 内 BLOCKED 残留文本待批量清理
+
+---
+
+## 2026-09-23 19:44 CST · b1-commercial 计划完成审校通过（5 任务结构回填 DAG：B1-CM.1–B1-CM.5 全 pending）
+
+- **节点/事件**：b1-commercial —— 计划文档 `docs/plans/passb/12-commercial.md` 撰写完成并审校通过（调度指令口径，本管家未重跑审校）；**B1 四节点中首个完成计划撰写的节点**
+- **计划路径**：`docs/plans/passb/12-commercial.md`（54,640 字节，mtime 19:18，本会话实读）
+- **计划所在**：`.worktrees/passb-b1-commercial`（分支 `codex/passb-b1-commercial`，提交 **`4e481a63b`** `docs(plan): passb b1-commercial`——`d57a2fa70` 之后恰 1 提交、工作树干净，本会话 git log/status 核验）；**尚未合入 integration**（integration HEAD 仍 `d57a2fa70`，passb-int 内该文件不存在）
+- **计划结构核验**（本会话 grep/实读）：§6 任务分解恰 **5 任务**（T1–T5，双编号 B1-CM.1–B1-CM.5）——T1 特征化基线（handler 缺失测试补齐+全量基线冻结）、T2 repository 层搬迁（model_usage 绑定族端口+user_usage）、T3 service 层搬迁（usage_recorder 随迁+SemanticModelBudgetAdapter 导出端口）、T4 handler 层搬迁（4 文件+helper 副本+类型别名 shim+测试随迁）、T5 差分证据收口+Integration Brief+实施报告；§10 独立验收标准 10 条（含"提交序列恰好 5 个 commit（T1–T5）"）；§12 计划自检记录在案
+- **任务结构回填依据**：计划 :594 明确「DAG `task_ids` 由协调者回填，本任务不改 `execution-dag.json`（写权限归协调者，conventions §9）」——本次按调度指令回填
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过）：b1-commercial `task_ids` [] → **[B1-CM.1, B1-CM.2, B1-CM.3, B1-CM.4, B1-CM.5]**；新增 `task_status` 字段（5×**pending**，沿 03:40 条目 b0 先例的任务级字段语义——conventions §9 未定义、按调度指令引入并在此留痕）。`status=in_progress`、`base_sha=d57a2fa70...`、`head_sha=null`、`review_status=pending` 及其余节点均未动；33 节点分布不变（1 done + 4 in_progress + 28 pending）
+- **worktree**：`.worktrees/passb-b1-commercial`（`codex/passb-b1-commercial`，HEAD `4e481a63b`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **测试证据路径**：尚无任务级产出（T1–T5 全部待执行；计划内命令与预期见计划 §6 各任务"命令与预期"）
+- **审查结论**：计划审校通过（调度指令口径）；节点级 review_status 仍 pending（任务执行+节点收口审查另计）
+- **OCR 报告路径**：无
+- **修复轮次**：0
+- **备注**：后续任务完成事件（B1-CM.1–B1-CM.5 逐个 done）按 b0 先例逐条登记；节点 done 待五任务全 done + 节点级审查 + 合并
+
+---
+
+## 2026-09-23 20:00 CST · b1-identity 登记 OCR 覆盖：ocr_covered 追加 [d57a2fa70 → 8db61f8ae]（范围无可审项）
+
+- **节点**：b1-identity —— B1-ID Identity 边界（27 legacy 文件；status=in_progress 未变，18:58 条目所置）
+- **登记内容**：b1-identity 节点新增数组字段 `ocr_covered`（该节点此前无此字段），追加首条 `{base: "d57a2fa708c3fecf5f0510553ea26db3de51d3c9", head: "8db61f8ae4d1bf2faa72c36bd6f2475f8b10f39f"}`（全 40 位 SHA，调度指令口径：**范围无可审项**）
+- **SHA 真实性核验**（本会话 git 实测，`.worktrees/passb-b1-identity`）：`git rev-parse` 双双命中——base `d57a2fa70`（= 节点已回填 base_sha，B1 派发基准）与 head `8db61f8ae`（19:44:59，`docs(plan): passb b1-identity`）；区间 `d57a2fa70..8db61f8ae` 含**恰 1 个提交**（即 head 本身，纯计划文档提交）——与"无可审项"口径相容（该提交不触及生产代码）
+- **与 19:44 条目的平行事件对照**：b1-commercial 计划提交 `4e481a63b`（19:18 mtime / 19:44 登记 task_ids 回填）与 b1-identity 计划提交 `8db61f8ae`（19:44:59 / 本次登记 OCR 覆盖）同型——各 B1 分支正以"计划文档提交"推进；两者均未合入 integration（integration HEAD 仍 `d57a2fa70`）
+- **字段语义（沿 b0 18:46 先例）**：ocr_covered 记录已审查覆盖的已提交 SHA 区间；本次登记 base = 节点派发基准（B1 起点全量）、head = 节点分支当前头——即 b1-identity 截至目前的全部提交均在审查覆盖范围内；节点后续新提交落地后须追加条目
+- **节点级状态未迁移**：`status=in_progress`、`review_status=pending`、`head_sha=null` 维持——节点 done / 合并 / head_sha 回填仍待调度方显式指令（本指令仅授权 ocr_covered 登记 + 台账留痕）
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA（节点级）**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-b1-identity`（`codex/passb-b1-identity`，HEAD `8db61f8ae`，本会话核验工作树干净）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **本次 JSON 变更**：b1-identity 节点 `head_sha` 行后新增 `ocr_covered` 数组（7 行）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/base/head_sha 未动；**b1-airesource/b1-commercial/b1-execution 三节点确认无 ocr_covered 字段、未被误改**——19:44 他方对 b1-commercial 的 task_ids/task_status 回填亦未触碰）
+
+---
+
+## 2026-09-23 20:03 CST · b1-execution 登记 OCR 覆盖：ocr_covered 追加 [d57a2fa70 → 0044f54fc]（范围无可审项）
+
+- **节点**：b1-execution —— B1-EX Execution 边界（21 legacy 文件；status=in_progress 未变，19:01 条目所置）
+- **登记内容**：b1-execution 节点新增数组字段 `ocr_covered`（该节点此前无此字段），追加首条 `{base: "d57a2fa708c3fecf5f0510553ea26db3de51d3c9", head: "0044f54fcb0e58014f3240d49d5b2bf3bdd400ea"}`（全 40 位 SHA，调度指令口径：**范围无可审项**）
+- **SHA 真实性核验**（本会话 git 实测，`.worktrees/passb-b1-execution`）：`git rev-parse` 双双命中——base `d57a2fa70`（= 节点已回填 base_sha，B1 派发基准）与 head `0044f54fc`（19:25:31，`docs(plan): passb b1-execution`）；区间 `d57a2fa70..0044f54fc` 含**恰 1 个提交**（即 head 本身，纯计划文档提交）——与"无可审项"口径相容（该提交不触及生产代码）
+- **字段语义（沿 b0 18:46 / b1-identity 20:00 先例）**：ocr_covered 记录已审查覆盖的已提交 SHA 区间；本次 base = 节点派发基准、head = 节点分支当前头——b1-execution 截至目前的全部提交均在审查覆盖范围内；节点后续新提交落地后须追加条目
+- **节点级状态未迁移**：`status=in_progress`、`review_status=pending`、`head_sha=null` 维持——节点 done / 合并 / head_sha 回填仍待调度方显式指令
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA（节点级）**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-b1-execution`（HEAD `0044f54fc`，本会话核验工作树干净）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **本次 JSON 变更**：b1-execution 节点 `head_sha` 行后新增 `ocr_covered` 数组（7 行）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/base/head_sha 未动；b1-identity ocr_covered=1 条保持、b1-airesource/b1-commercial 无此字段、b1-commercial task_ids 5 项保持——**其余节点均未被误改**）。33 节点分布不变（1 done + 4 in_progress + 28 pending）
+
+---
+
+## 2026-09-23 20:06 CST · b1-identity OCR 第 1 次：confirmed=0 / rejected=0（报告为"Review skipped"跳过态，如实登记）
+
+- **节点/轮次**：b1-identity 节点级架构审查 OCR 第 1 次（调度口径；18:58 派发后首轮）
+- **计划路径**：`docs/plans/passb/10-identity.md`
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b1-identity/ocr-r1.txt`（本会话已读全文：**40 字节、mtime 20:00、1 行——"Review skipped: no items were selected."**；同目录 `ocr-context.md` 6,273 字节、mtime 19:59 在案）
+- **结论计数**：confirmed=0 / rejected=0（调度口径；与报告字面一致——但报告非"审过零发现"，而是**未选中任何审查项导致跳过**，非正常完成态，如实登记）
+- **报告性质留痕**：与 b0 各轮 "Review complete: N finding(s) across M selected item(s)" 完成态报告不同，本报告为 skipped 态。两点解读供协调者参考（本管家不裁定）：(1) 若 20:00 条目 ocr_covered 登记 [d57a2fa70 → 8db61f8ae] 的"范围无可审项"即本次跳过的原因（区间唯一提交为纯计划文档，无选中审查项），则 skipped 与该登记口径自洽；(2) 若后续节点有代码提交，OCR 须以非 skipped 方式产出真实结论
+- **分支核验**（本会话 git 实测）：`.worktrees/passb-b1-identity` HEAD 仍 `8db61f8ae`（19:44:59 计划提交，与 ocr_covered 首条 head 一致）、工作树干净——20:00 后无新提交，跳过轮后无代码变更
+- **审查结论**：confirmed=0 → 不触发 changes_requested；`review_status=pending` 维持（未获 approved 指令，跳过轮亦不构成通过依据）
+- **修复轮次**：0（无可审项、无 finding，不构成修复轮）
+- **base/head SHA**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-b1-identity`（`codex/passb-b1-identity`，HEAD `8db61f8ae`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **本次 JSON 变更**：**无字节级改动**——confirmed=0 时 `review_status` 目标值 `pending` 已在位；`status=in_progress`、base/head SHA、ocr_covered（1 条）、其余节点均未动。JSON 合法性本会话 `python3 json.load` 复验通过
+- **备注**：(1) 报告目录新增 `ocr-context.md`（6,273 字节）——OCR 上下文准备文件，未逐字审读；(2) background <8000 字符教训（b0 06:26）对后续 b1-identity OCR 轮次仍适用；(3) b1-identity 实施任务（B1-ID.x）尚未见 task_ids 回填或任务级产出，节点推进状态由调度方掌握
+
+---
+
+## 2026-09-23 20:09 CST · b1-execution OCR 第 1 次：confirmed=0 / rejected=0（报告为"Review skipped"跳过态，如实登记）
+
+- **节点/轮次**：b1-execution 节点级架构审查 OCR 第 1 次（调度口径；19:01 派发后首轮）
+- **计划路径**：`docs/plans/passb/13-execution.md`
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b1-execution/ocr-r1.txt`（本会话已读全文：**40 字节、mtime 20:01、1 行——"Review skipped: no items were selected."**；同目录 `ocr-context.md` 8,552 字节、mtime 20:00 在案）
+- **结论计数**：confirmed=0 / rejected=0（调度口径；与报告字面一致——**跳过态非完成态**，沿 b1-identity 20:06 条目先例如实登记）
+- **报告性质留痕**：与 20:03 条目 ocr_covered 登记 [d57a2fa70 → 0044f54fc] 的"范围无可审项"口径相容（区间唯一提交 `0044f54fc` 为纯计划文档，无选中审查项）；后续节点有代码提交时 OCR 须以非 skipped 方式产出真实结论
+- **分支核验**（本会话 git 实测）：`.worktrees/passb-b1-execution` HEAD 仍 `0044f54fc`（19:25:31 计划提交，与 ocr_covered 首条 head 一致）、工作树干净——20:03 后无新提交
+- **审查结论**：confirmed=0 → 不触发 changes_requested；`review_status=pending` 维持（未获 approved 指令，跳过轮不构成通过依据）
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-b1-execution`（HEAD `0044f54fc`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **本次 JSON 变更**：**无字节级改动**——confirmed=0 时 `review_status` 目标值 `pending` 已在位；`status=in_progress`、base/head SHA、ocr_covered（1 条）、其余节点均未动。JSON 合法性本会话 `python3 json.load` 复验通过
+- **备注**：(1) `ocr-context.md` 8,552 字节在案（未逐字审读）；(2) B1 四节点 OCR 首轮现状：b1-identity skipped（20:06 登记）、b1-execution skipped（本条目）、b1-airesource 无报告（20:07 口径"门禁+OCR 通过"）、b1-commercial 未运行——四节点实质代码实施尚未见提交，跳过态与实施进度自洽
+
+---
+
+## 2026-09-23 20:10 CST · b1-identity OCR 覆盖登记（区间已在 20:00 登记，不重复追加；口径由"无可审项"补强为"0 条需修 findings"）
+
+- **节点**：b1-identity —— B1-ID Identity 边界（status=in_progress 未变）
+- **指令**：登记 ocr_covered 追加 `{base: "d57a2fa708c3fecf5f0510553ea26db3de51d3c9", head: "8db61f8ae4d1bf2faa72c36bd6f2475f8b10f39f"}`（**审得 0 条需修 findings**；全 40 位 SHA）
+- **重复识别（本条目核心）**：本会话 `python3 json.load` 实测——b1-identity.`ocr_covered` 已含**完全相同的条目**（base/head 与指令逐字符一致，20:00 条目所登记，当时调度口径"范围无可审项"）。区间 SHA 双双核验真实（`git rev-parse` 命中），且分支 `8db61f8ae..HEAD` 零新提交、工作树干净——区间自 20:00 登记后无演进
+- **JSON 处置**：**无字节级改动、不重复追加**——ocr_covered 数组语义为"已覆盖审查区间列表"，同区间双条目为冗余且破坏数组区间语义（沿 18:41 工单重发"不重复追加"先例）。本会话 `python3 json.load` 复验合法（ocr_covered 仍 1 条；status=in_progress、review_status=pending、base/head_sha 未动）
+- **口径演进留痕**：同一区间 [d57a2fa70 → 8db61f8ae] 的审查结论由 20:00 的"范围无可审项"（对应 20:06 条目 OCR skipped 报告）补强为本次的"**审得 0 条需修 findings**"——语义上确认该区间已审且结论为零需修；两次口径的差别（跳过态 vs 有效零发现）以调度方本次口径为准，台账并录
+- **审查结论**：`review_status=pending` 维持（本指令仅授权覆盖登记，未含 approved/done 迁移）
+- **修复轮次**：0（0 条需修 findings，不构成修复轮）
+- **base/head SHA（节点级）**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-b1-identity`（HEAD `8db61f8ae`，本会话核验零新提交、工作树干净）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **后续**：节点分支 8db61f8ae 之后的实施提交落地后，须以**新条目**追加 ocr_covered（沿用 base 链式衔接或显式新区间，按调度指令）
+
+---
+
+## 2026-09-23 20:11 CST · b1-commercial 登记 OCR 覆盖：ocr_covered 追加 [d57a2fa70 → 4e481a63b]（范围无可审项）
+
+- **节点**：b1-commercial —— B1-CM Commercial 边界（8 legacy 文件；status=in_progress 未变，19:00 条目所置）
+- **登记内容**：b1-commercial 节点新增数组字段 `ocr_covered`（该节点此前无此字段），追加首条 `{base: "d57a2fa708c3fecf5f0510553ea26db3de51d3c9", head: "4e481a63bc2c7cd8cd068cedc8980aa74c8fac78"}`（全 40 位 SHA，调度指令口径：**范围无可审项**）
+- **SHA 真实性核验**（本会话 git 实测，`.worktrees/passb-b1-commercial`）：`git rev-parse` 双双命中——base `d57a2fa70`（= 节点已回填 base_sha，B1 派发基准）与 head `4e481a63b`（19:20:48，`docs(plan): passb b1-commercial`——即 19:44 条目登记审校通过的那份计划）；区间 `d57a2fa70..4e481a63b` 含**恰 1 个提交**（纯计划文档提交）——与"无可审项"口径相容
+- **字段语义（沿 b0 18:46 / b1-identity 20:00 / b1-execution 20:03 先例）**：ocr_covered 记录已审查覆盖的已提交 SHA 区间；base = 节点派发基准、head = 节点分支当前头——b1-commercial 截至目前的全部提交均在审查覆盖范围内；后续新提交落地后须追加条目
+- **节点级状态未迁移**：`status=in_progress`、`review_status=pending`、`head_sha=null` 维持——节点 done / 合并 / head_sha 回填仍待调度方显式指令
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA（节点级）**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-b1-commercial`（`codex/passb-b1-commercial`，HEAD `4e481a63b`，本会话核验工作树干净）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **本次 JSON 变更**：b1-commercial 节点 `head_sha` 行后新增 `ocr_covered` 数组（7 行，编辑定位用其特有的 task_ids/evidence_paths 上下文避免与相邻 b1 节点混淆）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/base/head_sha/task_ids 5 项/task_status 均未动；b1-identity=1 条、b1-execution=1 条保持、b1-airesource 无此字段——**其余节点均未被误改**）
+- **B1 四节点 OCR 覆盖登记现状**：identity ✓ / execution ✓ / commercial ✓（本条）/ airesource 无登记（其节点已于 20:07 done，head=base）
+
+---
+
+## 2026-09-23 20:13 CST · b1-execution OCR 覆盖登记（区间已在 20:03 登记，不重复追加；口径由"无可审项"补强为"0 条需修 findings"）
+
+- **节点**：b1-execution —— B1-EX Execution 边界（21 legacy 文件；status=in_progress 未变）
+- **指令**：登记 ocr_covered 追加 `{base: "d57a2fa708c3fecf5f0510553ea26db3de51d3c9", head: "0044f54fcb0e58014f3240d49d5b2bf3bdd400ea"}`（**审得 0 条需修 findings**；全 40 位 SHA）
+- **重复识别**：本会话 `python3 json.load` 实测——b1-execution.`ocr_covered` 已含**完全相同的条目**（base/head 与指令逐字符一致，20:03 条目所登记，当时调度口径"范围无可审项"）。分支 `0044f54fc..HEAD` 零新提交、工作树干净——区间自 20:03 登记后无演进（沿 b1-identity 20:10 条目同型先例）
+- **JSON 处置**：**无字节级改动、不重复追加**——ocr_covered 数组语义为"已覆盖审查区间列表"，同区间双条目冗余且破坏数组区间语义。本会话 `python3 json.load` 复验合法（ocr_covered 仍 1 条；status=in_progress、review_status=pending、base/head_sha 未动）
+- **口径演进留痕**：同一区间 [d57a2fa70 → 0044f54fc] 的审查结论由 20:03 的"范围无可审项"（对应 20:09 条目 OCR skipped 报告）补强为本次的"**审得 0 条需修 findings**"——语义上确认该区间已审且结论为零需修；差别以调度方本次口径为准，台账并录
+- **审查结论**：`review_status=pending` 维持（本指令仅授权覆盖登记，未含 approved/done 迁移）
+- **修复轮次**：0（0 条需修 findings，不构成修复轮）
+- **base/head SHA（节点级）**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-b1-execution`（HEAD `0044f54fc`，本会话核验零新提交、工作树干净）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **后续**：节点分支 0044f54fc 之后的实施提交落地后，须以**新条目**追加 ocr_covered
+- **B1 四节点覆盖登记终态（本时点）**：identity [d57a2fa70→8db61f8ae] 0 需修 / execution [d57a2fa70→0044f54fc] 0 需修（本条口径）/ commercial [d57a2fa70→4e481a63b] 无可审项 / airesource 无登记（20:07 done，head=base）
+
+---
+
+## 2026-09-23 20:14 CST · b1-identity → done（head 8db61f8 回填，门禁+OCR 通过）
+
+- **节点**：b1-identity —— B1-ID Identity 边界（27 legacy 文件：Actor/Tenant/RBAC/Audit 公共用例）——**DAG 第三个 done 节点（B1 第二个）**
+- **计划路径**：`docs/plans/passb/10-identity.md`
+- **前置**：b0（done ✓，18:47 条目）
+- **worktree**：`.worktrees/passb-b1-identity`（`codex/passb-b1-identity`，HEAD `8db61f8ae`，本会话 git 核验工作树干净）
+- **base → head**：`d57a2fa708c3fecf5f0510553ea26db3de51d3c9` → **`8db61f8ae4d1bf2faa72c36bd6f2475f8b10f39f`**（指令短 SHA `8db61f8` 本会话 `git rev-parse` 解析为完整 40 位；`git merge-base --is-ancestor` 核验 base 是 head 祖先 ✓）。区间含**恰 1 个提交**：19:44:59 `docs(plan): passb b1-identity`（计划文档）
+- **门禁+OCR 通过**：调度指令口径（本管家未重跑，沿 b0 18:47 先例）；**审查链条在案完整**：ocr_covered [d57a2fa70 → 8db61f8ae] 已登记（20:00）且调度口径确认为"审得 0 条需修 findings"（20:10）——本次 done 的审查依据与覆盖登记闭环（区别于 b1-airesource 20:07 done 时的无登记状态）
+- **审查结论**：approved（指令口径"门禁+OCR 通过"→ `review_status` pending → **approved**，推断迁移沿 b0 18:47 先例，在此留痕）
+- **修复轮次**：0
+- **节点产出留痕**：head 提交为计划文档（非实施代码）——节点 27 legacy 文件的搬迁义务未在本分支产生实施提交，与 b1-airesource（20:07，head=base、计划文档 untracked）同型的"计划即当前产出"状态；区别在于 b1-identity 计划已提交入库且 OCR 覆盖登记在案。identity 模块边界/特征化测试/别名删除等待办（见 DAG produced_artifacts 与 required_contracts 的跨 owner 耦合义务）在 ib1 汇合前的落地方式由调度方掌握
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 3 行）：(1) `status` in_progress → **done**；(2) `head_sha` null → **8db61f8ae4d1bf2faa72c36bd6f2475f8b10f39f**；(3) `review_status` pending → **approved**。`base_sha`、ocr_covered（1 条）、其余字段均未动。33 节点分布：**3 done（b0/b1-airesource/b1-identity）+ 2 in_progress（b1-commercial/b1-execution）+ 28 pending**
+- **integration 合并状态**：`codex/passb-b1-identity` 尚未合入 `codex/passb-integration`（integration HEAD 仍 `d57a2fa70`）——合并提交 `8db61f8ae` 后 head_sha 与 b0 先例同样存在"分支头 vs 合并头"覆盖问题，待合并后如需覆盖由调度方显式指令（沿 18:47 留痕 1 / 18:56 覆盖先例）
+- **task_ids**：[]（未回填——b1-commercial 有 B1-CM.1–5 先例，identity 计划的任务结构未回填，如实登记）
+
+---
+
+## 2026-09-23 20:16 CST · b1-commercial OCR 第 1 次：confirmed=0 / rejected=0（报告为"Review skipped"跳过态，如实登记）
+
+- **节点/轮次**：b1-commercial 节点级架构审查 OCR 第 1 次（调度口径；19:00 派发后首轮）
+- **计划路径**：`docs/plans/passb/12-commercial.md`
+- **OCR 报告路径**：`/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/passb/b1-commercial/ocr-r1.txt`（本会话已读全文：**40 字节、mtime 20:07、1 行——"Review skipped: no items were selected."**；同目录 `ocr-context.md` 6,972 字节、mtime 20:07 在案）
+- **结论计数**：confirmed=0 / rejected=0（调度口径；与报告字面一致——**跳过态非完成态**，沿 b1-identity 20:06 / b1-execution 20:09 条目先例如实登记）
+- **报告性质留痕**：与 20:11 条目 ocr_covered 登记 [d57a2fa70 → 4e481a63b] 的"范围无可审项"口径相容（区间唯一提交 `4e481a63b` 为纯计划文档，无选中审查项）；后续节点有代码提交时 OCR 须以非 skipped 方式产出真实结论
+- **分支核验**（本会话 git 实测）：`.worktrees/passb-b1-commercial` HEAD 仍 `4e481a63b`（19:20:48 计划提交，与 ocr_covered 首条 head 一致）、工作树干净——20:11 后无新提交
+- **审查结论**：confirmed=0 → 不触发 changes_requested；`review_status=pending` 维持（未获 approved 指令，跳过轮不构成通过依据）
+- **修复轮次**：0（无可审项，不构成修复轮）
+- **base/head SHA**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-b1-commercial`（`codex/passb-b1-commercial`，HEAD `4e481a63b`）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **本次 JSON 变更**：**无字节级改动**——confirmed=0 时 `review_status` 目标值 `pending` 已在位；`status=in_progress`、base/head SHA、ocr_covered（1 条）、task_ids/task_status（B1-CM.1–5 pending）、其余节点均未动。JSON 合法性本会话 `python3 json.load` 复验通过
+- **备注**：(1) `ocr-context.md` 6,972 字节在案（未逐字审读）；(2) **B1 四节点 OCR 首轮全记录齐**：identity skipped（20:06）/ execution skipped（20:09）/ commercial skipped（本条目）/ airesource 无报告（20:07 done 口径）——四节点均无实质实施提交，跳过态与进度自洽；后续实施提交落地后 OCR 须以非 skipped 方式产出结论
+
+---
+
+## 2026-09-23 20:17 CST · b1-execution → done（head 0044f54 回填，门禁+OCR 通过）——B1 四节点全部收口
+
+- **节点**：b1-execution —— B1-EX Execution 边界（21 legacy 文件：Sandbox/Target/Workspace/Terminal/Browser 门面）——**DAG 第四个 done 节点；至此 B1 四节点全部 done**
+- **计划路径**：`docs/plans/passb/13-execution.md`
+- **前置**：b0（done ✓，18:47 条目）
+- **worktree**：`.worktrees/passb-b1-execution`（HEAD `0044f54fc`，本会话 git 核验工作树干净）
+- **base → head**：`d57a2fa708c3fecf5f0510553ea26db3de51d3c9` → **`0044f54fcb0e58014f3240d49d5b2bf3bdd400ea`**（指令短 SHA `0044f54` 本会话 `git rev-parse` 解析为完整 40 位；`git merge-base --is-ancestor` 核验 base 是 head 祖先 ✓）。区间含**恰 1 个提交**：19:25:31 `docs(plan): passb b1-execution`（计划文档）
+- **门禁+OCR 通过**：调度指令口径（本管家未重跑，沿 b0 18:47 先例）；**审查链条在案完整**：ocr_covered [d57a2fa70 → 0044f54fc] 已登记（20:03）且调度口径确认为"审得 0 条需修 findings"（20:13）——本次 done 的审查依据与覆盖登记闭环
+- **审查结论**：approved（指令口径"门禁+OCR 通过"→ `review_status` pending → **approved**，推断迁移沿 b0 18:47 先例，在此留痕）
+- **修复轮次**：0
+- **节点产出留痕**：head 提交为计划文档（非实施代码）——与 b1-identity（20:14）同型：计划已提交入库且 OCR 覆盖登记在案，21 legacy 文件搬迁义务（含 *Handler 方法文件去方法化裁定、browserSkillScope 等 10 调用点导出义务，见 DAG required_contracts）未在本分支产生实施提交，ib1 汇合前的落地方式由调度方掌握
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 3 行）：(1) `status` in_progress → **done**；(2) `head_sha` null → **0044f54fcb0e58014f3240d49d5b2bf3bdd400ea**；(3) `review_status` pending → **approved**。`base_sha`、ocr_covered（1 条）、其余字段均未动。33 节点分布：**4 done（b0 + B1 四节点全部）+ 1 in_progress（b1-commercial）+ 28 pending**
+- **integration 合并状态**：`codex/passb-b1-execution` 尚未合入 `codex/passb-integration`（integration HEAD 仍 `d57a2fa70`）——合并后 head_sha"分支头 vs 合并头"覆盖问题沿 18:47 留痕 1 / 18:56 先例，待调度方显式指令
+- **B1 阶段快照（本时点）**：identity done（head 8db61f8ae）/ airesource done（head=base）/ commercial in_progress（B1-CM.1–5 五任务待执行）/ execution done（head 0044f54fc）——三节点 done 待合并进 integration，ib1（B1 四支逐支合并 barrier）的全部入边就绪尚差 b1-commercial 实施完成
+
+---
+
+## 2026-09-23 20:19 CST · b1-commercial OCR 覆盖登记（区间已在 20:11 登记，不重复追加；口径由"无可审项"补强为"0 条需修 findings"）
+
+- **节点**：b1-commercial —— B1-CM Commercial 边界（8 legacy 文件；status=in_progress 未变）
+- **指令**：登记 ocr_covered 追加 `{base: "d57a2fa708c3fecf5f0510553ea26db3de51d3c9", head: "4e481a63bc2c7cd8cd068cedc8980aa74c8fac78"}`（**审得 0 条需修 findings**；全 40 位 SHA）
+- **重复识别**：本会话 `python3 json.load` 实测——b1-commercial.`ocr_covered` 已含**完全相同的条目**（base/head 与指令逐字符一致，20:11 条目所登记，当时调度口径"范围无可审项"）。分支 `4e481a63b..HEAD` 零新提交、工作树干净——区间自 20:11 登记后无演进（沿 b1-identity 20:10 / b1-execution 20:13 条目同型先例）
+- **JSON 处置**：**无字节级改动、不重复追加**——ocr_covered 数组语义为"已覆盖审查区间列表"，同区间双条目冗余且破坏数组区间语义。本会话 `python3 json.load` 复验合法（ocr_covered 仍 1 条；status=in_progress、review_status=pending、base/head_sha、task_ids/task_status 均未动）
+- **口径演进留痕**：同一区间 [d57a2fa70 → 4e481a63b] 的审查结论由 20:11 的"范围无可审项"（对应 20:16 条目 OCR skipped 报告）补强为本次的"**审得 0 条需修 findings**"——语义上确认该区间已审且结论为零需修；差别以调度方本次口径为准，台账并录
+- **审查结论**：`review_status=pending` 维持（本指令仅授权覆盖登记，未含 approved/done 迁移）
+- **修复轮次**：0（0 条需修 findings，不构成修复轮）
+- **base/head SHA（节点级）**：`d57a2fa70` / null（未动）
+- **worktree**：`.worktrees/passb-b1-commercial`（HEAD `4e481a63b`，本会话核验零新提交、工作树干净）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）
+- **后续**：节点分支 4e481a63b 之后的实施提交落地后，须以**新条目**追加 ocr_covered
+- **B1 四节点覆盖登记终态（本时点）**：identity [d57a2fa70→8db61f8ae] 0 需修（done）/ execution [d57a2fa70→0044f54fc] 0 需修（done）/ commercial [d57a2fa70→4e481a63b] **0 需修（本条口径，in_progress）** / airesource 无登记（done，head=base）
+
+---
+
+## 2026-09-23 20:22 CST · b1-commercial → done（head 4e481a6 回填，门禁+OCR 通过）——B1 四节点与全部 5 个 done 节点收口齐
+
+- **节点**：b1-commercial —— B1-CM Commercial 边界（8 legacy 文件：Admission/Budget/Usage/Payment 门面）——**DAG 第五个 done 节点；B1 四节点至此全部 done，当前无 in_progress 节点**
+- **计划路径**：`docs/plans/passb/12-commercial.md`
+- **前置**：b0（done ✓，18:47 条目）
+- **worktree**：`.worktrees/passb-b1-commercial`（`codex/passb-b1-commercial`，HEAD `4e481a63b`，本会话 git 核验工作树干净）
+- **base → head**：`d57a2fa708c3fecf5f0510553ea26db3de51d3c9` → **`4e481a63bc2c7cd8cd068cedc8980aa74c8fac78`**（指令短 SHA `4e481a6` 本会话 `git rev-parse` 解析为完整 40 位；`git merge-base --is-ancestor` 核验 base 是 head 祖先 ✓）。区间含**恰 1 个提交**：19:20:48 `docs(plan): passb b1-commercial`（计划文档——即 19:44 条目登记审校通过的那份）
+- **门禁+OCR 通过**：调度指令口径（本管家未重跑，沿 b0 18:47 先例）；**审查链条在案完整**：ocr_covered [d57a2fa70 → 4e481a63b] 已登记（20:11）且调度口径确认为"审得 0 条需修 findings"（20:19）——本次 done 的审查依据与覆盖登记闭环
+- **审查结论**：approved（指令口径"门禁+OCR 通过"→ `review_status` pending → **approved**，推断迁移沿 b0 18:47 先例，在此留痕）
+- **修复轮次**：0
+- **节点产出留痕**：head 提交为计划文档（非实施代码）——与 b1-identity（20:14）/ b1-execution（20:17）同型：计划已提交入库且 OCR 覆盖登记在案，8 legacy 文件搬迁义务与 model_usage 绑定族端口导出义务（见 DAG required_contracts）未在本分支产生实施提交；**task_status 留痕**：B1-CM.1–5 在 DAG 中仍为 pending（未随节点 done 翻转，本指令未授权任务级变更，如实保留）
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 3 行）：(1) `status` in_progress → **done**；(2) `head_sha` null → **4e481a63bc2c7cd8cd068cedc8980aa74c8fac78**；(3) `review_status` pending → **approved**。`base_sha`、ocr_covered（1 条）、task_ids（5 项）、task_status（5×pending）均未动。33 节点分布：**5 done（b0 + B1 四节点全部）+ 28 pending；in_progress 归零**
+- **integration 合并状态**：B1 四分支（identity `8db61f8ae` / airesource base 即 head / commercial `4e481a63b` / execution `0044f54fc`）**均尚未合入** `codex/passb-integration`（integration HEAD 仍 `d57a2fa70`）——合并后各节点 head_sha"分支头 vs 合并头"覆盖沿 18:47 留痕 1 / 18:56 先例，待调度方显式指令
+- **ib1 就绪度提示**：ib1（B1 四支逐支合并 barrier，depends_on 四 B1 节点）的四条入边节点现已全部 done——**ib1 可派发**；但四分支的实施产出均止于计划文档（无生产代码变更），ib1 集成时 B1 门面（contracts.yaml current 化、identity/airesource/commercial/execution 的 NewModule/RegisterRoutes 等，见 ib1 produced_artifacts）的实际落地依赖后续实施，调度方知悉
+- **B1 阶段快照（本时点）**：identity done（8db61f8ae）/ airesource done（head=base）/ commercial done（4e481a63b，B1-CM.1–5 pending）/ execution done（0044f54fc）
+
+---
+
+## 2026-09-23 20:23 CST · ib1 → in_progress（屏障派发；四条入边全部 done）
+
+- **节点**：ib1 —— IB1 基础能力集成 barrier（B1-ID→B1-AI→B1-CM→B1-EX 逐支合并）——**首个 barrier 节点派发**
+- **计划路径**：`docs/plans/passb/19-foundation-integration.md`
+- **前置就绪核验**（本会话 `python3 json.load` 实测）：depends_on 四节点**全部 done** ✓——b1-identity（20:14）/ b1-airesource（20:07）/ b1-commercial（20:22）/ b1-execution（20:17）
+- **worktree**：barrier 即 integration 侧集成工作——DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `d57a2fa70`）；ib1 owned_files（router.go/container.go/bootstrap/{routes,workers,lifecycle}.go/迁移序列/go.mod/go.sum，集成工程师独占）均在此分支
+- **base SHA**：**`d57a2fa708c3fecf5f0510553ea26db3de51d3c9`**（派发时回填，conventions §9；指令未附 base 值，沿 b1-identity 18:58 先例按唯一在案口径回填——integration 分支当前头，barrier 合并工作即在此分支展开）；**head SHA**：null（未回填——barrier 评审通过时回填）
+- **测试证据路径（计划）**：`docs/architecture/evidence/passb/ib1.md`、`docs/architecture/passb/briefs/ib1.md`（均尚未产出）
+- **审查结论**：pending（review_status 未请求）
+- **OCR 报告路径**：无（尚未进入审查轮）
+- **修复轮次**：0
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 2 行）：(1) ib1 `status` pending → **in_progress**；(2) `base_sha` null → **d57a2fa708c3fecf5f0510553ea26db3de51d3c9**。`head_sha=null`、`review_status=pending`、其余节点均未动。33 节点分布：**5 done + 1 in_progress（ib1）+ 27 pending**
+- **备注**：(1) 指令原文 "ib1 → running"，沿先例映射为 `in_progress`；(2) **入边产出现实**：四条 B1 分支的实施产出均止于计划文档（无生产代码变更，见 20:07/20:14/20:17/20:22 各条目留痕）且均未合入 integration——ib1 的"逐支合并"步骤实际可合并内容有限，其核心产出（B1 四门面 contracts.yaml current 化、共享装配文件接线、差分套件证据，见 ib1 produced_artifacts）依赖的实施若缺位，集成工程师需在 barrier 内补齐或上报；(3) ib1 gates 含 `go test ./internal/... -count=1 -timeout=25m` 与 `golangci-lint --new-from-rev` 全量门禁，通过标准见 DAG gates 与 framework:101-105；(4) ib1 notes 内 BLOCKED 残留文本待批量清理
+
+---
+
+## 2026-09-23 20:07 CST · b1-airesource → done（head d57a2fa 回填；留痕：head=base，分支零实施提交）
+
+- **节点**：b1-airesource —— B1-AI AI Resource 边界（33 legacy 文件：Model/MCP/Search/Vector/Storage 能力解析）——**DAG 第二个 done 节点（B1 首个）**
+- **计划路径**：`docs/plans/passb/11-airesource.md`
+- **前置**：b0（done ✓）
+- **worktree**：`.worktrees/passb-b1-airesource`（`codex/passb-b1-airesource`，本会话 git 核验）
+- **base → head**：`d57a2fa708c3fecf5f0510553ea26db3de51d3c9` → **`d57a2fa708c3fecf5f0510553ea26db3de51d3c9`**（指令短 SHA `d57a2fa` 本会话 `git rev-parse` 解析为完整 40 位；`git merge-base --is-ancestor` 核验其为分支 HEAD 祖先 ✓）。**实质留痕：head = base_sha，分支零新提交**——b1-airesource 分支 HEAD 即 B1 派发基准 `d57a2fa70`（18:59 派发时回填的 base），自派发至本条目（18:59→20:07）分支无任何提交
+- **门禁+OCR 通过**：调度指令口径（本管家未重跑，沿 b0 18:47 先例）；**该分支无 ocr_covered 登记、无 OCR 报告目录**（`.superpowers/sdd/passb/` 下 b0/b1-identity 有、b1-airesource 无）——指令口径与在案证据的对应方式未附，如实登记
+- **工作树留痕（未提交产物）**：分支工作树含 **1 个 untracked 文件 `docs/plans/passb/11-airesource.md`**（本会话 git status 实测）——b1-airesource 计划文档已撰写但**未提交**（对比 b1-identity 计划已提交 `8db61f8ae`、b1-commercial 已提交 `4e481a63b`）。计划内容未入库，本条目无法核验其任务结构与审校状态（与 19:44 b1-commercial 计划审校条目不同）
+- **审查结论**：approved（指令口径"门禁+OCR 通过"→ `review_status` pending → **approved**，推断迁移沿 b0 18:47 先例，在此留痕）
+- **修复轮次**：0（无 OCR 轮次记录）
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，净变更 3 行）：(1) `status` in_progress → **done**；(2) `head_sha` null → **d57a2fa708c3fecf5f0510553ea26db3de51d3c9**；(3) `review_status` pending → **approved**。`base_sha`、task_ids（[]，未回填）、ocr_covered（无）均未动。33 节点分布：**2 done（b0/b1-airesource）+ 3 in_progress（b1-identity/b1-commercial/b1-execution）+ 28 pending**
+- **待协调者澄清/后续**：(1) **节点产出为空的口径确认**——done 时分支零实施提交、计划文档 untracked 未入库：若系"计划即交付"的节点完成定义（如该节点拆分至后续节点执行），建议在台账或 DAG notes 显式声明，避免与 b0"六任务+19 提交后 done"的口径混淆；若系超前收口（实施未做即 done），33 legacy 文件的搬迁义务（含 IB1 前 capability 契约 current 化，见节点 notes）仍悬置，ib1 汇合时将缺 airesource 门面；(2) 计划文档 `11-airesource.md` 建议尽快提交入库以固化审查对象；(3) task_ids/task_status 未回填（b1-commercial 已有 5 任务先例）——如需任务级追踪请下发回填指令
+- **integration 合并状态**：b1-airesource 分支尚未合入 `codex/passb-integration`（integration HEAD 仍 `d57a2fa70`）；由于 head=base，合并将是 no-op 或仅带入 untracked 文件入库后的提交
+
 
 
 

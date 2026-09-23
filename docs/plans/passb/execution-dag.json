@@ -379,7 +379,7 @@
    "execution_mode": "serial",
    "status": "done",
    "base_sha": "b1a3d6dd8",
-   "head_sha": "acd7b24011b57704d401c63f4d2fce1819e057fc",
+   "head_sha": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
    "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/passb/b0-evidence.md",
@@ -495,10 +495,16 @@
     "docs/architecture/evidence/passb/b1-identity.md"
    ],
    "execution_mode": "parallel",
-   "status": "pending",
-   "base_sha": null,
-   "head_sha": null,
-   "review_status": "pending",
+   "status": "done",
+   "base_sha": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+   "head_sha": "8db61f8ae4d1bf2faa72c36bd6f2475f8b10f39f",
+   "ocr_covered": [
+    {
+     "base": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+     "head": "8db61f8ae4d1bf2faa72c36bd6f2475f8b10f39f"
+    }
+   ],
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b1-identity.md",
     "docs/plans/passb/reports/b1-identity.md",
@@ -550,10 +556,10 @@
     "docs/architecture/evidence/passb/b1-airesource.md"
    ],
    "execution_mode": "parallel",
-   "status": "pending",
-   "base_sha": null,
-   "head_sha": null,
-   "review_status": "pending",
+   "status": "done",
+   "base_sha": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+   "head_sha": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b1-airesource.md",
     "docs/plans/passb/reports/b1-airesource.md",
@@ -605,17 +611,36 @@
     "docs/architecture/evidence/passb/b1-commercial.md"
    ],
    "execution_mode": "parallel",
-   "status": "pending",
-   "base_sha": null,
-   "head_sha": null,
-   "review_status": "pending",
+   "status": "done",
+   "base_sha": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+   "head_sha": "4e481a63bc2c7cd8cd068cedc8980aa74c8fac78",
+   "ocr_covered": [
+    {
+     "base": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+     "head": "4e481a63bc2c7cd8cd068cedc8980aa74c8fac78"
+    }
+   ],
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b1-commercial.md",
     "docs/plans/passb/reports/b1-commercial.md",
     "docs/plans/passb/reviews/b1-commercial.md"
    ],
    "role": "work",
-   "task_ids": [],
+   "task_ids": [
+    "B1-CM.1",
+    "B1-CM.2",
+    "B1-CM.3",
+    "B1-CM.4",
+    "B1-CM.5"
+   ],
+   "task_status": {
+    "B1-CM.1": "pending",
+    "B1-CM.2": "pending",
+    "B1-CM.3": "pending",
+    "B1-CM.4": "pending",
+    "B1-CM.5": "pending"
+   },
    "gates": [
     [
      "sh",
@@ -664,10 +689,16 @@
     "docs/architecture/evidence/passb/b1-execution.md"
    ],
    "execution_mode": "parallel",
-   "status": "pending",
-   "base_sha": null,
-   "head_sha": null,
-   "review_status": "pending",
+   "status": "done",
+   "base_sha": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+   "head_sha": "0044f54fcb0e58014f3240d49d5b2bf3bdd400ea",
+   "ocr_covered": [
+    {
+     "base": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
+     "head": "0044f54fcb0e58014f3240d49d5b2bf3bdd400ea"
+    }
+   ],
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/evidence/passb/b1-execution.md",
     "docs/plans/passb/reports/b1-execution.md",
@@ -730,8 +761,8 @@
     "b1 各节点跨 owner 未导出耦合的导出/shim 落地记录"
    ],
    "execution_mode": "serial",
-   "status": "pending",
-   "base_sha": null,
+   "status": "in_progress",
+   "base_sha": "d57a2fa708c3fecf5f0510553ea26db3de51d3c9",
    "head_sha": null,
    "review_status": "pending",
    "evidence_paths": [
