@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
-import { Button, Dialog, Input, Status } from '@weknora/ui';
+// S6 换装（T15 前置）：packages/ui 旧栈 离栈——Button 换 tdesign；检索框沿 Vue
+// 自定义 combobox 形态落原生 input（wk-kg-19 = 原视觉规则，DOM/aria 锚点不变）；
+// Dialog（KB 设置再宿主）与 Status 无 TDesign 对应/需保 DOM，走 shared/wk-legacy。
+import { Button as TButton } from 'tdesign-react';
+import { WkDialog as Dialog, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { renderChatMarkdown } from '@weknora/views';
 import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, fitGraphViewport, graphFrontierNodes, graphHighlightSets, graphNeighborStatus, graphNodeRadius, graphQueryParams, growGraphFrontier, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
@@ -723,9 +727,9 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                   popup expands, 32px control height, and an empty keyword
                   falls back to the overview snapshot. WikiBrowser.vue L12-17. */}
               <div ref={searchShellRef} className="wk-kg-16">
-                <div className="bg-white/95 wk-kg-17">
+                <div className="wk-kg-17">
                   <svg viewBox="0 0 16 16" aria-hidden="true" className="wk-kg-18"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M10.4 10.4 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-                  <Input value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => setSearchOpen(true)} onKeyDown={onSearchKeyDown} placeholder={t('wikiBrowser.searchPlaceholder')} role="combobox" aria-expanded={searchOpen} aria-controls="wk-graph-search-results" aria-autocomplete="list" aria-activedescendant={searchActive >= 0 ? `wk-graph-search-option-${searchActive}` : undefined} aria-label={t('wikiBrowser.page.search')} className="wk-kg-19" />
+                  <input type="text" value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => setSearchOpen(true)} onKeyDown={onSearchKeyDown} placeholder={t('wikiBrowser.searchPlaceholder')} role="combobox" aria-expanded={searchOpen} aria-controls="wk-graph-search-results" aria-autocomplete="list" aria-activedescendant={searchActive >= 0 ? `wk-graph-search-option-${searchActive}` : undefined} aria-label={t('wikiBrowser.page.search')} className="wk-kg-19" />
                   <button type="button" tabIndex={-1} aria-hidden="true" data-testid="graph-search-chevron" className="wk-kg-20" onClick={() => setSearchOpen((open) => !open)}>
                     <svg viewBox="0 0 10 6" aria-hidden="true" className={`wk-kg-58 ${searchOpen ? 'wk-kg-59' : ''}`}><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>
@@ -804,7 +808,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
               canvas by exactly the padding and centers the icon inside the
               unpadded content area. Mirrored with w-full/h-full + content-box. */}
           {status.kind === 'loading' ? <div className="wiki-graph-empty wk-kg-44"><Status>{t('wikiBrowser.graphEmpty')}</Status></div> : null}
-          {status.kind === 'error' ? <div className="wiki-graph-empty wk-kg-45"><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('common.retry')}</Button></div> : null}
+          {status.kind === 'error' ? <div className="wiki-graph-empty wk-kg-45"><Status tone="error">{status.message}</Status><TButton type="button" onClick={() => void load(mode, center || undefined)}>{t('common.retry')}</TButton></div> : null}
           {status.kind === 'success' && visible && visible.nodes.length === 0 ? <div className="wiki-graph-empty wk-kg-44">
             {/* Vue empty icon: 64px circle (bg #f3f3f3) wrapping a 48px
                 t-icon-chart-bubble, both tinted text-color-placeholder. */}
@@ -826,7 +830,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
             <h2>{drawerNode.title}</h2>
             <p className="wk-muted wk-kg-50">{drawerNode.page_type} · {drawerNode.link_count} {t('knowledgeBase.graph.links')}</p>
           </div>
-          <Button type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>{t('common.close')}</Button>
+          <TButton type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>{t('common.close')}</TButton>
         </div>
         {drawerStatus === 'loading' ? <Status>{t('wikiBrowser.loading')}</Status> : null}
         {drawerStatus === 'error' ? <Status tone="error">{t('wikiBrowser.revisionLoadFailed')}</Status> : null}
@@ -834,8 +838,8 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           <div className="wk-kg-51">
             <span className="wk-kg-52">{graphTypeLabel(drawerNode.page_type)}</span>
             <span className="wk-kg-53">{t('wikiBrowser.version', { ver: drawerPage.version })}</span>
-            {mode === 'ego' && center !== drawerNode.slug ? <Button type="button" size="small" className="wk-kg-54" disabled={drawerNeighbor ? !drawerNeighbor.canBloom : false} onClick={() => void bloomNeighbors(drawerNode.slug)}>{t('wikiBrowser.bloomNeighbors')}</Button> : null}
-            {mode !== 'ego' || center !== drawerNode.slug ? <Button type="button" size="small" className={mode === 'ego' ? '' : 'wk-kg-54'} onClick={() => void load('ego', drawerNode.slug)}>{t('wikiBrowser.expandNeighbors')}</Button> : null}
+            {mode === 'ego' && center !== drawerNode.slug ? <TButton type="button" size="small" className="wk-kg-54" disabled={drawerNeighbor ? !drawerNeighbor.canBloom : false} onClick={() => void bloomNeighbors(drawerNode.slug)}>{t('wikiBrowser.bloomNeighbors')}</TButton> : null}
+            {mode !== 'ego' || center !== drawerNode.slug ? <TButton type="button" size="small" className={mode === 'ego' ? '' : 'wk-kg-54'} onClick={() => void load('ego', drawerNode.slug)}>{t('wikiBrowser.expandNeighbors')}</TButton> : null}
           </div>
           {drawerNeighborHint ? <p className="wk-kg-55">{drawerNeighborHint}</p> : null}
           <div data-testid="knowledge-graph-reader" className="wk-reader-body wk-kg-56" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(drawerPage.content) }} />

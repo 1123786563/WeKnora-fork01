@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TenantInvitation, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Button, Dialog, Status } from '@weknora/ui';
+// S6 换装（T15 前置）：packages/ui 旧栈 表单栈离开，换 tdesign（playbook §1：
+// Dialog open/title/className/closeLabel → visible/header/dialogClassName；
+// variant="primary" → theme="primary"；size small 直译）；Status 无 TDesign
+// 对应，走 shared/wk-legacy（.wk-status 族，渲染不变）。布局不动。
+import { Button as TButton, Dialog as TDialog } from 'tdesign-react';
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { usePreferredLocale } from '../locale.ts';
 import './platform-u.css';
 
@@ -117,18 +122,18 @@ export function InvitationInbox({ client }: InvitationInboxProps) {
         <span className="-right-2 -top-2 wk-inv-3" aria-label={`${pendingCount}`}>{pendingCount > 99 ? '99+' : pendingCount}</span>
       </button>
     </span> : null}
-    <Dialog open={open} title={message(locale, 'auth.workspaceOnboarding.invitations')} onClose={closeDialog} closeLabel={message(locale, 'auth.workspaceOnboarding.close')} className="wk-inv-4">
+    <TDialog visible={open} header={message(locale, 'auth.workspaceOnboarding.invitations')} footer={false} onClose={closeDialog} dialogClassName="wk-inv-4">
       {invitations === null && !loadError ? <Status>{message(locale, 'auth.workspaceOnboarding.loadingInvitations')}</Status> : null}
-      {loadError ? <div className="wk-inv-5"><Status tone="error">{loadError}</Status><Button type="button" data-action="retry-invitations" onClick={() => void loadInvitations()}>{message(locale, 'auth.workspaceOnboarding.retry')}</Button></div> : null}
+      {loadError ? <div className="wk-inv-5"><Status tone="error">{loadError}</Status><TButton type="button" data-action="retry-invitations" onClick={() => void loadInvitations()}>{message(locale, 'auth.workspaceOnboarding.retry')}</TButton></div> : null}
       {actionError ? <Status tone="error">{actionError}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {invitations && invitations.length === 0 && !loadError ? <Status>{message(locale, 'tenantInvitation.myInbox.empty')}</Status> : null}
       {invitations && invitations.length > 0 ? <ul className="wk-inv-6">
         {invitations.map((invitation) => <li key={invitation.id} data-testid="invitation-row" className="wk-inv-7">
           <div className="wk-inv-8"><strong className="wk-inv-9">{invitation.tenant_name || `#${invitation.tenant_id}`}</strong><span className="wk-inv-10">{inviterDisplay(invitation)} · {invitation.role}</span>{invitation.message ? <span className="wk-inv-11">{invitation.message}</span> : null}</div>
-          <div className="wk-inv-12"><Button type="button" variant="primary" size="small" data-action="accept" loading={actingId === invitation.id} disabled={actingId !== null} onClick={() => void respond(invitation, true)}>{message(locale, 'tenantInvitation.myInbox.acceptButton')}</Button><Button type="button" size="small" loading={actingId === invitation.id} disabled={actingId !== null} data-action="decline" onClick={() => void respond(invitation, false)}>{message(locale, 'tenantInvitation.myInbox.declineButton')}</Button></div>
+          <div className="wk-inv-12"><TButton type="button" theme="primary" size="small" data-action="accept" loading={actingId === invitation.id} disabled={actingId !== null} onClick={() => void respond(invitation, true)}>{message(locale, 'tenantInvitation.myInbox.acceptButton')}</TButton><TButton type="button" size="small" loading={actingId === invitation.id} disabled={actingId !== null} data-action="decline" onClick={() => void respond(invitation, false)}>{message(locale, 'tenantInvitation.myInbox.declineButton')}</TButton></div>
         </li>)}
       </ul> : null}
-    </Dialog>
+    </TDialog>
   </>;
 }

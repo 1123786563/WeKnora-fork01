@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
-// S6：@weknora/ui 离栈（T15 硬前置）。agent combobox 与 query 字段是自研
+// S6：packages/ui 旧栈 离栈（T15 硬前置）。agent combobox 与 query 字段是自研
 // 原生控件（ARIA 契约 + 原生驱动测试锚点，同 ModelSettingsPanel Ollama
 // combobox 先例），保留原生 input/textarea，仅移除旧栈包装。
 

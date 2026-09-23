@@ -9,6 +9,7 @@ import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/sessio
 import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
 import { ChatHeader, SandboxHeaderToggle } from './chat-header.tsx';
 import './chat-u.css';
+import './views-chat-u.css';
 import './chat.td.css';
 import { installChatImageErrorWatcher } from '@weknora/views/chat/markdown';
 import { getAgentNotReadyReasonKeys } from '@weknora/views/chat/agent-readiness';
@@ -66,7 +67,6 @@ import { chatClearConfirmation } from './clear-confirmation.ts';
 import { SessionShareDialog } from './SessionShareDialog.tsx';
 import { clearPrefillParamsFromUrl, readPrefillKbIds, readPrefillQuery } from './prefill-query.ts';
 import './chat.css';
-import './views-chat-u.css';
 
 interface ChatRoutePageProps {
   client: WeKnoraClient;

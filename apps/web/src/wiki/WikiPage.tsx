@@ -7,8 +7,12 @@ import type {
   WeKnoraClient,
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
-import { Button, Card, Dialog, Input, Status, Textarea } from "@weknora/ui";
-import { Input as TdInput } from "tdesign-react";
+// S6 换装（T15 前置）：packages/ui 旧栈 离栈——Button/Input/Textarea 换 tdesign
+// （playbook §1：onChange 改 (value) 签名）；Dialog 是测试锚定弹层
+// （[role="dialog"]/.wk-dialog-close）且宿主 KnowledgeSettingsPage 依赖
+// .wk-dialog* DOM，走 shared/wk-legacy WkDialog；Card/Status 同走 wk-legacy。
+import { Button as TButton, Input as TdInput, Textarea as TdTextarea } from "tdesign-react";
+import { WkCard as Card, WkDialog as Dialog, WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { Icon as TIcon } from "tdesign-icons-react";
 import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from "../documents/DocumentsPageChrome.tsx";
 import { computeSupportedFileTypes, computeUnsupportedFileTypes, documentsKBSettingsPath } from "../documents/page-chrome.ts";
@@ -316,9 +320,9 @@ export function WikiIndexView({
       />
       {hasMore ? (
         <div className="wiki-index-sentinel wk-wiki-10">
-          <Button type="button" disabled={loading} onClick={onLoadMore}>
+          <TButton type="button" disabled={loading} onClick={onLoadMore}>
             {loading ? t("wikiBrowser.loading") : t("wikiBrowser.loadMoreShort")}
-          </Button>
+          </TButton>
         </div>
       ) : null}
     </>
@@ -1123,8 +1127,8 @@ export function WikiPage({
           placeholder={t("wikiBrowser.folderNamePlaceholder")}
           onChange={(event) => setInlineCreatingName(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter") void submitInlineCreate(); if (event.key === "Escape") { setInlineCreating(false); setInlineCreatingName(""); } }} />
-        <Button type="button" disabled={folderBusy} onClick={() => void submitInlineCreate()}>{t("common.save")}</Button>
-        <Button type="button" onClick={() => { setInlineCreating(false); setInlineCreatingName(""); }}>{t("common.cancel")}</Button>
+        <TButton type="button" disabled={folderBusy} onClick={() => void submitInlineCreate()}>{t("common.save")}</TButton>
+        <TButton type="button" onClick={() => { setInlineCreating(false); setInlineCreatingName(""); }}>{t("common.cancel")}</TButton>
       </div> : null}
       {folderTrail.length > 0 ? <div className="wk-wiki-18">
         <button type="button" className="wk-wiki-19" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</button>
@@ -1151,7 +1155,7 @@ export function WikiPage({
                     from the row's right inset. */}
                 <span className="tabular-nums wk-wiki-24">{row.folder.page_count}</span>
               </button>
-              {canContribute ? <span className="wk-wiki-folder-actions wk-wiki-25"><Button type="button" aria-label={t("wikiBrowser.renameFolder")} title={t("wikiBrowser.renameFolder")} disabled={folderBusy} onClick={() => startRenameFolder(row.folder)}>✎</Button><Button type="button" aria-label={t("wikiBrowser.deleteFolder")} title={t("wikiBrowser.deleteFolder")} disabled={folderBusy} onClick={() => void deleteFolder(row.folder)}>🗑</Button></span> : null}
+              {canContribute ? <span className="wk-wiki-folder-actions wk-wiki-25"><TButton type="button" aria-label={t("wikiBrowser.renameFolder")} title={t("wikiBrowser.renameFolder")} disabled={folderBusy} onClick={() => startRenameFolder(row.folder)}>✎</TButton><TButton type="button" aria-label={t("wikiBrowser.deleteFolder")} title={t("wikiBrowser.deleteFolder")} disabled={folderBusy} onClick={() => void deleteFolder(row.folder)}>🗑</TButton></span> : null}
             </>
           )}
         </div>
@@ -1315,19 +1319,19 @@ export function WikiPage({
                   <p className="wk-muted wk-wiki-47">{selected.summary || "—"}</p>
                 </div>
                 <div className="wk-list-actions wk-wiki-48">
-                  {canContribute ? <Button type="button" onClick={() => setEditing(true)}>
+                  {canContribute ? <TButton type="button" onClick={() => setEditing(true)}>
                     {t("wikiBrowser.editBtn")}
-                  </Button> : null}
-                  <Button type="button" onClick={() => void openHistory()}>
+                  </TButton> : null}
+                  <TButton type="button" onClick={() => void openHistory()}>
                     {t("wikiBrowser.historyBtn")}
-                  </Button>
-                  {canContribute ? <Button
+                  </TButton>
+                  {canContribute ? <TButton
                     type="button"
                     loading={deleteBusy}
                     onClick={() => void deleteWikiPage()}
                   >
                     {t("wikiBrowser.deletePageBtn")}
-                  </Button> : null}
+                  </TButton> : null}
                 </div>
               </div>
               {saveState?.status === "error" ? <Status tone="error">{saveState.message}</Status> : null}
@@ -1366,55 +1370,55 @@ export function WikiPage({
           >
             <label>
               {t("wikiBrowser.newPageTitleLabel")}{" "}
-              <Input
+              <TdInput
                 value={title}
-                onChange={(event) => setTitle(event.target.value)}
+                onChange={(value) => setTitle(String(value))}
               />
             </label>
             <label>
               {t("wikiBrowser.newPageSlugLabel")}{" "}
-              <Input
+              <TdInput
                 value={slug}
-                onChange={(event) => setSlug(event.target.value)}
+                onChange={(value) => setSlug(String(value))}
                 disabled
               />
             </label>
             <label>
               {t("wikiBrowser.editSummaryPlaceholder")}{" "}
-              <Input
+              <TdInput
                 value={summary}
-                onChange={(event) => setSummary(event.target.value)}
+                onChange={(value) => setSummary(String(value))}
               />
             </label>
             <label>
               {t("wikiBrowser.newPageContentLabel")}{" "}
-              <Textarea
+              <TdTextarea
                 value={content}
-                onChange={(event) => setContent(event.target.value)}
+                onChange={(value) => setContent(String(value))}
                 rows={14}
               />
             </label>
             <div className="wk-list-actions wk-wiki-48">
               <span className="wk-wiki-50">{t("wikiBrowser.version", { ver: version })}</span>
-              <Button type="submit">
+              <TButton type="submit">
                 {t("wikiBrowser.editSave")}
-              </Button>
-              <Button type="button" onClick={cancelEdit}>
+              </TButton>
+              <TButton type="button" onClick={cancelEdit}>
                 {t("common.cancel")}
-              </Button>
-              <Button type="button" onClick={() => void reloadSelected()}>
+              </TButton>
+              <TButton type="button" onClick={() => void reloadSelected()}>
                 {t("wikiBrowser.editConflictReload")}
-              </Button>
-              <Button type="button" onClick={() => void openHistory()}>
+              </TButton>
+              <TButton type="button" onClick={() => void openHistory()}>
                 {t("wikiBrowser.historyBtn")}
-              </Button>
+              </TButton>
             </div>
             {saveState?.status === "conflict" ? (
               <div className="wk-wiki-conflict wk-wiki-51">
                 <Status tone="warning">{saveState.message}</Status>
-                <Button type="button" onClick={() => void overwriteConflict()}>
+                <TButton type="button" onClick={() => void overwriteConflict()}>
                   {t("wikiBrowser.editConflictOverwrite")}
-                </Button>
+                </TButton>
               </div>
             ) : null}
             {saveState?.status === "error" ? (
@@ -1431,26 +1435,26 @@ export function WikiPage({
           className="wk-pagination wk-wiki-52"
           aria-label={t("wikiBrowser.page.title")}
         >
-          <Button
+          <TButton
             type="button"
             disabled={!pager.hasPrevious}
             onClick={() => setPage((value) => value - 1)}
           >
             {t("wikiBrowser.page.previous")}
-          </Button>
+          </TButton>
           <span>
             {t("wikiBrowser.page.page", {
               page: pager.page,
               total: pager.total,
             })}
           </span>
-          <Button
+          <TButton
             type="button"
             disabled={!pager.hasNext}
             onClick={() => setPage((value) => value + 1)}
           >
             {t("wikiBrowser.page.next")}
-          </Button>
+          </TButton>
         </nav>
       ) : null}
       {settingsOpen ? (
@@ -1478,18 +1482,18 @@ export function WikiPage({
           <form className="wk-wiki-create-form wk-wiki-49" onSubmit={submitCreate}>
             <label>
               {t("wikiBrowser.newPageTitleLabel")}{" "}
-              <Input
+              <TdInput
                 value={createForm.title}
-                onChange={(event) => onTitleInputForCreate(event.target.value)}
+                onChange={(value) => onTitleInputForCreate(String(value))}
                 placeholder={t("wikiBrowser.newPageTitlePlaceholder")}
               />
             </label>
             <label>
               {t("wikiBrowser.newPageSlugLabel")}{" "}
-              <Input
+              <TdInput
                 value={createForm.slug}
-                onChange={(event) => {
-                  setCreateForm((current) => ({ ...current, slug: event.target.value }));
+                onChange={(value) => {
+                  setCreateForm((current) => ({ ...current, slug: String(value) }));
                   setCreateSlugTouched(true);
                 }}
                 placeholder={t("wikiBrowser.newPageSlugPlaceholder")}
@@ -1511,9 +1515,9 @@ export function WikiPage({
             </label>
             <label>
               {t("wikiBrowser.newPageContentLabel")}{" "}
-              <Textarea
+              <TdTextarea
                 value={createForm.content}
-                onChange={(event) => setCreateForm((current) => ({ ...current, content: event.target.value }))}
+                onChange={(value) => setCreateForm((current) => ({ ...current, content: String(value) }))}
                 rows={6}
                 placeholder={t("wikiBrowser.editContentPlaceholder")}
               />
@@ -1521,12 +1525,12 @@ export function WikiPage({
             <div className="wk-list-actions wk-wiki-57">
               {/* Vue create dialog footer: 取消 outline + 确认 primary with a
                   loading confirm (creatingPage). */}
-              <Button type="button" onClick={cancelCreate}>
+              <TButton type="button" onClick={cancelCreate}>
                 {t("common.cancel")}
-              </Button>
-              <Button type="submit" loading={createBusy}>
+              </TButton>
+              <TButton type="submit" loading={createBusy}>
                 {t("common.confirm")}
-              </Button>
+              </TButton>
             </div>
             {createError ? <Status tone="error">{createError}</Status> : null}
           </form>
@@ -1540,9 +1544,9 @@ export function WikiPage({
               <h2>{t("wikiBrowser.historyTitle", { title: selected.title })}</h2>
               <p className="wk-muted wk-wiki-59">{t("wikiBrowser.revisionCurrentHint")}</p>
             </div>
-            <Button type="button" onClick={() => setHistoryOpen(false)}>
+            <TButton type="button" onClick={() => setHistoryOpen(false)}>
               {t("common.close")}
-            </Button>
+            </TButton>
           </div>
           {historyError ? <Status tone="error">{historyError}</Status> : null}
           {historyLoading && !revision ? (
@@ -1575,13 +1579,13 @@ export function WikiPage({
                     <strong>
                       v{revision.version} → v{selected.version}
                     </strong>
-                    {canContribute ? <Button
+                    {canContribute ? <TButton
                       type="button"
                       onClick={() => void revertRevision()}
                       loading={reverting}
                     >
                       {t("wikiBrowser.revertBtn")}
-                    </Button> : null}
+                    </TButton> : null}
                   </div>
                   {revisionDiff.length === 0 ? (
                     <Status>{t("wikiBrowser.revisionDiffEmpty")}</Status>

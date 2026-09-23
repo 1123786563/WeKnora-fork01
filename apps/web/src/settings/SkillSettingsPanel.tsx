@@ -7,9 +7,9 @@ import { initialSkillTimelineState, installProgressPercent, reduceSkillTimelineF
 // 逐节点平移，组件换 tdesign-react（TTooltip/TLoading/TEmpty/TPopup/TButton +
 // tdesign-icons-react）；Add 向导 / Install / Manage / Files 抽屉与删除确认弹层
 // 沿用 React 表单栈 + Tailwind（批次先例：sandbox/parser/models 编辑器同口径，
-// 扫描稳态不可达，待后续批次收编），@weknora/ui 仅剩保留域使用。
+// 扫描稳态不可达，待后续批次收编），packages/ui 旧栈 仅剩保留域使用。
 // S6 抽屉收编：skills 四抽屉（添加/安装/管理/文件 + 删除确认）离开
-// @weknora/ui 表单栈（T15 硬前置），组件换 tdesign；Status/Card 走
+// packages/ui 旧栈 表单栈（T15 硬前置），组件换 tdesign；Status/Card 走
 // shared/wk-legacy（无 TDesign 对应，playbook §1 附行）。
 import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { AddIcon, DeleteIcon, FolderIcon, Icon as TIcon } from 'tdesign-icons-react';
@@ -214,7 +214,7 @@ function DrawerShell({ open, spec, children }: { open: boolean; spec: DrawerWidt
   }
 
   return <SkillDrawerWidthContext.Provider value={{ width, resizing }}>
-    <div className="contents">
+    <div className="wk-settings-context-contents">
       {children}
       {open ? <div className="wk-skill-drawer-handle" role="presentation" onMouseDown={onHandleDown}>
         <div className={'wk-skill-drawer-handle__bar' + (resizing ? ' is-active' : '')} />

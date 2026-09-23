@@ -19,9 +19,9 @@ import {
 import { ChunkingSettingsFields, EditorSettingRow } from './chunkingSection.tsx';
 import { ParserSettingsSection, allParserFileTypes, buildCompleteParserRules, buildParserFileTypeGroups, type ParserEngineInfo, type ParserEngineRule } from './parserSettings.tsx';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import { WkStatus } from '../shared/wk-legacy.tsx';
 import './KnowledgeSettingsPage.css';
 
-type ProjectUi = typeof import('@weknora/ui');
 
 export type { KnowledgeSettingsModelOption } from './editorSections.ts';
 
@@ -764,7 +764,6 @@ export function knowledgeSettingsCanEdit(role: 'owner' | 'admin' | 'viewer' | un
 export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, knowledgeBaseId, client, role = 'viewer', canViewActivity = true, initialSection, onClose }: KnowledgeSettingsPageProps) {
   const locale = useAppLocale();
   const t = createTranslator(locale);
-  const [ui, setUi] = useState<ProjectUi | null>(null);
   const [loadedKnowledgeBase, setLoadedKnowledgeBase] = useState<KnowledgeSettingsInput | null>(providedKnowledgeBase ?? null);
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [editorOptions, setEditorOptions] = useState<KnowledgeEditorOptions>(idleEditorOptions);
@@ -948,10 +947,6 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
   };
   const active = availableSections.find((section) => section.key === activeSection);
 
-  useEffect(() => {
-    void import('@weknora/ui').then(setUi);
-  }, []);
-
   // Vue KnowledgeBaseEditorModal .settings-overlay masks the page with
   // rgba(0,0,0,.5) + blur(4px); the shared Dialog backdrop ships
   // --wk-overlay (rgb(23 32 51/45%)) without blur. The host renders this page
@@ -966,8 +961,11 @@ export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, kn
     if (!navKeys.includes(activeSection)) setActiveSection(navKeys[0] ?? 'basic');
   }, [activeSection, navKeys]);
 
-  const ButtonComponent = ui?.Button ?? 'button';
-  const StatusComponent = ui?.Status ?? 'p';
+  // S6 换装（T15 前置）：packages/ui 旧栈 动态渐进增强（Button/Status 异步水合）离栈——
+  // Status 走 shared/wk-legacy WkStatus（.wk-status 族，与水合后渲染一致）；
+  // Button 落原生 button（.wkbs-btn-* CSS 自带视觉，水合前即终态）。
+  const ButtonComponent = 'button';
+  const StatusComponent = WkStatus;
 
   return (
     <section aria-label={`Knowledge settings for ${currentKnowledgeBase.name}`}>

@@ -72,7 +72,7 @@ function ConfirmInline({ state, cancelLabel }: { state: ConfirmState; cancelLabe
 function PriorityHint({ locale }: { locale: ReturnType<typeof useSettingsLocale> }) {
   const t = (key: string) => formatMessage(locale, key);
   const [open, setOpen] = useState(false);
-  return <span className="relative inline-flex">
+  return <span className="wk-settings-hint-anchor">
     <button
       type="button"
       className="hint-trigger"

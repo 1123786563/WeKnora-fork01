@@ -9,8 +9,7 @@
 //    邀请成员卡）——不出现在 orgs 三扫描态中；
 //  - 加入组织 / 邀请预览弹框（invite-preview）；
 //  - 列表加载失败的重试态（React 韧性补充，Vue 模板无对应 UI）。
-// 其中的 WkInput/WkSelect/WkSwitch/WkTextarea（@weknora/ui）仅为留守段
-// 引用，本迁移未新增旧栈用法。
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -18,20 +17,21 @@ import { readReactPlatformState } from '../platform/legacy-session.ts';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
-// S6：@weknora/ui 离栈（T15 硬前置），换 tdesign。
+// S6：packages/ui 旧栈 离栈（T15 硬前置），换 tdesign。
 import { Input as TInput, Select as TSelect, Switch as TSwitch, Textarea as TTextarea } from 'tdesign-react';
 import { Button, Dialog, Input, Popup, Skeleton, Tag, Textarea, Tooltip } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
 import { copyText, sharedResourceRow } from './settings-actions.ts';
 import { organizationRoleLabel, organizationSettingsNavGroups, organizationSettingsSections } from './summary.ts';
-import './orgs.td.css';
 // S7 语义类载体（wk-org-*，留守段+wk-org-5 移动端选择器）。S7 侧仅经
 // SpaceAvatar.tsx 引入，而本页路由模块图不含该文件（本页自持局部
 // SpaceAvatar）——不引入则 wk-org-5 的 display:none 失效，创建弹窗桌面
 // 态被移动端选择器顶开（ix-orgs-create 扫描回归），故按 kb/market/experts
-// 同款页面直挂 u.css 判例补齐。
+// 同款页面直挂 u.css 判例补齐。u.css 置于 orgs.td.css 之前（S7 合并评审
+// Important：低特异性 utilities 平移层让位于 Vue 平移层）。
 import './org-u.css';
+import './orgs.td.css';
 
 /* frontend/src/assets/img/upload.svg —— 空状态插画（162×162，与 kb-list/
    agents 同源文件的内联副本，按页各持一份，Phase 4 归并）。 */
@@ -1910,6 +1910,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
               )}
             </div>
             <div className="wk-org-91">
+              {/* T15 清单注记：下方加入组织弹框 6 处 !px-[15px]（ORG_BTN_* 叠加
+                  硬覆盖内边距）为 Vue 弹框按钮实测值，属 T15 收尾清理候选，
+                  本轮（T15 前置阻塞物清零）不删。 */}
               {joinPreview ? (
                 <>
                   <button type="button" className={ORG_BTN_NEUTRAL + ' !px-[15px]'} onClick={() => { setJoinPreview(null); if (!joinCode) setJoinStep('search'); }}>{!joinCode ? t(locale, 'organization.join.backToSearch') : t(locale, 'common.cancel')}</button>

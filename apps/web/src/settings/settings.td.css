@@ -4905,7 +4905,7 @@
   }
 }
 
-/* —— §S6 编辑抽屉收编（task-s6）：@weknora/ui 表单栈离开后的样式平移段 ————
+/* —— §S6 编辑抽屉收编（task-s6）：packages/ui 旧栈 表单栈离开后的样式平移段 ————
    值逐项取自被删的 Tailwind utility 串（其级联结果），语义类名为既有查询
    锚点（.wk-list-actions/.wk-field-error/.wk-muted 等，styles.css:97 头注先例）。 */
 
@@ -5969,3 +5969,11 @@
   font-size: 12px;
   line-height: 1.55;
 }
+
+/* —— S7 残留 token 清理（settings 域 3 处）——————————————————————————
+   contents×2（McpSettingsPanel/SkillSettingsPanel 抽屉宽度 context 包装）为
+   承重 token：wrapper 需要 display:contents 才能让拖宽 handle 与面板按父级
+   flex 参与布局，不能删——平移为语义类；relative inline-flex×1
+   （SystemGlobalSettingsPanel hint 外包 span）为 popup 定位锚，同平移。 */
+.wk-settings-context-contents { display: contents; }
+.wk-settings-hint-anchor { position: relative; display: inline-flex; }

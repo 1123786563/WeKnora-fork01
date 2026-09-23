@@ -1,5 +1,7 @@
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Card, Status } from '@weknora/ui';
+// S6 换装（T15 前置）：Card/Status 无 TDesign 对应（playbook §1 附行），走
+// shared/wk-legacy（.wk-card/.wk-status 族，渲染不变）。
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { LoginPage } from './LoginPage.tsx';
 import { readInviteToken } from './join.ts';

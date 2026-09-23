@@ -51,7 +51,7 @@ import { Icon as TIcon } from 'tdesign-icons-react';
 /* 旧栈组件仅供编辑器留守段（models / vectorStore / parser / storage / multimodal /
  * asr / advanced 段内部）继续使用——这些段待 knowledge-settings 批次迁移，本页
  * 未新增任何旧栈用法（playbook §4.2 留守例外，见文件头边界说明）。 */
-// S6 抽屉收编：kb 编辑器深设置留守段离开 @weknora/ui（T15 硬前置），换 tdesign。
+// S6 抽屉收编：kb 编辑器深设置留守段离开 packages/ui 旧栈（T15 硬前置），换 tdesign。
 import { Checkbox as TCheckbox, Input as TInput, Select as TSelect, Textarea as TTextarea } from 'tdesign-react';
 import {
   isContextualGuideDone,

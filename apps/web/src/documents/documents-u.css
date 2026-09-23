@@ -545,6 +545,12 @@
 .wk-kd-45 {
   display: block;
   min-width: 0;
+  /* S7 残留 token 清理：flex-[0_0_168px] + max-[720px]:flex-[0_0_auto] 平移。 */
+  flex: 0 0 168px;
+}
+
+@media (max-width: 720px) {
+  .wk-kd-45 { flex-basis: auto; }
 }
 
 .wk-kd-46 {
@@ -884,6 +890,8 @@
 .wk-kd-75 {
   max-width: 40%;
   padding-right: 12px;
+  /* S7 残留 token 清理：flex-[0_0_40%] 平移。 */
+  flex: 0 0 40%;
 }
 
 .wk-kd-76 {
@@ -905,6 +913,8 @@
   max-width: 55%;
   align-items: center;
   justify-content: flex-end;
+  /* S7 残留 token 清理：flex-[0_0_55%] 平移。 */
+  flex: 0 0 55%;
 }
 
 .wk-kd-79 {
@@ -931,6 +941,8 @@
   align-items: flex-start;
   justify-content: flex-end;
   gap: 8px;
+  /* S7 残留 token 清理：flex-[0_0_55%] 平移。 */
+  flex: 0 0 55%;
 }
 
 .wk-kd-81 {
@@ -1314,6 +1326,8 @@
   border-top-width: calc(1px * var(--tw-divide-y-reverse));
   border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));
   border-bottom-style: solid;
+  /* S7 残留 token 清理：divide-line-soft 平移（--color-line-soft #edf0f5）。 */
+  border-color: #edf0f5;
 }
 
 .wk-kd-125 {
@@ -1748,8 +1762,9 @@
   width: 16px;
   animation: spin 1s linear infinite;
   border-radius: 9999px;
+  /* codemod 误译修正：border-2 → border-width 2px（非 8px）。 */
   border-style: solid;
-  border-width: 8px;
+  border-width: 2px;
   border-color: currentColor;
 }
 
@@ -2985,3 +3000,23 @@
 .wk-kd-notice-success { border-color: var(--wk-success, #12b76a); color: var(--wk-success, #027a48); }
 .wk-kd-notice-warning { border-color: var(--wk-warning, #b54708); color: var(--wk-warning, #9a3412); }
 .wk-kd-notice-error { border-color: var(--wk-danger, #d92d20); color: var(--wk-danger, #b42318); }
+
+/* Vue doc-content.vue:2719-2726 .chunk-count —— 内容区头部的「共 N 个片段」
+   徽章（secondary 文本 12px、container-hover 灰底、2px 8px 胶囊）。 */
+.wk-kdd-206 {
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  background: var(--td-bg-color-container-hover);
+  padding: 2px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* Vue doc-main-drawer/trace 抽屉宿主是 t-drawer（attach body），遮罩取 tdesign
+   默认 rgba(0,0,0,.6)（doc-content.vue:1580/:1627；documents-list.css:355-362
+   同款取证：--color-overlay 45% 偏蓝偏浅）。WkSheet 兼容层默认 45% 蓝调，
+   这两个扫描锚定抽屉（ix-kb-doc-detail）以 :has() 挂 Vue 权威遮罩色。 */
+.wk-sheet-backdrop:has(.wk-document-detail-drawer),
+.wk-sheet-backdrop:has(.wk-kdd-9) {
+  background: rgba(0, 0, 0, 0.6);
+}

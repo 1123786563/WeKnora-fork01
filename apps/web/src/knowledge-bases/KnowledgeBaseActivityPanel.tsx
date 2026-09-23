@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KnowledgeBaseActivityEntry, WeKnoraClient } from '@weknora/api-client';
-// S6 抽屉收编：@weknora/ui 离栈（T15 硬前置）——详情抽屉 Sheet→tdesign
+// S6 抽屉收编：packages/ui 旧栈 离栈（T15 硬前置）——详情抽屉 Sheet→tdesign
 // Drawer（footer=false/visible/header/placement/size；Sheet 的 resizable 无对应，
 // 收编后宽度固定 640px，报告已注记）。Select import 原本未使用，一并移除。
 import { Button as TButton, Drawer as TDrawer } from 'tdesign-react';

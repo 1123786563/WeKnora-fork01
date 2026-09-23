@@ -256,7 +256,8 @@
 
 .wk-kba-23 {
   display: grid;
-  grid-template-columns: repeat(9rem minmax(0,1fr), minmax(0, 1fr));
+  /* codemod 误译修正：双列直写，去掉非法 repeat() 包裹。 */
+  grid-template-columns: 9rem minmax(0, 1fr);
   gap: 12px;
   border-bottom-style: solid;
   border-bottom-width: 1px;border-color: #edf0f5;

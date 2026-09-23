@@ -4,8 +4,10 @@
 // - TagManageDialog  ← KbTagManageDrawer.vue (R490 B2: the 管理标签… entry)
 // Chips, sections and footer copy mirror the Vue dialogs; state stays local.
 import { useEffect, useState, type ReactNode } from 'react';
-import { Button, Dialog, Input } from '@weknora/ui';
-import { Button as TdButton, Input as TdInput } from 'tdesign-react';
+// S6 换装（T15 前置）：packages/ui 旧栈 离栈，Button/Dialog/Input 全走 tdesign
+// （playbook §1：open/title/closeLabel/className → visible/header/footer=false/
+// dialogClassName 省略；onChange 改 (value) 签名；maxLength→maxlength）。
+import { Button as TdButton, Dialog as TdDialog, Input as TdInput } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import type { KnowledgeTag } from '@weknora/api-client';
 import { filterTagOptions, selectTagId, tagCreateFailureMessage } from './tags.ts';
@@ -113,7 +115,7 @@ export function TagPickerDialog({
   };
 
   return (
-    <Dialog open title={t(copy.heading)} onClose={onClose} closeLabel={t('common.cancel')}>
+    <TdDialog visible header={t(copy.heading)} footer={false} onClose={onClose}>
       <div className={mode === 'batch' ? 'batch-tag-body' : 'tag-edit-body'}>
         {mode === 'batch' && typeof count === 'number' ? (
           <p className="batch-tag-subtitle wk-tpd-1">{t('knowledgeBase.batchTagSubtitle', { count })}</p>
@@ -149,13 +151,13 @@ export function TagPickerDialog({
           <div className="wk-tag-section-head wk-tpd-3">
             <h4 className="wk-tpd-4">{t(copy.available)}</h4>
           </div>
-          <Input
+          <TdInput
             type="search"
             className="wk-tag-search wk-tpd-9"
             value={searchQuery}
             placeholder={t('knowledgeBase.tagEditSearch')}
             aria-label={t('knowledgeBase.tagEditSearch')}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(value) => setSearchQuery(String(value))}
           />
           {availableTags.length > 0 ? (
             <div className="batch-tag-chips wk-tpd-6">
@@ -187,18 +189,18 @@ export function TagPickerDialog({
             </div>
           )}
           {canManage && createTag ? (
-            <Input
+            <TdInput
               type="text"
               className="wk-tag-create-input wk-tpd-12"
               value={newTagName}
-              maxLength={40}
+              maxlength={40}
               disabled={creatingTag}
               placeholder={t('knowledgeBase.tagNewPlaceholder')}
               aria-label={t('knowledgeBase.tagNewPlaceholder')}
-              onChange={(event) => setNewTagName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
+              onChange={(value) => setNewTagName(String(value))}
+              onKeydown={(_, { e }) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
                   void addNewTag(newTagName);
                 }
               }}
@@ -212,20 +214,20 @@ export function TagPickerDialog({
           {t('knowledgeBase.tagSelectedCount', { count: selectedSet.size })}
         </span>
         <div className="batch-tag-footer-right wk-tpd-16">
-          <Button type="button" className="wk-tag-btn wk-tpd-17" disabled={confirmLoading} onClick={onClose}>
+          <TdButton type="button" className="wk-tag-btn wk-tpd-17" disabled={confirmLoading} onClick={onClose}>
             {t('common.cancel')}
-          </Button>
-          <Button
+          </TdButton>
+          <TdButton
             type="button"
             className="wk-tag-btn wk-tag-btn--primary wk-tpd-18"
             disabled={confirmLoading}
             onClick={() => onConfirm(Array.from(selectedSet))}
           >
             {t('common.confirm')}
-          </Button>
+          </TdButton>
         </div>
       </div>
-    </Dialog>
+    </TdDialog>
   );
 }
 
@@ -454,19 +456,19 @@ export function TagManageDialog({
   }
 
   return (
-    <Dialog open={open} title={t('knowledgeBase.tagManageTitle')} onClose={onClose} closeLabel={t('common.cancel')}>
+    <TdDialog visible={open} header={t('knowledgeBase.tagManageTitle')} footer={false} onClose={onClose}>
       <p className="tag-manage-description wk-tpd-19">{t('knowledgeBase.tagManageDescription')}</p>
       {error ? <p className="tag-manage-error wk-tpd-20" role="alert" style={{ color: 'var(--wk-danger,#d54941)' }}>{error}</p> : null}
       <div className="tag-manage-toolbar wk-tpd-21">
-        <Input
+        <TdInput
           type="search"
           className="wk-tpd-22"
           value={query}
           placeholder={t('knowledgeBase.tagSearchPlaceholder')}
           aria-label={t('knowledgeBase.tagSearchPlaceholder')}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(value) => setQuery(String(value))}
         />
-        <Button
+        <TdButton
           type="button"
           className="wk-tpd-23"
           disabled={busy || creating}
@@ -476,45 +478,45 @@ export function TagManageDialog({
           }}
         >
           {t('knowledgeBase.tagCreateAction')}
-        </Button>
+        </TdButton>
       </div>
       {creating ? (
         <div className="tag-manage-create wk-tpd-24">
-          <Input
-            autoFocus
-            maxLength={40}
+          <TdInput
+            autofocus
+            maxlength={40}
             className="wk-tpd-22"
             value={draft}
             placeholder={t('knowledgeBase.tagNamePlaceholder')}
             aria-label={t('knowledgeBase.tagNamePlaceholder')}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void submitCreate();
-              if (event.key === 'Escape') setCreating(false);
+            onChange={(value) => setDraft(String(value))}
+            onKeydown={(_, { e }) => {
+              if (e.key === 'Enter') void submitCreate();
+              if (e.key === 'Escape') setCreating(false);
             }}
           />
-          <Button type="button" loading={busy} onClick={() => void submitCreate()}>{t('common.create')}</Button>
-          <Button type="button" disabled={busy} onClick={() => setCreating(false)}>{t('common.cancel')}</Button>
+          <TdButton type="button" loading={busy} onClick={() => void submitCreate()}>{t('common.create')}</TdButton>
+          <TdButton type="button" disabled={busy} onClick={() => setCreating(false)}>{t('common.cancel')}</TdButton>
         </div>
       ) : null}
       <ul className="tag-manage-list wk-tpd-25">
         {visible.map((tag) => editingId === tag.id ? (
           <li key={tag.id} className="tag-manage-row wk-tpd-26">
-            <Input
-              autoFocus
-              maxLength={40}
+            <TdInput
+              autofocus
+              maxlength={40}
               className="wk-tpd-22"
               value={editingName}
               placeholder={t('knowledgeBase.tagNamePlaceholder')}
               aria-label={t('knowledgeBase.tagNamePlaceholder')}
-              onChange={(event) => setEditingName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') void submitRename();
-                if (event.key === 'Escape') setEditingId(null);
+              onChange={(value) => setEditingName(String(value))}
+              onKeydown={(_, { e }) => {
+                if (e.key === 'Enter') void submitRename();
+                if (e.key === 'Escape') setEditingId(null);
               }}
             />
-            <Button type="button" loading={busy} onClick={() => void submitRename()}>{t('common.save')}</Button>
-            <Button type="button" disabled={busy} onClick={() => setEditingId(null)}>{t('common.cancel')}</Button>
+            <TdButton type="button" loading={busy} onClick={() => void submitRename()}>{t('common.save')}</TdButton>
+            <TdButton type="button" disabled={busy} onClick={() => setEditingId(null)}>{t('common.cancel')}</TdButton>
           </li>
         ) : (
           <li key={tag.id} className="tag-manage-row wk-tpd-26">
@@ -522,7 +524,7 @@ export function TagManageDialog({
               <strong className="wk-tpd-28">{tag.name}</strong>
               <small className="wk-tpd-29">{t('knowledgeBase.tagManageDocCount', { count: tag.knowledge_count || 0 })}</small>
             </span>
-            <Button
+            <TdButton
               type="button"
               disabled={busy}
               onClick={() => {
@@ -532,12 +534,12 @@ export function TagManageDialog({
               }}
             >
               {t('knowledgeBase.tagEditAction')}
-            </Button>
-            <Button type="button" disabled={busy || !Number.isSafeInteger(tag.seq_id)} onClick={() => void removeTag(tag)}>{t('knowledgeBase.tagDeleteAction')}</Button>
+            </TdButton>
+            <TdButton type="button" disabled={busy || !Number.isSafeInteger(tag.seq_id)} onClick={() => void removeTag(tag)}>{t('knowledgeBase.tagDeleteAction')}</TdButton>
           </li>
         ))}
         {visible.length === 0 ? <li className="tag-manage-empty wk-tpd-30">{t('knowledgeBase.tagEmptyResult')}</li> : null}
       </ul>
-    </Dialog>
+    </TdDialog>
   );
 }

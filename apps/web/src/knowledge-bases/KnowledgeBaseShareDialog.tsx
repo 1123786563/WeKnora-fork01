@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Organization, WeKnoraClient } from '@weknora/api-client';
-// S6 抽屉收编：@weknora/ui 离栈（T15 硬前置）。隐藏 required select 保留原生
+// S6 抽屉收编：packages/ui 旧栈 离栈（T15 硬前置）。隐藏 required select 保留原生
 // <select>（tdesign Select 无原生表单校验语义，该节点仅为 required 兜底）。
 import { Button as TButton, Dialog as TDialog, Input as TInput } from 'tdesign-react';
 import { WkStatus as Status } from '../shared/wk-legacy.tsx';

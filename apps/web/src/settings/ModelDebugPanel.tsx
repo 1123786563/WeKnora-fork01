@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as React from "react";
 import type { ModelConfiguration, WeKnoraClient } from "@weknora/api-client";
-// S6 抽屉收编：@weknora/ui 表单栈离开，换 tdesign（T15 硬前置）。
+// S6 抽屉收编：packages/ui 旧栈 表单栈离开，换 tdesign（T15 硬前置）。
 import { Button as TButton, InputNumber as TInputNumber, Switch as TSwitch, Textarea as TTextarea } from "tdesign-react";
 import { WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { useAppLocale } from "../i18n.ts";

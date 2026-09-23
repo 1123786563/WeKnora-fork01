@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as React from "react";
 import type { McpConfiguration, WeKnoraClient } from "@weknora/api-client";
-// S6 抽屉收编：MCP 编辑面离开 @weknora/ui 表单栈（T15 硬前置）。
+// S6 抽屉收编：MCP 编辑面离开 packages/ui 旧栈 表单栈（T15 硬前置）。
 import { Button as TButton, Checkbox as TCheckbox, Input as TInput, Select as TSelect, Textarea as TTextarea } from "tdesign-react";
 import { WkCard as Card, WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { Icon as TIcon } from "tdesign-icons-react";
@@ -114,7 +114,7 @@ function McpDrawerShell({ children }: { children: React.ReactElement<{ children?
     : children;
   return (
     <div
-      className="contents"
+      className="wk-settings-context-contents"
       data-resizing={resizing || undefined}
       style={{ "--mcp-drawer-width": `${width}px` } as React.CSSProperties}
     >

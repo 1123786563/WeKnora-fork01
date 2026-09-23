@@ -20,7 +20,7 @@ import {
   recentQueriesStorageKey,
 } from './command-palette.ts';
 import { readReactPlatformState } from './legacy-session.ts';
-// SP13 Task 8 — 侧栏「分享」弹窗（ChatRoutePage 同组件；不经过 @weknora/ui
+// SP13 Task 8 — 侧栏「分享」弹窗（ChatRoutePage 同组件；不经过 packages/ui 旧栈
 // 以免 theme.css 拖进 shell 的 node 测试模块图）。
 import { SessionShareDialog } from '../chat/SessionShareDialog.tsx';
 import { InvitationInbox } from './InvitationInbox.tsx';
@@ -42,12 +42,14 @@ import {
 // itself must stay css-import-free for the shared typecheck, so the shell
 // pulls it in by relative path. (shell.css is gone — all rules became
 // utilities in this file / session-sidebar.tsx.)
-import '../../../../packages/views/src/guides/guides.css';
 // Task 9.5 — shell 层同构平移样式（menu.vue / UserMenu.vue / SessionSidebarRow.vue
 // 平移，见 platform-shell.td.css 头注）。Vue 端图标走 <img src> 资产（渲染为
 // 黑色 filled glyph、激活态换 -green.svg 变体），资产从 frontend/src/assets/img
 // 复制到 ./assets/img 保持逐字节一致。
+// platform-u.css（utilities 平移层）前置（S7 合并评审 Important）：先于
+// guides.css 与 platform-shell.td.css 落级联。
 import './platform-u.css';
+import '../../../../packages/views/src/guides/guides.css';
 import './platform-shell.td.css';
 import { Icon as TIcon } from 'tdesign-icons-react';
 

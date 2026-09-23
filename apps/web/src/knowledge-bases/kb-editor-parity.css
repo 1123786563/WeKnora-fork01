@@ -3,7 +3,7 @@
  * 归属说明（brief 约束「只删 kb-list 引用段，留守段注明归属」）：
  * 壳层（settings-overlay/settings-modal/sidebar/nav/footer/基础段）已随
  * kb-list.td.css §8 以 Vue KnowledgeBaseEditorModal.vue 为事实源平移，本文件
- * 原有的壳层补丁（@weknora/ui Dialog 几何、kb-editor-nav/footer、索引卡
+ * 原有的壳层补丁（packages/ui 旧栈 Dialog 几何、kb-editor-nav/footer、索引卡
  * fieldset、类型单选框、名称输入、描述计数、遮罩）全部废弃删除。
  * 以下留守规则仅服务于编辑器的「留守段」internals——models / vectorStore /
  * parser / storage / multimodal / asr / advanced 段仍是 R490 的 React 端口

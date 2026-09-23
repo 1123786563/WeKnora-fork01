@@ -122,9 +122,12 @@
   width: 14px;
   flex-shrink: 0;
   animation: spin 1s linear infinite;
-  border-radius: 9999px;border-width: 8px;
+  border-radius: 9999px;
+  /* codemod 误译修正：border-2 的 2 是 border-width 尺度（2px）不是 spacing 8px；
+     全边框场景（四色环 spinner）恢复全边 border-style。 */
+  border-style: solid;
+  border-width: 2px;
   border-color: #d7dde5;
-  border-top-style: solid;
   border-top-color: #2f6fed;
 }
 
@@ -648,3 +651,7 @@
 
 /* 手工段：focus-visible outline 组（v4 outline=style solid / outline-2=2px / outline-primary=品牌色） */
 .wk-inv-bell:focus-visible { outline-style: solid; outline-width: 2px; outline-color: var(--color-primary, #2e6de6); }
+
+/* sr-only（Tailwind utility 平移为语义类，a11y 惯用名保留为 DOM hook——
+   views-chat-u.css:2476 同款版本，补齐 platform 域缺口）。 */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }

@@ -109,7 +109,7 @@ const AN_USAGE_TABLE = 'wk-anl-an-usage-table';
 
 const AN_USAGE_CELL = 'wk-anl-an-usage-cell';
 
-const AN_USAGE_NUM =AN_USAGE_CELL + 'tabular-nums wk-anl-an-usage-num';
+const AN_USAGE_NUM = AN_USAGE_CELL + ' tabular-nums wk-anl-an-usage-num';
 
 const AN_USAGE_PAGER = 'wk-anl-an-usage-pager';
 

@@ -16,9 +16,9 @@ import { formatMessage, type Locale } from '@weknora/i18n';
 // sandbox-type-tabs / 卡片网格 / 卡片菜单）按 SandboxSettings.vue 逐节点平移，
 // 组件换 tdesign-react；SandboxConfigEditor 与 inventory 抽屉沿用 React 表单栈
 // （批次先例：parser/mcp/models 编辑器同口径，扫描稳态不可达，待后续批次收编），
-// @weknora/ui 仅剩保留域使用。
+// packages/ui 旧栈 仅剩保留域使用。
 import { WkStatus as Status } from '../shared/wk-legacy.tsx';
-// S6 抽屉收编：SandboxConfigEditor/网络规则/模板目录抽屉离开 @weknora/ui 表单栈（T15 硬前置），组件换 tdesign。
+// S6 抽屉收编：SandboxConfigEditor/网络规则/模板目录抽屉离开 packages/ui 旧栈 表单栈（T15 硬前置），组件换 tdesign。
 import { Icon as TIcon } from 'tdesign-icons-react';
 import {
   Alert as TAlert,

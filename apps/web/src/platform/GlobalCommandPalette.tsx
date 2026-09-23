@@ -1,7 +1,9 @@
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Input } from '@weknora/ui';
+// S6 换装（T15 前置）：搜索框离开 packages/ui 旧栈 Input——Vue GlobalCommandPalette.vue:16
+// 本就是原生 <input class="cmdk__input">（视觉规则 wk-cmdk-11 = Vue .cmdk__input），
+// 直接落原生标签，DOM/焦点/键盘语义与测试锚点不变。
 import {
   COMMANDS,
   filterCommands,
@@ -427,7 +429,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
               </button>
             </span>
           )}
-          <Input
+          <input
             ref={inputRef}
             type="text"
             className="cmdk__input wk-cmdk-11"

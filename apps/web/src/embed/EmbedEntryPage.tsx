@@ -40,11 +40,13 @@ import {
 } from './chat-data.ts';
 import { renderEmbedChatMarkdown } from './markdown.ts';
 import { hydrateEmbedAnswerMermaid } from './mermaid.ts';
+// u.css（utilities 平移层）前置（S7 合并评审 Important）：embed-u/views-chat-u
+// 先于 embed-chat/katex 落级联，避免低特异性平移规则压过域样式。
 import './embed-u.css';
+import '../chat/views-chat-u.css';
 import './embed-chat.css';
 // Vue EmbedBotMessage.vue imports katex/dist/katex.min.css for the answer face.
 import 'katex/dist/katex.min.css';
-import '../chat/views-chat-u.css';
 
 // Vue parity for the isolated embed entry:
 // - entry: frontend/embed.html + frontend/src/embed-main.ts (separate document,

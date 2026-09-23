@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KnowledgeChunk, KnowledgeChunkRevision, KnowledgeDocument, KnowledgeGeneratedQuestion, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Card, Sheet, Status } from '@weknora/ui';
+// S6 换装（T15 前置）：packages/ui 旧栈 离栈——Button 换 tdesign（playbook §1，
+// variant text 直译）；Card/Status 无 TDesign 对应、Sheet 是 ix-kb-doc-detail
+// 扫描锚定抽屉（DOM/自研拖宽不变），均走 shared/wk-legacy 同构层。
+import { Button as TButton } from 'tdesign-react';
+import { WkCard as Card, WkSheet as Sheet, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { buildDocumentPreview, canPreviewDocument, DocumentMarkdownBody, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readCurrentPreviewText, readSpreadsheetPreview, type DocumentMermaidLabels, type InlinePreviewKind, type SpreadsheetPreviewModel } from './preview.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { buildKnowledgeTimeline, flattenKnowledgeSpans, isKnowledgeProcessingActive, type KnowledgeTimelineNode } from '@weknora/domain/knowledge/processing';
@@ -159,6 +163,24 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   const [expandedTraceNodes, setExpandedTraceNodes] = useState<Set<string>>(new Set());
   const [selectedTraceNode, setSelectedTraceNode] = useState<KnowledgeTimelineNode | null>(null);
   const [contentView, setContentView] = useState<ContentView>('merged');
+  // Vue doc-content 头部徽章（共 N 个片段）取 details.total——useKnowledgeBase
+  // getCardDetails 在打开抽屉时无条件预取 chunks(第 1 页)（useKnowledgeBase.ts
+  // :151-193 尾行 getfDetails(item.id, 1)），与当前视图无关。这里以同款预取
+  // 维持该总数，ChunksView 内的分页态不受影响。
+  const [chunksTotal, setChunksTotal] = useState(0);
+  const [chunkSeed, setChunkSeed] = useState<{ chunks: KnowledgeChunk[]; total: number } | null>(null);
+  useEffect(() => {
+    let active = true;
+    setChunksTotal(0);
+    setChunkSeed(null);
+    void client.knowledgeBases.documents.chunks(documentId, 1).then((result) => {
+      if (active) {
+        setChunksTotal(result.total);
+        setChunkSeed({ chunks: result.data, total: result.total });
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [client, documentId, loadAttempt]);
   useEffect(() => {
     let active = true;
     setState({ status: 'loading' });
@@ -296,7 +318,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
     title={<span className="doc-drawer-header-inner wk-kdd-2">
       <span className="doc-drawer-header-title wk-kdd-3">{detailTitle}</span>
       <span className="doc-drawer-header-actions wk-kdd-4">
-        {headerDownloadVisible ? <button type="button" className="header-action-btn wk-kdd-5" aria-label={copy.download} title={copy.download} onClick={() => void downloadHeader()}>{headerDownloadState === 'loading' ? <span className="border-t-transparent wk-kdd-6" aria-hidden="true" /> : <DownloadIcon size={16} />}</button> : null}
+        {headerDownloadVisible ? <button type="button" className="header-action-btn wk-kdd-5" aria-label={copy.download} title={copy.download} onClick={() => void downloadHeader()}>{headerDownloadState === 'loading' ? <span className="wk-kdd-6" aria-hidden="true" /> : <DownloadIcon size={16} />}</button> : null}
         {document ? <button type="button" className="header-action-btn wk-kdd-5" aria-label={t('knowledgeBase.timeline.title')} title={t('knowledgeBase.timeline.title')} onClick={() => setTraceOpen(true)}><ChartLineIcon size={16} /></button> : null}
       </span>
     </span>}
@@ -305,9 +327,9 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
     <section className="wk-document-detail-surface" aria-live="polite" aria-busy={state.status === 'loading'}>
     {state.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
     {state.status === 'empty' ? <Status>{t('common.empty')}</Status> : null}
-    {state.status === 'error' ? <div className="wk-kdd-8"><Status tone="error">{state.message}</Status><Button type="button" variant="text" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t('common.retry')}</Button></div> : null}
+    {state.status === 'error' ? <div className="wk-kdd-8"><Status tone="error">{state.message}</Status><TButton type="button" variant="text" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t('common.retry')}</TButton></div> : null}
     {state.status === 'success' && timelineSteps.length > 0 ? <Card><section aria-label={t('knowledgeBase.timeline.title')} className="wk-processing-timeline"><strong>{t('knowledgeBase.timeline.title')}</strong><ol>{timelineSteps.map((step) => <li key={step.stage} data-state={step.state}>{t('knowledgeBase.timeline.stage.' + step.stage)} — {t('knowledgeBase.timeline.' + step.state)}</li>)}</ol></section></Card> : null}
-  {state.status === 'success' ? <DocumentDetail client={client} document={state.document} canEdit={canMutateDocument} contentView={contentView} onContentViewChange={setContentView} parentContextCache={parentContextCache.current} /> : null}
+  {state.status === 'success' ? <DocumentDetail client={client} document={state.document} canEdit={canMutateDocument} contentView={contentView} onContentViewChange={setContentView} parentContextCache={parentContextCache.current} chunksTotal={chunksTotal} chunkSeed={chunkSeed} onChunkSeedConsumed={() => setChunkSeed(null)} /> : null}
     </section>
   {traceOpen ? <Sheet open title={t('knowledgeBase.timeline.title')} onClose={() => setTraceOpen(false)} side="right" width="820px" resizable minWidth={560} maxWidth={1400} storageKey="weknora-trace-drawer-width" className="wk-kdd-9">
     <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === 'loading'}>
@@ -324,9 +346,9 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
           {traceState.steps.length ? (() => { const runningIdx = traceState.steps.findIndex((step) => step.state === 'running' || step.state === 'failed'); const traversed = traceState.steps.filter((step) => step.state === 'done' || step.state === 'skipped').length; const current = runningIdx >= 0 ? runningIdx + 1 : Math.min(traversed + 1, traceState.steps.length); return <span className="wk-kdd-14">{TRACE_HEAD_COPY[locale].stagesProgress} <strong className="wk-kdd-15">{current}/{traceState.steps.length}</strong></span>; })() : null}
         </div>
         <div className="wk-kdd-11">
-          <Button type="button" loading={traceAction === 'loading'} onClick={() => setTraceRefresh((value) => value + 1)}>{t('common.refresh')}</Button>
-          {canMutateDocument && traceState.parseStatus === 'failed' ? <Button type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('reparse')}>{t('knowledgeBase.rebuildDocument')}</Button> : null}
-          {canMutateDocument && isKnowledgeProcessingActive(traceState.parseStatus) ? <Button type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('cancel')}>{t('knowledgeBase.documents.cancelParse')}</Button> : null}
+          <TButton type="button" loading={traceAction === 'loading'} onClick={() => setTraceRefresh((value) => value + 1)}>{t('common.refresh')}</TButton>
+          {canMutateDocument && traceState.parseStatus === 'failed' ? <TButton type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('reparse')}>{t('knowledgeBase.rebuildDocument')}</TButton> : null}
+          {canMutateDocument && isKnowledgeProcessingActive(traceState.parseStatus) ? <TButton type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('cancel')}>{t('knowledgeBase.documents.cancelParse')}</TButton> : null}
         </div>
         {traceState.parseStatus === 'failed' ? <Status tone="error">{traceState.lastError?.error_message || t('knowledgeBase.timeline.failed')}</Status> : null}
         <ol className="wk-kdd-16" aria-label={t('knowledgeBase.timeline.title')}>
@@ -338,7 +360,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
             <button type="button" className="wk-kdd-23" onClick={() => setSelectedTraceNode(row)}>{row.node.name || row.node.stage || row.key}</button>{nodeState === 'pending' ? null : <span className={nodeState === 'failed' ? 'wk-kdd-96' : nodeState === 'done' ? 'wk-kdd-97' : nodeState === 'running' ? 'wk-kdd-98' : 'wk-kdd-46'}>{t(`knowledgeBase.timeline.${nodeState}`)}</span>}<span className="wk-kdd-24">{nodeState === 'pending' || typeof row.node.duration_ms !== 'number' ? '—' : `${row.node.duration_ms}ms`}</span>
           </li>; })}
         </ol></div> : null}
-        {selectedTraceNode ? <section className="wk-kdd-25"><div className="wk-kdd-26"><strong className="wk-kdd-27">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><Button type="button" onClick={() => setSelectedTraceNode(null)}>{t('knowledgeBase.documents.cancel')}</Button></div><pre className="wk-kdd-28">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre></section> : null}
+        {selectedTraceNode ? <section className="wk-kdd-25"><div className="wk-kdd-26"><strong className="wk-kdd-27">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><TButton type="button" onClick={() => setSelectedTraceNode(null)}>{t('knowledgeBase.documents.cancel')}</TButton></div><pre className="wk-kdd-28">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre></section> : null}
       </div> : null}
     </section>
   </Sheet> : null}
@@ -346,7 +368,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   </Sheet>;
 }
 
-function DocumentChunks({ client, document, canEdit, view, parentContextCache }: { client: WeKnoraClient; document: KnowledgeDocument; canEdit: boolean; view: ContentView; parentContextCache: Map<string, string> }) {
+function DocumentChunks({ client, document, canEdit, view, parentContextCache, seed, onSeedConsumed }: { client: WeKnoraClient; document: KnowledgeDocument; canEdit: boolean; view: ContentView; parentContextCache: Map<string, string>; seed: { chunks: KnowledgeChunk[]; total: number } | null; onSeedConsumed: () => void }) {
   const locale = useAppLocale();
   const t = createTranslator(locale);
   // Vue doc-content keeps loadedChunkPage (displayed page) separate from the
@@ -417,13 +439,21 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
   // chunkPage/loadedChunkPage when details.id changes).
   useEffect(() => {
     setPageError(null);
-    setState({ status: 'loading', chunks: [], total: 0, page: 1, pendingPage: undefined, message: undefined });
+    // Vue 的分块数据在共享 details 里（打开抽屉时 getfDetails(1) 预取），
+    // 视图挂载不重发请求；React 侧以页级预取 seed 一次性灌入（消费后置空，
+    // 之后的重挂载恢复独立分页请求语义）。
+    if (seed) {
+      setState({ status: 'success', chunks: seed.chunks, total: seed.total, page: 1, pendingPage: undefined, message: undefined });
+      onSeedConsumed();
+    } else {
+      setState({ status: 'loading', chunks: [], total: 0, page: 1, pendingPage: undefined, message: undefined });
+      load(1);
+    }
     // Vue watch(details.id) closes the question popup, composer, and inline
     // editor alongside the parent-context popup.
     setParentContextId(null);
     setParentContextError(null);
     closeQuestions();
-    load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, document.id]);
 
@@ -618,8 +648,8 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
     {parentContextError ? <Status tone="error">{parentContextError}</Status> : null}
     {state.status === 'loading' && !pageTransition ? <Status>{t('common.loading')}</Status> : null}
     {pageTransition ? <div className="wk-chunk-page-loading" role="status"><Status>{t('common.loading')}</Status></div> : null}
-    {state.status === 'error' ? <><Status tone="error">{state.message}</Status><Button type="button" onClick={() => load(state.page)}>{t('common.retry')}</Button></> : null}
-    {state.status === 'success' && pageError ? <><Status tone="error">{pageError}</Status><Button type="button" onClick={() => load(state.page)}>{t('common.retry')}</Button></> : null}
+    {state.status === 'error' ? <><Status tone="error">{state.message}</Status><TButton type="button" onClick={() => load(state.page)}>{t('common.retry')}</TButton></> : null}
+    {state.status === 'success' && pageError ? <><Status tone="error">{pageError}</Status><TButton type="button" onClick={() => load(state.page)}>{t('common.retry')}</TButton></> : null}
     {state.status === 'success' && state.chunks.length === 0 ? <Status>{t('common.empty')}</Status> : null}
     {state.status === 'success' && view === 'merged'
       ? mergedContent
@@ -631,9 +661,9 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
         : <div className="wk-document-merged wk-kdd-33">—</div>
       : null}
     {state.status === 'success' && view !== 'merged' ? <><div className="wk-kdd-34">{state.chunks.map((chunk, index) => <article key={chunk.id} className="wk-kdd-35" data-chunk-id={chunk.id}>
-      <div className="wk-kdd-26"><strong className="wk-kdd-36">{t('knowledgeBase.segment')} {(state.page - 1) * 25 + index + 1}</strong>{parentChunkId(chunk) || generatedQuestions(chunk).length > 0 || canEdit ? <span className="wk-kdd-37">{parentChunkId(chunk) ? <Button type="button" variant="text" className="wk-parent-context-toggle" title={t('knowledgeBase.viewParentContext')} aria-label={t('knowledgeBase.viewParentContext')} aria-expanded={parentContextId === chunk.id} onClick={() => openParentContext(chunk)}><GitBranchIcon /></Button> : null}{generatedQuestions(chunk).length > 0 || canEdit ? <Button type="button" variant="text" className="wk-chunk-questions-toggle" title={t('knowledgeBase.generatedQuestions')} aria-label={t('knowledgeBase.generatedQuestions')} aria-expanded={questionsId === chunk.id} onClick={() => openQuestions(chunk)}><HelpCircleIcon /></Button> : null}{canEdit ? <><Button type="button" onClick={() => { setParentContextId(null); closeQuestions(); setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</Button><Button type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</Button><Button type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</Button>{chunk.index_status === 'failed' ? <Button type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</Button> : null}</> : null}</span> : null}</div>
-      {editingId === chunk.id ? <><textarea aria-label={t('knowledgeBase.segment')} value={draft} onChange={(event) => setDraft(event.target.value)} className="wk-kdd-38" /><div className="wk-kdd-39"><Button type="button" loading={savingId === chunk.id} onClick={() => void save(chunk)}>{t('common.save')}</Button><Button type="button" onClick={() => { setEditingId(null); setDraft(''); }}>{t('common.cancel')}</Button></div></> : <DocumentMarkdownBody markdown={chunk.content || '—'} labels={MERMAID_VIEWER_COPY[locale]} className="wk-document-chunk-content markdown-content wk-kdd-40" />}
-      {history?.id === chunk.id ? <div className="wk-kdd-41"><strong className="wk-kdd-36">{t('knowledgeBase.chunkHistory')}</strong>{history?.rows.length === 0 ? <Status>{t('common.noData')}</Status> : <ol className="wk-kdd-42">{history?.rows.map((row) => <li key={row.revision} className="wk-kdd-43"><span>Revision {row.revision}: {row.content || '—'}</span><Button type="button" className="wk-kdd-44" onClick={() => void (async () => { const updated = await client.knowledgeBases.documents.revertChunk(document.id, chunk.id, row.revision, chunk.content_revision ?? 0); setState((current) => ({ ...current, chunks: current.chunks.map((item) => item.id === chunk.id ? updated : item) })); showHistory(updated); })()}>{t('knowledgeBase.chunkReverted')}</Button></li>)}</ol>}</div> : null}
+      <div className="wk-kdd-26"><strong className="wk-kdd-36">{t('knowledgeBase.segment')} {(state.page - 1) * 25 + index + 1}</strong>{parentChunkId(chunk) || generatedQuestions(chunk).length > 0 || canEdit ? <span className="wk-kdd-37">{parentChunkId(chunk) ? <TButton type="button" variant="text" className="wk-parent-context-toggle" title={t('knowledgeBase.viewParentContext')} aria-label={t('knowledgeBase.viewParentContext')} aria-expanded={parentContextId === chunk.id} onClick={() => openParentContext(chunk)}><GitBranchIcon /></TButton> : null}{generatedQuestions(chunk).length > 0 || canEdit ? <TButton type="button" variant="text" className="wk-chunk-questions-toggle" title={t('knowledgeBase.generatedQuestions')} aria-label={t('knowledgeBase.generatedQuestions')} aria-expanded={questionsId === chunk.id} onClick={() => openQuestions(chunk)}><HelpCircleIcon /></TButton> : null}{canEdit ? <><TButton type="button" onClick={() => { setParentContextId(null); closeQuestions(); setEditingId(chunk.id); setDraft(chunk.content || ''); }}>{t('common.edit')}</TButton><TButton type="button" loading={historyLoading === chunk.id} onClick={() => showHistory(chunk)}>{t('knowledgeBase.chunkHistory')}</TButton><TButton type="button" loading={savingId === chunk.id} onClick={() => void toggleEnabled(chunk)}>{chunk.is_enabled ? t('knowledgeBase.disableChunk') : t('knowledgeBase.enableChunk')}</TButton>{chunk.index_status === 'failed' ? <TButton type="button" title={t('knowledgeBase.retryIndex')} aria-label={t('knowledgeBase.retryIndex')} loading={retryingId === chunk.id} onClick={() => void retryIndex(chunk)}>{t('knowledgeBase.retryIndex')}</TButton> : null}</> : null}</span> : null}</div>
+      {editingId === chunk.id ? <><textarea aria-label={t('knowledgeBase.segment')} value={draft} onChange={(event) => setDraft(event.target.value)} className="wk-kdd-38" /><div className="wk-kdd-39"><TButton type="button" loading={savingId === chunk.id} onClick={() => void save(chunk)}>{t('common.save')}</TButton><TButton type="button" onClick={() => { setEditingId(null); setDraft(''); }}>{t('common.cancel')}</TButton></div></> : <DocumentMarkdownBody markdown={chunk.content || '—'} labels={MERMAID_VIEWER_COPY[locale]} className="wk-document-chunk-content markdown-content wk-kdd-40" />}
+      {history?.id === chunk.id ? <div className="wk-kdd-41"><strong className="wk-kdd-36">{t('knowledgeBase.chunkHistory')}</strong>{history?.rows.length === 0 ? <Status>{t('common.noData')}</Status> : <ol className="wk-kdd-42">{history?.rows.map((row) => <li key={row.revision} className="wk-kdd-43"><span>Revision {row.revision}: {row.content || '—'}</span><TButton type="button" className="wk-kdd-44" onClick={() => void (async () => { const updated = await client.knowledgeBases.documents.revertChunk(document.id, chunk.id, row.revision, chunk.content_revision ?? 0); setState((current) => ({ ...current, chunks: current.chunks.map((item) => item.id === chunk.id ? updated : item) })); showHistory(updated); })()}>{t('knowledgeBase.chunkReverted')}</TButton></li>)}</ol>}</div> : null}
       {parentContextId === chunk.id && parentChunkId(chunk) ? <div className="wk-chunk-parent-context wk-kdd-41" aria-label={t('knowledgeBase.viewParentContext')}>
         <div className="wk-kdd-45"><span className="wk-kdd-46"><GitBranchIcon /></span>{t('knowledgeBase.viewParentContext')}</div>
         {parentContextLoading === chunk.id
@@ -644,31 +674,31 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
         <div className="wk-kdd-48">
           <div className="wk-kdd-49"><span className="wk-kdd-46"><HelpCircleIcon /></span>{t('knowledgeBase.generatedQuestions')}<span className="wk-kdd-50">{rows.length}</span>{hasStaleGeneratedQuestions(chunk) ? <span className="wk-kdd-50">{t('knowledgeBase.staleGeneratedQuestions')}</span> : null}</div>
           {canEdit ? <span className="wk-kdd-37">
-            <Button type="button" variant="text" title={t('knowledgeBase.addGeneratedQuestion')} aria-label={t('knowledgeBase.addGeneratedQuestion')} onClick={() => { setQuestionComposerId(chunk.id); setQuestionDraft(''); setEditingQuestion(null); setConfirmingDelete(null); }}>＋</Button>
-            <Button type="button" variant="text" title={t('knowledgeBase.regenerateQuestions')} aria-label={t('knowledgeBase.regenerateQuestions')} loading={regeneratingQuestions === chunk.id} onClick={() => void regenerateQuestions(chunk)}>↻</Button>
+            <TButton type="button" variant="text" title={t('knowledgeBase.addGeneratedQuestion')} aria-label={t('knowledgeBase.addGeneratedQuestion')} onClick={() => { setQuestionComposerId(chunk.id); setQuestionDraft(''); setEditingQuestion(null); setConfirmingDelete(null); }}>＋</TButton>
+            <TButton type="button" variant="text" title={t('knowledgeBase.regenerateQuestions')} aria-label={t('knowledgeBase.regenerateQuestions')} loading={regeneratingQuestions === chunk.id} onClick={() => void regenerateQuestions(chunk)}>↻</TButton>
           </span> : null}
         </div>
         {canEdit && questionComposerId === chunk.id ? <div className="question-composer wk-kdd-51">
           <input value={questionDraft} placeholder={t('knowledgeBase.addGeneratedQuestion')} aria-label={t('knowledgeBase.addGeneratedQuestion')} className="wk-kdd-52" onChange={(event) => setQuestionDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void addQuestion(chunk); }} />
-          <Button type="button" variant="text" title={t('common.cancel')} aria-label={t('common.cancel')} disabled={savingQuestionComposer === chunk.id} onClick={() => { setQuestionComposerId(null); setQuestionDraft(''); }}>×</Button>
-          <Button type="button" loading={savingQuestionComposer === chunk.id} disabled={!questionDraft.trim()} onClick={() => void addQuestion(chunk)}>{t('common.add')}</Button>
+          <TButton type="button" variant="text" title={t('common.cancel')} aria-label={t('common.cancel')} disabled={savingQuestionComposer === chunk.id} onClick={() => { setQuestionComposerId(null); setQuestionDraft(''); }}>×</TButton>
+          <TButton type="button" loading={savingQuestionComposer === chunk.id} disabled={!questionDraft.trim()} onClick={() => void addQuestion(chunk)}>{t('common.add')}</TButton>
         </div> : null}
         {rows.length ? <ul className="questions-list wk-kdd-16">
           {rows.map((question) => <li key={question.id} className="question-item wk-kdd-53">
             <span className="wk-kdd-54"><HelpCircleIcon /></span>
             {editingQuestion?.chunkId === chunk.id && editingQuestion.questionId === question.id ? <span className="wk-kdd-55">
               <input value={questionEditDraft} aria-label={t('common.edit')} className="wk-kdd-52" onChange={(event) => setQuestionEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void saveQuestionEdit(chunk, question); }} />
-              <Button type="button" variant="text" onClick={() => { setEditingQuestion(null); setQuestionEditDraft(''); }}>{t('common.cancel')}</Button>
-              <Button type="button" loading={savingQuestionKey === `${chunk.id}:${question.id}`} onClick={() => void saveQuestionEdit(chunk, question)}>{t('common.save')}</Button>
+              <TButton type="button" variant="text" onClick={() => { setEditingQuestion(null); setQuestionEditDraft(''); }}>{t('common.cancel')}</TButton>
+              <TButton type="button" loading={savingQuestionKey === `${chunk.id}:${question.id}`} onClick={() => void saveQuestionEdit(chunk, question)}>{t('common.save')}</TButton>
             </span> : confirmingDelete?.chunkId === chunk.id && confirmingDelete.questionId === question.id ? <span className="wk-kdd-56">
               <span className="wk-kdd-57">{t('knowledgeBase.confirmDeleteQuestion')}</span>
-              <Button type="button" variant="text" onClick={() => setConfirmingDelete(null)}>{t('common.cancel')}</Button>
-              <Button type="button" loading={deletingQuestion?.chunkId === chunk.id && deletingQuestion.questionId === question.id} onClick={() => void deleteQuestion(chunk, question)}>{t('common.confirmDelete')}</Button>
+              <TButton type="button" variant="text" onClick={() => setConfirmingDelete(null)}>{t('common.cancel')}</TButton>
+              <TButton type="button" loading={deletingQuestion?.chunkId === chunk.id && deletingQuestion.questionId === question.id} onClick={() => void deleteQuestion(chunk, question)}>{t('common.confirmDelete')}</TButton>
             </span> : <>
               <span className="question-text wk-kdd-58">{question.question}</span>
               {canEdit && !question.id.startsWith('legacy-') ? <span className="question-actions wk-kdd-59">
-                <Button type="button" variant="text" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => { setEditingQuestion({ chunkId: chunk.id, questionId: question.id }); setQuestionEditDraft(question.question); setConfirmingDelete(null); }}>{t('common.edit')}</Button>
-                <Button type="button" variant="text" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => { setConfirmingDelete({ chunkId: chunk.id, questionId: question.id }); setEditingQuestion(null); }}>{t('common.delete')}</Button>
+                <TButton type="button" variant="text" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => { setEditingQuestion({ chunkId: chunk.id, questionId: question.id }); setQuestionEditDraft(question.question); setConfirmingDelete(null); }}>{t('common.edit')}</TButton>
+                <TButton type="button" variant="text" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => { setConfirmingDelete({ chunkId: chunk.id, questionId: question.id }); setEditingQuestion(null); }}>{t('common.delete')}</TButton>
               </span> : null}
             </>}
           </li>)}
@@ -679,7 +709,7 @@ function DocumentChunks({ client, document, canEdit, view, parentContextCache }:
         (viewMode merged || chunks), so 全文 can advance past page one, and
         keeps it mounted across a page transition with the requested page
         shown (v-model chunkPage) while in-flight clicks are ignored. */}
-    {(state.status === 'success' || pageTransition) && view !== 'preview' && state.total > 25 ? <nav className="wk-kdd-61" aria-label={t('knowledgeBase.viewChunks')}><Button type="button" disabled={state.page <= 1 || pageTransition} onClick={() => load(state.page - 1)}>{t('common.back')}</Button><span>{state.pendingPage ?? state.page}</span><Button type="button" disabled={state.page * 25 >= state.total || pageTransition} onClick={() => load(state.page + 1)}>{t('common.next')}</Button></nav> : null}
+    {(state.status === 'success' || pageTransition) && view !== 'preview' && state.total > 25 ? <nav className="wk-kdd-61" aria-label={t('knowledgeBase.viewChunks')}><TButton type="button" disabled={state.page <= 1 || pageTransition} onClick={() => load(state.page - 1)}>{t('common.back')}</TButton><span>{state.pendingPage ?? state.page}</span><TButton type="button" disabled={state.page * 25 >= state.total || pageTransition} onClick={() => load(state.page + 1)}>{t('common.next')}</TButton></nav> : null}
   </section>;
 }
 
@@ -691,7 +721,7 @@ type PreviewState =
   | { status: 'spreadsheet'; spreadsheet: SpreadsheetPreviewModel }
   | { status: 'error'; message: string };
 
-function DocumentDetail({ document, client, canEdit, contentView, onContentViewChange, parentContextCache }: { document: KnowledgeDocument; client: WeKnoraClient; canEdit: boolean; contentView: ContentView; onContentViewChange: (view: ContentView) => void; parentContextCache: Map<string, string> }) {
+function DocumentDetail({ document, client, canEdit, contentView, onContentViewChange, parentContextCache, chunksTotal, chunkSeed, onChunkSeedConsumed }: { document: KnowledgeDocument; client: WeKnoraClient; canEdit: boolean; contentView: ContentView; onContentViewChange: (view: ContentView) => void; parentContextCache: Map<string, string>; chunksTotal: number; chunkSeed: { chunks: KnowledgeChunk[]; total: number } | null; onChunkSeedConsumed: () => void }) {
   const model = buildDocumentPreview(document, client.knowledgeBases.documents.previewPath(document.id));
   const locale = useAppLocale();
   const t = createTranslator(locale);
@@ -818,7 +848,7 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
           <IconActionButton label={t('knowledgeBase.regenerateSummary')} onClick={() => {}}><RefreshIcon size={15} /></IconActionButton>
         </span> : null}
       </div>
-      {summaryEditing ? <><textarea value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} className="wk-kdd-77" /><div className="wk-kdd-39"><Button type="button" loading={detailsSaving} onClick={() => void saveDetails({ description: summaryDraft })}>{t('common.save')}</Button><Button type="button" onClick={() => setSummaryEditing(false)}>{t('common.cancel')}</Button></div></>
+      {summaryEditing ? <><textarea value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} className="wk-kdd-77" /><div className="wk-kdd-39"><TButton type="button" loading={detailsSaving} onClick={() => void saveDetails({ description: summaryDraft })}>{t('common.save')}</TButton><TButton type="button" onClick={() => setSummaryEditing(false)}>{t('common.cancel')}</TButton></div></>
       : summaryDraft ? <p className="wk-kdd-78">{summaryDraft}</p>
       : <div className="summary_loading wk-kdd-79">
           <FileUnknownIcon size={18} className="wk-kdd-80" />
@@ -831,6 +861,9 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
       <div className="doc-content-section-head wk-kdd-83">
         <div className="doc-content-section-head-left wk-kdd-84">
           <h4 className={sectionTitleClass}>{contentLabel}</h4>
+          {/* Vue doc-content.vue:1815-1818 — v-if="details.total > 0" 的
+              chunk-count 徽章（.chunk-count：secondary 文本 12px、灰底胶囊）。 */}
+          {chunksTotal > 0 ? <span className="chunk-count wk-kdd-206">{t('knowledgeBase.chunkCount', { count: chunksTotal })}</span> : null}
         </div>
         <div className="view-mode-buttons wk-kdd-85">
           {canPreviewDocument(document) ? <button type="button" className={'view-mode-btn wk-kdd-99 ' + (contentView === 'preview' ? 'wk-kdd-100' : 'wk-kdd-101')} onClick={() => onContentViewChange('preview')}>{tabs.preview}</button> : null}
@@ -845,7 +878,7 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
           files (audio-player-section), since canPreview() keeps them off the
           preview tab; the blob is already fetched by the preview effect. */}
       {inlineKind === 'audio' && previewState.status === 'blob' ? <div className="wk-document-audio-player wk-kdd-86"><DocumentPreviewContent kind="audio" url={previewState.url} fileName={model.fileName} /></div> : null}
-      {contentView === 'preview' ? (previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? (inlineKind === 'markdown'
+      {contentView === 'preview' ? (previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><TButton type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</TButton></> : previewState.status === 'text' && inlineKind ? (inlineKind === 'markdown'
         // Vue document-preview.vue:484 + :497-505 — the preview mounts inside
         // .document-preview (min-height 200px) with an inline toolbar row
         // (fullscreen toggle, right-aligned) above the .preview-markdown card
@@ -860,7 +893,7 @@ function DocumentDetail({ document, client, canEdit, contentView, onContentViewC
           </div>
         : <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} mermaidLabels={MERMAID_VIEWER_COPY[locale]} />) : previewState.status === 'spreadsheet' && inlineKind ? <DocumentPreviewContent kind={inlineKind} spreadsheet={previewState.spreadsheet} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null) : null}
     </section>
-    <DocumentChunks client={client} document={document} canEdit={canEdit} view={contentView} parentContextCache={parentContextCache} />
+    <DocumentChunks client={client} document={document} canEdit={canEdit} view={contentView} parentContextCache={parentContextCache} seed={chunkSeed} onSeedConsumed={onChunkSeedConsumed} />
   </>;
 }
 
@@ -1035,8 +1068,8 @@ function MetadataEditor({ rows, saving, onChange, onCancel, onSave }: {
         <option value="text">{t('knowledgeBase.metadataTypeText')}</option><option value="number">{t('knowledgeBase.metadataTypeNumber')}</option><option value="boolean">{t('knowledgeBase.metadataTypeBoolean')}</option><option value="null">{t('knowledgeBase.metadataTypeNull')}</option>
       </select>
       <input aria-label={t('knowledgeBase.metadataValuePlaceholder')} placeholder={t('knowledgeBase.metadataValuePlaceholder')} value={row.value} disabled={row.type === 'null'} onChange={(event) => updateRow(row.id, { value: event.target.value })} className="wk-kdd-93" />
-      <Button type="button" variant="text" onClick={() => onChange(rows.filter((item) => item.id !== row.id))}>{t('common.delete')}</Button>
+      <TButton type="button" variant="text" onClick={() => onChange(rows.filter((item) => item.id !== row.id))}>{t('common.delete')}</TButton>
     </div>)}</div>
-    <div className="wk-kdd-95"><Button type="button" disabled={rows.length >= 20} onClick={() => onChange([...rows, metadataRow()])}>{t('knowledgeBase.addMetadataField')}</Button><Button type="button" loading={saving} onClick={save}>{t('common.save')}</Button><Button type="button" onClick={onCancel}>{t('common.cancel')}</Button></div>
+    <div className="wk-kdd-95"><TButton type="button" disabled={rows.length >= 20} onClick={() => onChange([...rows, metadataRow()])}>{t('knowledgeBase.addMetadataField')}</TButton><TButton type="button" loading={saving} onClick={save}>{t('common.save')}</TButton><TButton type="button" onClick={onCancel}>{t('common.cancel')}</TButton></div>
   </div>;
 }

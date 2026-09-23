@@ -17,7 +17,7 @@ import {
   Tabs,
   Tooltip as TTooltip,
 } from "tdesign-react";
-// S6 抽屉收编：@weknora/ui 表单栈离开（T15 硬前置）。Status 为无 TDesign 对应
+// S6 抽屉收编：packages/ui 旧栈 表单栈离开（T15 硬前置）。Status 为无 TDesign 对应
 // 的语义 p 封装，走 shared/wk-legacy 原生标签 + .wk-status 类平移。
 import { WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { roleAtLeast } from "@weknora/views/settings/registry";

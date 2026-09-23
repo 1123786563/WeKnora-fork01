@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KnowledgeDocument, KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from '@weknora/api-client';
-import { Button, Card, Status } from '@weknora/ui';
+// S6 换装（T15 前置）：packages/ui 旧栈 离栈，Button 换 tdesign（playbook §1）；
+// Card/Status 无 TDesign 对应，走 shared/wk-legacy（.wk-card/.wk-status 族）。
+import { Button as TButton } from 'tdesign-react';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { buildProcessingTimeline, canDocumentAction, getDocumentStatus, normalizeDocumentPage, summarizeUploadProgress, toggleDocumentSelection, validateUpload, type DocumentPage, type UploadProgressTask } from './model.ts';
 import './documents-u.css';
 
@@ -131,7 +134,7 @@ export function DocumentsPage({ knowledgeBaseId, api, canView = true, canEdit = 
   return <main className="wk-page" aria-label="Documents">
     <header className="wk-header">
       <div><p className="wk-eyebrow">Knowledge base</p><h1>Documents</h1><p className="wk-muted">Upload, inspect, tag, preview, and process documents.</p></div>
-      <Button type="button" onClick={() => void load} disabled={loading}>Reload</Button>
+      <TButton type="button" onClick={() => void load} disabled={loading}>Reload</TButton>
     </header>
     <Card>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -143,7 +146,7 @@ export function DocumentsPage({ knowledgeBaseId, api, canView = true, canEdit = 
       {canEdit ? <section aria-label="Upload documents" style={{ border: '1px dashed #b8c5d6', padding: 12, marginBottom: 16 }}>
         <input ref={fileInput} type="file" multiple onChange={(event) => setFiles([...event.target.files ?? []])} />
         <input aria-label="Upload tags" value={tagInput} onChange={(event) => setTagInput(event.target.value)} placeholder="Tags, comma separated" />
-        <Button type="button" onClick={() => void upload()} disabled={uploadState === 'submitting'}>{uploadState === 'submitting' ? 'Uploading…' : 'Upload'}</Button>
+        <TButton type="button" onClick={() => void upload()} disabled={uploadState === 'submitting'}>{uploadState === 'submitting' ? 'Uploading…' : 'Upload'}</TButton>
         {uploadError ? <Status tone="error">Upload failed: {uploadError}</Status> : null}
         {uploadTasks.length > 0 ? <div aria-label="Upload progress" style={{ marginTop: 12 }}>
           <div>{uploadSummary.completed}/{uploadSummary.total} uploaded · {uploadSummary.progress}%</div>
@@ -154,22 +157,22 @@ export function DocumentsPage({ knowledgeBaseId, api, canView = true, canEdit = 
       </section> : <Status>Read-only access: upload and document mutations are unavailable.</Status>}
       {selected.size > 0 ? <div role="region" aria-label="Batch document actions" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
         <span>{selected.size} selected</span>
-        <Button type="button" disabled={actionState === 'submitting'} onClick={() => mutateSelected(() => api.reparse ? api.reparse(knowledgeBaseId, selectedIds) : Promise.reject(new Error('Reparse unavailable')), 'Rebuild selected documents?')}>Rebuild</Button>
-        <Button type="button" disabled={actionState === 'submitting'} onClick={() => mutateSelected(() => api.delete ? api.delete(knowledgeBaseId, selectedIds) : Promise.reject(new Error('Delete unavailable')), 'Delete selected documents?')}>Delete</Button>
-        <Button type="button" onClick={() => setSelected(new Set())}>Clear</Button>
+        <TButton type="button" disabled={actionState === 'submitting'} onClick={() => mutateSelected(() => api.reparse ? api.reparse(knowledgeBaseId, selectedIds) : Promise.reject(new Error('Reparse unavailable')), 'Rebuild selected documents?')}>Rebuild</TButton>
+        <TButton type="button" disabled={actionState === 'submitting'} onClick={() => mutateSelected(() => api.delete ? api.delete(knowledgeBaseId, selectedIds) : Promise.reject(new Error('Delete unavailable')), 'Delete selected documents?')}>Delete</TButton>
+        <TButton type="button" onClick={() => setSelected(new Set())}>Clear</TButton>
       </div> : null}
       {loading ? <Status>Loading documents…</Status> : null}
-      {!loading && error ? <><Status tone="error">{error}</Status><Button type="button" onClick={() => void load}>Try again</Button></> : null}
+      {!loading && error ? <><Status tone="error">{error}</Status><TButton type="button" onClick={() => void load}>Try again</TButton></> : null}
       {!loading && !error && items.length === 0 ? <Status>No documents found.</Status> : null}
       {!loading && !error && items.length > 0 ? <>
         <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}><thead><tr><th><input type="checkbox" aria-label="Select all documents" checked={selected.size === items.length} onChange={(event) => setSelected(toggleDocumentSelection(selected, 'all', event.target.checked, ids))} /></th><th>Name</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead><tbody>{items.map((document) => {
           const status = getDocumentStatus({ ...document, id: document.id });
-          return <tr key={document.id}><td><input type="checkbox" aria-label={`Select ${titleOf(document)}`} checked={selected.has(document.id)} onChange={(event) => setSelected(toggleDocumentSelection(selected, document.id, event.target.checked))} /></td><td><button type="button" onClick={() => void openDocument(document)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer' }}>{titleOf(document)}</button><div className="wk-muted">{String(document.folder_path || document.file_type || '')}</div></td><td><Status tone={status.tone === 'danger' ? 'error' : status.tone === 'success' ? 'success' : 'neutral'}>{status.key}{status.busy ? '…' : ''}</Status></td><td>{String(document.updated_at || '—')}</td><td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><Button type="button" onClick={() => void openDocument(document)}>Details</Button>{canDocumentAction('download', { canView, canEdit }, document) && canDownload && api.download ? <Button type="button" onClick={() => void download(document.id)}>Download</Button> : null}{canDocumentAction('cancel', { canView, canEdit }) && status.busy && api.cancel ? <Button type="button" disabled={actionState === 'submitting'} onClick={() => void submit(() => api.cancel!(document.id), 'Could not cancel processing')}>Cancel</Button> : null}{canDocumentAction('reparse', { canView, canEdit }) && api.reparse ? <Button type="button" disabled={actionState === 'submitting'} onClick={() => mutateSelected(() => api.reparse!(knowledgeBaseId, [document.id]), 'Rebuild this document?')}>Rebuild</Button> : null}</td></tr>;
+          return <tr key={document.id}><td><input type="checkbox" aria-label={`Select ${titleOf(document)}`} checked={selected.has(document.id)} onChange={(event) => setSelected(toggleDocumentSelection(selected, document.id, event.target.checked))} /></td><td><button type="button" onClick={() => void openDocument(document)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer' }}>{titleOf(document)}</button><div className="wk-muted">{String(document.folder_path || document.file_type || '')}</div></td><td><Status tone={status.tone === 'danger' ? 'error' : status.tone === 'success' ? 'success' : 'neutral'}>{status.key}{status.busy ? '…' : ''}</Status></td><td>{String(document.updated_at || '—')}</td><td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><TButton type="button" onClick={() => void openDocument(document)}>Details</TButton>{canDocumentAction('download', { canView, canEdit }, document) && canDownload && api.download ? <TButton type="button" onClick={() => void download(document.id)}>Download</TButton> : null}{canDocumentAction('cancel', { canView, canEdit }) && status.busy && api.cancel ? <TButton type="button" disabled={actionState === 'submitting'} onClick={() => void submit(() => api.cancel!(document.id), 'Could not cancel processing')}>Cancel</TButton> : null}{canDocumentAction('reparse', { canView, canEdit }) && api.reparse ? <TButton type="button" disabled={actionState === 'submitting'} onClick={() => mutateSelected(() => api.reparse!(knowledgeBaseId, [document.id]), 'Rebuild this document?')}>Rebuild</TButton> : null}</td></tr>;
         })}</tbody></table></div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}><span>{page?.total ?? items.length} total</span><span><Button type="button" disabled={pageNumber <= 1} onClick={() => setPageNumber((value) => value - 1)}>Previous</Button> <Button type="button" disabled={pageNumber * pageSize >= (page?.total ?? 0)} onClick={() => setPageNumber((value) => value + 1)}>Next</Button></span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}><span>{page?.total ?? items.length} total</span><span><TButton type="button" disabled={pageNumber <= 1} onClick={() => setPageNumber((value) => value - 1)}>Previous</TButton> <TButton type="button" disabled={pageNumber * pageSize >= (page?.total ?? 0)} onClick={() => setPageNumber((value) => value + 1)}>Next</TButton></span></div>
       </> : null}
     </Card>
-    {active ? <div role="dialog" aria-label={`Document details: ${titleOf(active)}`} style={{ position: 'fixed', inset: 20, overflow: 'auto', background: 'white', border: '1px solid #b8c5d6', padding: 20, zIndex: 2 }}><Button type="button" onClick={() => setActive(null)}>Close</Button><h2>{titleOf(active)}</h2><p>Status: {getDocumentStatus({ ...active, id: active.id }).key}</p><pre style={{ whiteSpace: 'pre-wrap' }}>{detail ? JSON.stringify(detail, null, 2) : 'Loading details…'}</pre><div style={{ display: 'flex', gap: 8 }}><Button type="button" disabled={!api.preview} onClick={() => void openPreview()}>Preview</Button>{canEdit && api.updateTags ? <Button type="button" onClick={() => void submit(() => api.updateTags!({ [active.id]: tagInput.split(',').map((tag) => tag.trim()).filter(Boolean) }), 'Could not update tags')}>Save tags</Button> : null}</div>{preview ? <pre aria-label="Document preview" style={{ whiteSpace: 'pre-wrap', borderTop: '1px solid #dce3ed', marginTop: 12, paddingTop: 12 }}>{preview}</pre> : null}<h3>Processing timeline</h3><ol>{buildProcessingTimeline({ ...active, id: active.id }).map((step) => <li key={step.key}>{step.key}: {step.state}</li>)}</ol></div> : null}
+    {active ? <div role="dialog" aria-label={`Document details: ${titleOf(active)}`} style={{ position: 'fixed', inset: 20, overflow: 'auto', background: 'white', border: '1px solid #b8c5d6', padding: 20, zIndex: 2 }}><TButton type="button" onClick={() => setActive(null)}>Close</TButton><h2>{titleOf(active)}</h2><p>Status: {getDocumentStatus({ ...active, id: active.id }).key}</p><pre style={{ whiteSpace: 'pre-wrap' }}>{detail ? JSON.stringify(detail, null, 2) : 'Loading details…'}</pre><div style={{ display: 'flex', gap: 8 }}><TButton type="button" disabled={!api.preview} onClick={() => void openPreview()}>Preview</TButton>{canEdit && api.updateTags ? <TButton type="button" onClick={() => void submit(() => api.updateTags!({ [active.id]: tagInput.split(',').map((tag) => tag.trim()).filter(Boolean) }), 'Could not update tags')}>Save tags</TButton> : null}</div>{preview ? <pre aria-label="Document preview" style={{ whiteSpace: 'pre-wrap', borderTop: '1px solid #dce3ed', marginTop: 12, paddingTop: 12 }}>{preview}</pre> : null}<h3>Processing timeline</h3><ol>{buildProcessingTimeline({ ...active, id: active.id }).map((step) => <li key={step.key}>{step.key}: {step.state}</li>)}</ol></div> : null}
   </main>;
 }
 

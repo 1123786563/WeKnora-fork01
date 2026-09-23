@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-// S6 抽屉收编：集成向导抽屉离开 @weknora/ui（T15 硬前置），换 tdesign。
+// S6 抽屉收编：集成向导抽屉离开 packages/ui 旧栈（T15 硬前置），换 tdesign。
 import { Alert as TAlert, Button as TButton, Drawer as TDrawer, Input as TInput } from 'tdesign-react';
 import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { buildIntegrationPath, integrationLabels, integrationTabs, type IntegrationRoute } from './route.ts';

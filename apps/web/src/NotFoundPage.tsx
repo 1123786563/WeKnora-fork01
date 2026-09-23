@@ -1,4 +1,6 @@
-import { Status } from '@weknora/ui';
+// S6 换装（T15 前置）：packages/ui 旧栈 Status 无 TDesign 对应（playbook §1 附行），
+// 走 shared/wk-legacy 语义 p.wk-status 族，渲染不变。
+import { WkStatus as Status } from './shared/wk-legacy.tsx';
 import { useAppLocale } from './i18n.ts';
 
 const copy = {

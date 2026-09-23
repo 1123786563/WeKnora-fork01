@@ -3,8 +3,8 @@
 // token，旧 token 立即失效），展示只读链接 + 复制 + 撤销 + 关闭；share/
 // unshare 失败 toast 由宿主注入（ChatRoutePage showAgentToast 先例）。
 //
-// 刻意不依赖 @weknora/ui：PlatformShell 在每个 platform 页面与全部 node
-// 测试里直接 import 本模块，而 @weknora/ui 的 theme.css 会破坏 node 下的
+// 刻意不依赖 packages/ui 旧栈：PlatformShell 在每个 platform 页面与全部 node
+// 测试里直接 import 本模块，而 packages/ui 旧栈 的 theme.css 会破坏 node 下的
 // 模块加载（router.tsx 对 craft 的 lazy 处理同理）——这里全部用内联
 // Tailwind utilities（QueryHistorySnapshotDrawer 抽屉同风格）。
 import { useEffect, useRef, useState } from 'react';

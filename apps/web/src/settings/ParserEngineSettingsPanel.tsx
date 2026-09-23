@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-// S6 抽屉收编：配置抽屉离开 @weknora/ui 表单栈（T15 硬前置），组件换 tdesign。
+// S6 抽屉收编：配置抽屉离开 packages/ui 旧栈 表单栈（T15 硬前置），组件换 tdesign。
 import { Alert, Button as TButton, Checkbox as TCheckbox, Input as TInput, Loading, Select as TSelect, Tooltip } from 'tdesign-react';
 import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';

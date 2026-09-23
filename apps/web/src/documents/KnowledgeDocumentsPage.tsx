@@ -25,9 +25,12 @@ import {
   type TraceSummary,
 } from "./doc-row-menu.ts";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
-import { Button, Checkbox, Dialog, Input, Select, Sheet, Status, Textarea } from "@weknora/ui";
-/* TDesign 平移（playbook §1）：文档域可见结构全部走 tdesign-react；上方 @weknora/ui
- * 引用仅剩上传确认弹窗/移动目录条等 R490 留守段（文件内标注），待上传弹窗域迁移时一并清除。 */
+/* S6 换装（T15 前置）：R490 留守段（上传确认弹窗/URL/手工导入/追溯抽屉/各确认
+ * 弹层/移动目录条）的 packages/ui 旧栈 表单栈全部清栈——Button/Input/Textarea/
+ * Checkbox/Select 换 tdesign（playbook §1：onChange 改 (value)/(checked) 签名、
+ * maxLength→maxlength、原生 select 换 options 数组）；Dialog/Sheet 是扫描锚定
+ * 弹层（ix-kb-settings/上传弹窗 DOM），走 shared/wk-legacy 的 DOM 同构
+ * WkDialog/WkSheet（渲染树不变）；Status 同走 WkStatus（.wk-status 族）。 */
 import {
   Button as TdButton,
   Checkbox as TdCheckbox,
@@ -42,8 +45,13 @@ import {
   Tag as TdTag,
   Tooltip,
   Input as TdInput,
+  Textarea as TdTextarea,
 } from "tdesign-react";
+import { WkDialog as Dialog, WkSheet as Sheet, WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { Icon as TIcon } from "tdesign-icons-react";
+// u.css（utilities 平移层）前置到 td.css（Vue 平移层）之前（S7 合并评审
+// Important：级联顺序 u.css → td.css，同特异性时 Vue 平移规则胜出）。
+import "./documents-u.css";
 import "./documents.td.css";
 
 /** Vue @/assets/img/more.png 内联副本（kb-list 同款，卡片三点菜单触发器）。 */
@@ -202,7 +210,6 @@ import {
 import { toggleDocumentSelection, useMarqueeSelection } from "./selection.ts";
 import { KnowledgeSettingsPage } from "../knowledge-settings/KnowledgeSettingsPage.tsx";
 import { KnowledgeDocumentDetailPage } from "./KnowledgeDocumentDetailPage.tsx";
-import './documents-u.css';
 import {
   DocumentEmptyState,
   DocumentsBreadcrumb,
@@ -1363,18 +1370,18 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
               onClick={(event) => event.stopPropagation()}
             >
               <FolderIcon size={16} />
-              <Input
+              <TdInput
                 className="wk-folder-picker__input"
                 value={props.newFolderName}
                 placeholder={props.labels.newFolderPlaceholder}
                 aria-label={props.labels.newFolderPlaceholder}
-                onChange={(event) => props.onNewFolderNameChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
+                onChange={(value) => props.onNewFolderNameChange(String(value))}
+                onKeydown={(_, { e }) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
                     props.onCommitNewFolder();
-                  } else if (event.key === "Escape") {
-                    event.preventDefault();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
                     props.onCancelCreate();
                   }
                 }}
@@ -1805,7 +1812,7 @@ export function UploadMultiSelect({ values, options, onChange, ariaLabel }: {
 
 export function UploadClearableInput({ value, placeholder, ariaLabel, onChange }: { value: string; placeholder: string; ariaLabel: string; onChange: (value: string) => void }) {
   return <div className="wk-upload-clearable-input wk-kd-35">
-    <Input className="wk-kd-36" value={value} placeholder={placeholder} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)} />
+    <TdInput className="wk-kd-36" value={value} placeholder={placeholder} aria-label={ariaLabel} onChange={(value) => onChange(String(value))} />
     {value ? <button type="button" className="wk-kd-37" aria-label={`清除${ariaLabel}`} onClick={() => onChange("")}>×</button> : null}
   </div>;
 }
@@ -1950,7 +1957,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           <div className="wk-upload-parser-group wk-kd-43">
           {parserFileGroups.map((group) => (
             <div className="wk-upload-parser-row wk-kd-44" key={group.key}>
-              <div className="wk-upload-parser-info flex-[0_0_168px] max-[720px]:flex-[0_0_auto] wk-kd-45">
+              <div className="wk-upload-parser-info wk-kd-45">
                 <strong className="wk-kd-46">{group.label}</strong>
                 <span className="wk-upload-parser-extensions wk-kd-47">{group.extensions.map((extension) => <span className="wk-kd-48" key={extension}>.{extension}</span>)}</span>
               </div>
@@ -1972,7 +1979,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                 {options.length === 0 ? <div className="wk-upload-parser-warning wk-kd-50" role="note"><span>{t("settings.parser.noEngineDetected")}</span>{props.onConfigureParserSettings ? <button type="button" className="wk-kd-51" onClick={props.onConfigureParserSettings}>{t("settings.parserEngine")}</button> : null}</div> : null}
                 {group.extensions.includes("xlsx") && parserEngineFor(group.extensions) === "builtin" ? (
                   <label className="wk-upload-parser-xlsx-header wk-kd-52">
-                    <Checkbox checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(event) => updateParserXlsxHeader(group.extensions, event.target.checked)} />
+                    <TdCheckbox checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(checked) => updateParserXlsxHeader(group.extensions, checked === true)} />
                     {t("kbSettings.parser.xlsxFirstRowAsHeader")}
                   </label>
                 ) : null}
@@ -2052,11 +2059,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               {props.vllmModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.vllmLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")} value={state.vllmModelId} options={[{ value: "", label: t("knowledgeEditor.advanced.multimodal.vllmPlaceholder") }, ...props.vllmModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ vllmModelId: value })} />
               ) : (
-                <Input
+                <TdInput
                   className="wk-kd-58"
-                  required
                   value={state.vllmModelId}
-                  onChange={(event) => update({ vllmModelId: event.target.value })}
+                  onChange={(value) => update({ vllmModelId: String(value) })}
                   placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")}
                 />
               )}
@@ -2065,12 +2071,12 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.descriptionLanguageLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.descriptionLanguageAuto")} clearable value={state.descriptionLanguage} options={MULTIMODAL_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(value) => update({ descriptionLanguage: value })} />
             </UploadSettingRow>
             <UploadSettingRow label={t("knowledgeEditor.advanced.multimodal.customInstructionsLabel")} description={t("knowledgeEditor.advanced.multimodal.customInstructionsDescription")}>
-              <Textarea
+              <TdTextarea
                 rows={3}
-                maxLength={4000}
+                maxlength={4000}
                 placeholder={t("knowledgeEditor.advanced.multimodal.customInstructionsPlaceholder")}
                 value={state.customInstructions}
-                onChange={(event) => update({ customInstructions: event.target.value })}
+                onChange={(value) => update({ customInstructions: String(value) })}
               />
             </UploadSettingRow>
           </>
@@ -2091,11 +2097,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               {props.asrModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.asr.modelLabel")} placeholder={t("knowledgeEditor.asr.modelPlaceholder")} value={state.asrModelId} options={[{ value: "", label: t("knowledgeEditor.asr.modelPlaceholder") }, ...props.asrModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ asrModelId: value })} />
               ) : (
-                <Input
+                <TdInput
                   className="wk-kd-58"
-                  required
                   value={state.asrModelId}
-                  onChange={(event) => update({ asrModelId: event.target.value })}
+                  onChange={(value) => update({ asrModelId: String(value) })}
                   placeholder={t("knowledgeEditor.asr.modelPlaceholder")}
                 />
               )}
@@ -2138,7 +2143,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               <label htmlFor="wk-question-instructions" className="wk-kd-41">{t("knowledgeEditor.advanced.questionGeneration.instructionsLabel")}</label>
               <p className="wk-muted wk-kd-42">{t("knowledgeEditor.advanced.questionGeneration.instructionsDescription")}</p>
             </div>
-            <Textarea id="wk-question-instructions" className="wk-kd-63" rows={3} maxLength={4000} placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")} value={state.questionInstructions} onChange={(event) => update({ questionInstructions: event.target.value })} />
+            <TdTextarea id="wk-question-instructions" className="wk-kd-63" rows={3} maxlength={4000} placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")} value={state.questionInstructions} onChange={(value) => update({ questionInstructions: String(value) })} />
           </div>
         ) : null}
       </fieldset>
@@ -2215,17 +2220,16 @@ export function GraphTagsField({ tags, onChange, placeholder, ariaLabel }: {
           <button type="button" className="wk-kd-67" aria-label={`移除 ${tag}`} onClick={() => remove(tag)}>×</button>
         </span>
       ))}
-      <Input
+      <TdInput
         type="text"
         className="wk-kd-68"
-        role="combobox"
-        aria-autocomplete="list"
+        {...({ role: "combobox", "aria-autocomplete": "list" } as Record<string, string>)}
         value={draft}
         placeholder={tags.length === 0 ? placeholder : ""}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === ",") { event.preventDefault(); addDraft(); }
-          else if (event.key === "Backspace" && !draft && tags.length > 0) remove(tags[tags.length - 1]);
+        onChange={(value) => setDraft(String(value))}
+        onKeydown={(_, { e }) => {
+          if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addDraft(); }
+          else if (e.key === "Backspace" && !draft && tags.length > 0) remove(tags[tags.length - 1]);
         }}
       />
       {tags.length > 0 ? <button type="button" className="wk-graph-tags-clear wk-kd-67" aria-label="清除关系类型" onClick={() => onChange([])}>×</button> : null}
@@ -2261,22 +2265,20 @@ export function GraphRelationSelect({ value, options, placeholder, ariaLabel, cr
   const choose = (next: string) => { onChange(next); setFilter(""); setActiveIndex(0); setOpen(false); };
   return (
     <div ref={rootRef} className="wk-graph-relation-select wk-kd-69">
-      <Input
+      <TdInput
         type="text"
         className="wk-kd-58"
-        role="combobox"
+        {...({ role: "combobox", "aria-autocomplete": "list", "aria-expanded": String(open) } as Record<string, string>)}
         aria-label={ariaLabel}
-        aria-autocomplete="list"
-        aria-expanded={open}
         value={open ? filter : value}
         placeholder={open ? placeholder : (value || placeholder)}
         onFocus={() => { setOpen(true); setFilter(""); setActiveIndex(0); }}
-        onChange={(event) => { setFilter(event.target.value); setActiveIndex(0); setOpen(true); }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); setActiveIndex((index) => moveGraphRelationOption(index, "down", optionCount)); }
-          if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((index) => moveGraphRelationOption(index, "up", optionCount)); }
-          if (event.key === "Enter" && optionCount > 0) { event.preventDefault(); choose(activeIndex < filtered.length ? filtered[activeIndex] : filter.trim()); }
-          if (event.key === "Escape") { setOpen(false); event.currentTarget.blur(); }
+        onChange={(value) => { setFilter(String(value)); setActiveIndex(0); setOpen(true); }}
+        onKeydown={(_, { e }) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActiveIndex((index) => moveGraphRelationOption(index, "down", optionCount)); }
+          if (e.key === "ArrowUp") { e.preventDefault(); setActiveIndex((index) => moveGraphRelationOption(index, "up", optionCount)); }
+          if (e.key === "Enter" && optionCount > 0) { e.preventDefault(); choose(activeIndex < filtered.length ? filtered[activeIndex] : filter.trim()); }
+          if (e.key === "Escape") { setOpen(false); e.currentTarget.blur(); }
         }}
       />
       {clearable && value ? <button type="button" className="wk-graph-relation-clear wk-kd-70" aria-label={`清除${ariaLabel}`} onMouseDown={(event) => { event.preventDefault(); choose(""); }}>×</button> : null}
@@ -2325,13 +2327,15 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
   const emit = (next: UploadNodeExtractState) => props.onChange(next);
   const [tagFabring, setTagFabring] = useState(false);
   const [textFabring, setTextFabring] = useState(false);
-  const instructionsRef = useRef<HTMLTextAreaElement | null>(null);
-  const sampleTextRef = useRef<HTMLTextAreaElement | null>(null);
+  // S6 换装：tdesign Textarea ref 是命令式句柄（textareaElement 指内层原生 textarea）。
+  type TdTextareaRef = { currentElement: HTMLDivElement; textareaElement: HTMLTextAreaElement };
+  const instructionsRef = useRef<TdTextareaRef>(null);
+  const sampleTextRef = useRef<TdTextareaRef>(null);
 
   useEffect(() => {
     const fields = [
-      { node: instructionsRef.current, value: graphExtract.customInstructions, minRows: 3, maxRows: 8 },
-      { node: sampleTextRef.current, value: graphExtract.text, minRows: 6, maxRows: 12 },
+      { node: instructionsRef.current?.textareaElement ?? null, value: graphExtract.customInstructions, minRows: 3, maxRows: 8 },
+      { node: sampleTextRef.current?.textareaElement ?? null, value: graphExtract.text, minRows: 6, maxRows: 12 },
     ];
     fields.forEach(({ node, minRows, maxRows }) => {
       if (!node) return;
@@ -2422,11 +2426,11 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
       ) : null}
       <div className="settings-group">
         <div className="wk-graph-setting-row wk-kd-74">
-          <div className="setting-info flex-[0_0_40%] wk-kd-75">
+          <div className="setting-info wk-kd-75">
             <label id="wk-graph-enabled-label" className="wk-kd-76">{t("graphSettings.enableLabel")}</label>
             <p className="wk-muted wk-kd-77">{t("graphSettings.enableDescription")}</p>
           </div>
-          <div className="setting-control flex-[0_0_55%] wk-kd-78">
+          <div className="setting-control wk-kd-78">
             <GraphSwitch
               id="wk-graph-enabled"
               checked={graphExtract.enabled}
@@ -2443,15 +2447,15 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                 <label htmlFor="wk-graph-instructions" className="wk-kd-76">{t("graphSettings.customInstructionsLabel")}</label>
                 <p className="wk-muted wk-kd-77">{t("graphSettings.customInstructionsDescription")}</p>
               </div>
-              <div className="setting-control is-full flex-[0_0_55%] wk-kd-80">
-                <Textarea
+              <div className="setting-control is-full wk-kd-80">
+                <TdTextarea
                   ref={instructionsRef}
                   id="wk-graph-instructions"
                   rows={3}
-                  maxLength={4000}
+                  maxlength={4000}
                   placeholder={t("graphSettings.customInstructionsPlaceholder")}
                   value={graphExtract.customInstructions}
-                  onChange={(event) => patch({ customInstructions: event.target.value })}
+                  onChange={(value) => patch({ customInstructions: String(value) })}
                 />
               </div>
             </div>
@@ -2460,7 +2464,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                 <label htmlFor="wk-graph-tags" className="wk-kd-76">{t("graphSettings.tagsLabel")}</label>
                 <p className="wk-muted wk-kd-77">{t("graphSettings.tagsDescription")}</p>
               </div>
-              <div className="setting-control is-full flex-[0_0_55%] wk-kd-80">
+              <div className="setting-control is-full wk-kd-80">
                 <div className="wk-graph-tags-group wk-kd-81">
                   {props.canRunExtract ? (
                     <button
@@ -2489,17 +2493,18 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                   />
                 </div>
                 <div className="wk-graph-add-tag wk-kd-72">
-                  <Input
+                  <TdInput
                     className="wk-kd-58"
                     type="text"
                     placeholder={t("graphSettings.tagsPlaceholder")}
                     aria-label={t("graphSettings.tagsPlaceholder")}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      const value = event.currentTarget.value.trim();
+                    onKeydown={(_, { e }) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      const field = e.target as HTMLInputElement;
+                      const value = field.value.trim();
                       if (value && !graphExtract.tags.includes(value)) patch({ tags: [...graphExtract.tags, value] });
-                      event.currentTarget.value = "";
+                      field.value = "";
                     }}
                   />
                 </div>
@@ -2534,14 +2539,14 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                       {t("graphSettings.generateRandomText")}
                     </button>
                   ) : null}
-                  <Textarea
+                  <TdTextarea
                     ref={sampleTextRef}
                     id="wk-graph-text"
                     rows={6}
-                    maxLength={5000}
+                    maxlength={5000}
                     placeholder={t("graphSettings.sampleTextPlaceholder")}
                     value={graphExtract.text}
-                    onChange={(event) => patch({ text: event.target.value })}
+                    onChange={(value) => patch({ text: String(value) })}
                     style={{ width: "100%" }}
                   />
                   <span className="wk-graph-text-limit -mt-1 wk-kd-84" aria-live="polite">{graphExtract.text.length}/5000</span>
@@ -2557,19 +2562,19 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                   <label className="wk-kd-76">{t("graphSettings.entityListLabel")}</label>
                   <p className="wk-muted wk-kd-77">{t("graphSettings.entityListDescription")}</p>
                 </div>
-                <div className="setting-control is-full flex-[0_0_55%] wk-kd-80">
+                <div className="setting-control is-full wk-kd-80">
                   <div className="wk-graph-node-list wk-kd-85">
                     {graphExtract.nodes.map((node, nodeIndex) => (
                       <div key={nodeIndex} className="wk-graph-node-item wk-kd-86" data-graph-node={node.name || undefined}>
                         <div className="wk-graph-node-header wk-kd-87">
                           <span aria-hidden>👤</span>
-                          <Input
+                          <TdInput
                             type="text"
                             className="wk-graph-node-name wk-kd-88"
                             placeholder={t("graphSettings.nodeNamePlaceholder")}
                             aria-label={t("graphSettings.nodeNamePlaceholder")}
                             value={node.name}
-                            onChange={(event) => updateNode(nodeIndex, { ...node, name: event.target.value })}
+                            onChange={(value) => updateNode(nodeIndex, { ...node, name: String(value) })}
                           />
                           <button
                             type="button"
@@ -2582,16 +2587,16 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                         <div className="wk-graph-node-attributes wk-kd-89">
                           {node.attributes.map((attribute, attrIndex) => (
                             <div key={attrIndex} className="wk-graph-attribute-item wk-kd-90">
-                              <Input
+                              <TdInput
                                 type="text"
                                 className="wk-kd-88"
                                 placeholder={t("graphSettings.attributePlaceholder")}
                                 aria-label={t("graphSettings.attributePlaceholder")}
                                 value={attribute}
-                                onChange={(event) =>
+                                onChange={(text) =>
                                   updateNode(nodeIndex, {
                                     ...node,
-                                    attributes: node.attributes.map((value, index) => (index === attrIndex ? event.target.value : value)),
+                                    attributes: node.attributes.map((value, index) => (index === attrIndex ? String(text) : value)),
                                   })
                                 }
                               />
@@ -2625,11 +2630,11 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
             ) : null}
 
             <div className="wk-graph-setting-row wk-kd-74">
-              <div className="setting-info flex-[0_0_40%] wk-kd-75">
+              <div className="setting-info wk-kd-75">
                 <label className="wk-kd-76">{t("graphSettings.manageEntitiesLabel")}</label>
                 <p className="wk-muted wk-kd-77">{t("graphSettings.manageEntitiesDescription")}</p>
               </div>
-              <div className="setting-control flex-[0_0_55%] wk-kd-78">
+              <div className="setting-control wk-kd-78">
                 <button
                   type="button"
                   className="wk-graph-add-btn wk-kd-92"
@@ -2645,7 +2650,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                   <label className="wk-kd-76">{t("graphSettings.relationListLabel")}</label>
                   <p className="wk-muted wk-kd-77">{t("graphSettings.relationListDescription")}</p>
                 </div>
-                <div className="setting-control is-full flex-[0_0_55%] wk-kd-80">
+                <div className="setting-control is-full wk-kd-80">
                   <div className="wk-graph-relation-list wk-kd-93">
                     {graphExtract.relations.map((relation, index) => (
                       <div key={index} className="wk-graph-relation-item wk-kd-94">
@@ -2668,11 +2673,11 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
               </div>
             ) : null}
             <div className="wk-graph-setting-row wk-kd-74">
-              <div className="setting-info flex-[0_0_40%] wk-kd-75">
+              <div className="setting-info wk-kd-75">
                 <label className="wk-kd-76">{t("graphSettings.manageRelationsLabel")}</label>
                 <p className="wk-muted wk-kd-77">{t("graphSettings.manageRelationsDescription")}</p>
               </div>
-              <div className="setting-control flex-[0_0_55%] wk-kd-78">
+              <div className="setting-control wk-kd-78">
                 <button
                   type="button"
                   className="wk-graph-add-btn wk-kd-92"
@@ -2683,11 +2688,11 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
               </div>
             </div>
             <div className="wk-graph-setting-row wk-kd-74">
-              <div className="setting-info flex-[0_0_40%] wk-kd-75">
+              <div className="setting-info wk-kd-75">
                 <label className="wk-kd-76">{t("graphSettings.extractActionsLabel")}</label>
                 <p className="wk-muted wk-kd-77">{t("graphSettings.extractActionsDescription")}</p>
               </div>
-              <div className="setting-control flex-[0_0_55%] wk-kd-78">
+              <div className="setting-control wk-kd-78">
                 <div className="wk-graph-actions wk-kd-96">
                   {props.canRunExtract ? (
                     <button
@@ -4234,9 +4239,9 @@ export function KnowledgeDocumentsPage({
           {kbMetaError ? (
             <div className="wk-kb-meta-error" role="alert">
               <Status tone="error">{kbMetaError.kind === "forbidden" ? `${kbMetaError.message} (403)` : kbMetaError.message}</Status>
-              <Button type="button" variant="text" onClick={() => setKbMetaAttempt((attempt) => attempt + 1)}>
+              <TdButton type="button" variant="text" onClick={() => setKbMetaAttempt((attempt) => attempt + 1)}>
                 {t("common.retry")}
-              </Button>
+              </TdButton>
             </div>
           ) : null}
           <ParserHint
@@ -4629,30 +4634,26 @@ export function KnowledgeDocumentsPage({
               >
                 <label>
                   {t("knowledgeBase.documents.moveDestination")}{" "}
-                  <Select
+                  <TdSelect
                     value={moveTarget}
-                    onChange={(event) => setMoveTarget(event.target.value)} className="wk-kd-110"
-                  >
-                    <option value="">
-                      {t("knowledgeBase.documents.moveRoot")}
-                    </option>
-                    {folders
-                      .filter((folder) => folder.path)
-                      .map((folder) => (
-                        <option key={folder.path} value={folder.path}>
-                          {folder.name}
-                        </option>
-                      ))}
-                  </Select>
+                    onChange={(value) => setMoveTarget(String(value))}
+                    className="wk-kd-110"
+                    options={[
+                      { value: "", label: t("knowledgeBase.documents.moveRoot") },
+                      ...folders
+                        .filter((folder) => folder.path)
+                        .map((folder) => ({ value: folder.path, label: folder.name })),
+                    ]}
+                  />
                 </label>
-                <Button
+                <TdButton
                   type="button"
                   disabled={!selected.size}
                   onClick={() => void moveSelected()}
                 >
                   {t("knowledgeBase.documents.moveConfirm")}
-                </Button>
-                <Button
+                </TdButton>
+                <TdButton
                   type="button"
                   onClick={() => {
                     setMoving(false);
@@ -4660,7 +4661,7 @@ export function KnowledgeDocumentsPage({
                   }}
                 >
                   {t("knowledgeBase.documents.moveCancel")}
-                </Button>
+                </TdButton>
               </div>
             ) : null}
             {mutationError ? (
@@ -4673,12 +4674,12 @@ export function KnowledgeDocumentsPage({
             {state.status === "error" ? (
               <>
                 <Status tone="error">{state.message}</Status>
-                <Button
+                <TdButton
                   type="button"
                   onClick={() => setReloadToken((value) => value + 1)}
                 >
                   {t("knowledgeBase.documents.tryAgain")}
-                </Button>
+                </TdButton>
               </>
             ) : null}
             <div
@@ -4788,26 +4789,26 @@ export function KnowledgeDocumentsPage({
                   className="wk-pagination"
                   aria-label={t("knowledgeBase.documents.title")}
                 >
-                  <Button
+                  <TdButton
                     type="button"
                     disabled={page <= 1}
                     onClick={() => setPage((value) => value - 1)}
                   >
                     {t("knowledgeBase.documents.previous")}
-                  </Button>
+                  </TdButton>
                   <span>
                     {t("knowledgeBase.documents.page", {
                       page,
                       total: pageTotal,
                     })}
                   </span>
-                  <Button
+                  <TdButton
                     type="button"
                     disabled={page * pageSize >= pageTotal}
                     onClick={() => setPage((value) => value + 1)}
                   >
                     {t("knowledgeBase.documents.next")}
-                  </Button>
+                  </TdButton>
                 </nav>
               ) : null}
             </div>
@@ -4989,21 +4990,21 @@ export function KnowledgeDocumentsPage({
           </div>
           {uploadError ? <Status tone="error">{uploadError}</Status> : null}
           <div className="wk-upload-confirm-footer wk-list-actions wk-kd-116">
-            <Button
+            <TdButton
               type="button"
               disabled={!canCloseUploadConfirmDialog(uploading)}
               onClick={closeUploadConfirmDialog}
             >
               {ct("uploadConfirm.cancel")}
-            </Button>
-            <Button
+            </TdButton>
+            <TdButton
               type="button"
               loading={uploading}
               disabled={!canConfirm && !uploading}
               onClick={() => void confirmUpload()}
             >
               {confirmButtonText}
-            </Button>
+            </TdButton>
           </div>
       </Dialog>
       </>
@@ -5019,15 +5020,15 @@ export function KnowledgeDocumentsPage({
           <div className="wk-upload-url-dialog wk-kd-117">
             <label>
               {t("knowledgeBase.urlLabel")} {" "}
-              <Input
-                autoFocus
+              <TdInput
+                autofocus
                 className="wk-kd-58"
                 value={sourceUrlValue}
                 placeholder={t("knowledgeBase.urlPlaceholder")}
-                onChange={(event) => setSourceUrlValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
+                onChange={(value) => setSourceUrlValue(String(value))}
+                onKeydown={(_, { e }) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
                     if (appendStagedUrl(sourceUrlValue, "dialog")) {
                       setSourceUrlDialogOpen(false);
                       setSourceUrlValue("");
@@ -5038,7 +5039,7 @@ export function KnowledgeDocumentsPage({
             </label>
             <p className="wk-muted wk-kd-16" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
             <div className="wk-list-actions wk-kd-109">
-              <Button
+              <TdButton
                 type="button"
                 onClick={() => {
                   if (appendStagedUrl(sourceUrlValue, "dialog")) {
@@ -5048,10 +5049,10 @@ export function KnowledgeDocumentsPage({
                 }}
               >
                 {ct("common.confirm")}
-              </Button>
-              <Button type="button" onClick={() => setSourceUrlDialogOpen(false)}>
+              </TdButton>
+              <TdButton type="button" onClick={() => setSourceUrlDialogOpen(false)}>
                 {ct("uploadConfirm.cancel")}
-              </Button>
+              </TdButton>
             </div>
           </div>
         </Dialog>
@@ -5065,29 +5066,29 @@ export function KnowledgeDocumentsPage({
           <div className="wk-upload-url-dialog wk-kd-117">
             <label>
               {t("knowledgeBase.documents.manualTitle")}{" "}
-              <Input
-                autoFocus
+              <TdInput
+                autofocus
                 className="wk-kd-58"
                 value={manualTitle}
-                onChange={(event) => setManualTitle(event.target.value)}
+                onChange={(value) => setManualTitle(String(value))}
               />
             </label>
             <label>
               {t("knowledgeBase.documents.manualContent")}{" "}
-              <Textarea
+              <TdTextarea
                 value={manualContent}
-                onChange={(event) => setManualContent(event.target.value)}
+                onChange={(value) => setManualContent(String(value))}
                 rows={6}
               />
             </label>
             {uploadError ? <Status tone="error">{uploadError}</Status> : null}
             <div className="wk-list-actions wk-kd-109">
-              <Button type="button" onClick={stageManualCreate}>
+              <TdButton type="button" onClick={stageManualCreate}>
                 {ct("common.confirm")}
-              </Button>
-              <Button type="button" onClick={() => setManualDialogOpen(false)}>
+              </TdButton>
+              <TdButton type="button" onClick={() => setManualDialogOpen(false)}>
                 {ct("uploadConfirm.cancel")}
-              </Button>
+              </TdButton>
             </div>
           </div>
         </Dialog>
@@ -5102,31 +5103,31 @@ export function KnowledgeDocumentsPage({
             {manualEditLoading ? <Status>{t("common.loading")}</Status> : null}
             <label>
               {t("knowledgeBase.documents.manualTitle")} {" "}
-              <Input
-                autoFocus
+              <TdInput
+                autofocus
                 className="wk-kd-58"
                 value={manualTitle}
                 disabled={manualEditLoading || manualEditSaving}
-                onChange={(event) => setManualTitle(event.target.value)}
+                onChange={(value) => setManualTitle(String(value))}
               />
             </label>
             <label>
               {t("knowledgeBase.documents.manualContent")} {" "}
-              <Textarea
+              <TdTextarea
                 value={manualContent}
                 disabled={manualEditLoading || manualEditSaving}
-                onChange={(event) => setManualContent(event.target.value)}
+                onChange={(value) => setManualContent(String(value))}
                 rows={8}
               />
             </label>
             {uploadError ? <Status tone="error">{uploadError}</Status> : null}
             <div className="wk-list-actions wk-kd-109">
-              <Button type="button" disabled={manualEditLoading || manualEditSaving} onClick={() => void saveManualEdit()}>
+              <TdButton type="button" disabled={manualEditLoading || manualEditSaving} onClick={() => void saveManualEdit()}>
                 {manualEditSaving ? t("common.loading") : t("knowledgeEditor.buttons.saveAndClose")}
-              </Button>
-              <Button type="button" disabled={manualEditSaving} onClick={() => setManualEditDocument(null)}>
+              </TdButton>
+              <TdButton type="button" disabled={manualEditSaving} onClick={() => setManualEditDocument(null)}>
                 {ct("uploadConfirm.cancel")}
-              </Button>
+              </TdButton>
             </div>
           </div>
         </Dialog>
@@ -5150,9 +5151,9 @@ export function KnowledgeDocumentsPage({
             {traceState.status === "success" ? (
               <div className="wk-kd-119">
                 <div className="wk-kd-120">
-                  <Button type="button" onClick={() => setTraceDocument((current) => current ? { ...current } : current)}>{t("knowledgeEditor.activity.retry")}</Button>
-                  {traceState.parseStatus === "failed" ? <Button type="button" onClick={() => { const document = traceDocument; setTraceDocument(null); if (document) reparseOne(document); }}>{t("knowledgeBase.rebuildDocument")}</Button> : null}
-                  {isKnowledgeProcessingActive(traceState.parseStatus) ? <Button type="button" onClick={() => setConfirmingTraceCancel(true)}>{t("knowledgeBase.documents.cancelParse")}</Button> : null}
+                  <TdButton type="button" onClick={() => setTraceDocument((current) => current ? { ...current } : current)}>{t("knowledgeEditor.activity.retry")}</TdButton>
+                  {traceState.parseStatus === "failed" ? <TdButton type="button" onClick={() => { const document = traceDocument; setTraceDocument(null); if (document) reparseOne(document); }}>{t("knowledgeBase.rebuildDocument")}</TdButton> : null}
+                  {isKnowledgeProcessingActive(traceState.parseStatus) ? <TdButton type="button" onClick={() => setConfirmingTraceCancel(true)}>{t("knowledgeBase.documents.cancelParse")}</TdButton> : null}
                 </div>
                 {traceState.parseStatus === "failed" ? <Status tone="error">{traceState.lastError?.error_message || t("knowledgeBase.timeline.failed")}</Status> : null}
                 <ol className="wk-kd-121" aria-label={t("knowledgeBase.timeline.title")}>
@@ -5167,7 +5168,7 @@ export function KnowledgeDocumentsPage({
                 </ol>
                 {traceState.nodes.length > 0 ? (
                   <div className="wk-kd-123">
-                    <ol className="divide-line-soft wk-kd-124" aria-label={t("knowledgeBase.timeline.title")}>
+                    <ol className="wk-kd-124" aria-label={t("knowledgeBase.timeline.title")}>
                       {traceState.nodes.filter((row) => row.depth === 0 || expandedTraceNodes.has(row.key.slice(0, row.key.lastIndexOf(".")))).map((row) => {
                         const rawStatus = typeof row.node.status === "string" ? row.node.status.toLowerCase() : "pending";
                         const state = rawStatus.includes("fail") || rawStatus.includes("error") ? "failed" : rawStatus.includes("run") || rawStatus.includes("progress") || rawStatus.includes("active") ? "running" : rawStatus.includes("complete") || rawStatus.includes("done") || rawStatus.includes("success") || rawStatus.includes("finish") || rawStatus === "ok" || row.node.end_time ? "done" : "pending";
@@ -5183,7 +5184,7 @@ export function KnowledgeDocumentsPage({
                   </div>
                 ) : null}
                 {selectedTraceNode ? <section className="wk-kd-130" aria-label={String(selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key)}>
-                  <div className="wk-kd-131"><strong className="wk-kd-132">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><Button type="button" onClick={() => setSelectedTraceNode(null)}>{t("knowledgeBase.documents.cancel")}</Button></div>
+                  <div className="wk-kd-131"><strong className="wk-kd-132">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><TdButton type="button" onClick={() => setSelectedTraceNode(null)}>{t("knowledgeBase.documents.cancel")}</TdButton></div>
                   <pre className="wk-kd-133">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre>
                 </section> : null}
                 {traceState.parseStatus === "failed" && traceState.message ? <Status tone="error">{traceState.message}</Status> : null}
@@ -5196,8 +5197,8 @@ export function KnowledgeDocumentsPage({
         <Dialog open title={t("knowledgeBase.documents.cancelParse")} onClose={() => setConfirmingTraceCancel(false)}>
           <p>{t("knowledgeBase.cancelParseConfirmBody", { title: displayName(traceDocument) })}</p>
           <div className="wk-list-actions wk-kd-109">
-            <Button type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.documents.cancelParse")}</Button>
-            <Button type="button" onClick={() => setConfirmingTraceCancel(false)}>{ct("uploadConfirm.cancel")}</Button>
+            <TdButton type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.documents.cancelParse")}</TdButton>
+            <TdButton type="button" onClick={() => setConfirmingTraceCancel(false)}>{ct("uploadConfirm.cancel")}</TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -5213,12 +5214,12 @@ export function KnowledgeDocumentsPage({
             })}
           </p>
           <div className="wk-list-actions wk-kd-109">
-            <Button type="button" onClick={() => void deleteSelected()}>
+            <TdButton type="button" onClick={() => void deleteSelected()}>
               {t("knowledgeBase.documents.delete")}
-            </Button>
-            <Button type="button" onClick={() => setConfirmingDelete(false)}>
+            </TdButton>
+            <TdButton type="button" onClick={() => setConfirmingDelete(false)}>
               {t("knowledgeBase.documents.cancel")}
-            </Button>
+            </TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -5231,8 +5232,8 @@ export function KnowledgeDocumentsPage({
           <p>{t("knowledgeBase.confirmDeleteDocument", { fileName: displayName(confirmingDeleteDocument) })}</p>
           {mutationError ? <Status tone="error">{mutationError}</Status> : null}
           <div className="wk-list-actions wk-kd-109">
-            <Button type="button" onClick={() => void deleteOneDocument()}>{t("knowledgeBase.confirmDelete")}</Button>
-            <Button type="button" onClick={() => setConfirmingDeleteDocument(null)}>{t("knowledgeBase.documents.cancel")}</Button>
+            <TdButton type="button" onClick={() => void deleteOneDocument()}>{t("knowledgeBase.confirmDelete")}</TdButton>
+            <TdButton type="button" onClick={() => setConfirmingDeleteDocument(null)}>{t("knowledgeBase.documents.cancel")}</TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -5245,12 +5246,12 @@ export function KnowledgeDocumentsPage({
           <p>{t("knowledgeBase.confirmBatchReparseDocument", { count: pendingBatchReparse.length })}</p>
           {mutationError ? <Status tone="error">{mutationError}</Status> : null}
           <div className="wk-list-actions wk-kd-109">
-            <Button type="button" onClick={() => void confirmBatchReparse()}>
+            <TdButton type="button" onClick={() => void confirmBatchReparse()}>
               {ct("uploadConfirm.confirmReparse")}
-            </Button>
-            <Button type="button" onClick={() => setPendingBatchReparse(null)}>
+            </TdButton>
+            <TdButton type="button" onClick={() => setPendingBatchReparse(null)}>
               {ct("uploadConfirm.cancel")}
-            </Button>
+            </TdButton>
           </div>
         </Dialog>
       ) : null}
