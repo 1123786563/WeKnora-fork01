@@ -85,6 +85,8 @@ export interface TaskDetailPorts {
 
 const AUTO_RESYNC_LIMIT = 2;
 
+// input.taskId 契约（B2-F26）：仅用于调用方关联；持久化写入服务端权威的 detail.taskId
+// （persist 内 detail!.taskId），故本函数不读取 input.taskId，这是有意为之。
 export function createTaskDetail(input: { taskId: string; runId: string }, ports: TaskDetailPorts): TaskHandle {
   let closed = false;
   let current: TaskDetailView | undefined;
@@ -152,11 +154,15 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   const hydrate = async (): Promise<TaskDetailView> => {
     requireOpen();
     const lease = requireLease();
+    // 进入即递增 streamEpoch：作废在途流与并发旧 hydrate（interrupt/resync 已各自先 abort，此处为幂等加固）。
+    abortStream();
+    const epoch = streamEpoch;
     if (detail !== undefined) notify('syncing');
     const fetched = await wrap(() => ports.backend.detail(input.runId));
-    if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    if (epoch !== streamEpoch || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
     detail = fetched;
     const persisted = await ports.store.load(input.runId).catch(() => undefined);
+    if (epoch !== streamEpoch) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
     events = mergeEventHistory(persisted?.events ?? [], fetched.events, fetched.watermark).slice(-TASK_DETAIL_HISTORY_LIMIT);
     committedCursor = fetched.watermark;
     duplicateSeqs = [];
@@ -165,6 +171,11 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       await persist(committedCursor, events);
     } catch (cause) {
       interruption = { reason: 'persist-failed', message: cause instanceof Error ? cause.message : String(cause) };
+    }
+    if (epoch !== streamEpoch) {
+      // persist 挂起点期间被取代：不再 startStream/notify；从未发布过视图时如实拒绝。
+      if (current === undefined) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      return current;
     }
     if (isTerminalRunStatus(terminalRunStatusOf(fetched.execution.runStatus, events))) {
       notify('drained');
@@ -198,8 +209,8 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       runId: input.runId,
       cursor: committedCursor,
       signal: controller.signal,
-      onEvent: (event) => { chain = chain.then(() => processEvent(event)).catch(() => undefined); },
-      onControl: (frame) => { chain = chain.then(() => processControl(frame)).catch(() => undefined); },
+      onEvent: (event) => { if (epoch === streamEpoch) chain = chain.then(() => processEvent(event)).catch(() => undefined); },
+      onControl: (frame) => { if (epoch === streamEpoch) chain = chain.then(() => processControl(frame)).catch(() => undefined); },
     }).then(
       () => { if (epoch === streamEpoch) chain = chain.then(() => streamEnded()).catch(() => undefined); },
       (error) => { if (epoch === streamEpoch) chain = chain.then(() => streamFailed(error)).catch(() => undefined); },
@@ -216,7 +227,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       return;
     }
     if (event.seq <= committedCursor) {
-      duplicateSeqs = [...duplicateSeqs, event.seq]; // 重复事件幂等跳过，但可观测
+      duplicateSeqs = [...duplicateSeqs, event.seq].slice(-50); // 重复事件幂等跳过，可观测但有界（B2-F27）
       notify(current?.connection === 'drained' ? 'drained' : 'live');
       return;
     }

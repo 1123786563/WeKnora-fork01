@@ -4,7 +4,7 @@ import { RuntimeScopeLease } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
 import { createScenarioTaskBackend } from './in-memory-task-backend.ts';
 import { createInMemoryTaskProjectionStore, createScenarioTaskDetailBackend, createScriptedTaskStream } from './in-memory-task-detail.ts';
-import type { TaskBackendDetail, TaskBackendEvent, TaskProjectionStore } from './task-detail.ts';
+import type { TaskBackendDetail, TaskBackendEvent, TaskDetailBackendPort, TaskProjectionStore, TaskStreamControlFrame } from './task-detail.ts';
 import { createTaskOffice, TaskOfficeError } from './task-office.ts';
 
 function deferred<T>() {
@@ -415,5 +415,62 @@ test('a revoked lease after hydration stops notifications and rejects resync', a
   await settle();
   assert.deepEqual(views, [], 'no notifications after the scope died');
   await assert.rejects(handle.resync(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  handle.close();
+});
+
+test('a slower stale hydrate does not roll back the committed cursor or the event set', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  let call = 0;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => {
+      call += 1;
+      if (call === 1) { await settle(8); return detail$(); } // 旧响应：慢，watermark 2
+      return detail$({ watermark: 4, events: [event$(1, 'run.started'), event$(2, 'tool.started'), event$(3, 'text.delta'), event$(4, 'run.completed')] }); // 新响应：watermark 4
+    },
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const stale = handle.hydrate();                     // 旧请求先发（挂起多个宏任务）
+  await settle(1);
+  await handle.resync();                              // 新请求后发先回：watermark 4 已提交
+  await stale.catch(() => undefined);                 // 旧响应迟到到达（修复后被 epoch 守卫拒绝）
+  const view = handle.view()!;
+  assert.equal(view.cursor, 4, '迟到的旧 hydrate 不得回退 committedCursor');
+  assert.deepEqual(view.timeline.map((entry) => entry.seq), [1, 2, 3, 4], '不得以旧响应的事件集覆写新事件集');
+  handle.close();
+});
+
+test('events from a superseded stream are dropped after resync', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  // 模拟「abort 后仍有在途投递」的传输层：直接持有每条流的回调（reader 已缓冲的 chunk 在 cancel 后才送达）。
+  // createScriptedTaskStream 在 abort 后 emit 是 no-op，无法覆盖该竞态。
+  const sinks: Array<{ onEvent(event: TaskBackendEvent): void; onControl(frame: TaskStreamControlFrame): void }> = [];
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$({ watermark: 2 }),
+    stream: ({ signal, onEvent, onControl }) => {
+      sinks.push({ onEvent, onControl });
+      return new Promise<void>((resolve) => { signal.addEventListener('abort', () => resolve()); });
+    },
+  };
+  const office = createTaskOffice({
+    backend: createScenarioTaskBackend({}),
+    lease: () => leaseRef.lease,
+    store: createInMemoryTaskProjectionStore(),
+    detail: detailBackend,
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  const reasons: Array<string | undefined> = [];
+  handle.updates((view) => reasons.push(view.interruption?.reason));
+  await handle.hydrate();                              // 开流 A = sinks[0]
+  await handle.resync();                               // 开流 B = sinks[1]，A 被取代
+  sinks[0]!.onEvent(event$(9, 'tool.started'));        // 旧流迟到事件（seq 错位）：enqueue 前必须丢弃
+  sinks[0]!.onControl({ code: 'cursor_expired', message: 'late frame' }); // 旧流迟到控制帧：同样丢弃
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.connection, 'live', '被取代流的迟到事件/控制帧不得打断新流');
+  assert.deepEqual(view.timeline.map((entry) => entry.seq), [1, 2]);
+  assert.equal(reasons.includes('gap'), false, '迟到事件不得触发 gap interrupt');
+  assert.equal(reasons.includes('cursor-expired'), false, '迟到控制帧不得触发 cursor-expired interrupt');
   handle.close();
 });
