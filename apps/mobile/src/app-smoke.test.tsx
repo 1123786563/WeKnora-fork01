@@ -584,3 +584,48 @@ test('RuntimeSurface passes other registered deployments to the home screen and 
   assert.equal(login.type.name, 'DeploymentLoginScreen');
   assert.deepEqual((login.props as { deployments?: Array<{ origin: string; label: string }> }).deployments, [{ origin: 'https://other.example.test', label: 'Other' }]);
 });
+
+test('RuntimeSurface routes the read-only snapshot to a restricted explanation surface', async () => {
+  const { RuntimeSurface } = await import('./composition.ts');
+  hooks().__reset();
+  const surface = RuntimeSurface({
+    snapshot: { surface: 'read-only', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1', activeTenantId: '7' }, reason: 'protocol-mismatch' },
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {}, onActivateTenant: async () => {},
+  });
+  assert.equal(surface.type.name, 'ReadOnlyScreen');
+  const element = render(surface.type, surface.props);
+  const texts = descendants(element).filter(({ type }) => type === 'Text').flatMap(({ props: p }) => p.children).flatMap((part) => (typeof part === 'string' ? [part] : []));
+  assert.equal(texts.some((text) => text.includes('Limited read-only mode')), true);
+  assert.equal(texts.some((text) => text.includes('behind this version')), true);
+  assert.equal(texts.some((text) => text.includes('Read-only browsing is unavailable.')), true, 'without a shelf handle the surface says so instead of guessing content');
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props: p }) => p.title);
+  assert.equal(buttons.includes('Sign out'), true);
+  assert.equal(buttons.includes('View all tasks'), false, 'read-only must not expose task controls');
+});
+
+test('ReadOnlyScreen mounts the browse-only shelf once and renders its projection without authorized controls', async () => {
+  const { ReadOnlyScreen } = await import('./screens/ReadOnlyScreen.tsx');
+  const { ResourcesScreen } = await import('./screens/ResourcesScreen.tsx');
+  hooks().__reset();
+  const page: import('@weknora/mobile-core').ResourcePage = {
+    tenantId: '7',
+    agents: [{ id: 'agent-1', name: 'Research', summary: '', kind: 'custom', capability: { state: 'supported', reason: '' } }],
+    knowledge: [],
+    connections: [],
+    classVerdicts: { agent: { state: 'supported', reason: '' }, knowledge: { state: 'supported', reason: '' }, connection: { state: 'supported', reason: '' } },
+  };
+  let browses = 0;
+  const listeners = new Set<(event: import('@weknora/mobile-core').ShelfInvalidationEvent) => void>();
+  const handle = {
+    async browse() { browses += 1; return page; },
+    selection: () => ({ allowed: false as const, state: 'unavailable' as const, reason: 'not_used' }),
+    subscribe(listener: (event: import('@weknora/mobile-core').ShelfInvalidationEvent) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    close() {},
+  };
+  const element = render(ReadOnlyScreen, { deploymentLabel: 'WeKnora', handle: handle as import('@weknora/mobile-core').ResourceShelfHandle, onSignOut: async () => {} });
+  assert.equal(descendants(element).some(({ type }) => type === ResourcesScreen), true, 'the read-only surface renders the resource projection');
+  hooks().__mount();
+  assert.equal(browses, 1, 'the read-only shelf loads exactly once on mount');
+  hooks().__unmount();
+  assert.equal(listeners.size, 0, 'unmount detaches the shelf subscription');
+});

@@ -20,6 +20,7 @@ import { HomeScreen } from './screens/HomeScreen.tsx';
 import { TasksScreen } from './screens/TasksScreen.tsx';
 import { DeploymentLoginScreen, validatedDeploymentOrigin } from './screens/DeploymentLoginScreen.tsx';
 import { UpgradeRequiredScreen } from './screens/UpgradeRequiredScreen.tsx';
+import { ReadOnlyScreen } from './screens/ReadOnlyScreen.tsx';
 
 export const OIDC_REDIRECT_URI = 'weknora://oidc';
 const cloudFromBuild = typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_WEKNORA_CLOUD_ORIGIN : undefined;
@@ -125,6 +126,13 @@ export function RuntimeSurface({ snapshot, deployments, onSignIn, onBeginOidc, o
       taskOffice: taskOfficeFor(runtime(), snapshot.deployment.origin),
       otherDeployments: (deployments ?? []).filter((deployment) => deployment.origin !== snapshot.deployment?.origin),
       onSwitchDeployment,
+    });
+  }
+  if (snapshot.surface === 'read-only') {
+    return createElement(ReadOnlyScreen, {
+      deploymentLabel: snapshot.deployment?.label,
+      handle: runtime().resourceShelf(),
+      onSignOut,
     });
   }
   if (snapshot.surface === 'deployment-login') {
