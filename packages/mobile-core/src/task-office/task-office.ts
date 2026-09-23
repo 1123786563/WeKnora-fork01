@@ -3,6 +3,10 @@ import type { ScopeLease } from '../runtime/types.ts';
 import { createInMemoryTaskProjectionStore } from './in-memory-task-detail.ts';
 import { createTaskDetail } from './task-detail.ts';
 import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
+import { TaskOfficeError } from './task-office-errors.ts';
+
+export { TaskOfficeError } from './task-office-errors.ts';
+export type { AttentionState, TaskOfficeErrorCode } from './task-office-errors.ts';
 
 /**
  * Task Office 深模块（module-seams §5）——T04 交付读侧与归档生命周期：
@@ -15,7 +19,6 @@ import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './t
  * open(taskId, runId) 已由 T05（#35）交付详情句柄；start(goal) 属 #36。
  */
 
-export type AttentionState = 'none' | 'required';
 export type TaskStatusFilter = 'running' | 'waiting_user' | 'succeeded' | 'failed' | 'canceled';
 
 export interface TaskCard {
@@ -100,22 +103,6 @@ export interface TaskOfficePorts {
   detail?: TaskDetailBackendPort;
   /** 持久化投影存储（App 重启恢复）；缺省为 office 内共享的 in-memory store。 */
   store?: TaskProjectionStore;
-}
-
-export type TaskOfficeErrorCode =
-  | 'TASK_OFFICE_SCOPE_CHANGED'
-  | 'TASK_OFFICE_SUPERSEDED'
-  | 'TASK_OFFICE_NO_ACTIVE_QUERY'
-  | 'TASK_OFFICE_INVALID_INPUT'
-  | 'TASK_OFFICE_BACKEND'
-  | 'TASK_OFFICE_DETAIL_UNAVAILABLE'
-  | 'TASK_OFFICE_DETAIL_CLOSED';
-
-export class TaskOfficeError extends Error {
-  constructor(readonly code: TaskOfficeErrorCode, options?: { cause?: unknown }) {
-    super(code, options);
-    this.name = 'TaskOfficeError';
-  }
 }
 
 export interface TaskOffice {

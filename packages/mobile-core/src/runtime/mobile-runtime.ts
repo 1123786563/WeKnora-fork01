@@ -382,8 +382,9 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       if (deployment === undefined || state.surface !== 'authorized') throw new Error('RUNTIME_UNAUTHORIZED');
       // 已授权但平台/该实例无流通道（authorizedStream 工厂返回 undefined，fail closed）：
       // 与未授权分流（B2-F34）——REST 详情仍可用，错误语义不得误导为「请先登录」。
+      // code 化（R1-F22）：与 TASK_STREAM_CURSOR_EXPIRED 同形态的结构化契约，消费方不读 message 文本。
       const transport = ports.authorizedStream?.(deployment.origin);
-      if (!transport) throw new Error('RUNTIME_STREAM_UNAVAILABLE');
+      if (!transport) throw Object.assign(new Error('RUNTIME_STREAM_UNAVAILABLE'), { code: 'RUNTIME_STREAM_UNAVAILABLE' as const });
       const requestEpoch = epoch;
       const guardedChunk = (chunk: string): void => {
         if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');

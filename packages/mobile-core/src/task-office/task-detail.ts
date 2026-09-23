@@ -1,9 +1,9 @@
 import { leaseActive } from '../runtime/scope-lease.ts';
-import { TaskOfficeError } from './task-office.ts';
+import { TaskOfficeError } from './task-office-errors.ts'; // R1-F21：不再从 task-office.ts 值导入（解运行时环）
 import { isTerminalRunStatus, mergeEventHistory, projectTimeline, taskLifecycleOf, terminalRunStatusOf } from './task-timeline.ts';
 import type { ScopeLease } from '../runtime/types.ts';
 import type { TaskLifecycleState, TaskTimelineEntry } from './task-timeline.ts';
-import type { AttentionState } from './task-office.ts';
+import type { AttentionState } from './task-office-errors.ts';
 
 export const TASK_DETAIL_HISTORY_LIMIT = 200;
 
@@ -267,7 +267,9 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   const streamFailed = async (error: unknown): Promise<void> => {
     if (closed) return;
     const message = error instanceof Error ? error.message : String(error);
-    if (message === 'RUNTIME_STREAM_UNAVAILABLE') {
+    // code 优先（R1-F22）：跨包错误合同靠结构化 code，message 全等仅作过渡兼容。
+    const code = (error as { code?: unknown } | null)?.code;
+    if (code === 'RUNTIME_STREAM_UNAVAILABLE' || message === 'RUNTIME_STREAM_UNAVAILABLE') {
       // 流通道缺失（runtime authorizedStream 未解析出 transport）不是瞬时故障：
       // 直接置为 interrupted 并停止自动 resync，REST 详情仍可用，显式 resync() 可再试。
       interruption = { reason: 'stream-unavailable', message: '此部署未提供实时流通道，可手动刷新同步' };
@@ -275,7 +277,6 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       notify('interrupted');
       return;
     }
-    const code = (error as { code?: unknown } | null)?.code;
     if (code === 'TASK_STREAM_CURSOR_EXPIRED') {
       await interrupt('cursor-expired', message);
       return;

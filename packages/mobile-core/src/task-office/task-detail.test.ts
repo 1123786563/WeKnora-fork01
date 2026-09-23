@@ -496,3 +496,24 @@ test('an unavailable stream channel interrupts without futile auto-resyncs', asy
   assert.equal(detailCalls, 1);
   handle.close();
 });
+
+test('stream-unavailable is detected by error code, not message text (R1-F22)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$(),
+    stream: async () => { throw Object.assign(new Error('wrapped: RUNTIME_STREAM_UNAVAILABLE'), { code: 'RUNTIME_STREAM_UNAVAILABLE' }); },
+  };
+  const office = createTaskOffice({
+    backend: createScenarioTaskBackend({}),
+    lease: () => leaseRef.lease,
+    detail: detailBackend,
+    store: createInMemoryTaskProjectionStore(),
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle();
+  assert.equal(handle.view()!.connection, 'interrupted');
+  assert.equal(handle.view()!.interruption?.reason, 'stream-unavailable');
+  handle.close();
+});
