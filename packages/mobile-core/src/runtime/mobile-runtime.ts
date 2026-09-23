@@ -28,7 +28,7 @@ function userId(value: unknown): string | undefined {
 
 function tenantId(value: unknown): string | undefined {
   const id = typeof value === 'object' && value !== null ? (value as { id?: unknown }).id : undefined;
-  if (typeof id === 'string' && id.trim() !== '') return id;
+  if (typeof id === 'string' && id.trim() !== '') return id.trim(); // R1-F33：字符串 id 归一（与 membershipTenantId 对齐）
   return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? String(id) : undefined;
 }
 
@@ -203,8 +203,12 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     const deployment = activeDeployment;
     if (!deployment || deployment.origin !== origin || (state.surface !== 'authorized' && state.surface !== 'read-only') || !activeCredential) throw new Error('SHELF_SCOPE');
     if (!options?.refresh) return activeCredential.token;
-    const refreshed = await refreshedCredential(epoch, deployment, activeCredential);
+    const requestEpoch = epoch;
+    const refreshed = await refreshedCredential(requestEpoch, deployment, activeCredential);
     if (!refreshed) throw new Error('SHELF_AUTH');
+    // R1-F31：refresh 跨越了 scope 变化（切部署/切租户/登出）时，旧部署凭据不得写回活动态——
+    // 新 scope 的 shelf 请求必须继续拿到新部署自己的凭据，而不是被迟到的轮换结果污染。
+    if (!current(requestEpoch, deployment)) throw new Error('SHELF_SCOPE');
     activeCredential = refreshed;
     return refreshed.token;
   };
@@ -428,8 +432,9 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         let target: Deployment | undefined;
         try { target = normalizeDeployment({ origin }); } catch { target = undefined; }
         if (!target) return state;
-        // 同 origin 短路（B2-F44）：目标即当前活动实例且不在登录面时不重走 begin/authenticate。
-        if (state.surface !== 'deployment-login' && state.deployment?.origin === target.origin) return state;
+        // 同 origin 短路（B2-F44，收窄 R1-F46）：只覆盖已授权/只读面；upgrade-required 等失败面
+        // 必须允许重试完整认证——服务端恢复后重选同实例不能被静默短路在失败状态。
+        if ((state.surface === 'authorized' || state.surface === 'read-only') && state.deployment?.origin === target.origin) return state;
         // 失败包含（B2-F17）：SecureStore 读取失败按未登记处理，保持当前面，不得 reject。
         let entries: Deployment[] | undefined;
         try { entries = await ports.deploymentRegistry.list(); } catch { entries = undefined; }
@@ -454,15 +459,23 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       try { if (typeof origin === 'string' && origin.trim() !== '') target = normalizeDeployment({ origin }); } catch { target = undefined; }
       if (!target) return;
       const deployment = target;
+      // R1-F47：凭据清理与登记移除各自包含——SecureStore 清理失败不得吞掉 registry.remove
+      // （残留登记会让实例继续出现在可切换列表）。整体仍从不 reject（B2-F43 约定）。
       try {
         if (activeDeployment?.origin === deployment.origin) {
           await signOut();
         } else {
-          await mutateCredential(async () => { await ports.credentialStore.clear(deployment.origin); });
+          try {
+            await mutateCredential(async () => { await ports.credentialStore.clear(deployment.origin); });
+          } catch {
+            /* 清理失败：继续移除登记 */
+          }
         }
-        await mutateDeployment(async () => { await ports.deploymentRegistry?.remove(deployment.origin); });
-      } catch {
-        // 失败包含（B2-F43）：持久化失败 resolve 而非 reject，与 Runtime 其余状态迁移从不 reject 的约定一致。
+        try {
+          await mutateDeployment(async () => { await ports.deploymentRegistry?.remove(deployment.origin); });
+        } catch {
+          /* 登记移除失败：整体 resolve，不 reject */
+        }
       } finally {
         await vaultTail;
       }

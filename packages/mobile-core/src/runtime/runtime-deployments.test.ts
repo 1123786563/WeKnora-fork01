@@ -310,3 +310,42 @@ function deferred<T>() {
   const promise = new Promise<T>((next) => { resolve = next; });
   return { promise, resolve };
 }
+
+test('re-selecting the same origin from upgrade-required retries authentication instead of short-circuiting (R1-F46)', async () => {
+  let healthy = false;
+  const failingThenHealthy = remote({
+    me: async () => {
+      if (!healthy) throw Object.assign(new Error('server exploded'), { name: 'ApiError', status: 500 });
+      return { user: { id: 'user-1' }, tenant: { id: 'tenant-1' } };
+    },
+  });
+  const registry = createInMemoryDeploymentRegistry();
+  await registry.upsert(FIRST); // signIn 失败不会登记：预置使 switchDeployment 可找到目标
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    deploymentRegistry: registry,
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    remoteFor: () => failingThenHealthy,
+  });
+  await runtime.signIn({ deployment: FIRST, email: 'u@example.test', password: 'pw' });
+  assert.equal(runtime.snapshot().surface, 'upgrade-required'); // 首次 authenticate 失败
+  healthy = true; // 服务端恢复
+  await runtime.switchDeployment(FIRST.origin);
+  assert.equal(runtime.snapshot().surface, 'authorized'); // 当前被静默短路 → FAIL
+});
+
+test('forgetDeployment removes the registry entry even when credential clearing fails (R1-F47)', async () => {
+  const locked = fakeStore();
+  const originalClear = locked.clear.bind(locked);
+  locked.clear = async (deployment: string) => { if (deployment === FIRST.origin) throw new Error('secure store locked'); return originalClear(deployment); };
+  const registry = createInMemoryDeploymentRegistry();
+  await registry.upsert(FIRST);
+  const runtime = createMobileRuntime({
+    credentialStore: locked,
+    deploymentRegistry: registry,
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    remoteFor: () => remote(),
+  });
+  await runtime.forgetDeployment(FIRST.origin);
+  assert.deepEqual(await registry.list(), [], '清理失败不得吞掉登记移除');
+});
