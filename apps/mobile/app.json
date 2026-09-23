@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "scheme": "weknora",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "platforms": [
       "ios",
       "android"
@@ -21,7 +21,8 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/ios-xcode27"
     ]
   }
 }
