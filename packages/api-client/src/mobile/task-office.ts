@@ -1,4 +1,6 @@
-import { createExecutionsApi } from './executions.ts';
+import { parseExecutionEvent } from '@weknora/contracts';
+import { createServerSentEventParser } from '../chat/stream.ts';
+import { createExecutionsApi, executionEventsRequest } from './executions.ts';
 import { createOverviewApi } from './overview.ts';
 import type { ClientRequest } from '../client.ts';
 
@@ -9,6 +11,8 @@ export interface TaskOfficeRemoteOptions {
   origin: string;
   /** 授权通道（MobileRuntime.authorizedRequest 或测试替身）；本适配器不新建传输。 */
   request: Request;
+  /** T05 authorized SSE channel（MobileRuntime.authorizedEventStream 或测试替身）；本适配器不新建传输。 */
+  stream?: (input: ClientRequest, onChunk: (chunk: string) => void) => Promise<void>;
 }
 
 /** 与 mobile-core TaskBackendRun 逐字一致（结构可赋值由 apps/mobile typecheck 证明）。 */
@@ -21,6 +25,13 @@ export interface RemoteTaskOverview {
   asOf: string;
 }
 export interface RemoteTaskPage { items: RemoteTaskRun[]; nextCursor?: string }
+export interface RemoteTaskStreamEvent { runId: string; seq: number; type: string; occurredAt: string; payload: Record<string, unknown> }
+export interface RemoteTaskDetail {
+  taskId: string; runId: string; title: string; attention: 'none' | 'required'; archivedAt?: string;
+  execution: { runStatus: string; executionStatus: string; settlementStatus: string; revision: number; seq: number };
+  watermark: number; incomplete: boolean; events: RemoteTaskStreamEvent[];
+}
+export type TaskOfficeStreamOption = NonNullable<TaskOfficeRemoteOptions['stream']>;
 
 function requireDeploymentOrigin(origin: string): string {
   let parsed: URL;
@@ -94,6 +105,51 @@ export function createTaskOfficeRemote(options: TaskOfficeRemoteOptions) {
     },
     async restore(taskId: string): Promise<void> {
       unwrap(await request({ method: 'DELETE', path: `/api/v1/workbench/tasks/${encodeURIComponent(taskId)}/archive` }));
+    },
+    async detail(runId: string): Promise<RemoteTaskDetail> {
+      const snapshot = await executionsApi.snapshot(runId);
+      const task = snapshot.task;
+      return {
+        taskId: snapshot.execution.session_id,
+        runId: snapshot.execution.run_id,
+        title: task?.title ?? '',
+        ...(task?.archived_at === undefined ? {} : { archivedAt: task.archived_at }),
+        attention: task?.attention ?? 'none',
+        execution: {
+          runStatus: snapshot.execution.run_status,
+          executionStatus: snapshot.execution.execution_status,
+          settlementStatus: snapshot.execution.settlement_status,
+          revision: snapshot.execution.revision,
+          seq: snapshot.execution.seq,
+        },
+        watermark: snapshot.watermark,
+        incomplete: snapshot.incomplete,
+        events: snapshot.events.map((event) => ({ runId: event.run_id, seq: event.seq, type: event.type, occurredAt: event.occurred_at, payload: event.payload })),
+      };
+    },
+    async stream(input: { runId: string; cursor: number; signal: AbortSignal; onEvent(event: RemoteTaskStreamEvent): void; onControl(frame: { code: string; message: string }): void }): Promise<void> {
+      const transport = options.stream;
+      if (!transport) throw new Error('task office stream transport is required for event streams');
+      const request = executionEventsRequest(input.runId, String(input.cursor));
+      const parser = createServerSentEventParser((frame) => {
+        if (frame.event === 'control') {
+          const payload = JSON.parse(frame.data) as { code?: string; message?: string };
+          input.onControl({ code: payload.code ?? 'stream_error', message: payload.message ?? '' });
+          return;
+        }
+        const event = parseExecutionEvent(JSON.parse(frame.data));
+        input.onEvent({ runId: event.run_id, seq: event.seq, type: event.type, occurredAt: event.occurred_at, payload: event.payload });
+      });
+      await transport({ method: request.method, path: request.path, headers: request.headers, signal: input.signal }, (chunk) => parser.push(chunk)).catch((error: unknown) => {
+        const shape = error as { name?: unknown; status?: unknown } | null;
+        if (typeof shape === 'object' && shape !== null && shape.name === 'ApiError' && shape.status === 409) {
+          const expired = new Error('workbench event stream cursor expired');
+          (expired as unknown as { code?: string }).code = 'TASK_STREAM_CURSOR_EXPIRED';
+          throw expired;
+        }
+        throw error;
+      });
+      parser.finish();
     },
   };
 }

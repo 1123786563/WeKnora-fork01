@@ -19,3 +19,12 @@ export type {
   TaskOfficeQuery, TaskStatusFilter,
 } from './task-office/task-office.ts';
 export type { ScenarioTaskBackend, ScenarioTaskBackendHandlers } from './task-office/in-memory-task-backend.ts';
+export { createScriptedTaskStream, createScenarioTaskDetailBackend, createInMemoryTaskProjectionStore } from './task-office/in-memory-task-detail.ts';
+export { createTaskDetail, TASK_DETAIL_HISTORY_LIMIT } from './task-office/task-detail.ts';
+export type {
+  PersistedTaskProjection, TaskBackendDetail, TaskBackendEvent, TaskConnectionState, TaskDetailView,
+  TaskDetailBackendPort, TaskDetailPorts, TaskHandle, TaskInterruptionReason, TaskProjectionStore, TaskStreamControlFrame,
+} from './task-office/task-detail.ts';
+export type { TaskLifecycleState, TaskTimelineEntry, TaskTimelineKind, TaskTimelineSourceEvent } from './task-office/task-timeline.ts';
+export { isTerminalRunStatus, mergeEventHistory, projectTimeline, taskLifecycleOf, terminalRunStatusOf, timelineKindLabel } from './task-office/task-timeline.ts';
+export type { ScenarioTaskDetailHandlers, ScriptedTaskStream } from './task-office/in-memory-task-detail.ts';

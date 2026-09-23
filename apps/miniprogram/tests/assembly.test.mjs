@@ -129,7 +129,7 @@ test('assembly: chatStream assembles SSE frames end-to-end through the native ch
 
 test('assembly: watchExecution installs the snapshot then appends streamed events from the watermark', async () => {
   await freshLogin({
-    'GET /api/v1/workbench/executions/run-1/snapshot': call => stub.succeed(call, { data: { success: true, data: { execution: execDto(5), watermark: 5, events: [execEvent(5)] } } }),
+    'GET /api/v1/workbench/executions/run-1/snapshot': call => stub.succeed(call, { data: { success: true, data: { execution: execDto(5), watermark: 5, incomplete: false, confirmed_watermark: 5, events: [execEvent(5)] } } }),
     'GET /api/v1/workbench/executions/run-1/events': call => {
       assert.equal(call.options.header['Last-Event-ID'], '5', 'resume must continue from the snapshot watermark');
       stub.emitHeaders(call, { 'Content-Type': 'text/event-stream' });
@@ -201,7 +201,7 @@ test('assembly: wire paths used by the miniprogram match the Go route table', as
     'GET /api/v1/auth/me': call => stub.succeed(call, { data: me() }),
     'GET /api/v1/execution-targets': call => stub.succeed(call, { data: { success: true, data: [] } }),
     'GET /api/v1/workbench/executions/run-1': call => stub.succeed(call, { data: { success: true, data: execDto(5) } }),
-    'GET /api/v1/workbench/executions/run-1/snapshot': call => stub.succeed(call, { data: { success: true, data: { execution: execDto(5), watermark: 5, events: [] } } }),
+    'GET /api/v1/workbench/executions/run-1/snapshot': call => stub.succeed(call, { data: { success: true, data: { execution: execDto(5), watermark: 5, incomplete: false, confirmed_watermark: 5, events: [] } } }),
     'GET /api/v1/workbench/executions/run-1/events': () => {},
     'GET /api/v1/workbench/executions/requests/req-1': call => stub.succeed(call, { data: { success: true, data: { state: 'unknown' } } }),
     'GET /api/v1/workbench/executions/run-1/interactions': call => stub.succeed(call, { data: { success: true, data: [{ id: 'i-1', kind: 'tool_approval', args_hash: 'h', expected_revision: 2, decision_id: '', action: '' }] } }),

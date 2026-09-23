@@ -180,6 +180,25 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     refreshFlights.set(deployment.origin, { requestEpoch, promise });
     return promise;
   };
+  /** Shared authorized-send core: reads the active credential, guards scope at every step, and replays exactly once through a single-flight refresh on a pre-send 401. */
+  const sendWithCredential = async <R>(requestEpoch: number, deployment: Deployment, send: (token: string) => Promise<R>): Promise<R> => {
+    const credential = await ports.credentialStore.read(deployment.origin);
+    if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+    if (!credential) throw new Error('RUNTIME_UNAUTHORIZED');
+    try {
+      const response = await send(credential.token);
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      return response;
+    } catch (error) {
+      if (!unauthorizedStatus(error)) throw error;
+      const refreshed = await refreshedCredential(requestEpoch, deployment, credential);
+      if (!refreshed) throw new Error('RUNTIME_UNAUTHORIZED');
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      const retried = await send(refreshed.token);
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      return retried;
+    }
+  };
   const accessTokenFor = async (origin: string, options?: { refresh?: boolean }): Promise<string> => {
     const deployment = activeDeployment;
     if (!deployment || deployment.origin !== origin || state.surface !== 'authorized' || !activeCredential) throw new Error('SHELF_SCOPE');
@@ -342,24 +361,18 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       const deployment = activeDeployment;
       const transport = deployment && state.surface === 'authorized' ? ports.authorizedTransport?.(deployment.origin) : undefined;
       if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
+      return await sendWithCredential(epoch, deployment, (token) => transport(input, token));
+    },
+    async authorizedEventStream(input: RuntimeAuthorizedRequest, onChunk: (chunk: string) => void): Promise<void> {
+      const deployment = activeDeployment;
+      const transport = deployment && state.surface === 'authorized' ? ports.authorizedStream?.(deployment.origin) : undefined;
+      if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
       const requestEpoch = epoch;
-      const send = async (token: string): Promise<unknown> => transport(input, token);
-      const credential = await ports.credentialStore.read(deployment.origin);
-      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
-      if (!credential) throw new Error('RUNTIME_UNAUTHORIZED');
-      try {
-        const response = await send(credential.token);
+      const guardedChunk = (chunk: string): void => {
         if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
-        return response;
-      } catch (error) {
-        if (!unauthorizedStatus(error)) throw error;
-        const refreshed = await refreshedCredential(requestEpoch, deployment, credential);
-        if (!refreshed) throw new Error('RUNTIME_UNAUTHORIZED');
-        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
-        const retried = await send(refreshed.token);
-        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
-        return retried;
-      }
+        onChunk(chunk);
+      };
+      await sendWithCredential(requestEpoch, deployment, (token) => transport(input, token, guardedChunk));
     },
     scopeLease: () => lease,
     resourceShelf: () => activeShelf,

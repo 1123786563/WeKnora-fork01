@@ -15,6 +15,7 @@ import type { SecureStorePort } from './adapters/secure-store.ts';
 import { createSecureVaultKeyStore, createSecureVaultStorage } from './adapters/vault-adapters.ts';
 import { createNativeSecureCredentialStore } from './adapters/credential-store.ts';
 import { createNativeSecureDeploymentStore } from './adapters/deployment-store.ts';
+import { streamAuthorizedSse, type SseFetchLike } from './adapters/sse-stream.ts';
 import { HomeScreen } from './screens/HomeScreen.tsx';
 import { TasksScreen } from './screens/TasksScreen.tsx';
 import { DeploymentLoginScreen, validatedDeploymentOrigin } from './screens/DeploymentLoginScreen.tsx';
@@ -59,6 +60,12 @@ export function createNativeMobileRuntime(): MobileRuntime {
       const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
       return (input, accessToken) => client.request({ ...input, headers: { ...input.headers, authorization: `Bearer ${accessToken}` } });
     },
+    authorizedStream(origin) {
+      // 惰性解析 expo/fetch（Node 测试环境无此模块；解析失败即无流通道，fail closed）
+      let streamFetch: SseFetchLike | undefined;
+      try { streamFetch = (require('expo/fetch') as { fetch: SseFetchLike }).fetch; } catch { streamFetch = undefined; }
+      return streamFetch === undefined ? undefined : (input, accessToken, onChunk) => streamAuthorizedSse(origin, input, accessToken, onChunk, streamFetch);
+    },
     resourceShelf: {
       remoteFor(origin) {
         const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
@@ -91,8 +98,10 @@ const taskOffices = new Map<string, TaskOffice>();
 function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice {
   let office = taskOffices.get(origin);
   if (!office) {
+    const remote = createTaskOfficeRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input), stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk) });
     office = createTaskOffice({
-      backend: createTaskOfficeRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+      backend: remote,
+      detail: remote,
       lease: () => activeRuntime.scopeLease(),
     });
     taskOffices.set(origin, office);
@@ -101,11 +110,23 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice
 }
 
 /** /tasks 应用根：授权面才渲染列表屏，其余面回到 Runtime 裁决的 Surface。 */
-export function MobileTasks() {
+export function MobileTasks({ onOpenTask }: { onOpenTask?: (taskId: string, runId: string) => void } = {}) {
   const activeRuntime = runtime();
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return null;
-  return createElement(TasksScreen, { key: snapshot.identity.activeTenantId, taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin) });
+  return createElement(TasksScreen, {
+    key: snapshot.identity.activeTenantId,
+    taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin),
+    ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string; runId: string }) => onOpenTask(card.taskId, card.runId) }),
+  });
+}
+
+/** 详情路由经此取当前授权 scope 的 Task Office（无授权面返回 undefined）。 */
+export function activeTaskOffice(): TaskOffice | undefined {
+  const activeRuntime = runtime();
+  const snapshot = activeRuntime.snapshot();
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
+  return taskOfficeFor(activeRuntime, snapshot.deployment.origin);
 }
 
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */

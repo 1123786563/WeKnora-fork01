@@ -40,6 +40,34 @@ export interface ExecutionSnapshot {
   /** Go 侧 ExecutionSnapshot.ConfirmedWatermark：已确认落盘水位 */
   confirmedWatermark: number;
   events: ExecutionEvent[];
+  task?: SnapshotTaskFacts;
+}
+
+/** 与 read-models 的 AttentionState 同构；独立定义避免 execution↔read-models 循环导入。 */
+export type SnapshotAttentionState = 'none' | 'required';
+
+/** Go 侧 TaskSnapshotFacts（读时派生的任务层事实，MX-003 之后新增的可选段）。 */
+export interface SnapshotTaskFacts {
+  task_id: string;
+  title?: string;
+  attention: SnapshotAttentionState;
+  archived_at?: string;
+}
+
+function snapshotTaskFacts(value: unknown): SnapshotTaskFacts {
+  const row = object(value, 'task');
+  const attention = row.attention;
+  if (attention !== 'none' && attention !== 'required') throw new ContractError('task.attention', 'expected "none" or "required"');
+  const title = row.title;
+  if (title !== undefined && title !== null && typeof title !== 'string') throw new ContractError('task.title', 'expected a string when present');
+  const archivedAt = row.archived_at;
+  if (archivedAt !== undefined && archivedAt !== null) isoTime(archivedAt, 'task.archived_at');
+  return {
+    task_id: nonEmpty(row.task_id, 'task.task_id'),
+    ...(title === undefined || title === null ? {} : { title }),
+    attention,
+    ...(archivedAt === undefined || archivedAt === null ? {} : { archived_at: isoTime(archivedAt, 'task.archived_at') }),
+  };
 }
 
 /** 命令闭集，镜像 internal/workbench/interaction.go ExecutionCommand（cancel 无载荷，steer 带文本）。 */
@@ -193,5 +221,6 @@ export function parseExecutionSnapshot(value: unknown): ExecutionSnapshot {
     incomplete: row.incomplete,
     confirmedWatermark: safeInteger(row.confirmed_watermark, 'confirmed_watermark', 0),
     events,
+    ...(row.task === undefined || row.task === null ? {} : { task: snapshotTaskFacts(row.task) }),
   };
 }

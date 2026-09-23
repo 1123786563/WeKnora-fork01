@@ -1,5 +1,8 @@
 import { leaseActive } from '../runtime/scope-lease.ts';
 import type { ScopeLease } from '../runtime/types.ts';
+import { createInMemoryTaskProjectionStore } from './in-memory-task-detail.ts';
+import { createTaskDetail } from './task-detail.ts';
+import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
 
 /**
  * Task Office 深模块（module-seams §5）——T04 交付读侧与归档生命周期：
@@ -9,7 +12,7 @@ import type { ScopeLease } from '../runtime/types.ts';
  * - 迟到拒绝：scope lease 撤销（切租户/换部署/退出）后的一切结果按
  *   TASK_OFFICE_SCOPE_CHANGED 拒绝；更新的查询使旧查询按 SUPERSEDED 拒绝；
  * - 重复键：跨页重复的 runId 不再渲染，经 duplicateRunIds 观测。
- * start(goal)/open(taskID) 属 #36/#35，不在本模块当前 Interface。
+ * open(taskId, runId) 已由 T05（#35）交付详情句柄；start(goal) 属 #36。
  */
 
 export type AttentionState = 'none' | 'required';
@@ -93,6 +96,10 @@ export interface TaskBackendPort {
 export interface TaskOfficePorts {
   backend: TaskBackendPort;
   lease(): ScopeLease | undefined;
+  /** T05 详情与 SSE 恢复端口；缺失时 open() fail closed（TASK_OFFICE_DETAIL_UNAVAILABLE）。 */
+  detail?: TaskDetailBackendPort;
+  /** 持久化投影存储（App 重启恢复）；缺省为 office 内共享的 in-memory store。 */
+  store?: TaskProjectionStore;
 }
 
 export type TaskOfficeErrorCode =
@@ -100,7 +107,9 @@ export type TaskOfficeErrorCode =
   | 'TASK_OFFICE_SUPERSEDED'
   | 'TASK_OFFICE_NO_ACTIVE_QUERY'
   | 'TASK_OFFICE_INVALID_INPUT'
-  | 'TASK_OFFICE_BACKEND';
+  | 'TASK_OFFICE_BACKEND'
+  | 'TASK_OFFICE_DETAIL_UNAVAILABLE'
+  | 'TASK_OFFICE_DETAIL_CLOSED';
 
 export class TaskOfficeError extends Error {
   constructor(readonly code: TaskOfficeErrorCode, options?: { cause?: unknown }) {
@@ -115,6 +124,7 @@ export interface TaskOffice {
   moreTasks(): Promise<TaskListPage>;
   archive(taskId: string): Promise<void>;
   restore(taskId: string): Promise<void>;
+  open(input: { taskId: string; runId: string }): TaskHandle;
 }
 
 const searchMaxLen = 200;
@@ -145,6 +155,7 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
   let homeEpoch = 0;
   let listEpoch = 0;
   let accumulated: listAccumulation | undefined;
+  const defaultDetailStore = createInMemoryTaskProjectionStore();
 
   const requireLease = (): ScopeLease => {
     const lease = ports.lease();
@@ -224,6 +235,13 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     },
     restore(taskId: string): Promise<void> {
       return mutate(taskId, (id) => ports.backend.restore(id));
+    },
+    open(taskOpen: { taskId: string; runId: string }): TaskHandle {
+      const taskId = taskOpen.taskId.trim();
+      const runId = taskOpen.runId.trim();
+      if (taskId === '' || runId === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      if (ports.detail === undefined) throw new TaskOfficeError('TASK_OFFICE_DETAIL_UNAVAILABLE');
+      return createTaskDetail({ taskId, runId }, { backend: ports.detail, store: ports.store ?? defaultDetailStore, lease: ports.lease });
     },
   };
 }
