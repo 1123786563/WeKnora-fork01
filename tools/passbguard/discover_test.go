@@ -160,6 +160,64 @@ var booter SessionService
 	require.Empty(t, tests)
 }
 
+// TestReferencesSymbolCountsMapKeyAndAssignAsUsages 覆盖 OCR R3：
+// bindingIdentPositions 曾把两类真实使用误计为绑定，referencesSymbol 对
+// 同包消费方漏检（违背"宁可多报 unrecorded 也不漏报真实消费方"的保守策略）：
+// (1) map 复合字面量裸键（map[Priority]int{PriorityHigh: 1}）是值表达式；
+// (2) = 赋值（token.ASSIGN，非 :=）左侧是对既有名字的使用。
+// mapkey.go 与 assign.go 各只含一处被误计的使用，不得再漏检。
+// 另锚定保守方向：键的具名类型（elsewhere）声明在同包另一文件时，消费方
+// 文件内无法精确区分 struct/map，键按 map 处理——计为使用（落多报方向）。
+func TestReferencesSymbolCountsMapKeyAndAssignAsUsages(t *testing.T) {
+	root := t.TempDir()
+	writeDiscoverFixture(t, root, "internal/svc/priority.go", `package svc
+
+// Priority 与 PriorityHigh 是同包冻结符号 fixture。
+type Priority int
+
+var PriorityHigh Priority = 1
+`)
+	// mapkey.go 仅含 map 裸键这一处符号使用：修复前被计为绑定而漏检。
+	writeDiscoverFixture(t, root, "internal/svc/mapkey.go", `package svc
+
+var weights = map[Priority]int{PriorityHigh: 1}
+`)
+	// assign.go 仅含 = 左侧这一处符号使用：修复前被计为绑定而漏检。
+	writeDiscoverFixture(t, root, "internal/svc/assign.go", `package svc
+
+func bump() {
+	PriorityHigh = 2
+}
+`)
+	// other.go + unknown.go：键的具名类型声明在同包另一文件，本文件内
+	// 无法精确区分 struct/map → 按 map 处理（键计为使用，落多报方向）。
+	writeDiscoverFixture(t, root, "internal/svc/other.go", `package svc
+
+type elsewhere struct{ PriorityHigh int }
+`)
+	writeDiscoverFixture(t, root, "internal/svc/unknown.go", `package svc
+
+var row = elsewhere{PriorityHigh: 1}
+`)
+
+	files, imports, err := discoverGoTree(root)
+	require.NoError(t, err)
+	d := &Discovery{Root: root, GoFiles: files, Imports: imports}
+
+	fact, found, err := DiscoverSymbol(root, "internal/svc/priority.go", "PriorityHigh")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	consumers, tests, err := DiscoverSymbolConsumers(d, fact)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"internal/svc/assign.go",
+		"internal/svc/mapkey.go",
+		"internal/svc/unknown.go",
+	}, consumers, "map 裸键、= 左侧与无法精确区分的键均须计为消费方（真实使用方向）")
+	require.Empty(t, tests)
+}
+
 // TestDiscoverGoTreeKeepsRootItself 确保 SkipDir 收紧到点前缀目录后不误伤
 // 根目录本身：`-root .`（根回调 entry.Name() == "."）与点前缀根名都必须照常
 // 发现（make check-passb-readiness 以 `-root .` 运行）。

@@ -445,9 +445,11 @@ func DiscoverSymbolConsumers(d *Discovery, fact *SymbolFact) (consumers, tests [
 // 跨包时须以定义包限定名（含别名）的 SelectorExpr.Sel 命中。
 //
 // 同包裸 Ident 采用绑定位置启发式（OCR R1 #05）：定义同名标识符的上下文
-// ——字段名（Field.Names）、复合字面量键（KeyValueExpr.Key）、var/const 与
-// 赋值左侧绑定（ValueSpec.Names、AssignStmt.Lhs）、函数/方法/类型声明名
-// 与 import 别名——不是引用。同包重构引入同名字段/局部变量不得误判为
+// ——字段名（Field.Names）、确定为 struct 的复合字面量键（OCR R3：map 裸键
+// 是真实使用不计绑定，无法精确区分时按 map 处理落多报方向）、var/const
+// 声明名与 := 赋值左侧（ValueSpec.Names、AssignStmt 仅 token.DEFINE；OCR R3：
+// = 左侧是对既有名字的使用）、函数/方法/类型声明名与 import 别名——不是
+// 引用。同包重构引入同名字段/局部变量不得误判为
 // 消费方（该结果驱动 contract-consumer-unrecorded/vanished 阻断诊断）。
 // 已知局限（保守取向）：局部变量遮蔽后的使用位置（x := 1; use(x) 中 x）
 // 仍是同名裸 Ident，无法与真实引用区分，按引用处理——宁可多报 unrecorded
@@ -480,10 +482,21 @@ func referencesSymbol(f *ast.File, name string, sameDir bool, qualifiers map[str
 }
 
 // bindingIdentPositions 收集文件内全部「绑定位置」Ident 的 Pos 集合：
-// 声明名（函数/方法/类型/值/import 别名/标签）、字段名、复合字面量键、
-// 赋值左侧。这些位置的 Ident 是名字的定义而非使用，不算符号引用。
+// 声明名（函数/方法/类型/值/import 别名/标签）、字段名、确定为 struct 的
+// 复合字面量键、:= 赋值左侧。这些位置的 Ident 是名字的定义而非使用，
+// 不算符号引用。
+//
+// OCR R3（漏检修复，落多报方向）：
+//   - = 赋值（token.ASSIGN 及复合赋值）左侧是对既有名字的使用，不计绑定；
+//     仅 := （token.DEFINE）左侧是新名字绑定。
+//   - 复合字面量键按外层字面量类型区分：确定为 struct 时键是字段名绑定；
+//     map 裸键（如 map[Priority]int{PriorityHigh: 1}）是值表达式=真实使用；
+//     无法精确区分（具名类型声明不在本文件、跨包限定名、省略类型的内层
+//     字面量）时按 map 处理不计绑定——宁可多报 unrecorded 也不漏报真实
+//     消费方。
 func bindingIdentPositions(f *ast.File) map[token.Pos]bool {
 	b := map[token.Pos]bool{}
+	namedKinds := namedLiteralKinds(f)
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch e := n.(type) {
 		case *ast.FuncDecl:
@@ -504,20 +517,74 @@ func bindingIdentPositions(f *ast.File) map[token.Pos]bool {
 			}
 		case *ast.LabeledStmt:
 			b[e.Label.Pos()] = true
-		case *ast.AssignStmt: // := 与 = 左侧标识符
+		case *ast.AssignStmt: // 仅 := 左侧是绑定；= 左侧是使用（OCR R3）
+			if e.Tok != token.DEFINE {
+				return true
+			}
 			for _, lhs := range e.Lhs {
 				if id, ok := lhs.(*ast.Ident); ok {
 					b[id.Pos()] = true
 				}
 			}
-		case *ast.KeyValueExpr: // 结构体/映射字面量键
-			if id, ok := e.Key.(*ast.Ident); ok {
-				b[id.Pos()] = true
+		case *ast.CompositeLit: // 仅确定为 struct 的字面量键是绑定（OCR R3）
+			if literalKind(e.Type, namedKinds) != "struct" {
+				return true
+			}
+			for _, elt := range e.Elts {
+				kv, ok := elt.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				if id, ok := kv.Key.(*ast.Ident); ok {
+					b[id.Pos()] = true
+				}
 			}
 		}
 		return true
 	})
 	return b
+}
+
+// namedLiteralKinds 收集本文件内具名类型声明的字面量类别：
+// "struct"（type X struct{...}）或 "map"（type X map[K]V，含类型别名）。
+// CompositeLit 键的绑定判定用它区分 struct/map；未收录的名字返回零值 ""
+// （无法精确区分，按 map 处理落多报方向）。
+func namedLiteralKinds(f *ast.File) map[string]string {
+	kinds := map[string]string{}
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			switch ts.Type.(type) {
+			case *ast.StructType:
+				kinds[ts.Name.Name] = "struct"
+			case *ast.MapType:
+				kinds[ts.Name.Name] = "map"
+			}
+		}
+	}
+	return kinds
+}
+
+// literalKind 判定复合字面量类型表达式的字面量类别：struct / map / ""
+// （无法精确区分——具名类型不在本文件声明、跨包限定名 SelectorExpr、
+// 省略类型的内层字面量 nil Type 等）。无法精确区分时调用方按 map 处理。
+func literalKind(expr ast.Expr, kinds map[string]string) string {
+	switch t := expr.(type) {
+	case *ast.StructType:
+		return "struct"
+	case *ast.MapType:
+		return "map"
+	case *ast.Ident:
+		return kinds[t.Name]
+	}
+	return ""
 }
 
 // qualifiersFor 返回文件内指向 importPath 的全部限定名（别名或默认包名）。
