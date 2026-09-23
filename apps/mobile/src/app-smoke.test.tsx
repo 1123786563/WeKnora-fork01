@@ -21,9 +21,11 @@ const moduleWithHooks = nodeModule as typeof nodeModule & {
 
 const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-linking': 'module.exports = { useLinkingURL() { return null; } }',
-  'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, navigate() {} } }",
+  'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, push() {} } }",
+  'expo-secure-store': "module.exports = { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }",
+  'expo-web-browser': "module.exports = { openAuthSessionAsync: async () => ({ type: 'dismiss' }) }",
   'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button' }",
-  react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
+  react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
 };
 const stubDir = mkdtempSync(join(tmpdir(), 'weknora-mobile-stub-'));
 const stubPath = (name: string): string => join(stubDir, `${name.replaceAll('/', '+')}.cjs`);
@@ -150,13 +152,16 @@ test('surface routing keeps upgrade-required free of authorized controls and gua
   assert.equal(invalidAuthorized.type.name, 'UpgradeRequiredScreen');
 
   const authorized = RuntimeSurface({
-    snapshot: { surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1', activeTenantId: 'tenant-1' } },
-    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {},
-    onActivateTenant: async () => {},
+    snapshot: { surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1', activeTenantId: 'tenant-1', tenants: [{ id: 'tenant-1', name: 'Acme' }] } },
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {}, onActivateTenant: async () => {},
   });
-  assert.equal(authorized.type.name, 'AuthorizedLandingScreen');
-  const authorizedText = descendants(render(authorized.type, authorized.props)).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
-  assert.equal(authorizedText.includes('WeKnora Task Office'), true);
+  assert.equal(authorized.type.name, 'HomeScreen');
+  hooks().__reset();
+  const homeElement = render(authorized.type, authorized.props);
+  const homeButtons = descendants(homeElement).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.equal(homeButtons.includes('View all tasks'), true);
+  const homeText = descendants(homeElement).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
+  assert.equal(homeText.includes('Acme'), true);
 });
 
 test('mobile startup invokes Runtime boot exactly once', async () => {
@@ -187,22 +192,33 @@ test('pnpm --filter @weknora/mobile typecheck resolves the package', () => {
   );
 });
 
-test('authorized landing switches tenants only through non-active options', async () => {
-  const { AuthorizedLandingScreen } = await import('./screens/AuthorizedLandingScreen.tsx');
+test('the home header activates any listed tenant through the runtime callback', async () => {
+  const { HomeScreen } = await import('./screens/HomeScreen.tsx');
   hooks().__reset();
   const activated: string[] = [];
-  const element = render(AuthorizedLandingScreen, {
-    deploymentLabel: 'WeKnora', userId: 'member-1', tenantId: '7',
-    tenants: [{ id: '7', name: 'Acme', active: true }, { id: '9', name: 'Beta', active: false }],
+  const element = render(HomeScreen, {
+    deploymentLabel: 'WeKnora',
+    tenants: [{ id: '7', name: 'Acme' }, { id: '9', name: 'Beta' }],
+    activeTenantId: '7',
+    onActivateTenant: (id: string) => { activated.push(id); },
     onSignOut: async () => {},
-    onActivateTenant: async (id: string) => { activated.push(id); },
+    taskOffice: fakeTaskOffice({}),
   });
 
-  const texts = descendants(element).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children);
-  assert.equal(texts.includes('Acme (active)'), true);
-  const buttons = descendants(element).filter(({ type }) => type === 'Button');
-  const switchButton = buttons.find(({ props }) => props.title === 'Switch to Beta');
-  assert.ok(switchButton, 'inactive tenant must render a switch button');
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'View all tasks', 'Load home'], 'with more than one tenant every tenant is a header switch button');
+  const single = render(HomeScreen, {
+    deploymentLabel: 'WeKnora',
+    tenants: [{ id: '7', name: 'Acme' }],
+    activeTenantId: '7',
+    onActivateTenant: (id: string) => { activated.push(id); },
+    onSignOut: async () => {},
+    taskOffice: fakeTaskOffice({}),
+  });
+  const singleTexts = descendants(single).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children);
+  assert.equal(singleTexts.includes('Acme'), true, 'a single tenant renders as plain text, not a switch button');
+  const switchButton = descendants(element).find(({ type, props: button }) => type === 'Button' && button.title === 'Beta');
+  assert.ok(switchButton, 'each listed tenant must render a switch button');
   (switchButton.props.onPress as () => void)();
   assert.deepEqual(activated, ['9']);
 });
@@ -219,11 +235,21 @@ test('RuntimeSurface derives tenant options from the snapshot identity', async (
     onActivateTenant: async () => {},
   });
 
-  assert.equal(surface.type.name, 'AuthorizedLandingScreen');
-  assert.deepEqual((surface.props as { tenants: Array<{ id: string; name?: string; active: boolean }> }).tenants, [
-    { id: '7', name: 'Acme', active: true },
-    { id: '9', name: 'Beta', active: false },
+  assert.equal(surface.type.name, 'HomeScreen');
+  assert.deepEqual((surface.props as { tenants: Array<{ id: string; name?: string }> }).tenants, [
+    { id: '7', name: 'Acme' },
+    { id: '9', name: 'Beta' },
   ]);
+  const tenantless = RuntimeSurface({
+    snapshot: {
+      surface: 'authorized',
+      deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' },
+      identity: { userId: 'member-1', activeTenantId: '7' },
+    },
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {},
+    onActivateTenant: async () => {},
+  });
+  assert.deepEqual((tenantless.props as { tenants: Array<{ id: string; name?: string }> }).tenants, [{ id: '7' }], 'a missing tenant list falls back to the active tenant id');
 });
 
 test('the resources screen renders only the Resource Shelf projection with explicit states', async () => {
@@ -277,22 +303,9 @@ test('the resources screen renders only the Resource Shelf projection with expli
   assert.equal(revokedTexts.some((text) => text.includes('Handbook')), false, 'revoked knowledge rows must disappear');
 });
 
-test('the resources route and landing entry consume the shelf interface only', async () => {
+test('the resources route keeps an Expo Router screen consuming the shelf interface only', async () => {
   const route = await import('./app/resources.tsx');
   assert.equal(typeof route.default, 'function', 'src/app/resources.tsx must default-export the Expo Router screen');
-
-  const { AuthorizedLandingScreen } = await import('./screens/AuthorizedLandingScreen.tsx');
-  hooks().__reset();
-  const element = render(AuthorizedLandingScreen, {
-    deploymentLabel: 'WeKnora',
-    userId: 'member-1',
-    tenantId: '7',
-    tenants: [{ id: '7', name: 'Acme', active: true }],
-    onSignOut: async () => {},
-    onActivateTenant: async () => {},
-  });
-  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
-  assert.equal(buttons.includes('Open Resources'), true);
 });
 
 test('the resources view modules never import contracts or api-client wire adapters', async () => {
@@ -385,4 +398,122 @@ test('the resources route without a handle stays on the sign-in notice without t
   assert.equal(descendants(element).some(({ type }) => type === ResourcesScreen), false);
   hooks().__mount();
   hooks().__unmount();
+});
+
+function fakeTaskOffice(script: {
+  homeView?: import('@weknora/mobile-core').HomeView;
+  homeError?: Error;
+  pages?: Array<import('@weknora/mobile-core').TaskListPage>;
+  listError?: Error;
+  archived?: string[];
+}) {
+  const calls: string[] = [];
+  let page = 0;
+  return {
+    calls,
+    async home() {
+      calls.push('home');
+      if (script.homeError) throw script.homeError;
+      return script.homeView ?? { needsMe: [], running: [], recentlyCompleted: [], unreadNotifications: 0, asOf: '2026-09-23T00:00:00Z' };
+    },
+    async tasks(query: { search?: string; archived?: boolean; status?: string }) {
+      calls.push(`tasks:${query.search ?? ''}:${query.archived ? 'archived' : 'active'}:${query.status ?? ''}`);
+      if (script.listError) throw script.listError;
+      return script.pages?.[0] ?? { items: [], duplicateRunIds: [] };
+    },
+    async moreTasks() {
+      calls.push(`more:${page}`);
+      page += 1;
+      return script.pages?.[page] ?? { items: [], duplicateRunIds: [] };
+    },
+    async archive(taskId: string) { calls.push(`archive:${taskId}`); script.archived?.push(taskId); },
+    async restore(taskId: string) { calls.push(`restore:${taskId}`); },
+  };
+}
+
+test('HomeScreen renders the three aggregate segments, then error and retry states', async () => {
+  hooks().__reset();
+  const { HomeScreen } = await import('./screens/HomeScreen.tsx');
+  const office = fakeTaskOffice({
+    homeView: {
+      needsMe: [{ interactionId: 'i1', kind: 'tool_approval', createdAt: '2026-09-23T00:00:00Z' }],
+      running: [{ taskId: 't1', runId: 'r1', title: 'weekly report', runStatus: 'running', attention: 'none', updatedAt: '2026-09-23T00:00:00Z' }],
+      recentlyCompleted: [{ taskId: 't2', runId: 'r2', title: 'research', runStatus: 'succeeded', attention: 'none', updatedAt: '2026-09-22T00:00:00Z' }],
+      unreadNotifications: 4,
+      asOf: '2026-09-23T00:00:01Z',
+    },
+  });
+  const props = {
+    deploymentLabel: 'WeKnora', tenants: [{ id: 'tenant-1', name: 'Acme' }], activeTenantId: 'tenant-1',
+    onActivateTenant: () => {}, onSignOut: async () => {}, taskOffice: office as unknown as import('@weknora/mobile-core').TaskOffice,
+  };
+  let tree = render(HomeScreen, props);
+  const textOf = (node: unknown): string => descendants(node).filter(({ type }) => type === 'Text').flatMap(({ props: p }) => p.children).join(' ');
+  assert.equal(textOf(tree).includes('WeKnora'), true, 'the header renders before any data');
+  const load = descendants(tree).find(({ type, props: button }) => type === 'Button' && button.title === 'Load home');
+  (load!.props.onPress as () => void)();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  tree = render(HomeScreen, props);
+  const text = textOf(tree);
+  assert.equal(text.includes('weekly report'), true);
+  assert.equal(text.includes('research'), true);
+  assert.equal(text.includes('tool_approval'), true);
+  assert.equal(text.includes('Unread 4'), true, 'the unread badge is visible');
+
+  const failing = fakeTaskOffice({ homeError: new Error('TASK_OFFICE_BACKEND') });
+  const errorProps = { ...props, taskOffice: failing as unknown as import('@weknora/mobile-core').TaskOffice };
+  let errorTree = render(HomeScreen, errorProps);
+  const retryLoad = descendants(errorTree).find(({ type, props: button }) => type === 'Button' && button.title === 'Load home');
+  (retryLoad!.props.onPress as () => void)();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  errorTree = render(HomeScreen, errorProps);
+  assert.equal(textOf(errorTree).includes('TASK_OFFICE_BACKEND'), true);
+});
+
+test('TasksScreen drives search, filters, archive and pagination through the module', async () => {
+  hooks().__reset();
+  const { TasksScreen } = await import('./screens/TasksScreen.tsx');
+  const archived: string[] = [];
+  const office = fakeTaskOffice({
+    pages: [
+      { items: [{ taskId: 't1', runId: 'r1', title: 'weekly report', runStatus: 'running', attention: 'required', updatedAt: '2026-09-23T00:00:00Z' }], nextCursor: 'c1', duplicateRunIds: [] },
+      { items: [{ taskId: 't2', runId: 'r2', title: 'research', runStatus: 'succeeded', attention: 'none', updatedAt: '2026-09-22T00:00:00Z' }], duplicateRunIds: [] },
+    ],
+    archived,
+  });
+  const props = { taskOffice: office as unknown as import('@weknora/mobile-core').TaskOffice };
+  let tree = render(TasksScreen, props);
+  const search = descendants(tree).find(({ type }) => type === 'TextInput');
+  (search!.props.onChangeText as (value: string) => void)('quarterly');
+  tree = render(TasksScreen, props);
+  const submit = descendants(tree).find(({ type, props: button }) => type === 'Button' && button.title === 'Search');
+  (submit!.props.onPress as () => void)();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(office.calls, ['tasks:quarterly:active:']);
+
+  tree = render(TasksScreen, props);
+  const more = descendants(tree).find(({ type, props: button }) => type === 'Button' && button.title === 'Load more');
+  (more!.props.onPress as () => void)();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(office.calls, ['tasks:quarterly:active:', 'more:0']);
+  tree = render(TasksScreen, props);
+  const text = descendants(tree).filter(({ type }) => type === 'Text').flatMap(({ props: p }) => p.children).join(' ');
+  assert.equal(text.includes('weekly report'), true);
+  assert.equal(text.includes('research'), true);
+
+  const archive = descendants(render(TasksScreen, props)).find(({ type, props: button }) => type === 'Button' && button.title === 'Archive');
+  (archive!.props.onPress as () => void)();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(archived, ['t1']);
+  assert.equal(office.calls.includes('tasks:quarterly:active:'), true, 'the list reloads through the module after archiving');
+
+  const emptyOffice = fakeTaskOffice({});
+  const emptyTree = render(TasksScreen, { taskOffice: emptyOffice as unknown as import('@weknora/mobile-core').TaskOffice });
+  const emptySearch = descendants(emptyTree).find(({ type }) => type === 'TextInput');
+  (emptySearch!.props.onChangeText as (value: string) => void)('nothing');
+  const emptySubmit = descendants(render(TasksScreen, { taskOffice: emptyOffice as unknown as import('@weknora/mobile-core').TaskOffice })).find(({ type, props: button }) => type === 'Button' && button.title === 'Search');
+  (emptySubmit!.props.onPress as () => void)();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const emptyText = descendants(render(TasksScreen, { taskOffice: emptyOffice as unknown as import('@weknora/mobile-core').TaskOffice })).filter(({ type }) => type === 'Text').flatMap(({ props: p }) => p.children).join(' ');
+  assert.equal(emptyText.includes('No tasks yet'), true, 'empty is an empty state, never a silent success');
 });

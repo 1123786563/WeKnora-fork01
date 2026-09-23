@@ -7,13 +7,16 @@ import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createMobileRuntime } from '@weknora/mobile-core';
 import { createScopedVault, createWebCryptoCipher } from '@weknora/mobile-core';
 import type { MobileRuntime, RuntimeSnapshot, ScopedVault } from '@weknora/mobile-core';
+import { createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
+import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
 import { createNativeSecurePendingOidcStore } from './adapters/secure-store.ts';
 import type { SecureStorePort } from './adapters/secure-store.ts';
 import { createSecureVaultKeyStore, createSecureVaultStorage } from './adapters/vault-adapters.ts';
 import { createNativeSecureCredentialStore } from './adapters/credential-store.ts';
 import { createNativeSecureDeploymentStore } from './adapters/deployment-store.ts';
-import { AuthorizedLandingScreen } from './screens/AuthorizedLandingScreen.tsx';
+import { HomeScreen } from './screens/HomeScreen.tsx';
+import { TasksScreen } from './screens/TasksScreen.tsx';
 import { DeploymentLoginScreen, validatedDeploymentOrigin } from './screens/DeploymentLoginScreen.tsx';
 import { UpgradeRequiredScreen } from './screens/UpgradeRequiredScreen.tsx';
 
@@ -52,6 +55,10 @@ export function createNativeMobileRuntime(): MobileRuntime {
       const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
       return createMobileRuntimeRemote({ origin, request: client.request });
     },
+    authorizedTransport(origin) {
+      const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
+      return (input, accessToken) => client.request({ ...input, headers: { ...input.headers, authorization: `Bearer ${accessToken}` } });
+    },
     resourceShelf: {
       remoteFor(origin) {
         const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
@@ -78,12 +85,40 @@ export interface RuntimeSurfaceProps {
   onActivateTenant: (tenantId: string) => Promise<void>;
 }
 
+const taskOffices = new Map<string, TaskOffice>();
+
+/** Task Office 按 deployment origin 记忆化；lease 由 Runtime 提供，切租户即 fail closed。 */
+function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice {
+  let office = taskOffices.get(origin);
+  if (!office) {
+    office = createTaskOffice({
+      backend: createTaskOfficeRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+      lease: () => activeRuntime.scopeLease(),
+    });
+    taskOffices.set(origin, office);
+  }
+  return office;
+}
+
+/** /tasks 应用根：授权面才渲染列表屏，其余面回到 Runtime 裁决的 Surface。 */
+export function MobileTasks() {
+  const activeRuntime = runtime();
+  const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return null;
+  return createElement(TasksScreen, { taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin) });
+}
+
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */
 export function RuntimeSurface({ snapshot, onSignIn, onBeginOidc, onSignOut, onActivateTenant }: RuntimeSurfaceProps) {
   if (snapshot.surface === 'authorized' && snapshot.deployment && snapshot.identity?.userId && snapshot.identity.activeTenantId) {
-    const activeTenantId = snapshot.identity.activeTenantId;
-    const tenants = (snapshot.identity.tenants ?? [{ id: activeTenantId }]).map((tenant) => ({ ...tenant, active: tenant.id === activeTenantId }));
-    return createElement(AuthorizedLandingScreen, { deploymentLabel: snapshot.deployment.label, userId: snapshot.identity.userId, tenantId: activeTenantId, tenants, onSignOut, onActivateTenant });
+    return createElement(HomeScreen, {
+      deploymentLabel: snapshot.deployment.label,
+      tenants: snapshot.identity.tenants ?? [{ id: snapshot.identity.activeTenantId }],
+      activeTenantId: snapshot.identity.activeTenantId,
+      onActivateTenant: (tenantId: string) => { void onActivateTenant(tenantId); },
+      onSignOut,
+      taskOffice: taskOfficeFor(runtime(), snapshot.deployment.origin),
+    });
   }
   if (snapshot.surface === 'deployment-login') {
     return createElement(DeploymentLoginScreen, { officialCloudOrigin, onSignIn, onBeginOidc });
