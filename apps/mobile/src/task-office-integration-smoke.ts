@@ -3,7 +3,7 @@ import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
-import { createInMemoryCredentialStore, createMobileRuntime, createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
+import { createInMemoryCredentialStore, createMobileRuntime, createTaskOffice, type RuntimeSnapshot, type TaskOffice } from '@weknora/mobile-core';
 
 export type TaskOfficeIntegrationConfig =
   | { enabled: true; deploymentOrigin: string; email: string; password: string }
@@ -11,6 +11,7 @@ export type TaskOfficeIntegrationConfig =
 
 export interface TaskOfficeIntegrationEvidence {
   deploymentOrigin: string;
+  unauthenticatedRead: 'rejected' | 'failed-open';
   home: 'loaded' | 'failed';
   sections: { needsMe: number; running: number; recentlyCompleted: number; unreadNotifications: number } | 'unavailable';
   listSearch: 'matched' | 'no-match' | 'failed';
@@ -43,6 +44,7 @@ export function taskOfficeIntegrationConfig(env: Record<string, string | undefin
 export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegrationConfig, { enabled: true }>): Promise<TaskOfficeIntegrationEvidence> {
   const evidence: TaskOfficeIntegrationEvidence = {
     deploymentOrigin: config.deploymentOrigin,
+    unauthenticatedRead: 'failed-open',
     home: 'failed',
     sections: 'unavailable',
     listSearch: 'failed',
@@ -62,12 +64,33 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
       return (input, accessToken) => client.request({ ...input, headers: { ...input.headers, authorization: `Bearer ${accessToken}` } });
     },
   });
-  const snapshot = await runtime.signIn({
-    deployment: { origin: config.deploymentOrigin, label: 'Integration deployment' },
-    email: config.email,
-    password: config.password,
+  // Prove the exact production Task Office boundary fails closed before sign-in.
+  // Reuse the same deployment origin and transport, but do not send credentials.
+  const unauthenticatedOffice: TaskOffice = createTaskOffice({
+    backend: createTaskOfficeRemote({
+      origin: config.deploymentOrigin,
+      request: (input) => runtime.authorizedRequest(input),
+    }),
+    lease: () => runtime.scopeLease(),
   });
-  if (snapshot.surface !== 'authorized' || !snapshot.deployment) return evidence;
+  try {
+    await unauthenticatedOffice.tasks({});
+  } catch {
+    evidence.unauthenticatedRead = 'rejected';
+  }
+  if (evidence.unauthenticatedRead !== 'rejected') { runtime.dispose(); return evidence; }
+  let snapshot: RuntimeSnapshot;
+  try {
+    snapshot = await runtime.signIn({
+      deployment: { origin: config.deploymentOrigin, label: 'Integration deployment' },
+      email: config.email,
+      password: config.password,
+    });
+  } catch {
+    runtime.dispose();
+    return evidence;
+  }
+  if (snapshot.surface !== 'authorized' || !snapshot.deployment) { runtime.dispose(); return evidence; }
 
   const office: TaskOffice = createTaskOffice({
     backend: createTaskOfficeRemote({
@@ -77,31 +100,37 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
     lease: () => runtime.scopeLease(),
   });
 
-  const homeView = await office.home();
-  evidence.home = 'loaded';
-  evidence.sections = {
-    needsMe: homeView.needsMe.length,
-    running: homeView.running.length,
-    recentlyCompleted: homeView.recentlyCompleted.length,
-    unreadNotifications: homeView.unreadNotifications,
-  };
+  try {
+    const homeView = await office.home();
+    evidence.home = 'loaded';
+    evidence.sections = {
+      needsMe: homeView.needsMe.length,
+      running: homeView.running.length,
+      recentlyCompleted: homeView.recentlyCompleted.length,
+      unreadNotifications: homeView.unreadNotifications,
+    };
 
   // 搜索：用一个必然不存在的随机词，验证参数贯通服务端过滤（no-match 是合法结果）。
-  const nonce = `zz-t04-${Date.now().toString(36)}`;
-  const searched = await office.tasks({ search: nonce });
-  evidence.listSearch = searched.items.length === 0 ? 'no-match' : 'matched';
+    const nonce = `zz-t04-${Date.now().toString(36)}`;
+    const searched = await office.tasks({ search: nonce });
+    evidence.listSearch = searched.items.length === 0 ? 'no-match' : 'matched';
 
   // 归档回路：只在账号确有任务时执行，否则如实 'unavailable'。
-  const activePage = await office.tasks({});
-  if (activePage.items.length === 0) return evidence;
-  const target = activePage.items[0]!;
-  await office.archive(target.taskId);
-  const archivedPage = await office.tasks({ archived: true });
-  const archivedVisible = archivedPage.items.some((card) => card.taskId === target.taskId);
-  await office.restore(target.taskId);
-  const restoredPage = await office.tasks({});
-  const restoredVisible = restoredPage.items.some((card) => card.taskId === target.taskId);
-  evidence.archiveRoundtrip = archivedVisible && restoredVisible ? 'archived-restored' : 'failed';
+    const activePage = await office.tasks({});
+    if (activePage.items.length === 0) return evidence;
+    const target = activePage.items[0]!;
+    await office.archive(target.taskId);
+    const archivedPage = await office.tasks({ archived: true });
+    const archivedVisible = archivedPage.items.some((card) => card.taskId === target.taskId);
+    await office.restore(target.taskId);
+    const restoredPage = await office.tasks({});
+    const restoredVisible = restoredPage.items.some((card) => card.taskId === target.taskId);
+    evidence.archiveRoundtrip = archivedVisible && restoredVisible ? 'archived-restored' : 'failed';
+  } catch {
+    evidence.home = evidence.home === 'loaded' ? evidence.home : 'failed';
+  } finally {
+    runtime.dispose();
+  }
   return evidence;
 }
 
