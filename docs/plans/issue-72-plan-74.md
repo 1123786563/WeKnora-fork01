@@ -30,10 +30,10 @@
 6. **关键环境风险（必须处理）**：宿主上残留 `weknora-lago-74_lago_postgres_data`、`_lago_redis_data`、`_lago_storage_data` 三个旧卷（`docker volume ls` 实测），而与之配对的旧 `lab.env`（一次性种子凭据）已随旧 worktree 消失。若不先清卷，新 `lab.sh init` 生成的新种子无法注入已初始化的 postgres 卷 → GraphQL 登录失败 → 全部阶段退化为 blocked-env。**Task 1 必须先清卷**（README.md:50-52 已给出 `down -v` 的文档化擦除路径）。
 7. **端口可用**：`lsof -nP -iTCP:48891 -iTCP:48892 -sTCP:LISTEN` 为空（两端口空闲）；`weknora-lago-74` 项目当前无运行容器；#73 主栈（`weknora-lago`，48889/48890）与其余开发容器健康运行中，不得触碰。
 8. **既有旁支文件（不处理、只上报）**：`clients.worktree-variant.py` 是被跟踪的历史旁支（提交 `5e0c958e6` 引入，与 `clients.py` 有 4 处差异：多 `import stat`、缺「拒绝覆盖既有 lab.env」守卫、多 `"Stripe-Account": ""` 头、DELETE 带 params 的 selector 处理）。`run_lab.py` 导入的是 `clients`（即 `clients.py`），本票不改不删该旁支文件，仅在 Ledger 上报主 Agent。
-9. **晋升惯例（cmp 实测）**：`docs/migrations/lago/t02-payment-activation/` 当前保存 7 个 AC/环境 JSON + `t02-run.txt`（与 deploy 侧 byte-identical 的 JSON + 操作者叙述版 timeline）；`t02-setup.json`、`t02-provider.json`、`t02-health.json` 只留在 deploy 侧 evidence（README.md:44-47 明示）。
+9. **晋升惯例（cmp 实测）**：`docs/migrations/lago/t02-payment-activation/` 当前保存 8 个 AC/环境 JSON（含 `t02-cleanup.json`，与 deploy 侧 byte-identical）+ `t02-run.txt`（叙述版 timeline，与 deploy 侧 runner 原始输出为超集关系）；`t02-setup.json`、`t02-provider.json`、`t02-health.json` 只留在 deploy 侧 evidence（README.md:44-47 明示）。
 10. **AC4 已交付**：`docs/migrations/lago/t02-payment-activation/DECISION.md`（§2 manual Premium 门控源码级验证、§4 blocker、§5 三选项推荐 (a)）；本计划补其 §2 中「运行时 403 待补」一项。
 
-## Issue #74 验收标准（原文）
+## Issue #74 验收标准（原文；2026-09-23 本会话经 `gh issue view 74` 在线逐字复核一致）
 
 | # | 验收标准（Issue 原文） |
 |---|---|
@@ -110,7 +110,7 @@
 
 1. 运行时证据包（供 #74 验收与 #81/#82 决策消费）：
    - `deploy/lago-lab/payment-activation/evidence/t02-{setup,provider,gating,manual,activation,duplicates,retries,decline,cleanup,environment}.json` + `t02-run.txt` + `t02-health.json`，schema 同上 report；`t02-environment.json` 额外含 `run.overall`、`run.phase_statuses`、`release.release`、`stripe.{key_source,test_mode_key_present,refused_non_test_key,api_container_reachability}`、`secrets_scan.{files_scanned,scrubbed,hits_after_scrub,clean}`。
-   - 晋升副本：`docs/migrations/lago/t02-payment-activation/`（7 个 AC/环境 JSON byte-identical + 叙述版 `t02-run.txt`）。
+   - 晋升副本：`docs/migrations/lago/t02-payment-activation/`（8 个 AC/环境 JSON byte-identical，含 `t02-cleanup.json` + 叙述版 `t02-run.txt`）。
 2. `docs/migrations/lago/t02-payment-activation/DECISION.md` 更新后的裁决（#81/#82 的消费物）：manual 运行时 403 证实（§2）、provider 路径端到端运行时证实或证伪（§3）、§5 选项 (a)/(b) 证据基础刷新、§6 AC 映射状态刷新。**无任何代码接口变更**（无 Go/TS/Python API、无路由、无 DB migration）。
 3. Ledger：`docs/plans/issue-72-ledger-74.md`（执行记录 + 上报事项）。
 
@@ -198,7 +198,7 @@ Expected: 三个旧卷删除成功、`grep` 无输出。若 `volume rm` 报「vo
 cd /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue72-n74
 ./deploy/lago-lab/payment-activation/lab.sh init
 ls -l deploy/lago-lab/payment-activation/lab.env        # 期望: 权限 600；绝不 cat 其内容
-grep -c '^LAGO_CREATE_ORG=true$' deploy/lago-lab/payment-activation/lab.env   # 期望: 1
+grep -c '^LAGO_CREATE_ORG="true"$' deploy/lago-lab/payment-activation/lab.env   # 期望: 1（lab.env 键值一律带双引号，clients.py:205）
 ./deploy/lago-lab/payment-activation/lab.sh up           # 冷启动约 2-4 分钟（镜像已随 #73 缓存；首次 migrate+seed）
 ```
 Expected: `up` 退出码 0（`docker compose up -d --wait` 全 healthy）。失败时看 `./deploy/lago-lab/payment-activation/lab.sh status` 与 `docker compose -p weknora-lago-74 logs api | tail -50`；seed 失败最常见原因是卷未清干净（回到 Step 3）。
@@ -260,7 +260,7 @@ mkdir -p "$(dirname "$OUT")"
 q() {
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" -p weknora-lago-74 \
     exec -T db sh -c 'psql -U "${POSTGRES_USER:-lago}" -d "${POSTGRES_DB:-lago}" -Atc "'"$1"'"' 2>/dev/null \
-    | paste -sd ';' -
+    | paste -sd ';' - || true   # 瞬时 docker/psql 失败只丢一个采样点，不终止观察者（set -e 容错）
 }
 start=$(date +%s)
 while :; do
@@ -365,7 +365,7 @@ print("RESULT:", "ALL PASS" if not fail else f"{len(fail)} FAILED: {fail}")
 sys.exit(0 if not fail else 1)
 PY
 ```
-Expected: 末行 `RESULT: ALL PASS`（逐项 PASS 共 20 条）。注意：若 gate 的 3DS 窗口未保持（`stable_window.still_incomplete == false`），phase 仍可按 canceled 回退分支判 pass（`phases.py:479-494`），此时 `AC1 subscription incomplete` 等字段断言以阶段 `status == "pass"` 为准、字段断言允许改为「pre-charge 窗口观察成立」——在 Ledger 记录该分支即可。
+Expected: 末行 `RESULT: ALL PASS`（逐项 PASS 共 22 条：env 6 + AC1 5 + AC4 1 + AC2 6 + AC3 2 + decline 2）。注意：若 gate 的 3DS 窗口未保持（`stable_window.still_incomplete == false`），phase 仍可按 canceled 回退分支判 pass（`phases.py:487-499`），此时 `AC1 subscription incomplete` 等字段断言以阶段 `status == "pass"` 为准、字段断言允许改为「pre-charge 窗口观察成立」——在 Ledger 记录该分支即可。
 
 - [ ] **Step 5: DB 投影核验（观察者数据）**
 
@@ -432,17 +432,17 @@ python3 -c "import json; e=json.load(open('deploy/lago-lab/payment-activation/ev
 ```
 Expected: `pass`。非 `pass` → 跳到 Step 6（fail 分支），Step 2-5 不执行。
 
-- [ ] **Step 2: 逐字晋升 7 个 AC/环境 JSON 并复核 byte-identical**
+- [ ] **Step 2: 逐字晋升 8 个 AC/环境 JSON 并复核 byte-identical**
 
 ```bash
 cd /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue72-n74
-for f in t02-gating t02-manual t02-activation t02-duplicates t02-retries t02-decline t02-environment; do
+for f in t02-gating t02-manual t02-activation t02-duplicates t02-retries t02-decline t02-cleanup t02-environment; do
   cp "deploy/lago-lab/payment-activation/evidence/$f.json" "docs/migrations/lago/t02-payment-activation/$f.json"
   cmp "deploy/lago-lab/payment-activation/evidence/$f.json" "docs/migrations/lago/t02-payment-activation/$f.json" || exit 1
 done
-echo "promoted 7 files, all byte-identical"
+echo "promoted 8 files, all byte-identical"
 ```
-Expected: `promoted 7 files, all byte-identical`。注意：`t02-setup/provider/health.json` 不晋升（惯例：非 AC 工作报告留 deploy 侧，docs README.md:44-47）。
+Expected: `promoted 8 files, all byte-identical`（cleanup 与其余 7 个属同一次运行，必须一并晋升，否则证据束内部不同源）。注意：`t02-setup/provider/health.json` 不晋升（惯例：非 AC 工作报告留 deploy 侧，docs README.md:44-47）。
 
 - [ ] **Step 3: 生成叙述版 docs t02-run.txt（内嵌 verbatim timeline）**
 
@@ -491,9 +491,12 @@ p = Path("docs/migrations/lago/t02-payment-activation/README.md")
 text = p.read_text()
 ev = json.load(open("deploy/lago-lab/payment-activation/evidence/t02-environment.json"))
 phases = ev["run"]["phase_statuses"]
-# 状态列：把每个证据文件行的 "`blocked-env` — ..." 单元替换为实际 status
+# 状态列：把每个证据文件行的状态单元格替换为实际 status。
+# 注意 phase_statuses 只有 setup/provider_setup/gate/manual/activate/duplicates/
+# retries/decline_control/cleanup 九个键（run_lab.py:259-300），没有 "environment"，
+# 因此 t02-environment.json 行改用 run.overall。
 mapping = {
-    "t02-environment.json": "environment",
+    "t02-environment.json": None,
     "t02-gating.json": "gate", "t02-manual.json": "manual",
     "t02-activation.json": "activate", "t02-duplicates.json": "duplicates",
     "t02-retries.json": "retries", "t02-decline.json": "decline_control",
@@ -503,7 +506,7 @@ for fname, phase in mapping.items():
     # 表头为 | File | What it proves | Status in this run | How it was produced |
     # group1 = "| `file` | cell2 |"，中段 [^|]* = 状态列（第 3 列）全部内容，group2 = 收尾竖线
     pat = re.compile(r"(\|\s*`" + re.escape(fname) + r"`\s*\|[^|]*\|)[^|]*(\|)")
-    status = phases[phase]
+    status = ev["run"]["overall"] if phase is None else phases[phase]
     text, n = pat.subn(lambda m: m.group(1) + f" `{status}` (real run, Stripe TEST key present) " + m.group(2), text, count=1)
     assert n == 1, f"status cell not found for {fname}"
 p.write_text(text)
@@ -582,13 +585,15 @@ new3 = f"""- **Runtime evidence (re-run with a Stripe TEST key,
 assert old3 in t; t = t.replace(old3, new3)
 
 old5 = """**Explicitly unproven:** (i) the AC1–AC4
-  runtime evidence of this lab is blocked-env pending a Stripe TEST-mode key;"""
+runtime evidence of this lab is blocked-env pending a Stripe TEST-mode key;"""
 new5 = """**Explicitly unproven:** (i) ~~the AC1–AC4
-  runtime evidence of this lab is blocked-env pending a Stripe TEST-mode
-  key~~ (resolved by the re-run: all phases `pass`);"""
+runtime evidence of this lab is blocked-env pending a Stripe TEST-mode
+key~~ (resolved by the re-run: all phases `pass`);"""
 assert old5 in t; t = t.replace(old5, new5)
 
+assert t.count("(this run: `blocked-env`)") == 4, "AC table markers not found as expected"
 t = t.replace("(this run: `blocked-env`)", "(re-run: `pass`)")
+assert t.count("(re-run: `pass`)") == 4
 old7 = """- **Environment gap to close:** supply `STRIPE_TEST_SECRET_KEY` (or
   `STRIPE_SECRET_KEY`) with an `sk_test_`/`rk_test_` value and re-run the
   documented workflow to convert every `blocked-env` phase report into a
@@ -727,3 +732,16 @@ git commit -m "issue-72(#74): ledger final — evidence complete, secrets scans 
 3. **类型/接口一致性**：`phase_*(ctx) -> report dict`、`RunContext` 构造参数、`lab.sh` 子命令、`run_lab.py` CLI 与退出码、`t02-environment.json` 字段名均逐一对照源码（`phases.py:64`、`run_lab.py:50,53-65,355-367`、`lab.sh:152-162`）核实；DB 观察者只依赖 `subscriptions.status`、`invoices.status/payment_status`、`payments.status` 列（阶段代码经 API 序列化自这些模型字段）。
 4. **Review Focus**：五项均落到具体 Task/Step 的测试（见该节）。
 5. **Honest failure**：fail/blocked 分支（Task 2 Step 3、Task 3 Step 6）明确「不晋升、不刷绿、如实记录并上报」，符合 spec completion gate。
+
+### 第 1 轮审查修订记录（2026-09-23）
+
+按审查反馈修订 7 处，并对两处高危修复做了真实文件 dry-run：
+
+1. **（High）Task 3 Step 4 `KeyError: 'environment'`**：`run.phase_statuses` 实测键集为 `['activate','cleanup','decline_control','duplicates','gate','manual','provider_setup','retries','setup']`，无 `environment`。已改 `t02-environment.json` 行取 `ev["run"]["overall"]`。dry-run（对真实 README 的 /tmp 副本写入）：8/8 行替换成功、无异常。
+2. **（High）Task 3 Step 5 `old5` 缩进不符**：`od -c` 实测 DECISION.md 行 130 行首无缩进（此前按 Read 渲染误写 2 空格）。已去除缩进，并为 §6 表翻转补 `count==4` 双断言。dry-run（对真实 DECISION.md 的 /tmp 副本）：old2/old3/old5/old7 四块字面断言全部通过。
+3. **（Medium）`grep '^LAGO_CREATE_ORG=true$'` 永不匹配**：`write_lab_env` 以 `f'{key}="{value}"\n'` 写入（clients.py:205），已改为 `'^LAGO_CREATE_ORG="true"$'`。
+4. **（Medium）晋升集合自相矛盾（7 vs 8）**：docs 目录实测 8 个 JSON（含 cleanup）；调查结论 #9 已改 8 个，Task 3 Step 2 循环补入 `t02-cleanup.json`（Expected 改 `promoted 8 files`）。
+5. **（Low）断言计数 20 → 22**：逐条清点 check() 共 22 处，已更正。
+6. **（Low）db_watch.sh 瞬时失败即整体退出**：q() 管道末尾补 `|| true`，单采样点丢失不终止观察者。
+7. **（Low）phases.py 行号漂移**：gate canceled 回退分支 `479-494` → `487-499`（`status = FAIL` 在 484，实测核对）。
+8. **（审查环境受限项）AC 原文在线比对**：审查会话 gh 网络被重置；本会话 `gh issue view 74` 实取 Issue 正文，4 条 AC 与计划表格逐字一致（见上节标注）。

@@ -21,12 +21,25 @@
 | #73 主栈 `weknora-lago`（48889/48890） | 全容器 healthy，运行 9h+；只读不动 |
 | 旁支文件 | `clients.worktree-variant.py` 为被跟踪历史旁支（5e0c958e6 引入）；runner 实际导入 `clients.py`；本票不动，已列上报事项 |
 
-## 计划自检结论（编写者）
+## 计划自检结论（编写者，含第 1 轮审查修订）
 
 - 占位符：无 TBD/TODO；证据依赖值均以命令从 JSON 注入；唯一显式槽位在 fail 分支模板并附取值命令。
 - 接口一致性：`phase_*(ctx)`、`RunContext.__init__`、`run_lab.py` CLI/退出码（0/1/2）、`lab.sh` 子命令、`t02-environment.json` 字段均对照 `phases.py`/`run_lab.py`/`lab.sh` 源码行核实。
 - 追踪矩阵：4 条 AC + 环境可信 + 回归共 6 行，每行落到 Task/Step 与具体断言命令（见计划末节）。
 - 本票零生产代码改动（Go/TS/Python lab 代码均只读）；产出 = 运行时证据 + docs 晋升 + DECISION 更新。
+
+### 第 1 轮审查修订（2026-09-23，全部已改入计划并复验）
+
+| 反馈 | 严重度 | 处置 | 复验 |
+|---|---|---|---|
+| Task 3 Step 4 `phases["environment"]` KeyError | high | environment 行改用 `run.phase_statuses`→`ev["run"]["overall"]` | 对真实 README /tmp 副本 dry-run：8/8 行替换、无异常 |
+| Task 3 Step 5 `old5` 前导空格与 DECISION.md 不符 | high | 去除缩进 + §6 翻转补 count==4 双断言 | 对真实 DECISION.md /tmp 副本 dry-run：old2/old3/old5/old7 断言全过 |
+| `grep '^LAGO_CREATE_ORG=true$'` 永不匹配（lab.env 带双引号） | medium | 改 `'^LAGO_CREATE_ORG="true"$'`（clients.py:205 写入格式实测） | 源码核对 |
+| 晋升集合 7 vs 8 矛盾（漏 t02-cleanup.json） | medium | 调查结论 #9 与 Step 2 循环均改 8 个 | `ls docs/migrations/lago/t02-payment-activation/*.json | wc -l` = 8 实测 |
+| 断言计数 20→22 | low | 更正 | 逐条清点 |
+| db_watch.sh 瞬时失败整体退出 | low | q() 补 `\|\| true` | 静态修复（未在真实栈跑 25 分钟窗口） |
+| phases.py 行号 479-494 → 487-499 | low | 更正 | grep 实测（status=FAIL@484、回退分支 487-499） |
+| AC 原文在线比对（审查环境 gh 断网） | 受限项 | 本会话 `gh issue view 74` 实取正文，4 条 AC 逐字一致 | 在线复核通过 |
 
 ## 执行清单（执行者填写）
 
