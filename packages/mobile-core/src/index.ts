@@ -11,3 +11,11 @@ export { createResourceShelf } from './shelf/resource-shelf.ts';
 export { createInMemoryResourceRemote } from './shelf/in-memory-resource-remote.ts';
 export type { ResourceRemote, ResourceShelfPorts } from './shelf/ports.ts';
 export type { ResourceClass, ResourceClassVerdict, ResourcePage, ResourceQuery, ResourceShelf, ResourceShelfHandle, SelectionVerdict, ShelfCloseReason, ShelfInvalidationEvent } from './shelf/types.ts';
+export { createTaskOffice, TaskOfficeError } from './task-office/task-office.ts';
+export { createScenarioTaskBackend, emptyOverview } from './task-office/in-memory-task-backend.ts';
+export type {
+  AttentionState, HomeView, InteractionCard, TaskBackendListInput, TaskBackendOverview, TaskBackendPage,
+  TaskBackendPort, TaskBackendRun, TaskCard, TaskListPage, TaskOffice, TaskOfficeErrorCode, TaskOfficePorts,
+  TaskOfficeQuery, TaskStatusFilter,
+} from './task-office/task-office.ts';
+export type { ScenarioTaskBackend, ScenarioTaskBackendHandlers } from './task-office/in-memory-task-backend.ts';
