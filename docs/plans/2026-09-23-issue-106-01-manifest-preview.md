@@ -47,7 +47,7 @@
   - `plugins.SnapshotDigest(tools []types.PluginToolSnapshot) string`
   - `plugins.IdentityFingerprint(pluginID, version, endpoint string, toolsDigest string) string`
   - `type plugins.EndpointLister func(ctx context.Context, transportType string, endpointURL string) ([]*types.MCPTool, error)`
-  - `plugins.NewMCPEndpointLister(manager *mcp.MCPManager) EndpointLister`
+  - `container.NewPluginMCPEndpointLister(manager *mcp.MCPManager) plugins.EndpointLister`（门控回归修复：architectureguard 禁止 internal/modules 互相 import，适配器自 plugins 模块迁至组合根 internal/container，并把 `*mcp.OAuthRequiredError` 映射为 `plugins.ErrOAuthProtectedEndpoint` 哨兵）
   - `plugins.FetchAndVerify(ctx context.Context, manifestURL string, lister EndpointLister) (*plugins.FetchResult, error)`
   - `plugins.BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool) ([]types.PluginToolSnapshot, string, error)`（返回快照与 tools_digest；声明不符时错误信息列出每个差异工具）
   - `var plugins.ErrOAuthProtectedEndpoint`、`plugins.IsOAuthProtected(err) bool`

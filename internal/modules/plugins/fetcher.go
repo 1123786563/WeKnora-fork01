@@ -2,9 +2,6 @@ package plugins
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,27 +9,33 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 
-// ErrOAuthProtectedEndpoint is returned when the plugin's MCP endpoint cannot
-// be verified because it demands OAuth authorization. A preview must fail
-// loudly here — there is no such thing as a half-verified preview.
+// ErrOAuthProtectedEndpoint is the sentinel for "the plugin's MCP endpoint
+// cannot be verified because it demands OAuth authorization" — the endpoint
+// answered the handshake with a 401 advertising RFC 9728 protected-resource
+// metadata. The production adapter (internal/container's
+// NewPluginMCPEndpointLister) wraps the MCP layer's OAuthRequiredError into
+// this sentinel while keeping the underlying cause, so both identities
+// survive. A preview must fail loudly here — there is no such thing as a
+// half-verified preview.
 var ErrOAuthProtectedEndpoint = errors.New("plugin endpoint requires OAuth authorization")
 
-// IsOAuthProtected reports whether err (or anything it wraps) is the MCP
-// layer's OAuthRequiredError — the endpoint answered the handshake with a 401
-// advertising RFC 9728 protected-resource metadata.
+// IsOAuthProtected reports whether err (or anything it wraps) carries the
+// ErrOAuthProtectedEndpoint sentinel, i.e. the production adapter recognized
+// the MCP layer's OAuthRequiredError during verification.
 func IsOAuthProtected(err error) bool {
-	var oauthErr *mcp.OAuthRequiredError
-	return errors.As(err, &oauthErr)
+	return errors.Is(err, ErrOAuthProtectedEndpoint)
 }
 
 // EndpointLister performs a LIVE ListTools against a plugin's MCP endpoint.
-// It is a seam: production uses NewMCPEndpointLister over mcp.MCPManager;
-// tests substitute fakes to assert zero-call guarantees.
+// It is a seam: production uses internal/container's
+// NewPluginMCPEndpointLister over the airesource MCPManager (modules must not
+// import each other — the composition root is the only legal glue point);
+// tests substitute fakes to assert zero-call guarantees. Adapters that hit an
+// OAuth-protected endpoint MUST wrap the error with ErrOAuthProtectedEndpoint.
 type EndpointLister func(ctx context.Context, transportType string, endpointURL string) ([]*types.MCPTool, error)
 
 // maxManifestBytes bounds the manifest download (1 MiB): an untrusted URL
@@ -86,10 +89,10 @@ func FetchAndVerify(ctx context.Context, manifestURL string, lister EndpointList
 	live, err := lister(ctx, manifest.Transport.Type, manifest.Transport.Endpoint)
 	if err != nil {
 		if IsOAuthProtected(err) {
-			// Double %w keeps BOTH identities: the sentinel for
-			// errors.Is(err, ErrOAuthProtectedEndpoint) and the underlying
-			// *mcp.OAuthRequiredError for IsOAuthProtected(err).
-			return nil, fmt.Errorf("%w: %w", ErrOAuthProtectedEndpoint, err)
+			// The adapter already wrapped the MCP layer's OAuthRequiredError
+			// with the sentinel via double %w (both identities preserved) —
+			// pass it through unchanged.
+			return nil, err
 		}
 		return nil, fmt.Errorf("plugin endpoint verification failed: %w", err)
 	}
@@ -135,53 +138,4 @@ func fetchLimited(ctx context.Context, manifestURL string) ([]byte, error) {
 		return nil, fmt.Errorf("manifest exceeds %d bytes", maxManifestBytes)
 	}
 	return body, nil
-}
-
-// NewMCPEndpointLister verifies plugin endpoints through the production MCP
-// client stack. Each verification gets a UNIQUE ephemeral service ID (URL
-// hash + random nonce): the manager caches connections by service ID, so a
-// deterministic ID would make two concurrent verifications of the same
-// endpoint share one client — and the first finisher's Disconnect would tear
-// down the other's in-flight ListTools (false-negative preview rejection).
-// Uniqueness buys each verification an exclusive connection and Disconnect
-// scope; CloseClient retires the entry immediately instead of leaving a
-// disconnected corpse for the idle-cleanup goroutine.
-func NewMCPEndpointLister(manager *mcp.MCPManager) EndpointLister {
-	return func(ctx context.Context, transportType, endpointURL string) ([]*types.MCPTool, error) {
-		if manager == nil {
-			return nil, fmt.Errorf("mcp manager is required")
-		}
-		var nonce [4]byte
-		if _, err := rand.Read(nonce[:]); err != nil {
-			return nil, fmt.Errorf("generate verification nonce: %w", err)
-		}
-		sum := sha256.Sum256([]byte(endpointURL))
-		serviceID := "plugin-verify-" + hex.EncodeToString(sum[:8]) + "-" + hex.EncodeToString(nonce[:])
-		service := &types.MCPService{
-			ID:            serviceID,
-			TenantID:      0,
-			Name:          "plugin-verify",
-			Enabled:       true,
-			TransportType: types.MCPTransportType(transportType),
-			URL:           &endpointURL,
-		}
-		client, err := manager.GetOrCreateClient(ctx, service)
-		if err != nil {
-			// The caller's ctx may expire (or the handshake fail) while the
-			// manager's background goroutine — on its own lifeCtx — is still
-			// connecting; a client that then finishes Connect/Initialize is
-			// mounted under this globally unique nonce key, which nothing will
-			// ever reference again, and idle cleanup only removes
-			// !IsConnected() entries. Retire the key on the error path too:
-			// CloseClient cancels a pending connection and disconnects an
-			// already-mounted one.
-			_ = manager.CloseClient(service.ID)
-			return nil, err
-		}
-		defer func() {
-			_ = client.Disconnect()
-			_ = manager.CloseClient(service.ID)
-		}()
-		return client.ListTools(ctx)
-	}
 }
