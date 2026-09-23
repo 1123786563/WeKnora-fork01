@@ -142,6 +142,33 @@
 | 兄弟栈复核（与 Task 1 基线 diff，过滤 `-74`） | 容器集合与健康状态完全一致（仅 Up 时长 10h→13h 自然增长）；#73 主栈 `weknora-lago` 与 WeKnora 开发容器未受影响 |
 | 工作树状态 | `git status --short` 干净（lab.env/runs/ 均被 .gitignore 覆盖，未入库） |
 
+## 审查第 1 轮处置（F1，2026-09-23）
+
+**F1（medium，spec-compliance：计划约束越权，待主 Agent 裁决）**
+
+- **根因（systematic-debugging）**：计划「明确不改动」6 个 lab 文件的前提建立在
+  「60 个离线测试绿 ⇒ lab 对 v1.53.0/Stripe 契约正确」的假设上；该假设为假——
+  2026-09-20 首跑因缺 Stripe TEST key 在 provider/payment 路径之前即退化为
+  blocked-env，GraphQL mutation、PM attach、invoice 可见性、重复注册语义、
+  订阅 DELETE 契约**从未被真实执行过**，离线 fake（本地 HTTP 假服务）也按计划
+  编写时的同一组错误假设建模，故缺陷不可见。真实运行（本会话 run1-run11）逐一
+  暴露后，走计划 fail 分支会把「实验工具缺陷」记成「商业语义失败」误导
+  #81/#82——与 Issue Goal 和 spec completion gate 冲突，故实施者按 Ruling 2
+  选择修复并完整上报（AGENTS.md 冲突规则的升级点即此：已显式上报，非静默）。
+- **处置 1（判据钉死）**：补 4 个回归测试锁住重排后判据的 fail 侧，防止语义
+  再漂移——gate 的 invoice 不可见分支仅在订阅保持 incomplete 时 pass；
+  duplicates 的 200 幂等仅在回显同一 lago_id 时无害（新 fake 开关
+  `duplicate_sub_replaces` 构造 lago_id 变化的 200 → 必须 fail）；decline 的
+  超时终局仅在负对照未激活时 pass（负对照订阅一旦 active 必须 fail）；manual
+  的 activation-fallback 路径（`target=activation`）403。提交 `0aa976c64`，
+  全套 `64 passed in 44.68s`（本会话实跑）。
+- **处置 2（裁决状态）**：F1 的最终裁决权在主 Agent/spec owner：**接受**则本票
+  全部证据与结论生效（审查者已确认判据语义与 AC 原文一致、未放松）；**拒绝**
+  则 `git revert 52e22b366 4aa74ce34 0aa976c64` 回到计划 fail 分支，同时
+  run10/run11 的 pass 证据失效（其取得依赖被 revert 的契约修复），AC1–AC3 运行
+  时证据回到 blocked/fail 状态并需另立任务。裁决前本票按「done with 未决偏差」
+  上报，不宣称计划字面合规。
+
 ## 上报事项（主 Agent 处理）
 
 1. #74 证据完成后的关票决策；#81/#82 解锁（主链恢复）。
