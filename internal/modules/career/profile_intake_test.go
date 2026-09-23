@@ -109,6 +109,29 @@ func TestModelInputOmitsIdentityFactsAndRedactsIdentityNumbers(t *testing.T) {
 	require.Contains(t, input.String(), "[REDACTED]")
 }
 
+func TestModelInputExcludesNestedDocumentFieldsAndSeparatedNumbers(t *testing.T) {
+	o, ctx := testOffice(t)
+	facts := []struct{ key, value string }{
+		{"education.school", "Example University"},
+		{"education.passport_number", "AB-12345678"},
+		{"experience.id_card", "110105 19900101 1234"},
+		{"education.details", "Graduated 2027; passport AB 12345678"},
+		{"experience.achievement", "Reduced latency 30%, document X110105-19900101-1234Z"},
+	}
+	for i, fact := range facts {
+		_, err := o.Confirm(ctx, fact.key, fact.value, fmt.Sprintf("safe-model-%d", i), uint64(i), Source{Kind: "manual"})
+		require.NoError(t, err)
+	}
+	input, err := o.BuildModelInput(ctx, "profile_summary")
+	require.NoError(t, err)
+	encoded := input.String()
+	for _, secret := range []string{"passport_number", "id_card", "AB-12345678", "AB 12345678", "110105 19900101 1234", "110105-19900101-1234"} {
+		require.NotContains(t, encoded, secret)
+	}
+	require.Contains(t, encoded, "Example University")
+	require.Contains(t, encoded, "Reduced latency 30%")
+}
+
 func TestIntakeSourceIsTenantOwnerScoped(t *testing.T) {
 	o, ctx := testOffice(t)
 	created, err := o.CreateSource(ctx, SourceUpload{FileName: "resume.pdf", MIMEType: "application/pdf", Size: 100, Digest: "sha256:test", ResourceRef: "private://resume", Text: "source text"}, "")
@@ -166,9 +189,9 @@ func TestSameCategoryExtractedItemsRemainDistinctAfterConfirmation(t *testing.T)
 
 func TestPurposeModelJSONOmitsIdentityFromKeyAndSourceMetadata(t *testing.T) {
 	o, ctx := testOffice(t)
-	_, err := o.Confirm(ctx, "experience.companyX110105199001011234A", "AcmeX110105199001011234A", "identity-meta-confirm", 0, Source{Kind: "manual", Label: "110105199001011234A", ReferenceID: "source-110105199001011234A"})
+	_, err := o.Confirm(ctx, "experience.company", "AcmeX110105199001011234A", "identity-meta-confirm", 0, Source{Kind: "manual", Label: "110105199001011234A", ReferenceID: "source-110105199001011234A"})
 	require.NoError(t, err)
-	_, err = o.Confirm(ctx, "certificate.passport", "PassportAB12345678Z", "passport-meta-confirm", 1, Source{Kind: "manual"})
+	_, err = o.Confirm(ctx, "certificate.details", "PassportAB12345678Z", "passport-meta-confirm", 1, Source{Kind: "manual"})
 	require.NoError(t, err)
 	input, err := o.BuildModelInput(ctx, "profile_summary")
 	require.NoError(t, err)

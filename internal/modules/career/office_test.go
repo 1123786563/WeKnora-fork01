@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -24,6 +25,7 @@ func testOffice(t *testing.T) (*Office, context.Context) {
 	require.NoError(t, e)
 	o, e := NewOffice(db)
 	require.NoError(t, e)
+	require.NoError(t, db.AutoMigrate(&types.StoredResource{}, &types.ResourceBinding{}))
 	ctx := WithScope(context.Background(), Scope{UserID: "u1", TenantID: 1})
 	require.NoError(t, o.ClaimSpace(ctx))
 	return o, ctx

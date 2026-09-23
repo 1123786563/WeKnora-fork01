@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -224,6 +225,14 @@ func (h *Handler) Sources(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
+	for _, source := range v {
+		if cleanupErr := h.cleanupCatalogCandidates(ctx, source.ID); cleanupErr != nil {
+			slog.Warn("career catalog cleanup pending", "source_id", source.ID)
+		}
+	}
+	if refreshed, refreshErr := h.office.ListSources(ctx); refreshErr == nil {
+		v = refreshed
+	}
 	c.JSON(200, gin.H{"sources": v})
 }
 
@@ -278,6 +287,13 @@ func (h *Handler) Upload(c *gin.Context) {
 		writeError(c, err)
 		return
 	}
+	if sources, listErr := h.office.ListSources(ctx); listErr == nil {
+		for _, source := range sources {
+			if cleanupErr := h.cleanupCatalogCandidates(ctx, source.ID); cleanupErr != nil {
+				slog.Warn("career catalog cleanup pending", "source_id", source.ID)
+			}
+		}
+	}
 	safeName, nameValid := secutils.ValidateInput(strings.TrimSpace(header.Filename))
 	if !nameValid {
 		writeError(c, ErrInvalidRequest)
@@ -328,6 +344,20 @@ func (h *Handler) Upload(c *gin.Context) {
 		return
 	}
 	var result UploadResult
+	if claim.ResourceRef == "" {
+		recovered, recoverErr := h.recoverCatalogRef(ctx, claim.ID, claim.ClaimToken, requestID)
+		if errors.Is(recoverErr, ErrUploadClaimLost) {
+			if latest, lookupErr := h.office.GetSource(ctx, claim.ID); lookupErr == nil {
+				c.JSON(202, UploadResponse{Source: latest})
+				return
+			}
+		}
+		if recoverErr != nil {
+			writeError(c, recoverErr)
+			return
+		}
+		claim.ResourceRef = recovered
+	}
 	if claim.ResourceRef != "" {
 		result, err = h.upload.ResumeAndParse(ctx, tenantID, claim.ID, baseName, declaredMIME, data, claim.ResourceRef)
 	} else {
@@ -340,13 +370,17 @@ func (h *Handler) Upload(c *gin.Context) {
 			if readErr == nil && current.ResourceRef == upload.Upload.ResourceRef {
 				return nil
 			}
-			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			_ = h.upload.Release(cleanupCtx, upload.Upload.ResourceRef, upload.SourceID)
-			return persistErr
+			if errors.Is(persistErr, ErrUploadClaimLost) && readErr == nil {
+				return ErrUploadClaimLost
+			}
+			return &OutcomeUnknownError{RequestID: requestID}
 		})
 	}
 	if err != nil {
+		if errors.Is(err, ErrOutcomeUnknown) {
+			writeError(c, err)
+			return
+		}
 		failed, superseded, finishErr := h.finishClaimFailure(ctx, claim.ID, claim.ClaimToken, err)
 		if finishErr != nil {
 			writeError(c, finishErr)
@@ -423,10 +457,11 @@ func (h *Handler) reconcileStaleSourcesExcept(ctx context.Context, skipRequestID
 			continue
 		}
 		if err = h.upload.Release(cleanupCtx, resource.ResourceRef, resource.ID); err != nil {
-			return err
+			slog.Warn("career source cleanup pending", "source_id", resource.ID, "stage", "release")
+			continue
 		}
 		if err = h.office.ClearSourceResource(cleanupCtx, resource.ID, resource.ClaimToken, resource.ResourceRef, resource.FinalErrorCategory); err != nil {
-			return err
+			slog.Warn("career source cleanup state pending", "source_id", resource.ID, "stage", "state_update")
 		}
 	}
 	return nil

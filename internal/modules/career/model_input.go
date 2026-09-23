@@ -8,8 +8,20 @@ import (
 	"strings"
 )
 
-var identityNumberPattern = regexp.MustCompile(`(?i)\d{15,}[\dX]?`)
-var identityPassportPattern = regexp.MustCompile(`(?i)[A-Z]{1,2}\d{6,10}`)
+var identityNumberPattern = regexp.MustCompile(`(?i)\d(?:[ -]?\d){14,17}[\dX]?`)
+var identityPassportPattern = regexp.MustCompile(`(?i)[A-Z]{1,2}[ -]?\d(?:[ -]?\d){5,9}`)
+var extractedModelKeyPattern = regexp.MustCompile(`^(education|experience|project|skill|achievement|certificate)\.item_[0-9a-f]{12}\.details$`)
+
+var safeModelKeys = map[string]string{
+	"degree": "education", "graduation_year": "education", "city": "preference", "target_role": "preference", "internship_months": "experience",
+	"education.school": "education", "education.degree": "education", "education.major": "education", "education.graduation_year": "education", "education.details": "education",
+	"experience.company": "experience", "experience.role": "experience", "experience.duration": "experience", "experience.details": "experience", "experience.achievement": "experience",
+	"project.name": "project", "project.role": "project", "project.details": "project",
+	"skill.name": "skill", "skill.details": "skill", "skill.go": "skill",
+	"achievement.details": "achievement", "achievement.latency": "achievement",
+	"certificate.name": "certificate", "certificate.details": "certificate",
+	"preference.city": "preference", "preference.target_role": "preference", "preference.details": "preference",
+}
 
 type PurposeModelInput struct {
 	Purpose string      `json:"purpose"`
@@ -41,17 +53,17 @@ func (o *Office) BuildModelInput(ctx context.Context, purpose string) (PurposeMo
 		return PurposeModelInput{}, err
 	}
 	allowed := map[string]bool{"education": true, "experience": true, "project": true, "skill": true, "achievement": true, "certificate": true, "preference": true}
-	legacy := map[string]string{"degree": "education", "graduation_year": "education", "city": "preference", "target_role": "preference", "internship_months": "experience"}
 	if purpose == "qualification_evaluation" {
 		allowed = map[string]bool{"education": true, "experience": true, "skill": true, "preference": true}
 	}
 	input := PurposeModelInput{Purpose: purpose, Facts: []ModelFact{}}
 	for _, fact := range view.Facts {
-		category := strings.SplitN(fact.Key, ".", 2)[0]
-		if legacyCategory, ok := legacy[fact.Key]; ok {
-			category = legacyCategory
+		category, safe := safeModelKeys[fact.Key]
+		if !safe && extractedModelKeyPattern.MatchString(fact.Key) {
+			category = strings.SplitN(fact.Key, ".", 2)[0]
+			safe = true
 		}
-		if strings.HasPrefix(fact.Key, "identity.") || !allowed[category] {
+		if !safe || !allowed[category] {
 			continue
 		}
 		key := redactModelString(fact.Key)

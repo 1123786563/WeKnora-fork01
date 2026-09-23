@@ -107,6 +107,9 @@ func (a *UploadAdapter) parseClaim(ctx context.Context, tenantID uint64, sourceI
 			return result, fmt.Errorf("store resume: %w", err)
 		}
 		result.Upload.ResourceRef = resourceRef
+		if err := a.catalog.Bind(ctx, resourceRef, careerSourceOwner, result.SourceID, types.ResourceRelationSourceFile); err != nil {
+			return result, fmt.Errorf("bind stored resume source: %w", err)
+		}
 		if onStored != nil {
 			if err := onStored(result); err != nil {
 				return result, fmt.Errorf("record processing resume: %w", err)
@@ -114,8 +117,10 @@ func (a *UploadAdapter) parseClaim(ctx context.Context, tenantID uint64, sourceI
 		}
 	}
 	result.Upload.ResourceRef = resourceRef
-	if err := a.catalog.Bind(ctx, resourceRef, careerSourceOwner, result.SourceID, types.ResourceRelationSourceFile); err != nil {
-		return result, fmt.Errorf("bind resume source: %w", err)
+	if existingRef != "" {
+		if err := a.catalog.Bind(ctx, resourceRef, careerSourceOwner, result.SourceID, types.ResourceRelationSourceFile); err != nil {
+			return result, fmt.Errorf("bind resume source: %w", err)
+		}
 	}
 	parsed, parseErr := a.reader.Read(ctx, &types.ReadRequest{FileContent: storedData, FileName: baseName, FileType: strings.TrimPrefix(ext, "."), RequestID: result.SourceID})
 	if parseErr != nil {
