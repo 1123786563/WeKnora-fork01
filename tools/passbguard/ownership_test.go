@@ -314,10 +314,12 @@ func TestRealRepoOwnershipMatrixFreezesAllLegacy(t *testing.T) {
 	require.Equal(t, wantExceptions, len(g.Exceptions), "exception-ledger 行数与台账不符")
 	require.Equal(t, len(d.Aliases), len(g.Aliases), "alias 属主行数与 manifest alias_obligations 不符")
 
-	// 框架要求的分模块冻结总量（freeze:150-155）。
+	// 框架要求的分模块冻结总量（freeze:150-155）。appconnector 7→1：
+	// Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP（B2-AC.2，2026-09-23）——6 行已迁
+	// handler 删除后仅余 shim 行 app_connector.go；纯计数修正，判定逻辑不变。
 	wantPerModule := map[string]int{
 		"identity": 27, "airesource": 33, "commercial": 8, "execution": 21,
-		"knowledge": 84, "agentcatalog": 55, "datasource": 4, "appconnector": 7,
+		"knowledge": 84, "agentcatalog": 55, "datasource": 4, "appconnector": 1,
 		"agentruntime": 45, "conversation": 44, "channels": 7, "insights": 6,
 		"workbench": 19, "craft": 30, "system": 5, "policy": 1,
 	}

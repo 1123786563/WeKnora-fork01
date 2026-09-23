@@ -9,7 +9,7 @@
 |---|---|---|
 | 16 模块均有所有者、README、module.go、代码地图、迁移台账 | ✅ | internal/modules/<id>/{README.md,module.go,legacy/README.md} ×16（F1 35ee7e088 起，各 A 任务维护）；归属 docs/architecture/backend-modules.yaml |
 | 所有服务端生产文件与测试都有目标模块归属 | ✅ | F1 覆盖恒等式：manifests 并集 + platform/bootstrap 残留（moves/README.md）= F0 库存 128 包；F0 已审 |
-| 天然成块代码物理归位，剩余 legacy 有精确清单 | ✅ | 14 个 A 任务搬迁：A1 5 包/65 文件、A2 7/116、A3 12/97、A4 10/99、A5 3/142、A6 12/188、A7 0（真空）、A8 5/25、A9 18/142、A10 1/47、A11 20/371、A12 4/36、A13 1/47、A14 1/13；legacy_files 396 条全部带 passb_task（manifests） |
+| 天然成块代码物理归位，剩余 legacy 有精确清单 | ✅ | 14 个 A 任务搬迁：A1 5 包/65 文件、A2 7/116、A3 12/97、A4 10/99、A5 3/142、A6 12/188、A7 0（真空）、A8 5/25、A9 18/142、A10 1/47、A11 20/371、A12 4/36、A13 1/47、A14 1/13；legacy_files 390 条全部带 passb_task（manifests；基线 396→390 变更登记见 §6，Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP） |
 | router/container/Worker 按模块注册且无重复 | ✅ | architectureguard 唯一注册检查 0 violations；composition 全部指向 internal/modules/*（各 IA 证据） |
 | 新业务代码不再进入旧横向业务目录 | ✅ | F2 legacy guard（service/repository/handler 三目录 + manifest 允许集）0 violations |
 | 所有 Integration Barrier 构建/测试/守护/Review 不劣于基线 | ✅ | IA1 118 ok（+2 在册 unstable）/IA2 119 ok/IA3 119 ok/IA4 119 ok 全绿；四份 barrier review 均 Approved |
@@ -44,3 +44,9 @@
 ## 5. 结论
 
 Pass A（Move First）全部 17 个任务 + 4 个集成屏障完成并逐一独立审查通过；系统行为、外部契约、基线计数全程零漂移；16 模块归位完成，剩余 legacy 全部有精确清单与 Pass B 义务。**Pass A 验收通过**，Pass B 待另行规划。
+
+## 6. Pass B 期基线变更登记（conventions §8 流程）
+
+| 日期 | 变更 | 批准 | 原因与证据 |
+|---|---|---|---|
+| 2026-09-23 | legacy_files 基线 396 → 390（−6：appconnector 模块 6 个已迁 handler 行） | 协调者裁定 **Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP**（b2-appconnector 节点 B2-AC.2 执行前升级，方案 A） | Pass B 搬迁节点物理迁出 legacy 文件后 `tools/modulemove`（verify.go legacy_files 存在性校验）与 `tools/passbguard`（legacy-nonexistent）要求 manifest/matrix 行同窗删除。Ruling 授权搬迁节点在迁移 commit 同窗删行（行删除早于 delete_barrier，该字段按最后期限语义）、按本条登记基线变更、并允许 passbguard 测试字面量计数同窗机械修正。逐行去向（原路径 → 目标包 + 迁移 commit）：见 `docs/architecture/evidence/passb/b2-appconnector.md` §4。三方一致复验：guard 实测 390 == 本台账 390 == manifests 发现 390（`make check-passb-readiness` + `go test ./tools/passbguard` 于变更 commit 实跑）。例外基线 105 不变。 |
