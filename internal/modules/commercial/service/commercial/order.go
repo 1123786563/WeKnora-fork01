@@ -257,6 +257,15 @@ func (s *OrderService) QuoteSnapshotForTenant(ctx context.Context, tenantID uint
 	return s.quoteForTenant(ctx, tenantID, quoteID)
 }
 
+// ProviderConfigured reports whether the named channel provider is wired
+// (a pure in-memory map lookup — no I/O). The purchase path checks it
+// BEFORE any seam-side effect so a blocked-env checkout can never leave a
+// payment-gated subscription behind (review F1).
+func (s *OrderService) ProviderConfigured(name string) bool {
+	provider, ok := s.providers[name]
+	return ok && provider != nil
+}
+
 // quoteForTenant loads and validates the quote snapshot for a tenant.
 func (s *OrderService) quoteForTenant(ctx context.Context, tenantID uint64, quoteID string) (repocommercial.QuoteRow, quoteSnapshot, error) {
 	if tenantID == 0 || quoteID == "" {

@@ -2,6 +2,9 @@ export interface OrderView {
  id: string; payment: 'pending'|'paid'|'closed';
  fulfillment: 'pending'|'processing'|'fulfilled'|'attention';
  amount_fen: string; currency: 'CNY';
+ // The channel checkout link when a payment request was created (#81, the
+ // payment entry the checkout page renders); absent while unpaid/unconfigured.
+ checkout_url?:string;
 }
 // The commercial summary wire shape mirrors the handler projection
 // (internal/handler/commercial.go Summary): the purchased subscription or

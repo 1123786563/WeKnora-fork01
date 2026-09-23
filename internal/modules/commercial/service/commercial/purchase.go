@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/modules/commercial"
@@ -97,6 +98,13 @@ func (s *PurchaseService) Purchase(ctx context.Context, tenantID uint64, quoteID
 	// 2. Expiry pre-check (same bound the order consumption enforces).
 	if !q.ExpiresAt.After(time.Now()) {
 		return PurchaseView{}, repocommercial.ErrQuoteExpired
+	}
+	// 2b. Channel availability PRE-check (review F1): a pure map lookup —
+	// the checkout provider must be wired BEFORE any seam-side effect, or a
+	// blocked-env submit would leave a payment-gated subscription (and its
+	// gating invoice) on the authority with no way to pay it.
+	if !s.orders.ProviderConfigured(providerName) {
+		return PurchaseView{}, fmt.Errorf("%w: %q", ErrPaymentProviderUnconfigured, providerName)
 	}
 	// 3. The publication pins the deterministic plan code (the version must
 	// be published first — #79 deliverable).

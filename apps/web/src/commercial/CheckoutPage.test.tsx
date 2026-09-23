@@ -62,5 +62,9 @@ test('checkout renders frozen quote line items and submits a purchase', async ()
   assert.equal(calls.length, 1);                        // 提交恰好一次购买
   assert.equal(calls[0]?.quote_id, 'qt_1');
   assert.equal(calls[0]?.provider, 'wechat');
+  // 支付跳转链接（审查 F2：渠道请求创建后用户必须有支付入口）。
+  const payLink = document.querySelector('a[href="https://pay.example/qr"]');
+  assert.ok(payLink, 'checkout must render the payment link from checkout_url');
+  assert.match(payLink?.textContent ?? '', /前往支付|支付/);
   await act(async () => { root?.unmount(); });
 });

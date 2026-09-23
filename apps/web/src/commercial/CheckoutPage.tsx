@@ -152,6 +152,12 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
               <p>
                 <Status>待付款（权益未开通）</Status>
               </p>
+              {/* 渠道支付入口（审查 F2）：渠道请求创建后展示跳转链接，用户由此完成支付。 */}
+              {state.order.checkout_url ? (
+                <p>
+                  <a href={state.order.checkout_url} target="_blank" rel="noreferrer">前往支付</a>
+                </p>
+              ) : null}
               <Button type="button" onClick={refreshOrder}>刷新订单状态</Button>
             </section>
             {/* AC1：报价冻结面——币种、行项目、权益与过期时间原样呈现。 */}

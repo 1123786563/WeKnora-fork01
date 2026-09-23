@@ -117,3 +117,19 @@
 - [x] Task 1-12 实施（2026-09-23，本记录；全部提交前缀见 git log——注：Task 1-11 提交沿用了计划内的 `feat/feat/test/docs` 前缀，与要求「issue-72(#81): 前缀」在措辞上不一致，提交主题均含 `#81` 标识可追踪）
 - [x] 真实栈验证 + 证据（deploy/lago/evidence/t09-run.txt + docs/migrations/lago/t09-quote-invoice/）
 - [ ] 集成回主分支（控制者职责）
+
+## 代码审查第 1 轮 Findings 处置（2026-09-23，systematic-debugging 定位根因后修复）
+
+### F1（medium｜缺陷/副作用顺序）渠道 provider 检查晚于 seam 外部副作用
+
+- **证据复现**：`purchase.go` 步骤 6 `SubmitCommand`（在权威面创建 incomplete 订阅+open gating invoice，`timeout_hours=0` 永不自动取消）先于 `order.go openOrder` 首行的 provider map 检查；t09-run.txt §5.c 真实复现（503 前已 "gated subscription created"）。
+- **根因**：计划 Task 7 算法把渠道检查放在步骤 8 `CreateOrder` 内部，单测 stub 渠道恒可用故无法暴露；渠道缺失环境下每次提交都会在权威面遗留不可支付对象（幂等身份保证无重复、无资金风险，但外部脏数据与 Billing 页「待付款」坏状态真实存在）。
+- **修复（RED→GREEN）**：新增回归测试 `TestPurchaseFailsFastWhenChannelUnconfigured`（渠道为空 → 断言 `ErrPaymentProviderUnconfigured` 且 `fake.PurchaseSubscriptions()==0`；RED 实测 "NO authority-side object may exist… got 1"）；实现 `OrderService.ProviderConfigured(name)`（纯 map 查找、零 IO）并在 `purchase.go` 步骤 2b 前置预检（quote 校验与过期预检之后、publication/ensure/gated 创建之前）。GREEN：新用例与既有 5 个 Purchase 用例全过。
+- **验证**：`go test ./internal/modules/commercial/... ./internal/router/ ./internal/handler/ -count=1` 全 ok（handler 503 映射路径不变）。
+
+### F2（medium｜验收/披露完整性）CheckoutPage 未渲染支付跳转链接
+
+- **证据复现**：`grep -rn checkout_url apps/web/src --include=*.tsx --include=*.ts | grep -v test` 零命中；计划 Task 12 Step 3 断言 3「支付跳转链接存在（渠道请求已创建）」依赖该渲染面。
+- **根因**：CheckoutPage 自旧实现继承即无支付链接渲染，计划 Task 10 Produces 又漏列该项；上轮报告对 Step 3 未执行的披露只归因于 awaiting_payment 截图态不可稳定构造，未披露断言面本身缺失——披露不完整。
+- **修复（RED→GREEN）**：`CheckoutPage.test.tsx` 增断言 `a[href=checkout_url]` 存在且文案含「前往支付」（RED 实测 AssertionError 'checkout must render the payment link'）；实现 `packages/contracts` OrderView 增可选 `checkout_url`（解析器 verbatim 透传本就携带该字段）+ CheckoutPage ready 态渲染 `<a target=_blank rel=noreferrer>前往支付</a>`。GREEN：单文件 1/1；commercial 全部 4 个测试文件 11/11；`pnpm test:shared` 979/983（与修复前一致，失败均为基线既有）；`typecheck:web` 零新增错误。
+- **披露补全**：Task 12 Step 3 浏览器验收未执行的原因现有两条——(a) 真实栈在可收款 PM 下数秒推进到 active，「待付款」截图态不可稳定构造；(b) 支付跳转链接渲染面当时缺失（本条已修复，测试断言覆盖）。

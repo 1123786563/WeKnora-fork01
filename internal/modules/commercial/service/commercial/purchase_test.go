@@ -178,3 +178,50 @@ func TestPurchaseConcurrentPlanChangeConflicts(t *testing.T) { // AC4 并发套�
 		t.Fatalf("exactly one channel request, got %d", len(cp.createCalls))
 	}
 }
+
+// TestPurchaseFailsFastWhenChannelUnconfigured（审查 F1）：渠道 provider 未
+// 配置时必须在任何 seam 外部副作用（gated 订阅 + gating invoice）之前拒绝——
+// 否则每次提交都在权威面留下一个不可支付的对象（timeout_hours=0 永不自动取消，
+// 取消机制属 #84）。
+func TestPurchaseFailsFastWhenChannelUnconfigured(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, err := db.DB(); err == nil {
+		s.SetMaxOpenConns(1)
+	}
+	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
+		&repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{},
+		&repocommercial.Subscription{}, &repocommercial.BillingAccount{}); err != nil {
+		t.Fatal(err)
+	}
+	fake := commercialplatform.NewFakeAdapter()
+	accounts, err := NewBillingAccountService(db, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, err := NewPlanVersionService(db, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 渠道为空的 OrderService（blocked-env 形态）。
+	orders, err := NewOrderService(db, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := NewPurchaseService(db, accounts, plans, orders, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchaseSeedPlan(t, svc.plans, "pro", 9900)
+	q := purchaseQuote(t, svc.orders, 36, "pro")
+	_, err = svc.Purchase(context.Background(), 36, q.ID, "wechat", "x")
+	if !errors.Is(err, ErrPaymentProviderUnconfigured) {
+		t.Fatalf("missing channel must fail fast with ErrPaymentProviderUnconfigured, got %v", err)
+	}
+	// 关键断言：seam 外部零副作用——权威面不得持有任何 gating 订阅。
+	if n := len(fake.PurchaseSubscriptions()); n != 0 {
+		t.Fatalf("NO authority-side object may exist when the channel is unconfigured, got %d", n)
+	}
+}
