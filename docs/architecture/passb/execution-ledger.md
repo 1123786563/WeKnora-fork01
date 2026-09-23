@@ -1198,3 +1198,11 @@
 - **remove_at**：IB2 核查——25c 或 execution/agentruntime 后续节点把上述 3 个依赖测试文件迁走后立即删除；最迟不晚于 B5（先到先删）
 - **责任节点**：b2-ac-skills（随 T3 独立 commit 落盘）
 - **同日关联裁定**：Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY（例外台账 105→113，exc-0106..0113，owner 25-agentcatalog-program，remove_at ib2）
+
+## 2026-09-24 · b2-ac-skills T3 修复 · contracts.yaml 越权改动回滚（审查 findings 修复）
+
+- **审查判定（critical，成立）**：T3 曾以「两裁定同系原则」自援修改 contracts.yaml（8 条 consumer/characterization_tests 路径同步 + 1 行顺序挪动），无协调者裁定背书，违反「只允许修改任务声明的文件」（计划 §1 范围外 / §2.6 本节点零改动 / §8(e) 回写归 IB2）。已整体回滚至 BASE=97b037ccf 原文（git checkout 97b037ccf -- docs/architecture/passb/contracts.yaml，diff 0 行）。
+- **回滚后门禁状态（实测）**：DAG 本节点四 gates 全绿——`go build ./...`=0、`go test ./internal/modules/agentcatalog/...`=ok、`make check-backend-architecture`=OK(0 violations)、`make verify-module-moves`=OK(16 manifests)。`make check-passb-readiness` 非 work 节点 gate（公约 §2 属 barrier 追加项），现红，10 条诊断即 **IB2 §8(e) 收口清单**：
+  - consumer-unrecorded（7）：agentcatalog.custom-agent-service / agentruntime.agent-engine / agentruntime.agent-service / airesource.model-service / airesource.storage-backend-resolver / conversation.session-service / conversation.stream-manager ×2 —— 新包 internal/modules/agentcatalog/service/ 下 tenant_skill_service.go / tenant_skill_install.go / tenant_skill_transcript.go 引用未登记；
+  - consumer-vanished（3）：agentruntime.agent-engine 指宿主 tenant_skill_install.go（占位）、conversation.stream-manager 指宿主 tenant_skill_transcript.go（占位）与宿主 tenant_skill_service.go（残差）不再引用。
+  - **IB2 收口动作**：随残差/占位删除与装配切换，把上述 consumers/characterization_tests 路径改指新包文件（stream-manager 的宿主残差 service.go 行随残差删除一并移除）；修后 check-passb-readiness 应绿。清单已同步登记 evidence §5.4 与 Integration Brief 素材。
