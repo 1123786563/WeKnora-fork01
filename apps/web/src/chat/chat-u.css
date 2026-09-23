@@ -1,0 +1,474 @@
+/* chat-u.css — S7 Tailwind utilities 平移（chat 域：BookmarkAnswerDialog / SessionShareDialog / ChatRoutePage toast）
+ * 前缀 wk-bad-* / wk-ssd-* / wk-chat-*；值 = utilities 编码的生效值。
+ * 导入顺序：须在 chat.td.css / chat.css 之前（冲突以 .td.css 为准）。 */
+
+
+.wk-bad-1 {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15,23,42,0.45);
+}
+
+.wk-bad-2 {
+  display: flex;
+  max-height: 85vh;
+  width: min(720px,92vw);
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  border-radius: 10px;
+  background-color: #fff;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(15,23,42,0.2);
+}
+
+.wk-bad-3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #101828;
+}
+
+.wk-bad-4 {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #344054;
+}
+
+.wk-bad-5 {
+  height: 32px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e4e7ec;
+  background-color: transparent;
+  padding-inline: 8px;
+  font-size: 13px;
+  color: #101828;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.wk-bad-5:focus {
+  border-style: solid;
+  border-color: #07c05f;
+}
+
+.wk-bad-6 {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wk-bad-7 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wk-bad-8 {
+  font-size: 13px;
+  color: #344054;
+}
+
+.wk-bad-9 {
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e4e7ec;
+  background-color: #fff;
+  padding-inline: 10px;
+  padding-block: 4px;
+  font-size: 12px;
+  color: #344054;
+}
+
+.wk-bad-9:hover {
+  border-style: solid;
+  border-color: #07c05f;
+  color: #07c05f;
+}
+
+.wk-bad-9:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.wk-bad-10 {
+  min-height: 220px;
+  flex: 1 1 0%;
+  resize: vertical;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e4e7ec;
+  background-color: transparent;
+  padding-inline: 8px;
+  padding-block: 6px;
+  font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  color: #101828;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.wk-bad-10:focus {
+  border-style: solid;
+  border-color: #07c05f;
+}
+
+.wk-bad-11 {
+  min-height: 220px;
+  flex: 1 1 0%;
+  overflow: auto;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e4e7ec;
+  padding-inline: 14px;
+  padding-block: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #101828;
+}
+
+.wk-bad-12 {
+  margin: 0;
+  color: rgba(0,0,0,0.45);
+}
+
+.wk-bad-13 {
+  margin: 0;
+  font-size: 12px;
+  color: #d54941;
+}
+
+.wk-bad-14 {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(0,0,0,0.45);
+}
+
+.wk-bad-15 {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 4px;
+  border-style: solid;
+  border-width: 0;
+  padding: 0;
+  font-size: 13px;
+  color: #344054;
+}
+
+.wk-bad-16 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.wk-bad-17 {
+  font-size: 12px;
+  font-weight: 500;
+  color: #475467;
+}
+
+.wk-bad-18 {
+  display: flex;
+  cursor: pointer;
+  align-items: center;
+  gap: 4px;
+}
+
+.wk-bad-19 {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top-style: solid;
+  border-top-width: 1px;
+  border-style: solid;
+  border-color: #eef1f5;
+  padding-top: 12px;
+}
+
+.wk-bad-20 {
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e4e7ec;
+  background-color: transparent;
+  padding-inline: 14px;
+  padding-block: 6px;
+  font-size: 13px;
+  color: #344054;
+}
+
+.wk-bad-21 {
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #07c05f;
+  background-color: transparent;
+  padding-inline: 14px;
+  padding-block: 6px;
+  font-size: 13px;
+  color: #07c05f;
+}
+
+.wk-bad-21:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.wk-bad-22 {
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #07c05f;
+  background-color: #07c05f;
+  padding-inline: 14px;
+  padding-block: 6px;
+  font-size: 13px;
+  color: #fff;
+}
+
+.wk-bad-22:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+
+.wk-ssd-secondary-button {
+  box-sizing: border-box;
+  min-height: 32px;
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #dcdcdc;
+  background-color: #fff;
+  padding-inline: 12px;
+  font-size: 13px;
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-ssd-secondary-button:enabled:hover {
+  background-color: #f3f3f3;
+}
+
+.wk-ssd-secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wk-ssd-primary-button {
+  box-sizing: border-box;
+  min-height: 32px;
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 0;
+  background-color: #07c05f;
+  padding-inline: 12px;
+  font-size: 13px;
+  color: #fff;
+}
+
+.wk-ssd-primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wk-ssd-danger-button {
+  box-sizing: border-box;
+  min-height: 32px;
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: rgba(220,60,60,0.4);
+  background-color: #fff;
+  padding-inline: 12px;
+  font-size: 13px;
+  color: #c03939;
+}
+
+.wk-ssd-danger-button:enabled:hover {
+  background-color: #fdecee;
+}
+
+.wk-ssd-danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wk-ssd-1 {
+  position: fixed;
+  inset: 0;
+  z-index: 3400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(15,23,42,0.45);
+  padding: 16px;
+}
+
+.wk-ssd-2 {
+  width: min(520px,100%);
+  border-radius: 12px;
+  background-color: #fff;
+  padding: 20px;
+  box-shadow: 0 18px 50px rgba(15,23,42,0.22);
+}
+
+.wk-ssd-3 {
+  margin-bottom: 4px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wk-ssd-4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(23,26,29,0.92);
+}
+
+.wk-ssd-5 {
+  min-height: 28px;
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding-inline: 6px;
+  font-size: 20px;
+  line-height: 1;
+  color: rgba(23,26,29,0.55);
+}
+
+.wk-ssd-5:hover {
+  background-color: #f3f3f3;
+}
+
+.wk-ssd-6 {
+  margin: 0;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  color: rgba(23,26,29,0.6);
+}
+
+.wk-ssd-7 {
+  margin: 0;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #8a96a8;
+}
+
+.wk-ssd-8 {
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-ssd-9 {
+  margin: 0;
+  font-size: 13px;
+  color: #b42318;
+}
+
+.wk-ssd-10 {
+  margin: 0;
+  margin-bottom: 6px;
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #5c6b83;
+}
+
+.wk-ssd-11 {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-ssd-12 {
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 1 1 0%;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7ea;
+  background-color: #f7f9fb;
+  padding-inline: 8px;
+  padding-block: 6px;
+  font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 12px;
+  color: rgba(23,26,29,0.92);
+}
+
+.wk-ssd-13 {
+  margin: 0;
+  margin-bottom: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8a96a8;
+}
+
+.wk-ssd-14 {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top-style: solid;
+  border-top-width: 1px;
+  border-style: solid;
+  border-color: #eef1f5;
+  padding-top: 14px;
+}
+
+
+.wk-chat-1 {
+  position: fixed;
+  bottom: 76px;
+  left: 50%;
+  z-index: 10050;
+  translate: -50% 0;
+  border-radius: 8px;
+  background-color: rgba(0,0,0,0.78);
+  padding-inline: 14px;
+  padding-block: 8px;
+  font-size: 13px;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}

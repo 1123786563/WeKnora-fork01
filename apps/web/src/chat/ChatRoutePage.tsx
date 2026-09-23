@@ -8,6 +8,7 @@ import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } fro
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage, splitLiveThinking } from '@weknora/views/chat/page';
 import { ChatHeader, SandboxHeaderToggle } from './chat-header.tsx';
+import './chat-u.css';
 import './chat.td.css';
 import { installChatImageErrorWatcher } from '@weknora/views/chat/markdown';
 import { getAgentNotReadyReasonKeys } from '@weknora/views/chat/agent-readiness';
@@ -1847,7 +1848,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   return <>
     {agentToast ? (
-      <div role="status" aria-live="polite" className="fixed bottom-[76px] left-1/2 z-[10050] -translate-x-1/2 rounded-[8px] bg-[rgba(0,0,0,0.78)] px-[14px] py-[8px] text-[13px] text-white shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
+      <div role="status" aria-live="polite" className="wk-chat-1">
         {agentToast}
       </div>
     ) : null}
