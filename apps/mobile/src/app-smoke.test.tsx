@@ -21,10 +21,10 @@ const moduleWithHooks = nodeModule as typeof nodeModule & {
 
 const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-linking': 'module.exports = { useLinkingURL() { return null; } }',
-  'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, push() {} } }",
+  'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, push() {} }, useLocalSearchParams() { return {}; } }",
   'expo-secure-store': "module.exports = { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }",
   'expo-web-browser': "module.exports = { openAuthSessionAsync: async () => ({ type: 'dismiss' }) }",
-  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button' }",
+  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView' }",
   react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
 };
 const stubDir = mkdtempSync(join(tmpdir(), 'weknora-mobile-stub-'));
@@ -523,4 +523,35 @@ test('TasksScreen drives search, filters, archive and pagination through the mod
   await new Promise((resolve) => setTimeout(resolve, 0));
   const emptyText = descendants(render(TasksScreen, { taskOffice: emptyOffice as unknown as import('@weknora/mobile-core').TaskOffice })).filter(({ type }) => type === 'Text').flatMap(({ props: p }) => p.children).join(' ');
   assert.equal(emptyText.includes('No tasks yet'), true, 'empty is an empty state, never a silent success');
+});
+
+test('the task detail route and screen consume the task office interface with evidence collapsed by default', async () => {
+  const route = await import('./app/tasks/detail.tsx');
+  assert.equal(typeof route.default, 'function', 'src/app/tasks/detail.tsx must default-export the detail route');
+  assert.equal(typeof route.TaskDetailRouteLifecycle, 'function');
+  const screen = await import('./screens/TaskDetailScreen.tsx');
+  assert.equal(typeof screen.TaskDetailScreen, 'function');
+  const view: import('@weknora/mobile-core').TaskDetailView = {
+    taskId: 'task-1', runId: 'run-1', title: '报告', lifecycle: 'active', runStatus: 'running', attention: 'none',
+    executionStatus: 'running', settlementStatus: 'pending', revision: 1, cursor: 2, incomplete: false, connection: 'live',
+    timeline: [{ seq: 2, occurredAt: '2026-09-23T00:00:00Z', kind: 'tool_activity', type: 'tool.started', summary: '正在使用工具', evidence: { payload: { secretArgument: 'raw' } } }],
+    duplicateSeqs: [],
+  };
+  const element = screen.TaskDetailScreen({ view, loading: false, onRefresh: () => {} });
+  const json = JSON.stringify(element);
+  assert.ok(json.includes('任务时间线'), 'the timeline section renders');
+  assert.ok(!json.includes('secretArgument'), 'raw evidence stays collapsed by default');
+});
+
+test('the composition wires the task office detail port and detail files stay off wire adapters', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
+  assert.match(composition, /detail:\s*remote/, 'taskOfficeFor must pass the remote as the detail port; open() fails closed without it (T05)');
+  for (const relative of ['screens/TaskDetailScreen.tsx', 'task-detail-view.ts', 'app/tasks/detail.tsx']) {
+    const source = readFileSync(join(here, relative), 'utf8');
+    assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Task Office Interface only`);
+  }
 });
