@@ -2272,7 +2272,8 @@
   flex-direction: column;
   gap: 14px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* Vue doc-content.vue:2285 .setting-drawer__section border-bottom: var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-bottom: 16px;
 }
 
@@ -2296,7 +2297,8 @@
   flex-shrink: 0;
   font-size: 12px;
   line-height: 1.6;
-  color: #66758b;
+  /* Vue .doc-detail-label color: var(--td-text-color-secondary)=rgba(0,0,0,0.6) */
+  color: rgba(0,0,0,0.6);
 }
 
 .wk-kdd-64 {
@@ -2337,7 +2339,8 @@
   flex-direction: column;
   gap: 14px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;border-color: #edf0f5;
+  /* Vue .setting-drawer__section border-bottom: var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-top: 12px;
   padding-bottom: 16px;
 }
@@ -2398,8 +2401,12 @@
   background-color: transparent;
   padding-inline: 4px;
   padding-block: 0;
+  /* Vue .metadata-empty-action: font:inherit（系统栈 + 22px 行高，button 不回落 Arial）
+   * + color var(--td-text-color-secondary)=rgba(0,0,0,0.6) */
+  font-family: inherit;
+  line-height: inherit;
   font-size: 12px;
-  color: #66758b;
+  color: rgba(0,0,0,0.6);
 }
 
 .wk-kdd-75:hover {
@@ -2426,7 +2433,8 @@
   margin: 0;
   white-space: pre-wrap;
   font-size: 13px;
-  color: #172033;
+  /* Vue .summary_content color: var(--td-text-color-primary)=rgba(0,0,0,0.9) */
+  color: rgba(0,0,0,0.9);
 }
 
 .wk-kdd-79 {
@@ -2537,7 +2545,9 @@
   border-width: 0;
   background-color: transparent;
   padding: 0;
-  color: rgba(0,0,0,0.4);
+  /* Vue document-preview.vue preview-toolbar 全屏钮（t-button text 态）图标色
+   * 继承按钮 color=var(--td-text-color-secondary)=rgba(0,0,0,0.6)，非 0.4 占位灰 */
+  color: rgba(0,0,0,0.6);
 }
 
 .wk-kdd-89:hover {
@@ -2976,7 +2986,8 @@
 
 /* 手工段：md 预览容器（单引号 className 未走 codemod） */
 .wk-kdd-mdwrap { max-height: calc(100vh - 200px); overflow: auto; border-radius: 6px; border: 1px solid var(--wk-border, #e4e7ec); background-color: #ffffff; }
-.wk-kdd-mdcontent { min-width: 0; font-size: 14px; line-height: 1.7; color: #172033; overflow-wrap: anywhere; }
+/* Vue .preview-markdown 正文色 @text-primary=var(--td-text-color-primary)=rgba(0,0,0,0.9)，非旧栈 #172033 */
+.wk-kdd-mdcontent { min-width: 0; font-size: 14px; line-height: 1.7; color: rgba(0,0,0,0.9); overflow-wrap: anywhere; }
 
 /* 手工段：trace timeline 分隔线（divide-y divide-line-soft） */
 .wk-kdd-trace-ol > :not([hidden]) ~ :not([hidden]) { border-bottom: 1px solid #edf0f5; }
