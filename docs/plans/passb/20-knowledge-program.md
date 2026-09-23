@@ -264,10 +264,10 @@ make verify-module-moves
 
 ### Task K0.3 — 前置差异上报、证据与报告
 
-- [ ] **差异①（commercial 三符号未导出）**：将 §6.2 组 E 实测（`repository/model_usage.go:8/:57`、`service/semantic_model_budget.go:114` 均小写；`git show 8c45a8815 --stat` 证明 ib1 零实施）写入报告，并按 conventions §5 在报告中给出裁定建议（导出义务归 12-commercial / ib1 补课；ib2 装配接线；K2/K4 以 R2 seam 解耦，不阻塞本程序）。禁止自行导出对方文件符号。
-- [ ] **差异②（b0 两张未闭环修复工单 + BLOCKED 记录）**：报告照录 §2 裁定 3 与 P2，标注「派发 K1-K3 前协调者须确认收口」。
-- [ ] **差异③（F2 status 机制未落盘）**：F2 裁定要求 contracts.yaml 每条契约记录含必填 `status: current|planned` 字段（facade 五操作应记 planned、由 barrier 回写），但落盘副本实测 0 处 `status:`（仅 125 处 `stability:`，`knowledge.facade`:1613 记 `stability: frozen`，DAG b2-k0 shared_resources 亦以「状态回写归 ib2」为前提）。据此：K5 的「门面 current 化」与 ib2 的状态回写在字段补落盘前无载体。报告按 conventions §5 上报裁定建议：由协调者裁决补落盘归属（b0 修复工单批次或 ib2 首个回写动作先行补字段）；补落盘前 K5 仅交付门面实装与装配 Brief，不声称契约状态变更。
-- [ ] **执行证据命令包（conventions §1.2，base 用 DAG 给定值）：**
+- [x] **差异①（commercial 三符号未导出）**：将 §6.2 组 E 实测（`repository/model_usage.go:8/:57`、`service/semantic_model_budget.go:114` 均小写；`git show 8c45a8815 --stat` 证明 ib1 零实施）写入报告，并按 conventions §5 在报告中给出裁定建议（导出义务归 12-commercial / ib1 补课；ib2 装配接线；K2/K4 以 R2 seam 解耦，不阻塞本程序）。禁止自行导出对方文件符号。
+- [x] **差异②（b0 两张未闭环修复工单 + BLOCKED 记录）**：报告照录 §2 裁定 3 与 P2，标注「派发 K1-K3 前协调者须确认收口」。
+- [x] **差异③（F2 status 机制未落盘）**：F2 裁定要求 contracts.yaml 每条契约记录含必填 `status: current|planned` 字段（facade 五操作应记 planned、由 barrier 回写），但落盘副本实测 0 处 `status:`（仅 125 处 `stability:`，`knowledge.facade`:1613 记 `stability: frozen`，DAG b2-k0 shared_resources 亦以「状态回写归 ib2」为前提）。据此：K5 的「门面 current 化」与 ib2 的状态回写在字段补落盘前无载体。报告按 conventions §5 上报裁定建议：由协调者裁决补落盘归属（b0 修复工单批次或 ib2 首个回写动作先行补字段）；补落盘前 K5 仅交付门面实装与装配 Brief，不声称契约状态变更。
+- [x] **执行证据命令包（conventions §1.2，base 用 DAG 给定值）：**
 
 ```bash
 PASSB_BASE_SHA=8c45a88153d0b20088252dbb29d2fb3815b253c2
@@ -277,9 +277,9 @@ go test -count=1 ./internal/modules/knowledge/kbfreeze/   # 预期 exit 0
 git diff "$PASSB_BASE_SHA"...HEAD --name-only | sort      # 与 owned_files 求差集，差集非空即失败
 ```
 
-- [ ] 写 `docs/architecture/evidence/passb/b2-k0.md`：前置条件 P1-P5 核对结果（命令原文+退出码）、§5/§6 冻结表复核记录、84 行计数输出、K0.2 测试输出、差异①②③登记。
-- [ ] 写 `docs/plans/passb/reports/b2-k0.md`：执行命令台账、变更清单 vs owned_files 逐条核对结论、未完成项如实列出（conventions §1.2）。
-- [ ] 向协调者回填报据：DAG `b2-k0` 建议置 `review`、`task_ids=[K0.1,K0.2,K0.3,K5.1,K5.2,K5.3]`（回填动作本身归协调者，conventions §9）。
+- [x] 写 `docs/architecture/evidence/passb/b2-k0.md`：前置条件 P1-P5 核对结果（命令原文+退出码）、§5/§6 冻结表复核记录、84 行计数输出、K0.2 测试输出、差异①②③登记。
+- [x] 写 `docs/plans/passb/reports/b2-k0.md`：执行命令台账、变更清单 vs owned_files 逐条核对结论、未完成项如实列出（conventions §1.2）。
+- [x] 向协调者回填报据：DAG `b2-k0` 建议置 `review`、`task_ids=[K0.1,K0.2,K0.3,K5.1,K5.2,K5.3]`（回填动作本身归协调者，conventions §9）。
 - **验收**：证据/报告双文件在节点分支提交；差集为空；`go test -count=1 ./tools/passbguard ./tools/modulemove` 仍绿（确认 K0 未破坏治理校验）。commit：`docs(passb): b2-k0 冻结证据与前置差异上报`。
 
 ### Task K5.1 — 装配切换 Integration Brief（b2-k-integration 交付物 1）
