@@ -1709,42 +1709,6 @@ legacy_files:
     destination: internal/modules/appconnector/handler
     integration_owner: ib2
     delete_barrier: ib2
-  - path: internal/handler/app_connector_action.go
-    module: appconnector
-    plan: 27-appconnector
-    destination: internal/modules/appconnector/handler
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/app_connector_connection.go
-    module: appconnector
-    plan: 27-appconnector
-    destination: internal/modules/appconnector/handler
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/app_connector_installation.go
-    module: appconnector
-    plan: 27-appconnector
-    destination: internal/modules/appconnector/handler
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/app_connector_oauth.go
-    module: appconnector
-    plan: 27-appconnector
-    destination: internal/modules/appconnector/handler
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/app_connector_oc.go
-    module: appconnector
-    plan: 27-appconnector
-    destination: internal/modules/appconnector/handler
-    integration_owner: ib2
-    delete_barrier: ib2
-  - path: internal/handler/app_connector_sync.go
-    module: appconnector
-    plan: 27-appconnector
-    destination: internal/modules/appconnector/handler
-    integration_owner: ib2
-    delete_barrier: ib2
   - path: internal/handler/artifact_preview.go
     module: workbench
     plan: 40-workbench
