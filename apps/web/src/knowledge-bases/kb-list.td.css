@@ -2778,3 +2778,38 @@
   line-height: 22px;
   color: var(--color-muted, #66758b);
 }
+
+/* ==== kb 编辑器深设置留守段 Tailwind 收编（S6：models/vectorStore/parser/
+ * storage/chunking/multimodal/asr/advanced/datasource，wk-kb-des-*） ==== */
+.wk-kb-des-section { display: grid; gap: 16px; }
+.wk-kb-des-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--color-ink, #172033);
+}
+.wk-kb-des-desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-des-desc--spaced { margin-top: 4px; }
+.wk-kb-des-field { display: grid; gap: 4px; }
+.wk-kb-des-label { font-size: 15px; font-weight: 500; color: var(--color-ink, #172033); }
+.wk-kb-des-required { margin-left: 4px; color: #e34d59; }
+.wk-kb-des-tip { margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-muted, #66758b); }
+.wk-kb-des-hint { margin: 0; font-size: 12px; line-height: 18px; color: var(--color-muted, #66758b); }
+.wk-kb-des-hint--plain { color: inherit; }
+.wk-kb-des-manage-link { justify-self: start; font-size: 13px; }
+.wk-kb-des-check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.wk-kb-des-scroll { max-height: 34rem; overflow: auto; }
+/* 表格元数据计数器（原 kb-editor-desc-count + justify-self-end text-xs
+ * leading-5 text-[var(--color-text-placeholder)]）。 */
+.kb-editor-desc-count {
+  justify-self: end;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--color-text-placeholder, rgba(0, 0, 0, 0.4));
+}
