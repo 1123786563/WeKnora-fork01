@@ -16,7 +16,7 @@ export interface TaskOfficeIntegrationEvidence {
   sections: { needsMe: number; running: number; recentlyCompleted: number; unreadNotifications: number } | 'unavailable';
   listSearch: 'matched' | 'no-match' | 'failed';
   archiveRoundtrip: 'archived-restored' | 'unavailable' | 'failed';
-  archiveRestore: 'restored' | 'failed' | 'not-attempted';
+  archiveRestore: 'restored' | 'failed' | 'not-attempted' | 'cleanup-required';
   commandTimestamp: string;
 }
 
@@ -34,11 +34,22 @@ export async function probeUnauthenticatedRead(office: TaskOffice): Promise<'rej
 export async function runArchiveRoundtrip(
   office: TaskOffice,
   taskId: string,
+  scopeStillMatches: () => boolean,
 ): Promise<Pick<TaskOfficeIntegrationEvidence, 'archiveRoundtrip' | 'archiveRestore'>> {
   try {
     await office.archive(taskId);
   } catch {
-    return { archiveRoundtrip: 'failed', archiveRestore: 'not-attempted' };
+    // The remote write may have committed before Task Office noticed a revoked lease.
+    // Compensate only while the original deployment/user/tenant is still active.
+    let sameScope = false;
+    try { sameScope = scopeStillMatches(); } catch { /* treat an unreadable scope as changed */ }
+    if (!sameScope) return { archiveRoundtrip: 'failed', archiveRestore: 'cleanup-required' };
+    try {
+      await office.restore(taskId);
+      return { archiveRoundtrip: 'failed', archiveRestore: 'restored' };
+    } catch {
+      return { archiveRoundtrip: 'failed', archiveRestore: 'failed' };
+    }
   }
   let archivedVisible = false;
   let restoredVisible = false;
@@ -167,8 +178,18 @@ export async function runTaskOfficeIntegration(config: Extract<TaskOfficeIntegra
     const activePage = await office.tasks({});
     if (activePage.items.length === 0) return evidence;
     const target = activePage.items[0]!;
+    const archiveScope = runtime.snapshot();
+    const archiveOrigin = archiveScope.deployment?.origin;
+    const archiveUser = archiveScope.identity?.userId;
+    const archiveTenant = archiveScope.identity?.activeTenantId;
     try {
-      Object.assign(evidence, await runArchiveRoundtrip(office, target.taskId));
+      Object.assign(evidence, await runArchiveRoundtrip(office, target.taskId, () => {
+        const current = runtime.snapshot();
+        return current.surface === 'authorized'
+          && current.deployment?.origin === archiveOrigin
+          && current.identity?.userId === archiveUser
+          && current.identity?.activeTenantId === archiveTenant;
+      }));
     } catch {
       evidence.archiveRoundtrip = 'failed';
     }

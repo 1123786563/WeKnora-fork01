@@ -68,13 +68,26 @@ test('archive smoke restores in finally when archived listing fails, and exposes
     },
     async restore() { events.push('restore'); },
   } as unknown as TaskOffice;
-  const outcome = await runArchiveRoundtrip(office, 'task-1');
+  const outcome = await runArchiveRoundtrip(office, 'task-1', () => true);
   assert.deepEqual(events, ['archive', 'archived-list', 'restore', 'active-list']);
   assert.equal(outcome.archiveRoundtrip, 'failed');
   assert.equal(outcome.archiveRestore, 'restored');
 
   const failedRestore = { ...office, async restore() { throw new Error('restore denied'); } } as TaskOffice;
-  assert.deepEqual(await runArchiveRoundtrip(failedRestore, 'task-1'), {
+  assert.deepEqual(await runArchiveRoundtrip(failedRestore, 'task-1', () => true), {
     archiveRoundtrip: 'failed', archiveRestore: 'failed',
   });
+});
+
+test('ambiguous archive after scope change reports cleanup required without restoring into a new scope', async () => {
+  let restores = 0;
+  const office = {
+    async archive() { throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED'); },
+    async tasks() { return { items: [], duplicateRunIds: [] }; },
+    async restore() { restores += 1; },
+  } as unknown as TaskOffice;
+  assert.deepEqual(await runArchiveRoundtrip(office, 'task-1', () => false), {
+    archiveRoundtrip: 'failed', archiveRestore: 'cleanup-required',
+  });
+  assert.equal(restores, 0, 'a changed tenant never receives a compensating restore request');
 });

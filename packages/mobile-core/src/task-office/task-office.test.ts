@@ -141,6 +141,18 @@ test('archive and restore invalidate the accumulated query and fail closed witho
   await assert.rejects(office.home(), (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
 });
 
+test('archive may commit remotely before lease settlement rejects locally', async () => {
+  const { revocable, lease } = leased();
+  const leaseRef: { lease?: ScopeLease } = { lease };
+  let remotelyArchived = false;
+  const { office } = officeWith(leaseRef, {
+    archive: async () => { remotelyArchived = true; revocable.revoke(); },
+  });
+  await assert.rejects(office.archive('task-committed'), (error: unknown) =>
+    error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_SCOPE_CHANGED');
+  assert.equal(remotelyArchived, true, 'the backend write can settle before the local lease check');
+});
+
 test('queries are normalized before they reach the backend', async () => {
   const leaseRef: { lease?: ScopeLease } = {};
   leaseRef.lease = leased().lease;
