@@ -485,6 +485,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// is affected — craft_delegate only opens for tRPC sessions that already
 	// have a bound Craft workspace.
 	must(container.Provide(repository.NewCraftStore))
+	// T08 Task ACL is one persistent service instance shared through its
+	// concrete API and the narrow craft.TaskAccessChecker port. Feature
+	// registration is owned by the router assembly that receives this registry.
+	must(container.Provide(service.NewCraftAccessService))
+	must(container.Provide(craftTaskAccessChecker))
+	must(container.Provide(session.NewCraftFeatureRoutes))
 	must(container.Provide(service.CraftActiveRunsQuery))
 	// W06 (coordinator-authorized): the executor assembly is env-driven —
 	// CRAFT_OPENCODE_BASE_URL assembles the real R01 Client -> R04 Executor
@@ -1036,6 +1042,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// O03 wiring: the craft tombstone at the session-deletion entrance (the
 	// Handler is fully constructible here — the router below resolves it).
+	must(container.Invoke(registerCraftAccessFeature))
 	must(container.Invoke(wireCraftSessionTombstone))
 
 	// Router configuration

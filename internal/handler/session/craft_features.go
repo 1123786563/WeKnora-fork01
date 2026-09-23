@@ -9,6 +9,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterCraftAccessFeature binds the access surface to one router assembly's
+// feature registry. Duplicate and post-mount registrations fail on that
+// registry without retaining process-global handler state.
+func RegisterCraftAccessFeature(routes *CraftFeatureRoutes, access CraftAccessAPI) error {
+	if routes == nil || access == nil {
+		return fmt.Errorf("Craft access feature unavailable")
+	}
+	return routes.Register("access", func(group CraftRouteGroup) {
+		RegisterCraftAccessRoutes(group, NewCraftAccessHandler(access))
+	})
+}
+
 // CraftFeatureRoutes is a construction-time registry. Each feature receives
 // only a constrained view of the authenticated /sessions route group. Services
 // still check Task access.
@@ -103,12 +115,4 @@ func validateCraftFeaturePath(method, route string) {
 			panic(fmt.Sprintf("invalid Craft feature path %q", route))
 		}
 	}
-}
-
-var registeredCraftFeatureRoutes = NewCraftFeatureRoutes()
-
-// RegisterCraftFeatureRoute is called by the container before router build.
-// Failed registration must fail assembly rather than silently omit a feature.
-func RegisterCraftFeatureRoute(name string, mount func(CraftRouteGroup)) error {
-	return registeredCraftFeatureRoutes.Register(name, mount)
 }

@@ -97,6 +97,7 @@ func RegisterSessionRoutes(
 	handler *session.Handler,
 	suggestionHandler *handler.MessageSuggestionHandler,
 	g *rbacGuards,
+	craftFeatures ...*session.CraftFeatureRoutes,
 ) {
 	// Sessions are per-user chat state, not knowledge-base content. The
 	// chat capability lets a scoped key run the full conversation flow
@@ -199,7 +200,7 @@ func RegisterSessionRoutes(
 	if api := session.RegisteredCraftSessionHandler(); api != nil {
 		craftHandler = session.NewCraftSessionHandler(api)
 	}
-	session.RegisterCraftSessionRoutes(craftSessions, sessions, craftHandler, session.RegisteredCraftPreviewRouteHandler())
+	session.RegisterCraftSessionRoutes(craftSessions, sessions, craftHandler, session.RegisteredCraftPreviewRouteHandler(), craftFeatures...)
 
 	// C02 interaction decide surface: mounted only when the interaction
 	// assembly is wired (fail-closed, no 503 shims); it inherits the sessions

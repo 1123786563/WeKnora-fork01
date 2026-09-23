@@ -114,7 +114,7 @@ type craftRouteGroup = CraftRouteGroup
 // the /craft/sessions group (create + list); sessions is the existing
 // /sessions group whose guards the per-session craft routes inherit. Nil
 // handlers leave their surface unmounted: fail-closed, no silent 404 shims.
-func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHandler *CraftSessionHandler, previewHandler *CraftPreviewHandler) {
+func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHandler *CraftSessionHandler, previewHandler *CraftPreviewHandler, featureRoutes ...*CraftFeatureRoutes) {
 	if craftSessions != nil && craftHandler != nil {
 		craftSessions.POST("", craftHandler.CreateCraftSession)
 		craftSessions.GET("", craftHandler.ListCraftSessions)
@@ -152,8 +152,8 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
 		sessions.POST("/:session_id/craft/versions/:version_id/preview",
 			craftPreviewFailureMetrics(previewHandler.IssueCraftPreview))
 	}
-	if craftHandler != nil && registeredCraftFeatureRoutes.hasFeatures() {
-		if err := registeredCraftFeatureRoutes.Mount(sessions); err != nil {
+	if len(featureRoutes) > 0 && featureRoutes[0] != nil && featureRoutes[0].hasFeatures() {
+		if err := featureRoutes[0].Mount(sessions); err != nil {
 			panic(err)
 		}
 	}

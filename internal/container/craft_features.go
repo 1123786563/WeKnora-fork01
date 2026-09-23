@@ -6,13 +6,12 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler/session"
 )
 
-// RegisterCraftFeature installs a lane-owned handler only after its service
-// has been assembled. T20 invokes registrations before router construction.
-// A missing handler fails assembly; routes inherit the authenticated session
-// group and the handler/service remains responsible for Task authorization.
-func RegisterCraftFeature(name string, mount func(session.CraftRouteGroup)) error {
-	if mount == nil {
+// RegisterCraftFeature installs a lane-owned handler on the registry owned by
+// one container/router assembly. Routes inherit that router's authenticated
+// session group and services remain responsible for Task authorization.
+func RegisterCraftFeature(routes *session.CraftFeatureRoutes, name string, mount func(session.CraftRouteGroup)) error {
+	if routes == nil || mount == nil {
 		return fmt.Errorf("Craft feature %q unavailable", name)
 	}
-	return session.RegisterCraftFeatureRoute(name, mount)
+	return routes.Register(name, mount)
 }
