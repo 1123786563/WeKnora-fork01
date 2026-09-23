@@ -189,7 +189,15 @@ func gateCallToolAuth(next http.Handler, oauthSrv *oauthServer, baseURL string) 
 		var rpc struct {
 			Method string `json:"method"`
 		}
-		if json.Unmarshal(body, &rpc) == nil && rpc.Method == "tools/call" {
+		// fail-closed（OCR T04-R2-6）：本端点只接受单个 JSON-RPC 对象；
+		// 解析失败（批量数组、拼接文档等）一律 400，绝不把鉴权决策建立在
+		// 「自行解析失败即放行」上——否则 SDK 未来一旦接受多消息形态，
+		// 其中的 tools/call 将绕过 401+WWW-Authenticate challenge。
+		if err := json.Unmarshal(body, &rpc); err != nil {
+			http.Error(w, "request body must be a single JSON-RPC object", http.StatusBadRequest)
+			return
+		}
+		if rpc.Method == "tools/call" {
 			if !oauthSrv.hasValidSession(bearerToken(r.Header.Get("Authorization"))) {
 				w.Header().Set("WWW-Authenticate", challenge)
 				http.Error(w, "unauthorized: this MCP tool call requires a personal OAuth bearer token", http.StatusUnauthorized)

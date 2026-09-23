@@ -22,6 +22,10 @@ var (
 	// accessTokenTTL 是 access_token 的有效期，与 /token 响应的 expires_in
 	// 一致（OCR T04-R1-2：声明与实现不得脱节）。
 	accessTokenTTL = time.Hour
+	// refreshTokenTTL 是 refresh_token 的独立有效期，远长于 access_token——
+	// 「access 过期收到 401 后刷新」是 refresh 的核心场景（OCR T04-R2-1），
+	// refresh 条目必须独立于 access 条目存活。
+	refreshTokenTTL = 30 * 24 * time.Hour
 	// pendingAuthTTL 是授权表单 state 的有效期。
 	pendingAuthTTL = 10 * time.Minute
 	// authCodeTTL 是授权码的有效期。
@@ -34,7 +38,16 @@ const (
 	maxStateBytes = 1024
 	// maxRegisteredClients 封顶动态注册客户端数量（OCR T04-R1-4）。
 	maxRegisteredClients = 4096
+	// maxRedirectURIsPerRegistration 封顶单次注册的 redirect_uris 条数
+	//（OCR T04-R2-8：聚合内存大小必须有界）。
+	maxRedirectURIsPerRegistration = 16
+	// maxRedirectURIBytes 封顶单条注册 redirect_uri 长度（OCR T04-R2-8）。
+	maxRedirectURIBytes = 2048
 )
+
+// maxPendingAuths 封顶窗口内未消费的授权表单 state 数量（OCR T04-R2-3：
+// TTL 清扫只约束时间维度，窗口内总量必须有界）。var 以便测试改写。
+var maxPendingAuths = 1024
 
 // oauthServer 是一个简化的 OAuth 2.0 授权码服务器（内存态）：
 //   - RFC 9728 protected-resource / RFC 8414 authorization-server metadata；
@@ -62,8 +75,8 @@ type oauthServer struct {
 	codes map[string]issuedCode
 	// tokens: access_token -> 会话条目（按 ExpiresAt 过期）。
 	tokens map[string]tokenEntry
-	// refreshTokens: refresh_token -> 对应 access_token（refresh 一次性轮换）。
-	refreshTokens map[string]string
+	// refreshTokens: refresh_token -> 会话条目（独立 TTL，一次性轮换）。
+	refreshTokens map[string]refreshEntry
 }
 
 // registeredClient 记录一次动态注册。
@@ -104,6 +117,13 @@ type tokenEntry struct {
 	ExpiresAt time.Time
 }
 
+// refreshEntry 是 refresh_token 条目：直接持有会话与独立过期时间，不依赖
+// 对应 access_token 的存活（OCR T04-R2-1：access 过期后刷新必须可用）。
+type refreshEntry struct {
+	Session   *oauthSession
+	ExpiresAt time.Time
+}
+
 // sessionContextKey 是会话注入 context 的键类型（不与 SDK 冲突）。
 type sessionContextKey struct{}
 
@@ -115,7 +135,7 @@ func newOAuthServer(baseURL, jiraBaseURL string) *oauthServer {
 		pendingAuths:  make(map[string]pendingAuth),
 		codes:         make(map[string]issuedCode),
 		tokens:        make(map[string]tokenEntry),
-		refreshTokens: make(map[string]string),
+		refreshTokens: make(map[string]refreshEntry),
 	}
 }
 
@@ -130,8 +150,9 @@ func randomToken() string {
 	return hex.EncodeToString(buf)
 }
 
-// sweepExpiredLocked 惰性清扫已过期的 pendingAuths / codes / tokens
-// （调用方需持锁；OCR T04-R1-4：未认证可达的填充路径必须有界）。
+// sweepExpiredLocked 惰性清扫已过期的 pendingAuths / codes / tokens /
+// refreshTokens（调用方需持锁；OCR T04-R1-4 与 T04-R2-7：所有令牌类
+// map 都必须有 TTL 退出路径，不留孤儿条目）。
 func (s *oauthServer) sweepExpiredLocked(now time.Time) {
 	for state, pending := range s.pendingAuths {
 		if now.After(pending.ExpiresAt) {
@@ -146,6 +167,11 @@ func (s *oauthServer) sweepExpiredLocked(now time.Time) {
 	for token, entry := range s.tokens {
 		if now.After(entry.ExpiresAt) {
 			delete(s.tokens, token)
+		}
+	}
+	for refreshToken, entry := range s.refreshTokens {
+		if now.After(entry.ExpiresAt) {
+			delete(s.refreshTokens, refreshToken)
 		}
 	}
 }
@@ -232,7 +258,21 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// OCR T04-R2-8：条数与单条长度封顶——注册体原样入 map，聚合内存大小
+	// 必须有界（4096 客户端 × 16 条 × 2KiB）。
+	if len(registration.RedirectURIs) > maxRedirectURIsPerRegistration {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid_redirect_uri", "error_description": "too many redirect_uris",
+		})
+		return
+	}
 	for _, uri := range registration.RedirectURIs {
+		if len(uri) > maxRedirectURIBytes {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error": "invalid_redirect_uri", "error_description": "redirect_uri is too long",
+			})
+			return
+		}
 		parsed, err := url.Parse(uri)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" ||
 			(parsed.Scheme != "http" && parsed.Scheme != "https") {
@@ -299,6 +339,21 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 	now := time.Now()
 	s.mu.Lock()
 	s.sweepExpiredLocked(now)
+	// OCR T04-R2-4：对未过期的同 state 条目拒绝覆盖——否则攻击者获知成员
+	// state 后可用自己的 client/redirect/PKCE 重新绑定（授权请求固定）。
+	// 合法客户端每次授权流生成新 state（OAuth 语义），POST 重试不受影响。
+	if _, exists := s.pendingAuths[state]; exists {
+		s.mu.Unlock()
+		http.Error(w, "state is already in use; start a new authorization request", http.StatusConflict)
+		return
+	}
+	// OCR T04-R2-3：窗口内总量封顶——TTL 清扫只约束时间维度，未认证攻击者
+	// 高频 GET 可在窗口内无界填充。
+	if len(s.pendingAuths) >= maxPendingAuths {
+		s.mu.Unlock()
+		http.Error(w, "too many pending authorizations", http.StatusTooManyRequests)
+		return
+	}
 	s.pendingAuths[state] = pendingAuth{Request: req, ExpiresAt: now.Add(pendingAuthTTL)}
 	s.mu.Unlock()
 	// 表单把授权参数（含 state）藏在隐藏字段；凭据字段仅在提交瞬间经
@@ -362,6 +417,10 @@ func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, res
 // 才消费 state 并发码（OCR T04-R1-3：凭据输错后同 state 可重试，避免成员被
 // 迫重启整条授权流）。凭据性失败（401/403）渲染凭据错误页；上游故障渲染
 // 502 服务不可用页（OCR T04-R1-10：不得把 Jira 故障伪装成凭据错误）。
+//
+// 已知限制（OCR T04-R2-9）：本端点无速率限制/失败锁定，可被用作成员 Jira
+// 凭据的在线猜测代理与出站请求放大器——教学级实现，生产部署必须置于
+// 限流/防护之后（见 README）。
 func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", http.StatusBadRequest)
@@ -480,7 +539,7 @@ func (s *oauthServer) exchangeCode(w http.ResponseWriter, r *http.Request) {
 	session := issued.Session
 	s.mu.Lock()
 	s.tokens[accessToken] = tokenEntry{Session: &session, ExpiresAt: now.Add(accessTokenTTL)}
-	s.refreshTokens[refreshToken] = accessToken
+	s.refreshTokens[refreshToken] = refreshEntry{Session: &session, ExpiresAt: now.Add(refreshTokenTTL)}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"access_token":  accessToken,
@@ -491,30 +550,31 @@ func (s *oauthServer) exchangeCode(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// refresh 用 refresh_token 换新 access_token（授权会话保持不变）。旧
-// access_token 不立即烧毁——保留到其自然过期，客户端在广告的 TTL 内并发
-// 使用旧 token 不会突遭 401（OCR T04-R1-2）；refresh_token 自身一次性轮换。
+// refresh 用 refresh_token 换新 access_token（授权会话保持不变）。
+// refreshEntry 直接持有会话与独立 TTL（OCR T04-R2-1：access_token 自然
+// 过期后刷新必须成功——这是 WeKnora 客户端 401 后的标准续期路径）；
+// 先校验再消费，只有校验通过才轮换旧 refresh_token（失败不烧毁有效条目）。
+// 旧 access_token 不立即烧毁——保留到自然过期（OCR T04-R1-2 宽限语义）。
 func (s *oauthServer) refresh(w http.ResponseWriter, r *http.Request) {
 	refreshToken := r.PostFormValue("refresh_token")
 	now := time.Now()
-	s.mu.Lock()
-	s.sweepExpiredLocked(now)
-	accessToken, ok := s.refreshTokens[refreshToken]
-	if ok {
-		// 轮换：旧 refresh_token 一次性消费，签发新对。
-		delete(s.refreshTokens, refreshToken)
-	}
-	entry, sessionOK := s.tokens[accessToken]
-	if !ok || !sessionOK || now.After(entry.ExpiresAt) {
-		s.mu.Unlock()
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_grant", "error_description": "unknown refresh_token or expired session"})
-		return
-	}
 	newAccess := "at-" + randomToken()
 	newRefresh := "rt-" + randomToken()
-	s.tokens[newAccess] = tokenEntry{Session: entry.Session, ExpiresAt: now.Add(accessTokenTTL)}
-	s.refreshTokens[newRefresh] = newAccess
+	s.mu.Lock()
+	s.sweepExpiredLocked(now)
+	entry, ok := s.refreshTokens[refreshToken]
+	valid := ok && !now.After(entry.ExpiresAt)
+	if valid {
+		// 轮换：旧 refresh_token 一次性消费，签发新对（会话不变）。
+		delete(s.refreshTokens, refreshToken)
+		s.tokens[newAccess] = tokenEntry{Session: entry.Session, ExpiresAt: now.Add(accessTokenTTL)}
+		s.refreshTokens[newRefresh] = refreshEntry{Session: entry.Session, ExpiresAt: now.Add(refreshTokenTTL)}
+	}
 	s.mu.Unlock()
+	if !valid {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_grant", "error_description": "unknown or expired refresh_token"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"access_token":  newAccess,
 		"token_type":    "Bearer",

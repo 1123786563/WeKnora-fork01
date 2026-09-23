@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -405,4 +407,112 @@ func TestSearchJQLIsWeekBounded(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, result.Content)
 	require.Equal(t, wantJQL, sawJQL, "服务端发出的 JQL 必须精确等于带界模板")
+}
+
+// --- OCR T04-R2-1/R2-7：access_token 过期后 refresh 必须可用 ---
+
+// TestRefreshWorksAfterAccessTokenExpiry 覆盖 refresh_token 的核心场景：
+// access_token 自然过期（收到 401）后用 refresh_token 续期必须成功——
+// refresh 令牌独立于 access 令牌存活，且无效 refresh 尝试不得烧毁有效条目。
+func TestRefreshWorksAfterAccessTokenExpiry(t *testing.T) {
+	issues := []map[string]any{{
+		"key": "A-1", "fields": map[string]any{
+			"summary": "任务", "status": map[string]any{"name": "进行中"}, "duedate": "2026-09-25"},
+	}}
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", issues))
+	redirectURI := "https://client.example/callback"
+
+	// 先把 access TTL 缩到 1ns 再走授权流：签发的 access_token 立即过期，
+	// refresh_token 用独立的 30 天 TTL（这正是「401 后刷新」场景）。
+	oldTTL := accessTokenTTL
+	accessTokenTTL = time.Nanosecond
+	accessToken, refreshToken := testOAuthFlow(t, base, redirectURI, "member@example.com", "tok")
+	t.Cleanup(func() { accessTokenTTL = oldTTL })
+	time.Sleep(2 * time.Millisecond)
+
+	// 无效 refresh_token 先试：400，且不得影响后续有效条目（先校验再消费）。
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", "rt-not-a-real-token")
+	resp, err := http.PostForm(base+"/token", form)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	// 有效 refresh_token：access 已过期仍必须成功续期（拿新 access + 轮换 refresh）。
+	form.Set("refresh_token", refreshToken)
+	resp, err = http.PostForm(base+"/token", form)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "refresh must survive access_token expiry")
+	payload := map[string]any{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
+	newAccess, _ := payload["access_token"].(string)
+	require.NotEmpty(t, newAccess)
+
+	// 过期旧 access 仍被 gate 拒绝（不被续期复活）。
+	_, err = callToolWithToken(t, base, accessToken)
+	require.Error(t, err, "expired access token must stay rejected")
+}
+
+// --- OCR T04-R2-3/R2-4：pendingAuths 数量有界 + state 绑定不可覆盖 ---
+
+func TestPendingAuthsBoundedAndStateNotOverwritable(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	first := "https://client.example/callback"
+	second := "https://client.example/other"
+	clientID := testRegisterClient(t, base, first, second)
+	_, challenge := testPKCE(t)
+
+	// 同 state、不同绑定参数的第二次 GET → 409（防授权请求固定）。
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, clientID, first, "fix-state", challenge))
+	require.Equal(t, http.StatusConflict,
+		testAuthorizeGET(t, base, clientID, second, "fix-state", challenge))
+
+	// 数量上限：窗口内 pendingAuths 超过 maxPendingAuths → 429。
+	oldMax := maxPendingAuths
+	maxPendingAuths = 2
+	t.Cleanup(func() { maxPendingAuths = oldMax })
+	// "fix-state" 已占 1 条；再登记 1 条达到上限，第 3 个新 state 被拒。
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, clientID, first, "state-b", challenge))
+	require.Equal(t, http.StatusTooManyRequests,
+		testAuthorizeGET(t, base, clientID, first, "state-c", challenge))
+}
+
+// --- OCR T04-R2-6：鉴权 gate 对不可解析 body 必须 fail-closed ---
+
+func TestGateRejectsNonObjectJSONRPCBody(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	body := []byte(`[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_my_week_issues"}}]`)
+	resp, err := http.Post(base+"/mcp", "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode,
+		"batch/array body must be rejected by the auth gate, not passed through")
+}
+
+// --- OCR T04-R2-8：单次注册 redirect_uris 条数与单条长度上限 ---
+
+func TestRegisterBoundsRedirectURIs(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	many := make([]string, 17)
+	for i := range many {
+		many[i] = fmt.Sprintf("https://client.example/cb-%d", i)
+	}
+	body, err := json.Marshal(map[string]any{"redirect_uris": many})
+	require.NoError(t, err)
+	resp, err := http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "17 redirect_uris must be rejected")
+
+	long := []string{"https://client.example/cb?pad=" + strings.Repeat("x", 3000)}
+	body, err = json.Marshal(map[string]any{"redirect_uris": long})
+	require.NoError(t, err)
+	resp, err = http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "3000-byte redirect_uri must be rejected")
 }
