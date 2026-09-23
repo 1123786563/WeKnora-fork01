@@ -160,8 +160,15 @@ test('surface routing keeps upgrade-required free of authorized controls and gua
   const homeElement = render(authorized.type, authorized.props);
   const homeButtons = descendants(homeElement).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
   assert.equal(homeButtons.includes('View all tasks'), true);
+  assert.equal(homeButtons.includes('Open Resources'), true, 'removing the landing screen must not take away the only /resources entry');
   const homeText = descendants(homeElement).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
   assert.equal(homeText.includes('Acme'), true);
+  assert.equal((authorized.props as { key?: string }).key, 'tenant-1', 'the home screen is keyed by the active tenant');
+  const switched = RuntimeSurface({
+    snapshot: { surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1', activeTenantId: 'tenant-2', tenants: [{ id: 'tenant-2', name: 'Beta' }] } },
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {}, onActivateTenant: async () => {},
+  });
+  assert.equal((switched.props as { key?: string }).key, 'tenant-2', 'switching tenants must remount the screen so the previous tenant content cannot survive');
 });
 
 test('mobile startup invokes Runtime boot exactly once', async () => {
@@ -206,7 +213,7 @@ test('the home header activates any listed tenant through the runtime callback',
   });
 
   const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
-  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'View all tasks', 'Load home'], 'with more than one tenant every tenant is a header switch button');
+  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'View all tasks', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');
   const single = render(HomeScreen, {
     deploymentLabel: 'WeKnora',
     tenants: [{ id: '7', name: 'Acme' }],

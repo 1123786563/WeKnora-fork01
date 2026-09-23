@@ -105,13 +105,14 @@ export function MobileTasks() {
   const activeRuntime = runtime();
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return null;
-  return createElement(TasksScreen, { taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin) });
+  return createElement(TasksScreen, { key: snapshot.identity.activeTenantId, taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin) });
 }
 
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */
 export function RuntimeSurface({ snapshot, onSignIn, onBeginOidc, onSignOut, onActivateTenant }: RuntimeSurfaceProps) {
   if (snapshot.surface === 'authorized' && snapshot.deployment && snapshot.identity?.userId && snapshot.identity.activeTenantId) {
     return createElement(HomeScreen, {
+      key: snapshot.identity.activeTenantId,
       deploymentLabel: snapshot.deployment.label,
       tenants: snapshot.identity.tenants ?? [{ id: snapshot.identity.activeTenantId }],
       activeTenantId: snapshot.identity.activeTenantId,

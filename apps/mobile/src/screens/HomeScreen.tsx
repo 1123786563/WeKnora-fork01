@@ -37,6 +37,8 @@ export function HomeScreen({ deploymentLabel, tenants, activeTenantId, onActivat
         : <Text>{tenants[0]?.name ?? activeTenantId}</Text>}
       <Button title="Sign out" onPress={() => { void onSignOut(); }} />
       <Button title="View all tasks" onPress={() => router.push('/tasks')} />
+      {/* /resources 屏（#32 交付）的常驻入口：占位屏删除后不得丢失可达性。 */}
+      <Button title="Open Resources" onPress={() => router.push('/resources')} />
       {loading && <Text>Loading</Text>}
       {error !== undefined && (
         <View>
