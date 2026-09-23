@@ -10,7 +10,7 @@ func TestCreatePurchaseSubscriptionPayloadValidate(t *testing.T) {
 		return CreatePurchaseSubscriptionPayload{
 			TenantID: 42, ExternalCustomerID: ExternalCustomerID(42),
 			ExternalPurchaseSubscriptionID: ExternalPurchaseSubscriptionID(42),
-			PlanCode: "weknora-pro-v1", AmountFen: 9900, Currency: CurrencyCNY,
+			PlanCode:                       "weknora-pro-v1", AmountFen: 9900, Currency: CurrencyCNY,
 		}
 	}
 	if err := base().Validate(); err != nil {
@@ -19,11 +19,13 @@ func TestCreatePurchaseSubscriptionPayloadValidate(t *testing.T) {
 	cases := map[string]func(*CreatePurchaseSubscriptionPayload){
 		"zero tenant":          func(p *CreatePurchaseSubscriptionPayload) { p.TenantID = 0 },
 		"customer id mismatch": func(p *CreatePurchaseSubscriptionPayload) { p.ExternalCustomerID = "weknora-tenant-43" },
-		"purchase id mismatch": func(p *CreatePurchaseSubscriptionPayload) { p.ExternalPurchaseSubscriptionID = "weknora-tenant-43-purchase" },
-		"empty plan code":      func(p *CreatePurchaseSubscriptionPayload) { p.PlanCode = "" },
-		"zero amount":          func(p *CreatePurchaseSubscriptionPayload) { p.AmountFen = 0 },
-		"negative amount":      func(p *CreatePurchaseSubscriptionPayload) { p.AmountFen = -1 },
-		"non-cny currency":     func(p *CreatePurchaseSubscriptionPayload) { p.Currency = "USD" },
+		"purchase id mismatch": func(p *CreatePurchaseSubscriptionPayload) {
+			p.ExternalPurchaseSubscriptionID = "weknora-tenant-43-purchase"
+		},
+		"empty plan code":  func(p *CreatePurchaseSubscriptionPayload) { p.PlanCode = "" },
+		"zero amount":      func(p *CreatePurchaseSubscriptionPayload) { p.AmountFen = 0 },
+		"negative amount":  func(p *CreatePurchaseSubscriptionPayload) { p.AmountFen = -1 },
+		"non-cny currency": func(p *CreatePurchaseSubscriptionPayload) { p.Currency = "USD" },
 	}
 	for name, mutate := range cases {
 		p := base()
