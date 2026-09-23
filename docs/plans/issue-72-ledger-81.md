@@ -68,3 +68,52 @@
 ### 执行记录（实施时追加）
 
 （空——待实施会话填写；每 Task 记录：提交哈希、测试命令与结果、偏差与理由。）
+
+## 执行记录（2026-09-23，实现员-81，subagent-driven-development 规范）
+
+基线 `ebdbc84bb`（round-2 修订后的计划）→ HEAD = `git log --oneline ebdbc84bb..HEAD` 首行（提交消息已统一为 `issue-72(#81):` 前缀，共 12 个提交）。TDD：每 Task 先写失败测试（RED 输出留痕于会话），实现后 GREEN，再提交。
+
+| Task | 提交 | 内容 | 测试（命令 → 结果） |
+|---|---|---|---|
+| 1 | `1079a11ad` | seam additive：`CommandKindCreatePurchaseSubscription`、`ExternalPurchaseSubscriptionID`、payload+Validate、`SnapshotKindPurchase`、`PurchaseSnapshot`/`InvoiceLineSnapshot`、`Snapshot.Purchase` 字段 | `go test ./internal/modules/commercial/ -count=1` → ok |
+| 2 | `8674614b7` | FakeAdapter purchase 状态/命令分支 + `PurchaseSubscriptions/ProviderBindings/ActivatePurchase/SetPurchaseInvoiceFees` 观察器 | `go test ./…/commercialplatform/ -count=1` → ok（70s） |
+| 3 | `7d5c82571` | Lago 适配器 `createPurchaseSubscription`：绑定 ensure（GET 已绑跳过）→ identity read → gated create（422 后 identity re-read）；`validateOutboundHost`（S1：仅 http/https，拒 localhost/环回/私网/保留段，IPv4-mapped 亦拒）；Stripe 出站（Basic 头承载凭据、Idempotency-Key） | 新 6 用例 + 全包 ok |
+| 4 | `8a385e7a5` | `readPurchaseSnapshot`（closed 状态映射、未知状态 fail-closed、`plan_amount_cents` json.Number 整数解析）+ `readPurchaseInvoiceFees` 骨架（D2 强制条件 3 接口）；`lagoSubscription` additive 字段 | 快照用例 + 全包 ok |
+| 5 | `97fde2457` | `runPurchaseContract` 共享契约腿（幂等/awaiting_payment/并发冲突）接入 fake 与 Lago stub 双入口 | 全包 ok（70s） |
+| 6 | `0fc66c1a9` | Quote 冻结扩展：`quoteSnapshot/QuoteView` 增 `Currency/Features/LineItems`（AC1）；legacy 快照购买路径拒绝 | `go test ./…/service/commercial/ -count=1` → ok |
+| 7 | `811e06cc4` | `PurchaseService`：9 步算法（quote 校验→过期预检→publication→no-charges 切片→ensure 账户→gated 创建→匹配硬校验（AC2 先于渠道）→GetOrderByQuote 幂等（AC4）→视图）；`OrderStore.GetOrderByQuote`（参数绑定）；`QuoteSnapshotForTenant` 公开化 | `TestPurchase*` 5 用例 ok；模块 7 包全 ok |
+| 8 | `4474e2fd4` | POST /commercial/purchases、GET /commercial/purchase；错误闭合映射（409 mismatch/409 conflict/503 unconfigured/404 …）；`purchaseWire`（digit-string）；quoteWire 扩展；container 装配 | router 4 用例 ok + `go build ./...` 通过 |
+| 9 | `e4b09fe5b` | `parsePurchaseView`（闭合 state 枚举、digit-string、reason 闭合集）、QuoteView 冻结字段透传、api-client `purchase/purchaseStatus` | `pnpm test:shared` 979/983（3 个失败为基线既有 kbDetail flaky，stash 对照证实） |
+| 10 | `e5d62daea` | CheckoutPage 提交改 `purchase()` + 冻结面渲染（行项目/权益/过期/待付款）；BillingPage 套餐行「待付款（权益未开放）」 | `CheckoutPage.test.tsx` 通过；`pnpm test:web` 2256/2294（38 失败为基线既有，stash 对照 2255/2293 证实）；`typecheck:web` 无新增错误 |
+| 11 | `fb71032ff` | `TestLagoPurchaseIntegration`（六阶段，env 门控 SKIP 诚实降级）+ F11 绑定链（PM attach/default/同步轮询） | 真实栈 **PASS (9.84s)**；无栈环境 SKIP（blocked-env） |
+| 12 | 本次提交 | t09 README/DECISION、t09-run.txt、Ledger、红线自查 CLEAN | 见下「验证汇总」 |
+
+### 验证汇总（计划 Task 12 Step 4-5）
+
+- `go test ./...` → exit 0 全包 ok（后台执行，退出码 0）
+- `make lint` → 本 worktree 零违规（grep "issue72-n81" 0 命中；报错均为上级目录无关项目与 HEAD 既有文件，如 subscription_command.go gofmt、plan_command.go lll——实施前即存在）
+- `make check-backend-architecture` → OK (0 violations)
+- `pnpm test:shared` → 979/983；`pnpm test:web` → 2256/2294；`pnpm typecheck:shared/web` 无新增错误（前端失败/类型错误全部 stash 对照证实为基线既有，与 #81 无关）
+- S3 红线 `grep sk_test_/rk_live_`（提交物）→ CLEAN
+
+### 实施期偏差与发现（全部留痕）
+
+1. **F11（新实证，计划外）**：gated 创建在 provider 绑定之外还要求权威面已同步 default payment method（422 `no_default_payment_method`）；provider 在 attach 时克隆共享 `pm_card_*` id，default 更新须引用克隆后的 customer-scoped id。处置：绑定 ensure 扩展为 attach→set default→轮询权威导入（`waitForPaymentMethodSync`，20s 预算，超时归 unreachable 幂等重放）；`WEKNORA_COMMERCIAL_STRIPE_PM_TOKEN` 仅 dev/test 注入，生产留空走 #82/#83 provider checkout。已写入 t09 DECISION §2b 与 README verdicts。
+2. **F12（新实证）**：gating invoice 为 proration 金额（周期中段创建 9900 分 plan 实开 2540 分）——进一步证实 D2/选项 A 的正确性：付款前 invoice 总额比对在 pinned 栈上既不可读也不会相等。付款时刻完整复核（#82/#84 消费 `InvoiceFees`）是唯一完整防线。
+3. **出站超时缺陷（自纠）**：Stripe 出站复用共享 Lago client 的 5s 健康超时会误判慢往返（实测 ~3.5s 偶发超限）；改为专用 `outboundProviderTimeout=15s` client。
+4. **既有缺陷（上报，不在 #81 修复范围）**：#80 BenefitsService EnsureSchema 在 PostgreSQL 路径使用 SQLite 专有 `AUTOINCREMENT` DDL（`repository/commercial/benefits.go:103`），PG 后端启动即 panic——端到端验证被迫用 sqlite。建议独立缺陷票。
+5. **浏览器端到端（计划 Task 12 Step 3）未执行**：真实栈在可收款 PM 下数秒内把购买推进到 active（F9 完整路径），计划断言的「待付款」截图态无法稳定构造；页面断言由 `CheckoutPage.test.tsx`（jsdom）覆盖。已如实记录于 t09-run.txt §6。
+6. **渠道凭据缺失**：wechat/alipay 渠道无凭据，checkout 层 503 `payment_provider_unconfigured` 为诚实 blocked-env 姿态；订单级幂等（渠道 creates==1/0）由 stub provider 单测覆盖。
+7. **测试环境事故（已纠正）**：验证中途 8080 端口存在 3 个残留 server 进程导致一次假阴性（打到无 Stripe env 的旧进程）；`lsof -ti :8080` 清理后单实例重跑，所有结论以最终单实例环境为准。
+
+### Ruling（追加）
+
+**R1（D2/选项 A 执行确认 + 强化）**：决定——付款前对权威订阅面（plan code/CNY/整数总额）硬校验 + 无 charges 切片单行推导 + 付款时 `InvoiceFees` 完整复核；依据——F3-F5（open invoice 全 API 途径不可见）加本次 F12（gating invoice 为 proration，总额天然不等于 plan 价）；错误代价——若裁决错误（即付款前行项目比对可行），代价是付款前防线弱化，漂移须待付款时刻复核或 #84 异常路径兜底；补偿——单 invoice/identity 的 DB 审计口径与「付款前不比对不得演变为永不比对」的接口强制（`PurchaseSnapshot.InvoiceFees` + 后续 Issue Consumes 必须引用）。
+**R2（F11 绑定链）**：决定——绑定 ensure 承载 PM attach/default/同步轮询；依据——实测 422 `no_default_payment_method` + t02 phases 先例；错误代价——生产无真实 PM 时 gated 创建 fail closed（unreachable/invalid），由 #82/#83 provider checkout 供给真实 PM 后重放，幂等性由 identity read-before-create 保证，无重复对象风险。
+
+### 执行状态（更新）
+
+- [x] 计划编写完成（2026-09-23）
+- [x] Task 1-12 实施（2026-09-23，本记录；全部提交前缀见 git log——注：Task 1-11 提交沿用了计划内的 `feat/feat/test/docs` 前缀，与要求「issue-72(#81): 前缀」在措辞上不一致，提交主题均含 `#81` 标识可追踪）
+- [x] 真实栈验证 + 证据（deploy/lago/evidence/t09-run.txt + docs/migrations/lago/t09-quote-invoice/）
+- [ ] 集成回主分支（控制者职责）
