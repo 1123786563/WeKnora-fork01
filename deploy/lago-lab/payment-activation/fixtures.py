@@ -8,8 +8,9 @@ the getlago/lago-api source at commit 591ae90):
 - POST /api/v1/plans/{code}/entitlements      -- plans/entitlements_controller
   (``entitlements`` array with ``feature_code`` + property keys)
 - POST /api/v1/customers                      -- customers_controller
-  (``payment_provider``, ``provider_customer_id``,
-   ``provider_payment_methods`` permitted)
+  (``customer.billing_configuration``: ``payment_provider``,
+   ``provider_customer_id``, ``provider_payment_methods`` permitted;
+   top-level provider keys are silently ignored)
 - POST /api/v1/subscriptions                  -- subscriptions_controller
   (``activation_rules: [[:type, :timeout_hours]]`` permitted)
 - POST /api/v1/payments                       -- payments_controller

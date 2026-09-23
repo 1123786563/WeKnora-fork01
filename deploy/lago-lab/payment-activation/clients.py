@@ -369,6 +369,12 @@ class StripeTestClient:
         api.stripe.com is intermittently flaky) are retried up to
         transport_retries times with a short backoff. HTTPError is NOT a
         transport failure: it is a real API response and is returned as-is.
+
+        Every logical call carries one Idempotency-Key minted here and reused
+        across the transport retries below: if the first attempt already
+        reached Stripe and only the response was lost, the retry replays the
+        original result instead of executing the create twice (no orphaned
+        Stripe objects that cleanup would never learn about).
         """
         body = urlencode(params or {}).encode("utf-8")
         request = Request(
@@ -377,6 +383,7 @@ class StripeTestClient:
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/x-www-form-urlencoded",
+                "Idempotency-Key": secrets.token_urlsafe(16),
             },
             method=method,
         )

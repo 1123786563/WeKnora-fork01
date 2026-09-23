@@ -7,7 +7,7 @@ from the caller environment (``STRIPE_TEST_SECRET_KEY`` or
 ``STRIPE_SECRET_KEY``; live keys are refused), and executes the Task 2
 phases in order:
 
-    setup -> provider_setup -> gate -> manual -> activate -> duplicates
+    setup -> provider_setup -> gate -> activate -> manual -> duplicates
     -> retries -> decline_control -> cleanup (always, from finally)
 
 Outputs one sanitized JSON report per phase plus ``t02-environment.json``
@@ -195,6 +195,24 @@ def scan_and_scrub(output_dir, secrets, timeline):
             "clean": remaining == 0}
 
 
+# Execution order contract. phases.PHASE_ORDER must carry the same sequence
+# (guarded by test_phase_order_contract_matches_runner_order); the comment
+# on "manual" explains why it must run after activate.
+PHASE_SEQUENCE = (
+    ("setup", phases.phase_setup),
+    ("provider_setup", phases.phase_provider_setup),
+    ("gate", phases.phase_gate),
+    ("activate", phases.phase_activate),
+    # manual runs after activate: on v1.53.0 the 3DS gate invoice stays
+    # API-invisible (open/closed are INVISIBLE_STATUS), so the manual-403
+    # probe needs customer B's finalized invoice as its target.
+    ("manual", phases.phase_manual),
+    ("duplicates", phases.phase_duplicates),
+    ("retries", phases.phase_retries),
+    ("decline_control", phases.phase_decline_control),
+)
+
+
 def run_experiment(args):
     timeline = Timeline()
     output_dir = Path(args.output_dir)
@@ -256,19 +274,7 @@ def run_experiment(args):
         stability_delay=args.stability_delay,
     )
 
-    order = [
-        ("setup", phases.phase_setup),
-        ("provider_setup", phases.phase_provider_setup),
-        ("gate", phases.phase_gate),
-        ("activate", phases.phase_activate),
-        # manual runs after activate: on v1.53.0 the 3DS gate invoice stays
-        # API-invisible (open/closed are INVISIBLE_STATUS), so the manual-403
-        # probe needs customer B's finalized invoice as its target.
-        ("manual", phases.phase_manual),
-        ("duplicates", phases.phase_duplicates),
-        ("retries", phases.phase_retries),
-        ("decline_control", phases.phase_decline_control),
-    ]
+    order = PHASE_SEQUENCE
 
     def run_one(name, fn):
         timeline.log(f"phase {name}: start")

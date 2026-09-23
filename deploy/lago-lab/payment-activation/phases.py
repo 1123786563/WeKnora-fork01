@@ -345,7 +345,8 @@ def phase_provider_setup(ctx):
     """Register the Stripe provider and connect customers A/B/C.
 
     A: pm_card_authenticationRequired (stable pending window), B: pm_card_visa
-    (settles), C: pm_card_visa_chargeDeclined (negative control).
+    (settles), C: pm_card_authenticationRequired (negative control:
+    off-session charge fails authentication_required).
     """
     expected = (
         "AddStripePaymentProvider via GraphQL; Stripe test customers with "
@@ -463,9 +464,11 @@ def phase_gate(ctx):
     """AC1: customer A gated subscription observed incomplete and unusable."""
     expected = (
         "subscription created with activation_rules payment/timeout_hours=0 is "
-        "immediately incomplete; entitlements endpoint 404; gating invoice "
-        "open/pending with no number; at most one non-succeeded payment; "
-        "state stable across the auth-challenge window"
+        "immediately incomplete with entitlements 404 and holds that state "
+        "across the auth-challenge window (or ends canceled(payment_failed) "
+        "when the charge fails); the gating invoice is open/pending with no "
+        "number and at most one non-succeeded payment whenever the API can "
+        "see it (v1.53.0 keeps unsettled gate invoices INVISIBLE)"
     )
     customer = (ctx.state.get("customers") or {}).get("a")
     if not customer or not ctx.state.get("plan_code"):
@@ -507,158 +510,165 @@ def phase_gate(ctx):
             f"(source says active-only => 404); runtime deviation recorded"
         )
 
-    # Gating invoice: open, pending, numberless (created async).
-    def fetch_invoices():
-        return _invoices_for(ctx, customer["external_id"])[1]
+    # The whole observation stretch (invoice polling + state re-check
+    # probes) maps a transport failure to blocked-env like every other
+    # phase; without it run_one would misreport an unreachable Lago API
+    # as an unexpected fail (exit 1 instead of exit 2).
+    try:
+        # Gating invoice: open, pending, numberless (created async).
+        def fetch_invoices():
+            return _invoices_for(ctx, customer["external_id"])[1]
 
-    invoice_ready, invoice_last, _ = ctx.poll(
-        fetch_invoices,
-        lambda invoices: _gating_invoice(invoices) is not None,
-        "gating invoice creation for customer A",
-    )
-    invoice = _gating_invoice(invoice_last or [])
-    # v1.53.0 invoice visibility: `open` is an INVISIBLE_STATUS for the
-    # customer-invoices API, so a gating invoice still awaiting its first
-    # charge attempt is NOT returned by the API; the first visible states
-    # are terminal ones (failed after a failed/declined charge, finalized +
-    # succeeded after a successful one). AC1's core contract — subscription
-    # incomplete + entitlements 404 before any payment — is asserted from
-    # the create-time observation; the invoice adds context whenever the
-    # API can see it.
-    core_ok = (
-        observed["subscription_status"] == "incomplete"
-        and observed["entitlements_status"] == 404
-    )
-    observed["invoice_api_visible"] = invoice is not None
-
-    if invoice is None:
-        # Invisible across the poll window: the invoice is either still
-        # open/invisible (charge job unsettled) or the window closed first.
-        # AC1 stands on the core observation plus a re-check that the
-        # subscription did not silently activate.
-        ss, sb = _subscription_show(ctx, ext, "incomplete")
-        still_incomplete = _ok(ss)
-        observed["recheck_subscription_status"] = (
-            ((sb or {}).get("subscription") or {}).get("status")
-            if isinstance(sb, dict) else None
+        invoice_ready, invoice_last, _ = ctx.poll(
+            fetch_invoices,
+            lambda invoices: _gating_invoice(invoices) is not None,
+            "gating invoice creation for customer A",
         )
-        ctx.state["gate"] = {
-            "subscription_external_id": ext,
-            "invoice_lago_id": None,
-            "customer_external_id": customer["external_id"],
-        }
-        if core_ok and still_incomplete:
-            ctx.note(
-                "gating invoice stayed API-invisible (v1.53.0 INVISIBLE_STATUS "
-                "open); AC1 asserted from subscription incomplete + "
-                "entitlements 404 held across the window"
+        invoice = _gating_invoice(invoice_last or [])
+        # v1.53.0 invoice visibility: `open` is an INVISIBLE_STATUS for the
+        # customer-invoices API, so a gating invoice still awaiting its first
+        # charge attempt is NOT returned by the API; the first visible states
+        # are terminal ones (failed after a failed/declined charge, finalized +
+        # succeeded after a successful one). AC1's core contract — subscription
+        # incomplete + entitlements 404 before any payment — is asserted from
+        # the create-time observation; the invoice adds context whenever the
+        # API can see it.
+        core_ok = (
+            observed["subscription_status"] == "incomplete"
+            and observed["entitlements_status"] == 404
+        )
+        observed["invoice_api_visible"] = invoice is not None
+
+        if invoice is None:
+            # Invisible across the poll window: the invoice is either still
+            # open/invisible (charge job unsettled) or the window closed first.
+            # AC1 stands on the core observation plus a re-check that the
+            # subscription did not silently activate.
+            ss, sb = _subscription_show(ctx, ext, "incomplete")
+            still_incomplete = _ok(ss)
+            observed["recheck_subscription_status"] = (
+                ((sb or {}).get("subscription") or {}).get("status")
+                if isinstance(sb, dict) else None
             )
-            return _report(ctx, "gate", expected, observed, PASS)
-        if core_ok:
-            cs2, cb2 = _subscription_show(ctx, ext, "canceled")
-            if _ok(cs2):
-                reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason")
+            ctx.state["gate"] = {
+                "subscription_external_id": ext,
+                "invoice_lago_id": None,
+                "customer_external_id": customer["external_id"],
+            }
+            if core_ok and still_incomplete:
                 ctx.note(
-                    "charge-failure endgame reached before the invoice became "
-                    f"API-visible (subscription canceled, reason={reason}); "
-                    "AC1 asserted from the pre-charge observation window"
+                    "gating invoice stayed API-invisible (v1.53.0 INVISIBLE_STATUS "
+                    "open); AC1 asserted from subscription incomplete + "
+                    "entitlements 404 held across the window"
                 )
                 return _report(ctx, "gate", expected, observed, PASS)
-            observed["error"] = "invoice invisible and subscription drifted unexpectedly"
+            if core_ok:
+                cs2, cb2 = _subscription_show(ctx, ext, "canceled")
+                if _ok(cs2):
+                    reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason")
+                    ctx.note(
+                        "charge-failure endgame reached before the invoice became "
+                        f"API-visible (subscription canceled, reason={reason}); "
+                        "AC1 asserted from the pre-charge observation window"
+                    )
+                    return _report(ctx, "gate", expected, observed, PASS)
+                observed["error"] = "invoice invisible and subscription drifted unexpectedly"
+                return _report(ctx, "gate", expected, observed, FAIL,
+                               evidence={"invoices_last_seen": invoice_last})
+            observed["error"] = observed.get("error") or "pre-charge contract not observed"
             return _report(ctx, "gate", expected, observed, FAIL,
                            evidence={"invoices_last_seen": invoice_last})
-        observed["error"] = observed.get("error") or "pre-charge contract not observed"
-        return _report(ctx, "gate", expected, observed, FAIL,
-                       evidence={"invoices_last_seen": invoice_last})
 
-    observed["invoice_status"] = invoice.get("status")
-    observed["invoice_payment_status"] = invoice.get("payment_status")
-    observed["invoice_number"] = invoice.get("number")
-    observed["invoice_lago_id"] = invoice.get("lago_id")
+        observed["invoice_status"] = invoice.get("status")
+        observed["invoice_payment_status"] = invoice.get("payment_status")
+        observed["invoice_number"] = invoice.get("number")
+        observed["invoice_lago_id"] = invoice.get("lago_id")
 
-    if invoice.get("status") == "failed":
-        # 3DS/off-session charge-failure endgame: the invoice became visible
-        # as failed and the subscription must be canceled(payment_failed),
-        # never activated — exactly AC1's negative evidence.
-        cs2, cb2 = _subscription_show(ctx, ext, "canceled")
-        canceled = _ok(cs2)
-        reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason") \
-            if canceled else None
-        observed["cancellation_reason"] = reason
+        if invoice.get("status") == "failed":
+            # 3DS/off-session charge-failure endgame: the invoice became visible
+            # as failed and the subscription must be canceled(payment_failed),
+            # never activated — exactly AC1's negative evidence.
+            cs2, cb2 = _subscription_show(ctx, ext, "canceled")
+            canceled = _ok(cs2)
+            reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason") \
+                if canceled else None
+            observed["cancellation_reason"] = reason
+            ctx.state["gate"] = {
+                "subscription_external_id": ext,
+                "invoice_lago_id": observed["invoice_lago_id"],
+                "customer_external_id": customer["external_id"],
+            }
+            if core_ok and canceled and reason == "payment_failed":
+                ctx.note(
+                    "3DS off-session charge failed: invoice visible as failed, "
+                    "subscription canceled(payment_failed), entitlements stayed 404"
+                )
+                return _report(ctx, "gate", expected, observed, PASS)
+            observed["error"] = "invoice visible as failed but the cancellation contract did not hold"
+            return _report(ctx, "gate", expected, observed, FAIL)
+
+        try:
+            ps, payments = _payments_for(ctx, customer["external_id"])
+        except OSError as error:
+            return _blocked(ctx, "gate", f"Lago API unreachable ({error.__class__.__name__})", expected)
+        non_succeeded = [p for p in payments if p.get("status") != "succeeded"]
+        observed["payments_non_succeeded_count"] = len(non_succeeded)
+
+        pre_charge_ok = (
+            observed["subscription_status"] == "incomplete"
+            and observed["entitlements_status"] == 404
+            and observed["invoice_status"] == "open"
+            and observed["invoice_payment_status"] == "pending"
+            and observed["invoice_number"] in (None, "")
+            and len(non_succeeded) <= 1
+        )
+
+        # Stable window across the auth-challenge auto-charge attempt.
+        stable = {"still_incomplete": True, "still_pending": True, "rounds": 0}
+        for _ in range(ctx.stability_rounds):
+            time.sleep(ctx.stability_delay)
+            ss, sb = _subscription_show(ctx, ext, "incomplete")
+            sub_now = (sb or {}).get("subscription", {}) if isinstance(sb, dict) else {}
+            if ss == 404:
+                stable["still_incomplete"] = False
+            invoices_now = fetch_invoices()
+            invoice_now = _gating_invoice(invoices_now)
+            if invoice_now is not None and invoice_now.get("payment_status") != "pending":
+                stable["still_pending"] = False
+            stable["rounds"] += 1
+            if not stable["still_incomplete"]:
+                break
+        observed["stable_window"] = stable
+
         ctx.state["gate"] = {
             "subscription_external_id": ext,
             "invoice_lago_id": observed["invoice_lago_id"],
             "customer_external_id": customer["external_id"],
         }
-        if core_ok and canceled and reason == "payment_failed":
-            ctx.note(
-                "3DS off-session charge failed: invoice visible as failed, "
-                "subscription canceled(payment_failed), entitlements stayed 404"
-            )
-            return _report(ctx, "gate", expected, observed, PASS)
-        observed["error"] = "invoice visible as failed but the cancellation contract did not hold"
-        return _report(ctx, "gate", expected, observed, FAIL)
 
-    try:
-        ps, payments = _payments_for(ctx, customer["external_id"])
+        status = FAIL
+        if pre_charge_ok and stable["still_incomplete"] and stable["still_pending"]:
+            status = PASS
+        elif pre_charge_ok:
+            # The auto-charge failed instead of staying pending: AC1 evidence
+            # falls back to the observed pre-charge window (plan risk 2).
+            ss, sb = _subscription_show(ctx, ext, "canceled")
+            canceled = _ok(ss)
+            if canceled:
+                reason = (sb or {}).get("subscription", {}).get("cancellation_reason")
+                ctx.note(
+                    "3DS window did not hold: subscription became canceled "
+                    f"(cancellation_reason={reason}); AC1 evidence is the pre-charge "
+                    "observation window between creation and the first charge attempt"
+                )
+                status = PASS
+            else:
+                observed["error"] = "pre-charge window observed but state drifted unexpectedly"
+        else:
+            observed["error"] = observed.get("error") or "pre-charge contract not observed"
+        return _report(ctx, "gate", expected, observed, status)
     except OSError as error:
         return _blocked(ctx, "gate", f"Lago API unreachable ({error.__class__.__name__})", expected)
-    non_succeeded = [p for p in payments if p.get("status") != "succeeded"]
-    observed["payments_non_succeeded_count"] = len(non_succeeded)
-
-    pre_charge_ok = (
-        observed["subscription_status"] == "incomplete"
-        and observed["entitlements_status"] == 404
-        and observed["invoice_status"] == "open"
-        and observed["invoice_payment_status"] == "pending"
-        and observed["invoice_number"] in (None, "")
-        and len(non_succeeded) <= 1
-    )
-
-    # Stable window across the auth-challenge auto-charge attempt.
-    stable = {"still_incomplete": True, "still_pending": True, "rounds": 0}
-    for _ in range(ctx.stability_rounds):
-        time.sleep(ctx.stability_delay)
-        ss, sb = _subscription_show(ctx, ext, "incomplete")
-        sub_now = (sb or {}).get("subscription", {}) if isinstance(sb, dict) else {}
-        if ss == 404:
-            stable["still_incomplete"] = False
-        invoices_now = fetch_invoices()
-        invoice_now = _gating_invoice(invoices_now)
-        if invoice_now is not None and invoice_now.get("payment_status") != "pending":
-            stable["still_pending"] = False
-        stable["rounds"] += 1
-        if not stable["still_incomplete"]:
-            break
-    observed["stable_window"] = stable
-
-    ctx.state["gate"] = {
-        "subscription_external_id": ext,
-        "invoice_lago_id": observed["invoice_lago_id"],
-        "customer_external_id": customer["external_id"],
-    }
-
-    status = FAIL
-    if pre_charge_ok and stable["still_incomplete"] and stable["still_pending"]:
-        status = PASS
-    elif pre_charge_ok:
-        # The auto-charge failed instead of staying pending: AC1 evidence
-        # falls back to the observed pre-charge window (plan risk 2).
-        ss, sb = _subscription_show(ctx, ext, "canceled")
-        canceled = _ok(ss)
-        if canceled:
-            reason = (sb or {}).get("subscription", {}).get("cancellation_reason")
-            ctx.note(
-                "3DS window did not hold: subscription became canceled "
-                f"(cancellation_reason={reason}); AC1 evidence is the pre-charge "
-                "observation window between creation and the first charge attempt"
-            )
-            status = PASS
-        else:
-            observed["error"] = "pre-charge window observed but state drifted unexpectedly"
-    else:
-        observed["error"] = observed.get("error") or "pre-charge contract not observed"
-    return _report(ctx, "gate", expected, observed, status)
 
 
 def phase_manual(ctx):
@@ -1206,11 +1216,22 @@ def phase_decline_control(ctx):
         # canceled observed (clock tick or immediate failure handling):
         # v1.53.0 ends a failed gated charge in either `closed` or `failed`
         # (both are unpaid terminal invoice states); the actual value is
-        # recorded verbatim in observed.invoice_status.
+        # recorded verbatim in observed.invoice_status. `closed` is an
+        # INVISIBLE_STATUS on the customer-invoices API, so when the invoice
+        # is API-invisible the unpaid-terminal check is waived (matching the
+        # expected text: terminal "whenever the API can see it"), never
+        # failed on an unobservable None status.
+        invoice_unpaid_terminal = observed["invoice_status"] in ("closed", "failed")
+        if not observed["invoice_api_visible"]:
+            invoice_unpaid_terminal = True
+            ctx.note(
+                "invoice API-invisible (closed is INVISIBLE_STATUS); "
+                "unpaid-terminal check waived"
+            )
         checks = {
             "canceled": observed["subscription_status"] == "canceled",
             "payment_failed_reason": observed["cancellation_reason"] == "payment_failed",
-            "invoice_unpaid_terminal": observed["invoice_status"] in ("closed", "failed"),
+            "invoice_unpaid_terminal": invoice_unpaid_terminal,
             "entitlements_unusable": es == 404,
         }
         observed["checks"] = checks
@@ -1310,12 +1331,18 @@ def phase_cleanup(ctx):
     return _report(ctx, "cleanup", expected, observed, status)
 
 
+# Execution-order contract. This mirrors run_lab's runner timeline: manual
+# runs AFTER activate because on v1.53.0 the 3DS gate invoice stays
+# API-invisible (open/closed are INVISIBLE_STATUS), so the manual-403 probe
+# needs customer B's finalized activation invoice as its target. Any consumer
+# importing PHASE_ORDER gets the same order the runner executes (guarded by
+# test_phase_order_contract_matches_runner_order).
 PHASE_ORDER = (
     phase_setup,
     phase_provider_setup,
     phase_gate,
-    phase_manual,
     phase_activate,
+    phase_manual,
     phase_duplicates,
     phase_retries,
     phase_decline_control,

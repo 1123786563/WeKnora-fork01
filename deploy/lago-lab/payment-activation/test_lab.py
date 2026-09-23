@@ -69,9 +69,22 @@ class RecordingHandler(BaseHTTPRequestHandler):
                 "method": self.command,
                 "path": self.path,
                 "authorization": self.headers.get("Authorization"),
+                "idempotency_key": self.headers.get("Idempotency-Key"),
                 "body": body,
             }
         )
+
+    def _drop_connection(self):
+        """Simulate a lost response: consume one drop credit and close.
+
+        The client sees a connection reset before any HTTP bytes arrive —
+        exactly the transport failure StripeTestClient._form retries.
+        """
+        if self.server.drop_first_n > 0:
+            self.server.drop_first_n -= 1
+            self.close_connection = True
+            return True
+        return False
 
     def _read_body(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -114,10 +127,14 @@ class RecordingHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         self._record(self._read_body())
+        if self._drop_connection():
+            return
         self._route(self.server.requests[-1]["body"])
 
     def do_DELETE(self):
         self._record()
+        if self._drop_connection():
+            return
         self._route(None)
 
 
@@ -128,6 +145,7 @@ class RecordingServer(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", 0), RecordingHandler)
         self.requests = []
         self.routes = {}
+        self.drop_first_n = 0
 
     @property
     def url(self):
@@ -262,6 +280,41 @@ class TestStripeClient(unittest.TestCase):
                 "pm_1",
                 default["body"]["_form"]["invoice_settings[default_payment_method]"][0],
             )
+
+    def test_form_calls_carry_a_fresh_idempotency_key(self):
+        # ocr-1: every logical Stripe call must mint an Idempotency-Key so a
+        # transport retry of a create cannot produce a second (orphaned)
+        # object; each new logical call gets its own key.
+        with server_fixture() as server:
+            server.add("POST", "/v1/customers", 200, {"id": "cus_test_1"})
+            client = clients.StripeTestClient(
+                api_key=STRIPE_TEST_KEY, base_url=server.url
+            )
+            first = client.create_customer(description="one")
+            second = client.create_customer(description="two")
+            self.assertEqual(first["id"], "cus_test_1")
+            self.assertEqual(second["id"], "cus_test_1")
+            keys = [r["idempotency_key"] for r in server.requests]
+            self.assertEqual(len(keys), 2)
+            self.assertTrue(all(keys), "every _form call must carry the header")
+            self.assertNotEqual(keys[0], keys[1])
+
+    def test_transport_retry_reuses_the_same_idempotency_key(self):
+        # The response to the first attempt is lost in transit; the retry
+        # must reuse the SAME key (it is part of the one Request object),
+        # so Stripe would replay the original create instead of executing
+        # it twice.
+        with server_fixture() as server:
+            server.add("POST", "/v1/customers", 200, {"id": "cus_test_retry"})
+            server.drop_first_n = 1
+            client = clients.StripeTestClient(
+                api_key=STRIPE_TEST_KEY, base_url=server.url
+            )
+            customer = client.create_customer(description="retry-me")
+            self.assertEqual(customer["id"], "cus_test_retry")
+            keys = [r["idempotency_key"] for r in server.requests]
+            self.assertEqual(len(keys), 2, "the transport failure was retried")
+            self.assertEqual(keys[0], keys[1], "retry must reuse the same key")
 
 
 class TestLagoRestClient(unittest.TestCase):

@@ -24,6 +24,7 @@ sys.path.insert(0, str(LAB_DIR))
 
 import phases  # noqa: E402
 from phases import (  # noqa: E402
+    PHASE_ORDER,
     phase_activate,
     phase_cleanup,
     phase_decline_control,
@@ -461,13 +462,20 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
         })
         invoice["status"] = "closed"
         invoice["payment_status"] = "failed"
+        if sub["mode"] == "decline" and s.decline_invoice_terminal_invisible:
+            # v1.53.0: `closed` is an INVISIBLE_STATUS — once the failed
+            # charge ends the gate, the terminal invoice disappears from the
+            # customer-invoices API again (real decline_control endgame).
+            invoice["terminal_hidden"] = True
+            invoice["revealed"] = False
         sub["status"] = "canceled"
         sub["cancellation_reason"] = "payment_failed"
 
     def _maybe_reveal_invoices(self, ext):
         s = self.server
         for invoice in s.invoices.values():
-            if invoice["external_customer_id"] != ext or invoice["revealed"]:
+            if (invoice["external_customer_id"] != ext or invoice["revealed"]
+                    or invoice.get("terminal_hidden")):
                 continue
             invoice["revealed_polls"] += 1
             if invoice["revealed_polls"] > s.invoice_appear_polls:
@@ -520,6 +528,7 @@ class FakeLago(ThreadingHTTPServer):
         self.gate_fails_after_charge = False
         self.mutate_after_duplicates = False
         self.fail_feature_create = False
+        self.decline_invoice_terminal_invisible = False
 
     def seq(self, kind):
         self.seq_counters[kind] += 1
@@ -644,6 +653,14 @@ class TestProviderSetupPhase(unittest.TestCase):
             self.assertTrue(customers[tag]["stripe_customer_id"].startswith("cus_test_"))
             self.assertTrue(customers[tag]["payment_methods_ready"])
 
+    def test_docstring_matches_the_payment_method_map(self):
+        # ocr-1: the per-tag narrative must mirror STRIPE_PAYMENT_METHODS
+        # (the chargeDeclined tokens are no longer attachable; the negative
+        # control is the 3DS card).
+        doc = phase_provider_setup.__doc__
+        self.assertIn("C: pm_card_authenticationRequired", doc)
+        self.assertNotIn("chargeDeclined", doc)
+
 
 class TestGatePhase(unittest.TestCase):
     def test_requires_incomplete_and_entitlement_404(self):
@@ -695,6 +712,47 @@ class TestGatePhase(unittest.TestCase):
         self.assertEqual(observed["recheck_subscription_status"], "incomplete")
         notes = " ".join(report["contract_notes"])
         self.assertIn("API-invisible", notes)
+        # the expected text must only promise invoice observations the
+        # API-invisible branch can actually make (ocr-1: expected/observed
+        # honesty for the PASS path)
+        self.assertIn("whenever the API can see it", report["expected"])
+
+    def test_transport_failure_during_invoice_poll_is_blocked_env(self):
+        # ocr-1: the whole post-create observation stretch (invoice polling
+        # and every state re-check probe) must map a transport failure to
+        # blocked-env like the sibling phases — not leak an unexpected error
+        # that run_one would record as fail (exit 1 instead of exit 2).
+        with stack() as env:
+            ctx = seeded(env)
+            original_get = ctx.lago.get
+
+            def failing_get(path):
+                if path.startswith("/api/v1/invoices"):
+                    raise ConnectionResetError("simulated transport loss")
+                return original_get(path)
+
+            ctx.lago.get = failing_get
+            report = phase_gate(ctx)
+        self.assertEqual(report["status"], "blocked-env", report)
+        self.assertIn("unreachable", report["observed"]["blocked_reason"])
+
+    def test_transport_failure_during_recheck_probe_is_blocked_env(self):
+        # Same mapping for the re-check probes inside the invoice-invisible
+        # branch (the subscription show after the poll window).
+        with stack() as env:
+            ctx = seeded(env)
+            env.lago.invoice_appear_polls = 10 ** 6  # walk the invisible branch
+            original_get = ctx.lago.get
+
+            def failing_get(path):
+                if path.startswith("/api/v1/subscriptions/") and "/entitlements" not in path:
+                    raise ConnectionResetError("simulated transport loss")
+                return original_get(path)
+
+            ctx.lago.get = failing_get
+            report = phase_gate(ctx)
+        self.assertEqual(report["status"], "blocked-env", report)
+        self.assertIn("unreachable", report["observed"]["blocked_reason"])
 
 
 class TestManualPhase(unittest.TestCase):
@@ -909,6 +967,26 @@ class TestDeclineControlPhase(unittest.TestCase):
         self.assertFalse(observed["checks"]["not_activated"])
         self.assertIn("neither canceled nor held incomplete", observed["error"])
 
+    def test_canceled_with_api_invisible_terminal_invoice_waives_check(self):
+        # ocr-1: in the settled (canceled) branch the terminal invoice is
+        # `closed` — an INVISIBLE_STATUS on v1.53.0 — so the API legitimately
+        # returns no invoice at all. The unpaid-terminal check is then waived
+        # (matching the "whenever the API can see it" expected text) instead
+        # of failing on an unobservable None status.
+        with stack() as env:
+            ctx = seeded(env)
+            env.lago.decline_invoice_terminal_invisible = True
+            report = phase_decline_control(ctx)
+        self.assertEqual(report["status"], "pass", report)
+        observed = report["observed"]
+        self.assertEqual(observed["subscription_status"], "canceled")
+        self.assertEqual(observed["cancellation_reason"], "payment_failed")
+        self.assertFalse(observed["invoice_api_visible"])
+        self.assertIsNone(observed["invoice_status"])
+        self.assertTrue(observed["checks"]["invoice_unpaid_terminal"])
+        notes = " ".join(report["contract_notes"])
+        self.assertIn("unpaid-terminal check waived", notes)
+
 
 class TestCleanupPhase(unittest.TestCase):
     def test_reports_every_object_and_passes_on_full_happy_path(self):
@@ -950,6 +1028,18 @@ class TestCleanupPhase(unittest.TestCase):
 
 
 class TestRunnerContract(unittest.TestCase):
+    def test_phase_order_contract_matches_runner_order(self):
+        # ocr-1: phases.PHASE_ORDER is an importable execution-order
+        # contract; it must mirror the runner timeline (manual AFTER
+        # activate — on v1.53.0 the 3DS gate invoice is API-invisible, so
+        # the manual-403 probe needs customer B's finalized invoice).
+        import run_lab
+        order_names = [fn.__name__ for fn in PHASE_ORDER]
+        self.assertEqual(order_names[-1], "phase_cleanup")
+        runner_names = [name for name, _fn in run_lab.PHASE_SEQUENCE]
+        self.assertEqual([f"phase_{name}" for name in runner_names], order_names[:-1])
+        self.assertLess(runner_names.index("activate"), runner_names.index("manual"))
+
     def test_cleanup_runs_after_midphase_exception(self):
         with stack() as env:
             ctx = seeded(env)

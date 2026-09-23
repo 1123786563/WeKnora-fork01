@@ -9,6 +9,10 @@ container's app/models/subscription.rb STATUSES): 0=pending 1=active
 Exit codes: 0 PASS, 1 CHECK (an assertion failed), 2 MISSING-EVIDENCE (no
 observer TSV found under runs/ — that directory is a git-ignored runtime
 artifact, so a fresh clone has none until db_watch.sh is replayed).
+
+ocr-1 replay copy: the fixed script, executed against the
+docs/plans/issue-72-ocr1-replay/ evidence directory (t02-decline.json
+boundary) and the runs/ observer TSV of the replay.
 """
 import glob
 import json
