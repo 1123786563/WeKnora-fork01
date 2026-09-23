@@ -3,10 +3,13 @@ package career
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
+	"sync"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"testing"
 )
 
 func testOffice(t *testing.T) (*Office, context.Context) {
@@ -121,6 +124,128 @@ func TestRevisionConflictHasCurrentValueAndIdempotency(t *testing.T) {
 	var conflict *RevisionConflictError
 	require.ErrorAs(t, e, &conflict)
 	require.Equal(t, uint64(1), conflict.CurrentRevision)
+}
+
+func TestConcurrentSameRequestIDReplaysCommittedReceiptAcrossConnections(t *testing.T) {
+	dsn := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "career.db")) + "?_busy_timeout=5000&_journal_mode=WAL"
+	open := func() *gorm.DB {
+		db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+		require.NoError(t, err)
+		sqlDB, err := db.DB()
+		require.NoError(t, err)
+		sqlDB.SetMaxOpenConns(1)
+		return db
+	}
+	db1 := open()
+	o1, err := NewOffice(db1)
+	require.NoError(t, err)
+	ctx := WithScope(context.Background(), Scope{UserID: "u1", TenantID: 1})
+	require.NoError(t, o1.ClaimSpace(ctx))
+	db2 := open()
+	o2, err := NewOffice(db2)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if raw, e := db1.DB(); e == nil {
+			_ = raw.Close()
+		}
+		if raw, e := db2.DB(); e == nil {
+			_ = raw.Close()
+		}
+	})
+
+	newBarrier := func() func() {
+		var mu sync.Mutex
+		arrived := 0
+		bothMissed := make(chan struct{})
+		return func() {
+			mu.Lock()
+			arrived++
+			if arrived == 2 {
+				close(bothMissed)
+			}
+			mu.Unlock()
+			<-bothMissed
+		}
+	}
+	barrier := newBarrier()
+	o1.afterReceiptMiss = barrier
+	o2.afterReceiptMiss = barrier
+	type result struct {
+		receipt Receipt
+		err     error
+	}
+	results := make(chan result, 2)
+	for _, office := range []*Office{o1, o2} {
+		go func(office *Office) {
+			r, e := office.Confirm(ctx, "degree", "bachelor", "concurrent-1", 0, Source{Kind: "user"})
+			results <- result{r, e}
+		}(office)
+	}
+	r1, r2 := <-results, <-results
+	require.NoError(t, r1.err)
+	require.NoError(t, r2.err)
+	j1, err := json.Marshal(r1.receipt)
+	require.NoError(t, err)
+	j2, err := json.Marshal(r2.receipt)
+	require.NoError(t, err)
+	require.JSONEq(t, string(j1), string(j2))
+	view, err := o1.Open(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), view.Revision)
+	history, err := o1.History(ctx, "degree")
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+
+	// Both calls now overlap with the same request ID but different content.
+	// Exactly one payload can own the receipt; the other must conflict.
+	barrier = newBarrier()
+	o1.afterReceiptMiss = barrier
+	o2.afterReceiptMiss = barrier
+	results = make(chan result, 2)
+	for _, request := range []struct {
+		office *Office
+		value  string
+	}{{o1, "master"}, {o2, "doctorate"}} {
+		request := request
+		go func() {
+			r, e := request.office.Confirm(ctx, "degree", request.value, "concurrent-2", 1, Source{Kind: "user"})
+			results <- result{r, e}
+		}()
+	}
+	r1, r2 = <-results, <-results
+	if r1.err == nil {
+		require.ErrorIs(t, r2.err, ErrIdempotencyConflict)
+	} else {
+		require.ErrorIs(t, r1.err, ErrIdempotencyConflict)
+		require.NoError(t, r2.err)
+	}
+
+	// Different request IDs still obey the revision CAS and must not be
+	// converted into receipt replay when one concurrent mutation wins.
+	barrier = newBarrier()
+	o1.afterReceiptMiss = barrier
+	o2.afterReceiptMiss = barrier
+	results = make(chan result, 2)
+	go func() {
+		r, e := o1.Confirm(ctx, "city", "Beijing", "distinct-1", 2, Source{Kind: "user"})
+		results <- result{r, e}
+	}()
+	go func() {
+		r, e := o2.Confirm(ctx, "city", "Shanghai", "distinct-2", 2, Source{Kind: "user"})
+		results <- result{r, e}
+	}()
+	r1, r2 = <-results, <-results
+	conflicts := 0
+	for _, result := range []result{r1, r2} {
+		if result.err == nil {
+			continue
+		}
+		var revisionConflict *RevisionConflictError
+		require.ErrorAs(t, result.err, &revisionConflict)
+		require.Equal(t, uint64(3), revisionConflict.CurrentRevision)
+		conflicts++
+	}
+	require.Equal(t, 1, conflicts)
 }
 func TestOfficeRejectsUnclaimedOrCrossOwnerCareerSpace(t *testing.T) {
 	o, _ := testOffice(t)

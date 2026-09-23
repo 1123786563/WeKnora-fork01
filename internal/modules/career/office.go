@@ -170,7 +170,12 @@ func (proposal) TableName() string                    { return "career_proposals
 func (change) TableName() string                      { return "career_changes" }
 func (receipt) TableName() string                     { return "career_receipts" }
 
-type Office struct{ db *gorm.DB }
+type Office struct {
+	db *gorm.DB
+	// afterReceiptMiss synchronizes concurrency tests after the scoped receipt
+	// lookup misses. Production Offices leave this nil.
+	afterReceiptMiss func()
+}
 
 func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
@@ -179,7 +184,7 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if e := db.AutoMigrate(&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}); e != nil {
 		return nil, e
 	}
-	return &Office{db}, nil
+	return &Office{db: db}, nil
 }
 func (o *Office) ClaimSpace(ctx context.Context) error {
 	s, e := getScope(ctx)
@@ -397,6 +402,9 @@ func (o *Office) mutate(ctx context.Context, s Scope, kind, r string, rev uint64
 		if !errors.Is(e, gorm.ErrRecordNotFound) {
 			return e
 		}
+		if o.afterReceiptMiss != nil {
+			o.afterReceiptMiss()
+		}
 		p := profile{TenantID: s.TenantID, UserID: s.UserID}
 		if e = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&p).Error; e != nil {
 			return e
@@ -443,7 +451,63 @@ func (o *Office) mutate(ctx context.Context, s Scope, kind, r string, rev uint64
 		}
 		return tx.Create(&receipt{TenantID: s.TenantID, UserID: s.UserID, RequestID: r, Fingerprint: fp, Body: string(body)}).Error
 	})
+	if e != nil && isReceiptRaceError(e) {
+		// A concurrent retry can miss the receipt, lose the profile CAS (or
+		// hit the receipt's unique constraint), and roll back after the winner
+		// has committed. Resolve the request ID after leaving the transaction;
+		// transient lock/unique failures may occur before the winner commits.
+		for attempt := 0; attempt < 20; attempt++ {
+			if replay, found, receiptErr := o.replayReceipt(ctx, s, r, fp); receiptErr != nil {
+				return Receipt{}, receiptErr
+			} else if found {
+				return replay, nil
+			}
+			if attempt < 19 {
+				timer := time.NewTimer(10 * time.Millisecond)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return Receipt{}, ctx.Err()
+				case <-timer.C:
+				}
+			}
+		}
+		if strings.Contains(strings.ToLower(e.Error()), "database is locked") {
+			var current profile
+			if lookupErr := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&current).Error; lookupErr == nil && current.Revision != rev {
+				return Receipt{}, &RevisionConflictError{CurrentRevision: current.Revision}
+			}
+		}
+	}
 	return out, e
+}
+
+func isReceiptRaceError(err error) bool {
+	var revisionConflict *RevisionConflictError
+	if errors.As(err, &revisionConflict) || errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") || strings.Contains(message, "unique constraint") || strings.Contains(message, "duplicate key")
+}
+
+func (o *Office) replayReceipt(ctx context.Context, s Scope, requestID, fingerprint string) (Receipt, bool, error) {
+	var stored receipt
+	err := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).First(&stored).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return Receipt{}, false, nil
+	}
+	if err != nil {
+		return Receipt{}, false, err
+	}
+	if stored.Fingerprint != fingerprint {
+		return Receipt{}, true, ErrIdempotencyConflict
+	}
+	var replay Receipt
+	if err := json.Unmarshal([]byte(stored.Body), &replay); err != nil {
+		return Receipt{}, true, err
+	}
+	return replay, true, nil
 }
 func (o *Office) Changes(ctx context.Context, since uint64) (ChangeSet, error) {
 	s, e := getScope(ctx)
