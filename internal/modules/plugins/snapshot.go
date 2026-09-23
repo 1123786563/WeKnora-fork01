@@ -18,7 +18,11 @@ import (
 //   - a live tool name failing identifier hygiene (oversized or carrying
 //     control/format characters) — live names are untrusted remote data and
 //     are vetted with the same validateName rules as manifest names BEFORE
-//     any of them is quoted into the rejection message.
+//     any of them is quoted into the rejection message;
+//   - a live directory larger than maxLiveTools, or a manifest declaring the
+//     same tool name twice — both are re-checked here (ValidateManifest
+//     already rejects duplicate declarations, but this function is exported
+//     and must not silently rely on the caller having validated first).
 //
 // The returned error names EVERY differing tool — up to
 // maxVerificationProblems entries, with the remainder collapsed into a
@@ -30,6 +34,12 @@ import (
 func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool) ([]types.PluginToolSnapshot, string, error) {
 	if manifest == nil {
 		return nil, "", fmt.Errorf("manifest is required")
+	}
+	// The live directory has no transport-level size bound (only the manifest
+	// download is capped at 1MiB) — refuse to process an oversized directory
+	// before any O(n) map/digest/snapshot work.
+	if len(live) > maxLiveTools {
+		return nil, "", fmt.Errorf("live endpoint returned %d tools, exceeding the maximum of %d", len(live), maxLiveTools)
 	}
 	var problems []string
 	liveByName := make(map[string]*types.MCPTool, len(live))
@@ -56,6 +66,12 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 	}
 	declared := make(map[string]bool, len(manifest.Tools))
 	for _, decl := range manifest.Tools {
+		// Re-check here instead of trusting the caller to have run
+		// ValidateManifest: a duplicate declaration would otherwise append
+		// the same tool to the snapshot twice, silently.
+		if declared[decl.Name] {
+			return nil, "", fmt.Errorf("manifest declares duplicate tool name %q", decl.Name)
+		}
 		declared[decl.Name] = true
 	}
 

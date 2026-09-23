@@ -187,6 +187,67 @@ func TestBuildVerifiedSnapshotBoundsDiscrepancyList(t *testing.T) {
 	require.NotContains(t, err.Error(), "extra40")
 }
 
+// TestBuildVerifiedSnapshotRejectsOversizedLiveDirectory (OCR T01-ocr-r4-003):
+// the live tool directory is untrusted remote data with no transport-level
+// size bound — BuildVerifiedSnapshot must cap how many entries it is willing
+// to process before maps/digests/snapshot construction make the preview path
+// O(n) on hostile input.
+func TestBuildVerifiedSnapshotRejectsOversizedLiveDirectory(t *testing.T) {
+	m := validManifest()
+	live := make([]*types.MCPTool, 0, 1025)
+	for i := 0; i < 1025; i++ {
+		live = append(live, &types.MCPTool{Name: fmt.Sprintf("extra%d", i), InputSchema: []byte(declaredNoArgSchema)})
+	}
+	_, _, err := BuildVerifiedSnapshot(m, live)
+	require.ErrorContains(t, err, "1025")
+	require.ErrorContains(t, err, "maximum")
+
+	// At exactly the cap the directory itself is not rejected for SIZE: the
+	// mismatch (declared tool missing) is still the reported problem.
+	atCap := live[:1024]
+	_, _, err = BuildVerifiedSnapshot(m, atCap)
+	require.ErrorContains(t, err, "disagree")
+	require.NotContains(t, err.Error(), "maximum")
+}
+
+// TestBuildVerifiedSnapshotRejectsDuplicateDeclaredTool (OCR T01-ocr-r4-005):
+// BuildVerifiedSnapshot is exported and must not silently rely on the caller
+// having run ValidateManifest first — a manifest declaring the same tool name
+// twice would otherwise produce a snapshot with duplicate entries and no
+// error (the live-side duplicate check is the same defensive posture).
+func TestBuildVerifiedSnapshotRejectsDuplicateDeclaredTool(t *testing.T) {
+	m := validManifest()
+	m.Tools = append(m.Tools, m.Tools[0]) // same name twice; ValidateManifest would reject
+	live := []*types.MCPTool{{Name: "search_my_week_issues", InputSchema: []byte(declaredNoArgSchema)}}
+	_, _, err := BuildVerifiedSnapshot(m, live)
+	require.ErrorContains(t, err, "duplicate")
+	require.ErrorContains(t, err, "search_my_week_issues")
+}
+
+// TestValidateManifestTruncatesUntrustedEchoes (OCR T01-ocr-r4-011): fields
+// with no length check BEFORE their format/regex rejection (protocol,
+// plugin_id, version, transport type, scope token) are echoed back in the
+// error message — a hostile ~1MiB field must not balloon the single error
+// (which reaches the HTTP response via the handler) into megabytes.
+func TestValidateManifestTruncatesUntrustedEchoes(t *testing.T) {
+	huge := strings.Repeat("x", 1<<20)
+	cases := []func(m *types.PluginManifest){
+		func(m *types.PluginManifest) { m.Protocol = huge },
+		func(m *types.PluginManifest) { m.PluginID = huge },
+		func(m *types.PluginManifest) { m.Version = huge },
+		func(m *types.PluginManifest) { m.Transport.Type = huge },
+		func(m *types.PluginManifest) { m.Tools[0].Scopes = []string{huge} },
+	}
+	for i, mutate := range cases {
+		m := validManifest()
+		mutate(m)
+		err := ValidateManifest(m)
+		require.Errorf(t, err, "case %d must be rejected", i)
+		require.Less(t, len(err.Error()), 1024, "case %d error must be bounded", i)
+		require.Contains(t, err.Error(), "more chars", "case %d must show a truncation counter", i)
+	}
+}
+
 // TestFetchAndVerifyFailsFastOnNilLister (OCR T01-R3-3): a nil lister is a
 // programming error; FetchAndVerify must reject it BEFORE any network I/O.
 func TestFetchAndVerifyFailsFastOnNilLister(t *testing.T) {

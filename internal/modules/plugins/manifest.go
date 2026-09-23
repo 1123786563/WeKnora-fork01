@@ -47,7 +47,35 @@ const (
 	// data and can be arbitrarily large, so the single joined error must
 	// stay bounded.
 	maxVerificationProblems = 32
+
+	// maxLiveTools caps how many live ListTools entries BuildVerifiedSnapshot
+	// is willing to process. The live directory is untrusted remote data with
+	// no transport-level size bound; without a cap the verification maps,
+	// snapshot construction and SnapshotDigest are all O(n) on hostile input
+	// (the manifest side is bounded by the 1MiB download cap).
+	maxLiveTools = 1024
+
+	// maxEchoRunes bounds how much of an untrusted string is echoed back in
+	// a validation error before the remainder collapses into a count — a
+	// hostile manifest can carry near-1MiB fields past the length checks
+	// that would reject them, and %q would balloon the single error message
+	// (which reaches the HTTP response) accordingly.
+	maxEchoRunes = 64
 )
+
+// echoQuoted quotes s like %q but truncates first: at most maxEchoRunes
+// runes are shown, then "…(+N more chars)". Use it ONLY for untrusted
+// strings that have not yet passed a length check at the point of the
+// error (protocol, plugin_id, version, transport type, scope token);
+// already-validated names (≤128 runes, no control/format characters) are
+// echoed in full for review clarity.
+func echoQuoted(s string) string {
+	if utf8.RuneCountInString(s) <= maxEchoRunes {
+		return fmt.Sprintf("%q", s)
+	}
+	runes := []rune(s)
+	return fmt.Sprintf("%q…(+%d more chars)", string(runes[:maxEchoRunes]), len(runes)-maxEchoRunes)
+}
 
 var (
 	// pluginIDPattern: lowercase segments separated by single dots/hyphens,
@@ -89,13 +117,13 @@ func ValidateManifest(m *types.PluginManifest) error {
 		return fmt.Errorf("manifest is required")
 	}
 	if m.Protocol != PluginProtocolV1 {
-		return fmt.Errorf("unsupported manifest protocol %q (expected %q)", m.Protocol, PluginProtocolV1)
+		return fmt.Errorf("unsupported manifest protocol %s (expected %q)", echoQuoted(m.Protocol), PluginProtocolV1)
 	}
 	if !pluginIDPattern.MatchString(m.PluginID) || len(m.PluginID) < 3 || len(m.PluginID) > maxPluginIDLen {
-		return fmt.Errorf("invalid plugin_id %q (lowercase segments separated by single dots/hyphens, 3..%d chars, no leading/trailing/consecutive separators)", m.PluginID, maxPluginIDLen)
+		return fmt.Errorf("invalid plugin_id %s (lowercase segments separated by single dots/hyphens, 3..%d chars, no leading/trailing/consecutive separators)", echoQuoted(m.PluginID), maxPluginIDLen)
 	}
 	if !pluginVersionPattern.MatchString(m.Version) {
-		return fmt.Errorf("invalid version %q (must be MAJOR.MINOR.PATCH without leading zeros)", m.Version)
+		return fmt.Errorf("invalid version %s (must be MAJOR.MINOR.PATCH without leading zeros)", echoQuoted(m.Version))
 	}
 	if err := validateName("name", m.Name, maxPluginNameRunes); err != nil {
 		return err
@@ -104,7 +132,7 @@ func ValidateManifest(m *types.PluginManifest) error {
 		return err
 	}
 	if !pluginTransportTypes[m.Transport.Type] {
-		return fmt.Errorf("unsupported transport type %q (allowed: http-streamable, sse)", m.Transport.Type)
+		return fmt.Errorf("unsupported transport type %s (allowed: http-streamable, sse)", echoQuoted(m.Transport.Type))
 	}
 	// Structural endpoint check only (scheme + host). The full SSRF verdict
 	// (localhost/loopback/private/reserved rejection) is FetchAndVerify's job.
@@ -113,7 +141,7 @@ func ValidateManifest(m *types.PluginManifest) error {
 		return fmt.Errorf("invalid transport endpoint: %w", err)
 	}
 	if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
-		return fmt.Errorf("transport endpoint scheme must be http or https, got %q", endpoint.Scheme)
+		return fmt.Errorf("transport endpoint scheme must be http or https, got %s", echoQuoted(endpoint.Scheme))
 	}
 	if endpoint.Host == "" {
 		return fmt.Errorf("transport endpoint must include a host")
@@ -205,7 +233,7 @@ func validateScopes(scopes []string, where string) error {
 	seen := make(map[string]bool, len(scopes))
 	for _, scope := range scopes {
 		if !scopeTokenPattern.MatchString(scope) {
-			return fmt.Errorf("%s scope %q must be 1..%d chars from the RFC 6749 scope-token charset (printable ASCII, no quotes/backslashes)", where, scope, maxScopeLen)
+			return fmt.Errorf("%s scope %s must be 1..%d chars from the RFC 6749 scope-token charset (printable ASCII, no quotes/backslashes)", where, echoQuoted(scope), maxScopeLen)
 		}
 		if seen[scope] {
 			return fmt.Errorf("%s contains duplicate scope %q", where, scope)
