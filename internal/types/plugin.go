@@ -3,6 +3,7 @@ package types
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -74,14 +75,27 @@ func (t PluginPreviewTools) Value() (driver.Value, error) {
 	return json.Marshal(t)
 }
 
-// Scan implements sql.Scanner for PluginPreviewTools (JSON column).
+// Scan implements sql.Scanner for PluginPreviewTools (JSON column). Both
+// []byte (PostgreSQL JSONB) and string (SQLite TEXT — the column is TEXT on
+// the SQLite twin, whose drivers hand TEXT columns back as string) are
+// accepted; any other type is an error, never silently swallowed — the same
+// contract as types.JSON.Scan.
 func (t *PluginPreviewTools) Scan(value interface{}) error {
 	if value == nil {
 		*t = nil
 		return nil
 	}
-	b, ok := value.([]byte)
-	if !ok {
+	var b []byte
+	switch v := value.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
+		return errors.New("type assertion to []byte or string failed")
+	}
+	if len(b) == 0 {
+		*t = nil
 		return nil
 	}
 	return json.Unmarshal(b, t)

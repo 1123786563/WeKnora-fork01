@@ -291,19 +291,32 @@ func ToolSchemaDigest(schema []byte) string {
 // self-referential content_digest field excluded, so the digest can be
 // embedded in the document it certifies. Uses the CanonicalJSON algorithm
 // (sorted keys, no whitespace, verbatim number literals — see CanonicalJSON).
+// An unserializable input yields "" (the ToolSchemaDigest failure
+// convention), never the valid SHA-256 of empty input that would make two
+// different failures compare equal.
 func ManifestContentDigest(m *types.PluginManifest) string {
 	if m == nil {
 		return ""
 	}
 	copyM := *m
 	copyM.ContentDigest = ""
-	return sha256Hex(CanonicalJSON(&copyM))
+	canonical := CanonicalJSON(&copyM)
+	if canonical == nil {
+		return ""
+	}
+	return sha256Hex(canonical)
 }
 
 // SnapshotDigest digests a verified tool snapshot list. The slice order is
 // significant (it is the reviewed directory order); object key order is not.
+// An unserializable input yields "" (the ToolSchemaDigest failure
+// convention).
 func SnapshotDigest(tools []types.PluginToolSnapshot) string {
-	return sha256Hex(CanonicalJSON(tools))
+	canonical := CanonicalJSON(tools)
+	if canonical == nil {
+		return ""
+	}
+	return sha256Hex(canonical)
 }
 
 // IdentityFingerprint binds a plugin identity to the exact verified tool set:
