@@ -963,7 +963,21 @@ func discoverSetConsumers(d *Discovery, kind string, items []string) ([]string, 
 				if taskType == "" {
 					continue
 				}
-				if fileReferencesIdent(d, f, taskType) {
+				hits, err := fileReferencesIdent(d, f, taskType)
+				if err != nil {
+					// OCR R1 #b0-ocr-r1-fileReferencesIdent-swallow-error：
+					// parse 失败与 ident 无关，收敛为显式诊断（经
+					// check.go 500-503 既有 issue 通道以契约行为 path emit），
+					// 该文件不得进 discovered 集（否则 unrecorded/vanished
+					// 比较建立在未知基础上）。
+					c.issues = append(c.issues, setSiteIssue{
+						Check: "contract-set-scan-failed",
+						Message: fmt.Sprintf(
+							"worker-set fallback scan cannot parse %s: %v", f, err),
+					})
+					break
+				}
+				if hits {
 					relevant = true
 					break
 				}
@@ -1016,10 +1030,13 @@ func isGoIdent(s string) bool {
 }
 
 // fileReferencesIdent 判断文件 AST 内任意位置（含限定名 Sel）出现同名 Ident。
-func fileReferencesIdent(d *Discovery, file, name string) bool {
+// parseFileFull 错误原样上抛（OCR R1 #b0-ocr-r1-fileReferencesIdent-swallow-error）：
+// 与 DiscoverSymbolConsumers 的 parse 错误上抛口径一致，绝不静默 false——
+// 静默会让真实注册位点从 discovered 集丢失而守卫毫无感知。
+func fileReferencesIdent(d *Discovery, file, name string) (bool, error) {
 	c, err := d.parseFileFull(file)
 	if err != nil {
-		return false
+		return false, err
 	}
 	found := false
 	ast.Inspect(c.file, func(n ast.Node) bool {
@@ -1032,7 +1049,7 @@ func fileReferencesIdent(d *Discovery, file, name string) bool {
 		}
 		return true
 	})
-	return found
+	return found, nil
 }
 
 // setDiff 返回两个集合的单向差描述（仅出现在其中一个集合的元素）。
