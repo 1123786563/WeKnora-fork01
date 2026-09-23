@@ -21,6 +21,14 @@ Object.assign(globalThis, {
   HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  // tdesign-react Select/Popup 运行时引用 Element/SVGElement/DocumentFragment
+  // 与 rAF（parserSettings 平移为 tdesign Select 后挂载路径需要）。
+  Element: dom.window.Element,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
+  Node: dom.window.Node,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
@@ -172,12 +180,16 @@ test('sections mount the Vue-equivalent inline surfaces: datasource page, share 
   assert.equal(calls.activityCalls[0]!.knowledgeBaseId, 'kb-1');
   await act(async () => { clickSection('parser'); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-  const select = document.body.querySelector('select');
-  assert.ok(select, 'expected a parser engine select');
-  assert.equal(select.disabled, false);
-  const values = [...select.querySelectorAll('option')].map((option) => option.value);
-  assert.equal(values.includes('mineru'), true);
-  assert.equal(values.includes('builtin'), false, 'unavailable engines must be filtered out');
+  // tdesign Select（Vue t-select 同构）：trigger 是 .t-select__wrap，行标识
+  // data-parser-group 挂在包裹 span 上（台账 #8 Select 根不透传 data-*）。
+  const pdfRow = document.body.querySelector('[data-parser-group="pdf"]');
+  assert.ok(pdfRow, 'expected a parser engine row');
+  const trigger = pdfRow.querySelector('.t-select__wrap');
+  assert.ok(trigger, 'expected the tdesign parser engine select');
+  assert.equal(trigger.classList.contains('t-is-disabled'), false);
+  const triggerValue = (trigger.querySelector('input.t-input__inner') as HTMLInputElement | null)?.value ?? '';
+  assert.match(triggerValue, /MinerU/, 'the committed pdf rule preselects mineru (only available engine here)');
+  assert.equal(document.body.textContent?.includes('builtin') ?? false, false, 'unavailable engines must be filtered out');
   if (mountedRoot) {
     const root = mountedRoot;
     mountedRoot = undefined;

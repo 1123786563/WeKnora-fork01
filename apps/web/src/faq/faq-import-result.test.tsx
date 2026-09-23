@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign 运行时；须首个 import）
 // B6: Vue last-result persistence (FAQEntryManager.vue:1263-1303 state/summary,
 // :2111-2150 save+load after import success, :2276-2412 storage/close/download,
 // :2820-2829 mount-time restore; API knowledge-base/index.ts:602-610).
@@ -175,7 +176,7 @@ test('mount restores the persisted result strip from the last completed task', a
   assert.match(strip.textContent || '', /失败 1/, 'failed count present');
   assert.ok(strip.querySelector('.faq-import-strip__close'), 'close button present');
   assert.ok(strip.textContent?.includes('下载原因'), 'download link for failed entries');
-  assert.match(strip.querySelector('.faq-import-mode-tag')?.textContent || '', /追加模式/, 'append mode tag');
+  assert.match(strip.textContent || '', /追加模式/, 'append mode tag (Vue t-tag)');
   await act(async () => { (strip.querySelector('.faq-import-strip__close') as HTMLButtonElement).click(); });
   await settle(10);
   const put = fake.calls.find((c) => c.method === 'PUT');

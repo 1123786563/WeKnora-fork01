@@ -35,6 +35,7 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import type { ChatCopyTable } from '@weknora/views/chat/chat-copy';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
+import './chat-u.css';
 
 /** Vue formatManualTitle (chatMessageShared.ts:69-78): collapse whitespace,
  *  truncate at 40 chars with '...', fall back to the session-excerpt label. */
@@ -264,19 +265,19 @@ export function BookmarkAnswerDialog({ client, copy, open, initialTitle, initial
   }
 
   return (
-    <div className="wk-bookmark-dialog-backdrop fixed inset-0 z-[1200] flex items-center justify-center bg-[rgba(15,23,42,0.45)]" role="presentation" onClick={onClose}>
+    <div className="wk-bookmark-dialog-backdrop wk-bad-1" role="presentation" onClick={onClose}>
       <div
-        className="wk-bookmark-dialog flex max-h-[85vh] w-[min(720px,92vw)] flex-col gap-3 overflow-auto rounded-[10px] bg-white p-[20px] shadow-[0_12px_40px_rgba(15,23,42,0.2)]"
+        className="wk-bookmark-dialog wk-bad-2"
         role="dialog"
         aria-modal="true"
         aria-label={copy.bookmarkEditorTitle}
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 className="m-0 text-[16px] font-semibold text-[#101828]">{copy.bookmarkEditorTitle}</h2>
-        <label className="flex flex-col gap-1 text-[13px] text-[#344054]">
+        <h2 className="wk-bad-3">{copy.bookmarkEditorTitle}</h2>
+        <label className="wk-bad-4">
           {copy.bookmarkKbLabel}
           <select
-            className="h-8 rounded-[6px] border border-[#e4e7ec] bg-transparent px-2 text-[13px] text-[#101828] outline-none focus:border-[#07c05f]"
+            className="wk-bad-5"
             value={kbId}
             aria-label={copy.bookmarkKbLabel}
             onChange={(event) => { setKbId(event.target.value); setTagIds([]); setWarning(''); }}
@@ -285,22 +286,22 @@ export function BookmarkAnswerDialog({ client, copy, open, initialTitle, initial
             {kbOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-[13px] text-[#344054]">
+        <label className="wk-bad-4">
           {copy.bookmarkTitleLabel}
           <input
-            className="h-8 rounded-[6px] border border-[#e4e7ec] bg-transparent px-2 text-[13px] text-[#101828] outline-none focus:border-[#07c05f]"
+            className="wk-bad-5"
             value={title}
             maxLength={100}
             aria-label={copy.bookmarkTitleLabel}
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
-        <div className="flex min-h-0 flex-1 flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] text-[#344054]">{copy.bookmarkContentLabel}</span>
+        <div className="wk-bad-6">
+          <div className="wk-bad-7">
+            <span className="wk-bad-8">{copy.bookmarkContentLabel}</span>
             <button
               type="button"
-              className="cursor-pointer rounded-[6px] border border-[#e4e7ec] bg-white px-[10px] py-[4px] text-[12px] text-[#344054] hover:border-[#07c05f] hover:text-[#07c05f] disabled:cursor-not-allowed disabled:opacity-60"
+              className="wk-bad-9"
               disabled={saving}
               aria-label={view === 'edit' ? strings.previewLabel : strings.editLabel}
               onClick={() => setView((prev) => (prev === 'edit' ? 'preview' : 'edit'))}
@@ -310,7 +311,7 @@ export function BookmarkAnswerDialog({ client, copy, open, initialTitle, initial
           </div>
           {view === 'edit' ? (
             <textarea
-              className="min-h-[220px] flex-1 resize-y rounded-[6px] border border-[#e4e7ec] bg-transparent px-2 py-1.5 font-mono text-[12px] leading-[1.6] text-[#101828] outline-none focus:border-[#07c05f]"
+              className="wk-bad-10"
               value={content}
               rows={10}
               aria-label={copy.bookmarkContentLabel}
@@ -318,36 +319,36 @@ export function BookmarkAnswerDialog({ client, copy, open, initialTitle, initial
             />
           ) : previewHtml ? (
             <div
-              className="wk-bookmark-preview min-h-[220px] flex-1 overflow-auto rounded-[6px] border border-[#e4e7ec] px-[14px] py-[12px] text-[13px] leading-[1.7] text-[#101828]"
+              className="wk-bookmark-preview wk-bad-11"
               role="region"
               aria-label={strings.previewLabel}
               dangerouslySetInnerHTML={{ __html: previewHtml }}
             />
           ) : (
             <div
-              className="wk-bookmark-preview min-h-[220px] flex-1 overflow-auto rounded-[6px] border border-[#e4e7ec] px-[14px] py-[12px] text-[13px] leading-[1.7] text-[#101828]"
+              className="wk-bookmark-preview wk-bad-11"
               role="region"
               aria-label={strings.previewLabel}
             >
-              <p className="wk-bookmark-preview-empty m-0 text-[rgba(0,0,0,0.45)]">{strings.previewEmpty}</p>
+              <p className="wk-bookmark-preview-empty wk-bad-12">{strings.previewEmpty}</p>
             </div>
           )}
         </div>
         {kbId && tagLoadState === 'error' ? (
-          <p role="alert" className="m-0 text-[12px] text-[#d54941]">{formatMessage(locale, 'uploadConfirm.tagsLoadFailed')}</p>
+          <p role="alert" className="wk-bad-13">{formatMessage(locale, 'uploadConfirm.tagsLoadFailed')}</p>
         ) : null}
         {kbId && tagLoadState === 'ready' && tagOptions.length === 0 ? (
-          <p className="m-0 text-[12px] text-[rgba(0,0,0,0.45)]">{formatMessage(locale, 'uploadConfirm.tagsEmpty')}</p>
+          <p className="wk-bad-14">{formatMessage(locale, 'uploadConfirm.tagsEmpty')}</p>
         ) : null}
         {kbId && tagLoadState === 'ready' && tagOptions.length > 0 ? (
-          <fieldset className="m-0 flex flex-wrap items-center gap-x-4 gap-y-1 border-0 p-0 text-[13px] text-[#344054]">
-            <legend className="sr-only">{formatMessage(locale, 'uploadConfirm.tabTags')}</legend>
-            <span className="text-[12px] font-medium text-[#475467]">{formatMessage(locale, 'uploadConfirm.tabTags')}</span>
+          <fieldset className="wk-bad-15">
+            <legend className="wk-bad-16">{formatMessage(locale, 'uploadConfirm.tabTags')}</legend>
+            <span className="wk-bad-17">{formatMessage(locale, 'uploadConfirm.tabTags')}</span>
             {tagOptions.map((tag) => (
-              <label key={tag.id} className="flex cursor-pointer items-center gap-1">
+              <label key={tag.id} className="wk-bad-18">
                 <input
                   type="checkbox"
-                  className="accent-[#07c05f]"
+                  className="wk-bad-accent"
                   checked={tagIds.includes(tag.id)}
                   aria-label={tag.name}
                   onChange={() => toggleTag(tag.id)}
@@ -357,17 +358,17 @@ export function BookmarkAnswerDialog({ client, copy, open, initialTitle, initial
             ))}
           </fieldset>
         ) : null}
-        {loadState === 'error' ? <p role="alert" className="m-0 text-[12px] text-[#d54941]">{copy.bookmarkNoDocumentKbs}</p> : null}
-        {loadState === 'ready' && kbOptions.length === 0 ? <p className="m-0 text-[12px] text-[rgba(0,0,0,0.45)]">{copy.bookmarkNoDocumentKbs}</p> : null}
-        {warning ? <p role="alert" className="m-0 text-[12px] text-[#d54941]">{warning}</p> : null}
-        {error ? <p role="alert" className="m-0 text-[12px] text-[#d54941]">{error}</p> : null}
-        <div className="flex items-center justify-end gap-2 border-t border-[#eef1f5] pt-3">
-          <button type="button" className="cursor-pointer rounded-[6px] border border-[#e4e7ec] bg-transparent px-[14px] py-[6px] text-[13px] text-[#344054]" disabled={saving} onClick={onClose}>
+        {loadState === 'error' ? <p role="alert" className="wk-bad-13">{copy.bookmarkNoDocumentKbs}</p> : null}
+        {loadState === 'ready' && kbOptions.length === 0 ? <p className="wk-bad-14">{copy.bookmarkNoDocumentKbs}</p> : null}
+        {warning ? <p role="alert" className="wk-bad-13">{warning}</p> : null}
+        {error ? <p role="alert" className="wk-bad-13">{error}</p> : null}
+        <div className="wk-bad-19">
+          <button type="button" className="wk-bad-20" disabled={saving} onClick={onClose}>
             {copy.bookmarkCancel}
           </button>
           <button
             type="button"
-            className="cursor-pointer rounded-[6px] border border-[#07c05f] bg-transparent px-[14px] py-[6px] text-[13px] text-[#07c05f] disabled:cursor-not-allowed disabled:opacity-60"
+            className="wk-bad-21"
             disabled={saving}
             onClick={() => void save('draft')}
           >
@@ -375,7 +376,7 @@ export function BookmarkAnswerDialog({ client, copy, open, initialTitle, initial
           </button>
           <button
             type="button"
-            className="cursor-pointer rounded-[6px] border border-[#07c05f] bg-[#07c05f] px-[14px] py-[6px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="wk-bad-22"
             disabled={saving}
             onClick={() => void save('publish')}
           >

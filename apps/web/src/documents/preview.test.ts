@@ -11,7 +11,14 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http:
 (globalThis as typeof globalThis & { window: unknown; document: unknown }).window = dom.window;
 (globalThis as typeof globalThis & { window: unknown; document: unknown }).document = dom.window.document;
 
-import { DocumentMarkdownBody, DocumentPreviewContent, buildDocumentPreview, canPreviewDocument, isInlinePreviewKind, openDocumentMermaidFullscreen, readCurrentPreviewText, readPreviewText, readSpreadsheetPreview, type DocumentMermaidLabels, type DocumentMermaidLoader } from './preview.ts';
+/* S7：preview.ts 现引入 documents-u.css——node 测试运行器需 stub 解析（OrganizationsPage.test 同款）。 */
+{
+  const hooks = (await import('node:module')) as unknown as { registerHooks?: (h: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
+  if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg') ? { shortCircuit: true, url: 'data:text/javascript,export default "stub"' } : nextResolve(specifier, context) });
+}
+const { DocumentMarkdownBody, DocumentPreviewContent, buildDocumentPreview, canPreviewDocument, isInlinePreviewKind, openDocumentMermaidFullscreen, readCurrentPreviewText, readPreviewText, readSpreadsheetPreview } = await import('./preview.ts');
+type DocumentMermaidLabels = import('./preview.ts').DocumentMermaidLabels;
+type DocumentMermaidLoader = import('./preview.ts').DocumentMermaidLoader;
 
 test('builds an authenticated preview model without treating download URLs as public', () => {
   assert.deepEqual(buildDocumentPreview({ id: 'doc/a', type: 'file', file_name: 'guide.pdf', parse_status: 'completed' }, '/api/v1/knowledge/doc%2Fa/preview'), {

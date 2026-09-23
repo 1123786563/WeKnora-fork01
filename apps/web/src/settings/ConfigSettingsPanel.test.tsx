@@ -11,7 +11,24 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/settings' });
-Object.assign(globalThis, { React, window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Event: dom.window.Event, IS_REACT_ACT_ENVIRONMENT: true });
+// T12b：chathistory 用例引入 tdesign-react（Select 弹层经 Popup 挂 body），
+// jsdom globals 扩展与 settings-error-ux.test 同款（T12a d1fba03aa 先例）。
+Object.assign(globalThis, {
+  React,
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 const { createRoot } = await import('react-dom/client');
 const { ConfigSettingsPanel } = await import('./ConfigSettingsPanel.tsx');
@@ -32,16 +49,18 @@ test('retrieval changes auto-save after the Vue 500ms debounce', async () => {
   root = createRoot(container);
   await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={{ embedding_top_k: 50 }} models={[]} />));
 
-  const input = container.querySelector('input[type="range"]') as HTMLInputElement;
+  // S6：threshold 字段换 tdesign Slider（无原生 input[type=range]，jsdom 拖拽
+  // 不可驱动）；debounce 逻辑改经 models=[] 回退渲染的 rerank TInput 驱动。
+  const input = container.querySelector<HTMLInputElement>('input[placeholder]');
   assert.ok(input, 'retrieval control should render');
   await act(async () => {
-    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, '51');
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, 'rerank-9');
     input.dispatchEvent(new window.Event('input', { bubbles: true }));
     input.dispatchEvent(new window.Event('change', { bubbles: true }));
   });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 550)); });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.embedding_top_k, 51);
+  assert.equal(calls[0]?.rerank_model_id, 'rerank-9');
 });
 
 test('retrieval keeps the Vue rerank-model-first slider order', async () => {
@@ -51,8 +70,9 @@ test('retrieval keeps the Vue rerank-model-first slider order', async () => {
   root = createRoot(container);
   await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={{}} models={[{ id: 'rerank-1', name: 'Rerank' }]} />));
 
-  const model = container.querySelector('[data-testid="rerank_model_id"]');
-  const slider = container.querySelector('input[type="range"]');
+  // S6：tdesign Select 根不透传 data-*（台账 #8），改语义类名钩子。
+  const model = container.querySelector('.wk-config-sel-rerank_model_id');
+  const slider = container.querySelector('.t-slider');
   assert.ok(model, 'Vue renders the rerank selector first');
   assert.ok(slider, 'Vue retrieval thresholds use sliders rather than number steppers');
   assert.ok(Boolean(model.compareDocumentPosition(slider) & 4), 'the rerank selector precedes the threshold sliders');
@@ -104,16 +124,19 @@ test('chat history hides the embedding model row while indexing is disabled like
   const container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
+  // T12b：chathistory 分区已迁 ChatHistorySettingsPanel（Vue DOM 直挂 .section）。
+  const { ChatHistorySettingsPanel } = await import('./ChatHistorySettingsPanel.tsx');
   await act(async () => root?.render(
-    <ConfigSettingsPanel
+    <ChatHistorySettingsPanel
       client={client}
-      section="chathistory"
       initialValue={{ enabled: false, embedding_model_id: 'embed-1' }}
-      models={[{ id: 'embed-1', name: 'Embedding' }]}
+      models={[{ id: 'embed-1', name: 'Embedding', type: 'Embedding' }]}
     />,
   ));
 
-  assert.equal(container.querySelector('[data-testid="embedding_model_id"]'), null);
+  assert.equal(container.querySelector('.model-selector'), null, 'the embedding row stays hidden while disabled (Vue v-if="localEnabled")');
+  assert.ok(container.querySelector('.chat-history-settings'), 'the Vue root class renders');
+  assert.ok(container.querySelector('.t-switch'), 'the enable row renders a tdesign switch');
 });
 
 test('parser exposes the Vue MinerU and PaddleOCR configuration controls', async () => {
@@ -123,8 +146,17 @@ test('parser exposes the Vue MinerU and PaddleOCR configuration controls', async
   root = createRoot(container);
   await act(async () => root?.render(<ConfigSettingsPanel client={client} section="parser" initialValue={{}} />));
 
-  for (const field of ['mineru-model', 'mineru-vllm-server-url', 'mineru-parse-method', 'mineru-language', 'mineru-cloud-model', 'paddleocr-vl-endpoint', 'paddleocr-vl-cloud-model']) {
-    assert.ok(container.querySelector(`[data-testid="${field}"]`), `${field} should be configurable like ParserEngineSettings.vue`);
+  const hooks: Array<[string, string]> = [
+    ['.wk-config-sel-mineru-model', 'mineru-model'],
+    ['[data-testid="mineru-vllm-server-url"]', 'mineru-vllm-server-url'],
+    ['.wk-config-sel-mineru-parse-method', 'mineru-parse-method'],
+    ['[data-testid="mineru-language"]', 'mineru-language'],
+    ['.wk-config-sel-mineru-cloud-model', 'mineru-cloud-model'],
+    ['[data-testid="paddleocr-vl-endpoint"]', 'paddleocr-vl-endpoint'],
+    ['.wk-config-sel-paddleocr-vl-cloud-model', 'paddleocr-vl-cloud-model'],
+  ];
+  for (const [hook, field] of hooks) {
+    assert.ok(container.querySelector(hook), `${field} should be configurable like ParserEngineSettings.vue`);
   }
 });
 
@@ -175,28 +207,39 @@ test('chat history save failure surfaces the backend message and keeps the form 
   const container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
+  // T12b：chathistory 已迁 ChatHistorySettingsPanel；Vue 失败走
+  // MessagePlugin.error → React settings 域 toast 宿主（pushSettingsToast）。
+  const { ChatHistorySettingsPanel } = await import('./ChatHistorySettingsPanel.tsx');
+  const { SettingsToastHost } = await import('./settings-toast.tsx');
   await act(async () => root?.render(
-    <ConfigSettingsPanel
-      client={client}
-      section="chathistory"
-      initialValue={{ enabled: false, embedding_model_id: '' }}
-      models={[{ id: 'embed-1', name: 'Embedding' }]}
-    />,
+    <>
+      <SettingsToastHost />
+      <ChatHistorySettingsPanel
+        client={client}
+        initialValue={{ enabled: false, embedding_model_id: '' }}
+        models={[{ id: 'embed-1', name: 'Embedding', type: 'Embedding' }]}
+      />
+    </>
   ));
 
   const toggle = container.querySelector('button[role="switch"]') as HTMLButtonElement | null;
   assert.ok(toggle, 'expected the enable switch');
-  assert.equal(toggle.getAttribute('aria-checked'), 'false');
-  // Toggling marks the form dirty and arms the Vue 500ms debounced save.
+  // Toggling arms the Vue 500ms debounced save.
   await act(async () => { toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 550)); });
 
   assert.equal(calls.length, 1, 'the debounced save should have fired once');
-  assert.match(container.textContent ?? '', /upstream down/, 'the backend message is surfaced');
+  assert.match(document.body.textContent ?? '', /upstream down/, 'the backend message surfaces via the settings toast (Vue MessagePlugin.error)');
   // UI stays intact: the switch reflects the draft change and remains operable.
   const toggleAfter = container.querySelector('button[role="switch"]') as HTMLButtonElement | null;
   assert.ok(toggleAfter, 'the switch must stay rendered after a failed save');
-  assert.equal(toggleAfter.getAttribute('aria-checked'), 'true', 'the draft change is retained like the Vue draft model');
+  // T12b fix round（评审 Minor-1）：恢复迁移时丢失的「draft 变更保留」断言。
+  // tdesign Switch 选中态经 .t-is-checked 类表达（台账 #2：React 根标签
+  // button role="switch"，断言走 classList 而非 aria-checked；sandbox 先例同款）。
+  assert.equal(
+    toggleAfter?.classList.contains('t-is-checked'), true,
+    'the draft toggle state survives the failed save (Vue keeps the editable draft)',
+  );
 });
 
 test('parser connection-check failure falls back to the localized checkFailed message (R021)', async () => {
@@ -239,7 +282,7 @@ test('parser form save failure surfaces the backend error and keeps controls ren
   await act(async () => { await Promise.resolve(); });
 
   assert.match(container.textContent ?? '', /bad payload/, 'the backend message is surfaced on the inline status');
-  assert.ok(container.querySelector('[data-testid="mineru-model"]'), 'form controls stay rendered after a failed save');
+  assert.ok(container.querySelector('.wk-config-sel-mineru-model'), 'form controls stay rendered after a failed save');
 });
 
 /*

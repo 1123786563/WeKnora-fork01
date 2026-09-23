@@ -2,8 +2,6 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "../../../packages/design-tokens/src/styles.css" layer(theme);
-@import "../../../packages/ui/src/theme.css" layer(theme);
-@source "../../../packages/ui/src";
 @source "./";
 
 :root {
@@ -18,6 +16,35 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 280px; min-height: 100vh; }
 button, textarea { font: inherit; }
+
+/* Embed 本地按钮（T15：packages/ui Button 退役后的生效值复刻，
+   语义基线见 button.tsx 头注）。 */
+.embed-btn {
+  display: inline-flex;
+  height: 2rem;
+  min-height: 2rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  padding: 0 0.8rem;
+  font-family: var(--app-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+.embed-btn:focus-visible { outline: 2px solid color-mix(in oklab, #07c05f 35%, transparent); outline-offset: 2px; }
+.embed-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.embed-btn--text { border-color: transparent; background-color: transparent; padding-inline: 0.5rem; color: #506078; }
+.embed-btn--text:hover:not(:disabled), .embed-btn--text:focus-visible:not(:disabled) { background-color: #f2f5fa; }
+.embed-btn--primary { border-color: #07c05f; background-color: #07c05f; color: #ffffff; }
+.embed-btn--primary:hover:not(:disabled) { background-color: #0a8f4c; }
+.embed-btn--small { height: 1.75rem; min-height: 24px; padding: 2px 8px; font-size: 0.75rem; line-height: 1rem; }
 
 :root[data-theme="dark"] { color: #edf2ff; background: #131923; color-scheme: dark; }
 .embed-shell { --embed-primary: #2864dc; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: inherit; }

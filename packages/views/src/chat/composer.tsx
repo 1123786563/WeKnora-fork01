@@ -224,7 +224,6 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const mentionSearchRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   // Vue Input-field.vue prefill consume: nextTick(() => textarea.focus()).
   useEffect(() => {
@@ -232,6 +231,12 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   }, [focusSignal]);
   const [mentionOpen, setMentionOpen] = useState(initialMentionOpen);
   const [mentionQuery, setMentionQuery] = useState('');
+  // Vue triggerMention（Input-field.vue:1640-1694）：弹层 fixed 定位锚定 textarea
+  //（left=rect.left；上方优先，bottom=vh-rect.top+8，menuHeight 阈值 320）。
+  const [mentionMenuStyle, setMentionMenuStyle] = useState<React.CSSProperties | null>(null);
+  // Vue kb-btn t-tooltip（Input-field.vue:2756-2774，theme light / placement top）。
+  const [kbTipOpen, setKbTipOpen] = useState(false);
+  const kbTipTimer = useRef<number | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const agentChipRef = useRef<HTMLButtonElement>(null);
@@ -307,14 +312,28 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
       setMentionQuery('');
       setActiveMentionIndex(0);
       onMentionOpen?.();
-      window.setTimeout(() => mentionSearchRef.current?.focus(), 0);
+      // Vue triggerMention：锚定 textarea 左缘，优先上方（8px 间距）。
+      const textarea = draftRef.current;
+      if (textarea) {
+        const rect = textarea.getBoundingClientRect();
+        const vh = window.innerHeight;
+        const menuHeight = 320;
+        const spaceAbove = rect.top;
+        const spaceBelow = vh - rect.bottom;
+        if (spaceAbove > menuHeight || spaceAbove > spaceBelow) {
+          setMentionMenuStyle({ position: 'fixed', left: `${rect.left}px`, bottom: `${vh - rect.top + 8}px`, top: 'auto' });
+        } else {
+          setMentionMenuStyle({ position: 'fixed', left: `${rect.left}px`, top: `${rect.bottom + 8}px`, bottom: 'auto' });
+        }
+      }
+      textarea?.focus();
     }
   }
   function closeMentions(): void {
     setMentionOpen(false);
     setMentionQuery('');
   }
-  function handleMentionKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+  function handleMentionKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
     if (event.key === 'Escape') {
       event.preventDefault();
       closeMentions();
@@ -345,48 +364,48 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
     return t.attachmentProcessing;
   }
 
-  return <form className="wk-chat-composer relative mx-auto w-full max-w-[960px] shrink-0" onSubmit={submit}>
+  return <form className="wk-chat-composer wk-vc-composer-1" onSubmit={submit}>
     {/* The textarea's own placeholder attribute carries the visible hint (Vue
         parity); the label is aria-only so the hidden text stays out of
         innerText — a clip-hidden text node still leaks into it. */}
     <label className="wk-chat-visually-hidden" htmlFor="wk-chat-draft" aria-hidden="true" style={{ display: 'none' }}>{t.composerPlaceholder}</label>
-    <div data-guide="chat-input" className="wk-chat-input-shell w-full rounded-[12px] border border-[#dcdcdc] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_16px_-4px_rgba(0,0,0,0.06)] transition-[border-color] duration-[150ms] ease-[ease] focus-within:border-[#07c05f]">
+    <div data-guide="chat-input" className="wk-chat-input-shell wk-ease-ease wk-vc-composer-2">
       {/* R473-A2 — Vue Input-field.vue .steer-queue (~2599): one chip per queued
           after-message at the very top of the input shell. Waiting clock icon +
           truncated text (full text via title) + per-state actions; pending
           shows the spinner and hides actions, failed swaps them for retry. */}
-      {steerQueue.length > 0 ? <ul className="wk-chat-steer-queue m-0 flex list-none flex-wrap gap-[6px] px-[14px] pt-[10px]" role="list" aria-label={t.steerQueueWaiting}>
+      {steerQueue.length > 0 ? <ul className="wk-chat-steer-queue wk-vc-composer-3" role="list" aria-label={t.steerQueueWaiting}>
         {steerQueue.map((item, index) => {
           // R474-A2 — Vue Input-field.vue ~2610: only the first promotable chip
           // advertises the ⌘Enter/Alt+Enter shortcut in its send-now tooltip.
           const shortcutSuffix = index === steerQueue.findIndex((candidate) => candidate.status === 'queued')
             ? ` · ${steerShortcutLabel()}`
             : '';
-          return <li key={item.steerId} role="listitem" data-steer-id={item.steerId} data-steer-status={item.status} data-steer-promoting={promotingSteerId === item.steerId ? 'true' : undefined} className="wk-chat-steer-queue-item inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#e7e7e7] bg-[#fafafa] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]">
-          <svg className="shrink-0 text-[rgba(0,0,0,0.4)]" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="M8 4.8V8l2.2 1.6" strokeLinecap="round" /></svg>
-          <span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap" title={item.content}>{item.content}</span>
-          {item.status === 'failed' ? (onSteerRetry ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={t.steerRetry} title={t.steerRetry} onClick={() => onSteerRetry(item.steerId)}>
+          return <li key={item.steerId} role="listitem" data-steer-id={item.steerId} data-steer-status={item.status} data-steer-promoting={promotingSteerId === item.steerId ? 'true' : undefined} className="wk-chat-steer-queue-item wk-vc-composer-4">
+          <svg className="wk-vc-composer-5" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="M8 4.8V8l2.2 1.6" strokeLinecap="round" /></svg>
+          <span className="wk-vc-composer-6" title={item.content}>{item.content}</span>
+          {item.status === 'failed' ? (onSteerRetry ? <button type="button" className="wk-vc-composer-7" aria-label={t.steerRetry} title={t.steerRetry} onClick={() => onSteerRetry(item.steerId)}>
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5" strokeLinecap="round" /><path d="M13 2v3h-3" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </button> : null) : item.status === 'pending' ? <span className="wk-chat-steer-sending shrink-0" role="img" aria-label={t.loadingMessages}>…</span> : <>
-            {onSteerPromote ? <button type="button" disabled={promotingSteerId === item.steerId} className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.steerQueueSendNow} title={`${t.steerQueueSendNow}${shortcutSuffix}`} onClick={() => promoteSteerChip(item.steerId)}>
+          </button> : null) : item.status === 'pending' ? <span className="wk-chat-steer-sending wk-vc-composer-8" role="img" aria-label={t.loadingMessages}>…</span> : <>
+            {onSteerPromote ? <button type="button" disabled={promotingSteerId === item.steerId} className="wk-vc-composer-9" aria-label={t.steerQueueSendNow} title={`${t.steerQueueSendNow}${shortcutSuffix}`} onClick={() => promoteSteerChip(item.steerId)}>
               <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 13V3" /><path d="M3.5 7.5L8 3l4.5 4.5" /></svg>
             </button> : null}
-            {onSteerRemove ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={t.remove} title={t.remove} onClick={() => onSteerRemove(item.steerId)}>×</button> : null}
+            {onSteerRemove ? <button type="button" className="wk-vc-composer-7" aria-label={t.remove} title={t.remove} onClick={() => onSteerRemove(item.steerId)}>×</button> : null}
           </>}
         </li>;
         })}
       </ul> : null}
-      {attachments.length > 0 ? <ul className="wk-chat-attachments m-0 flex flex-wrap gap-[6px] px-[14px] pt-[10px]" aria-label={t.uploadAttachment}>
-        {attachments.map((attachment) => <li key={attachment.id} data-attachment-status={attachment.status} className="inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#e7e7e7] bg-[#fafafa] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]" title={attachment.error || attachment.status}>
-          <span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">{attachment.name}</span>
+      {attachments.length > 0 ? <ul className="wk-chat-attachments wk-vc-composer-10" aria-label={t.uploadAttachment}>
+        {attachments.map((attachment) => <li key={attachment.id} data-attachment-status={attachment.status} className="wk-vc-composer-4" title={attachment.error || attachment.status}>
+          <span className="wk-vc-composer-6">{attachment.name}</span>
           <span aria-label={attachmentStatusLabel(attachment)}>{attachment.status === 'ready' ? '✓' : attachment.status === 'failed' ? '!' : '…'} {attachmentStatusLabel(attachment)}</span>
-          {onRemoveAttachment ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={`${t.close}: ${attachment.name}`} onClick={() => void onRemoveAttachment(attachment.id)}>×</button> : null}
+          {onRemoveAttachment ? <button type="button" className="wk-vc-composer-7" aria-label={`${t.close}: ${attachment.name}`} onClick={() => void onRemoveAttachment(attachment.id)}>×</button> : null}
         </li>)}
       </ul> : null}
-      {mentionedItems.length > 0 ? <ul className="wk-chat-mentions m-0 flex flex-wrap gap-[6px] px-[14px] pt-[10px]" aria-label={t.mentionKnowledge}>
-        {mentionedItems.map((item) => <li key={item.id} data-mention-id={item.id} data-mention-type={item.type} className="inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#d9f2e2] bg-[#f2fbf5] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]">
-          <span aria-hidden="true">{mentionMarker(item.type)}</span><span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span>
-          {onMentionRemove ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={`${t.close}: ${item.name}`} onClick={() => onMentionRemove(item.id)}>×</button> : null}
+      {mentionedItems.length > 0 ? <ul className="wk-chat-mentions wk-vc-composer-10" aria-label={t.mentionKnowledge}>
+        {mentionedItems.map((item) => <li key={item.id} data-mention-id={item.id} data-mention-type={item.type} className="wk-vc-composer-11">
+          <span aria-hidden="true">{mentionMarker(item.type)}</span><span className="wk-vc-composer-6">{item.name}</span>
+          {onMentionRemove ? <button type="button" className="wk-vc-composer-7" aria-label={`${t.close}: ${item.name}`} onClick={() => onMentionRemove(item.id)}>×</button> : null}
         </li>)}
       </ul> : null}
       <textarea
@@ -394,19 +413,19 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
         ref={draftRef}
         value={draft}
         onChange={(event) => onDraftChange(event.target.value)}
-        onKeyDown={handleDraftKeyDown}
+        onKeyDown={(event) => { if (mentionOpen) handleMentionKeyDown(event); handleDraftKeyDown(event); }}
         disabled={disabled}
         rows={2}
         placeholder={t.composerPlaceholder}
-        className="block box-border h-[72px] w-full min-h-[72px] resize-none overflow-auto border-0 bg-transparent px-[16px] pt-[16px] pb-[8px] [font:inherit] text-[16px] leading-[24px] text-[rgba(0,0,0,0.9)] outline-none placeholder:text-[rgba(0,0,0,0.26)] disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[rgba(0,0,0,0.4)]"
+        className="wk-vc-composer-12"
       />
       {/* Vue .answers-input control row: 9px under the textarea, 13px to the
           shell bottom edge — the 8/12 pair left the whole composer 10px low
           and 2px short (y576 h124 on the Vue side). With the 30px agent chip
           the row is 38px tall in Vue (8px top pad) and the shell closes with
           12px + border, keeping the shell y576 h124 exactly. */}
-      <div className="wk-chat-control-bar relative mx-[16px] mb-[12px] mt-0 flex flex-wrap items-center justify-between gap-[8px] pt-[8px]">
-        <div className="wk-chat-control-left flex min-w-0 flex-1 flex-wrap items-center gap-[8px]">
+      <div className="wk-chat-control-bar wk-vc-composer-13">
+        <div className="wk-chat-control-left wk-vc-composer-14">
           {agents && onAgentChange ? (() => {
             const currentAgent = agents.find((agent) => agent.id === selectedAgentId);
             const chipLabel = currentAgent?.name ?? t.quickAnswer;
@@ -421,11 +440,11 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
                 aria-expanded={agentPanelOpen}
                 disabled={disabled}
                 onClick={() => setAgentPanelOpen((open) => !open)}
-                className="wk-chat-agent-chip relative inline-flex h-[30px] cursor-pointer items-center gap-[4px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[10px] py-0 text-[13px] font-medium text-[rgba(0,0,0,0.6)] hover:bg-[#f7f7f7] disabled:cursor-not-allowed disabled:opacity-50"
+                className="wk-chat-agent-chip wk-vc-composer-15"
               >
                 {/* Vue .agent-mode-text: margin 0 4px, on top of the control-btn flex gap 4 */}
-                <span className="mx-[4px] max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap">{chipLabel}</span>
-                <svg className="shrink-0 text-[rgba(0,0,0,0.26)]" width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
+                <span className="wk-vc-composer-16">{chipLabel}</span>
+                <svg className="wk-vc-composer-17" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
               </button>
               {panelOpen && agentChipRef.current ? <AgentSelectorPanel
                 copy={t}
@@ -455,13 +474,13 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
               data-web-search-toggle
               data-active={active ? 'true' : undefined}
               data-configured={configured ? undefined : 'false'}
-              className="wk-chat-websearch-btn flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] disabled:cursor-not-allowed disabled:opacity-50"
+              className="wk-chat-websearch-btn wk-vc-composer-18"
               aria-label={title}
               title={title}
               disabled={disabled}
               onClick={() => onWebSearchToggle()}
             >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true" className={active ? 'text-[#07c05f]' : 'text-[rgba(0,0,0,0.6)]'}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true" className={active ? 'wk-vc-composer-34' : 'wk-vc-composer-35'}>
                 <circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.2" fill="none" />
                 <path d="M 9 2 A 3.5 7 0 0 0 9 16" stroke="currentColor" strokeWidth="1.2" fill="none" />
                 <path d="M 9 2 A 3.5 7 0 0 1 9 16" stroke="currentColor" strokeWidth="1.2" fill="none" />
@@ -472,51 +491,93 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
           })() : null}
           {imageUploadEnabled && onAttachmentSelect ? <>
             {/* Vue Input-field.vue ~2596: hidden image input accepts the four multimodal MIME types, multiple picks. */}
-            <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="absolute h-px w-px overflow-hidden opacity-0" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />
-            <button type="button" data-image-count={imageAttachmentCount > 0 ? String(imageAttachmentCount) : undefined} data-active={imageAttachmentCount > 0 ? 'true' : undefined} className="wk-chat-control-icon wk-chat-image-upload-btn relative flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.uploadImage} disabled={disabled} title={t.uploadImage} onClick={() => imageInputRef.current?.click()}>
+            <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="wk-vc-composer-19" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />
+            <button type="button" data-image-count={imageAttachmentCount > 0 ? String(imageAttachmentCount) : undefined} data-active={imageAttachmentCount > 0 ? 'true' : undefined} className="wk-chat-control-icon wk-chat-image-upload-btn wk-vc-composer-20" aria-label={t.uploadImage} disabled={disabled} title={t.uploadImage} onClick={() => imageInputRef.current?.click()}>
               <svg width="18" height="18" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true">
                 <path d="M896 128H128c-35.3 0-64 28.7-64 64v640c0 35.3 28.7 64 64 64h768c35.3 0 64-28.7 64-64V192c0-35.3-28.7-64-64-64zM128 832V192h768l0.1 640H128z" />
                 <path d="M352 448a96 96 0 1 0 0-192 96 96 0 0 0 0 192z" />
                 <path d="M128 768l224-288 160 160 192-256L896 640v128H128z" />
               </svg>
-              {imageAttachmentCount > 0 ? <span className="wk-chat-image-count absolute -right-[4px] -top-[4px] flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-[#07c05f] px-[3px] text-[10px] font-medium leading-none text-white">{imageAttachmentCount}</span> : null}
+              {imageAttachmentCount > 0 ? <span className="wk-chat-image-count wk-vc-composer-21">{imageAttachmentCount}</span> : null}
             </button>
           </> : null}
-          <input ref={attachmentInputRef} type="file" accept={attachmentAccept?.join(',')} multiple className="absolute h-px w-px overflow-hidden opacity-0" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />
-          <button type="button" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.uploadAttachment} disabled={disabled || !onAttachmentSelect} title={t.uploadAttachment} onClick={() => attachmentInputRef.current?.click()}>
+          <input ref={attachmentInputRef} type="file" accept={attachmentAccept?.join(',')} multiple className="wk-vc-composer-19" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />
+          <button type="button" className="wk-chat-control-icon wk-vc-composer-22" aria-label={t.uploadAttachment} disabled={disabled || !onAttachmentSelect} title={t.uploadAttachment} onClick={() => attachmentInputRef.current?.click()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <div className="relative">
-          <button type="button" data-guide="chat-kb-mention" className="wk-chat-control-icon flex h-[28px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.mentionKnowledge} aria-expanded={mentionOpen} aria-controls="wk-chat-mention-listbox" disabled={disabled} title={t.mentionKnowledge} onClick={toggleMentions}>
+          <div className="wk-chat-kb-btn-wrap wk-vc-composer-23"
+            onMouseEnter={() => { if (kbTipTimer.current !== null) window.clearTimeout(kbTipTimer.current); kbTipTimer.current = window.setTimeout(() => setKbTipOpen(true), 300); }}
+            onMouseLeave={() => { if (kbTipTimer.current !== null) window.clearTimeout(kbTipTimer.current); kbTipTimer.current = window.setTimeout(() => setKbTipOpen(false), 80); }}
+          >
+          <button type="button" data-guide="chat-kb-mention" className="wk-chat-control-icon wk-vc-composer-24" aria-label={t.mentionKnowledge} aria-expanded={mentionOpen} aria-controls="wk-chat-mention-listbox" disabled={disabled} onClick={toggleMentions}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <circle cx="10" cy="10" r="3.5" stroke="currentColor" strokeWidth="1.8" />
               <path d="M13.5 10V11.5C13.5 12.163 13.7634 12.7989 14.2322 13.2678C14.7011 13.7366 15.337 14 16 14C16.663 14 17.2989 13.7366 17.7678 13.2678C18.2366 12.7989 18.5 12.163 18.5 11.5V10C18.5 7.74566 17.6045 5.58365 16.0104 3.98959C14.4163 2.39553 12.2543 1.5 10 1.5C7.74566 1.5 5.58365 2.39553 3.98959 3.98959C2.39553 5.58365 1.5 7.74566 1.5 10C1.5 12.2543 2.39553 14.4163 3.98959 16.0104C5.58365 17.6045 7.74566 18.5 10 18.5H12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          {mentionOpen ? <div id="wk-chat-mention-listbox" role="listbox" aria-label={t.mentionKnowledge} className="absolute bottom-[36px] left-0 z-20 w-[280px] rounded-[8px] border border-[#e7e7e7] bg-white p-[8px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
-            <input ref={mentionSearchRef} value={mentionQuery} onChange={(event) => { setMentionQuery(event.target.value); setActiveMentionIndex(0); }} onKeyDown={handleMentionKeyDown} aria-label={t.composerPlaceholder} aria-activedescendant={filteredMentionOptions.length > 0 ? `wk-chat-mention-option-${filteredMentionOptions[Math.min(activeMentionIndex, filteredMentionOptions.length - 1)].id}` : undefined} aria-controls="wk-chat-mention-options" placeholder={t.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[6px] text-[12px] outline-none focus:border-[#07c05f]" />
-            {mentionLoading ? <p role="status" className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{t.loadingMessages}</p> : mentionError ? <p role="alert" className="m-0 px-[8px] py-[8px] text-[12px] text-[#d54941]">{mentionError}</p> : filteredMentionOptions.length > 0 ? <div className="max-h-[220px] overflow-y-auto">
-              <div id="wk-chat-mention-options">
-              {filteredMentionOptions.map((item, index) => <button key={item.id} id={`wk-chat-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} data-mention-type={item.type} className={index === activeMentionIndex ? 'flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-[#f3f3f3] px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] focus:outline-none' : 'flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-transparent px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] hover:bg-[#f3f3f3] focus:bg-[#f3f3f3] focus:outline-none'} onMouseEnter={() => setActiveMentionIndex(index)} onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">{mentionMarker(item.type)}</span><span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span></button>)}
+          {kbTipOpen ? (
+            <span className="t-popup t-tooltip t-tooltip--light wk-kb-tip" role="tooltip">
+              <span className="t-popup__content">{t.mentionKnowledge}</span>
+              <span className="wk-kb-tip__arrow" aria-hidden="true" />
+            </span>
+          ) : null}
+          {/* Vue MentionSelector.vue（Teleport body）：views 包无 react-dom（agent-selector
+              同款 in-tree 先例），以 position:fixed 视口锚定达到同一几何/层叠。 */}
+          {mentionOpen ? (
+            <div id="wk-chat-mention-listbox" role="listbox" aria-label={t.mentionKnowledge} className="mention-menu" style={mentionMenuStyle ?? undefined} onClick={(event) => event.stopPropagation()}>
+              <div className="mention-list">
+                {mentionLoading ? (
+                  <div className="empty" role="status">{t.loadingMessages}</div>
+                ) : mentionError ? (
+                  <div className="empty" role="alert">{mentionError}</div>
+                ) : filteredMentionOptions.length > 0 ? (
+                  <div className="mention-group" data-group-type="kb" id="wk-chat-mention-options">
+                    {filteredMentionOptions.map((item, index) => (
+                      <div
+                        key={item.id}
+                        id={`wk-chat-mention-option-${item.id}`}
+                        role="option"
+                        aria-selected={index === activeMentionIndex}
+                        data-mention-id={item.id}
+                        data-mention-type={item.type}
+                        className={'mention-item wk-chat-mention-item' + (index === activeMentionIndex ? ' active' : '')}
+                        onMouseEnter={() => setActiveMentionIndex(index)}
+                        onClick={() => { onMentionSelect?.(item); closeMentions(); }}
+                      >
+                        <div className="icon-wrap">
+                          <div className={'icon ' + (item.type === 'kb' ? (item.kbType === 'faq' ? 'faq-icon' : 'kb-icon') : `${item.type}-icon`)}>
+                            <svg className="t-icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true"><use href={'#t-icon-' + (item.type === 'kb' ? (item.kbType === 'faq' ? 'chat-bubble-help' : 'folder') : item.type === 'file' ? 'file' : 'tools')} /></svg>
+                          </div>
+                        </div>
+                        <div className="item-main">
+                          <span className="name">{item.name}</span>
+                          {item.type === 'kb' || item.type === 'mcp' ? <span className="count">{item.toolCount ?? 0}</span> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty">{mentionEmptyHint || t.noResult}</div>
+                )}
               </div>
-            </div> : <p className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{mentionQuery ? t.mentionNoResults : (mentionEmptyHint ?? t.mentionNoAvailable)}</p>}
-          </div> : null}
+            </div>
+          ) : null}
           </div>
           {/* Vue Input-field.vue:2787-2795 — the model chip lives at the right
               edge of control-left (.model-display margin-left:auto), NOT in
               control-right; keeping it there shifts it ~8px left to x≈1022. */}
-          <div className="wk-chat-model-display ml-auto flex shrink-0 items-center">
-            {modelOptions.length > 0 && onModelChange ? <label className="wk-chat-model-chip relative flex h-[22px] min-w-[100px] items-center gap-[6px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-[2px] text-left"><span className="hidden" aria-hidden="true">{t.modelChip}</span><select aria-label={t.modelChip} value={selectedModelId ?? modelOptions[0]?.id ?? ''} onChange={(event) => onModelChange(event.target.value)} className="h-full w-[118px] min-w-0 cursor-pointer appearance-none border-0 bg-transparent text-[12px] font-medium text-[rgba(0,0,0,0.6)] outline-none">{modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>{modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default pointer-events-none shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)] opacity-85' : 'wk-chat-model-ctx pointer-events-none shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)]'}>{modelContext}</span> : null}<svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.26)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg></label> : <button type="button" className="wk-chat-model-chip flex h-[22px] min-w-[100px] cursor-not-allowed items-center gap-[6px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-[2px] text-left opacity-75" disabled aria-disabled="true" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
-              <span className="wk-chat-model-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium text-[rgba(0,0,0,0.6)]">{modelLabel ?? t.modelChip}</span>
-              {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)] opacity-85' : 'wk-chat-model-ctx shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)]'}>{modelContext}</span> : null}
-              <svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.26)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
+          <div className="wk-chat-model-display wk-vc-composer-25">
+            {modelOptions.length > 0 && onModelChange ? <label className="wk-chat-model-chip wk-vc-composer-26"><span className="wk-vc-composer-27" aria-hidden="true">{t.modelChip}</span><span className="wk-chat-model-name wk-vc-composer-28">{selectedModelId ? (modelOptions.find((model) => model.id === selectedModelId)?.name ?? modelOptions[0]?.name ?? '') : (modelOptions[0]?.name ?? '')}</span><select aria-label={t.modelChip} value={selectedModelId ?? modelOptions[0]?.id ?? ''} onChange={(event) => onModelChange(event.target.value)} className="wk-vc-composer-29">{modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>{modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default wk-vc-composer-36' : 'wk-chat-model-ctx wk-vc-composer-37'}>{modelContext}</span> : null}<svg className="wk-chat-chip-arrow wk-vc-composer-30" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg></label> : <button type="button" className="wk-chat-model-chip wk-vc-composer-31" disabled aria-disabled="true" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
+              <span className="wk-chat-model-name wk-vc-composer-28">{modelLabel ?? t.modelChip}</span>
+              {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default wk-vc-composer-38' : 'wk-chat-model-ctx wk-vc-composer-39'}>{modelContext}</span> : null}
+              <svg className="wk-chat-chip-arrow wk-vc-composer-30" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
             </button>}
           </div>
         </div>
-        <div className="wk-chat-control-right flex items-center gap-[8px]">
-          {showStop && onStop ?<button type="button" className="wk-chat-stop wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#06b04d] disabled:cursor-not-allowed disabled:bg-[#e8f8f2] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>
+        <div className="wk-chat-control-right wk-vc-composer-32">
+          {showStop && onStop ?<button type="button" className="wk-chat-stop wk-chat-send wk-ease-ease wk-outline-2 wk-vc-composer-33" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><rect x="2.5" y="2.5" width="9" height="9" rx="1.5" /></svg>
           </button> : (() => {
             // Vue steer-mode labelling: while replying on a steer-capable turn
@@ -524,8 +585,8 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
             // so both the tooltip and aria-label swap away from input.send.
             const steerMode = streaming && canSteer;
             const actionLabel = steerMode ? t.steerQueued : t.send;
-            return <button type="submit" data-guide="chat-send" className="wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#06b04d] disabled:cursor-not-allowed disabled:bg-[#e8f8f2] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" disabled={disabled || !draft.trim()} aria-label={actionLabel} title={`${actionLabel} · Enter`}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 13V3" /><path d="M3.5 7.5L8 3l4.5 4.5" /></svg>
+            return <button type="submit" data-guide="chat-send" className="wk-chat-send wk-ease-ease wk-outline-2 wk-vc-composer-33" disabled={disabled || !draft.trim()} aria-label={actionLabel} title={`${actionLabel} · Enter`}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M17.5 10.5 12 5l-5.5 5.5M12 6.25v13" stroke="currentColor" strokeWidth="2" strokeLinecap="square" /></svg>
             </button>;
           })()}
         </div>

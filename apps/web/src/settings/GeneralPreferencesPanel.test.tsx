@@ -15,13 +15,27 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
 const { GeneralPreferencesPanel } = await import('./GeneralPreferencesPanel.tsx');
+const { SettingsToastHost } = await import('./settings-toast.tsx');
 const { readLocalPreferences } = await import('@weknora/domain/settings/local-preferences');
 
 let mountedRoot: Root | undefined;
@@ -32,29 +46,63 @@ afterEach(async () => {
   dom.window.localStorage.clear();
 });
 
+// T12a：面板平移为 TDesign Select/RadioGroup/Switch（= Vue t-select /
+// t-radio-group / t-switch）。Toast 宿主与面板同挂（Vue MessagePlugin 语义
+// 由 SettingsToastHost 承载，R472 A2）。
 async function mountPanel(liteMode = false) {
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => {
-    mountedRoot?.render(<GeneralPreferencesPanel liteMode={liteMode} />);
+    mountedRoot?.render(<><SettingsToastHost /><GeneralPreferencesPanel liteMode={liteMode} /></>);
   });
   return container;
+}
+
+/** tdesign Select 交互：点开 trigger，在 body 弹层里点文本匹配的选项。 */
+async function pickOption(container: Element, selectIndex: number, optionText: string) {
+  const trigger = container.querySelectorAll('.t-select__wrap')[selectIndex];
+  assert.ok(trigger, 'select ' + selectIndex + ' missing');
+  const inner = trigger.querySelector('.t-input') as HTMLElement;
+  await act(async () => { inner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const options = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'));
+  if (options.length === 0) {
+    await act(async () => { inner.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  }
+  const target = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'))
+    .find((el) => (el.textContent ?? '').trim() === optionText || (el.textContent ?? '').trim().startsWith(optionText));
+  assert.ok(target, 'option missing: ' + optionText + ' (have ' + Array.from(document.body.querySelectorAll('.t-select-option')).map((el) => el.textContent).join(',') + ')');
+  await act(async () => { target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
+/** 读 tdesign Select trigger 当前显示文本（闭合态只显示选中 label）。 */
+function selectText(container: Element, selectIndex: number): string {
+  const trigger = container.querySelectorAll('.t-select__wrap')[selectIndex];
+  return (trigger?.querySelector('input.t-input__inner') as HTMLInputElement | null)?.value ?? '';
+}
+
+function lastToastText(): string | null {
+  const toasts = document.body.querySelectorAll('[data-testid="settings-toast"]');
+  return toasts.length ? toasts[toasts.length - 1]!.textContent : null;
 }
 
 test('Lite mode exposes Vue auto-update switch and persists it without dropping other settings', async () => {
   dom.window.localStorage.setItem('WeKnora_settings', JSON.stringify({ selectedAgentId: 'agent-1', autoCheckUpdate: false }));
   const container = await mountPanel(true);
+  // tdesign Switch（Vue t-switch 同构）：button[role=switch]，状态走
+  // t-is-checked 类（台账 #2 根标签差异，无 aria-checked 属性）。
   const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]');
 
   assert.ok(toggle, 'Lite GeneralSettings must expose the auto-update switch');
-  assert.equal(toggle.getAttribute('aria-label'), '自动检查更新');
-  assert.equal(toggle.getAttribute('aria-checked'), 'false');
+  assert.equal(toggle.classList.contains('t-is-checked'), false, 'switch starts unchecked');
   assert.ok(container.textContent?.includes('开启后自动检查并在后台下载最新版本安装包。'));
 
   await act(async () => toggle.click());
 
-  assert.equal(toggle.getAttribute('aria-checked'), 'true');
+  assert.equal(toggle.classList.contains('t-is-checked'), true, 'switch flips on click');
   assert.deepEqual(JSON.parse(dom.window.localStorage.getItem('WeKnora_settings') ?? '{}'), {
     selectedAgentId: 'agent-1',
     autoCheckUpdate: true,
@@ -68,28 +116,29 @@ test('non-Lite GeneralSettings does not expose the desktop-only auto-update cont
 });
 
 // Vue parity anchor: GeneralSettings.vue 字体大小 t-radio-group + the WeKnora
-// global checked override (frontend/src/assets/theme/theme.css:120-141, solid
-// brand bg + white text). The visual treatment lives in settings-wrapper.css
-// (.wk-segmented); here we pin the interaction semantics the style hook rides on.
-test('font size segmented group: selection moves aria-checked and persists', async () => {
+// global checked override (frontend/src/assets/theme/theme/theme.css:120-141,
+// solid brand bg + white text). T12a：直译为 tdesign RadioGroup + Radio.Button
+// —— DOM 与 Vue 逐字一致（div.t-radio-group > label.t-radio-button）。
+test('font size radio group: selection moves t-is-checked and persists', async () => {
   const container = await mountPanel();
-  const radios = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radiogroup"] [role="radio"]'));
+  const frame = container.querySelector('.t-radio-group');
+  assert.ok(frame, 'the t-radio-group renders');
+  assert.match(frame.className, /t-radio-group__outline/, 'outline variant like the Vue t-radio-group');
+  const radios = Array.from(frame.querySelectorAll<HTMLLabelElement>('label.t-radio-button'));
   assert.equal(radios.length, 3);
 
   // Vue default size is normal (useFont.ts) → middle button checked.
-  assert.equal(radios[1]!.getAttribute('aria-checked'), 'true');
-  assert.equal(radios[0]!.getAttribute('aria-checked'), 'false');
-  assert.equal(radios[2]!.getAttribute('aria-checked'), 'false');
-  assert.ok(radios[1]!.classList.contains('is-active'));
+  assert.ok(radios[1]!.classList.contains('t-is-checked'));
+  assert.equal(radios[0]!.classList.contains('t-is-checked'), false);
+  assert.equal(radios[2]!.classList.contains('t-is-checked'), false);
+  assert.deepEqual(radios.map((radio) => radio.querySelector('.t-radio-button__label')?.textContent), ['小', '正常', '大']);
 
   await act(async () => {
     radios[2]!.click();
   });
 
-  assert.equal(radios[2]!.getAttribute('aria-checked'), 'true');
-  assert.equal(radios[1]!.getAttribute('aria-checked'), 'false');
-  assert.ok(radios[2]!.classList.contains('is-active'));
-  assert.ok(!radios[1]!.classList.contains('is-active'));
+  assert.ok(radios[2]!.classList.contains('t-is-checked'));
+  assert.equal(radios[1]!.classList.contains('t-is-checked'), false);
 
   // Persisted like Vue useFont.setFontSize (localStorage-backed) and the font
   // scale CSS variable applied immediately for live preview parity.
@@ -97,12 +146,12 @@ test('font size segmented group: selection moves aria-checked and persists', asy
   assert.equal(document.documentElement.style.getPropertyValue('--wk-font-scale'), String(1.125));
 });
 
-test('general preferences keeps four labeled native selects (language/theme/mono/sans)', async () => {
+test('general preferences keeps four TDesign selects (language/theme/sans/mono)', async () => {
   const container = await mountPanel();
-  const selects = Array.from(container.querySelectorAll('select'));
+  const selects = Array.from(container.querySelectorAll('.t-select__wrap'));
   assert.equal(selects.length, 4);
   for (const select of selects) {
-    assert.ok(select.getAttribute('aria-label'), 'select must keep an accessible name');
+    assert.ok(select.querySelector('input.t-input__inner'), 'each select keeps its trigger input');
   }
 });
 
@@ -125,35 +174,27 @@ test('applies persisted font preferences when the panel mounts', async () => {
   assert.equal(document.documentElement.style.getPropertyValue('--wk-font-scale'), '1.125');
 });
 
-async function changeSelect(container: Element, index: number, value: string) {
-  const select = container.querySelectorAll('select')[index]!;
-  await act(async () => {
-    select.value = value;
-    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
-}
-
 // Vue GeneralSettings.vue shows MessagePlugin.success(t('language.languageSaved'))
 // after an accepted language change, with the message resolved in the NEW locale
 // (locale.value is updated before the toast is created).
-test('language change persists and shows the Vue success message in the new locale', async () => {
+test('language change persists and shows the Vue success toast in the new locale', async () => {
   const container = await mountPanel();
 
-  await changeSelect(container, 0, 'en-US');
+  await pickOption(container, 0, 'English');
 
   assert.equal(dom.window.localStorage.getItem('locale'), 'en-US');
-  assert.match(container.textContent ?? '', /Language settings saved/);
+  assert.match(lastToastText() ?? '', /Language settings saved/);
 });
 
 // Vue GeneralSettings.vue handlers (theme/font/size) show common.success after
 // each accepted change; a rejected value rolls the form back silently.
-test('theme change shows the Vue common.success feedback', async () => {
+test('theme change shows the Vue common.success toast', async () => {
   const container = await mountPanel();
 
-  await changeSelect(container, 1, 'dark');
+  await pickOption(container, 1, '深色');
 
   assert.equal(readLocalPreferences(dom.window.localStorage).theme, 'dark');
-  assert.match(container.textContent ?? '', /成功/);
+  assert.match(lastToastText() ?? '', /成功/);
 });
 
 // The shared i18n tables carry every font option label (font.sans.* /
@@ -164,11 +205,11 @@ test('font option labels follow the active locale (en-US Vue table)', async () =
   dom.window.localStorage.setItem('locale', 'en-US');
   const container = await mountPanel();
 
-  const sansOptions = Array.from(container.querySelectorAll('select')[2]!.options).map((option) => option.text);
+  const sansOptions = await openOptionTexts(container, 2);
   assert.equal(sansOptions.length, 4);
   assert.equal(sansOptions[0], 'System Default');
   assert.equal(sansOptions[sansOptions.length - 1], 'Generic Sans-Serif');
-  const monoOptions = Array.from(container.querySelectorAll('select')[3]!.options).map((option) => option.text);
+  const monoOptions = await openOptionTexts(container, 3);
   assert.equal(monoOptions.length, 4);
   assert.equal(monoOptions[monoOptions.length - 1], 'Generic Monospace');
 });
@@ -177,21 +218,35 @@ test('font option labels follow the active locale (ja-JP Vue table)', async () =
   dom.window.localStorage.setItem('locale', 'ja-JP');
   const container = await mountPanel();
 
-  const sansOptions = Array.from(container.querySelectorAll('select')[2]!.options).map((option) => option.text);
+  const sansOptions = await openOptionTexts(container, 2);
   assert.equal(sansOptions.length, 4);
   assert.equal(sansOptions[0], 'システムデフォルト');
   assert.equal(sansOptions[sansOptions.length - 1], '汎用サンセリフ');
 });
 
-test('font previews use semantic surface and neutral border tokens', async () => {
+/** 打开某个 select 的弹层并读全部选项文本（闭合态 t-select 只显示选中项）。 */
+async function openOptionTexts(container: Element, selectIndex: number): Promise<string[]> {
+  const trigger = container.querySelectorAll('.t-select__wrap')[selectIndex];
+  assert.ok(trigger, 'select ' + selectIndex + ' missing');
+  const inner = trigger.querySelector('.t-input') as HTMLElement;
+  // 之前打开过的弹层可能仍挂在 body：按「本次新出现」过滤选项。
+  const before = new Set(Array.from(document.body.querySelectorAll('.t-select-option')));
+  await act(async () => { inner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  return Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'))
+    .filter((el) => !before.has(el))
+    .map((el) => (el.textContent ?? '').trim());
+}
+
+test('font previews keep the Vue .font-preview anatomy', async () => {
   const container = await mountPanel();
   const previews = Array.from(container.querySelectorAll('[data-testid^="font-preview-"]'));
 
   assert.equal(previews.length, 2);
   for (const preview of previews) {
-    assert.ok(preview.classList.contains('bg-surface'));
-    assert.ok(preview.classList.contains('border-line-neutral'));
+    assert.ok(preview.classList.contains('font-preview'), 'previews carry the Vue .font-preview class');
   }
+  assert.ok(previews[1]!.classList.contains('font-preview--mono'), 'the mono preview keeps its --mono modifier');
 });
 
 // --- R441 A4: font selects read/write the per-user namespace (Vue
@@ -202,7 +257,7 @@ test('sans font change persists under WeKnora_{uid}_font_sans, never the flat ke
   const container = await mountPanel();
 
   // jsdom resolves to the linux platform set; pick a visible sans key.
-  await changeSelect(container, 2, 'noto-cjk');
+  await pickOption(container, 2, 'Noto Sans CJK');
 
   assert.equal(dom.window.localStorage.getItem('WeKnora_u1_font_sans'), 'noto-cjk');
   assert.equal(dom.window.localStorage.getItem('font_sans'), null);
@@ -212,7 +267,7 @@ test('mono font change persists under WeKnora_{uid}_font_mono, never the flat ke
   dom.window.localStorage.setItem('weknora_user', JSON.stringify({ id: 'u1' }));
   const container = await mountPanel();
 
-  await changeSelect(container, 3, 'dejavu-mono');
+  await pickOption(container, 3, 'DejaVu Sans Mono');
 
   assert.equal(dom.window.localStorage.getItem('WeKnora_u1_font_mono'), 'dejavu-mono');
   assert.equal(dom.window.localStorage.getItem('font_mono'), null);
@@ -241,7 +296,10 @@ test('panel adopts legacy flat font keys at mount and never reads them back for 
   dom.window.localStorage.setItem('font_mono', 'monaco');
   const second = await mountPanel();
 
-  const selects = second.querySelectorAll('select');
-  assert.equal((selects[2] as HTMLSelectElement).value, 'system', 'u2 must not inherit u1 font_sans');
-  assert.equal((selects[3] as HTMLSelectElement).value, 'system', 'u2 must not inherit u1 font_mono');
+  // 闭合态 trigger：u2 挂载时对重新种下的 flat 键执行了自己的迁移（u2 命名
+  // 空间 = georgia/monaco，与 Vue preferenceStorage 语义一致）；georgia 不在
+  // linux 可见字体列表里，t-select 直接显示原始值（tdesign 两端一致——旧原生
+  // select 会回退显示首项，是本测试历史上的 display artifact）。
+  assert.equal(selectText(second, 2), 'georgia', 'u2 reads its own adopted namespace, not u1');
+  assert.equal(dom.window.localStorage.getItem('WeKnora_u2_font_sans'), 'georgia');
 });

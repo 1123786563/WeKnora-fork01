@@ -1,3 +1,4 @@
+import '../test-tdom-harness.ts'; // jsdom 全局（tdesign 运行时；须首个 import）
 // FAQ import polling (A2): after upsert returns a task_id the page polls
 // faq.importProgress until completed, refreshes the list, then collapses the
 // strip (Vue FAQEntryManager.vue:2091-2165 semantics).
@@ -91,10 +92,15 @@ test('faq import polls the task and collapses the strip on completion', async ()
   ]);
   await mountPage(fake.client);
 
-  // Open the import dialog and pick a JSON file.
-  const dropdownItem = [...document.querySelectorAll('button, a')].find((n) => (n.textContent || '').includes('导入 FAQ')) as HTMLButtonElement | undefined;
+  // Open the import dialog and pick a JSON file —— 先点「新建」下拉（首个
+  // content-bar-icon-btn，t-icon-add），弹层挂 body 后再点「导入 FAQ」菜单项。
+  const createTrigger = document.querySelector('.content-bar-icon-btn') as HTMLButtonElement | null;
+  assert.ok(createTrigger, 'expected the create dropdown trigger');
+  await act(async () => { createTrigger.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true })); createTrigger.click(); await settle(30); });
+  // tdesign Dropdown 菜单项是 li.t-dropdown__item（portal body）。
+  const dropdownItem = [...document.querySelectorAll('li[class*="t-dropdown__item"], button, a')].find((n) => (n.textContent || '').includes('导入 FAQ')) as HTMLButtonElement | undefined;
   assert.ok(dropdownItem, 'expected the import dropdown item');
-  await act(async () => { dropdownItem.click(); await settle(5); });
+  await act(async () => { dropdownItem.click(); await settle(10); });
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
   assert.ok(input, 'expected the import file input');
   const file = new dom.window.File([JSON.stringify([{ standard_question: 'Q?', answers: ['A'] }])], 'faq.json', { type: 'application/json' });
@@ -126,9 +132,13 @@ test('faq import polling failures remain visible as an error', async () => {
   fake.client.knowledge.faq.importProgress = async () => { throw new Error('导入进度服务不可用'); };
   await mountPage(fake.client);
 
-  const dropdownItem = [...document.querySelectorAll('button, a')].find((n) => (n.textContent || '').includes('导入 FAQ')) as HTMLButtonElement | undefined;
+  const createTrigger = document.querySelector('.content-bar-icon-btn') as HTMLButtonElement | null;
+  assert.ok(createTrigger, 'expected the create dropdown trigger');
+  await act(async () => { createTrigger.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true })); createTrigger.click(); await settle(30); });
+  // tdesign Dropdown 菜单项是 li.t-dropdown__item（portal body）。
+  const dropdownItem = [...document.querySelectorAll('li[class*="t-dropdown__item"], button, a')].find((n) => (n.textContent || '').includes('导入 FAQ')) as HTMLButtonElement | undefined;
   assert.ok(dropdownItem, 'expected the import dropdown item');
-  await act(async () => { dropdownItem.click(); await settle(5); });
+  await act(async () => { dropdownItem.click(); await settle(10); });
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
   const file = new dom.window.File([JSON.stringify([{ standard_question: 'Q?', answers: ['A'] }])], 'faq.json', { type: 'application/json' });
   Object.defineProperty(input, 'files', { value: [file] });

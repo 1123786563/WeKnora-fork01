@@ -5,7 +5,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Select, Status, Switch, Textarea } from '@weknora/ui';
+// S6：Status 无 TDesign 对应（playbook §1 附行），走 shared/wk-legacy。
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
+// T12a：可见面直译 MemorySettings.vue 的 t-popup / t-button / t-select /
+// t-textarea / t-switch / t-tabs / t-loading / t-popconfirm；记忆行与分页
+// 暂保留 React 实现（parity 空态不可见，见 task-12a 报告偏离项）。
+import { Icon as TIcon } from 'tdesign-icons-react';
+import { Button as TButton, Loading as TLoading, Popconfirm as TPopconfirm, Popup as TPopup, Select as TSelect, Switch as TSwitch, Tabs, Textarea as TTextarea } from 'tdesign-react';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 import { navigate } from '../platform/navigation.ts';
 
@@ -211,14 +217,14 @@ interface PopconfirmProps {
 function Popconfirm({ open, message, confirmLabel, cancelLabel, danger = true, busy = false, onToggle, onCancel, onConfirm, children, label }: PopconfirmProps) {
   const ref = useDismiss(open, () => onCancel);
   return (
-    <span className='relative inline-flex' ref={ref}>
+    <span className='wk-memory-pop-anchor' ref={ref}>
       <span onClick={onToggle}>{children}</span>
       {open ? (
-        <div className='absolute right-0 top-[calc(100%_+_6px)] z-40 w-max max-w-[260px] rounded-control border border-line-neutral bg-surface px-3 py-[10px] shadow-[0_3px_14px_2px_rgba(0,0,0,0.05),0_8px_10px_1px_rgba(0,0,0,0.06),0_5px_5px_-3px_rgba(0,0,0,0.1)]' role='alertdialog' aria-label={label ?? confirmLabel}>
-          <p className='m-0 mb-2 text-[13px] text-[rgba(0,0,0,0.9)]'>{message}</p>
-          <div className='flex justify-end gap-2'>
-            <Button type='button' onClick={onCancel}>{cancelLabel}</Button>
-            <Button type='button' className={danger ? 'border-[#e34d59] bg-[#e34d59] text-surface enabled:hover:border-[#f36d78] enabled:hover:bg-[#f36d78]' : undefined} disabled={busy} onClick={onConfirm}>{confirmLabel}</Button>
+        <div className='wk-memory-pop' role='alertdialog' aria-label={label ?? confirmLabel}>
+          <p className='wk-memory-pop__message'>{message}</p>
+          <div className='wk-memory-pop__actions'>
+            <TButton onClick={onCancel}>{cancelLabel}</TButton>
+            <TButton theme={danger ? 'danger' : 'default'} disabled={busy} onClick={onConfirm}>{confirmLabel}</TButton>
           </div>
         </div>
       ) : null}
@@ -249,7 +255,6 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
   const [editingContent, setEditingContent] = useState('');
   const [editingImportance, setEditingImportance] = useState(3);
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
-  const [usageOpen, setUsageOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -589,8 +594,6 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
     }
   };
 
-  const addAnchorRef = useDismiss(addVisible, () => () => setAddVisible(false));
-  const clearAnchorRef = useDismiss(confirmKey === 'clear' || confirmKey === 'consolidate', () => () => setConfirmKey(null));
   const allTabs: MemoryStatusTab[] = ['active', 'pending', 'tracking', 'documents', 'superseded', 'archived'];
 
   // Vue statusHint: tracking/documents hints need rows; status hints need items.
@@ -611,48 +614,48 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       const topic = str(row, 'topic');
       const isRetired = status === 'superseded' || status === 'archived';
       return (
-        <li key={id || index} className='flex items-start justify-between gap-4 border-b border-line-neutral py-4 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2'>
-          <div className='min-w-0 flex-1'>
+        <li key={id || index} className='wk-memory-row'>
+          <div className='wk-memory-row__main'>
             {editingId === id ? (
-              <div className='mb-2 flex flex-col gap-2'>
-                <Textarea
-                  className='w-full min-h-14 resize-y rounded-[3px] border border-line-input px-2 py-1.5 text-[14px] leading-[1.6] focus:border-accent focus:outline-2 focus:outline-offset-0 focus:outline-accent/20'
+              <div className='wk-memory-edit'>
+                <TTextarea
+                  className='inline-edit-textarea'
                   value={editingContent}
-                  rows={2}
+                  autosize={{ minRows: 2, maxRows: 6 }}
                   aria-label={t('common.edit')}
-                  onChange={(event) => setEditingContent(event.target.value)}
-                  onKeyDown={(event) => { if (event.ctrlKey && event.key === 'Enter') void handleSaveEdit(row); }}
+                  onChange={(value) => setEditingContent(String(value ?? ''))}
+                  onKeydown={(_value, { e }) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') void handleSaveEdit(row); }}
                 />
-                <div className='flex justify-end gap-2'>
-                  <Button type='button' onClick={() => { setEditingId(''); setEditingContent(''); }}>{t('common.cancel')}</Button>
-                  <Button type='button' loading={busy} onClick={() => void handleSaveEdit(row)}>{t('common.save')}</Button>
+                <div className='memory-edit-actions'>
+                  <TButton size='small' variant='outline' onClick={() => { setEditingId(''); setEditingContent(''); }}>{t('common.cancel')}</TButton>
+                  <TButton size='small' theme='primary' loading={busy} onClick={() => void handleSaveEdit(row)}>{t('common.save')}</TButton>
                 </div>
               </div>
             ) : (
-              <p className={'mb-1 mt-0 break-words text-[14px] leading-[1.6] ' + (isRetired ? 'text-[rgba(0,0,0,0.4)] line-through' : 'text-[rgba(0,0,0,0.9)]')}>{str(row, 'content')}</p>
+              <p className={'wk-memory-content' + (isRetired ? ' is-retired' : '')}>{str(row, 'content')}</p>
             )}
-            <div className="flex flex-wrap items-center text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)] [&>span:not(:last-child)]:after:mx-1.5 [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:text-[rgba(0,0,0,0.4)]">
+            <div className="wk-memory-meta">
               <span title={kind ? kindHint(kind) : undefined}>{kind ? kindLabel(kind) : ''}</span>
-              {topic && topic !== str(row, 'content') ? <span className='max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap' title={topic}>{topic}</span> : null}
+              {topic && topic !== str(row, 'content') ? <span className='wk-memory-topic' title={topic}>{topic}</span> : null}
               <span>{originLabel(str(row, 'origin'))}</span>
               <span>{formatTime(str(row, 'valid_from'))}</span>
             </div>
           </div>
-          <div className='-mt-0.5 flex shrink-0 items-center gap-1 max-[720px]:mt-0'>
+          <div className='wk-memory-row__actions'>
             {status === 'pending' ? (
               <>
-                <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' disabled={!canWrite} onClick={() => void handleConfirmGuess(row)}>
+                <button type='button' className='wk-memory-action' disabled={!canWrite} onClick={() => void handleConfirmGuess(row)}>
                   <Icon name='check' />
                   {t('memorySettings.confirmGuess')}
                 </button>
-                <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' onClick={() => void handleRejectGuess(row)}>
+                <button type='button' className='wk-memory-action' onClick={() => void handleRejectGuess(row)}>
                   <Icon name='close' />
                   {t('memorySettings.rejectGuess')}
                 </button>
               </>
             ) : null}
             {status === 'active' ? (
-              <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' aria-label={t('common.edit')} title={t('common.edit')} disabled={!canWrite} onClick={() => startEdit(row)}>
+              <button type='button' className='wk-memory-action' aria-label={t('common.edit')} title={t('common.edit')} disabled={!canWrite} onClick={() => startEdit(row)}>
                 <Icon name='edit' />
               </button>
             ) : null}
@@ -668,7 +671,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                 onCancel={() => setConfirmKey(null)}
                 onConfirm={() => void handleDelete(row)}
               >
-                <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[#e34d59] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' aria-label={t('common.delete')} title={t('common.delete')}>
+                <button type='button' className='wk-memory-action wk-memory-action--danger' aria-label={t('common.delete')} title={t('common.delete')}>
                   <Icon name='delete' />
                 </button>
               </Popconfirm>
@@ -688,27 +691,27 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       const percentage = Math.min(100, Math.round((hits / threshold) * 100));
       const aliases = Array.isArray(row.aliases) ? (row.aliases as unknown[]).filter((value): value is string => typeof value === 'string') : [];
       return (
-        <li key={id || index} className='flex items-start justify-between gap-4 border-b border-line-neutral py-4 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2'>
-          <div className='min-w-0 flex-1'>
-            <p className='mb-1 mt-0 break-words text-[14px] leading-[1.6] text-[rgba(0,0,0,0.9)]'>{str(row, 'topic')}</p>
-            <div className='mb-1 mt-1.5 flex max-w-[360px] items-center gap-2.5'>
-              <div className='h-1 min-w-20 flex-1 overflow-hidden rounded-full bg-line-neutral' role='progressbar' aria-valuenow={percentage} aria-valuemin={0} aria-valuemax={100}>
-                <div className='h-full rounded-full bg-accent' style={{ width: percentage + '%' }} />
+        <li key={id || index} className='wk-memory-row'>
+          <div className='wk-memory-row__main'>
+            <p className='wk-memory-topic-title'>{str(row, 'topic')}</p>
+            <div className='wk-memory-track'>
+              <div className='wk-memory-track__bar' role='progressbar' aria-valuenow={percentage} aria-valuemin={0} aria-valuemax={100}>
+                <div className='wk-memory-track__fill' style={{ width: percentage + '%' }} />
               </div>
-              <span className='shrink-0 text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)]'>{hits >= threshold ? t('memorySettings.trackingReady') : t('memorySettings.trackingProgress', { hits, threshold })}</span>
+              <span className='wk-memory-track__text'>{hits >= threshold ? t('memorySettings.trackingReady') : t('memorySettings.trackingProgress', { hits, threshold })}</span>
             </div>
-            <div className="flex flex-wrap items-center text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)] [&>span:not(:last-child)]:after:mx-1.5 [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:text-[rgba(0,0,0,0.4)]">
+            <div className="wk-memory-meta">
               <span>{t('memorySettings.kinds.interest')}</span>
               {aliases.length > 0 ? (
-                <span className='max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap' title={aliases.join(', ')}>
+                <span className='wk-memory-alias' title={aliases.join(', ')}>
                   {t('memorySettings.trackingAliases', { aliases: aliases.join(', ') })}
                 </span>
               ) : null}
               <span>{formatTime(str(row, 'last_seen_at'))}</span>
             </div>
           </div>
-          <div className='-mt-0.5 flex shrink-0 items-center gap-1 max-[720px]:mt-0'>
-            <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' disabled={!canWrite} onClick={() => void handlePromoteTopic(row)}>
+          <div className='wk-memory-row__actions'>
+            <button type='button' className='wk-memory-action' disabled={!canWrite} onClick={() => void handlePromoteTopic(row)}>
               <Icon name='star' />
               {t('memorySettings.promoteTopic')}
             </button>
@@ -723,7 +726,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
               onCancel={() => setConfirmKey(null)}
               onConfirm={() => void handleDismissTopic(row)}
             >
-              <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' title={t('memorySettings.dismissTopic')}>
+              <button type='button' className='wk-memory-action' title={t('memorySettings.dismissTopic')}>
                 {t('memorySettings.dismissTopic')}
               </button>
             </Popconfirm>
@@ -739,18 +742,18 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       const id = rowId(row);
       const knowledgeBaseId = str(row, 'knowledge_base_id');
       return (
-        <li key={id || index} className='flex items-start justify-between gap-4 border-b border-line-neutral py-4 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2'>
-          <div className='min-w-0 flex-1'>
-            <p className='mb-1 mt-0 break-words text-[14px] leading-[1.6] text-[rgba(0,0,0,0.9)]'>{str(row, 'title') || t('memorySettings.untitledDocument')}</p>
-            <div className="flex flex-wrap items-center text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)] [&>span:not(:last-child)]:after:mx-1.5 [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:text-[rgba(0,0,0,0.4)]">
+        <li key={id || index} className='wk-memory-row'>
+          <div className='wk-memory-row__main'>
+            <p className='wk-memory-topic-title'>{str(row, 'title') || t('memorySettings.untitledDocument')}</p>
+            <div className="wk-memory-meta">
               <span>{t('memorySettings.documentsHits', { hits: num(row, 'hits') })}</span>
               <span>{formatTime(str(row, 'last_used_at'))}</span>
             </div>
           </div>
-          <div className='-mt-0.5 flex shrink-0 items-center gap-1 max-[720px]:mt-0'>
+          <div className='wk-memory-row__actions'>
             <button
               type='button'
-              className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40'
+              className='wk-memory-action'
               disabled={!knowledgeBaseId}
               title={knowledgeBaseId ? t('memorySettings.openDocument') : t('memorySettings.openDocumentUnavailable')}
               onClick={() => handleOpenDocument(row)}
@@ -769,7 +772,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
               onCancel={() => setConfirmKey(null)}
               onConfirm={() => void handleStopTrackingDocument(row)}
             >
-              <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' title={t('memorySettings.stopTrackingDocument')}>
+              <button type='button' className='wk-memory-action' title={t('memorySettings.stopTrackingDocument')}>
                 {t('memorySettings.stopTrackingDocument')}
               </button>
             </Popconfirm>
@@ -782,195 +785,195 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
   const listBody: ReactNode = (() => {
     if (listIsEmpty) {
       return (
-        <div className='py-8 text-center'>
-          <p className='mb-1 mt-0 text-[14px] font-medium leading-[normal] text-[rgba(0,0,0,0.6)]'>{emptyTitle}</p>
-          <p className='m-0 text-[13px] leading-[normal] text-[rgba(0,0,0,0.4)]'>{emptyDescription}</p>
+        <div className='empty'>
+          <p className='empty-title'>{emptyTitle}</p>
+          <p className='empty-desc'>{emptyDescription}</p>
         </div>
       );
     }
-    if (isDocuments) return <ul className='m-0 list-none p-0'>{documentRows}</ul>;
-    if (isTracking) return <ul className='m-0 list-none p-0'>{trackingRows}</ul>;
-    return <ul className='m-0 list-none p-0'>{itemRows}</ul>;
+    if (isDocuments) return <ul className='memory-list'>{documentRows}</ul>;
+    if (isTracking) return <ul className='memory-list'>{trackingRows}</ul>;
+    return <ul className='memory-list'>{itemRows}</ul>;
   })();
   // Vue renders the section bare on the drawer background (no outer card).
+  // T12a：MemorySettings.vue 逐节点复刻（section-header-titlewrap + usage
+  // popup + notice + settings-group 开关行 + list-section 工具条 + status
+  // tabs + t-loading 列表区）。样式走 settings.td.css §6。
   return (
-    <div className='w-full text-[rgba(0,0,0,0.9)]'>
-      <div className='mb-6'>
-        <div className='inline-flex items-center gap-2'>
-          <h2 className='m-0 text-[20px] font-semibold leading-[28px] text-[rgba(0,0,0,0.9)]'>{t('memorySettings.title')}</h2>
-          <span className='relative inline-flex'>
-            <button
-              type='button'
-              className='m-0 inline-flex h-[22px] w-[22px] shrink-0 cursor-pointer items-center justify-center rounded-control border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] leading-none transition-[background-color,color] duration-200 ease-[ease] enabled:hover:bg-[#f3f3f3] enabled:hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/20'
-              aria-label={t('memorySettings.usage.iconHint')}
-              title={t('memorySettings.usage.iconHint')}
-              aria-expanded={usageOpen}
-              onMouseEnter={() => setUsageOpen(true)}
-              onMouseLeave={() => setUsageOpen(false)}
-              onFocus={() => setUsageOpen(true)}
-              onBlur={() => setUsageOpen(false)}
-              onClick={() => setUsageOpen(!usageOpen)}
-            >
-              <Icon name='info-circle' />
-            </button>
-            {usageOpen ? (
-              <div className='absolute left-0 top-[calc(100%_+_6px)] z-30 w-[380px] max-w-[calc(100vw_-_24px)] rounded-[12px] border-[0.5px] border-line-neutral bg-surface px-4 pb-3 pt-[14px] text-left shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.1)]' role='dialog' aria-label={t('memorySettings.usage.title')}>
-                <div className='text-[13px] font-semibold text-[rgba(0,0,0,0.9)]'>{t('memorySettings.usage.title')}</div>
-                <p className='mb-3 mt-1 text-[12px] leading-normal text-[rgba(0,0,0,0.4)]'>{t('memorySettings.usage.intro')}</p>
-                <div className='flex flex-col gap-2.5'>
+    <div className='memory-settings'>
+      <div className='section-header'>
+        <div className='section-header-titlewrap'>
+          <h2>{t('memorySettings.title')}</h2>
+          <TPopup
+            // Vue placement="bottom-start"；react 1.18.3 PopupPlacement 无
+            // -start 粒度（库间差异，hover 弹层几何，稳态扫描不可见）。
+            placement='bottom-left'
+            trigger='hover'
+            overlayClassName='memory-usage-popup-overlay'
+            content={(
+              <div className='usage-popup'>
+                <div className='usage-popup-title'>{t('memorySettings.usage.title')}</div>
+                <p className='usage-popup-intro'>{t('memorySettings.usage.intro')}</p>
+                <div className='usage-popup-rows'>
                   {USAGE_ROW_KEYS.map((key) => (
-                    <div key={key} className='flex items-start gap-3 leading-normal'>
-                      <span className='w-[88px] flex-none text-[12px] font-medium text-[rgba(0,0,0,0.9)]'>{t('memorySettings.usage.rows.' + key + '.label')}</span>
-                      <span className='min-w-0 flex-1 text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.usage.rows.' + key + '.text')}</span>
+                    <div key={key} className='usage-popup-row'>
+                      <span className='usage-popup-label'>{t('memorySettings.usage.rows.' + key + '.label')}</span>
+                      <span className='usage-popup-text'>{t('memorySettings.usage.rows.' + key + '.text')}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            ) : null}
-          </span>
+            )}
+          >
+            <button
+              type='button'
+              className='usage-trigger-btn'
+              aria-label={t('memorySettings.usage.iconHint')}
+              title={t('memorySettings.usage.iconHint')}
+            >
+              <TIcon name='info-circle' size='16px' />
+            </button>
+          </TPopup>
         </div>
-        <p className='mb-0 mt-2 text-[14px] leading-normal text-[rgba(0,0,0,0.6)]'>{t('memorySettings.description')}</p>
+        <p className='section-description'>{t('memorySettings.description')}</p>
       </div>
 
       {settings !== null && !workspaceEnabled ? (
-        <div className='mb-4 flex items-center gap-2 rounded-card bg-[#fef3e6] px-4 py-3 text-[13px] leading-[normal] text-[rgba(0,0,0,0.9)]' role='status'>
-          <Icon name='info-circle' size={13} />
+        <div className='notice' role='status'>
+          <TIcon name='info-circle' />
           <span>{t('memorySettings.workspaceDisabled')}</span>
         </div>
       ) : null}
 
-      <div className='flex items-start justify-between border-b border-line-neutral py-5 max-[720px]:flex-col max-[720px]:gap-2'>
-        <div className='max-w-[65%] flex-1 pr-6 max-[720px]:max-w-full max-[720px]:pr-0'>
-          <label className='mb-1 block text-[15px] font-medium leading-[normal] text-[rgba(0,0,0,0.9)]'>{t('memorySettings.enableLabel')}</label>
-          <p className='m-0 text-[13px] leading-normal text-[rgba(0,0,0,0.6)]'>{t('memorySettings.enableDescription')}</p>
-          {enabled && workspaceEnabled ? <p className='m-0 text-[13px] leading-normal text-[rgba(0,0,0,0.6)]'>{t('memorySettings.agentDisabledHint')}</p> : null}
-        </div>
-        <div className='-mt-0.5 flex shrink-0 items-center gap-1 max-[720px]:mt-0'>
-          <Switch
-            checked={enabled}
-            disabled={settings === null || !workspaceEnabled || busy}
-            onCheckedChange={(checked) => void handleEnabledChange(checked)}
-            aria-label={t('memorySettings.enableLabel')}
-          />
+      <div className='settings-group'>
+        <div className='setting-row'>
+          <div className='setting-info'>
+            <label>{t('memorySettings.enableLabel')}</label>
+            <p className='desc'>{t('memorySettings.enableDescription')}</p>
+            {enabled && workspaceEnabled ? <p className='desc'>{t('memorySettings.agentDisabledHint')}</p> : null}
+          </div>
+          <div className='setting-control'>
+            <TSwitch
+              value={enabled}
+              disabled={settings === null || !workspaceEnabled || busy}
+              onChange={(checked) => void handleEnabledChange(Boolean(checked))}
+            />
+          </div>
         </div>
       </div>
 
       {error ? <Status tone='error'>{error}</Status> : null}
       {notice ? <Status tone={noticeTone === 'info' ? 'neutral' : noticeTone}>{notice}</Status> : null}
 
-      <div className='mt-7'>
-        <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
-          <div className='flex items-baseline gap-2'>
-            <h3 className='m-0 text-[16px] font-semibold leading-[normal] text-[rgba(0,0,0,0.9)]'>{t('memorySettings.listTitle')}</h3>
-            <span className='text-[13px] leading-[normal] text-[rgba(0,0,0,0.4)]'>{t('memorySettings.listCount', { count: totalAll })}</span>
+      <div className='list-section'>
+        <div className='list-toolbar'>
+          <div className='list-title'>
+            <h3>{t('memorySettings.listTitle')}</h3>
+            <span className='list-count'>{t('memorySettings.listCount', { count: totalAll })}</span>
           </div>
-          <div className='flex h-6 flex-wrap items-center gap-1'>
-            <span className='relative inline-flex' ref={addAnchorRef}>
-              <Button type='button' className='h-6 min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[8px] py-0 text-[12px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' disabled={!canWrite} onClick={() => { if (!addVisible) setDraftContent(''); setAddVisible(!addVisible); }}>
-                <Icon name='add' size={12} />
-                {t('memorySettings.add')}
-              </Button>
-              {addVisible ? (
-                <div className='absolute right-0 top-[calc(100%_+_6px)] z-30 w-[320px] max-w-[calc(100vw_-_24px)] rounded-[12px] border-[0.5px] border-line-neutral bg-surface px-4 py-[14px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.1)]' role='dialog' aria-label={t('memorySettings.addTitle')}>
-                  <div className='text-[14px] font-semibold text-[rgba(0,0,0,0.9)]'>{t('memorySettings.addTitle')}</div>
-                  <div className='mt-3 flex flex-col gap-3'>
-                    <label className='flex flex-col gap-1.5 text-[#27364d] font-semibold'>
-                      <span className='text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.addKindLabel')}</span>
-                      <Select className="w-full" value={draftKind} onChange={(event) => setDraftKind(event.target.value as typeof KINDS[number])}>
-                        {KINDS.map((kind) => <option key={kind} value={kind}>{kindLabel(kind)}</option>)}
-                      </Select>
-                      <span className='text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)]'>{kindHint(draftKind)}</span>
-                    </label>
-                    <label className='flex flex-col gap-1.5 text-[#27364d] font-semibold'>
-                      <span className='text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.addContentLabel')}</span>
-                      <Textarea
-                        className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
-                        value={draftContent}
-                        rows={3}
-                        maxLength={300}
-                        placeholder={t('memorySettings.addPlaceholder')}
-                        onChange={(event) => setDraftContent(event.target.value)}
-                      />
-                    </label>
-                    <div className='flex justify-end gap-2'>
-                      <Button type='button' onClick={() => setAddVisible(false)}>{t('common.cancel')}</Button>
-                      <Button type='button' loading={busy} disabled={!draftContent.trim()} onClick={() => void handleCreate()}>{t('memorySettings.add')}</Button>
-                    </div>
+          <div className='list-actions'>
+            <TPopup
+              trigger='click'
+              // Vue bottom-end → react 1.18.3 无 -end 粒度（同上库间差异）。
+              placement='bottom-right'
+              destroyOnClose
+              visible={addVisible}
+              onVisibleChange={(visible) => { if (visible) setDraftContent(''); setAddVisible(visible); }}
+              overlayClassName='memory-add-popup-overlay'
+              content={(
+                <div className='add-popup' onClick={(event) => event.stopPropagation()}>
+                  <div className='add-popup-title'>{t('memorySettings.addTitle')}</div>
+                  <label className='add-field'>
+                    <span className='add-label'>{t('memorySettings.addKindLabel')}</span>
+                    <TSelect
+                      size='small'
+                      value={draftKind}
+                      onChange={(value) => setDraftKind(String(value) as typeof KINDS[number])}
+                      popupProps={{ overlayClassName: 'memory-add-kind-popup' }}
+                    >
+                      {KINDS.map((kind) => <TSelect.Option key={kind} value={kind} label={kindLabel(kind)} />)}
+                    </TSelect>
+                    <span className='add-kind-hint'>{kindHint(draftKind)}</span>
+                  </label>
+                  <label className='add-field'>
+                    <span className='add-label'>{t('memorySettings.addContentLabel')}</span>
+                    <TTextarea
+                      placeholder={t('memorySettings.addPlaceholder')}
+                      maxlength={300}
+                      autosize={{ minRows: 3, maxRows: 6 }}
+                      value={draftContent}
+                      onChange={(value) => setDraftContent(String(value ?? ''))}
+                      count={({ count, maxLength }: { count: number; maxLength?: number }) => <span className='t-textarea__limit'>{`${count}/${maxLength}`}</span>}
+                    />
+                  </label>
+                  <div className='add-popup-footer'>
+                    <TButton size='small' variant='outline' onClick={() => setAddVisible(false)}>
+                      {t('common.cancel')}
+                    </TButton>
+                    <TButton size='small' theme='primary' disabled={!draftContent.trim()} onClick={() => void handleCreate()}>
+                      {t('memorySettings.add')}
+                    </TButton>
                   </div>
                 </div>
-              ) : null}
-            </span>
-            <Button type='button' className='h-6 min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[8px] py-0 text-[12px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' onClick={() => void handleExport()}>
-              <Icon name='download' size={12} />
+              )}
+            >
+              <TButton size='small' variant='text' disabled={!canWrite} icon={<TIcon name='add' />}>
+                {t('memorySettings.add')}
+              </TButton>
+            </TPopup>
+            <TButton size='small' variant='text' icon={<TIcon name='download' />} onClick={() => void handleExport()}>
               {t('memorySettings.export')}
-            </Button>
-            <Popconfirm
-              open={confirmKey === 'consolidate'}
-              message={t('memorySettings.consolidateConfirm')}
-              confirmLabel={t('memorySettings.consolidate')}
-              cancelLabel={t('common.cancel')}
-              danger={false}
-              busy={consolidating}
-              label={t('memorySettings.consolidateConfirm')}
-              onToggle={() => setConfirmKey(confirmKey === 'consolidate' ? null : 'consolidate')}
-              onCancel={() => setConfirmKey(null)}
+            </TButton>
+            <TPopconfirm
+              content={t('memorySettings.consolidateConfirm')}
+              confirmBtn={{ content: t('memorySettings.consolidate') }}
+              cancelBtn={{ content: t('common.cancel') }}
+              placement='bottom'
               onConfirm={() => void handleConsolidate()}
             >
-              <Button type='button' className='h-6 min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[8px] py-0 text-[12px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' loading={consolidating} disabled={!canWrite || totalAll === 0}>
-                <Icon name='swap' size={12} />
+              <TButton size='small' variant='text' loading={consolidating} disabled={!canWrite || totalAll === 0} icon={<TIcon name='swap' />}>
                 {t('memorySettings.consolidate')}
-              </Button>
-            </Popconfirm>
-            <span className='relative inline-flex' ref={clearAnchorRef}>
-              <Popconfirm
-                open={confirmKey === 'clear'}
-                message={t('memorySettings.clearConfirm')}
-                confirmLabel={t('memorySettings.clear')}
-                cancelLabel={t('common.cancel')}
-                label={t('memorySettings.clearConfirm')}
-                busy={busy}
-                onToggle={() => setConfirmKey(confirmKey === 'clear' ? null : 'clear')}
-                onCancel={() => setConfirmKey(null)}
-                onConfirm={() => void handleClear()}
-              >
-                <Button type='button' className='h-6 min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[8px] py-0 text-[12px] text-[#e34d59] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[#c9353f] disabled:cursor-not-allowed disabled:opacity-40' disabled={totalAll === 0 && trackingCount === 0 && documentCount === 0}>
-                  <Icon name='delete' size={12} />
-                  {t('memorySettings.clear')}
-                </Button>
-              </Popconfirm>
-            </span>
+              </TButton>
+            </TPopconfirm>
+            <TPopconfirm
+              theme='danger'
+              content={t('memorySettings.clearConfirm')}
+              confirmBtn={{ content: t('memorySettings.clear'), theme: 'danger' }}
+              cancelBtn={{ content: t('common.cancel') }}
+              placement='left'
+              onConfirm={() => void handleClear()}
+            >
+              <TButton size='small' theme='danger' variant='text' disabled={totalAll === 0 && trackingCount === 0 && documentCount === 0} icon={<TIcon name='delete' />}>
+                {t('memorySettings.clear')}
+              </TButton>
+            </TPopconfirm>
           </div>
         </div>
 
-        <div className='flex items-center overflow-x-auto border-b border-line-neutral' role='tablist' aria-label={t('memorySettings.listTitle')}>
+        <Tabs value={tab} className='status-tabs' onChange={(value) => void handleTabChange(value as MemoryStatusTab)}>
           {allTabs.map((value) => (
-            <button key={value} type='button' role='tab' aria-selected={value === tab} className='m-0 inline-flex h-12 cursor-pointer items-center gap-[5px] whitespace-nowrap rounded-none border-0 border-b-2 border-b-transparent bg-transparent px-3 py-0 text-[13px] text-[rgba(0,0,0,0.6)] transition-[color,border-color] duration-200 ease-[ease] first:pl-0 hover:text-[rgba(0,0,0,0.9)] focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent/20 aria-selected:border-b-accent aria-selected:text-accent' onClick={() => void handleTabChange(value)}>
-              <Icon name={TAB_ICONS[value]} size={14} />
-              <span>{tabLabel(value)}</span>
-            </button>
+            <Tabs.TabPanel
+              key={value}
+              value={value}
+              label={<span className='status-tab-label'><TIcon name={TAB_ICONS[value]} size='14px' /><span>{tabLabel(value)}</span></span>}
+            />
           ))}
-        </div>
+        </Tabs>
 
-        <div className={'relative min-h-12' + (loading ? ' pointer-events-none opacity-55' : '')} aria-busy={loading}>
-          {loading ? (
-            <div className='flex min-h-12 items-center justify-center gap-2 py-4 text-[13px] text-[rgba(0,0,0,0.4)]' role='status' aria-label={t('common.loading')}>
-              <span className='h-4 w-4 animate-spin rounded-full border-2 border-line-neutral border-t-accent' aria-hidden='true' />
-              <span>{t('common.loading')}</span>
-            </div>
-          ) : null}
+        <TLoading loading={loading}>
           {listBody}
-        </div>
-        {statusHint ? <p className='mb-0 mt-3 text-[12px] leading-[18px] text-[rgba(0,0,0,0.6)]'>{statusHint}</p> : null}
+        </TLoading>
+        {statusHint ? <p className='status-hint'>{statusHint}</p> : null}
 
         {listTotal > PAGE_SIZE ? (
-          <div className='mt-4 flex items-center gap-1' role='navigation' aria-label={t('memorySettings.listTitle')}>
-            <button type='button' className='h-6 min-w-6 cursor-pointer rounded-[3px] border border-transparent bg-transparent px-1.5 py-0 text-[13px] text-[rgba(0,0,0,0.6)] disabled:cursor-not-allowed disabled:opacity-40' disabled={page <= 1} onClick={() => void handlePageChange(page - 1)} aria-label='previous page'>{'<'}</button>
+          <div className='wk-memory-pager' role='navigation' aria-label={t('memorySettings.listTitle')}>
+            <button type='button' className='wk-memory-pager-btn' disabled={page <= 1} onClick={() => void handlePageChange(page - 1)} aria-label='previous page'>{'<'}</button>
             {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
-              <button key={pageNumber} type='button' className={'h-6 min-w-6 cursor-pointer rounded-[3px] border bg-transparent px-1.5 py-0 text-[13px] disabled:cursor-not-allowed disabled:opacity-40 ' + (pageNumber === page ? 'border-accent bg-accent text-surface' : 'border-transparent text-[rgba(0,0,0,0.6)] enabled:hover:border-accent enabled:hover:text-accent')} aria-current={pageNumber === page ? 'page' : undefined} onClick={() => void handlePageChange(pageNumber)}>
+              <button key={pageNumber} type='button' className={'wk-memory-pager-btn' + (pageNumber === page ? ' is-current' : '')} aria-current={pageNumber === page ? 'page' : undefined} onClick={() => void handlePageChange(pageNumber)}>
                 {pageNumber}
               </button>
             ))}
-            <button type='button' className='h-6 min-w-6 cursor-pointer rounded-[3px] border border-transparent bg-transparent px-1.5 py-0 text-[13px] text-[rgba(0,0,0,0.6)] disabled:cursor-not-allowed disabled:opacity-40' disabled={page >= totalPages} onClick={() => void handlePageChange(page + 1)} aria-label='next page'>{'>'}</button>
+            <button type='button' className='wk-memory-pager-btn' disabled={page >= totalPages} onClick={() => void handlePageChange(page + 1)} aria-label='next page'>{'>'}</button>
           </div>
         ) : null}
       </div>

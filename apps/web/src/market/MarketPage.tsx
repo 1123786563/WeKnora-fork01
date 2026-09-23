@@ -25,6 +25,7 @@ import { usePreferredLocale } from '../locale.ts';
 import { createAgentMarketplaceApi } from '../agent-marketplace/agent-marketplace-api.ts';
 import { TenantReleaseReview } from '../agent-marketplace/TenantReleaseReview.tsx';
 import { backendLabelKey, compactSkillText, isNamedSandboxBackend, sandboxTargetLine } from '../configuration/management.ts';
+import './market-u.css';
 
 /** Matches WebTenantRole (platform/scope-runtime.ts); admin affordances gate on admin|owner like SkillSettingsPanel.canEdit. */
 export type MarketRole = 'viewer' | 'contributor' | 'admin' | 'owner';
@@ -39,24 +40,42 @@ const MARKET_POLL_INTERVAL_MS = 2500;
 const SEARCH_DEBOUNCE_MS = 300;
 
 /* Tailwind v4 utility recipes shared across the page (ExpertsPage constants). */
-const MK_PAGE = 'wk-page box-border h-full overflow-y-auto px-[28px] pt-[24px] pb-[32px]';
-const MK_HEADER = 'mb-[20px] flex flex-col gap-[12px]';
-const MK_TITLE = 'm-0 text-[24px] font-semibold leading-[32px] text-[rgba(23,26,29,0.92)]';
-const MK_SUBTITLE = 'm-0 text-[14px] font-normal leading-[20px] text-[rgba(23,26,29,0.6)]';
-const MK_TAB = 'box-border inline-flex h-[32px] cursor-pointer items-center rounded-[6px] border border-[#e7e7ea] bg-surface px-[14px] font-[inherit] text-[13px] font-medium text-[rgba(23,26,29,0.75)] [transition:all_.2s_ease] hover:border-accent hover:text-accent aria-selected:border-accent aria-selected:bg-accent-wash aria-selected:text-accent';
-const MK_GRID = 'grid grid-cols-1 gap-[16px] min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4';
-const MK_CARD = 'box-border flex flex-col gap-[10px] rounded-[10px] border border-[#e7e7ea] bg-surface px-[16px] py-[14px] text-left shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
-const MK_CARD_TITLE = 'm-0 flex items-center gap-[8px] text-[16px] font-semibold leading-[24px] text-[rgba(23,26,29,0.92)]';
-const MK_CARD_DESC = 'm-0 line-clamp-2 text-[13px] font-normal leading-[19px] text-[rgba(23,26,29,0.6)]';
-const MK_CHIP = 'inline-flex shrink-0 items-center rounded-[10px] bg-[rgba(127,127,127,0.1)] px-[8px] py-[2px] text-[11px] font-medium text-[rgba(23,26,29,0.75)]';
-const MK_STATE = 'flex h-[240px] items-center justify-center text-[13px] text-[rgba(23,26,29,0.4)]';
-const MK_ERROR = 'flex h-[240px] flex-col items-center justify-center gap-[10px] text-[13px] text-[#d54941]';
-const MK_BTN_PRIMARY = 'box-border inline-flex h-[32px] cursor-pointer items-center justify-center rounded-[3px] border-0 bg-accent px-[15px] font-[inherit] text-[14px] font-medium text-white shadow-[0_2px_8px_rgba(7,192,95,0.25)] [transition:all_.2s_ease] hover:shadow-[0_4px_14px_rgba(7,192,95,0.35)] disabled:cursor-not-allowed disabled:opacity-55';
-const MK_BTN_OUTLINE = 'box-border inline-flex h-[32px] cursor-pointer items-center justify-center rounded-[3px] border border-[rgba(7,192,95,0.5)] bg-surface px-[15px] font-[inherit] text-[14px] font-medium text-accent [transition:all_.2s_ease] hover:border-accent hover:bg-accent-wash disabled:cursor-not-allowed disabled:opacity-55';
-const MK_INPUT = 'box-border h-[32px] w-[280px] rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] font-[inherit] text-[13px] text-[rgba(23,26,29,0.92)] placeholder:text-[rgba(23,26,29,0.35)] focus:border-accent focus:outline-none';
-const MK_SECTION_TITLE = 'm-0 mb-[8px] text-[13px] font-semibold uppercase tracking-[0.04em] text-[rgba(23,26,29,0.45)]';
-const MK_STALE = 'mb-[16px] rounded-[8px] border border-[rgba(237,123,47,0.4)] bg-[rgba(237,123,47,0.08)] px-[14px] py-[10px] text-[13px] leading-[19px] text-[#b45309]';
-const MK_PROGRESS_TRACK = 'h-[6px] w-full overflow-hidden rounded-[3px] bg-[rgba(127,127,127,0.15)]';
+const MK_PAGE = 'wk-page wk-mkt-mk-page';
+
+const MK_HEADER = 'wk-mkt-mk-header';
+
+const MK_TITLE = 'wk-mkt-mk-title';
+
+const MK_SUBTITLE = 'wk-mkt-mk-subtitle';
+
+const MK_TAB = 'wk-mkt-mk-tab';
+
+const MK_GRID = 'wk-mkt-mk-grid';
+
+const MK_CARD = 'wk-mkt-mk-card';
+
+const MK_CARD_TITLE = 'wk-mkt-mk-card-title';
+
+const MK_CARD_DESC = 'wk-mkt-mk-card-desc';
+
+const MK_CHIP = 'wk-mkt-mk-chip';
+
+const MK_STATE = 'wk-mkt-mk-state';
+
+const MK_ERROR = 'wk-mkt-mk-error';
+
+const MK_BTN_PRIMARY = 'wk-mkt-mk-btn-primary';
+
+const MK_BTN_OUTLINE = 'wk-mkt-mk-btn-outline';
+
+const MK_INPUT = 'wk-mkt-mk-input';
+
+const MK_SECTION_TITLE = 'wk-mkt-mk-section-title';
+
+const MK_STALE = 'wk-mkt-mk-stale';
+
+const MK_PROGRESS_TRACK = 'wk-mkt-mk-progress-track';
+
 
 type ToastState = { tone: 'success' | 'warning' | 'error'; text: string } | null;
 
@@ -481,16 +500,16 @@ export function MarketPage({ client, role }: MarketPageProps) {
     return (
       <article key={skill.slug} data-market-card={skill.slug} className={MK_CARD}>
         <h3 className={MK_CARD_TITLE}>
-          <span className="truncate" title={skill.name || skill.slug}>{skill.name || skill.slug}</span>
+          <span className="wk-mkt-1" title={skill.name || skill.slug}>{skill.name || skill.slug}</span>
           {skill.version ? <span className={MK_CHIP}>{skill.version}</span> : null}
         </h3>
         <p className={MK_CARD_DESC} title={skill.description}>{compactSkillText(skill.description)}</p>
-        <div className="mt-auto flex flex-wrap items-center gap-[6px]">
+        <div className="wk-mkt-2">
           <span className={MK_CHIP} title={skill.slug}>{skill.slug}</span>
           {isAdmin ? (
             <button
               type="button"
-              className={MK_BTN_PRIMARY + ' ml-auto'}
+              className={MK_BTN_PRIMARY + ' wk-mkt-33'}
               data-market-install={skill.slug}
               disabled={drawerOpen}
               onClick={() => openInstall({ kind: 'market', skill })}
@@ -508,7 +527,7 @@ export function MarketPage({ client, role }: MarketPageProps) {
           <h2 className={MK_TITLE}>{t('market.title')}</h2>
           <p className={MK_SUBTITLE}>{t('market.subtitle')}</p>
         </div>
-        <div role="tablist" aria-label={t('market.tabsLabel')} className="flex items-center gap-[8px]">
+        <div role="tablist" aria-label={t('market.tabsLabel')} className="wk-mkt-3">
           <button type="button" role="tab" aria-selected={tab === 'market'} data-market-tab="market" className={MK_TAB} onClick={() => setTab('market')}>{t('market.tabMarket')}</button>
           <button type="button" role="tab" aria-selected={tab === 'tenant'} data-market-tab="tenant" className={MK_TAB} onClick={() => setTab('tenant')}>{t('market.tabTenant')}</button>
         </div>
@@ -517,13 +536,13 @@ export function MarketPage({ client, role }: MarketPageProps) {
       {toast ? (
         <div
           role="status"
-          className={'fixed left-1/2 top-[24px] z-[3000] box-border flex max-w-[420px] -translate-x-1/2 items-center rounded-[8px] bg-[rgba(23,26,29,0.86)] px-[18px] py-[10px] text-[13px] shadow-[0_6px_20px_rgba(0,0,0,0.18)] ' + (toast.tone === 'success' ? 'text-[#7bf2b6]' : toast.tone === 'warning' ? 'text-[#ffd8a8]' : 'text-[#ffb4ae]')}
+          className={'wk-mkt-34 ' + (toast.tone === 'success' ? 'wk-mkt-35' : toast.tone === 'warning' ? 'wk-mkt-36' : 'wk-mkt-37')}
         >{toast.text}</div>
       ) : null}
 
       {tab === 'market' ? (
         <>
-          <div className="mb-[16px] flex flex-col gap-[12px]">
+          <div className="wk-mkt-4">
             <input
               type="search"
               className={MK_INPUT}
@@ -533,7 +552,7 @@ export function MarketPage({ client, role }: MarketPageProps) {
               data-market-search
               onChange={(event) => setQuery(event.target.value)}
             />
-            <div role="tablist" aria-label={t('market.rankingsLabel')} className="flex flex-wrap items-center gap-[6px]">
+            <div role="tablist" aria-label={t('market.rankingsLabel')} className="wk-mkt-5">
               {RANKING_KINDS.map((kind) => (
                 <button
                   key={kind}
@@ -541,7 +560,7 @@ export function MarketPage({ client, role }: MarketPageProps) {
                   role="tab"
                   aria-selected={activeQuery === '' && rankingKind === kind}
                   data-market-ranking={kind}
-                  className={MK_TAB + ' h-[28px] px-[12px] text-[12px]'}
+                  className={MK_TAB + ' wk-mkt-38'}
                   disabled={activeQuery !== ''}
                   onClick={() => setRankingKind(kind)}
                 >{t(`market.rankings.${kind}`)}</button>
@@ -579,18 +598,18 @@ export function MarketPage({ client, role }: MarketPageProps) {
             <>
               <h3 className={MK_SECTION_TITLE}>{t('market.tenantTitle')}</h3>
               {tenantSkills.length === 0 ? <div className={MK_STATE}>{t('market.tenantEmpty')}</div> : (
-                <div className={MK_GRID + ' mb-[28px]'}>
+                <div className={MK_GRID + ' wk-mkt-39'}>
                   {tenantSkills.map((skill) => (
                     <article key={skill.catalog_id} data-tenant-skill={skill.catalog_id} className={MK_CARD}>
                       <h3 className={MK_CARD_TITLE}>
-                        <span className="truncate" title={skill.name}>{skill.name}</span>
+                        <span className="wk-mkt-1" title={skill.name}>{skill.name}</span>
                         {skill.version ? <span className={MK_CHIP}>{skill.version}</span> : null}
                       </h3>
                       {skill.description ? <p className={MK_CARD_DESC} title={skill.description}>{compactSkillText(skill.description)}</p> : null}
-                      <div className="mt-auto flex flex-wrap items-center gap-[6px]">
+                      <div className="wk-mkt-2">
                         {skill.installed ? <span className={MK_CHIP}>{t('market.tenantInstalledTag')}</span> : null}
                         {skill.publisher_name ? <span className={MK_CHIP}>{t('market.publisher', { name: skill.publisher_name })}</span> : null}
-                        <span className="ml-auto flex items-center gap-[6px]">
+                        <span className="wk-mkt-6">
                           {isAdmin ? (
                             <>
                               <button type="button" className={MK_BTN_PRIMARY} data-tenant-install={skill.catalog_id} disabled={drawerOpen} onClick={() => openInstall({ kind: 'tenant', skill })}>{t('market.install')}</button>
@@ -606,14 +625,14 @@ export function MarketPage({ client, role }: MarketPageProps) {
               {isAdmin ? (
                 <section aria-label={t('market.publishSectionTitle')}>
                   <h3 className={MK_SECTION_TITLE}>{t('market.publishSectionTitle')}</h3>
-                  <p className="m-0 mb-[12px] text-[13px] leading-[19px] text-[rgba(23,26,29,0.6)]">{t('market.publishSectionHint')}</p>
+                  <p className="wk-mkt-7">{t('market.publishSectionHint')}</p>
                   {publishable.length === 0 ? <div className={MK_STATE}>{t('market.publishSourceEmpty')}</div> : (
-                    <ul className="m-0 flex list-none flex-col gap-[8px] p-0">
+                    <ul className="wk-mkt-8">
                       {publishable.map((entry) => (
-                        <li key={entry.id} data-tenant-publishable={entry.id} className="flex flex-wrap items-center gap-[10px] rounded-[10px] border border-[#e7e7ea] bg-surface px-[16px] py-[12px]">
-                          <span className="truncate text-[14px] font-semibold text-[rgba(23,26,29,0.92)]" title={entry.name}>{entry.name}</span>
+                        <li key={entry.id} data-tenant-publishable={entry.id} className="wk-mkt-9">
+                          <span className="wk-mkt-10" title={entry.name}>{entry.name}</span>
                           {entry.version ? <span className={MK_CHIP}>{entry.version}</span> : null}
-                          <button type="button" className={MK_BTN_OUTLINE + ' ml-auto'} data-tenant-publish={entry.id} disabled={tenantActionId === entry.id} onClick={() => void publishSkill(entry.id)}>{t('market.publish')}</button>
+                          <button type="button" className={MK_BTN_OUTLINE + ' wk-mkt-33'} data-tenant-publish={entry.id} disabled={tenantActionId === entry.id} onClick={() => void publishSkill(entry.id)}>{t('market.publish')}</button>
                         </li>
                       ))}
                     </ul>
@@ -627,56 +646,56 @@ export function MarketPage({ client, role }: MarketPageProps) {
 
       {drawerOpen ? (
         <div
-          className="fixed inset-0 z-[1000] flex justify-end bg-[rgba(0,0,0,0.4)]"
+          className="wk-mkt-11"
           onClick={(event) => { if (event.target === event.currentTarget) closeDrawer(); }}
         >
           <aside
-            className="flex h-full w-[440px] max-w-[90vw] flex-col bg-[var(--wk-bg,#fff)] shadow-[-4px_0_24px_rgba(0,0,0,0.12)]"
+            className="wk-mkt-12"
             role="dialog"
             aria-label={t('market.installTitle')}
             data-market-drawer
           >
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[rgba(127,127,127,0.2)] px-6 py-5">
-              <h3 className="m-0 flex min-w-0 flex-col text-[18px] font-semibold">
-                <span className="truncate">{installTarget ? (installTarget.kind === 'market' ? installTarget.skill.name || installTarget.skill.slug : installTarget.skill.name) : install?.skillName}</span>
-                <span className="text-[12px] font-normal leading-[16px] text-[rgba(23,26,29,0.6)]">{t('market.installTitle')}</span>
+            <div className="wk-mkt-13">
+              <h3 className="wk-mkt-14">
+                <span className="wk-mkt-1">{installTarget ? (installTarget.kind === 'market' ? installTarget.skill.name || installTarget.skill.slug : installTarget.skill.name) : install?.skillName}</span>
+                <span className="wk-mkt-15">{t('market.installTitle')}</span>
               </h3>
               <button
                 type="button"
-                className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-[rgba(127,127,127,0.1)] text-[15px]"
+                className="wk-mkt-16"
                 aria-label={t('common.cancel')}
                 onClick={closeDrawer}
               >✕</button>
             </div>
 
-            <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">
+            <div className="wk-mkt-17">
               {installTarget ? (
                 <>
-                  <p className="m-0 text-[14px] leading-[22px] text-[rgba(23,26,29,0.6)]">{t('market.installDesc')}</p>
+                  <p className="wk-mkt-18">{t('market.installDesc')}</p>
                   {configsLoading ? <div role="status">{t('common.loading')}</div> : null}
                   {configsError ? (
-                    <div className="flex flex-col items-start gap-[10px] text-[13px] text-[#d54941]" role="alert">
+                    <div className="wk-mkt-19" role="alert">
                       <span>{configsError}</span>
                       <button type="button" className={MK_BTN_OUTLINE} onClick={() => setConfigsEpoch((current) => current + 1)}>{t('common.retry')}</button>
                     </div>
                   ) : null}
-                  {!configsLoading && !configsError && configs.length === 0 ? <p className="m-0 text-[13px] text-[rgba(23,26,29,0.6)]">{t('market.installNoConfigs')}</p> : null}
+                  {!configsLoading && !configsError && configs.length === 0 ? <p className="wk-mkt-20">{t('market.installNoConfigs')}</p> : null}
                   {!configsLoading && !configsError && configs.length > 0 ? (
-                    <ul className="m-0 flex list-none flex-col gap-[8px] p-0">
+                    <ul className="wk-mkt-8">
                       {configs.map((record) => {
                         const checked = targetIds.includes(record.id);
                         return (
                           <li key={record.id}>
-                            <label className={'flex cursor-pointer items-center gap-[10px] rounded-[10px] border bg-surface px-[12px] py-[10px] ' + (checked ? 'border-[rgba(7,192,95,0.5)] bg-accent-wash' : 'border-[#e7e7ea]')}>
+                            <label className={'wk-mkt-40 ' + (checked ? 'wk-mkt-41' : 'wk-mkt-42')}>
                               <input
                                 type="checkbox"
                                 data-market-config={record.id}
                                 checked={checked}
                                 onChange={(event) => setTargetIds((current) => event.target.checked ? [...new Set([...current, record.id])] : current.filter((id) => id !== record.id))}
                               />
-                              <span className="flex min-w-0 flex-1 flex-col">
-                                <span className="truncate text-[13px] font-medium text-[rgba(23,26,29,0.92)]" title={record.name}>{record.name}</span>
-                                <span className="truncate text-[12px] text-[rgba(23,26,29,0.6)]">{configMetaLine(record)}</span>
+                              <span className="wk-mkt-21">
+                                <span className="wk-mkt-22" title={record.name}>{record.name}</span>
+                                <span className="wk-mkt-23">{configMetaLine(record)}</span>
                               </span>
                             </label>
                           </li>
@@ -687,14 +706,14 @@ export function MarketPage({ client, role }: MarketPageProps) {
                 </>
               ) : install !== null ? (
                 <>
-                  <h4 className="m-0 text-[13px] font-semibold uppercase tracking-[0.04em] text-[rgba(23,26,29,0.45)]">{t('market.progressTitle')}</h4>
+                  <h4 className="wk-mkt-24">{t('market.progressTitle')}</h4>
                   {unresolvedCount === 0 ? (
-                    <div className="flex flex-col items-start gap-[6px] rounded-[8px] border border-[rgba(7,192,95,0.4)] bg-accent-wash px-[14px] py-[12px]" data-testid="market-install-done" role="status">
-                      <span className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{failedCount > 0 ? t('market.doneWithFailures') : t('market.done')}</span>
-                      <span className="text-[13px] text-[rgba(23,26,29,0.6)]">{t('market.doneSummary', { ok: okCount, failed: failedCount })}</span>
+                    <div className="wk-mkt-25" data-testid="market-install-done" role="status">
+                      <span className="wk-mkt-26">{failedCount > 0 ? t('market.doneWithFailures') : t('market.done')}</span>
+                      <span className="wk-mkt-27">{t('market.doneSummary', { ok: okCount, failed: failedCount })}</span>
                     </div>
                   ) : null}
-                  <ul className="m-0 flex list-none flex-col gap-[12px] p-0">
+                  <ul className="wk-mkt-28">
                     {install.rows.map((row) => {
                       const percent = rowPercent(row);
                       const progress = progressByConfig[row.configId];
@@ -702,23 +721,23 @@ export function MarketPage({ client, role }: MarketPageProps) {
                       const ready = row.status === 'ready';
                       const failedToStart = row.startError !== undefined;
                       return (
-                        <li key={row.configId} data-market-install-row={row.configId} className="flex flex-col gap-[6px] rounded-[10px] border border-[#e7e7ea] bg-surface px-[14px] py-[12px]">
-                          <div className="flex items-center gap-[8px]">
-                            <span className="truncate text-[13px] font-medium text-[rgba(23,26,29,0.92)]" title={row.configName}>{row.configName}</span>
-                            <span className={'ml-auto shrink-0 text-[12px] font-medium ' + (failed || failedToStart ? 'text-[#d54941]' : ready ? 'text-[#0a7f43]' : 'text-[rgba(23,26,29,0.6)]')}>
+                        <li key={row.configId} data-market-install-row={row.configId} className="wk-mkt-29">
+                          <div className="wk-mkt-3">
+                            <span className="wk-mkt-22" title={row.configName}>{row.configName}</span>
+                            <span className={'wk-mkt-43 ' + (failed || failedToStart ? 'wk-mkt-44' : ready ? 'wk-mkt-45' : 'wk-mkt-46')}>
                               {failedToStart ? t('market.rowFailedToStart') : failed ? t('market.rowFailed') : ready ? t('market.rowReady') : `${percent}%`}
                             </span>
                           </div>
                           {!failedToStart ? (
                             <div className={MK_PROGRESS_TRACK} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label={row.configName}>
-                              <div className={'h-full rounded-[3px] ' + (failed ? 'bg-[#d54941]' : 'bg-accent')} style={{ width: `${percent}%` }} />
+                              <div className={'wk-mkt-47 ' + (failed ? 'wk-mkt-48' : 'wk-mkt-49')} style={{ width: `${percent}%` }} />
                             </div>
                           ) : null}
                           {progress && !ready && !failed ? (
-                            <p className="m-0 truncate text-[12px] text-[rgba(23,26,29,0.6)]" title={progress.log ?? progress.stage}>{progress.log ?? progress.stage}</p>
+                            <p className="wk-mkt-30" title={progress.log ?? progress.stage}>{progress.log ?? progress.stage}</p>
                           ) : null}
-                          {failedToStart ? <p className="m-0 text-[12px] text-[#d54941]" role="alert">{row.startError}</p> : null}
-                          {failed && (row.errorText ?? '') !== '' ? <p className="m-0 text-[12px] text-[#d54941]" role="alert">{row.errorText}</p> : null}
+                          {failedToStart ? <p className="wk-mkt-31" role="alert">{row.startError}</p> : null}
+                          {failed && (row.errorText ?? '') !== '' ? <p className="wk-mkt-31" role="alert">{row.errorText}</p> : null}
                         </li>
                       );
                     })}
@@ -728,14 +747,14 @@ export function MarketPage({ client, role }: MarketPageProps) {
             </div>
 
             {installTarget ? (
-              <div className="flex shrink-0 items-center justify-end gap-[10px] border-t border-[rgba(127,127,127,0.2)] bg-[var(--wk-bg,#fff)] px-6 py-4">
+              <div className="wk-mkt-32">
                 <button type="button" className={MK_BTN_OUTLINE} onClick={closeDrawer}>{t('common.cancel')}</button>
                 <button type="button" className={MK_BTN_PRIMARY} data-market-install-confirm disabled={installing || targetIds.length === 0} onClick={() => void startInstall()}>
                   {installing ? t('market.installing') : t('market.installConfirm')}
                 </button>
               </div>
             ) : (
-              <div className="flex shrink-0 items-center justify-end gap-[10px] border-t border-[rgba(127,127,127,0.2)] bg-[var(--wk-bg,#fff)] px-6 py-4">
+              <div className="wk-mkt-32">
                 <button type="button" className={MK_BTN_PRIMARY} data-market-install-close onClick={closeDrawer}>{t('common.cancel')}</button>
               </div>
             )}

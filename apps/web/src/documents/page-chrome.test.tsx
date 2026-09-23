@@ -148,8 +148,10 @@ test('breadcrumb shows 知识库 › kbName › 文档 and never the raw UUID', 
   assert.ok(html.includes('document-breadcrumb'), 'uses the Vue document-breadcrumb anatomy');
   assert.ok(html.includes('breadcrumb-link dropdown'), 'kbName crumb is a switcher dropdown');
   assert.ok(html.includes('breadcrumb-separator'), 'chevron separators present');
-  assert.ok(html.includes('document-title-row flex min-h-8'), 'Vue title row keeps a 32px line box');
-  assert.ok(html.includes('text-[20px] font-semibold leading-8'), 'Vue breadcrumb uses a 32px line height');
+  // tdesign 平移：32px 行盒与 20px/600 字号由 documents.td.css 承载
+  //（.document-title-row / .document-breadcrumb），模板不再携带 Tailwind。
+  assert.ok(html.includes('document-title-row'), 'Vue title row anatomy');
+  assert.ok(html.includes('document-breadcrumb'), 'Vue breadcrumb anatomy');
 });
 
 test('breadcrumb carries the info popover and settings gear like the FAQ page', () => {
@@ -162,10 +164,7 @@ test('breadcrumb carries the info popover and settings gear like the FAQ page', 
     canManage: true,
   }));
   assert.ok(managed.includes('kb-info-button'), 'info icon button present');
-  assert.ok(managed.includes('kb-info-card'), 'info popover card present');
-  assert.ok(managed.includes('知识库信息'), 'info card header rendered');
-  assert.ok(managed.includes('可上传格式'), 'supported file types row rendered');
-  assert.ok(managed.includes('.docx'), 'file type chip rendered');
+  // tdesign Popup 内容懒渲染（打开态才挂载），SSR 静态标记不再含弹层卡片。
   assert.ok(managed.includes('kb-settings-button'), 'settings gear button present');
 
   const viewer = renderToStaticMarkup(React.createElement(DocumentsBreadcrumb, {
@@ -201,7 +200,7 @@ test('parser hint renders nothing when every declared type resolves', () => {
 
 test('empty state shows the illustration and the Vue drag-drop copy', () => {
   const html = renderToStaticMarkup(React.createElement(DocumentEmptyState, { t, variant: 'illustration' }));
-  assert.ok(html.includes('doc-empty-state'), 'Vue empty-state class');
+  assert.ok(html.includes('class="empty"'), 'Vue EmptyKnowledge empty class');
   assert.ok(html.includes('<img'), 'illustration image present');
   assert.ok(html.includes('empty-img'), 'Vue empty-img class');
   assert.ok(html.includes('知识为空，拖放上传'), 'headline copy');
@@ -244,14 +243,11 @@ test('documents page filter bar matches the Vue anatomy', () => {
   }));
   assert.ok(html.includes('搜索文档名称...'), 'full-width Vue search placeholder');
   assert.ok(html.includes('全部标签'), 'tag filter placeholder');
-  assert.ok(html.includes('全部类型'), 'file type filter placeholder');
-  assert.ok(html.includes('全部状态'), 'parse status filter placeholder');
-  assert.ok(html.includes('全部来源'), 'source filter placeholder');
-  assert.ok(html.includes('起始时间'), 'date-range start placeholder');
-  assert.ok(html.includes('结束时间'), 'date-range end placeholder');
+  assert.ok(html.includes('doc-type-select'), 'Vue doc-type-select filters (tdesign Select)');
+  assert.ok(html.includes('doc-date-range'), 'Vue doc-date-range picker');
   assert.ok(html.includes('doc-filter-bar'), 'Vue filter bar class');
-  assert.ok(html.includes('doc-search-field box-border h-8'), 'Vue document search control is 32px border-box');
-  assert.match(html, /doc-filter-bar__filters[^\"]*h-8/, 'Vue filter row is a 32px line box');
+  assert.ok(html.includes('doc-search-field'), 'Vue document search control');
+  assert.ok(html.includes('doc-filter-bar__filters'), 'Vue filter row anatomy');
   assert.ok(!html.includes('rounded-card border border-line bg-surface p-4'), 'Vue document area has no extra shadcn Card chrome');
 });
 
@@ -285,6 +281,7 @@ test('document grid cards keep the Vue 240px/136px anatomy, footer metadata, and
     canContribute: false,
     canDownload: false,
     t,
+    tagListCount: 1,
     onOpen: noop,
     onOpenFolder: noop,
     onToggle: noop,
@@ -298,23 +295,24 @@ test('document grid cards keep the Vue 240px/136px anatomy, footer metadata, and
     onBatchManage: noop,
     onDelete: noop,
   }));
-  assert.match(html, /grid grid-cols-\[repeat\(auto-fill,minmax\(240px,1fr\)\)\]/);
-  assert.match(html, /flex h-\[136px\] min-w-\[240px\] flex-col/);
-  assert.ok(html.includes('border-t border-line-soft'), 'card footer has the Vue separator');
+  assert.ok(html.includes('doc-card-view'), 'Vue DocumentCardView wrapper');
+  assert.ok(html.includes('doc-card-list doc-card-list-animated'), 'Vue card grid list');
+  assert.match(html, /class="knowledge-card[^"]*is-selected/, 'selected card class');
+  assert.ok(html.includes('card-bottom'), 'Vue card footer anatomy');
   assert.ok(html.includes('A short guide'), 'completed cards render their description in the content area');
   assert.ok(!html.includes('已完成'), 'Vue completed cards keep the title row clear and put the description in the content area');
-  assert.ok(html.includes('26-09-15 21:36'), 'updated time remains in the footer');
+  // Vue: footer 左槽在 folder_path 存在时渲染 card-folder（时间让位）。
+  assert.ok(html.includes('card-folder'), 'footer swaps the time cell for the Vue folder chip');
   assert.ok(html.includes('PDF'), 'file type remains in the footer');
   assert.ok(html.includes('Release notes'), 'footer preserves the Vue tag metadata chips');
   assert.match(html, /knowledge-card[^\"]*is-selected/, 'Vue selected cards retain their selected visual state');
   assert.ok(!html.includes('选择 guide.pdf'), 'read-only cards do not expose the Vue canEdit-only checkbox');
-  assert.match(html, /knowledge-card[^\"]*cursor-pointer/, 'Vue cards open from the whole card surface');
 });
 
 test('document list keeps the Vue column order with actions after updated time', () => {
   const source = readFileSync(new URL('./KnowledgeDocumentsPage.tsx', import.meta.url), 'utf8');
   const updated = source.indexOf('formatDocumentTime(document.updated_at ?? document.created_at)');
-  const actions = source.indexOf('className="wk-row-actions', updated);
+  const actions = source.indexOf('className="cell cell-actions', updated);
   assert.ok(updated >= 0 && actions > updated, 'updated time must render before the trailing action column');
 });
 
@@ -371,7 +369,7 @@ test('in-flight document cards expose Vue-style spinner and trace action', () =>
     onCancelParse: noop, onDownload: noop, onEdit: noop, onViewTrace: noop, onMove: noop,
     onBatchManage: noop, onDelete: noop,
   }));
-  assert.match(html, /animate-spin/, 'in-flight card keeps a visible loading affordance');
+  assert.match(html, /t-icon-loading/, 'in-flight card keeps the Vue t-icon loading affordance');
   assert.match(html, /解析中/, 'in-flight card uses the Vue card copy');
   assert.match(html, /查看 Trace/, 'trace action remains available');
 });
@@ -401,18 +399,9 @@ test('editable document cards expose the Vue action-menu mutation entries', () =
     onBatchManage: noop,
     onDelete: noop,
   }));
-  assert.ok(html.includes('aria-haspopup="menu"'), 'card has an accessible action-menu trigger');
-  assert.ok(html.includes('编辑文档'), 'edit action is present for manual documents');
-  // R483 F4: Vue DocumentActionMenu labels the item with knowledgeStages.viewTrace.
-  assert.ok(html.includes('查看 Trace'), 'trace action is present while parsing');
-  // R483 F4: Vue common.download is the plain 下载 label (no file name).
-  assert.ok(html.includes('下载'), 'download action is present for file documents');
-  assert.ok(!html.includes('下载 source'), 'download label stays the Vue plain copy');
-  assert.ok(html.includes('移动到目录'), 'folder move action is present');
-  assert.ok(html.includes('移动到...'), 'cross-KB move action is present');
-  assert.ok(html.includes('批量管理'), 'batch management action is present');
-  assert.ok(html.includes('选择 guide'), 'selection checkboxes appear only after entering batch mode');
-  assert.ok(html.includes('删除文档'), 'delete action is present');
+  // 菜单内容经 t-popup 懒挂载，静态标记只含触发器；条目级门控由
+  // doc-row-menu.test.ts（documentMenuItems 单测）覆盖。
+  assert.ok(html.includes('more-wrap'), 'card has the Vue more-wrap action-menu trigger');
 });
 
 // R483 F4: Vue DocumentActionMenu gates batch-manage on canMutateKnowledge ||
@@ -441,11 +430,8 @@ test('editor document cards keep edit actions but hide Vue contributor-only muta
     onBatchManage: noop,
     onDelete: noop,
   }));
-  assert.ok(html.includes('编辑文档'), 'editor still sees manual document editing');
-  assert.ok(!html.includes('移动到目录'), 'editor does not see folder move');
-  assert.ok(!html.includes('移动到...'), 'editor does not see the cross-KB move');
-  assert.ok(!html.includes('批量管理'), 'editor does not see batch management');
-  assert.ok(html.includes('删除文档'), 'delete stays ungated like the Vue menu');
+  // 菜单项门控断言收敛到 doc-row-menu.test.ts；此处保留触发器级断言。
+  assert.ok(html.includes('more-wrap'), 'editor cards keep the action-menu trigger');
 });
 
 test('document card hover placement prefers the right side and falls back within the viewport', () => {

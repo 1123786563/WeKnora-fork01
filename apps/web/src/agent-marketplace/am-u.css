@@ -1,0 +1,245 @@
+/* am-u.css — S7 Tailwind utilities 平移（TenantReleaseReview / AgentVersionActions）
+ * 前缀 wk-amr-* / wk-ava-*；值 = utilities 编码的生效值。 */
+
+
+.wk-amr-1 {
+  margin-bottom: 28px;
+  display: grid;
+  gap: 12px;
+}
+
+.wk-amr-2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(23,26,29,0.45);
+}
+
+.wk-amr-3 {
+  margin: 0;
+  margin-top: 4px;
+  font-size: 13px;
+  color: rgba(23,26,29,0.6);
+}
+
+.wk-amr-4 {
+  margin: 0;
+  font-size: 13px;
+  color: #d54941;
+}
+
+.wk-amr-5 {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(23,26,29,0.6);
+}
+
+.wk-amr-6 {
+  display: grid;
+  gap: 12px;
+}
+
+.wk-amr-7 {
+  display: grid;
+  gap: 12px;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7ea;
+  background-color: #ffffff;
+  padding: 16px;
+}
+
+.wk-amr-8 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wk-amr-9 {
+  margin: 0;
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(23,26,29,0.55);
+}
+
+.wk-amr-10 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wk-amr-11 {
+  max-height: 192px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  border-radius: 4px;
+  background-color: rgba(127,127,127,0.07);
+  padding: 8px;
+  font-size: 11px;
+}
+
+.wk-amr-12 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.wk-amr-13 {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.wk-amr-14 {
+  overflow-wrap: anywhere;
+  border-radius: 4px;
+  background-color: rgba(127,127,127,0.07);
+  padding: 8px;
+  font-size: 12px;
+}
+
+.wk-amr-15 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wk-amr-16 {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.wk-amr-17 {
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #dcdcdc;
+  padding-inline: 8px;
+  padding-block: 6px;
+}
+
+.wk-amr-18 {
+  border-radius: 4px;
+  background-color: #07c05f;
+  padding-inline: 12px;
+  padding-block: 6px;
+  color: #fff;
+}
+
+.wk-amr-18:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+
+.wk-ava-1 {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.wk-ava-2 {
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #dcdcdc;
+  padding-inline: 8px;
+  padding-block: 6px;
+}
+
+.wk-ava-3 {
+  display: grid;
+  gap: 12px;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7ea;
+  padding: 16px;
+}
+
+.wk-ava-4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wk-ava-5 {
+  margin: 0;
+  margin-top: 4px;
+  font-size: 13px;
+  color: rgba(23,26,29,0.6);
+}
+
+.wk-ava-6 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-ava-7 {
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #dcdcdc;
+  padding-inline: 12px;
+  padding-block: 6px;
+}
+
+.wk-ava-7:disabled {
+  opacity: 0.6;
+}
+
+.wk-ava-8 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.wk-ava-9 {
+  font-size: 13px;
+  color: rgba(23,26,29,0.55);
+}
+
+.wk-ava-10 {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wk-ava-11 {
+  border-radius: 4px;
+  background-color: #07c05f;
+  padding-inline: 12px;
+  padding-block: 6px;
+  color: #fff;
+}
+
+.wk-ava-11:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.wk-ava-12 {
+  margin: 0;
+  font-size: 13px;
+  color: #d54941;
+}
+
+.wk-ava-13 {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* 手工段：md:grid-cols-2（Tailwind md = min-width:768px）与 justify-self-start */
+.wk-ava-self-start, .wk-amr-self-start { justify-self: start; }
+@media (min-width: 768px) {
+  .wk-ava-10-md { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wk-amr-6-md { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

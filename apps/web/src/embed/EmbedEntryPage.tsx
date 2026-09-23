@@ -40,6 +40,10 @@ import {
 } from './chat-data.ts';
 import { renderEmbedChatMarkdown } from './markdown.ts';
 import { hydrateEmbedAnswerMermaid } from './mermaid.ts';
+// u.css（utilities 平移层）前置（S7 合并评审 Important）：embed-u/views-chat-u
+// 先于 embed-chat/katex 落级联，避免低特异性平移规则压过域样式。
+import './embed-u.css';
+import '../chat/views-chat-u.css';
 import './embed-chat.css';
 // Vue EmbedBotMessage.vue imports katex/dist/katex.min.css for the answer face.
 import 'katex/dist/katex.min.css';
@@ -489,21 +493,21 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
     })();
   }, [apiToken, channelId, client, messages.length, session]);
 
-  if (phase === 'error') return <div className="flex h-screen items-center justify-center p-6 text-center text-[var(--text-secondary, #6b7280)]">{embedText(locale, errorKey)}</div>;
-  if (phase !== 'ready' || !session) return <div className="flex h-screen items-center justify-center p-6 text-center text-[var(--text-secondary, #6b7280)]">{embedText(locale, phase === 'awaiting' ? 'awaitingToken' : 'loading')}</div>;
+  if (phase === 'error') return <div className="wk-emb-1">{embedText(locale, errorKey)}</div>;
+  if (phase !== 'ready' || !session) return <div className="wk-emb-1">{embedText(locale, phase === 'awaiting' ? 'awaitingToken' : 'loading')}</div>;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white" style={themeVars as CSSProperties}>
-      <header className="flex shrink-0 items-center gap-3 border-b border-[#eef1f5] px-4 py-3">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-[18px]" style={badge as CSSProperties}>
+    <div className="wk-emb-2" style={themeVars as CSSProperties}>
+      <header className="wk-emb-3">
+        <span className="wk-emb-4" style={badge as CSSProperties}>
           {typeof config?.agent_avatar === 'string' && config.agent_avatar ? config.agent_avatar : '💬'}
         </span>
-        <div className="min-w-0 flex-1">
-          <h1 className="m-0 truncate text-[15px] font-semibold leading-tight text-[#1f2329]">{headerTitle}</h1>
+        <div className="wk-emb-5">
+          <h1 className="wk-emb-6">{headerTitle}</h1>
         </div>
         <button
           type="button"
-          className="shrink-0 cursor-pointer border-0 bg-transparent p-1 text-[#6b7280] hover:text-[color:var(--embed-primary,#2563eb)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="wk-emb-7"
           disabled={!messages.length}
           title={embedText(locale, 'newChat')}
           aria-label={embedText(locale, 'newChat')}
@@ -533,7 +537,7 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
         onDismissFollowUps={(entry) => patchMessageByRowId(entry.id, { suggestionsDismissed: true })}
         onRegenerateFollowUps={(entry) => entry.id && void loadFollowUpsFor(entry.id, { regenerate: true })}
       />
-      <div className="shrink-0 px-3 pb-3">
+      <div className="wk-emb-8">
         <EmbedComposer
           draft={draft}
           disabled={streaming}
@@ -640,29 +644,29 @@ export function EmbedChatSurface(props: {
   };
 
   return (
-    <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" onScroll={onScroll}>
-      {welcome && !hasUserMessage ? <div className="self-start max-w-[85%] rounded-[12px] bg-[#f5f7fa] px-3 py-2 text-[14px] text-[#1f2329]">{welcome}</div> : null}
-      {props.loadingOlder ? <div className="embed-history-loading self-center text-[12px] text-[#6b7280]">…</div> : null}
+    <div ref={scrollRef} className="wk-emb-9" onScroll={onScroll}>
+      {welcome && !hasUserMessage ? <div className="wk-emb-10">{welcome}</div> : null}
+      {props.loadingOlder ? <div className="embed-history-loading wk-emb-11">…</div> : null}
       {showSuggested ? (
-        <div className="embed-suggested flex flex-col gap-2" aria-busy={props.suggestedLoading}>
-          {props.suggestedQuestions.length > 0 ? <p className="m-0 text-[13px] font-medium text-[#6b7280]">{embedText(props.locale, 'suggestedQuestions')}</p> : null}
+        <div className="embed-suggested wk-emb-12" aria-busy={props.suggestedLoading}>
+          {props.suggestedQuestions.length > 0 ? <p className="wk-emb-13">{embedText(props.locale, 'suggestedQuestions')}</p> : null}
           {props.suggestedLoading && props.suggestedQuestions.length === 0
-            ? [0, 1, 2, 3].map((n) => <div key={n} className="h-10 animate-pulse rounded-[10px] bg-[#f0f0f0]" />)
+            ? [0, 1, 2, 3].map((n) => <div key={n} className="wk-emb-14" />)
             : props.suggestedQuestions.map((question) => (
               <button
                 key={question}
                 type="button"
-                className="block w-full cursor-pointer rounded-[10px] border border-[#eef1f5] bg-white px-3 py-2.5 text-left text-[13px] leading-snug text-[#1f2329] hover:border-[#d8dde5]"
+                className="wk-emb-15"
                 onClick={() => props.onSuggest(question)}
               >{question}</button>
             ))}
         </div>
       ) : null}
       {props.messages.map((entry, index) => entry.role === 'user' ? (
-        <div key={index} className="self-end max-w-[85%] rounded-[12px] px-3 py-2 text-[14px] text-white" style={{ background: 'var(--embed-primary, #2563eb)' }}>{entry.content}</div>
+        <div key={index} className="wk-emb-16" style={{ background: 'var(--embed-primary, #2563eb)' }}>{entry.content}</div>
       ) : (
-        <div key={index} className="embed-answer-row self-start flex max-w-[85%] flex-col gap-2">
-          <div className="rounded-[12px] bg-[#f5f7fa] px-3 py-2 text-[14px] text-[#1f2329]">
+        <div key={index} className="embed-answer-row wk-emb-17">
+          <div className="wk-emb-18">
             <EmbedMessageContent
               content={entry.content}
               references={entry.references}
@@ -686,14 +690,14 @@ export function EmbedChatSurface(props: {
       ))}
       {citationFloat ? (
         <div
-          className="embed-citation-float fixed z-50 max-w-[300px] rounded-[8px] border border-[#e7eaef] bg-white px-3 py-2 text-[12px] text-[#1f2329] shadow-lg"
+          className="embed-citation-float wk-emb-19"
           style={{ top: citationFloat.top, left: citationFloat.left }}
           onMouseLeave={() => setCitationFloat(null)}
         >
-          <div className="font-medium">{citationFloat.doc}</div>
-          {citationFloat.error ? <div className="text-[#b91c1c]">{citationFloat.error}</div> : citationFloat.content
-            ? <div className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[#4b5563]">{citationFloat.content}</div>
-            : <div className="text-[#6b7280]">…</div>}
+          <div className="wk-emb-20">{citationFloat.doc}</div>
+          {citationFloat.error ? <div className="wk-emb-21">{citationFloat.error}</div> : citationFloat.content
+            ? <div className="wk-emb-22">{citationFloat.content}</div>
+            : <div className="wk-emb-23">…</div>}
         </div>
       ) : null}
     </div>
@@ -711,35 +715,35 @@ function EmbedFollowUps(props: {
   onRegenerate?: (entry: EmbedChatMessage, set: EmbedReadySuggestions) => void;
 }) {
   return (
-    <div className="embed-followups w-full rounded-[12px] border border-[#eef1f5] bg-[#f8fafc] p-3" aria-live="polite">
-      <div className="mb-2 flex items-center justify-between text-[13px] font-semibold text-[#6b7280]">
+    <div className="embed-followups wk-emb-24" aria-live="polite">
+      <div className="wk-emb-25">
         <span>{embedText(props.locale, 'followUpQuestions')}</span>
-        <span className="flex gap-1">
+        <span className="wk-emb-26">
           {props.set.allowRegenerate ? (
             <button
               type="button"
-              className="cursor-pointer rounded-[6px] border-0 bg-transparent px-2 py-1 text-[12px] text-[#6b7280] hover:text-[color:var(--embed-primary,#2563eb)]"
+              className="wk-emb-27"
               onClick={() => props.onRegenerate?.(props.entry, props.set)}
             >{embedText(props.locale, 'refreshSuggestedQuestions')}</button>
           ) : null}
           <button
             type="button"
             aria-label={embedText(props.locale, 'close')}
-            className="cursor-pointer rounded-[6px] border-0 bg-transparent px-2 py-1 text-[12px] text-[#6b7280] hover:text-[color:var(--embed-primary,#2563eb)]"
+            className="wk-emb-27"
             onClick={() => props.onDismiss?.(props.entry, props.set)}
           >✕</button>
         </span>
       </div>
-      <div className="flex flex-col gap-1.5">
+      <div className="wk-emb-28">
         {props.set.questions.map((question) => (
           <button
             key={question.id || question.text}
             type="button"
-            className="flex w-full cursor-pointer items-center justify-between rounded-[8px] border border-[#eef1f5] bg-white px-3 py-2 text-left text-[13px] leading-snug text-[#1f2329] hover:border-[#d8dde5]"
+            className="wk-emb-29"
             onClick={() => props.onSelect?.(props.entry, props.set, question)}
           >
             <span>{question.text}</span>
-            <span aria-hidden="true" className="text-[#9ca3af]">↗</span>
+            <span aria-hidden="true" className="wk-emb-30">↗</span>
           </button>
         ))}
       </div>
@@ -813,21 +817,21 @@ function truncateReferenceContent(content: string, limit = 80): string {
 // content on click (Vue uses a popup fed by the same reference data).
 function EmbedReferences(props: { references: EmbedReference[]; locale: Locale }) {
   return (
-    <details className="embed-refs mt-2 border-t border-[#e7eaef] pt-2 text-[12px]">
-      <summary className="cursor-pointer text-[#6b7280]">{referenceHeadline(props.references, props.locale)}</summary>
-      <div className="mt-1.5 flex flex-col gap-1.5">
+    <details className="embed-refs wk-emb-31">
+      <summary className="wk-emb-32">{referenceHeadline(props.references, props.locale)}</summary>
+      <div className="wk-emb-33">
         {props.references.map((ref, index) => isWebSearchReference(ref) ? (
           <a
             key={index}
-            className="break-all text-[color:var(--embed-primary,#2563eb)] underline-offset-2 hover:underline"
+            className="underline-offset-2 wk-emb-34"
             href={referenceUrl(ref)}
             target="_blank"
             rel="noopener noreferrer"
           >{referenceTitle(ref)}</a>
         ) : (
           <details key={index} className="embed-ref-chunk">
-            <summary className="cursor-pointer break-all text-[#1f2329]">{index + 1}. {truncateReferenceContent(referenceContent(ref))}</summary>
-            <div className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[#4b5563]">{referenceContent(ref)}</div>
+            <summary className="wk-emb-35">{index + 1}. {truncateReferenceContent(referenceContent(ref))}</summary>
+            <div className="wk-emb-22">{referenceContent(ref)}</div>
           </details>
         ))}
       </div>
@@ -855,7 +859,7 @@ function EmbedComposer(props: {
       />
       {/* The placeholder/send copy above rides on the shared composer's own
           controls; keep the embed strings exposed for screen readers. */}
-      <span className="sr-only">{props.placeholder}</span>
+      <span className="wk-emb-36">{props.placeholder}</span>
     </div>
   );
 }

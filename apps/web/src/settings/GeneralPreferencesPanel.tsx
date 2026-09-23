@@ -3,7 +3,10 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { CommercialSummary } from '@weknora/contracts';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { readLocalPreferences, writeLocalPreferences, readUserPreference, writeUserPreference, migratePreferencesIntoUser, isValidTheme, isValidFontSize, type ThemeMode, type FontSize } from '@weknora/domain/settings/local-preferences';
-import { Button, Card, Select, Status, Switch } from '@weknora/ui';
+// TDesign 同构迁移（T12a）：GeneralSettings.vue 的 t-select / t-radio-group
+// （t-radio-button）/ t-switch 按组件映射表直译（playbook §1 #4/#6/#7）。
+import { Button, Radio, RadioGroup, Select, Switch } from 'tdesign-react';
+import { pushSettingsToast } from './settings-toast.tsx';
 import { navigate } from '../platform/navigation.ts';
 
 /**
@@ -162,10 +165,6 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
   // 一次（UsagePanel 预算卡模式）；summary 失败 / 无 client（或测试桩缺
   // commercial facet）时静默隐藏整卡，不影响分区其余内容。
   const [billing, setBilling] = useState<CommercialSummary | null>(null);
-  // Vue GeneralSettings.vue closes each accepted preference change with a
-  // MessagePlugin.success (language.languageSaved / common.success); the React
-  // domain surfaces the same feedback as an inline success Status.
-  const [notice, setNotice] = useState<string | null>(null);
   const platform = useMemo(detectPlatform, []);
   const t = (key: string) => formatMessage(locale, key);
   const autoUpdateCopy = AUTO_UPDATE_COPY[locale];
@@ -192,6 +191,10 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
     return () => { cancelled = true; };
   }, [client]);
 
+  // Vue GeneralSettings.vue closes each accepted preference change with a
+  // MessagePlugin.success（language.languageSaved / common.success，右上角
+  // 3s 自动消失）；React 侧等价物 = pushSettingsToast 命令式 toast（壳层
+  // SettingsToastHost 渲染，R472 A2），不再渲染内联 notice 行。
   function handleLanguageChange(next: string) {
     if (!isLocale(next)) return;
     setLocale(next);
@@ -199,33 +202,33 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
     window.dispatchEvent(new window.Event('weknora:locale-changed'));
     // Vue resolves the toast after locale.value updates, so the message uses
     // the NEW locale.
-    setNotice(formatMessage(next, 'language.languageSaved'));
+    pushSettingsToast(formatMessage(next, 'language.languageSaved'), 'success');
   }
   function handleThemeChange(next: string) {
     if (!isValidTheme(next)) return;
     setTheme(next);
     writeLocalPreferences(window.localStorage, { theme: next });
     window.dispatchEvent(new window.Event('weknora:theme-changed'));
-    setNotice(formatMessage(locale, 'common.success'));
+    pushSettingsToast(formatMessage(locale, 'common.success'), 'success');
   }
   function handleFontSizeChange(next: string) {
     if (!isValidFontSize(next)) return;
-    setFontSize(next);
-    writeLocalPreferences(window.localStorage, { fontSize: next });
-    applyFontCssVariables(sansFont, monoFont, next);
-    setNotice(formatMessage(locale, 'common.success'));
+    setFontSize(next as FontSize);
+    writeLocalPreferences(window.localStorage, { fontSize: next as FontSize });
+    applyFontCssVariables(sansFont, monoFont, next as FontSize);
+    pushSettingsToast(formatMessage(locale, 'common.success'), 'success');
   }
   function handleSansFontChange(next: string) {
     setSansFont(next);
     writeUserPreference(window.localStorage, 'font_sans', next);
     applyFontCssVariables(next, monoFont, fontSize);
-    setNotice(formatMessage(locale, 'common.success'));
+    pushSettingsToast(formatMessage(locale, 'common.success'), 'success');
   }
   function handleMonoFontChange(next: string) {
     setMonoFont(next);
     writeUserPreference(window.localStorage, 'font_mono', next);
     applyFontCssVariables(sansFont, next, fontSize);
-    setNotice(formatMessage(locale, 'common.success'));
+    pushSettingsToast(formatMessage(locale, 'common.success'), 'success');
   }
 
   function handleAutoCheckUpdateChange(enabled: boolean) {
@@ -239,6 +242,10 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
   const currentMonoStack = MONO_STACKS[monoFont] ?? MONO_STACKS.system!;
   const billingCopy = billing ? formatBillingSummary(locale, billing) : null;
 
+  // Vue GeneralSettings.vue 逐节点复刻：setting-row > setting-info(label +
+  // p.desc) + setting-control(t-select style="width: 280px" / t-radio-group /
+  // t-switch)；字体行 setting-control--stacked + font-preview。样式走
+  // settings.td.css §2（GeneralSettings.vue scoped 块平移）。
   return (
     <div className="general-settings" data-testid="general-preferences-panel">
       <div className="section-header">
@@ -246,15 +253,16 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
         <p className="section-description">{t('general.description')}</p>
       </div>
       {billing && billingCopy ? (
-        <Card data-testid="general-billing-card" className="mb-4 flex flex-wrap items-center gap-x-[24px] gap-y-[6px]">
-          <h3 className="w-full m-0 text-[15px] font-semibold text-[rgba(23,26,29,0.92)]">{t('billing.cardTitle')}</h3>
-          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.plan')}：</span>{billingCopy.plan}</span>
-          <span className="text-[13px]"><span className="text-[rgba(23,26,29,0.6)]">{t('billing.paidUntil')}：</span>{billingCopy.paidUntil}</span>
+        // React-only 套餐与额度卡（SP14 Task 1；Vue GeneralSettings.vue 无此
+        // 块——已知豁免传导项，功能本体保留，像素归因见 task-12a 报告）。
+        <div data-testid="general-billing-card" className="general-billing-card">
+          <h3 className="general-billing-card__title">{t('billing.cardTitle')}</h3>
+          <span className="general-billing-card__item"><span className="general-billing-card__label">{t('billing.plan')}：</span>{billingCopy.plan}</span>
+          <span className="general-billing-card__item"><span className="general-billing-card__label">{t('billing.paidUntil')}：</span>{billingCopy.paidUntil}</span>
           {/* orderId 空串 = checkout 页自建 quote+order（升级/续费新订单）。 */}
-          <Button type="button" onClick={() => navigate('/platform/billing/checkout')}>{t('billing.upgrade')}</Button>
-        </Card>
+          <Button theme="default" onClick={() => navigate('/platform/billing/checkout')}>{t('billing.upgrade')}</Button>
+        </div>
       ) : null}
-      {notice ? <div data-testid="general-preferences-notice" role="status"><Status tone="success">{notice}</Status></div> : null}
       <div className="settings-group">
         <div className="setting-row">
           <div className="setting-info">
@@ -262,17 +270,12 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
             <p className="desc">{t('language.languageDescription')}</p>
           </div>
           <div className="setting-control">
-            <Select
-              className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
-              aria-label={t('language.selectLanguage')}
-              value={locale}
-              onChange={(event) => handleLanguageChange(event.target.value)}
-            >
-              <option value="zh-CN">{t('language.zhCN')}</option>
-              <option value="en-US">{t('language.enUS')}</option>
-              <option value="ru-RU">{t('language.ruRU')}</option>
-              <option value="ko-KR">{t('language.koKR')}</option>
-              <option value="ja-JP">{t('language.jaJP')}</option>
+            <Select value={locale} placeholder={t('language.selectLanguage')} onChange={(value) => handleLanguageChange(String(value))} style={{ width: '280px' }}>
+              <Select.Option value="zh-CN" label={t('language.zhCN')}>{t('language.zhCN')}</Select.Option>
+              <Select.Option value="en-US" label={t('language.enUS')}>{t('language.enUS')}</Select.Option>
+              <Select.Option value="ru-RU" label={t('language.ruRU')}>{t('language.ruRU')}</Select.Option>
+              <Select.Option value="ko-KR" label={t('language.koKR')}>{t('language.koKR')}</Select.Option>
+              <Select.Option value="ja-JP" label={t('language.jaJP')}>{t('language.jaJP')}</Select.Option>
             </Select>
           </div>
         </div>
@@ -282,15 +285,10 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
             <p className="desc">{t('theme.themeDescription')}</p>
           </div>
           <div className="setting-control">
-            <Select
-              className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
-              aria-label={t('theme.selectTheme')}
-              value={theme}
-              onChange={(event) => handleThemeChange(event.target.value)}
-            >
-              <option value="light">{t('theme.light')}</option>
-              <option value="dark">{t('theme.dark')}</option>
-              <option value="system">{t('theme.system')}</option>
+            <Select value={theme} placeholder={t('theme.selectTheme')} onChange={(value) => handleThemeChange(String(value))} style={{ width: '280px' }}>
+              <Select.Option value="light" label={t('theme.light')}>{t('theme.light')}</Select.Option>
+              <Select.Option value="dark" label={t('theme.dark')}>{t('theme.dark')}</Select.Option>
+              <Select.Option value="system" label={t('theme.system')}>{t('theme.system')}</Select.Option>
             </Select>
           </div>
         </div>
@@ -300,20 +298,15 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
             <p className="desc">{t('font.uiFontDescription')}</p>
           </div>
           <div className="setting-control setting-control--stacked">
-            <Select
-              className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
-              aria-label={t('font.selectFont')}
-              value={sansFont}
-              onChange={(event) => handleSansFontChange(event.target.value)}
-            >
+            <Select value={sansFont} placeholder={t('font.selectFont')} onChange={(value) => handleSansFontChange(String(value))} style={{ width: '280px' }}>
               {sansOptions.map((key) => (
-                <option key={key} value={key}>{fontLabel(locale, 'sans', key)}</option>
+                <Select.Option key={key} value={key} label={fontLabel(locale, 'sans', key)}>
+                  <span style={{ fontFamily: SANS_STACKS[key] }}>{fontLabel(locale, 'sans', key)}</span>
+                </Select.Option>
               ))}
             </Select>
-            {/* Vue GeneralSettings.vue font preview box (lines 351-375): bg
-                --td-bg-color-container #fff, border --td-component-stroke
-                #e7e7e7, radius --td-radius-medium 6px. */}
-            <div data-testid="font-preview-sans" className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-line-neutral bg-surface px-[12px] py-[8px] text-[14px] text-[rgba(0,0,0,0.9)] leading-[1.4]" style={{ fontFamily: currentSansStack }}>
+            {/* Vue GeneralSettings.vue font preview box（.font-preview，样式走 settings.td.css §2）。 */}
+            <div data-testid="font-preview-sans" className="font-preview" style={{ fontFamily: currentSansStack }}>
               {t('font.sansPreview')}
             </div>
           </div>
@@ -324,17 +317,14 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
             <p className="desc">{t('font.monoFontDescription')}</p>
           </div>
           <div className="setting-control setting-control--stacked">
-            <Select
-              className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
-              aria-label={t('font.selectFont')}
-              value={monoFont}
-              onChange={(event) => handleMonoFontChange(event.target.value)}
-            >
+            <Select value={monoFont} placeholder={t('font.selectFont')} onChange={(value) => handleMonoFontChange(String(value))} style={{ width: '280px' }}>
               {monoOptions.map((key) => (
-                <option key={key} value={key}>{fontLabel(locale, 'mono', key)}</option>
+                <Select.Option key={key} value={key} label={fontLabel(locale, 'mono', key)}>
+                  <span style={{ fontFamily: MONO_STACKS[key] }}>{fontLabel(locale, 'mono', key)}</span>
+                </Select.Option>
               ))}
             </Select>
-            <div data-testid="font-preview-mono" className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-line-neutral bg-surface px-[12px] py-[8px] text-[14px] text-[rgba(0,0,0,0.9)] leading-[1.4] font-[family-name:var(--wk-font-mono,ui-monospace,monospace)] overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontFamily: currentMonoStack }}>
+            <div data-testid="font-preview-mono" className="font-preview font-preview--mono" style={{ fontFamily: currentMonoStack }}>
               {t('font.monoPreview')}
             </div>
           </div>
@@ -345,34 +335,11 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
             <p className="desc">{t('font.fontSizeDescription')}</p>
           </div>
           <div className="setting-control">
-            {/* TDesign t-radio-group 实测几何（GeneralSettings.vue 基准）：容器
-                32px 高、无边框、圆角 3px；按钮自带 1px 边框（首枚去 right、末枚
-                去 left、中间四边全 1px），padding 4px 16px、line-height 22px、
-                font 14px；激活态实心 brand 底 + 白字（frontend/src/assets/
-                theme.css 全局 t-is-checked 覆盖，白字落在 __label span 上）。
-                bg-transparent 与 bg-[#07c05f] 在编译 CSS 中前者排序靠后会覆盖
-                激活底色，故两态互斥输出；同理边框色任意值按值排序（#07c05f 在
-                #e7e7e7 前），激活/非激活边框色也不能共存。 */}
-            <div className="inline-flex h-8 overflow-hidden rounded-[3px] text-[14px]" role="radiogroup" aria-label={t('font.fontSize')}>
-              {(['small', 'normal', 'large'] as const).map((size, index, sizes) => (
-                <button
-                  key={size}
-                  type="button"
-                  role="radio"
-                  aria-checked={fontSize === size}
-                  className={'h-full cursor-pointer border border-solid px-4 py-1 font-[inherit] text-[14px] leading-[22px]'
-                    + (index === 0 ? ' border-r-0 rounded-l-[3px]' : '')
-                    + (index === sizes.length - 1 ? ' border-l-0 rounded-r-[3px]' : '')
-                    + (fontSize === size
-                      ? ' is-active bg-[#07c05f] border-[#07c05f] text-white hover:bg-[#06b04d]'
-                      : ' bg-transparent border-[#e7e7e7] text-[rgba(0,0,0,0.9)] hover:border-[#07c05f] hover:text-[#07c05f]')
-                  }
-                  onClick={() => handleFontSizeChange(size)}
-                >
-                  {t('font.size.' + size)}
-                </button>
-              ))}
-            </div>
+            <RadioGroup value={fontSize} onChange={(value) => handleFontSizeChange(String(value))}>
+              <Radio.Button value="small">{t('font.size.small')}</Radio.Button>
+              <Radio.Button value="normal">{t('font.size.normal')}</Radio.Button>
+              <Radio.Button value="large">{t('font.size.large')}</Radio.Button>
+            </RadioGroup>
           </div>
         </div>
         {liteMode ? <div className="setting-row">
@@ -381,7 +348,7 @@ export function GeneralPreferencesPanel({ liteMode = false, client }: { liteMode
             <p className="desc">{autoUpdateCopy.description}</p>
           </div>
           <div className="setting-control">
-            <Switch checked={autoCheckUpdate} onCheckedChange={handleAutoCheckUpdateChange} aria-label={autoUpdateCopy.label} />
+            <Switch value={autoCheckUpdate} onChange={(value) => handleAutoCheckUpdateChange(Boolean(value))} />
           </div>
         </div> : null}
       </div>

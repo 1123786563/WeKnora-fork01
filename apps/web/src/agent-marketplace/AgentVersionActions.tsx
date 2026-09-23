@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { AgentVersion } from '@weknora/contracts';
 import type { ReleaseMetadataInput } from '@weknora/api-client';
 import type { AgentMarketplaceApi } from './agent-marketplace-api.ts';
+import './am-u.css';
 
 interface AgentVersionActionsProps {
   api: AgentMarketplaceApi;
@@ -89,34 +90,34 @@ export function AgentVersionActions({ api, agentId, agentName }: AgentVersionAct
   };
 
   const field = (key: keyof MetadataForm, label: string, required = true) => (
-    <label className="grid gap-1 text-[13px]" key={key}>
+    <label className="wk-ava-1" key={key}>
       <span>{label}{required ? ' *' : ''}</span>
       {key === 'summary' || key === 'change_notes' ? (
-        <textarea name={key} required={required} value={metadata[key]} onInput={(event) => update(key, event.currentTarget.value)} rows={key === 'summary' ? 3 : 2} className="rounded border border-[#dcdcdc] px-2 py-1.5" />
+        <textarea name={key} required={required} value={metadata[key]} onInput={(event) => update(key, event.currentTarget.value)} rows={key === 'summary' ? 3 : 2} className="wk-ava-2" />
       ) : (
-        <input name={key} required={required} value={metadata[key]} onInput={(event) => update(key, event.currentTarget.value)} className="rounded border border-[#dcdcdc] px-2 py-1.5" />
+        <input name={key} required={required} value={metadata[key]} onInput={(event) => update(key, event.currentTarget.value)} className="wk-ava-2" />
       )}
     </label>
   );
 
   return (
-    <section aria-label="Author a Tenant Release" className="grid gap-3 rounded-lg border border-[#e7e7ea] p-4" data-agent-release-author>
+    <section aria-label="Author a Tenant Release" className="wk-ava-3" data-agent-release-author>
       <div>
-        <h3 className="m-0 text-[15px] font-semibold">Tenant Release</h3>
-        <p className="m-0 mt-1 text-[13px] text-[rgba(23,26,29,0.6)]">Freeze this saved Agent configuration, then submit its fixed version for Tenant review.</p>
+        <h3 className="wk-ava-4">Tenant Release</h3>
+        <p className="wk-ava-5">Freeze this saved Agent configuration, then submit its fixed version for Tenant review.</p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" data-author-freeze disabled={busy} onClick={() => void freeze()} className="rounded border border-[#dcdcdc] px-3 py-1.5 disabled:opacity-60">Freeze Agent Version</button>
+      <div className="wk-ava-6">
+        <button type="button" data-author-freeze disabled={busy} onClick={() => void freeze()} className="wk-ava-7">Freeze Agent Version</button>
         {versions.length > 0 ? (
-          <label className="flex items-center gap-2 text-[13px]">Selected version
-            <select data-author-version value={selectedVersionID} onChange={(event) => setSelectedVersionID(event.target.value)} disabled={busy} className="rounded border border-[#dcdcdc] px-2 py-1.5">
+          <label className="wk-ava-8">Selected version
+            <select data-author-version value={selectedVersionID} onChange={(event) => setSelectedVersionID(event.target.value)} disabled={busy} className="wk-ava-2">
               {versions.map((version) => <option key={version.id} value={version.id}>v{version.version_number} · {version.id} · {version.source_sha256}</option>)}
             </select>
           </label>
-        ) : <span className="text-[13px] text-[rgba(23,26,29,0.55)]">No frozen version selected</span>}
+        ) : <span className="wk-ava-9">No frozen version selected</span>}
       </div>
       {selectedVersionID !== '' ? <>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="wk-ava-10 wk-ava-10-md">
           {field('semantic_version', 'Release version')}
           {field('display_name', 'Display name')}
           {field('summary', 'Summary')}
@@ -130,10 +131,10 @@ export function AgentVersionActions({ api, agentId, agentName }: AgentVersionAct
           {field('license_id', 'License ID')}
           {field('change_notes', 'Change notes', false)}
         </div>
-        <button type="button" data-author-submit disabled={busy || selectedVersionID === '' || !complete} onClick={() => void submit()} className="justify-self-start rounded bg-accent px-3 py-1.5 text-white disabled:cursor-not-allowed disabled:opacity-60">Submit Release for review</button>
+        <button type="button" data-author-submit disabled={busy || selectedVersionID === '' || !complete} onClick={() => void submit()} className="wk-ava-11 wk-ava-self-start">Submit Release for review</button>
       </> : null}
-      {error ? <p role="alert" className="m-0 text-[13px] text-[#d54941]">{error}</p> : null}
-      {message ? <p role="status" className="m-0 text-[13px]" data-author-status>{message}</p> : null}
+      {error ? <p role="alert" className="wk-ava-12">{error}</p> : null}
+      {message ? <p role="status" className="wk-ava-13" data-author-status>{message}</p> : null}
     </section>
   );
 }

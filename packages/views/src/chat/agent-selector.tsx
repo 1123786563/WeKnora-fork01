@@ -67,7 +67,7 @@ function NotReadyMarker(props: { agentId: string; label: string }) {
       data-agent-not-ready={props.agentId}
       aria-label={props.label}
       title={props.label}
-      className="shrink-0 text-[#e3730e]"
+      className="wk-vc-agent-selector-1"
     >
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
         <circle cx="7" cy="7" r="5.6" stroke="currentColor" strokeWidth="1.3" />
@@ -158,45 +158,45 @@ export function AgentSelectorPanel(props: AgentSelectorProps) {
     : Math.min(280, anchor.top - 26);
 
   const dropdown = (
-    <div className="wk-agent-selector-overlay fixed inset-0 z-[10000]" onClick={props.onClose}>
+    <div className="wk-agent-selector-overlay wk-vc-agent-selector-2" onClick={props.onClose}>
       <div
         role="dialog"
         aria-label={copy.selectAgent}
-        className="wk-agent-selector-dropdown absolute flex flex-col overflow-hidden rounded-[10px] border-[0.5px] border-[#e7e7e7] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+        className="wk-agent-selector-dropdown wk-vc-agent-selector-3"
         style={{ left: dropdownLeft, top: dropdownTop, width: DROPDOWN_WIDTH, maxHeight: dropdownMaxHeight }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[#f0f0f0] px-[12px] py-[8px]">
-          <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{copy.selectAgent}</span>
+        <div className="wk-vc-agent-selector-4">
+          <span className="wk-vc-agent-selector-5">{copy.selectAgent}</span>
           <button
             type="button"
-            className="flex cursor-pointer items-center gap-[2px] border-0 bg-transparent p-0 text-[12px] text-[#245a9b] hover:underline"
+            className="wk-vc-agent-selector-6"
             onClick={() => { props.onClose(); props.onManage(); }}
           >
             <span aria-hidden="true">+</span>{copy.agentManageAgents}
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto py-[4px]">
+        <div className="wk-vc-agent-selector-7">
           {agents.length === 0 ? (
-            <div className="px-[12px] py-[10px] text-[13px] text-[rgba(0,0,0,0.4)]">{copy.agentNoAgents}</div>
+            <div className="wk-vc-agent-selector-8">{copy.agentNoAgents}</div>
           ) : null}
           {builtinAgents.length > 0 ? (
             <div className="wk-agent-selector-group">
-              <div className="px-[12px] pt-[6px] pb-[2px] text-[11px] text-[rgba(0,0,0,0.4)]">{copy.agentBuiltinGroup}</div>
+              <div className="wk-vc-agent-selector-9">{copy.agentBuiltinGroup}</div>
               {builtinAgents.map((agent) => (
                 <button
                   type="button"
                   key={agent.id}
                   ref={(el) => { if (el) optionRefs.current.set(agent.id, el); }}
                   data-agent-id={agent.id}
-                  className={`flex w-full cursor-pointer items-center gap-[6px] border-0 bg-transparent px-[12px] py-[7px] text-left text-[13px] hover:bg-[#f5f5f5] ${currentAgentId === agent.id ? 'bg-[#eef4fb] font-medium text-[rgba(0,0,0,0.9)]' : 'text-[rgba(0,0,0,0.75)]'}`}
+                  className={`wk-vc-agent-selector-27 ${currentAgentId === agent.id ? 'wk-vc-agent-selector-28' : 'wk-vc-agent-selector-29'}`}
                   onMouseEnter={() => onOptionEnter(agent)}
                   onMouseLeave={onOptionLeave}
                   onFocus={() => onOptionEnter(agent)}
                   onClick={() => selectAgent(agent)}
                 >
-                  <span className="wk-agent-option-icon min-w-[16px] text-center" aria-hidden="true">{agent.config?.agent_mode === 'smart-reasoning' ? '✦' : '💬'}</span>
-                  <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+                  <span className="wk-agent-option-icon wk-vc-agent-selector-10" aria-hidden="true">{agent.config?.agent_mode === 'smart-reasoning' ? '✦' : '💬'}</span>
+                  <span className="wk-vc-agent-selector-11">{agent.name}</span>
                   {notReadyKeysFor(agent).length > 0 ? (
                     <NotReadyMarker agentId={agent.id} label={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} />
                   ) : null}
@@ -206,21 +206,21 @@ export function AgentSelectorPanel(props: AgentSelectorProps) {
           ) : null}
           {customAgents.length > 0 ? (
             <div className="wk-agent-selector-group">
-              <div className="px-[12px] pt-[6px] pb-[2px] text-[11px] text-[rgba(0,0,0,0.4)]">{copy.agentCustomGroup}</div>
+              <div className="wk-vc-agent-selector-9">{copy.agentCustomGroup}</div>
               {customAgents.map((agent) => (
                 <button
                   type="button"
                   key={agent.id}
                   ref={(el) => { if (el) optionRefs.current.set(agent.id, el); }}
                   data-agent-id={agent.id}
-                  className={`flex w-full cursor-pointer items-center gap-[6px] border-0 bg-transparent px-[12px] py-[7px] text-left text-[13px] hover:bg-[#f5f5f5] ${currentAgentId === agent.id ? 'bg-[#eef4fb] font-medium text-[rgba(0,0,0,0.9)]' : 'text-[rgba(0,0,0,0.75)]'}`}
+                  className={`wk-vc-agent-selector-27 ${currentAgentId === agent.id ? 'wk-vc-agent-selector-28' : 'wk-vc-agent-selector-29'}`}
                   onMouseEnter={() => onOptionEnter(agent)}
                   onMouseLeave={onOptionLeave}
                   onFocus={() => onOptionEnter(agent)}
                   onClick={() => selectAgent(agent)}
                 >
-                  <span className="min-w-[16px] text-center text-[12px] text-[rgba(0,0,0,0.4)]" aria-hidden="true">{agent.name.slice(0, 1).toUpperCase()}</span>
-                  <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+                  <span className="wk-vc-agent-selector-12" aria-hidden="true">{agent.name.slice(0, 1).toUpperCase()}</span>
+                  <span className="wk-vc-agent-selector-11">{agent.name}</span>
                   {notReadyKeysFor(agent).length > 0 ? (
                     <NotReadyMarker agentId={agent.id} label={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} />
                   ) : null}
@@ -272,19 +272,19 @@ function AgentDetailCard(props: {
   }
   return (
     <aside
-      className="wk-agent-detail-card fixed z-[10002] box-border rounded-[10px] border-[0.5px] border-[#e7e7e7] bg-white p-[12px] shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+      className="wk-agent-detail-card wk-vc-agent-selector-13"
       style={{ left, top: Math.max(8, Math.min(props.anchorRect.top, window.innerHeight - 260)), width: DETAIL_PANEL_WIDTH }}
       onMouseEnter={props.onEnter}
       onMouseLeave={props.onLeave}
       data-agent-detail={agent.id}
     >
-      <div className="flex items-start gap-[6px]">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-[6px]">
-            <span className="truncate text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{agent.name}</span>
+      <div className="wk-vc-agent-selector-14">
+        <div className="wk-vc-agent-selector-15">
+          <div className="wk-vc-agent-selector-16">
+            <span className="wk-vc-agent-selector-17">{agent.name}</span>
             <button
               type="button"
-              className={`shrink-0 cursor-pointer border-0 bg-transparent p-0 text-[12px] ${notReadyKeys.length > 0 ? 'text-[#e3730e]' : 'text-[rgba(0,0,0,0.45)]'}`}
+              className={`wk-vc-agent-selector-30 ${notReadyKeys.length > 0 ? 'wk-vc-agent-selector-31' : 'wk-vc-agent-selector-32'}`}
               title={notReadyKeys.length > 0 ? copy.agentConfigureAction : copy.agentGoToSettings}
               aria-label={notReadyKeys.length > 0 ? copy.agentConfigureAction : copy.agentGoToSettings}
               onClick={props.onConfigure}
@@ -293,30 +293,30 @@ function AgentDetailCard(props: {
             </button>
           </div>
           {props.isCurrent ? (
-            <span className="mt-[2px] inline-block rounded-[4px] bg-[#eef4fb] px-[4px] py-[1px] text-[11px] text-[#245a9b]">{copy.agentSelectorCurrent}</span>
+            <span className="wk-vc-agent-selector-18">{copy.agentSelectorCurrent}</span>
           ) : null}
           {notReadyKeys.length > 0 ? (
-            <div className="mt-[2px] flex flex-wrap items-center gap-[4px] text-[11px] text-[#e3730e]">
+            <div className="wk-vc-agent-selector-19">
               <span>⚠ {copy.agentNotReadyStatus}</span>
-              {agentNotReadyLabels(copy, notReadyKeys).map((item) => <span key={item} className="rounded-[3px] bg-[#fdf1e7] px-[3px]">{item}</span>)}
+              {agentNotReadyLabels(copy, notReadyKeys).map((item) => <span key={item} className="wk-vc-agent-selector-20">{item}</span>)}
             </div>
           ) : null}
         </div>
       </div>
-      <p className="m-[8px_0_6px] line-clamp-3 text-[12px] leading-[18px] text-[rgba(0,0,0,0.55)]">{agent.description || copy.agentNoDescription}</p>
-      <div className="flex flex-wrap gap-[4px]">
-        <span className="rounded-[4px] bg-[#f2f3f5] px-[6px] py-[2px] text-[11px] text-[rgba(0,0,0,0.65)]">{config.agent_mode === 'smart-reasoning' ? copy.agentModeTagReasoning : copy.agentModeTagQuick}</span>
-        {kbLabel ? <span className="rounded-[4px] bg-[#f2f3f5] px-[6px] py-[2px] text-[11px] text-[rgba(0,0,0,0.65)]">{kbLabel}</span> : null}
-        {multiTurn ? <span className="rounded-[4px] bg-[#f2f3f5] px-[6px] py-[2px] text-[11px] text-[rgba(0,0,0,0.65)]">{copy.agentMultiTurn}</span> : null}
+      <p className="wk-vc-agent-selector-21">{agent.description || copy.agentNoDescription}</p>
+      <div className="wk-vc-agent-selector-22">
+        <span className="wk-vc-agent-selector-23">{config.agent_mode === 'smart-reasoning' ? copy.agentModeTagReasoning : copy.agentModeTagQuick}</span>
+        {kbLabel ? <span className="wk-vc-agent-selector-23">{kbLabel}</span> : null}
+        {multiTurn ? <span className="wk-vc-agent-selector-23">{copy.agentMultiTurn}</span> : null}
       </div>
-      <div className="mt-[8px] border-t border-[#f0f0f0] pt-[6px]">
-        <div className="mb-[4px] text-[11px] text-[rgba(0,0,0,0.4)]">{copy.agentCapabilitiesSection}</div>
-        <ul className="m-0 flex list-none flex-col gap-[3px] p-0">
-          <li className={`flex items-center justify-between rounded-[4px] px-[6px] py-[2px] text-[11px] ${webSearchEnabled ? 'bg-[#eefaf2] text-[rgba(0,0,0,0.7)]' : 'bg-[#f7f7f7] text-[rgba(0,0,0,0.45)]'}`}>
+      <div className="wk-vc-agent-selector-24">
+        <div className="wk-vc-agent-selector-25">{copy.agentCapabilitiesSection}</div>
+        <ul className="wk-vc-agent-selector-26">
+          <li className={`wk-vc-agent-selector-33 ${webSearchEnabled ? 'wk-vc-agent-selector-34' : 'wk-vc-agent-selector-35'}`}>
             <span>{copy.agentCapWebSearch}</span>
             <span>{webSearchEnabled ? copy.agentCapOn : copy.agentCapOff}</span>
           </li>
-          <li className={`flex items-center justify-between rounded-[4px] px-[6px] py-[2px] text-[11px] ${imageUpload ? 'bg-[#eefaf2] text-[rgba(0,0,0,0.7)]' : 'bg-[#f7f7f7] text-[rgba(0,0,0,0.45)]'}`}>
+          <li className={`wk-vc-agent-selector-33 ${imageUpload ? 'wk-vc-agent-selector-34' : 'wk-vc-agent-selector-35'}`}>
             <span>{copy.agentCapImageUpload}</span>
             <span>{imageUpload ? copy.agentCapSupported : copy.agentCapUnsupported}</span>
           </li>

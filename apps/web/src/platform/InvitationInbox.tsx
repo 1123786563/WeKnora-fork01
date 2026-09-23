@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TenantInvitation, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Button, Dialog, Status } from '@weknora/ui';
+// S6 换装（T15 前置）：packages/ui 旧栈 表单栈离开——Button 换 tdesign
+// （playbook §1：variant="primary" → theme="primary"；size small 直译）；
+// Status 无 TDesign 对应，走 shared/wk-legacy（.wk-status 族，渲染不变）。
+// 弹层同走 WkDialog（DOM 同构旧栈：铃铛弹层为点击后表面、不在七页扫描锚点
+// 内，tdesign Dialog 的 Portal+CSSTransition 在 node/jsdom 下退场计时器
+// 不触发会造成测试假挂，WkDialog 渲染树与迁移前逐节点一致）。布局不动。
+import { Button as TButton } from 'tdesign-react';
+import { WkDialog as Dialog, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { usePreferredLocale } from '../locale.ts';
+import './platform-u.css';
 
 type Client = WeKnoraClient;
 
@@ -101,31 +109,31 @@ export function InvitationInbox({ client }: InvitationInboxProps) {
   }, [actingId]);
 
   return <>
-    {pendingCount > 0 ? <span className="fixed right-4 top-3 z-[100] inline-flex" data-testid="global-invitation-bell-wrap">
+    {pendingCount > 0 ? <span className="wk-inv-1" data-testid="global-invitation-bell-wrap">
       <button
         type="button"
         data-testid="global-invitation-bell"
         aria-label={message(locale, 'auth.workspaceOnboarding.invitations')}
         title={message(locale, 'auth.workspaceOnboarding.invitations')}
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-line bg-surface text-muted shadow-[0_2px_6px_rgba(0,0,0,0.04)] hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+        className="wk-inv-bell wk-inv-2"
         onClick={() => setOpen(true)}
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" />
         </svg>
-        <span className="absolute -right-2 -top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-danger px-1 text-[11px] leading-5 text-white" aria-label={`${pendingCount}`}>{pendingCount > 99 ? '99+' : pendingCount}</span>
+        <span className="wk-inv-3" aria-label={`${pendingCount}`}>{pendingCount > 99 ? '99+' : pendingCount}</span>
       </button>
     </span> : null}
-    <Dialog open={open} title={message(locale, 'auth.workspaceOnboarding.invitations')} onClose={closeDialog} closeLabel={message(locale, 'auth.workspaceOnboarding.close')} className="w-[min(560px,100%)]!">
+    <Dialog open={open} title={message(locale, 'auth.workspaceOnboarding.invitations')} onClose={closeDialog} closeLabel={message(locale, 'auth.workspaceOnboarding.close')} className="wk-inv-4">
       {invitations === null && !loadError ? <Status>{message(locale, 'auth.workspaceOnboarding.loadingInvitations')}</Status> : null}
-      {loadError ? <div className="grid gap-2"><Status tone="error">{loadError}</Status><Button type="button" data-action="retry-invitations" onClick={() => void loadInvitations()}>{message(locale, 'auth.workspaceOnboarding.retry')}</Button></div> : null}
+      {loadError ? <div className="wk-inv-5"><Status tone="error">{loadError}</Status><TButton type="button" data-action="retry-invitations" onClick={() => void loadInvitations()}>{message(locale, 'auth.workspaceOnboarding.retry')}</TButton></div> : null}
       {actionError ? <Status tone="error">{actionError}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {invitations && invitations.length === 0 && !loadError ? <Status>{message(locale, 'tenantInvitation.myInbox.empty')}</Status> : null}
-      {invitations && invitations.length > 0 ? <ul className="m-0 grid max-h-[60vh] list-none gap-2 overflow-y-auto p-0">
-        {invitations.map((invitation) => <li key={invitation.id} data-testid="invitation-row" className="flex items-center justify-between gap-3 rounded-control border border-line bg-surface p-3">
-          <div className="min-w-0"><strong className="block">{invitation.tenant_name || `#${invitation.tenant_id}`}</strong><span className="text-xs text-muted">{inviterDisplay(invitation)} · {invitation.role}</span>{invitation.message ? <span className="mt-1 block text-xs text-muted">{invitation.message}</span> : null}</div>
-          <div className="flex shrink-0 flex-col gap-1"><Button type="button" variant="primary" size="small" data-action="accept" loading={actingId === invitation.id} disabled={actingId !== null} onClick={() => void respond(invitation, true)}>{message(locale, 'tenantInvitation.myInbox.acceptButton')}</Button><Button type="button" size="small" loading={actingId === invitation.id} disabled={actingId !== null} data-action="decline" onClick={() => void respond(invitation, false)}>{message(locale, 'tenantInvitation.myInbox.declineButton')}</Button></div>
+      {invitations && invitations.length > 0 ? <ul className="wk-inv-6">
+        {invitations.map((invitation) => <li key={invitation.id} data-testid="invitation-row" className="wk-inv-7">
+          <div className="wk-inv-8"><strong className="wk-inv-9">{invitation.tenant_name || `#${invitation.tenant_id}`}</strong><span className="wk-inv-10">{inviterDisplay(invitation)} · {invitation.role}</span>{invitation.message ? <span className="wk-inv-11">{invitation.message}</span> : null}</div>
+          <div className="wk-inv-12"><TButton type="button" theme="primary" size="small" data-action="accept" loading={actingId === invitation.id} disabled={actingId !== null} onClick={() => void respond(invitation, true)}>{message(locale, 'tenantInvitation.myInbox.acceptButton')}</TButton><TButton type="button" size="small" loading={actingId === invitation.id} disabled={actingId !== null} data-action="decline" onClick={() => void respond(invitation, false)}>{message(locale, 'tenantInvitation.myInbox.declineButton')}</TButton></div>
         </li>)}
       </ul> : null}
     </Dialog>

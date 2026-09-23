@@ -4,7 +4,6 @@ packages:
   - packages/domain
   - packages/mobile-core
   - packages/core
-  - packages/ui
   - packages/design-tokens
   - packages/i18n
   - packages/views

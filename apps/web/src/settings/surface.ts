@@ -5,6 +5,8 @@ declare const __FRONTEND_VERSION__: string | undefined;
 declare const __FRONTEND_COMMIT__: string | undefined;
 const uiVersion = typeof __FRONTEND_VERSION__ === "string" && __FRONTEND_VERSION__ ? __FRONTEND_VERSION__ : "unknown";
 const uiCommit = typeof __FRONTEND_COMMIT__ === "string" && __FRONTEND_COMMIT__ ? __FRONTEND_COMMIT__ : "unknown";
+// T12c SystemInfoPanel 版本漂移标签（SystemInfo.vue:57-63）复用同一注入源。
+export const uiBuild: { version: string; commit: string } = { version: uiVersion, commit: uiCommit };
 import { validatePassword } from '@weknora/domain/auth/password-policy';
 import { formatMessage, type Locale } from '@weknora/i18n';
 

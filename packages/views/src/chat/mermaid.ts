@@ -122,13 +122,16 @@ export const MERMAID_DARK_THEME_VARIABLES = Object.freeze({
   fontSize: '14px',
 });
 
+/** Union of the frozen light/dark theme-variable mirrors (mermaidShared.ts). */
+export type MermaidThemeVariables = typeof MERMAID_LIGHT_THEME_VARIABLES | typeof MERMAID_DARK_THEME_VARIABLES;
+
 /** resolveMermaidThemeVariables: theme-mode attribute on <html> decides. */
-export function resolveMermaidThemeVariables(themeMode?: string | null): typeof MERMAID_LIGHT_THEME_VARIABLES {
+export function resolveMermaidThemeVariables(themeMode?: string | null): MermaidThemeVariables {
   return themeMode === 'dark' ? MERMAID_DARK_THEME_VARIABLES : MERMAID_LIGHT_THEME_VARIABLES;
 }
 
 export interface MermaidEngine {
-  initialize(config: typeof MERMAID_RENDER_CONFIG): void;
+  initialize(config: typeof MERMAID_RENDER_CONFIG & { themeVariables?: MermaidThemeVariables }): void;
   render(id: string, source: string): Promise<{ svg: string }>;
 }
 

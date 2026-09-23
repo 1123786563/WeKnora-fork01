@@ -6,7 +6,7 @@ import type { ChatStreamEvent, MessageSuggestionSet } from '@weknora/contracts';
 import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE } from '@weknora/views/embed/bridge';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 
-import { Button } from '../../../packages/ui/src/button.tsx';
+import { Button } from './button.tsx'; // T15：packages/ui 退役，本地 1:1 生效值复刻
 import { attachmentUploadsFromFiles, embedAssistantLabel, embedMessageError, embedUploadLabel, formatEmbedConversationTimestamp, formatEmbedFileSize, imageDataUrisFromFiles, partitionUploadFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, shouldRenderEmbedChatSurface, shouldShowEmbedTimestamp, shouldSubmitEmbedKey, sourceListFromReferences, translate } from './embed-ui.ts';
 import { channelIdFromPath, parentOriginFromReferrer, readStoredSession, readVisitorId, writeStoredSession } from './bootstrap.ts';
 

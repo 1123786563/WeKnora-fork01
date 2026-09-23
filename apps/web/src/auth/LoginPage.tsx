@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { AuthSession, InvitationLookup, WeKnoraClient } from '@weknora/api-client';
 import { validateLogin, validateRegister, type FieldErrors } from './validation.ts';
 import { landingModeForInvite, storePendingInviteToken } from './invite-flow.ts';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
-import { Input } from '@weknora/ui';
+import { Button, Form, Input } from 'tdesign-react';
+import { LinkIcon } from 'tdesign-icons-react';
 
 const LANGUAGE_OPTIONS: { value: Locale; label: string; shortLabel: string; flag: string }[] = [
   { value: 'zh-CN', label: '简体中文', shortLabel: '中文', flag: '🇨🇳' },
@@ -17,7 +18,7 @@ import screenshot1 from './assets/screenshot-1.svg';
 import screenshot2 from './assets/screenshot-2.svg';
 import screenshot3 from './assets/screenshot-3.svg';
 import screenshot4 from './assets/screenshot-4.svg';
-import './auth.css'; // 仅保留 nodePulse / lineFlow @keyframes（复杂动画按约定保留 CSS）
+import './login.td.css';
 
 export interface LoginPageProps {
   client: WeKnoraClient;
@@ -41,12 +42,7 @@ const SLIDES = [
 
 const LOCALE_STORAGE_KEY = 'locale';
 
-// 装饰背景节点/连线的定位与延迟（原 auth.css .node-1..12 / .line-1..12）
-const AUTH_NODE_PLACEMENT = [
-  'top-[15%] left-[20%]', 'top-[25%] left-[35%]', 'top-[20%] left-[55%]', 'top-[30%] left-[75%]',
-  'top-[45%] left-[25%]', 'top-[50%] left-[45%]', 'top-[48%] left-[65%]', 'top-[60%] left-[20%]',
-  'top-[12%] right-[15%]', 'top-[38%] right-[10%]', 'top-[70%] left-[40%]', 'top-[65%] left-[80%]',
-] as const;
+// 装饰背景节点/连线的定位与延迟（Vue Login.vue .node-1..12 / .line-1..12，样式在 login.td.css §1）
 const AUTH_NODE_DELAYS = ['0s', '.5s', '1s', '1.5s', '2s', '2.5s', '3s', '.3s', '1.8s', '2.3s', '.8s', '1.3s'] as const;
 const AUTH_LINE_DELAYS = ['0s', '.5s', '1s', '.3s', '.8s', '1.3s', '1.8s', '2.3s', '.2s', '.7s', '.9s', '1.5s'] as const;
 
@@ -66,7 +62,6 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [state, setState] = useState<'idle' | 'loading' | 'error' | 'success'>(initialError ? 'error' : 'idle');
@@ -93,6 +88,23 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [slideIndex, setSlideIndex] = useState(0);
   const slideTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Vue Swiper 为每个 slide 写入以容器实测宽度为值的 inline width（probe 实测
+  // `width: 600px`）。该 inline 像素宽参与 .showcase-section（flex: 0 0 52%，
+  // 不收缩）的 min-content 钳制——百分比宽没有这一固有贡献，必须同款实测。
+  // Swiper 内部用 ResizeObserver 跟随容器；这里同款：首帧容器被外层钳制前偏窄，
+  // 一次性测量会定格在中间值（实测 586≠600），必须观察后续尺寸变化到稳定。
+  const [slideWidth, setSlideWidth] = useState(0);
+  const swiperRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = swiperRef.current;
+    if (!el) return;
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(() => { setSlideWidth(el.clientWidth); });
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+    setSlideWidth(el.clientWidth); // jsdom 等无 RO 环境退化为一次性测量
+  }, []);
 
   // Vue Swiper autoplay { delay: 4000, effect: fade }
   useEffect(() => {
@@ -164,8 +176,8 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
     }
   }
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submit(event?: { preventDefault?: () => void }) {
+    event?.preventDefault?.();
     setMessage('');
     if (mode === 'register') {
       const errors = validateRegister({ username, email, password, confirmPassword }, complexPasswordEnabled);
@@ -238,16 +250,45 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
     }
   }
 
+  function toggleMode() {
+    // Vue toggleMode (Login.vue:509-515) — flips the card and clears register fields.
+    setMode((current) => (current === 'register' ? 'login' : 'register'));
+    setState('idle');
+    setMessage('');
+    setFieldErrors({});
+    setUsername(''); setPassword(''); setConfirmPassword('');
+  }
+
   const loading = state === 'loading';
   const registrationEnabled = !registrationLoaded || registrationMode !== 'invite_only';
   const inviteMode = inviteToken && invite ? landingModeForInvite(registrationMode) : mode;
   const isRegister = inviteMode === 'register';
   const currentLang = LANGUAGE_OPTIONS.find((option) => option.value === locale) ?? LANGUAGE_OPTIONS[0];
-  const fieldError = (field: string) => (fieldErrors[field] ?? []).map((key) => (
-    <span key={key} className="text-xs text-[#d54941]">{t(key)}</span>
-  ));
+  const fieldError = (field: string): ReactNode => (fieldErrors[field] ?? []).length
+    ? <span id={`auth-${field}-error`} role="alert" className="auth-field-error">{(fieldErrors[field] ?? []).map((key) => t(key)).join(' ')}</span>
+    : null;
   const fieldErrorId = (field: string) => `auth-${field}-error`;
   const hasFieldError = (field: string) => Boolean(fieldErrors[field]?.length);
+  // aria 属性经 tdesign-react Input 透传到 .t-input__wrap 容器（Input 内层
+  // input 只接收固定 props；见 tdesign-react/es/input/Input.js renderInput）。
+  const ariaFor = (field: string) => ({
+    'aria-invalid': hasFieldError(field) ? ('true' as const) : undefined,
+    'aria-describedby': hasFieldError(field) ? fieldErrorId(field) : undefined,
+  });
+
+  // Vue t-form data + v-model 绑定：React 侧由 Form onValuesChange 回写 state。
+  const onLoginValuesChange = (changed: Record<string, unknown>) => {
+    if ('email' in changed) setEmail(String(changed.email ?? ''));
+    if ('password' in changed) setPassword(String(changed.password ?? ''));
+    setFieldErrors({});
+  };
+  const onRegisterValuesChange = (changed: Record<string, unknown>) => {
+    if ('username' in changed) setUsername(String(changed.username ?? ''));
+    if ('email' in changed) setEmail(String(changed.email ?? ''));
+    if ('password' in changed) setPassword(String(changed.password ?? ''));
+    if ('confirmPassword' in changed) setConfirmPassword(String(changed.confirmPassword ?? ''));
+    setFieldErrors({});
+  };
 
   // Animated background nodes/lines (Vue Login.vue:3-96)
   const nodeIcons = [
@@ -269,74 +310,98 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
     [20, 15, 20, 60], [55, 20, 45, 50], [65, 48, 90, 38], [40, 70, 75, 80], [35, 25, 25, 45], [75, 30, 65, 48],
   ];
 
-  return <div className="[--auth-brand:#07C05F] [--auth-text-anti:#ffffff] [--auth-font:-apple-system,'system-ui','Segoe_UI',Roboto,'Helvetica_Neue','PingFang_SC','Hiragino_Sans_GB','Microsoft_YaHei',sans-serif] relative flex w-full min-h-screen overflow-hidden bg-[linear-gradient(225deg,#022c22_0%,#064e3b_15%,#065f46_25%,#047857_38%,#059669_50%,#07C05F_65%,#10B981_78%,#34D399_90%,#6EE7B7_100%)] [font-family:var(--auth-font)] before:pointer-events-none before:absolute before:inset-0 before:content-[''] before:bg-[radial-gradient(circle_at_20%_50%,rgba(255,255,255,0.06)_0%,transparent_50%),radial-gradient(circle_at_80%_50%,rgba(255,255,255,0.04)_0%,transparent_50%)]">
-      {toast ? <div data-testid="auth-toast" role="alert" className="fixed left-1/2 top-8 z-[2500] flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md bg-white px-[18px] py-2.5 text-sm shadow-[0_6px_16px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)]"><span className={toast.tone === 'error' ? 'text-[#d54941]' : 'text-[#0a8f4c]'}>{toast.text}</span></div> : null}
-    <div className="pointer-events-none absolute inset-0 z-[1] overflow-hidden" aria-hidden="true">
+  // Vue <swiper effect="fade" crossFade :speed="800">（Login.vue:159-171）——
+  // React 端不引 swiper 依赖，手写复刻其渲染 DOM（.swiper/.swiper-wrapper/
+  // .swiper-slide + inline width/opacity/translate3d，分页 span 结构同
+  // swiper/modules/pagination.css；结构基础样式在 login.td.css §3）。
+  const slideStyle = (index: number): CSSProperties => ({
+    width: slideWidth ? `${slideWidth}px` : undefined,
+    opacity: index === slideIndex ? 1 : 0,
+    transform: `translate3d(${-index * 100}%, 0px, 0px)`,
+  });
+
+  const inviteBanner = (hintKey: string) => invite ? (
+    <div className="invite-banner">
+      <LinkIcon className="invite-banner__icon" />
+      <div className="invite-banner__text">
+        <div className="invite-banner__title">{t('inviteRegister.bannerTitle', { tenant: invite.tenantName || '' })}</div>
+        <div className="invite-banner__hint">{t(hintKey)}</div>
+      </div>
+    </div>
+  ) : null;
+
+  return <div className="login-layout">
+      {toast ? <div data-testid="auth-toast" role="alert" className="auth-toast"><span className={toast.tone === 'error' ? 'auth-toast__text auth-toast__text--error' : 'auth-toast__text auth-toast__text--success'}>{toast.text}</span></div> : null}
+    <div className="animated-bg" aria-hidden="true">
       {nodeIcons.map((icon, index) => (
-        <div key={index} className={`absolute flex h-10 w-10 items-center justify-center rounded-full border-2 border-[rgba(255,255,255,0.3)] bg-[rgba(255,255,255,0.15)] shadow-[0_0_15px_rgba(255,255,255,0.35),0_0_30px_rgba(16,185,129,0.2),inset_0_0_8px_rgba(255,255,255,0.1)] will-change-[transform,opacity] animate-[nodePulse_5s_infinite_ease-in-out] motion-reduce:animate-none motion-reduce:opacity-65 ${AUTH_NODE_PLACEMENT[index]} [animation-delay:${AUTH_NODE_DELAYS[index]}]`}>
-          <svg className="h-5 w-5 text-[rgba(255,255,255,0.9)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{icon}</svg>
+        <div key={index} className={`knowledge-node node-${index + 1}`} style={{ animationDelay: AUTH_NODE_DELAYS[index] }}>
+          <svg className="node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{icon}</svg>
         </div>
       ))}
-      <svg className="absolute inset-0 h-full w-full opacity-[0.35]" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <svg className="knowledge-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
         {lines.map(([x1, y1, x2, y2], index) => (
-          <line key={index} className={`animate-[lineFlow_10s_infinite_linear] motion-reduce:animate-none [stroke:rgba(255,255,255,0.5)] [stroke-width:1.5] [stroke-dasharray:6_3] [stroke-linecap:round] [animation-delay:${AUTH_LINE_DELAYS[index]}]`} x1={x1} y1={y1} x2={x2} y2={y2} />
+          <line key={index} className={`connection-line line-${index + 1}`} style={{ animationDelay: AUTH_LINE_DELAYS[index] }} x1={x1} y1={y1} x2={x2} y2={y2} />
         ))}
       </svg>
     </div>
 
-    <a href="https://github.com/Tencent/WeKnora" target="_blank" rel="noreferrer" className="fixed left-[50px] top-8 z-[100] cursor-pointer max-[768px]:left-6 max-[768px]:top-5" title={t('common.github')}>
-      <img src={weknoraLogo} alt="WeKnora" className="h-auto w-[120px] max-[768px]:w-[90px]" />
+    <a href="https://github.com/Tencent/WeKnora" target="_blank" rel="noreferrer" className="header-logo" title={t('common.github')}>
+      <img src={weknoraLogo} alt="WeKnora" className="logo-image" />
     </a>
 
-    <div className="fixed right-7 top-7 z-[100] flex items-center gap-2.5 max-[768px]:right-4 max-[768px]:top-4">
-      <a href="https://weknora.weixin.qq.com" target="_blank" rel="noreferrer" className="relative flex cursor-pointer items-center gap-[7px] rounded-[20px] border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.2)] px-[15px] py-[9px] text-[13px] font-semibold tracking-[0.2px] text-(--auth-text-anti) no-underline hover:border-[rgba(255,255,255,0.4)] hover:bg-[rgba(255,255,255,0.3)] [&_svg]:shrink-0" title={t('common.website')}>
+    <div className="header-links">
+      <a href="https://weknora.weixin.qq.com" target="_blank" rel="noreferrer" className="header-link" title={t('common.website')}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
         <span className="link-text">{t('common.website')}</span>
       </a>
-      <a href="https://github.com/Tencent/WeKnora" target="_blank" rel="noreferrer" className="relative flex cursor-pointer items-center gap-[7px] rounded-[20px] border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.2)] px-[15px] py-[9px] text-[13px] font-semibold tracking-[0.2px] text-(--auth-text-anti) no-underline hover:border-[rgba(255,255,255,0.4)] hover:bg-[rgba(255,255,255,0.3)] [&_svg]:shrink-0" title={t('common.info')}>
+      <a href="https://github.com/Tencent/WeKnora" target="_blank" rel="noreferrer" className="header-link" title={t('common.info')}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
         <span className="link-text">GitHub</span>
       </a>
-      <div className="language-switch relative">
-        <button type="button" className="auth-language-control relative flex cursor-pointer items-center gap-[7px] rounded-[20px] border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.2)] px-[15px] py-[9px] text-[13px] font-semibold tracking-[0.2px] text-(--auth-text-anti) [font-family:var(--auth-font)] no-underline hover:border-[rgba(255,255,255,0.4)] hover:bg-[rgba(255,255,255,0.3)] [&_svg]:shrink-0" title={currentLang.label} aria-haspopup="menu" aria-expanded={showLanguageMenu} onKeyDown={(event) => { if (event.key === 'Escape') setShowLanguageMenu(false); }} onClick={() => setShowLanguageMenu((visible) => !visible)}>
-          <span className="shrink-0 text-base leading-none">{currentLang.flag}</span>
+      <div className="language-switch">
+        <button type="button" className="header-link" title={currentLang.label} aria-haspopup="menu" aria-expanded={showLanguageMenu} onKeyDown={(event) => { if (event.key === 'Escape') setShowLanguageMenu(false); }} onClick={() => setShowLanguageMenu((visible) => !visible)}>
+          <span className="lang-flag-icon">{currentLang.flag}</span>
           <span className="link-text">{currentLang.shortLabel}</span>
-          <svg className="ml-0.5 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
         </button>
-        {showLanguageMenu ? <div role="menu" className="absolute right-0 top-[calc(100%+8px)] z-[1000] min-w-[160px] overflow-hidden rounded-lg border border-[#e7e7e7] bg-[rgba(255,255,255,0.97)] shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
+        {showLanguageMenu ? <div role="menu" className="language-dropdown">
           {LANGUAGE_OPTIONS.map((option) => (
-            <button key={option.value} type="button" role="menuitem" className={`flex w-full cursor-pointer items-center gap-2.5 border-0 bg-transparent px-[14px] py-2.5 text-left text-[13px] text-[#1a1a1a] hover:bg-[#f3f3f3] ${option.value === locale ? 'bg-[#e3f9e9] text-[#04a04c]' : ''}`} onClick={() => selectLanguage(option.value)}>
-              <span className="shrink-0 text-base">{option.flag}</span>
-              <span className="flex-1">{option.label}</span>
-              {option.value === locale ? <span className="shrink-0 text-sm font-bold text-[#07C05F]">✓</span> : null}
-            </button>
+            <div key={option.value} role="menuitem" tabIndex={0} className={`language-option${option.value === locale ? ' active' : ''}`} onClick={() => selectLanguage(option.value)} onKeyDown={(event) => { if (event.key === 'Enter') selectLanguage(option.value); }}>
+              <span className="lang-flag">{option.flag}</span>
+              <span className="lang-label">{option.label}</span>
+              {option.value === locale ? <span className="check-icon">✓</span> : null}
+            </div>
           ))}
         </div> : null}
       </div>
     </div>
 
-    <div className="relative box-border flex min-w-[680px] flex-[0_0_52%] items-end py-[100px] pl-[50px] pr-[30px] max-[1024px]:min-w-0 max-[1024px]:flex-[0_0_100%] max-[1024px]:pt-[90px] max-[1024px]:px-6 max-[1024px]:pb-5 max-[768px]:pt-20 max-[768px]:px-4 max-[768px]:pb-2.5">
-      <div className="relative z-[2] mb-[60px] flex w-full max-w-[600px] flex-col max-[1024px]:mb-6">
-        <p className="m-0 mb-2 text-[22px] font-medium leading-[1.4] text-[rgba(255,255,255,0.95)]">{t('platform.subtitle')}</p>
-        <p className="m-0 mb-7 text-[15px] leading-[1.5] text-[rgba(255,255,255,0.8)]">{t('platform.description')}</p>
-        <div className="mb-10 flex flex-wrap gap-3">
-          <span className="inline-block rounded-[20px] bg-[rgba(255,255,255,0.2)] px-5 py-2 text-sm font-medium text-(--auth-text-anti)">{t('platform.rag')}</span>
-          <span className="inline-block rounded-[20px] bg-[rgba(255,255,255,0.2)] px-5 py-2 text-sm font-medium text-(--auth-text-anti)">{t('platform.agent')}</span>
-          <span className="inline-block rounded-[20px] bg-[rgba(255,255,255,0.2)] px-5 py-2 text-sm font-medium text-(--auth-text-anti)">{t('platform.wiki')}</span>
-          <span className="inline-block rounded-[20px] bg-[rgba(255,255,255,0.2)] px-5 py-2 text-sm font-medium text-(--auth-text-anti)">{t('platform.hybridSearch')}</span>
+    <div className="showcase-section">
+      <div className="showcase-content">
+        <p className="showcase-subtitle">{t('platform.subtitle')}</p>
+        <p className="showcase-description">{t('platform.description')}</p>
+
+        <div className="feature-tags">
+          <span className="tag">{t('platform.rag')}</span>
+          <span className="tag">{t('platform.agent')}</span>
+          <span className="tag">{t('platform.wiki')}</span>
+          <span className="tag">{t('platform.hybridSearch')}</span>
         </div>
-        <div className="mt-12 w-full">
-          <div className="relative grid w-full overflow-hidden rounded-2xl pb-10 shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
-            {SLIDES.map((slide, index) => (
-              <div key={slide.titleKey} className={`col-start-1 row-start-1 flex items-center justify-center bg-white opacity-0 transition-opacity duration-[800ms] ease-in-out ${index === slideIndex ? 'opacity-100' : ''}`}>
-                <img src={slide.image} alt={t(slide.titleKey)} className="block h-full w-full object-contain" />
-              </div>
-            ))}
-            <div className="absolute bottom-[15px] left-0 right-0 z-10 flex items-center justify-center">
+
+        <div className="carousel-container">
+          <div ref={swiperRef} className="swiper swiper-fade swiper-horizontal swiper-initialized screenshot-swiper">
+            <div className="swiper-wrapper">
               {SLIDES.map((slide, index) => (
-                <button key={slide.titleKey} type="button" aria-label={t(slide.titleKey)}
-                  className={`mx-1.5 h-2.5 w-2.5 cursor-pointer rounded-[5px] border-0 bg-[rgba(255,255,255,0.5)] p-0 opacity-100 transition-all duration-300 ${index === slideIndex ? 'w-7 bg-white' : ''}`}
-                  onClick={() => setSlideIndex(index)} />
+                <div key={slide.titleKey} className={`swiper-slide${index === 0 ? ' swiper-slide-active' : ''}`} style={slideStyle(index)}>
+                  <div className="slide-content">
+                    <img src={slide.image} alt={t(slide.titleKey)} className="slide-image" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="swiper-pagination swiper-pagination-clickable swiper-pagination-bullets swiper-pagination-horizontal">
+              {SLIDES.map((slide, index) => (
+                <span key={slide.titleKey} className={`swiper-pagination-bullet${index === slideIndex ? ' swiper-pagination-bullet-active' : ''}`} aria-label={t(slide.titleKey)} title={t(slide.titleKey)} onClick={() => setSlideIndex(index)} />
               ))}
             </div>
           </div>
@@ -344,100 +409,123 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
       </div>
     </div>
 
-    <div className="relative box-border flex flex-[0_0_48%] items-end justify-center pt-[112px] pr-[50px] pb-[100px] pl-[30px] max-[1024px]:flex-[0_0_100%] max-[1024px]:pt-2.5 max-[1024px]:px-6 max-[1024px]:pb-[60px] max-[768px]:px-4 max-[768px]:pb-12">
-      <div className="relative z-[2] mb-[60px] mt-[19px] w-full max-w-[480px]">
-        {invite && !isRegister ? <div className="mb-[18px] flex items-center gap-2.5 rounded-[10px] border border-[#b7e8c9] bg-[#f0fbf4] px-4 py-3">
-          <div>
-            <div className="text-sm font-semibold text-[#1a1a1a]">{t('inviteRegister.bannerTitle', { tenant: invite.tenantName || '' })}</div>
-            <div className="mt-0.5 text-[13px] text-[#666]">{t('inviteRegister.bannerHintLogin')}</div>
+    <div className="form-section">
+      <div className="form-panel">
+        {!isRegister ? <div className="form-card">
+          {/* invite_only 模式下共享链接停在登录卡，同样需要邀请上下文（Login.vue:180-194）。 */}
+          {inviteBanner('inviteRegister.bannerHintLogin')}
+          {inviteError ? <div className="invite-banner invite-banner--error">{inviteError}</div> : null}
+          <div className="form-header">
+            <h2 className="form-title">{t('auth.login')}</h2>
+            <p className="form-welcome">{t('auth.subtitle')}</p>
+            {registrationEnabled ? <p className="form-hint">{t('auth.loginHint')}</p> : null}
           </div>
-        </div> : null}
-        {invite && isRegister ? <div className="mb-[18px] flex items-center gap-2.5 rounded-[10px] border border-[#b7e8c9] bg-[#f0fbf4] px-4 py-3">
-          <div>
-            <div className="text-sm font-semibold text-[#1a1a1a]">{t('inviteRegister.bannerTitle', { tenant: invite.tenantName || '' })}</div>
-            <div className="mt-0.5 text-[13px] text-[#666]">{t('inviteRegister.bannerHint')}</div>
-          </div>
-        </div> : null}
-        {inviteError ? <div className="mb-[18px] flex items-center gap-2.5 rounded-[10px] border border-[#f5c2c2] bg-[#fdf0f0] px-4 py-3 text-[#d54941]">{inviteError}</div> : null}
 
-        {!isRegister ? <div className="box-border w-full rounded-2xl border-0 bg-[rgba(255,255,255,0.97)] p-10 shadow-[0_10px_40px_rgba(0,0,0,0.15)] max-[768px]:p-5">
-          <div className="mb-8 text-center">
-            <h2 className="m-0 mb-1.5 text-2xl font-semibold leading-[normal] text-[rgba(0,0,0,0.9)]">{t('auth.login')}</h2>
-            <p className="m-0 text-[13px] leading-[18px] text-[rgba(0,0,0,0.7)]">{t('auth.subtitle')}</p>
-            {registrationEnabled ? <p className="mt-2.5 mb-0 rounded-lg bg-[#e9fbf0] px-3 py-2 text-[12.5px] leading-[1.5] text-[#07C05F]">{t('auth.loginHint')}</p> : null}
-          </div>
-          <form className="flex flex-col gap-[31px] pt-[11px]" onSubmit={submit} aria-label="Login form">
-            <label className="flex flex-col gap-2">
-              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
-              <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]">
-                <Input id="auth-email" aria-invalid={hasFieldError('email')} aria-describedby={hasFieldError('email') ? fieldErrorId('email') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} />
-              </div>
-              {hasFieldError('email') ? <span id={fieldErrorId('email')} role="alert">{fieldError('email')}</span> : null}
-            </label>
-            <label className="flex flex-col gap-2">
-              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
-              <span className="auth-input-shell relative flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input id="auth-password" aria-invalid={hasFieldError('password')} aria-describedby={hasFieldError('password') ? fieldErrorId('password') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 pr-8 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={password} onChange={(event) => setPassword(event.target.value)} type={showLoginPassword ? 'text' : 'password'} autoComplete="current-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} /><button type="button" className="absolute right-3 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[#87909d]" aria-label={t('auth.password')} aria-pressed={showLoginPassword} onClick={() => setShowLoginPassword((visible) => !visible)}>{/* Vue 密码未显示时是斜杠眼（eye-off），显示后才切换成睁眼 */}
-{showLoginPassword ? <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2.5 12s3.4-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.4 5.5-9.5 5.5S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /></svg> : <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2.5 12s3.4-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.4 5.5-9.5 5.5S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /><line x1="4" y1="20" x2="20" y2="4" /></svg>}</button></span>
-              {hasFieldError('password') ? <span id={fieldErrorId('password')} role="alert">{fieldError('password')}</span> : null}
-            </label>
-            <button type="submit" className="mt-[-10px] h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.loggingIn') : t('auth.login')}</button>
-            {registrationEnabled ? <div>
-              {/* Vue .register-cta__divider (Login.vue:1427-1450): centred text
-                  over a full-width rule, then the outline CTA. */}
-              <div className="relative mb-[-1px] text-center text-[13px] leading-[22px] text-[rgba(0,0,0,0.7)] before:absolute before:inset-x-0 before:top-1/2 before:border-t before:border-[#e7e7e7] before:content-['']">
-                <span className="relative z-[1] bg-[rgba(255,255,255,0.97)] px-3">{t('auth.firstTime')}</span>
-              </div>
-              <button type="button" className="h-[46px] w-full cursor-pointer rounded-lg border border-(--auth-brand) bg-white text-[15px] text-(--auth-brand) [font-family:var(--auth-font)] hover:bg-[#e9fbf0] hover:border-(--auth-brand) hover:text-(--auth-brand) disabled:cursor-not-allowed disabled:opacity-60" disabled={loading} onClick={() => { setMode('register'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.createAccount')}</button>
-            </div> : null}
-            {oidcEnabled ? <div className="mb-3 mt-4 text-center text-[13px] text-[#999]"><span>{t('auth.orContinueWith')}</span></div> : null}
-            {oidcEnabled ? <button type="button" className="h-[46px] w-full cursor-pointer rounded-lg border border-[#dcdcdc] bg-white text-[15px] text-[#1a1a1a] [font-family:var(--auth-font)] hover:border-(--auth-brand) hover:text-(--auth-brand) disabled:cursor-not-allowed disabled:opacity-60" disabled={oidcLoading || loading} onClick={() => void startOIDC()}>{oidcLoading ? t('auth.redirectingToOIDC') : oidcProvider ? t('auth.oidcLoginWithProvider', { provider: oidcProvider }) : t('auth.oidcLogin')}</button> : null}
-          </form>
-          <div className="mt-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.multimodalParsing')}</span></div>
-            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.hybridSearchEngine')}</span></div>
-            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.ragQandA')}</span></div>
-          </div>
-        </div> : null}
+          <div className="form-content">
+            <Form labelAlign="top" layout="vertical" onValuesChange={onLoginValuesChange} onSubmit={({ e }) => { void submit(e); }}>
+              <Form.FormItem label={t('auth.email')} name="email" requiredMark initialData="">
+                <Input placeholder={t('auth.emailPlaceholder')} type="text" autocomplete="email" size="large" disabled={loading} {...ariaFor('email')} />
+                {fieldError('email')}
+              </Form.FormItem>
 
-        {isRegister && (registrationEnabled || invite) ? <div className="box-border w-full rounded-2xl border-0 bg-[rgba(255,255,255,0.97)] p-10 shadow-[0_10px_40px_rgba(0,0,0,0.15)] max-[768px]:p-5">
-          <div className="form-header mb-8 text-center">
-            <h2 className="m-0 mb-1.5 text-2xl font-semibold leading-[normal] text-[rgba(0,0,0,0.9)]">{t('auth.createAccount')}</h2>
-            <p className="m-0 text-[13px] leading-[18px] text-[rgba(0,0,0,0.7)]">{t('auth.registerSubtitle')}</p>
-          </div>
-          <form className="flex flex-col gap-[18px] pt-[7px]" onSubmit={submit} aria-label="Register form">
-            <label className="flex flex-col gap-2">
-              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.username')}</span>
-              <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input id="auth-username" aria-invalid={hasFieldError('username')} aria-describedby={hasFieldError('username') ? fieldErrorId('username') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={username} onChange={(event) => setUsername(event.target.value)} disabled={loading} placeholder={t('auth.usernamePlaceholder')} /></div>
-              {hasFieldError('username') ? <span id={fieldErrorId('username')} role="alert">{fieldError('username')}</span> : null}
-            </label>
-            <label className="flex flex-col gap-2">
-              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
-              <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input id="auth-register-email" aria-invalid={hasFieldError('email')} aria-describedby={hasFieldError('email') ? fieldErrorId('email') : undefined} className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} /></div>
-              {hasFieldError('email') ? <span id={fieldErrorId('email')} role="alert">{fieldError('email')}</span> : null}
-            </label>
-            <label className="flex flex-col gap-2">
-              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
-              <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} /></div>
-              {fieldError('password')}
-            </label>
-            <label className="flex flex-col gap-2">
-              <span className="text-sm leading-[17px] font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.confirmPassword')}</span>
-              <div className="auth-input-shell flex h-10 w-full items-center rounded-lg border border-[#dcdcdc] bg-white px-3 transition-colors focus-within:border-(--auth-brand) focus-within:shadow-[0_0_0_3px_rgba(7,192,95,0.1)]"><Input className="auth-input box-border h-6 w-full rounded-none border-0 bg-transparent p-0 text-[15px] leading-6 text-[rgba(0,0,0,0.9)] outline-none [font-family:var(--auth-font)] disabled:cursor-not-allowed disabled:bg-transparent" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" disabled={loading} placeholder={t('auth.confirmPasswordPlaceholder')} /></div>
-              {fieldError('confirmPassword')}
-            </label>
-            <button type="submit" className="mt-[19px] h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.registering') : t('auth.register')}</button>
-            {/* Vue shows the 已有账户？返回登录 footer unconditionally, also on
-                the share-link invite register form. Vue .form-footer carries a
-                bottom rule (Login.vue:1575-1582) separating the features list. */}
-            <div className="mt-4 border-b border-[#e7e7e7] pb-4 text-center text-sm leading-[1.4] text-[rgba(0,0,0,0.7)]">
-              <span>{t('auth.haveAccount')}</span>
-              <a href="#" className="ml-1 cursor-pointer text-sm font-medium text-(--auth-brand) no-underline hover:underline" onClick={(event) => { event.preventDefault(); setMode('login'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.backToLogin')}</a>
+              <Form.FormItem label={t('auth.password')} name="password" requiredMark initialData="">
+                <Input placeholder={t('auth.passwordPlaceholder')} type="password" autocomplete="current-password" size="large" disabled={loading} onEnter={() => { void submit(); }} {...ariaFor('password')} />
+                {fieldError('password')}
+              </Form.FormItem>
+
+              <Button type="submit" theme="primary" size="large" block loading={loading} className="submit-button">
+                {loading ? t('auth.loggingIn') : t('auth.login')}
+              </Button>
+
+              {registrationEnabled ? <div className="register-cta">
+                <div className="register-cta__divider">
+                  <span>{t('auth.firstTime')}</span>
+                </div>
+                <Button theme="default" variant="outline" size="large" block className="register-cta__button" disabled={loading} onClick={toggleMode}>
+                  {t('auth.createAccount')}
+                </Button>
+              </div> : null}
+
+              {oidcEnabled ? <div className="oidc-divider">
+                <span>{t('auth.orContinueWith')}</span>
+              </div> : null}
+
+              {oidcEnabled ? <Button theme="default" size="large" block loading={oidcLoading} disabled={loading} className="oidc-button" onClick={() => void startOIDC()}>
+                {oidcLoading ? t('auth.redirectingToOIDC') : oidcProvider ? t('auth.oidcLoginWithProvider', { provider: oidcProvider }) : t('auth.oidcLogin')}
+              </Button> : null}
+            </Form>
+
+            <div className="login-features">
+              <div className="feature-item">
+                <span className="feature-icon">✓</span>
+                <span className="feature-text">{t('platform.multimodalParsing')}</span>
+              </div>
+              <div className="feature-item">
+                <span className="feature-icon">✓</span>
+                <span className="feature-text">{t('platform.hybridSearchEngine')}</span>
+              </div>
+              <div className="feature-item">
+                <span className="feature-icon">✓</span>
+                <span className="feature-text">{t('platform.ragQandA')}</span>
+              </div>
             </div>
-          </form>
-          <div className="mt-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.independentTenant')}</span></div>
-            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.fullApiAccess')}</span></div>
-            <div className="flex items-center gap-2.5 text-[13px] leading-[1.4] text-[rgba(0,0,0,0.7)]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e9fbf0] text-xs text-(--auth-brand)">✓</span><span>{t('platform.knowledgeBaseManagement')}</span></div>
+          </div>
+        </div> : null}
+
+        {isRegister && (registrationEnabled || invite) ? <div className="form-card">
+          {inviteBanner('inviteRegister.bannerHint')}
+          {inviteError ? <div className="invite-banner invite-banner--error">{inviteError}</div> : null}
+          <div className="form-header">
+            <h2 className="form-title">{t('auth.createAccount')}</h2>
+            <p className="form-subtitle">{t('auth.registerSubtitle')}</p>
+          </div>
+
+          <div className="form-content">
+            <Form labelAlign="top" layout="vertical" onValuesChange={onRegisterValuesChange} onSubmit={({ e }) => { void submit(e); }}>
+              <Form.FormItem label={t('auth.username')} name="username" requiredMark initialData="">
+                <Input placeholder={t('auth.usernamePlaceholder')} size="large" disabled={loading} {...ariaFor('username')} />
+                {fieldError('username')}
+              </Form.FormItem>
+
+              <Form.FormItem label={t('auth.email')} name="email" requiredMark initialData="">
+                <Input placeholder={t('auth.emailPlaceholder')} type="text" autocomplete="email" size="large" disabled={loading} {...ariaFor('email')} />
+                {fieldError('email')}
+              </Form.FormItem>
+
+              <Form.FormItem label={t('auth.password')} name="password" requiredMark initialData="">
+                <Input placeholder={t('auth.passwordPlaceholder')} type="password" autocomplete="new-password" size="large" disabled={loading} {...ariaFor('password')} />
+                {fieldError('password')}
+              </Form.FormItem>
+
+              <Form.FormItem label={t('auth.confirmPassword')} name="confirmPassword" requiredMark initialData="">
+                <Input placeholder={t('auth.confirmPasswordPlaceholder')} type="password" autocomplete="new-password" size="large" disabled={loading} onEnter={() => { void submit(); }} {...ariaFor('confirmPassword')} />
+                {fieldError('confirmPassword')}
+              </Form.FormItem>
+
+              <Button type="submit" theme="primary" size="large" block loading={loading} className="submit-button">
+                {loading ? t('auth.registering') : t('auth.register')}
+              </Button>
+            </Form>
+
+            <div className="form-footer">
+              <span>{t('auth.haveAccount')}</span>
+              <a href="#" className="link-button" onClick={(event) => { event.preventDefault(); toggleMode(); }}>{t('auth.backToLogin')}</a>
+            </div>
+
+            <div className="login-features">
+              <div className="feature-item">
+                <span className="feature-icon">✓</span>
+                <span className="feature-text">{t('platform.independentTenant')}</span>
+              </div>
+              <div className="feature-item">
+                <span className="feature-icon">✓</span>
+                <span className="feature-text">{t('platform.fullApiAccess')}</span>
+              </div>
+              <div className="feature-item">
+                <span className="feature-icon">✓</span>
+                <span className="feature-text">{t('platform.knowledgeBaseManagement')}</span>
+              </div>
+            </div>
           </div>
         </div> : null}
       </div>

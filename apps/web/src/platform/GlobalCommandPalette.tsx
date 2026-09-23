@@ -1,7 +1,9 @@
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Input } from '@weknora/ui';
+// S6 换装（T15 前置）：搜索框离开 packages/ui 旧栈 Input——Vue GlobalCommandPalette.vue:16
+// 本就是原生 <input class="cmdk__input">（视觉规则 wk-cmdk-11 = Vue .cmdk__input），
+// 直接落原生标签，DOM/焦点/键盘语义与测试锚点不变。
 import {
   COMMANDS,
   filterCommands,
@@ -14,6 +16,7 @@ import {
 // R484 D17 — the product-tour command re-opens the welcome guide the same way
 // Vue commands.ts openNewUserGuide() does (contextualGuides.ts event dispatch).
 import { openNewUserGuide } from '@weknora/views';
+import './platform-u.css';
 import {
   usePaletteLiveSearch,
   type PaletteSearchClient,
@@ -139,7 +142,7 @@ function Highlighted({ text, query }: { text: string; query: string }): ReactNod
   return (
     <>
       {highlightSegments(text, query).map((part, index) =>
-        part.hit ? <mark key={index} className="bg-transparent font-semibold text-[#1f2733]">{part.text}</mark> : <span key={index}>{part.text}</span>,
+        part.hit ? <mark key={index} className="wk-cmdk-1">{part.text}</mark> : <span key={index}>{part.text}</span>,
       )}
     </>
   );
@@ -380,17 +383,18 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
       : items.length === 0);
 
   const itemRowClass = (selected: boolean): string =>
-    `cmdk__item flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3.5 py-2 text-left text-sm text-[#1f2733] hover:bg-[#f2f5f9] ${selected ? 'bg-[#f2f5f9]' : ''}`;
+    // T15：旧栈 utility 串语义化为 .wk-cmdk-item-row（含 hover/选中态，platform-u.css）。
+    `cmdk__item wk-cmdk-item-row${selected ? ' wk-cmdk-item-row--selected' : ''}`;
   const shortcutBadge = (digit: number | undefined, selected: boolean): ReactNode =>
     digit !== undefined ? (
-      <span className={`cmdk__item-shortcut inline-flex shrink-0 items-center gap-0.5 text-[10px] text-[rgba(0,0,0,0.4)] transition-opacity duration-100 [&_kbd]:inline-block [&_kbd]:min-w-[14px] [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-1 [&_kbd]:leading-[14px] [&_kbd]:text-center [&_kbd]:text-[rgba(0,0,0,0.6)] ${selected ? 'opacity-100' : 'opacity-55'}`}><kbd>⌘</kbd><kbd>{digit}</kbd></span>
+      <span className={`cmdk__item-shortcut wk-cmdk-36 ${selected ? 'wk-cmdk-37' : 'wk-cmdk-38'}`}><kbd>⌘</kbd><kbd>{digit}</kbd></span>
     ) : null;
 
   const GroupShell = ({ label, count, children }: { label: string; count?: number; children?: ReactNode }): ReactNode => (
-    <div className="border-t border-[#f2f5f9] first:border-t-0">
-      <div className="flex items-center justify-between px-3.5 py-1.5 text-xs text-[#8a94a3]">
+    <div className="wk-cmdk-2">
+      <div className="wk-cmdk-3">
         <span>{label}</span>
-        {typeof count === 'number' && <span className="text-[11px]">{count}</span>}
+        {typeof count === 'number' && <span className="wk-cmdk-4">{count}</span>}
       </div>
       {children}
     </div>
@@ -405,19 +409,19 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-start justify-center bg-[rgba(15,23,32,0.45)] pt-[10vh]"
+      className="wk-cmdk-5"
       role="presentation"
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
     >
-      <div className="cmdk flex max-h-[70vh] w-[640px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-[10px] bg-white shadow-[0_20px_60px_rgba(15,23,32,0.35)]" role="dialog" aria-modal="true" aria-label={t('commandPalette.placeholder')} onKeyDown={onKeyDown}>
-        <div className="flex items-center gap-2 border-b border-[#eef1f5] px-3.5 py-3">
+      <div className="cmdk wk-cmdk-6" role="dialog" aria-modal="true" aria-label={t('commandPalette.placeholder')} onKeyDown={onKeyDown}>
+        <div className="wk-cmdk-7">
           {kbScope && (
-            <span className="cmdk__scope-chip inline-flex h-[26px] max-w-[220px] shrink-0 items-center gap-1.5 rounded bg-[#f2f5f9] px-2 text-xs font-medium text-[#1f2733]" title={kbScope.name}>
-              <span className="truncate">{kbScope.name}</span>
+            <span className="cmdk__scope-chip wk-cmdk-8" title={kbScope.name}>
+              <span className="wk-cmdk-9">{kbScope.name}</span>
               <button
                 type="button"
                 data-cmdk-scope-remove
-                className="flex h-5 w-5 cursor-pointer items-center justify-center border-none bg-transparent text-xs leading-none text-[#8a94a3] hover:text-[#1f2733]"
+                className="wk-cmdk-10"
                 aria-label={t('commandPalette.scope.remove')}
                 title={t('commandPalette.scope.remove')}
                 onClick={clearKbScope}
@@ -426,10 +430,10 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
               </button>
             </span>
           )}
-          <Input
+          <input
             ref={inputRef}
             type="text"
-            className="cmdk__input min-w-0 flex-1 border-none bg-transparent text-[15px] text-[#1f2733] outline-none"
+            className="cmdk__input wk-cmdk-11"
             value={query}
             onChange={(event) => { setQuery(event.target.value); setSelectedIndex(0); }}
             placeholder={kbScope ? t('commandPalette.scope.placeholder') : t('commandPalette.placeholder')}
@@ -437,23 +441,23 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
             autoFocus
           />
           {live.loading && (
-            <span data-cmdk-loading aria-live="polite" className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[#d7dde5] border-t-[#2f6fed]" />
+            <span data-cmdk-loading aria-live="polite" className="wk-cmdk-12" />
           )}
           {retrievalSettings !== null && (
-            <button type="button" data-cmdk-retrieval-trigger className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-base leading-none hover:bg-[#f2f5f9] ${retrievalDrawerVisible ? 'bg-[#f2f5f9] text-[#1f2733]' : 'text-[#8a94a3] hover:text-[#1f2733]'}`} title={t('commandPalette.retrieval')} aria-label={t('commandPalette.retrieval')} onClick={() => setRetrievalDrawerVisible(true)}>
+            <button type="button" data-cmdk-retrieval-trigger className={`wk-cmdk-39 ${retrievalDrawerVisible ? 'wk-cmdk-40' : 'wk-cmdk-41'}`} title={t('commandPalette.retrieval')} aria-label={t('commandPalette.retrieval')} onClick={() => setRetrievalDrawerVisible(true)}>
               ⚙
             </button>
           )}
-          <button type="button" className="cursor-pointer rounded-md border-none bg-transparent px-1.5 py-1 text-lg leading-none text-[#8a94a3] hover:bg-[#f2f5f9] hover:text-[#1f2733]" aria-label={t('commandPalette.hotkey.esc')} onClick={onClose}>
+          <button type="button" className="wk-cmdk-13" aria-label={t('commandPalette.hotkey.esc')} onClick={onClose}>
             ×
           </button>
         </div>
-        <div className="overflow-y-auto py-1.5" ref={resultsRef}>
+        <div className="wk-cmdk-14" ref={resultsRef}>
           {recentCount > 0 && (
-            <div className="border-t border-[#f2f5f9] first:border-t-0">
-              <div className="flex items-center justify-between px-3.5 py-1.5 text-xs text-[#8a94a3]">
+            <div className="wk-cmdk-2">
+              <div className="wk-cmdk-3">
                 <span>{t('commandPalette.group.recent')}</span>
-                <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-xs text-[#2f6fed]" onClick={onClearRecent}>
+                <button type="button" className="wk-cmdk-15" onClick={onClearRecent}>
                   {t('commandPalette.clearRecent')}
                 </button>
               </div>
@@ -468,7 +472,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                     onMouseEnter={() => setSelectedIndex(index)}
                     onClick={() => pickRecent(value)}
                   >
-                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{value}</span>
+                    <span className="wk-cmdk-16">{value}</span>
                     {shortcutBadge(digit, selectedIndex === index)}
                   </button>
                 );
@@ -479,10 +483,10 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
           {/* ── Live search groups (Vue order: chunks → messages → kbs →
               agents → sessions); scoped mode renders chunks only. ── */}
           {trimmed && flatChunkItems.length > 0 && (
-            <div className="border-t border-[#f2f5f9] first:border-t-0">
-              <div className="flex items-center justify-between px-3.5 py-1.5 text-xs text-[#8a94a3]">
+            <div className="wk-cmdk-2">
+              <div className="wk-cmdk-3">
                 <span>{t('commandPalette.group.chunks')}</span>
-                {live.totalChunks > 0 && <span className="text-[11px]">{live.totalChunks}</span>}
+                {live.totalChunks > 0 && <span className="wk-cmdk-4">{live.totalChunks}</span>}
               </div>
               {flatChunkItems.map((item, index) => {
                 const flatIndex = chunkBase + index;
@@ -492,20 +496,20 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                     key={`chunk-${item.file.knowledgeId}-${item.chunk.id}`}
                     type="button"
                     data-cmdk-index={flatIndex}
-                    className={`${itemRowClass(selectedIndex === flatIndex)} flex-col items-start gap-0.5`}
+                    className={`${itemRowClass(selectedIndex === flatIndex)} wk-cmdk-42`}
                     onMouseEnter={() => setSelectedIndex(flatIndex)}
                     onClick={() => runFlat(flatIndex)}
                   >
-                    <span className="flex w-full min-w-0 items-center gap-2">
-                      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">{item.file.title}</span>
-                      {item.file.kbName && <span className="cmdk-chunk-kb shrink-0 rounded bg-[#f2f5f9] px-1.5 py-px text-[11px] font-normal text-[#8a94a3]">{item.file.kbName}</span>}
-                      <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-medium ${item.chunk.matchType === 'vector' ? 'bg-[#eaf1fe] text-[#2f6fed]' : 'bg-[#f2f5f9] text-[#8a94a3]'}`}>
+                    <span className="wk-cmdk-17">
+                      <span className="wk-cmdk-18">{item.file.title}</span>
+                      {item.file.kbName && <span className="cmdk-chunk-kb wk-cmdk-19">{item.file.kbName}</span>}
+                      <span className={`wk-cmdk-43 ${item.chunk.matchType === 'vector' ? 'wk-cmdk-44' : 'wk-cmdk-45'}`}>
                         {item.chunk.matchType === 'vector' ? t('commandPalette.match.vector') : t('commandPalette.match.keyword')}
                       </span>
-                      {item.chunk.score > 0 && <span className="shrink-0 text-[10px] text-[#b3bcc7]">{item.chunk.score.toFixed(2)}</span>}
+                      {item.chunk.score > 0 && <span className="wk-cmdk-20">{item.chunk.score.toFixed(2)}</span>}
                       {shortcutBadge(digit, selectedIndex === flatIndex)}
                     </span>
-                    <span className="line-clamp-2 w-full text-left text-xs text-[#5f6b7a]">
+                    <span className="wk-cmdk-21">
                       <Highlighted text={item.chunk.matchedContent || item.chunk.content} query={trimmed} />
                     </span>
                   </button>
@@ -515,10 +519,10 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
           )}
 
           {trimmed && flatMessageItems.length > 0 && (
-            <div className="border-t border-[#f2f5f9] first:border-t-0">
-              <div className="flex items-center justify-between px-3.5 py-1.5 text-xs text-[#8a94a3]">
+            <div className="wk-cmdk-2">
+              <div className="wk-cmdk-3">
                 <span>{t('commandPalette.group.messages')}</span>
-                {live.totalMessages > 0 && <span className="text-[11px]">{live.totalMessages}</span>}
+                {live.totalMessages > 0 && <span className="wk-cmdk-4">{live.totalMessages}</span>}
               </div>
               {flatMessageItems.map((item, index) => {
                 const flatIndex = messageBase + index;
@@ -527,15 +531,15 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                     key={`msg-${item.msg.requestId}`}
                     type="button"
                     data-cmdk-index={flatIndex}
-                    className={`${itemRowClass(selectedIndex === flatIndex)} flex-col items-start gap-0.5`}
+                    className={`${itemRowClass(selectedIndex === flatIndex)} wk-cmdk-42`}
                     onMouseEnter={() => setSelectedIndex(flatIndex)}
                     onClick={() => runFlat(flatIndex)}
                   >
-                    <span className="min-w-0 w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium">
+                    <span className="wk-cmdk-22">
                       {item.group.sessionTitle || t('commandPalette.untitledSession')}
                     </span>
-                    <span className="line-clamp-2 w-full text-left text-xs text-[#5f6b7a]">
-                      <span className="mr-1.5 inline-block rounded bg-[#f2f5f9] px-1 py-px text-[10px] font-semibold text-[#8a94a3]">{item.msg.queryContent ? 'Q' : 'A'}</span>
+                    <span className="wk-cmdk-21">
+                      <span className="wk-cmdk-23">{item.msg.queryContent ? 'Q' : 'A'}</span>
                       <Highlighted text={item.msg.queryContent || item.msg.answerContent} query={trimmed} />
                     </span>
                   </button>
@@ -557,7 +561,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                     onMouseEnter={() => setSelectedIndex(flatIndex)}
                     onClick={() => runFlat(flatIndex)}
                   >
-                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{kb.name}</span>
+                    <span className="wk-cmdk-16">{kb.name}</span>
                     {shortcutBadge(shortcutDigitFor(flatIndex), selectedIndex === flatIndex)}
                   </button>
                 );
@@ -578,7 +582,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                     onMouseEnter={() => setSelectedIndex(flatIndex)}
                     onClick={() => runFlat(flatIndex)}
                   >
-                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{agent.name}</span>
+                    <span className="wk-cmdk-16">{agent.name}</span>
                     {shortcutBadge(shortcutDigitFor(flatIndex), selectedIndex === flatIndex)}
                   </button>
                 );
@@ -599,7 +603,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                     onMouseEnter={() => setSelectedIndex(flatIndex)}
                     onClick={() => runFlat(flatIndex)}
                   >
-                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{session.title}</span>
+                    <span className="wk-cmdk-16">{session.title}</span>
                     {shortcutBadge(shortcutDigitFor(flatIndex), selectedIndex === flatIndex)}
                   </button>
                 );
@@ -608,8 +612,8 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
           )}
 
           {showCommandsGroup && (
-            <div className="border-t border-[#f2f5f9] first:border-t-0">
-              <div className="flex items-center justify-between px-3.5 py-1.5 text-xs text-[#8a94a3]">
+            <div className="wk-cmdk-2">
+              <div className="wk-cmdk-3">
                 <span>{trimmed ? t('commandPalette.group.commands') : t('commandPalette.group.quickActions')}</span>
               </div>
               {items.map((command, index) => {
@@ -624,7 +628,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                     onMouseEnter={() => setSelectedIndex(flatIndex)}
                     onClick={() => runFlat(flatIndex)}
                   >
-                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t(command.labelKey)}</span>
+                    <span className="wk-cmdk-16">{t(command.labelKey)}</span>
                     {shortcutBadge(digit, selectedIndex === flatIndex)}
                   </button>
                 );
@@ -632,15 +636,15 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
             </div>
           )}
           {showEmpty && (
-            <div className="cmdk__empty px-3.5 py-4">
-              <p className="text-[13px] text-[#8a94a3]">{t('commandPalette.empty.noResults')}</p>
+            <div className="cmdk__empty wk-cmdk-24">
+              <p className="wk-cmdk-25">{t('commandPalette.empty.noResults')}</p>
               {/* Vue GlobalCommandPalette.vue:128-137 — empty-state actions:
                   ask AI with the current query / adjust retrieval settings. */}
-              <div className="mt-2.5 flex items-center gap-2">
+              <div className="wk-cmdk-26">
                 <button
                   type="button"
                   data-cmdk-ask-ai
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-[#2f6fed] bg-transparent px-2.5 py-1 text-xs font-medium text-[#2f6fed] hover:bg-[#eaf1fe]"
+                  className="wk-cmdk-27"
                   onClick={askAi}
                 >
                   {t('commandPalette.empty.askAi')}
@@ -649,7 +653,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                   <button
                     type="button"
                     data-cmdk-adjust-retrieval
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-[#d7dde5] bg-transparent px-2.5 py-1 text-xs font-medium text-[#5f6b7a] hover:bg-[#f2f5f9]"
+                    className="wk-cmdk-28"
                     onClick={() => setRetrievalDrawerVisible(true)}
                   >
                     {t('commandPalette.empty.adjustRetrieval')}
@@ -659,12 +663,12 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
             </div>
           )}
           {/* Vue GlobalCommandPalette.vue:142-150 — hotkey hint footer. */}
-          <div className="flex flex-wrap gap-4 border-t border-[#e7e7e7] px-3.5 py-2 text-[11px] text-[rgba(0,0,0,0.4)]">
-            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>↑</kbd><kbd>↓</kbd> {t('commandPalette.hotkey.select')}</span>
-            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>↵</kbd> {t('commandPalette.hotkey.enter')}</span>
-            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>⌘</kbd><kbd>1</kbd>-<kbd>9</kbd> {t('commandPalette.hotkey.cmdNumber')}</span>
-            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>⌘</kbd><kbd>↵</kbd> {t('commandPalette.hotkey.cmdEnter')}</span>
-            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>Esc</kbd> {t('commandPalette.hotkey.esc')}</span>
+          <div className="wk-cmdk-29">
+            <span className="wk-cmdk-30"><kbd>↑</kbd><kbd>↓</kbd> {t('commandPalette.hotkey.select')}</span>
+            <span className="wk-cmdk-30"><kbd>↵</kbd> {t('commandPalette.hotkey.enter')}</span>
+            <span className="wk-cmdk-30"><kbd>⌘</kbd><kbd>1</kbd>-<kbd>9</kbd> {t('commandPalette.hotkey.cmdNumber')}</span>
+            <span className="wk-cmdk-30"><kbd>⌘</kbd><kbd>↵</kbd> {t('commandPalette.hotkey.cmdEnter')}</span>
+            <span className="wk-cmdk-30"><kbd>Esc</kbd> {t('commandPalette.hotkey.esc')}</span>
           </div>
         </div>
       </div>
@@ -675,7 +679,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
       {retrievalDrawerVisible && retrievalSettings !== null && (
         <div
           data-testid="cmdk-retrieval-overlay"
-          className="fixed inset-0 z-[1000] bg-[rgba(15,23,32,0.35)]"
+          className="wk-cmdk-31"
           role="presentation"
           onMouseDown={(event) => { if (event.target === event.currentTarget) setRetrievalDrawerVisible(false); }}
           onKeyDown={(event) => {
@@ -689,15 +693,15 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
             role="dialog"
             aria-modal="true"
             aria-label={t('retrievalSettings.title')}
-            className="absolute right-0 top-0 flex h-full w-[420px] max-w-[calc(100vw-32px)] flex-col bg-white shadow-[-10px_0_60px_rgba(15,23,32,0.3)]"
+            className="wk-cmdk-32"
           >
-            <div className="flex shrink-0 items-center justify-between border-b border-[#eef1f5] px-4 py-3">
-              <span className="text-sm font-semibold text-[#1f2733]">{t('retrievalSettings.title')}</span>
-              <button type="button" className="cursor-pointer rounded-md border-none bg-transparent px-1.5 py-1 text-lg leading-none text-[#8a94a3] hover:bg-[#f2f5f9] hover:text-[#1f2733]" aria-label={t('commandPalette.hotkey.esc')} onClick={() => setRetrievalDrawerVisible(false)}>
+            <div className="wk-cmdk-33">
+              <span className="wk-cmdk-34">{t('retrievalSettings.title')}</span>
+              <button type="button" className="wk-cmdk-13" aria-label={t('commandPalette.hotkey.esc')} onClick={() => setRetrievalDrawerVisible(false)}>
                 ×
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">{retrievalSettings}</div>
+            <div className="wk-cmdk-35">{retrievalSettings}</div>
           </aside>
         </div>
       )}

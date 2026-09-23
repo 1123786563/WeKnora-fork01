@@ -11,11 +11,20 @@ import { createBrowserTransport } from './platform/http.ts';
 import { readStoredLocale } from './i18n.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { initTheme } from './theme.ts';
+import { TDesignLocaleProvider } from './tdesign-locale.tsx';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { installNavigationObserver } from './platform/navigation.ts';
 import { resolveRoute } from './routes.tsx';
 import { createWeKnoraRouter } from './router.tsx';
 import './styles.css';
+// tdesign-react 命令式 API（MessagePlugin/NotificationPlugin/Dialog 等）在 React 19 下
+// 依赖此 adapter 替换 ReactDOM.render（T2 spike 实测，Phase 0 证据 spike-tdesign-react19.md）
+import 'tdesign-react/es/_util/react-19-adapter';
+import { installTDesignIconOfflineGuard } from './tdesign-icon-offline.ts';
+
+// 必须在任何 React 组件挂载之前执行，避免 tdesign-icons-react 运行时请求
+// tdesign.gtimg.com（对照 frontend/src/main.ts:19-23 语义）
+installTDesignIconOfflineGuard();
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
 let initialLoginError: string | undefined;
@@ -186,4 +195,11 @@ const router = createWeKnoraRouter({
   completeAuthentication,
 });
 
-root.render(<RouterProvider router={router} />);
+// Vue App.vue 的 t-config-provider 包住 RouterView（页面内容）；React 对位
+// 在应用根包住 RouterProvider 渲染的整棵路由树，globalConfig 随当前语言切换
+// （tdesign-locale.tsx，五语言对齐 Vue 端 App.vue:17-38）。
+root.render(
+  <TDesignLocaleProvider>
+    <RouterProvider router={router} />
+  </TDesignLocaleProvider>,
+);

@@ -1,4 +1,6 @@
-import { Status } from '@weknora/ui';
+// S6 换装（T15 前置）：packages/ui 旧栈 Status 无 TDesign 对应（playbook §1 附行），
+// 走 shared/wk-legacy 语义 p.wk-status 族，渲染不变。
+import { WkStatus as Status } from './shared/wk-legacy.tsx';
 import { useAppLocale } from './i18n.ts';
 
 const copy = {
@@ -9,7 +11,7 @@ const copy = {
 export function NotFoundPage({ path }: { path: string }) {
   const locale = useAppLocale();
   const t = copy[(locale in copy ? locale : 'en-US') as keyof typeof copy];
-  // 挂载在 .plat-shell__outlet 内：shell.css 把 .wk-page 覆盖为全宽（max-width:none、
-  // height:100%、overflow-y:auto），因此这里的 utilities 取实际生效值而非 960px 版本。
-  return <main className="h-full w-full box-border overflow-y-auto px-[1.25rem] py-12"><Status tone="error">{t.title}: {path}</Status><a href="/platform/knowledge-bases">{t.back}</a></main>;
+  // 挂载在 .plat-shell__outlet 内：shell.td.css 把 .wk-page 覆盖为全宽（max-width:none、
+  // height:100%、overflow-y:auto），因此这里的规则取实际生效值而非 960px 版本（.wk-notfound）。
+  return <main className="wk-notfound"><Status tone="error">{t.title}: {path}</Status><a href="/platform/knowledge-bases">{t.back}</a></main>;
 }

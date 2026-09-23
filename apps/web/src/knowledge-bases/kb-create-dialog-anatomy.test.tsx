@@ -43,13 +43,29 @@ if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nex
 
 const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/knowledge-bases' });
+/* tdesign 运行时依赖的 DOM 构造器全局补齐（pilot agents 同款）。
+ * renderAdapter 注入 createRoot，保证 MessagePlugin 等命令式 API 与组件同一
+ * React 实例（main.tsx 同款 react-19 adapter，node/tsx 下直接注入）。 */
 Object.assign(globalThis, {
   React,
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
   IS_REACT_ACT_ENVIRONMENT: true,
+  getComputedStyle: dom.window.getComputedStyle?.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 // openContextualGuide builds `new CustomEvent(...)` from the Node global and
@@ -61,6 +77,11 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 Object.defineProperty(dom.window.navigator, 'language', { configurable: true, value: 'zh-CN' });
 
 const { createRoot } = await import('react-dom/client');
+/* tdesign 命令式 API（MessagePlugin）的 React19 render adapter（main.tsx 同款）。 */
+{
+  const { renderAdapter } = await import('tdesign-react/lib/_util/react-render.js');
+  renderAdapter(createRoot);
+}
 const { KnowledgeBasesPage } = await import('../App.tsx');
 
 let mountedRoot: Root | undefined;
@@ -130,78 +151,74 @@ async function mountPage(calls: string[] = []): Promise<void> {
   await mountPageWithClient(makeClient(calls));
 }
 
+/* Task 11a：类型选择器是 tdesign RadioGroup（Vue t-radio-group 默认 outline
+   连体按钮组，DOM 与 Vue 逐字一致：div.t-radio-group > label.t-radio-button）。 */
 function getTypeFrame(): HTMLElement | null {
-  return document.body.querySelector<HTMLElement>('[data-guide="kb-create-type"] .kb-create-type-frame');
+  return document.body.querySelector<HTMLElement>('[data-guide="kb-create-type"] .t-radio-group');
 }
 
 test('(a) the type selector keeps the joined TDesign outline frame with the brand-green checked tab', async () => {
   await mountPage();
   const frame = getTypeFrame();
-  assert.ok(frame, 'expected the .kb-create-type-frame wrapper inside [data-guide="kb-create-type"]');
-  assert.match(frame.className, /(^|\s)rounded-\[3px\]/, 'frame radius follows Vue --td-radius-default (3px)');
-  assert.ok(!/(^|\s)border(\s|$)/.test(frame.className), 'the frame itself adds no wrapper border: the joined buttons carry the TDesign outline');
+  assert.ok(frame, 'expected the .t-radio-group inside [data-guide="kb-create-type"]');
+  assert.match(frame.className, /t-radio-group__outline/, 'default outline variant = the joined TDesign frame (Vue t-radio-group)');
 
-  const radios = Array.from(frame.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+  const radios = Array.from(frame.querySelectorAll<HTMLLabelElement>('label.t-radio-button'));
   assert.deepEqual(radios.map((radio) => radio.textContent), ['文档', '问答']);
   const [documentRadio, faqRadio] = radios;
-  assert.equal(documentRadio.getAttribute('aria-checked'), 'true', 'document is the create default');
-  assert.match(documentRadio.className, /bg-accent/, 'checked tab uses the brand fill (Vue theme.css green fill override)');
-  assert.match(documentRadio.className, /border-\[var\(--color-brand\)\]/, 'checked tab border is brand so the shared divider reads green');
-  assert.match(documentRadio.className, /(^|\s)rounded-l-\[3px\]/);
-  assert.match(faqRadio.className, /(^|\s)rounded-r-\[3px\]/);
-  assert.ok(!/(^|\s)border-l(\s|$)/.test(faqRadio.className), 'the tab after the checked one drops its left border so the divider stays a single line');
-  assert.match(faqRadio.className, /border-line-neutral/, 'unchecked tabs keep the #e7e7e7 component-stroke border');
-  assert.equal(faqRadio.tabIndex, -1, 'roving tabindex mirrors the radio-group contract');
+  assert.ok(documentRadio.classList.contains('t-is-checked'), 'document is the create default');
+  assert.equal(faqRadio.classList.contains('t-is-checked'), false, 'faq unchecked');
+  assert.equal(faqRadio.tabIndex, 0, 'both radio buttons stay in the tab order (tdesign roving contract)');
   assert.equal(documentRadio.tabIndex, 0);
 });
 
-test('(a) arrow keys move the type selection like the TDesign radio group', async () => {
+test('(a) keyboard check on a radio button moves the type selection like the TDesign radio group', async () => {
   await mountPage();
   const frame = getTypeFrame();
   assert.ok(frame);
+  /* tdesign-react RadioGroup 的键盘契约是 Enter/Space 选中聚焦项
+     （useKeyboard CHECKED_CODE_REG）；tdesign-vue-next 的方向键导航是库间
+     行为差异（无 DOM/像素影响，不页面补偿——playbook §3.4）。 */
+  const faqLabel = Array.from(frame.querySelectorAll<HTMLLabelElement>('label.t-radio-button'))
+    .find((label) => label.textContent === '问答');
+  assert.ok(faqLabel, 'faq radio button rendered');
   await act(async () => {
-    frame.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    faqLabel.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   });
   await act(async () => {});
   // Selecting FAQ flips the section content (问答配置) exactly like clicking the tab.
   const faqHeading = Array.from(document.body.querySelectorAll('h3')).find((el) => (el.textContent ?? '') === '问答');
-  assert.ok(faqHeading, 'arrow key selection landed on the FAQ section');
+  assert.ok(faqHeading, 'keyboard selection landed on the FAQ section');
 });
 
 test('(b) the Wiki indexing card carries the NEW badge and the RAG card does not', async () => {
   await mountPage();
-  const cards = Array.from(document.body.querySelectorAll('fieldset[data-guide="kb-create-indexing"] label'));
+  const cards = Array.from(document.body.querySelectorAll('[data-guide="kb-create-indexing"] .indexing-check-item'));
   assert.equal(cards.length, 2, 'RAG + Wiki cards render');
   const wikiCard = cards.find((card) => (card.textContent ?? '').includes('Wiki 知识库'));
   const ragCard = cards.find((card) => (card.textContent ?? '').includes('RAG 检索'));
   assert.ok(wikiCard && ragCard, 'both indexing cards found');
+  const ragChecked = ragCard.classList.contains('is-checked');
+  assert.equal(ragChecked, true, 'RAG card renders checked by default (Vue vectorEnabled=true)');
+  assert.equal(wikiCard.classList.contains('is-checked'), false, 'Wiki card unchecked');
 
-  const badge = wikiCard.querySelector('.kb-editor-new-badge');
-  assert.ok(badge, 'wiki card renders the NEW badge');
+  const badge = wikiCard.querySelector('.indexing-new-badge');
+  assert.ok(badge, 'wiki card renders the NEW badge (Vue .indexing-new-badge, 样式走 kb-list.td.css)');
   assert.equal(badge.textContent, 'NEW');
-  assert.match(badge.className, /bg-\[var\(--color-brand-light\)\]/, 'badge background is the brand-light pill (#e9f8ec)');
-  assert.match(badge.className, /(^|\s)rounded-\[3px\]/, 'badge radius 3px');
-  assert.match(badge.className, /(^|\s)h-4/, 'badge height 16px');
-  assert.match(badge.className, /px-\[6px\]/, 'badge x-padding 6px');
-  assert.match(badge.className, /text-\[10px\]/, 'badge font-size 10px');
-  assert.match(badge.className, /font-semibold/, 'badge weight 600');
-  assert.match(badge.className, /tracking-\[0\.4px\]/, 'badge letter-spacing 0.4px');
-  assert.equal(ragCard.querySelector('.kb-editor-new-badge'), null, 'RAG card carries no NEW badge');
+  assert.equal(ragCard.querySelector('.indexing-new-badge'), null, 'RAG card carries no NEW badge');
 });
 
 test('(c) the description textarea carries the live 0/200 limit counter', async () => {
   await mountPage();
-  const textarea = document.body.querySelector<HTMLTextAreaElement>('textarea[placeholder="请输入知识库描述（可选）"]');
+  const textarea = document.body.querySelector<HTMLTextAreaElement>('[data-editor-section="basic"] textarea[placeholder="请输入知识库描述（可选）"]');
   assert.ok(textarea, 'description textarea rendered');
-  assert.equal(textarea.getAttribute('maxlength'), '200', 'native maxlength=200 truncates input like Vue t-textarea');
 
-  const counter = textarea.closest('label')?.querySelector('.kb-editor-desc-count');
-  assert.ok(counter, 'limit counter rendered below the textarea');
+  /* tdesign-react 的 maxlength 走 JS 截断（limitUnicodeMaxLength），不落原生
+     属性——与 tdesign-vue-next 的属性渲染差异无视觉影响（台账外，无 DOM
+     补偿，playbook §3.4）。计数器是 .t-textarea__limit。 */
+  const counter = document.body.querySelector('[data-editor-section="basic"] .t-textarea__limit');
+  assert.ok(counter, 'limit counter rendered by t-textarea');
   assert.equal(counter.textContent, '0/200');
-  assert.match(counter.className, /justify-self-end/, 'counter right-aligned like .t-textarea__info_wrapper_align');
-  assert.match(counter.className, /text-xs/, 'counter font-size 12px like .t-textarea__limit');
-  assert.match(counter.className, /text-\[var\(--color-text-placeholder\)\]/, 'counter uses the placeholder gray');
-  assert.equal(counter.getAttribute('aria-live'), 'polite', 'counter announces updates to assistive tech');
 
   const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')?.set;
   await act(async () => {
@@ -215,26 +232,28 @@ test('(c) the description textarea carries the live 0/200 limit counter', async 
 test('(d) the editor dialog renders no wrapping form — Vue KnowledgeBaseEditorModal has zero <form> elements', async () => {
   await mountPage();
   assert.equal(document.body.querySelectorAll('form').length, 0, 'no native form wraps the editor sections (removes the form-in-form hydration error source)');
-  const wrapper = document.body.querySelector('.wk-kb-editor-dialog .wk-form');
-  assert.ok(wrapper, 'the wk-form grid wrapper still renders for section layout');
-  assert.equal(wrapper.tagName, 'DIV', 'the wk-form grid is carried by a plain div like the Vue settings-body');
+  const modal = document.body.querySelector('.wk-kb-editor-dialog');
+  assert.ok(modal, 'the settings-modal renders (Vue .settings-modal, wk-kb-editor-dialog 为测试锚点类)');
+  assert.equal(modal.classList.contains('settings-modal'), true);
+  assert.ok(document.body.querySelector('.settings-overlay'), 'overlay teleported to body (Vue Teleport)');
 });
 
 test('(d-edit) edit mode: visiting every section (share included) keeps the DOM form-free', async () => {
   await mountPage();
-  // Card settings menu → 知识库设置 opens the editor in edit mode.
+  // Card settings menu → 知识库设置 opens the editor in edit mode. Task 11a：
+  // 三点菜单是 t-popup（.more-wrap 触发，内容 portal 到 body 的 .popup-menu）。
   await act(async () => {
-    document.body.querySelector<HTMLButtonElement>('.kb-list-card-more')?.click();
+    document.body.querySelector<HTMLElement>('.kb-card .more-wrap')?.click();
   });
   await act(async () => {});
-  const settingsItem = Array.from(document.body.querySelectorAll('[role="menuitem"]'))
+  const settingsItem = Array.from(document.body.querySelectorAll('.card-more-popup .popup-menu-item'))
     .find((el) => (el.textContent ?? '') === '设置');
   assert.ok(settingsItem, 'card settings menu item rendered');
   await act(async () => {
-    (settingsItem as HTMLButtonElement).click();
+    (settingsItem as HTMLElement).click();
   });
   await act(async () => {});
-  const navButtons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-guide^="kb-editor-nav-"]'))
+  const navButtons = Array.from(document.body.querySelectorAll<HTMLElement>('[data-guide^="kb-editor-nav-"]'))
     // The datasource section mounts DataSourcesPage, whose client mock surface
     // (datasource types etc.) is out of scope for this anatomy slice.
     .filter((button) => button.dataset.guide !== 'kb-editor-nav-datasource');
@@ -256,8 +275,8 @@ test('(e) the save button submits the create pipeline via onClick like Vue @clic
   assert.ok(button, 'save button rendered');
   assert.notEqual(button.type, 'submit', 'Vue footer buttons are plain @click handlers, not type="submit"');
 
-  const nameInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
-  assert.ok(nameInput, 'name input rendered on the default basic section');
+  const nameInput = document.body.querySelector<HTMLInputElement>('[data-guide="kb-create-name"] input');
+  assert.ok(nameInput, 'name input rendered on the default basic section (t-input inner input)');
   const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
   await act(async () => {
     setInputValue?.call(nameInput, 'R463 提交结构');
@@ -289,10 +308,12 @@ test('(e) the save button submits the create pipeline via onClick like Vue @clic
 test('(f) Enter in the name input does not submit and the input carries no native required attribute', async () => {
   const calls: string[] = [];
   await mountPage(calls);
-  const nameInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
+  const nameInput = document.body.querySelector<HTMLInputElement>('[data-guide="kb-create-name"] input');
   assert.ok(nameInput);
   assert.equal(nameInput.required, false, 'Vue t-input (:165-169) is maxlength-only; blank names are blocked in the JS pipeline');
-  assert.equal(nameInput.getAttribute('maxlength'), '50');
+  /* tdesign-react 的 maxlength 是 JS 截断（不落原生属性，与 vue-next 的
+     属性渲染差异无视觉影响）。 */
+  assert.equal(nameInput.getAttribute('required'), null);
 
   const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
   await act(async () => {
@@ -312,8 +333,8 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   return { promise, resolve };
 }
 
-function getFooterCancelButton(saveButton: HTMLButtonElement): HTMLButtonElement | undefined {
-  return Array.from(saveButton.parentElement?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+function getFooterCancelButton(saveButton: HTMLElement): HTMLElement | undefined {
+  return Array.from(saveButton.closest('.settings-footer-actions')?.querySelectorAll<HTMLElement>('button, div[class*="t-button"]') ?? [])
     .find((button) => (button.textContent ?? '') === '取消');
 }
 
@@ -331,19 +352,26 @@ test('(g) the save button is disabled (label unchanged) while editor data loads;
   };
   await mountPageWithClient(client);
 
-  const saveButton = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-create-submit"]');
+  const saveButton = document.body.querySelector<HTMLElement>('[data-guide="kb-create-submit"]');
   assert.ok(saveButton, 'save button rendered');
-  assert.equal(saveButton.disabled, true, 'Vue :452 :disabled="loading" — editor data not ready blocks save');
-  assert.equal(saveButton.getAttribute('aria-busy'), null, 'loading-disable is a plain disable, not the saving spinner');
+  /* 台账 #7：tdesign-react Button disabled 渲染 div.t-is-disabled（无原生
+     disabled 属性）；断言走 classList。 */
+  assert.equal(saveButton.classList.contains('t-is-disabled'), true, 'Vue :452 :disabled="loading" — editor data not ready blocks save');
+  assert.equal(saveButton.classList.contains('t-is-loading'), false, 'loading-disable is a plain disable, not the saving spinner');
   assert.equal(saveButton.textContent, '创建知识库', 'Vue keeps saveButtonLabel while loading (disable-only, no relabel)');
 
   const cancelButton = getFooterCancelButton(saveButton);
   assert.ok(cancelButton, 'footer cancel button rendered');
-  assert.equal(cancelButton.disabled, false, 'Vue cancel (:448-450) has no loading binding — stays clickable while loading');
+  assert.equal(cancelButton.classList.contains('t-is-disabled'), false, 'Vue cancel (:448-450) has no loading binding — stays clickable while loading');
 
   await act(async () => { settingsGate.resolve(); });
   await act(async () => {});
-  assert.equal(saveButton.disabled, false, 'save re-enables once the editor data settles (Vue loading=false)');
+  await act(async () => {});
+  /* 台账 #7：disabled→enabled 时 tdesign Button 的根标签从 div 换回 button，
+     旧元素引用失效——重查。 */
+  const saveAfter = document.body.querySelector<HTMLElement>('[data-guide="kb-create-submit"]');
+  assert.ok(saveAfter, 'save button still rendered after the gate settles');
+  assert.equal(saveAfter.classList.contains('t-is-disabled'), false, 'save re-enables once the editor data settles (Vue loading=false)');
 });
 
 test('(h) saving keeps its own disable+aria-busy semantics once loading has settled', async () => {
@@ -353,12 +381,12 @@ test('(h) saving keeps its own disable+aria-busy semantics once loading has sett
   (client.knowledgeBases as unknown as { create: unknown }).create = () => createGate.promise.then(() => { calls.push('create'); return { id: 'kb-new' }; });
   await mountPageWithClient(client);
 
-  const saveButton = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-create-submit"]');
+  const saveButton = document.body.querySelector<HTMLElement>('[data-guide="kb-create-submit"]');
   assert.ok(saveButton, 'save button rendered');
-  assert.equal(saveButton.disabled, false, 'settings settled → loading no longer disables save');
+  assert.equal(saveButton.classList.contains('t-is-disabled'), false, 'settings settled → loading no longer disables save');
 
   const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
-  const nameInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
+  const nameInput = document.body.querySelector<HTMLInputElement>('[data-guide="kb-create-name"] input');
   assert.ok(nameInput, 'name input rendered');
   await act(async () => {
     setInputValue?.call(nameInput, 'R466 保存态独立');
@@ -380,8 +408,7 @@ test('(h) saving keeps its own disable+aria-busy semantics once loading has sett
     saveButton.click();
   });
   await act(async () => {});
-  assert.equal(saveButton.disabled, true, 'saving disables the button (Vue :loading="saving")');
-  assert.equal(saveButton.getAttribute('aria-busy'), 'true', 'saving carries the spinner affordance, distinct from the loading disable');
+  assert.equal(saveButton.classList.contains('t-is-loading'), true, 'saving carries the spinner affordance (Vue :loading="saving")');
   await act(async () => {
     saveButton.click();
   });
@@ -390,7 +417,7 @@ test('(h) saving keeps its own disable+aria-busy semantics once loading has sett
   await act(async () => { createGate.resolve(); });
   await act(async () => {});
   assert.deepEqual(calls, ['create'], 'double-submit guard holds: exactly one create while saving');
-  assert.ok(!saveButton.isConnected || !saveButton.disabled, 'a successful save closes the dialog (button gone or re-enabled)');
+  assert.ok(!saveButton.isConnected || !saveButton.classList.contains('t-is-disabled'), 'a successful save closes the dialog (button gone or re-enabled)');
 });
 
 // R488 summary_model_id slice (Vue KBModelConfig.vue authority, K2 report
@@ -421,8 +448,8 @@ test('(i) the models section mirrors Vue KBModelConfig: LLM first, combobox mode
   await mountPage();
   await openCreateAndGoToModels();
 
-  const section = document.body.querySelector('.wk-form');
-  assert.ok(section, 'models section rendered');
+  const section = document.body.querySelector('[data-editor-section="models"]');
+  assert.ok(section, 'models section rendered (v-show section shell)');
   const rows = Array.from(section.querySelectorAll('[data-guide="kb-create-llm"], [data-guide="kb-create-embedding"]'));
   assert.equal(rows.length, 2, 'exactly two model rows render');
   assert.equal(rows[0].getAttribute('data-guide'), 'kb-create-llm', 'LLM row renders FIRST (KBModelConfig.vue:10 before :29)');
@@ -485,7 +512,7 @@ test('(k) a missing summary model blocks the save in the UI pipeline with the mo
   const saveButton = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-create-submit"]');
   assert.ok(saveButton, 'save button rendered');
   const setInputValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
-  const nameInput = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
+  const nameInput = document.body.querySelector<HTMLInputElement>('[data-guide="kb-create-name"] input');
   assert.ok(nameInput, 'name input rendered');
   await act(async () => {
     setInputValue?.call(nameInput, 'R488 无模型租户');
@@ -497,8 +524,8 @@ test('(k) a missing summary model blocks the save in the UI pipeline with the mo
 
   assert.deepEqual(calls, [], 'no create request leaves the page when the summary model is missing');
   assert.ok((document.body.textContent ?? '').includes('请选择 Summary 模型'), 'Vue summaryRequired message surfaces (KnowledgeBaseEditorModal.vue:1172)');
-  const activeNav = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-editor-nav-models"]');
-  assert.equal(activeNav?.className.includes('bg-'), true, 'the editor jumps to the models section like Vue currentSection="models"');
+  const activeNav = document.body.querySelector<HTMLElement>('[data-guide="kb-editor-nav-models"]');
+  assert.equal(activeNav?.classList.contains('active'), true, 'the editor jumps to the models section like Vue currentSection="models"');
 
   // With models available the prefill rides along in the payload.
   const calls2: string[] = [];
@@ -516,7 +543,7 @@ test('(k) a missing summary model blocks the save in the UI pipeline with the mo
   document.body.replaceChildren();
   await mountPageWithClient(client2);
   const saveButton2 = document.body.querySelector<HTMLButtonElement>('[data-guide="kb-create-submit"]');
-  const nameInput2 = document.body.querySelector<HTMLInputElement>('input[data-guide="kb-create-name"]');
+  const nameInput2 = document.body.querySelector<HTMLInputElement>('[data-guide="kb-create-name"] input');
   assert.ok(nameInput2, 'second mount rendered the name input');
   await act(async () => {
     setInputValue?.call(nameInput2, 'R488 预填默认模型');

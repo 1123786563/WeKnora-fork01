@@ -4,7 +4,8 @@ import { ApiError } from '@weknora/api-client';
 import type { RefundView } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button } from 'tdesign-react';
+import { Card, Status } from './surface.tsx';
 import { refundMessage } from './refund-state.ts';
 
 export interface AdminListRow { id: string; label: string; detail: string; }
@@ -190,9 +191,11 @@ export function AdminCommercialPage({
                     <strong>{draft.label}</strong>
                     <span>
                       v{draft.version}
-                      <Button type="button" onClick={() => setPreviewedVersion(draft.version)}>预览不可变版本</Button>
+                      <Button type="button" theme="default" variant="outline" onClick={() => setPreviewedVersion(draft.version)}>预览不可变版本</Button>
                       <Button
                         type="button"
+                        theme="default"
+                        variant="outline"
                         disabled={previewedVersion !== draft.version || !onPublishDraft}
                         onClick={() => {
                           if (previewedVersion !== draft.version || !onPublishDraft) return;
@@ -243,13 +246,13 @@ export function AdminCommercialPage({
                 </Status>
               ) : (
                 <>
-                  <Button type="button" disabled={review.status === 'loading'} onClick={() => setReloadToken((value) => value + 1)}>
+                  <Button type="button" theme="default" variant="outline" disabled={review.status === 'loading'} onClick={() => setReloadToken((value) => value + 1)}>
                     重新核对（刷新可退核算）
                   </Button>
                   {' '}
-                  <Button type="button" disabled={reviewDisabled} onClick={() => submitReview('approve')}>批准（按当前 expectedVersion）</Button>
+                  <Button type="button" theme="default" variant="outline" disabled={reviewDisabled} onClick={() => submitReview('approve')}>批准（按当前 expectedVersion）</Button>
                   {' '}
-                  <Button type="button" disabled={reviewDisabled} onClick={() => submitReview('reject')}>拒绝（按当前 expectedVersion）</Button>
+                  <Button type="button" theme="default" variant="outline" disabled={reviewDisabled} onClick={() => submitReview('reject')}>拒绝（按当前 expectedVersion）</Button>
                 </>
               )}
               {review.status === 'loading' ? <Status>核对/提交中…</Status> : null}

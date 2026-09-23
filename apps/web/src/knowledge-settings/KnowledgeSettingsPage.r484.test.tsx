@@ -31,6 +31,13 @@ Object.assign(globalThis, {
   HTMLButtonElement: dom.window.HTMLButtonElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  // tdesign-react Select/Popup 运行时（parserSettings 平移为 tdesign Select）。
+  Element: dom.window.Element,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
+  Node: dom.window.Node,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
@@ -180,6 +187,32 @@ function setSelectValue(select: HTMLSelectElement, value: string): void {
   select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
 }
 
+// ---- tdesign Select（Vue t-select 同构）驱动 helper ------------------------
+function parserTrigger(group: string): HTMLElement {
+  const row = document.body.querySelector(`[data-parser-group="${group}"]`);
+  const trigger = row?.querySelector('.t-select__wrap') as HTMLElement | null;
+  assert.ok(trigger, `expected the ${group} parser engine select`);
+  return trigger;
+}
+function parserTriggerValue(group: string): string {
+  return (parserTrigger(group).querySelector('input.t-input__inner') as HTMLInputElement | null)?.value ?? '';
+}
+async function pickParserEngine(group: string, optionText: string): Promise<void> {
+  const inner = parserTrigger(group).querySelector('.t-input') as HTMLElement;
+  await act(async () => { inner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  let options = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'));
+  if (options.length === 0) {
+    await act(async () => { inner.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    options = Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'));
+  }
+  const target = options.find((el) => (el.textContent ?? '').trim() === optionText);
+  assert.ok(target, `option missing: ${optionText} (have ${options.map((el) => el.textContent).join(',')})`);
+  await act(async () => { target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
 function buttonByText(text: string): HTMLButtonElement {
   const button = [...document.body.querySelectorAll('button')].find((candidate) => (candidate.textContent ?? '').trim() === text);
   assert.ok(button, `expected a button labelled "${text}"`);
@@ -320,14 +353,11 @@ test('parser section renders the Vue per-file-type engine list and saves complet
   assert.ok(bodyText.includes('.docx'));
   assert.ok(bodyText.includes('.xlsx'));
 
-  // Per-row selects: pdf defaults to builtin (first supporting engine),
-  // office family prefers anydoc (Vue pickDefaultEngineName), the default
-  // option carries the (Default) suffix.
-  const pdfSelect = labeledControl('select', 'PDF Documents') as HTMLSelectElement;
-  assert.equal(pdfSelect.value, 'builtin');
-  assert.equal([...pdfSelect.options].find((option) => option.value === 'builtin')?.textContent, 'Built-in (Default)');
-  const wordSelect = labeledControl('select', 'Word Documents') as HTMLSelectElement;
-  assert.equal(wordSelect.value, 'anydoc', 'the office family defaults to anydoc like the Vue pickDefaultEngineName');
+  // Per-row tdesign Selects: pdf defaults to builtin (first supporting
+  // engine), office family prefers anydoc (Vue pickDefaultEngineName), the
+  // default option carries the (Default) suffix in the trigger label.
+  assert.equal(parserTriggerValue('pdf'), 'Built-in (Default)');
+  assert.equal(parserTriggerValue('office'), 'anydoc (Default)', 'the office family defaults to anydoc like the Vue pickDefaultEngineName');
 
   // xlsx first-row checkbox only shows while the Excel family is builtin.
   const checkboxLabel = (candidate: Element): string => {
@@ -335,14 +365,14 @@ test('parser section renders the Vue per-file-type engine list and saves complet
     return control.labels?.[0]?.textContent ?? '';
   };
   assert.equal([...document.body.querySelectorAll('input[type="checkbox"]')].some((candidate) => checkboxLabel(candidate).includes('first row as column context')), false);
-  await act(async () => { setSelectValue(labeledControl('select', 'Excel Spreadsheets') as HTMLSelectElement, 'builtin'); });
+  await pickParserEngine('excel', 'Built-in');
   const xlsxToggle = [...document.body.querySelectorAll('input[type="checkbox"]')].find((candidate) => checkboxLabel(candidate).includes('first row as column context'));
   assert.ok(xlsxToggle, 'the xlsx first-row checkbox renders while the Excel family is builtin');
   await act(async () => { xlsxToggle!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
 
   // Switch pdf to mineru and save: buildCompleteRules persists one rule per
   // group — pdf→mineru, office→anydoc, excel→builtin(+header), text→builtin.
-  await act(async () => { setSelectValue(pdfSelect, 'mineru'); });
+  await pickParserEngine('pdf', 'MinerU');
   await act(async () => { buttonByText('Save and Close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   const put = calls.requests.find((request) => request.path === '/api/v1/initialization/config/kb-1');
