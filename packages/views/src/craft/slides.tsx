@@ -11,7 +11,7 @@
 // (W05 contract).
 import React from 'react';
 import { useEffect, useState } from 'react';
-import { Button } from '@weknora/ui';
+import { Button } from './td.tsx';
 import { craftStrings, type CraftLocale } from './presentation.ts';
 
 /** Mirrors the skill's preview.json page entry (skills/craft-slides). */

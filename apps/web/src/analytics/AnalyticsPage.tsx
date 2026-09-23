@@ -15,7 +15,7 @@ import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import type { WeKnoraClient, ClientBinaryResponse } from '@weknora/api-client';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@weknora/ui';
+import { Tabs } from 'tdesign-react';
 import type { ActiveUsersPoint, AgentUsagePoint, ChannelSessionsPoint, QueryTrendPoint, UsageByUserRow } from '@weknora/contracts';
 import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
@@ -321,13 +321,10 @@ export function AnalyticsPage({ client, role }: { client: WeKnoraClient; role?: 
 
       {/* SP12 Task 8 — 图表/用量 two panels; the date range above is shared,
           so changing it (or switching tabs) refetches the active dataset. */}
-      <Tabs value={tab} onValueChange={(value) => setTab(value === 'usage' ? 'usage' : 'charts')}>
-        <TabsList aria-label={t(locale, 'menu.analytics')}>
-          <TabsTrigger value="charts">{t(locale, 'analytics.tabCharts')}</TabsTrigger>
-          <TabsTrigger value="usage">{t(locale, 'analytics.usageTab')}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="charts">
+      {/* S5 组件层换 tdesign：Tabs/Radix 组合式 → tdesign Tabs + TabPanel
+          （value 受控 + onChange；tab 项从 Trigger 子元素变为 TabPanel label）。 */}
+      <Tabs value={tab} onChange={(value) => setTab(value === 'usage' ? 'usage' : 'charts')}>
+        <Tabs.TabPanel value="charts" label={t(locale, 'analytics.tabCharts')}>
           <div className={AN_GRID}>
             <section className={AN_CARD}>
               <h3 className={AN_CARD_TITLE}>{t(locale, 'analytics.queryTrend')}</h3>
@@ -408,10 +405,10 @@ export function AnalyticsPage({ client, role }: { client: WeKnoraClient; role?: 
               ))}
             </section>
           </div>
-        </TabsContent>
+        </Tabs.TabPanel>
 
         {/* SP12 Task 8 — 用量：admin 全员 byUser 平铺行（不聚合），cost 降序。 */}
-        <TabsContent value="usage">
+        <Tabs.TabPanel value="usage" label={t(locale, 'analytics.usageTab')}>
           <p className={AN_USAGE_NOTE}>{t(locale, 'analytics.usageDescription')}</p>
           <div className={AN_USAGE_BAR}>
             <button type="button" className={AN_BTN_OUTLINE} disabled={exporting} onClick={() => void exportUsageCsv()}>{t(locale, 'analytics.exportCsv')}</button>
@@ -464,7 +461,7 @@ export function AnalyticsPage({ client, role }: { client: WeKnoraClient; role?: 
               <button type="button" className={AN_BTN_PAGER} disabled={usageLoading || usageItems.length < USAGE_PAGE_SIZE} onClick={() => setUsagePage(usagePage + 1)}>{t(locale, 'analytics.nextPage')}</button>
             </div>
           </section>
-        </TabsContent>
+        </Tabs.TabPanel>
       </Tabs>
     </main>
   );

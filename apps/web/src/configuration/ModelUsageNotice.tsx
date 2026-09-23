@@ -1,4 +1,5 @@
-import { Button, Card } from '@weknora/ui';
+import { Button } from 'tdesign-react';
+import { Card } from './ui.tsx';
 import { modelUsageBindingLabel, type ModelUsageDetails } from './model-usage.ts';
 
 export function ModelUsageNotice({
@@ -19,7 +20,7 @@ export function ModelUsageNotice({
           <h2 className="my-1">Model is still in use</h2>
           <p className="wk-muted text-muted m-0">{modelName} cannot be deleted until its active bindings are removed.</p>
         </div>
-        <Button type="button" onClick={onClose}>Close</Button>
+        <Button type="button" theme="default" variant="outline" onClick={onClose}>Close</Button>
       </div>
       {knowledgeBaseTotal > 0 ? (
         <section>

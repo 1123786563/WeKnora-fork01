@@ -11,7 +11,7 @@
 // localStorage (W05 contract).
 import React from 'react';
 import { useMemo } from 'react';
-import { Button } from '@weknora/ui';
+import { Button } from './td.tsx';
 import { craftStrings, type CraftLocale } from './presentation.ts';
 
 /** The editable source path this view renders (craft.DocumentMarkdownPath). */

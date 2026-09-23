@@ -4,19 +4,19 @@ import test from 'node:test';
 
 const page = readFileSync(new URL('./DataSourcesPage.tsx', import.meta.url), 'utf8');
 
-test('keeps datasource editing in a body-level 640px Sheet with a real isolated form', () => {
+test('keeps datasource editing in a body-level 640px drawer with a real isolated form', () => {
   assert.match(page, /import \{ createPortal \} from 'react-dom';/);
-  assert.match(page, /<Sheet open title=\{editorTitle\}/);
-  assert.match(page, /width="640px"/);
+  assert.match(page, /<Drawer visible header=\{editorTitle\}/);
+  assert.match(page, /size="640px"/);
   assert.match(page, /createPortal\(editorSurface, document\.body\)/);
   assert.match(page, /<form className="wk-wiki-editor grid gap-3" onSubmit=\{\(event\) => void save\(event\)\}/);
-  assert.match(page, /<Button type="submit" loading=\{saving\}>/);
+  assert.match(page, /<Button type="submit" theme="default" variant="outline" loading=\{saving\}>/);
   assert.doesNotMatch(page, /<Card className="mt-4">.*dataSource\.createTitle/s, 'editor must not regress to an outer content card');
 });
 
 test('matches Vue datasource permissions and running-sync controls', () => {
   assert.match(page, /sources\.length === 0 && !canManage/);
-  assert.match(page, /canManage \? <><Button type="button" onClick=\{\(\) => openEdit\(source\)\}/);
+  assert.match(page, /canManage \? <><Button type="button" theme="default" variant="outline" onClick=\{\(\) => openEdit\(source\)\}/);
   assert.match(page, /onClick=\{\(\) => void run\(source, 'sync'\)\}/);
   assert.match(page, /disabled=\{action !== null \|\| isSyncRunning\(source\)\}/);
   assert.match(page, /source\.status === 'active'/);
@@ -116,7 +116,7 @@ test('running syncs render a cancel button that requests cooperative cancel with
   assert.match(page, /async function cancelSync\(source: DataSource\)/);
   assert.match(page, /const log = source\.latest_sync_log;[\s\S]*?if \(!log \|\| log\.status !== 'running'\) return;/);
   assert.match(page, /await dataSources\.cancelSyncLog\(source\.id, log\.id\);/);
-  assert.match(page, /isSyncRunning\(source\) \? <Button type="button" disabled=\{action !== null\} onClick=\{\(\) => void cancelSync\(source\)\}>\{t\('dataSource\.cancelSync'\)\}<\/Button> : null/);
+  assert.match(page, /isSyncRunning\(source\) \? <Button type="button" theme="default" variant="outline" disabled=\{action !== null\} onClick=\{\(\) => void cancelSync\(source\)\}>\{t\('dataSource\.cancelSync'\)\}<\/Button> : null/);
   // No optimistic flip: cancel success keeps the running pill and leans on the
   // 3s poll; only a toast communicates the request was accepted.
   assert.doesNotMatch(page, /setSources\(\(current\)[\s\S]*?cancel_requested/);
@@ -320,7 +320,7 @@ test('delete opens a controlled dual-choice Sheet and drops window.confirm', () 
 test('delete panel keeps the keep copy by default and swaps to the red purge warning once checked', () => {
   assert.match(page, /data-kind=\{deletePurge \? 'delete-purge-warning' : 'delete-keep'\}/);
   assert.match(page, /\{deletePurge \? <span className="font-medium text-danger">\{purgeWarningText\}<\/span> : t\('dataSource\.deletePanelKeep'\)\}/);
-  assert.match(page, /<Checkbox checked=\{deletePurge\} onChange=\{\(event\) => setDeletePurge\(event\.target\.checked\)\} \/>/);
+  assert.match(page, /<Checkbox checked=\{deletePurge\} onChange=\{\(checked\) => setDeletePurge\(checked\)\} label=\{purgeLabelText\} \/>/);
   assert.match(page, /purgeLabelText = deleteCount !== null \? t\('dataSource\.deletePanelPurgeLabel', \{ count: deleteCount \}\) : t\('dataSource\.deletePanelPurgeLabelUnknown'\)/);
   assert.match(page, /purgeWarningText = deleteCount !== null \? t\('dataSource\.deletePanelPurgeWarning', \{ count: deleteCount \}\) : t\('dataSource\.deletePanelPurgeWarningUnknown'\)/);
   assert.match(page, /\{deletePurge \? t\('dataSource\.deleteAndPurge'\) : t\('dataSource\.delete'\)\}/);

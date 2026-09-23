@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import type { CraftCapabilitiesView, CraftSessionKind, CraftSessionSummaryView } from '@weknora/contracts';
 import { CRAFT_SESSION_KINDS } from '@weknora/contracts';
-import { Button } from '@weknora/ui';
+import { Button } from './td.tsx';
 import { craftKindDisabledReason, craftViewCapabilities, type CraftViewCapabilities } from '@weknora/domain/craft/capabilities';
 import { craftStrings, formatDateTime, type CraftLocale } from './presentation.ts';
 import './craft.css';
