@@ -21,8 +21,9 @@ func NewWorkbenchReadHandler(
 	runs *repository.AgentRunStore,
 	snapshots *repository.AgentRunSnapshotRepository,
 	ingestor *repository.ExecutionObservationStore,
+	lists *repository.WorkbenchListStore,
 ) *session.WorkbenchReadHandler {
-	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor)
+	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists)
 }
 
 // NewWorkbenchArtifactHandler wires the artifact list + signed-link surfaces
