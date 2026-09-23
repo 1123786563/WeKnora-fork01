@@ -485,6 +485,88 @@ func TestLagoAdapterSubscriptionContract(t *testing.T) {
 	runBenefitsContract(t, "lago", p, 113, 114, "weknora-base-v1")
 }
 
+// runPurchaseContract is the #81 shared contract leg: creation is idempotent
+// (a same-Key replay NEVER issues a second create), the snapshot answers the
+// closed awaiting_payment state, and a concurrent plan change is a
+// definitive conflict. creates() reports the external creates the adapter
+// actually issued (fake: stored purchase count; Lago stub: subscriptions
+// POST count).
+func runPurchaseContract(t *testing.T, name string, p commercial.CommercialPlatform, creates func() int) {
+	t.Helper()
+	tenant := uint64(910)
+	cmd := commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key:  commercial.CreatePurchaseSubscriptionCommandKey(commercial.ExternalPurchaseSubscriptionID(tenant), "weknora-contract-v1"),
+		Actor: "contract", Reason: "shared purchase contract",
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode: "weknora-contract-v1", AmountFen: 4200, Currency: commercial.CurrencyCNY,
+		},
+	}
+	t.Run(name+"/purchase create is idempotent by identity", func(t *testing.T) {
+		first, err := p.SubmitCommand(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if first.ExternalID != commercial.ExternalPurchaseSubscriptionID(tenant) {
+			t.Fatalf("receipt identity = %q", first.ExternalID)
+		}
+		if _, err := p.SubmitCommand(context.Background(), cmd); err != nil {
+			t.Fatalf("replay: %v", err)
+		}
+		if n := creates(); n != 1 {
+			t.Fatalf("replay must not create a second external object, creates=%d", n)
+		}
+	})
+	t.Run(name+"/purchase snapshot answers awaiting_payment", func(t *testing.T) {
+		snap, err := p.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: tenant})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snap.Purchase == nil || snap.Purchase.State != commercial.PurchaseStateAwaitingPayment ||
+			snap.Purchase.PlanCode != "weknora-contract-v1" ||
+			snap.Purchase.AmountFen != 4200 || snap.Purchase.Currency != commercial.CurrencyCNY {
+			t.Fatalf("snapshot mismatch: %+v", snap.Purchase)
+		}
+	})
+	t.Run(name+"/purchase different plan is definitive conflict", func(t *testing.T) {
+		other := cmd
+		other.Key = commercial.CreatePurchaseSubscriptionCommandKey(
+			commercial.ExternalPurchaseSubscriptionID(tenant), "weknora-other-v1")
+		other.Payload = commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: tenant, ExternalCustomerID: commercial.ExternalCustomerID(tenant),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(tenant),
+			PlanCode: "weknora-other-v1", AmountFen: 9900, Currency: commercial.CurrencyCNY,
+		}
+		if _, err := p.SubmitCommand(context.Background(), other); !errors.Is(err, commercial.ErrPlatformInvalidResponse) {
+			t.Fatalf("conflict expected, got %v", err)
+		}
+		if n := creates(); n != 1 {
+			t.Fatalf("conflict must not create, creates=%d", n)
+		}
+	})
+}
+
+// TestFakeAdapterPurchaseContract registers the fake leg of the #81 shared
+// purchase contract, observed through the fake's stored purchase state.
+func TestFakeAdapterPurchaseContract(t *testing.T) {
+	fake := NewFakeAdapter()
+	runPurchaseContract(t, "fake", fake, func() int { return len(fake.PurchaseSubscriptions()) })
+}
+
+// TestLagoAdapterPurchaseContract registers the stub-backed Lago leg of the
+// SAME #81 purchase contract — identical legs for both adapters, the
+// external creates observed through the subscriptions POST count.
+func TestLagoAdapterPurchaseContract(t *testing.T) {
+	stub := newPurchaseStub()
+	// The authority's plan truth the index echoes (the frozen price face).
+	stub.mu.Lock()
+	stub.planAmount = map[string]int64{"weknora-contract-v1": 4200}
+	stub.mu.Unlock()
+	runPurchaseContract(t, "lago", purchaseAdapterWithPrefix(t, stub.server(t)), stub.countSubscriptionPosts)
+}
+
 // TestFakeAdapterUnprimedFailsClosed: a fake that was never primed has no
 // authoritative readiness to report — it must fail closed instead of
 // fabricating a state.
