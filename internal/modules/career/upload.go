@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -142,13 +143,36 @@ func (a *UploadAdapter) Release(ctx context.Context, reference, sourceID string)
 		return nil
 	}
 	remaining, err := a.catalog.Release(ctx, reference, careerSourceOwner, sourceID)
-	if err != nil {
-		return err
-	}
-	if remaining <= 0 {
+	if _, cataloged := types.ParseResourcePath(reference); !cataloged {
+		if err != nil {
+			return err
+		}
+		if remaining > 0 {
+			return nil
+		}
 		return a.files.DeleteFile(ctx, reference)
 	}
-	return nil
+	if err == nil && remaining > 0 {
+		return nil
+	}
+	scope, scopeErr := getScope(ctx)
+	if scopeErr != nil {
+		return scopeErr
+	}
+	guarded, ok := a.files.(interfaces.UnboundResourceDeleter)
+	if !ok {
+		return fmt.Errorf("guarded resource deletion unavailable")
+	}
+	deleted, deleteErr := guarded.DeleteUnbound(ctx, scope.TenantID, reference)
+	if err != nil {
+		if deleteErr != nil {
+			return errors.Join(err, deleteErr)
+		}
+		if !deleted {
+			return err
+		}
+	}
+	return deleteErr
 }
 
 func validateResumeContent(ext, declared, detected string, data []byte) error {

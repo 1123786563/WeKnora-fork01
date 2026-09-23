@@ -236,6 +236,30 @@ func (f *careerUploadFiles) DeleteFile(_ context.Context, ref string) error {
 	}
 	return nil
 }
+func (f *careerUploadFiles) DeleteUnbound(ctx context.Context, tenantID uint64, ref string) (bool, error) {
+	if f.db == nil {
+		return false, errors.New("catalog unavailable")
+	}
+	handle, ok := types.ParseResourcePath(ref)
+	if !ok {
+		return false, errors.New("invalid resource reference")
+	}
+	var resource types.StoredResource
+	if err := f.db.WithContext(ctx).Where("tenant_id=? AND handle=? AND state IN (?,?)", tenantID, handle, types.ResourceStateActive, types.ResourceStateDeleting).First(&resource).Error; err != nil {
+		return false, err
+	}
+	var owners int64
+	if err := f.db.WithContext(ctx).Model(&types.ResourceBinding{}).Where("resource_id=?", resource.ID).Count(&owners).Error; err != nil {
+		return false, err
+	}
+	if owners != 0 {
+		return false, nil
+	}
+	if err := f.DeleteFile(ctx, ref); err != nil {
+		return false, err
+	}
+	return true, nil
+}
 func (f *careerUploadFiles) GetFile(_ context.Context, ref string) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(f.data)), nil
 }
@@ -245,6 +269,7 @@ type careerUploadCatalog struct {
 	bound, released string
 	releaseErr      error
 	db              *gorm.DB
+	afterRelease    func()
 }
 
 func (c *careerUploadCatalog) Bind(ctx context.Context, reference, ownerType, ownerID, relation string) error {
@@ -261,6 +286,9 @@ func (c *careerUploadCatalog) Bind(ctx context.Context, reference, ownerType, ow
 }
 func (c *careerUploadCatalog) Release(_ context.Context, reference, _, _ string) (int64, error) {
 	c.released = reference
+	if c.afterRelease != nil {
+		c.afterRelease()
+	}
 	return 0, c.releaseErr
 }
 
@@ -447,6 +475,54 @@ func TestCatalogCleanupKeepsReadySourceAndRetriesFailedDeletion(t *testing.T) {
 	row, err := o.privateSource(ctx, claim.ID)
 	require.NoError(t, err)
 	require.Equal(t, active, row.ResourceRef)
+}
+
+func TestCatalogCleanupDoesNotDeleteAfterForeignBindAtReleaseBoundary(t *testing.T) {
+	o, ctx := testOffice(t)
+	u := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 16, Digest: "same-digest", RequestID: "bind-race", IntentHash: "bind-race-intent"}
+	claim, _, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	name := "career_source_" + claim.ID + ".txt"
+	active := &types.StoredResource{Handle: "0000000000000000000031", TenantID: 1, Provider: "test", PhysicalPath: "test://active", LocationHash: "active-bind-race", OriginalName: name, ContentHash: u.Digest, Size: u.Size}
+	surplus := &types.StoredResource{Handle: "0000000000000000000032", TenantID: 1, Provider: "test", PhysicalPath: "test://surplus", LocationHash: "surplus-bind-race", OriginalName: name, ContentHash: u.Digest, Size: u.Size}
+	require.NoError(t, o.db.Create(active).Error)
+	require.NoError(t, o.db.Create(surplus).Error)
+	require.NoError(t, o.PersistUploadResource(ctx, claim.ID, claim.ClaimToken, types.BuildResourcePath(active.Handle)))
+	_, err = o.FinishSourceClaim(ctx, claim.ID, claim.ClaimToken, "resume text", nil, nil, nil)
+	require.NoError(t, err)
+	files := &careerUploadFiles{db: o.db}
+	catalog := &careerUploadCatalog{db: o.db}
+	catalog.afterRelease = func() {
+		require.NoError(t, o.db.Create(&types.ResourceBinding{ResourceID: surplus.ID, TenantID: 1, OwnerType: "other", OwnerID: "new-owner"}).Error)
+	}
+	h := &Handler{office: o, upload: NewUploadAdapter(files, catalog, careerUploadReader{})}
+	require.NoError(t, h.cleanupCatalogCandidates(ctx, claim.ID))
+	require.Empty(t, files.deleted, "a new owner must keep the bytes")
+	var stored types.StoredResource
+	require.NoError(t, o.db.Where("id=?", surplus.ID).First(&stored).Error)
+	require.Equal(t, types.ResourceStateActive, stored.State)
+}
+
+func TestCatalogCleanupRetriesDeletingCandidateAfterPhysicalFailure(t *testing.T) {
+	o, ctx := testOffice(t)
+	u := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 16, Digest: "retry-digest", RequestID: "delete-retry", IntentHash: "delete-retry-intent"}
+	claim, _, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	name := "career_source_" + claim.ID + ".txt"
+	active := &types.StoredResource{Handle: "0000000000000000000041", TenantID: 1, Provider: "test", PhysicalPath: "test://active", LocationHash: "active-delete-retry", OriginalName: name, ContentHash: u.Digest, Size: u.Size}
+	surplus := &types.StoredResource{Handle: "0000000000000000000042", TenantID: 1, Provider: "test", PhysicalPath: "test://surplus", LocationHash: "surplus-delete-retry", OriginalName: name, ContentHash: u.Digest, Size: u.Size, State: types.ResourceStateDeleting}
+	require.NoError(t, o.db.Create(active).Error)
+	require.NoError(t, o.db.Create(surplus).Error)
+	require.NoError(t, o.PersistUploadResource(ctx, claim.ID, claim.ClaimToken, types.BuildResourcePath(active.Handle)))
+	_, err = o.FinishSourceClaim(ctx, claim.ID, claim.ClaimToken, "resume text", nil, nil, nil)
+	require.NoError(t, err)
+	files := &careerUploadFiles{db: o.db}
+	h := &Handler{office: o, upload: NewUploadAdapter(files, &careerUploadCatalog{releaseErr: errors.New("active-only resolve rejected deleting resource")}, careerUploadReader{})}
+	require.NoError(t, h.cleanupCatalogCandidates(ctx, claim.ID))
+	require.Equal(t, types.BuildResourcePath(surplus.Handle), files.deleted)
+	var stored types.StoredResource
+	require.NoError(t, o.db.Unscoped().Where("id=?", surplus.ID).First(&stored).Error)
+	require.Equal(t, types.ResourceStateDeleted, stored.State)
 }
 
 func TestStaleSourceWithUnrecordedCatalogRefShowsCleanupPending(t *testing.T) {

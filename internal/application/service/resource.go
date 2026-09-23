@@ -24,6 +24,8 @@ type resourceCatalog struct {
 	repo interfaces.ResourceRepository
 }
 
+var _ interfaces.GuardedResourceDeleteCatalog = (*resourceCatalog)(nil)
+
 // NewResourceCatalog creates the stable resource-reference domain service.
 func NewResourceCatalog(repo interfaces.ResourceRepository) interfaces.ResourceCatalog {
 	return &resourceCatalog{repo: repo}
@@ -136,9 +138,16 @@ func (s *resourceCatalog) ResolvePath(ctx context.Context, value string) (string
 }
 
 func (s *resourceCatalog) Bind(ctx context.Context, reference, ownerType, ownerID, relation string) error {
-	resource, err := s.Resolve(ctx, reference)
+	handle, ok := types.ParseResourcePath(reference)
+	if !ok {
+		return interfaces.ErrResourceUnavailable
+	}
+	resource, err := s.repo.GetByHandle(ctx, handle)
 	if err != nil {
 		return err
+	}
+	if resource == nil {
+		return interfaces.ErrResourceUnavailable
 	}
 	if strings.TrimSpace(ownerType) == "" || strings.TrimSpace(ownerID) == "" {
 		return fmt.Errorf("resource binding requires owner type and id")
@@ -153,6 +162,42 @@ func (s *resourceCatalog) Bind(ctx context.Context, reference, ownerType, ownerI
 		OwnerID:    ownerID,
 		Relation:   relation,
 	})
+}
+
+func (s *resourceCatalog) guardedDeleteRepo() (interfaces.GuardedResourceDeleteRepository, error) {
+	repo, ok := s.repo.(interfaces.GuardedResourceDeleteRepository)
+	if !ok {
+		return nil, fmt.Errorf("guarded resource deletion unavailable")
+	}
+	return repo, nil
+}
+
+func (s *resourceCatalog) ClaimUnbound(ctx context.Context, tenantID uint64, reference string) (*types.StoredResource, bool, error) {
+	handle, ok := types.ParseResourcePath(reference)
+	if !ok || tenantID == 0 {
+		return nil, false, interfaces.ErrResourceUnavailable
+	}
+	repo, err := s.guardedDeleteRepo()
+	if err != nil {
+		return nil, false, err
+	}
+	return repo.ClaimUnboundResource(ctx, tenantID, handle)
+}
+
+func (s *resourceCatalog) FinishUnboundDelete(ctx context.Context, tenantID uint64, resourceID string) error {
+	repo, err := s.guardedDeleteRepo()
+	if err != nil {
+		return err
+	}
+	return repo.FinishUnboundResourceDelete(ctx, tenantID, resourceID)
+}
+
+func (s *resourceCatalog) RetryUnboundDelete(ctx context.Context, tenantID uint64, resourceID string) error {
+	repo, err := s.guardedDeleteRepo()
+	if err != nil {
+		return err
+	}
+	return repo.RetryUnboundResourceDelete(ctx, tenantID, resourceID)
 }
 
 func (s *resourceCatalog) IsReferencedByKnowledgeBase(

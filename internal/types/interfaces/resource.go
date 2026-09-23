@@ -2,10 +2,34 @@ package interfaces
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
+
+var ErrResourceUnavailable = errors.New("resource unavailable for binding")
+
+// GuardedResourceDeleteRepository serializes binding with a scoped, unbound
+// deletion claim. It is optional so existing ResourceRepository adapters keep
+// their ordinary contract.
+type GuardedResourceDeleteRepository interface {
+	ClaimUnboundResource(ctx context.Context, tenantID uint64, handle string) (*types.StoredResource, bool, error)
+	FinishUnboundResourceDelete(ctx context.Context, tenantID uint64, resourceID string) error
+	RetryUnboundResourceDelete(ctx context.Context, tenantID uint64, resourceID string) error
+}
+
+// GuardedResourceDeleteCatalog exposes private locators only to the file
+// decorator; Career callers use UnboundResourceDeleter and see only a result.
+type GuardedResourceDeleteCatalog interface {
+	ClaimUnbound(ctx context.Context, tenantID uint64, reference string) (*types.StoredResource, bool, error)
+	FinishUnboundDelete(ctx context.Context, tenantID uint64, resourceID string) error
+	RetryUnboundDelete(ctx context.Context, tenantID uint64, resourceID string) error
+}
+
+type UnboundResourceDeleter interface {
+	DeleteUnbound(ctx context.Context, tenantID uint64, reference string) (bool, error)
+}
 
 // ResourceCleaner owns process-lifetime cleanup callbacks (database clients,
 // worker pools, etc.). It is unrelated to persisted StoredResource records.

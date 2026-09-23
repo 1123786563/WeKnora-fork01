@@ -13,6 +13,10 @@ import (
 
 type resourceRepository struct{ db *gorm.DB }
 
+var _ interfaces.GuardedResourceDeleteRepository = (*resourceRepository)(nil)
+
+const guardedDeleteLease = time.Minute
+
 // NewResourceRepository creates the persistence adapter for resource metadata.
 func NewResourceRepository(db *gorm.DB) interfaces.ResourceRepository {
 	return &resourceRepository{db: db}
@@ -68,7 +72,77 @@ func (r *resourceRepository) MarkDeleted(ctx context.Context, id string) error {
 }
 
 func (r *resourceRepository) CreateBinding(ctx context.Context, binding *types.ResourceBinding) error {
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(binding).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// The no-op update reserves SQLite's writer and locks the PostgreSQL
+		// resource row before insertion. Deletion claims use the same boundary.
+		locked := tx.Exec("UPDATE resources SET state=state WHERE id=? AND tenant_id=? AND state=?", binding.ResourceID, binding.TenantID, types.ResourceStateActive)
+		if locked.Error != nil {
+			return locked.Error
+		}
+		if locked.RowsAffected != 1 {
+			return interfaces.ErrResourceUnavailable
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(binding).Error
+	})
+}
+
+// ClaimUnboundResource is the write-serialized decision that permits physical
+// deletion. A fresh deleting claim is busy; a stale or explicitly retried one
+// can resume after a crashed/failing cleaner without reopening binding.
+func (r *resourceRepository) ClaimUnboundResource(ctx context.Context, tenantID uint64, handle string) (*types.StoredResource, bool, error) {
+	var resource types.StoredResource
+	claimed := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		locked := tx.Exec("UPDATE resources SET state=state WHERE handle=? AND tenant_id=? AND state IN (?,?)", handle, tenantID, types.ResourceStateActive, types.ResourceStateDeleting)
+		if locked.Error != nil {
+			return locked.Error
+		}
+		if locked.RowsAffected == 0 {
+			return nil
+		}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("handle=? AND tenant_id=?", handle, tenantID).First(&resource).Error; err != nil {
+			return err
+		}
+		var bindings int64
+		if err := tx.Model(&types.ResourceBinding{}).Where("resource_id=?", resource.ID).Count(&bindings).Error; err != nil {
+			return err
+		}
+		if bindings != 0 {
+			return nil
+		}
+		now := time.Now().UTC()
+		if resource.State == types.ResourceStateDeleting && resource.UpdatedAt.After(now.Add(-guardedDeleteLease)) {
+			return nil
+		}
+		res := tx.Model(&types.StoredResource{}).Where("id=? AND tenant_id=? AND state IN (?,?)", resource.ID, tenantID, types.ResourceStateActive, types.ResourceStateDeleting).Updates(map[string]any{"state": types.ResourceStateDeleting, "updated_at": now})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return interfaces.ErrResourceUnavailable
+		}
+		claimed = true
+		return nil
+	})
+	if err != nil || !claimed {
+		return nil, false, err
+	}
+	return &resource, true, nil
+}
+
+func (r *resourceRepository) FinishUnboundResourceDelete(ctx context.Context, tenantID uint64, resourceID string) error {
+	res := r.db.WithContext(ctx).Model(&types.StoredResource{}).Where("id=? AND tenant_id=? AND state=?", resourceID, tenantID, types.ResourceStateDeleting).Updates(map[string]any{"state": types.ResourceStateDeleted, "deleted_at": time.Now().UTC()})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return interfaces.ErrResourceUnavailable
+	}
+	return nil
+}
+
+func (r *resourceRepository) RetryUnboundResourceDelete(ctx context.Context, tenantID uint64, resourceID string) error {
+	return r.db.WithContext(ctx).Model(&types.StoredResource{}).Where("id=? AND tenant_id=? AND state=?", resourceID, tenantID, types.ResourceStateDeleting).Update("updated_at", time.Now().UTC().Add(-guardedDeleteLease-time.Second)).Error
 }
 
 // DeleteBinding removes one owner's claim on a resource. Deleting a claim that

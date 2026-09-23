@@ -15,6 +15,7 @@ const (
 	ResourceScheme              = "resource://"
 	ResourceHandleLength        = 22
 	ResourceStateActive         = "active"
+	ResourceStateDeleting       = "deleting"
 	ResourceStateDeleted        = "deleted"
 	ResourceLifecyclePersistent = "persistent"
 	ResourceLifecycleTemporary  = "temporary"

@@ -33,6 +33,10 @@ func (o *Office) markCatalogCleanupPending(ctx context.Context, row sourceRevisi
 // upload digest. A catalog registration remains a durable locator even when
 // the separate Career source-ref update did not complete.
 func (o *Office) catalogCandidates(ctx context.Context, sourceID string) (sourceRevision, []types.StoredResource, error) {
+	return o.catalogCandidatesWithStates(ctx, sourceID, false)
+}
+
+func (o *Office) catalogCandidatesWithStates(ctx context.Context, sourceID string, includeDeleting bool) (sourceRevision, []types.StoredResource, error) {
 	row, err := o.privateSource(ctx, sourceID)
 	if err != nil {
 		return sourceRevision{}, nil, err
@@ -43,7 +47,13 @@ func (o *Office) catalogCandidates(ctx context.Context, sourceID string) (source
 	}
 	name := "career_source_" + row.ID + strings.ToLower(filepath.Ext(row.FileName))
 	var candidates []types.StoredResource
-	err = o.db.WithContext(ctx).Where("tenant_id=? AND original_name=? AND content_hash=? AND size=? AND state=? AND lifecycle=?", scope.TenantID, name, row.Digest, row.Size, types.ResourceStateActive, types.ResourceLifecyclePersistent).Order("created_at, id").Find(&candidates).Error
+	query := o.db.WithContext(ctx).Where("tenant_id=? AND original_name=? AND content_hash=? AND size=? AND lifecycle=?", scope.TenantID, name, row.Digest, row.Size, types.ResourceLifecyclePersistent)
+	if includeDeleting {
+		query = query.Where("state IN (?,?)", types.ResourceStateActive, types.ResourceStateDeleting)
+	} else {
+		query = query.Where("state=?", types.ResourceStateActive)
+	}
+	err = query.Order("created_at, id").Find(&candidates).Error
 	return row, candidates, err
 }
 
@@ -87,7 +97,7 @@ func (h *Handler) recoverCatalogRef(ctx context.Context, sourceID, token, reques
 // A terminal source cannot be taken over. Its active ref is preserved; exact
 // surplus registrations are retried after a failed physical delete.
 func (h *Handler) cleanupCatalogCandidates(ctx context.Context, sourceID string) error {
-	row, candidates, err := h.office.catalogCandidates(ctx, sourceID)
+	row, candidates, err := h.office.catalogCandidatesWithStates(ctx, sourceID, true)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}

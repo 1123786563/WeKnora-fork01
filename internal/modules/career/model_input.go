@@ -14,6 +14,7 @@ var extractedModelKeyPattern = regexp.MustCompile(`^(education|experience|projec
 
 var safeModelKeys = map[string]string{
 	"degree": "education", "graduation_year": "education", "city": "preference", "target_role": "preference", "internship_months": "experience",
+	"毕业时间": "education", "学历": "education", "城市": "preference", "意向": "preference",
 	"education.school": "education", "education.degree": "education", "education.major": "education", "education.graduation_year": "education", "education.details": "education",
 	"experience.company": "experience", "experience.role": "experience", "experience.duration": "experience", "experience.details": "experience", "experience.achievement": "experience",
 	"project.name": "project", "project.role": "project", "project.details": "project",

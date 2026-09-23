@@ -132,6 +132,34 @@ func TestModelInputExcludesNestedDocumentFieldsAndSeparatedNumbers(t *testing.T)
 	require.Contains(t, encoded, "Reduced latency 30%")
 }
 
+func TestWebConfirmedFactsReachRelevantModelPurposes(t *testing.T) {
+	o, ctx := testOffice(t)
+	facts := []struct{ key, value string }{
+		{"毕业时间", "2027"},
+		{"学历", "本科"},
+		{"城市", "上海"},
+		{"意向", "后端工程师"},
+		{"education.passport_number", "AB-12345678"},
+	}
+	for i, fact := range facts {
+		_, err := o.Confirm(ctx, fact.key, fact.value, fmt.Sprintf("web-safe-%d", i), uint64(i), Source{Kind: "manual"})
+		require.NoError(t, err)
+	}
+	for _, purpose := range []string{"profile_summary", "qualification_evaluation", "material_generation"} {
+		t.Run(purpose, func(t *testing.T) {
+			input, err := o.BuildModelInput(ctx, purpose)
+			require.NoError(t, err)
+			encoded := input.String()
+			for _, fact := range facts[:4] {
+				require.Contains(t, encoded, fact.key)
+				require.Contains(t, encoded, fact.value)
+			}
+			require.NotContains(t, encoded, "passport_number")
+			require.NotContains(t, encoded, "AB-12345678")
+		})
+	}
+}
+
 func TestIntakeSourceIsTenantOwnerScoped(t *testing.T) {
 	o, ctx := testOffice(t)
 	created, err := o.CreateSource(ctx, SourceUpload{FileName: "resume.pdf", MIMEType: "application/pdf", Size: 100, Digest: "sha256:test", ResourceRef: "private://resume", Text: "source text"}, "")
