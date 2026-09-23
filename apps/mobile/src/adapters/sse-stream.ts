@@ -16,6 +16,8 @@ export async function streamAuthorizedSse(
     ...(input.signal === undefined ? {} : { signal: input.signal }),
   });
   if (!response.ok || !response.body) {
+    // 失败响应也必须释放连接（R1-F50）：401 刷新重试会对同一端点反复建连，泄漏的 body 会放大占用。
+    await response.body?.cancel().catch(() => undefined);
     // 真 ApiError（含 code）：消费方按 instanceof / error.code 分流，伪造形态会静默失效（B2-F29）。
     // code 兜底与 errorFromResult 的 `HTTP_${status}` 约定一致（errors.ts）。
     throw new ApiError({ status: response.status, code: `HTTP_${response.status}`, message: `workbench event stream failed with HTTP ${response.status}` });

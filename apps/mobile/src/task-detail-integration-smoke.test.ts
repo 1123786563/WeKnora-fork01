@@ -12,7 +12,8 @@ test('the config rejects loopback, private and reserved deployment hosts as inva
   const verdict = taskDetailIntegrationConfig(vars);
   assert.equal(verdict.enabled, false);
   assert.equal(verdict.enabled === false && verdict.disposition, 'invalid');
-  for (const host of ['https://localhost', 'https://10.0.0.5', 'https://192.168.1.4', 'https://[fe80::1]', 'https://169.254.1.1']) {
+  for (const host of ['https://localhost', 'https://10.0.0.5', 'https://192.168.1.4', 'https://[fe80::1]', 'https://169.254.1.1',
+    'https://100.64.0.1', 'https://198.18.0.1', 'https://192.0.2.1', 'https://203.0.113.1']) {
     const rejected = taskDetailIntegrationConfig({ ...vars, WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: host });
     assert.equal(rejected.enabled === false && rejected.disposition, 'invalid', host);
   }

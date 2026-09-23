@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ApiError } from '@weknora/api-client';
-import { streamAuthorizedSse } from './sse-stream.ts';
+import { streamAuthorizedSse, type SseFetchLike } from './sse-stream.ts';
 
 const encoder = new TextEncoder();
 const streamOf = (parts: string[]) => new ReadableStream<Uint8Array>({
@@ -54,4 +54,15 @@ test('a throwing onChunk cancels the reader before the error propagates', async 
     /RUNTIME_SCOPE_CHANGED/,
   );
   assert.deepEqual(cancelled, [true], 'onChunk 同步抛出时 reader 必须 cancel，连接不得保持打开');
+});
+
+test('a failed SSE response releases its body (R1-F50)', async () => {
+  let cancelled = 0;
+  const fake = { ok: false, status: 409, body: { cancel: async () => { cancelled += 1; } } } as unknown as Response;
+  const failing = (async () => fake) as SseFetchLike;
+  await assert.rejects(
+    streamAuthorizedSse('https://x.example.test', { method: 'GET', path: '/api/v1/events' }, 'token', () => {}, failing),
+    (error: unknown) => (error as { code?: string }).code === 'HTTP_409',
+  );
+  assert.equal(cancelled, 1, '非 2xx 分支也必须 cancel body（401 刷新重试反复放大连接占用）');
 });

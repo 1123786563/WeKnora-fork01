@@ -102,6 +102,9 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   let credentialMutation: Promise<void> = Promise.resolve();
   let pendingOidcMutation: Promise<void> = Promise.resolve();
   const refreshFlights = new Map<string, { requestEpoch: number; promise: Promise<StoredCredential | undefined> }>();
+  // 在途授权流（R1-F32）：scope 撤销时全部 abort——SSE 挂在服务器侧不出 chunk 就不会回到
+  // guardedChunk 的 epoch 检查，必须由 runtime 主动断开传输层。
+  const activeStreams = new Set<AbortController>();
   let state: RuntimeSnapshot = { surface: 'deployment-login', reason: 'authentication-required' };
   const listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -120,6 +123,8 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     vaultTail = next.then(() => {}, () => {});
   };
   const revoke = (vaultReason: VaultRevokeReason): void => {
+    for (const controller of activeStreams) controller.abort();
+    activeStreams.clear();
     queueVaultRevoke(vaultReason);
     revocableLease?.revoke();
     revocableLease = undefined;
@@ -394,7 +399,16 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
         onChunk(chunk);
       };
-      await sendWithCredential(requestEpoch, deployment, (token) => transport(input, token, guardedChunk));
+      // 无 signal 的调用也要纳入 revoke 中止（R1-F32）：controller 桥接调用方 signal 与在途流。
+      const controller = new AbortController();
+      activeStreams.add(controller);
+      controller.signal.addEventListener('abort', () => activeStreams.delete(controller), { once: true });
+      input.signal?.addEventListener('abort', () => controller.abort(input.signal!.reason), { once: true });
+      try {
+        await sendWithCredential(requestEpoch, deployment, (token) => transport({ ...input, signal: controller.signal }, token, guardedChunk));
+      } finally {
+        activeStreams.delete(controller);
+      }
     },
     scopeLease: () => lease,
     resourceShelf: () => activeShelf,
