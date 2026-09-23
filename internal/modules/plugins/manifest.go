@@ -142,8 +142,13 @@ func ValidateManifest(m *types.PluginManifest) error {
 }
 
 // validateName bounds an identifier-like name: non-empty, at most maxRunes
-// runes, and free of control characters (they would corrupt admin-facing
-// display surfaces and logs).
+// runes, and free of control AND invisible format characters. Format (Cf)
+// characters — bidi overrides (U+202E), zero-width marks (U+200B), BOM
+// (U+FEFF), soft hyphen (U+00AD) — are not covered by unicode.IsControl (Cc
+// only) yet can visually reorder or hide text in the admin review surface;
+// human review is this feature's core safety gate, so names must be exactly
+// what they appear to be. Private-use (Co) characters have no standardized
+// glyph and are rejected from identifiers as well.
 func validateName(where, name string, maxRunes int) error {
 	if name == "" {
 		return fmt.Errorf("%s must not be empty", where)
@@ -152,8 +157,8 @@ func validateName(where, name string, maxRunes int) error {
 		return fmt.Errorf("%s must be at most %d characters", where, maxRunes)
 	}
 	for _, r := range name {
-		if unicode.IsControl(r) {
-			return fmt.Errorf("%s must not contain control characters (U+%04X)", where, r)
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Co, r) {
+			return fmt.Errorf("%s must not contain control or format characters (U+%04X)", where, r)
 		}
 	}
 	return nil
@@ -162,16 +167,20 @@ func validateName(where, name string, maxRunes int) error {
 // validateDescription bounds free text (manifest description, live tool
 // descriptions). Empty is legal (the field is optional). Newlines, tabs and
 // CR are allowed — multi-line descriptions are legitimate — but every other
-// control character is rejected. It is shared by the manifest validator and
-// BuildVerifiedSnapshot, so live endpoint data passes the same hygiene the
-// manifest does.
+// control character AND every format (Cf) character is rejected: bidi
+// overrides and zero-width marks would visually reorder or alter the text
+// shown to admins and members. Private-use (Co) characters keep their
+// ordinary visible glyphs and stay legal in free text. Shared by the
+// manifest validator and BuildVerifiedSnapshot, so live endpoint data passes
+// the same hygiene the manifest does.
 func validateDescription(where, description string) error {
 	if utf8.RuneCountInString(description) > maxDescriptionRunes {
 		return fmt.Errorf("%s exceeds %d characters", where, maxDescriptionRunes)
 	}
 	for _, r := range description {
-		if unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' {
-			return fmt.Errorf("%s must not contain control characters (U+%04X)", where, r)
+		if r != '\n' && r != '\r' && r != '\t' &&
+			(unicode.IsControl(r) || unicode.Is(unicode.Cf, r)) {
+			return fmt.Errorf("%s must not contain control or format characters (U+%04X)", where, r)
 		}
 	}
 	return nil

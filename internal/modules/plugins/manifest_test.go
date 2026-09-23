@@ -61,6 +61,10 @@ func TestValidateManifestRejects(t *testing.T) {
 		func(m *types.PluginManifest) { m.Tools[0].Name = "bad\x01tool" },                        // 工具名控制字符
 		func(m *types.PluginManifest) { m.Description = strings.Repeat("d", 1025) },              // 描述超长
 		func(m *types.PluginManifest) { m.Description = "desc with \x00nul" },                    // 描述非法控制字符
+		func(m *types.PluginManifest) { m.Name = "bad\u202Ename" },                               // Cf 双向覆盖符（RLO）
+		func(m *types.PluginManifest) { m.Name = "x\uE000y" },                                    // Co 私用区
+		func(m *types.PluginManifest) { m.Tools[0].Name = "t\u200Bopt" },                         // Cf 零宽空格
+		func(m *types.PluginManifest) { m.Description = "d\uFEFFbom" },                           // Cf BOM
 		func(m *types.PluginManifest) { m.Auth = nil },                                           // requires_personal_auth 工具要求 PersonalOAuth
 	}
 	for i, mutate := range cases {

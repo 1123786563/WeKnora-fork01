@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
@@ -135,4 +136,38 @@ func TestBuildVerifiedSnapshotRejectsOversizedLiveDescription(t *testing.T) {
 	}}
 	_, _, err := BuildVerifiedSnapshot(m, live)
 	require.ErrorContains(t, err, "search_my_week_issues")
+}
+
+// TestBuildVerifiedSnapshotRejectsBidiLiveDescription (OCR T01-R3-2): a live
+// description carrying a bidi override / zero-width format character (Cf) is
+// rejected — human review is the core safety gate and must not be shown
+// visually-reordered text.
+func TestBuildVerifiedSnapshotRejectsBidiLiveDescription(t *testing.T) {
+	m := validManifest()
+	live := []*types.MCPTool{{
+		Name:        "search_my_week_issues",
+		Description: "desc with \u202Eembedded RLO and a \u200Bzero width",
+		InputSchema: []byte(declaredNoArgSchema),
+	}}
+	_, _, err := BuildVerifiedSnapshot(m, live)
+	require.ErrorContains(t, err, "search_my_week_issues")
+}
+
+// TestFetchAndVerifyFailsFastOnNilLister (OCR T01-R3-3): a nil lister is a
+// programming error; FetchAndVerify must reject it BEFORE any network I/O.
+func TestFetchAndVerifyFailsFastOnNilLister(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	var requests atomic.Int32
+	base := newControlledPluginHost(t,
+		func(w http.ResponseWriter, _ *http.Request) {
+			requests.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{}`))
+		},
+		func(w http.ResponseWriter, _ *http.Request) { requests.Add(1) },
+	)
+	_, err := FetchAndVerify(context.Background(), base+"/manifest.json", nil)
+	require.ErrorContains(t, err, "lister")
+	require.Zero(t, requests.Load(), "nil lister must fail before any network request is sent")
 }

@@ -39,8 +39,10 @@ func IsOAuthProtected(err error) bool {
 type EndpointLister func(ctx context.Context, transportType string, endpointURL string) ([]*types.MCPTool, error)
 
 // maxManifestBytes bounds the manifest download (1 MiB): an untrusted URL
-// must not be able to make WeKnora buffer arbitrary amounts of data.
-var maxManifestBytes = 1 << 20
+// must not be able to make WeKnora buffer arbitrary amounts of data. It is a
+// security boundary, so it is a compile-time constant — nothing (tests
+// included) can relax it at runtime.
+const maxManifestBytes = 1 << 20
 
 // FetchResult is the verified outcome of FetchAndVerify: the parsed manifest,
 // the live tool directory it was checked against, and the authoritative
@@ -58,6 +60,11 @@ type FetchResult struct {
 // security-relevant: both the manifest URL and the manifest-declared endpoint
 // must pass SSRF validation BEFORE any request is sent to them.
 func FetchAndVerify(ctx context.Context, manifestURL string, lister EndpointLister) (*FetchResult, error) {
+	// 0) Required-parameter gate, BEFORE any network I/O: a nil lister is a
+	// programming error and must fail fast instead of downloading first.
+	if lister == nil {
+		return nil, fmt.Errorf("endpoint lister is required")
+	}
 	// 1) SSRF gate on the manifest URL: http/https only, and reject
 	// localhost/loopback/private/reserved targets before any dial.
 	if err := utils.ValidateURLForSSRF(manifestURL); err != nil {
@@ -82,9 +89,6 @@ func FetchAndVerify(ctx context.Context, manifestURL string, lister EndpointList
 	// 4) SSRF gate on the manifest-declared endpoint, then live verification.
 	if err := utils.ValidateURLForSSRF(manifest.Transport.Endpoint); err != nil {
 		return nil, fmt.Errorf("plugin endpoint rejected: %w", err)
-	}
-	if lister == nil {
-		return nil, fmt.Errorf("endpoint lister is required")
 	}
 	live, err := lister(ctx, manifest.Transport.Type, manifest.Transport.Endpoint)
 	if err != nil {
