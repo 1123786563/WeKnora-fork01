@@ -8,6 +8,7 @@
 // warning 状态 + noEngine placeholder + 240px 弹层内高；台账 #8 Select 根
 // 不透传 data-*，行标识挂在包裹 span 上）。
 import { Select } from 'tdesign-react';
+import './knowledge-settings-u.css';
 
 export interface ParserEngineInfo {
   Name: string;

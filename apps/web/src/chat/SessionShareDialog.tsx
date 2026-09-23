@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { buildShareLink, writeShareLinkClipboard } from './session-share.ts';
+import './chat-u.css';
 
 export interface SessionShareDialogProps {
   client: WeKnoraClient;
@@ -24,9 +25,9 @@ export interface SessionShareDialogProps {
   onToast(message: string): void;
 }
 
-const SECONDARY_BUTTON = 'box-border min-h-[32px] cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55';
-const PRIMARY_BUTTON = 'box-border min-h-[32px] cursor-pointer rounded-[6px] border-0 bg-[#07c05f] px-[12px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-55';
-const DANGER_BUTTON = 'box-border min-h-[32px] cursor-pointer rounded-[6px] border border-[rgba(220,60,60,0.4)] bg-white px-[12px] text-[13px] text-[#c03939] enabled:hover:bg-[#fdecee] disabled:cursor-not-allowed disabled:opacity-55';
+const SECONDARY_BUTTON = 'wk-ssd-secondary-button';
+const PRIMARY_BUTTON = 'wk-ssd-primary-button';
+const DANGER_BUTTON = 'wk-ssd-danger-button';
 
 export function SessionShareDialog({ client, sessionId, sessionTitle, locale = 'zh-CN', onClose, onToast }: SessionShareDialogProps) {
   const t = (key: string): string => formatMessage(locale, key);
@@ -98,7 +99,7 @@ export function SessionShareDialog({ client, sessionId, sessionTitle, locale = '
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[3400] flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-[16px]"
+      className="wk-ssd-1"
       role="presentation"
       onClick={onClose}
     >
@@ -107,26 +108,26 @@ export function SessionShareDialog({ client, sessionId, sessionTitle, locale = '
         aria-modal="true"
         aria-label={t('settings.queryHistory.shareTitle')}
         data-testid="session-share-dialog"
-        className="w-[min(520px,100%)] rounded-[12px] bg-white p-[20px] shadow-[0_18px_50px_rgba(15,23,42,0.22)]"
+        className="wk-ssd-2"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mb-[4px] flex items-start justify-between gap-[8px]">
-          <h3 className="m-0 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t('settings.queryHistory.shareTitle')}</h3>
-          <button type="button" aria-label={t('settings.queryHistory.close')} className="min-h-[28px] cursor-pointer rounded-[6px] border-0 bg-transparent px-[6px] text-[20px] leading-[1] text-[rgba(23,26,29,0.55)] hover:bg-[#f3f3f3]" onClick={onClose}>×</button>
+        <div className="wk-ssd-3">
+          <h3 className="wk-ssd-4">{t('settings.queryHistory.shareTitle')}</h3>
+          <button type="button" aria-label={t('settings.queryHistory.close')} className="wk-ssd-5" onClick={onClose}>×</button>
         </div>
-        <p className="m-0 mb-[12px] break-all text-[13px] text-[rgba(23,26,29,0.6)]">{sessionTitle || sessionId}</p>
+        <p className="wk-ssd-6">{sessionTitle || sessionId}</p>
 
         {phase === 'creating' ? (
-          <p role="status" className="m-0 mb-[12px] text-[13px] text-[#8a96a8]">{t('settings.queryHistory.shareCreating')}</p>
+          <p role="status" className="wk-ssd-7">{t('settings.queryHistory.shareCreating')}</p>
         ) : phase === 'failed' ? (
-          <div role="alert" className="mb-[12px] flex flex-wrap items-center gap-[8px]">
-            <p className="m-0 text-[13px] text-[#b42318]">{t('settings.queryHistory.shareFailedToast')}</p>
+          <div role="alert" className="wk-ssd-8">
+            <p className="wk-ssd-9">{t('settings.queryHistory.shareFailedToast')}</p>
             <button type="button" className={SECONDARY_BUTTON} onClick={() => setRetryCount((count) => count + 1)}>{t('common.retry')}</button>
           </div>
         ) : (
           <>
-            <label className="m-0 mb-[6px] block text-[12px] font-semibold text-[#5c6b83]" htmlFor="wk-session-share-link">{t('settings.queryHistory.shareLinkLabel')}</label>
-            <div className="mb-[6px] flex items-center gap-[8px]">
+            <label className="wk-ssd-10" htmlFor="wk-session-share-link">{t('settings.queryHistory.shareLinkLabel')}</label>
+            <div className="wk-ssd-11">
               <input
                 id="wk-session-share-link"
                 type="text"
@@ -134,7 +135,7 @@ export function SessionShareDialog({ client, sessionId, sessionTitle, locale = '
                 value={link}
                 data-testid="session-share-link"
                 onFocus={(event) => event.currentTarget.select()}
-                className="box-border min-w-0 flex-1 rounded-[6px] border border-[#e7e7ea] bg-[#f7f9fb] px-[8px] py-[6px] font-mono text-[12px] text-[rgba(23,26,29,0.92)]"
+                className="wk-ssd-12"
               />
               <button
                 type="button"
@@ -145,11 +146,11 @@ export function SessionShareDialog({ client, sessionId, sessionTitle, locale = '
                 {copied ? t('settings.queryHistory.shareCopied') : t('settings.queryHistory.shareCopy')}
               </button>
             </div>
-            <p className="m-0 mb-[12px] text-[12px] leading-[1.5] text-[#8a96a8]">{t('settings.queryHistory.shareHint')}</p>
+            <p className="wk-ssd-13">{t('settings.queryHistory.shareHint')}</p>
           </>
         )}
 
-        <div className="mt-[4px] flex items-center justify-end gap-[8px] border-t border-[#eef1f5] pt-[14px]">
+        <div className="wk-ssd-14">
           <button
             type="button"
             className={DANGER_BUTTON}

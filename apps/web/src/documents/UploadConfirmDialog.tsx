@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Dialog, Status } from '@weknora/ui';
 import { getUploadConfirmDefaultSection, getUploadConfirmSections, isUploadConfirmDismissible, requestUploadConfirmClose, validateUploadConfirm, type UploadConfirmMode, type UploadConfirmSection, type UploadConfirmSource } from './upload-confirm.ts';
+import './documents-u.css';
 
 export interface UploadConfirmDialogProps {
   open: boolean;
@@ -57,7 +58,7 @@ export function UploadConfirmDialog({ open, mode = 'file', files = [], urls = []
       </section>)}
     </div>
     {!validation.valid && !validation.firstIssueSection ? <Status tone="error">Select a file, URL, or manual content before continuing.</Status> : null}
-    <div className="flex items-center justify-end gap-2">
+    <div className="wk-ucd-1">
       <Button type="button" variant="text" onClick={close} disabled={loading}>Cancel</Button>
       <Button type="button" variant="primary" loading={loading} disabled={!validation.valid} onClick={confirm}>Confirm</Button>
     </div>

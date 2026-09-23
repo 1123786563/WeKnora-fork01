@@ -10,6 +10,7 @@ import { Icon as TIcon } from 'tdesign-icons-react';
 import type { KnowledgeTag } from '@weknora/api-client';
 import { filterTagOptions, selectTagId, tagCreateFailureMessage } from './tags.ts';
 import type { TagSurfaceT } from './tags-locale.ts';
+import './documents-u.css';
 
 interface TagPickerDialogProps {
   open: boolean;
@@ -115,24 +116,24 @@ export function TagPickerDialog({
     <Dialog open title={t(copy.heading)} onClose={onClose} closeLabel={t('common.cancel')}>
       <div className={mode === 'batch' ? 'batch-tag-body' : 'tag-edit-body'}>
         {mode === 'batch' && typeof count === 'number' ? (
-          <p className="batch-tag-subtitle m-0 mb-1 text-[12px] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.batchTagSubtitle', { count })}</p>
+          <p className="batch-tag-subtitle wk-tpd-1">{t('knowledgeBase.batchTagSubtitle', { count })}</p>
         ) : null}
-        <section className="wk-tag-section mt-3 flex flex-col gap-2 border-b border-[var(--wk-border,#e4e7ec)] px-0 py-[10px] first-of-type:border-t-0">
-          <div className="wk-tag-section-head flex items-center justify-between gap-2">
-            <h4 className="m-0 text-[13px] font-semibold">{t(copy.selected)}</h4>
+        <section className="wk-tag-section first-of-type:border-t-0 wk-tpd-2">
+          <div className="wk-tag-section-head wk-tpd-3">
+            <h4 className="wk-tpd-4">{t(copy.selected)}</h4>
             {selectedSet.size > 0 ? (
-              <button type="button" className="wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)]" onClick={() => setSelectedSet(new Set())}>
+              <button type="button" className="wk-tag-link wk-tpd-5" onClick={() => setSelectedSet(new Set())}>
                 {t('knowledgeBase.tagClearAction')}
               </button>
             ) : null}
           </div>
           {selectedTags.length > 0 ? (
-            <div className="batch-tag-chips flex max-h-[min(160px,24vh)] flex-wrap gap-[6px] overflow-y-auto">
+            <div className="batch-tag-chips wk-tpd-6">
               {selectedTags.map((tag) => (
                 <button
                   key={tag.id}
                   type="button"
-                  className="batch-tag-chip is-selected inline-flex min-h-[22px] max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent border-transparent bg-[var(--wk-surface-strong,#f2f4f7)] font-medium text-[var(--wk-text,#344054)]"
+                  className="batch-tag-chip is-selected wk-tpd-7"
                   title={tag.name}
                   onClick={() => toggleTag(tag.id)}
                 >
@@ -141,28 +142,28 @@ export function TagPickerDialog({
               ))}
             </div>
           ) : (
-            <p className="wk-tag-section-empty m-0 min-h-[22px] text-[12px] text-[var(--wk-muted,#98a2b8)]">{t(copy.noSelected)}</p>
+            <p className="wk-tag-section-empty wk-tpd-8">{t(copy.noSelected)}</p>
           )}
         </section>
-        <section className="wk-tag-section mt-3 flex flex-col gap-2 border-b border-[var(--wk-border,#e4e7ec)] px-0 py-[10px] first-of-type:border-t-0">
-          <div className="wk-tag-section-head flex items-center justify-between gap-2">
-            <h4 className="m-0 text-[13px] font-semibold">{t(copy.available)}</h4>
+        <section className="wk-tag-section first-of-type:border-t-0 wk-tpd-2">
+          <div className="wk-tag-section-head wk-tpd-3">
+            <h4 className="wk-tpd-4">{t(copy.available)}</h4>
           </div>
           <Input
             type="search"
-            className="wk-tag-search w-full min-h-[28px] my-2 border border-[var(--wk-border,#e4e7ec)] rounded-[6px] bg-transparent px-2 py-0 text-[12px] text-[var(--wk-text,#344054)]"
+            className="wk-tag-search wk-tpd-9"
             value={searchQuery}
             placeholder={t('knowledgeBase.tagEditSearch')}
             aria-label={t('knowledgeBase.tagEditSearch')}
             onChange={(event) => setSearchQuery(event.target.value)}
           />
           {availableTags.length > 0 ? (
-            <div className="batch-tag-chips flex max-h-[min(160px,24vh)] flex-wrap gap-[6px] overflow-y-auto">
+            <div className="batch-tag-chips wk-tpd-6">
               {availableTags.map((tag) => (
                 <button
                   key={tag.id}
                   type="button"
-                  className="batch-tag-chip inline-flex min-h-[22px] max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent"
+                  className="batch-tag-chip wk-tpd-10"
                   title={tag.knowledge_count !== undefined ? `${tag.name} (${tag.knowledge_count})` : tag.name}
                   onClick={() => toggleTag(tag.id)}
                 >
@@ -171,12 +172,12 @@ export function TagPickerDialog({
               ))}
             </div>
           ) : (
-            <div className="wk-tag-section-empty wk-tag-section-empty--row m-0 flex min-h-[22px] items-center justify-between gap-2 text-[12px] text-[var(--wk-muted,#98a2b8)]">
+            <div className="wk-tag-section-empty wk-tag-section-empty--row wk-tpd-11">
               <span>{searchQuery.trim() ? t('knowledgeBase.tagEmptyResult') : t('knowledgeBase.noTags')}</span>
               {canManage && createTag && searchQuery.trim() ? (
                 <button
                   type="button"
-                  className="wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)]"
+                  className="wk-tag-link wk-tpd-5"
                   disabled={creatingTag}
                   onClick={() => void addNewTag(searchQuery)}
                 >
@@ -188,7 +189,7 @@ export function TagPickerDialog({
           {canManage && createTag ? (
             <Input
               type="text"
-              className="wk-tag-create-input w-full min-h-[28px] my-2 border border-[var(--wk-border,#e4e7ec)] rounded-[6px] bg-transparent px-2 py-0 text-[12px] text-[var(--wk-text,#344054)] border-dashed"
+              className="wk-tag-create-input wk-tpd-12"
               value={newTagName}
               maxLength={40}
               disabled={creatingTag}
@@ -203,20 +204,20 @@ export function TagPickerDialog({
               }}
             />
           ) : null}
-          {createError ? <p className="wk-tag-create-error m-0 text-[12px] text-danger" role="alert">{createError}</p> : null}
+          {createError ? <p className="wk-tag-create-error wk-tpd-13" role="alert">{createError}</p> : null}
         </section>
       </div>
-      <div className="batch-tag-footer mt-[14px] flex items-center justify-between gap-3 border-t border-[var(--wk-border,#e4e7ec)] pt-3">
-        <span className="batch-tag-selected-count text-[12px] text-[var(--wk-muted,#98a2b8)]">
+      <div className="batch-tag-footer wk-tpd-14">
+        <span className="batch-tag-selected-count wk-tpd-15">
           {t('knowledgeBase.tagSelectedCount', { count: selectedSet.size })}
         </span>
-        <div className="batch-tag-footer-right flex gap-2">
-          <Button type="button" className="wk-tag-btn min-h-[30px] cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-transparent px-[14px] py-0 text-[13px] text-[var(--wk-text,#344054)]" disabled={confirmLoading} onClick={onClose}>
+        <div className="batch-tag-footer-right wk-tpd-16">
+          <Button type="button" className="wk-tag-btn wk-tpd-17" disabled={confirmLoading} onClick={onClose}>
             {t('common.cancel')}
           </Button>
           <Button
             type="button"
-            className="wk-tag-btn wk-tag-btn--primary min-h-[30px] cursor-pointer rounded-[6px] border border-[var(--wk-brand,#07c05f)] bg-[var(--wk-brand,#07c05f)] px-[14px] py-0 text-[13px] text-white"
+            className="wk-tag-btn wk-tag-btn--primary wk-tpd-18"
             disabled={confirmLoading}
             onClick={() => onConfirm(Array.from(selectedSet))}
           >
@@ -454,12 +455,12 @@ export function TagManageDialog({
 
   return (
     <Dialog open={open} title={t('knowledgeBase.tagManageTitle')} onClose={onClose} closeLabel={t('common.cancel')}>
-      <p className="tag-manage-description m-0 mt-1 text-[12px] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.tagManageDescription')}</p>
-      {error ? <p className="tag-manage-error m-0 mt-2 text-[12px]" role="alert" style={{ color: 'var(--wk-danger,#d54941)' }}>{error}</p> : null}
-      <div className="tag-manage-toolbar mt-3 flex items-center gap-2">
+      <p className="tag-manage-description wk-tpd-19">{t('knowledgeBase.tagManageDescription')}</p>
+      {error ? <p className="tag-manage-error wk-tpd-20" role="alert" style={{ color: 'var(--wk-danger,#d54941)' }}>{error}</p> : null}
+      <div className="tag-manage-toolbar wk-tpd-21">
         <Input
           type="search"
-          className="min-w-0 flex-1"
+          className="wk-tpd-22"
           value={query}
           placeholder={t('knowledgeBase.tagSearchPlaceholder')}
           aria-label={t('knowledgeBase.tagSearchPlaceholder')}
@@ -467,7 +468,7 @@ export function TagManageDialog({
         />
         <Button
           type="button"
-          className="shrink-0"
+          className="wk-tpd-23"
           disabled={busy || creating}
           onClick={() => {
             setCreating(true);
@@ -478,11 +479,11 @@ export function TagManageDialog({
         </Button>
       </div>
       {creating ? (
-        <div className="tag-manage-create mt-2 flex items-center gap-2">
+        <div className="tag-manage-create wk-tpd-24">
           <Input
             autoFocus
             maxLength={40}
-            className="min-w-0 flex-1"
+            className="wk-tpd-22"
             value={draft}
             placeholder={t('knowledgeBase.tagNamePlaceholder')}
             aria-label={t('knowledgeBase.tagNamePlaceholder')}
@@ -496,13 +497,13 @@ export function TagManageDialog({
           <Button type="button" disabled={busy} onClick={() => setCreating(false)}>{t('common.cancel')}</Button>
         </div>
       ) : null}
-      <ul className="tag-manage-list m-0 mt-3 grid list-none gap-2 p-0">
+      <ul className="tag-manage-list wk-tpd-25">
         {visible.map((tag) => editingId === tag.id ? (
-          <li key={tag.id} className="tag-manage-row flex items-center justify-between gap-2 border-b border-[var(--wk-border,#e7e7ec)] py-2">
+          <li key={tag.id} className="tag-manage-row wk-tpd-26">
             <Input
               autoFocus
               maxLength={40}
-              className="min-w-0 flex-1"
+              className="wk-tpd-22"
               value={editingName}
               placeholder={t('knowledgeBase.tagNamePlaceholder')}
               aria-label={t('knowledgeBase.tagNamePlaceholder')}
@@ -516,10 +517,10 @@ export function TagManageDialog({
             <Button type="button" disabled={busy} onClick={() => setEditingId(null)}>{t('common.cancel')}</Button>
           </li>
         ) : (
-          <li key={tag.id} className="tag-manage-row flex items-center justify-between gap-2 border-b border-[var(--wk-border,#e7e7ec)] py-2">
-            <span className="grid min-w-0 flex-1 gap-0.5">
-              <strong className="truncate text-[13px] font-semibold">{tag.name}</strong>
-              <small className="text-[11px] leading-[1.5] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.tagManageDocCount', { count: tag.knowledge_count || 0 })}</small>
+          <li key={tag.id} className="tag-manage-row wk-tpd-26">
+            <span className="wk-tpd-27">
+              <strong className="wk-tpd-28">{tag.name}</strong>
+              <small className="wk-tpd-29">{t('knowledgeBase.tagManageDocCount', { count: tag.knowledge_count || 0 })}</small>
             </span>
             <Button
               type="button"
@@ -535,7 +536,7 @@ export function TagManageDialog({
             <Button type="button" disabled={busy || !Number.isSafeInteger(tag.seq_id)} onClick={() => void removeTag(tag)}>{t('knowledgeBase.tagDeleteAction')}</Button>
           </li>
         ))}
-        {visible.length === 0 ? <li className="tag-manage-empty py-4 text-center text-[12px] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.tagEmptyResult')}</li> : null}
+        {visible.length === 0 ? <li className="tag-manage-empty wk-tpd-30">{t('knowledgeBase.tagEmptyResult')}</li> : null}
       </ul>
     </Dialog>
   );

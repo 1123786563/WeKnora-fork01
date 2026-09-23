@@ -10,6 +10,8 @@ import { integrationKeyFromQuery } from '@weknora/views/integrations/registry';
 // t-icon glyph 同构，台账 #10）——@weknora/views 无 tdesign-icons-react 依赖，
 // 未注入时视图回退内置手绘 path。模块加载时注册一次。
 import { Icon as TIcon } from 'tdesign-icons-react';
+import './integrations-u.css';
+import './views-integrations-u.css';
 import './integrations.td.css';
 
 // S1 评审回收：外层 try/catch 已删——setIntegrationSpriteIconRenderer 为同步
@@ -224,7 +226,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, activeAgent
   };
 
   return <>
-    {embedPreviewNotice ? <p className="wk-status wk-status--error" role="alert">{embedPreviewNotice}</p> : null}
+    {embedPreviewNotice ? <p className="wk-status wk-status-error wk-irp-1" role="alert">{embedPreviewNotice}</p> : null}
     <EmbedPreviewModal open={embedPreview !== null} channelId={embedPreview?.channelId ?? ''} token={embedPreview?.token ?? ''} title={embedPreview?.title} apiBaseUrl={window.location.origin} locale={embedPreview?.locale} refreshKey={embedPreview?.refreshKey} onClose={() => setEmbedPreview(null)} />
     <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={(nextTab) => { setTab(nextTab); setRequestedTab(nextTab); onTabChange?.(nextTab); }} embedChannels={visibleEmbedChannels} imChannels={visibleImChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} swaggerEnabled={swaggerEnabled} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => { playgroundTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setApiPlaygroundOpen(true); }} actions={actions} agents={agents} knowledgeBases={knowledgeBases} canEdit={canEdit} />
     <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={playgroundApiKey || apiKeys.find((key) => key.api_key)?.api_key || ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} agentsLoading={agentsLoading} agentsError={agentsError || undefined} apiBaseUrl={apiBaseUrl} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => integrationsT(currentIntegrationsLocale(), key, values)} />

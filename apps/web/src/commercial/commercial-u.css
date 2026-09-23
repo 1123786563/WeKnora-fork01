@@ -1,0 +1,34 @@
+/* commercial-u.css — S7 Tailwind utilities 平移（commercial 域漂零段：BillingPage 等）
+ * 前缀见各规则；值 = utilities 编码的生效值。导入顺序：须在本域 .td.css 之前。 */
+
+
+.wk-bill-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.wk-bill-usage-table-cell {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-style: solid;
+  border-color: #eef1f5;
+  padding-inline: 10px;
+  padding-block: 8px;
+  text-align: left;
+}
+
+.wk-bill-usage-number-cell {
+  text-align: right;
+}
+
+.wk-bill-1 {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-style: solid;
+  border-color: #e7e7ea;
+}
+
+.wk-bill-2 {
+  font-weight: 600;
+}

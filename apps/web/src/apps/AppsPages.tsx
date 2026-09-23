@@ -10,6 +10,7 @@ import { pollBackoffDelayMs } from './pollBackoff.ts';
 import { actionControls, type ActionViewModel } from './actionState.ts';
 import { navigate } from '../platform/navigation.ts';
 import { usePreferredLocale } from '../locale.ts';
+import './apps-u.css';
 import './apps.td.css';
 
 type AppMode = 'catalog' | 'connections' | 'authorization' | 'action';
@@ -44,7 +45,7 @@ function errorMessage(cause: unknown): string {
    MessagePlugin toasts on these flows). */
 function Toast({ toast }: { toast: ToastState }) {
   if (!toast) return null;
-  return <div role="status" aria-live="polite" className={`fixed left-1/2 top-[24px] z-[10060] -translate-x-1/2 rounded-[8px] px-[14px] py-[8px] text-[13px] text-white shadow-[0_4px_12px_rgba(0,0,0,0.2)] ${toast.tone === 'success' ? 'bg-[rgba(7,192,95,0.9)]' : toast.tone === 'warning' ? 'bg-[rgba(250,173,20,0.92)]' : 'bg-[rgba(213,73,65,0.92)]'}`}>{toast.text}</div>;
+  return <div role="status" aria-live="polite" className={`wk-apps-21 ${toast.tone === 'success' ? 'wk-apps-22' : toast.tone === 'warning' ? 'wk-apps-23' : 'wk-apps-24'}`}>{toast.text}</div>;
 }
 
 /* Vue t-icon refresh glyph (tdesign-icons-vue-next refresh, 24 viewBox). */
@@ -59,7 +60,7 @@ function Tag({ theme = 'default', children }: { theme?: 'success' | 'warning' | 
     : theme === 'danger' ? 'bg-[#d54941] text-white'
     : theme === 'primary' ? 'bg-[#0052d9] text-white'
     : 'bg-[#e7e7e7] text-[rgba(0,0,0,0.9)]';
-  return <span className={`inline-flex box-border h-5 shrink-0 items-center rounded-[3px] border border-transparent px-1 text-xs leading-5 ${palette}`}>{children}</span>;
+  return <span className={`wk-apps-25 ${palette}`}>{children}</span>;
 }
 
 /* TDesign t-popconfirm counterpart: an anchored confirm bubble with a danger
@@ -75,13 +76,13 @@ function Popconfirm({ content, confirmLabel, cancelLabel, busy, onConfirm, child
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
-  return <span className="relative inline-flex" ref={wrapper}>
+  return <span className="wk-apps-1" ref={wrapper}>
     {children}
-    {open ? <span className="absolute right-0 top-full z-[60] mt-[6px] flex w-[240px] flex-col gap-[8px] rounded-[8px] border border-[#e7e7ea] bg-white p-[12px] text-[13px] text-[rgba(23,26,29,0.92)] shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
+    {open ? <span className="wk-apps-2">
       <span>{content}</span>
-      <span className="flex items-center justify-end gap-[8px]">
+      <span className="wk-apps-3">
         <TButton size="small" variant="text" onClick={() => setOpen(false)}>{cancelLabel}</TButton>
-        <TButton size="small" variant="text" loading={busy} className="text-[#d54941]" onClick={() => onConfirm()}>{confirmLabel}</TButton>
+        <TButton size="small" variant="text" loading={busy} className="wk-apps-4" onClick={() => onConfirm()}>{confirmLabel}</TButton>
       </span>
     </span> : null}
   </span>;
@@ -91,7 +92,7 @@ function Popconfirm({ content, confirmLabel, cancelLabel, busy, onConfirm, child
    apps/apps-connections 两页已迁 Vue DOM（.apps-view/.connections-view +
    apps.td.css），此 frame 仅供未扫描的两页沿用旧布局。 */
 function PageFrame({ title, description, loading, onReload, refreshLabel, loadingLabel, gapClass = 'gap-5', children }: { title: string; description: string; loading: boolean; onReload: () => void; refreshLabel: string; loadingLabel: string; gapClass?: string; children: ReactNode }) {
-  return <main className={`wk-page flex h-full flex-col overflow-y-auto p-6 [-webkit-font-smoothing:antialiased] [-moz-osx-font-smoothing:grayscale] ${gapClass}`}><header className="flex items-start justify-between gap-4"><div><h1 className="m-0 text-xl font-semibold leading-[28px] text-[rgba(0,0,0,0.9)]">{title}</h1><p className="m-0 mt-1 max-w-[640px] text-[13px] leading-[18px] text-[rgba(0,0,0,0.6)]">{description}</p></div><TButton aria-label={refreshLabel} disabled={loading} onClick={onReload} loading={loading} className="h-8 shrink-0 gap-[8px] rounded-[3px] border-[#dcdcdc] px-[15px] text-[14px] leading-[22px] text-[rgba(0,0,0,0.9)]"><IconRefresh size={14} />{refreshLabel}</TButton></header>{loading ? <div role="status"><Status>{loadingLabel}</Status></div> : null}{children}</main>;
+  return <main className={`wk-page wk-apps-26 ${gapClass}`}><header className="wk-apps-5"><div><h1 className="wk-apps-6">{title}</h1><p className="wk-apps-7">{description}</p></div><TButton aria-label={refreshLabel} disabled={loading} onClick={onReload} loading={loading} className="wk-apps-8"><IconRefresh size={14} />{refreshLabel}</TButton></header>{loading ? <div role="status"><Status>{loadingLabel}</Status></div> : null}{children}</main>;
 }
 
 function useAppsCopy() {
@@ -308,7 +309,7 @@ function AuthorizationPage({ client, id, t }: { client: WeKnoraClient; id: strin
   }, [client, id]);
   const statusTheme = status === 'active' ? 'success' : status === 'failed' || status === 'expired' || status === 'revoked' ? 'danger' : polling ? 'warning' : 'neutral';
   const statusLabel = (() => { if (!status) return '—'; const label = t(`apps.authorization.status.${status}`); return label === `apps.authorization.status.${status}` ? t('apps.authorization.status.other', { state: status }) : label; })();
-  return <PageFrame title={t('apps.authorization.title')} description={t('apps.authorization.description')} loading={loading} onReload={() => void pollOnce()} refreshLabel={t('apps.authorization.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{t('apps.authorization.loadFailed')}</Status> : null}<Status>{t('apps.authorization.noUrlGuidance')}</Status><Card><div role="status" aria-live={polled ? 'polite' : 'off'} className="flex flex-col gap-[12px]"><dl className="m-0 grid gap-3 text-sm"><div><dt className="font-medium text-muted">{t('apps.authorization.attemptLabel')}</dt><dd className="m-0 font-mono">{id || '—'}</dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.connectionLabel')}</dt><dd className="m-0 font-mono" title={String(attempt.connection_id ?? '')}>{attempt.connection_id ? vueShortId(attempt.connection_id) : '—'}</dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.statusLabel')}</dt><dd className="m-0"><Tag theme={statusTheme as 'success' | 'danger' | 'warning' | 'default'}>{statusLabel}</Tag></dd></div><div><dt className="font-medium text-muted">{t('apps.authorization.expiresLabel')}</dt><dd className="m-0">{formatTime(attempt.expires_at)}</dd></div></dl>{polling ? <p className="m-0 text-[13px] text-[rgba(23,26,29,0.6)]">{t('apps.authorization.pollingHint')}</p> : succeeded ? <p className="m-0 text-[13px] text-[#0a7f43]">{t('apps.authorization.completedHint')}</p> : null}</div></Card><TButton variant="text" onClick={() => navigate('/platform/apps/connections')}>{t('apps.authorization.back')}</TButton></PageFrame>;
+  return <PageFrame title={t('apps.authorization.title')} description={t('apps.authorization.description')} loading={loading} onReload={() => void pollOnce()} refreshLabel={t('apps.authorization.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{t('apps.authorization.loadFailed')}</Status> : null}<Status>{t('apps.authorization.noUrlGuidance')}</Status><Card><div role="status" aria-live={polled ? 'polite' : 'off'} className="wk-apps-9"><dl className="wk-apps-10"><div><dt className="wk-apps-11">{t('apps.authorization.attemptLabel')}</dt><dd className="wk-apps-12">{id || '—'}</dd></div><div><dt className="wk-apps-11">{t('apps.authorization.connectionLabel')}</dt><dd className="wk-apps-12" title={String(attempt.connection_id ?? '')}>{attempt.connection_id ? vueShortId(attempt.connection_id) : '—'}</dd></div><div><dt className="wk-apps-11">{t('apps.authorization.statusLabel')}</dt><dd className="wk-apps-13"><Tag theme={statusTheme as 'success' | 'danger' | 'warning' | 'default'}>{statusLabel}</Tag></dd></div><div><dt className="wk-apps-11">{t('apps.authorization.expiresLabel')}</dt><dd className="wk-apps-13">{formatTime(attempt.expires_at)}</dd></div></dl>{polling ? <p className="wk-apps-14">{t('apps.authorization.pollingHint')}</p> : succeeded ? <p className="wk-apps-15">{t('apps.authorization.completedHint')}</p> : null}</div></Card><TButton variant="text" onClick={() => navigate('/platform/apps/connections')}>{t('apps.authorization.back')}</TButton></PageFrame>;
 }
 
 function ActionPage({ client, id, role, t, showToast }: { client: WeKnoraClient; id: string; role?: string; t: (key: string, values?: Record<string, string | number>) => string; showToast: (tone: ToastTone, text: string) => void }) {
@@ -362,17 +363,17 @@ function ActionPage({ client, id, role, t, showToast }: { client: WeKnoraClient;
   const prettyArgs = (() => { const raw = String(action.content ?? ''); if (!raw) return '—'; try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; } })();
   const shortText = (value: string): string => value && value.length > 16 ? value.slice(0, 16) + '…' : value || '—';
   return <PageFrame title={t('apps.actions.title')} description={t('apps.actions.description')} loading={loading} onReload={() => void reload()} refreshLabel={t('apps.actions.refresh')} loadingLabel={t('common.loading')}>{loadError ? <Status tone="error">{notFound ? t('apps.actions.notFound') : t('apps.actions.loadFailed')}</Status> : null}{hasAction ? <>
-    <Card><dl className="m-0 grid gap-3 text-sm">
-      <div><dt className="font-medium text-muted">{t('apps.actions.accountLabel')}</dt><dd className="m-0 font-mono">{appStatus(action.connection_name)}</dd></div>
-      <div><dt className="font-medium text-muted">{t('apps.actions.targetLabel')}</dt><dd className="m-0 font-mono">{appStatus(action.target)}</dd></div>
-      <div><dt className="font-medium text-muted">{t('apps.actions.riskLabel')}</dt><dd className="m-0" title={riskLabel ? undefined : t('apps.actions.riskUnknownHint')}>{riskLabel ? <Tag theme={riskValue === 'read' ? 'success' : riskValue === 'write' ? 'warning' : riskValue === 'send' || riskValue === 'delete' ? 'danger' : 'default'}>{riskLabel}</Tag> : <span className="text-[rgba(23,26,29,0.4)]">—</span>}</dd></div>
-      <div><dt className="font-medium text-muted">{t('apps.actions.stateLabel')}</dt><dd className="m-0"><Tag theme={stateTheme as 'success' | 'danger' | 'warning' | 'default'}>{stateLabel}</Tag></dd></div>
-      <div><dt className="font-medium text-muted">{t('apps.actions.digestLabel')}</dt><dd className="m-0 font-mono" title={digest}>{shortText(digest)}</dd></div>
-      <div><dt className="font-medium text-muted">{t('apps.actions.fenceLabel')}</dt><dd className="m-0 font-mono">{appStatus(detail?.expected_version, '0')}</dd></div>
-      <div><dt className="font-medium text-muted">{t('apps.actions.argsLabel')}</dt><dd className="m-0 whitespace-pre-wrap rounded-control bg-surface-muted p-3 font-mono text-[12px]" tabIndex={0}>{prettyArgs}</dd></div>
+    <Card><dl className="wk-apps-10">
+      <div><dt className="wk-apps-11">{t('apps.actions.accountLabel')}</dt><dd className="wk-apps-12">{appStatus(action.connection_name)}</dd></div>
+      <div><dt className="wk-apps-11">{t('apps.actions.targetLabel')}</dt><dd className="wk-apps-12">{appStatus(action.target)}</dd></div>
+      <div><dt className="wk-apps-11">{t('apps.actions.riskLabel')}</dt><dd className="wk-apps-13" title={riskLabel ? undefined : t('apps.actions.riskUnknownHint')}>{riskLabel ? <Tag theme={riskValue === 'read' ? 'success' : riskValue === 'write' ? 'warning' : riskValue === 'send' || riskValue === 'delete' ? 'danger' : 'default'}>{riskLabel}</Tag> : <span className="wk-apps-16">—</span>}</dd></div>
+      <div><dt className="wk-apps-11">{t('apps.actions.stateLabel')}</dt><dd className="wk-apps-13"><Tag theme={stateTheme as 'success' | 'danger' | 'warning' | 'default'}>{stateLabel}</Tag></dd></div>
+      <div><dt className="wk-apps-11">{t('apps.actions.digestLabel')}</dt><dd className="wk-apps-12" title={digest}>{shortText(digest)}</dd></div>
+      <div><dt className="wk-apps-11">{t('apps.actions.fenceLabel')}</dt><dd className="wk-apps-12">{appStatus(detail?.expected_version, '0')}</dd></div>
+      <div><dt className="wk-apps-11">{t('apps.actions.argsLabel')}</dt><dd className="wk-apps-17" tabIndex={0}>{prettyArgs}</dd></div>
     </dl></Card>
-    <div className="flex items-center gap-[12px]">{controls.approve ? <TButton loading={approving} onClick={() => void mutate('approve')}>{t('apps.actions.approve')}</TButton> : null}{controls.execute ? <TButton loading={submitting} onClick={() => void mutate('execute')}>{t('apps.actions.execute')}</TButton> : null}{state === 'unknown' ? <p className="m-0 text-[13px] text-[#ad4b00]">{t('apps.actions.unknown')}</p> : null}</div>
-    {state === 'unknown' ? <p className="m-0 text-[12px] text-[rgba(23,26,29,0.6)]">{t('apps.actions.noResendHint')}</p> : null}
+    <div className="wk-apps-18">{controls.approve ? <TButton loading={approving} onClick={() => void mutate('approve')}>{t('apps.actions.approve')}</TButton> : null}{controls.execute ? <TButton loading={submitting} onClick={() => void mutate('execute')}>{t('apps.actions.execute')}</TButton> : null}{state === 'unknown' ? <p className="wk-apps-19">{t('apps.actions.unknown')}</p> : null}</div>
+    {state === 'unknown' ? <p className="wk-apps-20">{t('apps.actions.noResendHint')}</p> : null}
     {!canDrive ? <Status>{t('apps.actions.memberCannotApprove')}</Status> : null}
   </> : null}</PageFrame>;
 }

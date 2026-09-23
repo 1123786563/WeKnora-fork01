@@ -63,9 +63,12 @@ test('external tabs reuse the shared landing hero copy', () => {
 
 test('external landing pages keep the Vue landing layout contract', () => {
   const source = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /className=\{\'integration-landing grid/);
+  // S7：utilities 平移至 apps/web/src/integrations/views-integrations-u.css（wk-vi-168/wk-vi-111）
+  const css = readFileSync(new URL('../../../../apps/web/src/integrations/views-integrations-u.css', import.meta.url), 'utf8');
+  assert.match(source, /className=\{\'integration-landing wk-vi-168/);
   assert.match(source, /landing-hero/);
-  assert.match(source, /min-\[821px\]:grid-cols-\[minmax\(0,1fr\)_minmax\(300px,380px\)\]/);
+  assert.match(css, /grid-template-columns: minmax\(0,1fr\) minmax\(300px,380px\)/);
+  assert.match(css, /@media \(min-width: 821px\)/);
   assert.match(source, /integrations\.chrome\.scenarios\.\$\{key\}/);
   assert.match(source, /integrations\.chrome\.storeMeta/);
   assert.match(source, /integrations\.claw\.ecosystemNote/);
@@ -76,7 +79,7 @@ test('channel cards preserve keyboard activation and a compact permission checkb
   const source = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
   assert.match(source, /role=\{onOpenCard \? 'button' : undefined\}/);
   assert.match(source, /event\.key !== 'Enter' && event\.key !== ' '/);
-  assert.match(source, /className="size-4 shrink-0 accent-primary" type="checkbox"/);
+  assert.match(source, /className="wk-vi-78 wk-vi-accent-primary" type="checkbox"/);
   assert.doesNotMatch(source, /className="box-border w-full max-w-\[420px\].*type="checkbox"/);
 });
 

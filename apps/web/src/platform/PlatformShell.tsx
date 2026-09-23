@@ -47,6 +47,7 @@ import '../../../../packages/views/src/guides/guides.css';
 // 平移，见 platform-shell.td.css 头注）。Vue 端图标走 <img src> 资产（渲染为
 // 黑色 filled glyph、激活态换 -green.svg 变体），资产从 frontend/src/assets/img
 // 复制到 ./assets/img 保持逐字节一致。
+import './platform-u.css';
 import './platform-shell.td.css';
 import { Icon as TIcon } from 'tdesign-icons-react';
 
@@ -1062,7 +1063,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // components/menu.vue .aside_box（logo_row / menu_top / menu_bottom）。
     // 类名与结构 1:1（样式 platform-shell.td.css）；根容器与右侧 outlet 的
     // 布局 utilities 维持原值（与 Vue .main/.platform-route-outlet 计算值一致）。
-    <div className="flex items-stretch w-full h-screen min-w-[600px] bg-white">
+    <div className="wk-shell-1">
       <aside className={collapsed ? 'aside_box aside_box--collapsed' : 'aside_box'}>
         {/* 展开时：Logo + 搜索/折叠按钮同行（Vue menu.vue logo_row）。 */}
         {!collapsed ? <div className="logo_row">
@@ -1119,7 +1120,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               </span>
             </button>
           </div> : null}
-          <nav className="flex flex-col" aria-label="Platform">
+          <nav className="wk-shell-2" aria-label="Platform">
             {visibleNavItems.map((item) => {
               const active = item.match(pathname);
               // Vue menu.vue:79-84 — creatChat 带 children（childrenPath 'chat'）：
@@ -1164,8 +1165,8 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               SessionSidebarList 已按 SessionSidebarRow.vue 同构（packages/views）。 */}
           {!collapsed ? (
             <nav className="submenu" aria-label={labels.myChats}>
-              {sessionsLoadError && !sessionsLoading ? <p className="mx-[14px] my-2 text-xs text-[#b42318]" role="status">
-                {labels.sessionLoadError}{' '}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-[#07c05f] underline" onClick={retryShellSessions}>{t('common.retry')}</button>
+              {sessionsLoadError && !sessionsLoading ? <p className="wk-shell-3" role="status">
+                {labels.sessionLoadError}{' '}<button type="button" className="wk-shell-4" onClick={retryShellSessions}>{t('common.retry')}</button>
               </p> : null}
               <SessionSidebarList
                 copy={shellSidebarCopy}
@@ -1341,12 +1342,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       </aside>
       {/* The shell owns the session list (Vue chat/index.vue has no sidebar
           of its own): chat pages under the shell suppress their in-page one.
-          .plat-shell__outlet → utilities; the descendant page overrides from
-          shell.css land here: children fill the column (min-height 0) and
-          legacy .wk-page pages keep the scrollable full-height full-width
-          treatment (max-w-none! must beat the unlayered styles.css
-          .wk-page max-width, which otherwise wins over layered utilities). */}
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden [&>*]:min-h-0 [&_.wk-page]:h-full [&_.wk-page]:overflow-y-auto [&_.wk-page]:max-w-none!">
+          .plat-shell__outlet → platform-u.css 语义类规则；children fill the
+          column (min-height 0) and legacy .wk-page pages keep the scrollable
+          full-height full-width treatment（max-width:none!important 保持压过
+          styles.css unlayered 的 .wk-page--std / 1180px 宽版页规则）。 */}
+      <div className="plat-shell__outlet wk-shell-5">
         <SessionSidebarShellContext.Provider value={true}>{children}</SessionSidebarShellContext.Provider>
       </div>
       <GlobalCommandPalette
@@ -1385,7 +1385,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
         />
       ) : null}
       {shellShareToast ? (
-        <div role="status" aria-live="polite" className="fixed bottom-[76px] left-1/2 z-[10050] -translate-x-1/2 rounded-[8px] bg-[rgba(0,0,0,0.78)] px-[14px] py-[8px] text-[13px] text-white shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
+        <div role="status" aria-live="polite" className="wk-shell-6">
           {shellShareToast}
         </div>
       ) : null}

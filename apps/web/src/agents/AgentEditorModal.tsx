@@ -88,6 +88,7 @@ import { navigate } from '../platform/navigation.ts';
 import { usePreferredLocale } from '../locale.ts';
 import { createAgentMarketplaceApi } from '../agent-marketplace/agent-marketplace-api.ts';
 import { AgentVersionActions } from '../agent-marketplace/AgentVersionActions.tsx';
+import './agents-u.css';
 
 export interface AgentEditorModalProps {
   open: boolean;
@@ -831,7 +832,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
                 column; builtin agents render a plain icon square instead. */}
             <div className="name-input-wrapper" data-guide="agent-create-name">
               {form.is_builtin ? (
-                <div className={`builtin-avatar ${isAgentMode ? 'agent' : 'normal'}`}>
+                <div className={`builtin-avatar${isAgentMode ? 'agent' : 'normal'}`}>
                   <TIcon name={isAgentMode ? 'control-platform' : 'chat'} size="24px" />
                 </div>
               ) : (
@@ -1786,7 +1787,7 @@ export function AgentEditorModal({ open, mode, agent, initialSection, initialHig
     return (
       <Select.Option key={kb.value} value={kb.value} label={kb.label} title={kb.label} data-kb-id={kb.value}>
         <div className="kb-option-item">
-          <span className={`kb-option-icon ${kb.type === 'faq' ? 'faq-icon' : 'doc-icon'}`}>
+          <span className={`kb-option-icon${kb.type === 'faq' ? 'faq-icon' : 'doc-icon'}`}>
             <TIcon name={kb.type === 'faq' ? 'chat-bubble-help' : 'folder'} />
           </span>
           <span className="kb-option-label">{kb.label}</span>

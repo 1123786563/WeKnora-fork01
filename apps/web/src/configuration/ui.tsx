@@ -6,10 +6,11 @@
 // Input/Select/Textarea/Checkbox）一律走 tdesign-react（本域旧默认按钮译
 // theme="default" variant="outline"）。文件名避开既有 surface.ts（域逻辑模块）。
 import type { HTMLAttributes, ReactNode } from 'react';
+import './config-u.css';
 
 /** 语义卡片：白底、line 描边、card 圆角（视觉 = 既有 .wk-card）。 */
 export function Card({ children, className, ...props }: HTMLAttributes<HTMLDivElement> & { children?: ReactNode }) {
-  const classes = ['rounded-card border border-line bg-surface p-4', className].filter(Boolean).join(' ');
+  const classes = ['wk-cfg-card', className].filter(Boolean).join(' ');
   return <section className={classes} {...props}>{children}</section>;
 }
 

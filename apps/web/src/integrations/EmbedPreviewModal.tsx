@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { integrationsLocale, integrationsT } from '../../../../packages/views/src/integrations/messages.ts';
+import './integrations-u.css';
 
 // Vue baseline: frontend/src/components/EmbedChannelPreview.vue (720px preview
 // drawer, iframe mode L5-19) + AgentEmbedChannelPanel.vue openPreviewForChannel
@@ -70,26 +71,26 @@ export function EmbedPreviewModal({ open, channelId, token, title, apiBaseUrl, l
   const src = buildEmbedPreviewSrc({ channelId, token, apiBaseUrl, locale, refreshKey });
   // Former .wk-embed-preview-overlay/.wk-embed-preview-drawer (styles.css):
   // the @media (max-width: 720px) drawer width became the max-[720px] variant.
-  return <div className="wk-embed-preview-overlay" role="presentation" onClick={onClose}>
-    <aside className="wk-embed-preview-drawer" role="dialog" aria-modal="true" aria-label={label} onClick={(event) => event.stopPropagation()}>
+  return <div className="wk-epm-1" role="presentation" onClick={onClose}>
+    <aside className="wk-epm-2" role="dialog" aria-modal="true" aria-label={label} onClick={(event) => event.stopPropagation()}>
       {/* Former .wk-embed-preview-header + .wk-embed-preview-header h2. */}
-      <header className="wk-embed-preview-header">
-        <h2>{label}</h2>
+      <header className="wk-epm-3">
+        <h2 className="wk-epm-4">{label}</h2>
         {/* Former .wk-integration-drawer-close css (styles.css) as utilities;
             the class name stays as a DOM hook. */}
-        <button type="button" className="wk-integration-drawer-close" aria-label={closeLabel()} title={closeLabel()} onClick={onClose}>×</button>
+        <button type="button" className="wk-integration-drawer-close wk-epm-5" aria-label={closeLabel()} title={closeLabel()} onClick={onClose}>×</button>
       </header>
       {/* Former .wk-embed-preview-body (incl. the ≤720px padding-inline tweak). */}
-      <div className="wk-embed-preview-body">
+      <div className="wk-epm-6">
         {/* Former .wk-embed-preview-device. */}
-        <div className="wk-embed-preview-device">
+        <div className="wk-epm-7">
           {/* Former .wk-embed-preview-chrome + span:nth-child(1..3) + code. */}
-          <div className="wk-embed-preview-chrome"><span>●</span><span>●</span><span>●</span><code>/embed/{encodeURIComponent(channelId)}</code></div>
+          <div className="wk-epm-8"><span className="wk-epm-9">●</span><span className="wk-epm-10">●</span><span className="wk-epm-11">●</span><code className="wk-epm-12">/embed/{encodeURIComponent(channelId)}</code></div>
           {/* Former .wk-embed-preview-screen + iframe rules; the old dynamic
               .is-loading class became this static 'invisible' condition. */}
-          <div className="wk-embed-preview-screen">
-            {!ready ? <span className="wk-muted">正在加载预览…</span> : null}
-            {layoutReady ? <iframe title={label} src={src} onLoad={() => setReady(true)} style={ready ? undefined : { visibility: 'hidden' }} allow="clipboard-write" /> : null}
+          <div className="wk-epm-13">
+            {!ready ? <span className="wk-muted wk-epm-14">正在加载预览…</span> : null}
+            {layoutReady ? <iframe title={label} src={src} onLoad={() => setReady(true)} className={ready ? '' : 'wk-epm-15'} allow="clipboard-write" /> : null}
           </div>
         </div>
       </div>

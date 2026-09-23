@@ -150,19 +150,19 @@ export function assistantTimelineItems(message: ChatMessage): AssistantTimelineI
 function HistoryDeepThink({ copy: copyTable, state }: { copy: ChatCopyTable; state: LiveThinkingState }) {
   if (!state.showThink) return null;
   const content = state.thinkContent
-    ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{state.thinkContent}</p>
+    ? <p className="wk-vc-message-list-1">{state.thinkContent}</p>
     : null;
   if (state.thinking) {
-    return <section className="wk-chat-history-think wk-chat-history-think--live mb-[10px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[12px]" aria-label={copyTable.thinkingAlt}>
-      <p role="status" className="m-0 flex items-center gap-[8px] font-medium text-[rgba(0,0,0,0.9)]">
-        <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#0052d9] motion-reduce:animate-none" aria-hidden="true" />
+    return <section className="wk-chat-history-think wk-chat-history-think--live wk-vc-message-list-2" aria-label={copyTable.thinkingAlt}>
+      <p role="status" className="wk-vc-message-list-3">
+        <span className="wk-vc-message-list-4 wk-mr-none" aria-hidden="true" />
         {copyTable.thinking}
       </p>
       {content}
     </section>;
   }
-  return <details className="wk-chat-history-think wk-chat-history-think--done mb-[10px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[6px] text-[12px]">
-    <summary className="cursor-pointer select-none font-medium text-[rgba(0,0,0,0.9)]">{copyTable.deepThoughtCompleted}</summary>
+  return <details className="wk-chat-history-think wk-chat-history-think--done wk-vc-message-list-5">
+    <summary className="wk-vc-message-list-6">{copyTable.deepThoughtCompleted}</summary>
     {content}
   </details>;
 }
@@ -182,15 +182,15 @@ function TypingIndicator({ copy: copyTable }: { copy: ChatCopyTable }) {
 function StreamingToolTimeline({ copy: copyTable, message }: { copy: ChatCopyTable; message: ChatMessage }) {
   const items = assistantTimelineItems(message);
   if (items.length === 0) return null;
-  return <section className="wk-chat-message-extras mt-[8px] rounded-[8px] border border-[#e7e7e7] text-[13px]" aria-label={copyTable.thinkingAndTools}>
-    <ol className="wk-chat-agent-timeline m-0 list-none p-[6px]">
-      {items.map((item) => item.kind === 'tool' ? <li key={item.id} className="wk-chat-agent-timeline-item flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[6px] last:border-b-0" data-status={item.status}>
-        <details className="min-w-0">
-          <summary className="cursor-pointer truncate">{item.name ?? item.id}</summary>
-          {item.result !== undefined ? <pre className="mt-[6px] max-h-[180px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#f9f9f9] p-[8px] text-[12px]">{typeof item.result === 'string' ? item.result : JSON.stringify(item.result, null, 2)}</pre> : null}
+  return <section className="wk-chat-message-extras wk-vc-message-list-7" aria-label={copyTable.thinkingAndTools}>
+    <ol className="wk-chat-agent-timeline wk-vc-message-list-8">
+      {items.map((item) => item.kind === 'tool' ? <li key={item.id} className="wk-chat-agent-timeline-item wk-vc-message-list-9" data-status={item.status}>
+        <details className="wk-vc-message-list-10">
+          <summary className="wk-vc-message-list-11">{item.name ?? item.id}</summary>
+          {item.result !== undefined ? <pre className="wk-vc-message-list-12">{typeof item.result === 'string' ? item.result : JSON.stringify(item.result, null, 2)}</pre> : null}
         </details>
-        <small className="shrink-0 text-[rgba(0,0,0,0.4)]">{item.status}</small>
-      </li> : <li key="finish" className="wk-chat-agent-timeline-item flex items-center gap-[6px] py-[6px] text-[rgba(0,0,0,0.6)]" data-status="completed" role="status">✓ <span>{copyTable.approvalResolved}</span></li>)}
+        <small className="wk-vc-message-list-13">{item.status}</small>
+      </li> : <li key="finish" className="wk-chat-agent-timeline-item wk-vc-message-list-14" data-status="completed" role="status">✓ <span>{copyTable.approvalResolved}</span></li>)}
     </ol>
   </section>;
 }
@@ -199,12 +199,12 @@ function StreamingToolTimeline({ copy: copyTable, message }: { copy: ChatCopyTab
 function ArtifactList({ copy: copyTable, message, onDownload, onPreview, onOpenList }: { copy: ChatCopyTable; message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload']; onPreview?: (messageId: string, artifactIndex: number) => void | Promise<void>; onOpenList?: (messageId: string) => void }) {
   const artifacts = messageArtifactItems(message);
   if (artifacts.length === 0) return null;
-  return <section className="wk-chat-artifacts mt-[0.7rem] border-t border-[#edf0f5] pt-[0.5rem]" aria-label={copyTable.artifacts}>
-    <div className="mb-[0.35rem] flex items-center justify-between gap-[0.5rem]"><h3 className="m-0 text-[0.85rem] text-[rgba(0,0,0,0.6)]">{copyTable.artifacts}</h3>{onOpenList ? <button type="button" className="wk-chat-artifacts-open cursor-pointer border-0 bg-transparent p-0 text-[12px] text-[#245a9b] underline" onClick={() => onOpenList(message.id)}>{copyTable.artifacts}</button> : null}</div>
-    <ul className="m-0 flex list-none flex-wrap gap-[0.4rem] p-0">{artifacts.map((artifact) => {
+  return <section className="wk-chat-artifacts wk-vc-message-list-15" aria-label={copyTable.artifacts}>
+    <div className="wk-vc-message-list-16"><h3 className="wk-vc-message-list-17">{copyTable.artifacts}</h3>{onOpenList ? <button type="button" className="wk-chat-artifacts-open wk-vc-message-list-18" onClick={() => onOpenList(message.id)}>{copyTable.artifacts}</button> : null}</div>
+    <ul className="wk-vc-message-list-19">{artifacts.map((artifact) => {
       const expired = isArtifactExpired(artifact);
       const previewable = artifactPreviewModel(artifact, copyTable).kind !== 'download-only';
-      return <li key={artifact.index} className="flex items-center gap-[0.4rem] text-[13px] text-[rgba(0,0,0,0.9)]"><span>{artifact.fileName}{artifact.version ? ` · v${artifact.version}` : ''}</span>{expired ? <small role="status" className="text-[#66758b]">{copyTable.expired}</small> : <>{previewable && onPreview ? <button type="button" className="cursor-pointer rounded-[5px] border border-[#b9d1f2] bg-white px-[0.45rem] py-[0.15rem] text-[12px] text-[#245a9b]" onClick={() => void onPreview(message.id, artifact.index)}>{copyTable.preview}</button> : null}{onDownload ? <button type="button" className="cursor-pointer rounded-[5px] border border-[#b9d1f2] bg-white px-[0.45rem] py-[0.15rem] text-[12px] text-[#245a9b]" onClick={() => void onDownload(message.id, artifact.index)}>{copyTable.download}</button> : <small className="text-[#66758b]">{copyTable.available}</small>}</>}</li>;
+      return <li key={artifact.index} className="wk-vc-message-list-20"><span>{artifact.fileName}{artifact.version ? ` · v${artifact.version}` : ''}</span>{expired ? <small role="status" className="wk-vc-message-list-21">{copyTable.expired}</small> : <>{previewable && onPreview ? <button type="button" className="wk-vc-message-list-22" onClick={() => void onPreview(message.id, artifact.index)}>{copyTable.preview}</button> : null}{onDownload ? <button type="button" className="wk-vc-message-list-22" onClick={() => void onDownload(message.id, artifact.index)}>{copyTable.download}</button> : <small className="wk-vc-message-list-21">{copyTable.available}</small>}</>}</li>;
     })}</ul>
   </section>;
 }
@@ -431,9 +431,9 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
       <div className="message-row wk-chat-message-row wk-chat-message-row--user">
         <div className="user_msg_container">
           <div className="user_msg wk-chat-message-bubble">
-            <p className="mt-[0.3rem] mb-0 [overflow-wrap:anywhere]">{pending.content}</p>
-            {pending.status === 'pending' ? <p role="status" className="wk-chat-pending-state mt-[0.3rem] mb-0 [overflow-wrap:anywhere] text-[12px] text-[rgba(0,0,0,0.4)]">{t.sending}</p> : <p role="alert" className="wk-chat-pending-state mt-[0.3rem] mb-0 [overflow-wrap:anywhere] text-[12px] text-[rgba(0,0,0,0.4)]">{pending.error ?? t.sendFailed}</p>}
-            {pending.status === 'failed' && onRetry ? <button type="button" className="wk-chat-retry mt-[4px] self-end cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[10px] py-[2px] text-[12px] text-[rgba(0,0,0,0.6)]" onClick={onRetry}>{t.retry}</button> : null}
+            <p className="wk-vc-message-list-23">{pending.content}</p>
+            {pending.status === 'pending' ? <p role="status" className="wk-chat-pending-state wk-vc-message-list-24">{t.sending}</p> : <p role="alert" className="wk-chat-pending-state wk-vc-message-list-24">{pending.error ?? t.sendFailed}</p>}
+            {pending.status === 'failed' && onRetry ? <button type="button" className="wk-chat-retry wk-vc-message-list-25" onClick={onRetry}>{t.retry}</button> : null}
           </div>
         </div>
       </div>
@@ -471,9 +471,9 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
         {preview.artifact ? <div className="wk-chat-artifact-drawer-resize" role="separator" aria-orientation="vertical" aria-label={t.artifacts} onPointerDown={startArtifactResize} /> : null}
       </aside>
     </> : null}
-    {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions mx-0 my-[1rem] w-full max-w-[960px] rounded-[8px] border border-[#dce3ed] p-[0.8rem]" aria-label={t.followUpQuestions}>
-      <div className="wk-chat-suggestions-heading flex items-center justify-between gap-[0.6rem]"><h2 className="mt-[0.35rem] mb-[0.35rem] text-[1rem] font-normal text-[rgba(0,0,0,0.4)]">{t.followUpQuestions}</h2><div><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[10px] py-[2px] text-[12px] text-[rgba(0,0,0,0.6)]" onClick={onRefreshSuggestions} disabled={!suggestions.allow_regenerate}>{t.suggestedRefresh}</button><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[10px] py-[2px] text-[12px] text-[rgba(0,0,0,0.6)]" onClick={onDismissSuggestions}>{t.dismiss}</button></div></div>
-      <div className="wk-chat-suggestions-grid mt-[8px] grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-[0.5rem]">{suggestions.questions.map((question) => <button type="button" key={question.id} className="cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded-[6px] border border-[#dce3ed] bg-white p-[0.65rem] text-left text-[13px] leading-[1.5] text-[rgba(0,0,0,0.9)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:border-[rgba(0,0,0,0.1)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.05)]" onClick={() => onSuggestionClick?.(question.id, question.text)}>{question.text}{question.source === 'faq' ? <small className="ml-[6px] mt-[0.25rem] block text-[#66758b]">FAQ</small> : null}</button>)}</div>
+    {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions wk-vc-message-list-26" aria-label={t.followUpQuestions}>
+      <div className="wk-chat-suggestions-heading wk-vc-message-list-27"><h2 className="wk-vc-message-list-28">{t.followUpQuestions}</h2><div><button type="button" className="wk-vc-message-list-29" onClick={onRefreshSuggestions} disabled={!suggestions.allow_regenerate}>{t.suggestedRefresh}</button><button type="button" className="wk-vc-message-list-29" onClick={onDismissSuggestions}>{t.dismiss}</button></div></div>
+      <div className="wk-chat-suggestions-grid wk-vc-message-list-30">{suggestions.questions.map((question) => <button type="button" key={question.id} className="wk-vc-message-list-31" onClick={() => onSuggestionClick?.(question.id, question.text)}>{question.text}{question.source === 'faq' ? <small className="wk-vc-message-list-32">FAQ</small> : null}</button>)}</div>
     </section> : null}
   </div>;
 }

@@ -1,0 +1,313 @@
+/* analytics-u.css — S7 Tailwind utilities 平移（analytics 域漂零段：AnalyticsPage 等）
+ * 前缀见各规则；值 = utilities 编码的生效值。导入顺序：须在本域 .td.css 之前。 */
+
+
+.wk-anl-an-page {
+  box-sizing: border-box;
+  height: 100%;
+  overflow-y: auto;
+  padding-inline: 28px;
+  padding-top: 24px;
+  padding-bottom: 32px;
+}
+
+.wk-anl-an-header {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wk-anl-an-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+  color: rgba(23,26,29,0.92);
+}
+
+.wk-anl-an-subtitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  color: rgba(23,26,29,0.6);
+}
+
+.wk-anl-an-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-anl-an-date-input {
+  box-sizing: border-box;
+  height: 32px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7ea;
+  background-color: #ffffff;
+  padding-inline: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: rgba(23,26,29,0.92);
+}
+
+.wk-anl-an-date-input:focus {
+  border-style: solid;
+  border-color: #07c05f;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.wk-anl-an-btn-primary {
+  box-sizing: border-box;
+  display: inline-flex;
+  height: 32px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 0;
+  background-color: #07c05f;
+  padding-inline: 15px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(7,192,95,0.25);
+  transition: all .2s ease;
+}
+
+.wk-anl-an-btn-primary:hover {
+  box-shadow: 0 4px 14px rgba(7,192,95,0.35);
+}
+
+.wk-anl-an-btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wk-anl-an-btn-outline {
+  box-sizing: border-box;
+  display: inline-flex;
+  height: 32px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: rgba(7,192,95,0.5);
+  background-color: #ffffff;
+  padding-inline: 15px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #07c05f;
+  transition: all .2s ease;
+}
+
+.wk-anl-an-btn-outline:hover {
+  border-style: solid;
+  border-color: #07c05f;
+  background-color: rgba(7, 192, 95, 0.08);
+}
+
+.wk-anl-an-text-input {
+  box-sizing: border-box;
+  height: 32px;
+  width: 220px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7ea;
+  background-color: #ffffff;
+  padding-inline: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: rgba(23,26,29,0.92);
+}
+
+.wk-anl-an-text-input:focus {
+  border-style: solid;
+  border-color: #07c05f;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.wk-anl-an-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (min-width: 1100px) {
+.wk-anl-an-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+}
+
+.wk-anl-an-card {
+  box-sizing: border-box;
+  border-radius: 10px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7ea;
+  background-color: #ffffff;
+  padding-inline: 16px;
+  padding-block: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.wk-anl-an-card-title {
+  margin: 0;
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(23,26,29,0.92);
+}
+
+.wk-anl-an-state {
+  display: flex;
+  height: 240px;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: rgba(23,26,29,0.4);
+}
+
+.wk-anl-an-error {
+  display: flex;
+  height: 240px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #d54941;
+}
+
+.wk-anl-an-agent-bar {
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-anl-an-forbidden {
+  display: flex;
+  height: 100%;
+  min-height: 240px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-inline: 20px;
+  padding-block: 60px;
+  text-align: center;
+}
+
+.wk-anl-an-usage-note {
+  margin: 0;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: rgba(23,26,29,0.6);
+}
+
+.wk-anl-an-usage-bar {
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-anl-an-usage-export-error {
+  font-size: 13px;
+  color: #d54941;
+}
+
+.wk-anl-an-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.wk-anl-an-usage-cell {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-style: solid;
+  border-color: #eef1f5;
+  padding-inline: 10px;
+  padding-block: 8px;
+  text-align: left;
+}
+
+.wk-anl-an-usage-num {
+  text-align: right;
+}
+
+.wk-anl-an-usage-pager {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(23,26,29,0.6);
+}
+
+.wk-anl-an-btn-pager {
+  box-sizing: border-box;
+  display: inline-flex;
+  height: 28px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: rgba(7,192,95,0.5);
+  background-color: #ffffff;
+  padding-inline: 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: #07c05f;
+  transition: all .2s ease;
+}
+
+.wk-anl-an-btn-pager:hover {
+  border-style: solid;
+  border-color: #07c05f;
+  background-color: rgba(7, 192, 95, 0.08);
+}
+
+.wk-anl-an-btn-pager:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wk-anl-1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: rgba(23,26,29,0.6);
+}
+
+.wk-anl-2 {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-style: solid;
+  border-color: #e7e7ea;
+}
+
+.wk-anl-3 {
+  font-weight: 600;
+}

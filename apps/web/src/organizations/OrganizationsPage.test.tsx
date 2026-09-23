@@ -293,7 +293,7 @@ test('blank create names show the Vue validation warning instead of failing sile
   const validationToast = root.querySelector('[role="status"]');
   assert.ok(validationToast, 'Vue shows a validation warning through MessagePlugin');
   assert.match(validationToast?.textContent ?? '', /请输入共享空间名称/);
-  assert.match(validationToast?.className ?? '', /text-\[#faad14\]/, 'validation should use warning styling');
+  assert.match(validationToast?.className ?? '', /wk-org-130/, 'validation should use warning styling');
 });
 
 test('list failure renders an error state and retry recovers without the empty state', async () => {
@@ -639,7 +639,7 @@ test('settings modal exposes an equivalent section selector when the sidebar is 
   // 只在弹层打开后进入 DOM（closed select 不泄露选项，同 validity 判例）。
   const sectionSelector = dialog.querySelector('.organization-settings-section-selector') as HTMLElement | null;
   assert.ok(sectionSelector, 'expected mobile section selector');
-  assert.match(sectionSelector.parentElement?.className ?? '', /max-\[720px\]:block/, 'selector should be available at the mobile breakpoint');
+  assert.match(sectionSelector.parentElement?.className ?? '', /wk-org-5/, 'selector should be available at the mobile breakpoint (.wk-org-5 carries the max-width:720px display:block rule)');
   // R487 K1: the standalone invite nav item is gone (Vue embeds the invite
   // affordances in the basic 邀请成员 card) and the members entry reads
   // organization.manageMembers (成员管理).
@@ -1111,7 +1111,7 @@ test('edit basic offers the emoji avatar picker like Vue', async () => {
   // The emoji grid renders inside the .grid-cols-6 picker popover (the emoji
   // literals differ in Unicode sequence between fixtures and the component, so
   // query structurally instead of by aria-label text).
-  const emojiButton = dialog.querySelector('.grid-cols-6 button') as HTMLButtonElement | null;
+  const emojiButton = dialog.querySelector('.wk-org-11 button') as HTMLButtonElement | null;
   assert.ok(emojiButton, 'the emoji grid opens on click');
   await click(emojiButton);
   // Reopening the popover shows the clear affordance — proof the emoji landed
@@ -1133,7 +1133,7 @@ test('edit footer save mirrors the Vue handleSave payload and basic keeps no inl
 
   const picker = dialog.querySelector('button[aria-label="选择 Emoji 作为共享空间头像"]') as HTMLButtonElement;
   await click(picker);
-  await click(dialog.querySelector('.grid-cols-6 button') as HTMLButtonElement);
+  await click(dialog.querySelector('.wk-org-11 button') as HTMLButtonElement);
 
   const footerButtons = [...dialog.querySelectorAll('.settings-footer button')].map((button) => button.textContent ?? '');
   assert.ok(footerButtons.includes('取消'), 'the Vue settings-footer cancel stays global');

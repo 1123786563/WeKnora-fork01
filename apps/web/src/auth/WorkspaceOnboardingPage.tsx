@@ -4,6 +4,7 @@ import { Button, Card, Dialog, Input, Status, Textarea } from '@weknora/ui';
 import type { WebScopeRuntime } from '../platform/scope-runtime.ts';
 import { onboardingView, validateCreateTenant, type OnboardingPolicyInput } from './onboarding.ts';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+import './auth-u.css';
 
 const LOCALE_STORAGE_KEY = 'locale';
 function readInitialLocale(): Locale {
@@ -110,8 +111,8 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
   }
 
   const ready = view.kind === 'ready';
-  return <main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Card>
-    <div data-testid="workspace-mark" aria-hidden="true" className="mx-auto mb-[22px] flex h-16 w-16 items-center justify-center rounded-[18px] bg-primary/10 text-primary">
+  return <main className="wk-page wk-page--std"><Card>
+    <div data-testid="workspace-mark" aria-hidden="true" className="wk-onb-1">
       <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
         <rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" />
         <rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" />
@@ -119,8 +120,8 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
         <rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" />
       </svg>
     </div>
-    <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.title') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyTitle')}</h1>
-    <p className="wk-muted text-muted">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.description') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyDescription')}</p>
+    <h1 className="wk-onb-2">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.title') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyTitle')}</h1>
+    <p className="wk-muted wk-onb-3">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.description') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyDescription')}</p>
     {view.kind === 'loading-policy' || (ready && false) ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingPolicy')}</Status> : null}
     {view.kind === 'policy-error' || loadFailed ? <div role="alert"><Status tone="error">{msg(locale, 'auth.workspaceOnboarding.policyLoadFailed')}</Status>
       <Button type="button" onClick={() => void loadPolicy()}>{msg(locale, 'auth.workspaceOnboarding.retry')}</Button></div> : null}
@@ -132,24 +133,24 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
           {msg(locale, 'auth.workspaceOnboarding.invitations')}{view.pendingInvitationCount > 0 ? ` (${view.pendingInvitationCount})` : ''}
         </Button>
       </div>
-      <p className="wk-muted text-muted">{view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.help') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyHelp')}</p>
+      <p className="wk-muted wk-onb-3">{view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.help') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyHelp')}</p>
     </> : null}
     <Button type="button" onClick={() => void onLogout()}>{msg(locale, 'auth.logout')}</Button>
 
     <Dialog
       open={createVisible}
-      title={<span className="inline-flex items-center gap-2"><svg className="text-primary shrink-0" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
+      title={<span className="wk-onb-4"><svg className="wk-onb-5" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
       onClose={() => { if (!creating) { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); } }}
-      className="w-[min(480px,100%)]!"
+      className="wk-onb-6"
     >
-      <p className="wk-muted text-muted">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
-      <form className="wk-form mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
-        <label className="grid gap-1">{msg(locale, 'tenant.create.nameLabel')}
-          <Input className="rounded-control border border-line-strong p-[0.55rem]" value={name} onChange={(event) => setName(event.target.value)} maxLength={128} autoFocus disabled={creating} placeholder={msg(locale, 'tenant.create.namePlaceholder')} />
+      <p className="wk-muted wk-onb-3">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
+      <form className="wk-form wk-onb-7" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
+        <label className="wk-onb-8">{msg(locale, 'tenant.create.nameLabel')}
+          <Input className="wk-onb-9" value={name} onChange={(event) => setName(event.target.value)} maxLength={128} autoFocus disabled={creating} placeholder={msg(locale, 'tenant.create.namePlaceholder')} />
           {(fieldErrors.name ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
-        <label className="grid gap-1">{msg(locale, 'tenant.create.descriptionLabel')}
-          <Textarea className="box-border w-full resize-y px-[0.6rem] py-[0.5rem] [font:inherit]" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
+        <label className="wk-onb-8">{msg(locale, 'tenant.create.descriptionLabel')}
+          <Textarea className="wk-onb-10" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
           {(fieldErrors.description ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
         {createError ? <Status tone="error">{createError}</Status> : null}
@@ -165,7 +166,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
       title={msg(locale, 'auth.workspaceOnboarding.invitations')}
       onClose={() => setInvitationsVisible(false)}
       closeLabel={msg(locale, 'auth.workspaceOnboarding.close')}
-      className="w-[min(560px,100%)]!"
+      className="wk-onb-11"
     >
       {invitationError ? <Status tone="error">{invitationError}</Status> : null}
       {invitationNotice ? <Status tone="success">{invitationNotice}</Status> : null}

@@ -280,28 +280,28 @@ export function messageReferenceValues(messages: readonly ChatMessage[]): unknow
 function LiveThinking({ copy, live }: { copy: ChatCopyTable; live: LiveThinkingState }) {
   if (!live.showThink) return null;
   if (live.thinking) {
-    return <section className="wk-chat-live-think mb-[6px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[12px]" aria-label={copy.thinkingAlt}>
-      <p role="status" className="m-0 flex items-center gap-[8px] font-medium text-[rgba(0,0,0,0.9)]">
-        <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-[#0052d9] motion-reduce:animate-none" aria-hidden="true" />
+    return <section className="wk-chat-live-think wk-vc-page-1" aria-label={copy.thinkingAlt}>
+      <p role="status" className="wk-vc-page-2">
+        <span className="wk-vc-page-3 wk-mr-none" aria-hidden="true" />
         {copy.thinking}
       </p>
-      {live.thinkContent ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{live.thinkContent}</p> : null}
+      {live.thinkContent ? <p className="wk-vc-page-4">{live.thinkContent}</p> : null}
     </section>;
   }
-  return <details className="wk-chat-live-think mb-[6px] rounded-[8px] border border-[#e7e7e7] bg-white px-[14px] py-[6px] text-[12px]">
-    <summary className="cursor-pointer select-none font-medium text-[rgba(0,0,0,0.9)]">{copy.deepThoughtCompleted}</summary>
-    {live.thinkContent ? <p className="mt-[6px] mb-0 max-h-[200px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] text-[rgba(0,0,0,0.6)]">{live.thinkContent}</p> : null}
+  return <details className="wk-chat-live-think wk-vc-page-5">
+    <summary className="wk-vc-page-6">{copy.deepThoughtCompleted}</summary>
+    {live.thinkContent ? <p className="wk-vc-page-4">{live.thinkContent}</p> : null}
   </details>;
 }
 
 function LiveResponse({ copy, stream, onStopStream }: { copy: ChatCopyTable; stream: ChatStreamPresentation; onStopStream?: () => void }) {
   const live = splitLiveThinking(stream.answer ?? '');
   if (stream.phase !== 'streaming' && !stream.thinking && stream.toolCalls.length === 0) return null;
-  return <section aria-label={copy.streamStatus} className="wk-chat-live-response mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px] text-[13px]">
-    <p role="status" className="mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.streamStatus}: {stream.phase}</p>
-    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.artifactsPending}</p> : null}
+  return <section aria-label={copy.streamStatus} className="wk-chat-live-response wk-vc-page-7">
+    <p role="status" className="wk-vc-page-8">{copy.streamStatus}: {stream.phase}</p>
+    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending wk-vc-page-8">{copy.artifactsPending}</p> : null}
     {stream.phase === 'streaming' ? <LiveThinking copy={copy} live={live} /> : null}
-    {stream.toolCalls.length > 0 ? <div><h2 className="mt-[8px] mb-[4px] text-[13px]">{copy.toolCallsTitle}</h2><ul className="wk-list m-0 list-none p-0">{stream.toolCalls.map((tool) => <li key={tool.id} className={TOOL_LIST_ITEM}><strong>{tool.name ?? tool.id}</strong><small className="text-[rgba(0,0,0,0.4)]">{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} copy={copy} />}</li>)}</ul></div> : null}
+    {stream.toolCalls.length > 0 ? <div><h2 className="wk-vc-page-9">{copy.toolCallsTitle}</h2><ul className="wk-list wk-vc-page-10">{stream.toolCalls.map((tool) => <li key={tool.id} className={TOOL_LIST_ITEM}><strong>{tool.name ?? tool.id}</strong><small className="wk-vc-page-11">{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} copy={copy} />}</li>)}</ul></div> : null}
   </section>;
 }
 
@@ -317,8 +317,8 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : props.copy.sendFailed); } finally { setBusy(null); }
   }
 
-  return <section aria-label={props.copy.chatActionsTitle} className="wk-chat-actions mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px]">
-    <h2 className="m-0 mb-[6px] text-[13px] text-[rgba(0,0,0,0.6)]">{props.copy.chatActionsTitle}</h2>
+  return <section aria-label={props.copy.chatActionsTitle} className="wk-chat-actions wk-vc-page-12">
+    <h2 className="wk-vc-page-13">{props.copy.chatActionsTitle}</h2>
     {error ? <p role="alert">{error}</p> : null}
     {toolApprovals.map((approval) => <ToolApprovalCard
       key={`tool-${approval.pendingId}`}
@@ -329,10 +329,10 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
         : undefined}
       copy={props.copy}
     />)}
-    {oauthApprovals.map((approval) => <div key={`oauth-${approval.pendingId}`} className="wk-chat-action-card mb-[8px] flex flex-col gap-[6px] rounded-[8px] border border-[#e7e7e7] px-[10px] py-[8px]">
-      <strong className="text-[13px]">{props.copy.oauthTitle}: {approval.serviceName ?? approval.serviceId ?? props.copy.oauthTool}</strong>
-      {approval.toolName ? <small className="text-[rgba(0,0,0,0.4)]">{props.copy.oauthTool}: {approval.toolName}</small> : null}
-      {approval.status === 'pending' && approval.serviceId && props.onAuthorizeOAuth && props.onCancelOAuth ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onAuthorizeOAuth!(approval.pendingId, approval.serviceId!))}>{props.copy.oauthAuthorize} {approval.serviceName ?? approval.serviceId}</button><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onCancelOAuth!(approval.pendingId))}>{props.copy.oauthCancel}</button></div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.authorized ? props.copy.oauthAuthorized : approval.reason ?? props.copy.approvalResolved}</small>}
+    {oauthApprovals.map((approval) => <div key={`oauth-${approval.pendingId}`} className="wk-chat-action-card wk-vc-page-14">
+      <strong className="wk-vc-page-15">{props.copy.oauthTitle}: {approval.serviceName ?? approval.serviceId ?? props.copy.oauthTool}</strong>
+      {approval.toolName ? <small className="wk-vc-page-11">{props.copy.oauthTool}: {approval.toolName}</small> : null}
+      {approval.status === 'pending' && approval.serviceId && props.onAuthorizeOAuth && props.onCancelOAuth ? <div className="wk-list-actions wk-vc-page-16"><button type="button" className="wk-vc-page-17" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onAuthorizeOAuth!(approval.pendingId, approval.serviceId!))}>{props.copy.oauthAuthorize} {approval.serviceName ?? approval.serviceId}</button><button type="button" className="wk-vc-page-17" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onCancelOAuth!(approval.pendingId))}>{props.copy.oauthCancel}</button></div> : <small className="wk-vc-page-11">{approval.authorized ? props.copy.oauthAuthorized : approval.reason ?? props.copy.approvalResolved}</small>}
     </div>)}
   </section>;
 }
@@ -440,13 +440,13 @@ function SteerComposer({ copy, onSteer, steerQueue = [], onSteerPromote, mention
     }
   }
 
-  return <form className="wk-chat-steer mx-auto grid w-full max-w-[960px] gap-[6px] rounded-[10px_10px_0_0] border border-b-0 border-[#dcdcdc] px-[12px] py-[8px]" onSubmit={(event) => void submit(event)}>
-    <label htmlFor="wk-chat-steer-draft" className="text-[12px] text-[rgba(0,0,0,0.6)]">{copy.steerCurrent}</label>
-    {mentionedItems.length > 0 ? <ul className="m-0 flex flex-wrap gap-[6px] p-0" aria-label={copy.mentionKnowledge}>{mentionedItems.map((item) => <li key={item.id} data-mention-id={item.id} data-mention-type={item.type} className="inline-flex items-center gap-[5px] rounded-[6px] border border-[#d9f2e2] bg-[#f2fbf5] px-[7px] py-[3px] text-[12px] text-[rgba(0,0,0,0.65)]"><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span><button type="button" aria-label={`${copy.close}: ${item.name}`} className="border-0 bg-transparent p-0" disabled={busy} onClick={() => onMentionRemove?.(item.id)}>×</button></li>)}</ul> : null}
-    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleDraftKeyDown} disabled={busy} className="min-h-[40px] resize-none rounded-[6px] border-0 px-[8px] py-[6px] [font:inherit] text-[13px]" />
-    <div className="relative flex items-center gap-[6px]"><button id="wk-chat-steer-mention" type="button" aria-label={copy.mentionKnowledge} aria-expanded={mentionOpen} disabled={busy} className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[8px] py-[4px] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" onClick={openMentions}>@</button>{mentionOpen ? <div role="listbox" aria-label={copy.mentionKnowledge} className="absolute bottom-[34px] left-0 z-20 w-[260px] rounded-[8px] border border-[#e7e7e7] bg-white p-[8px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]"><input autoFocus value={mentionQuery} onChange={(event) => { setMentionQuery(event.target.value); setActiveMentionIndex(0); }} onKeyDown={handleMentionKeyDown} aria-label={copy.composerPlaceholder} aria-activedescendant={availableMentions.length > 0 ? `wk-chat-steer-mention-option-${availableMentions[Math.min(activeMentionIndex, availableMentions.length - 1)].id}` : undefined} aria-controls="wk-chat-steer-mention-options" placeholder={copy.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[5px] text-[12px]" />{availableMentions.length > 0 ? <div id="wk-chat-steer-mention-options">{availableMentions.map((item, index) => <button key={item.id} id={`wk-chat-steer-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} data-mention-type={item.type} className="block w-full rounded-[6px] border-0 bg-transparent px-[8px] py-[6px] text-left text-[12px] hover:bg-[#f3f3f3]" onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span></button>)}</div> : <p className="m-0 px-[8px] py-[6px] text-[12px] text-[rgba(0,0,0,0.45)]">{copy.mentionNoAvailable}</p>}</div> : null}</div>
+  return <form className="wk-chat-steer wk-vc-page-18" onSubmit={(event) => void submit(event)}>
+    <label htmlFor="wk-chat-steer-draft" className="wk-vc-page-19">{copy.steerCurrent}</label>
+    {mentionedItems.length > 0 ? <ul className="wk-vc-page-20" aria-label={copy.mentionKnowledge}>{mentionedItems.map((item) => <li key={item.id} data-mention-id={item.id} data-mention-type={item.type} className="wk-vc-page-21"><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span><button type="button" aria-label={`${copy.close}: ${item.name}`} className="wk-vc-page-22" disabled={busy} onClick={() => onMentionRemove?.(item.id)}>×</button></li>)}</ul> : null}
+    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleDraftKeyDown} disabled={busy} className="wk-vc-page-23" />
+    <div className="wk-vc-page-24"><button id="wk-chat-steer-mention" type="button" aria-label={copy.mentionKnowledge} aria-expanded={mentionOpen} disabled={busy} className="wk-vc-page-25" onClick={openMentions}>@</button>{mentionOpen ? <div role="listbox" aria-label={copy.mentionKnowledge} className="wk-vc-page-26"><input autoFocus value={mentionQuery} onChange={(event) => { setMentionQuery(event.target.value); setActiveMentionIndex(0); }} onKeyDown={handleMentionKeyDown} aria-label={copy.composerPlaceholder} aria-activedescendant={availableMentions.length > 0 ? `wk-chat-steer-mention-option-${availableMentions[Math.min(activeMentionIndex, availableMentions.length - 1)].id}` : undefined} aria-controls="wk-chat-steer-mention-options" placeholder={copy.composerPlaceholder} className="wk-vc-page-27" />{availableMentions.length > 0 ? <div id="wk-chat-steer-mention-options">{availableMentions.map((item, index) => <button key={item.id} id={`wk-chat-steer-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} data-mention-type={item.type} className="wk-vc-page-28" onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">{mentionMarker(item.type)}</span><span>{item.name}</span></button>)}</div> : <p className="wk-vc-page-29">{copy.mentionNoAvailable}</p>}</div> : null}</div>
     {error ? <p role="alert">{error}</p> : null}
-    <button type="submit" disabled={busy || !draft.trim()} className="cursor-pointer self-end rounded-[6px] border-0 bg-[#07c05f] px-[12px] py-[5px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-50">{copy.steerQueued}</button>
+    <button type="submit" disabled={busy || !draft.trim()} className="wk-vc-page-30">{copy.steerQueued}</button>
   </form>;
 }
 
@@ -475,13 +475,13 @@ function TerminalPanel(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'ter
   }
   /* .wk-chat-sandbox-drawer .wk-chat-terminal scoped values folded in: the
      terminal only ever renders inside the drawer (page.tsx below). */
-  return <section ref={panelRef} aria-label={`${props.copy.sandboxPanelTitle} (Sandbox terminal)`} className="wk-chat-terminal m-0 flex min-h-0 w-full max-w-none flex-1 flex-col gap-[8px] overflow-auto rounded-none border-0 p-[12px] text-[12px]">
-    <div className="wk-settings-panel-heading m-0 flex items-center justify-between gap-[8px] border-b border-[#eef1f5] pb-[1rem]"><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
-    {props.terminal?.output ? <pre className="m-0 min-h-[120px] flex-1 overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#1f2430] p-[10px] text-[12px] leading-[1.5] text-[#d5dded]">{props.terminal.output}</pre> : null}
-    {!props.terminal?.output && props.onOpenTerminal ? <p className="wk-chat-terminal-hint m-0 leading-[1.6] text-[rgba(0,0,0,0.4)]">{copy.startTerminal}</p> : null}
-    {props.onOpenTerminal && !props.terminal?.output ? <button type="button" className="wk-chat-terminal-open cursor-pointer self-start rounded-[6px] border-0 bg-[#07c05f] px-[14px] py-[6px] text-[13px] text-white" onClick={() => void props.onOpenTerminal!()}>{copy.startTerminal}</button> : null}
-    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)} className="flex items-center gap-[6px]"><label htmlFor="wk-chat-terminal-input" className="shrink-0 text-[rgba(0,0,0,0.4)]">{copy.terminalInput}</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} className="flex-1 rounded-[6px] border border-[#dcdcdc] px-[8px] py-[5px] text-[13px]" /><button type="submit" disabled={busy || !input.trim()} className="cursor-pointer rounded-[6px] border-0 bg-[#07c05f] px-[10px] py-[5px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-50">{copy.sendInput}</button></form> : null}
-    {props.terminal && props.onCloseTerminal ? <button type="button" className="wk-chat-terminal-close cursor-pointer self-start rounded-[6px] border border-[#dcdcdc] bg-white px-[14px] py-[6px] text-[13px] text-[rgba(0,0,0,0.6)]" onClick={props.onCloseTerminal}>{copy.closeTerminal}</button> : null}
+  return <section ref={panelRef} aria-label={`${props.copy.sandboxPanelTitle} (Sandbox terminal)`} className="wk-chat-terminal wk-vc-page-31">
+    <div className="wk-settings-panel-heading wk-vc-page-32"><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
+    {props.terminal?.output ? <pre className="wk-vc-page-33">{props.terminal.output}</pre> : null}
+    {!props.terminal?.output && props.onOpenTerminal ? <p className="wk-chat-terminal-hint wk-vc-page-34">{copy.startTerminal}</p> : null}
+    {props.onOpenTerminal && !props.terminal?.output ? <button type="button" className="wk-chat-terminal-open wk-vc-page-35" onClick={() => void props.onOpenTerminal!()}>{copy.startTerminal}</button> : null}
+    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)} className="wk-vc-page-36"><label htmlFor="wk-chat-terminal-input" className="wk-vc-page-37">{copy.terminalInput}</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} className="wk-vc-page-38" /><button type="submit" disabled={busy || !input.trim()} className="wk-vc-page-39">{copy.sendInput}</button></form> : null}
+    {props.terminal && props.onCloseTerminal ? <button type="button" className="wk-chat-terminal-close wk-vc-page-40" onClick={props.onCloseTerminal}>{copy.closeTerminal}</button> : null}
   </section>;
 }
 
@@ -689,10 +689,10 @@ export function ChatPage(props: ChatPageProps) {
         {props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onSteerWarning={props.onSteerWarning} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
         {composerNode}
       </div>
-      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer absolute bottom-0 right-0 top-0 z-[40] flex w-[min(420px,100%)] max-w-[100vw] flex-col border-l border-[#e7e7e7] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.06)]" role="complementary" aria-label={copy.sandboxPanelTitle}>
-        <div className="wk-chat-sandbox-drawer-head flex shrink-0 items-center justify-between border-b border-[#e7e7e7] px-[12px] py-[8px] text-[13px] font-medium text-[rgba(0,0,0,0.9)]">
+      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer wk-vc-page-41" role="complementary" aria-label={copy.sandboxPanelTitle}>
+        <div className="wk-chat-sandbox-drawer-head wk-vc-page-42">
           <span>{copy.sandboxPanelTitle}</span>
-          <button type="button" className="wk-chat-sandbox-drawer-close inline-flex h-[32px] w-[32px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-[#f3f3f3] text-[rgba(0,0,0,0.6)] hover:bg-[#eee] hover:text-[rgba(0,0,0,0.9)]" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
+          <button type="button" className="wk-chat-sandbox-drawer-close wk-vc-page-43" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
           </button>
         </div>
@@ -701,7 +701,7 @@ export function ChatPage(props: ChatPageProps) {
     </div>;
   }
 
-  return <main className="wk-chat-page grid h-screen items-stretch gap-0 m-0 max-w-none p-0 grid-cols-[minmax(0,1fr)]">
+  return <main className="wk-chat-page wk-vc-page-44">
     <SessionSidebar
       copy={copy}
       sessions={props.sessions}
@@ -726,42 +726,42 @@ export function ChatPage(props: ChatPageProps) {
       pageCount={props.sessionPageCount}
       onPageChange={props.onSessionPageChange}
     />
-    <section className="wk-chat-main relative flex min-h-0 min-w-0 flex-col" aria-label={copy.streamStatus}>
-      <div className="wk-chat-conversation wk-chat-conversation--empty flex min-h-0 flex-1 flex-col px-[16px] pb-0 pt-0">
+    <section className="wk-chat-main wk-vc-page-45" aria-label={copy.streamStatus}>
+      <div className="wk-chat-conversation wk-chat-conversation--empty wk-vc-page-46">
         {/* Vue creatChat.vue 空态簇（Task 11b 平移）：.dialogue-wrap 居中 →
             .dialogue-answers 列（gap 24，100%/max 960）→ .dialogue-title +
             .suggested-questions-container + 输入区。整数 gap 几何取代旧
             48.8px 分数 padding（其 0.5px 偏移一路放大成字形相位差）。 */}
         {!props.selectedSessionId ? (
-      <div className="dialogue-wrap flex min-h-0 flex-1 flex-col items-center justify-center">
-      <div className="dialogue-answers flex w-full max-w-[960px] flex-col items-center gap-[24px]">
+      <div className="dialogue-wrap wk-vc-page-47">
+      <div className="dialogue-answers wk-vc-page-48">
       <h1 className="dialogue-title" style={{ '--wails-draggable': 'drag' } as React.CSSProperties}><span style={{ '--wails-draggable': 'drag' } as React.CSSProperties}>{copy.createChatTitle}</span></h1>
       <div className={'suggested-questions-container' + (props.starterQuestionsLoading ? ' wk-chat-starters--loading' : '')} aria-label={(props.starterQuestionsLoading || (props.starterQuestions?.length ?? 0) > 0) ? copy.suggestedQuestions : copy.streamStatus} aria-busy={props.starterQuestionsLoading || undefined}>
             {props.starterQuestionsLoading && (props.starterQuestions?.length ?? 0) === 0 ? (
-              <ul className="wk-chat-starters-grid flex w-full flex-wrap justify-center gap-[10px] list-none m-0 px-[16px] py-0">
-                {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton block h-[37px] w-[180px] rounded-[10px] bg-[linear-gradient(90deg,#eceef1_25%,#f6f7f8_50%,#eceef1_75%)] bg-[length:200%_100%] animate-[wk-chat-skeleton_1.4s_infinite_ease] motion-reduce:animate-none" aria-hidden="true" /></li>)}
+              <ul className="wk-chat-starters-grid wk-vc-page-49">
+                {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton wk-mr-none wk-vc-page-50" aria-hidden="true" /></li>)}
               </ul>
             ) : (props.starterQuestions?.length ?? 0) > 0 ? (
               <>
-                <p className="wk-chat-starters-caption m-0 text-center text-[13px] tracking-[0.01em] text-[rgba(0,0,0,0.26)]">
+                <p className="wk-chat-starters-caption wk-vc-page-51">
                   <span>{copy.suggestedQuestions}</span>
                   {props.onRefreshStarterQuestions ? <button
                     type="button"
-                    className="wk-chat-starter-refresh inline-flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.26)] transition-[background,color] duration-200 ease-[ease] hover:bg-[#f3f3f3] hover:text-[#07c05f] disabled:cursor-default disabled:opacity-70"
+                    className="wk-chat-starter-refresh wk-ease-ease wk-vc-page-52"
                     disabled={props.starterQuestionsLoading}
                     title={copy.refreshSuggestedQuestions}
                     aria-label={copy.refreshSuggestedQuestions}
                     onClick={props.onRefreshStarterQuestions}
                   >
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={props.starterQuestionsLoading ? 'wk-chat-starter-refresh-icon animate-[wk-chat-sq-refresh-rotate_0.8s_linear_infinite] motion-reduce:animate-none' : 'wk-chat-starter-refresh-icon'}>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={props.starterQuestionsLoading ? 'wk-chat-starter-refresh-icon wk-mr-none wk-vc-page-54' : 'wk-chat-starter-refresh-icon'}>
                       <path d="M10 3.5V1.5M10 1.5H8" /><path d="M10 1.5A4.5 4.5 0 1 0 10.7 7" />
                     </svg>
                   </button> : null}
                 </p>
-                <ul className="wk-chat-starters-grid flex w-full flex-wrap justify-center gap-[10px] list-none m-0 px-[16px] py-0">
+                <ul className="wk-chat-starters-grid wk-vc-page-49">
                   {props.starterQuestions!.map((question, index) => (
                     <li key={index}>
-                      <button type="button" className="wk-chat-starter-card box-border max-w-full cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded-[10px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[13px] leading-[1.5] text-[rgba(0,0,0,0.9)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow,background] duration-200 ease-[ease] hover:border-[rgba(0,0,0,0.1)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.05)] focus-visible:border-[rgba(0,0,0,0.1)] focus-visible:shadow-[0_2px_6px_rgba(0,0,0,0.05)]" onClick={() => props.onStarterQuestionClick?.(question)}>{question}</button>
+                      <button type="button" className="wk-chat-starter-card wk-ease-ease wk-vc-page-53" onClick={() => props.onStarterQuestionClick?.(question)}>{question}</button>
                     </li>
                   ))}
                 </ul>
@@ -807,10 +807,10 @@ export function ChatPage(props: ChatPageProps) {
           onArtifactPreview={props.onArtifactPreview}
         />}
       </div>
-      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer absolute bottom-0 right-0 top-0 z-[40] flex w-[min(420px,100%)] max-w-[100vw] flex-col border-l border-[#e7e7e7] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.06)]" role="complementary" aria-label={copy.sandboxPanelTitle}>
-        <div className="wk-chat-sandbox-drawer-head flex shrink-0 items-center justify-between border-b border-[#e7e7e7] px-[12px] py-[8px] text-[13px] font-medium text-[rgba(0,0,0,0.9)]">
+      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer wk-vc-page-41" role="complementary" aria-label={copy.sandboxPanelTitle}>
+        <div className="wk-chat-sandbox-drawer-head wk-vc-page-42">
           <span>{copy.sandboxPanelTitle}</span>
-          <button type="button" className="wk-chat-sandbox-drawer-close inline-flex h-[32px] w-[32px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-[#f3f3f3] text-[rgba(0,0,0,0.6)] hover:bg-[#eee] hover:text-[rgba(0,0,0,0.9)]" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
+          <button type="button" className="wk-chat-sandbox-drawer-close wk-vc-page-43" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
           </button>
         </div>
