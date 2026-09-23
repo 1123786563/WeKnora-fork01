@@ -338,3 +338,51 @@ test('the resources route detaches its shelf controller from the long-lived hand
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(handle.audit().browses, 1, 'an invalidation event after unmount must not trigger a leaked browse');
 });
+
+test('a discarded concurrent render leaves no shelf subscription or browse behind', async () => {
+  const { ResourcesScreen } = await import('./screens/ResourcesScreen.tsx');
+  const { ResourcesRouteLifecycle } = await import('./app/resources.tsx');
+  const page: import('@weknora/mobile-core').ResourcePage = {
+    tenantId: '7',
+    agents: [],
+    knowledge: [],
+    connections: [],
+    classVerdicts: { agent: { state: 'supported', reason: '' }, knowledge: { state: 'supported', reason: '' }, connection: { state: 'supported', reason: '' } },
+  };
+  let browses = 0;
+  const listeners = new Set<(event: import('@weknora/mobile-core').ShelfInvalidationEvent) => void>();
+  const handle = {
+    async browse() { browses += 1; return page; },
+    selection: () => ({ allowed: false, state: 'unavailable', reason: 'not_used' }),
+    subscribe(listener: (event: import('@weknora/mobile-core').ShelfInvalidationEvent) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    close() {},
+    audit: () => ({ listeners: listeners.size, browses }),
+  };
+  hooks().__reset();
+  // concurrent 渲染可以丢弃 render 相：这次 render 的 effect 永不提交（不调用 __mount）。
+  const element = render(ResourcesRouteLifecycle, { handle });
+  const screenElement = descendants(element).find(({ type }) => type === ResourcesScreen);
+  assert.ok(screenElement, 'an authorized render still produces the resources screen');
+  assert.equal((screenElement.props as { loading: boolean }).loading, true, 'before the effect commits, the route renders from the initial loading projection');
+  assert.equal((screenElement.props as { page: unknown }).page, undefined);
+  assert.deepEqual(handle.audit(), { listeners: 0, browses: 0 }, 'a discarded render must not subscribe to the shelf handle nor trigger a browse');
+  hooks().__mount();
+  assert.deepEqual(handle.audit(), { listeners: 1, browses: 1 }, 'the controller (subscription + first load) is created only when the effect commits');
+  hooks().__unmount();
+  assert.deepEqual(handle.audit(), { listeners: 0, browses: 1 }, 'unmount disposes the committed controller');
+});
+
+test('the resources route without a handle stays on the sign-in notice without touching the shelf', async () => {
+  const { ResourcesScreen } = await import('./screens/ResourcesScreen.tsx');
+  const { ResourcesRouteLifecycle } = await import('./app/resources.tsx');
+  hooks().__reset();
+  const element = render(ResourcesRouteLifecycle, {});
+  const texts = descendants(element)
+    .filter(({ type }) => type === 'Text')
+    .flatMap(({ props }) => props.children)
+    .flatMap((part) => (typeof part === 'string' ? [part] : []));
+  assert.equal(texts.includes('Sign in to browse tenant resources.'), true);
+  assert.equal(descendants(element).some(({ type }) => type === ResourcesScreen), false);
+  hooks().__mount();
+  hooks().__unmount();
+});

@@ -100,6 +100,47 @@ test('a 401 retries exactly once with a refreshed token and never loops', async 
   assert.deepEqual(looping.classVerdicts.agent, { state: 'unavailable', reason: 'http_401' }, 'a second 401 must fail closed instead of looping');
 });
 
+test('only a structured 401 status triggers the refresh retry: 403/5xx/network failures never refresh', async () => {
+  // 重试判定必须读结构化 status 而非 reason 字面量（'http_401' 是展示字符串）。
+  // 本测试锁定：一切非 401 失败——包括 reason 恰以 'http_' 开头的 403/5xx 与无 status 的
+  // 网络错误——都不得触发 accessTokenFor({ refresh: true })。
+  const refreshes: string[] = [];
+  const failingRemote = (status: number | undefined): ResourceRemote => ({
+    availableAgents: async () => {
+      const error = new Error('boom');
+      if (status !== undefined) (error as { status?: number }).status = status;
+      throw error;
+    },
+    knowledgeBases: async () => [],
+    connections: async () => [],
+  });
+  const openFailing = (status: number | undefined) => {
+    const shelf = createResourceShelf({
+      remote: failingRemote(status),
+      accessTokenFor: async (_origin: string, options?: { refresh?: boolean }) => {
+        if (options?.refresh) {
+          refreshes.push(`refresh:${status}`);
+          return 'token-2';
+        }
+        return 'token-1';
+      },
+    });
+    const lease = new RuntimeScopeLease(SCOPE);
+    return shelf.open({ lease: lease.asScopeLease() });
+  };
+
+  const forbidden = await openFailing(403).browse();
+  assert.deepEqual(forbidden.classVerdicts.agent, { state: 'forbidden', reason: 'http_403' });
+
+  const unavailable = await openFailing(503).browse();
+  assert.deepEqual(unavailable.classVerdicts.agent, { state: 'unavailable', reason: 'http_503' });
+
+  const offline = await openFailing(undefined).browse();
+  assert.deepEqual(offline.classVerdicts.agent, { state: 'unavailable', reason: 'fetch_failed' }, 'errors without a structured status are network failures, not auth challenges');
+
+  assert.deepEqual(refreshes, [], 'no failure other than a structured 401 may trigger a token refresh');
+});
+
 test('a revoked lease fails every operation closed even without an explicit close', async () => {
   const { handle, lease } = openShelf({ agents: [] });
   lease.revoke();

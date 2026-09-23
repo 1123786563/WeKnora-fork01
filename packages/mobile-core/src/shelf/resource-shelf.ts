@@ -43,19 +43,22 @@ export function createResourceShelf(ports: ResourceShelfPorts): ResourceShelf {
       const loadClass = async <T>(
         load: (token: string) => Promise<T>,
       ): Promise<{ ok: true; value: T } | { ok: false; verdict: ResourceClassVerdict }> => {
-        const attempt = async (refresh: boolean): Promise<{ ok: true; value: T } | { ok: false; verdict: ResourceClassVerdict }> => {
+        // 重试判定读结构化 status，不读 verdict.reason 字面量：reason 是展示字符串，
+        // 未来任何 verdict 复用 'http_401' 文本都不得误触发一次多余刷新。
+        type Attempt = { ok: true; value: T } | { ok: false; verdict: ResourceClassVerdict; status?: number };
+        const attempt = async (refresh: boolean): Promise<Attempt> => {
           try {
             const token = await ports.accessTokenFor(scope.deploymentOrigin, refresh ? { refresh: true } : undefined);
             return { ok: true, value: await load(token) };
           } catch (error) {
             const status = httpStatus(error);
-            if (status === 403) return { ok: false, verdict: { state: 'forbidden', reason: 'http_403' } };
-            return { ok: false, verdict: { state: 'unavailable', reason: status === undefined ? 'fetch_failed' : `http_${status}` } };
+            if (status === 403) return { ok: false, verdict: { state: 'forbidden', reason: 'http_403' }, status };
+            return { ok: false, verdict: { state: 'unavailable', reason: status === undefined ? 'fetch_failed' : `http_${status}` }, status };
           }
         };
         const first = await attempt(false);
         if (first.ok) return first;
-        if (first.verdict.reason === 'http_401') return attempt(true); // 恰好一次刷新重试，禁止循环
+        if (first.status === 401) return attempt(true); // 恰好一次刷新重试，禁止循环
         return first;
       };
 
