@@ -1,11 +1,17 @@
 package plugins
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -107,4 +113,106 @@ func TestBuildVerifiedSnapshotRejectsMismatch(t *testing.T) {
 	}
 	_, _, err = BuildVerifiedSnapshot(m, live)
 	require.ErrorContains(t, err, "undeclared_extra_tool")
+}
+
+// TestFetchAndVerifyPreservesOAuthErrorChain (OCR T01-R1-2): the error
+// returned for an OAuth-protected endpoint must keep BOTH identities — the
+// ErrOAuthProtectedEndpoint sentinel AND the underlying *mcp.OAuthRequiredError
+// (so IsOAuthProtected keeps working on wrapped errors).
+func TestFetchAndVerifyPreservesOAuthErrorChain(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	m := validManifest()
+	manifestJSON, _ := json.Marshal(m)
+	base := newControlledPluginHost(t,
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(manifestJSON)
+		},
+		func(http.ResponseWriter, *http.Request) {}, // endpoint never reached: fake lister
+	)
+	m.Transport.Endpoint = base + "/mcp"
+	manifestJSON, _ = json.Marshal(m)
+	lister := func(context.Context, string, string) ([]*types.MCPTool, error) {
+		return nil, &mcp.OAuthRequiredError{
+			MetadataURL: "https://auth.example.invalid/.well-known/oauth-protected-resource",
+			Err:         errors.New("401 unauthorized"),
+		}
+	}
+	_, err := FetchAndVerify(context.Background(), base+"/manifest.json", lister)
+	require.ErrorIs(t, err, ErrOAuthProtectedEndpoint)
+	require.True(t, IsOAuthProtected(err), "wrapped error must keep the OAuthRequiredError identity")
+}
+
+// TestConcurrentVerificationOfSameEndpointIsolated (OCR T01-R1-1): two
+// verifications of the SAME endpoint must each own their connection. Sharing
+// one manager-cached client lets the first finisher's Disconnect tear down
+// the other's in-flight ListTools — a false-negative preview rejection.
+//
+// Reproduction: the endpoint holds the FIRST tools/list until the second one
+// arrives (both verifications provably mid-flight), then answers the second
+// one slowly. With a shared client the first finisher disconnects while the
+// second request is still on the wire.
+func TestConcurrentVerificationOfSameEndpointIsolated(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	inner := streamableMCPServer(t, "search_my_week_issues", []byte(declaredNoArgSchema))
+	var toolsListArrivals atomic.Int32
+	secondArrived := make(chan struct{})
+	var releaseOnce sync.Once
+	mcpHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, readErr := io.ReadAll(r.Body)
+			if readErr == nil {
+				if bytes.Contains(body, []byte(`"tools/list"`)) {
+					if toolsListArrivals.Add(1) == 1 {
+						// Hold the first tools/list until the second arrives so
+						// both verifications are in flight on the endpoint.
+						select {
+						case <-secondArrived:
+						case <-time.After(5 * time.Second):
+						}
+					} else {
+						releaseOnce.Do(func() { close(secondArrived) })
+						// The later request answers slowly: under the
+						// shared-client bug the first finisher's Disconnect
+						// cancels it mid-flight.
+						time.Sleep(300 * time.Millisecond)
+					}
+					r.Body = io.NopCloser(bytes.NewReader(body))
+					inner(w, r)
+					return
+				}
+				r.Body = io.NopCloser(bytes.NewReader(body))
+			}
+		}
+		inner(w, r)
+	}
+	m := validManifest()
+	manifestJSON, _ := json.Marshal(m)
+	base := newControlledPluginHost(t,
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(manifestJSON)
+		},
+		mcpHandler,
+	)
+	m.Transport.Endpoint = base + "/mcp"
+	manifestJSON, _ = json.Marshal(m)
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	lister := NewMCPEndpointLister(manager)
+
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	for i := range errs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, errs[i] = FetchAndVerify(context.Background(), base+"/manifest.json", lister)
+		}()
+	}
+	wg.Wait()
+	require.NoError(t, errs[0])
+	require.NoError(t, errs[1])
 }

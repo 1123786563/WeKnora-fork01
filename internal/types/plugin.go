@@ -34,9 +34,12 @@ type PluginToolDecl struct {
 	Scopes               []string `json:"scopes,omitempty"`
 	// InputSchemaDigest is the plugin developer's self-reported canonical-JSON
 	// SHA-256 of the tool input schema: 64 lowercase hex chars, the same digest
-	// convention as OCSchemaDigest/MCPConfigFingerprint. It is only used for
-	// consistency checks against the LIVE ListTools result — the authoritative
-	// snapshot digest is always recomputed from the live endpoint.
+	// convention as OCSchemaDigest/MCPConfigFingerprint. Canonical form:
+	// object keys sorted, no insignificant whitespace, number literals kept
+	// VERBATIM (1, 1.0, 1e2 are different documents — NOT RFC 8785 JCS; see
+	// plugins.CanonicalJSON). It is only used for consistency checks against
+	// the LIVE ListTools result — the authoritative snapshot digest is always
+	// recomputed from the live endpoint.
 	InputSchemaDigest string `json:"input_schema_digest"`
 }
 

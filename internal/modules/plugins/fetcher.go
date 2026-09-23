@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -85,7 +86,10 @@ func FetchAndVerify(ctx context.Context, manifestURL string, lister EndpointList
 	live, err := lister(ctx, manifest.Transport.Type, manifest.Transport.Endpoint)
 	if err != nil {
 		if IsOAuthProtected(err) {
-			return nil, fmt.Errorf("%w: %v", ErrOAuthProtectedEndpoint, err)
+			// Double %w keeps BOTH identities: the sentinel for
+			// errors.Is(err, ErrOAuthProtectedEndpoint) and the underlying
+			// *mcp.OAuthRequiredError for IsOAuthProtected(err).
+			return nil, fmt.Errorf("%w: %w", ErrOAuthProtectedEndpoint, err)
 		}
 		return nil, fmt.Errorf("plugin endpoint verification failed: %w", err)
 	}
@@ -134,18 +138,27 @@ func fetchLimited(ctx context.Context, manifestURL string) ([]byte, error) {
 }
 
 // NewMCPEndpointLister verifies plugin endpoints through the production MCP
-// client stack. The MCPService it builds is an ephemeral, never-persisted
-// descriptor keyed by the endpoint URL: the manager's connection cache may
-// reuse a live connection, and the returned client is disconnected after
-// ListTools so nothing outlives the verification turn.
+// client stack. Each verification gets a UNIQUE ephemeral service ID (URL
+// hash + random nonce): the manager caches connections by service ID, so a
+// deterministic ID would make two concurrent verifications of the same
+// endpoint share one client — and the first finisher's Disconnect would tear
+// down the other's in-flight ListTools (false-negative preview rejection).
+// Uniqueness buys each verification an exclusive connection and Disconnect
+// scope; CloseClient retires the entry immediately instead of leaving a
+// disconnected corpse for the idle-cleanup goroutine.
 func NewMCPEndpointLister(manager *mcp.MCPManager) EndpointLister {
 	return func(ctx context.Context, transportType, endpointURL string) ([]*types.MCPTool, error) {
 		if manager == nil {
 			return nil, fmt.Errorf("mcp manager is required")
 		}
+		var nonce [4]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			return nil, fmt.Errorf("generate verification nonce: %w", err)
+		}
 		sum := sha256.Sum256([]byte(endpointURL))
+		serviceID := "plugin-verify-" + hex.EncodeToString(sum[:8]) + "-" + hex.EncodeToString(nonce[:])
 		service := &types.MCPService{
-			ID:            "plugin-verify-" + hex.EncodeToString(sum[:]),
+			ID:            serviceID,
 			TenantID:      0,
 			Name:          "plugin-verify",
 			Enabled:       true,
@@ -156,7 +169,10 @@ func NewMCPEndpointLister(manager *mcp.MCPManager) EndpointLister {
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = client.Disconnect() }()
+		defer func() {
+			_ = client.Disconnect()
+			_ = manager.CloseClient(service.ID)
+		}()
 		return client.ListTools(ctx)
 	}
 }
