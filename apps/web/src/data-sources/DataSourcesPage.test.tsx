@@ -94,7 +94,8 @@ test('card detail humanizes cron, relative time, sync result tone and metric pil
   assert.match(page, /\{relativeTime\(source\.last_sync_at, t\)\}/);
   assert.match(page, /title=\{fullTime \|\| undefined\}/);
   assert.match(page, /success' \? 'wk-ds-tone-success' : status === 'failed' \? 'wk-ds-tone-danger' : status === 'running' \? 'wk-ds-tone-primary' : status === 'partial' \? 'wk-ds-tone-warning'/);
-  assert.match(page, /wk-data-source-metric tabular-nums wk-ds-53/);
+  // T15：tabular-nums 语义化进 .wk-ds-53（data-sources-u.css）。
+  assert.match(page, /wk-data-source-metric wk-ds-53/);
   assert.match(page, /source\.error_message \? <div className="wk-ds-54">/);
 });
 

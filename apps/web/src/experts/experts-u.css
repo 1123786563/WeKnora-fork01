@@ -817,13 +817,9 @@
   background-color: #ffffff;
 }
 
-/* T15 语义化：原 aria-selected:border-accent aria-selected:bg-accent-wash
-   aria-selected:text-accent（accent #07c05f / wash rgba(7,192,95,0.08)）。 */
-.wk-exp-xp-tab[aria-selected="true"] {
-  border-color: #07c05f;
-  background-color: rgba(7, 192, 95, 0.08);
-  color: #07c05f;
-}
+/* T15 勘误：原 aria-selected:* 三联 utility 为死样式——layered utilities 恒输
+   unlayered 的 .wk-exp-xp-tab 基类（选中态实际渲染=基类白底灰描边，仅 :hover
+   变绿）。语义化时不补规则，保持生效值不变。 */
 /* 原 placeholder:text-[rgba(23,26,29,0.35)]。 */
 .wk-exp-xp-input::placeholder,
 .wk-exp-xp-textarea::placeholder { color: rgba(23, 26, 29, 0.35); }

@@ -3083,6 +3083,11 @@
    before:shrink-0 before:rounded-[2px] before:bg-primary
    before:content-[""] 旧栈 utility 串）——Vue doc-content.vue
    .setting-drawer__section-title 的品牌色条节奏。 ---- */
+/* T15 勘误：原串里的 text-ink / before:bg-primary 在 pre-T15 层叠中均为
+   死样式（文字色被 unlayered 容器色压回 rgba(0,0,0,.9)；条底色被
+   documents-list.css `.wk-document-detail-drawer section h4::before`
+   的 #07c05f 绿条（0,2,2）压过 utility 蓝）。此处只编码真实生效的
+   几何/节奏值，颜色一律不声明，保持渲染逐像素不变。 */
 .wk-kdd-section-title {
   margin: 0 0 0.25rem;
   display: flex;
@@ -3090,7 +3095,6 @@
   gap: 0.5rem;
   font-size: 13px;
   font-weight: 600;
-  color: #172033;
 }
 .wk-kdd-section-title::before {
   content: "";
@@ -3099,5 +3103,4 @@
   width: 3px;
   flex-shrink: 0;
   border-radius: 2px;
-  background-color: #2e6de6;
 }
