@@ -11,6 +11,7 @@ import { integrationKeyFromQuery } from '@weknora/views/integrations/registry';
 // 未注入时视图回退内置手绘 path。模块加载时注册一次。
 import { Icon as TIcon } from 'tdesign-icons-react';
 import './integrations-u.css';
+import './views-integrations-u.css';
 import './integrations.td.css';
 
 // S1 评审回收：外层 try/catch 已删——setIntegrationSpriteIconRenderer 为同步
