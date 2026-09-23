@@ -54,6 +54,7 @@ type purchaseStub struct {
 	subs       []purchaseSubRec
 	subBodies  []map[string]any // every subscription POST body
 	createNext []int            // scripted statuses; empty means 200
+	planAmount map[string]int64 // plan_code -> amount_cents (the authority's plan truth the index echoes)
 	mux        *http.ServeMux   // assembled by newPurchaseStub
 }
 
@@ -136,7 +137,12 @@ func newPurchaseStub() *purchaseStub {
 						code, _ := sub["plan_code"].(string)
 						cust, _ := sub["external_customer_id"].(string)
 						s.subs = append(s.subs, purchaseSubRec{
-							ExternalID: id, ExternalCustomer: cust, PlanCode: code, Status: "incomplete",
+							ExternalID: id, ExternalCustomer: cust, PlanCode: code,
+							// The price face comes from the authority's PLAN
+							// record (never the create request): the index
+							// echoes plan_amount_cents/CNY.
+							AmountFen: s.planAmount[code], Currency: "CNY",
+							Status: "incomplete",
 						})
 					}
 				}
@@ -356,5 +362,62 @@ func TestValidateOutboundHost(t *testing.T) {
 		if err := validateOutboundHost(bad); err == nil {
 			t.Errorf("%s must be rejected", bad)
 		}
+	}
+}
+
+func TestLagoPurchaseSnapshotMapsClosedStates(t *testing.T) {
+	stub := newPurchaseStub()
+	// The authority's plan truth: the index echoes the plan's frozen amount.
+	stub.mu.Lock()
+	stub.planAmount = map[string]int64{"weknora-pro-v1": 9900}
+	stub.mu.Unlock()
+	srv := stub.server(t)
+	a := purchaseAdapterWithPrefix(t, srv)
+	// Untouched: absent.
+	snap, err := a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 26})
+	if err != nil || snap.Purchase.State != commercial.PurchaseStateAbsent {
+		t.Fatalf("absent expected, got %+v err=%v", snap.Purchase, err)
+	}
+	if _, err := a.SubmitCommand(context.Background(), purchaseCmd(26, "weknora-pro-v1", 9900)); err != nil {
+		t.Fatal(err)
+	}
+	snap, err = a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 26})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Purchase.State != commercial.PurchaseStateAwaitingPayment {
+		t.Fatalf("incomplete must map to awaiting_payment, got %+v", snap.Purchase)
+	}
+	if snap.Purchase.AmountFen != 9900 || snap.Purchase.Currency != commercial.CurrencyCNY ||
+		snap.Purchase.PlanCode != "weknora-pro-v1" {
+		t.Fatalf("frozen price face mismatch: %+v", snap.Purchase)
+	}
+	if len(snap.Purchase.InvoiceFees) != 0 {
+		t.Fatalf("open-stage invoice fees must be EMPTY (API-invisible, never fabricated), got %+v", snap.Purchase.InvoiceFees)
+	}
+	// The subscription index request must carry explicit status[] (the F6
+	// default-active trap — the stub answers active-only WITHOUT status[],
+	// so both the result and the RawQuery prove the explicit set).
+	stub.mu.Lock()
+	raw := ""
+	if len(stub.rawQueries) > 0 {
+		raw = stub.rawQueries[len(stub.rawQueries)-1]
+	}
+	stub.mu.Unlock()
+	if !strings.Contains(raw, "status%5B%5D=incomplete") && !strings.Contains(raw, "status[]=incomplete") {
+		t.Fatalf("subscription index must pass explicit status[] (F6), raw query = %q", raw)
+	}
+	// Advance to active (the real environment moves via the provider
+	// payment, F9).
+	stub.mu.Lock()
+	for i := range stub.subs {
+		if stub.subs[i].ExternalID == commercial.ExternalPurchaseSubscriptionID(26) {
+			stub.subs[i].Status = "active"
+		}
+	}
+	stub.mu.Unlock()
+	snap, err = a.ReadSnapshot(context.Background(), commercial.SnapshotQuery{Kind: commercial.SnapshotKindPurchase, TenantID: 26})
+	if err != nil || snap.Purchase.State != commercial.PurchaseStateActive {
+		t.Fatalf("active expected, got %+v err=%v", snap.Purchase, err)
 	}
 }

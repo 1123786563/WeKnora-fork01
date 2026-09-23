@@ -255,6 +255,79 @@ func (a *LagoAdapter) customerProviderBound(ctx context.Context, externalCustome
 	return parsed.Customer.BillingConfiguration.ProviderCustomerID != "", nil
 }
 
+// readPurchaseSnapshot answers the purchase truth for one tenant: the
+// payment-gated subscription state and its frozen price face, read by
+// identity with the EXPLICIT status set (the index defaults to active —
+// F6). Unknown provider statuses fail closed invalid response; the
+// open-stage invoice lines are NEVER fabricated (F3-F5) — they stay empty
+// until the finalized-stage read fills them (#82/#84 interface, D2
+// condition 3).
+func (a *LagoAdapter) readPurchaseSnapshot(ctx context.Context, tenantID uint64) (commercial.Snapshot, error) {
+	if err := a.configured(); err != nil {
+		return commercial.Snapshot{}, err
+	}
+	if tenantID == 0 {
+		return commercial.Snapshot{}, commercial.ErrPlatformUnsupported
+	}
+	ctx, cancel := context.WithTimeout(ctx, subscriptionRequestTimeout)
+	defer cancel()
+
+	p := &commercial.PurchaseSnapshot{
+		TenantID:  tenantID,
+		State:     commercial.PurchaseStateAbsent,
+		CheckedAt: time.Now().UTC(),
+	}
+	sub, found, err := a.readSubscriptionByIdentity(ctx, commercial.ExternalPurchaseSubscriptionID(tenantID))
+	if err != nil {
+		return commercial.Snapshot{}, err
+	}
+	if found {
+		switch sub.Status {
+		case "incomplete":
+			p.State = commercial.PurchaseStateAwaitingPayment
+		case "active":
+			p.State = commercial.PurchaseStateActive
+		case "canceled", "terminated":
+			p.State = commercial.PurchaseStateCanceled
+		default:
+			return commercial.Snapshot{}, fmt.Errorf("%w: unknown purchase status", commercial.ErrPlatformInvalidResponse)
+		}
+		p.PlanCode = sub.PlanCode
+		p.Currency = sub.PlanAmountCurrency
+		if sub.PlanAmountCents != "" {
+			amount, err := sub.PlanAmountCents.Int64()
+			if err != nil {
+				return commercial.Snapshot{}, fmt.Errorf("%w: purchase amount not an integer", commercial.ErrPlatformInvalidResponse)
+			}
+			p.AmountFen = amount
+		}
+		if p.State == commercial.PurchaseStateActive {
+			// Finalized-stage interface (D2 condition 3): the open stage
+			// answers empty (never fabricated); #82/#84 complete the real
+			// finalized-invoice read.
+			fees, err := a.readPurchaseInvoiceFees(ctx, tenantID)
+			if err != nil {
+				return commercial.Snapshot{}, err
+			}
+			p.InvoiceFees = fees
+		}
+	}
+	return commercial.Snapshot{Kind: commercial.SnapshotKindPurchase, Purchase: p}, nil
+}
+
+// readPurchaseInvoiceFees is the finalized-stage invoice line read (#82/#84
+// interface, D2 condition 3): once the gating payment finalizes the invoice
+// (a VISIBLE status), the adapter fills the lines authoritatively. During
+// the awaiting-payment stage this answers empty — the pinned authority
+// version keeps open invoices invisible to every API path (t09 evidence
+// F3-F5) and an invisible line is never fabricated.
+func (a *LagoAdapter) readPurchaseInvoiceFees(ctx context.Context, tenantID uint64) ([]commercial.InvoiceLineSnapshot, error) {
+	// Finalized-line extraction lands with #82 (the first consumer) against
+	// the visible finalized invoice; the awaiting-payment stage can never
+	// reach here with visible lines.
+	return nil, nil
+}
+
 // deriveProviderCustomerID resolves the provider-side customer id: the
 // provider API creates (idempotency-keyed) and returns its id when the key
 // is configured; the placeholder prefix answers for dev/test stacks without

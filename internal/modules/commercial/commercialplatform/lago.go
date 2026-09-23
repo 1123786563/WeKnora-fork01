@@ -129,6 +129,8 @@ func (a *LagoAdapter) ReadSnapshot(ctx context.Context, query commercial.Snapsho
 		}, nil
 	case commercial.SnapshotKindBenefits:
 		return a.readBenefitsSnapshot(ctx, query.TenantID)
+	case commercial.SnapshotKindPurchase:
+		return a.readPurchaseSnapshot(ctx, query.TenantID)
 	default:
 		return commercial.Snapshot{}, commercial.ErrPlatformUnsupported
 	}
@@ -572,6 +574,11 @@ type lagoSubscription struct {
 	ExternalCustomerID string `json:"external_customer_id"`
 	PlanCode           string `json:"plan_code"`
 	Status             string `json:"status"`
+	// Purchase price face (#81, additive fields): the index answer carries
+	// the plan's frozen amount/currency (t02 evidence fields). json.Number
+	// keeps the integer parse exact — never binary float.
+	PlanAmountCents    json.Number `json:"plan_amount_cents"`
+	PlanAmountCurrency string      `json:"plan_amount_currency"`
 }
 
 // subscriptionIndexStatuses is the EXPLICIT status set every identity read
