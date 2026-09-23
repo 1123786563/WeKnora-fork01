@@ -7,3 +7,7 @@ export { createWebCryptoCipher } from './vault/web-crypto-cipher.ts';
 export { createInMemoryVaultKeyStore, createInMemoryVaultStorage } from './vault/in-memory-adapters.ts';
 export type { CipherPort, KeyStorePort, ScopedVaultPorts, VaultStoragePort } from './vault/ports.ts';
 export type { DraftEntry, ScopedDraftRepository, ScopedStore, ScopedVault, VaultPolicy, VaultRevokeReason } from './vault/scoped-vault.ts';
+export { createResourceShelf } from './shelf/resource-shelf.ts';
+export { createInMemoryResourceRemote } from './shelf/in-memory-resource-remote.ts';
+export type { ResourceRemote, ResourceShelfPorts } from './shelf/ports.ts';
+export type { ResourceClass, ResourceClassVerdict, ResourcePage, ResourceQuery, ResourceShelf, ResourceShelfHandle, SelectionVerdict, ShelfCloseReason, ShelfInvalidationEvent } from './shelf/types.ts';

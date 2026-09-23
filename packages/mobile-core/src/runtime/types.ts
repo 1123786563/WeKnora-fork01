@@ -1,3 +1,5 @@
+import type { ResourceShelfHandle } from '../shelf/types.ts';
+
 declare const scopeLeaseBrand: unique symbol;
 
 /** Caller-supplied deployment metadata; Runtime normalizes `origin` before use. */
@@ -41,6 +43,8 @@ export interface MobileRuntime {
   beginOidc(input: { deployment: DeploymentInput; redirectUri: string }): Promise<void>;
   completeOidc(callbackUrl: string): Promise<RuntimeSnapshot>;
   scopeLease(): ScopeLease | undefined;
+  /** Resource Shelf for the active scope; undefined unless authorized with ports.resourceShelf provided. */
+  resourceShelf(): ResourceShelfHandle | undefined;
   /** Atomically switches the Active Tenant: revokes the prior scope, re-issues the credential server-side, re-verifies identity. */
   activateTenant(tenantId: string): Promise<RuntimeSnapshot>;
   signOut(): Promise<void>;

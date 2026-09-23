@@ -2,6 +2,8 @@ import { clientGate, validateAuthReturn } from '@weknora/domain/mobile';
 import type { MobileRuntimePorts, StoredCredential } from './ports.ts';
 import type { ScopedVault, VaultRevokeReason } from '../vault/scoped-vault.ts';
 import { RuntimeScopeLease } from './scope-lease.ts';
+import { createResourceShelf } from '../shelf/resource-shelf.ts';
+import type { ResourceShelfHandle } from '../shelf/types.ts';
 import type { Deployment, DeploymentInput, MobileRuntime, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
 
 function normalizeDeployment(input: DeploymentInput): Deployment {
@@ -86,6 +88,8 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   let activeDeployment: Deployment | undefined;
   let lease: ScopeLease | undefined;
   let revocableLease: RuntimeScopeLease | undefined;
+  let activeShelf: ResourceShelfHandle | undefined;
+  let activeCredential: StoredCredential | undefined;
   let oidcCompletion: Promise<RuntimeSnapshot> | undefined;
   const claimedOidcCallbacks = new Set<string>();
   let deploymentMutation: Promise<void> = Promise.resolve();
@@ -114,6 +118,9 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     revocableLease?.revoke();
     revocableLease = undefined;
     lease = undefined;
+    activeShelf?.close(vaultReason);
+    activeShelf = undefined;
+    activeCredential = undefined;
   };
   const begin = (deployment: Deployment, vaultReason: VaultRevokeReason = 'deployment-change'): number => {
     epoch += 1;
@@ -167,6 +174,15 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
     refreshFlights.set(deployment.origin, { requestEpoch, promise });
     return promise;
   };
+  const accessTokenFor = async (origin: string, options?: { refresh?: boolean }): Promise<string> => {
+    const deployment = activeDeployment;
+    if (!deployment || deployment.origin !== origin || state.surface !== 'authorized' || !activeCredential) throw new Error('SHELF_SCOPE');
+    if (!options?.refresh) return activeCredential.token;
+    const refreshed = await refreshedCredential(epoch, deployment, activeCredential);
+    if (!refreshed) throw new Error('SHELF_AUTH');
+    activeCredential = refreshed;
+    return refreshed.token;
+  };
 
   const authenticate = async (requestEpoch: number, deployment: Deployment, credential: StoredCredential): Promise<RuntimeSnapshot> => {
     try {
@@ -194,6 +210,10 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       if (!current(requestEpoch, deployment)) return state;
       revocableLease = new RuntimeScopeLease({ deploymentOrigin: deployment.origin, userId: authenticatedUserId, tenantId: activeTenantId });
       lease = revocableLease.asScopeLease();
+      activeCredential = verifiedCredential;
+      activeShelf = ports.resourceShelf
+        ? createResourceShelf({ remote: ports.resourceShelf.remoteFor(deployment.origin), accessTokenFor }).open({ lease })
+        : undefined;
       return publish({ surface: 'authorized', deployment, identity: { userId: authenticatedUserId, activeTenantId, ...tenantOptions(me.memberships, activeTenantId) } });
     } catch {
       return safe(requestEpoch, deployment, 'authentication-required');
@@ -313,6 +333,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       }
     },
     scopeLease: () => lease,
+    resourceShelf: () => activeShelf,
     signOut,
     async activateTenant(tenantId: string): Promise<RuntimeSnapshot> {
       try {

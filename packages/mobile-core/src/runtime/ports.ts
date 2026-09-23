@@ -1,4 +1,5 @@
 import type { ScopedVault } from '../vault/scoped-vault.ts';
+import type { ResourceRemote } from '../shelf/ports.ts';
 
 /** Exact credential fields returned by Task 2's `passwordLogin` adapter. */
 export interface StoredCredential {
@@ -67,6 +68,8 @@ export interface MobileRuntimePorts {
   lifecycle?: AppLifecyclePort;
   /** Scoped Vault Module; the Runtime revokes its scopes on every scope change. Optional so T01-only compositions stay valid. */
   scopedVault?: ScopedVault;
+  /** T03: Resource Shelf bindings. When present the Runtime opens one shelf per authorized scope and closes it on every scope change. */
+  resourceShelf?: { remoteFor(origin: string): ResourceRemote };
   /** Native platform entropy hook. Omit only where Web Crypto is available. */
   randomBytes?: (size: number) => Uint8Array;
 }
