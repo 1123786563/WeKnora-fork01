@@ -75,24 +75,19 @@ func (a *UploadAdapter) StoreAndParseWithID(ctx context.Context, tenantID uint64
 		return result, fmt.Errorf("store resume: %w", err)
 	}
 	cleanup := true
-	bound := false
 	defer func() {
 		if cleanup {
-			if bound {
-				_, _ = a.catalog.Release(context.Background(), resourceRef, careerSourceOwner, result.SourceID)
-			}
-			_ = a.files.DeleteFile(context.Background(), resourceRef)
+			_ = a.Release(context.Background(), resourceRef, result.SourceID)
 		}
 	}()
-	if err := a.catalog.Bind(ctx, resourceRef, careerSourceOwner, result.SourceID, types.ResourceRelationSourceFile); err != nil {
-		return result, fmt.Errorf("bind resume source: %w", err)
-	}
-	bound = true
 	result.Upload.ResourceRef = resourceRef
 	if onStored != nil {
 		if err := onStored(result); err != nil {
 			return result, fmt.Errorf("record processing resume: %w", err)
 		}
+	}
+	if err := a.catalog.Bind(ctx, resourceRef, careerSourceOwner, result.SourceID, types.ResourceRelationSourceFile); err != nil {
+		return result, fmt.Errorf("bind resume source: %w", err)
 	}
 	parsed, parseErr := a.reader.Read(ctx, &types.ReadRequest{FileContent: data, FileName: baseName, FileType: strings.TrimPrefix(ext, "."), RequestID: result.SourceID})
 	if parseErr != nil {
