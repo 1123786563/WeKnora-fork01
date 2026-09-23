@@ -14,5 +14,7 @@ func RegisterCareerRoutes(r *gin.RouterGroup, h *career.Handler) {
 	g.GET("/list", h.List)
 	g.GET("/changes", h.Changes)
 	g.GET("/receipt", h.Receipt)
+	g.GET("/sources", h.Sources)
+	g.POST("/sources/upload", h.Upload)
 	g.POST("/act", h.Act)
 }

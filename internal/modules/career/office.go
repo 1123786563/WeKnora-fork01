@@ -96,6 +96,7 @@ type proposal struct {
 	UserID           string `gorm:"index:idx_career_proposal_scope;size:512"`
 	Key              string `gorm:"size:128"`
 	Value            string `gorm:"type:text"`
+	Evidence         string `gorm:"type:text"`
 	Source           string `gorm:"type:text"`
 	Status           string `gorm:"size:16;index:idx_career_proposal_scope"`
 	ResolvedAt       *time.Time
@@ -121,6 +122,25 @@ type receipt struct {
 	Body        string `gorm:"type:text"`
 	CreatedAt   time.Time
 }
+type sourceRevision struct {
+	ID                string `gorm:"primaryKey;size:36"`
+	TenantID          uint64 `gorm:"uniqueIndex:career_source_revision_scope"`
+	UserID            string `gorm:"uniqueIndex:career_source_revision_scope;size:512"`
+	Revision          uint64 `gorm:"uniqueIndex:career_source_revision_scope"`
+	FileName          string `gorm:"size:255"`
+	MIMEType          string `gorm:"size:128"`
+	Size              int64
+	Digest            string `gorm:"size:64"`
+	ResourceRef       string `gorm:"type:text"`
+	Status            string `gorm:"size:16;index"`
+	ErrorCategory     string `gorm:"size:64"`
+	ErrorMessage      string `gorm:"type:text"`
+	ExtractedText     string `gorm:"type:text"`
+	MissingCategories string `gorm:"type:text"`
+	ReviewFlags       string `gorm:"type:text"`
+	CreatedAt         time.Time
+	CompletedAt       *time.Time
+}
 type Fact struct {
 	Key          string       `json:"key"`
 	Value        string       `json:"value"`
@@ -133,6 +153,7 @@ type Proposal struct {
 	ID               string        `json:"id"`
 	Key              string        `json:"key"`
 	Value            string        `json:"value"`
+	Evidence         string        `json:"evidence,omitempty"`
 	Source           Source        `json:"source"`
 	Status           string        `json:"status"`
 	Revision         *uint64       `json:"revision,omitempty"`
@@ -146,17 +167,19 @@ type View struct {
 	Proposals []Proposal `json:"proposals"`
 }
 type Receipt struct {
-	Kind      string    `json:"kind"`
-	RequestID string    `json:"requestId"`
-	Revision  uint64    `json:"revision"`
-	Proposal  *Proposal `json:"proposal,omitempty"`
-	Fact      *Fact     `json:"fact,omitempty"`
+	Kind      string     `json:"kind"`
+	RequestID string     `json:"requestId"`
+	Revision  uint64     `json:"revision"`
+	Proposal  *Proposal  `json:"proposal,omitempty"`
+	Fact      *Fact      `json:"fact,omitempty"`
+	Proposals []Proposal `json:"proposals,omitempty"`
 }
 type Change struct {
-	Revision uint64    `json:"revision"`
-	Kind     string    `json:"kind"`
-	Proposal *Proposal `json:"proposal,omitempty"`
-	Fact     *Fact     `json:"fact,omitempty"`
+	Revision  uint64     `json:"revision"`
+	Kind      string     `json:"kind"`
+	Proposal  *Proposal  `json:"proposal,omitempty"`
+	Fact      *Fact      `json:"fact,omitempty"`
+	Proposals []Proposal `json:"proposals,omitempty"`
 }
 type ChangeSet struct {
 	Revision uint64   `json:"revision"`
@@ -177,6 +200,7 @@ func (factVersion) TableName() string                 { return "career_fact_vers
 func (proposal) TableName() string                    { return "career_proposals" }
 func (change) TableName() string                      { return "career_changes" }
 func (receipt) TableName() string                     { return "career_receipts" }
+func (sourceRevision) TableName() string              { return "career_source_revisions" }
 
 type Office struct {
 	db *gorm.DB
@@ -190,7 +214,7 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -224,13 +248,14 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 
 func validateSQLiteCareerSchema(db *gorm.DB) error {
 	requiredColumns := map[string][]string{
-		"career_profiles":      {"tenant_id", "user_id", "revision"},
-		"career_spaces":        {"tenant_id", "owner_user_id", "created_at"},
-		"career_facts":         {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "request_id", "created_at"},
-		"career_fact_versions": {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "proposal_id", "request_id", "created_at"},
-		"career_proposals":     {"id", "public_id", "tenant_id", "user_id", "key", "value", "source", "status", "resolved_at", "resolved_revision", "confirmation", "resolution_source", "created_at"},
-		"career_changes":       {"id", "tenant_id", "user_id", "revision", "kind", "body", "created_at"},
-		"career_receipts":      {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
+		"career_profiles":         {"tenant_id", "user_id", "revision"},
+		"career_spaces":           {"tenant_id", "owner_user_id", "created_at"},
+		"career_facts":            {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "request_id", "created_at"},
+		"career_fact_versions":    {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "proposal_id", "request_id", "created_at"},
+		"career_proposals":        {"id", "public_id", "tenant_id", "user_id", "key", "value", "evidence", "source", "status", "resolved_at", "resolved_revision", "confirmation", "resolution_source", "created_at"},
+		"career_changes":          {"id", "tenant_id", "user_id", "revision", "kind", "body", "created_at"},
+		"career_receipts":         {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
+		"career_source_revisions": {"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -240,9 +265,10 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		}
 	}
 	for table, columns := range map[string][]string{
-		"career_facts":    {"tenant_id", "user_id", "key"},
-		"career_changes":  {"tenant_id", "user_id", "revision"},
-		"career_receipts": {"tenant_id", "user_id", "request_id"},
+		"career_facts":            {"tenant_id", "user_id", "key"},
+		"career_changes":          {"tenant_id", "user_id", "revision"},
+		"career_receipts":         {"tenant_id", "user_id", "request_id"},
+		"career_source_revisions": {"tenant_id", "user_id", "revision"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
@@ -345,7 +371,7 @@ func (o *Office) Open(ctx context.Context) (View, error) {
 		return v, e
 	}
 	for _, p := range ps {
-		v.Proposals = append(v.Proposals, Proposal{ID: p.PublicID, Key: p.Key, Value: p.Value, Source: decodeSource(p.Source), Status: p.Status, Revision: p.ResolvedRevision, CreatedAt: p.CreatedAt})
+		v.Proposals = append(v.Proposals, Proposal{ID: p.PublicID, Key: p.Key, Value: p.Value, Evidence: p.Evidence, Source: decodeSource(p.Source), Status: p.Status, Revision: p.ResolvedRevision, CreatedAt: p.CreatedAt})
 	}
 	return v, nil
 }
@@ -431,7 +457,7 @@ func (o *Office) confirm(ctx context.Context, pid, k, v, r string, rev uint64, s
 			}
 			conf := decodeConfirmation(row.Confirmation)
 			resolutionSource := decodeSource(row.ResolutionSource)
-			q := Proposal{ID: row.PublicID, Key: row.Key, Value: row.Value, Source: decodeSource(row.Source), Status: row.Status, Revision: row.ResolvedRevision, CreatedAt: row.CreatedAt, Confirmation: &conf, ResolutionSource: &resolutionSource}
+			q := Proposal{ID: row.PublicID, Key: row.Key, Value: row.Value, Evidence: row.Evidence, Source: decodeSource(row.Source), Status: row.Status, Revision: row.ResolvedRevision, CreatedAt: row.CreatedAt, Confirmation: &conf, ResolutionSource: &resolutionSource}
 			prop = &q
 		}
 		now := time.Now().UTC()
@@ -479,7 +505,7 @@ func (o *Office) dismiss(ctx context.Context, pid, r string, rev uint64, src Sou
 		}
 		conf := decodeConfirmation(p.Confirmation)
 		resolutionSource := decodeSource(p.ResolutionSource)
-		q := Proposal{ID: p.PublicID, Key: p.Key, Value: p.Value, Source: decodeSource(p.Source), Status: p.Status, Revision: p.ResolvedRevision, CreatedAt: p.CreatedAt, Confirmation: &conf, ResolutionSource: &resolutionSource}
+		q := Proposal{ID: p.PublicID, Key: p.Key, Value: p.Value, Evidence: p.Evidence, Source: decodeSource(p.Source), Status: p.Status, Revision: p.ResolvedRevision, CreatedAt: p.CreatedAt, Confirmation: &conf, ResolutionSource: &resolutionSource}
 		return Receipt{Kind: "dismissed", RequestID: r, Revision: next, Proposal: &q}, nil
 	}, &Change{Kind: "dismissed"})
 }
@@ -537,6 +563,9 @@ func (o *Office) mutate(ctx context.Context, s Scope, kind, r string, rev uint64
 				event.Revision = next
 				if out.Proposal != nil {
 					event.Proposal = out.Proposal
+				}
+				if len(out.Proposals) > 0 {
+					event.Proposals = out.Proposals
 				}
 				if out.Fact != nil {
 					event.Fact = out.Fact

@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -17,10 +18,15 @@ func TestCareerMigrationCreatesPersonalEvidenceSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "career-migration.db")
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
-	for _, table := range []string{"career_spaces", "career_profiles", "career_facts", "career_fact_versions", "career_proposals", "career_changes", "career_receipts"} {
+	for _, table := range []string{"career_spaces", "career_profiles", "career_facts", "career_fact_versions", "career_proposals", "career_changes", "career_receipts", "career_source_revisions"} {
 		require.Truef(t, sqliteTableExists(t, db, table), "career migration must create %s", table)
 	}
-	for _, column := range []string{"source", "confirmation", "public_id", "status", "resolution_source"} {
+	for _, column := range []string{"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"} {
+		var count int
+		require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('career_source_revisions') WHERE name = ?", column).Scan(&count))
+		require.Equalf(t, 1, count, "career_source_revisions must include %s", column)
+	}
+	for _, column := range []string{"source", "confirmation", "public_id", "status", "resolution_source", "evidence"} {
 		var count int
 		require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('career_proposals') WHERE name = ?", column).Scan(&count))
 		if column == "source" || column == "confirmation" {
@@ -30,6 +36,45 @@ func TestCareerMigrationCreatesPersonalEvidenceSchema(t *testing.T) {
 			require.Equalf(t, 1, count, "career_proposals must include %s", column)
 		}
 	}
+}
+
+func TestCareerSQLiteMigrationPersistsPrivateSourceRevisionAndPublicMetadata(t *testing.T) {
+	root := sqliteRepoRoot(t)
+	chdirAndRestore(t, root)
+	path := filepath.Join(t.TempDir(), "career-source.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
+	careerDB, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := career.NewOffice(careerDB)
+	require.NoError(t, err)
+	ctx := career.WithScope(context.Background(), career.Scope{UserID: "source-owner", TenantID: 913})
+	require.NoError(t, office.ClaimSpace(ctx))
+	source, err := office.CreateSource(ctx, career.SourceUpload{ID: "source-rev-1", FileName: "resume.pdf", MIMEType: "application/pdf", Size: 32, Digest: "sha256:source", ResourceRef: "private://source", Text: "private extracted resume"}, "")
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), source.Revision)
+	encoded, err := json.Marshal(source)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "private://source")
+	require.NotContains(t, string(encoded), "private extracted resume")
+	sqlCareerDB, err := careerDB.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlCareerDB.Close())
+	reopenedCareerDB, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	require.NoError(t, err)
+	reopenedOffice, err := career.NewOffice(reopenedCareerDB)
+	require.NoError(t, err)
+	listed, err := reopenedOffice.ListSources(ctx)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, "source-rev-1", listed[0].ID)
+	require.Equal(t, "ready", listed[0].Status)
+	var stored struct {
+		ResourceRef   string
+		ExtractedText string
+	}
+	require.NoError(t, reopenedCareerDB.Table("career_source_revisions").Select("resource_ref, extracted_text").Where("id=?", source.ID).Scan(&stored).Error)
+	require.Equal(t, "private://source", stored.ResourceRef)
+	require.Equal(t, "private extracted resume", stored.ExtractedText)
 }
 
 func TestCareerOfficeOpensAfterVersionedSQLiteMigration(t *testing.T) {
