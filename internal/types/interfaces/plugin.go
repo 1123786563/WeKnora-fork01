@@ -2,8 +2,8 @@ package interfaces
 
 import (
 	"context"
+	"time"
 
-	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -24,6 +24,13 @@ type PluginRepository interface {
 	// consumed, expired, or absent" (one rejection path, no check-then-act
 	// window) and must reject the confirmation.
 	MarkPreviewConsumed(ctx context.Context, tenantID uint64, id string) error
+
+	// DeleteExpiredPreviews drops preview rows past their expiry, consumed
+	// or not: a preview is a TTL-bound review artifact (expires_at is the
+	// TTL already shown to the admin), not an audit record. The service
+	// triggers this lazily and best-effort on the preview success path —
+	// a cleanup failure must never block an admin's preview.
+	DeleteExpiredPreviews(ctx context.Context, before time.Time) error
 }
 
 // PluginService defines the plugin business logic. T02 lands the manifest
@@ -31,6 +38,8 @@ type PluginRepository interface {
 type PluginService interface {
 	// PreviewFromManifest fetches and verifies a weknora.plugin/1 manifest,
 	// persists the preview (identity fingerprint + TTL) and returns the
-	// admin review payload. It never creates an installation.
-	PreviewFromManifest(ctx context.Context, tenantID uint64, actorID, manifestURL string) (*dto.PluginPreviewResponse, error)
+	// admin review payload. It never creates an installation. The result is
+	// a types-layer struct — this interfaces package must not depend on the
+	// handler layer (the handler maps it onto its DTO).
+	PreviewFromManifest(ctx context.Context, tenantID uint64, actorID, manifestURL string) (*types.PluginPreviewResult, error)
 }

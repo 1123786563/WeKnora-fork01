@@ -63,8 +63,40 @@ func (h *PluginHandler) PreviewManifest(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    resp,
+		"data":    previewResponseDTO(resp),
 	})
+}
+
+// previewResponseDTO maps the types-layer service result onto the HTTP DTO
+// (整分支 OCR 一轮 F2): the service contract stays in the types layer and
+// this handler owns the wire shape. Tools' scopes are copied, never aliased.
+func previewResponseDTO(result *types.PluginPreviewResult) *dto.PluginPreviewResponse {
+	if result == nil {
+		return nil
+	}
+	tools := make([]dto.PluginPreviewTool, 0, len(result.Tools))
+	for _, tool := range result.Tools {
+		scopes := append([]string(nil), tool.Scopes...)
+		tools = append(tools, dto.PluginPreviewTool{
+			Name:                 tool.Name,
+			Description:          tool.Description,
+			ReadOnly:             tool.ReadOnly,
+			RequiresPersonalAuth: tool.RequiresPersonalAuth,
+			Scopes:               scopes,
+		})
+	}
+	return &dto.PluginPreviewResponse{
+		PreviewID:           result.PreviewID,
+		PluginID:            result.PluginID,
+		Version:             result.Version,
+		Name:                result.Name,
+		Description:         result.Description,
+		TransportType:       result.TransportType,
+		EndpointURL:         result.EndpointURL,
+		Tools:               tools,
+		IdentityFingerprint: result.IdentityFingerprint,
+		ExpiresAt:           result.ExpiresAt,
+	}
 }
 
 // mapPluginPreviewError maps service-layer preview failures onto HTTP

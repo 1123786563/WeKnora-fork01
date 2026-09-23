@@ -22,15 +22,24 @@ import (
 // 返回的 live 工具携带完全相同的 bytes，声明与实际一致（happy path 前提）。
 const previewDeclaredNoArgSchema = `{"type":"object","properties":{},"additionalProperties":false}`
 
-// fakePluginPreviewRepo 记录 CreatePreview 收到的行，方法集与
-// interfaces.PluginRepository 一致（本测试只消费 CreatePreview）。
+// fakePluginPreviewRepo 记录 CreatePreview 收到的行与 DeleteExpiredPreviews
+// 的调用（整分支 OCR 一轮 F1：惰性清理触发断言），方法集与
+// interfaces.PluginRepository 一致。
 type fakePluginPreviewRepo struct {
 	interfaces.PluginRepository
-	created []*types.PluginPreview
+	created       []*types.PluginPreview
+	deleteCalls   int
+	deleteCutoffs []time.Time
 }
 
 func (r *fakePluginPreviewRepo) CreatePreview(_ context.Context, p *types.PluginPreview) error {
 	r.created = append(r.created, p)
+	return nil
+}
+
+func (r *fakePluginPreviewRepo) DeleteExpiredPreviews(_ context.Context, before time.Time) error {
+	r.deleteCalls++
+	r.deleteCutoffs = append(r.deleteCutoffs, before)
 	return nil
 }
 
@@ -182,6 +191,59 @@ func TestPreviewRejectsOversizedManifestURL(t *testing.T) {
 	require.Nil(t, resp)
 	require.ErrorContains(t, err, "exceeds")
 	require.Empty(t, repo.created, "oversized manifest URL must not persist anything")
+}
+
+// TestPreviewSweepsExpiredRowsOnSuccess（整分支 OCR 一轮 F1）：预览是 TTL
+// 绑定的临时审阅工件——成功写入路径必须惰性触发过期行清理（best-effort，
+// 对齐 service/resource.go:244 先例）；拒绝路径（SSRF 拒绝、持久化失败）
+// 不得触发：清理副作用只属于成功写入，不耦合进拒绝语义。
+func TestPreviewSweepsExpiredRowsOnSuccess(t *testing.T) {
+	t.Cleanup(utils.SnapshotSSRFWhitelistForTest())
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+
+	// 成功路径：受控清单 + 受控端点 + 匹配 lister。
+	m := previewFixtureManifest()
+	manifestJSON, err := json.Marshal(m)
+	require.NoError(t, err)
+	base := previewControlledHost(t, &manifestJSON)
+	m.Transport.Endpoint = base + "/mcp"
+	manifestJSON, err = json.Marshal(m)
+	require.NoError(t, err)
+
+	repo := &fakePluginPreviewRepo{}
+	svc := service.NewPluginService(repo, previewFakeLister())
+	start := time.Now()
+	resp, err := svc.PreviewFromManifest(context.Background(), 7, "admin-1", base+"/manifest.json")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, 1, repo.deleteCalls, "success path must trigger the lazy sweep exactly once")
+	require.Len(t, repo.deleteCutoffs, 1)
+	require.False(t, repo.deleteCutoffs[0].Before(start), "cutoff must be a current timestamp")
+	// 新写入行 ExpiresAt = now+TTL > cutoff：惰性清理不会误删刚创建的行。
+	require.Len(t, repo.created, 1)
+	require.True(t, repo.created[0].ExpiresAt.After(repo.deleteCutoffs[0]),
+		"the row just written must outlive the sweep cutoff")
+
+	// 拒绝路径 1：SSRF 拒绝发生在任何持久化/清理之前。
+	rejected := &fakePluginPreviewRepo{}
+	svc2 := service.NewPluginService(rejected, previewFakeLister())
+	_, err = svc2.PreviewFromManifest(context.Background(), 7, "admin-1", "http://10.1.2.3/manifest.json")
+	require.ErrorIs(t, err, service.ErrManifestURLRejected)
+	require.Equal(t, 0, rejected.deleteCalls, "an SSRF rejection must not trigger cleanup")
+
+	// 拒绝路径 2：持久化失败不触发清理。
+	m2 := previewFixtureManifest()
+	manifestJSON2, err := json.Marshal(m2)
+	require.NoError(t, err)
+	base2 := previewControlledHost(t, &manifestJSON2)
+	m2.Transport.Endpoint = base2 + "/mcp"
+	manifestJSON2, err = json.Marshal(m2)
+	require.NoError(t, err)
+	failed := &failingPluginPreviewRepo{err: errors.New("boom")}
+	svc3 := service.NewPluginService(failed, previewFakeLister())
+	_, err = svc3.PreviewFromManifest(context.Background(), 7, "admin-1", base2+"/manifest.json")
+	require.ErrorIs(t, err, service.ErrPreviewPersistFailed)
+	require.Equal(t, 0, failed.deleteCalls, "a persist failure must not trigger cleanup")
 }
 
 // failingPluginPreviewRepo 让 CreatePreview 恒失败（err 含内部细节标记）。

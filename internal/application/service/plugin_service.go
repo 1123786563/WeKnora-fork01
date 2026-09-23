@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -89,12 +88,14 @@ func NewPluginService(
 // PreviewFromManifest fetches and verifies the manifest, then persists a
 // TTL-bound preview carrying the identity fingerprint of exactly what was
 // verified. The SSRF gate runs BEFORE any network I/O and before any
-// persistence — a rejected URL leaves zero rows behind.
+// persistence — a rejected URL leaves zero rows behind. The result is a
+// types-layer struct; the HTTP handler maps it onto its DTO (整分支 OCR
+// 一轮 F2: interfaces must not depend on the handler layer).
 func (s *pluginService) PreviewFromManifest(
 	ctx context.Context,
 	tenantID uint64,
 	actorID, manifestURL string,
-) (*dto.PluginPreviewResponse, error) {
+) (*types.PluginPreviewResult, error) {
 	// Length first, before ANY network I/O: an oversized URL is a client
 	// input problem and must not cost a fetch round trip (nor surface later
 	// as a column-overflow 500).
@@ -146,8 +147,13 @@ func (s *pluginService) PreviewFromManifest(
 		logger.GetLogger(ctx).Errorf("failed to persist plugin preview: %v", err)
 		return nil, ErrPreviewPersistFailed
 	}
+	// Opportunistic cleanup keeps preview rows — TTL-bound review artifacts,
+	// consumed or not — from accumulating without bound (整分支 OCR 一轮 F1);
+	// failure is non-fatal to the admin's preview (resource.go:244 pattern).
+	// The row just written expires at now+TTL, safely past this cutoff.
+	_ = s.pluginRepo.DeleteExpiredPreviews(ctx, time.Now())
 
-	return &dto.PluginPreviewResponse{
+	return &types.PluginPreviewResult{
 		PreviewID:           preview.ID,
 		PluginID:            preview.PluginID,
 		Version:             preview.Version,
@@ -155,17 +161,19 @@ func (s *pluginService) PreviewFromManifest(
 		Description:         result.Manifest.Description,
 		TransportType:       preview.TransportType,
 		EndpointURL:         preview.EndpointURL,
-		Tools:               previewToolsDTO(result.Snapshot),
+		Tools:               previewToolsReview(result.Snapshot),
 		IdentityFingerprint: preview.IdentityFingerprint,
 		ExpiresAt:           preview.ExpiresAt,
 	}, nil
 }
 
-func previewToolsDTO(snapshot []types.PluginToolSnapshot) []dto.PluginPreviewTool {
-	tools := make([]dto.PluginPreviewTool, 0, len(snapshot))
+// previewToolsReview defensively copies the verified snapshot into the
+// types-layer review rows (scopes are copied, never aliased).
+func previewToolsReview(snapshot []types.PluginToolSnapshot) []types.PluginPreviewToolReview {
+	tools := make([]types.PluginPreviewToolReview, 0, len(snapshot))
 	for _, tool := range snapshot {
 		scopes := append([]string(nil), tool.Scopes...)
-		tools = append(tools, dto.PluginPreviewTool{
+		tools = append(tools, types.PluginPreviewToolReview{
 			Name:                 tool.Name,
 			Description:          tool.Description,
 			ReadOnly:             tool.ReadOnly,

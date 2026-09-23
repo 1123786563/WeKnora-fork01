@@ -87,6 +87,37 @@ func TestMarkPreviewConsumedGuards(t *testing.T) {
 	require.Nil(t, expiredRow.ConsumedAt)
 }
 
+// TestDeleteExpiredPreviewsDropsOnlyExpiredRows（整分支 OCR 一轮 F1）：预览
+// 是 TTL 绑定的临时审阅工件——过期行（无论是否已消费）必须可删，未过期行
+// 不受清理影响。参数化删除（gorm 占位符），对齐 repository/resource.go:113
+// DeleteExpiredGrants 先例。
+func TestDeleteExpiredPreviewsDropsOnlyExpiredRows(t *testing.T) {
+	ctx := context.Background()
+	db := newPluginPreviewTestDB(t)
+	repo := NewPluginRepository(db)
+
+	now := time.Now()
+	rows := []*types.PluginPreview{
+		newPluginPreviewRow("expired-unconsumed", 7, now.Add(-time.Minute), nil),
+		newPluginPreviewRow("expired-consumed", 7, now.Add(-time.Minute), &now),
+		newPluginPreviewRow("live", 7, now.Add(time.Minute), nil),
+	}
+	for _, row := range rows {
+		require.NoError(t, db.Create(row).Error)
+	}
+
+	require.NoError(t, repo.DeleteExpiredPreviews(ctx, now))
+
+	count := func(id string) int64 {
+		var n int64
+		require.NoError(t, db.Model(&types.PluginPreview{}).Where("id = ?", id).Count(&n).Error)
+		return n
+	}
+	require.EqualValues(t, 0, count("expired-unconsumed"), "expired unconsumed row must be dropped")
+	require.EqualValues(t, 0, count("expired-consumed"), "expired consumed row must be dropped too")
+	require.EqualValues(t, 1, count("live"), "unexpired row must survive the sweep")
+}
+
 // TestGetPreviewScopesByTenant：命中返回行、未命中返回 (nil, nil)。
 func TestGetPreviewScopesByTenant(t *testing.T) {
 	ctx := context.Background()

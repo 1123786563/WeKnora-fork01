@@ -64,3 +64,15 @@ func (r *pluginRepository) MarkPreviewConsumed(ctx context.Context, tenantID uin
 	}
 	return nil
 }
+
+// DeleteExpiredPreviews drops preview rows past their expiry, consumed or
+// not: a preview is a TTL-bound review artifact (expires_at is the TTL
+// already shown to the admin), not an audit record — the table must not
+// grow without bound (整分支 OCR 一轮 F1). Parameter-bound via gorm, the
+// same shape as DeleteExpiredGrants; the service triggers it lazily and
+// best-effort on the preview success path.
+func (r *pluginRepository) DeleteExpiredPreviews(ctx context.Context, before time.Time) error {
+	return r.db.WithContext(ctx).
+		Where("expires_at <= ?", before).
+		Delete(&types.PluginPreview{}).Error
+}

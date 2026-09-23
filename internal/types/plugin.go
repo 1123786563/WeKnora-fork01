@@ -101,6 +101,37 @@ func (t *PluginPreviewTools) Scan(value interface{}) error {
 	return json.Unmarshal(b, t)
 }
 
+// PluginPreviewToolReview is one row of the admin's review table, as the
+// service layer returns it: the tool's metadata and governance classification
+// from the VERIFIED snapshot. The input schema itself is never included —
+// only the fact that its digest was verified (a digest mismatch rejects the
+// whole preview upstream).
+type PluginPreviewToolReview struct {
+	Name                 string
+	Description          string
+	ReadOnly             bool
+	RequiresPersonalAuth bool
+	Scopes               []string
+}
+
+// PluginPreviewResult is the preview payload the admin reviews before
+// confirming an installation: identity, version-pinned endpoint, verified
+// tool directory, identity fingerprint and the preview's expiry. It is the
+// types-layer service contract; the HTTP handler maps it onto its DTO.
+// No credentials ever appear here — by construction this type has none.
+type PluginPreviewResult struct {
+	PreviewID           string
+	PluginID            string
+	Version             string
+	Name                string
+	Description         string
+	TransportType       string
+	EndpointURL         string
+	Tools               []PluginPreviewToolReview
+	IdentityFingerprint string
+	ExpiresAt           time.Time
+}
+
 // PluginPreview persists one verified manifest preview: the admin's review
 // artifact between "pasted a manifest URL" and "confirmed an installation".
 // It is TTL-bound and single-use — installation confirm (migration 000190)

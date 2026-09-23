@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
-	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/middleware"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -21,10 +20,11 @@ import (
 )
 
 // stubPluginService 替身：classifier 模拟服务层按输入 URL 做出的分类
-// （SSRF 拒绝 / OAuth 保护端点），其余路径返回固定 DTO。
+// （SSRF 拒绝 / OAuth 保护端点），其余路径返回固定 types 层结果（整分支
+// OCR 一轮 F2：服务契约已回归 types 层，DTO 组装归 handler）。
 type stubPluginService struct {
 	interfaces.PluginService
-	resp       *dto.PluginPreviewResponse
+	resp       *types.PluginPreviewResult
 	classifier func(manifestURL string) error
 	gotTenant  uint64
 	gotActor   string
@@ -33,7 +33,7 @@ type stubPluginService struct {
 
 func (s *stubPluginService) PreviewFromManifest(
 	_ context.Context, tenantID uint64, actorID, manifestURL string,
-) (*dto.PluginPreviewResponse, error) {
+) (*types.PluginPreviewResult, error) {
 	s.gotTenant, s.gotActor, s.gotURL = tenantID, actorID, manifestURL
 	if s.classifier != nil {
 		if err := s.classifier(manifestURL); err != nil {
@@ -57,8 +57,8 @@ func newPluginPreviewRouter(svc interfaces.PluginService) *gin.Engine {
 	return r
 }
 
-func fixedPreviewResponse() *dto.PluginPreviewResponse {
-	return &dto.PluginPreviewResponse{
+func fixedPreviewResponse() *types.PluginPreviewResult {
+	return &types.PluginPreviewResult{
 		PreviewID:           "preview-1",
 		PluginID:            "com.example.jira-todo",
 		Version:             "1.2.0",
@@ -66,7 +66,7 @@ func fixedPreviewResponse() *dto.PluginPreviewResponse {
 		Description:         "desc",
 		TransportType:       "http-streamable",
 		EndpointURL:         "https://plugins.example.com/jira-todo/v1.2.0/mcp",
-		Tools:               []dto.PluginPreviewTool{{Name: "search_my_week_issues", ReadOnly: true, Scopes: []string{"read:jira"}}},
+		Tools:               []types.PluginPreviewToolReview{{Name: "search_my_week_issues", ReadOnly: true, Scopes: []string{"read:jira"}}},
 		IdentityFingerprint: "f" + strings.Repeat("0", 63),
 		ExpiresAt:           time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC),
 	}
