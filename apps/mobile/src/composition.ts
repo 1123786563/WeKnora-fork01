@@ -181,6 +181,21 @@ export function bootRuntimeOnce(activeRuntime: { boot(): unknown }, booted: { cu
   void activeRuntime.boot();
 }
 
+/** 部署列表同步：latest-wins + 失败包含（B2-F33）。导出以供 app-smoke 行为级直调。 */
+export function createDeploymentListSync(
+  activeRuntime: Pick<MobileRuntime, 'listDeployments'>,
+  setDeployments: (deployments: Deployment[]) => void,
+): () => void {
+  let sequence = 0;
+  return () => {
+    const ticket = ++sequence;
+    void activeRuntime.listDeployments().then(
+      (deployments) => { if (ticket === sequence) setDeployments(deployments); },
+      () => undefined, // 失败包含：维持现状，不形成 unhandled rejection
+    );
+  };
+}
+
 /** Native application root; screens receive snapshots and callbacks only. */
 export function MobileApp() {
   const activeRuntime = runtime();
@@ -190,9 +205,9 @@ export function MobileApp() {
     bootRuntimeOnce(activeRuntime, booted);
   }, [activeRuntime]);
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
-  useEffect(() => {
-    void activeRuntime.listDeployments().then(setDeployments);
-  }, [activeRuntime, snapshot]);
+  // registry 内容只在 surface/origin 变化的发布中变化：依赖收窄，tenant 切换等发布不再重复读安全存储。
+  const syncDeployments = useRef(createDeploymentListSync(activeRuntime, setDeployments));
+  useEffect(() => { syncDeployments.current(); }, [activeRuntime, snapshot.surface, snapshot.deployment?.origin]);
   return createElement(RuntimeSurface, {
     snapshot,
     deployments,

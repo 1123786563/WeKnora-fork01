@@ -660,3 +660,45 @@ test('ReadOnlyScreen mounts the browse-only shelf once and renders its projectio
   hooks().__unmount();
   assert.equal(listeners.size, 0, 'unmount detaches the shelf subscription');
 });
+
+test('the deployment list sync ignores out-of-order completions', async () => {
+  const { createDeploymentListSync } = await import('./composition.ts');
+  const received: unknown[][] = [];
+  const setDeployments = (value: unknown) => { received.push(JSON.parse(JSON.stringify(value))); };
+  let releaseFirst: (() => void) | undefined;
+  let calls = 0;
+  const runtime = {
+    listDeployments: (): Promise<unknown[]> => {
+      calls += 1;
+      if (calls === 1) return new Promise((resolve) => { releaseFirst = () => resolve([{ origin: 'https://a.example.test', label: 'A' }]); });
+      return Promise.resolve([{ origin: 'https://b.example.test', label: 'B' }]);
+    },
+  };
+  const sync = createDeploymentListSync(runtime as never, setDeployments as never);
+  sync();                                                    // 第一次读取：挂起（模拟慢 SecureStore）
+  sync();                                                    // 第二次读取：立即完成 → setDeployments(B)
+  await new Promise((resolve) => setImmediate(resolve));
+  releaseFirst?.();                                          // 旧响应迟到完成
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(received, [[{ origin: 'https://b.example.test', label: 'B' }]], '只有最新一次读取的结果生效；迟到的旧结果被序号守卫丢弃');
+});
+
+test('the deployment list sync swallows read failures', async () => {
+  const { createDeploymentListSync } = await import('./composition.ts');
+  const received: unknown[][] = [];
+  const runtime = { listDeployments: () => Promise.reject(new Error('SECURESTORE_UNAVAILABLE')) };
+  const sync = createDeploymentListSync(runtime as never, ((value: unknown) => { received.push(value as never); }) as never);
+  sync();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(received, [], '读取失败维持现状且不形成 unhandled rejection');
+});
+
+test('MobileApp subscribes deployment list reads with containment and narrowed deps', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, 'composition.ts'), 'utf8');
+  assert.match(source, /createDeploymentListSync/);
+  assert.match(source, /snapshot\.surface, snapshot\.deployment\?\.origin/, '依赖收窄：不再以整快照对象触发重复读取安全存储');
+});
