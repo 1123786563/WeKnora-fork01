@@ -46,6 +46,25 @@ func TestFetchRejectsNonHTTPAndPrivateManifestURLs(t *testing.T) {
 	}
 }
 
+// TestBuildVerifiedSnapshotDuplicateNameEchoIsBounded（整分支 OCR 一轮 F3）：
+// 本函数是导出的且契约注释明文「不得依赖调用方先跑 ValidateManifest」——
+// 重复声明名的拒绝错误必须走 echoQuoted 截断（≤maxEchoRunes），不得用 %q
+// 原样回显任意长度的未审核名字（本测试直接以未校验清单调用，绕过
+// ValidateManifest 的 ≤128 runes 前置，正是该不变量要防的调用形态）。
+func TestBuildVerifiedSnapshotDuplicateNameEchoIsBounded(t *testing.T) {
+	longName := strings.Repeat("x", 3000)
+	m := validManifest()
+	m.Tools = []types.PluginToolDecl{
+		{Name: longName, InputSchemaDigest: "d"},
+		{Name: longName, InputSchemaDigest: "d"},
+	}
+	_, _, err := BuildVerifiedSnapshot(m, nil)
+	require.ErrorContains(t, err, "duplicate tool name")
+	require.LessOrEqual(t, len(err.Error()), 160,
+		"the echoed unvetted name must be truncated (echoQuoted), not quoted in full")
+	require.NotContains(t, err.Error(), longName)
+}
+
 func TestBuildVerifiedSnapshotRejectsMismatch(t *testing.T) {
 	m := validManifest()
 	// 远端实际 schema 与清单声明不同 → digest 不符

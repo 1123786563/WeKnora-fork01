@@ -68,9 +68,12 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 	for _, decl := range manifest.Tools {
 		// Re-check here instead of trusting the caller to have run
 		// ValidateManifest: a duplicate declaration would otherwise append
-		// the same tool to the snapshot twice, silently.
+		// the same tool to the snapshot twice, silently. The name echoed
+		// here is UNVETTED at this point (this function must not rely on
+		// the caller having validated first) — truncate it via echoQuoted
+		// so a hostile manifest cannot balloon the error (整分支 OCR 一轮 F3).
 		if declared[decl.Name] {
-			return nil, "", fmt.Errorf("manifest declares duplicate tool name %q", decl.Name)
+			return nil, "", fmt.Errorf("manifest declares duplicate tool name %s", echoQuoted(decl.Name))
 		}
 		declared[decl.Name] = true
 	}
