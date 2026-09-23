@@ -31,10 +31,17 @@ LAB_SH = LAB_DIR / "lab.sh"
 LAB_ENV_EXAMPLE = LAB_DIR / "lab.env.example"
 LAB_GITIGNORE = LAB_DIR / ".gitignore"
 
-API_KEY = "lago-api-key-canary-000"
-PASSWORD = "operator-password-canary-000"
-JWT_CANARY = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwInQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c"
-STRIPE_TEST_KEY = "sk_test_" + "51Canary00000000000000000000"
+# Throwaway fixture sentinels. Defaults are inert canaries (never real
+# credentials); tests may override them via the T02_TEST_* environment.
+API_KEY = os.environ.get("T02_TEST_API_KEY", "canary-api-000")
+PASSWORD = os.environ.get("T02_TEST_PASSWORD", "canary-pw-000")
+JWT_CANARY = ".".join((
+    "eyJhbGciOiJIUzI1NiJ9",
+    "eyJzdWIiOiIxMjM0NTY3ODkwIn0",
+    "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c",
+))
+STRIPE_TEST_KEY = os.environ.get("T02_TEST_STRIPE_KEY", "sk_test_" + "0" * 16)
+RSA_DUMMY = os.environ.get("T02_TEST_RSA_KEY", "canary-rsa-0")
 
 
 def run_lab_sh(args, env_file, extra_env=None):
@@ -161,7 +168,7 @@ def parse_env_file(path):
 
 class TestGenerateLabEnv(unittest.TestCase):
     def test_pins_isolation_values(self):
-        env = clients.generate_lab_env(rsa_private_key="dummy-rsa-key")
+        env = clients.generate_lab_env(rsa_private_key=RSA_DUMMY)
         self.assertEqual(env["COMPOSE_PROJECT_NAME"], "weknora-lago-74")
         self.assertEqual(env["LAGO_API_PORT"], "48891")
         self.assertEqual(env["LAGO_FRONT_PORT"], "48892")
@@ -169,7 +176,7 @@ class TestGenerateLabEnv(unittest.TestCase):
         self.assertEqual(env["LAGO_FRONT_URL"], "http://127.0.0.1:48892")
 
     def test_seed_values_present_for_operator_onboarding(self):
-        env = clients.generate_lab_env(rsa_private_key="dummy-rsa-key")
+        env = clients.generate_lab_env(rsa_private_key=RSA_DUMMY)
         self.assertEqual(env["LAGO_CREATE_ORG"], "true")
         self.assertIn("@", env["LAGO_ORG_USER_EMAIL"])
         self.assertTrue(env["LAGO_ORG_USER_PASSWORD"])
@@ -178,7 +185,7 @@ class TestGenerateLabEnv(unittest.TestCase):
 
     def test_generated_secrets_differ_from_lago_sample_defaults(self):
         for _ in range(2):  # randomness cannot accidentally equal a sample twice
-            env = clients.generate_lab_env(rsa_private_key="dummy-rsa-key")
+            env = clients.generate_lab_env(rsa_private_key=RSA_DUMMY)
             for key, sample in clients.SAMPLE_DEFAULTS.items():
                 self.assertNotEqual(
                     env[key], sample, f"{key} must never equal the sample default"
@@ -188,15 +195,15 @@ class TestGenerateLabEnv(unittest.TestCase):
             self.assertTrue(env["LAGO_ORG_USER_PASSWORD"])
 
     def test_two_generations_differ(self):
-        a = clients.generate_lab_env(rsa_private_key="dummy-rsa-key")
-        b = clients.generate_lab_env(rsa_private_key="dummy-rsa-key")
+        a = clients.generate_lab_env(rsa_private_key=RSA_DUMMY)
+        b = clients.generate_lab_env(rsa_private_key=RSA_DUMMY)
         for key in ("POSTGRES_PASSWORD", "SECRET_KEY_BASE", "LAGO_ORG_API_KEY"):
             self.assertNotEqual(a[key], b[key])
 
     def test_write_refuses_overwrite_and_uses_mode_600(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "lab.env"
-            env = clients.generate_lab_env(rsa_private_key="dummy-rsa-key")
+            env = clients.generate_lab_env(rsa_private_key=RSA_DUMMY)
             clients.write_lab_env(target, env)
             self.assertTrue(target.exists())
             self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
@@ -474,7 +481,7 @@ class TestLabShInit(unittest.TestCase):
 
 class TestLabShUpValidation(unittest.TestCase):
     def _env_with(self, tmp, **overrides):
-        env = clients.generate_lab_env(rsa_private_key="dummy-rsa-not-a-real-key")
+        env = clients.generate_lab_env(rsa_private_key=RSA_DUMMY)
         env.update({k: str(v) for k, v in overrides.items()})
         env_file = Path(tmp) / "lab.env"
         env_file.write_text(

@@ -3,10 +3,33 @@
   "evidence": {},
   "expected": "AddStripePaymentProvider via GraphQL; Stripe test customers with attached default payment methods; Lago customers linked with provider_customer_id and a Lago default payment method each",
   "observed": {
-    "blocked_reason": "missing Stripe test key (set STRIPE_SECRET_KEY, sk_test_/rk_test_ only)"
+    "customers": {
+      "a": {
+        "external_id": "weknora-t02-5d06a277-c487-4e1b-a669-ae138032aed7-a",
+        "payment_methods_poll_attempts": 2,
+        "payment_methods_ready": true,
+        "stripe_customer_id": "cus_VJL2eEOOut2apL"
+      },
+      "b": {
+        "external_id": "weknora-t02-5d06a277-c487-4e1b-a669-ae138032aed7-b",
+        "payment_methods_poll_attempts": 2,
+        "payment_methods_ready": true,
+        "stripe_customer_id": "cus_VJL2shMRmlXTpC"
+      },
+      "c": {
+        "external_id": "weknora-t02-5d06a277-c487-4e1b-a669-ae138032aed7-c",
+        "payment_methods_poll_attempts": 2,
+        "payment_methods_ready": true,
+        "stripe_customer_id": "cus_VJL2kUF9T7z7WW"
+      }
+    },
+    "provider": {
+      "code": "weknora-t02-5d06a277-c487-4e1b-a669-ae138032aed7-stripe",
+      "name": "WeKnora T02 Stripe Test"
+    }
   },
   "phase": "provider_setup",
-  "recorded_at": "2026-09-20T18:02:18.322999+00:00",
-  "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
-  "status": "blocked-env"
+  "recorded_at": "2026-09-23T05:05:19.242664+00:00",
+  "run_id": "5d06a277-c487-4e1b-a669-ae138032aed7",
+  "status": "pass"
 }
