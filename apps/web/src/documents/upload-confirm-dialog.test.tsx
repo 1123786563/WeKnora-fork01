@@ -432,7 +432,8 @@ test('ASR language input exposes Vue clearable behavior', () => {
 
 test('chunking advanced fields use Vue-shaped filterable multi-selects', () => {
   const html = sectionsHtml({ moreOpen: true });
-  assert.equal((html.match(/wk-upload-multi-select"/g) ?? []).length, 2);
+  // S7：多了一个平移类 wk-kd-30——断言放宽为 class 边界
+  assert.equal((html.match(/wk-upload-multi-select[\s"]/g) ?? []).length, 2);
   assert.match(html, /aria-multiselectable|role="combobox"/);
   assert.equal((html.match(/wk-upload-number-input--wide/g) ?? []).length, 5);
 });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KnowledgeDocument, KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { buildProcessingTimeline, canDocumentAction, getDocumentStatus, normalizeDocumentPage, summarizeUploadProgress, toggleDocumentSelection, validateUpload, type DocumentPage, type UploadProgressTask } from './model.ts';
+import './documents-u.css';
 
 export interface DocumentsApi {
   list: (knowledgeBaseId: string, params?: KnowledgeDocumentListParams) => Promise<unknown>;

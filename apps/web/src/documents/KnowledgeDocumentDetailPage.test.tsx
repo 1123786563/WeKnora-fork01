@@ -378,7 +378,7 @@ test('trace drawer matches the Vue pending contract: no per-row status text, —
   assert.ok(drawerText.includes('2/5'), 'the counter counts done stages plus the pending one like Vue currentStageIndex');
   // Waterfall rows: the pending chunking row carries no status text and a
   // '—' duration even though duration_ms is present.
-  const waterfallRows = Array.from(drawer.querySelectorAll('.overflow-x-auto li')) as HTMLLIElement[];
+  const waterfallRows = Array.from(drawer.querySelectorAll('.wk-kdd-18 li')) as HTMLLIElement[];
   const chunkingRow = waterfallRows.find((row) => (row.textContent || '').includes('chunking'));
   assert.ok(chunkingRow, 'the chunking span renders a waterfall row');
   assert.equal(chunkingRow.getAttribute('data-state'), 'pending');

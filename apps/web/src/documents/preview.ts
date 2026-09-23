@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 import { attachMermaidViewerToolbar, hydrateMermaidBlocksWithBrowserDefaults, type MermaidViewerToolbarLabels } from '@weknora/views/chat/mermaid';
 import { previewKindForFile, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
+import './documents-u.css';
 
 export interface KnowledgeDocumentPreviewModel {
   kind: DocumentPreviewKind;
@@ -99,14 +100,14 @@ export function DocumentPreviewContent({
 }): ReactElement {
   if (kind === 'spreadsheet') {
     return createElement('div', { className: 'wk-preview-spreadsheet', 'aria-label': `${fileName || 'Document'} content` },
-      ...(spreadsheet?.sheets || []).map((sheet) => createElement('section', { className: 'mb-4 last:mb-0', key: sheet.name },
-        createElement('h3', { className: 'mb-2 text-sm font-semibold text-ink' }, sheet.name),
-        createElement('div', { className: 'overflow-x-auto rounded-control border border-line-soft' },
-          createElement('table', { className: 'min-w-full border-collapse text-left text-[12px] text-ink' },
-            sheet.rows.length > 0 ? createElement('thead', { className: 'bg-surface-muted' }, createElement('tr', null,
-              ...sheet.rows[0].map((cell, index) => createElement('th', { className: 'border-b border-line-soft px-3 py-2 font-semibold', key: `${sheet.name}-head-${index}` }, cell)))) : null,
-            sheet.rows.length > 1 ? createElement('tbody', null, ...sheet.rows.slice(1).map((row, rowIndex) => createElement('tr', { className: 'border-b border-line-soft last:border-b-0', key: `${sheet.name}-row-${rowIndex}` },
-              ...row.map((cell, cellIndex) => createElement('td', { className: 'px-3 py-2 align-top', key: `${sheet.name}-${rowIndex}-${cellIndex}` }, cell))))) : null,
+      ...(spreadsheet?.sheets || []).map((sheet) => createElement('section', { className: 'wk-pv-sheet', key: sheet.name },
+        createElement('h3', { className: 'wk-pv-sheet-title' }, sheet.name),
+        createElement('div', { className: 'wk-pv-table-wrap' },
+          createElement('table', { className: 'wk-pv-table' },
+            sheet.rows.length > 0 ? createElement('thead', { className: 'wk-pv-thead' }, createElement('tr', null,
+              ...sheet.rows[0].map((cell, index) => createElement('th', { className: 'wk-pv-th', key: `${sheet.name}-head-${index}` }, cell)))) : null,
+            sheet.rows.length > 1 ? createElement('tbody', null, ...sheet.rows.slice(1).map((row, rowIndex) => createElement('tr', { className: 'wk-pv-tr', key: `${sheet.name}-row-${rowIndex}` },
+              ...row.map((cell, cellIndex) => createElement('td', { className: 'wk-pv-td', key: `${sheet.name}-${rowIndex}-${cellIndex}` }, cell))))) : null,
           ),
         ),
       )),
@@ -119,10 +120,10 @@ export function DocumentPreviewContent({
     return createElement('img', { className: 'wk-preview-image', src: url, alt: fileName || 'Document preview' });
   }
   if (kind === 'audio') {
-    return createElement('audio', { className: 'wk-preview-audio block w-full max-w-[480px]', src: url, controls: true, 'aria-label': fileName || 'Audio preview' });
+    return createElement('audio', { className: 'wk-preview-audio wk-pv-audio', src: url, controls: true, 'aria-label': fileName || 'Audio preview' });
   }
   if (kind === 'video') {
-    return createElement('video', { className: 'wk-preview-video block max-h-[calc(100vh-240px)] max-w-full', src: url, controls: true, playsInline: true, 'aria-label': fileName || 'Video preview' });
+    return createElement('video', { className: 'wk-preview-video wk-pv-video', src: url, controls: true, playsInline: true, 'aria-label': fileName || 'Video preview' });
   }
   if (kind === 'mermaid') return createElement(MermaidPreview, { text: text || '', fileName, labels: mermaidLabels, loader: mermaidLoader });
   return createElement('iframe', {
@@ -255,7 +256,7 @@ function MermaidPreview({
   };
   return createElement('div', {
     ref: root,
-    className: 'wk-preview-mermaid min-h-16 cursor-pointer overflow-auto',
+    className: 'wk-preview-mermaid wk-pv-mermaid',
     'aria-label': `${fileName || 'Document'} Mermaid diagram`,
     tabIndex: 0,
     onClick: openViewer,
