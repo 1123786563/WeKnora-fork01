@@ -393,7 +393,10 @@ func validate(g *Governance) []string {
 			diags = append(diags, fmt.Sprintf("%s.required_metadata: must contain \"idempotency_key\"", field))
 		}
 		if hasMeta("tenant_id") {
-			for _, key := range []string{"occurred_at", "event_id"} {
+			// OCR R1 #b0-ocr-r1-event-metadata-actor-origin：与 event-catalog.yaml
+			// 头注释声明的强制五元组对齐（tenant_id 触发级联，其余四键逐一强制，
+			// idempotency_key 由上方独立检查覆盖）。
+			for _, key := range []string{"occurred_at", "event_id", "actor_origin"} {
 				if !hasMeta(key) {
 					diags = append(diags, fmt.Sprintf(
 						"%s.required_metadata: tenant-scoped event must also require %q", field, key))

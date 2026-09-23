@@ -306,6 +306,31 @@ func TestEventSchemaRejectsDuplicateProducerVersion(t *testing.T) {
 	require.Contains(t, err.Error(), "producer/version")
 }
 
+// TestEventSchemaRequiresTenantScopedActorOrigin 覆盖 OCR R1
+// #b0-ocr-r1-event-metadata-actor-origin：event-catalog.yaml 头注释声明
+// "每条 tenant-scoped 事件强制 tenant_id/occurred_at/event_id/idempotency_key/
+// actor_origin"，validate 的 tenant-scoped 级联清单必须与声明一致——
+// required_metadata 缺 actor_origin 必须加载失败（此前级联清单只含
+// occurred_at/event_id，缺 actor_origin 无人拦截）。
+func TestEventSchemaRequiresTenantScopedActorOrigin(t *testing.T) {
+	body := `events:
+  - id: conversation.message.appended
+    version: 1
+    producer: internal/application/repository/message.go:CreateMessage
+    meaning: 一条已发生的事实
+    ordering: per-session seq 单调递增
+    replay: source-query
+    transport: in_process
+    consumers:
+      - internal/modules/insights/projection.go
+    required_metadata: [tenant_id, occurred_at, event_id, idempotency_key]
+`
+	err := loadEventCatalogFixture(t, body)
+	require.Error(t, err, "tenant-scoped 事件缺 actor_origin 必须被拒绝")
+	require.Contains(t, err.Error(),
+		`events[0].required_metadata: tenant-scoped event must also require "actor_origin"`)
+}
+
 // ---- B0.5 Step 2/3：真实仓库事件目录冻结验证 ----
 
 // requiredEventFamilies 是计划 B0.5 Step 2 冻结的家族前缀 → 最少记录数。

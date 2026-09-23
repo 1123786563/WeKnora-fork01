@@ -368,6 +368,37 @@ func TestDiscoverSetConsumersWorkerSetEntrySites(t *testing.T) {
 	require.Contains(t, issues[0].Message, "internal/modules/identity/ghost.go")
 }
 
+// TestDiscoverSetConsumersWorkerSetScanFailure 覆盖 OCR R1
+// #b0-ocr-r1-fileReferencesIdent-swallow-error：回退扫描中 parseFileFull
+// 完整解析失败的文件必须显式 contract-set-scan-failed 诊断，且该文件不得
+// 进入 discovered 集合。discoverGoTree 以 ImportsOnly 枚举 Go 树（import 段
+// 之后残缺的文件仍可入集），而 parseFileFull 以 mode 0 完整解析——
+// fileReferencesIdent 此前对该错误静默 return false，真实注册位点丢失而
+// 守卫毫无感知，与 DiscoverSymbolConsumers 上抛 parse 错误的口径不一致。
+func TestDiscoverSetConsumersWorkerSetScanFailure(t *testing.T) {
+	root := cloneContractRepo(t)
+	// import 段之后残缺（缺 '}'）：ImportsOnly 可解析 → 进 d.GoFiles；
+	// mode 0 完整解析失败 → parseFileFull 报错。
+	writeWorkerSiteFiles(t, root,
+		"internal/router/broken.go", "package router\n"+
+			"\n"+
+			"import \"github.com/Tencent/WeKnora/internal/types\"\n"+
+			"\n"+
+			"func broken() {\n"+
+			"\t_ = types.TypeFoo\n",
+	)
+	d := workerSiteDiscovery(t, root)
+
+	consumers, issues := discoverSetConsumers(d, "worker-set", []string{"TypeFoo"})
+	require.Empty(t, consumers, "parse 失败的文件不得静默入集")
+	require.Len(t, issues, 1)
+	require.Equal(t, "contract-set-scan-failed", issues[0].Check)
+	require.Contains(t, issues[0].Message, "internal/router/broken.go",
+		"诊断须含文件路径")
+	require.Contains(t, issues[0].Message, "parse",
+		"诊断须携带底层解析错误")
+}
+
 // writeWorkerSiteFiles 在克隆 fixture 中写入相对路径 rel 的文件（自动建目录）。
 func writeWorkerSiteFiles(t *testing.T, root string, relContents ...string) {
 	t.Helper()
