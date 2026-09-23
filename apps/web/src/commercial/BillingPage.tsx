@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { CommercialSummary, CommercialUsageRow } from '@weknora/contracts';
+import type { CommercialSummary, CommercialUsageRow, PurchaseView } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
@@ -58,6 +58,8 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const [state, setState] = useState<CommercialSummaryState>({ status: 'error', message: 'Loading…' });
   const [usageState, setUsageState] = useState<CommercialUsageState>({ status: 'error', message: 'Loading…' });
+  // #81：购买状态（awaiting_payment → 套餐行显示「待付款（权益未开放）」）。
+  const [purchase, setPurchase] = useState<PurchaseView | null>(null);
   const scope = scopeController.current();
   const queryKey = useMemo(() => scopedKey(scope.scope, 'commercial-summary'), [scope.scope]);
   // Space label comes from the current scope tenant; fall back to a neutral label
@@ -73,6 +75,12 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
     });
     void loadCommercialUsage(client.commercial, scope.signal).then((next) => {
       if (active && scopeController.isCurrent(scope.scope)) setUsageState(next);
+    });
+    // #81：并行读取购买状态；失败静默降级（待付款行只是缺席，不阻塞账单页）。
+    void client.commercial.purchaseStatus(scope.signal).then((view) => {
+      if (active && scopeController.isCurrent(scope.scope)) setPurchase(view);
+    }).catch(() => {
+      if (active && scopeController.isCurrent(scope.scope)) setPurchase(null);
     });
     return () => { active = false; };
   }, [client, reloadToken, scopeController, scope.scope, scope.signal]);
@@ -98,7 +106,14 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
         ) : null}
         {state.status === 'success' ? (
           <ul className="wk-list" data-testid="billing-summary-list">
-            <li><strong>套餐</strong><span>{planDisplayName(state.summary)}</span></li>
+            <li>
+              <strong>套餐</strong>
+              <span>
+                {planDisplayName(state.summary)}
+                {/* AC3：待付款购买期间套餐行显示待付款；权益保持未开放（D4）。 */}
+                {purchase?.state === 'awaiting_payment' ? ' · 待付款（权益未开放）' : ''}
+              </span>
+            </li>
             <li><strong>到期</strong><span>{state.summary.subscription?.paid_until || '无固定到期（未订阅）'}</span></li>
           </ul>
         ) : null}
