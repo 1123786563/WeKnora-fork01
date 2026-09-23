@@ -190,8 +190,26 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	if e := db.AutoMigrate(&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}); e != nil {
-		return nil, e
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}}
+	// The versioned SQL migrations create this schema before router/module
+	// initialization. GORM's SQLite table rebuild cannot introspect table-level
+	// UNIQUE clauses reliably and may interpret UNIQUE as a column. Preserve
+	// the migrated schema instead of rebuilding it on every startup. For
+	// installations without the versioned tables, AutoMigrate remains the
+	// compatibility path.
+	versionedSchemaPresent := db.Dialector.Name() == "sqlite"
+	if versionedSchemaPresent {
+		for _, model := range models {
+			if !db.Migrator().HasTable(model) {
+				versionedSchemaPresent = false
+				break
+			}
+		}
+	}
+	if !versionedSchemaPresent {
+		if e := db.AutoMigrate(models...); e != nil {
+			return nil, e
+		}
 	}
 	return &Office{db: db}, nil
 }
