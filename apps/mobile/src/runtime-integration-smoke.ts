@@ -1,8 +1,10 @@
 import { createWeKnoraClient } from '@weknora/api-client';
+import { createMobileResourceRemote } from '@weknora/api-client/mobile/resources';
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createInMemoryCredentialStore, createMobileRuntime } from '@weknora/mobile-core';
+import type { ResourceShelfHandle } from '@weknora/mobile-core';
 
 const CLIENT_PROTOCOL = CLIENT_PROTOCOL_VERSION;
 
@@ -18,6 +20,8 @@ export interface MobileRuntimeIntegrationEvidence {
   identity: 'present' | 'absent';
   outcome: 'authorized' | 'not-authorized';
   tenantSwitch: 'skipped' | 'switched' | 'switch-failed';
+  resourceShelf: 'not-authorized' | 'browsed' | 'browse-failed';
+  resourceCounts?: { agents: number; knowledge: number; connections: number };
   commandTimestamp: string;
 }
 
@@ -151,6 +155,23 @@ export function mobileRuntimeIntegrationConfig(env: Record<string, string | unde
   return { enabled: true, deploymentOrigin: parsed.origin, email, password, ...(switchTenantId ? { switchTenantId } : {}) };
 }
 
+/** Browses the real tenant resources through the shelf interface; evidence carries counts only. */
+export async function collectResourceShelfEvidence(
+  runtime: { resourceShelf(): ResourceShelfHandle | undefined },
+): Promise<Pick<MobileRuntimeIntegrationEvidence, 'resourceShelf' | 'resourceCounts'>> {
+  const handle = runtime.resourceShelf();
+  if (!handle) return { resourceShelf: 'not-authorized' };
+  try {
+    const page = await handle.browse();
+    return {
+      resourceShelf: 'browsed',
+      resourceCounts: { agents: page.agents.length, knowledge: page.knowledge.length, connections: page.connections.length },
+    };
+  } catch {
+    return { resourceShelf: 'browse-failed' };
+  }
+}
+
 /**
  * Executes the exact production JSON transport, concrete remote adapter, and
  * Mobile Runtime. The returned evidence intentionally contains no credential
@@ -174,6 +195,12 @@ export async function runMobileRuntimeIntegration(config: Extract<MobileRuntimeI
         },
       };
     },
+    resourceShelf: {
+      remoteFor(origin) {
+        const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(fetcher) });
+        return createMobileResourceRemote({ origin, request: client.request });
+      },
+    },
   });
 
   const snapshot = await runtime.signIn({
@@ -193,6 +220,8 @@ export async function runMobileRuntimeIntegration(config: Extract<MobileRuntimeI
       : 'switch-failed';
   }
 
+  const shelfEvidence = await collectResourceShelfEvidence(runtime);
+
   return {
     deploymentOrigin: config.deploymentOrigin,
     clientProtocol: CLIENT_PROTOCOL,
@@ -200,6 +229,7 @@ export async function runMobileRuntimeIntegration(config: Extract<MobileRuntimeI
     identity: identityPresent ? 'present' : 'absent',
     outcome: snapshot.surface === 'authorized' && identityPresent ? 'authorized' : 'not-authorized',
     tenantSwitch,
+    ...shelfEvidence,
     commandTimestamp: new Date().toISOString(),
   };
 }

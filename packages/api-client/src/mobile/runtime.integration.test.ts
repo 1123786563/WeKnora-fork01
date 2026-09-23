@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emitMobileRuntimeIntegrationEvidence, mobileRuntimeIntegrationConfig, runMobileRuntimeIntegration } from '../../../../apps/mobile/src/runtime-integration-smoke.ts';
+import { collectResourceShelfEvidence, emitMobileRuntimeIntegrationEvidence, mobileRuntimeIntegrationConfig, runMobileRuntimeIntegration } from '../../../../apps/mobile/src/runtime-integration-smoke.ts';
 
 /**
  * Opt-in real HTTP check.  It never supplies fallback credentials or a mock:
@@ -30,6 +30,7 @@ test('real HTTP login reaches identity, capabilities, and an authorized Runtime 
   assert.equal(evidence.capabilityMode, 'compatible');
   assert.equal(evidence.identity, 'present', 'real /auth/me must produce stable user and tenant identities');
   assert.equal(evidence.tenantSwitch, config.switchTenantId ? 'switched' : 'skipped');
+  assert.equal(evidence.resourceShelf, 'browsed', 'an authorized runtime must browse real tenant resources through the shelf');
 });
 
 test('integration config marks a path-bearing deployment URL invalid rather than skippable', () => {
@@ -55,6 +56,7 @@ test('non-authorized evidence is emitted before assertions without credential fi
     identity: 'absent',
     outcome: 'not-authorized',
     tenantSwitch: 'skipped',
+    resourceShelf: 'browse-failed',
     commandTimestamp: '2026-09-21T00:00:00.000Z',
   }, (record) => emitted.push(record));
 
@@ -66,6 +68,7 @@ test('non-authorized evidence is emitted before assertions without credential fi
     identity: 'absent',
     outcome: 'not-authorized',
     tenantSwitch: 'skipped',
+    resourceShelf: 'browse-failed',
     commandTimestamp: '2026-09-21T00:00:00.000Z',
   });
   assert.doesNotMatch(emitted[0]!, /short-lived-secret|password|token|email/i);
@@ -142,4 +145,33 @@ test('integration config keeps a public IPv6 deployment host eligible for a real
   });
 
   assert.equal(config.enabled, true, 'a global-unicast IPv6 literal must not be over-blocked');
+});
+
+test('resource shelf evidence distinguishes not-authorized, browsed and failed handles', async () => {
+  const healthyHandle = {
+    browse: async () => ({
+      tenantId: '7',
+      agents: [{ id: 'a' }],
+      knowledge: [],
+      connections: [{ id: 'c1' }, { id: 'c2' }],
+      classVerdicts: {},
+    }),
+    selection: () => ({ allowed: false, state: 'unavailable' as const, reason: 'unused' }),
+    subscribe: () => () => {},
+    close: () => {},
+  };
+  const failingHandle = { ...healthyHandle, browse: async () => { throw new Error('SHELF_SCOPE_CLOSED'); } };
+
+  assert.deepEqual(
+    await collectResourceShelfEvidence({ resourceShelf: () => healthyHandle } as Parameters<typeof collectResourceShelfEvidence>[0]),
+    { resourceShelf: 'browsed', resourceCounts: { agents: 1, knowledge: 0, connections: 2 } },
+  );
+  assert.deepEqual(
+    await collectResourceShelfEvidence({ resourceShelf: () => undefined } as Parameters<typeof collectResourceShelfEvidence>[0]),
+    { resourceShelf: 'not-authorized' },
+  );
+  assert.deepEqual(
+    await collectResourceShelfEvidence({ resourceShelf: () => failingHandle } as Parameters<typeof collectResourceShelfEvidence>[0]),
+    { resourceShelf: 'browse-failed' },
+  );
 });
