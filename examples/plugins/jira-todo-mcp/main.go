@@ -103,7 +103,16 @@ func Run(ctx context.Context, opts Options) error {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return srv.Shutdown(shutdownCtx)
+		err := srv.Shutdown(shutdownCtx)
+		if err != nil {
+			// 跨任务转交 T01-R2-F6：/mcp 是 streamable HTTP
+			//（WithStateLess(false)），活跃 SSE 长连接永远不会变为 idle，
+			// ctx 取消时 Shutdown 必然等满 5s 超时——残留连接与 Serve
+			// goroutine 靠 Close 强制断开回收（http.Server 文档对 Shutdown
+			// 超时后应使用 Close 的约定）。
+			_ = srv.Close()
+		}
+		return err
 	case err := <-done:
 		if err == http.ErrServerClosed {
 			return nil
@@ -116,6 +125,12 @@ func Run(ctx context.Context, opts Options) error {
 // hostname（"http://:8020" 这类 host 为空的 URL 会通过 u.Host!="" 却把
 // 元数据指向不可达地址——OCR T04-R1-7）。它不是 SSRF 判定（本服务出站
 // 请求统一走 SSRF-safe client），只是装配期的 fail-closed 结构校验。
+// 两项补充（跨任务转交 R7）：非具体 host（0.0.0.0/[::]）拒绝——
+// PLUGIN_LISTEN_ADDR="0.0.0.0:8020" 未设 PLUGIN_BASE_URL 时回退拼出的
+// "http://0.0.0.0:8020" 会静默启动并让 OAuth 元数据/同意页全部指向不可用
+// 地址（T01-R2-F7）；userinfo（u.User != nil）拒绝——BaseURL 会传播进
+// RFC 8414/9728 元数据、WWW-Authenticate challenge 与 manifest endpoint，
+// 与 manifest URL/transport endpoint 已建立的 userinfo 卫生一致（T01-R4-F5）。
 func validateBaseURL(where, raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return fmt.Errorf("%s is required (fail-closed): got empty", where)
@@ -129,6 +144,12 @@ func validateBaseURL(where, raw string) error {
 	}
 	if u.Hostname() == "" {
 		return fmt.Errorf("%s must include a host, got %q", where, raw)
+	}
+	if ip := net.ParseIP(u.Hostname()); ip != nil && ip.IsUnspecified() {
+		return fmt.Errorf("%s must include a specific host (got %q); set PLUGIN_BASE_URL explicitly", where, u.Hostname())
+	}
+	if u.User != nil {
+		return fmt.Errorf("%s must not embed userinfo credentials, got %q", where, raw)
 	}
 	return nil
 }

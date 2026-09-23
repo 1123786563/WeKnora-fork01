@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/utils"
 	mcp "github.com/mark3labs/mcp-go/mcp"
@@ -30,6 +31,13 @@ const (
 	// maxSearchPages 是分页跟进 nextPageToken 的页数上限：超限即停止并
 	// 标注截断，防失控翻页（OCR T04-R1-6）。
 	maxSearchPages = 10
+	// maxToolOutputLines / maxToolOutputBytes 封顶工具输出文本（跨任务转交
+	// T01-R4-F2）：分页上限名义上约束 10×100=1000 条事项，Jira summary 单条
+	// 可达 255 字符——拼接后单次 CallToolResult 可达数百 KB 整体进入调用方
+	//（LLM 上下文/MCP 消息）。超限截断并追加与页数截断同风格的显式标注
+	//（非静默截断）。
+	maxToolOutputLines = 200
+	maxToolOutputBytes = 64 << 10
 )
 
 // jiraMaxResponseBytes 封顶单次 Jira 响应体的解码读取量（整分支 OCR 二轮
@@ -221,6 +229,39 @@ func formatIssues(issues []JiraIssue) string {
 	return strings.Join(lines, "\n")
 }
 
+// renderIssuesOutput 渲染工具输出文本：formatIssues 结果施加行数/字节双界
+// 封顶（跨任务转交 T01-R4-F2），超限截断并追加显式标注；页数截断标注保持
+// 原样，两道截断各自独立声明（非静默截断）。字节截断落在 UTF-8 边界上。
+func renderIssuesOutput(issues []JiraIssue, pagesTruncated bool) string {
+	text := formatIssues(issues)
+	var notes []string
+	if pagesTruncated {
+		notes = append(notes, fmt.Sprintf("⚠ 结果超过 %d 页被截断，请到 Jira 查看完整列表", maxSearchPages))
+	}
+	if text != "" {
+		lines := strings.Split(text, "\n")
+		if len(lines) > maxToolOutputLines {
+			text = strings.Join(lines[:maxToolOutputLines], "\n")
+			notes = append(notes, fmt.Sprintf("⚠ 输出超过 %d 行被截断，请到 Jira 查看完整列表", maxToolOutputLines))
+		}
+	}
+	if len(text) > maxToolOutputBytes {
+		cut := maxToolOutputBytes
+		for cut > 0 && !utf8.RuneStart(text[cut]) {
+			cut--
+		}
+		text = text[:cut]
+		notes = append(notes, fmt.Sprintf("⚠ 输出超过 %d 字节被截断，请到 Jira 查看完整列表", maxToolOutputBytes))
+	}
+	for _, note := range notes {
+		if text != "" {
+			text += "\n"
+		}
+		text += note
+	}
+	return text
+}
+
 // handleSearchMyWeek 是工具执行入口：从 context 取已授权会话（由
 // WithHTTPContextFunc 注入），以会话凭据执行固定 JQL 查询。
 func handleSearchMyWeek(ctx context.Context, jiraBaseURL string) (*mcp.CallToolResult, error) {
@@ -235,13 +276,7 @@ func handleSearchMyWeek(ctx context.Context, jiraBaseURL string) (*mcp.CallToolR
 	if err != nil {
 		return nil, err
 	}
-	text := formatIssues(issues)
-	if truncated {
-		if text != "" {
-			text += "\n"
-		}
-		text += fmt.Sprintf("⚠ 结果超过 %d 页被截断，请到 Jira 查看完整列表", maxSearchPages)
-	}
+	text := renderIssuesOutput(issues, truncated)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{mcp.NewTextContent(text)},
 	}, nil
