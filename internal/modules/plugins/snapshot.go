@@ -154,7 +154,10 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 		}
 		// Defensive copy: the snapshot is the tenant-facing authority and must
 		// not share backing arrays with the untrusted manifest document.
-		scopes := append([]string(nil), decl.Scopes...)
+		// make+copy keeps undeclared scopes as [] instead of nil so the field
+		// serializes with one shape (跨任务转交 T01-R1-F1).
+		scopes := make([]string, len(decl.Scopes))
+		copy(scopes, decl.Scopes)
 		snapshot = append(snapshot, types.PluginToolSnapshot{
 			Name:                 decl.Name,
 			Description:          actual.Description,

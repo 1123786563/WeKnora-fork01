@@ -34,8 +34,15 @@ var (
 // PLUGIN_PREVIEW_TTL (Go duration string, e.g. "15m") overrides it; an
 // empty, unparsable or non-positive value falls back to this default, so a
 // misconfigured environment degrades to the spec'd bound instead of an
-// unbounded or zero TTL.
+// unbounded or zero TTL. An oversized-but-parsable value (e.g. "8760h" ≈ a
+// year) is clamped to maxPluginPreviewTTL — that is the same misconfiguration
+// in the other direction: previews would stay confirmable for months and
+// DeleteExpiredPreviews would never reclaim them (跨任务转交 T01-R3-F1).
 const defaultPluginPreviewTTL = 15 * time.Minute
+
+// maxPluginPreviewTTL caps a valid PLUGIN_PREVIEW_TTL override. Previews are
+// TTL-bound review artifacts; anything beyond a day defeats the bound.
+const maxPluginPreviewTTL = 24 * time.Hour
 
 // maxPluginURLRunes aligns with plugin_previews.manifest_url /
 // endpoint_url varchar(512) — in runes, the unit PostgreSQL varchar counts.
@@ -61,6 +68,9 @@ func pluginPreviewTTL() time.Duration {
 	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
 		return defaultPluginPreviewTTL
+	}
+	if d > maxPluginPreviewTTL {
+		return maxPluginPreviewTTL
 	}
 	return d
 }
@@ -168,11 +178,14 @@ func (s *pluginService) PreviewFromManifest(
 }
 
 // previewToolsReview defensively copies the verified snapshot into the
-// types-layer review rows (scopes are copied, never aliased).
+// types-layer review rows (scopes are copied, never aliased). make+copy
+// keeps undeclared scopes as [] instead of nil so the field serializes with
+// one shape end to end (跨任务转交 T01-R1-F1).
 func previewToolsReview(snapshot []types.PluginToolSnapshot) []types.PluginPreviewToolReview {
 	tools := make([]types.PluginPreviewToolReview, 0, len(snapshot))
 	for _, tool := range snapshot {
-		scopes := append([]string(nil), tool.Scopes...)
+		scopes := make([]string, len(tool.Scopes))
+		copy(scopes, tool.Scopes)
 		tools = append(tools, types.PluginPreviewToolReview{
 			Name:                 tool.Name,
 			Description:          tool.Description,

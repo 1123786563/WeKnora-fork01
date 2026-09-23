@@ -18,3 +18,7 @@ CREATE TABLE plugin_previews (
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_plugin_previews_tenant ON plugin_previews(tenant_id, plugin_id);
+-- 跨任务转交 T01-R2-F1: DeleteExpiredPreviews runs `expires_at <= ?` on every
+-- preview success path; without this index the DELETE is a full-table scan
+-- with row locks spanning all tenants.
+CREATE INDEX idx_plugin_previews_expires_at ON plugin_previews(expires_at);

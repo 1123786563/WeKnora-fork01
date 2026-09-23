@@ -24,6 +24,13 @@ import (
 // half-verified preview.
 var ErrOAuthProtectedEndpoint = errors.New("plugin endpoint requires OAuth authorization")
 
+// ErrManifestFetchFailed marks manifest download faults that are SERVER-side
+// network problems (DNS failure, egress timeout, proxy errors, upstream 5xx)
+// rather than deterministic rejections of the admin's input — the handler maps
+// it onto 5xx without echoing the transport detail (which can carry internal
+// proxy addresses when HTTP(S)_PROXY is configured) (跨任务转交 T01-R2-F2).
+var ErrManifestFetchFailed = errors.New("manifest fetch failed")
+
 // IsOAuthProtected reports whether err (or anything it wraps) carries the
 // ErrOAuthProtectedEndpoint sentinel, i.e. the production adapter recognized
 // the MCP layer's OAuthRequiredError during verification.
@@ -152,19 +159,18 @@ func fetchLimited(ctx context.Context, manifestURL string) ([]byte, error) {
 		// *url.Error embeds the LAST request URL verbatim — on a redirect
 		// policy/hop-limit rejection that is the attacker-controlled
 		// Location target, NOT bounded by maxManifestBytes. Bound the echo
-		// (OCR T01-R4-F4); nothing downstream consumes this error's
-		// identity (no errors.Is/As on "manifest fetch failed" anywhere in
-		// internal/ — verified). %.512s truncates by runes, so the worst
-		// case stays a few KB.
-		return nil, fmt.Errorf("manifest fetch failed: %.512s", err)
+		// (OCR T01-R4-F4); %.512s truncates by runes, so the worst case
+		// stays a few KB. The sentinel lets the handler classify the fault
+		// as server-side (跨任务转交 T01-R2-F2).
+		return nil, fmt.Errorf("%w: %.512s", ErrManifestFetchFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("manifest fetch failed: unexpected status %d", resp.StatusCode)
+		return nil, fmt.Errorf("%w: unexpected status %d", ErrManifestFetchFailed, resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxManifestBytes)+1))
 	if err != nil {
-		return nil, fmt.Errorf("manifest fetch failed: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrManifestFetchFailed, err)
 	}
 	if len(body) > maxManifestBytes {
 		return nil, fmt.Errorf("manifest exceeds %d bytes", maxManifestBytes)

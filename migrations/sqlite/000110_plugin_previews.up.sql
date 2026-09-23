@@ -17,3 +17,6 @@ CREATE TABLE plugin_previews (
  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_plugin_previews_tenant ON plugin_previews(tenant_id, plugin_id);
+-- 跨任务转交 T01-R2-F1: twin of the versioned migration's expires_at index
+-- (DeleteExpiredPreviews lazy-cleanup DELETE support).
+CREATE INDEX idx_plugin_previews_expires_at ON plugin_previews(expires_at);

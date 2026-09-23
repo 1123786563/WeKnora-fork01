@@ -34,6 +34,8 @@ func NewPluginHandler(pluginService interfaces.PluginService) *PluginHandler {
 // @Param        request  body      dto.PluginPreviewRequest  true  "清单 URL"
 // @Success      200      {object}  map[string]interface{}    "预览结果"
 // @Failure      400      {object}  errors.AppError           "清单 URL 非法或核验失败"
+// @Failure      500      {object}  errors.AppError           "预览持久化失败"
+// @Failure      503      {object}  errors.AppError           "清单抓取失败（上游不可达或异常状态）"
 // @Security     Bearer
 // @Router       /plugins/installations/preview [post]
 func (h *PluginHandler) PreviewManifest(c *gin.Context) {
@@ -76,7 +78,12 @@ func previewResponseDTO(result *types.PluginPreviewResult) *dto.PluginPreviewRes
 	}
 	tools := make([]dto.PluginPreviewTool, 0, len(result.Tools))
 	for _, tool := range result.Tools {
-		scopes := append([]string(nil), tool.Scopes...)
+		// 跨任务转交 T01-R1-F1: make+copy (never append([]string(nil), ...))
+		// keeps undeclared scopes as [] instead of nil — the wire field must
+		// have ONE shape ("scopes":[]), never null, or TS consumers treating
+		// it as string[] break at runtime (.map/.length on null).
+		scopes := make([]string, len(tool.Scopes))
+		copy(scopes, tool.Scopes)
 		tools = append(tools, dto.PluginPreviewTool{
 			Name:                 tool.Name,
 			Description:          tool.Description,
@@ -101,15 +108,21 @@ func previewResponseDTO(result *types.PluginPreviewResult) *dto.PluginPreviewRes
 
 // mapPluginPreviewError maps service-layer preview failures onto HTTP
 // verdicts. SSRF rejections and verification failures (invalid manifest,
-// declaration mismatch, OAuth-protected endpoint, unreachable endpoint) are
-// deterministic rejections of the admin's input → 4xx; only persistence
-// faults are server errors.
+// declaration mismatch, OAuth-protected endpoint) are deterministic
+// rejections of the admin's input → 4xx. Manifest DOWNLOAD faults (DNS
+// failure, egress timeout, upstream 5xx, proxy errors) are server-side
+// network problems, not input problems → 503 with a fixed message; the raw
+// transport error may carry internal proxy topology (HTTP(S)_PROXY) and only
+// goes to the server log (跨任务转交 T01-R2-F2). Persistence faults → 500.
 func mapPluginPreviewError(c *gin.Context, err error) {
 	switch {
 	case stderrors.Is(err, service.ErrManifestURLRejected):
 		c.Error(errors.NewBadRequestError(err.Error()))
 	case plugins.IsOAuthProtected(err):
 		c.Error(errors.NewBadRequestError("插件服务要求授权才能核验工具目录：" + err.Error()))
+	case stderrors.Is(err, plugins.ErrManifestFetchFailed):
+		logger.Error(c.Request.Context(), "Plugin manifest fetch failed", err)
+		c.Error(errors.NewServiceUnavailableError("插件清单抓取失败：清单服务不可达或返回异常状态，请稍后重试"))
 	case stderrors.Is(err, service.ErrPreviewPersistFailed):
 		c.Error(errors.NewInternalServerError(err.Error()))
 	default:
