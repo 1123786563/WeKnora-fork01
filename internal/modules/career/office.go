@@ -252,11 +252,17 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 }
 
 func requireSQLiteUniqueConstraint(db *gorm.DB, table string, columns []string) error {
-	var indexes []struct{ Name string }
-	if err := db.Raw(`SELECT name FROM pragma_index_list(?) WHERE "unique" = 1`, table).Scan(&indexes).Error; err != nil {
+	var indexes []struct {
+		Name    string
+		Partial int
+	}
+	if err := db.Raw(`SELECT name, partial FROM pragma_index_list(?) WHERE "unique" = 1`, table).Scan(&indexes).Error; err != nil {
 		return fmt.Errorf("inspect %s unique constraints: %w", table, err)
 	}
 	for _, index := range indexes {
+		if index.Partial != 0 {
+			continue
+		}
 		var indexedColumns []string
 		if err := db.Raw("SELECT name FROM pragma_index_info(?) ORDER BY seqno", index.Name).Scan(&indexedColumns).Error; err != nil {
 			return fmt.Errorf("inspect %s unique constraint %s: %w", table, index.Name, err)

@@ -42,9 +42,14 @@ func TestCareerOfficeOpensAfterVersionedSQLiteMigration(t *testing.T) {
 	require.NoError(t, err)
 	office, err := career.NewOffice(db)
 	require.NoError(t, err)
-	// A second initialization represents process restart against an already
-	// migrated database.
-	_, err = career.NewOffice(db)
+	// Reopen through a separate connection to represent process restart against
+	// an already migrated database.
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+	db, err = gorm.Open(sqlite.Open(path), &gorm.Config{})
+	require.NoError(t, err)
+	office, err = career.NewOffice(db)
 	require.NoError(t, err)
 
 	ctx := career.WithScope(context.Background(), career.Scope{UserID: "startup-user", TenantID: 42})
@@ -80,6 +85,19 @@ func TestCareerOfficeRejectsMalformedVersionedSQLiteSchema(t *testing.T) {
 				require.NoError(t, db.Exec("ALTER TABLE career_facts RENAME TO career_facts_old").Error)
 				require.NoError(t, db.Exec("CREATE TABLE career_facts (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, revision INTEGER NOT NULL, source TEXT NOT NULL, confirmation TEXT NOT NULL, request_id TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)").Error)
 				require.NoError(t, db.Exec("DROP TABLE career_facts_old").Error)
+			},
+			want: "career_facts uniqueness",
+		},
+		{
+			name: "partial fact uniqueness",
+			mutate: func(t *testing.T, db *gorm.DB) {
+				require.NoError(t, db.Exec("ALTER TABLE career_facts RENAME TO career_facts_old").Error)
+				require.NoError(t, db.Exec("CREATE TABLE career_facts (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, revision INTEGER NOT NULL, source TEXT NOT NULL, confirmation TEXT NOT NULL, request_id TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)").Error)
+				require.NoError(t, db.Exec("DROP TABLE career_facts_old").Error)
+				require.NoError(t, db.Exec("CREATE UNIQUE INDEX uq_career_facts_partial ON career_facts (tenant_id, user_id, key) WHERE key <> 'skip'").Error)
+				for i := 0; i < 2; i++ {
+					require.NoError(t, db.Exec("INSERT INTO career_facts (tenant_id,user_id,key,value,revision,source,confirmation,request_id,created_at) VALUES (42,'u','skip',? ,?,'{}','{}',?,CURRENT_TIMESTAMP)", i, i, i).Error)
+				}
 			},
 			want: "career_facts uniqueness",
 		},
