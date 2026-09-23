@@ -48,6 +48,15 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		commercialGroup.POST("/quotes", commercialHandler.CreateQuote)
 		commercialGroup.POST("/orders", commercialHandler.CreateOrder)
 		commercialGroup.GET("/orders/:id", commercialHandler.GetOrder)
+		// W5 (#81): the payment-gated purchase. The POST submits a frozen
+		// quote into the gated subscription creation — the quote-vs-authority
+		// match gate runs BEFORE any channel payment request exists (AC2).
+		// The GET answers the space's purchase state in closed product
+		// vocabulary (awaiting_payment shows 待付款; entitlements stay closed
+		// while gated — D4). The billing gate and capability checks above
+		// apply; the tenant comes exclusively from the authenticated context.
+		commercialGroup.POST("/purchases", commercialHandler.Purchase)
+		commercialGroup.GET("/purchase", commercialHandler.PurchaseStatus)
 		// Commerce.ChangePlan: an upgrade settles as a prorated order through
 		// the same checkout pipeline; anything else is scheduled for the end
 		// of the paid period. Conflicts answer with a re-quote signal.
