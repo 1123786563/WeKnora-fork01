@@ -183,7 +183,11 @@ func ValidateManifest(m *types.PluginManifest) error {
 // only) yet can visually reorder or hide text in the admin review surface;
 // human review is this feature's core safety gate, so names must be exactly
 // what they appear to be. Private-use (Co) characters have no standardized
-// glyph and are rejected from identifiers as well.
+// glyph and are rejected from identifiers as well. Line/paragraph separators
+// (Zl/Zp, U+2028/U+2029) are rejected too: they pass none of the classes
+// above yet inject line breaks into the admin review surface (整分支 OCR
+// 二轮 F2). The rejection message names every rejected class — an admin
+// debugging a rejected private-use rune must not be told "format".
 func validateName(where, name string, maxRunes int) error {
 	if name == "" {
 		return fmt.Errorf("%s must not be empty", where)
@@ -192,8 +196,9 @@ func validateName(where, name string, maxRunes int) error {
 		return fmt.Errorf("%s must be at most %d characters", where, maxRunes)
 	}
 	for _, r := range name {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Co, r) {
-			return fmt.Errorf("%s must not contain control or format characters (U+%04X)", where, r)
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Co, r) ||
+			unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
+			return fmt.Errorf("%s must not contain control, format or private-use characters (U+%04X)", where, r)
 		}
 	}
 	return nil

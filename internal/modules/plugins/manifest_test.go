@@ -14,6 +14,22 @@ import (
 // controlled MCP endpoint so the declared digest matches the live one.
 const declaredNoArgSchema = `{"type":"object","properties":{},"additionalProperties":false}`
 
+// TestValidateNameRejectsSeparatorsAndPrivateUse（整分支 OCR 二轮 F2）：
+// 拒绝集是 Cc/Cf/Co 且应含 Zl/Zp（U+2028/U+2029 行/段分隔符可在管理端
+// 审核界面引入换行布局干扰）；错误文案必须如实列出全部类别——私有区字符
+// 被拒却报 format 会误导排障（评审实测：U+2028/U+2029 现通过，
+// U+E000 被 Co 拒但文案未提）。
+func TestValidateNameRejectsSeparatorsAndPrivateUse(t *testing.T) {
+	for _, r := range []rune{'\u2028', '\u2029'} {
+		err := validateName("tools[0].name", "bad"+string(r)+"name", maxToolNameLen)
+		require.Errorf(t, err, "U+%04X (Zl/Zp separator) must be rejected from names", r)
+	}
+	err := validateName("tools[0].name", "bad\uE000name", maxToolNameLen)
+	require.Error(t, err, "private-use (Co) must be rejected from names")
+	require.ErrorContains(t, err, "private-use",
+		"the rejection message must name the actual character class")
+}
+
 func validManifest() *types.PluginManifest {
 	return &types.PluginManifest{
 		Protocol:  "weknora.plugin/1",

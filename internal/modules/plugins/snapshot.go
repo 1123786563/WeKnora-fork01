@@ -80,20 +80,26 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 
 	snapshot := make([]types.PluginToolSnapshot, 0, len(manifest.Tools))
 	for _, decl := range manifest.Tools {
+		// All three rejection messages below echo MANIFEST-side fields, which
+		// are unvetted at this point (this function must not rely on the
+		// caller having validated first) — truncate them via echoQuoted so a
+		// hostile manifest cannot balloon the joined error (整分支 OCR 二轮
+		// F1; a legitimate 64-hex digest is exactly maxEchoRunes and passes
+		// untruncated; liveDigest is computed locally and always bounded).
 		actual, ok := liveByName[decl.Name]
 		if !ok {
-			problems = append(problems, fmt.Sprintf("manifest tool %q missing from live endpoint", decl.Name))
+			problems = append(problems, fmt.Sprintf("manifest tool %s missing from live endpoint", echoQuoted(decl.Name)))
 			continue
 		}
 		liveDigest := ToolSchemaDigest(actual.InputSchema)
 		if liveDigest != decl.InputSchemaDigest {
 			problems = append(problems, fmt.Sprintf(
-				"manifest tool %q schema digest mismatch (declared %s, live %s)",
-				decl.Name, decl.InputSchemaDigest, liveDigest,
+				"manifest tool %s schema digest mismatch (declared %s, live %s)",
+				echoQuoted(decl.Name), echoQuoted(decl.InputSchemaDigest), liveDigest,
 			))
 			continue
 		}
-		if err := validateDescription(fmt.Sprintf("live description of tool %q", decl.Name), actual.Description); err != nil {
+		if err := validateDescription(fmt.Sprintf("live description of tool %s", echoQuoted(decl.Name)), actual.Description); err != nil {
 			problems = append(problems, err.Error())
 			continue
 		}

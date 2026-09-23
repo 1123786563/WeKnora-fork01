@@ -65,6 +65,47 @@ func TestBuildVerifiedSnapshotDuplicateNameEchoIsBounded(t *testing.T) {
 	require.NotContains(t, err.Error(), longName)
 }
 
+// TestBuildVerifiedSnapshotProblemEchoIsBounded（整分支 OCR 二轮 F1）：
+// 本函数导出且契约明文「不得依赖调用方先跑 ValidateManifest」——三处
+// manifest 侧字段回显（missing 的 decl.Name、digest mismatch 的
+// decl.Name/decl.InputSchemaDigest、description 错误前缀的 decl.Name）必须
+// 全部走 echoQuoted 截断，单条问题消息不得因 %q 转义膨胀到字段原长。
+func TestBuildVerifiedSnapshotProblemEchoIsBounded(t *testing.T) {
+	long := strings.Repeat("x", 3000)
+	schema := []byte(`{"type":"object","properties":{}}`)
+
+	// 场景 1：missing——未匹配 live 的 decl.Name 原样回显（无任何长度前置）。
+	m := validManifest()
+	m.Tools = []types.PluginToolDecl{{Name: long, InputSchemaDigest: "d"}}
+	_, _, err := BuildVerifiedSnapshot(m, nil)
+	require.ErrorContains(t, err, "missing from live endpoint")
+	require.LessOrEqual(t, len(err.Error()), 400, "missing-tool echo must be truncated")
+	require.NotContains(t, err.Error(), long)
+
+	// 场景 2：digest mismatch——decl.InputSchemaDigest 是未审核字段，
+	// 恶意清单可声明任意长度假 digest。
+	m2 := validManifest()
+	m2.Tools = []types.PluginToolDecl{{Name: "search_my_week_issues", InputSchemaDigest: long}}
+	live := []*types.MCPTool{{Name: "search_my_week_issues", InputSchema: schema}}
+	_, _, err = BuildVerifiedSnapshot(m2, live)
+	require.ErrorContains(t, err, "schema digest mismatch")
+	require.LessOrEqual(t, len(err.Error()), 400, "declared-digest echo must be truncated")
+	require.NotContains(t, err.Error(), long)
+
+	// 场景 3：live description 校验失败的 where 前缀携带 decl.Name——
+	// 名称须匹配 live（受 128 runes 前置约束），此处锚定路径行为与总体有界。
+	m3 := validManifest()
+	m3.Tools = []types.PluginToolDecl{{Name: "search_my_week_issues", InputSchemaDigest: ToolSchemaDigest(schema)}}
+	live3 := []*types.MCPTool{{
+		Name:        "search_my_week_issues",
+		InputSchema: schema,
+		Description: "bad\u202Edescription", // Cf（RTL 覆写）→ validateDescription 拒绝
+	}}
+	_, _, err = BuildVerifiedSnapshot(m3, live3)
+	require.ErrorContains(t, err, "live description of tool")
+	require.LessOrEqual(t, len(err.Error()), 400, "description-error prefix echo must be truncated")
+}
+
 func TestBuildVerifiedSnapshotRejectsMismatch(t *testing.T) {
 	m := validManifest()
 	// 远端实际 schema 与清单声明不同 → digest 不符
