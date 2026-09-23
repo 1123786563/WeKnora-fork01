@@ -2490,3 +2490,11 @@
 
 /* sr-only（Tailwind utility 平移为语义类，a11y 惯用名保留为 DOM hook——session-sidebar/message-face） */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+
+/* tool-result.tsx 双引号常量 recipes（.trim()/双引号未走 codemod 的手工段） */
+.wk-tool-result-list { margin: 0; display: flex; max-height: 14rem; list-style-type: none; flex-direction: column; gap: 0.5rem; overflow-y: auto; padding: 0; }
+.wk-tool-result-item { display: flex; flex-direction: column; gap: 0.15rem; border-left: 2px solid #edf0f5; padding-left: 0.5rem; }
+.wk-tool-card { display: flex; flex-direction: column; gap: 0.3rem; border-radius: 6px; border: 1px solid #e3e8ef; padding: 0.7rem 0.5rem; }
+.wk-tool-row-title { font-size: 0.8rem; font-weight: 600; color: #1f2d3d; overflow-wrap: break-word; }
+.wk-tool-row-meta { color: #8a94a6; font-size: 0.7rem; }
+.wk-tool-snippet { margin: 0; color: #4a5568; font-size: 0.75rem; line-height: 1.45; overflow-wrap: break-word; }

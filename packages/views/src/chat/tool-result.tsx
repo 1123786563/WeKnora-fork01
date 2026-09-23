@@ -616,13 +616,13 @@ export function planView(data: unknown): PlanViewModel {
  */
 const MONO = "[font-family:ui-monospace,SFMono-Regular,Menlo,monospace]";
 /** .wk-tool-search/web/grep-results list + li recipe (shared). */
-const TOOL_RESULT_LIST = "m-0 flex max-h-[14rem] list-none flex-col gap-[0.5rem] overflow-y-auto p-0";
-const TOOL_RESULT_ITEM = "flex flex-col gap-[0.15rem] border-l-2 border-l-[#edf0f5] pl-[0.5rem]";
+const TOOL_RESULT_LIST = "wk-tool-result-list";
+const TOOL_RESULT_ITEM = "wk-tool-result-item";
 /** .wk-tool-card (shared info-card recipe). */
-const TOOL_CARD = "flex flex-col gap-[0.3rem] rounded-[6px] border border-[#e3e8ef] px-[0.7rem] py-[0.5rem]";
-const TOOL_ROW_TITLE = "text-[0.8rem] font-semibold text-[#1f2d3d] break-words";
-const TOOL_ROW_META = "text-[#8a94a6] text-[0.7rem]";
-const TOOL_SNIPPET = "m-0 text-[#4a5568] text-[0.75rem] leading-[1.45] break-words";
+const TOOL_CARD = "wk-tool-card";
+const TOOL_ROW_TITLE = "wk-tool-row-title";
+const TOOL_ROW_META = "wk-tool-row-meta";
+const TOOL_SNIPPET = "wk-tool-snippet";
 
 function EmptyState({ label }: { label: string }) {
   return <p className="wk-tool-empty wk-vc-tool-result-1">{label}</p>;

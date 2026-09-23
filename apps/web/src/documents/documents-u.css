@@ -3001,3 +3001,9 @@
 /* 手工段：合并正文 markdown 排版（[&_p:first/last-child] 任意子代变体） */
 .markdown-content > p:first-child { margin-top: 0; }
 .markdown-content > p:last-child { margin-bottom: 0; }
+
+/* 手工段：.trim() 模板（upload single-select / setting-row） */
+.wk-kd-singlesel { position: relative; width: 280px; }
+@media (max-width: 720px) { .wk-kd-singlesel { width: 100%; } }
+.wk-kd-settingrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--wk-border, #e4e7ec); padding-block: 10px; }
+@media (max-width: 720px) { .wk-kd-settingrow { flex-direction: column; } }

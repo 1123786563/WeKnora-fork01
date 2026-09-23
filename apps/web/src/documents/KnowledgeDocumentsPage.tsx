@@ -1761,7 +1761,7 @@ export function UploadSingleSelect({ value, options, onChange, ariaLabel, classN
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
   const choose = (index: number) => { const option = options[index]; if (!option || option.disabled) return; onChange(option.value); setOpen(false); setActiveIndex(index); };
-  return <div className={`wk-upload-single-select relative w-[280px] max-[720px]:w-full ${className}`.trim()} ref={rootRef}>
+  return <div className={`wk-upload-single-select wk-kd-singlesel ${className}`.trim()} ref={rootRef}>
     <button type="button" className="wk-upload-single-select__trigger wk-kd-28" role="combobox" aria-label={ariaLabel} aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); setActiveIndex((current) => Math.max(0, Math.min(options.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
       else if (event.key === "Enter" && open) { event.preventDefault(); choose(activeIndex); }
@@ -1851,7 +1851,7 @@ export function UploadSwitch({ checked, ariaLabel, onChange }: { checked: boolea
 function UploadSettingRow({ label, description, children, className = "" }: { label: ReactNode; description?: string; children: ReactNode; className?: string }) {
   // CSS cascade: .wk-upload-setting-row--separators stretched its control.
   const separators = className.includes("wk-upload-setting-row--separators");
-  return <div className={`wk-upload-setting-row ${className} flex items-start justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] py-[10px] max-[720px]:flex-col`.trim()}>
+  return <div className={`wk-upload-setting-row wk-kd-settingrow ${className}`.trim()}>
     <div className="wk-upload-setting-info wk-kd-40"><label className="wk-kd-41">{label}</label>{description ? <p className="wk-muted wk-kd-42">{description}</p> : null}</div>
     <div className={`wk-upload-setting-control wk-kd-150 ${separators ? "wk-kd-151" : "wk-kd-152"}`}>{children}</div>
   </div>;
