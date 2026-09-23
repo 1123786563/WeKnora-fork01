@@ -1,6 +1,6 @@
 export { createMobileRuntime } from './runtime/mobile-runtime.ts';
-export { createInMemoryCredentialStore } from './runtime/in-memory-adapters.ts';
-export type { AppLifecyclePort, CredentialStore, DeploymentStore, MobileRuntimePorts, OidcBrowserPort, PendingOidc, PendingOidcStore, RuntimeRemote, StoredCredential } from './runtime/ports.ts';
+export { createInMemoryCredentialStore, createInMemoryDeploymentRegistry } from './runtime/in-memory-adapters.ts';
+export type { AppLifecyclePort, CredentialStore, DeploymentRegistry, DeploymentStore, MobileRuntimePorts, OidcBrowserPort, PendingOidc, PendingOidcStore, RuntimeRemote, StoredCredential } from './runtime/ports.ts';
 export type { Deployment, DeploymentInput, MobileRuntime, RuntimeReason, RuntimeSnapshot, RuntimeSurface, ScopeLease, TenantOption } from './runtime/types.ts';
 export { createScopedVault, scopeKeyOf } from './vault/scoped-vault.ts';
 export { createWebCryptoCipher } from './vault/web-crypto-cipher.ts';
