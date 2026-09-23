@@ -33,37 +33,60 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
  const [uploadNotice, setUploadNotice] = useState('')
  const scopeEpoch = useRef(0)
  const mutationBlocked = Boolean(unknownAction || desk.pendingAction)
- const clearForbiddenState = () => { setView(undefined); setUnknownAction(undefined); setSources([]); setSelectedFile(undefined); setUploadUnknown(undefined); setUploadNotice('') }
+ const isCurrent = (epoch: number) => scopeEpoch.current === epoch
+ const invalidateForbidden = (parsed?: { code?: string; currentRevision?: number; text: string }) => {
+  scopeEpoch.current += 1
+  desk.clear()
+  setView(undefined); setUnknownAction(undefined); setSources([]); setSelectedFile(undefined); setUploadUnknown(undefined); setUploadNotice('')
+  setReceiptNotice(''); setBusy(false); setUploadBusy(false); setLoading(false)
+  if (parsed) setError(parsed)
+ }
  const sync = useCallback(() => setView(desk.snapshot), [desk])
  const load = useCallback(async () => {
+  const epoch = scopeEpoch.current
   setLoading(true); setError(undefined)
-  try { const data = await desk.open(); if (data) setView(data) }
-  catch (cause) { const parsed = message(cause); setError(parsed); if (parsed.code === 'forbidden') clearForbiddenState() }
-  finally { setLoading(false) }
- }, [desk])
+  desk.activate(scope.userId ?? userId, scope.tenantId)
+  try {
+   const data = await desk.open()
+   if (!isCurrent(epoch)) return
+   if (data) setView(data)
+   const items = await client.career.sources()
+   if (!isCurrent(epoch)) return
+   setSources(items)
+  } catch (cause) {
+   if (!isCurrent(epoch)) return
+   const parsed = message(cause)
+   if (parsed.code === 'forbidden') invalidateForbidden(parsed)
+   else setError(parsed)
+  } finally { if (isCurrent(epoch)) setLoading(false) }
+ }, [client, desk, scope.userId, userId, scope.tenantId])
  useEffect(() => {
   scopeEpoch.current += 1
-  const epoch = scopeEpoch.current
   const activeUser = scope.userId ?? userId
   setView(undefined); setUnknownAction(undefined); setReceiptNotice('')
   setSources([]); setSelectedFile(undefined); setUploadUnknown(undefined); setUploadNotice('')
   desk.activate(activeUser, scope.tenantId)
   void load()
-  void client.career.sources().then((items) => { if (scopeEpoch.current === epoch) setSources(items) }).catch((cause) => { if (scopeEpoch.current === epoch) { const parsed = message(cause); setError(parsed); if (parsed.code === 'forbidden') clearForbiddenState() } })
   return () => { scopeEpoch.current += 1; desk.clear() }
  }, [desk, client, scope.userId, userId, scope.tenantId, scope.generation, load])
  const refreshSources = useCallback(async () => {
   const epoch = scopeEpoch.current
-  const items = await client.career.sources()
-  if (scopeEpoch.current === epoch) setSources(items)
-  return scopeEpoch.current === epoch ? items : []
+  try {
+   const items = await client.career.sources()
+   if (!isCurrent(epoch)) return []
+   setSources(items)
+   return items
+  } catch (cause) {
+   if (isCurrent(epoch) && message(cause).code === 'forbidden') invalidateForbidden(message(cause))
+   throw cause
+  }
  }, [client])
  const sendUpload = useCallback(async (attempt: { file: File; requestId: string; expectedRevision: number }) => {
   const epoch = scopeEpoch.current
   setUploadBusy(true); setUploadNotice('上传中…'); setError(undefined)
   try {
    const result: CareerUpload = await client.career.upload(attempt.file, attempt.file.name, attempt.requestId, attempt.expectedRevision)
-   if (scopeEpoch.current !== epoch) return
+   if (!isCurrent(epoch)) return
    setSources((current) => [result.source, ...current.filter((source) => source.id !== result.source.id)])
    if (result.receipt) {
     setUploadNotice(`简历已处理，生成 ${result.receipt.proposals.length} 条待确认提案。`)
@@ -75,27 +98,39 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
    if (result.source.status === 'failed' || result.source.status === 'ready') { setUploadUnknown(undefined); setSelectedFile(undefined) }
    else setUploadUnknown(attempt)
    await refreshSources()
-   if (result.receipt) { await desk.refresh(); sync() }
+   if (!isCurrent(epoch)) return
+   if (result.receipt) { await desk.refresh(); if (!isCurrent(epoch)) return; sync() }
   } catch (cause) {
-   if (scopeEpoch.current !== epoch) return
-   const parsed = message(cause); setError(parsed)
-   if (parsed.code === 'revision_conflict') { await desk.refresh().then(sync).catch(() => undefined); await refreshSources().catch(() => undefined); setUploadUnknown(undefined); setUploadNotice('档案已变化。请检查当前修订后明确开始一次新的上传。') }
-   else if (parsed.code === 'forbidden') { clearForbiddenState(); setSources([]); setSelectedFile(undefined); setUploadUnknown(undefined) }
+   if (!isCurrent(epoch)) return
+   const parsed = message(cause)
+   if (parsed.code === 'forbidden') invalidateForbidden(parsed)
+   else if (parsed.code === 'revision_conflict') {
+    setError(parsed)
+    await desk.refresh().then(() => { if (isCurrent(epoch)) sync() }).catch((refreshError) => { if (isCurrent(epoch) && message(refreshError).code === 'forbidden') invalidateForbidden(message(refreshError)) })
+    if (!isCurrent(epoch)) return
+    await refreshSources().catch(() => undefined)
+    if (!isCurrent(epoch)) return
+    setUploadUnknown(undefined); setUploadNotice('档案已变化。请检查当前修订后明确开始一次新的上传。')
+   }
    else { setUploadUnknown(attempt); setUploadNotice('上传结果暂时未知。已保留原文件和请求编号；先查询来源状态，再决定是否用相同内容重试。') }
-  } finally { if (scopeEpoch.current === epoch) setUploadBusy(false) }
+  } finally { if (isCurrent(epoch)) setUploadBusy(false) }
  }, [client, desk, refreshSources, sync])
  const doAction = useCallback(async (action: CareerAction) => {
   if (desk.pendingAction || unknownAction) return
+  const epoch = scopeEpoch.current
   setBusy(true); setError(undefined); setReceiptNotice('')
   try {
    const receipt = await desk.mutate(action)
-   if (receipt) { sync(); setUnknownAction(undefined); setReceiptNotice(`操作已记录，回执 ${receipt.requestId}，修订 ${receipt.revision}`); await desk.refresh(); sync() }
+   if (!isCurrent(epoch)) return
+   if (receipt) { sync(); setUnknownAction(undefined); setReceiptNotice(`操作已记录，回执 ${receipt.requestId}，修订 ${receipt.revision}`); await desk.refresh(); if (!isCurrent(epoch)) return; sync() }
   } catch (cause) {
-   const parsed = message(cause); setError(parsed)
+   if (!isCurrent(epoch)) return
+   const parsed = message(cause)
+   if (parsed.code === 'forbidden') { invalidateForbidden(parsed); return }
+   setError(parsed)
    if (parsed.code === 'outcome_unknown') setUnknownAction(action)
-   if (parsed.code === 'forbidden') clearForbiddenState()
-   if (parsed.code === 'revision_conflict') { await desk.refresh().then(sync).catch(() => undefined) }
-  } finally { setBusy(false) }
+   if (parsed.code === 'revision_conflict') { await desk.refresh().then(() => { if (isCurrent(epoch)) sync() }).catch((refreshError) => { if (isCurrent(epoch) && message(refreshError).code === 'forbidden') invalidateForbidden(message(refreshError)) }) }
+  } finally { if (isCurrent(epoch)) setBusy(false) }
  }, [desk, sync, unknownAction])
  const submitProposal = (event: FormEvent) => {
   event.preventDefault(); if (!view || !form.value.trim()) return
@@ -103,17 +138,19 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
  }
  const retryReceipt = async () => {
   if (!unknownAction) return
+  const epoch = scopeEpoch.current
   setBusy(true)
-  try { const receipt = await desk.reconcile(unknownAction.requestId); sync(); if (receipt) { setReceiptNotice(`已找回回执 ${receipt.requestId}，修订 ${receipt.revision}`); setUnknownAction(undefined) } else setReceiptNotice('暂未找到回执；保留原请求，请勿更换请求编号重试。') }
-  catch (cause) { const parsed = message(cause); setError(parsed); if (parsed.code === 'not_found' && desk.safeToRetry) setReceiptNotice('未找到已提交回执。可以用完全相同的内容和请求编号安全重试。'); if (parsed.code === 'forbidden') clearForbiddenState() }
-  finally { setBusy(false) }
+  try { const receipt = await desk.reconcile(unknownAction.requestId); if (!isCurrent(epoch)) return; sync(); if (receipt) { setReceiptNotice(`已找回回执 ${receipt.requestId}，修订 ${receipt.revision}`); setUnknownAction(undefined) } else setReceiptNotice('暂未找到回执；保留原请求，请勿更换请求编号重试。') }
+  catch (cause) { if (!isCurrent(epoch)) return; const parsed = message(cause); if (parsed.code === 'forbidden') { invalidateForbidden(parsed); return }; setError(parsed); if (parsed.code === 'not_found' && desk.safeToRetry) setReceiptNotice('未找到已提交回执。可以用完全相同的内容和请求编号安全重试。') }
+  finally { if (isCurrent(epoch)) setBusy(false) }
  }
  const retrySameAction = async () => {
   if (!unknownAction || !desk.safeToRetry) return
+  const epoch = scopeEpoch.current
   setBusy(true); setError(undefined)
-  try { const receipt = await desk.retryUnknown(unknownAction); if (receipt) { sync(); setUnknownAction(undefined); setReceiptNotice(`已取得同一请求的回执 ${receipt.requestId}，修订 ${receipt.revision}`); await desk.refresh(); sync() } }
-  catch (cause) { const parsed = message(cause); setError(parsed); if (parsed.code === 'outcome_unknown') setUnknownAction(desk.pendingAction ?? unknownAction); else if (!desk.pendingAction) setUnknownAction(undefined); if (parsed.code === 'forbidden') clearForbiddenState(); if (parsed.code === 'revision_conflict') { await desk.refresh().then(sync).catch(() => undefined) } }
-  finally { setBusy(false) }
+  try { const receipt = await desk.retryUnknown(unknownAction); if (!isCurrent(epoch)) return; if (receipt) { sync(); setUnknownAction(undefined); setReceiptNotice(`已取得同一请求的回执 ${receipt.requestId}，修订 ${receipt.revision}`); await desk.refresh(); if (!isCurrent(epoch)) return; sync() } }
+  catch (cause) { if (!isCurrent(epoch)) return; const parsed = message(cause); if (parsed.code === 'forbidden') { invalidateForbidden(parsed); return }; setError(parsed); if (parsed.code === 'outcome_unknown') setUnknownAction(desk.pendingAction ?? unknownAction); else if (!desk.pendingAction) setUnknownAction(undefined); if (parsed.code === 'revision_conflict') { await desk.refresh().then(() => { if (isCurrent(epoch)) sync() }).catch((refreshError) => { if (isCurrent(epoch) && message(refreshError).code === 'forbidden') invalidateForbidden(message(refreshError)) }) } }
+  finally { if (isCurrent(epoch)) setBusy(false) }
  }
  const sourceText = (source: CareerSource) => [source.label || (source.kind === 'user' ? '本人提供' : source.kind), source.referenceId].filter(Boolean).join(' · ')
  return <main className="wk-page wk-page--std" style={{ maxWidth: 1040, margin: '0 auto', padding: '24px 20px' }}>
@@ -132,10 +169,11 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
    {uploadNotice ? <p role="status" aria-live="polite">{uploadNotice}</p> : null}
    {uploadUnknown ? <div role="group" aria-label="恢复简历上传" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
     <Button variant="outline" disabled={uploadBusy} onClick={async () => {
+     const epoch = scopeEpoch.current
      setUploadBusy(true)
-     try { const items = await refreshSources(); const matching = items.find((source) => source.fileName === uploadUnknown.file.name); if (matching?.status === 'processing') { setUploadNotice('该来源仍在处理中，暂不重复提交。'); return }; if (matching?.status === 'ready') { setUploadUnknown(undefined); setSelectedFile(undefined); setUploadNotice('该来源已完成。请检查来源和待确认提案。'); await desk.refresh().then(sync).catch(() => undefined); return }; if (matching?.status === 'failed') { setUploadUnknown(undefined); setSelectedFile(undefined); setUploadNotice('上次上传已失败。请重新选择文件以开始新的上传。'); return }; setUploadNotice('尚未找到完成或处理中来源。可用原文件、请求编号和修订安全重试。') }
-     catch (cause) { const parsed = message(cause); setError(parsed); if (parsed.code === 'forbidden') { setSources([]); setUploadUnknown(undefined); setSelectedFile(undefined) } }
-     finally { setUploadBusy(false) }
+     try { await refreshSources(); if (!isCurrent(epoch)) return; setUploadNotice('来源列表不包含请求编号，无法确认本次上传结果。请用保留的原文件、请求编号和修订精确重试。') }
+     catch (cause) { if (isCurrent(epoch)) { const parsed = message(cause); if (parsed.code !== 'forbidden') setError(parsed) } }
+     finally { if (isCurrent(epoch)) setUploadBusy(false) }
     }}>查询来源状态</Button>
     <Button disabled={uploadBusy} onClick={() => void sendUpload(uploadUnknown)}>用原文件和请求编号重试</Button>
    </div> : null}
@@ -147,7 +185,7 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
    </li>)}</ul></section> : <p>还没有简历来源记录。</p>}
   </Card>}
   {view ? <>
-   <Card bordered style={{ marginBottom: 16 }}><div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}><div><h2 style={{ margin: 0 }}>已确认档案</h2><p style={{ margin: '6px 0 0' }}>当前修订 {view.revision} · {view.facts.length} 条确认事实</p></div><Button variant="outline" onClick={() => void desk.refresh().then(sync).catch((e) => { const parsed = message(e); setError(parsed); if (parsed.code === 'forbidden') clearForbiddenState() })}>刷新</Button></div>
+   <Card bordered style={{ marginBottom: 16 }}><div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}><div><h2 style={{ margin: 0 }}>已确认档案</h2><p style={{ margin: '6px 0 0' }}>当前修订 {view.revision} · {view.facts.length} 条确认事实</p></div><Button variant="outline" onClick={async () => { const epoch = scopeEpoch.current; try { await desk.refresh(); if (isCurrent(epoch)) sync() } catch (cause) { if (!isCurrent(epoch)) return; const parsed = message(cause); if (parsed.code === 'forbidden') invalidateForbidden(parsed); else setError(parsed) } }}>刷新</Button></div>
     {view.facts.length ? <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>{view.facts.map((fact) => <div key={`${fact.key}:${fact.revision}`} style={{ border: '1px solid #e7e7e7', borderRadius: 8, padding: 14 }}><dt style={{ color: '#666' }}>{fieldLabel[fact.key] || fact.key}</dt><dd style={{ margin: '6px 0', fontWeight: 600 }}>{fact.value}</dd><small>{sourceText(fact.source)} · {fact.confirmation.confirmedAt}</small></div>)}</dl> : <p>还没有确认事实。可以先提交档案提案，或直接确认本人提供的信息。</p>}
    </Card>
    <Card bordered style={{ marginBottom: 16 }}><h2 style={{ marginTop: 0 }}>待确认提案</h2>{view.proposals.filter((proposal) => proposal.status === 'pending').length ? <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>{view.proposals.filter((proposal) => proposal.status === 'pending').map((proposal) => <li key={proposal.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eee', padding: '12px 0' }}><div><strong>{fieldLabel[proposal.key] || proposal.key}：{proposal.value}</strong><div><small>待确认 · 来源：{sourceText(proposal.source)} · 提交于 {proposal.createdAt}</small></div>{proposal.evidence ? <blockquote>原文依据：{proposal.evidence}</blockquote> : null}</div><div style={{ display: 'flex', gap: 8 }}><Button size="small" loading={busy} disabled={busy || mutationBlocked} onClick={() => void doAction({ action: 'confirm_proposal', proposalId: proposal.id, source: { kind: 'user', label: '本人确认' }, requestId: makeId(), expectedRevision: view.revision })}>确认</Button><Button size="small" variant="outline" disabled={busy || mutationBlocked} onClick={() => void doAction({ action: 'dismiss', proposalId: proposal.id, source: { kind: 'user', label: '本人忽略' }, requestId: makeId(), expectedRevision: view.revision })}>忽略</Button></div></li>)}</ul> : <p>没有待确认提案。</p>}</Card>

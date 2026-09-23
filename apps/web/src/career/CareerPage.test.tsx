@@ -23,7 +23,7 @@ async function mount(api: Record<string, (...args: never[]) => unknown>) {
  host = document.createElement('div'); document.body.append(host); root = createRoot(host)
  const client = { career: { ...api, sources: api.sources ?? (async () => []), upload: api.upload ?? (async () => { throw new Error('unused upload') }) } } as unknown as WeKnoraClient
  const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
- await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'u' })); await new Promise((resolve) => setImmediate(resolve)) })
+ await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'u' })); await new Promise((resolve) => setImmediate(resolve)); await new Promise((resolve) => setImmediate(resolve)) })
  return host
 }
 const button = (container: HTMLElement, label: string): HTMLElement => {
@@ -158,8 +158,90 @@ test('ambiguous resume upload retains the original identity and processing preve
  assert.equal(attempts.length, 1)
  assert.match(container.textContent ?? '', /上传结果暂时未知/)
  await act(async () => { button(container, '查询来源状态').click(); await new Promise((resolve) => setImmediate(resolve)) })
- assert.match(container.textContent ?? '', /仍在处理中/)
+ assert.match(container.textContent ?? '', /无法确认本次上传结果/)
  assert.equal(button(container, '开始上传').hasAttribute('disabled'), true)
+})
+
+test('same-name source history cannot resolve an unknown upload; exact replay keeps its original tuple', async () => {
+ for (const status of ['ready', 'failed', 'processing'] as const) {
+  const oldSource = { id: `old-${status}`, revision: 1, fileName: 'resume.pdf', mimeType: 'application/pdf', size: 12, digest: 'old', status, errorMessage: status === 'failed' ? 'old failure' : undefined, createdAt: 'yesterday' }
+  const replayed = { ...oldSource, id: 'new-source', revision: 2, digest: 'new', status: 'ready' as const, errorMessage: undefined }
+  const attempts: Array<{ file: Blob; name: string; requestId: string; expectedRevision: number }> = []
+  let calls = 0
+  const container = await mount({
+   open: async () => profile, list: async () => profile, changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+   sources: async () => [oldSource], upload: async (file: Blob, name: string, requestId: string, expectedRevision: number) => {
+    attempts.push({ file, name, requestId, expectedRevision }); calls += 1
+    if (calls === 1) throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' })
+    return { source: replayed }
+   },
+  } as never)
+  const fileInput = container.querySelector<HTMLInputElement>('#career-resume-file')!
+  const originalFile = new dom.window.File(['new resume'], 'resume.pdf', { type: 'application/pdf' })
+  Object.defineProperty(fileInput, 'files', { configurable: true, value: [originalFile] })
+  await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+  await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+  const first = attempts[0]!
+  await act(async () => { button(container, '查询来源状态').click(); await new Promise((resolve) => setImmediate(resolve)) })
+  assert.match(container.textContent ?? '', /无法确认本次上传结果/)
+  assert.ok(container.querySelector('[aria-label="恢复简历上传"]'))
+  await act(async () => { button(container, '用原文件和请求编号重试').click(); await new Promise((resolve) => setImmediate(resolve)) })
+  assert.equal(attempts.length, 2)
+  assert.equal(attempts[1]?.file, first.file)
+  assert.equal(attempts[1]?.name, first.name)
+  assert.equal(attempts[1]?.requestId, first.requestId)
+  assert.ok(first.requestId.length > 0)
+  assert.equal(attempts[1]?.expectedRevision, first.expectedRevision)
+  assert.equal(container.querySelector('[aria-label="恢复简历上传"]'), null)
+  await act(async () => { root?.unmount() }); root = undefined; host?.remove(); host = undefined
+ }
+})
+
+test('forbidden source read invalidates an outstanding upload and fences its late response', async () => {
+ let rejectInitialSources: ((error: unknown) => void) | undefined
+ let resolveUpload: ((value: unknown) => void) | undefined
+ let resolveLateSources: ((value: unknown) => void) | undefined
+ let sourceCalls = 0
+ const container = await mount({
+  open: async () => profile, list: async () => profile, changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+  sources: () => ++sourceCalls === 1 ? new Promise((_resolve, reject) => { rejectInitialSources = reject }) : new Promise((resolve) => { resolveLateSources = resolve }),
+  upload: () => new Promise((resolve) => { resolveUpload = resolve }),
+ } as never)
+ const fileInput = container.querySelector<HTMLInputElement>('#career-resume-file')!
+ Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['resume'], 'private.pdf', { type: 'application/pdf' })] })
+ await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+ await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+ assert.ok(resolveUpload, 'upload request is still pending when authorization is lost')
+ rejectInitialSources?.(Object.assign(new Error('access revoked'), { code: 'forbidden' }))
+ await act(async () => { await new Promise((resolve) => setImmediate(resolve)) })
+ assert.match(container.textContent ?? '', /当前空间不可访问/)
+ assert.doesNotMatch(container.textContent ?? '', /本科/)
+ resolveUpload?.({ source: { id: 'private-source', revision: 2, fileName: 'private.pdf', mimeType: 'application/pdf', size: 6, digest: 'd', status: 'ready', createdAt: 'now' }, receipt: { kind: 'intake_completed', requestId: 'private-batch', revision: 2, proposals: [{ id: 'private-proposal', key: 'education.school', value: 'Secret University', source: { kind: 'resume_extraction', referenceId: 'private-source' }, status: 'pending', createdAt: 'now' }] } })
+ await act(async () => { await new Promise((resolve) => setImmediate(resolve)) })
+ assert.equal(sourceCalls, 1, 'the invalidated upload must not start a follow-up source request')
+ assert.doesNotMatch(container.textContent ?? '', /private\.pdf|Secret University|简历已处理/)
+ assert.doesNotMatch(container.textContent ?? '', /来源状态已更新/)
+ resolveLateSources?.([])
+ assert.equal(container.querySelector('[aria-label="恢复简历上传"]'), null)
+})
+
+test('forbidden recovery source read does not write a late notice or retain the upload', async () => {
+ let rejectRecoverySources: ((error: unknown) => void) | undefined
+ let sourcesCall = 0
+ const container = await mount({
+  open: async () => profile, list: async () => profile, changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+  sources: () => ++sourcesCall === 1 ? Promise.resolve([]) : new Promise((_resolve, reject) => { rejectRecoverySources = reject }),
+  upload: async () => { throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' }) },
+ } as never)
+ const fileInput = container.querySelector<HTMLInputElement>('#career-resume-file')!
+ Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['resume'], 'resume.pdf', { type: 'application/pdf' })] })
+ await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+ await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+ await act(async () => { button(container, '查询来源状态').click() })
+ rejectRecoverySources?.(Object.assign(new Error('access revoked'), { code: 'forbidden' }))
+ await act(async () => { await new Promise((resolve) => setImmediate(resolve)) })
+ assert.match(container.textContent ?? '', /当前空间不可访问/)
+ assert.equal(container.querySelector('[aria-label="恢复简历上传"]'), null)
 })
 
 test('scope switch clears resume source and upload state before old async response renders', async () => {
@@ -169,9 +251,9 @@ test('scope switch clears resume source and upload state before old async respon
  host = document.createElement('div'); document.body.append(host); root = createRoot(host)
  const client = { career: api } as unknown as WeKnoraClient
  const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
- await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'u' })); await new Promise((resolve) => setImmediate(resolve)) })
+ await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'u' })); await new Promise((resolve) => setImmediate(resolve)); await new Promise((resolve) => setImmediate(resolve)) })
  scopeController.switchScope('https://weknora.test', 'other', 'other-tenant')
- await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'other' })); await new Promise((resolve) => setImmediate(resolve)) })
+ await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'other' })); await new Promise((resolve) => setImmediate(resolve)); await new Promise((resolve) => setImmediate(resolve)) })
  finishOld?.([{ id: 'private-old', revision: 1, fileName: 'private.pdf', mimeType: 'application/pdf', size: 1, digest: 'd', status: 'ready', createdAt: 'now' }])
  await act(async () => { await new Promise((resolve) => setImmediate(resolve)) })
  assert.doesNotMatch(host.textContent ?? '', /private\.pdf/)
