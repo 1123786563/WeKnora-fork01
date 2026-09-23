@@ -27,8 +27,11 @@ export interface WorkbenchOverview {
   in_progress: ExecutionSummary[];
   pending_interactions: InteractionSummary[];
   recent_artifacts: ArtifactSummary[];
+  recently_completed: ExecutionSummary[];
   as_of: string;
 }
+
+export type AttentionState = 'none' | 'required';
 
 export interface ExecutionSummary {
   run_id: string;
@@ -37,6 +40,8 @@ export interface ExecutionSummary {
   run_status: string;
   execution_status: string;
   settlement_status: string;
+  /** 需要成员介入与否；旧读模型可缺省（展示层按 'none' 兜底）。 */
+  attention?: AttentionState;
   updated_at: string;
 }
 
@@ -102,6 +107,12 @@ function count(value: unknown, path: string): number {
   return value;
 }
 
+function attentionState(value: unknown, path: string): AttentionState | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (value === 'none' || value === 'required') return value;
+  throw new ContractError(path, 'expected "none" or "required"');
+}
+
 function executionSummary(value: unknown, path: string): ExecutionSummary {
   const row = object(value, path);
   return {
@@ -111,6 +122,7 @@ function executionSummary(value: unknown, path: string): ExecutionSummary {
     run_status: nonEmpty(row.run_status, `${path}.run_status`),
     execution_status: nonEmpty(row.execution_status, `${path}.execution_status`),
     settlement_status: nonEmpty(row.settlement_status, `${path}.settlement_status`),
+    ...(attentionState(row.attention, `${path}.attention`) === undefined ? {} : { attention: attentionState(row.attention, `${path}.attention`) }),
     updated_at: nonEmpty(row.updated_at, `${path}.updated_at`),
   };
 }
@@ -143,6 +155,7 @@ export function parseWorkbenchOverview(value: unknown): WorkbenchOverview {
         produced_at: nonEmpty(r.produced_at, `recent_artifacts[${i}].produced_at`),
       };
     }) : (() => { throw new ContractError('recent_artifacts', 'expected an array'); })(),
+    recently_completed: Array.isArray(row.recently_completed) ? row.recently_completed.map((item, i) => executionSummary(item, `recently_completed[${i}]`)) : (() => { throw new ContractError('recently_completed', 'expected an array'); })(),
     as_of: nonEmpty(row.as_of, 'as_of'),
   };
 }
