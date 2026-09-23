@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { TenantInvitation, WeKnoraClient } from '@weknora/api-client';
-// S6 换装（T15 前置）：表单栈离开 packages/ui 旧栈，换 tdesign（playbook §1 映射：
-// Dialog open/title/className → visible/header/dialogClassName；Input/Textarea
-// onChange 改 (value) 签名、maxLength → maxlength）；Card/Status 无 TDesign
-// 对应，走 shared/wk-legacy（.wk-card/.wk-status 族，渲染不变）。布局不动。
-import { Button as TButton, Dialog as TDialog, Input as TInput, Textarea as TTextarea } from 'tdesign-react';
-import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
+// S6 换装（T15 前置）：表单栈离开 packages/ui 旧栈——Button/Input/Textarea 换
+// tdesign（playbook §1：onChange 改 (value) 签名、maxLength → maxlength）；
+// Card/Status 无 TDesign 对应走 shared/wk-legacy；两个弹窗同走 WkDialog
+// （DOM 同构旧栈：本页为 React 独有表面、无扫描锚点，tdesign Dialog 的
+// Portal+CSSTransition 在 node/jsdom 下退场计时器不触发会造成测试假挂，
+// WkDialog 渲染树与迁移前逐节点一致）。
+import { Button as TButton, Input as TInput, Textarea as TTextarea } from 'tdesign-react';
+import { WkCard as Card, WkDialog as TDialog, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import type { WebScopeRuntime } from '../platform/scope-runtime.ts';
 import { onboardingView, validateCreateTenant, type OnboardingPolicyInput } from './onboarding.ts';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
@@ -143,11 +145,10 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
     <TButton type="button" onClick={() => void onLogout()}>{msg(locale, 'auth.logout')}</TButton>
 
     <TDialog
-      visible={createVisible}
-      header={<span className="wk-onb-4"><svg className="wk-onb-5" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
-      footer={false}
+      open={createVisible}
+      title={<span className="wk-onb-4"><svg className="wk-onb-5" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
       onClose={() => { if (!creating) { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); } }}
-      dialogClassName="wk-onb-6"
+      className="wk-onb-6"
     >
       <p className="wk-muted wk-onb-3">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
       <form className="wk-form wk-onb-7" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
@@ -168,11 +169,10 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
     </TDialog>
 
     <TDialog
-      visible={invitationsVisible}
-      header={msg(locale, 'auth.workspaceOnboarding.invitations')}
-      footer={false}
+      open={invitationsVisible}
+      title={msg(locale, 'auth.workspaceOnboarding.invitations')}
       onClose={() => setInvitationsVisible(false)}
-      dialogClassName="wk-onb-11"
+      className="wk-onb-11"
     >
       {invitationError ? <Status tone="error">{invitationError}</Status> : null}
       {invitationNotice ? <Status tone="success">{invitationNotice}</Status> : null}

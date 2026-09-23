@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TenantInvitation, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
-// S6 换装（T15 前置）：packages/ui 旧栈 表单栈离开，换 tdesign（playbook §1：
-// Dialog open/title/className/closeLabel → visible/header/dialogClassName；
-// variant="primary" → theme="primary"；size small 直译）；Status 无 TDesign
-// 对应，走 shared/wk-legacy（.wk-status 族，渲染不变）。布局不动。
-import { Button as TButton, Dialog as TDialog } from 'tdesign-react';
-import { WkStatus as Status } from '../shared/wk-legacy.tsx';
+// S6 换装（T15 前置）：packages/ui 旧栈 表单栈离开——Button 换 tdesign
+// （playbook §1：variant="primary" → theme="primary"；size small 直译）；
+// Status 无 TDesign 对应，走 shared/wk-legacy（.wk-status 族，渲染不变）。
+// 弹层同走 WkDialog（DOM 同构旧栈：铃铛弹层为点击后表面、不在七页扫描锚点
+// 内，tdesign Dialog 的 Portal+CSSTransition 在 node/jsdom 下退场计时器
+// 不触发会造成测试假挂，WkDialog 渲染树与迁移前逐节点一致）。布局不动。
+import { Button as TButton } from 'tdesign-react';
+import { WkDialog as Dialog, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { usePreferredLocale } from '../locale.ts';
 import './platform-u.css';
 
@@ -122,7 +124,7 @@ export function InvitationInbox({ client }: InvitationInboxProps) {
         <span className="-right-2 -top-2 wk-inv-3" aria-label={`${pendingCount}`}>{pendingCount > 99 ? '99+' : pendingCount}</span>
       </button>
     </span> : null}
-    <TDialog visible={open} header={message(locale, 'auth.workspaceOnboarding.invitations')} footer={false} onClose={closeDialog} dialogClassName="wk-inv-4">
+    <Dialog open={open} title={message(locale, 'auth.workspaceOnboarding.invitations')} onClose={closeDialog} closeLabel={message(locale, 'auth.workspaceOnboarding.close')} className="wk-inv-4">
       {invitations === null && !loadError ? <Status>{message(locale, 'auth.workspaceOnboarding.loadingInvitations')}</Status> : null}
       {loadError ? <div className="wk-inv-5"><Status tone="error">{loadError}</Status><TButton type="button" data-action="retry-invitations" onClick={() => void loadInvitations()}>{message(locale, 'auth.workspaceOnboarding.retry')}</TButton></div> : null}
       {actionError ? <Status tone="error">{actionError}</Status> : null}
@@ -134,6 +136,6 @@ export function InvitationInbox({ client }: InvitationInboxProps) {
           <div className="wk-inv-12"><TButton type="button" theme="primary" size="small" data-action="accept" loading={actingId === invitation.id} disabled={actingId !== null} onClick={() => void respond(invitation, true)}>{message(locale, 'tenantInvitation.myInbox.acceptButton')}</TButton><TButton type="button" size="small" loading={actingId === invitation.id} disabled={actingId !== null} data-action="decline" onClick={() => void respond(invitation, false)}>{message(locale, 'tenantInvitation.myInbox.declineButton')}</TButton></div>
         </li>)}
       </ul> : null}
-    </TDialog>
+    </Dialog>
   </>;
 }

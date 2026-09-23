@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import React, { act } from 'react';
 import type { ReactNode } from 'react';
-import { afterEach } from 'node:test';
+import { after, afterEach } from 'node:test';
 
 import nodeModule from 'node:module';
 
@@ -105,8 +105,7 @@ test('workspace creation trims the Vue dialog values before submitting', async (
   await settle(20);
   const createEntry = [...document.querySelectorAll('button')].find((n) => n.textContent === '创建空间') as HTMLButtonElement;
   await act(async () => { createEntry.click(); });
-  // S6 换装：tdesign Dialog 渲染 .t-dialog（无 role=dialog），portal 到 body。
-  const dialog = document.querySelector('.t-dialog') as HTMLElement;
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
   const name = dialog.querySelector('input') as HTMLInputElement;
   const description = dialog.querySelector('textarea') as HTMLTextAreaElement;
   const setValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
@@ -129,13 +128,12 @@ test('invitation actions disable both buttons while responding and show success 
   await act(async () => { mountedRoot?.render(React.createElement(WorkspaceOnboardingPage, { client: deps.client as never, scopeRuntime: deps.scopeRuntime as never, onLogout: async () => {} })); });
   await settle(20);
   await act(async () => { ( [...document.querySelectorAll('button')].find((n) => (n.textContent ?? '').startsWith('查看邀请')) as HTMLButtonElement).click(); await settle(10); });
-  // S6 换装：tdesign Dialog 渲染 .t-dialog（无 role=dialog），portal 到 body。
-  const dialog = document.querySelector('.t-dialog') as HTMLElement;
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
   const accept = [...dialog.querySelectorAll('button')].find((n) => n.textContent === '接受') as HTMLButtonElement;
   const decline = [...dialog.querySelectorAll('button')].find((n) => n.textContent === '拒绝') as HTMLButtonElement;
   await act(async () => { accept.click(); });
-  // S6 换装：tdesign Button disabled 时根标签渲染 div.t-is-disabled（台账 #7），
-  // .disabled 属性断言改走 classList，并重查节点（标签已从 button 换为 div）。
+  // S6 换装：按钮走 tdesign Button，disabled 时根标签渲染 div.t-is-disabled
+  // （台账 #7），.disabled 属性断言改走 classList，并重查节点（标签已变）。
   const acceptNow = [...dialog.querySelectorAll('.t-button')].find((n) => n.textContent === '接受');
   const declineNow = [...dialog.querySelectorAll('.t-button')].find((n) => n.textContent === '拒绝');
   assert.ok(acceptNow?.classList.contains('t-is-disabled'), 'accepting locks the accept action');
@@ -163,10 +161,10 @@ test('tenant creation renders in a modal dialog with the Vue t-dialog copy (S00 
 
   await act(async () => { createEntry!.click(); await settle(10); });
 
-  // Vue: t-dialog modal — the tdesign Dialog card portals over an overlay.
-  const dialog = document.querySelector('.t-dialog') as HTMLElement | null;
-  assert.ok(dialog, 'expected the create form inside the tdesign dialog modal, not an inline card');
-  assert.ok(document.querySelector('.t-dialog__wrap'), 'modal overlay wrap renders');
+  // Vue: t-dialog modal — role=dialog, aria-modal, overlay backdrop.
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'expected the create form inside a role=dialog modal, not an inline card');
+  assert.equal(dialog.getAttribute('aria-modal'), 'true');
 
   // Vue dialog header title + subtitle tip.
   assert.match(dialog.textContent || '', /创建新空间/);
@@ -180,8 +178,8 @@ test('tenant creation renders in a modal dialog with the Vue t-dialog copy (S00 
   // Vue: cancel action inside the dialog.
   const cancel = [...dialog.querySelectorAll('button')].find((n) => n.textContent === '取消');
   assert.ok(cancel, 'expected a 取消 action inside the dialog');
-  await act(async () => { cancel!.click(); await settle(350); });
-  assert.equal(document.querySelector('.t-dialog'), null, 'cancel closes the dialog');
+  await act(async () => { cancel!.click(); await settle(10); });
+  assert.equal(document.querySelector('[role="dialog"]'), null, 'cancel closes the dialog');
 });
 
 test('my invitations renders in a modal dialog like Vue WorkspaceOnboarding', async () => {
@@ -202,12 +200,12 @@ test('my invitations renders in a modal dialog like Vue WorkspaceOnboarding', as
   assert.ok(invitationsEntry, 'expected the invitations entry action');
   await act(async () => { invitationsEntry!.click(); await settle(10); });
 
-  const dialog = document.querySelector('.t-dialog') as HTMLElement | null;
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement | null;
   assert.ok(dialog, 'expected invitations to open in a modal dialog');
-  assert.ok(document.querySelector('.t-dialog__wrap'), 'modal overlay wrap renders');
+  assert.equal(dialog.getAttribute('aria-modal'), 'true');
   assert.match(dialog.textContent || '', /查看邀请/);
   assert.match(dialog.textContent || '', /研发空间/);
-  assert.equal(document.querySelector('.t-dialog')?.closest('.wk-card') ?? null, null);
+  assert.equal(document.querySelector('[role="dialog"]')?.closest('.wk-card') ?? null, null);
 });
 
 test('workspace onboarding keeps the Vue workspace mark before the heading', async () => {

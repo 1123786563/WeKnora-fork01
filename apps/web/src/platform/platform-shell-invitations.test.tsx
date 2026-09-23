@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
-import test, { afterEach } from 'node:test';
+import test, { after, afterEach } from 'node:test';
 import * as React from 'react';
 import { act } from 'react';
 import type { Root } from 'react-dom/client';
@@ -42,6 +42,24 @@ afterEach(async () => {
 });
 
 const settle = (ms = 10) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+
+/** 轮询等待弹层内目标 data-action 按钮渲染（最长 2s），聚跑负载下不竞态。 */
+async function waitForAction(action: string): Promise<HTMLButtonElement> {
+  const deadline = Date.now() + 2000;
+  for (;;) {
+    const hit = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+      .find((button) => button.dataset.action === action);
+    if (hit) return hit;
+    if (Date.now() > deadline) throw new Error(`waitForAction: ${action} not rendered within 2s`);
+    await settle(10);
+  }
+}
+
+after(() => {
+  // tdesign 弹层/输入挂载期的 rAF/transition 计时器在 jsdom 下可能不触发，
+  // 关闭 jsdom window 释放句柄，避免 node --test 等待事件循环排空而假挂。
+  dom.window.close();
+});
 
 function invitation(id = 7) {
   return {
@@ -99,10 +117,10 @@ test('global invitation bell opens a loading inbox and then renders pending invi
   assert.ok(bell);
   assert.equal(bell.getAttribute('aria-label'), '查看邀请');
   await act(async () => bell!.click());
-  assert.match(document.querySelector('.t-dialog')?.textContent ?? '', /加载/);
+  assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /加载/);
   await act(async () => resolveList({ items: [invitation()], total: 1, page: 1, pageSize: 1 }));
   await settle();
-  assert.match(document.querySelector('.t-dialog')?.textContent ?? '', /研发空间/);
+  assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /研发空间/);
 });
 
 test('invitation accept and decline remove the row and refresh the pending count', async () => {
@@ -110,18 +128,17 @@ test('invitation accept and decline remove the row and refresh the pending count
   let declined = 0;
   await mount(fakeClient({ pending: 2, list: async () => ({ items: [invitation(7), invitation(8)], total: 2, page: 1, pageSize: 2 }), accept: async () => { accepted += 1; return {}; }, decline: async () => { declined += 1; } }));
   await act(async () => document.querySelector<HTMLButtonElement>('[data-testid="global-invitation-bell"]')!.click());
-  await settle();
-  const dialog = document.querySelector('.t-dialog')!;
-  const buttons = [...dialog.querySelectorAll<HTMLButtonElement>('button')];
-  await act(async () => buttons.find((button) => button.dataset.action === 'accept')!.click());
+  // WkDialog 同步挂载，但邀请行由异步 listMine 填充：轮询等目标行渲染，
+  // 避免聚跑负载下固定 10ms settle 竞态早退（曾致 find() 空引用）。
+  const acceptBtn = await waitForAction('accept');
+  await act(async () => acceptBtn.click());
   await settle();
   assert.equal(accepted, 1);
   assert.equal(document.querySelectorAll('[data-testid="invitation-row"]').length, 1);
 
   await act(async () => document.querySelector<HTMLButtonElement>('[data-testid="global-invitation-bell"]')!.click());
-  await settle();
-  const dialogAgain = document.querySelector('.t-dialog')!;
-  await act(async () => [...dialogAgain.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.dataset.action === 'decline')!.click());
+  const declineBtn = await waitForAction('decline');
+  await act(async () => declineBtn.click());
   await settle();
   assert.equal(declined, 1);
 });
@@ -133,12 +150,11 @@ test('invitation load failure exposes retry and Escape closes the inbox', async 
   const bell = document.querySelector<HTMLButtonElement>('[data-testid="global-invitation-bell"]')!;
   await act(async () => { bell.focus(); bell.click(); });
   await settle();
-  assert.match(document.querySelector('.t-dialog')?.textContent ?? '', /网络失败/);
+  assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /网络失败/);
   await act(async () => document.querySelector<HTMLButtonElement>('[data-action="retry-invitations"]')!.click());
   await settle();
-  assert.match(document.querySelector('.t-dialog')?.textContent ?? '', /没有待处理的邀请/);
+  assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /没有待处理的邀请/);
   await act(async () => document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-  // S6 换装：tdesign Dialog 退场动画 300ms 后才卸载 DOM（显式 timeout 兜底）。
-  await settle(350);
-  assert.equal(document.querySelector('.t-dialog'), null);
+  await settle(10);
+  assert.equal(document.querySelector('[role="dialog"]'), null);
 });
