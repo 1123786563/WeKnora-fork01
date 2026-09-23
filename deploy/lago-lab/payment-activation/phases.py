@@ -140,8 +140,18 @@ class RunContext:
                 org = ((body or {}).get("organization") or {})
                 if _ok(status) and org.get("lago_id"):
                     self._graphql_organization_id = org["lago_id"]
-            except (OSError, clients.OffOriginRedirect):
-                pass
+            except (OSError, clients.OffOriginRedirect) as error:
+                # Not silently swallowed (ocr-3): a failed resolution means
+                # the x-lago-organization header is omitted, and servers
+                # that require it reject the mutation with 400 "Missing
+                # organization id" — surfacing the cause here keeps that
+                # failure attributable in the report notes instead of a
+                # bare FAIL.
+                self.note(
+                    "x-lago-organization resolution failed "
+                    f"({error.__class__.__name__}); header omitted — GraphQL "
+                    "mutations may be rejected with 'Missing organization id'"
+                )
         return self._graphql_organization_id
 
     def graphql(self, query, variables):
@@ -564,15 +574,24 @@ def phase_gate(ctx):
                 return _report(ctx, "gate", expected, observed, PASS)
             if core_ok:
                 cs2, cb2 = _subscription_show(ctx, ext, "canceled")
-                if _ok(cs2):
-                    reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason")
+                canceled = _ok(cs2)
+                reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason") \
+                    if canceled else None
+                observed["cancellation_reason"] = reason
+                if canceled and reason == "payment_failed":
                     ctx.note(
                         "charge-failure endgame reached before the invoice became "
                         f"API-visible (subscription canceled, reason={reason}); "
                         "AC1 asserted from the pre-charge observation window"
                     )
                     return _report(ctx, "gate", expected, observed, PASS)
-                observed["error"] = "invoice invisible and subscription drifted unexpectedly"
+                # Same strictness as the invoice-visible-as-failed branch
+                # above: a cancellation for any other reason (or none) is
+                # not AC1's charge-failure endgame (ocr-3).
+                observed["error"] = (
+                    "invoice invisible and the cancellation contract did not "
+                    f"hold (canceled={canceled}, cancellation_reason={reason!r})"
+                )
                 return _report(ctx, "gate", expected, observed, FAIL,
                                evidence={"invoices_last_seen": invoice_last})
             observed["error"] = observed.get("error") or "pre-charge contract not observed"
@@ -939,6 +958,12 @@ def phase_duplicates(ctx):
             "invoice_total_amount_cents": invoice.get("total_amount_cents"),
             "total_paid_amount_cents": invoice.get("total_paid_amount_cents"),
             "payments_succeeded_count": len(_succeeded(payments)),
+            # Pre-probe invoice count: the deferred no-new-invoice assertion
+            # anchors HERE (ocr-3), not on the post-probe immediate count —
+            # a duplicate that synchronously issues an invoice before the
+            # immediate probes read the list would otherwise raise both
+            # counts together and slip through.
+            "invoice_count": len(invoices),
         }
 
         # Probe 1: duplicate subscription registration.
@@ -1027,6 +1052,7 @@ def phase_duplicates(ctx):
                 "subscription_same_lago_id": sub3.get("lago_id") == base_lago_id,
                 "payments_succeeded_count": len(_succeeded(payments3)),
                 "invoice_count": len(invoices3),
+                "invoice_count_baseline": baseline["invoice_count"],
                 "invoice_count_immediate": len(invoices2),
                 "invoice_status": invoice3.get("status") if invoice3 else None,
                 "invoice_payment_status": invoice3.get("payment_status") if invoice3 else None,
@@ -1035,7 +1061,7 @@ def phase_duplicates(ctx):
                 deferred["subscription_status"] == "active"
                 and deferred["subscription_same_lago_id"]
                 and deferred["payments_succeeded_count"] == 1
-                and deferred["invoice_count"] == deferred["invoice_count_immediate"]
+                and deferred["invoice_count"] == baseline["invoice_count"]
                 and deferred["invoice_status"] == baseline["invoice_status"]
                 and deferred["invoice_payment_status"] == baseline["invoice_payment_status"]
             )
@@ -1181,6 +1207,11 @@ def phase_retries(ctx):
         as_, asub = _subscription_status_any(
             ctx, gate["subscription_external_id"], ("incomplete", "canceled")
         )
+        # Record the gate's actual end state in the evidence (ocr-3): the
+        # gate_not_activated check only consumes the HTTP status, so without
+        # this field the report cannot say whether the gate ended up
+        # incomplete or canceled.
+        gate_retry["subscription_status_after"] = asub.get("status") if _ok(as_) else None
         checks = {
             "same_identity_recovered": (
                 recovery["subscription_count"] == 1 and recovery["same_lago_id"]

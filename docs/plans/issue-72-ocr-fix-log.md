@@ -317,3 +317,119 @@ OCR2-01 的 run_id 前缀收紧兜底）→ `lab.sh up`（v1.53.0 全 healthy）
 ## 提交
 
 - 提交 message 前缀：`issue-72(ocr-2):`
+
+---
+
+# OCR 第 3 轮修复记录（ocr-3）
+
+- 日期：2026-09-23（UTC）
+- worktree：`.worktrees/issue72-lago`（分支 `codex/issue-72-lago`）
+- 修复基线：`d95a93f0d`（issue-72(ocr-2) 提交），即 OCR 第 3 轮 findings 所审的 HEAD
+- 有效 findings：OCR3-01（medium）、OCR3-05（medium）、OCR3-02（low）、OCR3-04（low），
+  全部修复，无 deferred
+
+## 逐条 Ruling 与处置
+
+### OCR3-01（medium）gate 不可见分支 canceled PASS 未校验 payment_failed — 已修复
+
+- Ruling：finding 成立。发票不可见且复查非 incomplete 的分支仅 `if _ok(cs2):` 即返回
+  PASS，reason 只进 ctx.note 不进 observed；对照发票可见为 failed 的分支要求
+  `core_ok and canceled and reason == "payment_failed"`。两分支判定严格度不一致，
+  无关原因取消（other/revoked）会得到误导性 PASS，且证据缺 cancellation_reason 字段，
+  与 expected 承诺的 "(or ends canceled(payment_failed) when the charge fails)" 矛盾。
+- 处置：对齐可见分支严格度——`canceled = _ok(cs2)`，reason 写入
+  `observed["cancellation_reason"]`；PASS 条件改为 `canceled and reason ==
+  "payment_failed"`（core_ok 已由外层 if 保证）；否则 FAIL，error 文案附
+  `canceled=.../cancellation_reason=...` 便于复盘，保留 invoices_last_seen 证据。
+- RED 证据：基线 d95a93f0d 565-574 行 `if _ok(cs2):` 直接 PASS、reason 未入 observed
+  （sed 输出证实）。
+- 回归测试：FakeLago 新增 `gate_cancel_reason_while_invisible` 旋钮（发票保持不可见期间
+  gate 订阅按可配置原因取消）；
+  `test_foreign_cancellation_reason_with_invisible_invoice_fails`（reason="other" → FAIL，
+  observed.cancellation_reason=="other"，error 含该字段）、
+  `test_payment_failed_cancellation_with_invisible_invoice_passes_with_reason`
+  （reason="payment_failed" → PASS 且 reason 入 observed，note 含 charge-failure endgame）。
+
+### OCR3-05（medium）duplicates deferred 复查 no-new-invoice 锚点错基准 — 已修复
+
+- Ruling：finding 成立且接受裁决升级（low→medium）。`invoice_count` 只与即时窗口的
+  `invoice_count_immediate` 比较，探测前 baseline 从不记录数量，即时 state_intact 又
+  按 lago_id 选中同一张发票比较字段、不校验数量——重复注册若在即时读取前同步开出
+  新发票且订阅身份不变，两层断言同时放行，与注释/expected 承诺的 no new invoice 不符，
+  与 OCR1-02/OCR2-01 同属"断言基准错误留下静默假 PASS 通道"。
+- 处置：baseline 增记探测前 `"invoice_count": len(invoices)`（附注释说明锚点理由）；
+  `deferred["ok"]` 的发票数量断言改为 `invoice_count == baseline["invoice_count"]`；
+  `invoice_count_immediate` 保留入 deferred 证据（现含 baseline/immediate/最终三个计数，
+  便于分层复盘），并新增 `invoice_count_baseline` 字段。
+- RED 证据：基线 grep 证实 1038 行锚点为 `invoice_count_immediate`，baseline（935-942 行）
+  无 invoice_count 键。
+- 回归测试：FakeLago 新增 `duplicate_re_post_adds_invoice` 旋钮（200 应答的重复注册同步
+  开出立即可见的续期发票、订阅身份不变）；
+  `test_fails_when_duplicate_synchronously_issues_an_invoice`（即时逐字段探测全部干净、
+  invoice_count == immediate 但 > baseline → FAIL，note 含 deferred re-check）。
+
+### OCR3-02（low）retries 的 gate 终态未入证据 — 已修复
+
+- Ruling：finding 成立（证据完整性缺口，非判定缺陷——incomplete/canceled 均为未激活态，
+  `_ok(as_)` 语义正确）。处置按 fixHint：
+  `gate_retry["subscription_status_after"] = asub.get("status") if _ok(as_) else None`
+  （附注释），消除 asub 死变量。
+- RED 证据：基线 gate_retry（1162-1170 行）grep subscription_status_after = 0 命中。
+- 回归测试：`test_recovers_same_identity_and_keeps_gate_pending` 补断言
+  `gate_retry["subscription_status_after"] == "incomplete"`。
+
+### OCR3-04（low）_resolve_graphql_organization_id 失败被静默吞掉 — 已修复
+
+- Ruling：finding 成立。`except (OSError, OffOriginRedirect): pass` 完全吞掉解析失败；
+  窄场景（REST 组织解析传输失败而 GraphQL 可达且服务端强制头）下 GraphQL 400 被判
+  FAIL 而非 blocked-env，线索（graphql_status=400 + errors）虽在但不指向缺失的头。
+  采用 fixHint 主修复（note）；失败缓存哨兵不采用（当前仅 1 个调用点，成本收益低，
+  且保留"下次调用可重试解析"的现有语义）。
+- 处置：except 分支记录
+  `ctx.note("x-lago-organization resolution failed ({error.__class__.__name__}); header
+  omitted — GraphQL mutations may be rejected with 'Missing organization id'")`，note
+  会随后进入该 run 的 report contract_notes。
+- RED 证据：基线 143-144 行 `except ...: pass`（sed 输出证实）。
+- 回归测试：`test_graphql_organization_resolution_failure_is_noted`（替换
+  ctx.lago.request 使 /api/v1/organizations 抛 ConnectionResetError，断言返回 None 且
+  notes 含归因文案与异常类名）。
+
+## 测试与验证
+
+### 离线回归
+
+- 命令（与 ocr-1/2 同方式）：
+  `cd deploy/lago-lab/payment-activation && python3 -m pytest test_lab.py
+  test_phases.py ../../../docs/plans/issue-72-flow-evidence-74/test_verify_db_watch.py -q`
+- 结果：`82 passed in 58.81s`（ocr-2 后 78 + 新增 4：gate +2、duplicates +1、
+  provider_setup(resolve note) +1；OCR3-02 为既有测试内补断言）。
+
+### 真实流程重放（OCR3-01/05 改变判定行为 → 按 ask 要求重放）
+
+环境（与 #74 原方式一致）：清卷 → `lab.sh up`（v1.53.0 全 healthy）→ Stripe TEST key
+经 env source 注入。证据目录 `docs/plans/issue-72-ocr3-replay/`。
+
+- `run_lab.py --output-dir docs/plans/issue-72-ocr3-replay --poll-timeout 300`
+  + 并行 db_watch 观察者（326 点 TSV 归档为 verify-db-watch-samples.tsv）：
+  9 阶段全 pass，overall verdict: pass，exit 0，secrets scan 11 files 0 hits。
+  - OCR3-02 落地：t02-retries.json 的 pending_gate_retry.subscription_status_after
+    == "incomplete"（gate 终态进入证据）；
+  - OCR3-05 落地：t02-duplicates.json 的 evidence.baseline.invoice_count == 1，
+    deferred_recheck = {invoice_count_baseline: 1, invoice_count_immediate: 1,
+    invoice_count: 1, ok: true}（探测前基准锚点生效，真实运行无新发票）；
+  - OCR3-01：真实运行 gate 走 invoice-invisible + recheck=incomplete 分支
+    （invoice_api_visible=false），不触发 canceled 判定分支——修复的
+    canceled(非 payment_failed)→FAIL 严格度由离线回归测试覆盖
+    （gate_cancel_reason_while_invisible 旋钮两向测试）。
+- `verify_ac_assertions.py`（本目录副本，含 ocr-3 新增 2 条断言：duplicates
+  invoice count == baseline、AC3 gate end state recorded not active）→ 25/25
+  ALL PASS（exit 0，输出归档 verify-ac-assertions-output.txt）。
+- 修复版 `verify_db_watch.py`（本目录副本）→ `DB-WATCH: PASS`（exit 0）：using
+  本目录归档 TSV，sub-a 全程 incomplete(4)、sub-b 4→1 不回退、sub-c 从未
+  active、succeeded 峰值恰 1。
+- 提交前对证据目录 `sk_test_|rk_test_` 形状扫描 = 0 命中。
+- 环境回收：`lab.sh down`（容器 0）；#73 主栈未受影响。
+
+## 提交
+
+- 提交 message 前缀：`issue-72(ocr-3):`
