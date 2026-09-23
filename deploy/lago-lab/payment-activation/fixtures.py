@@ -69,14 +69,24 @@ def plan_entitlements_payload(feature_code):
 
 
 def customer_payload(external_id, name, provider_customer_id,
-                     payment_provider="stripe", provider_payment_methods=("card",)):
+                     payment_provider="stripe", payment_provider_code=None,
+                     provider_payment_methods=("card",)):
+    """POST /api/v1/customers contract on v1.53.0: provider linkage fields
+    live under customer.billing_configuration (see api/v1/customers_controller
+    permitted params and Customers::CreateService#create_billing_configuration
+    — top-level payment_provider keys are silently ignored)."""
+    billing_configuration = {
+        "payment_provider": payment_provider,
+        "provider_customer_id": provider_customer_id,
+        "provider_payment_methods": list(provider_payment_methods),
+    }
+    if payment_provider_code:
+        billing_configuration["payment_provider_code"] = payment_provider_code
     return {
         "customer": {
             "external_id": external_id,
             "name": name,
-            "payment_provider": payment_provider,
-            "provider_customer_id": provider_customer_id,
-            "provider_payment_methods": list(provider_payment_methods),
+            "billing_configuration": billing_configuration,
         }
     }
 

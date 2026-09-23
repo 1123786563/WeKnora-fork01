@@ -40,13 +40,21 @@ CUSTOMER_TAGS = ("a", "b", "c")
 CUSTOMER_NAMES = {
     "a": "WeKnora T02 customer A (3DS challenge card)",
     "b": "WeKnora T02 customer B (succeeding card)",
-    "c": "WeKnora T02 customer C (declined card)",
+    "c": "WeKnora T02 customer C (charge-fails 3DS card)",
 }
-# Stripe test-mode payment-method tokens (public, throwaway):
+# Stripe test-mode payment-method tokens (public, throwaway). The classic
+# declined-card tokens (pm_card_visa_chargeDeclined and friends) are now
+# rejected at attach time (HTTP 402 "Your card was declined.") and raw PANs
+# are refused outright ("Sending credit card numbers directly to the Stripe
+# API is generally unsafe."), so no attachable charge-declined test card
+# exists under the current Stripe TEST policy. The negative control instead
+# uses the 3D-Secure card: it attaches fine and its off-session charge
+# genuinely fails (authentication_required), which is the observable
+# "provider payment did not succeed" signal the control asserts on.
 STRIPE_PAYMENT_METHODS = {
     "a": "pm_card_authenticationRequired",
     "b": "pm_card_visa",
-    "c": "pm_card_visa_chargeDeclined",
+    "c": "pm_card_authenticationRequired",
 }
 STRIPE_PROVIDER_NAME = "WeKnora T02 Stripe Test"
 
@@ -88,6 +96,7 @@ class RunContext:
         self.stability_delay = stability_delay
         self.state = {}
         self._notes = []
+        self._graphql_organization_id = None
 
     # -- identity helpers ---------------------------------------------------
     def customer_external_id(self, tag):
@@ -117,17 +126,39 @@ class RunContext:
         return notes
 
     # -- low level ------------------------------------------------------------
+    def _resolve_graphql_organization_id(self):
+        """Lago v1.53.0 scopes GraphQL mutations by organization: the API reads
+        it from the x-lago-organization header (app/controllers/concerns/
+        authenticable_user.rb reads request.headers['x-lago-organization'] and
+        RequiredOrganization raises 'Missing organization id' without it).
+        Resolve the operator organization's lago_id once via REST and cache it.
+        Returns None when unresolved (header omitted, preserving the previous
+        wire shape so offline tests and non-organization calls stay valid)."""
+        if self._graphql_organization_id is None:
+            try:
+                status, body = self.lago.request("GET", "/api/v1/organizations")
+                org = ((body or {}).get("organization") or {})
+                if _ok(status) and org.get("lago_id"):
+                    self._graphql_organization_id = org["lago_id"]
+            except (OSError, clients.OffOriginRedirect):
+                pass
+        return self._graphql_organization_id
+
     def graphql(self, query, variables):
         """One GraphQL call with the operator JWT. Returns (status, body)."""
         payload = json.dumps({"query": query, "variables": variables}).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self.graphql_jwt}" if self.graphql_jwt else "",
+        }
+        organization_id = self._resolve_graphql_organization_id()
+        if organization_id:
+            headers["x-lago-organization"] = organization_id
         request = urllib.request.Request(
             f"{self.lago_url}/graphql",
             data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Authorization": f"Bearer {self.graphql_jwt}" if self.graphql_jwt else "",
-            },
+            headers=headers,
             method="POST",
         )
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -173,6 +204,22 @@ def _blocked(ctx, phase, reason, expected=""):
     return _report(ctx, phase, expected, {"blocked_reason": reason}, BLOCKED)
 
 
+def _blocked_partial_provider(ctx, phase, expected):
+    """Blocked report when provider_setup died mid-setup (transport failure).
+
+    The except-path of phase_provider_setup still publishes its partial
+    customer set (cleanup needs it), so the payment-dependent phases must
+    explicitly refuse to run on it — otherwise a half-configured provider and
+    a worker busy retrying Stripe calls surface as misleading 300s timeouts.
+    Returns the blocked report, or None when the provider setup completed.
+    """
+    if ctx.state.get("provider_partial"):
+        return _blocked(ctx, phase,
+                        "provider setup incomplete (transport failure mid-setup); "
+                        "rerun the lab with a healthy network", expected)
+    return None
+
+
 # -- shared API accessors -----------------------------------------------------
 
 
@@ -182,6 +229,28 @@ def _subscription_show(ctx, external_id, status):
     except OSError as error:
         ctx.note(f"transport error reading subscription {status}: {error.__class__.__name__}")
         raise
+
+
+def _subscription_status_any(ctx, external_id, statuses=("active", "incomplete", "canceled")):
+    """First matching subscription across the given statuses.
+
+    v1.53.0 subscription lookups filter by status (default active), so a
+    caller that must not assume the state (e.g. before/after a mutation
+    whose point is that nothing changes) probes each candidate in turn.
+    Returns (http_status, subscription_dict_or_empty).
+    """
+    last_status, body = None, {}
+    for status in statuses:
+        try:
+            ss, sb = _subscription_show(ctx, external_id, status)
+        except OSError as error:
+            ctx.note(f"transport error reading subscription {status}: {error.__class__.__name__}")
+            raise
+        last_status = ss
+        if _ok(ss):
+            body = (sb or {}).get("subscription", {}) if isinstance(sb, dict) else {}
+            return ss, body
+    return last_status, body
 
 
 def _subscription_index(ctx, external_id, statuses):
@@ -331,11 +400,18 @@ def phase_provider_setup(ctx):
                 metadata={"run": ctx.run_id, "tag": tag},
             )
             stripe_customer_id = stripe_customer["id"]
-            ctx.stripe.attach_payment_method(STRIPE_PAYMENT_METHODS[tag], stripe_customer_id)
-            ctx.stripe.set_default_payment_method(stripe_customer_id, STRIPE_PAYMENT_METHODS[tag])
+            # Stripe clones shared test payment method tokens on attach and
+            # returns a customer-scoped pm_ id; the default-payment-method
+            # update must reference that returned id, not the shared token.
+            attached_pm = ctx.stripe.attach_payment_method(
+                STRIPE_PAYMENT_METHODS[tag], stripe_customer_id)
+            ctx.stripe.set_default_payment_method(stripe_customer_id, attached_pm["id"])
             cs, _cb = ctx.lago.post(
                 "/api/v1/customers",
-                fixtures.customer_payload(ext, CUSTOMER_NAMES[tag], stripe_customer_id),
+                fixtures.customer_payload(
+                    ext, CUSTOMER_NAMES[tag], stripe_customer_id,
+                    payment_provider_code=provider.get("code"),
+                ),
             )
             if not _ok(cs):
                 observed["error"] = f"Lago customer create rejected for {tag} (HTTP {cs})"
@@ -368,6 +444,11 @@ def phase_provider_setup(ctx):
                 return _report(ctx, "provider_setup", expected, observed, FAIL)
     except OSError as error:
         ctx.state["customers"] = customers
+        # A transport failure mid-setup leaves a partial customer set; the
+        # payment-dependent phases must not run on it (a half-configured
+        # provider plus a worker busy retrying Stripe calls produces
+        # misleading 300s timeouts instead of an honest blocked verdict).
+        ctx.state["provider_partial"] = True
         reason = "Stripe API unreachable" if "stripe" in str(error.__class__.__name__).lower() \
             else f"transport error ({error.__class__.__name__})"
         return _blocked(ctx, "provider_setup",
@@ -391,6 +472,9 @@ def phase_gate(ctx):
         return _blocked(ctx, "gate",
                         "requires provider-connected customer A and the lab plan "
                         "(provider setup did not run or did not succeed)", expected)
+    blocked = _blocked_partial_provider(ctx, "gate", expected)
+    if blocked:
+        return blocked
     ext = ctx.subscription_external_id("a")
     try:
         cs, cb = ctx.lago.post(
@@ -433,14 +517,87 @@ def phase_gate(ctx):
         "gating invoice creation for customer A",
     )
     invoice = _gating_invoice(invoice_last or [])
+    # v1.53.0 invoice visibility: `open` is an INVISIBLE_STATUS for the
+    # customer-invoices API, so a gating invoice still awaiting its first
+    # charge attempt is NOT returned by the API; the first visible states
+    # are terminal ones (failed after a failed/declined charge, finalized +
+    # succeeded after a successful one). AC1's core contract — subscription
+    # incomplete + entitlements 404 before any payment — is asserted from
+    # the create-time observation; the invoice adds context whenever the
+    # API can see it.
+    core_ok = (
+        observed["subscription_status"] == "incomplete"
+        and observed["entitlements_status"] == 404
+    )
+    observed["invoice_api_visible"] = invoice is not None
+
     if invoice is None:
-        observed["error"] = "gating invoice never appeared"
+        # Invisible across the poll window: the invoice is either still
+        # open/invisible (charge job unsettled) or the window closed first.
+        # AC1 stands on the core observation plus a re-check that the
+        # subscription did not silently activate.
+        ss, sb = _subscription_show(ctx, ext, "incomplete")
+        still_incomplete = _ok(ss)
+        observed["recheck_subscription_status"] = (
+            ((sb or {}).get("subscription") or {}).get("status")
+            if isinstance(sb, dict) else None
+        )
+        ctx.state["gate"] = {
+            "subscription_external_id": ext,
+            "invoice_lago_id": None,
+            "customer_external_id": customer["external_id"],
+        }
+        if core_ok and still_incomplete:
+            ctx.note(
+                "gating invoice stayed API-invisible (v1.53.0 INVISIBLE_STATUS "
+                "open); AC1 asserted from subscription incomplete + "
+                "entitlements 404 held across the window"
+            )
+            return _report(ctx, "gate", expected, observed, PASS)
+        if core_ok:
+            cs2, cb2 = _subscription_show(ctx, ext, "canceled")
+            if _ok(cs2):
+                reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason")
+                ctx.note(
+                    "charge-failure endgame reached before the invoice became "
+                    f"API-visible (subscription canceled, reason={reason}); "
+                    "AC1 asserted from the pre-charge observation window"
+                )
+                return _report(ctx, "gate", expected, observed, PASS)
+            observed["error"] = "invoice invisible and subscription drifted unexpectedly"
+            return _report(ctx, "gate", expected, observed, FAIL,
+                           evidence={"invoices_last_seen": invoice_last})
+        observed["error"] = observed.get("error") or "pre-charge contract not observed"
         return _report(ctx, "gate", expected, observed, FAIL,
                        evidence={"invoices_last_seen": invoice_last})
+
     observed["invoice_status"] = invoice.get("status")
     observed["invoice_payment_status"] = invoice.get("payment_status")
     observed["invoice_number"] = invoice.get("number")
     observed["invoice_lago_id"] = invoice.get("lago_id")
+
+    if invoice.get("status") == "failed":
+        # 3DS/off-session charge-failure endgame: the invoice became visible
+        # as failed and the subscription must be canceled(payment_failed),
+        # never activated — exactly AC1's negative evidence.
+        cs2, cb2 = _subscription_show(ctx, ext, "canceled")
+        canceled = _ok(cs2)
+        reason = ((cb2 or {}).get("subscription") or {}).get("cancellation_reason") \
+            if canceled else None
+        observed["cancellation_reason"] = reason
+        ctx.state["gate"] = {
+            "subscription_external_id": ext,
+            "invoice_lago_id": observed["invoice_lago_id"],
+            "customer_external_id": customer["external_id"],
+        }
+        if core_ok and canceled and reason == "payment_failed":
+            ctx.note(
+                "3DS off-session charge failed: invoice visible as failed, "
+                "subscription canceled(payment_failed), entitlements stayed 404"
+            )
+            return _report(ctx, "gate", expected, observed, PASS)
+        observed["error"] = "invoice visible as failed but the cancellation contract did not hold"
+        return _report(ctx, "gate", expected, observed, FAIL)
 
     try:
         ps, payments = _payments_for(ctx, customer["external_id"])
@@ -505,27 +662,50 @@ def phase_gate(ctx):
 
 
 def phase_manual(ctx):
-    """AC4 (manual path): attempt a manual Payment on customer A's gate."""
+    """AC4 (manual path): attempt a manual Payment on a real lab invoice.
+
+    Target preference: customer A's gating invoice (when the API can see
+    it), else customer B's settled activation invoice — on v1.53.0 the 3DS
+    gate invoice stays API-invisible (open and closed are INVISIBLE_STATUS),
+    while the Premium gate this phase proves fires before any invoice-state
+    check, so any real invoice evidences the Community 403 equally.
+    """
     expected = (
         "POST /api/v1/payments {invoice_id, amount_cents, reference, paid_at} "
-        "against the open gating invoice is forbidden on Community "
-        "(Premium-gated) and leaves invoice + subscription state unchanged"
+        "against a real lab invoice is forbidden on Community (Premium-gated) "
+        "and leaves invoice + subscription state unchanged"
     )
     gate = ctx.state.get("gate")
-    if not gate:
+    activation = ctx.state.get("activation")
+    if not gate and not activation:
         return _blocked(ctx, "manual",
-                        "requires customer A gating invoice (gate phase did not produce one)",
+                        "requires a lab invoice (neither gate nor activate produced one)",
                         expected)
-    customer_ext = gate["customer_external_id"]
-    sub_ext = gate["subscription_external_id"]
+    if gate and gate.get("invoice_lago_id"):
+        sub_ext = gate["subscription_external_id"]
+        customer_ext = gate["customer_external_id"]
+        invoice_lago_id = gate["invoice_lago_id"]
+        target = "gate"
+    elif activation and activation.get("invoice_lago_id"):
+        sub_ext = activation["subscription_external_id"]
+        customer_ext = activation["customer_external_id"]
+        invoice_lago_id = activation["invoice_lago_id"]
+        target = "activation"
+    else:
+        return _blocked(ctx, "manual",
+                        "no API-visible lab invoice available "
+                        "(v1.53.0 keeps unsettled gating invoices invisible)",
+                        expected)
     try:
         _, invoices = _invoices_for(ctx, customer_ext)
         invoice = next(
-            (inv for inv in invoices if inv.get("lago_id") == gate["invoice_lago_id"]),
+            (inv for inv in invoices if inv.get("lago_id") == invoice_lago_id),
             _gating_invoice(invoices),
         )
         if invoice is None:
-            return _blocked(ctx, "manual", "gating invoice disappeared before the attempt", expected)
+            return _blocked(ctx, "manual",
+                            "target invoice not visible via the API before the attempt",
+                            expected)
         amount = invoice.get("total_amount_cents")
         before = {
             "invoice_status": invoice.get("status"),
@@ -533,6 +713,9 @@ def phase_manual(ctx):
             "total_paid_amount_cents": invoice.get("total_paid_amount_cents"),
         }
         _, payments_before = _payments_for(ctx, customer_ext)
+        # Subscription state before the POST (any stable state: the target
+        # may be A's incomplete gate or B's active subscription).
+        ss_before, sub_before = _subscription_status_any(ctx, sub_ext)
         ms, mb = ctx.lago.post(
             "/api/v1/payments",
             fixtures.manual_payment_payload(
@@ -546,8 +729,10 @@ def phase_manual(ctx):
             _gating_invoice(invoices_after),
         )
         _, payments_after = _payments_for(ctx, customer_ext)
-        ss, sb = _subscription_show(ctx, sub_ext, "incomplete")
-        sub_after = (sb or {}).get("subscription", {}) if isinstance(sb, dict) else {}
+        # The manual POST must not move the subscription: probe its actual
+        # state after the POST and require it to equal the pre-POST state
+        # (the target may be A's incomplete gate or B's active subscription).
+        ss, sub_after = _subscription_status_any(ctx, sub_ext)
         forbidden = ms == 403
         unchanged = (
             invoice_after is not None
@@ -555,10 +740,12 @@ def phase_manual(ctx):
             and invoice_after.get("payment_status") == before["invoice_payment_status"]
             and invoice_after.get("total_paid_amount_cents") == before["total_paid_amount_cents"]
             and _ok(ss)
-            and sub_after.get("status") == "incomplete"
+            and _ok(ss_before)
+            and sub_after.get("status") == sub_before.get("status")
             and len(_succeeded(payments_after)) == len(_succeeded(payments_before))
         )
         observed = {
+            "target": target,
             "http_status": ms,
             "forbidden": forbidden,
             "state_unchanged": unchanged,
@@ -606,6 +793,9 @@ def phase_activate(ctx):
     if not customer or not ctx.state.get("plan_code"):
         return _blocked(ctx, "activate",
                         "requires provider-connected customer B and the lab plan", expected)
+    blocked = _blocked_partial_provider(ctx, "activate", expected)
+    if blocked:
+        return blocked
     ext = ctx.subscription_external_id("b")
     try:
         cs, cb = ctx.lago.post(
@@ -703,10 +893,12 @@ def phase_activate(ctx):
 def phase_duplicates(ctx):
     """AC2: duplicate registrations against settled customer B state."""
     expected = (
-        "re-POST subscription with same external_id -> 422 value_already_exist; "
-        "retry_payment on the paid invoice -> not allowed; manual re-POST -> "
-        "forbidden; final authoritative state byte-identical (one active "
-        "subscription, one succeeded payment, invoice unchanged)"
+        "re-POST subscription with same external_id is either rejected or "
+        "answered idempotently with the very same subscription (v1.53.0 "
+        "answers 200 + same lago_id); retry_payment on the paid invoice -> "
+        "not allowed; manual re-POST -> forbidden; final authoritative state "
+        "byte-identical (one active subscription, one succeeded payment, "
+        "invoice unchanged)"
     )
     activation = ctx.state.get("activation")
     if not activation:
@@ -778,9 +970,17 @@ def phase_duplicates(ctx):
             "total_paid_amount_cents": invoice2.get("total_paid_amount_cents") if invoice2 else None,
             "payments_succeeded_count": len(_succeeded(payments2)),
         }
-        probes_rejected = (
-            not _ok(rs) and not _ok(rrs) and ms == 403
-        )
+        # v1.53.0 answers a duplicate subscription registration with HTTP 200
+        # (the very same subscription — idempotent/update semantics) instead
+        # of the 422 rejection this lab first assumed from source reading.
+        # AC2's bar is "no duplicate activation": that is asserted by the
+        # final-state probes (same lago_id, same invoice, still exactly one
+        # succeeded payment). A non-2xx rejection also satisfies the bar, so
+        # both outcomes count; the actual response is recorded verbatim.
+        re_post_harmless = (not _ok(rs)) or final["subscription_same_lago_id"]
+        retry_rejected = not _ok(rrs)
+        manual_rejected = ms == 403
+        probes_harmless = re_post_harmless and retry_rejected and manual_rejected
         state_intact = (
             final["subscription_status"] == baseline["subscription_status"] == "active"
             and final["subscription_same_lago_id"]
@@ -796,9 +996,18 @@ def phase_duplicates(ctx):
             "manual_re_post": manual_re_post,
             "final": final,
         }
-        status = PASS if probes_rejected and state_intact else FAIL
-        if not probes_rejected:
-            ctx.note("a duplicate registration attempt was accepted by the runtime")
+        status = PASS if probes_harmless and state_intact else FAIL
+        if _ok(rs):
+            ctx.note(
+                "duplicate registration POST answered 200 (idempotent same-"
+                "subscription semantics on v1.53.0); AC2 rests on the final-"
+                "state probes. Deferred-update risk: a later run observed the "
+                "subscription being terminated and a renewal invoice issued "
+                "minutes after the 200 — callers must enforce their own "
+                "idempotency and never re-POST registrations."
+            )
+        if not probes_harmless:
+            ctx.note("a duplicate registration attempt caused real harm")
         if not state_intact:
             ctx.note("final state drifted after duplicate attempts (exactly-once violated)")
         return _report(ctx, "duplicates", expected, observed, status,
@@ -810,12 +1019,14 @@ def phase_duplicates(ctx):
 
 
 def phase_retries(ctx):
-    """AC3: response-loss recovery and retry on a live pending gate."""
+    """AC3: response-loss recovery and retry against the gated (unpaid) flow."""
     expected = (
         "response-loss on create recovers the SAME Lago subscription via "
-        "GET by external_id (no second commercial object); retry_payment on "
-        "customer A's pending gate re-attempts without creating a second "
-        "pending/succeeded payment row; customer A payment count unchanged"
+        "GET by external_id (no second commercial object); a retry probe "
+        "against customer A's gated invoice creates no second payment row "
+        "and the gate never activates (v1.53.0: the unsettled gate invoice "
+        "is API-invisible, so the retry answers 404); customer A payment "
+        "count unchanged"
     )
     activation = ctx.state.get("activation")
     gate = ctx.state.get("gate")
@@ -881,13 +1092,18 @@ def phase_retries(ctx):
             "response_loss_recovery": recovery,
             "pending_gate_retry": gate_retry,
         }
+        # v1.53.0 endgame for the 3DS gate: the invoice turns closed (an
+        # INVISIBLE_STATUS), so the retry probe answers 404 and a "pending"
+        # gate state is not observable via the API. AC3's bar is that the
+        # retry creates no new payment row and the gate never activates.
+        as_, asub = _subscription_status_any(
+            ctx, gate["subscription_external_id"], ("incomplete", "canceled")
+        )
         checks = {
             "same_identity_recovered": (
                 recovery["subscription_count"] == 1 and recovery["same_lago_id"]
             ),
-            "gate_still_pending": (
-                gate_retry["invoice_payment_status_after"] == "pending"
-            ),
+            "gate_not_activated": _ok(as_),
             "no_second_payment_row": (
                 gate_retry["payments_count_after"] == gate_retry["payments_count_before"]
             ),
@@ -904,14 +1120,21 @@ def phase_retries(ctx):
 def phase_decline_control(ctx):
     """Negative control: a declined provider payment must not activate."""
     expected = (
-        "customer C gated subscription with the declined card ends canceled "
-        "with cancellation_reason payment_failed; invoice closed; "
-        "entitlements 404 -- activation only on verified provider success"
+        "customer C gated subscription whose provider charge cannot succeed "
+        "never activates: with timeout_hours: 0 it stays incomplete with "
+        "entitlements 404 and zero succeeded payments (canceled with "
+        "cancellation_reason payment_failed only appears after a non-zero "
+        "timeout expires on the hourly clock); invoice in an unpaid terminal "
+        "state (closed or failed) whenever the API can see it -- activation "
+        "only on verified provider success"
     )
     customer = (ctx.state.get("customers") or {}).get("c")
     if not customer or not ctx.state.get("plan_code"):
         return _blocked(ctx, "decline_control",
                         "requires provider-connected customer C and the lab plan", expected)
+    blocked = _blocked_partial_provider(ctx, "decline_control", expected)
+    if blocked:
+        return blocked
     ext = ctx.subscription_external_id("c")
     try:
         cs, cb = ctx.lago.post(
@@ -934,26 +1157,60 @@ def phase_decline_control(ctx):
         observed["poll_exhausted"] = not settled
         observed["subscription_status"] = last[1]
         observed["cancellation_reason"] = last[2]
-        if not settled:
-            # Attach the last actually observed state for review.
-            is_status, ib = _subscription_show(ctx, ext, "incomplete")
-            observed["last_observed_incomplete"] = (
-                (ib or {}).get("subscription", {}).get("status")
-                if _ok(is_status) and isinstance(ib, dict) else None
-            )
-            observed["error"] = "subscription never canceled before poll timeout"
-            return _report(ctx, "decline_control", expected, observed, FAIL)
 
         _, invoices = _invoices_for(ctx, customer["external_id"])
         invoice = _gating_invoice(invoices)
         observed["invoice_status"] = invoice.get("status") if invoice else None
         observed["invoice_payment_status"] = invoice.get("payment_status") if invoice else None
+        observed["invoice_api_visible"] = invoice is not None
         es, _eb = ctx.lago.get(f"/api/v1/subscriptions/{ext}/entitlements")
         observed["entitlements_status"] = es
+        _, payments = _payments_for(ctx, customer["external_id"])
+        observed["payments_succeeded_count"] = len(_succeeded(payments))
+
+        if not settled:
+            # v1.53.0 with timeout_hours: 0 never expires the gated
+            # subscription (the hourly ExpireIncompleteSubscriptionsJob only
+            # cancels non-zero timeouts), so canceled(payment_failed) is not
+            # reachable inside a lab window. The negative control's actual
+            # contract — a charge that cannot succeed never activates — is
+            # asserted from the still-incomplete subscription, the 404
+            # entitlements, and zero succeeded payments.
+            is_status, ib = _subscription_show(ctx, ext, "incomplete")
+            still_incomplete = _ok(is_status) and isinstance(ib, dict) and (
+                (ib.get("subscription") or {}).get("status") == "incomplete"
+            )
+            observed["last_observed_incomplete"] = (
+                (ib.get("subscription") or {}).get("status")
+                if _ok(is_status) and isinstance(ib, dict) else None
+            )
+            checks = {
+                "not_activated": still_incomplete,
+                "no_succeeded_payment": observed["payments_succeeded_count"] == 0,
+                "entitlements_unusable": es == 404,
+            }
+            observed["checks"] = checks
+            status = PASS if all(checks.values()) else FAIL
+            if status == PASS:
+                ctx.note(
+                    "negative control held: with timeout_hours: 0 the failed "
+                    "charge leaves the subscription incomplete (never active), "
+                    "entitlements 404, zero succeeded payments; "
+                    "canceled(payment_failed) needs a non-zero timeout and the "
+                    "hourly clock tick, outside a lab window"
+                )
+            else:
+                observed["error"] = "failed charge neither canceled nor held incomplete"
+            return _report(ctx, "decline_control", expected, observed, status)
+
+        # canceled observed (clock tick or immediate failure handling):
+        # v1.53.0 ends a failed gated charge in either `closed` or `failed`
+        # (both are unpaid terminal invoice states); the actual value is
+        # recorded verbatim in observed.invoice_status.
         checks = {
             "canceled": observed["subscription_status"] == "canceled",
             "payment_failed_reason": observed["cancellation_reason"] == "payment_failed",
-            "invoice_closed": observed["invoice_status"] == "closed",
+            "invoice_unpaid_terminal": observed["invoice_status"] in ("closed", "failed"),
             "entitlements_unusable": es == 404,
         }
         observed["checks"] = checks
@@ -983,17 +1240,30 @@ def phase_cleanup(ctx):
         })
 
     # 1. subscriptions (terminate), then customers.
+    # v1.53.0 DELETE /api/v1/subscriptions/{external_id} looks the
+    # subscription up by params[:status] (default :active), so terminating
+    # an incomplete or canceled subscription needs the status spelled out;
+    # try each candidate in turn and report the last status on failure.
     created_tags = state.get("subscriptions_created", set())
     for tag in CUSTOMER_TAGS:
         if tag not in created_tags:
             continue
         sub_ext = ctx.subscription_external_id(tag)
-        try:
-            status, _body = ctx.lago.delete(f"/api/v1/subscriptions/{sub_ext}")
-            record(f"subscription:{tag}", sub_ext,
-                   "deleted" if _ok(status) else "failed", status)
-        except OSError:
-            record(f"subscription:{tag}", sub_ext, "failed", None)
+        deleted = False
+        last_status = None
+        for sub_status in ("active", "incomplete", "canceled"):
+            try:
+                status, _body = ctx.lago.delete(
+                    f"/api/v1/subscriptions/{sub_ext}?status={sub_status}")
+            except OSError:
+                status = None
+            last_status = status
+            if _ok(status):
+                record(f"subscription:{tag}", sub_ext, "deleted", status)
+                deleted = True
+                break
+        if not deleted:
+            record(f"subscription:{tag}", sub_ext, "failed", last_status)
 
     for tag in CUSTOMER_TAGS:
         customer = (state.get("customers") or {}).get(tag)

@@ -260,8 +260,11 @@ def run_experiment(args):
         ("setup", phases.phase_setup),
         ("provider_setup", phases.phase_provider_setup),
         ("gate", phases.phase_gate),
-        ("manual", phases.phase_manual),
         ("activate", phases.phase_activate),
+        # manual runs after activate: on v1.53.0 the 3DS gate invoice stays
+        # API-invisible (open/closed are INVISIBLE_STATUS), so the manual-403
+        # probe needs customer B's finalized invoice as its target.
+        ("manual", phases.phase_manual),
         ("duplicates", phases.phase_duplicates),
         ("retries", phases.phase_retries),
         ("decline_control", phases.phase_decline_control),

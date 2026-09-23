@@ -29,6 +29,7 @@ import re
 import secrets
 import subprocess
 import sys
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -361,7 +362,14 @@ class StripeTestClient:
 
     __str__ = __repr__
 
-    def _form(self, method, path, params=None):
+    def _form(self, method, path, params=None, transport_retries=2):
+        """One form-encoded Stripe call.
+
+        Transport failures (connection reset / timeout — the host's route to
+        api.stripe.com is intermittently flaky) are retried up to
+        transport_retries times with a short backoff. HTTPError is NOT a
+        transport failure: it is a real API response and is returned as-is.
+        """
         body = urlencode(params or {}).encode("utf-8")
         request = Request(
             f"{self._base_url}{path}",
@@ -372,13 +380,21 @@ class StripeTestClient:
             },
             method=method,
         )
-        try:
-            with self._opener.open(request, timeout=self._timeout) as response:
-                status = response.status
-                raw = response.read()
-        except HTTPError as error:
-            raw = error.read()
-            return error.code, _parse_json_body(raw)
+        last_error = None
+        for attempt in range(transport_retries + 1):
+            try:
+                with self._opener.open(request, timeout=self._timeout) as response:
+                    status = response.status
+                    raw = response.read()
+                break
+            except HTTPError as error:
+                raw = error.read()
+                return error.code, _parse_json_body(raw)
+            except (URLError, OSError) as error:
+                last_error = error
+                if attempt == transport_retries:
+                    raise
+                time.sleep(1.5 + attempt)
         if not raw:
             return status, None
         return status, _parse_json_body(raw)
