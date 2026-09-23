@@ -211,9 +211,11 @@ type Office struct {
 	db                   *gorm.DB
 	opportunityExtractor opportunityExtractor
 	// These hooks only synchronize transaction-boundary and error-path tests.
-	beforeFirstWrite    func()
-	afterReceiptPersist func()
-	beforeReplayReceipt func(context.Context)
+	beforeFirstWrite             func()
+	afterReceiptPersist          func()
+	beforeReplayReceipt          func(context.Context)
+	beforeOpportunityTransaction func()
+	afterOpportunityCommit       func() error
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {

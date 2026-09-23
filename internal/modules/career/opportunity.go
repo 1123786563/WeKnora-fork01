@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	OpportunityStored      = "stored"
-	OpportunityNeedsReview = "needs_review"
-	maxJDTextBytes         = 1024 * 1024
+	OpportunityStored       = "stored"
+	OpportunityNeedsReview  = "needs_review"
+	maxJDTextBytes          = 1024 * 1024
+	maxJDRequestBodyBytes   = 6*maxJDTextBytes + 64*1024
+	opportunityLookupWindow = 350 * time.Millisecond
 )
 
 var ErrOpportunityNotFound = errors.New("career opportunity evidence not found")
@@ -173,6 +175,9 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 	fingerprintBytes := sha256.Sum256(fingerprintInput)
 	fingerprint := hex.EncodeToString(fingerprintBytes[:])
 	var result OpportunityReceipt
+	if o.beforeOpportunityTransaction != nil {
+		o.beforeOpportunityTransaction()
+	}
 	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing opportunityReceipt
 		err := tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).First(&existing).Error
@@ -211,23 +216,68 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 		}
 		return tx.Create(&opportunityReceipt{TenantID: s.TenantID, UserID: s.UserID, RequestID: input.RequestID, Fingerprint: fingerprint, Body: string(body), CreatedAt: acquiredAt}).Error
 	})
+	if err == nil && o.afterOpportunityCommit != nil {
+		err = o.afterOpportunityCommit()
+	}
 	if err == nil {
 		return result, nil
 	}
 	if errors.Is(err, ErrIdempotencyConflict) {
 		return OpportunityReceipt{}, err
 	}
-	// A concurrent identical import may have won the unique request key.
-	var existing opportunityReceipt
-	if lookupErr := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).First(&existing).Error; lookupErr == nil {
-		if existing.Fingerprint != fingerprint {
-			return OpportunityReceipt{}, ErrIdempotencyConflict
+	// The transaction may have committed even when the acknowledgement or
+	// request context was lost. Reconcile with a bounded context that retains
+	// scope values but is independent of the cancelled request context.
+	recovered, found, lookupErr := o.reconcileOpportunityReceipt(ctx, s, input.RequestID, fingerprint)
+	if errors.Is(lookupErr, ErrIdempotencyConflict) {
+		return OpportunityReceipt{}, ErrIdempotencyConflict
+	}
+	if lookupErr != nil {
+		return OpportunityReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+	}
+	if found {
+		return recovered, nil
+	}
+	return OpportunityReceipt{}, &OutcomeUnknownError{RequestID: input.RequestID}
+}
+
+func (o *Office) reconcileOpportunityReceipt(ctx context.Context, scope Scope, requestID, fingerprint string) (OpportunityReceipt, bool, error) {
+	reconcileCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), opportunityLookupWindow)
+	defer cancel()
+	delays := [...]time.Duration{0, 20 * time.Millisecond, 40 * time.Millisecond, 80 * time.Millisecond}
+	var lastErr error
+	for attempt, delay := range delays {
+		if delay > 0 {
+			timer := time.NewTimer(delay)
+			select {
+			case <-reconcileCtx.Done():
+				timer.Stop()
+				return OpportunityReceipt{}, false, reconcileCtx.Err()
+			case <-timer.C:
+			}
 		}
-		if decodeErr := json.Unmarshal([]byte(existing.Body), &result); decodeErr == nil {
-			return result, nil
+		var existing opportunityReceipt
+		err := o.db.WithContext(reconcileCtx).Where("tenant_id=? AND user_id=? AND request_id=?", scope.TenantID, scope.UserID, requestID).First(&existing).Error
+		if err == nil {
+			if existing.Fingerprint != fingerprint {
+				return OpportunityReceipt{}, false, ErrIdempotencyConflict
+			}
+			var result OpportunityReceipt
+			if err = json.Unmarshal([]byte(existing.Body), &result); err != nil {
+				return OpportunityReceipt{}, false, err
+			}
+			return result, true, nil
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			lastErr = nil
+		} else {
+			lastErr = err
+		}
+		if attempt == len(delays)-1 {
+			break
 		}
 	}
-	return OpportunityReceipt{}, err
+	return OpportunityReceipt{}, false, lastErr
 }
 
 func (o *Office) OpportunityEvidence(ctx context.Context, opportunityID, snapshotID string) (OpportunityEvidence, error) {

@@ -218,8 +218,14 @@ func (h *Handler) ImportJD(c *gin.Context) {
 	if !ok {
 		return
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxJDRequestBodyBytes)
 	var req ImportJDInput
 	if err := c.ShouldBindJSON(&req); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "JD import request is too large"}})
+			return
+		}
 		writeError(c, ErrInvalidRequest)
 		return
 	}

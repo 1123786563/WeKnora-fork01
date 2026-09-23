@@ -1,15 +1,20 @@
 package career
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -145,6 +150,129 @@ func TestCareerOpportunityHTTPContractAndOwnerScope(t *testing.T) {
 	h.OpportunityReceipt(receiptContext)
 	require.Equal(t, 200, receiptRecorder.Code, receiptRecorder.Body.String())
 	require.Equal(t, 403, request("GET", path, "", "intruder", 75).Code)
+}
+
+func TestCareerOpportunityHTTPRejectsOversizedBodyBeforeBinding(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	o, err := NewOffice(db)
+	require.NoError(t, err)
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "owner", TenantID: 76, Role: types.TenantRoleOwner}}}}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, "owner")
+	base = context.WithValue(base, types.TenantIDContextKey, uint64(76))
+	body := append([]byte(`{"requestId":"too-large","rawText":"`), bytes.Repeat([]byte("x"), maxJDRequestBodyBytes)...)
+	body = append(body, []byte(`"}`)...)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest("POST", "/api/v1/career/opportunities/import", bytes.NewReader(body)).WithContext(base)
+	h.ImportJD(c)
+	require.Equal(t, 413, rec.Code, rec.Body.String())
+	require.JSONEq(t, `{"error":{"code":"request_too_large","message":"JD import request is too large"}}`, rec.Body.String())
+	var count int64
+	require.NoError(t, db.Model(&opportunity{}).Count(&count).Error)
+	require.Zero(t, count)
+	require.NoError(t, db.Model(&opportunityReceipt{}).Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestCareerOpportunityConcurrentSameRequestReconcilesOneReceipt(t *testing.T) {
+	dsn := fmt.Sprintf("file:career-opportunity-concurrent-%s?mode=memory&cache=shared&_busy_timeout=1000", strings.ReplaceAll(uuid.NewString(), "-", ""))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(8)
+	o, err := NewOffice(db)
+	require.NoError(t, err)
+	ctx := WithScope(context.Background(), Scope{UserID: "owner", TenantID: 77})
+	require.NoError(t, o.ClaimSpace(ctx))
+	const workers = 8
+	start := make(chan struct{})
+	preflightComplete := make(chan struct{}, workers)
+	beginTransaction := make(chan struct{})
+	o.beforeOpportunityTransaction = func() {
+		preflightComplete <- struct{}{}
+		<-beginTransaction
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	receipts := make(chan OpportunityReceipt, workers)
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			r, e := o.ImportJD(ctx, ImportJDInput{RequestID: "concurrent-jd", RawText: "Same exact JD"})
+			receipts <- r
+			errs <- e
+		}()
+	}
+	close(start)
+	for range workers {
+		<-preflightComplete
+	}
+	close(beginTransaction)
+	for range workers {
+		if err := <-errs; err != nil {
+			var unknown *OutcomeUnknownError
+			require.ErrorAs(t, err, &unknown)
+			require.Equal(t, "concurrent-jd", unknown.RequestID)
+		}
+		<-receipts
+	}
+	wg.Wait()
+	// If every simultaneous SQLite transaction rolled back on SQLITE_LOCKED,
+	// retrying the same request ID is the documented recovery path. If a commit
+	// already succeeded, this returns the same receipt instead.
+	stored, err := o.ImportJD(ctx, ImportJDInput{RequestID: "concurrent-jd", RawText: "Same exact JD"})
+	require.NoError(t, err)
+	require.NotEmpty(t, stored.SnapshotID)
+	var count int64
+	require.NoError(t, db.Model(&opportunitySnapshot{}).Count(&count).Error)
+	require.EqualValues(t, 1, count)
+}
+
+func TestCareerOpportunityAmbiguousCancelledWriteReturnsRecoverableOutcome(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "career-cancel.db")), &gorm.Config{})
+	require.NoError(t, err)
+	o, err := NewOffice(db)
+	require.NoError(t, err)
+	ownerCtx := WithScope(context.Background(), Scope{UserID: "owner", TenantID: 78})
+	require.NoError(t, o.ClaimSpace(ownerCtx))
+	ctx, cancel := context.WithCancel(ownerCtx)
+	registered := false
+	err = o.db.Callback().Create().After("gorm:create").Register("test:cancel-after-opportunity-receipt", func(tx *gorm.DB) {
+		if tx.Statement.Table == "career_opportunity_receipts" && !registered {
+			registered = true
+			cancel()
+			tx.AddError(errors.New("simulated response lost after receipt insert"))
+		}
+	})
+	require.NoError(t, err)
+	defer func() { _ = o.db.Callback().Create().Remove("test:cancel-after-opportunity-receipt") }()
+
+	_, err = o.ImportJD(ctx, ImportJDInput{RequestID: "cancelled-jd", RawText: "Ambiguous JD"})
+	var unknown *OutcomeUnknownError
+	require.ErrorAs(t, err, &unknown)
+	require.Equal(t, "cancelled-jd", unknown.RequestID)
+	require.True(t, errors.Is(err, ErrOutcomeUnknown))
+	recovered, lookupErr := o.FindOpportunityReceipt(ownerCtx, "cancelled-jd")
+	require.Empty(t, recovered.RequestID)
+	require.ErrorIs(t, lookupErr, ErrReceiptNotFound)
+}
+
+func TestCareerOpportunityAmbiguousCommitReturnsPersistedReceipt(t *testing.T) {
+	o, ctx := newOpportunityOffice(t, "owner", 79)
+	o.afterOpportunityCommit = func() error { return errors.New("simulated commit acknowledgement lost") }
+	want, err := o.ImportJD(ctx, ImportJDInput{RequestID: "commit-ack-lost", RawText: "Persisted JD"})
+	require.NoError(t, err)
+	require.Equal(t, "commit-ack-lost", want.RequestID)
+	recovered, err := o.FindOpportunityReceipt(ctx, "commit-ack-lost")
+	require.NoError(t, err)
+	require.Equal(t, want, recovered)
+	var count int64
+	require.NoError(t, o.db.Model(&opportunitySnapshot{}).Count(&count).Error)
+	require.EqualValues(t, 1, count)
 }
 
 func newOpportunityOffice(t *testing.T, user string, tenant uint64) (*Office, context.Context) {
