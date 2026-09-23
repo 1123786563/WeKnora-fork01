@@ -1,298 +1,268 @@
-# Issue #72 最终交付报告（Lago 计费迁移编排）
+# Issue #72 最终交付报告（Lago 计费迁移编排：#74 实施轮 + OCR 治理）
 
-> 生成：2026-09-23（同日按独立读者评审意见修订）｜ Worktree：`.worktrees/issue72-lago` ｜ 分支：`codex/issue-72-lago`
-> 基线：`29c1e56353b2b36be242018cecb43bcb3a5ef7c8`（docs: plan pass b contract and ownership freeze）｜ 实施终点：`7cf7554745`（issue-72: issues inventory and dag）
-> **本报告自身以独立提交入库**：基线..HEAD 恒为 **2 个提交**（`7cf7554745` 清单+DAG ＋ 本报告提交）。报告提交经 amend 修订，哈希以 `git log -1` 实查为准，故文内不硬编码自身哈希；验收者执行 `git log --oneline 29c1e5635..HEAD` 应见且仅见上述 2 个提交。
-> 本轮交付范围：33 个子 Issue 逐票调查结论 + 依赖 DAG + 本报告。**无生产代码提交**。
-> 会话口径（本文多处引用）：**执行会话**＝产出清单/DAG 的本轮实施会话；**撰写会话**＝产出本报告的会话（修订版含第二轮证据补查）。两会话各自实跑的命令分列于 §12。
+> 生成：2026-09-23（同日修订 rev2：按独立读者评审意见 21 项修订——OCR-4 严重级别定论、轮 4 逐项处置表、断言计数体系说明、提交计数勘误 25→24、全量 GitHub 状态核对、矩阵 24 项全对照、编排器 JSON 原文附录等；修订以 amend 并入同一报告提交）｜ Worktree：`.worktrees/issue72-lago` ｜ 集成分支：`codex/issue-72-lago`
+> 基线：`29c1e56353b2b36be242018cecb43bcb3a5ef7c8`（docs: plan pass b contract and ownership freeze）｜ 实施终点：`c9e4033d30`（`issue-72: ocr round 4`，基线..终点 **24 个提交**，`git rev-list --count` 实查=24；本报告提交为第 25 个，哈希以 `git log -1` 为准）｜ 早版勘误：rev1 曾误写「25 个提交」，实为 24，§5.2 表已逐哈希对齐。
+> **本报告覆盖并取代早版**（`6649e06ba`，2026-09-23 03:09 的调查轮报告，当时基线..HEAD 仅 2 个 docs 提交、#74 尚未实施；早版仍可在 git 历史查证）。
+> 本轮（基线..实施终点）交付：① 33 票清单+依赖 DAG 修订（`7cf755474`→`dafba8851`）；② **#74 [Lago 02] 唯一实施票：AC1–AC4 运行时证据全 pass 并经真实流程验证**（merge `175de8b4f`）；③ OCR 4 轮审查 + 3 轮修复（第 1–3 轮 16 项有效 findings 全部清偿；第 4 轮遗留 **4 项有效 critical/high/medium 类别未解决 + 1 项 low**，级别定论见 §9.2）。
+> 口径说明：各票最终状态以编排器给定实施结果 JSON 为准（**原文全文附录于 §13，供逐字核对**；该 JSON 由任务下发方在本报告的任务指令中给定、未单独入库，附录即其入库存档）；GitHub 状态为本报告会话 `gh issue view` **全量 34 票核对**（§2）。
 
 ## 1. 执行摘要
 
-本轮没有实施任何新的生产代码 Issue，交付物是**调查与编排制品**：33 票逐票清单（`docs/plans/issue-72-issues-inventory.md`，319 行）、依赖 DAG（`docs/plans/issue-72-dag.md`，295 行，33 节点/70 边，执行会话实跑 python3 Kahn 校验无环——脚本本体未归档，见 §7/§11）。结论：**7 票"已验证跳过"**（调查验证前轮已完成，未重复实施；GitHub 已 CLOSED，撰写会话 gh 复核仍为 CLOSED）、**26 票阻塞**（10 票直接阻塞 + 16 票依赖传播；gh 复核均为 OPEN，含父票 #72 OPEN）。主链停在两个硬阻塞点：**#74 传递阻塞 25 票**（缺 Stripe TEST 密钥 + T02 三选项裁决）、**#75-a2 传递阻塞 21 票**（充值批次到期归属未裁决）（`issue-72-dag.md:251`）。编排器给定状态枚举仅两值："已验证跳过"7 票 + "阻塞"26 票（后者 note 再分"直接阻塞原因"10 票/"前置未完成（依赖传播）"16 票，与 DAG blocked/todo 一一对应，映射表见 §2.3）。OCR 结论（编排器给定转述，仓库内无执行痕迹，见 §9）：没有任何已实施完成的 Issue，OCR 无交付范围可审；low findings 记 0 项。集成分支 `codex/issue-72-lago` **未推送远端**；基线落后 main 49 个提交但与本轮 2 个 docs 提交零路径重叠，合并风险极低（§5.3）。
+本轮在 33 个子 Issue 中实施并完成 **1 票（#74）**，其余维持「7 票已验证跳过（前轮成果）+ 25 票阻塞」。#74 从 blocked-env（缺 Stripe TEST 密钥）起步：用户于本轮提供 `~/.zcode/issue72-stripe.env`（仅测试凭据），#74 改判 todo（`dafba8851`），随后在独立 Issue 分支 `codex/issue-72-lago-74` 上经 11 轮真实运行（1 轮 blocked-env + 9 轮 fail 暴露工具契约缺陷 + 最终 run11 `5d06a277` 九阶段全 pass）取得 AC1–AC4 运行时证据，主 Agent 裁决接受计划偏差后经 merge `175de8b4f` 并入集成分支，并由流程验证员在真实环境独立复跑验证（run `3dc51207`，21/21 断言 + DB-WATCH PASS，证据 `docs/plans/issue-72-flow-evidence-74/`）。其后 OCR 审查 4 轮：第 1–3 轮共 16 项有效 findings 全部根因修复并每轮重放真实流程（证据 `issue-72-ocr{1,2,3}-replay/`），**第 4 轮报告后无修复轮，遗留 4 项有效 critical/high/medium 类别 findings 未解决 + 1 项 low finding**（轮 4 原文无 critical/high 级条目，该 4 项按级别落位均为 medium，定论与逐项处置见 §9.2）。主链仍卡在两项用户输入：**T02 三选项裁决**（(a) Premium manual /(b) 受支持 Provider /(c) 改 spec，解锁 #81/#82）与 **#75-a2 充值批次设计**（注意：`552d98d12` 已在 ADR-0012 写入「75-a2 裁决 B：协调层承载」修订记录，但其裁决出处无法从过程文档溯源——与编排器 JSON 中 #85 仍称「裁决未提供」不一致，效力待用户确认，§9.3/§10.2-D2）。集成分支**未推送远端**（`git ls-remote` 实查，远端仅历史分支 `lago-73-community-env`/`lago-integration`）；#74 GitHub 仍 OPEN（全量核对见 §2；关票建议见 §10.2-D4）。
 
-## 2. 每个子 Issue 的状态与证据
+## 2. 每个子 Issue 的状态与证据（33 票，编排器给定 JSON 全量转录）
 
-状态口径两套并列：**本轮实施结果**（编排器给定 JSON）与**调查口径**（DAG 状态表 `issue-72-dag.md:257-291`：done 7 / blocked 10 / todo 16，统计 `issue-72-issues-inventory.md:46`）。
+状态分布：**已验证跳过 7 ｜ 已完成 1 ｜ 阻塞 25**（直接阻塞 9 + 依赖传播 16）。
 
-### 2.3 两套口径映射（先读）
+**GitHub 状态全量核对（本报告会话实跑）**：`for i in 72 $(seq 73 105); do gh issue view $i -R 1123786563/WeKnora-fork01 --json state; done`（首轮 5 票瞬时查询失败，隔 2s 重试全部成功，34/34 无缺漏）→ **#72 OPEN；#73/75/76/77/78/79/80 CLOSED（7 票）；#74 及 #81–#105 全部 OPEN（25 票）**——与 JSON 状态分布完全一致，无漂移。以下各节标题中的 GitHub 状态均以此全量核对为据。
 
-| 编排器 JSON 状态 | 票数 | 对应 DAG 状态 | 票号 |
+### 2.1 已完成（1 票）
+
+| Issue | 标题 | 状态 | 证据（编排器 note + 本报告会话核验） |
 |---|---|---|---|
-| 已验证跳过（note：调查已验证完成，未重复实施） | 7 | done | 73, 75, 76, 77, 78, 79, 80 |
-| 阻塞（note 为直接阻塞原因：外部输入/前置裁决） | 10 | blocked | 74, 81, 82, 85, 87, 88, 94, 97, 100, 103 |
-| 阻塞（note 标注"前置未完成（依赖传播）"） | 16 | todo（待实施，前置排队） | 83, 84, 86, 89, 90, 91, 92, 93, 95, 96, 98, 99, 101, 102, 104, 105 |
+| #74 | [Lago 02] 证明外部付款可以激活 payment-gated Subscription | **已完成** | 编排器 JSON 记 `HEAD=175de8b4fd…`——该哈希是**集成分支的 merge 提交**（流程验证所基状态，`issue-72-flow-evidence-74/VERIFY-SUMMARY.txt:4`「环境: 集成分支 codex/issue-72-lago @ 175de8b4f」）；per-issue 分支 `codex/issue-72-lago-74` 自身 tip=`ec14bbf94`。两提交关系（本报告会话实查）：merge parents=`552d98d12`+`ec14bbf94`；`552d98d12`（ADR-0012 修订）**不是** `ec14bbf94` 的祖先（仅存在于集成分支线）；`git diff ec14bbf94 175de8b4f` 仅 `docs/adr/0012-…md` +17 行——即 merge 结果 = Issue 分支全部内容 + ADR-0012 修订，别无差异。流程验证=真实 API 链路 + DB 投影核验 + Playwright 无头真实渲染（前端仅人工观察不作判据）；`run_lab.py` 串真实 Lago REST/GraphQL 与真实 Stripe TEST 扣款；DB 观察者每 2s 只读 psql 采样投影（16 步/16 件口径说明见 §8）。落地证据：`issue-72-ledger-74.md`（AC1–AC4 全 pass 判定 `:59-62`）、`docs/migrations/lago/t02-payment-activation/`（8 JSON+DECISION.md）、`docs/plans/issue-72-flow-evidence-74/`（23 个 git 跟踪文件）。**遗留**：OCR 第 4 轮 4 项 medium 未解决（§9.2）；GitHub 未关票（关票建议 §10.2-D4） |
 
-**GitHub 状态**：清单 §1 总览列（调查会话编写，其 §3 记录"gh CLI 可用（进度 7/33 实测来源）"，`issue-72-issues-inventory.md:319`——即调查会话曾以 gh 实测部分票，但未附命令输出与时间点）。**撰写会话已用 gh 全量复核**（2026-09-23，命令见 §12）：#72 OPEN；#73/75/76/77/78/79/80 **CLOSED**（7 票，已二遍点名复核）；#74、#81–#105 **OPEN**（26 票）——与清单列完全一致，无状态漂移。此后状态可能随时间漂移，验收时建议重跑（§12.3）。
+### 2.2 已验证跳过（7 票，前轮成果，本轮调查复核后未重复实施，GitHub CLOSED〔全量核对〕）
 
-### 2.1 已验证跳过（7 票，GitHub CLOSED，前轮完成、本轮未重复实施）
-
-| Issue | 标题 | 前轮验证证据（清单 §2 逐票记录） |
+| Issue | 标题 | 前轮验证证据（清单 §2 + 早版报告核验） |
 |---|---|---|
-| #73 | [Lago 01] 固定版本集成环境 | 四 AC 有代码+46 测试实跑+62 subtests；`deploy/lago/evidence/t01-images.txt`（5/5 digest MATCH）、`t01-health.json`（ready）、`t01-contract.json`；carryover 修复 b57be1602（`issue-72-issues-inventory.md:53-56`） |
-| #75 | [Lago 03] Wallet 批次语义 | e1-e4 真实栈实测+104 测试实跑；`docs/migrations/lago/t03-wallet-semantics/verdict.md` 判 a1/b/c/d PASS-WITH-COORDINATION、**a2 BLOCKED**（第 7 活跃钱包 422，Lago 硬上限 6）（`:69-72`） |
-| #76 | [Lago 04] Pricing Group 计价批次 | 60 测试实跑+6 份真实栈 JSON 证据（64/64 all_reconciled_exact、422 幂等、p95 6.893s）；4 处契约修正反哺 `lago.go:360-399`（`:77-80`） |
-| #77 | [Lago 05] Commercial Platform seam | 冻结 seam `platform.go:221-230`+双适配器契约；`go build ./...` exit 0、`go test ./...` 126 包 ok；`t05-health.json`/`t05-run.txt`（`:85-88`） |
-| #78 | [Lago 06] 空间独立 Lago Customer | 三层幂等+租户隔离，6 组 go test 实跑 PASS；`t06-account.txt`/`t06-status.json`；账本 `docs/plans/ledgers/lago-78.md`（`:93-96`） |
-| #79 | [Lago 07] 不可变 Plan Version | 六轴校验+双方言 DB trigger 不可变，5 包测试实跑 PASS；`t07-run.txt`；账本 `docs/plans/ledgers/lago-79.md`（`:101-104`） |
-| #80 | [Lago 08] Base Plan 权益与月度额度 | 懒链+配额 guard+迁移 000183，9 个点名测试实跑 PASS；`t08-run.txt`；账本 `docs/plans/ledgers/lago-80.md`（`:109-112`） |
+| #73 | [Lago 01] 固定版本集成环境 | 46 测试+62 subtests 实跑；`deploy/lago/evidence/t01-{images,health,contract}`（5/5 digest MATCH、ready） |
+| #75 | [Lago 03] Wallet 批次语义 | e1-e4 真实栈实测+104 测试；`docs/migrations/lago/t03-wallet-semantics/verdict.md`（a2 BLOCKED：第 7 活跃钱包 422） |
+| #76 | [Lago 04] Pricing Group 计价批次 | 60 测试+6 份真实栈 JSON（64/64 精确核对、p95 6.893s） |
+| #77 | [Lago 05] Commercial Platform seam | 冻结 seam `platform.go:221-230`；go build/test 126 包 ok；`t05-health.json` |
+| #78 | [Lago 06] 空间独立 Lago Customer | 三层幂等+租户隔离；账本 `docs/plans/ledgers/lago-78.md`；`t06-*` |
+| #79 | [Lago 07] 不可变 Plan Version | 六轴校验+DB trigger；账本 `lago-79.md`；`t07-run.txt` |
+| #80 | [Lago 08] Base Plan 权益额度 | 懒链+迁移 000183；账本 `lago-80.md`；`t08-run.txt` |
 
-> **证据性质声明（评审意见采纳）**：上表测试数字（46/104/60/126 包/6 组/5 包/9 个）均系清单 §2 的文字转述，为前轮实施会话实跑记录；`deploy/lago/evidence/t0*-run.txt` 等归档的是**真实栈操作时间线**（如 `t08-run.txt` 开头即"real-stack run — operator timeline"），**不是** pytest/go test 的 stdout。仓库内无这些测试的第一手运行输出。撰写会话未重跑任何测试套件（§12），验收者如需第一手证据须按 §12.3 命令重跑。
+> **证据性质声明（重要）**：上表测试数字（46+62 subtests/104/60/126 包等）系清单 §2 对前轮实跑的**文字转述**，本轮与早版报告均未重跑；仓库内归档的是真实栈操作时间线（`t0*-run.txt` 等）而非测试 stdout。**8/33 完成票中的这 7 票在本轮证据链中无可直接核对的支撑——接手者不应将其视为已复核结论**；如需第一手证据须按 §11 命令重跑（`python3 -m pytest deploy/lago/ -q`、`go test ./...` 等）。
 
-### 2.2 阻塞（26 票，GitHub 全 OPEN[撰写会话 gh 复核]，本轮零实施）
+### 2.3 直接阻塞（9 票，GitHub OPEN〔全量核对〕，本轮零实施）
 
-**直接阻塞（10 票）**——依据：编排器给定 JSON + `issue-72-dag.md:236-249` 阻塞原因表 + 清单 §2 逐票"处理决定"：
-
-| Issue | 标题 | 阻塞原因（JSON note 摘要） | 依据 |
-|---|---|---|---|
-| #74 | [Lago 02] 外部付款激活 | AC1-AC3 运行时证据需 Stripe TEST 密钥（sk_test_…）重跑 `run_lab.py`（解锁命令已内联至 §10 D1）；T02 DECISION.md 三选项待 spec/ADR owner 裁决；传递阻塞其余 25 票 | `issue-72-issues-inventory.md:58-64`、`docs/migrations/lago/t02-payment-activation/DECISION.md` |
-| #81 | [Lago 09] Quote→待付款 Invoice | Blocked by #74：付款激活路径未裁决，incomplete Subscription 创建机制无法定型；#78/#79 前置已满足 | `:114-120` |
-| #82 | [Lago 10] 支付宝恰好一次激活 | Blocked by #74/#81：录入通道未裁决 + 无可激活实体（`lago.go:684-686` createSubscription 刻意不带 activation_rules，撰写会话已核原文注释） | `:122-128` |
-| #85 | [Lago 13] 充值到账 | Blocked by #82/#83（传递 #74）且 #75-a2 设计决策未决（≤5 并发批次 vs 协调层承载+修订 ADR-0012） | `:146-152` |
-| #87 | [Lago 15] 原子预占 | Blocked by #86：空间保守余额需 Lago Wallet 权威投影；#86→#87→#88 链被 #74/#75-a2 悬置 | `:162-168` |
-| #88 | [Lago 16] 批次核对 | Blocked by #87（OPEN 未开工）：全部 AC 以已预占调用为对象 | `:170-176` |
-| #94 | [Lago 22] 降级/年付/到期 | Blocked by #93：与升级共用同一 ExternalSubscriptionID 切换协调器 | `:218-224` |
-| #97 | [Lago 25] 微信退款对齐 | Blocked by #83/#95/#96：P03 资格 seam 未实现、Credit Note 撤权模型未落地、REFUND.* 契约未实现 | `:242-248` |
-| #100 | [Lago 28] Billing Center | Blocked by #91/#94/#97/#98/#99（全 OPEN 无账本） | `:266-272` |
-| #103 | [Lago 31] 生产 Helm+延迟 | Blocked by #98/#99/#101：AGPL 上线门槛为法律前置门；Helm 交付未开始 | `:290-296` |
-
-**依赖传播阻塞（16 票）**——JSON note「前置未完成（依赖传播）」，DAG 口径 todo：
-
-| Issue | 标题 | 传播链（JSON） |
+| Issue | 标题 | 阻塞原因（JSON note 摘要） |
 |---|---|---|
-| #83 | [Lago 11] 微信复用激活 | [issue-82] |
-| #84 | [Lago 12] 异常付款不扩大权益 | [issue-82, issue-83] |
-| #86 | [Lago 14] 到期顺序消费 | [issue-85]（月度维度可先行，`:160`） |
-| #89 | [Lago 17] 并发共享预算 | [issue-87] |
-| #90 | [Lago 18] 延迟/超界暂停 | [issue-88] |
-| #91 | [Lago 19] BYOK 豁免 | [issue-88] |
-| #92 | [Lago 20] 用量修正不改历史 | [issue-88] |
-| #93 | [Lago 21] 升级补差 | [issue-82, issue-86] |
-| #95 | [Lago 23] 充值退款三段式 | [issue-82, issue-85, issue-86] |
-| #96 | [Lago 24] 套餐退款 Credit Note | [issue-92, issue-93] |
-| #98 | [Lago 26] Webhook 对账收敛 | [issue-84, issue-85, issue-93, issue-95, issue-96] |
-| #99 | [Lago 27] 故障不丢用量 | [issue-90, issue-92] |
-| #101 | [Lago 29] 最小化/AGPL | [issue-97, issue-99] |
-| #102 | [Lago 30] 空间注销 | [issue-94, issue-96, issue-98, issue-101] |
-| #104 | [Lago 32] 备份恢复对账 | [issue-102, issue-103] |
-| #105 | [Lago 33] 切换/移除 OpenMeter | [issue-86, #89, #91, #92, #94, #97, #100, #102, #104]（9 个 blocker 全 OPEN，收官票） |
+| #81 | [Lago 09] Quote→待付款 Invoice | Blocked by #74：T02 三选项裁决仍未提供，payment-gated incomplete Subscription 创建机制无法定型（#78/#79 已满足；#74 运行时证据到位后此裁决仍是剩余卡点） |
+| #82 | [Lago 10] 支付宝恰好一次激活 | Blocked by #74/#81：可信 Payment 录入通道未裁决+无可激活实体（`lago.go:684` 刻意不带 activation_rules，本报告会话已核原文） |
+| #85 | [Lago 13] 充值到账 | Blocked by #75/#82/#83：#75-a2 设计裁决（12 个月到期撞六活跃钱包硬上限：≤5 并发批次 vs 协调层承载+修订 ADR-0012）未提供；付款链未通（另见 §9.3 不一致说明） |
+| #87 | [Lago 15] 原子预占 | Blocked by #86（OPEN）：空间保守余额需 Lago Wallet 权威投影；#86→#87→#88 链被 #75-a2 悬置（waves L140） |
+| #88 | [Lago 16] Settlement Batch 核对 | Blocked by #87（OPEN 未开工）：全部 AC 以已预占调用为对象；整链传递依赖 #74 与 #75-a2（waves L138-140） |
+| #94 | [Lago 22] 降级/年付/到期 | Blocked by #93（OPEN）：与升级共用同一 ExternalSubscriptionID 订阅链切换协调器 |
+| #97 | [Lago 25] 微信退款对齐 | Blocked by #83/#95/#96（全 OPEN）：P03 资格 seam 未实现、Credit Note 撤权模型未落地、微信 REFUND.* 契约与退款渠道测试为零 |
+| #100 | [Lago 28] Billing Center | Blocked by #91/#94/#97/#98/#99（全 OPEN 无账本）：「等待同步」须 #98 对账收敛、「预占」须 #99 故障安全 |
+| #103 | [Lago 31] 生产 Lago+延迟目标 | Blocked by #98/#99/#101（3/4 前置 OPEN）：Helm 生产交付未开始；AGPL 上线门槛为法律前置门（spec L179-180） |
 
-## 3. #72 总体验收标准覆盖情况
+### 2.4 依赖传播阻塞（16 票，note=「前置未完成（依赖传播）」，GitHub OPEN〔全量核对〕）
 
-父 Issue #72 只提供总体目标与验收，不计入 DAG 节点（`issue-72-issues-inventory.md:5`）。其验收由 Spec `docs/specs/2026-09-20-lago-billing-migration-design.md` 承载：**行为与契约矩阵第 1–24 项位于 spec:212-237**（`### Behavior and contract matrix`，撰写会话已核原文；第 1 项 Community 能力+AGPL、第 5 项外部付款激活、第 8 项 Credits 顺序、第 24 项 OpenMeter 移除等）与 **Completion gate（spec:246-248）**：全部矩阵对 pinned Lago Community 通过 + 全部检查（单元/集成/并发/契约/端到端/静态/性能/安全/恢复）通过 + AGPL 审查接受 + 无未解决阻塞的独立 Spec Compliance 与代码审查 + 回退窗口关闭 + OpenMeter 运行时路径移除；且明示 mock/OpenAPI/事件接收响应/健康进程不构成完成证据。
+| Issue | 标题 | 传播链 |
+|---|---|---|
+| #83 | [Lago 11] 微信复用激活 | [82] |
+| #84 | [Lago 12] 异常付款不扩大权益 | [82, 83] |
+| #86 | [Lago 14] 到期顺序消费 | [85] |
+| #89 | [Lago 17] 并发共享 Task Budget | [87] |
+| #90 | [Lago 18] 延迟/超界暂停 | [88] |
+| #91 | [Lago 19] BYOK 豁免 | [88] |
+| #92 | [Lago 20] 用量修正不改历史 | [88] |
+| #93 | [Lago 21] 升级补差 | [82, 86] |
+| #95 | [Lago 23] 充值退款三段式 | [82, 85, 86] |
+| #96 | [Lago 24] 套餐退款 Credit Note | [92, 93] |
+| #98 | [Lago 26] Webhook 对账收敛 | [84, 85, 93, 95, 96] |
+| #99 | [Lago 27] 故障不丢用量 | [90, 92] |
+| #101 | [Lago 29] 最小化/AGPL | [97, 99] |
+| #102 | [Lago 30] 空间注销 | [94, 96, 98, 101] |
+| #104 | [Lago 32] 备份恢复对账 | [102, 103] |
+| #105 | [Lago 33] 切换/移除 OpenMeter | [86, 89, 91, 92, 94, 97, 100, 102, 104]（收官票） |
 
-覆盖情况（依据清单 §2 逐票证据；撰写会话已抽查核验下列关键代码引用原文）：
+> 注：DAG 状态表（`issue-72-dag.md:264-300`，最后修订于 `dafba8851`）仍标 #74=todo——该文件在 #74 开工前定稿后未再更新，最新状态以本节 JSON/账本为准（清单 `issue-72-issues-inventory.md` 同样停留在 #74=todo，均为可追溯性缺口，见 §11）。
 
-- **已覆盖（基座）**：33 票中 7 票（#73/#75/#76/#77/#78/#79/#80）按票级 AC 验证并 GitHub CLOSED（撰写会话 gh 复核确认），构成 pinned v1.53.0 环境与冻结 Commercial Platform seam 基座。对应矩阵项的部分覆盖：第 1 项的 Community 能力子集（AGPL 审查除外）、第 2 项租户隔离（#78）、第 3 项不可变目录（#79）、第 8 项的语义验证（#75 verdict）、第 10 项的批次核对形态（#76）。
-- **未覆盖（主体）**：26/33 票未完成。Completion gate 关键项全部未达成——AGPL 审查结论不存在（`deploy/lago/README.md:186-192` 明确 open production gate，`issue-72-issues-inventory.md:277`）；OpenMeter 运行时仍装配（`internal/container/container.go:244`，**撰写会话已核原文**：`must(container.Provide(ommeter.NewGatewayFromEnv, dig.As(new(domain.CommercialGateway))))`；另 `:309` 为清单行号非代码行号）；第 5/6/7/9/11/12–24 项对应票全 OPEN；24 项 gate 无证据归档（DAG W15 未执行）；回退窗口关闭无流程（#105 未实施）。
-- **判定**：#72 迁移整体**未完成**；进度 = 调查 33/33 完成、实施 7/33（均为前轮成果）、本轮新增实施 0。#72 GitHub OPEN（撰写会话 gh 复核）。
+## 3. #72 总体验收标准覆盖情况（矩阵 24 项全对照）
+
+父票 #72 不入 DAG 节点，其验收由 Spec `docs/specs/2026-09-20-lago-billing-migration-design.md` 承载：行为与契约矩阵 1–24 项（spec:212-237）与 Completion gate（spec:246-248），本报告会话均已核原文。**逐项对照**（票号↔矩阵项映射依据 DAG 依赖表与清单 §2；「部分」=有实验/语义证据但产品化票未完成）：
+
+| 矩阵项 | 对应票 | 状态 |
+|---|---|---|
+| 1 Community 能力+AGPL | #73（能力）+ #101/#103（AGPL） | **部分**：能力子集✓；AGPL 审查结论不存在 |
+| 2 租户隔离 | #78 | ✓（前轮） |
+| 3 不可变目录 | #79 | ✓（前轮） |
+| **4 Quote 匹配** | #81 | **未覆盖**（OPEN；rev1 漏列，rev2 补） |
+| 5 外部付款激活 | #74（实验证明）+ #82/#83/#84（产品化） | **部分**：provider 轨道运行时证实（本轮）；微信/支付宝产品链未开工 |
+| 6 充值到账 | #85/#86 | 未覆盖（OPEN） |
+| 7 付款异常 | #84 | 未覆盖 |
+| 8 Credits 顺序 | #75（语义验证）+ #86（实现） | **部分**：语义 verdict✓；实现未开工 |
+| 9 用量身份 | #88 | 未覆盖 |
+| 10 Settlement Batch | #76（批次核对形态）+ #88（实现） | **部分**：实验形态✓；实现未开工 |
+| 11 延迟与规模 | #90/#103 | 未覆盖 |
+| 12 并发准入 | #87/#89 | 未覆盖 |
+| 13 预占生命周期 | #87/#88 | 未覆盖 |
+| 14 上界违规 | #90 | 未覆盖 |
+| 15 BYOK | #91 | 未覆盖 |
+| 16 修正 | #92 | 未覆盖 |
+| 17 Plan 生命周期 | #93/#94 | 未覆盖 |
+| 18 退款 | #95/#96/#97 | 未覆盖 |
+| 19 Webhook 对账 | #98 | 未覆盖 |
+| 20 故障注入 | #99 | 未覆盖 |
+| 21 权限 | #100 | 未覆盖 |
+| 22 隐私与凭据 | #101 | **部分旁证**：#74 证据链密钥纪律（secrets scan 0 hits+形状扫描）仅为实验链路旁证，正式项未覆盖 |
+| 23 备份恢复 | #104 | 未覆盖 |
+| 24 OpenMeter 移除 | #105 | 未覆盖（`internal/container/container.go:244` 仍装配 `ommeter.NewGatewayFromEnv`，本报告会话已核原文） |
+
+- **判定**：#72 迁移整体**未完成**；进度=调查 33/33、实施 8/33（7 前轮+本轮 #74）。Completion gate 关键项未达成：AGPL 审查、24 项 gate 证据归档（DAG W15 未执行）、回退窗口关闭流程（#105）均缺。#72 GitHub OPEN（全量核对）。
 
 ## 4. 制品与证据路径索引
 
 | 类别 | 路径 | 说明 |
 |---|---|---|
-| 层级树 | `docs/plans/issue-72-issues-inventory.md:5` | 33 票均为 #72 直接子票，层级树退化为单层（无嵌套父子） |
-| 子 Issue 清单 | `docs/plans/issue-72-issues-inventory.md` | 逐票状态/依据/依赖/处理决定（§1 总览 + §2 逐票 + §3 外部依赖核查） |
-| DAG | `docs/plans/issue-72-dag.md` | Mermaid 图 + 70 条边依赖表 + 拓扑序 + 波次规划 + 阻塞节点 + 状态表 + 校验记录 |
-| 编排计划（前轮） | `docs/plans/2026-09-20-lago-billing-waves.md` | Wave 2/3/4 完成记录、硬阻塞点、主/Worker 职责（L118-160） |
-| 票级计划（前轮） | `docs/plans/2026-09-21-lago-t06-lago-customer.md`、`2026-09-21-lago-t07-plan-version-publish.md`、`2026-09-21-lago-t08-base-plan.md`（由账本头部引用，`docs/plans/ledgers/lago-78.md:5` 等） | #78/#79/#80 实施计划；**撰写会话未核验这三个计划文件是否存在于本 worktree**（账本转述引用） |
-| Ledger | `docs/plans/ledgers/lago-78.md`、`lago-79.md`、`lago-80.md` | 本 worktree 现存仅这 3 份（`ls docs/plans/ledgers/` 实查）；断链分析见 §11.2 |
-| Spec/ADR | `docs/specs/2026-09-20-lago-billing-migration-design.md`（矩阵 :212-237、Completion gate :246-248）；ADR-0012（批次到期，待修订）、ADR-0014（seam 冻结加法规则，经清单/账本引用） | 迁移事实源 |
-| 真实栈证据（前轮） | `deploy/lago/evidence/`（t01-images/health/contract、t05-health/run、t06-account/status、t07-run、t08-run）；`docs/migrations/lago/{t02-payment-activation,t03-wallet-semantics,t04-pricing-group,t07-plan-version-publish,t08-base-plan}`；`deploy/lago-lab/{payment-activation,pricing-group,wallet-semantics}` | `ls` 实查存在；性质=真实栈运行时间线/判定文档，非测试 stdout（§2.1 声明） |
-| 本轮流程证据目录 | `docs/plans/issue-72-flow-evidence-*/` | **不存在**（`find`/`ls` 实查无匹配）——本轮无已完成 Issue，故无流程验证证据目录（见 §8） |
-| OCR 报告 | 无任何文件痕迹 | `find -iname '*ocr*'` 仅命中无关的 `docker/Dockerfile.docreader`/`docreader`；OCR 结论为编排器转述，性质见 §9 |
+| 层级树 | `docs/plans/issue-72-issues-inventory.md:5` | 33 票均为 #72 直接子票，单层无嵌套（320 行） |
+| 子 Issue 清单 | `docs/plans/issue-72-issues-inventory.md` | §1 总览（done 7/blocked 9/todo 17，#74=todo 系修订时点状态）+ §2 逐票 + §3 外部依赖 |
+| DAG | `docs/plans/issue-72-dag.md`（308 行） | Mermaid + 74 条边依赖表 + 拓扑序 + W1–W15 波次 + 阻塞节点 + 状态表 + Kahn 校验记录 |
+| 票级计划 | `docs/plans/issue-72-plan-74.md`（805 行） | #74 实施计划：调查结论/AC 原文/约束/文件地图/追踪矩阵/自检/第 1 轮审查修订 8 处/执行期计划偏差记录 |
+| Ledger | `docs/plans/issue-72-ledger-74.md`（221 行） | #74 执行账本：快照/执行清单/AC 判定/Ruling 1–8/测试记录/终检/F1 三轮审查+主 Agent 裁决/上报事项 6 条 |
+| OCR 报告 | `docs/plans/issue-72-ocr-round-{1,2,3,4}.md` | 4 轮原始 findings（10/7/5/13 项） |
+| OCR 修复记录 | `docs/plans/issue-72-ocr-fix-log.md`（435 行） | 第 1–3 轮 16 项有效 findings 的逐条 Ruling/RED 证据/回归测试/真实重放记录；**无第 4 轮章节** |
+| 流程验证证据 | `docs/plans/issue-72-flow-evidence-74/` | 23 个 git 跟踪文件：VERIFY-SUMMARY.txt、12 个 t02-*.json、t02-run.txt、3 张前端截图、TSV/输出/校验脚本 |
+| OCR 重放证据 | `docs/plans/issue-72-ocr{1,2,3}-replay/`（各 16 个跟踪文件） | 每轮修复后的真实流程重放（run JSON+断言输出+DB-watch TSV） |
+| 运行时证据（晋升） | `docs/migrations/lago/t02-payment-activation/`（8 JSON+README+DECISION.md） | #74 权威证据目录（deploy 侧 `deploy/lago-lab/payment-activation/evidence/` 的 byte-identical 晋升，cmp×8；**注：该目录快照已滞后于最终代码，见 §9.2 处置表 4-02/4-03**） |
+| 前轮证据 | `deploy/lago/evidence/t0*`、`docs/migrations/lago/{t03,t04,t07,t08}`、`deploy/lago-lab/{payment-activation,pricing-group,wallet-semantics}` | 基座 7 票证据（`ls` 实查存在） |
+| Spec/ADR | `docs/specs/2026-09-20-lago-billing-migration-design.md`；`docs/adr/0012-lago-as-commercial-billing-authority.md`（本轮新增修订记录节，`552d98d12`） | 事实源 |
+| 编排器状态 JSON | 本报告 §13 附录 | 33 票实施结果原文（rev2 起入库存档） |
 
-## 5. Git 事实：worktree / 分支 / 基线 / HEAD / 关键提交 / 与 main 的距离
+## 5. Git 事实：worktree / 分支 / 基线 / HEAD / 关键提交
 
-### 5.1 基本事实（撰写会话在 worktree 实跑命令所得，清单见 §12）
+### 5.1 基本事实（本报告会话实跑，命令见 §11）
 
-- **Worktree**：`.worktrees/issue72-lago`，当前分支 `codex/issue-72-lago`（`git branch --show-current`）。
-- **基线**：`29c1e56353b2b36be242018cecb43bcb3a5ef7c8`；**实施终点**：`7cf7554745`（"issue-72: issues inventory and dag"，2026-09-23 02:58 +0800，2 文件 +614 行，`git show --stat 7cf755474` 实查）；**本报告**为基线..HEAD 的第 2 个（末个）提交。
-- **Issue 分支 `codex/issue-72-lago-*`**：**0 个**（`git branch --list 'codex/issue-72-lago-*'` 输出为空）。本轮未创建任何 per-issue 分支。
-- **远端状态**：`codex/issue-72-lago` **未推送**——`git ls-remote --heads origin | grep lago` 仅有历史分支 `lago-73-community-env`（5c25dd376）与 `lago-integration`（22b58cbcc）；`git branch -vv` 无 upstream。历史 per-issue 分支（lago-74/78/79/80 等）本地与远端均已不存在（waves 文档 L134 记录其 rebase 并入历史）。
-- **关键提交（历史，均为基线祖先，`git log --oneline --all | grep` 实查存在；`git merge-base --is-ancestor e87eb459 29c1e56353` 确认）**：
-  - `b57be1602` fix(lago): probe lenient-cleans（#73 carryover 修复）
-  - `d1eec16be` merge: #74 payment activation lab（squashed，secret 形状测试夹具 defuse 后并入）
-  - `6ea0511f5` merge: #79 immutable Plan Version publish（W3，含 #78/#79 合并冲突 union 解决）
-  - `e87eb459c` merge: #80 Base Plan benefits + monthly credits（W4，含 TOCTOU Important 当轮修复）
+- **Worktree**：`.worktrees/issue72-lago`，分支 `codex/issue-72-lago`（`git worktree list`/`branch --show-current` 实查），工作区干净。**#74 实施所用 worktree `.worktrees/issue72-n74`（ledger-74:7）现已不存在**（`ls` 实查 No such file or directory；`git worktree list` 亦无此条目）——实施后已清理，其分支 `codex/issue-72-lago-74` 仍保留本地。
+- **基线**：`29c1e56353b2b36be242018cecb43bcb3a5ef7c8`；**实施终点**：`c9e4033d3079e6e1405ec3eb84444c4aef025806`（`c9e4033d3`，2026-09-23 19:05 +0800）；**基线..终点 = 24 个提交**（`git rev-list --count` 实查；`git log --oneline` 逐条列举见 §5.2，表内哈希数=24，与计数一致）；本报告提交为第 25 个。
+- **Issue 分支**：`codex/issue-72-lago-*` 仅 **1 个**——`codex/issue-72-lago-74` @ `ec14bbf94`（`git branch --list` 实查）。
+- **远端**：`codex/issue-72-lago` 与 `codex/issue-72-lago-74` 均**未推送**（`git ls-remote --heads origin` 仅历史 `lago-73-community-env`/`lago-integration`；`git branch -vv` 无 upstream）。
+- **merge 拓扑（§2.1 已述，此处存目）**：`175de8b4f` parents=`552d98d12`+`ec14bbf94`；ADR 提交 `552d98d12` 仅在集成分支线（非 `ec14bbf94` 祖先）；`git diff ec14bbf94 175de8b4f` 仅 ADR-0012 +17 行。
 
-### 5.2 基线与 main 的距离（撰写会话实跑）
+### 5.2 关键提交（基线..终点全部 24 个，按主题分组；哈希数=24=§5.1 计数）
 
-- `git rev-list --count 29c1e5635..main` = **49**（main 已前进 49 个提交）；`git rev-list --count main..HEAD` = **2**（本 worktree 仅领先上述 2 个 docs 提交）。
-- 漂移体量：`git diff --stat 29c1e5635..main` 尾行 = **136 files changed, +28172, −8174**。
-- 路径交集（冲突风险面）：
-  - `git log --oneline 29c1e5635..main -- docs/plans/` = **0 个提交** → 本轮 2 个提交（均在 docs/plans/）与 main **零路径重叠，合并/变基冲突风险≈0**。
-  - `git log 29c1e5635..main -- deploy/lago/ docs/migrations/lago/ docs/plans/ledgers/` = **0 个提交** → 前轮证据与账本在 main 上未被动过。
-  - `git diff --stat 29c1e5635..main -- internal/modules/commercial/` = 仅 1 文件：`repository/commercial/benefits.go` +16 行 → 商业模块代码基本未漂移，后续实施波次变基到 main 的代码冲突面小。
+| 主题 | 提交（个数） |
+|---|---|
+| 清单+DAG（两版） | `7cf755474`、`dafba8851`（2） |
+| 早版最终报告 | `6649e06ba`（1；被本报告覆盖取代） |
+| #74 计划 | `6f941c48d`、`42696a30f`（2；plan + ledger 创建，含第 1 轮审查修订） |
+| 实验工具契约修复 | `52e22b366`、`4aa74ce34`（2；对齐 Lago v1.53.0 + Stripe TEST 现行契约；计划原声明「不改动」，主 Agent 后裁决接受，见 §9.1） |
+| ADR-0012 修订 | `552d98d12`（1；75-a2 裁决 B：充值批次协调层承载，+17 行；出处存疑见 §9.3） |
+| #74 运行时证据 | `9ff29b7ec`（run11 `5d06a277` 九阶段全 pass）、`812bb241d`（晋升 8 JSON+DECISION）、`5ccdc7f3a`（ledger final，密钥双扫描 clean）（3） |
+| 判据钉死 | `0aa976c64`（1；4 个 fail 侧回归测试，60→64 passed） |
+| F1 审查与裁决 | `ba562d8e6`、`6bd1ef6fb`（审查 1/2 轮处置）、`ec14bbf94`（主 Agent ruling=accept + 计划偏差记录；Issue 分支 tip）（3） |
+| 集成 | `175de8b4f`（1；merge #74 入集成分支） |
+| 流程验证 | `905ba19b7`（1；`issue-72(#74): flow evidence`，§8 的验证记录） |
+| OCR 治理 | `0ef4577b6`+`c7e404f3a`（轮 1 报告+修复 9 项）、`8b7e20772`+`d95a93f0d`（轮 2+修复 3 项）、`83c6e8edf`+`8e89d4bae`（轮 3+修复 4 项）、`c9e4033d3`（轮 4 报告，无后续修复提交）（7） |
 
-### 5.3 合并评估与 worktree 保留计划（供"是否推送/合并回 main"决策）
+## 6. 并行批次组织（共 1 批）与集成 / revert 记录
 
-- **合并风险评估：低**。依据 §5.2：本轮交付纯 docs 且 docs/plans 在 main 零漂移；`git merge-base` 同源，无 rebase 改写历史需求（本分支无远端，不存在强推问题）。建议路径：`codex/issue-72-lago` 推送 → PR 到 main（两提交均 docs-only，可直接快进合并）；或 cherry-pick 两个 docs 提交。
-- **worktree 保留计划**：本 worktree 是 `issue-72-dag.md`/`issue-72-issues-inventory.md`/本报告的唯一载体（分支未推送前删除 worktree + 分支即丢失交付物）。**建议在推送远端之前保留**；推送并合并后，worktree 可安全删除（`git worktree remove`），后续实施波次按 DAG §4 建议从 main 新建 per-issue worktree（`.worktrees/lago-<NN>` 惯例，参照前轮）。
-- **注意**：main 的 49 个提交漂移意味着后续任何实施波次都应以**当时最新 main** 为基（而非 29c1e5635），DAG §4 的文件改动范围表基于基线代码，实施前需按 §5.2 方式重查漂移（目前仅 benefits.go +16 影响）。
+- **本轮实际并行批次：1 批（单票 #74）。** 依据：DAG §4 判定「当前可立即开工节点仅 #74」（`issue-72-dag.md:221`），其余节点均被 #74/T02 裁决/#75-a2 悬置；故仅派出 1 个实施流（Issue 分支 `codex/issue-72-lago-74`，worktree `.worktrees/issue72-n74`〔现已清理，见 §5.1〕）。无热点文件并行冲突问题（单流）。
+- **集成记录**：1 次——merge 提交 `175de8b4f`（`issue-72(merge): #74`），将 Issue 分支 tip `ec14bbf94` 并入集成分支线 `552d98d12`；merge 结果=Issue 分支全部内容+ADR-0012 修订（§5.1 拓扑事实）。集成后流程验证、OCR 4 轮报告与 3 轮修复均直接在集成分支串行提交，无再分支。
+- **revert 记录：无。** 基线..终点无任何 revert 提交（`git log --oneline` 实查）；且 F1 主 Agent 裁决**明确否决** revert 路径（拒绝路径 `git revert 52e22b366 4aa74ce34 0aa976c64` 被裁定不做，`issue-72-ledger-74.md:193-209`）。
+- 下游波次（W2–W15）为解锁后前瞻规划，本轮零执行（`issue-72-dag.md:223-242`）。
 
-## 6. 并行批次组织（共 0 批）与集成 / revert 记录
+## 7. 实际运行的测试与结果（分会话，均出自归档记录；标 ★ 为本报告会话重跑）
 
-- **本轮实际并行批次：0 批。** 未启动任何实施波次、未派发任何实施 Worker；依据（执行会话产物，撰写会话复核文档记录）：除 #74 外无可立即开工节点（`issue-72-dag.md:211` 波次表注），而 #74 本身 blocked-env 待外部输入；"无可开工节点"的判定链 = DAG §5 传递依赖计数（#74:25、#75:21，`issue-72-dag.md:251`）+ §4 波次模拟，计算载体为执行会话的 python3 脚本（**未归档**，见 §7、§11.2）。DAG §4 的 W1-W15 波次表（`issue-72-dag.md:213-232`）是 #74 解锁后的**前瞻规划**（含热点文件 `lago.go`/`order.go`/`commercial.ts`/`platform.go` 并行冲突预警），本轮无一执行；剩余工作量粗估与下轮启动条件见 §11.3。
-- **本轮集成记录：无**（基线..HEAD 仅 2 个 docs 提交，无 merge commit）；**本轮 revert 记录：无**。
-- **历史集成/revert 参考**（前轮 waves，均在基线内）：Wave 2 四票并行并入（含 #74 squash d1eec16be）；Wave 3 #78/#79 rebase 到 1b5b241 后并入 6ea0511f5；Wave 4 #80 集成 e87eb459c（`docs/plans/2026-09-20-lago-billing-waves.md:126-142`）。历史 revert：本轮证据范围内未发现任何 revert 提交记录。
+| 会话 | 测试/检查 | 结果 | 出处 |
+|---|---|---|---|
+| #74 实施（run1–run11） | `python3 -m pytest test_lab.py test_phases.py -q`（多次） | 基线 60 passed；`0aa976c64` 后 **64 passed** | `issue-72-ledger-74.md:125-137` |
+| #74 实施 run11 | `run_lab.py`（真实栈，Stripe TEST） | 九阶段全 pass，exit 0，secrets scan 0 hits；**25 条 GREEN AC 断言** ALL PASS；DB-WATCH PASS（500 采样）；cmp×8 byte-identical | `issue-72-ledger-74.md:128-131` |
+| 流程验证（905ba19b7） | 离线回归 + `run_lab.py` + `verify_ac_assertions.py` + `verify_db_watch.py` | 64 passed；run `3dc51207` 九阶段 pass、**21/21 断言**、DB-WATCH PASS（272 采样）；sk_test 形状扫描 0 命中 | `issue-72-flow-evidence-74/VERIFY-SUMMARY.txt` |
+| OCR-1 修复（c7e404f3a） | 离线回归 + 真实重放（3 轮，含 1 轮外部传输故障 blocked-env） | **74 passed**；重放 **21/21** + DB-WATCH PASS（516 行 TSV/319 mid-run） | `issue-72-ocr-fix-log.md:147-188` |
+| OCR-2 修复（d95a93f0d） | 同上 | **78 passed**；重放 **23/23** + DB-WATCH PASS（197 点） | `issue-72-ocr-fix-log.md:283-315` |
+| OCR-3 修复（8e89d4bae） | 同上 | **82 passed**；重放 **25/25** + DB-WATCH PASS（326 点） | `issue-72-ocr-fix-log.md:400-431` |
+| OCR-4 | **无修复轮、无重跑**（仅报告 `c9e4033d3`） | — | §9.2 |
+| ★ 本报告会话 | `cd deploy/lago-lab/payment-activation && python3 -m pytest test_lab.py test_phases.py ../../../docs/plans/issue-72-flow-evidence-74/test_verify_db_watch.py -q` | **82 passed in 59.36s**（与 ocr-3 后基线一致，HEAD 状态复核通过） | 本报告会话实跑 |
 
-## 7. 实际运行的测试与结果（按会话分列）
+**断言计数体系说明（25→21→21→23→25 的由来）**：存在**两套断言仪器**。① 实施会话的 GREEN 逐 AC 断言=25 条（构成：env 7+AC1 5+AC4 3+AC2 6+AC3 2+decline 2，`issue-72-ledger-74.md:129`）——一次性人工核查清单，早于流程验证员脚本存在，与后者无演进关系；② 流程验证员脚本 `verify_ac_assertions.py` 初版=21 条（构成：env 6+AC1 4+AC4 1+AC2 6+AC3 2+负对照 2，`VERIFY-SUMMARY.txt:43-59`），其后随 OCR 修复**逐轮加严**：ocr-2 +2 条（duplicates 延迟复查 clean、gate 重试探针 not_applicable）→23（`ocr-fix-log.md:307-309`）、ocr-3 +2 条（duplicates invoice count==baseline、AC3 gate 终态记录）→25（`ocr-fix-log.md:424-426`）。两个「25」构成不同（如 env 7 vs 6+AC4 1），不可互替；重放序列 21→23→25 是同一脚本加严后的单调演进，run11 的 25 是另一仪器，故整体呈非单调——非异常。
 
-**执行会话**（产出清单/DAG 的会话）实跑，记录于 `issue-72-dag.md:295`：python3 校验脚本（Kahn 拓扑 + 边违例扫描 + 就绪波次模拟）——33 节点、70 条边；Kahn 完成=无环；DAG §3 拓扑序 70 条边零违例；波次模拟无停滞；传递依赖计数 #74:25、#75:21 与 waves 文档一致。**该脚本本体未归档**（撰写会话 `grep -rn -il 'kahn' --include='*.py'` 全库 0 命中、无 issue-72 相关 .py），属可复现性缺口，验收者只能选择信任文档记录或按 §12.3 重写复算。
+**#87 范围 PG 并发测试（2 FAIL 转述）的本轮状态**：清单:165 转述「`budget_pg_test.go` 缺 000161 owner 列，TestBudgetPGConcurrentReservation 等 2 测试 FAIL」；早版报告曾抽查该文件 `:50-59` 发现第 56 行实为 `t.Fatal(err)`、与清单所称「:56 缺 owner 列」**对不上**——即**清单对该缺陷的行号/描述引用与文件实际内容不符**（早版报告 §7 记录在案）；行号不符只能否定「引用位置」，不能证明或否定「2 FAIL」本身。**本轮未复跑**：该测试文件无 DSN 即 `t.Fatal("SAAS_TEST_PG_DSN is required…")`（`budget_pg_test.go:22-27`，本报告会话已核），本报告会话环境无 `SAAS_TEST_PG_DSN`（unset，实查），且报告员不新建数据库容器——**实际失败状态悬空（unknown）**，须由具备 PG twin 的会话实跑确认（§11）。
 
-**前轮实施会话**实跑（逐票记录于 `issue-72-issues-inventory.md` §2，撰写会话未重跑、仓库无第一手 stdout，见 §2.1 声明）：
-- #73：`python3 -m pytest deploy/lago/ -q` → 46 passed + 62 subtests（:53）
-- #75：wallet-semantics 2146 行预注册断言 → 104 passed（:69）
-- #76：pricing-group → 60 passed；measure.py 18 单测 passed（:77、:293）
-- #77：`go build ./...` exit 0；`go test ./...` 126 包 ok（:85）
-- #78：service/repository/router/双适配器契约/seam 6 组 go test 全 PASS（:93）
-- #79：5 个相关 Go 包测试全 PASS + `go build ./...` exit 0（:101）
-- #80：9 个点名测试全 PASS（:109）
-- 前轮 wave 级：Wave 2 `go test ./...` 零 FAIL + 4 个 python 套件全绿；Wave 3 120 包零 FAIL（waves L133-134）。
+## 8. 真实流程验证汇总（已完成 Issue：#74）
 
-**已知失败**（前轮遗留，非本轮）：#87 范围 PG 并发测试 fixture 漂移——清单转述为"`budget_pg_test.go:56` 缺 000161 owner 列，TestBudgetPGConcurrentReservation 等 2 测试 FAIL"（`issue-72-issues-inventory.md:165`）。**撰写会话抽查不符**：该文件 `internal/modules/commercial/repository/commercial/budget_pg_test.go` 第 50-59 行为 GORM 连接池设置（第 56 行是 `t.Fatal(err)`），未见 owner 列/migration 字样——该引用行号未能复核，缺口本身以清单记录为准，验收者应实跑 PG 测试确认（§12.3）。
+- **环境**：隔离实验栈 `weknora-lago-74`（Compose project，回环端口 48891/48892，5 镜像 v1.53.0 digest 锁定，与 #73 主栈完全隔离）；Stripe TEST key 经 `source ~/.zcode/issue72-stripe.env` 注入环境变量（值从不回显/入库）；验证基线=集成分支 `175de8b4f`（VERIFY-SUMMARY.txt:4）。
+- **验证方式**：「16 步，证据 16 件」系**编排器 JSON 给定口径**；持久化的逐步记录以 `VERIFY-SUMMARY.txt` 为准，其以六节组织（一、环境准备 5 步〔离线回归/清卷/init/up/status〕；二、真实运行〔run_lab+并行 DB 观察者〕；三、逐 AC 断言；四、DB 投影核验；五、前端 3 截图；六、环境回收与纪律）——本节下述 ①–⑧ 是对六节的**归并压缩，非与 16 步一一对应**；「16 件」未在持久化材料中逐件点名，无法对账，验收以目录实际 23 个 git 跟踪文件（12 run JSON+t02-run.txt+3 截图+TSV/输出 4 件+校验脚本 2+VERIFY-SUMMARY）为准。核心链路：① 离线回归 64 passed；② 清陈旧卷→`lab.sh init/up`（29.1s 全 healthy，`ready v1.53.0`）；③ `run_lab.py` 真实运行（9 阶段：setup/provider_setup/gate[AC1]/activate[AC2]/manual[AC4]/duplicates[AC2]/retries[AC3]/decline_control[负对照]/cleanup，run `3dc51207`，exit 0）——**串真实 Lago REST+GraphQL 与真实 Stripe TEST 扣款**（provider_payment_id=真实 PaymentIntent，1333 cents 整数分精确比对）；④ 并行 DB 观察者每 2s 只读 psql 采样 Lago postgres 投影（272 点 TSV）；⑤ `verify_ac_assertions.py` 21/21 PASS；⑥ `verify_db_watch.py` DB-WATCH PASS（succeeded 峰值恰 1、sub-b 4→1 不回退、sub-c 从未 active）；⑦ 前端 3 张截图（front-01/02/03，Playwright 无头渲染登录/incomplete/三态同屏，**仅人工观察不作判据**）；⑧ `lab.sh down`+**兄弟栈复核**（=对比 lab 启动前后非 `-74` 项目容器集合与健康状态与 Task 1 基线一致，防误伤 #73 主栈与开发容器，`issue-72-ledger-74.md:142`）+密钥形状扫描 0 命中。
+- **结果与证据路径**：`docs/plans/issue-72-flow-evidence-74/`（VERIFY-SUMMARY.txt 总纲；t02-*.json 12 份；verify-{ac-assertions,db-watch}-output.txt；verify-db-watch-samples.tsv；front-0{1,2,3}-*.png）。结论：**AC1–AC4 + 负对照 + DB 投影全部通过**（VERIFY-SUMMARY.txt:92；置信度限定见 §9.2 末段）。
+- **OCR 重放（同链路再验证 3 次）**：`issue-72-ocr1-replay/`（21/21）、`issue-72-ocr2-replay/`（23/23，duplicates 延迟复查落地）、`issue-72-ocr3-replay/`（25/25，baseline 发票计数锚点落地）——每轮修复后真实环境全绿，判定逻辑逐轮收紧而非放松。
 
-**撰写会话**：未运行任何测试套件；仅运行 §12 所列 git/ls/grep/gh/fetch 等验证命令。
+## 9. Superpowers 任务审查、OCR 结论与修复轮次
 
-## 8. 真实流程验证汇总（本轮完成 Issue：0 个）
+### 9.1 #74 任务审查（3 轮 + 主 Agent 裁决）
 
-- **本轮（基线..HEAD）没有任何状态为"已完成/已验证完成"的实施 Issue**：33 票 JSON 中枚举最高为"已验证跳过"（= 调查验证前轮已完成、本轮未实施），其余 26 票"阻塞"。因此**本轮未产生任何 `docs/plans/issue-72-flow-evidence-*` 证据目录**（worktree 内 `find`/`ls` 实查不存在），也没有本轮的浏览器操作序列或真实 API 链路验证可记录。
-- 7 票"已验证跳过"的**历史**真实流程验证（来自前轮会话，记录于清单 §2；性质为后端/实验票，验证方式为真实 Lago API 链路而非浏览器 UI 操作；撰写会话仅核验证据文件存在，未重新执行）：
-  - 环境：本地 pinned Lago Community v1.53.0 compose 栈（`deploy/lago/`，5 镜像 OCI digest 锁定）+ lago-lab 实验栈（`deploy/lago-lab/{payment-activation,pricing-group,wallet-semantics}`），ticket 隔离 Compose project、loopback-only 端口（`t08-run.txt` 头部记录）。
-  - #73：`lago.sh` 启停 + `health.py` 分类健康 + `contract_probe.py` 唯一合成 Customer 创建/清理 → `deploy/lago/evidence/t01-*.txt/json`。
-  - #75：harness.py e1-e4 真实 Wallet 批次到期/消费顺序/并发/void 实测 → `docs/migrations/lago/t03-wallet-semantics/verdict.md`（a2 判定依据 `evidence/e1-expiry.json`）。
-  - #76：真实 Usage Event 投递→可查询→current usage 聚合→批次金额核对（64/64 精确、p95 6.893s）→ `docs/migrations/lago/t04-pricing-group/` 6 份 JSON。
-  - #77：`GET /commercial/platform/readiness` 真实栈快照 → `t05-health.json`/`t05-run.txt`。
-  - #78：空间懒 ensure_customer 真实栈链路 → `t06-account.txt`/`t06-status.json`。
-  - #79：发布链路真实栈六轴校验 → `t07-run.txt`。
-  - #80：Base Plan 订阅+月度额度 6 阶段真实栈 → `t08-run.txt`（operator timeline）。
+审查对象为计划偏差 **F1（medium，spec-compliance）**：实施者修改了计划声明「明确不改动」的 6 个 lab 文件。3 轮审查一致结论：根因成立（计划前提「60 离线绿⇒契约正确」被 2026-09-20 首跑 blocked-env 证伪——六处线上契约从未真实执行、离线 fake 按同一组错误假设建模）；处置到位（`0aa976c64` 4 个 fail 侧回归钉死判据，64 passed）。**主 Agent 裁决：接受，维持现状，不执行 revert**（依据三条+错误代价，`issue-72-ledger-74.md:186-212`）；计划文件同步追加偏差记录（`issue-72-plan-74.md` 末节）。
 
-## 9. Superpowers 任务审查与 OCR 结论、修复轮次
+### 9.2 OCR 4 轮、修复轮次与轮 4 逐项处置
 
-- **本轮 Superpowers 任务审查：无**。本轮交付范围只有清单+DAG+本报告，无生产代码任务，故无任务级审查记录；`docs/plans/ledgers/` 无本轮新增；`.superpowers/sdd/` 无 Lago 条目（本 worktree 与主检出均 `ls` 实查为空，远端两分支 ls-tree 亦无，见 §11.2）。
-- **前轮审查记录**（waves，基线内）：#78/#79 review 均 Approved 无 Critical/Important；#80 TOCTOU Important fix 当轮完成并 re-review PASS（`docs/plans/2026-09-20-lago-billing-waves.md:134,142`）。
-- **OCR 结论的性质（评审意见采纳，如实交代）**：结论"没有任何已实施完成的 Issue，OCR 无交付范围可审；low findings 0 项"由**编排器（本报告的任务下发方）给定**，属转述。仓库内无任何 OCR 执行痕迹（无报告文件、`find -iname '*ocr*'` 仅无关命中）。结合基线..HEAD 唯一代码外提交为纯 docs（无代码 diff 可审），合理读法是 **OCR 因无可审范围而未对代码执行审查，"0 项"是该情形下的记法，而非实际执行后产出的计数**——验收者**不可**将其当作"已执行且查得 0 问题"的证据。若需可查证的 OCR，应在合并前的代码提交上重新执行。
-- **修复轮次：0 轮**（无交付范围即无 OCR 触发的修复轮）。前轮对照：#80 的 TOCTOU Important 为 1 轮当轮修复（waves L142）。
+| 轮 | 报告 | 原始 findings | 有效 findings | 修复提交 | 修复后测试/重放 |
+|---|---|---|---|---|---|
+| 1 | `0ef4577b6` | 10 | **9**（1 high+4 medium+4 low） | `c7e404f3a` | 74 passed；重放 21/21 |
+| 2 | `8b7e20772` | 7（4 medium+3 low） | **3**（全 medium） | `d95a93f0d` | 78 passed；重放 23/23 |
+| 3 | `83c6e8edf` | 5（1 medium+4 low） | **4**（2 medium+2 low） | `8e89d4bae` | 82 passed；重放 25/25 |
+| 4 | `c9e4033d3` | 13（6 medium+7 low） | **编排器结论：4 项有效 critical/high/medium 类别未解决 + 1 项 low**（见下定论） | **无修复轮** | 无重跑 |
+
+**严重级别定论（unclear#1 的回答）**：轮 4 原文**不存在 critical/high 级条目**（13 项 severity tally：6 medium+7 low，本报告会话 `grep -oE '· (critical|high|medium|low)\]' | sort | uniq -c` 实查）。故编排器「4 项有效 critical/high/medium」是**类别标签**（≥medium 的统称），其按级别落位**只能全部是 medium 级**——不存在 critical/high 级未解决项。该「4 项有效」判定本身未持久化 triage 记录，为编排器给定结论。
+
+**轮 4 全部 13 项逐项处置表（本报告会话逐一对照 `issue-72-ocr-round-4.md` 原文与实查核验；「判定」栏中「编排器口径内」=按上定论推断属于 4 项有效 medium，标 ▲ 者为本报告推断、无持久化依据）**：
+
+| 编号 | 位置（round-4 文件行） | severity | 摘要 | 本报告会话核验 | 判定 |
+|---|---|---|---|---|---|
+| 4-01 | clients.py:400-404（:3-4） | low（maintainability） | `last_error` 死存储 | 未核（纯代码风格） | low 候选 |
+| 4-02 | evidence/t02-duplicates.json（:15-16） | medium（documentation） | 权威快照缺 `baseline.invoice_count` 与 `deferred_recheck` 键 | **已独立核验成立**：`grep -c deferred_recheck` deploy 副本=0 vs ocr3-replay=1；json diff 见 baseline.invoice_count 仅 replay 侧有；docs/migrations 晋升副本与 deploy byte-identical（cmp）→漂移同样存在于权威目录 | ▲有效 medium（编排器口径内） |
+| 4-03 | evidence/t02-retries.json（:24-25） | medium（documentation） | 快照为旧路径输出（404/not_found、缺 subscription_status_after） | **已独立核验成立**：`grep -c 'subscription_status_after\|not_applicable'` deploy=0 vs replay=3；deploy 副本 `contract_notes: []` 而 replay 有 skip 说明 | ▲有效 medium（编排器口径内） |
+| 4-04 | phases.py:1297-1300（:36-37） | medium（bug） | not-settled 终复查只探 incomplete，canceled(payment_failed) 竞态终局误判 FAIL | **已核代码形状**：`sed -n 1296,1298p` 确认复查仅 `_subscription_show(ctx, ext, "incomplete")` | ▲有效 medium（编排器口径内） |
+| 4-05 | phases.py:1215-1219（:63-64） | medium（test） | retries 的重复注册探针缺 duplicates 式延迟复查（漏报方向） | **已核代码形状**：`grep -n deferred_recheck phases.py` 全文件仅 1 处（:1073，phase_duplicates 内），phase_retries 无 | ▲有效 medium（编排器口径内） |
+| 4-06 | phases.py:254-258（:96-97） | low（maintainability） | 传输错误双重 note | 未核 | low 候选 |
+| 4-07 | ocr1-replay/verify_db_watch.py:64-73（:110-111） | low（bug） | max_succeeded 无 run 隔离 | 未核 | low 候选 |
+| 4-08 | ocr1-replay/verify_db_watch.py:26-27（:131-132） | low（documentation） | 「(ocr-2)」注释残留 | 未核 | low 候选 |
+| 4-09 | ocr1-replay/verify_db_watch.py:111（:142-143） | low（maintainability） | samples 计数口径 | 未核 | low 候选 |
+| 4-10 | ocr2-replay/verify_ac_assertions.py:10-11（:155-156） | low（documentation） | 「unmodified」声明失实 | 未核 | low 候选 |
+| 4-11 | ocr2-replay/verify_db_watch.py:32-35（:169-170） | medium（other） | 归档 TSV「未在变更清单/疑似未提交」 | **已证伪**：`git ls-files docs/plans/issue-72-ocr2-replay/` 16 文件全跟踪（含 verify-db-watch-samples.tsv，本目录 16 tracked=16 on disk）——「全新检出不可复现」前提不成立（finding 自留「如确认已在先前提交中跟踪」出口） | 无效（本报告会话证伪） |
+| 4-12 | ocr3-replay/verify_db_watch.py:64-67（:185-186） | medium（bug） | max_succeeded 与 rows_for 隔离不一致 | 未核（与 4-07 同型） | ▲疑似有效 medium——编排器「4 项」若不含此项，则 4 项=4-02/03/04/05；若含则另有 1 项 medium 被编排器判无效。**无法从持久化记录裁定，如实悬置** |
+| 4-13 | ocr3-replay/verify_ac_assertions.py:69-71（:203-204） | low（test） | 直接下标访问的健壮性 | 未核 | low 候选 |
+
+**对账结论**：6 项 medium 中，4-11 已被本报告会话证伪；剩 5 项（4-02/03/04/05/12）。编排器「4 项有效」与之**无法一一对账**（差 1 项），最可能映射=4-02/03/04/05（均直接作用于权威证据或核心判定器），但该映射为本报告推断（▲），无持久化 triage。**未解决的 1 项 low 亦未指认**（7 项 low 中具体哪项，无记录）。**未运行第 5 轮 OCR。**
+
+**遗留项对「#74 已完成」结论的影响（置信度论证，rev2 重写）**：4-04 属**误报方向**（可能把合法终局判 FAIL——不推翻既有 pass 的方向，但削弱可复现性）；4-05 属**漏报方向**（exactly-once 违例若发生在 retries 探针后、cleanup 前的窗口，即时探测不可见）。既有结论的独立兜底=DB 投影观察者**不经 phases.py 判定器**、直读 psql（succeeded 峰值恰 1、sub-b 不回退），四次真实运行（run11+三次重放）DB-WATCH 均 PASS——4-05 所述违例若真实发生大概率在 DB 采样中表现为 succeeded>1 或状态回退；**但**观察者采样间隔 2s、且其自身 max_succeeded 存在未修复的隔离缺陷（4-07/4-12），兜底不完备；且 HEAD 状态未重跑真实栈。**因此本报告将 #74 维持编排器给定的「已完成」，但置信度定为「中」**：在 4-05 修复并重放前，exactly-once 结论依赖 DB 独立通道的部分兜底，不构成无风险结论；§12 的「运行时证据完成」均应在此限定下读取。
+
+### 9.3 ADR-0012「75-a2 裁决 B」的出处核查（与编排器 JSON 冲突的效力问题）
+
+编排器 JSON 对 #85 称「#75-a2 设计裁决…未提供」；但集成分支存在 `552d98d12`（2026-09-23 12:54，#74 实施窗口内）——ADR-0012 新增修订记录节，文本自称「**裁决（spec/ADR owner 2026-09-23）：采用协调层承载并发，不设产品级充值并发上限**」。**出处核查结果（本报告会话实查）**：① 提交作者=`wuyj <wuyj@yinhai.com>`（`git show --format` 实查，与本仓库全部提交同一作者）；② 过程文档零记录——`grep '552d98d12|75-a2'` 于 `issue-72-ledger-74.md`/`issue-72-plan-74.md`/`issue-72-ocr-fix-log.md` 均 **0 命中**（ledger 的上报事项与 Ruling 1–8 均未提及该裁决或其产生流程）；③ DAG/清单/DECISION.md 亦无引用。**结论：该裁决是「用户明示确认后写入」还是「实施期由某人随提交写入」无法从仓库证据判定**——这正是它与编排器 JSON 冲突时效力存疑的根源。本报告不替用户裁决：若该裁决经确认有效且覆盖「12 个月到期归属」全量设计，则 #85 阻塞理由应更新为仅付款链未通；否则维持 JSON 口径。列为 §10.2-D2。
 
 ## 10. 全部 Ruling 与延期事项
 
-### 10.1 Ruling（本轮调查/编排裁决，均可在制品中溯源）
+### 10.1 Ruling（均可溯源）
 
-| # | Ruling | 依据 |
+| # | Ruling | 出处 |
 |---|---|---|
-| R1 | done 口径：已有完成证据（代码+实跑测试+运行时证据）的票不重复实施，标"已验证跳过" | `issue-72-issues-inventory.md:6` |
-| R2 | 父票 #72 只提供目标与验收，不入 DAG 节点；层级树=范围归属、依赖边=交付顺序，二者不混淆 | `issue-72-dag.md:4`、inventory:5 |
-| R3 | 只采信票面显式/高置信边共 70 条。四条边未采信，逐条理由：**80→94**（#94 票面未列且经 94←93←86←80 传递覆盖）；**81→85** 与 **81→93**（两条均为 medium 置信的接口推断、票面未声明，且经 82 传递覆盖）；**73→75**（实验栈复用属事实描述，非票面声明的依赖）——"少加不会错杀并行，多加假依赖会" | `issue-72-dag.md:4,120` |
-| R4 | #30（移动 AI Office）与 Lago 迁移无代码耦合：仅记录核查结论，不入图、不加边 | `issue-72-issues-inventory.md:316` |
-| R5 | OCR 无交付范围可审（本轮无已实施完成 Issue）——性质为未执行而非执行后 0 项，见 §9 | 编排器给定结论 |
-| R6 | 历史运行时裁决（前轮 Wave 3）：create-on-external_id=UPSERT；GET /plans/{code} 可用 | `docs/plans/2026-09-20-lago-billing-waves.md:134` |
+| R1 | done 票不重复实施，标「已验证跳过」 | inventory:6 |
+| R2 | 父票 #72 只提供目标与验收，不入 DAG；层级=归属、依赖边=交付顺序 | dag:4 |
+| R3 | 只采信显式/高置信边共 74 条；medium 推断边不直连（经传递覆盖） | dag:4-5,125-126 |
+| R4 | #30（移动 AI Office）与 Lago 无代码耦合，不入图 | inventory:316 |
+| R5 | #74 计划内 rulings 1–8：健康快照 byte-identical 不重复提交；修 lab 契约（越权已上报）；负对照改 3DS 卡；六处判据对齐 v1.53.0 真实契约；_form 传输重试+Idempotency-Key；canary 改环境变量读取；db_watch.sh 两缺陷修复；manual 403 探测目标改已结算发票 | ledger-74:81-119 |
+| R6 | **F1 主 Agent 裁决：接受计划偏差，不 revert**（#74 证据生效、#74 可关票、#81/#82 解锁） | ledger-74:186-212 |
+| R7 | OCR-1/2/3 逐条 findings Ruling（16 项，含 OCR3-05 low→medium 升级、OCR1-06 选择「修好+测试锁死」而非删除等） | ocr-fix-log 全文 |
+| R8 | ADR-0012 写入「75-a2 裁决 B（协调层承载）」——**出处无法溯源（§9.3），效力待用户确认，暂不作为既成 Ruling 采信** | `552d98d12` diff + §9.3 核查 |
 
-### 10.2 延期事项（等待用户输入）与倾向性建议
+### 10.2 延期事项（等待用户/主 Agent 输入）
 
-#### D1 — #74 解锁：Stripe TEST 密钥 + T02 三选项裁决
+| # | 事项 | 状态与建议 |
+|---|---|---|
+| D1 | **T02 三选项裁决**：(a) Premium manual（lab 推荐，源码级验证）/(b) 受支持 Provider 真实轨道（本轮已运行时证实，但 Stripe 白名单不含微信/支付宝原生流）/(c) 改 spec | 未提供；DECISION.md §5 三选项表+推荐已就绪（`docs/migrations/lago/t02-payment-activation/DECISION.md:129-148`）。**这是 #81/#82 主链唯一剩余卡点**（#74 运行时证据已到位） |
+| D2 | **#75-a2 充值批次设计**：≤5 并发批次 vs 协调层承载 | ADR-0012 修订记录（`552d98d12`）自称 spec/ADR owner 2026-09-23 已裁决方案 B，但**出处不可溯源（§9.3）**且 JSON #85 仍称未提供。需用户确认：① 该裁决是否真实经用户/spec owner 作出；② 是否覆盖「12 个月到期归属」全量设计。两者皆是→#85 阻塞理由更新为仅付款链未通 |
+| D3 | **AGPL 生产批准**（#101/#103 范围） | 法务结论缺失，`deploy/lago/README.md` open production gate，生产部署法律前置门 |
+| D4 | #74 关票决策等三项上报 | **本报告建议：关票**。理由：AC1–AC4 运行时证据+独立流程验证+主 Agent Ruling 已接受 F1；OCR-4 遗留属证据工装质量债，不否决票面 AC（AC 以真实运行为判据且已过，置信度限定见 §9.2）。**附带条件**：关票评论中显式引用 §9.2 处置表与 §10.2-D5 清偿安排，避免下游误以为零缺陷。另两项：`clients.worktree-variant.py` 处置——该文件是 `5e0c958e6` 引入的被跟踪历史旁支（与 `clients.py` 4 处差异：多 `import stat`、缺「拒绝覆盖既有 lab.env」守卫、多 `Stripe-Account: ""` 头、DELETE params selector；runner 实际导入 `clients.py`，背景见 `issue-72-plan-74.md:32`），**本报告建议删除或移入 docs 归档**以防误导；复跑凭据——本机依赖 `~/.zcode/issue72-stripe.env`（仅测试凭据不入库），CI/他人自备 TEST key |
+| D5 | **推送/合并决策及其前置清偿**：集成分支未推送 | 顺序建议：**先清偿 OCR-4 遗留，再推送/合并**。清偿安排（本报告建议，责任主体须由主 Agent 指派——报告员无权改非报告文件）：① 4-02/4-03=用当前 phases.py 重跑 run_lab 并刷新 deploy evidence+docs/migrations 快照（cmp 晋升一致）；② 4-04=终复查改探 incomplete+canceled 双态、canceled(payment_failed) 按 settled 分支契约评估+fail 侧回归测试；③ 4-05=retries 镜像 duplicates 延迟复查+回归测试；④ 4-12=max_succeeded 补 run 隔离、runs/ 回退路径降级 exit 2；⑤ 7 项 low 逐项修复或记录豁免（含未指认的 1 项，处置时一并点名）。**判绿门槛**：离线回归（82+N passed）+真实重放（新证据目录）+第 5 轮 OCR 复审 0 项有效 ≥medium 遗留。推送后可 PR 至 main（本轮 25 提交含代码，合并前按上门槛清偿） |
 
-**解锁命令（已从 #74 Issue 唯一评论经 `gh issue view 74 --comments` 取回内联，撰写会话实跑）**：
+## 11. 未完成节点、遗留风险、low finding、需要用户决策的内容
 
-```bash
-# 评论原文指向 .worktrees/lago-74，该 worktree 已不存在（ls .worktrees/ 实查）；
-# deploy/lago-lab/ 在本 worktree（及 main）均存在（漂移 0 提交），可在任一含该目录的检出执行，去掉原 cd 即可：
-./deploy/lago-lab/payment-activation/lab.sh up
-STRIPE_SECRET_KEY=<sk_test_...> ./deploy/lago-lab/payment-activation/run_lab.py --output-dir deploy/lago-lab/payment-activation/evidence
-./deploy/lago-lab/payment-activation/lab.sh down
+- **未完成节点（25/33）**：直接阻塞 9 票 + 传播 16 票（§2.3/§2.4）。除裁决输入外当前无可立即开工节点。
+- **遗留风险**：① OCR-4 的 4 项有效 medium 未解决（证据快照漂移×2〔本报告会话已独立核验〕+ 判定竞态误报 + retries 漏报，§9.2）；② DAG/清单状态表停留在 #74=todo，未随完成刷新；③ #87 PG 并发测试 2 FAIL 悬空（行号引用已证实不符；本轮未复跑，需 `SAAS_TEST_PG_DSN` 环境，§7）；④ 并行热点文件预警（`lago.go` 等 5 文件，未来波次须按 DAG §4 分块，`issue-72-dag.md:242`）；⑤ `docs/plans/ledgers/` 仅覆盖 #78/79/80（前轮）+`issue-72-ledger-74`（本轮），#73/75/76/77 无账本；⑥ 早版报告记录的 `.superpowers/sdd/` 过程链断链问题未排查新载体；⑦ 实施worktree `issue72-n74` 已清理、分支未删未推（§5.1）。
+- **low findings：1 项未解决**（OCR 第 4 轮结论，编排器给定；轮 4 共 7 项 low（4-01/06/07/08/09/10/13），具体指认未持久化，处置时按 D5-⑤ 一并点名）。
+- **需要用户决策**：§10.2 D1–D5。
+- **验收者复核命令（本报告会话实跑清单）**：`ls docs/plans/ | grep '^issue-72'`（15 项）；`git rev-list --count 29c1e56353..c9e4033d3`（=24）/ `..HEAD`（=25 含报告提交）；`git log --oneline 29c1e56353..HEAD`（24+1 提交）；`git branch --list 'codex/issue-72-lago-*'`（仅 -74）；`git ls-remote --heads origin | grep -i 'lago\|issue-72'`（未推送）；`git show --no-patch --format='%p' 175de8b4f`（552d98d12+ec14bbf94）；`git merge-base --is-ancestor 552d98d12 ec14bbf94`（false）；`git diff --stat ec14bbf94 175de8b4f`（仅 ADR +17）；`ls .worktrees/issue72-n74`（不存在）；gh 全量 34 票状态（首轮 5 票失败重试后 34/34）；OCR 各轮 severity tally grep（轮 4=6 medium+7 low，无 critical/high）；`git ls-files` 四个证据目录（23/16/16/16 跟踪，TSV 均入库→4-11 证伪）；`grep -c deferred_recheck` 与 `grep -c 'subscription_status_after\|not_applicable'`（快照漂移核验）；`cmp` docs/migrations 与 deploy 副本（byte-identical）；`sed -n 1296,1298p phases.py` + `grep -n deferred_recheck phases.py`（4-04/4-05 形状核验）；`grep '552d98d12|75-a2' ledger/plan/fix-log`（0 命中）；`grep -n Skip\|Getenv budget_pg_test.go`（无 DSN 即 Fatal；env unset）；★ 离线回归 82 passed in 59.36s；`sed -n` 核对 container.go:244 / lago.go:684-686 / spec:212-237,246 / DECISION.md §5 / waves L136-142。**未运行**：go test 与 pytest 其余套件、任何真实栈重跑、OCR 第 5 轮、`run_lab.py`（需 Stripe key）、PG twin 并发测试（需 SAAS_TEST_PG_DSN）。
+
+## 12. 结论
+
+本轮目标（解锁 #74 并恢复主链可裁决状态）的**实施部分达成**：#74 AC1–AC4 运行时证据完成并经独立真实流程验证（置信度「中」：判定器带未修复漏报缺陷 4-05，exactly-once 结论由 DB 独立通道部分兜底，见 §9.2），OCR 前 3 轮 16 项有效 findings 清偿；但 (a) T02 三选项裁决仍未提供，#81/#82 主链未恢复；(b) OCR 第 4 轮遗留 4 项有效 medium（无 critical/high）+ 1 项未指认 low 未解决且无修复轮；(c) ADR-0012 的 75-a2 裁决出处不可溯源，与编排器 JSON 口径冲突待确认；(d) 分支未推送、#74 未关票（本报告建议关票，附条件见 D4）。上述各项均如实上报，未粉饰。
+
+## 13. 附录：编排器「各 Issue 实施结果 JSON」原文（33 票，任务下发方给定，本附录即其入库存档）
+
+```json
+[{"issueNumber":73,"title":"[Lago 01] 启动固定版本的 Lago Community 集成环境","status":"已验证跳过","note":"调查已验证完成，未重复实施","unresolved":[]},{"issueNumber":75,"title":"[Lago 03] 证明 Wallet 批次到期、消费顺序和撤回语义","status":"已验证跳过","note":"调查已验证完成，未重复实施","unresolved":[]},{"issueNumber":76,"title":"[Lago 04] 证明 Task Pricing Group 可以形成可核对计价批次","status":"已验证跳过","note":"调查已验证完成，未重复实施","unresolved":[]},{"issueNumber":77,"title":"[Lago 05] 用 Lago readiness 纵向切片扩展 Commercial Platform seam","status":"已验证跳过","note":"调查已验证完成，未重复实施","unresolved":[]},{"issueNumber":78,"title":"[Lago 06] 一个空间自动获得独立 Lago Customer","status":"已验证跳过","note":"调查已验证完成，未重复实施","unresolved":[]},{"issueNumber":79,"title":"[Lago 07] 从 WeKnora 管理后台发布不可变 Plan Version","status":"已验证跳过","note":"调查已验证完成，未重复实施","unresolved":[]},{"issueNumber":80,"title":"[Lago 08] 新空间以 Base Plan 获得权益和月度额度","status":"已验证跳过","note":"调查已验证完成，未重复实施","unresolved":[]},{"issueNumber":81,"title":"[Lago 09] 从 Quote 创建待付款 Invoice 和 incomplete Subscription","status":"阻塞","note":"Blocked by #74：T02 三选项裁决（(a) Premium manual /(b) 受支持 Provider /(c) 改 spec）仍未提供，payment-gated incomplete Subscription 创建机制无法定型（#78/#79 已满足；#74 运行时证据到位后此裁决仍是剩余卡点）","unresolved":[]},{"issueNumber":82,"title":"[Lago 10] 支付宝付款后恰好一次激活套餐","status":"阻塞","note":"Blocked by #74/#81：可信 Payment 录入通道未裁决+无可激活实体（待付款 Invoice/incomplete Subscription 未交付，lago.go:684 刻意不带 activation_rules）","unresolved":[]},{"issueNumber":85,"title":"[Lago 13] 购买 Credits 并在付款后到账","status":"阻塞","note":"Blocked by #75/#82/#83：#75-a2 设计裁决（充值批次 12 个月到期撞 Lago 六活跃钱包硬上限：≤5 并发批次 vs 协调层承载+修订 ADR-0012）未提供，充值批次数据模型无法定稿；付款链未通","unresolved":[]},{"issueNumber":87,"title":"[Lago 15] 收费调用前原子预占 Task Budget 与空间 Credits","status":"阻塞","note":"Blocked by #86（OPEN）：空间保守余额需 Lago Wallet 权威投影；#86→#87→#88 链被 #75-a2 裁决悬置（waves L140）；Lago 侧核心（价格版本投影+Wallet 权威余额预占）无法开工","unresolved":[]},{"issueNumber":88,"title":"[Lago 16] 一个 Usage Event 完成 Settlement Batch 核对","status":"阻塞","note":"Blocked by #87（OPEN 未开工）：全部 AC 以已预占调用为对象；整链传递依赖 #74 与 #75-a2 两项用户输入（waves L138-140）","unresolved":[]},{"issueNumber":94,"title":"[Lago 22] 降级、年付月发和到期回 Base Plan","status":"阻塞","note":"Blocked by #93（OPEN）：降级/到期切换与升级共用同一 ExternalSubscriptionID 订阅链切换协调器；上游链停在 #74/#75-a2 硬阻塞点（waves L138-141）","unresolved":[]},{"issueNumber":97,"title":"[Lago 25] 微信退款达到与支付宝相同的商业语义","status":"阻塞","note":"Blocked by #83/#95/#96（全 OPEN）：P03 资格核算 seam 未实现（Approve 停在 reviewing）、Credit Note 撤权模型未落地、微信 REFUND.* 通知契约与退款渠道测试为零，复用对象不存在","unresolved":[]},{"issueNumber":100,"title":"[Lago 28] Billing Center 统一展示稳定产品状态","status":"阻塞","note":"Blocked by #91/#94/#97/#98/#99（全 OPEN 且无账本）：『等待同步』须 #98 对账收敛存在才真实可展示、『预占』可靠性须 #99 故障安全，五类依赖状态机/余额分区未就位","unresolved":[]},{"issueNumber":103,"title":"[Lago 31] 部署可观测的生产 Lago 并满足计费延迟目标","status":"阻塞","note":"Blocked by #98/#99/#101（3/4 前置 OPEN）：核心 Helm 生产交付完全未开始；#101 的 AGPL 上线门槛按 spec L179-180 是生产部署法律前置门","unresolved":[]},{"issueNumber":74,"title":"[Lago 02] 证明外部付款可以激活 payment-gated Subscription","status":"已完成","note":"HEAD=175de8b4fdcef9494234d3fc127c24af3838ae0d，流程验证=真实 API 链路 + DB 投影核验 + Playwright 无头真实渲染（前端仅人工观察不作判据）。run_lab.py 串真实 Lago REST/GraphQL 与真实 Stripe TEST 扣款；DB 观察者每 2s 只读 psql 采样投影；前端用 Playwright MCP 无头浏览器登录并截图。（16 步，证据 16 件）","unresolved":[]},{"issueNumber":83,"title":"[Lago 11] 微信付款复用同一激活流程","status":"阻塞","note":"前置未完成（依赖传播）：[issue-82]","unresolved":[]},{"issueNumber":84,"title":"[Lago 12] 异常付款不会扩大权益","status":"阻塞","note":"前置未完成（依赖传播）：[issue-82, issue-83]","unresolved":[]},{"issueNumber":86,"title":"[Lago 14] 套餐额度与充值额度按到期顺序消费","status":"阻塞","note":"前置未完成（依赖传播）：[issue-85]","unresolved":[]},{"issueNumber":89,"title":"[Lago 17] 并发和委派共享同一 Task Budget","status":"阻塞","note":"前置未完成（依赖传播）：[issue-87]","unresolved":[]},{"issueNumber":90,"title":"[Lago 18] 计价延迟、未知结果和费用上界违规正确暂停 Task","status":"阻塞","note":"前置未完成（依赖传播）：[issue-88]","unresolved":[]},{"issueNumber":91,"title":"[Lago 19] BYOK 只免除模型维度 Credits","status":"阻塞","note":"前置未完成（依赖传播）：[issue-88]","unresolved":[]},{"issueNumber":92,"title":"[Lago 20] 用量修正不会改写历史","status":"阻塞","note":"前置未完成（依赖传播）：[issue-88]","unresolved":[]},{"issueNumber":93,"title":"[Lago 21] 升级立即生效并补发当月 Credits 差额","status":"阻塞","note":"前置未完成（依赖传播）：[issue-82, issue-86]","unresolved":[]},{"issueNumber":95,"title":"[Lago 23] 充值退款先锁定、再退支付宝、最后撤回 Credits","status":"阻塞","note":"前置未完成（依赖传播）：[issue-82, issue-85, issue-86]","unresolved":[]},{"issueNumber":96,"title":"[Lago 24] 套餐退款通过 Credit Note 和权益撤回完成","status":"阻塞","note":"前置未完成（依赖传播）：[issue-92, issue-93]","unresolved":[]},{"issueNumber":98,"title":"[Lago 26] Webhook 与定期对账使商业投影收敛","status":"阻塞","note":"前置未完成（依赖传播）：[issue-84, issue-85, issue-93, issue-95, issue-96]","unresolved":[]},{"issueNumber":99,"title":"[Lago 27] worker 崩溃和 Lago 故障不会丢用量或提前释放预占","status":"阻塞","note":"前置未完成（依赖传播）：[issue-90, issue-92]","unresolved":[]},{"issueNumber":101,"title":"[Lago 29] 完成计费数据最小化、凭据隔离和 AGPL 上线门槛","status":"阻塞","note":"前置未完成（依赖传播）：[issue-97, issue-99]","unresolved":[]},{"issueNumber":102,"title":"[Lago 30] 空间注销时停止收费、去标识化并保留财务历史","status":"阻塞","note":"前置未完成（依赖传播）：[issue-94, issue-96, issue-98, issue-101]","unresolved":[]},{"issueNumber":104,"title":"[Lago 32] 从备份恢复 Lago 并完成商业对账","status":"阻塞","note":"前置未完成（依赖传播）：[issue-102, issue-103]","unresolved":[]},{"issueNumber":105,"title":"[Lago 33] 切换 Lago、关闭回退窗口并移除 OpenMeter","status":"阻塞","note":"前置未完成（依赖传播）：[issue-86, issue-89, issue-91, issue-92, issue-94, issue-97, issue-100, issue-102, issue-104]","unresolved":[]}]
 ```
-
-**密钥安全注入流程（结合 push-protection 教训，waves L136 曾拦截 secret 形状 canary）**：`run_lab.py` 只从调用方环境变量取键——按序读 `STRIPE_TEST_SECRET_KEY` / `STRIPE_SECRET_KEY`，**live 键（sk_live/rk_live）会被拒绝**（`deploy/lago-lab/payment-activation/run_lab.py:101-107`，撰写会话已核源码）。要求：① 密钥只经 shell 环境变量临时注入，不写入任何文件/脚本/Issue/日志；② 证据输出目录已有脱敏契约（spec 第 22 项 + inventory:277 日志脱敏基础设施），补跑后人工复核 JSON 无键形字符串再提交；③ 测试夹具继续使用拼接字面量 canary（d1eec16be 的 defuse 方式）。
-
-**三选项对比与建议**（依据 `docs/migrations/lago/t02-payment-activation/DECISION.md` §5，撰写会话已核原文）：
-
-| 选项 | 含义 | 代价/风险 | 证据状态 |
-|---|---|---|---|
-| (a) 采购 Lago Premium，渠道事实记为 manual Payment | WeKnora 保留微信/支付宝请求/回调/退款主权；每个已验证 Payment Fact 经 `POST /api/v1/payments` 登记，发票 payment_status 驱动同一 activation 规则 | Premium 许可成本+商业条款（lab 自认超出其能力范围）；manual→activation 流程仅源码级验证（Premium 超出 Community lab 范围） | 源码级验证（manual_create_service.rb Premium 门控+paid 状态传播） |
-| (b) 受支持 Provider（如 Stripe）作真实扣款轨道 | Community 上 provider 执行的扣款可端到端激活 | Stripe 白名单**不含 wechat_pay/alipay**（DECISION.md §4 源码枚举：stripe/gocardless/adyen/cashfree/flutterwave/moneyhash）→ 微信/支付宝原生流无法走此轨，需产品决策渠道取舍；运行时证据同样待 TEST key | 源码级验证+运行时证据待补 |
-| (c) 改 spec/ADR（放弃 Lago 作为付款激活权威，或在其上游加合规记录 seam） | 仅当 (a)(b) 均不可接受 | 改动范围最大（动事实源） | — |
-
-**倾向性建议（仅供参考，裁决权在 spec/ADR owner 与产品方）**：采用 **(a)，并以 (b) 作局部互补**——这正是 DECISION.md 自己的推荐（"The lab recommends (a), with (b) as the partial complement"）：(a) 是唯一保持 spec 架构完整的选项（WeKnora 验证的渠道 Payment Fact 驱动 Lago、Lago 仍是唯一激活权威、无双写无本地强激活），且其依赖的激活机制已在 pinned 版本接线。决策前须补两件事：① Premium 商业条款评估（lab 明示 unproven）；② 若 CN 支付必须原生微信/支付宝，确认 (a) 覆盖全部渠道后再排除 (b)/(c)。
-
-#### D2 — #75-a2：充值批次 12 个月到期归属
-
-**两方案对比与建议**（依据 `docs/migrations/lago/t03-wallet-semantics/verdict.md`，撰写会话已核原文）：
-
-事实基线（verdict L58-66）：v1.53.0 过期只存在于**钱包级**（`wallets.expiration_at`）→ 每批次一个到期 ⇒ 每批次一个钱包；`MAXIMUM_WALLETS_PER_CUSTOMER = 6` 为硬编码运行时上限（无配置覆盖写入方）；E1 实测第 7 个并发 active 钱包被 422 `wallet_limit_reached` 拒绝。verdict 总则（L21-22）：任一不变量 BLOCKED ⇒ Lago 原生对象**不能**在不引入协调层重设计的情况下承载已批准的 Credits 模型。另 L161：若同钱包合批，"同到期最早发放"不可精确表达。
-
-| 方案 | 含义 | 代价/风险 |
-|---|---|---|
-| (a) 产品上限 ≤5 并发充值批次 | 每批一钱包（≤5 充值 + 套餐月度钱包 = 6，**恰好顶满硬上限、零余量**） | 产品侧永久限流；任何未来钱包需求（如赠送批次）立即撞顶；依赖 Lago 不改硬上限的版本假设 |
-| (b) 批次到期权威移入 WeKnora 协调层 + 修订 ADR-0012 | Lago Wallet 只记金额，批次到期/消费顺序由协调层编码（T03 verdict 协调义务清单） | WeKnora 侧新增权威状态与对账义务；ADR-0012 需修订（自 ef2ccb24d 后未动） |
-
-**倾向性建议**：**(b)**。理由：verdict 的判定本身就是"a2 BLOCKED ⇒ 必须引入协调层承载"（L21-22），方案 (a) 只是用产品限流绕开第 7 个钱包，并未消除"批次一钱包一到期"的结构性约束（顶满 6 钱包零余量，且合批即丢失 tie-break 精度 L161）；(b) 一次到位且与 b/c/d 各项 PASS-WITH-COORDINATION 的协调义务（L160-166）同向，可一并落进协调层。(a) 可作为 (b) 落地前的**临时产品限流**叠加使用。裁决权在用户/spec owner。
-
-#### D3 — AGPL 生产批准（#101 范围）
-
-`deploy/lago/README.md:186-192` 明确 open production gate；是 #103 生产部署的法律前置门。需法务给出可审计结论（Completion gate 硬性项）。
-
-## 11. 未完成节点、遗留风险、断链与下轮启动
-
-### 11.1 未完成节点与遗留风险
-
-- **未完成节点（26/33）**：直接阻塞 10 票（#74/#81/#82/#85/#87/#88/#94/#97/#100/#103，DAG §5 `issue-72-dag.md:236-249`）+ 依赖传播/待实施 16 票（§2.2 表）。除 #74 外当前**无可立即开工节点**（`issue-72-dag.md:211`）。
-- **遗留风险**（源清单 §2 逐票缺口记录）：
-  1. #76 两处产品化缺口（422 不可区分、唯一性三元组作用域）移交 OPEN 的 #87/#88（:80）。
-  2. #80 遗留（concurrent_tasks 执法、manual/passage guard、前端展示）移交 #87/#88/#100（:112）。
-  3. #87 PG 并发测试 fixture 漂移致 2 测试 FAIL（清单:165 转述；撰写会话抽查行号不符，见 §7，需实跑确认）。
-  4. 并行热点：`commercialplatform/lago.go`（12 票可能同改）等五文件冲突预警，未来并行须按 DAG §4 建议分文件/分块/按波次串行合入（`issue-72-dag.md:232`）。
-  5. #74 测试内 secret 形状 canary 曾触发 GitHub push protection（已 defuse，waves L136）——后续补跑时须按 §10.2 D1 密钥流程操作。
-  6. **low findings：0 项**——性质为"无交付范围"记法（§9），非执行后计数，不可独立查证。
-
-### 11.2 账本与 Superpowers 过程链断链分析（评审意见采纳）
-
-- **账本覆盖**：33 票中仅 #78/#79/#80 有账本（`docs/plans/ledgers/lago-78/79/80.md`）；#73/#75/#76/#77 四张已关票**无账本**（其完成证据以清单 §2 + evidence/verdict 文档承载）。这是前轮编排的选择，非本轮丢失。
-- **`.superpowers/sdd/*` 过程记录缺失的实查结论**（撰写会话）：账本引用的路径如 `.superpowers/sdd/2026-09-21-lago-t06-lago-customer/progress.md`（`docs/plans/ledgers/lago-78.md:7`）在以下所有位置均**不存在**：① 本 worktree（`ls` 实查）；② 主检出 `/Users/wuyongjun/trea/WeKnora-fork01/.superpowers/sdd/`（grep lago 无命中）；③ 远端 `lago-integration` 分支（`git fetch --depth=1` + `git ls-tree .superpowers/sdd/`：仅 7 个 2026-09-10~09-19 的非 lago 条目）；④ 远端 `lago-73-community-env` 分支（同法：无 lago 条目）。原 lago-78/79/80 worktree 已删除（`ls .worktrees/` 实查：现存 backend-mod-wave01/bm-t10/bm-t5/issue30-sweep/issue72-lago/passb-int/tdm-int/tdm-s2-chat/tdm-s3-kb，无 lago-*）。
-- **判定**：过程级 progress.md **不可恢复**（载体已删除且从未提交）；可追溯的替代链 = 账本（已提交的汇总）+ waves 编排记录 + git 提交历史 + evidence 目录。**建议**：后续票（#74 补跑起）把 `.superpowers/sdd/<ticket>/` 一并纳入分支提交，避免再断链；如需抢救，唯一未排查载体是远端两分支的历史提交（本报告只查了分支头树，未做全历史对象扫描）。
-
-### 11.3 解锁后剩余工作量与下轮启动条件
-
-- **结构粗估（依据 DAG §4 波次表，撰写会话汇总）**：26 票分布在 15 个串行波次，并行宽度峰值 3：W1 #74（1）→ W2 #81（1）→ W3 #82（1）→ W4 #83（1）→ W5 #84+#85（2）→ W6 #86（1）→ W7 #87+#93+#95（3）→ W8 #88+#89+#94（3）→ W9 #90+#91+#92（3）→ W10 #96+#99（2）→ W11 #97+#98（2）→ W12 #100+#101（2）→ W13 #102+#103（2）→ W14 #104（1）→ W15 #105（1）。注意：D1（Stripe key+三选项）只解锁 #74→#83/#84 主链；**#85 起仍需 D2（75-a2）裁决**（`issue-72-dag.md:251`）。
-- **节奏参考（不作承诺）**：前轮 2026-09-20~21 两天完成 Wave 2-4 共 7 票（waves L126-142）。按此节奏量级，26 票/15 波次为**多周级**工程；本报告不做工时承诺（无单票耗时基线数据）。
-- **下轮启动条件与方式**：① D1 裁决+密钥到位后，先补跑 #74 AC1-AC3（§10.2 命令）并关票；② D2 裁决须在 W5（#85）前给出；③ **重启为手动**（未发现任何自动重启机制的证据），续跑基准制品 = `issue-72-dag.md` §6 状态表 + `issue-72-issues-inventory.md` §2——重启时先把 #74（及已裁决的依赖）状态改 done、重算 frontier（校验脚本未归档，需按 DAG §7 规格"33 节点/70 边/Kahn/边违例/波次模拟"重写复算）；④ 实施基线应取**当时最新 main**（当前领先基线 49 提交，商业模块仅 benefits.go +16 漂移，§5.2），而非沿用 29c1e5635；⑤ 合并回 main 前对代码提交重跑 OCR（§9）。
-
-## 12. 验证命令清单（撰写会话实跑）
-
-### 12.1 首版会话
-
-1. `ls docs/plans/ | grep '^issue-72'` → 仅 dag、issues-inventory 2 文件。
-2. `git log --oneline 29c1e56353b2b36be242018cecb43bcb3a5ef7c8..HEAD` → 实施终点 `7cf755474`（+报告提交后为 2 提交）。
-3. `git branch --list 'codex/issue-72-lago-*'` → 空（0 个 Issue 分支）。
-4. `git status` / `git branch --show-current` → `codex/issue-72-lago`。
-5. `git branch -a | grep -i lago` / `git branch -vv` / `git ls-remote --heads origin | grep lago` → 远端仅历史 `lago-73-community-env`、`lago-integration`；本分支无 upstream 未推送。
-6. `git show --stat 7cf755474` → 2 文件 +614 行。
-7. `git log --oneline --all | grep`（b57be1602/d1eec16be/6ea0511f5/e87eb459c）→ 全部存在；`git merge-base --is-ancestor e87eb459 29c1e56353` → true。
-8. `ls docs/plans/ledgers/` → lago-78/79/80；`ls .superpowers/sdd/ | grep -i lago` → 空；`ls .superpowers/sdd/2026-09-21-lago-t06-lago-customer` → No such file。
-9. `find`（`*issue-72*`、`issue-72-flow-evidence-*`、`-iname '*ocr*'`、`t05-*/t06-*`）→ flow-evidence 不存在；OCR 无相关文件；t05/t06 证据在 `deploy/lago/evidence/`。
-10. `ls docs/migrations/lago/`、`ls deploy/lago-lab/`、`ls deploy/lago/`、`ls deploy/lago/evidence/` → §4 索引路径存在。
-11. `grep/sed` 读取 waves、spec、三份 ledger 头部 → §3/§5/§9/§10 引用内容。
-
-### 12.2 修订版会话（本轮评审意见补查）
-
-12. `git rev-list --count 29c1e5635..main` → **49**；`git rev-list --count main..HEAD` → **2**。
-13. `git diff --stat 29c1e5635..main`（全库尾行 136 files +28172/−8174；`-- internal/modules/commercial/` 仅 benefits.go +16；`git log 29c1e5635..main -- docs/plans/` 与 `-- deploy/lago/ docs/migrations/lago/ docs/plans/ledgers/` 均 0 提交）。
-14. `sed -n '240,248p' internal/container/container.go` → **:244 = ommeter.NewGatewayFromEnv 装配（已核）**；`sed -n '680,690p' .../commercialplatform/lago.go` → **:684-686 createSubscription 注释明示不带 activation_rules（已核）**。
-15. Read `budget_pg_test.go:50-59` → 第 56 行为 `t.Fatal(err)`，清单:165 行号引用**未能复核**（§7）。
-16. Read `docs/specs/...design.md:212-237` → 矩阵第 1-24 项完整行号（已核）；spec:246-248 Completion gate（已核）。
-17. `head deploy/lago/evidence/t08-run.txt` → "real-stack run — operator timeline"（证据性质已核）。
-18. `ls /Users/wuyongjun/trea/WeKnora-fork01/.worktrees/` → 9 个 worktree，**无 lago-***；`ls 主检出 .superpowers/sdd/ | grep -i lago` → none。
-19. `git fetch origin lago-integration --depth=1` + `git ls-tree FETCH_HEAD .superpowers/sdd/` → 仅 7 个非 lago 条目；同法 `lago-73-community-env` → 无 lago 条目（§11.2）。
-20. `grep -n 'environ\|STRIPE\|sk_test' deploy/lago-lab/payment-activation/run_lab.py` → :101-107 环境变量取键、live 键拒绝（已核，§10.2）。
-21. `sed DECISION.md §5`（:100-140）→ 三选项表 + "The lab recommends (a)..."（已核）；`grep verdict.md a2` → L58-66 阻断证据、L21-22 协调层总则、L160-166 义务表（已核）。
-22. `gh issue view 74 --json state,comments` → **OPEN**；解锁命令已内联 §10.2（评论并记录实现于 lago-74 分支 e5294a2a..72aa7476、并入 lago-integration 4bfad830——该两分支现已不存在，进一步佐证 §11.2）。
-23. `for i in 72 $(seq 73 105); do gh issue view $i --json state,number ...` 两遍 → **#72 OPEN；#73/75/76/77/78/79/80 CLOSED（7）；#74、#81-#105 OPEN（26）**。第一遍 2 个请求返回空（瞬时失败），第二遍点名复核 7 张 CLOSED 票全部确认；总数 34 查询无缺漏。
-
-### 12.3 验收者第一步补验清单（建议命令）
-
-1. **GitHub 状态复核**（状态随时可能漂移）：`for i in 72 $(seq 73 105); do gh issue view $i -R 1123786563/WeKnora-fork01 --json number,state --jq '"\(.number):\(.state)"'; done` → 期望 7 CLOSED / 26 OPEN / #72 OPEN。
-2. **DAG 校验复算**：脚本未归档（§7），需按 DAG §7 规格重写（33 节点/70 边/Kahn 无环/拓扑序零违例/波次无停滞/传递计数 25、21）或信任文档记录。
-3. **测试重跑（第一手证据）**：`python3 -m pytest deploy/lago/ -q`（期望 46 passed+62 subtests）；`go build ./... && go test ./...`；lab 套件 `python3 -m pytest deploy/lago-lab/ -q`（wallet-semantics 104 / pricing-group 60 的分项口径见清单 §2）；PG twin：`go test ./internal/modules/commercial/repository/commercial/ -run TestBudgetPG`（清单预测 2 FAIL，行号存疑，§7）。
-4. **Git 事实复核**：`git log --oneline 29c1e5635..HEAD`（期望 2 提交）；`git rev-list --count 29c1e5635..main`（漂移复核）；`git ls-remote --heads origin | grep lago`（确认仍未推送）。
-5. **代码引用抽查**：`sed -n '244p' internal/container/container.go`；`sed -n '684,686p' internal/modules/commercial/commercialplatform/lago.go`。
-6. **#74 解锁预演（密钥到位后）**：按 §10.2 D1 命令，密钥仅经环境变量注入，证据提交前复核脱敏。
-
-**未运行的检查**：任何测试套件（go test/pytest/DAG python3 校验）撰写会话均未运行；spec:212-248、DECISION.md §5、verdict.md a2、container.go:244、lago.go:684-686、run_lab.py:101-107 已核原文；账本引用的三个 `2026-09-21-lago-t0{6,7,8}` 计划文件存在性未单独核验（§4 注）。
