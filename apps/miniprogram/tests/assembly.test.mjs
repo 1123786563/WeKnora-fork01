@@ -185,6 +185,111 @@ test('assembly: Task artifact listing and grant failures preserve permission and
   await assert.rejects(workbench.taskArtifactDownloadPath('run-1', { index: 0, name: 'report.pdf', mime: 'application/pdf', size: 12 }), error => error.status === 410);
 });
 
+test('assembly: protected DOCX opens with the user menu and removes its local temporary copy', async () => {
+  await freshLogin();
+  stub.use(call => stub.succeed(call, { tempFilePath: '/tmp/resume.docx' }));
+  const files = await import('../src/platform/files.ts');
+  await files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=docx', 'resume.docx', true);
+  assert.deepEqual(stub.state.openedDocuments, [{ filePath: '/tmp/resume.docx', showMenu: true }]);
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/resume.docx']);
+});
+
+test('assembly: signed download 401 is a fresh-grant expiry and a second tap succeeds', async () => {
+  let grants = 0, downloads = 0;
+  await freshLogin();
+  stub.use(call => {
+    if (call.kind === 'request' && new URL(call.options.url).pathname.endsWith('/signed-url')) {
+      grants++;
+      stub.succeed(call, { data: { success: true, data: { url: `${ORIGIN}/api/v1/workbench/artifacts/download?signature=${grants}`, expires_at: '2026-09-24T00:15:00Z' } } });
+      return;
+    }
+    if (call.kind !== 'downloadFile') { call.options.fail({ errMsg: 'unexpected request' }); return; }
+    downloads++;
+    stub.succeed(call, downloads === 1
+      ? { statusCode: 401, data: { code: 'artifact_grant_expired' }, tempFilePath: '/tmp/expired.json' }
+      : { tempFilePath: '/tmp/report.pdf' });
+  });
+  const files = await import('../src/platform/files.ts');
+  const { errorMessage } = await import('../src/core/errors.ts');
+  const file = { index: 0, name: 'report.pdf', mime: 'application/pdf', size: 12 };
+  const firstGrant = await workbench.taskArtifactDownloadPath('run-1', file);
+  await assert.rejects(files.openProtectedDocument(firstGrant, file.name), error => {
+    assert.equal(error.status, 401);
+    assert.equal(error.code, 'ARTIFACT_GRANT_EXPIRED');
+    assert.match(errorMessage(error), /重新获取|再次点击/);
+    assert.doesNotMatch(errorMessage(error), /登录/);
+    return true;
+  });
+  const secondGrant = await workbench.taskArtifactDownloadPath('run-1', file);
+  await files.openProtectedDocument(secondGrant, file.name);
+  assert.equal(grants, 2, 'retry obtains a new grant instead of reusing the expired URL');
+  assert.equal(downloads, 2);
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/expired.json', '/tmp/report.pdf']);
+  assert.equal(stub.state.openedDocuments.length, 1);
+});
+
+test('assembly: revoked download is denied and its non-200 temporary body is removed', async () => {
+  await freshLogin();
+  stub.use(call => stub.succeed(call, { statusCode: 403, data: { code: 'artifact_access_revoked' }, tempFilePath: '/tmp/denied.json' }));
+  const files = await import('../src/platform/files.ts');
+  await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=revoked', 'report.pdf'), error => error.status === 403);
+  assert.equal(stub.state.openedDocuments.length, 0);
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/denied.json']);
+});
+
+test('assembly: a scope switch during transfer prevents opening and removes the late file', async () => {
+  await freshLogin();
+  stub.use(() => {});
+  const files = await import('../src/platform/files.ts');
+  const pending = files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=old', 'report.pdf');
+  await new Promise(resolve => setImmediate(resolve));
+  const download = stub.lastCall('downloadFile');
+  runtime.auth.clear();
+  stub.succeed(download, { tempFilePath: '/tmp/old-scope.pdf' });
+  await assert.rejects(pending, /SCOPE_CHANGED/);
+  assert.equal(stub.state.openedDocuments.length, 0);
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/old-scope.pdf']);
+});
+
+test('assembly: scope change while obtaining a grant prevents an old-scope download', async () => {
+  await freshLogin({ 'POST /api/v1/workbench/executions/run-1/artifacts/0/signed-url': () => {} });
+  const pending = workbench.taskArtifactDownloadPath('run-1', { index: 0, name: 'report.pdf', mime: 'application/pdf', size: 12 });
+  await new Promise(resolve => setImmediate(resolve));
+  const grant = stub.lastCall('request');
+  runtime.auth.clear();
+  stub.succeed(grant, { data: { success: true, data: { url: `${ORIGIN}/api/v1/workbench/artifacts/download?signature=old`, expires_at: '2026-09-24T00:15:00Z' } } });
+  await assert.rejects(pending, error => /SCOPE_CHANGED|cancelled/i.test(`${error.message} ${error.code ?? ''}`));
+  assert.equal(stub.state.calls.some(call => call.kind === 'downloadFile'), false);
+});
+
+test('assembly: oversized files remove the downloaded copy without opening it', async () => {
+  await freshLogin();
+  stub.use(call => stub.succeed(call, { tempFilePath: '/tmp/candidate.pdf' }));
+  const files = await import('../src/platform/files.ts');
+  stub.state.fileInfoSize = 20 * 1024 * 1024 + 1;
+  await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=large', 'large.pdf'), /上限/);
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/candidate.pdf']);
+  assert.equal(stub.state.openedDocuments.length, 0);
+});
+
+test('assembly: native viewer failure removes the downloaded copy', async () => {
+  await freshLogin();
+  stub.use(call => stub.succeed(call, { tempFilePath: '/tmp/viewer-failure.pdf' }));
+  stub.state.openDocumentError = new Error('native viewer failed');
+  const files = await import('../src/platform/files.ts');
+  await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=native-failure', 'report.pdf'), /native viewer failed/);
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/viewer-failure.pdf']);
+});
+
+test('assembly: file-info failure still removes the downloaded copy', async () => {
+  await freshLogin();
+  stub.use(call => stub.succeed(call, { tempFilePath: '/tmp/file-info-failure.pdf' }));
+  stub.state.fileInfoError = new Error('file info failed');
+  const files = await import('../src/platform/files.ts');
+  await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=file-info', 'report.pdf'), /file info failed/);
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/file-info-failure.pdf']);
+});
+
 test('assembly: startTask unknown after a lost response resubmits the SAME request id (D5)', async () => {
   let startCalls = [];
   const admit = call => {

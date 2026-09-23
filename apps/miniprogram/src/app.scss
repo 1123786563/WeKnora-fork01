@@ -1,5 +1,12 @@
 @use './styles/tokens.mini' as *;
 page { background:$wk-color-bg-canvas; color:$wk-color-text-primary; font-family:$wk-font-family-sans; font-size:14px; line-height:1.6; }
+.wk-tdesign-scope {
+  --wk-color-action-primary: #{$wk-color-action-primary};
+  --wk-color-action-pressed: #{$wk-color-action-pressed};
+  --wk-color-action-disabled: #{$wk-color-action-disabled};
+  --wk-color-action-disabled-text: #{$wk-color-action-disabled-text};
+  --wk-component-button-height: #{$wk-component-button-height};
+}
 view, text, button, input, textarea, image { box-sizing:border-box; }
 button { padding:0; margin:0; background:transparent; line-height:1.5; border-radius:0; font-family:inherit; font-size:14px; }
 button::after { border:0; }

@@ -1,4 +1,5 @@
-import { Text } from '@tarojs/components';
+import { createElement } from 'react';
+import { Text, View } from '@tarojs/components';
 import { Screen, Card, Action, Notice, Empty, DataBoundary, useData, useAction } from '../../../components/ui.tsx';
 import { auth } from '../../../services/runtime.ts';
 import { listTaskArtifacts, taskArtifactDownloadPath } from '../../../services/workbench.ts';
@@ -19,12 +20,23 @@ export default function ArtifactPage(){
    {items.map(file=><Card key={`${file.index}:${file.id}`}>
     <Text className='wk-h3'>{file.name}</Text>
     <Text className='wk-muted wk-small'>{file.mime} · {formatBytes(file.size)}{file.createdAt?` · ${formatTime(file.createdAt)}`:''}</Text>
-    <Action loading={action.busy} disabled={!supported(file.name,file.mime)} onClick={()=>void action.run(async()=>{
+    <View className='wk-tdesign-scope'>
+    {createElement('t-button', {
+     block: true,
+     disabled: action.busy || !supported(file.name,file.mime),
+     loading: action.busy,
+     theme: 'primary',
+     size: 'large',
+     ariaLabel: supported(file.name,file.mime)?`打开或保存 ${file.name}`:`${file.name} 暂不支持`,
+     customStyle: '--td-brand-color:var(--wk-color-action-primary);--td-brand-color-active:var(--wk-color-action-pressed);--td-brand-color-disabled:var(--wk-color-action-disabled);--td-button-primary-bg-color:var(--wk-color-action-primary);--td-button-primary-active-bg-color:var(--wk-color-action-pressed);--td-button-primary-disabled-bg:var(--wk-color-action-disabled);--td-button-primary-disabled-color:var(--wk-color-action-disabled-text);--td-button-large-height:var(--wk-component-button-height);',
+     onTap: ()=>void action.run(async()=>{
      const stamp=auth.scope.capture();
      const path=await taskArtifactDownloadPath(run,file);
      if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');
      await openProtectedDocument(path,file.name,true,stamp);
-    })}>{supported(file.name,file.mime)?'打开或保存':'此格式暂不支持'}</Action>
+    }),
+    }, supported(file.name,file.mime)?'打开或保存':'此格式暂不支持')}
+    </View>
    </Card>)}
    {!items.length&&<Empty title='暂时没有产物' body='任务可能仍在进行，或尚未生成 PDF / DOCX 文件。'/>}
   </>}</DataBoundary>}

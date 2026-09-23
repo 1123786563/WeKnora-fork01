@@ -15,8 +15,14 @@ export async function openProtectedDocument(path:string,name:string,showMenu=fal
  const stamp=expectedScope??auth.scope.capture();if(!auth.scope.isCurrent(stamp))throw new Error('SCOPE_CHANGED');const controller=auth.scope.controller();let filePath='';
  try{
   filePath=await new Promise<string>((resolve,reject)=>{
-   const task=Taro.downloadFile({url:apiOrigin+path,header:{Authorization:`Bearer ${credential.accessToken}`},timeout:60000,
-    success:r=>{if(r.statusCode!==200){reject(Object.assign(new Error('下载失败'),{status:r.statusCode}));return}resolve(r.tempFilePath)},fail:reject});
+    const task=Taro.downloadFile({url:apiOrigin+path,header:{Authorization:`Bearer ${credential.accessToken}`},timeout:60000,
+    success:r=>{
+     // Completed HTTP responses can still materialize an error body locally. Own it before
+     // validating status so the finally block removes it just like a successful download.
+     filePath=r.tempFilePath;
+     if(r.statusCode!==200){reject(Object.assign(new Error('下载失败'),{status:r.statusCode,...(r.statusCode===401?{code:'ARTIFACT_GRANT_EXPIRED'}:{})}));return}
+     resolve(r.tempFilePath);
+    },fail:reject});
    const stop=()=>task.abort();controller.signal.addEventListener('abort',stop,{once:true});
    task.onProgressUpdate(p=>{if(p.totalBytesWritten>MAX_BYTES)task.abort()});
   });

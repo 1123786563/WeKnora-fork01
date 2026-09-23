@@ -7,6 +7,9 @@ const state = {
   calls: [],
   openedDocuments: [],
   removedFiles: [],
+  fileInfoSize: 128,
+  fileInfoError: null,
+  openDocumentError: null,
   handler: null,
 };
 
@@ -49,8 +52,8 @@ const Taro = {
   request(options) { return dispatch('request', options); },
   uploadFile(options) { return dispatch('uploadFile', options); },
   downloadFile(options) { return dispatch('downloadFile', options); },
-  getFileInfo(options) { return Promise.resolve({ size: 128 }); },
-  openDocument(options) { state.openedDocuments.push(options); return Promise.resolve(); },
+  getFileInfo(options) { return state.fileInfoError ? Promise.reject(state.fileInfoError) : Promise.resolve({ size: state.fileInfoSize }); },
+  openDocument(options) { if (state.openDocumentError) return Promise.reject(state.openDocumentError); state.openedDocuments.push(options); return Promise.resolve(); },
   getFileSystemManager() { return { unlinkSync(path) { state.removedFiles.push(path); } }; },
   getStorageSync(key) { return state.storage.has(key) ? state.storage.get(key) : ''; },
   setStorageSync(key, value) { state.storage.set(key, value); },
@@ -64,6 +67,9 @@ function reset() {
   state.calls.length = 0;
   state.openedDocuments.length = 0;
   state.removedFiles.length = 0;
+  state.fileInfoSize = 128;
+  state.fileInfoError = null;
+  state.openDocumentError = null;
   state.handler = null;
 }
 function lastCall(kind) {
