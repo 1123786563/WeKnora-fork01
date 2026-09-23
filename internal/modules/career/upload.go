@@ -123,18 +123,27 @@ func (a *UploadAdapter) parseClaim(ctx context.Context, tenantID uint64, sourceI
 			return result, fmt.Errorf("bind resume source: %w", err)
 		}
 	}
-	parsed, parseErr := a.reader.Read(ctx, &types.ReadRequest{FileContent: storedData, FileName: baseName, FileType: strings.TrimPrefix(ext, "."), RequestID: result.SourceID})
-	if parseErr != nil {
-		return result, fmt.Errorf("parse resume: %w", parseErr)
-	}
-	if parsed == nil || strings.TrimSpace(parsed.Error) != "" || strings.TrimSpace(parsed.MarkdownContent) == "" {
-		if parsed != nil && strings.TrimSpace(parsed.Error) != "" {
-			return result, fmt.Errorf("parse resume: %s", parsed.Error)
+	var extractedText string
+	if ext == ".txt" {
+		extractedText = string(storedData)
+	} else {
+		parsed, parseErr := a.reader.Read(ctx, &types.ReadRequest{FileContent: storedData, FileName: baseName, FileType: strings.TrimPrefix(ext, "."), RequestID: result.SourceID})
+		if parseErr != nil {
+			return result, fmt.Errorf("parse resume: %w", parseErr)
 		}
-		return result, fmt.Errorf("parse resume: document reader returned no text")
+		if parsed == nil || strings.TrimSpace(parsed.Error) != "" || strings.TrimSpace(parsed.MarkdownContent) == "" {
+			if parsed != nil && strings.TrimSpace(parsed.Error) != "" {
+				return result, fmt.Errorf("parse resume: %s", parsed.Error)
+			}
+			return result, fmt.Errorf("parse resume: document reader returned no text")
+		}
+		extractedText = parsed.MarkdownContent
 	}
-	result.Upload.Text = parsed.MarkdownContent
-	result.Fields, result.MissingCategories, result.ReviewFlags = ExtractResumeFields(parsed.MarkdownContent)
+	if strings.TrimSpace(extractedText) == "" {
+		return result, fmt.Errorf("parse resume: extracted text is empty")
+	}
+	result.Upload.Text = extractedText
+	result.Fields, result.MissingCategories, result.ReviewFlags = ExtractResumeFields(extractedText)
 	return result, nil
 }
 

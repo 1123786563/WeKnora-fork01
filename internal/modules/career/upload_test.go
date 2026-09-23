@@ -75,21 +75,21 @@ func TestUploadHTTPRequestIDReplayAndChangedBytesConflictBeforeStorage(t *testin
 		h.Upload(c)
 		return rec
 	}
-	first := request("Resume plaintext", "resume-request-1")
+	first := request("Education: Example University", "resume-request-1")
 	require.Equal(t, 201, first.Code)
 	var one UploadResponse
 	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &one))
 	require.Equal(t, "ready", one.Source.Status)
 	require.NotNil(t, one.Receipt)
 	require.Equal(t, 1, files.saves)
-	replay := request("Resume plaintext", "resume-request-1")
+	replay := request("Education: Example University", "resume-request-1")
 	require.Equal(t, 200, replay.Code)
 	var two UploadResponse
 	require.NoError(t, json.Unmarshal(replay.Body.Bytes(), &two))
 	require.Equal(t, one.Source.ID, two.Source.ID)
 	require.Equal(t, *one.Receipt, *two.Receipt)
 	require.Equal(t, 1, files.saves)
-	changed := request("Different resume", "resume-request-1")
+	changed := request("Education: Changed University", "resume-request-1")
 	require.Equal(t, 409, changed.Code)
 	require.Equal(t, 1, files.saves)
 }
@@ -105,7 +105,7 @@ func TestUploadExactRetryWithoutExpectedRevisionUsesStoredClaimRevision(t *testi
 		head.Set("Content-Disposition", `form-data; name="file"; filename="resume.txt"`)
 		head.Set("Content-Type", "text/plain")
 		part, _ := mw.CreatePart(head)
-		_, _ = part.Write([]byte("Resume plaintext"))
+		_, _ = part.Write([]byte("Education: Example University"))
 		_ = mw.WriteField("requestId", "implicit-replay")
 		_ = mw.Close()
 		rec := httptest.NewRecorder()
@@ -140,10 +140,10 @@ func TestFailedUploadRetainsReferenceUntilReleaseAndDeleteSucceed(t *testing.T) 
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	head := make(textproto.MIMEHeader)
-	head.Set("Content-Disposition", `form-data; name="file"; filename="resume.txt"`)
-	head.Set("Content-Type", "text/plain")
+	head.Set("Content-Disposition", `form-data; name="file"; filename="resume.pdf"`)
+	head.Set("Content-Type", "application/pdf")
 	part, _ := mw.CreatePart(head)
-	_, _ = part.Write([]byte("Resume plaintext"))
+	_, _ = part.Write([]byte("%PDF-1.7 Resume plaintext"))
 	_ = mw.WriteField("requestId", "cleanup-retry")
 	_ = mw.Close()
 	ctx := context.WithValue(context.Background(), types.UserIDContextKey, "u1")
@@ -172,10 +172,10 @@ func TestFailedUploadRetainsReferenceUntilReleaseAndDeleteSucceed(t *testing.T) 
 	var nextBody bytes.Buffer
 	nextWriter := multipart.NewWriter(&nextBody)
 	nextHeader := make(textproto.MIMEHeader)
-	nextHeader.Set("Content-Disposition", `form-data; name="file"; filename="resume.txt"`)
-	nextHeader.Set("Content-Type", "text/plain")
+	nextHeader.Set("Content-Disposition", `form-data; name="file"; filename="resume.pdf"`)
+	nextHeader.Set("Content-Type", "application/pdf")
 	nextPart, _ := nextWriter.CreatePart(nextHeader)
-	_, _ = nextPart.Write([]byte("Different resume content"))
+	_, _ = nextPart.Write([]byte("%PDF-1.7 Different resume content"))
 	_ = nextWriter.WriteField("requestId", "unrelated-upload")
 	_ = nextWriter.Close()
 	next := httptest.NewRecorder()
@@ -594,6 +594,43 @@ func TestUploadAdapterValidatesStoresAndParsesDurableCareerSource(t *testing.T) 
 	require.Empty(t, files.deleted)
 }
 
+func TestUploadAdapterParsesValidatedTextWithoutDocumentReader(t *testing.T) {
+	text := "Education: Example University\nExperience: Acme 2022-2024\nExperience: Acme 2023-2025\nProject: Compiler optimization\nSkill: Go\nAchievement: Reduced latency 30%\nCertificate: Cloud Architect"
+	files := &careerUploadFiles{}
+	catalog := &careerUploadCatalog{}
+	calls := 0
+	reader := careerUploadReader{err: errors.New("unsupported file type: txt"), calls: &calls}
+	adapter := NewUploadAdapter(files, catalog, reader)
+
+	result, err := adapter.StoreAndParse(context.Background(), 9, "resume.txt", "text/plain", []byte(text), nil)
+	require.NoError(t, err)
+	require.Zero(t, calls, "validated text is already the extracted content")
+	require.Equal(t, text, result.Upload.Text)
+	require.Len(t, result.Fields, 7)
+	categories := make(map[string]struct{})
+	for _, field := range result.Fields {
+		category, _, ok := strings.Cut(field.Key, ".")
+		require.True(t, ok)
+		categories[category] = struct{}{}
+	}
+	require.Len(t, categories, 6)
+	require.Contains(t, result.MissingCategories, "education.graduation_year")
+	require.Contains(t, result.ReviewFlags, "multiple_experience_claims_require_review")
+	require.Equal(t, "private://"+files.stored, result.Upload.ResourceRef)
+	require.Equal(t, result.Upload.ResourceRef, catalog.bound)
+}
+
+func TestUploadAdapterRejectsInvalidTextBeforeStorage(t *testing.T) {
+	files := &careerUploadFiles{}
+	adapter := NewUploadAdapter(files, &careerUploadCatalog{}, careerUploadReader{})
+
+	_, err := adapter.StoreAndParse(context.Background(), 9, "resume.txt", "text/plain", []byte{0xff, 0xfe, 0xfd}, nil)
+	require.ErrorContains(t, err, "does not match text type")
+	_, err = adapter.StoreAndParse(context.Background(), 9, "resume.txt", "application/pdf", []byte("Education: Example University"), nil)
+	require.ErrorContains(t, err, "MIME type does not match text type")
+	require.Zero(t, files.saves)
+}
+
 func TestConcurrentSameUploadRequestOnlyClaimsOneParser(t *testing.T) {
 	o, _ := testOffice(t)
 	files := &careerUploadFiles{entered: make(chan struct{}), resume: make(chan struct{})}
@@ -633,7 +670,7 @@ func TestConcurrentSameUploadRequestOnlyClaimsOneParser(t *testing.T) {
 	first := <-firstDone
 	require.Equal(t, 201, first.Code)
 	require.Equal(t, 1, files.saves)
-	require.Equal(t, 1, calls)
+	require.Equal(t, 0, calls, "plain text uploads do not invoke DocumentReader")
 }
 
 func TestUploadAdapterRejectsMismatchedAndFailedParserInputs(t *testing.T) {
