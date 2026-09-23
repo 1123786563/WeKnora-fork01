@@ -1,7 +1,7 @@
 # React 端 TDesign 同构迁移设计（tailwind/shadcn 退役）
 
 - 日期：2026-09-21
-- 状态：已批准（用户逐节确认七节设计，2026-09-21）
+- 状态：已实施（2026-09-23 T16 三轮全量验收 PASS：60 项均值 0.09%、9 项豁免像素级取证；tailwind/@weknora/ui 已删除。验收证据：docs/migrations/react/evidence/vue-react-parity/final-acceptance/2026-09-23-final-acceptance.md；执行账本：.superpowers/sdd/2026-09-21-tdesign-react-migration/progress.md（Rulings R1-R21））
 - 关联：`docs/specs/2026-09-16-react-client-routing-design.md`、parity 台账 `docs/migrations/react/evidence/vue-react-parity/`、`scripts/parity/auto-scan.mjs`
 
 ## 1. 背景与动机
