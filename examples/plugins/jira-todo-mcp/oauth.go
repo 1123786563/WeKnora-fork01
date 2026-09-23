@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -16,31 +17,58 @@ import (
 	"time"
 )
 
+// 令牌与一次性凭据的生命周期（测试可临时改写以覆盖过期路径）。
+var (
+	// accessTokenTTL 是 access_token 的有效期，与 /token 响应的 expires_in
+	// 一致（OCR T04-R1-2：声明与实现不得脱节）。
+	accessTokenTTL = time.Hour
+	// pendingAuthTTL 是授权表单 state 的有效期。
+	pendingAuthTTL = 10 * time.Minute
+	// authCodeTTL 是授权码的有效期。
+	authCodeTTL = 10 * time.Minute
+)
+
+const (
+	// maxStateBytes 限制 state 长度：state 是未认证输入的存储键，必须封顶
+	// （OCR T04-R1-4：无界内存增长面）。
+	maxStateBytes = 1024
+	// maxRegisteredClients 封顶动态注册客户端数量（OCR T04-R1-4）。
+	maxRegisteredClients = 4096
+)
+
 // oauthServer 是一个简化的 OAuth 2.0 授权码服务器（内存态）：
 //   - RFC 9728 protected-resource / RFC 8414 authorization-server metadata；
-//   - RFC 7591 动态客户端注册（POST /register）；
+//   - RFC 7591 动态客户端注册（POST /register，注册时绑定 redirect_uris）；
 //   - 授权码 + PKCE S256（GET/POST /authorize）；
 //   - 换发与续期（POST /token：authorization_code / refresh_token）。
 //
-// 会话数据（成员 Jira 邮箱 + API token）仅驻留内存：code、state、token 均
-// 一次性使用；凭据不落盘、不写日志、不出现在任何重定向或错误页。
-// 这是示例服务的教学级实现：单实例、无持久化、无过期清理协程——生产部署
-// 应替换为专业 OAuth 实现（见 README）。
+// 会话数据（成员 Jira 邮箱 + API token）仅驻留内存；code、state、
+// refresh_token 一次性使用，access_token 按 accessTokenTTL 过期；凭据不落盘、
+// 不写日志、不出现在任何重定向或错误页。注册客户端、待授权 state 与授权码
+// 均在写入/读取时惰性清扫过期条目（OCR T04-R1-4）。这是示例服务的教学级
+// 实现：单实例、无持久化、无后台清理协程——生产部署应替换为专业 OAuth
+// 实现（见 README）。
 type oauthServer struct {
 	baseURL     string
 	jiraBaseURL string
 
 	mu sync.Mutex
-	// clients: 动态注册的 client_id 集合。
-	clients map[string]struct{}
-	// pendingAuths: state -> 授权请求参数（进入表单页时登记，提交时一次性消费）。
-	pendingAuths map[string]authorizationRequest
+	// clients: 动态注册的 client_id -> 注册信息（含绑定的 redirect_uris）。
+	clients map[string]registeredClient
+	// pendingAuths: state -> 授权请求参数（进入表单页时登记，凭据验证成功
+	// 发码前一次性消费；凭据失败可同 state 重试，见 submitAuthorizeForm）。
+	pendingAuths map[string]pendingAuth
 	// codes: 授权码 -> 发码上下文（一次性消费）。
 	codes map[string]issuedCode
-	// tokens: access_token -> 授权会话。
-	tokens map[string]*oauthSession
-	// refreshTokens: refresh_token -> 对应 access_token。
+	// tokens: access_token -> 会话条目（按 ExpiresAt 过期）。
+	tokens map[string]tokenEntry
+	// refreshTokens: refresh_token -> 对应 access_token（refresh 一次性轮换）。
 	refreshTokens map[string]string
+}
+
+// registeredClient 记录一次动态注册。
+type registeredClient struct {
+	RedirectURIs []string
 }
 
 // oauthSession 是一次成功授权后的成员会话（内存驻留）。
@@ -57,10 +85,22 @@ type authorizationRequest struct {
 	CodeChallengeMethod string
 }
 
+// pendingAuth 是登记中的授权请求（含过期时间）。
+type pendingAuth struct {
+	Request   authorizationRequest
+	ExpiresAt time.Time
+}
+
 // issuedCode 是授权码及其发码上下文。
 type issuedCode struct {
 	Session   oauthSession
 	Request   authorizationRequest
+	ExpiresAt time.Time
+}
+
+// tokenEntry 是 access_token 条目：会话 + 过期时间（OCR T04-R1-2）。
+type tokenEntry struct {
+	Session   *oauthSession
 	ExpiresAt time.Time
 }
 
@@ -71,10 +111,10 @@ func newOAuthServer(baseURL, jiraBaseURL string) *oauthServer {
 	return &oauthServer{
 		baseURL:       baseURL,
 		jiraBaseURL:   jiraBaseURL,
-		clients:       make(map[string]struct{}),
-		pendingAuths:  make(map[string]authorizationRequest),
+		clients:       make(map[string]registeredClient),
+		pendingAuths:  make(map[string]pendingAuth),
 		codes:         make(map[string]issuedCode),
-		tokens:        make(map[string]*oauthSession),
+		tokens:        make(map[string]tokenEntry),
 		refreshTokens: make(map[string]string),
 	}
 }
@@ -88,6 +128,26 @@ func randomToken() string {
 		panic(fmt.Sprintf("crypto/rand unavailable: %v", err))
 	}
 	return hex.EncodeToString(buf)
+}
+
+// sweepExpiredLocked 惰性清扫已过期的 pendingAuths / codes / tokens
+// （调用方需持锁；OCR T04-R1-4：未认证可达的填充路径必须有界）。
+func (s *oauthServer) sweepExpiredLocked(now time.Time) {
+	for state, pending := range s.pendingAuths {
+		if now.After(pending.ExpiresAt) {
+			delete(s.pendingAuths, state)
+		}
+	}
+	for code, issued := range s.codes {
+		if now.After(issued.ExpiresAt) {
+			delete(s.codes, code)
+		}
+	}
+	for token, entry := range s.tokens {
+		if now.After(entry.ExpiresAt) {
+			delete(s.tokens, token)
+		}
+	}
 }
 
 // contextFunc 是 StreamableHTTPServer 的 HTTPContextFunc：从每个入站请求
@@ -104,14 +164,20 @@ func sessionFromContext(ctx context.Context) *oauthSession {
 	return session
 }
 
-// lookupSession 返回 access_token 对应会话；无效 token 返回 nil。
+// lookupSession 返回 access_token 对应会话；无效、缺失或已过期的 token
+// 返回 nil（过期条目顺手清扫，OCR T04-R1-2）。
 func (s *oauthServer) lookupSession(token string) *oauthSession {
 	if token == "" {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.tokens[token]
+	s.sweepExpiredLocked(time.Now())
+	entry, ok := s.tokens[token]
+	if !ok {
+		return nil
+	}
+	return entry.Session
 }
 
 // hasValidSession 报告 Bearer token 是否映射到已授权会话（gate 用）。
@@ -141,9 +207,9 @@ func (s *oauthServer) handleAuthorizationServer(w http.ResponseWriter, _ *http.R
 	})
 }
 
-// handleRegister 是 RFC 7591 动态客户端注册（简化）：接受任意注册文档，
-// 签发随机 client_id。redirect_uris 原样回显（token 交换时不做二次比对，
-// authorize 时以注册时提交的 redirect_uri 为准——示例级实现）。
+// handleRegister 是 RFC 7591 动态客户端注册（简化）：要求注册文档携带至少
+// 一个绝对 http(s) redirect_uri 并存储绑定（OCR T04-R1-1：authorize 时与
+// 注册值精确匹配，杜绝授权码被 302 到任意地址的劫持路径）。
 func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -153,11 +219,39 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		RedirectURIs []string `json:"redirect_uris"`
 		ClientName   string   `json:"client_name"`
 	}
-	// 注册文档解析失败也放行——本简化实现只关心 client_id 签发。
-	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&registration)
+	// 解析失败按空注册处理 → 下面的非空校验拒绝。
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&registration); err != nil && registration.RedirectURIs == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid_client_metadata", "error_description": "request body must be a JSON registration document with redirect_uris",
+		})
+		return
+	}
+	if len(registration.RedirectURIs) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid_redirect_uri", "error_description": "at least one absolute http(s) redirect_uri is required",
+		})
+		return
+	}
+	for _, uri := range registration.RedirectURIs {
+		parsed, err := url.Parse(uri)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" ||
+			(parsed.Scheme != "http" && parsed.Scheme != "https") {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error": "invalid_redirect_uri", "error_description": "redirect_uri must be an absolute http(s) URL",
+			})
+			return
+		}
+	}
 	clientID := "jtm-" + randomToken()
 	s.mu.Lock()
-	s.clients[clientID] = struct{}{}
+	if len(s.clients) >= maxRegisteredClients {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{
+			"error": "registration_limit_exceeded",
+		})
+		return
+	}
+	s.clients[clientID] = registeredClient{RedirectURIs: registration.RedirectURIs}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"client_id":           clientID,
@@ -198,8 +292,14 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "state is required", http.StatusBadRequest)
 		return
 	}
+	if len(state) > maxStateBytes {
+		http.Error(w, "state is too long", http.StatusBadRequest)
+		return
+	}
+	now := time.Now()
 	s.mu.Lock()
-	s.pendingAuths[state] = req
+	s.sweepExpiredLocked(now)
+	s.pendingAuths[state] = pendingAuth{Request: req, ExpiresAt: now.Add(pendingAuthTTL)}
 	s.mu.Unlock()
 	// 表单把授权参数（含 state）藏在隐藏字段；凭据字段仅在提交瞬间经
 	// HTTPS 到达本服务，不进入任何存储。
@@ -219,13 +319,14 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 }
 
 // validateAuthorizationRequest 校验授权请求：response_type=code、client 已
-// 注册、redirect_uri 为 http/https 绝对地址、PKCE S256。
+// 注册、redirect_uri 与该 client 注册值**精确匹配**（RFC 6749 §3.1.2.3 公共
+// 客户端语义，OCR T04-R1-1）、PKCE S256。
 func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, responseType string) error {
 	if responseType != "code" {
 		return fmt.Errorf("response_type must be \"code\"")
 	}
 	s.mu.Lock()
-	_, registered := s.clients[req.ClientID]
+	client, registered := s.clients[req.ClientID]
 	s.mu.Unlock()
 	if !registered {
 		return fmt.Errorf("unknown client_id")
@@ -237,6 +338,17 @@ func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, res
 	if redirect.Scheme != "http" && redirect.Scheme != "https" {
 		return fmt.Errorf("redirect_uri must use http or https")
 	}
+	// 精确匹配注册值：杜绝注册后把授权码发给任意第三方地址的劫持路径。
+	registeredURI := false
+	for _, uri := range client.RedirectURIs {
+		if req.RedirectURI == uri {
+			registeredURI = true
+			break
+		}
+	}
+	if !registeredURI {
+		return fmt.Errorf("redirect_uri does not match the registered redirect_uris for this client")
+	}
 	if req.CodeChallenge == "" {
 		return fmt.Errorf("code_challenge is required (PKCE)")
 	}
@@ -246,8 +358,10 @@ func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, res
 	return nil
 }
 
-// submitAuthorizeForm 处理凭据提交：state 一次性消费，凭据经 Jira
-// /rest/api/3/myself 验证成功才发码；失败渲染错误页（无 code、无凭据回显）。
+// submitAuthorizeForm 处理凭据提交：凭据经 Jira /rest/api/3/myself 验证成功
+// 才消费 state 并发码（OCR T04-R1-3：凭据输错后同 state 可重试，避免成员被
+// 迫重启整条授权流）。凭据性失败（401/403）渲染凭据错误页；上游故障渲染
+// 502 服务不可用页（OCR T04-R1-10：不得把 Jira 故障伪装成凭据错误）。
 func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", http.StatusBadRequest)
@@ -256,12 +370,16 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 	state := r.PostFormValue("state")
 	email := strings.TrimSpace(r.PostFormValue("email"))
 	apiToken := r.PostFormValue("api_token")
+	now := time.Now()
 	s.mu.Lock()
-	req, ok := s.pendingAuths[state]
-	delete(s.pendingAuths, state) // state 一次性
+	pending, ok := s.pendingAuths[state]
+	if ok && now.After(pending.ExpiresAt) {
+		delete(s.pendingAuths, state)
+		ok = false
+	}
 	s.mu.Unlock()
 	if !ok {
-		http.Error(w, "unknown or already-used state", http.StatusBadRequest)
+		http.Error(w, "unknown or expired state", http.StatusBadRequest)
 		return
 	}
 	// 凭据只进内存变量；Myself 失败信息不含凭据本身。
@@ -269,22 +387,34 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if _, err := client.Myself(ctx); err != nil {
+		var httpErr *jiraHTTPError
+		credentialFailure := errors.As(err, &httpErr) &&
+			(httpErr.StatusCode == http.StatusUnauthorized || httpErr.StatusCode == http.StatusForbidden)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `<!DOCTYPE html>
+		if credentialFailure {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>授权失败</title></head>
 <body><h1>授权失败</h1><p>Jira 凭据验证未通过。请返回重试。</p></body></html>`)
+			return
+		}
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprint(w, `<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Jira 服务不可用</title></head>
+<body><h1>Jira 服务暂不可用</h1><p>授权验证依赖的 Jira 服务当前不可达或出错，请稍后重试或联系部署管理员。</p></body></html>`)
 		return
 	}
+	// 验证成功：此刻才一次性消费 state 并签发授权码。
 	code := randomToken()
 	s.mu.Lock()
+	delete(s.pendingAuths, state)
 	s.codes[code] = issuedCode{
 		Session:   oauthSession{Email: email, APIToken: apiToken},
-		Request:   req,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
+		Request:   pending.Request,
+		ExpiresAt: now.Add(authCodeTTL),
 	}
 	s.mu.Unlock()
-	redirect, err := url.Parse(req.RedirectURI)
+	redirect, err := url.Parse(pending.Request.RedirectURI)
 	if err != nil {
 		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
 		return
@@ -327,11 +457,13 @@ func (s *oauthServer) exchangeCode(w http.ResponseWriter, r *http.Request) {
 	verifier := r.PostFormValue("code_verifier")
 	clientID := r.PostFormValue("client_id")
 	redirectURI := r.PostFormValue("redirect_uri")
+	now := time.Now()
 	s.mu.Lock()
+	s.sweepExpiredLocked(now)
 	issued, ok := s.codes[code]
 	delete(s.codes, code) // code 一次性：无论后续校验成败都不再可用
 	s.mu.Unlock()
-	if !ok || time.Now().After(issued.ExpiresAt) {
+	if !ok || now.After(issued.ExpiresAt) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_grant", "error_description": "unknown or expired code"})
 		return
 	}
@@ -347,50 +479,46 @@ func (s *oauthServer) exchangeCode(w http.ResponseWriter, r *http.Request) {
 	refreshToken := "rt-" + randomToken()
 	session := issued.Session
 	s.mu.Lock()
-	s.tokens[accessToken] = &session
+	s.tokens[accessToken] = tokenEntry{Session: &session, ExpiresAt: now.Add(accessTokenTTL)}
 	s.refreshTokens[refreshToken] = accessToken
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
-		"expires_in":    3600,
+		"expires_in":    int(accessTokenTTL.Seconds()),
 		"refresh_token": refreshToken,
 		"scope":         "jira:read",
 	})
 }
 
-// refresh 用 refresh_token 换新 access_token（授权会话保持不变）。
+// refresh 用 refresh_token 换新 access_token（授权会话保持不变）。旧
+// access_token 不立即烧毁——保留到其自然过期，客户端在广告的 TTL 内并发
+// 使用旧 token 不会突遭 401（OCR T04-R1-2）；refresh_token 自身一次性轮换。
 func (s *oauthServer) refresh(w http.ResponseWriter, r *http.Request) {
 	refreshToken := r.PostFormValue("refresh_token")
+	now := time.Now()
 	s.mu.Lock()
+	s.sweepExpiredLocked(now)
 	accessToken, ok := s.refreshTokens[refreshToken]
 	if ok {
 		// 轮换：旧 refresh_token 一次性消费，签发新对。
 		delete(s.refreshTokens, refreshToken)
 	}
-	s.mu.Unlock()
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_grant", "error_description": "unknown refresh_token"})
+	entry, sessionOK := s.tokens[accessToken]
+	if !ok || !sessionOK || now.After(entry.ExpiresAt) {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_grant", "error_description": "unknown refresh_token or expired session"})
 		return
 	}
 	newAccess := "at-" + randomToken()
 	newRefresh := "rt-" + randomToken()
-	s.mu.Lock()
-	if session := s.tokens[accessToken]; session != nil {
-		delete(s.tokens, accessToken)
-		s.tokens[newAccess] = session
-	} else {
-		// 原会话已不可考：拒绝续期。
-		s.mu.Unlock()
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_grant", "error_description": "session no longer exists"})
-		return
-	}
+	s.tokens[newAccess] = tokenEntry{Session: entry.Session, ExpiresAt: now.Add(accessTokenTTL)}
 	s.refreshTokens[newRefresh] = newAccess
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"access_token":  newAccess,
 		"token_type":    "Bearer",
-		"expires_in":    3600,
+		"expires_in":    int(accessTokenTTL.Seconds()),
 		"refresh_token": newRefresh,
 		"scope":         "jira:read",
 	})

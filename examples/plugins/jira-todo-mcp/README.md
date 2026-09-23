@@ -98,9 +98,9 @@ digest）；它无法、也不承诺锁定远端服务的内部代码行为。�
 | --- | --- |
 | `GET /.well-known/oauth-protected-resource` | RFC 9728：`{"authorization_servers": ["<base>"]}` |
 | `GET /.well-known/oauth-authorization-server` | RFC 8414：`authorization_endpoint` / `token_endpoint` / `registration_endpoint` / `grant_types: ["authorization_code","refresh_token"]` |
-| `POST /register` | RFC 7591 动态客户端注册，返回 `client_id` |
-| `GET /authorize` | 授权表单（Jira 邮箱 + API token → 验证 `myself` → 302 `redirect_uri?code=...&state=...`，PKCE `S256`） |
-| `POST /token` | `grant_type=authorization_code` 换 access token；`refresh_token` 续期 |
+| `POST /register` | RFC 7591 动态客户端注册，返回 `client_id`；注册文档必须携带至少一个绝对 http(s) `redirect_uris`（`/authorize` 只接受与注册值精确匹配的 `redirect_uri`，RFC 6749 §3.1.2.3） |
+| `GET /authorize` | 授权表单（Jira 邮箱 + API token → 验证 `myself` → 302 `redirect_uri?code=...&state=...`，PKCE `S256`；凭据输错可用同一 `state` 重试，`state` 与授权码 10 分钟有效） |
+| `POST /token` | `grant_type=authorization_code` 换 access token；`refresh_token` 续期。access token 有效期 1 小时（与 `expires_in` 一致），refresh 轮换后旧 access token 在其有效期内继续可用 |
 
 内置 OAuth 实现是**内存态教学级实现**（单实例、无持久化）：适合示例、测试与
 小规模自托管评估。多实例或生产场景请置于专用 OAuth 提供方之后（或在单实例

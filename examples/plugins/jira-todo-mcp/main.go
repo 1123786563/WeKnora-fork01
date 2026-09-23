@@ -42,7 +42,7 @@ const (
 	// toolName 是本服务唯一工具名。
 	toolName = "search_my_week_issues"
 	// toolDescription 描述工具用途；不含任何凭据。
-	toolDescription = "查询当前授权成员本周（due >= startOfWeek()）未解决的 Jira 待办事项，" +
+	toolDescription = "查询当前授权成员自本周起（due >= startOfWeek()，含未来）未解决的 Jira 待办事项，" +
 		"返回事项标识、标题、状态、截止日期与来源链接。工具不接受任何参数；" +
 		"JQL 由服务端固定，成员身份来自个人 OAuth 授权。"
 	// canonicalToolInputSchema 是工具唯一合法输入 schema：无参数、拒绝一切
@@ -106,9 +106,10 @@ func Run(ctx context.Context, opts Options) error {
 	}
 }
 
-// validateBaseURL 校验一个配置方提供的 URL：仅 http/https 且带 host。
-// 它不是 SSRF 判定（本服务出站请求统一走 SSRF-safe client），只是装配期
-// 的 fail-closed 结构校验。
+// validateBaseURL 校验一个配置方提供的 URL：仅 http/https 且带非空
+// hostname（"http://:8020" 这类 host 为空的 URL 会通过 u.Host!="" 却把
+// 元数据指向不可达地址——OCR T04-R1-7）。它不是 SSRF 判定（本服务出站
+// 请求统一走 SSRF-safe client），只是装配期的 fail-closed 结构校验。
 func validateBaseURL(where, raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return fmt.Errorf("%s is required (fail-closed): got empty", where)
@@ -120,7 +121,7 @@ func validateBaseURL(where, raw string) error {
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return fmt.Errorf("%s must use http or https, got %q", where, u.Scheme)
 	}
-	if u.Host == "" {
+	if u.Hostname() == "" {
 		return fmt.Errorf("%s must include a host, got %q", where, raw)
 	}
 	return nil
@@ -215,8 +216,10 @@ func main() {
 		JiraBaseURL: strings.TrimRight(os.Getenv("PLUGIN_JIRA_BASE_URL"), "/"),
 		ListenAddr:  os.Getenv("PLUGIN_LISTEN_ADDR"),
 	}
-	// PLUGIN_BASE_URL 缺省用监听地址拼一个本机可达的 base（仅影响元数据
-	// 指向，不影响鉴权语义）；PLUGIN_JIRA_BASE_URL 缺失则 fail-closed 退出。
+	// PLUGIN_BASE_URL 缺省用监听地址拼一个 base（仅当监听地址含具体 host
+	// 如 127.0.0.1:8020 时可得到合法 URL；通配 ":8020" 拼出的
+	// "http://:8020" 会被 validateBaseURL 拒绝——fail-closed，部署者必须
+	// 显式设置 PLUGIN_BASE_URL）。
 	if opts.BaseURL == "" {
 		listenAddr := opts.ListenAddr
 		if listenAddr == "" {
@@ -230,8 +233,10 @@ func main() {
 }
 
 // Manifest 构造本服务的 weknora.plugin/1 清单。input_schema_digest 与
-// content_digest 全部由 plugins 包在运行时计算——源码与 manifest.json 参考副本
-// 都不写死 digest 字面量；/manifest.json 路由每次请求动态序列化本函数结果。
+// content_digest 全部由 plugins 包在运行时计算——源码不写死 digest 字面量；
+// manifest.json 参考副本的 digest 值由同一函数生成，并有测试
+// （TestSelfHostedManifestMatchesContract）断言副本与代码计算值一致以防
+// 漂移；/manifest.json 路由每次请求动态序列化本函数结果（部署后以它为权威）。
 func Manifest(baseURL string) types.PluginManifest {
 	m := types.PluginManifest{
 		Protocol:    plugins.PluginProtocolV1,

@@ -15,12 +15,39 @@ import (
 	mcp "github.com/mark3labs/mcp-go/mcp"
 )
 
-// jqlMyWeek 是服务端固定的 JQL 模板：本人 + 未解决 + 本周截止。绝不接受
-// 任何调用方输入拼接——工具 schema 无参数，从根上排除 JQL 注入。
+// jqlMyWeek 是服务端固定的 JQL 模板（切片计划 Task 4 逐字规定的契约，
+// T05/T13 复刻消费）：本人 + 未解决 + 截止日期不早于本周开始（只有下界
+// due >= startOfWeek()，无上界——含下周及以后的待办）。绝不接受任何调用方
+// 输入拼接——工具 schema 无参数，从根上排除 JQL 注入。
 const jqlMyWeek = "assignee = currentUser() AND resolution = Unresolved AND due >= startOfWeek() ORDER BY due ASC"
 
 // jiraSearchFields 是搜索时请求的字段白名单（最小化披露）。
 var jiraSearchFields = []string{"summary", "status", "duedate"}
+
+const (
+	// jiraSearchMaxResults 是单页请求上限（服务端可能下调）。
+	jiraSearchMaxResults = 100
+	// maxSearchPages 是分页跟进 nextPageToken 的页数上限：超限即停止并
+	// 标注截断，防失控翻页（OCR T04-R1-6）。
+	maxSearchPages = 10
+)
+
+// jiraHTTPError 是 Jira REST 返回 HTTP ≥400 时的类型化错误：携带状态码，
+// 供调用方区分「凭据性失败」（401/403）与「上游故障」（5xx/网络错误）——
+// OCR T04-R1-10：上游故障不得伪装成凭据错误。
+type jiraHTTPError struct {
+	Method     string
+	Path       string
+	StatusCode int
+}
+
+func (e *jiraHTTPError) Error() string {
+	return fmt.Sprintf("jira %s %s returned HTTP %d", e.Method, e.Path, e.StatusCode)
+}
+
+// jiraHTTPClient 是进程级共享的 SSRF-safe HTTP client（http.Client 并发
+// 安全；共享以复用 keep-alive 连接池，OCR T04-R1-5）。
+var jiraHTTPClient = newJiraHTTPClient()
 
 // JiraClient 是 Jira REST v3 的只读客户端。凭据（Email + APIToken）仅存于
 // 内存中的授权会话，绝不落盘、不写日志。出站请求统一走 SSRF-safe HTTP
@@ -49,12 +76,7 @@ type JiraIssue struct {
 	URL     string
 }
 
-// jiraMyselfResponse / jiraSearchResponse 是 REST 响应的最小映射。
-type jiraMyselfResponse struct {
-	EmailAddress string `json:"emailAddress"`
-	DisplayName  string `json:"displayName"`
-}
-
+// jiraSearchResponse 是搜索响应的最小映射（含分页游标 nextPageToken）。
 type jiraSearchResponse struct {
 	Issues []struct {
 		Key    string `json:"key"`
@@ -66,10 +88,17 @@ type jiraSearchResponse struct {
 			DueDate string `json:"duedate"`
 		} `json:"fields"`
 	} `json:"issues"`
+	NextPageToken string `json:"nextPageToken"`
+}
+
+// jiraMyselfResponse 是 /myself 的最小映射。
+type jiraMyselfResponse struct {
+	EmailAddress string `json:"emailAddress"`
+	DisplayName  string `json:"displayName"`
 }
 
 // do 执行一次带 Basic 认证的 Jira REST 请求并解析 JSON。HTTP 状态 ≥400
-// 返回带状态码的错误——绝不把上游失败伪装成空结果。
+// 返回携带状态码的 *jiraHTTPError——绝不把上游失败伪装成空结果。
 func (c *JiraClient) do(ctx context.Context, method, path string, payload any, out any) error {
 	var body io.Reader
 	if payload != nil {
@@ -90,13 +119,13 @@ func (c *JiraClient) do(ctx context.Context, method, path string, payload any, o
 	// Basic 认证只进请求头，不进任何日志。
 	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString(
 		[]byte(c.Email+":"+c.APIToken)))
-	resp, err := newJiraHTTPClient().Do(req)
+	resp, err := jiraHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("jira request %s %s failed: %w", method, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("jira %s %s returned HTTP %d", method, path, resp.StatusCode)
+		return &jiraHTTPError{Method: method, Path: path, StatusCode: resp.StatusCode}
 	}
 	if out == nil {
 		return nil
@@ -116,28 +145,42 @@ func (c *JiraClient) Myself(ctx context.Context) (jiraMyselfResponse, error) {
 	return myself, nil
 }
 
-// SearchMyWeek 执行固定 JQL 并返回规范化事项列表。空结果是合法成功（返回
-// 空切片、nil 错误）。
-func (c *JiraClient) SearchMyWeek(ctx context.Context) ([]JiraIssue, error) {
-	var result jiraSearchResponse
-	payload := map[string]any{
-		"jql":    jqlMyWeek,
-		"fields": jiraSearchFields,
+// SearchMyWeek 执行固定 JQL 并返回规范化事项列表；跟进 nextPageToken 分页
+// 取全（页数上限 maxSearchPages，超限置 truncated=true 由调用方标注——
+// OCR T04-R1-6：不得静默截断）。空结果是合法成功（返回空切片、nil 错误）。
+func (c *JiraClient) SearchMyWeek(ctx context.Context) (issues []JiraIssue, truncated bool, err error) {
+	issues = make([]JiraIssue, 0)
+	pageToken := ""
+	for page := 1; ; page++ {
+		payload := map[string]any{
+			"jql":        jqlMyWeek,
+			"fields":     jiraSearchFields,
+			"maxResults": jiraSearchMaxResults,
+		}
+		if pageToken != "" {
+			payload["pageToken"] = pageToken
+		}
+		var result jiraSearchResponse
+		if err := c.do(ctx, http.MethodPost, "/rest/api/3/search/jql", payload, &result); err != nil {
+			return nil, false, err
+		}
+		for _, issue := range result.Issues {
+			issues = append(issues, JiraIssue{
+				Key:     issue.Key,
+				Summary: issue.Fields.Summary,
+				Status:  issue.Fields.Status.Name,
+				Due:     issue.Fields.DueDate,
+				URL:     strings.TrimRight(c.BaseURL, "/") + "/browse/" + issue.Key,
+			})
+		}
+		if result.NextPageToken == "" {
+			return issues, false, nil
+		}
+		if page >= maxSearchPages {
+			return issues, true, nil
+		}
+		pageToken = result.NextPageToken
 	}
-	if err := c.do(ctx, http.MethodPost, "/rest/api/3/search/jql", payload, &result); err != nil {
-		return nil, err
-	}
-	issues := make([]JiraIssue, 0, len(result.Issues))
-	for _, issue := range result.Issues {
-		issues = append(issues, JiraIssue{
-			Key:     issue.Key,
-			Summary: issue.Fields.Summary,
-			Status:  issue.Fields.Status.Name,
-			Due:     issue.Fields.DueDate,
-			URL:     strings.TrimRight(c.BaseURL, "/") + "/browse/" + issue.Key,
-		})
-	}
-	return issues, nil
 }
 
 // formatIssues 把事项列表格式化为工具输出文本：每行
@@ -175,11 +218,18 @@ func handleSearchMyWeek(ctx context.Context, jiraBaseURL string) (*mcp.CallToolR
 		return nil, fmt.Errorf("unauthorized: no personal OAuth session bound to this tool call")
 	}
 	client := &JiraClient{BaseURL: jiraBaseURL, Email: session.Email, APIToken: session.APIToken}
-	issues, err := client.SearchMyWeek(ctx)
+	issues, truncated, err := client.SearchMyWeek(ctx)
 	if err != nil {
 		return nil, err
 	}
+	text := formatIssues(issues)
+	if truncated {
+		if text != "" {
+			text += "\n"
+		}
+		text += fmt.Sprintf("⚠ 结果超过 %d 页被截断，请到 Jira 查看完整列表", maxSearchPages)
+	}
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{mcp.NewTextContent(formatIssues(issues))},
+		Content: []mcp.Content{mcp.NewTextContent(text)},
 	}, nil
 }
