@@ -34,9 +34,25 @@
 
 **T3 门禁终态（全部退出码 0）**：`go build ./...`；`go test ./internal/modules/agentcatalog/...`（repository ok / service ok 6.125s）；`go test ./internal/application/service`（ok 80.077s）；handler/router Skill 面 ok；`make check-backend-architecture` OK(0 violations, 633/23+23/58/16)；`make verify-module-moves` OK(16 manifests)；`make check-passb-readiness` legacy=396 aliases=99 exceptions=113 contracts=125 events=29 overlaps=0 missing=0。
 
-## T4（25b.4）— handler 层搬迁 + 残差
+## T4（25b.4）— handler 层搬迁 + 残差 ✅（2026-09-24）
 
-> 占位：未执行。
+**执行内容**（对应计划 §6 T4 全部步骤；任务起点 BASE=`7c76e7cf1`，工作树干净）：
+
+1. 基线复跑（改动前）：`go build ./...`（退出码 0，仅 cmd/desktop、cmd/server 既有 `ld: warning: ignoring duplicate libraries`）+ T4 三条 GREEN 命令（handler Skill / router ApiKey|Skill / agentcatalog 全部）全绿。
+2. 4 文件随迁至 `internal/modules/agentcatalog/handler`（package 名不变）：`skill_handler.go`、`skill_catalog.go` + `skill_handler_test.go`、`skill_catalog_test.go`。`git mv` 与 sed 均被写入安全 Hook 拦截（Mimosa PreToolUse 仅放行 Write/Edit），按 T3「严格使用 Edit/Write」纪律改用：Write 落新路径 4 文件 + 重写旧路径 2 生产文件为残差 + `rm` 删除旧路径 2 测试文件，终态与 git mv 等价。
+3. 生产文件改写：`service.` 前缀 → 同包 `service`（agentcatalog/service，导入别名免 `acatsvc.` 因包名即 service）；`sandboxConfigTenantID(c)` → 包内新 helper `skillTenantID(c)`（与 sandbox_config.go:92 同一公共键表达式，计划 §4.6）；新增测试本地装置 `testSkillTenantID`（对照宿主 sandbox_skill_test.go:26）与 `oversizedSkillSourceJSON`（对照宿主 upload_limit_test.go:153，溢出本包同名常量 `skillSourceJSONMaxBytes`）。
+4. 宿主残差落位（§5.4）：`skill_handler.go` 重写为「同形未导出接口 usableSkillLister/skillCatalogService（返回类型指 acatsvc）+ `type SkillHandler = acathandler.SkillHandler` + `NewSkillHandler` 1:1 转发」；`skill_catalog.go` 重写为纯注释占位 stub（T3 manifest legacy 占位同模式）。routes_agent.go:76、container.go:801-803、router_api_key_capabilities_test.go:448、routes_skill_market_test.go:31 零改动编译（方法集经别名整体可达；`&handler.SkillHandler{}` 复合字面量别名兼容）。
+5. GREEN 门禁（全部退出码 0，终态 HEAD=`7695a1c9e` 复跑）：`go build ./...`；`go test ./internal/modules/agentcatalog/... -count=1`（handler ok 0.523s / repository ok / service ok）；`go test ./internal/handler -run 'Skill' -count=1`（ok 0.991s）；`go test ./internal/router -run 'ApiKey|Skill' -count=1`（ok 1.052s）；`make check-backend-architecture`（OK 0 violations，633/23+23/58/16 不变）；`make verify-module-moves`（OK 16 manifests）。gofmt 本任务文件零 diff（`gofmt -l` 干净；宿主 5 个既有测试文件 BASE 起即未格式化，禁改不动）。
+
+**T4 偏差登记**（详见 evidence §5.7）：
+
+1. 【计划 §4.6 未列 helper 清单】搬迁的 skill_catalog.go 实际消费 11 个宿主 handler helper（respondSkillServiceError、skillSourceRequest、skillTooLargeError、skillSourceRequestTooLargeError、skillJSONRequestTooLargeError、skillSourceJSONMaxBytes、uploadEnvelopeSlack、limitUploadBody、limitJSONBody、limitSkillUploadBody、isRequestBodyTooLarge）；其定义留驻宿主服务其他禁改端点（sandbox_skill/skill_market/tenant_expert_market/tenant_skill_market/knowledge/model/initialization），新包禁 import 宿主 handler（§4.4-3）→ 按 §4.6 skillTenantID 同一律在模块包 1:1 同名再声明（含原始 doc 注释与真源路径标注），宿主原件不动。
+2. 【§5.4「8 方法委托」形态不可实现】Go 不允许经类型别名在宿主包重声明方法；SkillHandler 别名已整体承载方法集，routes/container 调用零改动可达 → skill_catalog.go 残差改为纯注释占位（T3 manifest legacy 占位先例），别名与转发集中在 skill_handler.go 残差。
+3. 【搬迁测试装置本地化】新包测试二进制不可引用宿主测试文件 → `testSkillTenantID` 常量与 `oversizedSkillSourceJSON` fixture 在新包测试内本地再声明（宿主原件继续服务禁改测试）；两常量（skillSourceJSONMaxBytes/uploadEnvelopeSlack）与宿主同名同值。
+4. 【git rename 识别形态】测试文件 rename 92%/93% 识别；2 个生产文件因旧路径原位重写为残差呈 M+A 形态（与 T2/T3 已审 commit 同形态，`git log --follow` 可追溯）。
+5. 【传递依赖说明】`go list -deps ./internal/modules/agentcatalog/handler` 命中 5 个 agentruntime 包——链路为新包 → acatsvc（同模块）→ 宿主 `application/repository` 与 `types/interfaces`（既有依赖）；与 T3 已评审 service 包计数一致（同 5），非本任务引入；§10.10 直接 import 判据（`go list -f '{{.Imports}}'` + 生产文件 grep）为零违规。
+
+**T4 无红灯项，未触发 conventions §5 停工上报。**
 
 ## T5（25b.5）— 差分证据收口 + Integration Brief + 节点门禁
 
