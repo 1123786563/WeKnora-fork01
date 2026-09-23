@@ -65,6 +65,7 @@ if (hooks.registerHooks) {
 // react-dom resolves through the web app's install (views stays renderer-free).
 const { createRoot } = await import('../../../../apps/web/node_modules/react-dom/client.js');
 const { CraftWorkbench } = await import('./workbench.tsx');
+const { createCraftWorkbenchFeatures } = await import('./workbench-features.tsx');
 const { createCraftMessageLog } = await import('./presentation.ts');
 
 // The controller state shape the W04 reducer publishes (domain CraftState).
@@ -163,6 +164,24 @@ test('stop button appears while a run is active and calls onStopRun once', async
   await act(async () => {
     root.unmount();
   });
+});
+
+test('two named workbench features render in deterministic slots and registry freezes', async () => {
+  document.body.replaceChildren();
+  const features = createCraftWorkbenchFeatures([
+    { name: 'sources', slot: 'aside', render: () => <span data-testid="sources-feature">Sources</span> },
+    { name: 'access', slot: 'header', render: () => <span data-testid="access-feature">Access</span> },
+  ]);
+  assert.deepEqual(features.map((feature) => feature.name), ['access', 'sources']);
+  assert.throws(() => createCraftWorkbenchFeatures([
+    { name: 'access', slot: 'header', render: () => null },
+    { name: 'access', slot: 'aside', render: () => null },
+  ]), /duplicate/);
+  assert.throws(() => createCraftWorkbenchFeatures([{ name: 'missing', slot: 'header', render: null as never }]), /render/);
+  const root = await mount(<CraftWorkbench {...baseProps(fakeController(null))} features={features} />);
+  assert.ok(document.querySelector('[data-testid="access-feature"]'));
+  assert.ok(document.querySelector('[data-testid="sources-feature"]'));
+  await act(async () => { root.unmount(); });
 });
 
 test('stop button hidden when no run is active', async () => {

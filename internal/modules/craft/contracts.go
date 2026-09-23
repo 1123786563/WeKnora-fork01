@@ -58,6 +58,7 @@ type Workspace struct {
 type Input struct {
 	Ref, Name, SHA256, CitationID string
 	Bytes                         int64
+	Recognition                   *InputRecognition
 }
 
 // Task is the durable delegation request executed by the OpenCode runtime
@@ -89,6 +90,7 @@ type Version struct {
 	ID, WorkspaceID, RunID, Kind string
 	Files                        []File
 	Checks                       []Check
+	WebEvidence                  *WebCheckEvidence
 }
 
 // Observation is the OpenCode session state projected by Observe.

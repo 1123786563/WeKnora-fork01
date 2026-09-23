@@ -104,10 +104,11 @@ func NewCraftSnapshotHandler(svc CraftSnapshotAPI) *CraftSnapshotHandler {
 // craftRouteGroup is the route-mounting subset satisfied by both a raw gin
 // group and the router's API-key-policy wrapper, so the craft routes can be
 // mounted through whichever wrapper declares their auth policy.
-type craftRouteGroup interface {
+type CraftRouteGroup interface {
 	GET(string, ...gin.HandlerFunc) gin.IRoutes
 	POST(string, ...gin.HandlerFunc) gin.IRoutes
 }
+type craftRouteGroup = CraftRouteGroup
 
 // RegisterCraftSessionRoutes mounts W03's craft API table. craftSessions is
 // the /craft/sessions group (create + list); sessions is the existing
@@ -150,6 +151,11 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
 		// available for raw gin groups).
 		sessions.POST("/:session_id/craft/versions/:version_id/preview",
 			craftPreviewFailureMetrics(previewHandler.IssueCraftPreview))
+	}
+	if craftHandler != nil && registeredCraftFeatureRoutes.hasFeatures() {
+		if err := registeredCraftFeatureRoutes.Mount(sessions); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -305,17 +311,25 @@ func craftVersionDTO(v craft.Version) gin.H {
 	for _, check := range v.Checks {
 		checks = append(checks, craftCheckDTO(check))
 	}
-	return gin.H{
+	dto := gin.H{
 		"id": v.ID, "workspace_id": v.WorkspaceID, "run_id": v.RunID,
 		"kind": v.Kind, "files": files, "checks": checks,
 	}
+	if v.WebEvidence != nil {
+		dto["web_evidence"] = v.WebEvidence
+	}
+	return dto
 }
 
 func craftInputDTO(in craft.Input) gin.H {
-	return gin.H{
+	dto := gin.H{
 		"ref": in.Ref, "name": in.Name, "sha256": in.SHA256,
 		"bytes": in.Bytes, "citation_id": in.CitationID,
 	}
+	if in.Recognition != nil {
+		dto["recognition"] = in.Recognition
+	}
+	return dto
 }
 
 // -----------------------------------------------------------------------------

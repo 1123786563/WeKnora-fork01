@@ -61,6 +61,9 @@ import './craft.css';
 // re-exported here because the assembly imports it from this module.
 export { createCraftMessageLog } from './presentation.ts';
 export type { CraftMessageSnapshot } from './presentation.ts';
+export { createCraftWorkbenchFeatures } from './workbench-features.tsx';
+export type { CraftWorkbenchFeature, CraftWorkbenchFeatureContext, CraftWorkbenchSlot } from './workbench-features.tsx';
+import type { CraftWorkbenchFeature, CraftWorkbenchSlot } from './workbench-features.tsx';
 
 // ---------------------------------------------------------------------------
 // Workbench component
@@ -81,6 +84,8 @@ export interface CraftInteractionActionInput {
 }
 
 export interface CraftWorkbenchProps {
+	/** Immutable, keyed feature list assembled before this view mounts. */
+	features?: readonly CraftWorkbenchFeature[];
   locale: CraftLocale;
   sessionId: string;
   title: string;
@@ -738,6 +743,10 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
     );
   };
 
+  const renderFeatures = (slot: CraftWorkbenchSlot) => (props.features ?? [])
+    .filter((feature) => feature.slot === slot)
+    .map((feature) => <div key={feature.name} data-craft-feature={feature.name}>{feature.render({ sessionId: props.sessionId, canWrite: props.canWrite, selectedVersionId })}</div>);
+
   return (
     <main className="wk-craft wk-craft-page" aria-label={props.title || strings.craftHomeTitle}>
       <div className="wk-craft-head">
@@ -750,6 +759,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
         </div>
       </div>
       {props.syncError !== null ? <p className="wk-craft-error" role="alert">{strings.craftStreamReconnecting} ({props.syncError})</p> : null}
+      {renderFeatures('header')}
       {restoreEntryVisible && restoreBlockedReason !== null && selectedVersionId !== null && !runActive && mainStatus !== 'waiting_user' ? (
         <p className="wk-craft-hint" data-testid="craft-restore-reason">{restoreBlockedReason}</p>
       ) : null}
@@ -829,6 +839,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
             aria-label={strings.craftTabConversation}
             data-narrow-hidden={narrow && narrowTab !== 'conversation'}
           >
+            {renderFeatures('conversation')}
             {conversation}
           </section>
           {!narrow ? (
@@ -859,7 +870,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
                 {tabButton('details', strings.craftTabDetails)}
               </div>
             ) : null}
-            <div className="wk-craft-panel">{sidePanel}</div>
+            <div className="wk-craft-panel">{sidePanel}{renderFeatures('aside')}</div>
           </section>
         </div>
       </div>

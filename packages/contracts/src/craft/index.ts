@@ -8,6 +8,9 @@
 // file bytes travel through the platform transport, never through domain
 // state.
 
+export * from './web-artifact.ts';
+import { parseCraftBudgetPause, parseCraftInputRecognition, parseCraftWebCheckEvidence, type CraftBudgetPause, type CraftInputRecognition, type CraftWebCheckEvidence } from './web-artifact.ts';
+
 /** Craft artifact kinds (internal/craft/request.go closed set). */
 export const CRAFT_SESSION_KINDS = ['web', 'document', 'spreadsheet', 'slides'] as const;
 export type CraftSessionKind = (typeof CRAFT_SESSION_KINDS)[number];
@@ -68,6 +71,7 @@ export interface CraftRunView {
   /** Server-assigned event watermark; 0 on the POST /runs admission view. */
   seq: number;
   pending_id: string | null;
+  budget_pause: CraftBudgetPause | null;
 }
 
 export interface CraftFileVersionView {
@@ -91,6 +95,7 @@ export interface CraftVersionView {
   kind: string;
   files: CraftFileVersionView[];
   checks: CraftVersionCheckView[];
+  web_evidence: CraftWebCheckEvidence | null;
 }
 
 export interface CraftVersionsPageView {
@@ -129,6 +134,7 @@ export interface CraftInputView {
   sha256: string;
   bytes: number;
   citation_id: string;
+  recognition: CraftInputRecognition | null;
 }
 
 export interface CraftPreviewTicketView {
@@ -244,6 +250,7 @@ export function parseCraftRunView(value: unknown): CraftRunView {
     epoch: nonNegativeInt(v.epoch, 'epoch', 'craft run view'),
     seq: nonNegativeInt(v.seq, 'seq', 'craft run view'),
     pending_id: optionalString(v.pending_id, 'pending_id', 'craft run view'),
+    budget_pause: v.budget_pause === undefined || v.budget_pause === null ? null : parseCraftBudgetPause(v.budget_pause),
   };
 }
 
@@ -278,6 +285,7 @@ export function parseCraftVersionView(value: unknown): CraftVersionView {
     kind: nonEmptyString(v.kind, 'kind', 'craft version'),
     files: v.files.map(parseFileVersion),
     checks: v.checks.map(parseVersionCheck),
+    web_evidence: v.web_evidence === undefined || v.web_evidence === null ? null : parseCraftWebCheckEvidence(v.web_evidence),
   };
 }
 
@@ -330,6 +338,7 @@ export function parseCraftInputView(value: unknown): CraftInputView {
     sha256: typeof v.sha256 === 'string' ? v.sha256 : '',
     bytes: nonNegativeInt(v.bytes, 'bytes', 'craft input'),
     citation_id: typeof v.citation_id === 'string' ? v.citation_id : '',
+    recognition: v.recognition === undefined || v.recognition === null ? null : parseCraftInputRecognition(v.recognition),
   };
 }
 
