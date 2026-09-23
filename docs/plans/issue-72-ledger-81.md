@@ -25,12 +25,31 @@
 - F3/F4/F5（源码级，运行容器 /app 内 invoice.rb:100-101、invoices_query.rb:122-129、invoices_controller.rb:46-48、invoice_resolver.rb）：open gating Invoice 对全部 API 途径不可见（显式 status 过滤与 visible 集合求交集）→「不重复 Invoice」权威核验须 DB 直查；付款前匹配校验数据源改用权威订阅面（设计决策 D2）。
 - F6/F7/F8/F9/F10：t02 lab 证据 + DECISION §7（订阅 index 显式 status[]、重 POST 延迟 terminate 风险、timeout_hours:0 语义、gating invoice 生命周期、entitlement hash 形状）。
 
-## 计划自检结果（writing-plans 技能 Self-Review 四项）
+## 计划自检结果（writing-plans 技能 Self-Review 四项；2026-09-23 计划审查第 1 轮后更新）
 
-1. **Spec coverage**：#81 四条验收标准 ↔ Task 1-12 映射齐备（计划内「验收标准 → Task → 测试追踪矩阵」）；spec L121 匹配前置于渠道订单（Task 7）、L122 activation rule（Task 3）、L169 awaiting payment 状态（Task 1/4/7/8）、L170 闭合产品词汇（Task 8/9）、L105 CNY 整数分（payload 校验 + digit string wire）、L165 幂等身份（Task 3/7）、L210 UI 稳定状态（Task 10）均落位；L121 的 line-item 逐项比对在 v1.53.0 不可实现于付款前（F3-F5 实证）→ 记录为 D2 spec 偏差 + 补偿设计，任务 12 产出 DECISION.md。付款激活/异常/充值/升降级明确列为 out of scope（#82-#85/#93/#94）。
-2. **Placeholder 扫描**：无 TBD/TODO/「后续补充」类占位；Task 6/7 测试代码为完整可编译用例（复用既有 `newOrderTestEnv`/`stubCheckoutProvider`，签名已核对 order_test.go:25-90）；Task 8 测试以四组明确断言规格给出（依赖 commercial_benefits_test.go 的认证注入 helper，其命名以该文件为准——已注明参照路径而非虚构函数名）；Task 11 集成测试以阶段规格给出（env 门控与既有 lago_benefits_integration_test.go:148-152 同模式）。
-3. **类型一致性**：`ExternalPurchaseSubscriptionID` / `CreatePurchaseSubscriptionPayload`（六字段）/ `CreatePurchaseSubscriptionCommandKey` / `SnapshotKindPurchase` / `PurchaseStateAwaitingPayment="awaiting_payment"` / `PurchaseSnapshot`（六字段）/ `ErrInvoiceQuoteMismatch` / `PurchaseService.Purchase/PurchaseStatus` / `GetOrderByQuote` 在 Task 1/2/3/4/5/7/8/9 间引用一致；前端 `PurchaseView` TS 形状与 handler `purchaseWire` 字段一致；测试代码中 `payment.Provider` 接口按 provider.go:82-89 真实形状（AttemptResult/Verify/QueryRefund）使用既有 `stubCheckoutProvider`。
+1. **Spec coverage**：#81 四条验收标准 ↔ Task 1-12 映射齐备（计划内「验收标准 → Task → 测试追踪矩阵」）；spec L121 匹配前置于渠道订单（Task 7）、L122 activation rule（Task 3）、L169 awaiting payment 状态（Task 1/4/7/8）、L170 闭合产品词汇（Task 8/9）、L105 CNY 整数分（payload 校验 + digit string wire）、L165 幂等身份（Task 3/7）、L210 UI 稳定状态（Task 10）均落位；付款激活/异常/充值/升降级明确列为 out of scope（#82-#85/#93/#94）。
+2. **Placeholder 扫描**：无 TBD/TODO/「后续补充」类占位；Task 3/4/6/7/8/10 测试为完整可编译用例（复用既有 `newOrderTestEnv`/`stubCheckoutProvider`/`authAs`/`newBenefitsEngine` 先例，签名逐一核对：order_test.go:25-90、commercial_scope_test.go:137-146、commercial_benefits_route_test.go:31-84、OrganizationsPage.test.tsx）；Task 8 用例 3/4 与 Task 11 集成测试为精确断言规格（含状态码/token/零调用断言）；Task 9 测试落在 `packages/contracts/test/commercial.test.ts`（root package.json:13 glob 实核）。
+3. **类型一致性**：`ExternalPurchaseSubscriptionID` / `CreatePurchaseSubscriptionPayload`（六字段）/ `CreatePurchaseSubscriptionCommandKey` / `SnapshotKindPurchase` / `PurchaseStateAwaitingPayment="awaiting_payment"` / `PurchaseSnapshot`（七字段，含 InvoiceFees）/ `InvoiceLineSnapshot` / `ErrInvoiceQuoteMismatch` / `PurchaseService.Purchase/PurchaseStatus` / `GetOrderByQuote` 在 Task 1/2/3/4/5/7/8/9 间引用一致；前端 `PurchaseView` TS 形状与 handler `purchaseWire` 字段一致；测试代码中 `payment.Provider` 接口按 provider.go:82-89 真实形状使用。
 4. **Review Focus**：五条（重放重复、fail-closed 半创建、金额不一致、并发变更、凭据泄漏）每条均注明归属测试任务；额外覆盖安全约束 S1（`validateOutboundHost` 测试用例表）、S2（参数绑定 helper 示例）、S3（Task 12 Step 5 红线自查命令）。
+
+## Ruling（用户裁决留痕，2026-09-23 计划审查第 1 轮升级）
+
+- **决定**：批准 spec L121 的 **line-item 付款前比对**偏差按选项 A 实施（付款前对权威订阅面硬校验 Plan Version/币种/总额 + 无 charges 切片推导单行订阅费 + 付款时完整复核）。
+- **依据**（用户裁决原文要点）：不可行性是 pinned Lago v1.53.0 外部硬约束且已源码级实证；spec L121 商业意图（付款前金额不可篡改）在拟议方案下保留；「付款前面校验 + 付款后全量复核」双段防线防护实质等价、时序后移；选项 C 会阻塞主链（#81 是 #82-#85 的根）。
+- **错误代价**：若裁决错误且 line items 付款前确实存在篡改面，代价是付款前防线弱化——由付款后复核与 #84 异常付款验收兜底。
+- **强制条件落实**：(1) t09 DECISION.md 完整记录（Task 12 Step 6 五项清单）；(2) 本 Ruling；(3) `PurchaseSnapshot.InvoiceFees []InvoiceLineSnapshot` 为 #82/#84 显式接口交付（Task 4 Produces）；(4) 偏差不外溢。
+- 用户同时声明将向 spec owner 呈报正式修订案，#81 无需等待其完成。
+
+## 计划审查第 1 轮（2026-09-23）反馈处置记录
+
+| # | 严重度 | 问题 | 处置 |
+|---|---|---|---|
+| 1 | medium | Task 3 purchaseStub 三硬伤：未使用变量 `b`（编译错误）；422 用例 stub 不记录订阅（自相矛盾）；mux 子树模式不匹配无尾斜杠 POST 路径 | 已修：stub 全文重写——删除未用变量；订阅 POST 副作用总是发生（createNext 只脚本化响应状态，模拟竞态创建成功）；customers 端点同时注册 `/api/v1/customers`（精确）与 `/api/v1/customers/`（子树）两个 pattern；index 记录 rawQueries 并模拟「无 status[] 只见 active」的 v1.53.0 默认过滤 |
+| 2 | medium | deploy/lago/.env 在本机所有 checkout 不存在（原 .worktrees/lago-73 已删，运行容器 working_dir 指向已删目录），验证链的 source/grep 全部失效 | 已修：Task 12 新增 Step 0 环境恢复（路径 A：docker exec printenv 从运行容器取凭据 + 禁止 lago.sh up 防 recreate 破坏加密列；路径 B：本 worktree init+seed+up 重建）；Task 11 Step 3 与 Task 12 Step 1 凭据来源全部改为 Step 0 的 shell 环境变量 |
+| 3 | medium | AC2/L121 偏差属计划内自批准，违反 AGENTS.md 升级规则 | 已修：escalate 取得用户裁决（选项 A + 四条强制条件），留痕于计划 D2 与本 Ledger Ruling；t09 DECISION.md 模板强化为五项完整清单；`InvoiceFees` 定型为 #82/#84 显式接口交付 |
+| 4 | medium | Task 9 测试放 src/ 不在 test:shared glob 内（假信号） | 已修：改追加到既有 `packages/contracts/test/commercial.test.ts`（import '../src/commercial.ts'），git add 路径同步更正 |
+| 5 | low | Task 8/10 测试提纲级，断言有缩水风险 | 已修：Task 8 迁至 router 包（commercial_purchase_route_test.go，对齐 commercial_benefits_route_test.go 先例），happy/AC2 用例全文、用例 3/4 精确断言；Task 10 按 OrganizationsPage.test.tsx 先例写 jsdom 全文用例 |
+| 6 | low | Task 4 半成品断言（`_ = q`；stubReq 不含 query） | 已修：stub 记录 rawQueries，Task 4 断言 RawQuery 含 status[]=incomplete（结果正确 + 请求形状双证明） |
 
 ## 执行状态
 

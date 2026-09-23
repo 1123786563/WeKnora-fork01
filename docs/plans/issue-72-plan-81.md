@@ -52,7 +52,8 @@
 ## 设计决策记录（本计划定稿，执行者按此实现）
 
 - **D1 购买订阅身份**：`ExternalPurchaseSubscriptionID(tenantID) = ExternalCustomerID(tenantID) + "-purchase"`。付费家族（首购/升级/降级/回落）共用此身份满足 spec L111 的 continuity；Base Plan 订阅（#80，`-sub` 身份）不终止，待付款期间空间保留 Base 兜底权益。投影层 purchase 状态与 Base benefits 并存呈现。
-- **D2 匹配数据源**：创建渠道支付请求前的匹配校验读 purchase 快照（权威订阅面：PlanCode/AmountFen/Currency，F6）。「actual Lago Invoice」的完整行项目在 open 阶段不可读（F3-F5）→ 行项目等价性由切片保证：购买仅接受「定义中无 charges」的 plan 版本（usage charges 是 pay-in-arrears，不进首期 invoice；publish 载荷里 `PayInAdvance:false`，lago.go:391 已定），gating Invoice 首期仅含一条 subscription fee = `plan_amount_cents`（F9 + t02-activation「totals matched in integer cents」）。**spec 偏差与补偿**：L121 的 line-item 逐项比对在 v1.53.0 API 上不可实现于付款前；补偿为 (a) 总额/币种/版本在创建支付请求前从权威订阅面强校验（AC2 可测）；(b) finalized 后（付款时）完整 Invoice 复核落在 #82/#84。此偏差写入 `docs/migrations/lago/t09-quote-invoice/DECISION.md`（Task 12）。
+- **D2 匹配数据源（含用户裁决留痕）**：创建渠道支付请求前的匹配校验读 purchase 快照（权威订阅面：PlanCode/AmountFen/Currency，F6）。「actual Lago Invoice」的完整行项目在 open 阶段不可读（F3-F5）→ 行项目等价性由切片保证：购买仅接受「定义中无 charges」的 plan 版本（usage charges 是 pay-in-arrears，不进首期 invoice；publish 载荷里 `PayInAdvance:false`，lago.go:391 已定），gating Invoice 首期仅含一条 subscription fee = `plan_amount_cents`（F9 + t02-activation「totals matched in integer cents」）。
+  **用户裁决（2026-09-23，计划审查第 1 轮升级，选项 A 批准）**：spec L121「Quote 与 actual Lago Invoice 在 Plan Version/currency/total/line items 逐项匹配后才创建 Channel Payment Order」中的 **line-item 付款前比对**在 pinned v1.53.0 上不可实现（外部硬约束，源码级实证：invoice.rb:100-101 INVISIBLE_STATUS 含 open:5；invoices_query.rb:122-129 显式 status 与 visible_keys 求交集；invoices_controller.rb:46-48 与 GraphQL InvoiceResolver 均 `.visible` 过滤），非实现选择。批准 #81 按「付款前对权威订阅面硬校验 Plan Version/币种/总额 + 无 charges 切片推导单行订阅费 + 付款时完整复核」实施。**强制条件（缺一不可，逐条落实到本计划）**：(1) t09 DECISION.md 完整记录 spec L121 原文、三处源码实证引用、替代校验链、本升级留痕（Task 12 Step 4 模板）；(2) Ledger 记 Ruling（决定/依据/错误代价——若裁决错误且 line items 付款前存在篡改面，代价是付款前防线弱化，由付款后复核与 #84 异常付款验收兜底）；(3) 「#82/#84 付款时完整 Invoice line-item 复核」是 #81 的显式接口交付（Task 4 Produces：`PurchaseSnapshot.InvoiceFees []InvoiceLineSnapshot`，open 阶段恒空、finalized 后权威填充），后续 Issue 计划 Consumes 必须引用——付款前不比对不得演变为永远不比对；(4) 本偏差仅限 line-item 付款前比对这一条，不外溢为其他 spec 条款的先例。用户同时声明将向 spec owner 呈报正式修订案，#81 无需等待其完成。
 - **D3 provider 绑定归属**：`create_purchase_subscription` 适配器内部 ensure customer 的 provider 绑定。需要 Stripe customer id：env `WEKNORA_COMMERCIAL_STRIPE_API_KEY`（sk_test_）已设 → 调 `POST {WEKNORA_COMMERCIAL_STRIPE_API_BASE:-https://api.stripe.com}/v1/customers`（idempotency key = external customer id，S1 host 校验）取 `cus_` id；env `WEKNORA_COMMERCIAL_PROVIDER_CUSTOMER_PREFIX` 已设（dev/test 无 Stripe 时）→ 派生占位 `<prefix>-<external-customer-id>`；都缺 → `ErrPlatformUnconfigured`（fail closed，spec L171 停止新购买）。provider 词汇（stripe/billing_configuration）不越过 seam。
 - **D4 产品状态**：Billing API 新增闭合 token `awaiting_payment`（映射 Lago incomplete）。付费 plan 的权益不进 benefits 投影（投影订阅身份仍是 Base 的 `-sub`，#80 不动）→ Entitlement 未开放是结构性结果，测试断言之。
 - **D5 过期/并发/重试**：quote 过期与版本冲突复用现有守卫（`Quote.ValidateForUse`、`OpenOrder` 事务内 quote 消费守卫，order.go:217/quote.go:86-97）；并发套餐变更 = purchase 身份读到 incomplete+不同 plan → 闭合冲突错误（先到者胜，后到者重新报价，与旧链路 `ErrSubscriptionVersionConflict` 同语义）；命令重试 = 订阅 identity replay（F7 禁止重 POST）+ quote 已消费时查询并返回既有订单。
@@ -81,7 +82,7 @@ internal/modules/commercial/service/commercial/order.go             [修改] Quo
 internal/modules/commercial/service/commercial/order_test.go        [修改] 新增 quote 冻结用例
 internal/modules/commercial/repository/commercial/order.go          [修改] GetOrderByQuote（参数绑定）
 internal/handler/commercial.go                                      [修改] Purchase/PurchaseStatus handler + SetPurchaseService + quoteWire 扩展
-internal/handler/commercial_test.go                                 [修改]（若不存在则新建 commercial_purchase_test.go）handler 测试
+internal/router/commercial_purchase_route_test.go                      [新建] HTTP 面路由级测试（authAs + RegisterCommercialRoutes 先例）
 internal/router/routes_commercial.go                                [修改] POST /commercial/purchases、GET /commercial/purchase
 internal/container/container.go                                     [修改] PurchaseService 注册与注入（#80 块内）
 packages/contracts/src/commercial.ts                                [修改] PurchaseView/parsePurchaseView + QuoteView 扩展
@@ -131,7 +132,13 @@ type PurchaseSnapshot struct {
     PlanCode string
     AmountFen int64
     Currency string
+    InvoiceFees []InvoiceLineSnapshot // open 阶段恒空（F3-F5）；finalized 后权威可读——#82/#84 line-item 复核接口（裁决条件 3）
     CheckedAt time.Time
+}
+type InvoiceLineSnapshot struct {
+    Kind      string // 闭合 "subscription_fee"
+    Name      string
+    AmountFen int64
 }
 // Snapshot 冻结文件只加一个 additive 字段（#78 Account / #80 Benefits 先例）：
 // platform.go 的 Snapshot struct 增加 `Purchase *PurchaseSnapshot`
@@ -373,14 +380,13 @@ func (a *LagoAdapter) createPurchaseSubscription(ctx context.Context, cmd commer
 func validateOutboundHost(rawURL string) error // S1：scheme ∈ {http,https}；host 拒绝 localhost/127.0.0.0-8/8、::1、10/8、172.16/12、192.168/16、169.254/16、fc00::/7、0.0.0.0/8 及字面 localhost
 ```
 
-- [ ] **Step 1: 写失败测试**（`lago_purchase_test.go`，subscriptionsStub 模式扩展；给出核心用例全文）
+- [ ] **Step 1: 写失败测试**（`lago_purchase_test.go`，subscriptionsStub 模式扩展；给出核心用例全文。stub 要点：(1) customers 端点同时注册 `/api/v1/customers`（无尾斜杠，集合 POST——`createCustomer` 实际打的路径，lago.go:236）与 `/api/v1/customers/`（单查 GET 子树）两个 pattern，Go ServeMux 子树模式不匹配无尾斜杠路径；(2) 订阅 POST 的副作用（写入 s.subs）**总是发生**，`createNext` 只脚本化响应状态——模拟「对象已创建但响应 422」的竞态（t02 duplicates 语义）；(3) index 记录 RawQuery 供 Task 4 断言 `status[]`；无 `status[]` 时只返回 active（模拟 v1.53.0 默认过滤陷阱 F6）。复用既有 `respond`/`stubSubscription`/`subscriptionsJSON`（lago_subscription_test.go:26-49）。）
 
 ```go
 package commercialplatform
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -393,37 +399,37 @@ import (
 	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
 )
 
-// purchaseStub 是带 provider 绑定语义的 mini authority：
-// customers GET/POST（billing_configuration 读写）、subscriptions POST（记录 activation_rules）、
-// subscriptions index（identity+status 过滤）。create 状态可脚本化（422 replay 分支）。
+// purchaseStub 是带 provider 绑定语义的 mini authority：customers 集合 POST
+// （billing_configuration upsert）与单查 GET、subscriptions POST（记录 body 与
+// activation_rules，副作用总是发生）与 identity index（external_id + status[] 过滤，
+// 记录 RawQuery）。createNext 脚本化响应状态码（422 分支）。
 type purchaseStub struct {
-	mu         sync.Mutex
-	requests   []stubReq
-	customer   map[string]map[string]any // external_id -> customer body（含 billing_configuration）
-	subs       []stubSubscription
-	subBodies  []map[string]any // 每次订阅 POST 的原始 body（断言 activation_rules）
-	createNext []int            // 脚本化状态；空则 200
-	handler    http.Handler
+	mu          sync.Mutex
+	requests    []stubReq
+	rawQueries  []string          // subscriptions index 的 RawQuery（status[] 断言面）
+	customer    map[string]map[string]any // external_id -> customer body
+	subs        []stubSubscription
+	subBodies   []map[string]any   // 每次订阅 POST 的原始 body
+	createNext  []int              // 脚本化状态；空则 200
 }
 
 func newPurchaseStub() *purchaseStub {
 	s := &purchaseStub{customer: map[string]map[string]any{}}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/customers/", func(w http.ResponseWriter, r *http.Request) {
+	customers := func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		ext := strings.TrimPrefix(r.URL.Path, "/api/v1/customers/")
 		blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-		switch r.Method {
-		case http.MethodGet:
+		ext := strings.TrimPrefix(r.URL.Path, "/api/v1/customers/")
+		switch {
+		case r.Method == http.MethodGet && ext != "": // GET /api/v1/customers/{id}
 			c, ok := s.customer[ext]
 			if !ok {
-				respond(w, r, &s.requests, &s.mu, http.StatusNotFound, `{}`, nil)
+				respond(w, r, &s.requests, &s.mu, http.StatusNotFound, "{}", nil)
 				return
 			}
 			b, _ := json.Marshal(map[string]any{"customer": c})
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, string(b), nil)
-		case http.MethodPost:
+		case r.Method == http.MethodPost && ext == "": // POST /api/v1/customers（无尾斜杠）
 			var parsed map[string]any
 			_ = json.Unmarshal(blob, &parsed)
 			if existing, ok := s.customer[ext]; ok { // upsert：合并 billing_configuration
@@ -435,8 +441,13 @@ func newPurchaseStub() *purchaseStub {
 			s.customer[ext] = parsed
 			b, _ := json.Marshal(map[string]any{"customer": parsed})
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, string(b), blob)
+		default:
+			http.NotFound(w, r)
 		}
-	})
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/customers", customers)  // 集合端点（精确匹配，无尾斜杠）
+	mux.HandleFunc("/api/v1/customers/", customers) // 单查子树
 	mux.HandleFunc("/api/v1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		s.mu.Lock()
@@ -451,63 +462,70 @@ func newPurchaseStub() *purchaseStub {
 				status = s.createNext[0]
 				s.createNext = s.createNext[1:]
 			}
-			if status >= 200 && status < 300 {
-				sub := body["subscription"].(map[string]any)
-				s.subs = append(s.subs, stubSubscription{
-					ExternalID: sub["external_id"].(string),
-					ExternalCustomer: sub["external_customer_id"].(string),
-					PlanCode: sub["plan_code"].(string), Status: "incomplete",
-				})
+			// 副作用总是发生：脚本化 422 模拟「已创建但响应失败」的竞态。
+			if sub, ok := body["subscription"].(map[string]any); ok {
+				if id, _ := sub["external_id"].(string); id != "" {
+					code, _ := sub["plan_code"].(string)
+					cust, _ := sub["external_customer_id"].(string)
+					s.subs = append(s.subs, stubSubscription{
+						ExternalID: id, ExternalCustomer: cust, PlanCode: code, Status: "incomplete",
+					})
+				}
 			}
-			b, _ := json.Marshal(map[string]any{"subscription": map[string]any{
-				"external_id": body, "status": "incomplete"}})
-			respond(w, r, &s.requests, &s.mu, status, subscriptionsJSON(append([]stubSubscription(nil), s.subs...)), blob)
-		case http.MethodGet: // identity index：external_id + status[] 过滤
+			respond(w, r, &s.requests, &s.mu, status,
+				subscriptionsJSON(append([]stubSubscription(nil), s.subs...)), blob)
+		case http.MethodGet: // identity index：模拟 v1.53.0 默认 status=active 的过滤
+			s.rawQueries = append(s.rawQueries, r.URL.RawQuery)
 			q := r.URL.Query()
 			want := q.Get("external_id")
+			statuses := q["status[]"]
 			out := []stubSubscription{}
 			for _, sub := range s.subs {
 				if sub.ExternalID != want {
 					continue
 				}
-				statuses := q["status[]"]
-				ok := len(statuses) == 0
+				if len(statuses) == 0 && sub.Status != "active" {
+					continue // 默认过滤：不带 status[] 看不到 incomplete（F6 陷阱）
+				}
+				matched := len(statuses) == 0
 				for _, st := range statuses {
 					if st == sub.Status {
-						ok = true
+						matched = true
 					}
 				}
-				if ok {
+				if matched {
 					out = append(out, sub)
 				}
 			}
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, subscriptionsJSON(out), nil)
+		default:
+			http.NotFound(w, r)
 		}
 	})
-	s.handler = mux
 	return s
 }
 
 func (s *purchaseStub) server(t *testing.T) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(s.handler)
+	srv := httptest.NewServer(s)
 	t.Cleanup(srv.Close)
 	return srv
 }
 
-func (s *purchaseStub) countCreates() int {
+// ServeHTTP 让 purchaseStub 本身成为 handler（mux 逻辑挂 ServeHTTP 或包一层均可）。
+func (s *purchaseStub) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.serve(w, r) }
+
+func (s *purchaseStub) countSubscriptionPosts() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := 0
-	for _, r := range s.requests {
-		if r.Method == http.MethodPost && strings.HasSuffix(r.Path, "/api/v1/subscriptions") {
+	for _, req := range s.requests {
+		if req.Method == http.MethodPost && strings.HasSuffix(req.Path, "/api/v1/subscriptions") {
 			n++
 		}
 	}
 	return n
 }
-
-func (s *purchaseStub) countSubscriptionPosts() int { return s.countCreates() }
 
 // purchaseAdapterWithPrefix 绑定走占位前缀（不依赖 Stripe env）。
 func purchaseAdapterWithPrefix(t *testing.T, srv *httptest.Server) *LagoAdapter {
@@ -586,7 +604,8 @@ func TestLagoCreatePurchaseReplayNeverReposts(t *testing.T) {
 func TestLagoCreatePurchase422ResolvedByIdentityReread(t *testing.T) {
 	stub := newPurchaseStub()
 	stub.mu.Lock()
-	stub.createNext = []int{http.StatusUnprocessableEntity} // 首个 POST 422，但 stub 已记录订阅（模拟竞态创建成功）
+	// 首个 POST 响应 422，但副作用已发生（stub 总是记录）——模拟竞态创建成功。
+	stub.createNext = []int{http.StatusUnprocessableEntity}
 	stub.mu.Unlock()
 	srv := stub.server(t)
 	a := purchaseAdapterWithPrefix(t, srv)
@@ -641,6 +660,7 @@ func TestValidateOutboundHost(t *testing.T) {
 	}
 }
 ```
+（import 里补 `"encoding/json"`；`ServeHTTP` 委托的 `serve` 即上文 mux 组装逻辑——实现时把 mux 组装放进一个 `serve(w,r)` 方法并由 `ServeHTTP` 调用，或直接 `httptest.NewServer(mux)` 结构等价均可，保持单一路径即可。）
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -702,6 +722,7 @@ git commit -m "feat(commercialplatform): #81 lago adapter payment-gated purchase
 **Interfaces:**
 - Consumes: `readSubscriptionByIdentity`（lago.go:641）。
 - Produces: `LagoAdapter.ReadSnapshot` 支持 `SnapshotKindPurchase`；`lagoSubscription` 结构如需 `PlanAmountCents json.Number` 与 `PlanAmountCurrency string` 字段则在 lago.go:567-573 additive 追加（index 响应含 plan_amount_cents/plan_amount_currency，t02-duplicates 证据）。
+- Produces（**#82/#84 必须消费的显式接口交付——用户裁决选项 A 强制条件 3**）：`PurchaseSnapshot` 携带 `InvoiceFees []InvoiceLineSnapshot` 字段，`type InvoiceLineSnapshot struct { Kind, Name string; AmountFen int64 }`。open（待付款）阶段恒为空（F3-F5：API 不可见，不得伪造）；finalized 后（付款时刻）由适配器从可见 Invoice 的 fees 填充——「付款前面校验 + 付款后全量复核」双段防线的后段接口在本 Task 定型，#82（Payment 录入/激活）与 #84（异常付款）的验收直接调用它做 line-item 完整复核，后续 Issue 计划的 Consumes 必须引用本条。fake 同步实现（`FakeAdapter` 增加 `SetPurchaseInvoiceFees(extPurchaseSubscriptionID string, fees []InvoiceLineSnapshot)` 注入器）。
 
 - [ ] **Step 1: 写失败测试**（追加到 `lago_purchase_test.go`）
 
@@ -725,6 +746,20 @@ func TestLagoPurchaseSnapshotMapsClosedStates(t *testing.T) {
 	if snap.Purchase.State != commercial.PurchaseStateAwaitingPayment {
 		t.Fatalf("incomplete must map to awaiting_payment, got %+v", snap.Purchase)
 	}
+	if len(snap.Purchase.InvoiceFees) != 0 {
+		t.Fatalf("open-stage invoice fees must be EMPTY (API-invisible, never fabricated), got %+v", snap.Purchase.InvoiceFees)
+	}
+	// 订阅 index 请求必须显式携带 status[]（F6 默认 active 陷阱——stub 无 status[] 只返回 active，
+	// 结果正确 + RawQuery 含 status[]=incomplete 双重证明）
+	stub.mu.Lock()
+	raw := ""
+	if len(stub.rawQueries) > 0 {
+		raw = stub.rawQueries[len(stub.rawQueries)-1]
+	}
+	stub.mu.Unlock()
+	if !strings.Contains(raw, "status%5B%5D=incomplete") && !strings.Contains(raw, "status[]=incomplete") {
+		t.Fatalf("subscription index must pass explicit status[] (F6), raw query = %q", raw)
+	}
 	// stub 推进到 active（真实环境由 provider 收款驱动，F9）
 	stub.mu.Lock()
 	for i := range stub.subs {
@@ -737,19 +772,10 @@ func TestLagoPurchaseSnapshotMapsClosedStates(t *testing.T) {
 	if err != nil || snap.Purchase.State != commercial.PurchaseStateActive {
 		t.Fatalf("active expected, got %+v err=%v", snap.Purchase, err)
 	}
-	// 订阅 index 请求必须显式携带 status[]（F6 默认 active 陷阱）
-	stub.mu.Lock()
-	q := ""
-	for _, r := range stub.requests {
-		if r.Method == http.MethodGet && strings.HasPrefix(r.Path, "/api/v1/subscriptions") {
-			q = r.Path
-		}
-	}
-	stub.mu.Unlock()
-	_ = q //（index 走 query string，断言在 stub 的 queries 记录中；此处保底：结果正确即证明过滤生效）
 }
 ```
-注：`stubSubscription` 需要让 index 响应携带 `plan_amount_cents`/`plan_amount_currency`（扩展 `subscriptionsJSON` 或新增 purchase 专用 JSON 组装）；快照的 AmountFen/Currency 从这两个字段解析（`json.Number` → int64，拒绝非数字 → invalid_response）。
+注 1：`stubSubscription`/index 响应需携带 `plan_amount_cents`/`plan_amount_currency`（扩展 `subscriptionsJSON` 或新增 purchase 专用 JSON 组装）；快照的 AmountFen/Currency 从这两个字段解析（`json.Number` → int64，拒绝非数字 → invalid_response）。
+注 2：`InvoiceLineSnapshot` 与 `PurchaseSnapshot.InvoiceFees` 在本 Task 一并加入 Task 1 的类型（若 Task 1 已提交，则在本 Task 的文件里 additive 追加并同步 fake）；单测覆盖「open 阶段恒空」，finalized 填充的适配器读取面（`GET /api/v1/invoices?external_customer_id=` 列表此时可见 finalized）留 `readPurchaseInvoiceFees` 私有方法骨架 + fake 注入器，#82 首个消费者补全真实断言。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -1214,7 +1240,7 @@ git commit -m "feat(commercial): #81 purchase service gates channel order behind
 - Modify: `internal/handler/commercial.go`（`SetPurchaseService`/`Purchase`/`PurchaseStatus` + `quoteWire` 扩展）
 - Modify: `internal/router/routes_commercial.go:48-54`（路由组内追加）
 - Modify: `internal/container/container.go`（#80 块后追加注册，模式同 L915-925）
-- Test: `internal/handler/commercial_purchase_test.go`（新建；handler 测试惯例参照 `internal/handler/commercial_benefits_test.go` 既有 gin 测试样式——该目录无 commercial_test.go，benefits 测试即 #80 的同型先例）
+- Test: `internal/router/commercial_purchase_route_test.go`（**新建，放 router 包**——HTTP 面测试的仓库先例是 `internal/router/commercial_benefits_route_test.go`（gin engine + `RegisterCommercialRoutes` + `authAs` 身份注入 + httptest），handler 包没有 commercial HTTP 测试先例；`authAs`/租户注入 helper 已在 `commercial_scope_test.go:137-146` 共享）
 
 **Interfaces:**
 - Consumes: Task 7 `PurchaseService`；路由组既有 guard（`RequireManageBillingForWrites`，routes_commercial.go:23-26）。
@@ -1230,36 +1256,208 @@ purchaseWire：{"state","order"?(orderWire),"plan_key","plan_version","amount_fe
 handler: func (h *CommercialHandler) SetPurchaseService(s *commercialsvc.PurchaseService)
 ```
 
-- [ ] **Step 1: 写失败测试**（`commercial_purchase_test.go`）——按 commercial_benefits_test.go 既有样式（构造 gin + CommercialHandler + sqlite env + 带租户作用域/billing 权限的认证 stub；fake platform 走 `commercialplatform.NewFakeAdapter()`、渠道用 `stubCheckoutProvider` 同型物）。必须断言的三组可观察结果：
+- [ ] **Step 1: 写失败测试**（`internal/router/commercial_purchase_route_test.go` 全文；`newPurchaseEngine` 仿 `newBenefitsEngine`（commercial_benefits_route_test.go:31-84），渠道 provider 需要一个 router 包内的计数 stub——`stubCheckoutProvider` 在 service 包测试内不可导入，按其形状（order_test.go:25-57）在本文件重定义一个最小计数版）
 
 ```go
-// 用例 1（happy）：POST /commercial/purchases {"quote_id":q.ID,"provider":"wechat"}
-//   → w.Code==201；JSONPath data.state=="awaiting_payment"；data.order.checkout_url 非空；
-//     data.plan_key=="pro"；data.amount_fen=="9900"（digit string）
-// 用例 2（AC2）：fake 预置 8800 订阅（Task 7 TestPurchaseAbortsOnInvoiceMismatch 同法）后 POST
-//   → w.Code==409；strings.Contains(w.Body.String(), "invoice_quote_mismatch")；
-//     GET /commercial/orders → data 数组为空（无渠道订单被创建）
-// 用例 3（过期）：db.Exec 参数化把 quote 置过期后 POST
-//   → w.Code==409；body 含 "quote expired"
-// 用例 4（GET /commercial/purchase）：购买后 GET → 200，data.state=="awaiting_payment"；
-//   未购买租户 GET → 200，data.state=="absent"
-//（认证 stub 的注入方式按 commercial_benefits_test.go 中 tenant-scope 注入的实际 helper 复用）
-```
+package router
 
-```go
-func TestPurchaseHandlerMismatchReturns409WithoutOrder(t *testing.T) {
-	// env：fake platform + sqlite + wechat counting provider（Task 7 同构）
-	// 预置：发布 pro v1 9900 → 报价 → fake 预置 8800 订阅（偏差）
-	// POST /commercial/purchases {"quote_id":q.ID,"provider":"wechat"}
-	// 断言：w.Code==409；body 含 "invoice_quote_mismatch"；orders 列表为空（渠道未开单）
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Tencent/WeKnora/internal/handler"
+	commercial "github.com/Tencent/WeKnora/internal/modules/commercial"
+	commercialplatform "github.com/Tencent/WeKnora/internal/modules/commercial/commercialplatform"
+	"github.com/Tencent/WeKnora/internal/modules/commercial/payment"
+	repocommercial "github.com/Tencent/WeKnora/internal/modules/commercial/repository/commercial"
+	commercialsvc "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial"
+	"github.com/gin-gonic/gin"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+// routePurchaseProvider 计数渠道 Create（AC2「不拉起支付请求」断言面）。
+type routePurchaseProvider struct{ creates int }
+
+func (p *routePurchaseProvider) Create(context.Context, payment.OrderRequest) (payment.AttemptResult, error) {
+	p.creates++
+	return payment.AttemptResult{State: payment.StatePending, CheckoutURL: "https://pay.example/qr"}, nil
+}
+func (p *routePurchaseProvider) Query(context.Context, string) (payment.AttemptResult, error) {
+	return payment.AttemptResult{State: payment.StatePending}, nil
+}
+func (p *routePurchaseProvider) Close(context.Context, string) error { return nil }
+func (p *routePurchaseProvider) Verify(context.Context, http.Header, []byte) (commercial.PaymentFact, error) {
+	return commercial.PaymentFact{}, nil
+}
+func (p *routePurchaseProvider) Refund(context.Context, payment.RefundRequest) (payment.RefundResult, error) {
+	return payment.RefundResult{State: payment.StatePending}, nil
+}
+func (p *routePurchaseProvider) QueryRefund(context.Context, string) (payment.RefundResult, error) {
+	return payment.RefundResult{State: payment.StatePending}, nil
+}
+
+// newPurchaseEngine 组装真实 PurchaseService 链 + 渠道计数 stub。
+func newPurchaseEngine(t *testing.T) (*gin.Engine, *gorm.DB, *commercialplatform.FakeAdapter, *routePurchaseProvider) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.PaymentAttemptRow{},
+		&repocommercial.OutboxEvent{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{},
+		&repocommercial.Subscription{}, &repocommercial.BillingAccount{}); err != nil {
+		t.Fatal(err)
+	}
+	fake := commercialplatform.NewFakeAdapter()
+	accounts, err := commercialsvc.NewBillingAccountService(db, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, err := commercialsvc.NewPlanVersionService(db, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &routePurchaseProvider{}
+	orders, err := commercialsvc.NewOrderService(db, map[string]payment.Provider{"wechat": provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchases, err := commercialsvc.NewPurchaseService(db, accounts, plans, orders, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := handler.NewCommercialHandler(db)
+	h.SetOrderService(orders)
+	h.SetPurchaseService(purchases)
+	engine := gin.New()
+	v1 := engine.Group("/api/v1")
+	RegisterCommercialRoutes(v1, h)
+	return engine, db, fake, provider
+}
+
+// routeSeedPlanAndQuote 走真实 draft→publish→quote 链。
+func routeSeedPlanAndQuote(t *testing.T, engine *gin.Engine, plans *commercialsvc.PlanVersionService, orders *commercialsvc.OrderService, tenant uint64, planKey string) commercialsvc.QuoteView {
+	t.Helper()
+	view, err := plans.CreateDraft(context.Background(), "route:seed", commercialsvc.DraftInput{
+		PlanKey: planKey, Name: planKey, AmountFen: 9900, IncludedCreditsMicro: 9_900_000,
+		Features: map[string]bool{"advanced_models": true}, Currency: commercial.CurrencyCNY,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plans.Publish(context.Background(), "route:seed", "seed", planKey, view.Version); err != nil {
+		t.Fatal(err)
+	}
+	q, err := orders.CreateQuote(context.Background(), tenant, planKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+
+// purchasePost 以 owner 身份 POST /commercial/purchases。
+func purchasePost(t *testing.T, engine *gin.Engine, tenant uint64, body string) (*httptest.ResponseRecorder, *gin.Engine) {
+	t.Helper()
+	return purchaseReq(t, engine, tenant, http.MethodPost, "/api/v1/commercial/purchases", body)
+}
+
+func purchaseReq(t *testing.T, engine *gin.Engine, tenant uint64, method, path, body string) (*httptest.ResponseRecorder, *gin.Engine) {
+	t.Helper()
+	w := httptest.NewRecorder()
+	var req *http.Request
+	if body != "" {
+		req = httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+	} else {
+		req = httptest.NewRequest(method, path, nil)
+	}
+	served := gin.New()
+	served.Use(authAs(tenant, "user-1", "owner"))
+	served.Handle(method, "/api/v1/*rest", func(c *gin.Context) { engine.ServeHTTP(c.Writer, c.Request) })
+	served.ServeHTTP(w, req)
+	return w, served
+}
+
+// newPurchaseEngine 的返回签名实现为 (*gin.Engine, *gorm.DB, *commercialplatform.FakeAdapter,
+// *routePurchaseProvider, *commercialsvc.PlanVersionService, *commercialsvc.OrderService)
+// —— plans/orders 一并返回，供用例做 seed/报价。
+func TestPurchaseRouteHappyPathAwaitingPayment(t *testing.T) {
+	engine, _, _, provider, plans, orders := newPurchaseEngine(t)
+	q := routeSeedPlanAndQuote(t, engine, plans, orders, 41, "pro")
+	w, _ := purchasePost(t, engine, 41, `{"quote_id":"`+q.ID+`","provider":"wechat"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	for _, want := range []string{
+		`"state":"awaiting_payment"`, `"checkout_url"`, `"amount_fen":"9900"`, `"plan_key":"pro"`,
+	} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("body must contain %s, got %s", want, w.Body.String())
+		}
+	}
+	if provider.creates != 1 {
+		t.Fatalf("channel creates = %d, want 1", provider.creates)
+	}
 }
 ```
-（具体断言按文件内既有 helper 风格补全；关键断言三项：状态码、错误 token、`GET /commercial/orders` 空。）
+（happy 用例已给全文；用例 2-4 按下列断言体实现——同为完整断言，不允许缩水：
+- 用例 1（happy）：seed pro → 报价 → `purchasePost(..., `{"quote_id":q.ID,"provider":"wechat"}`)` → `w.Code==http.StatusCreated`；`strings.Contains(w.Body.String(), "\"state\":\"awaiting_payment\"")`；`strings.Contains(w.Body.String(), "\"checkout_url\"")`；`strings.Contains(w.Body.String(), "\"amount_fen\":\"9900\"")`；`provider.creates==1`。
+- 用例 2（AC2，全文如下；对应追踪矩阵 AC2 行的 router 断言）：
+```go
+func TestPurchaseRouteMismatchReturns409WithoutOrder(t *testing.T) {
+	engine, db, fake, provider, plans, orders := newPurchaseEngine(t)
+	q := routeSeedPlanAndQuote(t, engine, plans, orders, 42, "pro")
+	// 预置偏差：权威面订阅金额 8800 ≠ Quote 9900（Task 7 TestPurchaseAbortsOnInvoiceMismatch 同法）
+	if _, err := fake.SubmitCommand(context.Background(), commercial.Command{
+		Kind: commercial.CommandKindCreatePurchaseSubscription,
+		Key: commercial.CreatePurchaseSubscriptionCommandKey(
+			commercial.ExternalPurchaseSubscriptionID(42), commercial.DeterministicPlanCode("pro", 1)),
+		Payload: commercial.CreatePurchaseSubscriptionPayload{
+			TenantID: 42, ExternalCustomerID: commercial.ExternalCustomerID(42),
+			ExternalPurchaseSubscriptionID: commercial.ExternalPurchaseSubscriptionID(42),
+			PlanCode: commercial.DeterministicPlanCode("pro", 1),
+			AmountFen: 8800, Currency: commercial.CurrencyCNY,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	w, _ := purchasePost(t, engine, 42, `{"quote_id":"`+q.ID+`","provider":"wechat"}`)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409, body = %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invoice_quote_mismatch") {
+		t.Fatalf("body must carry the closed mismatch token, got %s", w.Body.String())
+	}
+	if provider.creates != 0 {
+		t.Fatalf("NO channel request may fire on mismatch, creates = %d", provider.creates)
+	}
+	w2, _ := purchaseReq(t, engine, 42, http.MethodGet, "/api/v1/commercial/orders", "")
+	if w2.Code != http.StatusOK || strings.Contains(w2.Body.String(), `"id":"ord_`) {
+		t.Fatalf("orders must be empty, code=%d body=%s", w2.Code, w2.Body.String())
+	}
+	_ = db
+}
+```
+- 用例 3（过期）：`db.Exec("UPDATE commercial_quotes SET expires_at = ? WHERE id = ?", time.Now().Add(-time.Minute), q.ID)`（参数绑定）→ POST → `w.Code==http.StatusConflict`；body 含 `"quote expired"`。
+- 用例 4（GET /commercial/purchase）：购买后 `purchaseReq(GET, "/api/v1/commercial/purchase", "")` → 200 且含 `"awaiting_payment"`；另一未购买租户 `authAs(tenant+1,...)` GET → 200 且含 `"absent"`。
+（`authAs` 复用 commercial_scope_test.go:137-146，owner 角色满足 `RequireManageBillingForWrites` 与 capability gate 的既有放行路径——若 gate 另需 grant 表 seed，按 commercial_scope_test.go 中 owner 放行的实际做法对齐。）
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `go test ./internal/handler/ -run TestPurchase -count=1`
-Expected: FAIL（handler 方法未定义/路由 404）
+Run: `go test ./internal/router/ -run TestPurchaseRoute -count=1`
+Expected: FAIL（`SetPurchaseService` 未定义 → 编译失败，或路由 404）
 
 - [ ] **Step 3: 实现**——handler/路由/装配按 Produces 块；container 注册：
 ```go
@@ -1272,13 +1470,13 @@ must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.Purcha
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `go test ./internal/handler/ -count=1 && go build ./...`
-Expected: PASS + 编译通过
+Run: `go test ./internal/router/ -count=1 && go build ./...`
+Expected: PASS + 编译通过（router 包既有套件不回归）
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/handler/commercial.go internal/handler/commercial_purchase_test.go internal/router/routes_commercial.go internal/container/container.go
+git add internal/handler/commercial.go internal/router/commercial_purchase_route_test.go internal/router/routes_commercial.go internal/container/container.go
 git commit -m "feat(api): #81 purchase endpoints expose awaiting-payment state behind billing gate"
 ```
 
@@ -1289,7 +1487,7 @@ git commit -m "feat(api): #81 purchase endpoints expose awaiting-payment state b
 **Files:**
 - Modify: `packages/contracts/src/commercial.ts`（`PurchaseView`/`parsePurchaseView`；`QuoteView` 扩展 currency/features/line_items）
 - Modify: `packages/api-client/src/commercial.ts`（`purchase()`/`purchaseStatus()`）
-- Test: `packages/contracts/src/commercial.test.ts`（或既有测试文件所在处，`pnpm test:shared` 覆盖）
+- Test: `packages/contracts/test/commercial.test.ts`（**追加到既有测试文件**；root package.json:13 的 `test:shared` glob 只收 `packages/contracts/test/*.test.ts` 与 `packages/contracts/src/craft/*.test.ts`，放 `src/*.test.ts` 不会被执行——假信号。既有文件已 import `'../src/commercial.ts'` 并导出 parseQuoteView 等断言先例）
 
 **Interfaces:**
 - Consumes: Task 8 wire 形状。
@@ -1309,13 +1507,9 @@ async purchase(input:{quote_id:string; provider:'wechat'|'alipay'}, signal?:Abor
 async purchaseStatus(signal?:AbortSignal):Promise<PurchaseView>
 ```
 
-- [ ] **Step 1: 写失败测试**（contracts 测试）
+- [ ] **Step 1: 写失败测试**（**追加到既有** `packages/contracts/test/commercial.test.ts`；沿用该文件既有 import，只新增用例，不重复 import 语句——追加的用例体如下）
 
 ```ts
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { parsePurchaseView, parseQuoteView } from './commercial.ts';
-
 test('parsePurchaseView accepts awaiting_payment with order', () => {
   const v = parsePurchaseView({ state: 'awaiting_payment',
     order: { id: 'ord_1', quote_id: 'qt_1', state: 'pending', amount_fen: '9900', currency: 'CNY',
@@ -1339,11 +1533,12 @@ test('parseQuoteView passes through frozen line items', () => {
   assert.equal(q.features?.advanced_models, true);
 });
 ```
+（文件顶部既有 `import { parseCommercialSummary, parseCommercialUsageList, parseOrderView, parseQuoteView, parseRefundView } from '../src/commercial.ts';` 增补 `parsePurchaseView`。）
 
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `pnpm test:shared`
-Expected: FAIL（`parsePurchaseView` 未导出）
+Expected: FAIL（`parsePurchaseView` 未导出——TypeScript 解析报错使该测试文件失败）
 
 - [ ] **Step 3: 实现**——按 Produces 块实现（解析器风格照 parseQuoteView：digitString/nonEmptyString 校验）。
 
@@ -1355,7 +1550,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/contracts/src/commercial.ts packages/api-client/src/commercial.ts packages/contracts/src/commercial.test.ts
+git add packages/contracts/src/commercial.ts packages/api-client/src/commercial.ts packages/contracts/test/commercial.test.ts
 git commit -m "feat(contracts): #81 purchase view parser and client methods"
 ```
 
@@ -1372,26 +1567,76 @@ git commit -m "feat(contracts): #81 purchase view parser and client methods"
 - Consumes: Task 9 `client.commercial.purchase/purchaseStatus`；`parsePurchaseView`。
 - Produces: CheckoutPage 提交走 `purchase()`（替代直接 `createOrder`），页面展示 Quote 的 `line_items`/`features`/`currency`/`expires_at`（AC1 用户可见）；BillingPage 套餐行在 `purchaseStatus().state==='awaiting_payment'` 时显示「待付款（权益未开放）」；页面文案不含任何 Lago 词汇（spec L170）。
 
-- [ ] **Step 1: 写失败测试**（web 单测，node --import tsx --test 风格，stub client）
+- [ ] **Step 1: 写失败测试**（新建 `apps/web/src/commercial/CheckoutPage.test.tsx`——apps/web 的组件测试先例是 `apps/web/src/organizations/OrganizationsPage.test.tsx`（jsdom + node:test + createRoot + act + stub client + CSS/SVG module hook），commercial 目录既有测试只有 .test.ts（纯函数），组件测试按 organizations 先例建立；`pnpm test:web` 的 glob `src/**/*.test.ts(x)` 会收集 .tsx）
 
 ```tsx
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-// 按 apps/web 既有组件测试样式（查找同目录 *.test.tsx 先例，用其 render/stub 模式）：
-// 1) ready 状态渲染 quote.line_items[0]（「Pro ¥99.00/月」）与 features 列表与过期时间
-// 2) 提交调用 client.commercial.purchase（断言 stub 被调一次，参数 quote_id+provider）
-// 3) purchase 返回 awaiting_payment 时页面显示「待付款」且不显示付费权益开通文案
+import * as nodeModule from 'node:module';
+import test from 'node:test';
+import * as React from 'react';
+import { act } from 'react';
+
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (h: { resolve: (specifier: string, context: unknown, nextResolve: (s: string, c: unknown) => unknown) => unknown }) => void };
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg') ? { shortCircuit: true, url: 'data:text/javascript,export default "stub"' } : nextResolve(specifier, context) });
+
+const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/commercial/checkout' });
+Object.assign(globalThis, {
+  React,
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  Event: dom.window.Event,
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+
+const { createRoot, type Root } = await import('react-dom/client');
+
+const quote = {
+  id: 'qt_1', plan_key: 'pro', plan_version: 1, amount_fen: '9900',
+  credit_delta: '9900000', expires_at: '2026-09-23T12:00:00Z',
+  currency: 'CNY',
+  features: { advanced_models: true },
+  line_items: [{ kind: 'subscription_fee', name: 'Pro', amount_fen: '9900' }],
+};
+const order = {
+  id: 'ord_1', quote_id: 'qt_1', state: 'pending', amount_fen: '9900', currency: 'CNY',
+  payment: 'pending', fulfillment: 'pending', checkout_url: 'https://pay.example/qr', version: 1,
+};
+
 test('checkout renders frozen quote line items and submits a purchase', async () => {
   const calls: Array<{ quote_id: string; provider: string }> = [];
-  const client = stubClient({
-    purchase: async (input) => { calls.push(input); return { state: 'awaiting_payment',
-      order: stubOrder(), plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' }; },
+  const client = {
+    commercial: {
+      quote: async () => quote,
+      purchase: async (input: { quote_id: string; provider: string }) => {
+        calls.push(input);
+        return { state: 'awaiting_payment', order, plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' };
+      },
+      getOrder: async () => order,
+    },
+  };
+  const { CheckoutPage } = await import('./CheckoutPage.tsx');
+  const { createScopeController } = await import('@weknora/domain/scope');
+  const scopeController = createScopeController({ tenantId: 31, role: 'owner' } as never);
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    root.render(React.createElement(CheckoutPage, { client, scopeController, orderId: '' }));
   });
-  // render + await settle（按既有测试 helper）
-  assert.equal(calls.length, 1);
-  // 断言文本包含 ¥99.00 与 待付款
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const text = document.body.textContent ?? '';
+  assert.match(text, /¥99\.00/);                       // 冻结金额（AC1）
+  assert.match(text, /订阅费|subscription_fee/);          // 行项目（AC1）
+  assert.match(text, /advanced_models|高级模型/);         // 冻结权益（AC1）
+  assert.match(text, /待付款/);                          // 产品状态（AC3）
+  assert.equal(calls.length, 1);                        // 提交恰好一次购买
+  assert.equal(calls[0]?.quote_id, 'qt_1');
+  assert.equal(calls[0]?.provider, 'wechat');
+  await act(async () => { root?.unmount(); });
 });
 ```
+（`createScopeController` 的构造签名按 `@weknora/domain/scope` 实际导出调整——先例见 CheckoutPage.tsx:4/36 的用法；`scopeController.current()` 需要能返回 `{ scope: { tenantId: 31 }, signal }` 形状，测试里按 organizations 先例的 controller stub 方式构造即可，不追求真实实现。）
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -1449,17 +1694,19 @@ Phase 6（并发冲突）：不同 plan_code 的第二次 create → ErrPlatform
 Run: `go test -tags lago_integration ./internal/modules/commercial/commercialplatform/ -run TestLagoPurchaseIntegration -count=1`
 Expected: SKIP（blocked-env，无 LAGO_INTEGRATION_* env）
 
-- [ ] **Step 3: 对真实栈跑（栈已在 :48889 运行；provider 前置见 Task 12 预备脚本）**
+- [ ] **Step 3: 对真实栈跑（凭据来源先按 Task 12 Step 0 完成环境恢复——`deploy/lago/.env` 在本机已随 .worktrees/lago-73 删除而丢失，不能按文 source；org API key / operator 账号从运行容器 env 取或重建栈）**
 
 Run:
 ```bash
-source ~/.zcode/issue72-stripe.env   # 只注入环境变量，绝不落盘（S3）
+# Step 0（Task 12 Step 0 的路径 A：栈仍在跑）——凭据只进 shell 环境，不落盘（S3）
+export LAGO_API_KEY="$(docker exec weknora-lago-api-1 printenv LAGO_ORG_API_KEY)"
+source ~/.zcode/issue72-stripe.env   # STRIPE_SECRET_KEY（sk_test_，仅环境变量）
 LAGO_INTEGRATION_BASE_URL=http://127.0.0.1:48889 \
-LAGO_INTEGRATION_API_KEY=<deploy/lago/.env 的 LAGO_ORG_API_KEY 值，从 .env 读取不复制到命令历史文件> \
+LAGO_INTEGRATION_API_KEY="$LAGO_API_KEY" \
 LAGO_INTEGRATION_STRIPE_API_KEY="$STRIPE_SECRET_KEY" \
 go test -tags lago_integration ./internal/modules/commercial/commercialplatform/ -run TestLagoPurchaseIntegration -count=1 -v -timeout 300s | tee /tmp/lago81-integration.txt
 ```
-Expected: PASS（六阶段；输出 tee 到 /tmp，敏感值不落仓库）。若 provider 未注册（F2 的 `payment_provider_not_found`）→ 先跑 Task 12 的 provider 预备脚本再重试。
+Expected: PASS（六阶段；输出 tee 到 /tmp，敏感值不落仓库）。若 provider 未注册（F2 的 `payment_provider_not_found`）→ 先跑 Task 12 的 provider 预备脚本再重试；若栈不在运行（docker ps 无 weknora-lago-*）→ 走 Task 12 Step 0 的路径 B 重建后再跑。
 
 - [ ] **Step 4: Commit**
 
@@ -1478,13 +1725,32 @@ git commit -m "test(commercialplatform): #81 real-stack purchase integration evi
 - Create: `deploy/lago/evidence/t09-run.txt`（运行记录，格式照 t08-run.txt）
 - Modify: `docs/plans/issue-72-ledger-81.md`（执行结果追加）
 
-- [ ] **Step 1: 环境预备（一次性，操作序列与判定全部写入 t09-run.txt）**
+- [ ] **Step 0: Lago 环境恢复（前置现实：`deploy/lago/.env` 在本机任何 checkout 均不存在——原栈由已删除的 `.worktrees/lago-73` 启动，.env 随 worktree 删除而丢失；计划审查第 1 轮实测确认。二选一，操作与判据写入 t09-run.txt）**
+
 ```bash
-# 1. Lago 栈（已在跑则跳过；健康检查）
-./deploy/lago/lago.sh status          # GET 127.0.0.1:48889/health + compose healthcheck 汇总 → healthy
-# 2. provider 注册（F2：GraphQL + operator JWT）
-source ~/.zcode/issue72-stripe.env    # STRIPE_SECRET_KEY（sk_test_，仅环境变量）
-set -a; source deploy/lago/.env; set +a   # LAGO_ORG_USER_EMAIL/PASSWORD（seed 值，.env 已 chmod 600）
+# 路径 A（栈仍在跑——首选，零重建、保留既有 lab 对象）：
+docker ps --format '{{.Names}}' | grep -q '^weknora-lago-api-1$' || echo "stack down -> use path B"
+export LAGO_API_KEY="$(docker exec weknora-lago-api-1 printenv LAGO_ORG_API_KEY)"
+export LAGO_ORG_USER_EMAIL="$(docker exec weknora-lago-api-1 printenv LAGO_ORG_USER_EMAIL)"
+export LAGO_ORG_USER_PASSWORD="$(docker exec weknora-lago-api-1 printenv LAGO_ORG_USER_PASSWORD)"
+curl -sf http://127.0.0.1:48889/health >/dev/null && echo "lago healthy"
+# 注意：此路径下【不要】运行 lago.sh up——新生成的 .env 密钥与运行容器不一致，up 会触发
+# recreate，LAGO_ENCRYPTION_DETERMINISTIC_KEY 变更会使已加密列不可解。只做只读健康检查。
+
+# 路径 B（栈已停/需要重建）：
+./deploy/lago/lago.sh init                      # 在【本 worktree】生成 deploy/lago/.env（随机密钥，mode 600）
+# 首次 seed 追加（README L75-86 惯例）：LAGO_CREATE_ORG=true + LAGO_ORG_USER_EMAIL/PASSWORD +
+# LAGO_ORG_API_KEY（random，python3 -c "import secrets; print(secrets.token_urlsafe(32))"）
+./deploy/lago/lago.sh up                        # docker compose up -d --wait；冷启动数分钟（Rails migrate+seed）
+./deploy/lago/lago.sh status                    # 全部 healthy
+export LAGO_API_KEY="$(grep '^LAGO_ORG_API_KEY=' deploy/lago/.env | cut -d= -f2-)"
+# （重建即新 org——旧 lab 对象不迁移，符合 spec「只处理开发数据，不迁移测试数据」）
+```
+
+- [ ] **Step 1: 环境预备（一次性，操作序列与判定全部写入 t09-run.txt；凭据全部来自 Step 0 的 shell 环境变量）**
+```bash
+# 1. provider 注册（F2：GraphQL + operator JWT）
+source ~/.zcode/issue72-stripe.env    # STRIPE_SECRET_KEY（sk_test_，仅环境变量，S3）
 JWT=$(curl -s -X POST http://127.0.0.1:48889/graphql -H 'Content-Type: application/json' \
   -d "{\"query\":\"mutation Login(\$i:LoginUserInput!){ loginUser(input:\$i){ token } }\",
        \"variables\":{\"i\":{\"email\":\"$LAGO_ORG_USER_EMAIL\",\"password\":\"$LAGO_ORG_USER_PASSWORD\"}}}" \
@@ -1493,14 +1759,14 @@ curl -s -X POST http://127.0.0.1:48889/graphql -H "Authorization: Bearer $JWT" -
   -d "{\"query\":\"mutation Add(\$i:AddStripePaymentProviderInput!){ addStripePaymentProvider(input:\$i){ code name } }\",
        \"variables\":{\"i\":{\"code\":\"weknora-stripe\",\"name\":\"WeKnora Stripe\",\"secretKey\":\"$STRIPE_SECRET_KEY\"}}}"
 # 判据：响应含 "code":"weknora-stripe"；JWT/stripe key 不回显到 t09-run.txt（记录时替换为 <redacted>）
-# 3. WeKnora 后端（worktree 内）
+# 2. WeKnora 后端（worktree 内）
 cp .env.example .env && printf '\nDB_DRIVER=postgres\n# 复用宿主 dev 容器 WeKnora-postgres-dev:5432 / redis:6379（.env.example 已指向）\n' >> .env
 export WEKNORA_COMMERCIAL_PLATFORM_PROVIDER=lago
 export WEKNORA_COMMERCIAL_PLATFORM_URL=http://127.0.0.1:48889
-export WEKNORA_COMMERCIAL_PLATFORM_API_KEY=$(grep '^LAGO_ORG_API_KEY=' deploy/lago/.env | cut -d= -f2-)
+export WEKNORA_COMMERCIAL_PLATFORM_API_KEY="$LAGO_API_KEY"        # 来自 Step 0（不再 source/grep .env）
 export WEKNORA_COMMERCIAL_STRIPE_API_KEY="$STRIPE_SECRET_KEY"
 ./scripts/dev.sh app                # go run ./cmd/server，:8080（避开 :5272/:5273）；GET /health → 200
-# 4. 前端
+# 3. 前端
 pnpm --filter @weknora/web dev      # vite :5173，/api 代理 :8080
 ```
 
@@ -1561,6 +1827,13 @@ Expected: CLEAN（任何命中立即 defuse 为拼接字面量后重查）。
 
 - [ ] **Step 6: 写文档 + Ledger + 提交**
 
+`docs/migrations/lago/t09-quote-invoice/DECISION.md` 必须包含（用户裁决选项 A 强制条件 1 的完整清单，缺项即返工）：
+1. spec L121 原文逐字引用（"Before a Channel Payment Order is created, … must match in Plan Version, currency, total, and line items."）；
+2. 三处源码实证引用：invoice.rb:100-101（INVISIBLE_STATUS 含 open:5）、invoices_query.rb:122-129（显式 status 与 visible_keys 求交集）、invoices_controller.rb:46-48 与 GraphQL InvoiceResolver 的 `.visible` 过滤（含取得途径：运行容器 /app 内实读）；
+3. 替代校验链全貌：付款前权威订阅面三项硬校验（版本/币种/总额）+ 无 charges 切片的单行订阅费推导 + 付款时（finalized 可见后）经 `PurchaseSnapshot.InvoiceFees` 的完整 line-item 复核（#82/#84 消费）；
+4. 升级留痕：计划审查第 1 轮发现 → escalate → 用户 2026-09-23 批准选项 A + 四条强制条件原文要点；用户声明将另行向 spec owner 呈报正式修订案；
+5. 适用边界：偏差仅限 line-item 付款前比对这一条，不构成其他 spec 条款的先例。
+
 ```bash
 git add docs/migrations/lago/t09-quote-invoice docs/plans/issue-72-ledger-81.md
 git commit -m "docs(lago): #81 t09 quote-invoice evidence and decision record"
@@ -1575,7 +1848,7 @@ git log --oneline codex/issue-72-lago-81 ^f6969fc008   # 核对提交序列
 | Issue #81 验收标准 | 实现落点 | 测试（命令/文件） |
 |---|---|---|
 | AC1 Quote 固定 Plan Version、CNY 金额、权益、行项目与过期时间 | Task 6（order.go 快照/视图）、Task 9/10（契约与页面展示） | `go test ./internal/modules/commercial/service/commercial/ -run TestCreateQuoteFreezes -count=1`；`pnpm test:web`；Task 12 Step 3 浏览器断言 02 |
-| AC2 Invoice 与 Quote 不一致时不创建支付请求 | Task 7 `ErrInvoiceQuoteMismatch`（匹配校验先于 `CreateOrder`）、Task 8 409 | `go test ./internal/modules/commercial/service/commercial/ -run TestPurchaseAbortsOnInvoiceMismatch -count=1`（断言渠道 stub 零调用）；`go test ./internal/handler/ -run TestPurchaseHandlerMismatch -count=1`；Task 12 Step 2-i 真实 409 |
+| AC2 Invoice 与 Quote 不一致时不创建支付请求 | Task 7 `ErrInvoiceQuoteMismatch`（匹配校验先于 `CreateOrder`）、Task 8 409 | `go test ./internal/modules/commercial/service/commercial/ -run TestPurchaseAbortsOnInvoiceMismatch -count=1`（断言渠道 stub 零调用）；`go test ./internal/router/ -run TestPurchaseRoute -count=1`（用例 2：409 + orders 空 + creates==0）；Task 12 Step 2-i 真实 409 |
 | AC3 创建成功后产品状态为待付款且 Entitlement 未开放 | Task 1 `PurchaseStateAwaitingPayment`、Task 4 状态映射、Task 7/8 `awaiting_payment`、D4 投影不动 Base | `go test ./internal/modules/commercial/commercialplatform/ -run 'TestLagoPurchaseSnapshot|TestFakePurchaseSnapshot' -count=1`；Task 11 Phase 3 entitlements 404；Task 12 Step 2-d/e + 浏览器断言 03/04 |
 | AC4 过期、并发套餐变更和命令重试不产生重复 Invoice 或 Subscription | Task 3 identity read-before-create（F7）+ conflict 分支、Task 7 过期预检/`GetOrderByQuote` 重试返回既有订单 | `go test ./internal/modules/commercial/commercialplatform/ -run 'TestLagoCreatePurchaseReplay|TestLagoCreatePurchaseDifferentPlan' -count=1`；`go test ./internal/modules/commercial/service/commercial/ -run 'TestPurchaseExpired|TestPurchaseRetry|TestPurchaseConcurrent' -count=1`；Task 11 Phase 4/6；Task 12 Step 2-f/g/h（DB 权威计数） |
 
