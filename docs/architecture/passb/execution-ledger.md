@@ -1161,6 +1161,27 @@
 - **待协调者澄清/后续**：(1) **节点产出为空的口径确认**——done 时分支零实施提交、计划文档 untracked 未入库：若系"计划即交付"的节点完成定义（如该节点拆分至后续节点执行），建议在台账或 DAG notes 显式声明，避免与 b0"六任务+19 提交后 done"的口径混淆；若系超前收口（实施未做即 done），33 legacy 文件的搬迁义务（含 IB1 前 capability 契约 current 化，见节点 notes）仍悬置，ib1 汇合时将缺 airesource 门面；(2) 计划文档 `11-airesource.md` 建议尽快提交入库以固化审查对象；(3) task_ids/task_status 未回填（b1-commercial 已有 5 任务先例）——如需任务级追踪请下发回填指令
 - **integration 合并状态**：b1-airesource 分支尚未合入 `codex/passb-integration`（integration HEAD 仍 `d57a2fa70`）；由于 head=base，合并将是 no-op 或仅带入 untracked 文件入库后的提交
 
+---
+
+## 2026-09-23 20:47 CST · ib1 屏障执行（四支逐支合并完成、三门禁绿色；装配切换等核心产出因 B1 零实施上报缺位）
+
+- **执行者**：Pass B 总集成工程师（barrier 即 integration 侧独占装配工作）
+- **合并前固化**：`.worktrees/passb-int` 工作树含上一调度管家会话遗留 2 个未提交修改（本台账 18:56–20:23 各派发/收口条目 + DAG b0 head_sha 覆盖/B1 四节点 done 回填/ib1 in_progress+base 回填）——先以 docs 提交 **`7b701512a`** 固化（2 文件 +376/−20）
+- **逐支合并（一次一支，零冲突，ort 策略）**：
+  1. **B1-ID**：`git merge codex/passb-b1-identity` → **`1900e038a`**（+`docs/plans/passb/10-identity.md` 500 行）；
+  2. **B1-AI**：`git merge codex/passb-b1-airesource` → **"Already up to date"（no-op，无提交）**——分支 head=base=`d57a2fa70`（20:07 条目留痕一致）；其 untracked `docs/plans/passb/11-airesource.md` 留于 `.worktrees/passb-b1-airesource` **未入库**（非已审查分支内容，本屏障不代为提交，待调度方/实施者动作）；
+  3. **B1-CM**：`git merge codex/passb-b1-commercial` → **`f66dfb188`**（+`12-commercial.md` 676 行）；
+  4. **B1-EX**：`git merge codex/passb-b1-execution` → **`ca38afb7e`**（+`13-execution.md` 331 行）。
+- **每支合并后验证**（`go build ./...` + `go test … -count=1`；直接消费者名单依据 exception-ledger.yaml `from` 在案耦合）：ID：build OK + identity 骨架包（no test files）；AI：airesource 12 包（10 ok+2 no test files）+ 消费者 agentruntime 20 ok / conversation 1 ok / knowledge 15 ok；CM：commercial 7 包 ok + 消费者 appconnector+airesource-chat+workbench 10 ok / agentruntime/agent 族 18 ok；EX：execution 3 包+policy 5 包 ok + agentruntime/agent/tools 1 ok。全部仅既有 `-lc++` 链接警告，无失败
+- **全局门禁（三道全绿，指令点名前两道）**：`make -C .worktrees/passb-int check-backend-architecture` → `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16` / `OK (0 violations)`（**计数奇偶 633/23+23/58 与 B0.3 基线一致**）；`make -C .worktrees/passb-int verify-module-moves` → `modulemove: OK (16 manifests verified)`；`make -C .worktrees/passb-int check-passb-readiness` → `legacy=396 aliases=99 exceptions=105 contracts=125 events=29 overlaps=0 missing=0`
+- **例外台账核验（本屏障拥有的 `remove_at: ib1` 共 2 条，import 均在磁盘，不删行）**：exc-0057 `internal/modules/airesource/models/chat/usage.go:9`→`internal/modules/commercial`（grep 实测 import 在）；exc-0087 `internal/modules/execution/sandbox/url_guard.go:31`→`internal/modules/policy/ipclass`（同上）——B1 实施未落地，删除条件（import 消失）未满足
+- **屏障计划写盘**：`docs/plans/passb/19-foundation-integration.md`（指令要求：文件原不存在，按 framework:100-107 IB1 节执行并写盘）——含现实基线表、逐支合并与验证记录、门禁记录、例外核验、**§4 待 B1 实施落地后的收尾动作**（装配切换/契约 current 化/例外删行/四组差分套件/全量 25m 测试+变更域 lint）
+- **上报（ib1 核心产出缺位，本屏障不伪造）**：B1 四支实施产出均止于计划文档、无生产代码（20:07/20:14/20:17/20:22 台账留痕+本会话分支 diff 实测），四模块 module.go 仍为零逻辑骨架——故 **router/container/全局注册装配切换、contracts.yaml 四门面 current 化、exception-ledger 删行、tenant-RBAC/capability/payment-usage/sandbox-target 差分套件在本屏障内无可执行对象**；把骨架接入装配或伪称 current 将破坏 633/23+23/58 计数契约与行为等价性，按"补齐或上报"口径（20:23 派发条目）选择**上报**。补齐义务在各 B1 支实施者（子计划 10/11/12/13 的任务集），落地后由后续屏障动作收尾（19 号计划 §4）
+- **DAG 变更**：无——ib1 维持 `in_progress`（装配切换未发生，不得自行置 done；状态迁移沿先例属调度方指令权限）；本次不动 `head_sha`（最终 head 见本条目所在 docs 提交，回报调度方）
+- **DAG gates 未跑项（如实）**：`go test ./internal/... -count=1 -timeout=25m` 与 `golangci-lint run --new-from-rev` —— 指令未点名且装配切换未发生（无变更域），按 19 号计划 §4 留待装配切换那次收尾；`golangci-lint` 本会话未运行，PASSB_BASE_SHA 环境变量未设置
+- **Mimosa**：本会话 commit 钩子报 `scanner_enobufs`（未获完整扫描结论，按钩子兼容策略继续，不宣称项目安全审计通过）
+- **调度方后续事项**：(1) 裁定 ib1 收口口径（当前现实下"逐支合并+门禁"已完成、装配类产出悬置）——若确认"计划集成即本屏障本轮完成"，请显式指令 ib1 状态迁移口径；(2) `11-airesource.md` 入库指令（20:07 条目待办）；(3) B1 四支实施派发（含 airesource 33 文件搬迁与 exc-0057/exc-0087 消除）；(4) 32 节点 BLOCKED 残留文本批量清理（18:56 条目待办）
+
 
 
 
