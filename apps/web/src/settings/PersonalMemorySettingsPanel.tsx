@@ -632,11 +632,11 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                 </div>
               </div>
             ) : (
-              <p className={'mb-1 mt-0 break-words text-[14px] leading-[1.6] ' + (isRetired ? 'text-[rgba(0,0,0,0.4)] line-through' : 'text-[rgba(0,0,0,0.9)]')}>{str(row, 'content')}</p>
+              <p className={'wk-memory-content' + (isRetired ? ' is-retired' : '')}>{str(row, 'content')}</p>
             )}
-            <div className="flex flex-wrap items-center text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)] [&>span:not(:last-child)]:after:mx-1.5 [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:text-[rgba(0,0,0,0.4)]">
+            <div className="wk-memory-meta">
               <span title={kind ? kindHint(kind) : undefined}>{kind ? kindLabel(kind) : ''}</span>
-              {topic && topic !== str(row, 'content') ? <span className='max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap' title={topic}>{topic}</span> : null}
+              {topic && topic !== str(row, 'content') ? <span className='wk-memory-topic' title={topic}>{topic}</span> : null}
               <span>{originLabel(str(row, 'origin'))}</span>
               <span>{formatTime(str(row, 'valid_from'))}</span>
             </div>
@@ -700,7 +700,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
               </div>
               <span className='shrink-0 text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)]'>{hits >= threshold ? t('memorySettings.trackingReady') : t('memorySettings.trackingProgress', { hits, threshold })}</span>
             </div>
-            <div className="flex flex-wrap items-center text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)] [&>span:not(:last-child)]:after:mx-1.5 [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:text-[rgba(0,0,0,0.4)]">
+            <div className="wk-memory-meta">
               <span>{t('memorySettings.kinds.interest')}</span>
               {aliases.length > 0 ? (
                 <span className='max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap' title={aliases.join(', ')}>
@@ -745,7 +745,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
         <li key={id || index} className='flex items-start justify-between gap-4 border-b border-line-neutral py-4 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2'>
           <div className='min-w-0 flex-1'>
             <p className='mb-1 mt-0 break-words text-[14px] leading-[1.6] text-[rgba(0,0,0,0.9)]'>{str(row, 'title') || t('memorySettings.untitledDocument')}</p>
-            <div className="flex flex-wrap items-center text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)] [&>span:not(:last-child)]:after:mx-1.5 [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:text-[rgba(0,0,0,0.4)]">
+            <div className="wk-memory-meta">
               <span>{t('memorySettings.documentsHits', { hits: num(row, 'hits') })}</span>
               <span>{formatTime(str(row, 'last_used_at'))}</span>
             </div>

@@ -83,17 +83,17 @@ export function ChatPreferencesPanel({ client, initialPreferences = null }: { cl
 
   const options = chatDefaultModelOptions(models);
 
-  return <div data-testid="chat-preferences-panel" className="w-full text-[rgba(0,0,0,0.9)]">
+  return <div data-testid="chat-preferences-panel" className="wk-chat-prefs">
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
-    <div className="flex flex-col">
-      <div className="flex items-start justify-between border-b border-[#e7e7e7] py-5 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2">
-        <div className="max-w-[65%] flex-1 pr-6 max-[720px]:max-w-full max-[720px]:pr-0">
-          <label className="mb-1 block text-[15px] font-medium text-[rgba(0,0,0,0.9)]">{t('chatPreferences.defaultModelLabel')}</label>
-          <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('chatPreferences.defaultModelDescription')}</p>
-          <p className="m-0 mt-1 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.4)]">{t('chatPreferences.priorityHint')}</p>
+    <div className="wk-chat-prefs-body">
+      <div className="wk-chat-prefs-row">
+        <div className="wk-chat-prefs-row-copy">
+          <label className="wk-chat-prefs-label">{t('chatPreferences.defaultModelLabel')}</label>
+          <p className="wk-chat-prefs-desc">{t('chatPreferences.defaultModelDescription')}</p>
+          <p className="wk-chat-prefs-hint">{t('chatPreferences.priorityHint')}</p>
         </div>
-        <div className="w-[280px] max-w-[280px] shrink-0 max-[720px]:w-full">
+        <div className="wk-chat-prefs-control">
           <ModelOptionSelect
             value={defaultModel}
             options={options}
