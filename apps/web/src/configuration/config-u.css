@@ -1,0 +1,419 @@
+/* config-u.css — S7 Tailwind utilities 平移（configuration 域 5 文件）
+ * 前缀 wk-cfg-*；值 = utilities 编码的生效值。 */
+
+
+.wk-cfg-ops-1 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-cfg-ops-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+@media (max-width: 720px) {
+.wk-cfg-ops-2 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+}
+
+.wk-cfg-ops-3 {
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.wk-cfg-ops-4 {
+  margin-block: 16px;
+  display: grid;
+  gap: .8rem;
+  max-width: 620px;
+}
+
+.wk-cfg-ops-4 label {
+  display: grid;
+  gap: .35rem;
+  font-weight: 600;
+}
+
+.wk-cfg-ops-4 input {
+  width: 100%;
+  box-sizing: border-box;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #cbd5e1;
+  border-radius: 6px;
+  background-color: #fff;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  padding-inline: .65rem;
+  padding-block: .55rem;
+}
+
+.wk-cfg-ops-4 textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #cbd5e1;
+  border-radius: 6px;
+  background-color: #fff;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  padding-inline: .65rem;
+  padding-block: .55rem;
+}
+
+.wk-cfg-ops-5 {
+  border-bottom-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
+  padding-bottom: 0.8rem;
+  font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.75rem;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+  overflow-wrap: anywhere;
+}
+
+.wk-cfg-ops-6 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;border-color: #eef1f5;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+.wk-cfg-ops-6 {
+  flex-direction: column;
+}
+}
+
+.wk-cfg-ops-7 {
+  margin-block: 4px;
+}
+
+.wk-cfg-ops-8 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+  margin: 0;
+}
+
+.wk-cfg-ops-9 {
+  margin: 0;
+  list-style-type: none;
+  padding: 0;
+}
+
+.wk-cfg-ops-10 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
+  padding-block: 0.9rem;
+}
+
+.wk-cfg-ops-11 {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.wk-cfg-ops-12 {
+  font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.8rem;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+
+.wk-cfg-page-1 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
+  padding-block: 0.9rem;
+}
+
+.wk-cfg-page-2 {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.wk-cfg-page-3 {
+  font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.8rem;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-cfg-page-4 {
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.wk-cfg-page-5 {
+  margin: 0;
+  list-style-type: none;
+  padding: 0;
+}
+
+.wk-cfg-page-6 {
+  max-width: 1180px !important;
+  margin-inline: auto;
+  box-sizing: border-box;
+  padding-inline: 1.25rem;
+  padding-block: 48px;
+}
+
+.wk-cfg-page-7 {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.wk-cfg-page-8 {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #2e6de6;
+}
+
+.wk-cfg-page-9 {
+  font-size: clamp(1.8rem,5vw,2.5rem);
+  margin-block: 0.35rem;
+}
+
+.wk-cfg-page-10 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-cfg-page-11 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 720px) {
+.wk-cfg-page-11 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+}
+
+.wk-cfg-page-12 {
+  min-width: 0;
+}
+
+.wk-cfg-page-13 {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.wk-cfg-page-14 {
+  margin: 0;
+  margin-bottom: 4px;
+}
+
+.wk-cfg-page-15 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+  margin: 0;
+}
+
+.wk-cfg-page-16 {
+  border-radius: 999px;
+  padding-inline: 0.55rem;
+  padding-block: 0.2rem;
+  font-size: 0.8rem;
+  color: #6941c6;
+  background-color: #f4f3ff;
+  margin-right: auto;
+  font-size: 0.85rem !important;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6) !important;
+}
+
+
+.wk-cfg-ed-1 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;border-color: #eef1f5;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+.wk-cfg-ed-1 {
+  flex-direction: column;
+}
+}
+
+.wk-cfg-ed-2 {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #2e6de6;
+}
+
+.wk-cfg-ed-3 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+  margin: 0;
+}
+
+.wk-cfg-ed-4 {
+  margin-block: 16px;
+  display: grid;
+  gap: .8rem;
+  max-width: 620px;
+}
+
+.wk-cfg-ed-4 label {
+  display: grid;
+  gap: .35rem;
+  font-weight: 600;
+}
+
+.wk-cfg-ed-5 {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-cfg-ed-6 {
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.wk-cfg-ed-7 {
+  margin: 0;
+  list-style-type: none;
+  padding: 0;
+}
+
+.wk-cfg-ed-8 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
+  padding-block: 0.9rem;
+}
+
+.wk-cfg-ed-9 {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+
+.wk-cfg-mun-1 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;border-color: #eef1f5;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+.wk-cfg-mun-1 {
+  flex-direction: column;
+}
+}
+
+.wk-cfg-mun-2 {
+  margin-block: 4px;
+}
+
+.wk-cfg-mun-3 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+  margin: 0;
+}
+
+.wk-cfg-mun-4 {
+  margin: 0;
+  list-style-type: none;
+  padding: 0;
+}
+
+.wk-cfg-mun-5 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
+  padding-block: 0.9rem;
+}
+
+.wk-cfg-mun-6 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+
+/* ui.tsx Card 壳：rounded-card border-line bg-surface p-4（theme token utilities）平移 */
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+.wk-cfg-card { border-radius: 8px; border: 1px solid #e7e7e7; background-color: #ffffff; padding: 16px; }
+
+/* ---- Status 内联状态文本（T15 语义化：原 my-[0.25rem] text-[13px]
+   text-muted-strong (+ text-danger/text-success-text/text-warning-text)
+   旧栈 utility；视觉 = 既有 .wk-status：13px，muted-strong） ---- */
+.wk-cfg-status { margin-block: 0.25rem; font-size: 13px; color: #506078; }
+.wk-cfg-status--error { color: #b42318; }
+.wk-cfg-status--success { color: #137333; }
+.wk-cfg-status--warning { color: #9a6700; }
+
+/* 编辑器字段通栏（T15 语义化：原 w-full box-border 旧栈 utility）。 */
+.wk-cfg-field { width: 100%; box-sizing: border-box; }

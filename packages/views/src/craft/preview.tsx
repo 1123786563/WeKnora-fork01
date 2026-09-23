@@ -9,7 +9,7 @@
 import React from 'react';
 import { useEffect, useState } from 'react';
 import type { CraftPreviewTicketView } from '@weknora/contracts';
-import { Button } from '@weknora/ui';
+import { Button } from './td.tsx';
 import { classifyPreview, craftStrings, formatDateTime, type CraftLocale, type CraftPreviewState } from './presentation.ts';
 
 export interface CraftPreviewProps {

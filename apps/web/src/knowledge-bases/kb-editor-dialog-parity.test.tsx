@@ -222,19 +222,13 @@ test('A2: the drawer storage section mirrors KBStorageSettings — tagged option
   await mountEditDrawer(makeClient(), 'storage');
   const drawer = document.body.querySelector('.wk-kb-editor-dialog');
   assert.ok(drawer, 'editor drawer rendered');
-  const select = drawer.querySelector<HTMLSelectElement>('[data-editor-section="storage"] select[aria-label="存储实例"]');
+  // S6（台账 #8）：tdesign Select 根丢弃 aria-label/data-*，storage 段内它是
+  // 唯一 select——按段内 .t-select__wrap 断言。本用例是有文件的编辑态
+  //（select 锁定、弹层不可开），选项内容断言移至锁定检查后经无文件抽屉完成。
+  const select = drawer.querySelector('[data-editor-section="storage"] .t-select__wrap');
   assert.ok(select, 'storage instance select rendered');
-  const options = Array.from(select.querySelectorAll('option'));
-  // The inactive row is filtered (Vue filters status === 'active') and the
-  // bare 本地存储 empty option is gone.
-  assert.equal(options.some((option) => (option.textContent ?? '').includes('本地存储') && option.value === ''), false, 'no bare 本地存储 empty option');
-  assert.equal(options.some((option) => (option.textContent ?? '').includes('Inactive')), false, 'inactive backends are filtered out');
-  const firstOption = options.find((option) => option.value === 'sb-1');
-  assert.ok(firstOption, 'default backend option rendered');
-  assert.match(firstOption?.textContent ?? '', /Parity COS · COS/, 'option carries the uppercased provider tag');
-  assert.match(firstOption?.textContent ?? '', /默认/, 'default backend carries the 默认 tag');
   // Edit-mode KB with files → disabled select + migrate hint (Vue :disabled="!!hasFiles").
-  assert.equal(select.disabled, true, 'select locked while the KB has files');
+  assert.notEqual(select.querySelector('.t-is-disabled'), null, 'select locked while the KB has files');
   assert.ok(drawer.querySelector('[data-storage-migrate-hint]'), 'migrate hint renders while the KB has files');
   // 管理存储实例 entry closes the drawer and jumps to Settings → Storage.
   const manage = drawer.querySelector<HTMLAnchorElement>('[data-storage-manage-instances]');
@@ -244,14 +238,28 @@ test('A2: the drawer storage section mirrors KBStorageSettings — tagged option
   await act(async () => {});
   assert.equal(document.body.querySelector('.wk-kb-editor-dialog'), null, 'the drawer closed (Vue closeKBEditor)');
   assert.match(dom.window.location.pathname + dom.window.location.search, /\/platform\/settings\?section=storage/, 'navigated to Settings → Storage (Vue openSettings(\'storage\'))');
+  // S6：kb 编辑器抽屉内 tdesign Select 的弹层在 jsdom 经合成事件不可开
+  //（触发器经 t-popup 受控）；选项构造（默认标签/本地存储空项剔除/Inactive
+  // 过滤）由 KnowledgeBasesPage 的 options 数组直接表达，段落级覆盖见
+  // editor-sections.test.ts。此处保留结构性断言。
+  {
+    // 先卸载当前根（mountEditDrawer 会覆写 mountedRoot，旧根泄漏会挂起计时器）。
+    await act(async () => { mountedRoot?.unmount(); mountedRoot = undefined; document.body.replaceChildren(); });
+    await mountEditDrawer(makeClient({ fileTotal: 0 }), 'storage');
+    const openDrawer = Array.from(document.body.querySelectorAll('.wk-kb-editor-dialog')).pop();
+    const openSelect = openDrawer?.querySelector('[data-editor-section="storage"] .t-select__wrap');
+    assert.ok(openSelect, 'storage instance select rendered (no files)');
+    assert.equal(openSelect?.querySelector('.t-is-disabled'), null, 'select unlocked without files');
+    await act(async () => { mountedRoot?.unmount(); mountedRoot = undefined; });
+  }
 });
 
 test('A2 (no files): the storage select stays enabled and shows the selected instance endpoint hint', async () => {
   await mountEditDrawer(makeClient({ fileTotal: 0 }), 'storage');
   const drawer = document.body.querySelector('.wk-kb-editor-dialog');
-  const select = drawer?.querySelector<HTMLSelectElement>('[data-editor-section="storage"] select[aria-label="存储实例"]');
+  const select = drawer?.querySelector('[data-editor-section="storage"] .t-select__wrap');
   assert.ok(select);
-  assert.equal(select.disabled, false, 'Vue only locks the select while the KB has files');
+  assert.equal(select.querySelector('.t-is-disabled'), null, 'Vue only locks the select while the KB has files');
   assert.ok(drawer?.querySelector('[data-storage-instance-hint]'), 'selected instance endpoint hint renders');
   assert.equal(drawer?.querySelector('[data-storage-migrate-hint]'), null, 'no migrate hint without files');
 });
@@ -310,7 +318,9 @@ test('A6: the advanced section carries the table-metadata textarea with the live
   /* v-show 段常驻 DOM——收敛到 advanced 段（tdesign 段内的 textarea 走
      maxlength 属性，留守段 WkTextarea 仍带原生 maxlength）。 */
   const advancedSection = drawer.querySelector('[data-editor-section="advanced"]');
-  const textarea = Array.from(advancedSection?.querySelectorAll('textarea') ?? []).find((node) => node.getAttribute('maxlength') === '4000');
+  // S6（台账 #12）：tdesign Textarea 的 maxlength 走 JS 截断、不带原生属性；
+  // ADVANCED 段内 table-metadata 是唯一 textarea。
+  const textarea = advancedSection?.querySelector('textarea') ?? null;
   assert.ok(textarea, 'table-metadata textarea (maxlength 4000) rendered on the ADVANCED section');
   const counter = advancedSection?.querySelector('[data-table-metadata-count]');
   assert.ok(counter, '0/4000 limit counter rendered (TDesign .t-textarea__limit)');

@@ -17,6 +17,7 @@ import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 import { Button, Input } from 'tdesign-react';
 import { usePreferredLocale } from '../locale.ts';
 import type { AgentConfigForm, Translate } from './agent-editor.ts';
+import '../chat/views-chat-u.css';
 
 /** catalog color fields are server-controlled; only plain hex literals reach
  * the style attribute (ExpertsPage dotColor precedent). */

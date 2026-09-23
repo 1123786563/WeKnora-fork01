@@ -1,8 +1,11 @@
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Card, Status } from '@weknora/ui';
+// S6 换装（T15 前置）：Card/Status 无 TDesign 对应（playbook §1 附行），走
+// shared/wk-legacy（.wk-card/.wk-status 族，渲染不变）。
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { LoginPage } from './LoginPage.tsx';
 import { readInviteToken } from './join.ts';
+import './auth-u.css';
 
 const storedLocale = (): Locale => {
   const stored = window.localStorage.getItem('locale');
@@ -17,8 +20,8 @@ export interface JoinPageProps {
 export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
   const token = readInviteToken(window.location.search);
   if (token) return <LoginPage client={client} onAuthenticated={onAuthenticated} initialMode="login" inviteToken={token} />;
-  return <main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Card>
-    <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{formatMessage(storedLocale(), 'auth.join.title')}</h1>
+  return <main className="wk-page wk-page--std"><Card>
+    <h1 className="wk-join-1">{formatMessage(storedLocale(), 'auth.join.title')}</h1>
     <Status tone="error">{formatMessage(storedLocale(), 'auth.join.invitationMissingToken')}</Status>
   </Card></main>;
 }

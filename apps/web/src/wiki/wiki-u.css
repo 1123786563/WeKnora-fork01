@@ -1,0 +1,893 @@
+/* wiki-u.css — S7 Tailwind utilities 平移（WikiPage）
+ * 前缀 wk-wiki-*；值 = utilities 编码的生效值。导入顺序：须在 wiki-reader.css 与
+ * documents.td.css 之前（冲突以 .td.css 为准）。 */
+
+
+.wk-wiki-1 {
+  display: flex;
+  height: 15px;
+  width: 15px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0,0,0,0.4);
+}
+
+.wk-wiki-2 {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wk-wiki-3 {
+  position: absolute;
+  inset: 0;
+}
+
+.wk-wiki-4 {
+  position: relative;
+  max-height: 90vh;
+  max-width: 90vw;
+  user-select: none;
+  object-fit: contain;
+}
+
+.wk-wiki-5 {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  display: flex;
+  translate: -50% 0;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding-inline: 12px;
+  padding-block: 8px;
+  color: #fff;
+}
+
+.wk-wiki-6 {
+  cursor: pointer;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding-inline: 8px;
+  padding-block: 4px;
+  font-size: 18px;
+  line-height: 1;
+  color: #fff;
+}
+
+.wk-wiki-7 {
+  min-width: 3.5rem;
+  text-align: center;
+  font-size: 12px;
+}
+
+.wk-wiki-8 {
+  position: absolute;
+  right: 24px;
+  top: 24px;
+  display: flex;
+  height: 36px;
+  width: 36px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border-style: solid;
+  border-width: 0;
+  font-size: 20px;
+  line-height: 1;
+  color: #fff;
+}
+
+.wk-wiki-9 {
+  margin: 0;
+  box-sizing: border-box;
+  min-height: 22rem;
+}
+
+.wk-wiki-10 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0;
+  padding-bottom: 24px;
+  padding-top: 16px;
+}
+
+.wk-wiki-11 {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7e7;
+  background-color: #fff;
+  padding: 2px;
+}
+
+.wk-wiki-12 {
+  display: flex;
+  height: 26px;
+  width: 26px;
+  flex-shrink: 0;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding: 0;
+  color: rgba(0,0,0,0.6);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.wk-wiki-12:hover {
+  background-color: #f3f3f3;
+  color: #07c05f;
+}
+
+.wk-wiki-13 {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.wk-wiki-14 {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #fff;
+  padding-top: 4px;
+  padding-bottom: 6px;
+}
+
+.wk-wiki-15 {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 0%;
+  align-items: center;
+  gap: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wk-wiki-16 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
+  padding-block: 0.55rem;
+}
+
+.wk-wiki-17 {
+  min-width: 0;
+  flex: 1 1 0%;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7e7;
+  padding-inline: 8px;
+  padding-block: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-wiki-18 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 4px;
+  font-size: 12px;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-wiki-19 {
+  cursor: pointer;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding: 0;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-wiki-19:hover {
+  color: #07c05f;
+}
+
+.wk-wiki-20 {
+  color: #344054;
+}
+
+.wk-wiki-21 {
+  display: flex;
+  height: 34px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 0;
+  padding-right: 10px;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.wk-wiki-21:hover {
+  background-color: #f3f3f8;
+}
+
+.wk-wiki-22 {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 0%;
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-wiki-23 {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-wiki-24 {
+  margin-left: auto;
+  margin-right: 17px;
+  min-width: 16px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 11px;
+  line-height: 18px;
+  color: rgba(0,0,0,0.4);
+}
+
+.wk-wiki-25 {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+.wk-wiki-26 {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-wiki-27 {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  flex: 1 1 0%;
+  align-items: stretch;
+  background-color: #fff;
+}
+
+@media (max-width: 720px) {
+.wk-wiki-27 {
+  flex-direction: column;
+}
+}
+
+.wk-wiki-28 {
+  display: flex;
+  width: 280px;
+  min-width: 240px;
+  flex-shrink: 0;
+  flex-direction: column;
+  border-right-style: solid;
+  border-right-width: 1px;border-color: #e7e7e7;
+  background-color: #fff;
+}
+
+@media (max-width: 720px) {
+.wk-wiki-28 {
+  width: 100%;
+}
+}
+
+.wk-wiki-29 {
+  padding-bottom: 8px;
+  padding-right: 10px;
+}
+
+.wk-wiki-30 {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.wk-wiki-31 {
+  margin-block: 6px;
+  margin-right: 8px;
+  border-top-style: solid;
+  border-top-width: 1px;border-color: #e7e7e7;
+}
+
+.wk-wiki-32 {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-right: 8px;
+  padding-bottom: 12px;
+  scrollbar-width: none;
+}
+
+.wk-wiki-33 {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-wiki-34 {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding-inline: 20px;
+  padding-block: 60px;
+  text-align: center;
+}
+
+.wk-wiki-35 {
+  margin-bottom: 16px;
+  display: flex;
+  width: 64px;
+  height: 64px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: #f3f3f3;
+  color: rgba(0,0,0,0.4);
+}
+
+.wk-wiki-36 {
+  margin: 0;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0,0,0,0.6);
+}
+
+.wk-wiki-37 {
+  font-size: 13px;
+  color: rgba(0,0,0,0.4);
+}
+
+.wk-wiki-38 {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
+  overflow-y: auto;
+  background-color: #fff;
+  padding-inline: 24px;
+  padding-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+.wk-wiki-38 {
+  padding: 16px;
+}
+}
+
+.wk-wiki-39 {
+  display: flex;
+  min-height: 22rem;
+  min-width: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 20px;
+  padding-block: 60px;
+  text-align: center;
+}
+
+.wk-wiki-40 {
+  margin: 0;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: rgba(0,0,0,0.6);
+}
+
+.wk-wiki-41 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: rgba(0,0,0,0.4);
+}
+
+.wk-wiki-42 {
+  width: 100%;
+  min-width: 0;
+}
+
+.wk-wiki-43 {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.wk-wiki-44 {
+  min-width: 0;
+}
+
+.wk-wiki-45 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-wiki-46 {
+  margin: 0;
+  display: flex;
+  height: 20px;
+  width: fit-content;
+  box-sizing: border-box;
+  align-items: center;
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #dcdcdc;
+  background-color: #f3f3f3;
+  padding-inline: 4px;
+  font-size: 12px;
+  line-height: 1;
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-wiki-47 {
+  margin: 0;
+  margin-top: 4px;
+  font-size: 13px;
+  color: rgba(0,0,0,0.4);
+}
+
+.wk-wiki-48 {
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.wk-wiki-49 {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.wk-wiki-50 {
+  margin-right: auto;
+  font-size: 0.85rem;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-wiki-51 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.wk-wiki-52 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.wk-wiki-53 {
+  height: min(85vh,750px);
+  width: min(1000px,90vw) !important;
+  max-height: min(750px,85vh) !important;
+  overflow: auto;
+}
+
+.wk-wiki-54 {
+  width: min(520px,100%) !important;
+}
+
+.wk-wiki-55 {
+  margin-top: 2px;
+  display: block;
+  font-size: 12px;
+  line-height: 1.4;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-wiki-56 {
+  height: 32px;
+  width: 100%;
+  cursor: pointer;
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #dcdcdc;
+  background-color: #fff;
+  padding-inline: 8px;
+  font-size: 13px;
+  /* 旧栈 ink→Vue var(--td-text-color-primary)=rgba(0,0,0,.9) */
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-wiki-57 {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.wk-wiki-58 {
+  margin-top: 16px;
+}
+
+.wk-wiki-59 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-wiki-60 {
+  display: grid;
+  grid-template-columns: minmax(180px,260px) 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 720px) {
+.wk-wiki-60 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+}
+
+.wk-wiki-61 {
+  margin: 0;
+  list-style-type: none;
+  padding: 0;
+}
+
+.wk-wiki-62 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
+  padding-block: 0.9rem;
+}
+
+.wk-wiki-63 {
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  color: #1849a9;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  font-weight: 650 !important;
+}
+
+.wk-wiki-63:hover {
+  text-decoration-line: underline;
+}
+
+.wk-wiki-64 {
+  font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.8rem;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-wiki-65 {
+  display: grid;
+  gap: 12px;
+}
+
+.wk-wiki-66 {
+  display: flex;
+  height: 22px;
+  width: 24px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.wk-wiki-67 {
+  background-color: #fff;
+  color: #07c05f;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.wk-wiki-68 {
+  background-color: transparent;
+  color: rgba(0,0,0,0.6);
+}
+
+.wk-wiki-68:hover {
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-wiki-69 {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  cursor: pointer;
+  align-items: center;
+  gap: 5px;
+  border-radius: 0px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding-inline: 2px;
+  padding-top: 7px;
+  padding-bottom: 8px;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.wk-wiki-70 {
+  font-weight: 600;
+  color: #07c05f;
+}
+
+.wk-wiki-71 {
+  color: rgba(0,0,0,0.6);
+}
+
+.wk-wiki-71:hover {
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-wiki-72 {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.wk-wiki-73 {
+  font-weight: 600;
+}
+
+.wk-wiki-74 {
+  font-weight: 400;
+}
+
+.wk-wiki-75 {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.wk-wiki-76 {
+  font-weight: 500;
+  color: #07c05f;
+}
+
+.wk-wiki-77 {
+  font-weight: 400;
+  color: rgba(0,0,0,0.4);
+}
+
+.wk-wiki-78 {
+  display: flex;
+  height: 15px;
+  width: 15px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0,0,0,0.4);
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.wk-wiki-79 {
+  rotate: 90deg;
+}
+
+.wk-wiki-80 {
+  display: flex;
+  height: 34px;
+  width: 100%;
+  flex-shrink: 0;
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding-right: 10px;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.wk-wiki-80:hover {
+  background-color: #f3f3f3;
+}
+
+.wk-wiki-81 {
+  background-color: #f3f3f3;
+}
+
+.wk-wiki-82 {
+  margin-right: 8px;
+  display: flex;
+  min-height: 30px;
+  flex-shrink: 0;
+  cursor: pointer;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 0;
+  padding-inline: 10px;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.wk-wiki-83 {
+  background-color: #f3f3f3;
+  color: #07c05f;
+}
+
+.wk-wiki-84 {
+  background-color: transparent;
+  color: rgba(0,0,0,0.9);
+}
+
+.wk-wiki-84:hover {
+  background-color: #f3f3f3;
+}
+
+.wk-wiki-85 {
+  display: flex;
+  min-height: 30px;
+  width: 100%;
+  flex-shrink: 0;
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding-inline: 10px;
+  padding-block: 6px;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.wk-wiki-85:hover {
+  background-color: #f3f3f3;
+}
+
+.wk-wiki-86 {
+  display: block;
+}
+
+.wk-wiki-87 {
+  background-color: #ecfdf3;
+  color: #137333;
+}
+
+.wk-wiki-88 {
+  background-color: #fef3f2;
+  color: #b42318;
+}
+
+/* 手工段：遮罩/滚动条/tab 下划线(:after)/文件夹 hover 显隐（Tailwind after:/group-hover 平移） */
+.wk-wiki-mask-85 { background-color: rgba(0, 0, 0, 0.85); }
+.wk-wiki-mask-60 { background-color: rgba(0, 0, 0, 0.6); }
+.wk-wiki-noscrollbar::-webkit-scrollbar { display: none; }
+.wiki-tab::after { content: ""; position: absolute; inset-inline: 2px; bottom: 1px; height: 2px; border-radius: 2px 2px 0 0; background: transparent; }
+.wiki-tab.is-active::after { background: #07c05f; }
+.wk-wiki-folder-row:hover .wk-wiki-folder-actions { display: flex; }
+
+/* T15 语义化：原 tabular-nums（图片缩放百分比 / 目录页数）。 */
+.wk-wiki-7, .wk-wiki-24 { font-variant-numeric: tabular-nums; }

@@ -1,0 +1,685 @@
+/* platform-u.css — S7 Tailwind utilities 平移（GlobalCommandPalette / InvitationInbox /
+ * PlatformShell 壳层 outlet / retrieval-settings-panel）
+ * 前缀 wk-cmdk-* / wk-inv-* / wk-shell-* / wk-rsp-*；值 = utilities 编码的生效值。
+ * 导入顺序：须在 platform-shell.td.css 之前（冲突以 .td.css 为准——壳层先例 429bb6474/c6d59d83e，只清 utility 不动结构）。 */
+
+
+.wk-cmdk-1 {
+  background-color: transparent;
+  font-weight: 600;
+  color: #1f2733;
+}
+
+.wk-cmdk-2 {
+  border-top-style: solid;
+  border-top-width: 1px;border-color: #f2f5f9;
+}
+
+.wk-cmdk-2:first-child {
+  border-top-width: 0px;
+}
+
+.wk-cmdk-3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 14px;
+  padding-block: 6px;
+  font-size: 12px;
+  color: #8a94a3;
+}
+
+.wk-cmdk-4 {
+  font-size: 11px;
+}
+
+.wk-cmdk-5 {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background-color: rgba(15,23,32,0.45);
+  padding-top: 10vh;
+}
+
+.wk-cmdk-6 {
+  display: flex;
+  max-height: 70vh;
+  width: 640px;
+  max-width: calc(100vw-32px);
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 10px;
+  background-color: #fff;
+  box-shadow: 0 20px 60px rgba(15,23,32,0.35);
+}
+
+.wk-cmdk-7 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;border-color: #eef1f5;
+  padding-inline: 14px;
+  padding-block: 12px;
+}
+
+.wk-cmdk-8 {
+  display: inline-flex;
+  height: 26px;
+  max-width: 220px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+  background-color: #f2f5f9;
+  padding-inline: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1f2733;
+}
+
+.wk-cmdk-9 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-cmdk-10 {
+  display: flex;
+  height: 20px;
+  width: 20px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-style: none;
+  background-color: transparent;
+  font-size: 12px;
+  line-height: 1;
+  color: #8a94a3;
+}
+
+.wk-cmdk-10:hover {
+  color: #1f2733;
+}
+
+.wk-cmdk-11 {
+  min-width: 0;
+  flex: 1 1 0%;
+  border-style: none;
+  background-color: transparent;
+  font-size: 15px;
+  color: #1f2733;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.wk-cmdk-12 {
+  display: inline-block;
+  height: 14px;
+  width: 14px;
+  flex-shrink: 0;
+  animation: spin 1s linear infinite;
+  border-radius: 9999px;
+  /* codemod 误译修正：border-2 的 2 是 border-width 尺度（2px）不是 spacing 8px；
+     全边框场景（四色环 spinner）恢复全边 border-style。 */
+  border-style: solid;
+  border-width: 2px;
+  border-color: #d7dde5;
+  border-top-color: #2f6fed;
+}
+
+.wk-cmdk-13 {
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: none;
+  background-color: transparent;
+  padding-inline: 6px;
+  padding-block: 4px;
+  font-size: 18px;
+  line-height: 1;
+  color: #8a94a3;
+}
+
+.wk-cmdk-13:hover {
+  background-color: #f2f5f9;
+  color: #1f2733;
+}
+
+.wk-cmdk-14 {
+  overflow-y: auto;
+  padding-block: 6px;
+}
+
+.wk-cmdk-15 {
+  cursor: pointer;
+  border-style: none;
+  background-color: transparent;
+  padding: 0;
+  font-size: 12px;
+  color: #2f6fed;
+}
+
+.wk-cmdk-16 {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-cmdk-17 {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-cmdk-18 {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.wk-cmdk-19 {
+  flex-shrink: 0;
+  border-radius: 4px;
+  background-color: #f2f5f9;
+  padding-inline: 6px;
+  padding-block: 1px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #8a94a3;
+}
+
+.wk-cmdk-20 {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #b3bcc7;
+}
+
+.wk-cmdk-21 {
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  overflow: hidden;
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  color: #5f6b7a;
+}
+
+.wk-cmdk-22 {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.wk-cmdk-23 {
+  margin-right: 6px;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: #f2f5f9;
+  padding-inline: 4px;
+  padding-block: 1px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #8a94a3;
+}
+
+.wk-cmdk-24 {
+  padding-inline: 14px;
+  padding-block: 16px;
+}
+
+.wk-cmdk-25 {
+  font-size: 13px;
+  color: #8a94a3;
+}
+
+.wk-cmdk-26 {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-cmdk-27 {
+  display: inline-flex;
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #2f6fed;
+  background-color: transparent;
+  padding-inline: 10px;
+  padding-block: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #2f6fed;
+}
+
+.wk-cmdk-27:hover {
+  background-color: #eaf1fe;
+}
+
+.wk-cmdk-28 {
+  display: inline-flex;
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #d7dde5;
+  background-color: transparent;
+  padding-inline: 10px;
+  padding-block: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #5f6b7a;
+}
+
+.wk-cmdk-28:hover {
+  background-color: #f2f5f9;
+}
+
+.wk-cmdk-29 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  border-top-style: solid;
+  border-top-width: 1px;border-color: #e7e7e7;
+  padding-inline: 14px;
+  padding-block: 8px;
+  font-size: 11px;
+  color: rgba(0,0,0,0.4);
+}
+
+.wk-cmdk-30 {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wk-cmdk-30 kbd {
+  display: inline-block;
+  min-width: 16px;
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7e7;
+  background-color: #f3f3f3;
+  padding-inline: 5px;
+  padding-block: 1px;
+  text-align: center;
+  font-size: 10px;
+  line-height: 14px;
+  color: rgba(0,0,0,0.6);
+}
+
+.wk-cmdk-31 {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background-color: rgba(15,23,32,0.35);
+}
+
+.wk-cmdk-32 {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: flex;
+  height: 100%;
+  width: 420px;
+  max-width: calc(100vw-32px);
+  flex-direction: column;
+  background-color: #fff;
+  box-shadow: -10px 0 60px rgba(15,23,32,0.3);
+}
+
+.wk-cmdk-33 {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;border-color: #eef1f5;
+  padding-inline: 16px;
+  padding-block: 12px;
+}
+
+.wk-cmdk-34 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2733;
+}
+
+.wk-cmdk-35 {
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.wk-cmdk-36 {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: rgba(0,0,0,0.4);
+  transition-property: opacity;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+  transition-duration: 100ms;
+}
+
+.wk-cmdk-36 kbd {
+  display: inline-block;
+  min-width: 14px;
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7e7e7;
+  background-color: #f3f3f3;
+  padding-inline: 4px;
+  line-height: 14px;
+  text-align: center;
+  color: rgba(0,0,0,0.6);
+}
+
+.wk-cmdk-37 {
+  opacity: 1;
+}
+
+.wk-cmdk-38 {
+  opacity: 0.55;
+}
+
+.wk-cmdk-39 {
+  display: flex;
+  height: 28px;
+  width: 28px;
+  flex-shrink: 0;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border-style: none;
+  background-color: transparent;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.wk-cmdk-39:hover {
+  background-color: #f2f5f9;
+}
+
+.wk-cmdk-40 {
+  background-color: #f2f5f9;
+  color: #1f2733;
+}
+
+.wk-cmdk-41 {
+  color: #8a94a3;
+}
+
+.wk-cmdk-41:hover {
+  color: #1f2733;
+}
+
+.wk-cmdk-42 {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.wk-cmdk-43 {
+  flex-shrink: 0;
+  border-radius: 4px;
+  padding-inline: 6px;
+  padding-block: 1px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.wk-cmdk-44 {
+  background-color: #eaf1fe;
+  color: #2f6fed;
+}
+
+.wk-cmdk-45 {
+  background-color: #f2f5f9;
+  color: #8a94a3;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+
+
+.wk-inv-1 {
+  position: fixed;
+  right: 16px;
+  top: 12px;
+  z-index: 100;
+  display: inline-flex;
+}
+
+.wk-inv-2 {
+  position: relative;
+  display: inline-flex;
+  height: 32px;
+  width: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border-style: solid;
+  border-width: 1px;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
+  background-color: #ffffff;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+
+.wk-inv-2:hover {
+  color: #2e6de6;
+}
+
+.wk-inv-2:focus-visible {
+  outline-style: solid;
+  outline-width: 2px;
+}
+
+.wk-inv-3 {
+  position: absolute;
+  /* T15：原 -right-2 -top-2 旧栈 utility 语义化（角标出血 8px）。 */
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  min-width: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: #b42318;
+  padding-inline: 4px;
+  font-size: 11px;
+  line-height: 5;
+  color: #fff;
+}
+
+.wk-inv-4 {
+  width: min(560px,100%) !important;
+}
+
+.wk-inv-5 {
+  display: grid;
+  gap: 8px;
+}
+
+.wk-inv-6 {
+  margin: 0;
+  display: grid;
+  max-height: 60vh;
+  list-style-type: none;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.wk-inv-7 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-color: #e7e7e7;
+  background-color: #ffffff;
+  padding: 12px;
+}
+
+.wk-inv-8 {
+  min-width: 0;
+}
+
+.wk-inv-9 {
+  display: block;
+}
+
+.wk-inv-10 {
+  font-size: 12px;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-inv-11 {
+  margin-top: 4px;
+  display: block;
+  font-size: 12px;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-inv-12 {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+
+.wk-shell-1 {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  height: 100vh;
+  min-width: 600px;
+  background-color: #fff;
+}
+
+.wk-shell-2 {
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-shell-3 {
+  margin-inline: 14px;
+  margin-block: 8px;
+  font-size: 12px;
+  color: #b42318;
+}
+
+.wk-shell-4 {
+  cursor: pointer;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding: 0;
+  font-size: 12px;
+  color: #07c05f;
+  text-decoration-line: underline;
+}
+
+.wk-shell-5 {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wk-shell-5 .wk-page {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.wk-shell-6 {
+  position: fixed;
+  bottom: 76px;
+  left: 50%;
+  z-index: 10050;
+  translate: -50% 0;
+  border-radius: 8px;
+  background-color: rgba(0,0,0,0.78);
+  padding-inline: 14px;
+  padding-block: 8px;
+  font-size: 13px;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+
+.wk-rsp-1 {
+  margin: 0;
+  font-size: 12px;
+  color: #8a94a3;
+}
+
+/* 壳层 outlet（.plat-shell__outlet）——[&>*]:min-h-0 手工段（wk-shell-5 承载其余） */
+.plat-shell__outlet > * { min-height: 0; }
+.plat-shell__outlet .wk-page { height: 100%; overflow-y: auto; max-width: none !important; }
+
+/* 手工段：focus-visible outline 组（v4 outline=style solid / outline-2=2px / outline-primary=品牌色） */
+.wk-inv-bell:focus-visible { outline-style: solid; outline-width: 2px; outline-color: var(--color-primary, #2e6de6); }
+
+/* sr-only（Tailwind utility 平移为语义类，a11y 惯用名保留为 DOM hook——
+   views-chat-u.css:2476 同款版本，补齐 platform 域缺口）。 */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+
+/* ---- 命令面板条目行（T15 语义化：原 flex w-full cursor-pointer items-center
+   gap-2 border-none bg-transparent px-3.5 py-2 text-left text-sm
+   text-[#1f2733] hover:bg-[#f2f5f9] 旧栈 utility 串） ---- */
+.wk-cmdk-item-row {
+  display: flex;
+  width: 100%;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.5rem;
+  border-style: none;
+  background-color: transparent;
+  padding: 0.5rem 0.875rem;
+  text-align: left;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #1f2733;
+}
+.wk-cmdk-item-row:hover,
+.wk-cmdk-item-row--selected { background-color: #f2f5f9; }

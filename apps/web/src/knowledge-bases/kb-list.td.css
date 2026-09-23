@@ -2425,3 +2425,391 @@
   border-color: var(--td-brand-color-disabled) !important;
   color: var(--td-text-color-anti) !important;
 }
+
+/* ==== kb activity 面板/详情抽屉 Tailwind 收编（S6，原 utilities 逐值平移） ==== */
+.wk-kb-activity { display: grid; gap: 12px; }
+.wk-kb-activity-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wk-kb-activity-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--color-ink, #172033);
+}
+.wk-kb-activity-desc {
+  margin: 0;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-activity-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-control, 6px);
+  background: var(--color-surface-muted, #f3f3f3);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-activity-filter { position: relative; display: inline-flex; }
+.wk-kb-activity-filter-btn {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control, 6px);
+  background: transparent;
+  font-size: 12px;
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-activity-filter-btn:not(.is-selected):hover { background: var(--color-hover-wash, #f2f5fa); }
+.wk-kb-activity-filter-btn.is-selected {
+  border-color: var(--color-accent, #07c05f);
+  color: var(--color-accent, #07c05f);
+}
+.wk-kb-activity-filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  min-width: 180px;
+  border: 1px solid var(--color-line, #dce3ed);
+  border-radius: var(--radius-control, 6px);
+  background: var(--color-surface, #ffffff);
+  padding: 4px;
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.14);
+}
+.wk-kb-activity-filter-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--color-ink, #172033);
+}
+.wk-kb-activity-filter-item:hover { background: var(--color-hover-wash, #f2f5fa); }
+.wk-kb-activity-filter-item.is-selected { color: var(--color-accent, #07c05f); }
+
+.wk-kb-activity-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--color-line-soft, #edf0f5);
+  border-radius: var(--radius-card, 8px);
+}
+.wk-kb-activity-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.wk-kb-activity-thead {
+  border-bottom: 1px solid var(--color-line-soft, #edf0f5);
+  background: var(--color-surface-muted, #f3f3f3);
+  text-align: left;
+  font-size: 12px;
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-activity-table th,
+.wk-kb-activity-table td { padding: 8px 12px; }
+.wk-kb-activity-th-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.wk-kb-activity-row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-line-soft, #edf0f5);
+}
+.wk-kb-activity-row:last-child { border-bottom: 0; }
+.wk-kb-activity-row:hover { background: var(--color-surface-muted, #f3f3f3); }
+.wk-kb-activity-muted { padding: 8px 12px; color: var(--color-muted, #66758b); }
+.wk-kb-activity-pill {
+  border-radius: var(--radius-pill, 999px);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.wk-kb-activity-pill--action { border: 1px solid var(--color-line-soft, #edf0f5); }
+.wk-kb-activity-pill--outcome { background: var(--color-surface-muted, #f3f3f3); }
+.wk-kb-activity-pill.is-error { color: var(--color-danger, #b42318); }
+.wk-kb-activity-pill.is-success { color: var(--color-success-text, #137333); }
+.wk-kb-activity-pill.is-warning { color: var(--color-warning-text, #9a6700); }
+.wk-kb-activity-target {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-kb-activity-change { display: block; color: var(--color-muted, #66758b); }
+.wk-kb-activity-time { display: block; }
+.wk-kb-activity-time--clock { font-size: 12px; }
+.wk-kb-activity-end { margin: 0; font-size: 12px; color: var(--color-muted, #66758b); }
+
+/* 详情抽屉（TDrawer portal 到 body，独立作用域类） */
+.wk-kb-activity-detail { display: grid; gap: 16px; font-size: 14px; }
+.wk-kb-activity-detail h4 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+.wk-kb-activity-detail dl { margin: 0; display: grid; gap: 8px; }
+.wk-kb-activity-detail-row {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 12px;
+  border-bottom: 1px solid var(--color-line-soft, #edf0f5);
+  padding-block: 8px;
+}
+.wk-kb-activity-detail-key { color: var(--color-muted, #66758b); }
+.wk-kb-activity-detail dd { margin: 0; overflow-wrap: break-word; }
+.wk-kb-activity-detail code { word-break: break-all; }
+.wk-kb-activity-detail-pre {
+  margin: 0;
+  max-height: 256px;
+  overflow: auto;
+  border-radius: var(--radius-control, 6px);
+  background: var(--color-surface-muted, #f3f3f3);
+  padding: 12px;
+  font-size: 12px;
+}
+.wk-kb-activity-detail-pre--bordered { border: 1px solid var(--color-line-soft, #edf0f5); }
+
+/* ==== kb share 对话框/inline 段 Tailwind 收编（S6，原 utilities 逐值平移） ==== */
+/* OrganizationPicker（自研 combobox）。 */
+.wk-kb-share-picker { position: relative; }
+.wk-kb-share-picker-trigger {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  min-height: 2.45rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  border: 1px solid var(--color-line-control, #cbd5e1);
+  border-radius: var(--radius-control, 6px);
+  background: var(--color-surface, #ffffff);
+  padding: 0.35rem 0.55rem;
+  text-align: left;
+  color: var(--color-ink, #172033);
+  font: inherit;
+}
+.wk-kb-share-picker-trigger > span:nth-child(2) { flex: 1; }
+.wk-kb-share-picker-placeholder { color: var(--color-muted, #66758b); }
+.wk-kb-share-picker-list {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 30;
+  display: grid;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--color-line, #dce3ed);
+  border-radius: 7px;
+  background: var(--color-surface, #ffffff);
+  padding: 0.25rem;
+  box-shadow: 0 12px 30px rgba(23, 32, 51, 0.18);
+}
+.wk-kb-share-picker-option {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.65rem;
+  border: 0;
+  border-radius: 7px;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  background: transparent;
+}
+.wk-kb-share-picker-option:hover { background: #f1f4f9; }
+.wk-kb-share-picker-option.is-selected,
+.wk-kb-share-picker-option.is-selected:hover { background: #f1f4f9; }
+/* is-active 后置：active+selected 并存时保持原三元 active 分支（accent-wash）胜出。 */
+.wk-kb-share-picker-option.is-active,
+.wk-kb-share-picker-option.is-active:hover { background: var(--color-accent-wash, rgba(7, 192, 95, 0.08)); }
+.wk-kb-share-option-main { display: grid; min-width: 0; flex: 1; gap: 0.3rem; }
+.wk-kb-share-option-name { display: flex; align-items: center; gap: 8px; }
+.wk-kb-share-option-name > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-kb-share-option-role {
+  border-radius: var(--radius-pill, 999px);
+  background: #eef1f6;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-share-option-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-share-option-stats > span { display: inline-flex; align-items: center; gap: 0.2rem; }
+.wk-kb-share-option-stats > svg { flex: none; }
+
+/* PermissionRadio（分段单选）。 */
+.wk-kb-share-perm {
+  display: inline-flex;
+  width: fit-content;
+  overflow: hidden;
+  border: 1px solid var(--color-line-neutral, #e7e7e7);
+  border-radius: 3px;
+}
+.wk-kb-share-perm-btn {
+  min-height: 32px;
+  cursor: pointer;
+  border: 0;
+  border-right: 1px solid var(--color-line-neutral, #e7e7e7);
+  padding: 0 16px;
+  background: var(--color-surface, #ffffff);
+  color: rgba(0, 0, 0, 0.9);
+  font: inherit;
+}
+.wk-kb-share-perm-btn:last-child { border-right: 0; }
+.wk-kb-share-perm-btn:hover:not(.is-selected),
+.wk-kb-share-perm-btn:focus-visible:not(.is-selected) { color: var(--color-accent, #07c05f); }
+.wk-kb-share-perm-btn:focus-visible { outline: none; }
+.wk-kb-share-perm-btn.is-selected { background: var(--color-accent, #07c05f); color: #ffffff; }
+
+/* 表单段（label/tip/actions/form）。 */
+.wk-kb-share-label { display: grid; gap: 0.4rem; font-weight: 600; }
+.wk-kb-share-hidden-select {
+  position: absolute;
+  box-sizing: border-box;
+  width: 100%;
+  height: 1px;
+  min-height: 2.45rem;
+  border: 1px solid var(--color-line-control, #cbd5e1);
+  border-radius: var(--radius-control, 6px);
+  background: var(--color-surface, #ffffff);
+  padding: 0.55rem 0.65rem;
+  color: var(--color-ink, #172033);
+  font: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+.wk-kb-share-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  border-radius: var(--radius-control, 6px);
+  background: #f4f6fa;
+  padding: 0.7rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-share-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--color-line-soft, #edf0f5);
+  padding-top: 16px;
+}
+.wk-kb-share-spacer { flex: 1; }
+.wk-kb-share-form { display: grid; gap: 0.9rem; padding-top: 0.5rem; }
+
+/* 已共享列表。 */
+.wk-kb-share-list-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.wk-kb-share-list {
+  margin: 0;
+  display: grid;
+  list-style: none;
+  max-height: 280px;
+  gap: 0.6rem;
+  overflow-y: auto;
+  padding: 0;
+}
+.wk-kb-share-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--color-line-soft, #edf0f5);
+  border-radius: var(--radius-card, 8px);
+  background: var(--color-canvas, #f7f9fc);
+  padding: 12px;
+  transition: background 0.2s, border-color 0.2s;
+}
+.wk-kb-share-item:hover { border-color: #d8e0ec; background: #f1f4f9; }
+.wk-kb-share-item-main { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.wk-kb-share-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-kb-share-item-pill {
+  border-radius: var(--radius-pill, 999px);
+  padding: 2px 8px;
+  font-size: 12px;
+  background: var(--color-surface-muted, #f3f3f3);
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-share-item-pill.is-editor { background: var(--color-warning-wash, #fffaeb); color: var(--color-warning-text, #9a6700); }
+.wk-kb-share-item-actions { display: flex; flex: none; align-items: center; gap: 8px; }
+@media (max-width: 640px) {
+  .wk-kb-share-item { flex-direction: column; align-items: flex-start; }
+  .wk-kb-share-item-actions { align-self: flex-end; }
+}
+
+/* inline 分支（kb 编辑器 share 段）。 */
+.wk-kb-share-inline { display: grid; gap: 12px; }
+.wk-kb-share-inline > h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--color-ink, #172033);
+}
+.wk-kb-share-inline > p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-muted, #66758b);
+}
+
+/* ==== kb 编辑器深设置留守段 Tailwind 收编（S6：models/vectorStore/parser/
+ * storage/chunking/multimodal/asr/advanced/datasource，wk-kb-des-*） ==== */
+.wk-kb-des-section { display: grid; gap: 16px; }
+.wk-kb-des-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--color-ink, #172033);
+}
+.wk-kb-des-desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-muted, #66758b);
+}
+.wk-kb-des-desc--spaced { margin-top: 4px; }
+.wk-kb-des-field { display: grid; gap: 4px; }
+.wk-kb-des-label { font-size: 15px; font-weight: 500; color: var(--color-ink, #172033); }
+.wk-kb-des-required { margin-left: 4px; color: #e34d59; }
+.wk-kb-des-tip { margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-muted, #66758b); }
+.wk-kb-des-hint { margin: 0; font-size: 12px; line-height: 18px; color: var(--color-muted, #66758b); }
+.wk-kb-des-hint--plain { color: inherit; }
+.wk-kb-des-manage-link { justify-self: start; font-size: 13px; }
+.wk-kb-des-check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.wk-kb-des-scroll { max-height: 34rem; overflow: auto; }
+/* 表格元数据计数器（原 kb-editor-desc-count + justify-self-end text-xs
+ * leading-5 text-[var(--color-text-placeholder)]）。 */
+.kb-editor-desc-count {
+  justify-self: end;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--color-text-placeholder, rgba(0, 0, 0, 0.4));
+}

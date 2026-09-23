@@ -278,16 +278,19 @@ test('parser: load failure degrades silently with the self-loading panel renderi
   assert.ok(container.textContent?.includes(UPSTREAM_FAILURE), 'the self-loading parser panel surfaces the backend error inline');
 });
 
-test('system: banner passes the backend message through and retries the same request (Vue SystemInfo.vue mode)', async () => {
+test('system: the panel error alert passes the backend message through and retries (Vue SystemInfo.vue error-inline mode)', async () => {
   const { client, calls } = failingClient('system');
   const container = await mountPage(client, '?section=system');
   await settle();
+  // T12c：system 面板自持 Vue loading/error 态（SystemInfo.vue :8-21
+  // loading-inline / error-inline t-alert theme=error + operation 重试），
+  // SELF_HEADER 直挂 .section，壳层横幅不再顶替（userprofile 同款先例）。
   assert.ok(headingTexts(container).includes('系统信息'), 'the system section h2 keeps rendering on load failure');
-  const banner = findBanner(container);
-  assert.ok(banner?.includes(UPSTREAM_FAILURE), 'the shell banner shows the backend error text');
-  assert.equal(container.querySelector('[data-testid="system-info-panel"]'), null, 'the banner replaces the panel content');
+  assert.ok(container.querySelector('[data-testid="system-info-panel"] .error-inline'), 'the panel renders its own error-inline block');
+  assert.ok(container.textContent?.includes(UPSTREAM_FAILURE), 'the panel alert shows the backend error text');
+  assert.equal(findBanner(container), null, 'no shell error banner for the self-erroring system panel');
   const retry = findRetryButton(container, '重试');
-  assert.ok(retry, 'the banner offers a retry button');
+  assert.ok(retry, 'the panel alert offers a retry button');
   const before = calls['system.info'] ?? 0;
   await act(async () => { retry!.click(); });
   await settle();

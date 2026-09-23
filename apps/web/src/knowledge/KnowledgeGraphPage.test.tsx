@@ -170,7 +170,8 @@ test('graph arrows follow the Vue toggle and reciprocal-edge rendering contract'
   assert.ok(Math.abs(Number(line.getAttribute('y1')) - expectedY1) < 1e-6);
   assert.ok(Math.abs(Number(line.getAttribute('x2')) - expectedX2) < 1e-6, 'target end shortened by node radius + 4');
   assert.ok(Math.abs(Number(line.getAttribute('y2')) - expectedY2) < 1e-6);
-  assert.equal(line.getAttribute('class')?.includes('stroke-opacity:0.4'), true);
+  // S7：[stroke-opacity:0.4] 平移为 knowledge-u.css .wk-kg-4
+  assert.equal(line.getAttribute('class')?.includes('wk-kg-4'), true);
 
   const toggle = container.querySelector<HTMLButtonElement>('button[aria-pressed]');
   assert.ok(toggle);
@@ -193,9 +194,9 @@ test('graph help lists every canvas gesture documented by Vue', async () => {
   const help = container.querySelector('details');
   assert.ok(help);
 
-  const heading = help.querySelector('dl > div:not(.grid)');
+  const heading = help.querySelector('dl > div:not(.wk-kg-28)');
   assert.equal(heading?.textContent?.trim(), '画布操作');
-  const rows = [...help.querySelectorAll('dl div.grid')].map((row) => row.textContent?.trim());
+  const rows = [...help.querySelectorAll('dl div.wk-kg-28')].map((row) => row.textContent?.trim());
   assert.deepEqual(rows, [
     '单击打开节点详情',
     '双击以该节点为中心聚焦',
@@ -213,7 +214,8 @@ test('graph keeps Vue canvas overlays and familiar-node ring semantics', async (
   assert.ok(container.querySelector('[data-testid="knowledge-graph-legend"]'));
   const familiarRing = container.querySelector('svg .wk-graph-familiar-ring');
   assert.ok(familiarRing);
-  assert.match(familiarRing?.getAttribute('class') ?? '', /stroke:#0052d9/);
+  // S7：[stroke:#0052d9] 平移为 knowledge-u.css .wk-kg-7
+  assert.match(familiarRing?.getAttribute('class') ?? '', /wk-kg-7/);
   assert.ok(Number(familiarRing?.getAttribute('r')) > 10);
 });
 

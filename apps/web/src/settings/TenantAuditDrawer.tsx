@@ -133,20 +133,23 @@ export function TenantAuditDrawer({ open, title, children, onClose, width = 560,
   if (!open) return null;
   // Vue header note (SettingDrawer.vue:13-19): no redundant X button — the
   // close affordances are Esc + the underlying overlay click.
+  // S6 Tailwind 收编：chrome utilities → settings.td.css §7e 的
+  // .wk-audit-drawer-*（portal 挂 body，unscoped）。inline animation 沿用
+  // sheet-in-right 名（现状即未定义 keyframes 的 no-op，与 packages/ui 删除无关）。
   const content = <>
     <div
-      className="fixed inset-0 z-[var(--wk-overlay-settings-z)] bg-[rgb(23_32_51_/_0.45)]"
+      className="wk-audit-drawer-overlay"
       role="presentation"
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
     />
     <div
-      className="group fixed bottom-0 top-0 z-[calc(var(--wk-overlay-settings-z)+2)] w-3 cursor-col-resize"
+      className="wk-audit-drawer-resize"
       style={{ right: `calc(${drawerWidth}px - 6px)` }}
       role="separator"
       aria-orientation="vertical"
       onMouseDown={onResizeStart}
     >
-      <span aria-hidden className={'mx-auto block h-12 w-0.5 rounded-[1px] bg-[var(--wk-border,#dce3ed)] opacity-55 transition-opacity group-hover:opacity-100 group-hover:bg-accent ' + (resizing ? 'opacity-100! bg-accent!' : '')} />
+      <span aria-hidden className={'wk-audit-drawer-resize-handle' + (resizing ? ' is-resizing' : '')} />
     </div>
     <aside
       ref={panelRef}
@@ -154,13 +157,13 @@ export function TenantAuditDrawer({ open, title, children, onClose, width = 560,
       aria-modal="true"
       aria-labelledby={titleId}
       tabIndex={-1}
-      className="fixed bottom-0 right-0 top-0 z-[calc(var(--wk-overlay-settings-z)+1)] flex max-w-full flex-col overflow-hidden border-l border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] shadow-[0_20px_60px_rgba(23,32,51,0.2)] outline-none"
+      className="wk-audit-drawer-panel"
       style={{ width: `${drawerWidth}px`, animation: 'sheet-in-right .2s ease-out' }}
     >
-      <header className="flex shrink-0 items-center gap-2.5 border-b border-[var(--wk-border,#dce3ed)] px-[18px] py-[14px]">
-        <h2 id={titleId} className="m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[1.4] text-[var(--wk-text,#172033)]">{title}</h2>
+      <header className="wk-audit-drawer-head">
+        <h2 id={titleId} className="wk-audit-drawer-title">{title}</h2>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-[18px] py-4">{children}</div>
+      <div className="wk-audit-drawer-body">{children}</div>
     </aside>
   </>;
   return !mounted || typeof document === 'undefined' ? content : createPortal(content, document.body);

@@ -5,8 +5,9 @@ import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import test from 'node:test';
 
-// @weknora/ui pulls in theme.css; node:test needs the same short-circuit as
-// the settings panel tests (usage-panel.test.tsx pattern).
+// BillingPage.tsx now imports tdesign-react (whose barrel pulls component
+// css); node:test needs the same short-circuit as the settings panel tests
+// (usage-panel.test.tsx pattern).
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => void }) => void };
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 

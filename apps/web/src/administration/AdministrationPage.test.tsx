@@ -17,10 +17,19 @@ Object.assign(globalThis, {
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
   HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
   MouseEvent: dom.window.MouseEvent,
   MutationObserver: dom.window.MutationObserver,
   getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -127,9 +136,10 @@ test('invite form defaults to the Vue contributor role', async () => {
   const container = await mount(client);
   const form = container.querySelector('form');
   assert.ok(form, 'invite form should render for managers');
-  const roleSelect = form?.querySelector('select');
+  // 台账 #8：tdesign Select 无原生 select；trigger input 展示选中项 label。
+  const roleSelect = form?.querySelector('.t-select__wrap');
   assert.ok(roleSelect, 'invite form exposes a role select');
-  assert.equal(roleSelect?.value, 'contributor');
+  assert.equal((roleSelect.querySelector('input') as HTMLInputElement | null)?.value, 'Contributor', 'invite role defaults to the Vue contributor option');
 });
 
 async function submitInviteForm(container: HTMLElement) {
@@ -144,7 +154,7 @@ test('invite flow requires the Vue two-step confirmation before sending', async 
   const client = administrationClient(() => Promise.resolve({ items: [alice], total: 1 }), (_tenantId, input) => { createCalls.push(input); return Promise.resolve(undefined); });
   const container = await mount(client);
   const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
-  const emailInput = container.querySelector('form input[type="email"]') as HTMLInputElement | null;
+  const emailInput = container.querySelector('form .wk-admin-invite-email input') as HTMLInputElement | null;
   assert.ok(emailInput, 'invite form exposes the email input');
   await act(async () => {
     setValue?.call(emailInput, 'new@example.com');
@@ -164,7 +174,7 @@ test('invite flow requires the Vue two-step confirmation before sending', async 
   assert.ok(backButton, 'confirm step exposes the Vue Back button');
   await act(async () => { backButton?.click(); });
   await act(async () => { await sleep(0); });
-  assert.ok(container.querySelector('form input[type="email"]'), 'Back returns to the form step');
+  assert.ok(container.querySelector('form .wk-admin-invite-email input'), 'Back returns to the form step');
   assert.equal(createCalls.length, 0, 'Back must not send the invitation');
   // Second advance then confirm sends with the form state (Vue submitAdd confirm branch).
   await submitInviteForm(container);
@@ -173,7 +183,7 @@ test('invite flow requires the Vue two-step confirmation before sending', async 
   await act(async () => { sendButton?.click(); });
   await act(async () => { await sleep(0); });
   assert.deepEqual(createCalls, [{ email: 'new@example.com', role: 'contributor' }]);
-  assert.ok(container.querySelector('form input[type="email"]'), 'after sending the flow resets to the form step');
+  assert.ok(container.querySelector('form .wk-admin-invite-email input'), 'after sending the flow resets to the form step');
 });
 
 test('member list exposes the Vue pager contract with page size options and clamped jumps', async () => {
@@ -188,9 +198,16 @@ test('member list exposes the Vue pager contract with page size options and clam
   await act(async () => { page2?.click(); });
   await act(async () => { await sleep(0); });
   assert.deepEqual(calls[calls.length - 1], { page: 2, pageSize: 20, q: undefined }, 'page navigation refetches server-side');
-  const sizeSelect = Array.from(container.querySelectorAll('select')).find((node) => Array.from(node.options).some((option) => option.value === '50'));
+  // 台账 #8：页大小选择器是 tdesign Select（弹层选项），jumper 是 TInput。
+  const sizeSelect = container.querySelector('.wk-admin-page-size') as HTMLElement | null;
   assert.ok(sizeSelect, 'page size selector offers the Vue 10/20/50/100 options');
-  const jumpInput = Array.from(container.querySelectorAll('input')).find((node) => node.getAttribute('inputmode') === 'numeric');
+  const sizeTrigger = sizeSelect.querySelector('.t-input') as HTMLElement | null;
+  assert.ok(sizeTrigger, 'page size selector renders its tdesign trigger');
+  await act(async () => { sizeTrigger?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+  await act(async () => { await sleep(0); });
+  const size50 = Array.from(document.body.querySelectorAll('.t-select-option')).find((node) => (node.textContent ?? '').trim() === '50 / page') as HTMLElement | undefined;
+  assert.ok(size50, 'page size popup offers the Vue 50/page option');
+  const jumpInput = container.querySelector('.wk-admin-pager-jump input') as HTMLInputElement | null;
   assert.ok(jumpInput, 'jumper input renders like the Vue show-jumper pager');
   const setValue2 = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
   await act(async () => {
@@ -200,11 +217,7 @@ test('member list exposes the Vue pager contract with page size options and clam
   });
   await act(async () => { await sleep(0); });
   assert.deepEqual(calls[calls.length - 1], { page: 3, pageSize: 20, q: undefined }, 'jumper clamps to the last page (45 items @20 → 3 pages)');
-  const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value')?.set;
-  await act(async () => {
-    setValue?.call(sizeSelect, '50');
-    sizeSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
+  await act(async () => { size50?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
   await act(async () => { await sleep(0); });
   // Size change reloads like the Vue t-pagination @change; the loadMembers
   // clamp then re-requests the last valid page (45 items @50 → 1 page).

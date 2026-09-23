@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as React from "react";
 import type { ModelConfiguration, WeKnoraClient } from "@weknora/api-client";
-import { Button, NumberInput, Status, Switch, Textarea } from "@weknora/ui";
+// S6 抽屉收编：packages/ui 旧栈 表单栈离开，换 tdesign（T15 硬前置）。
+import { Button as TButton, InputNumber as TInputNumber, Switch as TSwitch, Textarea as TTextarea } from "tdesign-react";
+import { WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { useAppLocale } from "../i18n.ts";
 import {
   createModelTranslator,
@@ -224,21 +226,21 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
 
   return (
     <div
-      className="mt-4 max-w-[720px] rounded-[8px] border border-[#cbd5e1] bg-white p-4 shadow-[0_10px_30px_rgba(23,32,51,.12)]"
+      className="wk-debug-panel"
       role="dialog"
       aria-modal="true"
       aria-label={t("modelSettings.debug.title")}
     >
-      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
+      <div className="wk-settings-panel-heading wk-debug-heading">
         <div>
           <h3>{t("modelSettings.debug.title")}</h3>
-          <p className="wk-muted text-muted m-0">{t("modelSettings.debug.description")}</p>
+          <p className="wk-muted">{t("modelSettings.debug.description")}</p>
         </div>
-        <Button type="button" onClick={onClose}>
+        <TButton type="button" onClick={onClose}>
           {t("common.close")}
-        </Button>
+        </TButton>
       </div>
-      <div className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem]">
+      <div className="wk-settings-editor">
         <div className="form-item">
           <h4>{t("modelSettings.debug.groupModel")}</h4>
           {availableTypes.length > 1 ? (
@@ -270,7 +272,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
             />
           </label>
           {filteredModels.length === 0 ? (
-            <p className="wk-muted text-muted">{t("modelSettings.debug.noModelsForType")}</p>
+            <p className="wk-muted">{t("modelSettings.debug.noModelsForType")}</p>
           ) : null}
         </div>
         {selected ? (
@@ -279,10 +281,10 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
             {selectedTypeResolved !== "asr" ? (
               <label>
                 {inputLabel}
-                <Textarea
+                <TTextarea
                   rows={4}
                   value={input}
-                  onChange={(event) => setInput(event.target.value)}
+                  onChange={(value) => setInput(String(value))}
                   placeholder={inputPlaceholder}
                 />
               </label>
@@ -290,13 +292,13 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
             {isRerank ? (
               <label>
                 {t("modelSettings.debug.documents")}
-                <Textarea
+                <TTextarea
                   rows={4}
                   value={documents}
-                  onChange={(event) => setDocuments(event.target.value)}
+                  onChange={(value) => setDocuments(String(value))}
                   placeholder={t("modelSettings.debug.documentsPlaceholder")}
                 />
-                <span className="wk-muted text-muted">{t("modelSettings.debug.documentsHint")}</span>
+                <span className="wk-muted">{t("modelSettings.debug.documentsHint")}</span>
               </label>
             ) : null}
             {needsFile ? (
@@ -310,82 +312,78 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
                     resetResult();
                   }}
                 />
-                {file ? <span className="wk-muted text-muted">{file.name} · {formatBytes(file.size)}</span> : null}
+                {file ? <span className="wk-muted">{file.name} · {formatBytes(file.size)}</span> : null}
               </label>
             ) : null}
           </div>
         ) : null}
         {selected && isChat ? (
-          <fieldset className="grid gap-[.7rem] rounded-[6px] border border-[#edf0f5] p-[.8rem]">
+          <fieldset className="wk-debug-fieldset">
             <legend>{t("modelSettings.debug.parameters")}</legend>
-            <div className="form-item"><label>Temperature</label><NumberInput min={0} max={2} step={0.1} value={temperature} onValueChange={(value) => setTemperature(Number(value))} /></div>
-            <div className="form-item"><label>Top P</label><NumberInput min={0.01} max={1} step={0.1} value={topP} onValueChange={(value) => setTopP(Number(value))} /></div>
-            <div className="form-item"><label>Max Tokens</label><NumberInput min={1} max={8192} step={128} value={maxTokens} onValueChange={(value) => setMaxTokens(Number(value))} /></div>
+            <div className="form-item"><label>Temperature</label><TInputNumber min={0} max={2} step={0.1} value={temperature} onChange={(value) => setTemperature(Number(value))} /></div>
+            <div className="form-item"><label>Top P</label><TInputNumber min={0.01} max={1} step={0.1} value={topP} onChange={(value) => setTopP(Number(value))} /></div>
+            <div className="form-item"><label>Max Tokens</label><TInputNumber min={1} max={8192} step={128} value={maxTokens} onChange={(value) => setMaxTokens(Number(value))} /></div>
             <label>
               {t("modelSettings.debug.systemPrompt")}
-              <Textarea
+              <TTextarea
                 rows={2}
                 value={systemPrompt}
-                onChange={(event) => setSystemPrompt(event.target.value)}
+                onChange={(value) => setSystemPrompt(String(value))}
                 placeholder={t("modelSettings.debug.systemPromptPlaceholder")}
               />
             </label>
             {supportsThinking ? (
-              <div className="mt-1 flex min-h-[22px] cursor-pointer flex-wrap items-center gap-x-2">
-                <Switch checked={thinking} onCheckedChange={setThinking} aria-label={t("modelSettings.debug.thinking")} />
-                <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{t("modelSettings.debug.thinking")}</span>
-                <span className="ml-11 mt-[2px] basis-full text-xs leading-[1.5] text-[#8a8a8a]">{t("modelSettings.debug.thinkingDesc")}</span>
+              <div className="wk-switch-row">
+                <TSwitch value={thinking} onChange={(checked) => setThinking(Boolean(checked))} aria-label={t("modelSettings.debug.thinking")} />
+                <span className="wk-switch-row__label">{t("modelSettings.debug.thinking")}</span>
+                <span className="wk-switch-row__desc">{t("modelSettings.debug.thinkingDesc")}</span>
               </div>
             ) : null}
           </fieldset>
         ) : null}
         {error ? <Status tone="error">{error}</Status> : null}
-        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-          <Button type="button" disabled={!canRun} loading={busy} onClick={() => void run()}>
+        <div className="wk-list-actions">
+          <TButton type="button" disabled={!canRun} loading={busy} onClick={() => void run()}>
             {t("modelSettings.debug.run")}
-          </Button>
+          </TButton>
           {result ? (
-            <Button type="button" onClick={() => void copyResult()}>
+            <TButton type="button" onClick={() => void copyResult()}>
               {t("modelSettings.debug.copyResult")}
-            </Button>
+            </TButton>
           ) : null}
         </div>
         {history.length > 1 ? (
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]" role="list" aria-label={t("modelSettings.debug.history")}>
+          <div className="wk-list-actions" role="list" aria-label={t("modelSettings.debug.history")}>
             {history.map((run) => (
-              <Button
+              <TButton
                 key={run.id}
                 type="button"
                 onClick={() => setResult(run.result)}
               >
                 {run.label} · {run.result.elapsedMs} ms
-              </Button>
+              </TButton>
             ))}
           </div>
         ) : null}
         {result ? (
           <section
-            className={
-              result.ok
-                ? "mt-4 grid gap-2 rounded-[6px] border border-[#86efac] p-[.8rem]"
-                : "mt-4 grid gap-2 rounded-[6px] border border-[#fca5a5] p-[.8rem]"
-            }
+            className={"wk-debug-result" + (result.ok ? " wk-debug-result--ok" : " wk-debug-result--error")}
           >
             <strong>{t(result.ok ? "modelSettings.debug.success" : "modelSettings.debug.failed")}</strong>
             <span>{result.elapsedMs} ms</span>
             {metrics.length > 0 ? (
-              <p className="wk-muted text-muted">
+              <p className="wk-muted">
                 {metrics.map((metric) => `${metric.label}: ${metric.value}`).join(" · ")}
               </p>
             ) : null}
             {result.error ? <Status tone="error">{result.error}</Status> : null}
             <details open>
               <summary>{t("modelSettings.debug.rawResponse")}</summary>
-              <pre className="max-h-[18rem] overflow-auto whitespace-pre-wrap bg-[#f7f9fc] p-[.7rem]">{JSON.stringify(result.rawResponse, null, 2)}</pre>
+              <pre className="wk-debug-pre">{JSON.stringify(result.rawResponse, null, 2)}</pre>
             </details>
             <details>
               <summary>{t("modelSettings.debug.requestPreview")}</summary>
-              <pre className="max-h-[18rem] overflow-auto whitespace-pre-wrap bg-[#f7f9fc] p-[.7rem]">{JSON.stringify(result.request, null, 2)}</pre>
+              <pre className="wk-debug-pre">{JSON.stringify(result.request, null, 2)}</pre>
             </details>
           </section>
         ) : null}

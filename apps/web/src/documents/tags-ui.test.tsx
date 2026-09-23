@@ -18,6 +18,38 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 ].join('\n')), import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
+// S6 换装：TagPicker/TagManage 弹层走 tdesign Dialog（Portal 挂 body，
+// renderToStaticMarkup 下 Portal 返回 null）——弹窗打开态断言改 jsdom 挂载。
+const requireJsdom = nodeModule.createRequire(import.meta.url);
+const { JSDOM } = requireJsdom('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/platform/knowledge-bases' });
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  Event: dom.window.Event,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+const { createRoot } = await import('react-dom/client');
+const { act } = await import('react');
+
+/** tdesign Dialog portal 到 body：挂载后取 body 内弹窗 HTML（含遮罩）。 */
+async function mountDialogHtml(element: React.ReactElement): Promise<string> {
+  document.body.replaceChildren();
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(element); });
+  const html = document.body.innerHTML;
+  await act(async () => { root.unmount(); });
+  return html;
+}
+
 const { TagFilterPanel, TagManageDialog, TagPickerDialog } = await import('./TagPickerDialog.tsx');
 const { tagSurfaceT } = await import('./tags-locale.ts');
 const { KnowledgeDocumentsPage } = await import('./KnowledgeDocumentsPage.tsx');
@@ -57,8 +89,8 @@ test('tagSurfaceT falls back to the Vue locale copy packages/i18n still misses',
 
 // --- TagPickerDialog (Vue BatchTagDialog.vue / TagEditDialog.vue) -------------------
 
-test('batch tag dialog renders the Vue heading, subtitle, sections and footer count', () => {
-  const html = renderToStaticMarkup(React.createElement(TagPickerDialog, {
+test('batch tag dialog renders the Vue heading, subtitle, sections and footer count', async () => {
+  const html = await mountDialogHtml(React.createElement(TagPickerDialog, {
     open: true,
     t: tt,
     tags,
@@ -84,8 +116,8 @@ test('batch tag dialog renders the Vue heading, subtitle, sections and footer co
   assert.ok(html.includes('输入新标签名称，回车添加'), 'create-tag input (tagNewPlaceholder)');
 });
 
-test('single-document tag dialog swaps in the Vue TagEditDialog copy', () => {
-  const html = renderToStaticMarkup(React.createElement(TagPickerDialog, {
+test('single-document tag dialog swaps in the Vue TagEditDialog copy', async () => {
+  const html = await mountDialogHtml(React.createElement(TagPickerDialog, {
     open: true,
     t: tt,
     tags,
@@ -198,8 +230,8 @@ test('documents page keeps the pre-existing filter chrome green', () => {
   assert.ok(html.includes('doc-filter-bar'), 'Vue filter bar class');
 });
 
-test('tag manage dialog renders the Vue drawer copy, doc counts and per-row actions', () => {
-  const html = renderToStaticMarkup(React.createElement(TagManageDialog, {
+test('tag manage dialog renders the Vue drawer copy, doc counts and per-row actions', async () => {
+  const html = await mountDialogHtml(React.createElement(TagManageDialog, {
     t: tt,
     open: true,
     tags: [

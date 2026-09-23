@@ -49,16 +49,18 @@ test('retrieval changes auto-save after the Vue 500ms debounce', async () => {
   root = createRoot(container);
   await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={{ embedding_top_k: 50 }} models={[]} />));
 
-  const input = container.querySelector('input[type="range"]') as HTMLInputElement;
+  // S6：threshold 字段换 tdesign Slider（无原生 input[type=range]，jsdom 拖拽
+  // 不可驱动）；debounce 逻辑改经 models=[] 回退渲染的 rerank TInput 驱动。
+  const input = container.querySelector<HTMLInputElement>('input[placeholder]');
   assert.ok(input, 'retrieval control should render');
   await act(async () => {
-    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, '51');
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, 'rerank-9');
     input.dispatchEvent(new window.Event('input', { bubbles: true }));
     input.dispatchEvent(new window.Event('change', { bubbles: true }));
   });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 550)); });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.embedding_top_k, 51);
+  assert.equal(calls[0]?.rerank_model_id, 'rerank-9');
 });
 
 test('retrieval keeps the Vue rerank-model-first slider order', async () => {
@@ -68,8 +70,9 @@ test('retrieval keeps the Vue rerank-model-first slider order', async () => {
   root = createRoot(container);
   await act(async () => root?.render(<ConfigSettingsPanel client={client} section="retrieval" initialValue={{}} models={[{ id: 'rerank-1', name: 'Rerank' }]} />));
 
-  const model = container.querySelector('[data-testid="rerank_model_id"]');
-  const slider = container.querySelector('input[type="range"]');
+  // S6：tdesign Select 根不透传 data-*（台账 #8），改语义类名钩子。
+  const model = container.querySelector('.wk-config-sel-rerank_model_id');
+  const slider = container.querySelector('.t-slider');
   assert.ok(model, 'Vue renders the rerank selector first');
   assert.ok(slider, 'Vue retrieval thresholds use sliders rather than number steppers');
   assert.ok(Boolean(model.compareDocumentPosition(slider) & 4), 'the rerank selector precedes the threshold sliders');
@@ -143,8 +146,17 @@ test('parser exposes the Vue MinerU and PaddleOCR configuration controls', async
   root = createRoot(container);
   await act(async () => root?.render(<ConfigSettingsPanel client={client} section="parser" initialValue={{}} />));
 
-  for (const field of ['mineru-model', 'mineru-vllm-server-url', 'mineru-parse-method', 'mineru-language', 'mineru-cloud-model', 'paddleocr-vl-endpoint', 'paddleocr-vl-cloud-model']) {
-    assert.ok(container.querySelector(`[data-testid="${field}"]`), `${field} should be configurable like ParserEngineSettings.vue`);
+  const hooks: Array<[string, string]> = [
+    ['.wk-config-sel-mineru-model', 'mineru-model'],
+    ['[data-testid="mineru-vllm-server-url"]', 'mineru-vllm-server-url'],
+    ['.wk-config-sel-mineru-parse-method', 'mineru-parse-method'],
+    ['[data-testid="mineru-language"]', 'mineru-language'],
+    ['.wk-config-sel-mineru-cloud-model', 'mineru-cloud-model'],
+    ['[data-testid="paddleocr-vl-endpoint"]', 'paddleocr-vl-endpoint'],
+    ['.wk-config-sel-paddleocr-vl-cloud-model', 'paddleocr-vl-cloud-model'],
+  ];
+  for (const [hook, field] of hooks) {
+    assert.ok(container.querySelector(hook), `${field} should be configurable like ParserEngineSettings.vue`);
   }
 });
 
@@ -270,7 +282,7 @@ test('parser form save failure surfaces the backend error and keeps controls ren
   await act(async () => { await Promise.resolve(); });
 
   assert.match(container.textContent ?? '', /bad payload/, 'the backend message is surfaced on the inline status');
-  assert.ok(container.querySelector('[data-testid="mineru-model"]'), 'form controls stay rendered after a failed save');
+  assert.ok(container.querySelector('.wk-config-sel-mineru-model'), 'form controls stay rendered after a failed save');
 });
 
 /*

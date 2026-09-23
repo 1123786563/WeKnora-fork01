@@ -626,15 +626,20 @@
    Vue doc-content.vue：header 14px 18px（高 61），body 16px 18px →
    内容列 x644 宽 618。React 的 div.mt-1.px-5 + main.px-5.pb-5 双层
    20px 内边距把内容压到 x665 宽 574（差 44px），整列文本全部错位。 */
-.wk-document-detail-drawer > header {
-  /* Vue t-drawer__header：pad 14px 18px + 底边框 1px #e7e7e7 = 61px。 */
+.wk-document-detail-drawer > header,
+.wk-document-detail-drawer .wk-sheet-header {
+  /* Vue t-drawer__header：pad 14px 18px + 底边框 1px #e7e7e7 = 61px。
+     （S6 换装后宿主为 wk-legacy WkSheet：header 选择器补 .wk-sheet-header。） */
   padding: 14px 18px !important;
 }
 .wk-document-detail-drawer header h2 {
   font-size: 15px;
   line-height: 21px;
 }
-.wk-document-detail-drawer .mt-1.flex-1 {
+.wk-document-detail-drawer .mt-1.flex-1,
+.wk-document-detail-drawer .wk-sheet-body {
+  /* S6 换装：WkSheet body 类名 .wk-sheet-body（原 utilities 组合选择器保留
+     以防回退），几何取 Vue t-drawer__body 16px 18px。 */
   margin-top: 0 !important;
   padding: 16px 18px 18px !important;
 }
@@ -832,4 +837,12 @@
   position: absolute;
   top: 16px;
   right: 50px;
+}
+
+/* Vue t-drawer 面板无边框（阴影承载层次）；WkSheet 兼容层带 1px 描边，把
+   内容列推出 1px（644→646，ix-kb-doc-detail 逐像素取证 2026-09-23），
+   文本整体亚像素相位漂移。doc-detail 抽屉去描边对齐。 */
+.wk-document-detail-drawer.wk-sheet,
+.wk-kdd-9.wk-sheet {
+  border: 0;
 }

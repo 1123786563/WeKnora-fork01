@@ -33,7 +33,7 @@ import { shouldOpenWiki, wikiEntryPath } from './knowledge/wiki-route.ts';
 import { createWikiSourceDocOpener } from './wiki/source-doc-open.ts';
 
 // Craft mounts through the shared @weknora/views/craft assembly, which pulls
-// in @weknora/ui (theme.css) — keep it lazy so the router module stays
+// in packages/ui 旧栈 (theme.css) — keep it lazy so the router module stays
 // importable under the node test runner.
 const CraftRoutes = lazy(() => import('./features/craft/routes.tsx').then((module) => ({ default: module.CraftRoutes })));
 
@@ -89,12 +89,12 @@ export interface WeKnoraRouterDeps {
   completeAuthentication(next: AuthSession): void;
 }
 
-// Plain markup instead of the @weknora/ui Status pill: the router module must
+// Plain markup instead of the packages/ui 旧栈 Status pill: the router module must
 // stay importable under the node test runner, which cannot parse the ui
 // package's theme.css.
 function RoutePending(props: { loadingText: string }): ReactNode {
   return (
-    <main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12">
+    <main className="wk-page wk-page--std">
       <p role="status">{props.loadingText}</p>
     </main>
   );

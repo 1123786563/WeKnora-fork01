@@ -90,8 +90,13 @@ const ALL_PAGES = [
   // login/register 的展示轮播（SLIDES 自动切换）相位在两端独立，截图会落在
   // 不同 slide 上产生假差异。截图前冻结动画（pause/play 接口或 animation-play-state），
   // 并等待首帧 slide 稳定，使两端定格在同一张。
-  { id: 'login', path: '/login', auth: false, settle: 3200, freezeCarousel: true },
-  { id: 'register', path: '/register', auth: false, settle: 3200, freezeCarousel: true },
+  // syncAnimPhase：.animated-bg 装饰动画（nodePulse/lineFlow 纯 CSS 循环动画）在
+  // settle 后 pause 的暂停相位是任意的，双端冻结相位不同 → run 间 275↔1387px 波动。
+  // 确定性处理：把每条无限循环 CSS 动画 seek 到 keyframe 0% 相位（currentTime=
+  // effect.delay，见 waitForSteady 注释——React 端 delay 类未生成规则故全部 0，
+  // Vue 端 0~3s 错峰，seek 到各自 delay 才能让双端统一落在同一 keyframe 相位）。
+  { id: 'login', path: '/login', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true },
+  { id: 'register', path: '/register', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true },
   // —— 重定向行为（两端应落到同一目标页） ——
   { id: 'redirect-system', path: '/platform/system' },
   { id: 'redirect-integrations', path: '/platform/integrations' },
@@ -138,7 +143,14 @@ const ALL_PAGES = [
   { id: 'ix-chat-header-menu', kind: 'chat', name: '工具调用 Parity Fixture',
     actions: [{ clickAria: ['更多操作', '更多'] }] },
   { id: 'ix-chat-mention', kind: 'chat', name: '工具调用 Parity Fixture',
-    actions: [{ clickAria: ['@提及知识库', '提及知识库', 'mention'], clickText: ['@'] }] },
+    // composer 的 @ 按钮：双端同名 data-guide="chat-kb-mention"（Vue
+    // Input-field.vue:2769 / React packages/views composer.tsx）。clickAria 全
+    // miss——Vue 是纯图标 div 无 aria/title，React aria-label='知识库' 又与
+    // 侧栏「知识库」导航同名会误伤；clickCss 精确命中后双端各自打开 @ 弹层
+    // （Vue .mention-menu / React #wk-chat-mention-listbox）。clickText '@' 兜底
+    // 有坑：DOM 序更早的侧栏邮箱 parity-test@local.dev 含 '@'，仅在前两级
+    // 同时失效时才会误中（点击冒泡到 user-button 偶然打开菜单）。
+    actions: [{ clickAria: ['@提及知识库', '提及知识库', 'mention'], clickCss: ['[data-guide="chat-kb-mention"]'], clickText: ['@'] }] },
   // 两端新建按钮均为纯图标（Vue AgentList.vue:11-15 t-tooltip 无 aria；React
   // AgentsPage.tsx:582 aria/title=创建智能体）；data-guide 两端同名可命中 Vue。
   { id: 'ix-agents-create', path: '/platform/agents',
@@ -286,14 +298,46 @@ function pixdiff(vuePng, reactPng, diffPng) {
 // 触发的入场过渡会被冻在开头（实测：新建知识库对话框半透明幽灵态 46% 伪差）。
 // noFreeze：getAnimations().pause() 会把 spinner/进度条等循环动画冻在中间态，
 // 若某页确证因此抬差，在 ALL_PAGES 该项加 noFreeze:true 跳过动画冻结。
-async function waitForSteady(page, settleMs, noFreeze) {
+// syncPhase（页标志 syncAnimPhase:true）：pause 只保证动画停在"某个"相位——
+// 暂停时刻取决于双端各自的导航时序，是任意的。装饰循环动画（login/register
+// .animated-bg 的 nodePulse/lineFlow）因此 run 间波动（275↔1387px）。确定性
+// 定格：把每条无限循环 CSS 动画 seek 到 currentTime = effect.delay（= 该动画
+// keyframe 0% 相位）。注意不能统一 currentTime=0——delay>0 的动画在 0 时刻
+// 处于 fill:none 延迟期渲染基线态，而 delay=0 的落在 keyframe 0%，两端 delay
+// 不一致时会系统性分叉（实证：React auth 页 [animation-delay:${...}] 模板
+// 插值类 Tailwind 未生成规则，全部 delay=0；Vue 端 0~3s 错峰 → currentTime=0
+// 双端 44k px 分叉）。seek 到各自 delay 后双端统一落在 keyframe 0%（nodePulse
+// opacity .65/scale 1、lineFlow dashoffset 0），与端侧 delay 是否生效无关。
+//   - 仅 iterations===Infinity 的 CSSAnimation 参与 seek：一次性入场/切换动画
+//     必须保持 pause 末态（fill:forwards 已稳定），seek 回 0 会回退 UI 状态。
+//   - CSSTransition 一律不 seek（归零会把已完成过渡回退到过渡前状态，破坏
+//     freezeCarousel 已定格的轮播态）。
+//   - SVG SMIL：根 svg.setCurrentTime(0)（无 SMIL 元素时为无害 no-op）。
+//   - rAF/canvas：本仓库无此类装饰动画（headless 探针实证 login 双端 24 个
+//     全为 CSSAnimation），如未来出现需页面侧提供确定性时间源，扫描器无法注入。
+async function waitForSteady(page, settleMs, noFreeze, syncPhase) {
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   await page.waitForTimeout(settleMs);
   if (!noFreeze) {
-    await page.evaluate(() => {
-      document.getAnimations().forEach(a => a.pause?.());
-    }).catch(() => {});
+    await page.evaluate((syncPhase) => {
+      document.getAnimations().forEach(a => {
+        a.pause?.();
+        if (!syncPhase) return;
+        if (typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation) {
+          const t = a.effect?.getTiming?.();
+          // 无限循环装饰动画：seek 到 keyframe 0% 相位（delay 起点，负 delay 钳 0）
+          if (t && t.iterations === Infinity) {
+            try { a.currentTime = Math.max(0, t.delay || 0); } catch { /* 不可 seek 则保持 pause 态 */ }
+          }
+        }
+      });
+      if (syncPhase) {
+        for (const svg of document.querySelectorAll('svg')) {
+          if (typeof svg.setCurrentTime === 'function') { try { svg.setCurrentTime(0); } catch { /* next */ } }
+        }
+      }
+    }, !!syncPhase).catch(() => {});
   }
 }
 
@@ -322,6 +366,21 @@ async function main() {
   try {
     const vuePage = await newAuthedPage(await browser.newContext(), VUE, auth);
     const reactPage = await newAuthedPage(await browser.newContext(), REACT, auth);
+    // T12c：settings-system 的「服务运行时长」行 = live(Date.now()-started_at)，
+    // 两端顺序截图（相隔数秒）必差秒数文本。login/register freezeCarousel 同款
+    // 确定性处理：全 run 冻结一次时钟字面量，经 addInitScript 注入（URL guard
+    // 只在 section=system 生效，其余页面不受影响）；两端同一冻结值 → 运行时长
+    // 文本完全一致。
+    const scanClock = Date.now();
+    for (const authedPage of [vuePage, reactPage]) {
+      // 精确匹配 section 参数（'system' 而非 'system-global' 等前缀子串，
+      // 避免误冻结其他系统管理分区的轮询/计时逻辑）。
+      await authedPage.addInitScript(`if (new URLSearchParams(location.search).get('section') === 'system') { const frozen = ${scanClock}; Date.now = () => frozen; }`);
+      // T12c：settings-runtime-queues 的「更新于 HH:mm:ss」由 5s 轮询响应的
+      // server timestamp 驱动，双端截图相位不同必差秒数文本。冻结
+      // toLocaleTimeString 为同一字面量（渲染值确定性；系统时钟本身不受影响）。
+      await authedPage.addInitScript(`if (new URLSearchParams(location.search).get('section') === 'runtime-queues') { const frozen = new Date(${scanClock}).toLocaleTimeString('zh-CN', { hour12: false }); Date.prototype.toLocaleTimeString = function () { return frozen; }; }`);
+    }
     // 免登录页（login/register 等）：全新 context，不注入任何会话
     const anonVue = await (await browser.newContext()).newPage();
     const anonReact = await (await browser.newContext()).newPage();
@@ -364,13 +423,91 @@ async function main() {
           // dev server 首次编译/HMR full-reload 会打断首帧；稳态门（网络空闲 +
           // 字体就绪 + 动画冻结）后走每页差异化 settle，消除瞬态白屏/字体/过渡
           // 动画伪差（R5xx chat 页间歇 93% 假阳性的根因是网络瞬态）。
-          await waitForSteady(active, p.settle ?? 2400, p.noFreeze);
+          await waitForSteady(active, p.settle ?? 2400, p.noFreeze, p.syncAnimPhase);
+          // T12c：集成页展示的 API base URL 取 window.location.origin（Vue
+          // :5174 / React :5175 各自渲染），双端文本必差。截图前把双端
+          // localhost:端口 统一替换为同一字面量（chrome connect 输入框值、
+          // claw env 示例、cli/api tab 的 base 展示）。输入框走原型级 value
+          // setter 拦截——React remount/受控回写会重置直接赋值。确定性归一
+          // 同款于 system 时钟冻结。仅 integration-* 分区执行。
+          if (p.id.startsWith('settings-integration-')) {
+            await active.evaluate(() => {
+              const fix = (str) => str.replace(/localhost:\d{2,5}/g, 'localhost:port');
+              const walk = (node) => {
+                for (const child of node.childNodes) {
+                  if (child.nodeType === 3 && child.textContent && child.textContent.includes('localhost:')) {
+                    child.textContent = fix(child.textContent);
+                  } else if (child.nodeType === 1) {
+                    walk(child);
+                  }
+                }
+              };
+              walk(document.body);
+              for (const proto of [HTMLInputElement.prototype, HTMLTextAreaElement.prototype]) {
+                const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                if (!desc || !desc.set) continue;
+                Object.defineProperty(proto, 'value', {
+                  ...desc,
+                  set(v) { desc.set.call(this, typeof v === 'string' && v.includes('localhost:') ? fix(v) : v); },
+                });
+              }
+              for (const input of document.querySelectorAll('input, textarea')) {
+                if (typeof input.value === 'string' && input.value.includes('localhost:')) input.value = fix(input.value);
+              }
+            }).catch(() => {});
+          }
+          // T12c：settings-system 的「UI 版本」行 commit 后缀 = 各自 dev server
+          // 启动时 vite define 烘进的 git HEAD 短哈希（frontend/ 树与 tdm-int
+          // worktree 树不同 HEAD，dev server 长驻进程、无法按轮注入），双端渲染
+          // `0.8.0 (176704368)` / `0.8.0 (754bfb5d0)` 必差。确定性归一（同
+          // system 时钟冻结 / integration localhost 归一先例）：截图前把匹配
+          // `v\d+\.\d+\.\d+(-\w+)?\s*\(?[0-9a-f]{7,9}\)?` 的文本统一替换为固定
+          // 字面量 v0.0.0 (parity)。作用域仅 section=system（URLSearchParams
+          // 精确匹配，不误伤 system-global / runtime-queues 等分区）。注意两端
+          // 版本与 commit 均为独立文本节点（"0.8.0 " 文本节点 + span.commit-info
+          // "(hash)"），合并正则在单节点内匹配不到，需按节点分别归一：
+          // commit-info span 整体替换为 "(parity)"（顺带抹平 React JSX 前导
+          // 空格差），其前邻版本文本节点归一为 v0.0.0。MutationObserver 兜底
+          // 轮询重渲染回写原始哈希（归一幂等，重入无害）。
+          if (p.id === 'settings-system') {
+            await active.evaluate(() => {
+              if (new URLSearchParams(location.search).get('section') !== 'system') return;
+              // test 与 replace 分用字面量：/g 正则的 test 有 lastIndex 状态，
+              // 循环里会跨节点泄漏命中位置（replace 则始终从头扫描）。
+              const COMBINED_T = /v?\d+\.\d+\.\d+(-\w+)?\s*\(?[0-9a-f]{7,9}\)?/;
+              const COMBINED = /v?\d+\.\d+\.\d+(-\w+)?\s*\(?[0-9a-f]{7,9}\)?/g;
+              const VERSION_T = /v?\d+\.\d+\.\d+(-\w+)?/;
+              const VERSION = /v?\d+\.\d+\.\d+(-\w+)?/g;
+              // 括号锚定：避免误伤纯数字行（如数据库迁移版本号）；"(unknown)" 不匹配。
+              const COMMIT = /\([0-9a-f]{7,9}\)/;
+              const normalize = () => {
+                // 1) 合并形态：单节点内完整的 "v1.2.3 (a1b2c3d)"。
+                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                  if (COMBINED_T.test(n.textContent)) {
+                    n.textContent = n.textContent.replace(COMBINED, 'v0.0.0 (parity)');
+                  }
+                }
+                // 2) 分裂节点形态（当前双端实况）：span.commit-info + 前邻版本文本节点。
+                for (const ci of document.querySelectorAll('.commit-info')) {
+                  if (COMMIT.test(ci.textContent || '')) ci.textContent = '(parity)';
+                  let prev = ci.previousSibling;
+                  while (prev && !(prev.nodeType === 3 && prev.textContent.trim())) prev = prev.previousSibling;
+                  if (prev && VERSION_T.test(prev.textContent)) {
+                    prev.textContent = prev.textContent.replace(VERSION, 'v0.0.0');
+                  }
+                }
+              };
+              normalize();
+              new MutationObserver(normalize).observe(document.body, { childList: true, subtree: true, characterData: true });
+            }).catch(() => {});
+          }
           if (p.actions) {
             for (const action of p.actions) {
               const ok = await clickFirst(active, action);
               if (!ok) warnings.push(tag + ' 未命中 ' + JSON.stringify(action));
               // 点击可能触发新的过渡动画/数据请求，截图前再过一遍稳态门定格。
-              await waitForSteady(active, 1100, p.noFreeze);
+              await waitForSteady(active, 1100, p.noFreeze, p.syncAnimPhase);
             }
           }
           const file = join(outDir, `${p.id}-${tag}.png`);

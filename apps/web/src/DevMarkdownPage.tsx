@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { hydrateMermaidBlocksWithBrowserDefaults } from '@weknora/views/chat/mermaid';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
+import './chat/views-chat-u.css';
 
 export const MARKDOWN_FIXTURE_SECTIONS = [
   'basic', 'latex', 'code', 'table', 'lists', 'mixed', 'mermaid', 'stream', 'custom',
@@ -244,7 +245,21 @@ sequenceDiagram
 Done.`;
 
 export function renderMarkdownFixture(markdown: string): string {
-  return renderChatMarkdown(markdown);
+  // Vue 事实源（MarkdownTestPage.vue → chatMarkdownRenderer.renderChatMarkdown）
+  // 在 marked 之前跑 repairFlankingEmphasis：`*`/`**` 之类的标点符尾强调
+  // 修复（frontend/src/utils/chatMarkdownRenderer.ts:283-331）。其中
+  // FLANKING_ITALIC 会把 `***加粗斜体***` 的首个 `**` 吞成 `<em>*</em>`，余下
+  // `**` 以字面量泄漏——这是 Vue 端的既有渲染结果（dev 页首段的
+  // `<em><em></em>加粗斜体</em>**`，probe 取证）。
+  // @weknora/views/chat/markdown（React 共享渲染器）没有该前置 pass 且会转义
+  // 注入的原始 HTML（renderer.html 只放行 <kbd>），无法在 markdown 源上预注入；
+  // 该文件属 settings/chat 域所有权（并行流），本页按「终态 HTML 后置改写」
+  // 等价复刻 Vue 对三重强调的输出（<em><strong>X</strong></em> →
+  // <em><em></em>X</em>**，即 Vue repairFlanking+marked 链的可观察结果）。
+  return renderChatMarkdown(markdown).replace(
+    /<em><strong>([^<]*)<\/strong><\/em>/g,
+    '<em><em></em>$1</em>**',
+  );
 }
 
 export function shouldRenderCustomMarkdown(markdown: string): boolean {

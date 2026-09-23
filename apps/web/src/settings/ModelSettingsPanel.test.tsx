@@ -304,8 +304,10 @@ test('add editor matches the Vue provider trigger, thinking desc and footer butt
   assert.match(editorText, /决定智能体「思考模式」开\/关时如何写入 API/);
 
   // (3) Footer order: 测试连接 → 取消 → 保存 like the Vue drawer footer.
+  // S6：按钮换 tdesign Button；disabled 态渲染 div.t-button（台账 #7），断言
+  // 从 button 标签收敛到 .t-button 类。
   const footer = container.querySelector('.wk-model-editor .wk-list-actions:last-of-type') ?? container;
-  const footerButtons = Array.from(footer.querySelectorAll('button')).map((button) => button.textContent ?? '');
+  const footerButtons = Array.from(footer.querySelectorAll('.t-button')).map((button) => button.textContent ?? '');
   const testIndex = footerButtons.findIndex((label) => label.includes('测试连接'));
   const cancelIndex = footerButtons.findIndex((label) => label === '取消');
   const saveIndex = footerButtons.findIndex((label) => label === '保存');
@@ -370,13 +372,13 @@ test('embedding editor gates the dimension input behind the override toggle', as
   assert.match(text, /自定义输出维度/);
   const dimension = inputByPlaceholder(container, '例如：1536');
   assert.ok(dimension);
-  assert.ok(dimension.closest('.flex.h-8'), 'advanced numeric fields use the shadcn number-input wrapper');
+  assert.ok(dimension.closest('.t-input-number'), 'advanced numeric fields use the tdesign input-number wrapper');
   assert.equal(dimension.disabled, true, 'dimension stays disabled until the override toggle is on (ModelEditorDialog.vue line 325)');
 
   const overrideToggle = Array.from(container.querySelectorAll('[role="switch"]'))
     .find((input) => input.getAttribute('aria-label')?.includes('自定义输出维度'));
   assert.ok(overrideToggle);
-  assert.equal(overrideToggle.getAttribute('aria-checked'), 'false', 'shadcn switch keeps the Vue off state');
+  assert.equal(overrideToggle.classList.contains('t-is-checked'), false, 'tdesign switch keeps the Vue off state');
   await click(overrideToggle);
   assert.equal(dimension.disabled, false);
 });
@@ -433,9 +435,10 @@ test('weknoracloud provider gates editing on credential state', async () => {
   const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
   assert.equal(name.disabled, true);
-  const submit = Array.from(container.querySelectorAll('button')).find((button) => button.type === 'submit');
+  // S6：disabled 的 tdesign Button 渲染为 div.t-button.t-is-disabled（台账 #7）。
+  const submit = Array.from(container.querySelectorAll('.t-button')).find((button) => (button.textContent ?? '') === '保存');
   assert.ok(submit);
-  assert.equal(submit.disabled, true);
+  assert.equal(submit.classList.contains('t-is-disabled'), true);
 });
 
 test('weknoracloud configured state unlocks the editor', async () => {
@@ -765,8 +768,11 @@ test('name and base URL validate on blur with per-field Vue copy', async () => {
 
   await setInput(name, '模型'.repeat(60));
   await blur(name);
+  // S6（台账 #12 先例）：tdesign Input 的 maxlength 走 JS 截断（两端输入都截到
+  // 上限，>100 的 blur 规则分支在 Vue 侧同样不可达），断言收敛到截断行为。
+  assert.equal(name.value.length, 100, 'maxlength truncates the model name to 100 characters');
   fieldError = name.closest('.form-item')?.querySelector('.wk-field-error');
-  assert.equal(fieldError?.textContent, '模型名称不能超过100个字符');
+  assert.equal(fieldError ?? null, null);
 
   const baseUrl = container.querySelector<HTMLInputElement>('input[type="url"]')!;
   assert.ok(baseUrl);

@@ -1,5 +1,10 @@
 import type { RuntimeQueues, WeKnoraClient } from '@weknora/api-client';
-import { Status, Switch } from '@weknora/ui';
+// S6：Status 无 TDesign 对应（playbook §1 附行），走 shared/wk-legacy。
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
+// T12c：t-switch（size small）与 t-icon sprite glyph 对齐 Vue 端
+// （RuntimeQueues.vue:12-16 / :26-33 / :77 / :138 / :145）。
+import { Switch } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import { useSettingsLocale } from './PortedSectionsPanel.tsx';
 import { useEffect, useRef, useState } from 'react';
 
@@ -324,17 +329,17 @@ export function RuntimeQueuesPanel({ client, payload, loading = false, error = n
         <label className="rq-auto-refresh">
           <span className={autoRefresh ? 'rq-live-dot rq-live-dot--active' : 'rq-live-dot'} />
           <span>{t('system.globalSettings.runtime.autoRefresh')}</span>
-          <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="rq-auto-refresh-switch" aria-label={t('system.globalSettings.runtime.autoRefresh')} />
+          <Switch size="small" value={autoRefresh} onChange={(value) => setAutoRefresh(Boolean(value))} aria-label={t('system.globalSettings.runtime.autoRefresh')} />
         </label>
         <button type="button" className="rq-refresh" aria-label={t('system.globalSettings.runtime.refresh')} title={t('system.globalSettings.runtime.refresh')} onClick={() => {
           void client.administration.runtime.queues().then((next) => { liveRef.current = next; setLive(next); setUpdatedAt(new Date((next.timestamp || Date.now() / 1000) * 1000).toLocaleTimeString('zh-CN', { hour12: false })); }).catch(() => undefined);
-        }}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg></button>
+        }}><TIcon name="refresh" /></button>
       </div>
     </header>
     {view.available ? <>
       <section className="rq-overview" aria-label={t('system.globalSettings.runtime.summary.title')}>
         <div className="rq-overview-title">
-          <span className="rq-overview-mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M3 3v16a2 2 0 002 2h16" /><path d="M7 16l4-6 4 3 5-8" /></svg></span>
+          <span className="rq-overview-mark"><TIcon name="chart-line" /></span>
           <span>{t('system.globalSettings.runtime.summary.title')}</span>
         </div>
         <div className="rq-overview-metrics">
@@ -360,10 +365,14 @@ export function RuntimeQueuesPanel({ client, payload, loading = false, error = n
             </div>
             <p className="rq-pool-desc">
               {poolDescription(stringOf(pool, 'name'))}
+              {/* Vue 模板文本节点结构复刻：poolConfigured 插值后的换行凝结为
+                  尾随空格文本节点（"单实例配置 8 "），与下一 " · 1 个实例…" 文本
+                  节点拼出双空格分隔（"8␣␣·␣1"）；三个文本节点边界与 Vue 一致
+                  （台账 #11 同族：单表达式拼接防跨节点 kerning 漂移）。 */}
               <span className="rq-pool-meta">
-                {t('system.globalSettings.runtime.poolConfigured', { value: numberOf(pool, 'concurrency') })}
-                {numberOf(pool, 'instances') > 0 ? <> · {t('system.globalSettings.runtime.poolInstances', { value: numberOf(pool, 'instances') })} · {t('system.globalSettings.runtime.poolUtilization', { value: Math.round(Math.max(0, Math.min(1, typeof pool.utilization === 'number' ? pool.utilization : 0)) * 100) })}</> : null}
-                {' · '}{t('system.globalSettings.runtime.queueCount', { value: numberOf(pool, 'queue_count') })}
+                {t('system.globalSettings.runtime.poolConfigured', { value: numberOf(pool, 'concurrency') }) + ' '}
+                {numberOf(pool, 'instances') > 0 ? ` · ${t('system.globalSettings.runtime.poolInstances', { value: numberOf(pool, 'instances') })} · ${t('system.globalSettings.runtime.poolUtilization', { value: Math.round(Math.max(0, Math.min(1, typeof pool.utilization === 'number' ? pool.utilization : 0)) * 100) })}` : null}
+                {` · ${t('system.globalSettings.runtime.queueCount', { value: numberOf(pool, 'queue_count') })}`}
               </span>
             </p>
           </div>)}
@@ -375,10 +384,10 @@ export function RuntimeQueuesPanel({ client, payload, loading = false, error = n
             <h3 className="rq-section-title">{t('system.globalSettings.runtime.detailsTitle')}</h3>
             <p>{t('system.globalSettings.runtime.detailsDescription')}</p>
           </div>
-          {updatedAt ? <span className="rq-updated-at"><ClockIcon />{t('system.globalSettings.runtime.updatedAt', { value: updatedAt })}</span> : null}
+          {updatedAt ? <span className="rq-updated-at"><TIcon name="time" />{t('system.globalSettings.runtime.updatedAt', { value: updatedAt })}</span> : null}
         </div>
         {totalArchived > 0 ? <div className="rq-failed-notice" role="status">
-          <span className="rq-failed-notice__icon" aria-hidden="true"><ErrorIcon /></span>
+          <span className="rq-failed-notice__icon" aria-hidden="true"><TIcon name="error-circle" /></span>
           <div className="rq-failed-notice__text">
             <p className="rq-failed-notice__title">{t('system.globalSettings.runtime.failedNotice.title', { count: totalArchived })}</p>
             <p className="rq-failed-notice__desc">{t('system.globalSettings.runtime.failedNotice.description')}</p>

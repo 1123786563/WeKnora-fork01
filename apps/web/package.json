@@ -15,7 +15,6 @@
     "@weknora/core": "workspace:*",
     "@weknora/domain": "file:../../packages/domain",
     "@weknora/i18n": "workspace:*",
-    "@weknora/ui": "file:../../packages/ui",
     "@weknora/views": "workspace:*",
     "dompurify": "^3.4.11",
     "katex": "^0.16.45",
@@ -30,14 +29,12 @@
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
-    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
     "esbuild": "0.28.2",
     "jsdom": "^30.0.1",
-    "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "vite": "^7.1.7"
   }

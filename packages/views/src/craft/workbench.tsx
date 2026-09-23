@@ -29,7 +29,7 @@ import React, {
 } from 'react';
 import type { CraftPreviewTicketView, CraftVersionView } from '@weknora/contracts';
 import type { CraftWorkbenchController } from '@weknora/core/craft/controller';
-import { Button } from '@weknora/ui';
+import { Button } from './td.tsx';
 import {
   archiveLiveTurn,
   craftStrings,

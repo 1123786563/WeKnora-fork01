@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { TenantInvitation, WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Dialog, Input, Status, Textarea } from '@weknora/ui';
+// S6 换装（T15 前置）：表单栈离开 packages/ui 旧栈——Button/Input/Textarea 换
+// tdesign（playbook §1：onChange 改 (value) 签名、maxLength → maxlength）；
+// Card/Status 无 TDesign 对应走 shared/wk-legacy；两个弹窗同走 WkDialog
+// （DOM 同构旧栈：本页为 React 独有表面、无扫描锚点，tdesign Dialog 的
+// Portal+CSSTransition 在 node/jsdom 下退场计时器不触发会造成测试假挂，
+// WkDialog 渲染树与迁移前逐节点一致）。
+import { Button as TButton, Input as TInput, Textarea as TTextarea } from 'tdesign-react';
+import { WkCard as Card, WkDialog as TDialog, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import type { WebScopeRuntime } from '../platform/scope-runtime.ts';
 import { onboardingView, validateCreateTenant, type OnboardingPolicyInput } from './onboarding.ts';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+import './auth-u.css';
 
 const LOCALE_STORAGE_KEY = 'locale';
 function readInitialLocale(): Locale {
@@ -110,8 +118,8 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
   }
 
   const ready = view.kind === 'ready';
-  return <main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Card>
-    <div data-testid="workspace-mark" aria-hidden="true" className="mx-auto mb-[22px] flex h-16 w-16 items-center justify-center rounded-[18px] bg-primary/10 text-primary">
+  return <main className="wk-page wk-page--std"><Card>
+    <div data-testid="workspace-mark" aria-hidden="true" className="wk-onb-1">
       <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
         <rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" />
         <rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" />
@@ -119,64 +127,63 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
         <rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" />
       </svg>
     </div>
-    <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.title') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyTitle')}</h1>
-    <p className="wk-muted text-muted">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.description') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyDescription')}</p>
+    <h1 className="wk-onb-2">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.title') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyTitle')}</h1>
+    <p className="wk-muted wk-onb-3">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.description') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyDescription')}</p>
     {view.kind === 'loading-policy' || (ready && false) ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingPolicy')}</Status> : null}
     {view.kind === 'policy-error' || loadFailed ? <div role="alert"><Status tone="error">{msg(locale, 'auth.workspaceOnboarding.policyLoadFailed')}</Status>
-      <Button type="button" onClick={() => void loadPolicy()}>{msg(locale, 'auth.workspaceOnboarding.retry')}</Button></div> : null}
+      <TButton type="button" onClick={() => void loadPolicy()}>{msg(locale, 'auth.workspaceOnboarding.retry')}</TButton></div> : null}
     {ready ? <>
       {view.inviteOnly ? <Status>{msg(locale, 'auth.workspaceOnboarding.inviteOnlyNotice')}</Status> : null}
       <div className="wk-actions">
-        {view.canCreateTenant ? <Button type="button" onClick={() => setCreateVisible(true)}>{msg(locale, 'auth.workspaceOnboarding.create')}</Button> : null}
-        <Button type="button" onClick={() => { setInvitationsVisible(true); void loadInvitations(); }}>
+        {view.canCreateTenant ? <TButton type="button" onClick={() => setCreateVisible(true)}>{msg(locale, 'auth.workspaceOnboarding.create')}</TButton> : null}
+        <TButton type="button" onClick={() => { setInvitationsVisible(true); void loadInvitations(); }}>
           {msg(locale, 'auth.workspaceOnboarding.invitations')}{view.pendingInvitationCount > 0 ? ` (${view.pendingInvitationCount})` : ''}
-        </Button>
+        </TButton>
       </div>
-      <p className="wk-muted text-muted">{view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.help') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyHelp')}</p>
+      <p className="wk-muted wk-onb-3">{view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.help') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyHelp')}</p>
     </> : null}
-    <Button type="button" onClick={() => void onLogout()}>{msg(locale, 'auth.logout')}</Button>
+    <TButton type="button" onClick={() => void onLogout()}>{msg(locale, 'auth.logout')}</TButton>
 
-    <Dialog
+    <TDialog
       open={createVisible}
-      title={<span className="inline-flex items-center gap-2"><svg className="text-primary shrink-0" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
+      title={<span className="wk-onb-4"><svg className="wk-onb-5" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
       onClose={() => { if (!creating) { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); } }}
-      className="w-[min(480px,100%)]!"
+      className="wk-onb-6"
     >
-      <p className="wk-muted text-muted">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
-      <form className="wk-form mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
-        <label className="grid gap-1">{msg(locale, 'tenant.create.nameLabel')}
-          <Input className="rounded-control border border-line-strong p-[0.55rem]" value={name} onChange={(event) => setName(event.target.value)} maxLength={128} autoFocus disabled={creating} placeholder={msg(locale, 'tenant.create.namePlaceholder')} />
+      <p className="wk-muted wk-onb-3">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
+      <form className="wk-form wk-onb-7" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
+        <label className="wk-onb-8">{msg(locale, 'tenant.create.nameLabel')}
+          <TInput className="wk-onb-9" value={name} onChange={(value) => setName(String(value))} maxlength={128} autofocus disabled={creating} placeholder={msg(locale, 'tenant.create.namePlaceholder')} />
           {(fieldErrors.name ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
-        <label className="grid gap-1">{msg(locale, 'tenant.create.descriptionLabel')}
-          <Textarea className="box-border w-full resize-y px-[0.6rem] py-[0.5rem] [font:inherit]" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
+        <label className="wk-onb-8">{msg(locale, 'tenant.create.descriptionLabel')}
+          <TTextarea className="wk-onb-10" value={description} onChange={(value) => setDescription(String(value))} maxlength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
           {(fieldErrors.description ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
         {createError ? <Status tone="error">{createError}</Status> : null}
         <div className="wk-actions">
-          <Button type="submit" disabled={creating}>{creating ? msg(locale, 'auth.workspaceOnboarding.creating') : msg(locale, 'tenant.create.submit')}</Button>
-          <Button type="button" onClick={() => { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); }}>{msg(locale, 'tenant.create.cancel')}</Button>
+          <TButton type="submit" disabled={creating}>{creating ? msg(locale, 'auth.workspaceOnboarding.creating') : msg(locale, 'tenant.create.submit')}</TButton>
+          <TButton type="button" onClick={() => { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); }}>{msg(locale, 'tenant.create.cancel')}</TButton>
         </div>
       </form>
-    </Dialog>
+    </TDialog>
 
-    <Dialog
+    <TDialog
       open={invitationsVisible}
       title={msg(locale, 'auth.workspaceOnboarding.invitations')}
       onClose={() => setInvitationsVisible(false)}
-      closeLabel={msg(locale, 'auth.workspaceOnboarding.close')}
-      className="w-[min(560px,100%)]!"
+      className="wk-onb-11"
     >
       {invitationError ? <Status tone="error">{invitationError}</Status> : null}
       {invitationNotice ? <Status tone="success">{invitationNotice}</Status> : null}
       {invitations === null ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingInvitations')}</Status> : invitations.length === 0 ? <Status>{msg(locale, 'tenantInvitation.myInbox.empty')}</Status> : (
         <ul>{invitations.map((invitation) => <li key={invitation.id}>
           <strong>{invitation.tenant_name || msg(locale, 'auth.workspaceOnboarding.workspaceFallback', { id: invitation.tenant_id })}</strong> — {invitation.role}
-          <Button type="button" disabled={respondingId !== null} onClick={() => void respond(invitation, true)}>{msg(locale, 'tenantInvitation.myInbox.acceptButton')}</Button>
-          <Button type="button" disabled={respondingId !== null} onClick={() => void respond(invitation, false)}>{msg(locale, 'tenantInvitation.myInbox.declineButton')}</Button>
+          <TButton type="button" disabled={respondingId !== null} onClick={() => void respond(invitation, true)}>{msg(locale, 'tenantInvitation.myInbox.acceptButton')}</TButton>
+          <TButton type="button" disabled={respondingId !== null} onClick={() => void respond(invitation, false)}>{msg(locale, 'tenantInvitation.myInbox.declineButton')}</TButton>
         </li>)}</ul>
       )}
-      <Button type="button" onClick={() => setInvitationsVisible(false)}>{msg(locale, 'auth.workspaceOnboarding.close')}</Button>
-    </Dialog>
+      <TButton type="button" onClick={() => setInvitationsVisible(false)}>{msg(locale, 'auth.workspaceOnboarding.close')}</TButton>
+    </TDialog>
   </Card></main>;
 }

@@ -8,7 +8,8 @@ const IntegrationsRoutePage = lazy(() => import('../integrations/IntegrationsRou
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views/settings/registry';
 import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views/settings/registry';
-import { Button, Status, Alert } from '@weknora/ui';
+import { Alert as TAlert, Button as TButton } from 'tdesign-react';
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 // TDesign 同构迁移（T12a）：图标走 tdesign-icons-react 本地 sprite（= Vue 端
 // `Icon as TIcon`，与 Vue t-icon 同源同字形，台账 #10）。
 import { Icon as TIcon } from 'tdesign-icons-react';
@@ -100,9 +101,14 @@ const SELF_ERROR_SECTIONS = new Set(['members']);
 // shell .section container like Vue Settings.vue does (no wk-settings-section
 // wrapper, no shell heading). Integration sections have been self-headered
 // since R490 (handled separately via sectionIntegrationTab).
-const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory', 'memory', 'ollama', 'weknoracloud', 'models', 'parser', 'sandbox', 'skills']);
+// T12c：system 面板自持 section-header 与 loading/error 态（SystemInfo.vue
+// loading-inline/error-inline），userprofile 同款自持先例。
+const SELF_HEADER_SECTIONS = new Set<string>(['general', 'userprofile', 'envvars', 'tenant', 'mymemory', 'chathistory', 'memory', 'ollama', 'weknoracloud', 'models', 'parser', 'sandbox', 'skills', 'system']);
 
-const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
+// S1 评审回收：system-global/runtime-queues/platform-api-keys/system-audit-log
+// 四个死条目已删——T12c 后它们在 portedPanel 三元链上有显式分支，永不落入
+// PARTIALLY_PORTED 兜底路径。
+const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills']);
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 // Keep the ordinary settings sections behind the same deployment gates as
 // Settings.vue's SETTINGS_SECTION_CAPABILITY map. Integrations are described
@@ -432,7 +438,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const usagePanel = key === 'usage' ? <UsagePanel client={client} locale={locale} /> : null;
     const queryHistoryPanel = key === 'query-history' ? <QueryHistoryPanel client={client} locale={locale} role={role} /> : null;
     const cloudPanel = key === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={sectionPayload} /> : null;
-    const systemPanel = key === 'system' ? <SystemInfoPanel payload={sectionPayload} locale={locale} /> : null;
+    const systemPanel = key === 'system' ? <SystemInfoPanel payload={sectionPayload} locale={locale} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : null;
     // Vue Settings.vue: these two sections stay nav-visible but render no panel
     // content without the system-admin role (the content area is simply empty).
     const systemAdminOnlyPanelDenied = key === 'system-global' || key === 'runtime-queues' ? role !== 'system-admin' : false;
@@ -515,18 +521,18 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
             /* Vue panels own their section-header (TenantInfo.vue:682-697 et
                al.): 20px/600 h2 with an 8px gap, 14px/1.5 secondary
                description, then a bare 32px margin — no divider line. */
-            <div className="wk-settings-panel-heading flex items-start justify-between gap-4 mb-8 max-[720px]:flex-col">
-              <div className="w-full">
-                <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, key).title}</h2>
-                <p className="m-0 text-[14px] leading-[21px] text-[rgba(0,0,0,0.6)]">{settingsSectionHeading(locale, key).description}</p>
+            <div className="wk-settings-panel-heading">
+              <div>
+                <h2>{settingsSectionHeading(locale, key).title}</h2>
+                <p>{settingsSectionHeading(locale, key).description}</p>
               </div>
             </div>
           ) : null}
           {systemAdminOnlyPanelDenied ? null : (
           sectionError && sectionErrorMode(key) === 'banner-retry' ? (
-            <div data-testid="settings-section-error-banner" role="alert" className="mb-1 flex flex-wrap items-center gap-2">
-              <Alert tone="danger" className="min-w-0 flex-1">{sectionError}</Alert>
-              <Button type="button" onClick={() => { void load(true); }}>{key === 'members' || key === 'storage' ? t('settings.storage.retry') : t('settings.parser.retry')}</Button>
+            <div data-testid="settings-section-error-banner" role="alert" className="wk-settings-error-banner">
+              <TAlert theme="error" className="wk-settings-error-banner-alert" message={sectionError} />
+              <TButton type="button" onClick={() => { void load(true); }}>{key === 'members' || key === 'storage' ? t('settings.storage.retry') : t('settings.parser.retry')}</TButton>
             </div>
           ) : sectionError && sectionErrorMode(key) === 'inline' ? <Status tone="error">{sectionError}</Status> : sectionLoading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{isActive && notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? chatPreferencesPanel ?? resourcePanel ?? configPanel ?? chatHistoryPanel ?? ollamaPanel ?? usagePanel ?? queryHistoryPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (key === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={sectionPayload} error={sectionError} loading={sectionLoading} onRetry={() => { void load(true); }} /> : key === 'memory' ? <MemoryWorkspacePanel client={client} initialConfig={sectionPayload} canEdit={roleAtLeast(role, 'admin')} /> : key === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={sectionPayload} /> : null)}</></Suspense>)}
         </div>

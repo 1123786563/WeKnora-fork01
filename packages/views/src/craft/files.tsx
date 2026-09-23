@@ -9,7 +9,7 @@
 // version" is deliberately absent: restore lands with C05.
 import React from 'react';
 import type { CraftVersionView } from '@weknora/contracts';
-import { Button } from '@weknora/ui';
+import { Button } from './td.tsx';
 import { craftStrings, downloadFileName, formatBytes, historyRows, type CraftLocale } from './presentation.ts';
 
 export interface CraftFilesProps {

@@ -8,7 +8,7 @@
  * (stricter than the backend's >=20 minimum, per plan) so the empty-code
  * result path is unreachable.
  *
- * TDesign 同构迁移（Task 9）：@weknora/ui Dialog → 本地 overlay（样式在
+ * TDesign 同构迁移（Task 9）：packages/ui 旧栈 Dialog → 本地 overlay（样式在
  * agents.td.css 的 wk-ae-mbti 段），按钮换 tdesign-react Button。
  */
 import { useEffect, useState } from 'react';

@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
-// The @weknora/ui entry imports theme.css; short-circuit CSS the same way
+// craft entry pages import craft.css via td.tsx; short-circuit CSS the same way
 // packages/ui/src/index.test.tsx does.
 import * as nodeModule from 'node:module';
 const hooks = nodeModule as typeof nodeModule & {

@@ -1,0 +1,221 @@
+/* administration-u.css — S7 Tailwind utilities 平移（administration 域漂零段：AdministrationPage 等）
+ * 前缀见各规则；值 = utilities 编码的生效值。导入顺序：须在本域 .td.css 之前。 */
+
+
+.wk-admin-pager-btn {
+  display: inline-flex;
+  height: 24px;
+  min-width: 24px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding-inline: 0.3rem;
+  padding-block: 0;
+  font-weight: 400;
+  color: rgb(0 0 0/90%);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-admin-pager-btn-disabled:disabled {
+  color: rgb(0 0 0/26%);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wk-admin-pager-btn-disabled:enabled:hover {
+  color: #07c05f;
+}
+
+.wk-admin-1 {
+  max-width: 1180px !important;
+  margin-inline: auto;
+  box-sizing: border-box;
+  padding-inline: 1.25rem;
+  padding-block: 48px;
+}
+
+.wk-admin-2 {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.wk-admin-3 {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #2e6de6;
+}
+
+.wk-admin-4 {
+  font-size: clamp(1.8rem,5vw,2.5rem);
+  margin-block: 0.35rem;
+}
+
+.wk-admin-5 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-admin-6 {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.wk-admin-7 {
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+.wk-admin-8 {
+  margin: 0;
+  list-style-type: none;
+  padding: 0;
+}
+
+.wk-admin-9 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-bottom-width: 1px;border-color: #e7e7e7;
+  padding-block: 0.9rem;
+}
+
+.wk-admin-10 {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.wk-admin-11 {
+  font-family: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.8rem;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-admin-12 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 720px) {
+.wk-admin-12 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+}
+
+.wk-admin-13 {
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.wk-admin-14 {
+  max-width: 9rem;
+}
+
+.wk-admin-15 {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.wk-admin-16 {
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+  margin: 0;
+}
+
+.wk-admin-17 {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.wk-admin-18 {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.wk-admin-19 {
+  grid-column: span 2 / span 2;
+  display: grid;
+  gap: 24px;
+}
+
+@media (max-width: 720px) {
+.wk-admin-19 {
+  grid-column: span 1 / span 1;
+}
+}
+
+.wk-admin-20 {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  border-top-style: solid;
+  /* 旧栈 line/line-soft→Vue var(--td-component-stroke)=#e7e7e7 */
+  border-top-width: 1px;border-color: #e7e7e7;
+  padding-top: 12px;
+  font-size: 12px;
+  /* 旧栈 muted/muted-strong→Vue var(--td-text-color-secondary)=rgba(0,0,0,.6) */
+  color: rgba(0, 0, 0, 0.6);
+}
+
+@media (max-width: 720px) {
+.wk-admin-20 {
+  justify-content: flex-start;
+}
+}
+
+.wk-admin-21 {
+  margin-right: auto;
+}
+
+.wk-admin-22 {
+  width: auto !important;
+}
+
+.wk-admin-23 {
+  padding-inline: 4px;
+}
+
+.wk-admin-24 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.wk-admin-25 {
+  height: 24px;
+  width: 2.6rem !important;
+  border-radius: 6px !important;
+  padding-inline: 0 !important;
+  text-align: center !important;
+}
+
+/* 手工段：成员分页器当前页态（aria-[current=page]/[&:not(...)]:hover 变体） */
+.wk-admin-pager-current[aria-current="page"] { background-color: var(--color-accent, #07c05f); color: #fff; }
+.wk-admin-pager-current:not([aria-current="page"]):hover { color: var(--color-accent, #07c05f); }

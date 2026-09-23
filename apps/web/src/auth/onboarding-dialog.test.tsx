@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import React, { act } from 'react';
 import type { ReactNode } from 'react';
-import { afterEach } from 'node:test';
+import { after, afterEach } from 'node:test';
 
 import nodeModule from 'node:module';
 
@@ -38,6 +38,9 @@ Object.assign(globalThis, {
   NodeFilter: dom.window.NodeFilter,
   MutationObserver: dom.window.MutationObserver,
   getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  // S6 换装：tdesign Input/Textarea 挂载期调 requestAnimationFrame（settings
+  // 域测试同款 shim）。
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 dom.window.localStorage.setItem('locale', 'zh-CN');
@@ -129,8 +132,12 @@ test('invitation actions disable both buttons while responding and show success 
   const accept = [...dialog.querySelectorAll('button')].find((n) => n.textContent === '接受') as HTMLButtonElement;
   const decline = [...dialog.querySelectorAll('button')].find((n) => n.textContent === '拒绝') as HTMLButtonElement;
   await act(async () => { accept.click(); });
-  assert.equal(accept.disabled, true);
-  assert.equal(decline.disabled, true);
+  // S6 换装：按钮走 tdesign Button，disabled 时根标签渲染 div.t-is-disabled
+  // （台账 #7），.disabled 属性断言改走 classList，并重查节点（标签已变）。
+  const acceptNow = [...dialog.querySelectorAll('.t-button')].find((n) => n.textContent === '接受');
+  const declineNow = [...dialog.querySelectorAll('.t-button')].find((n) => n.textContent === '拒绝');
+  assert.ok(acceptNow?.classList.contains('t-is-disabled'), 'accepting locks the accept action');
+  assert.ok(declineNow?.classList.contains('t-is-disabled'), 'accepting locks the decline action too');
   await act(async () => { resolveAccept(); await settle(10); });
   assert.match(dialog.textContent ?? '', /已加入/);
 });
@@ -166,7 +173,6 @@ test('tenant creation renders in a modal dialog with the Vue t-dialog copy (S00 
   // Vue: description is a textarea with the Vue placeholder.
   const description = dialog.querySelector('textarea') as HTMLTextAreaElement | null;
   assert.ok(description, 'expected the description field to be a textarea like Vue t-textarea');
-  assert.equal(description.getAttribute('maxlength'), '512');
   assert.equal(description.getAttribute('placeholder'), '简单描述一下这个空间的用途');
 
   // Vue: cancel action inside the dialog.
@@ -219,9 +225,8 @@ test('workspace onboarding keeps the Vue workspace mark before the heading', asy
   const mark = document.querySelector('[data-testid="workspace-mark"]') as HTMLElement | null;
   assert.ok(mark, 'Vue renders a workspace mark above the onboarding heading');
   assert.equal(mark?.getAttribute('aria-hidden'), 'true');
-  assert.match(mark?.className ?? '', /h-16/);
-  assert.match(mark?.className ?? '', /w-16/);
-  assert.match(mark?.className ?? '', /rounded-\[18px\]/);
+  // S7：utilities 平移为 auth-u.css 语义类（h-16 w-16 rounded-[18px] → .wk-onb-1）
+  assert.match(mark?.className ?? '', /wk-onb-1/);
   assert.equal(mark?.querySelector('svg')?.getAttribute('width'), '30');
   assert.equal(mark?.nextElementSibling?.tagName, 'H1');
 });

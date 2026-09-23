@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Status } from '@weknora/ui';
+// S6：Status 无 TDesign 对应（playbook §1 附行），走 shared/wk-legacy。
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { profilePasswordPatch, tenantPatch } from './surface.ts';
 import { TenantDeleteZone } from './TenantDeleteZone.tsx';

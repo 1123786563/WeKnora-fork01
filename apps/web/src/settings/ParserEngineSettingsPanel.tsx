@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Checkbox, Input, Select, Status } from '@weknora/ui';
-import { Alert, Button as TButton, Loading, Tooltip } from 'tdesign-react';
+// S6 抽屉收编：配置抽屉离开 packages/ui 旧栈 表单栈（T15 硬前置），组件换 tdesign。
+import { Alert, Button as TButton, Checkbox as TCheckbox, Input as TInput, Loading, Select as TSelect, Tooltip } from 'tdesign-react';
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 /* Full port of Vue ParserEngineSettings.vue: the engine-card grid (monogram
@@ -405,136 +406,136 @@ function EngineDrawer(props: {
 }) {
   const { name, config, setConfig, t } = props;
   const set = <K extends keyof ParserConfig>(key: K, value: ParserConfig[K]) => setConfig((current) => ({ ...current, [key]: value }));
-  return <div className="fixed inset-0 z-[1300] flex justify-end bg-[rgba(0,0,0,.5)]" role="presentation" onClick={props.onClose}>
+  return <div className="engine-drawer-overlay" role="presentation" onClick={props.onClose}>
     <section
       role="dialog"
       aria-modal="true"
       aria-label={props.title}
-      className="flex h-full w-[560px] max-w-[92vw] flex-col bg-surface shadow-[0_12px_40px_rgba(15,23,42,0.2)]"
+      className="engine-drawer"
       onClick={(event) => event.stopPropagation()}
     >
-      <header className="flex items-start gap-3 border-b border-line-soft px-5 py-4">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-surface-wash text-[15px] font-semibold text-accent" aria-hidden="true">{props.initial}</span>
-        <div className="min-w-0 flex-1">
-          <h3 className="m-0 truncate text-[16px] font-semibold text-ink">{props.title}</h3>
-          <p className="m-0 mt-0.5 text-[12px] text-muted">{props.desc}</p>
+      <header className="engine-drawer__header">
+        <span className="engine-drawer__badge" aria-hidden="true">{props.initial}</span>
+        <div className="engine-drawer__head-text">
+          <h3 className="engine-drawer__title">{props.title}</h3>
+          <p className="engine-drawer__desc">{props.desc}</p>
         </div>
-        <button type="button" className="cursor-pointer border-0 bg-transparent p-1 text-muted" aria-label={t('common.cancel')} onClick={props.onClose}>✕</button>
+        <button type="button" className="engine-drawer__close" aria-label={t('common.cancel')} onClick={props.onClose}>✕</button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        {props.fileTypes.length ? <section className="mb-5">
-          <h4 className="m-0 mb-2 text-[13px] font-semibold text-ink">{t('settings.parser.supportedFileTypes')}</h4>
-          <div className="flex flex-wrap gap-1.5">{props.fileTypes.map((ft) => <span key={ft} className="rounded-full border border-line-soft bg-surface-wash px-2 py-0.5 text-[11px] text-muted">{ft}</span>)}</div>
+      <div className="engine-drawer__body">
+        {props.fileTypes.length ? <section className="engine-drawer__section">
+          <h4 className="engine-drawer__section-title">{t('settings.parser.supportedFileTypes')}</h4>
+          <div className="engine-drawer__filetypes">{props.fileTypes.map((ft) => <span key={ft} className="engine-drawer__filetype">{ft}</span>)}</div>
         </section> : null}
-        {name === 'builtin' || name === 'weknoracloud' ? <section className="mb-5">
-          <h4 className="m-0 mb-2 text-[13px] font-semibold text-ink">{t('settings.parser.statusSection')}</h4>
+        {name === 'builtin' || name === 'weknoracloud' ? <section className="engine-drawer__section">
+          <h4 className="engine-drawer__section-title">{t('settings.parser.statusSection')}</h4>
           {name === 'builtin' ? <div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="engine-drawer__status-row">
               <Status tone={props.connected ? 'success' : 'error'}>{props.connected ? t('settings.parser.connected') : t('settings.parser.disconnected')}</Status>
               <Status>{props.docreaderTransport === 'http' ? 'HTTP' : 'gRPC'}</Status>
-              {props.docreaderAddrEnv ? <span className="text-[12px] text-muted-strong">{t('settings.parser.currentAddr')}: {props.docreaderAddrEnv}</span> : null}
+              {props.docreaderAddrEnv ? <span className="engine-drawer__addr">{t('settings.parser.currentAddr')}: {props.docreaderAddrEnv}</span> : null}
             </div>
-            <p className="mb-0 mt-2 text-[12px] text-muted">{t('settings.parser.envVarHint')}</p>
+            <p className="engine-drawer__hint">{t('settings.parser.envVarHint')}</p>
           </div> : <div>
             {props.wkcState === 'configured' ? <Status tone="success">{t('settings.weknoraCloud.credentialConfigured')}</Status>
               : props.wkcState === 'loading' ? <Status>{t('settings.weknoraCloud.checkingStatus')}</Status>
-              : <div className="flex items-center gap-2 text-[13px] text-[#ad4b00]">
+              : <div className="engine-drawer__cred-row">
                   <span>{props.wkcState === 'expired' ? t('settings.weknoraCloud.credentialExpired') : t('settings.weknoraCloud.unconfigured')}</span>
-                  <a className="cursor-pointer text-[#245a9b] hover:underline" href="/platform/settings?section=weknoracloud" onClick={(event) => { event.preventDefault(); window.history.pushState({}, '', '/platform/settings?section=weknoracloud'); window.dispatchEvent(new window.PopStateEvent('popstate')); }}>{t('settings.weknoraCloud.goToSettings')}</a>
+                  <a className="engine-drawer__cred-link" href="/platform/settings?section=weknoracloud" onClick={(event) => { event.preventDefault(); window.history.pushState({}, '', '/platform/settings?section=weknoracloud'); window.dispatchEvent(new window.PopStateEvent('popstate')); }}>{t('settings.weknoraCloud.goToSettings')}</a>
                 </div>}
           </div>}
         </section> : null}
-        {name === 'mineru' ? <section className="mb-5 grid gap-3">
-          <h4 className="m-0 text-[13px] font-semibold text-ink">{t('settings.parser.configSection')}</h4>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">{t('settings.parser.selfHostedEndpoint')}
-            <Input value={config.mineru_endpoint} placeholder={t('settings.parser.mineruEndpointPlaceholder')} onChange={(event) => set('mineru_endpoint', event.target.value)} />
+        {name === 'mineru' ? <section className="engine-drawer__form">
+          <h4 className="engine-drawer__section-title">{t('settings.parser.configSection')}</h4>
+          <label className="engine-drawer__label">{t('settings.parser.selfHostedEndpoint')}
+            <TInput value={config.mineru_endpoint} placeholder={t('settings.parser.mineruEndpointPlaceholder')} onChange={(value) => set('mineru_endpoint', String(value))} />
           </label>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">Backend
-            <Select data-testid="mineru-model" value={config.mineru_model} onChange={(event) => set('mineru_model', event.target.value)}>
-              <option value="pipeline">pipeline</option>
-              <option value="vlm-auto-engine">vlm-auto-engine</option>
-              <option value="vlm-http-client">vlm-http-client</option>
-              <option value="hybrid-auto-engine">hybrid-auto-engine</option>
-              <option value="hybrid-http-client">hybrid-http-client</option>
-            </Select>
+          <label className="engine-drawer__label">Backend
+            <TSelect className="wk-parser-sel-mineru-model" value={config.mineru_model} onChange={(value) => set('mineru_model', String(value))}>
+              <TSelect.Option value="pipeline" label="pipeline" />
+              <TSelect.Option value="vlm-auto-engine" label="vlm-auto-engine" />
+              <TSelect.Option value="vlm-http-client" label="vlm-http-client" />
+              <TSelect.Option value="hybrid-auto-engine" label="hybrid-auto-engine" />
+              <TSelect.Option value="hybrid-http-client" label="hybrid-http-client" />
+            </TSelect>
           </label>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">vLLM {t('settings.parser.serverUrl')}
-            <Input data-testid="mineru-vllm-server-url" value={config.mineru_vlm_server_url} placeholder={t('settings.parser.vlmServerUrlPlaceholder')} onChange={(event) => set('mineru_vlm_server_url', event.target.value)} />
-            <span className="text-[12px] text-muted">{t('settings.parser.vlmServerUrlHint')}</span>
+          <label className="engine-drawer__label">vLLM {t('settings.parser.serverUrl')}
+            <TInput data-testid="mineru-vllm-server-url" value={config.mineru_vlm_server_url} placeholder={t('settings.parser.vlmServerUrlPlaceholder')} onChange={(value) => set('mineru_vlm_server_url', String(value))} />
+            <span className="engine-drawer__hint">{t('settings.parser.vlmServerUrlHint')}</span>
           </label>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">{t('settings.parser.parseMethodLabel')}
-            <Select data-testid="mineru-parse-method" value={config.mineru_parse_method} onChange={(event) => set('mineru_parse_method', event.target.value)}>
-              <option value="auto">{t('settings.parser.parseMethodAuto')}</option>
-              <option value="ocr">{t('settings.parser.parseMethodOCR')}</option>
-              <option value="txt">{t('settings.parser.parseMethodText')}</option>
-            </Select>
-            <span className="text-[12px] text-muted">{t('settings.parser.parseMethodHint')}</span>
+          <label className="engine-drawer__label">{t('settings.parser.parseMethodLabel')}
+            <TSelect className="wk-parser-sel-mineru-parse-method" value={config.mineru_parse_method} onChange={(value) => set('mineru_parse_method', String(value))}>
+              <TSelect.Option value="auto" label={t('settings.parser.parseMethodAuto')} />
+              <TSelect.Option value="ocr" label={t('settings.parser.parseMethodOCR')} />
+              <TSelect.Option value="txt" label={t('settings.parser.parseMethodText')} />
+            </TSelect>
+            <span className="engine-drawer__hint">{t('settings.parser.parseMethodHint')}</span>
           </label>
-          <div className="flex flex-wrap gap-4 text-[13px]">
-            <label className="flex items-center gap-1.5"><Checkbox checked={config.mineru_enable_formula} onChange={(event) => set('mineru_enable_formula', event.target.checked)} />{t('settings.parser.formulaRecognition')}</label>
-            <label className="flex items-center gap-1.5"><Checkbox checked={config.mineru_enable_table} onChange={(event) => set('mineru_enable_table', event.target.checked)} />{t('settings.parser.tableRecognition')}</label>
+          <div className="engine-drawer__checks">
+            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_enable_formula} onChange={(checked) => set('mineru_enable_formula', Boolean(checked))} label={t('settings.parser.formulaRecognition')} /></label>
+            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_enable_table} onChange={(checked) => set('mineru_enable_table', Boolean(checked))} label={t('settings.parser.tableRecognition')} /></label>
           </div>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">{t('settings.parser.language')}
-            <Input data-testid="mineru-language" value={config.mineru_language} placeholder={t('settings.parser.languagePlaceholder')} onChange={(event) => set('mineru_language', event.target.value)} />
+          <label className="engine-drawer__label">{t('settings.parser.language')}
+            <TInput data-testid="mineru-language" value={config.mineru_language} placeholder={t('settings.parser.languagePlaceholder')} onChange={(value) => set('mineru_language', String(value))} />
           </label>
         </section> : null}
-        {name === 'mineru_cloud' ? <section className="mb-5 grid gap-3">
-          <h4 className="m-0 text-[13px] font-semibold text-ink">{t('settings.parser.configSection')}</h4>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">API Key
-            <Input type="password" autoComplete="new-password" value={config.mineru_api_key} placeholder={t('settings.parser.mineruCloudApiKeyPlaceholder')} onChange={(event) => set('mineru_api_key', event.target.value)} />
+        {name === 'mineru_cloud' ? <section className="engine-drawer__form">
+          <h4 className="engine-drawer__section-title">{t('settings.parser.configSection')}</h4>
+          <label className="engine-drawer__label">API Key
+            <TInput type="password" autocomplete="new-password" value={config.mineru_api_key} placeholder={t('settings.parser.mineruCloudApiKeyPlaceholder')} onChange={(value) => set('mineru_api_key', String(value))} />
           </label>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">Model Version
-            <Select data-testid="mineru-cloud-model" value={config.mineru_cloud_model} onChange={(event) => set('mineru_cloud_model', event.target.value)}>
-              <option value="pipeline">pipeline</option>
-              <option value="vlm">{t('settings.parser.vlmLabel')}</option>
-              <option value="MinerU-HTML">{t('settings.parser.mineruHtmlLabel')}</option>
-            </Select>
+          <label className="engine-drawer__label">Model Version
+            <TSelect className="wk-parser-sel-mineru-cloud-model" value={config.mineru_cloud_model} onChange={(value) => set('mineru_cloud_model', String(value))}>
+              <TSelect.Option value="pipeline" label="pipeline" />
+              <TSelect.Option value="vlm" label={t('settings.parser.vlmLabel')} />
+              <TSelect.Option value="MinerU-HTML" label={t('settings.parser.mineruHtmlLabel')} />
+            </TSelect>
           </label>
-          <div className="flex flex-wrap gap-4 text-[13px]">
-            <label className="flex items-center gap-1.5"><Checkbox checked={config.mineru_cloud_enable_formula} onChange={(event) => set('mineru_cloud_enable_formula', event.target.checked)} />{t('settings.parser.formulaRecognition')}</label>
-            <label className="flex items-center gap-1.5"><Checkbox checked={config.mineru_cloud_enable_table} onChange={(event) => set('mineru_cloud_enable_table', event.target.checked)} />{t('settings.parser.tableRecognition')}</label>
-            <label className="flex items-center gap-1.5"><Checkbox checked={config.mineru_cloud_enable_ocr} onChange={(event) => set('mineru_cloud_enable_ocr', event.target.checked)} />OCR</label>
+          <div className="engine-drawer__checks">
+            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_cloud_enable_formula} onChange={(checked) => set('mineru_cloud_enable_formula', Boolean(checked))} label={t('settings.parser.formulaRecognition')} /></label>
+            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_cloud_enable_table} onChange={(checked) => set('mineru_cloud_enable_table', Boolean(checked))} label={t('settings.parser.tableRecognition')} /></label>
+            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_cloud_enable_ocr} onChange={(checked) => set('mineru_cloud_enable_ocr', Boolean(checked))} label="OCR" /></label>
           </div>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">{t('settings.parser.language')}
-            <Input value={config.mineru_cloud_language} placeholder={t('settings.parser.languagePlaceholder')} onChange={(event) => set('mineru_cloud_language', event.target.value)} />
+          <label className="engine-drawer__label">{t('settings.parser.language')}
+            <TInput value={config.mineru_cloud_language} placeholder={t('settings.parser.languagePlaceholder')} onChange={(value) => set('mineru_cloud_language', String(value))} />
           </label>
         </section> : null}
-        {name === 'paddleocr_vl' ? <section className="mb-5 grid gap-3">
-          <h4 className="m-0 text-[13px] font-semibold text-ink">{t('settings.parser.configSection')}</h4>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">{t('settings.parser.selfHostedEndpoint')}
-            <Input data-testid="paddleocr-vl-endpoint" value={config.paddleocr_vl_endpoint} placeholder={t('settings.parser.paddleocrVlEndpointPlaceholder')} onChange={(event) => set('paddleocr_vl_endpoint', event.target.value)} />
-            <span className="text-[12px] text-muted">{t('settings.parser.paddleocrVlEndpointHint')}</span>
+        {name === 'paddleocr_vl' ? <section className="engine-drawer__form">
+          <h4 className="engine-drawer__section-title">{t('settings.parser.configSection')}</h4>
+          <label className="engine-drawer__label">{t('settings.parser.selfHostedEndpoint')}
+            <TInput data-testid="paddleocr-vl-endpoint" value={config.paddleocr_vl_endpoint} placeholder={t('settings.parser.paddleocrVlEndpointPlaceholder')} onChange={(value) => set('paddleocr_vl_endpoint', String(value))} />
+            <span className="engine-drawer__hint">{t('settings.parser.paddleocrVlEndpointHint')}</span>
           </label>
-          <div className="flex flex-wrap gap-4 text-[13px]">
-            <label className="flex items-center gap-1.5"><Checkbox checked={config.paddleocr_vl_use_seal_recognition} onChange={(event) => set('paddleocr_vl_use_seal_recognition', event.target.checked)} />{t('settings.parser.sealRecognition')}</label>
-            <label className="flex items-center gap-1.5"><Checkbox checked={config.paddleocr_vl_use_chart_recognition} onChange={(event) => set('paddleocr_vl_use_chart_recognition', event.target.checked)} />{t('settings.parser.chartRecognition')}</label>
+          <div className="engine-drawer__checks">
+            <label className="engine-drawer__check"><TCheckbox checked={config.paddleocr_vl_use_seal_recognition} onChange={(checked) => set('paddleocr_vl_use_seal_recognition', Boolean(checked))} label={t('settings.parser.sealRecognition')} /></label>
+            <label className="engine-drawer__check"><TCheckbox checked={config.paddleocr_vl_use_chart_recognition} onChange={(checked) => set('paddleocr_vl_use_chart_recognition', Boolean(checked))} label={t('settings.parser.chartRecognition')} /></label>
           </div>
         </section> : null}
-        {name === 'paddleocr_vl_cloud' ? <section className="mb-5 grid gap-3">
-          <h4 className="m-0 text-[13px] font-semibold text-ink">{t('settings.parser.configSection')}</h4>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">Token
-            <Input type="password" autoComplete="new-password" value={config.paddleocr_vl_cloud_token} placeholder={t('settings.parser.paddleocrVlCloudTokenPlaceholder')} onChange={(event) => set('paddleocr_vl_cloud_token', event.target.value)} />
+        {name === 'paddleocr_vl_cloud' ? <section className="engine-drawer__form">
+          <h4 className="engine-drawer__section-title">{t('settings.parser.configSection')}</h4>
+          <label className="engine-drawer__label">Token
+            <TInput type="password" autocomplete="new-password" value={config.paddleocr_vl_cloud_token} placeholder={t('settings.parser.paddleocrVlCloudTokenPlaceholder')} onChange={(value) => set('paddleocr_vl_cloud_token', String(value))} />
           </label>
-          <label className="grid gap-1 text-[13px] font-medium text-[#27364d]">Model
-            <Input data-testid="paddleocr-vl-cloud-model" value={config.paddleocr_vl_cloud_model} placeholder="PaddleOCR-VL-1.6" onChange={(event) => set('paddleocr_vl_cloud_model', event.target.value)} />
+          <label className="engine-drawer__label">Model
+            <TInput data-testid="paddleocr-vl-cloud-model" value={config.paddleocr_vl_cloud_model} placeholder="PaddleOCR-VL-1.6" onChange={(value) => set('paddleocr_vl_cloud_model', String(value))} />
           </label>
-          <div className="flex flex-wrap gap-4 text-[13px]">
-            <label className="flex items-center gap-1.5"><Checkbox checked={config.paddleocr_vl_cloud_use_seal_recognition} onChange={(event) => set('paddleocr_vl_cloud_use_seal_recognition', event.target.checked)} />{t('settings.parser.sealRecognition')}</label>
-            <label className="flex items-center gap-1.5"><Checkbox checked={config.paddleocr_vl_cloud_use_chart_recognition} onChange={(event) => set('paddleocr_vl_cloud_use_chart_recognition', event.target.checked)} />{t('settings.parser.chartRecognition')}</label>
+          <div className="engine-drawer__checks">
+            <label className="engine-drawer__check"><TCheckbox checked={config.paddleocr_vl_cloud_use_seal_recognition} onChange={(checked) => set('paddleocr_vl_cloud_use_seal_recognition', Boolean(checked))} label={t('settings.parser.sealRecognition')} /></label>
+            <label className="engine-drawer__check"><TCheckbox checked={config.paddleocr_vl_cloud_use_chart_recognition} onChange={(checked) => set('paddleocr_vl_cloud_use_chart_recognition', Boolean(checked))} label={t('settings.parser.chartRecognition')} /></label>
           </div>
         </section> : null}
       </div>
-      {props.needsTest ? <footer className="flex items-center justify-between gap-3 border-t border-line-soft px-5 py-3">
-        <span className="flex items-center gap-2">
-          <Button type="button" variant="default" loading={props.checking} onClick={props.onCheck}>{t('settings.parser.testConnection')}</Button>
-          {props.checkMessage ? <span className={`text-[12px] ${props.checkOk ? 'text-[#0a7f43]' : 'text-[#c23434]'}`} title={props.checkMessage}>{props.checkMessage}</span> : null}
+      {props.needsTest ? <footer className="engine-drawer__footer">
+        <span className="engine-drawer__footer-left">
+          <TButton type="button" loading={props.checking} onClick={props.onCheck}>{t('settings.parser.testConnection')}</TButton>
+          {props.checkMessage ? <span className={"engine-drawer__footer-msg" + (props.checkOk ? " engine-drawer__footer-msg--ok" : " engine-drawer__footer-msg--err")} title={props.checkMessage}>{props.checkMessage}</span> : null}
         </span>
-        <span className="flex items-center gap-2">
-          <Button type="button" onClick={props.onClose}>{t('common.cancel')}</Button>
-          <Button type="button" loading={props.saving} onClick={props.onSave}>{t('common.save')}</Button>
+        <span className="engine-drawer__footer-right">
+          <TButton type="button" onClick={props.onClose}>{t('common.cancel')}</TButton>
+          <TButton type="button" theme="primary" loading={props.saving} onClick={props.onSave}>{t('common.save')}</TButton>
         </span>
-      </footer> : <footer className="flex items-center justify-end gap-2 border-t border-line-soft px-5 py-3">
-        <Button type="button" onClick={props.onClose}>{t('common.cancel')}</Button>
+      </footer> : <footer className="engine-drawer__footer engine-drawer__footer--end">
+        <TButton type="button" onClick={props.onClose}>{t('common.cancel')}</TButton>
       </footer>}
     </section>
   </div>;

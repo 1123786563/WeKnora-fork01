@@ -25,9 +25,12 @@ import {
   type TraceSummary,
 } from "./doc-row-menu.ts";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
-import { Button, Checkbox, Dialog, Input, Select, Sheet, Status, Textarea } from "@weknora/ui";
-/* TDesign 平移（playbook §1）：文档域可见结构全部走 tdesign-react；上方 @weknora/ui
- * 引用仅剩上传确认弹窗/移动目录条等 R490 留守段（文件内标注），待上传弹窗域迁移时一并清除。 */
+/* S6 换装（T15 前置）：R490 留守段（上传确认弹窗/URL/手工导入/追溯抽屉/各确认
+ * 弹层/移动目录条）的 packages/ui 旧栈 表单栈全部清栈——Button/Input/Textarea/
+ * Checkbox/Select 换 tdesign（playbook §1：onChange 改 (value)/(checked) 签名、
+ * maxLength→maxlength、原生 select 换 options 数组）；Dialog/Sheet 是扫描锚定
+ * 弹层（ix-kb-settings/上传弹窗 DOM），走 shared/wk-legacy 的 DOM 同构
+ * WkDialog/WkSheet（渲染树不变）；Status 同走 WkStatus（.wk-status 族）。 */
 import {
   Button as TdButton,
   Checkbox as TdCheckbox,
@@ -42,8 +45,13 @@ import {
   Tag as TdTag,
   Tooltip,
   Input as TdInput,
+  Textarea as TdTextarea,
 } from "tdesign-react";
+import { WkDialog as Dialog, WkSheet as Sheet, WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { Icon as TIcon } from "tdesign-icons-react";
+// u.css（utilities 平移层）前置到 td.css（Vue 平移层）之前（S7 合并评审
+// Important：级联顺序 u.css → td.css，同特异性时 Vue 平移规则胜出）。
+import "./documents-u.css";
 import "./documents.td.css";
 
 /** Vue @/assets/img/more.png 内联副本（kb-list 同款，卡片三点菜单触发器）。 */
@@ -365,9 +373,9 @@ function DocumentTagChips({ tags }: { tags: ReturnType<typeof documentTags> }) {
   const visible = tags.slice(0, visibleLimit);
   const overflow = Math.max(0, tags.length - visibleLimit);
   return (
-    <span ref={ref} className="wk-row-tag-chips inline-flex min-w-0 max-w-full flex-nowrap gap-1 overflow-hidden font-mono! text-[0.8rem]! text-muted!" title={overflow ? tags.map((tag) => tag.name || "").join(", ") : undefined}>
-      {visible.map((tag) => <span key={tag.id} className="row-tag max-w-[120px] font-mono! text-[0.8rem]! text-muted! cursor-default overflow-hidden rounded-[3px] border border-[var(--wk-border,#e4e7ec)] px-[5px] py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)]">{tag.name}</span>)}
-      {overflow ? <span className="row-tag-overflow font-mono! text-[0.8rem]! text-muted! inline-flex h-[18px] min-w-[18px] flex-none cursor-default items-center justify-center rounded-full border border-[var(--wk-border,#e4e7ec)] px-[5px] py-0 text-[10px] leading-none text-[var(--wk-muted,#667085)]">+{overflow}</span> : null}
+    <span ref={ref} className="wk-row-tag-chips wk-kd-1" title={overflow ? tags.map((tag) => tag.name || "").join(", ") : undefined}>
+      {visible.map((tag) => <span key={tag.id} className="row-tag wk-kd-2">{tag.name}</span>)}
+      {overflow ? <span className="row-tag-overflow wk-kd-3">+{overflow}</span> : null}
     </span>
   );
 }
@@ -413,7 +421,7 @@ function RefreshIcon() { return <Icon size={16}><path d="M20 11a8 8 0 10-2.34 5.
 function DeleteIcon() { return <Icon size={16}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" /></Icon>; }
 function MoveIcon() { return <Icon size={16}><path d="M4 7h7l2 2h7v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /><path d="M12 11v6M9 14h6" /></Icon>; }
 function AddFileIcon() { return <Icon size={16}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M12 12v6M9 15h6" /></Icon>; }
-function ChevronDownIcon({ open = false }: { open?: boolean }) { return <Icon size={14} className={open ? "rotate-180 transition-transform duration-200" : "transition-transform duration-200"}><path d="m5 8 7 7 7-7" /></Icon>; }
+function ChevronDownIcon({ open = false }: { open?: boolean }) { return <Icon size={14} className={open ? "wk-kd-159" : "wk-kd-160"}><path d="m5 8 7 7 7-7" /></Icon>; }
 // R483 F4 menu icons (Vue t-icon chart-bar / close-circle / swap / queue /
 // chevron-left / root-list / arrow-right).
 function ChartIcon() { return <Icon size={16}><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" /></Icon>; }
@@ -637,10 +645,10 @@ function DocumentTraceCompact({ summary, t }: {
     ? t("knowledgeStages.totalDuration", { d: summary.duration })
     : `${t("knowledgeBase.timeline.title")}：${summary.stageIndex}/${summary.stageTotal}${summary.activeStage ? ` · ${t(`knowledgeBase.timeline.stage.${summary.activeStage}`)}` : ""}`;
   return <div className="document-trace-compact" data-trace-total={summary.duration}>
-    <div className="flex items-center gap-[6px]">
-      {summary.steps.map((step) => <span key={step.stage} aria-hidden className={`inline-block h-[8px] w-[8px] flex-none rounded-full document-trace-dot document-trace-dot-${step.state}`} title={`${t(`knowledgeBase.timeline.stage.${step.stage}`)} · ${t(`knowledgeBase.timeline.${step.state}`)}`} />)}
+    <div className="wk-kd-4">
+      {summary.steps.map((step) => <span key={step.stage} aria-hidden className={`document-trace-dot document-trace-dot- wk-kd-135${step.state}`} title={`${t(`knowledgeBase.timeline.stage.${step.stage}`)} · ${t(`knowledgeBase.timeline.${step.state}`)}`} />)}
     </div>
-    <div className="mt-1 text-[12px] text-muted">{caption}</div>
+    <div className="wk-kd-5">{caption}</div>
   </div>;
 }
 
@@ -664,17 +672,17 @@ function DocumentCardHoverPopover({ document, position, t, loadTrace }: {
     return () => { active = false; };
   }, [document.id, showTrace, loadTrace]);
   const statusLabel = failed ? t("knowledgeBase.parsingFailed") : inFlight ? documentStatus(document, t).label : undefined;
-  return <div className="knowledge-card-hover-popover fixed z-[250] w-[360px] max-w-[calc(100vw-20px)] rounded-[8px] border border-line-soft bg-surface px-4 py-3 text-[12px] shadow-[0_8px_24px_rgb(16_24_40/14%)]" style={{ left: position.x, top: position.y }} role="tooltip">
-    <div className="mb-2 truncate text-[14px] font-semibold text-primary-deep" title={displayName(document)}>{displayName(document)}</div>
-    {showTrace ? <div className={`mb-2 ${failed ? "text-danger" : "text-warning"}`}>{trace ? <DocumentTraceCompact summary={trace} t={t} /> : statusLabel}</div> : typeof document.description === "string" && document.description ? <div className="mb-2 line-clamp-3 whitespace-pre-wrap break-words text-muted">{document.description}</div> : null}
-    {typeof document.source === "string" && document.source ? <div className="mb-2 flex min-w-0 items-center gap-1 truncate text-muted" title={document.source}><LinkIcon size={12} /> <span className="truncate">{document.source}</span></div> : null}
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted">
+  return <div className="knowledge-card-hover-popover wk-kd-6" style={{ left: position.x, top: position.y }} role="tooltip">
+    <div className="wk-kd-7" title={displayName(document)}>{displayName(document)}</div>
+    {showTrace ? <div className={`wk-kd-136 ${failed ? "wk-kd-137" : "wk-kd-138"}`}>{trace ? <DocumentTraceCompact summary={trace} t={t} /> : statusLabel}</div> : typeof document.description === "string" && document.description ? <div className="wk-kd-8">{document.description}</div> : null}
+    {typeof document.source === "string" && document.source ? <div className="wk-kd-9" title={document.source}><LinkIcon size={12} /> <span className="wk-kd-10">{document.source}</span></div> : null}
+    <div className="wk-kd-11">
       {document.created_at ? <span>{t("knowledgeBase.createdAt")}：{formatDocumentTime(document.created_at)}</span> : null}
       {document.updated_at ? <span>{t("knowledgeBase.updatedAt")}：{formatDocumentTime(document.updated_at)}</span> : null}
       <span>{documentTypeLabel(document)}</span>
     </div>
-    {documentTags(document).length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{documentTags(document).map((tag) => <span key={tag.id} className="rounded-full border border-line-soft px-1.5 py-0.5 text-[11px] text-muted">{tag.name}</span>)}</div> : null}
-    <div className="mt-2 text-[11px] text-muted">{t("knowledgeBase.clickToViewFull")}</div>
+    {documentTags(document).length > 0 ? <div className="wk-kd-12">{documentTags(document).map((tag) => <span key={tag.id} className="wk-kd-13">{tag.name}</span>)}</div> : null}
+    <div className="wk-kd-14">{t("knowledgeBase.clickToViewFull")}</div>
   </div>;
 }
 
@@ -1325,7 +1333,7 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
               }}
               onClick={() => props.onChoose(row.path)}
             >
-              <FolderIcon size={16} className="shrink-0" />
+              <FolderIcon size={16} className="wk-kd-15" />
               <span
                 style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
@@ -1362,18 +1370,18 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
               onClick={(event) => event.stopPropagation()}
             >
               <FolderIcon size={16} />
-              <Input
+              <TdInput
                 className="wk-folder-picker__input"
                 value={props.newFolderName}
                 placeholder={props.labels.newFolderPlaceholder}
                 aria-label={props.labels.newFolderPlaceholder}
-                onChange={(event) => props.onNewFolderNameChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
+                onChange={(value) => props.onNewFolderNameChange(String(value))}
+                onKeydown={(_, { e }) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
                     props.onCommitNewFolder();
-                  } else if (event.key === "Escape") {
-                    event.preventDefault();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
                     props.onCancelCreate();
                   }
                 }}
@@ -1384,7 +1392,7 @@ export function UploadDestinationPicker(props: UploadDestinationPickerProps) {
         )}
       </ul>
       {props.duplicateWarning ? (
-        <p role="alert" className="wk-muted text-muted" style={{ margin: "4px 0 0", fontSize: "0.85rem" }}>
+        <p role="alert" className="wk-muted wk-kd-16" style={{ margin: "4px 0 0", fontSize: "0.85rem" }}>
           {props.labels.duplicate}
         </p>
       ) : null}
@@ -1445,7 +1453,7 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
         <p title={props.manualTitle} style={{ fontWeight: 600, margin: "0 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {props.manualTitle}
         </p>
-        <p className="wk-muted text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        <p className="wk-muted wk-kd-16" style={{ margin: 0, fontSize: "0.85rem" }}>
           {labels.manualCharCount(props.manualCharCount ?? 0)}
         </p>
       </div>
@@ -1457,7 +1465,7 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
         <p title={props.reparseFileName} style={{ fontWeight: 600, margin: "0 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {props.reparseFileName || labels.reparseSource}
         </p>
-        <p className="wk-muted text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        <p className="wk-muted wk-kd-16" style={{ margin: 0, fontSize: "0.85rem" }}>
           {labels.reparseHint}
         </p>
       </div>
@@ -1465,29 +1473,29 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
   }
   const itemCount = props.entries.length + props.urls.length;
   if (itemCount === 0) {
-    return <p className="wk-muted text-muted" style={{ margin: "0 0 0.75rem" }}>{labels.noItems}</p>;
+    return <p className="wk-muted wk-kd-16" style={{ margin: "0 0 0.75rem" }}>{labels.noItems}</p>;
   }
   return (
-    <ul className="wk-upload-confirm-files m-0 mb-3 max-h-56 list-none overflow-auto p-0">
+    <ul className="wk-upload-confirm-files wk-kd-17">
       {props.urls.map((url, index) => (
-        <li key={`url-${url}-${index}`} className="mb-[2px] flex items-center gap-2 rounded-[6px] pb-[6px] pl-2 pr-[6px] pt-[6px] transition-colors hover:bg-[rgba(16,24,40,0.04)]">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--wk-muted,#667085)]"><LinkIcon size={16} /></span>
-          <div className="min-w-0 flex-1">
-            <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium leading-[1.35] text-[var(--wk-text,#101828)]" title={url}>{url}</span>
-            <span className="mt-px block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.3] text-[var(--wk-muted,#98a2b3)]">{labels.urlItemLabel}</span>
+        <li key={`url-${url}-${index}`} className="wk-kd-18">
+          <span className="wk-kd-19"><LinkIcon size={16} /></span>
+          <div className="wk-kd-20">
+            <span className="wk-kd-21" title={url}>{url}</span>
+            <span className="wk-kd-22">{labels.urlItemLabel}</span>
           </div>
-          <button type="button" className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[var(--wk-muted,#98a2b3)] opacity-45 transition-[opacity,color,background-color] duration-150 hover:bg-[var(--wk-bg-muted,#f2f4f7)] hover:text-[var(--wk-text,#101828)] focus-visible:opacity-100 disabled:cursor-not-allowed" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveUrl(index)}>×</button>
+          <button type="button" className="wk-kd-23" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveUrl(index)}>×</button>
         </li>
       ))}
       {props.entries.map((entry, index) => {
         const state = props.uploadStates[index];
         const relativeDir = uploadEntryRelativeDir(entry);
         return (
-        <li key={`${entry.name}-${index}`} className="mb-[2px] flex items-center gap-2 rounded-[6px] pb-[6px] pl-2 pr-[6px] pt-[6px] transition-colors hover:bg-[rgba(16,24,40,0.04)]">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[11px] text-[var(--wk-muted,#667085)]" aria-hidden>{fileTypeBadge(entry.name)}</span>
-            <div className="min-w-0 flex-1">
-              <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium leading-[1.35] text-[var(--wk-text,#101828)]" title={uploadEntryDisplayTitle(entry)}>{entry.name}</span>
-              <span className="mt-px block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.3] text-[var(--wk-muted,#98a2b3)]">
+        <li key={`${entry.name}-${index}`} className="wk-kd-18">
+            <span className="wk-kd-24" aria-hidden>{fileTypeBadge(entry.name)}</span>
+            <div className="wk-kd-20">
+              <span className="wk-kd-21" title={uploadEntryDisplayTitle(entry)}>{entry.name}</span>
+              <span className="wk-kd-22">
               {relativeDir ? (
                 <>
                   <span title={relativeDir}>{relativeDir}</span>
@@ -1500,7 +1508,7 @@ export function UploadFilesPanel(props: UploadFilesPanelProps) {
             <Status tone={entryStatusTone(state?.status)}>
               {state?.status === "error" ? (state.message ?? labels.statusLabel("error")) : labels.statusLabel(state?.status ?? "pending")}
             </Status>
-            <button type="button" className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[var(--wk-muted,#98a2b3)] opacity-45 transition-[opacity,color,background-color] duration-150 hover:bg-[var(--wk-bg-muted,#f2f4f7)] hover:text-[var(--wk-text,#101828)] focus-visible:opacity-100 disabled:cursor-not-allowed" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveEntry(index)}>×</button>
+            <button type="button" className="wk-kd-23" disabled={props.uploading} aria-label={labels.remove} onClick={() => props.onRemoveEntry(index)}>×</button>
           </li>
         );
       })}
@@ -1527,7 +1535,7 @@ export interface UploadSectionNavItem {
 function NavIcon({ name }: { name: "chart-bubble" }) {
   if (name === "chart-bubble") {
     return (
-      <svg className="wk-upload-nav-icon text-[var(--wk-accent,#4a7dff)]" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden style={{ flex: "0 0 auto" }}>
+      <svg className="wk-upload-nav-icon wk-kd-25" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden style={{ flex: "0 0 auto" }}>
         <circle cx="5" cy="5" r="3" />
         <circle cx="11.5" cy="10.5" r="2.5" />
         <circle cx="4.5" cy="12" r="1.8" />
@@ -1559,9 +1567,9 @@ export function UploadSectionNav(props: UploadSectionNavProps) {
           type="button"
           className={[
             "wk-upload-nav-item",
-            "hover:bg-[var(--wk-bg-hover,#f3f5f8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]",
-            item.active ? "is-active bg-[var(--wk-bg-muted,#f2f4f7)] text-[var(--wk-accent,#07c05f)]" : "",
-            item.issue ? "has-issue text-[var(--wk-danger,#d92d20)]" : "",
+            "wk-kd-ring wk-kd-161",
+            item.active ? "is-active wk-kd-162" : "",
+            item.issue ? "has-issue wk-kd-163" : "",
           ].filter(Boolean).join(" ")}
           aria-current={item.active ? "true" : undefined}
           data-section-target={item.key}
@@ -1584,9 +1592,9 @@ export function UploadSectionNav(props: UploadSectionNavProps) {
           onClick={() => props.onSelect(item.key)}
         >
           {item.icon ? <NavIcon name={item.icon} /> : null}
-          <span className="min-w-0 flex-1 flex-col gap-[3px] overflow-hidden"><span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium leading-[1.35]">{item.label}</span>
+          <span className="wk-kd-26"><span className="wk-kd-27">{item.label}</span>
           <span
-            className={`wk-upload-nav-status tone-${item.tone ?? "default"} block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35]`}
+            className={`wk-upload-nav-status tone-${item.tone ?? "default"} wk-kd-139`}
             title={item.statusTitle}
             style={{ color: item.tone === "error" ? "var(--wk-danger, #d92d20)" : item.tone === "warning" ? "var(--wk-warning, #b54708)" : "var(--wk-muted, #667085)" }}
           >
@@ -1760,13 +1768,13 @@ export function UploadSingleSelect({ value, options, onChange, ariaLabel, classN
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
   const choose = (index: number) => { const option = options[index]; if (!option || option.disabled) return; onChange(option.value); setOpen(false); setActiveIndex(index); };
-  return <div className={`wk-upload-single-select relative w-[280px] max-[720px]:w-full ${className}`.trim()} ref={rootRef}>
-    <button type="button" className="wk-upload-single-select__trigger flex w-full min-h-8 items-center justify-between px-[10px] text-left bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] text-[var(--wk-text,#101828)] cursor-pointer [font:inherit] hover:border-[var(--wk-accent,#07c05f)] hover:shadow-[0_0_0_2px_rgb(7_192_95/15%)] focus-visible:border-[var(--wk-accent,#07c05f)] focus-visible:shadow-[0_0_0_2px_rgb(7_192_95/15%)] focus-visible:outline-none" role="combobox" aria-label={ariaLabel} aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
+  return <div className={`wk-upload-single-select wk-kd-singlesel ${className}`.trim()} ref={rootRef}>
+    <button type="button" className="wk-upload-single-select__trigger wk-kd-28" role="combobox" aria-label={ariaLabel} aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); setActiveIndex((current) => Math.max(0, Math.min(options.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
       else if (event.key === "Enter" && open) { event.preventDefault(); choose(activeIndex); }
       else if (event.key === "Escape") setOpen(false);
     }}><span>{options[selectedIndex]?.label ?? placeholder ?? value}</span>{clearable && value ? <span role="button" tabIndex={0} aria-label={`清除${ariaLabel}`} onClick={(event) => { event.stopPropagation(); onChange(""); setOpen(false); }}>×</span> : null}<span aria-hidden="true">⌄</span></button>
-    {open ? <div className="wk-upload-single-select__popup absolute left-0 right-0 top-[calc(100%+4px)] z-20 grid max-h-[240px] overflow-auto p-1 bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] shadow-[0_8px_24px_rgb(16_24_40/14%)]" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} disabled={option.disabled} className={`${index === activeIndex ? "is-active " : ""}${option.disabled ? "is-disabled " : ""}rounded-[6px] px-[10px] py-2 text-left bg-transparent border-0 cursor-pointer [font:inherit] hover:bg-[rgb(7_192_95/10%)] disabled:text-[var(--wk-muted,#98a2b3)] disabled:cursor-not-allowed disabled:opacity-70 ${option.value === value ? "bg-[rgb(7_192_95/10%)]" : ""}`.trim() || undefined} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
+    {open ? <div className="wk-upload-single-select__popup wk-kd-29" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} disabled={option.disabled} className={`wk-kd-selopt ${index === activeIndex ? "is-active" : ""} ${option.disabled ? "is-disabled" : ""} ${option.value === value ? "wk-kd-selopt-selected" : ""}`.trim()} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
   </div>;
 }
 
@@ -1788,24 +1796,24 @@ export function UploadMultiSelect({ values, options, onChange, ariaLabel }: {
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
   const toggle = (value: string) => onChange(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
-  return <div className="relative w-[280px] max-[720px]:w-full wk-upload-multi-select" ref={rootRef}>
-    <div className="wk-upload-multi-select__field flex min-h-8 flex-wrap items-center gap-1 p-1 bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] focus-within:border-[var(--wk-accent,#07c05f)] focus-within:shadow-[0_0_0_2px_rgb(7_192_95/15%)]" onClick={() => setOpen(true)}>
-      {values.map((value) => <span className="wk-upload-multi-select__chip inline-flex max-w-full items-center gap-1 bg-[rgb(7_192_95/10%)] rounded-[4px] px-[6px] py-[3px] text-[var(--wk-text,#101828)] text-[12px]" key={value}>{options.find((option) => option.value === value)?.label ?? value}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[var(--wk-muted,#667085)]" aria-label={`移除 ${value}`} onClick={(event) => { event.stopPropagation(); toggle(value); }}>×</button></span>)}
-      <input type="text" className="border-0 flex-1 min-w-[80px] outline-none px-1 py-[3px] [font:inherit]" role="combobox" aria-label={ariaLabel} aria-expanded={open} value={query} placeholder={values.length ? "" : ariaLabel} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setOpen(true); }} onKeyDown={(event) => {
+  return <div className="wk-upload-multi-select wk-kd-30" ref={rootRef}>
+    <div className="wk-upload-multi-select__field wk-kd-31" onClick={() => setOpen(true)}>
+      {values.map((value) => <span className="wk-upload-multi-select__chip wk-kd-32" key={value}>{options.find((option) => option.value === value)?.label ?? value}<button type="button" className="wk-kd-33" aria-label={`移除 ${value}`} onClick={(event) => { event.stopPropagation(); toggle(value); }}>×</button></span>)}
+      <input type="text" className="wk-kd-34" role="combobox" aria-label={ariaLabel} aria-expanded={open} value={query} placeholder={values.length ? "" : ariaLabel} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setOpen(true); }} onKeyDown={(event) => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((current) => Math.max(0, Math.min(filtered.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
         else if (event.key === "Enter" && filtered[activeIndex]) { event.preventDefault(); toggle(filtered[activeIndex].value); setQuery(""); }
         else if (event.key === "Backspace" && !query && values.length) toggle(values[values.length - 1]);
         else if (event.key === "Escape") { setOpen(false); setQuery(""); }
       }} />
     </div>
-    {open ? <div className="wk-upload-multi-select__popup absolute left-0 right-0 top-[calc(100%+4px)] z-20 grid max-h-[240px] overflow-auto p-1 bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] shadow-[0_8px_24px_rgb(16_24_40/14%)]" role="listbox" aria-label={ariaLabel}>{filtered.map((option, index) => <button type="button" role="option" aria-selected={values.includes(option.value)} className={`${index === activeIndex ? "is-active bg-[rgb(7_192_95/10%)]" : "bg-transparent"} border-0 rounded-[6px] cursor-pointer [font:inherit] px-[10px] py-2 text-left hover:bg-[rgb(7_192_95/10%)]`} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => toggle(option.value)}>{option.label}</button>)}{filtered.length === 0 ? <span className="wk-muted text-muted">{ariaLabel}</span> : null}</div> : null}
+    {open ? <div className="wk-upload-multi-select__popup wk-kd-29" role="listbox" aria-label={ariaLabel}>{filtered.map((option, index) => <button type="button" role="option" aria-selected={values.includes(option.value)} className={`${index === activeIndex ? "is-active wk-kd-140" : "wk-kd-141"} wk-kd-142`} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => toggle(option.value)}>{option.label}</button>)}{filtered.length === 0 ? <span className="wk-muted wk-kd-16">{ariaLabel}</span> : null}</div> : null}
   </div>;
 }
 
 export function UploadClearableInput({ value, placeholder, ariaLabel, onChange }: { value: string; placeholder: string; ariaLabel: string; onChange: (value: string) => void }) {
-  return <div className="wk-upload-clearable-input relative flex w-[280px] items-center">
-    <Input className="box-border w-full pr-[28px]" value={value} placeholder={placeholder} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)} />
-    {value ? <button type="button" className="absolute right-[2px] cursor-pointer border-0 bg-transparent p-[2px_6px] text-[var(--wk-muted,#667085)] text-[16px] leading-none" aria-label={`清除${ariaLabel}`} onClick={() => onChange("")}>×</button> : null}
+  return <div className="wk-upload-clearable-input wk-kd-35">
+    <TdInput className="wk-kd-36" value={value} placeholder={placeholder} aria-label={ariaLabel} onChange={(value) => onChange(String(value))} />
+    {value ? <button type="button" className="wk-kd-37" aria-label={`清除${ariaLabel}`} onClick={() => onChange("")}>×</button> : null}
   </div>;
 }
 
@@ -1822,11 +1830,11 @@ export function UploadNumberInput({ value, min, max, step, ariaLabel, onChange, 
   const adjust = (delta: number) => onChange(clamp(value + delta));
   // CSS cascade: .wk-upload-number-input--wide overrode the 88px base width.
   const wide = className.includes("wk-upload-number-input--wide");
-  return <div className={`wk-upload-number-input ${className} inline-flex ${wide ? "w-[200px]" : "w-[88px]"} h-8 items-center overflow-hidden bg-[var(--wk-surface,#fff)] border border-[var(--wk-border,#e4e7ec)] rounded-[6px] focus-within:border-[var(--wk-accent,#07c05f)] focus-within:shadow-[0_0_0_2px_rgb(7_192_95/15%)]`.trim()}>
-    <button type="button" className="inline-flex h-full w-[25px] cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[var(--wk-muted,#667085)] text-[16px] enabled:hover:bg-[rgb(7_192_95/10%)] enabled:hover:text-[var(--wk-text,#101828)] focus-visible:bg-[rgb(7_192_95/10%)] focus-visible:text-[var(--wk-text,#101828)] focus-visible:outline-none disabled:cursor-not-allowed disabled:text-[var(--wk-border,#d0d5dd)]" aria-label={`减少${ariaLabel}`} disabled={value <= min} onClick={() => adjust(-step)}>−</button>
+  return <div className={`wk-upload-number-input ${className} wk-kd-num ${wide ? "wk-kd-num--wide" : ""}`.trim()}>
+    <button type="button" className="wk-kd-38" aria-label={`减少${ariaLabel}`} disabled={value <= min} onClick={() => adjust(-step)}>−</button>
     <input
       type="number"
-      className="w-9 min-w-0 flex-1 border-0 bg-transparent box-border text-center text-[var(--wk-text,#101828)] outline-none [appearance:textfield] [font:inherit] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
+      className="wk-kd-num-input wk-kd-39"
       min={min}
       max={max}
       step={step}
@@ -1837,22 +1845,22 @@ export function UploadNumberInput({ value, min, max, step, ariaLabel, onChange, 
       aria-valuenow={value}
       onChange={(event) => onChange(clamp(Number(event.target.value)))}
     />
-    <button type="button" className="inline-flex h-full w-[25px] cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[var(--wk-muted,#667085)] text-[16px] enabled:hover:bg-[rgb(7_192_95/10%)] enabled:hover:text-[var(--wk-text,#101828)] focus-visible:bg-[rgb(7_192_95/10%)] focus-visible:text-[var(--wk-text,#101828)] focus-visible:outline-none disabled:cursor-not-allowed disabled:text-[var(--wk-border,#d0d5dd)]" aria-label={`增加${ariaLabel}`} disabled={value >= max} onClick={() => adjust(step)}>+</button>
+    <button type="button" className="wk-kd-38" aria-label={`增加${ariaLabel}`} disabled={value >= max} onClick={() => adjust(step)}>+</button>
   </div>;
 }
 
 export function UploadSwitch({ checked, ariaLabel, onChange }: { checked: boolean; ariaLabel: string; onChange: (checked: boolean) => void }) {
-  return <button type="button" className={`wk-upload-switch${checked ? " is-checked" : ""} inline-flex h-5 w-9 cursor-pointer rounded-full border-0 p-[2px] [transition:background-color_.16s_ease] ${checked ? "bg-[var(--wk-accent,#07c05f)]" : "bg-[var(--wk-border,#d0d5dd)]"} focus-visible:[box-shadow:0_0_0_2px_rgb(7_192_95/15%)] focus-visible:[outline:2px_solid_var(--wk-accent,#07c05f)] focus-visible:[outline-offset:2px]`} role="switch" aria-checked={checked} aria-label={ariaLabel} onClick={() => onChange(!checked)}>
-    <span className={`wk-upload-switch__handle block h-4 w-4 rounded-full bg-white [transition:transform_.16s_ease] ${checked ? "[transform:translateX(16px)]" : "[transform:translateX(0px)]"}`} aria-hidden="true" />
+  return <button type="button" className={`wk-upload-switch${checked ? " is-checked" : ""} wk-kd-143 ${checked ? "wk-kd-144" : "wk-kd-145"} wk-kd-146`} role="switch" aria-checked={checked} aria-label={ariaLabel} onClick={() => onChange(!checked)}>
+    <span className={`wk-upload-switch__handle wk-kd-147 ${checked ? "wk-kd-148" : "wk-kd-149"}`} aria-hidden="true" />
   </button>;
 }
 
 function UploadSettingRow({ label, description, children, className = "" }: { label: ReactNode; description?: string; children: ReactNode; className?: string }) {
   // CSS cascade: .wk-upload-setting-row--separators stretched its control.
   const separators = className.includes("wk-upload-setting-row--separators");
-  return <div className={`wk-upload-setting-row ${className} flex items-start justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] py-[10px] max-[720px]:flex-col`.trim()}>
-    <div className="wk-upload-setting-info flex min-w-0 flex-1 flex-col gap-[5px]"><label className="font-medium">{label}</label>{description ? <p className="wk-muted text-muted m-0 text-[12px]">{description}</p> : null}</div>
-    <div className={`wk-upload-setting-control flex w-[280px] flex-none justify-end max-[720px]:w-full ${separators ? "items-stretch" : "items-start"}`}>{children}</div>
+  return <div className={`wk-upload-setting-row wk-kd-settingrow ${className}`.trim()}>
+    <div className="wk-upload-setting-info wk-kd-40"><label className="wk-kd-41">{label}</label>{description ? <p className="wk-muted wk-kd-42">{description}</p> : null}</div>
+    <div className={`wk-upload-setting-control wk-kd-150 ${separators ? "wk-kd-151" : "wk-kd-152"}`}>{children}</div>
   </div>;
 }
 
@@ -1934,7 +1942,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           <div className="setting-row" style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start", marginBottom: "0.5rem" }}>
             <div style={{ flex: 1 }}>
               <label htmlFor="wk-pdf-force-scanned">{t("uploadConfirm.pdfForceScanned.label")}</label>
-              <p className="wk-muted text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+              <p className="wk-muted wk-kd-16" style={{ margin: 0, fontSize: "0.85rem" }}>
                 {t("uploadConfirm.pdfForceScanned.description")}
               </p>
             </div>
@@ -1944,16 +1952,16 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         {props.parserLoading ? (
           <div className="wk-upload-parser-loading" role="status">{t("settings.parser.loading")}</div>
         ) : props.parserEngines.length === 0 ? (
-          <p className="wk-muted text-muted">{t("settings.parser.noEngineDetected")}</p>
+          <p className="wk-muted wk-kd-16">{t("settings.parser.noEngineDetected")}</p>
         ) : (
-          <div className="wk-upload-parser-group overflow-hidden rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface-subtle,#f8f9fb)]">
+          <div className="wk-upload-parser-group wk-kd-43">
           {parserFileGroups.map((group) => (
-            <div className="wk-upload-parser-row flex items-center justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] px-[14px] py-[10px] last:border-b-0 max-[720px]:flex-col max-[720px]:items-stretch" key={group.key}>
-              <div className="wk-upload-parser-info block min-w-0 flex-[0_0_168px] max-[720px]:flex-[0_0_auto]">
-                <strong className="text-[13px] font-medium">{group.label}</strong>
-                <span className="wk-upload-parser-extensions mt-0 flex flex-wrap gap-1">{group.extensions.map((extension) => <span className="rounded-[4px] bg-[rgb(120_135_155/10%)] px-[6px] py-[2px] text-[11px] text-[var(--wk-muted,#667085)] [font-family:var(--app-font-family-mono,ui-monospace,monospace)]" key={extension}>.{extension}</span>)}</span>
+            <div className="wk-upload-parser-row wk-kd-44" key={group.key}>
+              <div className="wk-upload-parser-info wk-kd-45">
+                <strong className="wk-kd-46">{group.label}</strong>
+                <span className="wk-upload-parser-extensions wk-kd-47">{group.extensions.map((extension) => <span className="wk-kd-48" key={extension}>.{extension}</span>)}</span>
               </div>
-              <div className="wk-upload-parser-control flex min-w-0 flex-1 flex-col items-stretch gap-[10px] max-[720px]:w-full">
+              <div className="wk-upload-parser-control wk-kd-49">
                 {(() => {
                   const options = parserEngineOptions(group.extensions);
                   return <>
@@ -1968,10 +1976,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                     return value ? [...remaining, { file_types: group.extensions, engine: value, ...(current?.xlsx_first_row_as_header === undefined ? {} : { xlsx_first_row_as_header: current.xlsx_first_row_as_header }) }] : remaining;
                   })() })}
                 />
-                {options.length === 0 ? <div className="wk-upload-parser-warning flex items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)]" role="note"><span>{t("settings.parser.noEngineDetected")}</span>{props.onConfigureParserSettings ? <button type="button" className="cursor-pointer whitespace-nowrap border-0 bg-transparent p-0 text-[var(--wk-accent,#07c05f)] [font:inherit] hover:underline focus-visible:underline" onClick={props.onConfigureParserSettings}>{t("settings.parserEngine")}</button> : null}</div> : null}
+                {options.length === 0 ? <div className="wk-upload-parser-warning wk-kd-50" role="note"><span>{t("settings.parser.noEngineDetected")}</span>{props.onConfigureParserSettings ? <button type="button" className="wk-kd-51" onClick={props.onConfigureParserSettings}>{t("settings.parserEngine")}</button> : null}</div> : null}
                 {group.extensions.includes("xlsx") && parserEngineFor(group.extensions) === "builtin" ? (
-                  <label className="wk-upload-parser-xlsx-header inline-flex items-center gap-[5px] text-[12px] text-[var(--wk-muted,#667085)]">
-                    <Checkbox checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(event) => updateParserXlsxHeader(group.extensions, event.target.checked)} />
+                  <label className="wk-upload-parser-xlsx-header wk-kd-52">
+                    <TdCheckbox checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(checked) => updateParserXlsxHeader(group.extensions, checked === true)} />
                     {t("kbSettings.parser.xlsxFirstRowAsHeader")}
                   </label>
                 ) : null}
@@ -1984,8 +1992,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         )}
       </fieldset>
       <fieldset className="wk-upload-confirm-chunking" id="wk-upload-section-chunking" data-section="chunking" style={sectionStyle("chunking")}>
-        <legend className="wk-visually-hidden sr-only">{t("knowledgeEditor.chunking.title")}</legend>
-        <div className="wk-upload-section-header mb-4"><h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("knowledgeEditor.chunking.title")}</h2><p className="m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("knowledgeEditor.chunking.description")}</p></div>
+        <legend className="wk-visually-hidden wk-kd-53">{t("knowledgeEditor.chunking.title")}</legend>
+        <div className="wk-upload-section-header wk-kd-54"><h2 className="wk-kd-55">{t("knowledgeEditor.chunking.title")}</h2><p className="wk-kd-56">{t("knowledgeEditor.chunking.description")}</p></div>
         <UploadSettingRow label={t("knowledgeEditor.chunking.strategyLabel")} description={t("knowledgeEditor.chunking.strategyDescription")}>
           <UploadSingleSelect
             className="wk-upload-chunk-strategy-select"
@@ -2003,7 +2011,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         </UploadSettingRow>
         <button
           type="button"
-          className="more-options-toggle mt-1 inline-flex items-center gap-1.5 border-0 bg-transparent px-0 py-1.5 text-[13px] text-[var(--wk-accent,#07c05f)] [font:inherit] transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]"
+          className="more-options-toggle wk-kd-ring wk-kd-57"
           aria-expanded={props.moreOpen}
           onClick={props.onToggleMore}
         >
@@ -2037,10 +2045,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         ) : null}
       </fieldset>
       <fieldset className="wk-upload-confirm-multimodal" id="wk-upload-section-multimodal" data-section="multimodal" style={sectionStyle("multimodal")}>
-        <legend className="wk-visually-hidden sr-only">{t("knowledgeEditor.multimodal.title")}</legend>
-        <div className="wk-upload-section-header mb-4"><h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("knowledgeEditor.multimodal.title")}</h2><p className="m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("knowledgeEditor.multimodal.description")}</p></div>
+        <legend className="wk-visually-hidden wk-kd-53">{t("knowledgeEditor.multimodal.title")}</legend>
+        <div className="wk-upload-section-header wk-kd-54"><h2 className="wk-kd-55">{t("knowledgeEditor.multimodal.title")}</h2><p className="wk-kd-56">{t("knowledgeEditor.multimodal.description")}</p></div>
         {props.multimodalIssue ? (
-          <p className="wk-muted text-muted" role="note">{t("uploadConfirm.multimodalSetupHint")}</p>
+          <p className="wk-muted wk-kd-16" role="note">{t("uploadConfirm.multimodalSetupHint")}</p>
         ) : null}
         <UploadSettingRow label={t("knowledgeEditor.advanced.multimodal.label")} description={t("knowledgeEditor.advanced.multimodal.description")}>
           <UploadSwitch checked={state.multimodalEnabled} ariaLabel={t("knowledgeEditor.advanced.multimodal.label")} onChange={(checked) => update({ multimodalEnabled: checked })} />
@@ -2051,11 +2059,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               {props.vllmModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.vllmLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")} value={state.vllmModelId} options={[{ value: "", label: t("knowledgeEditor.advanced.multimodal.vllmPlaceholder") }, ...props.vllmModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ vllmModelId: value })} />
               ) : (
-                <Input
-                  className="box-border w-full"
-                  required
+                <TdInput
+                  className="wk-kd-58"
                   value={state.vllmModelId}
-                  onChange={(event) => update({ vllmModelId: event.target.value })}
+                  onChange={(value) => update({ vllmModelId: String(value) })}
                   placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")}
                 />
               )}
@@ -2064,22 +2071,22 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.descriptionLanguageLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.descriptionLanguageAuto")} clearable value={state.descriptionLanguage} options={MULTIMODAL_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(value) => update({ descriptionLanguage: value })} />
             </UploadSettingRow>
             <UploadSettingRow label={t("knowledgeEditor.advanced.multimodal.customInstructionsLabel")} description={t("knowledgeEditor.advanced.multimodal.customInstructionsDescription")}>
-              <Textarea
+              <TdTextarea
                 rows={3}
-                maxLength={4000}
+                maxlength={4000}
                 placeholder={t("knowledgeEditor.advanced.multimodal.customInstructionsPlaceholder")}
                 value={state.customInstructions}
-                onChange={(event) => update({ customInstructions: event.target.value })}
+                onChange={(value) => update({ customInstructions: String(value) })}
               />
             </UploadSettingRow>
           </>
         ) : null}
       </fieldset>
       <fieldset className="wk-upload-confirm-asr" id="wk-upload-section-asr" data-section="asr" style={sectionStyle("asr")}>
-        <legend className="wk-visually-hidden sr-only">{t("knowledgeEditor.asr.title")}</legend>
-        <div className="wk-upload-section-header mb-4"><h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("knowledgeEditor.asr.title")}</h2><p className="m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("knowledgeEditor.asr.description")}</p></div>
+        <legend className="wk-visually-hidden wk-kd-53">{t("knowledgeEditor.asr.title")}</legend>
+        <div className="wk-upload-section-header wk-kd-54"><h2 className="wk-kd-55">{t("knowledgeEditor.asr.title")}</h2><p className="wk-kd-56">{t("knowledgeEditor.asr.description")}</p></div>
         {props.asrIssue ? (
-          <p className="wk-muted text-muted" role="note">{t("uploadConfirm.asrSetupHint")}</p>
+          <p className="wk-muted wk-kd-16" role="note">{t("uploadConfirm.asrSetupHint")}</p>
         ) : null}
         <UploadSettingRow label={t("knowledgeEditor.asr.label")} description={t("knowledgeEditor.asr.description")}>
           <UploadSwitch checked={state.asrEnabled} ariaLabel={t("knowledgeEditor.asr.label")} onChange={(checked) => update({ asrEnabled: checked })} />
@@ -2090,11 +2097,10 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               {props.asrModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.asr.modelLabel")} placeholder={t("knowledgeEditor.asr.modelPlaceholder")} value={state.asrModelId} options={[{ value: "", label: t("knowledgeEditor.asr.modelPlaceholder") }, ...props.asrModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ asrModelId: value })} />
               ) : (
-                <Input
-                  className="box-border w-full"
-                  required
+                <TdInput
+                  className="wk-kd-58"
                   value={state.asrModelId}
-                  onChange={(event) => update({ asrModelId: event.target.value })}
+                  onChange={(value) => update({ asrModelId: String(value) })}
                   placeholder={t("knowledgeEditor.asr.modelPlaceholder")}
                 />
               )}
@@ -2111,38 +2117,38 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         ) : null}
       </fieldset>
       <fieldset className="wk-upload-confirm-question" id="wk-upload-section-question" data-section="question" style={sectionStyle("question")}>
-        <legend className="wk-visually-hidden sr-only">{t("knowledgeEditor.advanced.questionGeneration.label")}</legend>
-        <div className="wk-upload-section-header mb-4"><h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("knowledgeEditor.advanced.questionGeneration.label")}</h2><p className="m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("knowledgeEditor.advanced.questionGeneration.description")}</p></div>
+        <legend className="wk-visually-hidden wk-kd-53">{t("knowledgeEditor.advanced.questionGeneration.label")}</legend>
+        <div className="wk-upload-section-header wk-kd-54"><h2 className="wk-kd-55">{t("knowledgeEditor.advanced.questionGeneration.label")}</h2><p className="wk-kd-56">{t("knowledgeEditor.advanced.questionGeneration.description")}</p></div>
         {/* R478 React-first mitigation (shared Vue+React UX defect, superset — NOT a parity claim):
             the backend silently skips question generation for KBs with vector
             and keyword search both off (kb.NeedsEmbeddingModel gate). Inform
             only; the switch and payload stay untouched so backend behavior
             is unchanged. */}
         {state.questionGenerationSkipped ? (
-          <p role="note" className="wk-question-skip-hint m-0 mb-3 rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-bg-muted,#f9fafb)] px-3 py-2 text-[12px] leading-normal text-[var(--wk-muted,#667085)]">{t("uploadConfirm.questionGeneration.skippedHint")}</p>
+          <p role="note" className="wk-question-skip-hint wk-kd-59">{t("uploadConfirm.questionGeneration.skippedHint")}</p>
         ) : null}
-        <div className="wk-upload-question-row flex items-start justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] py-[10px] max-[720px]:flex-col">
-          <div className="wk-upload-question-info grid min-w-0 flex-1 gap-1">
-            <label id="wk-question-enabled-label" className="font-medium">{t("knowledgeEditor.advanced.questionGeneration.label")}</label>
-            <p className="wk-muted text-muted m-0 text-[12px]">{t("knowledgeEditor.advanced.questionGeneration.countDescription")}</p>
+        <div className="wk-upload-question-row wk-kd-60">
+          <div className="wk-upload-question-info wk-kd-61">
+            <label id="wk-question-enabled-label" className="wk-kd-41">{t("knowledgeEditor.advanced.questionGeneration.label")}</label>
+            <p className="wk-muted wk-kd-42">{t("knowledgeEditor.advanced.questionGeneration.countDescription")}</p>
           </div>
-          <div className="wk-upload-question-control flex items-center gap-[10px]">
+          <div className="wk-upload-question-control wk-kd-62">
             {state.questionEnabled ? <UploadNumberInput min={1} max={10} step={1} ariaLabel={t("knowledgeEditor.advanced.questionGeneration.countLabel")} value={state.questionCount} onChange={(value) => update({ questionCount: value })} /> : null}
             <GraphSwitch id="wk-question-enabled" checked={state.questionEnabled} labelId="wk-question-enabled-label" onChange={(checked) => update({ questionEnabled: checked })} />
           </div>
         </div>
         {state.questionEnabled ? (
-          <div className="wk-upload-question-instructions flex items-start justify-between gap-4 border-b border-[var(--wk-border,#e4e7ec)] py-[10px] max-[720px]:flex-col">
-            <div className="wk-upload-question-info grid min-w-0 flex-1 gap-1">
-              <label htmlFor="wk-question-instructions" className="font-medium">{t("knowledgeEditor.advanced.questionGeneration.instructionsLabel")}</label>
-              <p className="wk-muted text-muted m-0 text-[12px]">{t("knowledgeEditor.advanced.questionGeneration.instructionsDescription")}</p>
+          <div className="wk-upload-question-instructions wk-kd-60">
+            <div className="wk-upload-question-info wk-kd-61">
+              <label htmlFor="wk-question-instructions" className="wk-kd-41">{t("knowledgeEditor.advanced.questionGeneration.instructionsLabel")}</label>
+              <p className="wk-muted wk-kd-42">{t("knowledgeEditor.advanced.questionGeneration.instructionsDescription")}</p>
             </div>
-            <Textarea id="wk-question-instructions" className="box-border min-h-[72px] w-[280px] max-[720px]:w-full" rows={3} maxLength={4000} placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")} value={state.questionInstructions} onChange={(event) => update({ questionInstructions: event.target.value })} />
+            <TdTextarea id="wk-question-instructions" className="wk-kd-63" rows={3} maxlength={4000} placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")} value={state.questionInstructions} onChange={(value) => update({ questionInstructions: String(value) })} />
           </div>
         ) : null}
       </fieldset>
       {props.graphAvailable && props.graphSettings ? (
-        <fieldset className="wk-upload-confirm-graph m-0 mb-3 rounded-[8px] border border-[var(--wk-border,#e4e7ec)] p-3" id="wk-upload-section-graph" data-section="graph" style={sectionStyle("graph")}>
+        <fieldset className="wk-upload-confirm-graph wk-kd-64" id="wk-upload-section-graph" data-section="graph" style={sectionStyle("graph")}>
           {props.graphSettings}
         </fieldset>
       ) : null}
@@ -2207,27 +2213,26 @@ export function GraphTagsField({ tags, onChange, placeholder, ariaLabel }: {
     setDraft("");
   };
   return (
-    <div className="wk-graph-tags-field flex min-h-8 min-w-[240px] flex-1 flex-wrap items-center gap-[6px] rounded-[6px] border border-[var(--wk-border,#d0d5dd)] bg-[var(--wk-bg,#fff)] px-2 py-1 focus-within:border-[var(--wk-accent,#4a7dff)] focus-within:shadow-[0_0_0_2px_rgb(74_125_255/14%)]" role="listbox" aria-label={ariaLabel} aria-multiselectable="true">
+    <div className="wk-graph-tags-field wk-kd-65" role="listbox" aria-label={ariaLabel} aria-multiselectable="true">
       {tags.map((tag) => (
-        <span key={tag} className="wk-graph-tag inline-flex max-w-full items-center gap-1 rounded-[4px] bg-[var(--wk-bg-muted,#f2f4f7)] px-[6px] py-[2px] text-[0.8125rem] text-[var(--wk-text,#344054)]" role="option" aria-selected="true">
+        <span key={tag} className="wk-graph-tag wk-kd-66" role="option" aria-selected="true">
           <span>{tag}</span>
-          <button type="button" className="cursor-pointer border-0 bg-transparent p-0 leading-none text-[var(--wk-muted,#667085)]" aria-label={`移除 ${tag}`} onClick={() => remove(tag)}>×</button>
+          <button type="button" className="wk-kd-67" aria-label={`移除 ${tag}`} onClick={() => remove(tag)}>×</button>
         </span>
       ))}
-      <Input
+      <TdInput
         type="text"
-        className="h-6 w-full min-w-[120px] flex-1 border-0 bg-transparent p-0 outline-none box-border"
-        role="combobox"
-        aria-autocomplete="list"
+        className="wk-kd-68"
+        {...({ role: "combobox", "aria-autocomplete": "list" } as Record<string, string>)}
         value={draft}
         placeholder={tags.length === 0 ? placeholder : ""}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === ",") { event.preventDefault(); addDraft(); }
-          else if (event.key === "Backspace" && !draft && tags.length > 0) remove(tags[tags.length - 1]);
+        onChange={(value) => setDraft(String(value))}
+        onKeydown={(_, { e }) => {
+          if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addDraft(); }
+          else if (e.key === "Backspace" && !draft && tags.length > 0) remove(tags[tags.length - 1]);
         }}
       />
-      {tags.length > 0 ? <button type="button" className="wk-graph-tags-clear cursor-pointer border-0 bg-transparent p-0 leading-none text-[var(--wk-muted,#667085)]" aria-label="清除关系类型" onClick={() => onChange([])}>×</button> : null}
+      {tags.length > 0 ? <button type="button" className="wk-graph-tags-clear wk-kd-67" aria-label="清除关系类型" onClick={() => onChange([])}>×</button> : null}
     </div>
   );
 }
@@ -2259,31 +2264,29 @@ export function GraphRelationSelect({ value, options, placeholder, ariaLabel, cr
   }, [open]);
   const choose = (next: string) => { onChange(next); setFilter(""); setActiveIndex(0); setOpen(false); };
   return (
-    <div ref={rootRef} className="wk-graph-relation-select relative min-w-[150px] flex-1">
-      <Input
+    <div ref={rootRef} className="wk-graph-relation-select wk-kd-69">
+      <TdInput
         type="text"
-        className="box-border w-full"
-        role="combobox"
+        className="wk-kd-58"
+        {...({ role: "combobox", "aria-autocomplete": "list", "aria-expanded": String(open) } as Record<string, string>)}
         aria-label={ariaLabel}
-        aria-autocomplete="list"
-        aria-expanded={open}
         value={open ? filter : value}
         placeholder={open ? placeholder : (value || placeholder)}
         onFocus={() => { setOpen(true); setFilter(""); setActiveIndex(0); }}
-        onChange={(event) => { setFilter(event.target.value); setActiveIndex(0); setOpen(true); }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); setActiveIndex((index) => moveGraphRelationOption(index, "down", optionCount)); }
-          if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((index) => moveGraphRelationOption(index, "up", optionCount)); }
-          if (event.key === "Enter" && optionCount > 0) { event.preventDefault(); choose(activeIndex < filtered.length ? filtered[activeIndex] : filter.trim()); }
-          if (event.key === "Escape") { setOpen(false); event.currentTarget.blur(); }
+        onChange={(value) => { setFilter(String(value)); setActiveIndex(0); setOpen(true); }}
+        onKeydown={(_, { e }) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActiveIndex((index) => moveGraphRelationOption(index, "down", optionCount)); }
+          if (e.key === "ArrowUp") { e.preventDefault(); setActiveIndex((index) => moveGraphRelationOption(index, "up", optionCount)); }
+          if (e.key === "Enter" && optionCount > 0) { e.preventDefault(); choose(activeIndex < filtered.length ? filtered[activeIndex] : filter.trim()); }
+          if (e.key === "Escape") { setOpen(false); e.currentTarget.blur(); }
         }}
       />
-      {clearable && value ? <button type="button" className="wk-graph-relation-clear absolute right-[6px] top-1/2 cursor-pointer border-0 bg-transparent px-[3px] py-0 text-[var(--wk-muted,#667085)] [transform:translateY(-50%)]" aria-label={`清除${ariaLabel}`} onMouseDown={(event) => { event.preventDefault(); choose(""); }}>×</button> : null}
+      {clearable && value ? <button type="button" className="wk-graph-relation-clear wk-kd-70" aria-label={`清除${ariaLabel}`} onMouseDown={(event) => { event.preventDefault(); choose(""); }}>×</button> : null}
       {open ? (
-        <div role="listbox" className="wk-graph-relation-options absolute inset-x-0 top-[calc(100%+4px)] z-[5] flex max-h-[180px] flex-col overflow-y-auto rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-1 shadow-[0_8px_20px_rgb(16_24_40/14%)]">
-          {filtered.map((option, index) => <button type="button" role="option" aria-selected={option === value} className={`px-2 py-[6px] text-left border-0 bg-transparent cursor-pointer hover:bg-[var(--wk-bg-muted,#f2f4f7)] ${index === activeIndex || option === value ? "is-active bg-[var(--wk-bg-muted,#f2f4f7)]" : ""}`} key={option} onMouseDown={(event) => { event.preventDefault(); choose(option); }}>{option}</button>)}
-          {canCreate ? <button type="button" role="option" className={`px-2 py-[6px] text-left border-0 bg-transparent cursor-pointer hover:bg-[var(--wk-bg-muted,#f2f4f7)] ${activeIndex === filtered.length ? "is-active bg-[var(--wk-bg-muted,#f2f4f7)]" : ""}`} onMouseDown={(event) => { event.preventDefault(); choose(filter.trim()); }}>创建“{filter.trim()}”</button> : null}
-          {filtered.length === 0 && !canCreate ? <span className="wk-muted text-muted">{placeholder}</span> : null}
+        <div role="listbox" className="wk-graph-relation-options inset-x-0 wk-kd-71">
+          {filtered.map((option, index) => <button type="button" role="option" aria-selected={option === value} className={`wk-kd-153 ${index === activeIndex || option === value ? "is-active wk-kd-154" : ""}`} key={option} onMouseDown={(event) => { event.preventDefault(); choose(option); }}>{option}</button>)}
+          {canCreate ? <button type="button" role="option" className={`wk-kd-153 ${activeIndex === filtered.length ? "is-active wk-kd-154" : ""}`} onMouseDown={(event) => { event.preventDefault(); choose(filter.trim()); }}>创建“{filter.trim()}”</button> : null}
+          {filtered.length === 0 && !canCreate ? <span className="wk-muted wk-kd-16">{placeholder}</span> : null}
         </div>
       ) : null}
     </div>
@@ -2300,13 +2303,13 @@ export function GraphSwitch({ id, checked, onChange, labelId }: {
     <button
       id={id}
       type="button"
-      className={`wk-graph-switch${checked ? " is-checked" : ""} relative inline-flex h-6 w-10 flex-none cursor-pointer items-center rounded-full border-0 p-0 [transition:background-color_.2s_cubic-bezier(0.38,0,0.24,1)] ${checked ? "bg-[var(--wk-accent,#07c05f)]" : "bg-[var(--wk-bg-muted,#d0d5dd)]"} focus-visible:[outline:2px_solid_var(--wk-accent,#4a7dff)] focus-visible:[outline-offset:2px]`}
+      className={`wk-graph-switch${checked ? " is-checked" : ""} wk-kd-155 ${checked ? "wk-kd-144" : "wk-kd-156"} wk-kd-157`}
       role="switch"
       aria-checked={checked}
       aria-labelledby={labelId}
       onClick={() => onChange(!checked)}
     >
-      <span className={`wk-graph-switch-handle absolute left-[3px] top-[3px] h-[18px] w-[18px] rounded-full bg-white shadow-[0_1px_3px_rgb(16_24_40/20%)] [transition:transform_.2s_cubic-bezier(0.38,0,0.24,1)] ${checked ? "[transform:translateX(16px)]" : "[transform:translateX(0px)]"}`} aria-hidden="true" />
+      <span className={`wk-graph-switch-handle wk-kd-158 ${checked ? "wk-kd-148" : "wk-kd-149"}`} aria-hidden="true" />
     </button>
   );
 }
@@ -2324,13 +2327,15 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
   const emit = (next: UploadNodeExtractState) => props.onChange(next);
   const [tagFabring, setTagFabring] = useState(false);
   const [textFabring, setTextFabring] = useState(false);
-  const instructionsRef = useRef<HTMLTextAreaElement | null>(null);
-  const sampleTextRef = useRef<HTMLTextAreaElement | null>(null);
+  // S6 换装：tdesign Textarea ref 是命令式句柄（textareaElement 指内层原生 textarea）。
+  type TdTextareaRef = { currentElement: HTMLDivElement; textareaElement: HTMLTextAreaElement };
+  const instructionsRef = useRef<TdTextareaRef>(null);
+  const sampleTextRef = useRef<TdTextareaRef>(null);
 
   useEffect(() => {
     const fields = [
-      { node: instructionsRef.current, value: graphExtract.customInstructions, minRows: 3, maxRows: 8 },
-      { node: sampleTextRef.current, value: graphExtract.text, minRows: 6, maxRows: 12 },
+      { node: instructionsRef.current?.textareaElement ?? null, value: graphExtract.customInstructions, minRows: 3, maxRows: 8 },
+      { node: sampleTextRef.current?.textareaElement ?? null, value: graphExtract.text, minRows: 6, maxRows: 12 },
     ];
     fields.forEach(({ node, minRows, maxRows }) => {
       if (!node) return;
@@ -2411,21 +2416,21 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
   const [extracting, setExtracting] = useState(false);
 
   return (
-    <div className="wk-graph-settings w-full">
-      <div className="section-header mb-4">
-        <h2 className="m-0 mb-1 text-[1.1rem] font-semibold text-[var(--wk-text,#101828)]">{t("graphSettings.title")}</h2>
-        <p className="section-desc m-0 text-[.85rem] leading-normal text-[var(--wk-muted,#667085)]">{t("graphSettings.description")}</p>
+    <div className="wk-graph-settings wk-kd-72">
+      <div className="section-header wk-kd-54">
+        <h2 className="wk-kd-55">{t("graphSettings.title")}</h2>
+        <p className="section-desc wk-kd-56">{t("graphSettings.description")}</p>
       </div>
       {!props.graphDatabaseOn ? (
-        <p className="wk-graph-alert m-0 mb-3 rounded-[6px] bg-[rgba(183,121,8,0.08)] px-3 py-2 text-[.85rem] text-[var(--wk-warning,#b54708)]" role="alert">{t("graphSettings.disabledWarning")}</p>
+        <p className="wk-graph-alert wk-kd-73" role="alert">{t("graphSettings.disabledWarning")}</p>
       ) : null}
       <div className="settings-group">
-        <div className="wk-graph-setting-row flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0">
-          <div className="setting-info flex-[0_0_40%] max-w-[40%] pr-3">
-            <label id="wk-graph-enabled-label" className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.enableLabel")}</label>
-            <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.enableDescription")}</p>
+        <div className="wk-graph-setting-row wk-kd-74">
+          <div className="setting-info wk-kd-75">
+            <label id="wk-graph-enabled-label" className="wk-kd-76">{t("graphSettings.enableLabel")}</label>
+            <p className="wk-muted wk-kd-77">{t("graphSettings.enableDescription")}</p>
           </div>
-          <div className="setting-control flex max-w-[55%] flex-[0_0_55%] items-center justify-end">
+          <div className="setting-control wk-kd-78">
             <GraphSwitch
               id="wk-graph-enabled"
               checked={graphExtract.enabled}
@@ -2437,30 +2442,30 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
 
         {graphExtract.enabled ? (
           <>
-            <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+            <div className="wk-graph-setting-row is-vertical wk-kd-79">
               <div className="setting-info">
-                <label htmlFor="wk-graph-instructions" className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.customInstructionsLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.customInstructionsDescription")}</p>
+                <label htmlFor="wk-graph-instructions" className="wk-kd-76">{t("graphSettings.customInstructionsLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.customInstructionsDescription")}</p>
               </div>
-              <div className="setting-control is-full flex w-full max-w-full flex-[0_0_55%] flex-col items-start justify-end gap-2">
-                <Textarea
+              <div className="setting-control is-full wk-kd-80">
+                <TdTextarea
                   ref={instructionsRef}
                   id="wk-graph-instructions"
                   rows={3}
-                  maxLength={4000}
+                  maxlength={4000}
                   placeholder={t("graphSettings.customInstructionsPlaceholder")}
                   value={graphExtract.customInstructions}
-                  onChange={(event) => patch({ customInstructions: event.target.value })}
+                  onChange={(value) => patch({ customInstructions: String(value) })}
                 />
               </div>
             </div>
-            <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+            <div className="wk-graph-setting-row is-vertical wk-kd-79">
               <div className="setting-info">
-                <label htmlFor="wk-graph-tags" className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.tagsLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.tagsDescription")}</p>
+                <label htmlFor="wk-graph-tags" className="wk-kd-76">{t("graphSettings.tagsLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.tagsDescription")}</p>
               </div>
-              <div className="setting-control is-full flex w-full max-w-full flex-[0_0_55%] flex-col items-start justify-end gap-2">
-                <div className="wk-graph-tags-group flex w-full items-start gap-3">
+              <div className="setting-control is-full wk-kd-80">
+                <div className="wk-graph-tags-group wk-kd-81">
                   {props.canRunExtract ? (
                     <button
                       type="button"
@@ -2487,33 +2492,34 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                     ariaLabel={t("graphSettings.tagsLabel")}
                   />
                 </div>
-                <div className="wk-graph-add-tag w-full">
-                  <Input
-                    className="box-border w-full"
+                <div className="wk-graph-add-tag wk-kd-72">
+                  <TdInput
+                    className="wk-kd-58"
                     type="text"
                     placeholder={t("graphSettings.tagsPlaceholder")}
                     aria-label={t("graphSettings.tagsPlaceholder")}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      const value = event.currentTarget.value.trim();
+                    onKeydown={(_, { e }) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      const field = e.target as HTMLInputElement;
+                      const value = field.value.trim();
                       if (value && !graphExtract.tags.includes(value)) patch({ tags: [...graphExtract.tags, value] });
-                      event.currentTarget.value = "";
+                      field.value = "";
                     }}
                   />
                 </div>
                 {!llmAvailable ? (
-                  <p className="wk-graph-tip m-0 flex items-center gap-[6px] text-[0.8rem] text-[var(--wk-muted,#667085)]">{t("graphSettings.completeModelConfig")}</p>
+                  <p className="wk-graph-tip wk-kd-82">{t("graphSettings.completeModelConfig")}</p>
                 ) : null}
               </div>
             </div>
-            <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+            <div className="wk-graph-setting-row is-vertical wk-kd-79">
               <div className="setting-info">
-                <label htmlFor="wk-graph-text" className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.sampleTextLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.sampleTextDescription")}</p>
+                <label htmlFor="wk-graph-text" className="wk-kd-76">{t("graphSettings.sampleTextLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.sampleTextDescription")}</p>
               </div>
               <div className="setting-control is-full">
-                <div className="wk-graph-text-group flex w-full flex-col items-start gap-3">
+                <div className="wk-graph-text-group wk-kd-83">
                   {props.canRunExtract ? (
                     <button
                       type="button"
@@ -2533,42 +2539,42 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                       {t("graphSettings.generateRandomText")}
                     </button>
                   ) : null}
-                  <Textarea
+                  <TdTextarea
                     ref={sampleTextRef}
                     id="wk-graph-text"
                     rows={6}
-                    maxLength={5000}
+                    maxlength={5000}
                     placeholder={t("graphSettings.sampleTextPlaceholder")}
                     value={graphExtract.text}
-                    onChange={(event) => patch({ text: event.target.value })}
+                    onChange={(value) => patch({ text: String(value) })}
                     style={{ width: "100%" }}
                   />
-                  <span className="wk-graph-text-limit -mt-1 self-end text-[0.75rem] leading-[1.25] text-[var(--wk-muted,#667085)]" aria-live="polite">{graphExtract.text.length}/5000</span>
+                  <span className="wk-graph-text-limit wk-kd-84" aria-live="polite">{graphExtract.text.length}/5000</span>
                 </div>
                 {!llmAvailable ? (
-                  <p className="wk-graph-tip m-0 flex items-center gap-[6px] text-[0.8rem] text-[var(--wk-muted,#667085)]">{t("graphSettings.completeModelConfig")}</p>
+                  <p className="wk-graph-tip wk-kd-82">{t("graphSettings.completeModelConfig")}</p>
                 ) : null}
               </div>
             </div>
             {graphExtract.nodes.length > 0 ? (
-              <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+              <div className="wk-graph-setting-row is-vertical wk-kd-79">
                 <div className="setting-info">
-                  <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.entityListLabel")}</label>
-                  <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.entityListDescription")}</p>
+                  <label className="wk-kd-76">{t("graphSettings.entityListLabel")}</label>
+                  <p className="wk-muted wk-kd-77">{t("graphSettings.entityListDescription")}</p>
                 </div>
-                <div className="setting-control is-full flex w-full max-w-full flex-[0_0_55%] flex-col items-start justify-end gap-2">
-                  <div className="wk-graph-node-list flex w-full flex-col gap-4">
+                <div className="setting-control is-full wk-kd-80">
+                  <div className="wk-graph-node-list wk-kd-85">
                     {graphExtract.nodes.map((node, nodeIndex) => (
-                      <div key={nodeIndex} className="wk-graph-node-item rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-3" data-graph-node={node.name || undefined}>
-                        <div className="wk-graph-node-header mb-2 flex items-center gap-2">
+                      <div key={nodeIndex} className="wk-graph-node-item wk-kd-86" data-graph-node={node.name || undefined}>
+                        <div className="wk-graph-node-header wk-kd-87">
                           <span aria-hidden>👤</span>
-                          <Input
+                          <TdInput
                             type="text"
-                            className="wk-graph-node-name w-full flex-1 box-border"
+                            className="wk-graph-node-name wk-kd-88"
                             placeholder={t("graphSettings.nodeNamePlaceholder")}
                             aria-label={t("graphSettings.nodeNamePlaceholder")}
                             value={node.name}
-                            onChange={(event) => updateNode(nodeIndex, { ...node, name: event.target.value })}
+                            onChange={(value) => updateNode(nodeIndex, { ...node, name: String(value) })}
                           />
                           <button
                             type="button"
@@ -2578,19 +2584,19 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                             ✕
                           </button>
                         </div>
-                        <div className="wk-graph-node-attributes flex flex-col gap-[0.4rem] pl-[1.75rem]">
+                        <div className="wk-graph-node-attributes wk-kd-89">
                           {node.attributes.map((attribute, attrIndex) => (
-                            <div key={attrIndex} className="wk-graph-attribute-item flex items-center gap-2">
-                              <Input
+                            <div key={attrIndex} className="wk-graph-attribute-item wk-kd-90">
+                              <TdInput
                                 type="text"
-                                className="w-full flex-1 box-border"
+                                className="wk-kd-88"
                                 placeholder={t("graphSettings.attributePlaceholder")}
                                 aria-label={t("graphSettings.attributePlaceholder")}
                                 value={attribute}
-                                onChange={(event) =>
+                                onChange={(text) =>
                                   updateNode(nodeIndex, {
                                     ...node,
-                                    attributes: node.attributes.map((value, index) => (index === attrIndex ? event.target.value : value)),
+                                    attributes: node.attributes.map((value, index) => (index === attrIndex ? String(text) : value)),
                                   })
                                 }
                               />
@@ -2610,7 +2616,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                           ))}
                           <button
                             type="button"
-                            className="wk-graph-add-attr self-start"
+                            className="wk-graph-add-attr wk-kd-91"
                             onClick={() => updateNode(nodeIndex, { ...node, attributes: [...node.attributes, ""] })}
                           >
                             {t("graphSettings.addAttribute")}
@@ -2623,15 +2629,15 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
               </div>
             ) : null}
 
-            <div className="wk-graph-setting-row flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0">
-              <div className="setting-info flex-[0_0_40%] max-w-[40%] pr-3">
-                <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.manageEntitiesLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.manageEntitiesDescription")}</p>
+            <div className="wk-graph-setting-row wk-kd-74">
+              <div className="setting-info wk-kd-75">
+                <label className="wk-kd-76">{t("graphSettings.manageEntitiesLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.manageEntitiesDescription")}</p>
               </div>
-              <div className="setting-control flex max-w-[55%] flex-[0_0_55%] items-center justify-end">
+              <div className="setting-control wk-kd-78">
                 <button
                   type="button"
-                  className="wk-graph-add-btn border border-[var(--wk-accent,#4a7dff)] rounded-[6px] bg-[var(--wk-accent,#4a7dff)] px-3 py-1 text-[.85rem] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="wk-graph-add-btn wk-kd-92"
                   onClick={() => patch({ nodes: [...graphExtract.nodes, { name: "", attributes: [] }] })}
                 >
                   {t("graphSettings.addEntity")}
@@ -2639,19 +2645,19 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
               </div>
             </div>
             {graphExtract.relations.length > 0 ? (
-              <div className="wk-graph-setting-row is-vertical flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0 flex-col items-stretch">
+              <div className="wk-graph-setting-row is-vertical wk-kd-79">
                 <div className="setting-info">
-                  <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.relationListLabel")}</label>
-                  <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.relationListDescription")}</p>
+                  <label className="wk-kd-76">{t("graphSettings.relationListLabel")}</label>
+                  <p className="wk-muted wk-kd-77">{t("graphSettings.relationListDescription")}</p>
                 </div>
-                <div className="setting-control is-full flex w-full max-w-full flex-[0_0_55%] flex-col items-start justify-end gap-2">
-                  <div className="wk-graph-relation-list flex w-full flex-col gap-[0.6rem]">
+                <div className="setting-control is-full wk-kd-80">
+                  <div className="wk-graph-relation-list wk-kd-93">
                     {graphExtract.relations.map((relation, index) => (
-                      <div key={index} className="wk-graph-relation-item flex items-center gap-[0.6rem] rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-[0.6rem]">
+                      <div key={index} className="wk-graph-relation-item wk-kd-94">
                         <GraphRelationSelect value={relation.node1} options={graphExtract.nodes.map((node) => node.name)} placeholder={t("graphSettings.selectEntity")} ariaLabel={t("graphSettings.selectEntity")} onChange={(value) => updateRelation(index, { ...relation, node1: value })} />
-                        <span aria-hidden className="flex-none text-[var(--wk-muted,#667085)]">→</span>
+                        <span aria-hidden className="wk-kd-95">→</span>
                         <GraphRelationSelect value={relation.type} options={graphExtract.tags} placeholder={t("graphSettings.selectRelationType")} ariaLabel={t("graphSettings.selectRelationType")} creatable clearable onChange={(value) => updateRelation(index, { ...relation, type: value })} />
-                        <span aria-hidden className="flex-none text-[var(--wk-muted,#667085)]">→</span>
+                        <span aria-hidden className="wk-kd-95">→</span>
                         <GraphRelationSelect value={relation.node2} options={graphExtract.nodes.map((node) => node.name)} placeholder={t("graphSettings.selectEntity")} ariaLabel={t("graphSettings.selectEntity")} onChange={(value) => updateRelation(index, { ...relation, node2: value })} />
                         <button
                           type="button"
@@ -2666,32 +2672,32 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                 </div>
               </div>
             ) : null}
-            <div className="wk-graph-setting-row flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0">
-              <div className="setting-info flex-[0_0_40%] max-w-[40%] pr-3">
-                <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.manageRelationsLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.manageRelationsDescription")}</p>
+            <div className="wk-graph-setting-row wk-kd-74">
+              <div className="setting-info wk-kd-75">
+                <label className="wk-kd-76">{t("graphSettings.manageRelationsLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.manageRelationsDescription")}</p>
               </div>
-              <div className="setting-control flex max-w-[55%] flex-[0_0_55%] items-center justify-end">
+              <div className="setting-control wk-kd-78">
                 <button
                   type="button"
-                  className="wk-graph-add-btn border border-[var(--wk-accent,#4a7dff)] rounded-[6px] bg-[var(--wk-accent,#4a7dff)] px-3 py-1 text-[.85rem] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="wk-graph-add-btn wk-kd-92"
                   onClick={() => patch({ relations: [...graphExtract.relations, { node1: "", node2: "", type: "" }] })}
                 >
                   {t("graphSettings.addRelation")}
                 </button>
               </div>
             </div>
-            <div className="wk-graph-setting-row flex items-start justify-between gap-3 border-b border-[var(--wk-border,#e4e7ec)] py-3 last:border-b-0">
-              <div className="setting-info flex-[0_0_40%] max-w-[40%] pr-3">
-                <label className="mb-[2px] block text-[0.9rem] font-medium text-[var(--wk-text,#101828)]">{t("graphSettings.extractActionsLabel")}</label>
-                <p className="wk-muted text-muted m-0 text-[0.8rem]">{t("graphSettings.extractActionsDescription")}</p>
+            <div className="wk-graph-setting-row wk-kd-74">
+              <div className="setting-info wk-kd-75">
+                <label className="wk-kd-76">{t("graphSettings.extractActionsLabel")}</label>
+                <p className="wk-muted wk-kd-77">{t("graphSettings.extractActionsDescription")}</p>
               </div>
-              <div className="setting-control flex max-w-[55%] flex-[0_0_55%] items-center justify-end">
-                <div className="wk-graph-actions flex flex-wrap gap-3">
+              <div className="setting-control wk-kd-78">
+                <div className="wk-graph-actions wk-kd-96">
                   {props.canRunExtract ? (
                     <button
                       type="button"
-                      className="wk-graph-add-btn border border-[var(--wk-accent,#4a7dff)] rounded-[6px] bg-[var(--wk-accent,#4a7dff)] px-3 py-1 text-[.85rem] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="wk-graph-add-btn wk-kd-92"
                       disabled={!llmAvailable || !graphExtract.text || extracting}
                       onClick={() => {
                         setExtracting(true);
@@ -2711,8 +2717,8 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                       {extracting ? t("graphSettings.extracting") : t("graphSettings.startExtraction")}
                     </button>
                   ) : null}
-                  <button type="button" className="cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-transparent px-3 py-1 text-[.85rem]" onClick={loadDefaultExample}>{t("graphSettings.defaultExample")}</button>
-                  <button type="button" className="cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-transparent px-3 py-1 text-[.85rem]" onClick={clearExample}>{t("graphSettings.clearExample")}</button>
+                  <button type="button" className="wk-kd-97" onClick={loadDefaultExample}>{t("graphSettings.defaultExample")}</button>
+                  <button type="button" className="wk-kd-97" onClick={clearExample}>{t("graphSettings.clearExample")}</button>
                 </div>
               </div>
             </div>
@@ -2733,20 +2739,20 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
 export function UploadProgressMask({ percent, title = "Uploading", formats = ["pdf、doc", "text、markdown"] }: { percent: number; title?: string; formats?: readonly [string, string] }) {
   const clamped = clampUploadPercent(percent);
   return (
-    <div className="wk-upload-mask absolute inset-0 z-[5] flex items-center justify-center rounded-[8px] bg-[rgba(255,255,255,0.92)]" role="status" aria-live="polite">
-      <div className="wk-upload-mask__card flex flex-col items-center">
-        <img className="wk-upload-mask__illustration h-[162px] w-[164px]" src={uploadMaskIllustration} alt="" />
-        <span className="wk-upload-mask__label mt-3 mb-4 text-[24px] font-semibold leading-[26px] text-[var(--wk-accent,#4a7dff)]">{`${title} ${clamped}%`}</span>
-        <span className="wk-upload-mask__type w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{formats[0]}</span>
-        <span className="wk-upload-mask__type w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{formats[1]}</span>
+    <div className="wk-upload-mask wk-kd-98" role="status" aria-live="polite">
+      <div className="wk-upload-mask__card wk-kd-99">
+        <img className="wk-upload-mask__illustration wk-kd-100" src={uploadMaskIllustration} alt="" />
+        <span className="wk-upload-mask__label wk-kd-101">{`${title} ${clamped}%`}</span>
+        <span className="wk-upload-mask__type wk-kd-102">{formats[0]}</span>
+        <span className="wk-upload-mask__type wk-kd-102">{formats[1]}</span>
         <div
-          className="wk-upload-mask__bar h-[6px] w-64 max-w-[70vw] overflow-hidden rounded-[3px] bg-[var(--wk-border,#e4e7ec)]"
+          className="wk-upload-mask__bar wk-kd-103"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={clamped}
         >
-          <div className="wk-upload-mask__fill h-full bg-[var(--wk-accent,#4a7dff)] [transition:width_.2s_ease]" style={{ width: `${clamped}%` }} />
+          <div className="wk-upload-mask__fill wk-kd-104" style={{ width: `${clamped}%` }} />
         </div>
       </div>
     </div>
@@ -2761,10 +2767,10 @@ export function stageNoticeClass(tone: "neutral" | "success" | "warning" | "erro
 
 /** documents.css toast tone palette, now inlined as utilities (class stays a hook). */
 const STAGE_NOTICE_TONE_CLASS: Record<"neutral" | "success" | "warning" | "error", string> = {
-  neutral: "border-[var(--wk-border,#e4e7ec)] text-[var(--wk-text,#101828)]",
-  success: "border-[var(--wk-success,#12b76a)] text-[var(--wk-success,#027a48)]",
-  warning: "border-[var(--wk-warning,#b54708)] text-[var(--wk-warning,#9a3412)]",
-  error: "border-[var(--wk-danger,#d92d20)] text-[var(--wk-danger,#b42318)]",
+  neutral: "wk-kd-notice-neutral",
+  success: "wk-kd-notice-success",
+  warning: "wk-kd-notice-warning",
+  error: "wk-kd-notice-error",
 };
 
 export function KnowledgeDocumentsPage({
@@ -4211,7 +4217,7 @@ export function KnowledgeDocumentsPage({
 
   return (
     <div className="knowledge-layout">
-      {stageNotice ? <div className={`${stageNoticeClass(stageNotice.tone)} wk-stage-notice`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
+      {stageNotice ? <div className={`${stageNoticeClass(stageNotice.tone)}wk-stage-notice`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
       <div className="document-header">
         <div className="document-header-title">
           <DocumentsBreadcrumb
@@ -4233,9 +4239,9 @@ export function KnowledgeDocumentsPage({
           {kbMetaError ? (
             <div className="wk-kb-meta-error" role="alert">
               <Status tone="error">{kbMetaError.kind === "forbidden" ? `${kbMetaError.message} (403)` : kbMetaError.message}</Status>
-              <Button type="button" variant="text" onClick={() => setKbMetaAttempt((attempt) => attempt + 1)}>
+              <TdButton type="button" variant="text" onClick={() => setKbMetaAttempt((attempt) => attempt + 1)}>
                 {t("common.retry")}
-              </Button>
+              </TdButton>
             </div>
           ) : null}
           <ParserHint
@@ -4277,7 +4283,7 @@ export function KnowledgeDocumentsPage({
             }
       >
         {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
-          {showFolderTree ? <aside className="wk-folder-panel border-r border-line-soft pr-[1rem] max-[720px]:border-b max-[720px]:border-r-0 max-[720px]:p-0 max-[720px]:pb-[1rem]">
+          {showFolderTree ? <aside className="wk-folder-panel wk-kd-105">
             {/* Vue folderTree title (目录), not documents.folders (文件夹). */}
             <strong>{t("knowledgeBase.folderTree.title")}</strong>
             {folderState.status === "loading" ? (
@@ -4286,7 +4292,7 @@ export function KnowledgeDocumentsPage({
             {folderState.status === "error" ? (
               <Status tone="error">{folderState.message}</Status>
             ) : null}
-            <ul className="wk-folder-list mb-0 ml-0 mr-0 mt-[0.75rem] list-none p-0">
+            <ul className="wk-folder-list wk-kd-106">
               {folders.map((folder) => (
                 <li
                   key={folder.path}
@@ -4296,12 +4302,12 @@ export function KnowledgeDocumentsPage({
                     type="button"
                     className={
                       folderPath === (folder.path || undefined)
-                        ? "is-active w-full border-0 rounded-[5px] bg-surface-wash text-primary-deep cursor-pointer flex justify-between py-[0.45rem] px-[0.5rem] text-left hover:bg-surface-wash hover:text-primary-deep"
-                        : "w-full border-0 rounded-[5px] bg-transparent text-muted-strong cursor-pointer flex justify-between py-[0.45rem] px-[0.5rem] text-left hover:bg-surface-wash hover:text-primary-deep"
+                        ? "is-active wk-kd-164"
+                        : "wk-kd-165"
                     }
                     onClick={() => setFolderPath(folder.path || undefined)}
                   >
-                    {folder.path === "" ? rootRowLabel : folder.name} <span className="text-[0.8rem] text-muted">{folder.total_count}</span>
+                    {folder.path === "" ? rootRowLabel : folder.name} <span className="wk-kd-107">{folder.total_count}</span>
                   </button>
                 </li>
               ))}
@@ -4320,7 +4326,7 @@ export function KnowledgeDocumentsPage({
               <button type="button" className="doc-folder-path__crumb is-current" onClick={() => setFolderPath(undefined)}>
                 {t("knowledgeBase.folderTree.rootRow")}
               </button>
-              {folderPathCrumbs(folderPath).map((crumb, index, crumbs) => <span key={crumb.path} className="contents">
+              {folderPathCrumbs(folderPath).map((crumb, index, crumbs) => <span key={crumb.path} className="wk-kd-108">
                 <TIcon name="chevron-right" className="doc-folder-path__sep" />
                 {index === crumbs.length - 1 ? <span className="doc-folder-path__crumb is-current">{crumb.name}</span> : <button type="button" className="doc-folder-path__crumb" onClick={() => setFolderPath(crumb.path)}>{crumb.name}</button>}
               </span>)}
@@ -4622,36 +4628,32 @@ export function KnowledgeDocumentsPage({
             </div>
             {moving && canContribute ? (
               <div
-                className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"
+                className="wk-list-actions wk-kd-109"
                 role="form"
                 aria-label={t("knowledgeBase.documents.moveDestination")}
               >
                 <label>
                   {t("knowledgeBase.documents.moveDestination")}{" "}
-                  <Select
+                  <TdSelect
                     value={moveTarget}
-                    onChange={(event) => setMoveTarget(event.target.value)} className="max-w-[9rem] rounded-control border border-line-control bg-surface text-ink px-[0.65rem] py-[0.55rem] [font:inherit]"
-                  >
-                    <option value="">
-                      {t("knowledgeBase.documents.moveRoot")}
-                    </option>
-                    {folders
-                      .filter((folder) => folder.path)
-                      .map((folder) => (
-                        <option key={folder.path} value={folder.path}>
-                          {folder.name}
-                        </option>
-                      ))}
-                  </Select>
+                    onChange={(value) => setMoveTarget(String(value))}
+                    className="wk-kd-110"
+                    options={[
+                      { value: "", label: t("knowledgeBase.documents.moveRoot") },
+                      ...folders
+                        .filter((folder) => folder.path)
+                        .map((folder) => ({ value: folder.path, label: folder.name })),
+                    ]}
+                  />
                 </label>
-                <Button
+                <TdButton
                   type="button"
                   disabled={!selected.size}
                   onClick={() => void moveSelected()}
                 >
                   {t("knowledgeBase.documents.moveConfirm")}
-                </Button>
-                <Button
+                </TdButton>
+                <TdButton
                   type="button"
                   onClick={() => {
                     setMoving(false);
@@ -4659,7 +4661,7 @@ export function KnowledgeDocumentsPage({
                   }}
                 >
                   {t("knowledgeBase.documents.moveCancel")}
-                </Button>
+                </TdButton>
               </div>
             ) : null}
             {mutationError ? (
@@ -4672,12 +4674,12 @@ export function KnowledgeDocumentsPage({
             {state.status === "error" ? (
               <>
                 <Status tone="error">{state.message}</Status>
-                <Button
+                <TdButton
                   type="button"
                   onClick={() => setReloadToken((value) => value + 1)}
                 >
                   {t("knowledgeBase.documents.tryAgain")}
-                </Button>
+                </TdButton>
               </>
             ) : null}
             <div
@@ -4787,26 +4789,26 @@ export function KnowledgeDocumentsPage({
                   className="wk-pagination"
                   aria-label={t("knowledgeBase.documents.title")}
                 >
-                  <Button
+                  <TdButton
                     type="button"
                     disabled={page <= 1}
                     onClick={() => setPage((value) => value - 1)}
                   >
                     {t("knowledgeBase.documents.previous")}
-                  </Button>
+                  </TdButton>
                   <span>
                     {t("knowledgeBase.documents.page", {
                       page,
                       total: pageTotal,
                     })}
                   </span>
-                  <Button
+                  <TdButton
                     type="button"
                     disabled={page * pageSize >= pageTotal}
                     onClick={() => setPage((value) => value + 1)}
                   >
                     {t("knowledgeBase.documents.next")}
-                  </Button>
+                  </TdButton>
                 </nav>
               ) : null}
             </div>
@@ -4828,7 +4830,7 @@ export function KnowledgeDocumentsPage({
             <aside className="wk-upload-confirm-files-column">
               <div className="wk-upload-confirm-files-header">
                 <div className="wk-upload-confirm-files-header-row">
-                  <h2 className="m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[16px] font-semibold leading-[1.35] text-[var(--wk-text,#101828)]">{dialogTitle}</h2>
+                  <h2 className="wk-kd-111">{dialogTitle}</h2>
                   {dialogMode === "file" ? (
                     <div className="wk-upload-confirm-files-header-actions">
               <span className="wk-files-count" aria-label={ct("uploadConfirm.parseConfig")} style={{ minWidth: "1.4rem", textAlign: "center", borderRadius: "999px", padding: "0 0.35rem", border: "1px solid var(--wk-border, #e4e7ec)", fontSize: "0.85rem" }}>
@@ -4869,11 +4871,11 @@ export function KnowledgeDocumentsPage({
                   setNewFolderName("");
                   setDestinationPickerDuplicate(false);
                 }}
-                className="wk-destination-crumb inline-flex max-w-full min-w-0 items-center gap-1 border-0 bg-transparent p-0 text-left text-[12px] leading-[18px] text-[var(--wk-muted,#667085)] transition-colors hover:text-[var(--wk-accent,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]"
+                className="wk-destination-crumb wk-kd-ring wk-kd-112"
               >
-                <span className="shrink-0">{ct("uploadConfirm.destinationLabel")}</span>
-                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-[var(--wk-text,#101828)]">{destinationBreadcrumb(uploadTargetFolder, rootRowLabel)}</span>
-                <span className="shrink-0 text-[var(--wk-muted,#98a2b3)]" aria-hidden>{destinationPickerOpen ? "▾" : "▸"}</span>
+                <span className="wk-kd-15">{ct("uploadConfirm.destinationLabel")}</span>
+                <span className="wk-kd-113">{destinationBreadcrumb(uploadTargetFolder, rootRowLabel)}</span>
+                <span className="wk-kd-114" aria-hidden>{destinationPickerOpen ? "▾" : "▸"}</span>
               </button>
               {destinationPickerOpen ? (
                 <div
@@ -4937,11 +4939,11 @@ export function KnowledgeDocumentsPage({
               </div>
               <main className="wk-upload-confirm-config-panel">
           {dialogMode !== "reparse" ? (
-            <fieldset className="wk-upload-confirm-tags mb-3 block" id="wk-upload-section-tags" data-section="tags" style={{ display: activeSection === "tags" ? undefined : "none" }}>
+            <fieldset className="wk-upload-confirm-tags wk-kd-115" id="wk-upload-section-tags" data-section="tags" style={{ display: activeSection === "tags" ? undefined : "none" }}>
               <legend>{ct("uploadConfirm.tabTags")}</legend>
-              <p className="wk-muted text-muted" style={{ margin: "0 0 0.4rem", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsDescription")}</p>
+              <p className="wk-muted wk-kd-16" style={{ margin: "0 0 0.4rem", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsDescription")}</p>
               <label>
-                <span className="wk-visually-hidden sr-only">{ct("uploadConfirm.tagsPlaceholder")}</span>
+                <span className="wk-visually-hidden wk-kd-53">{ct("uploadConfirm.tagsPlaceholder")}</span>
                 <UploadMultiSelect
                   values={pendingTagIds}
                   options={tags.map((tag) => ({ value: tag.id, label: tag.name }))}
@@ -4950,7 +4952,7 @@ export function KnowledgeDocumentsPage({
                 />
               </label>
               {!uploading && tags.length === 0 ? (
-                <p className="wk-muted text-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsEmpty")}</p>
+                <p className="wk-muted wk-kd-16" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsEmpty")}</p>
               ) : null}
             </fieldset>
           ) : null}
@@ -4987,22 +4989,22 @@ export function KnowledgeDocumentsPage({
             </aside>
           </div>
           {uploadError ? <Status tone="error">{uploadError}</Status> : null}
-          <div className="wk-upload-confirm-footer wk-list-actions flex items-center justify-end gap-[0.5rem]">
-            <Button
+          <div className="wk-upload-confirm-footer wk-list-actions wk-kd-116">
+            <TdButton
               type="button"
               disabled={!canCloseUploadConfirmDialog(uploading)}
               onClick={closeUploadConfirmDialog}
             >
               {ct("uploadConfirm.cancel")}
-            </Button>
-            <Button
+            </TdButton>
+            <TdButton
               type="button"
               loading={uploading}
               disabled={!canConfirm && !uploading}
               onClick={() => void confirmUpload()}
             >
               {confirmButtonText}
-            </Button>
+            </TdButton>
           </div>
       </Dialog>
       </>
@@ -5015,18 +5017,18 @@ export function KnowledgeDocumentsPage({
           title={t("knowledgeBase.importURLTitle")}
           onClose={() => setSourceUrlDialogOpen(false)}
         >
-          <div className="wk-upload-url-dialog flex flex-col gap-2">
+          <div className="wk-upload-url-dialog wk-kd-117">
             <label>
               {t("knowledgeBase.urlLabel")} {" "}
-              <Input
-                autoFocus
-                className="box-border w-full"
+              <TdInput
+                autofocus
+                className="wk-kd-58"
                 value={sourceUrlValue}
                 placeholder={t("knowledgeBase.urlPlaceholder")}
-                onChange={(event) => setSourceUrlValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
+                onChange={(value) => setSourceUrlValue(String(value))}
+                onKeydown={(_, { e }) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
                     if (appendStagedUrl(sourceUrlValue, "dialog")) {
                       setSourceUrlDialogOpen(false);
                       setSourceUrlValue("");
@@ -5035,9 +5037,9 @@ export function KnowledgeDocumentsPage({
                 }}
               />
             </label>
-            <p className="wk-muted text-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              <Button
+            <p className="wk-muted wk-kd-16" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
+            <div className="wk-list-actions wk-kd-109">
+              <TdButton
                 type="button"
                 onClick={() => {
                   if (appendStagedUrl(sourceUrlValue, "dialog")) {
@@ -5047,10 +5049,10 @@ export function KnowledgeDocumentsPage({
                 }}
               >
                 {ct("common.confirm")}
-              </Button>
-              <Button type="button" onClick={() => setSourceUrlDialogOpen(false)}>
+              </TdButton>
+              <TdButton type="button" onClick={() => setSourceUrlDialogOpen(false)}>
                 {ct("uploadConfirm.cancel")}
-              </Button>
+              </TdButton>
             </div>
           </div>
         </Dialog>
@@ -5061,32 +5063,32 @@ export function KnowledgeDocumentsPage({
           title={t("knowledgeBase.documents.createDocument")}
           onClose={() => setManualDialogOpen(false)}
         >
-          <div className="wk-upload-url-dialog flex flex-col gap-2">
+          <div className="wk-upload-url-dialog wk-kd-117">
             <label>
               {t("knowledgeBase.documents.manualTitle")}{" "}
-              <Input
-                autoFocus
-                className="box-border w-full"
+              <TdInput
+                autofocus
+                className="wk-kd-58"
                 value={manualTitle}
-                onChange={(event) => setManualTitle(event.target.value)}
+                onChange={(value) => setManualTitle(String(value))}
               />
             </label>
             <label>
               {t("knowledgeBase.documents.manualContent")}{" "}
-              <Textarea
+              <TdTextarea
                 value={manualContent}
-                onChange={(event) => setManualContent(event.target.value)}
+                onChange={(value) => setManualContent(String(value))}
                 rows={6}
               />
             </label>
             {uploadError ? <Status tone="error">{uploadError}</Status> : null}
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              <Button type="button" onClick={stageManualCreate}>
+            <div className="wk-list-actions wk-kd-109">
+              <TdButton type="button" onClick={stageManualCreate}>
                 {ct("common.confirm")}
-              </Button>
-              <Button type="button" onClick={() => setManualDialogOpen(false)}>
+              </TdButton>
+              <TdButton type="button" onClick={() => setManualDialogOpen(false)}>
                 {ct("uploadConfirm.cancel")}
-              </Button>
+              </TdButton>
             </div>
           </div>
         </Dialog>
@@ -5097,35 +5099,35 @@ export function KnowledgeDocumentsPage({
           title={t("knowledgeBase.editDocument")}
           onClose={() => { if (!manualEditSaving) setManualEditDocument(null); }}
         >
-          <div className="wk-upload-url-dialog flex flex-col gap-2">
+          <div className="wk-upload-url-dialog wk-kd-117">
             {manualEditLoading ? <Status>{t("common.loading")}</Status> : null}
             <label>
               {t("knowledgeBase.documents.manualTitle")} {" "}
-              <Input
-                autoFocus
-                className="box-border w-full"
+              <TdInput
+                autofocus
+                className="wk-kd-58"
                 value={manualTitle}
                 disabled={manualEditLoading || manualEditSaving}
-                onChange={(event) => setManualTitle(event.target.value)}
+                onChange={(value) => setManualTitle(String(value))}
               />
             </label>
             <label>
               {t("knowledgeBase.documents.manualContent")} {" "}
-              <Textarea
+              <TdTextarea
                 value={manualContent}
                 disabled={manualEditLoading || manualEditSaving}
-                onChange={(event) => setManualContent(event.target.value)}
+                onChange={(value) => setManualContent(String(value))}
                 rows={8}
               />
             </label>
             {uploadError ? <Status tone="error">{uploadError}</Status> : null}
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-              <Button type="button" disabled={manualEditLoading || manualEditSaving} onClick={() => void saveManualEdit()}>
+            <div className="wk-list-actions wk-kd-109">
+              <TdButton type="button" disabled={manualEditLoading || manualEditSaving} onClick={() => void saveManualEdit()}>
                 {manualEditSaving ? t("common.loading") : t("knowledgeEditor.buttons.saveAndClose")}
-              </Button>
-              <Button type="button" disabled={manualEditSaving} onClick={() => setManualEditDocument(null)}>
+              </TdButton>
+              <TdButton type="button" disabled={manualEditSaving} onClick={() => setManualEditDocument(null)}>
                 {ct("uploadConfirm.cancel")}
-              </Button>
+              </TdButton>
             </div>
           </div>
         </Dialog>
@@ -5141,49 +5143,49 @@ export function KnowledgeDocumentsPage({
           minWidth={560}
           maxWidth={1400}
           storageKey="weknora-trace-drawer-width"
-          className="min-w-0 border-l border-line-soft"
+          className="wk-kd-118"
         >
           <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === "loading"}>
             {traceState.status === "loading" ? <Status>{t("common.loading")}</Status> : null}
             {traceState.status === "error" ? <Status tone="error">{traceState.message}</Status> : null}
             {traceState.status === "success" ? (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-end gap-2">
-                  <Button type="button" onClick={() => setTraceDocument((current) => current ? { ...current } : current)}>{t("knowledgeEditor.activity.retry")}</Button>
-                  {traceState.parseStatus === "failed" ? <Button type="button" onClick={() => { const document = traceDocument; setTraceDocument(null); if (document) reparseOne(document); }}>{t("knowledgeBase.rebuildDocument")}</Button> : null}
-                  {isKnowledgeProcessingActive(traceState.parseStatus) ? <Button type="button" onClick={() => setConfirmingTraceCancel(true)}>{t("knowledgeBase.documents.cancelParse")}</Button> : null}
+              <div className="wk-kd-119">
+                <div className="wk-kd-120">
+                  <TdButton type="button" onClick={() => setTraceDocument((current) => current ? { ...current } : current)}>{t("knowledgeEditor.activity.retry")}</TdButton>
+                  {traceState.parseStatus === "failed" ? <TdButton type="button" onClick={() => { const document = traceDocument; setTraceDocument(null); if (document) reparseOne(document); }}>{t("knowledgeBase.rebuildDocument")}</TdButton> : null}
+                  {isKnowledgeProcessingActive(traceState.parseStatus) ? <TdButton type="button" onClick={() => setConfirmingTraceCancel(true)}>{t("knowledgeBase.documents.cancelParse")}</TdButton> : null}
                 </div>
                 {traceState.parseStatus === "failed" ? <Status tone="error">{traceState.lastError?.error_message || t("knowledgeBase.timeline.failed")}</Status> : null}
-                <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t("knowledgeBase.timeline.title")}>
+                <ol className="wk-kd-121" aria-label={t("knowledgeBase.timeline.title")}>
                 {traceState.steps.map((step) => (
-                  <li key={step.stage} data-state={step.state} className="flex items-center justify-between rounded-[6px] border border-line-soft px-3 py-2 text-[13px]">
+                  <li key={step.stage} data-state={step.state} className="wk-kd-122">
                     <span>{t(`knowledgeBase.timeline.stage.${step.stage}`)}</span>
-                    <span className={step.state === "failed" ? "text-danger" : step.state === "done" ? "text-success" : step.state === "running" ? "text-primary" : "text-muted"}>
+                    <span className={step.state === "failed" ? "wk-kd-137" : step.state === "done" ? "wk-kd-167" : step.state === "running" ? "wk-kd-168" : "wk-kd-16"}>
                       {t(`knowledgeBase.timeline.${step.state}`)}
                     </span>
                   </li>
                 ))}
                 </ol>
                 {traceState.nodes.length > 0 ? (
-                  <div className="overflow-x-auto rounded-[8px] border border-line-soft">
-                    <ol className="m-0 list-none divide-y divide-line-soft p-0" aria-label={t("knowledgeBase.timeline.title")}>
+                  <div className="wk-kd-123">
+                    <ol className="wk-kd-124" aria-label={t("knowledgeBase.timeline.title")}>
                       {traceState.nodes.filter((row) => row.depth === 0 || expandedTraceNodes.has(row.key.slice(0, row.key.lastIndexOf(".")))).map((row) => {
                         const rawStatus = typeof row.node.status === "string" ? row.node.status.toLowerCase() : "pending";
                         const state = rawStatus.includes("fail") || rawStatus.includes("error") ? "failed" : rawStatus.includes("run") || rawStatus.includes("progress") || rawStatus.includes("active") ? "running" : rawStatus.includes("complete") || rawStatus.includes("done") || rawStatus.includes("success") || rawStatus.includes("finish") || rawStatus === "ok" || row.node.end_time ? "done" : "pending";
                         const label = row.node.name || row.node.stage || String(row.node.span_id || row.key);
-                        return <li key={row.key} data-state={state} className="flex min-w-[480px] items-center gap-2 px-3 py-2 text-[13px] hover:bg-surface-wash" style={{ paddingLeft: `${12 + row.depth * 16}px` }}>
-                          {row.hasChildren ? <button type="button" className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control border-0 bg-transparent text-muted hover:bg-hover-wash" aria-expanded={expandedTraceNodes.has(row.key)} aria-label={t("knowledgeBase.timeline.title")} onClick={() => setExpandedTraceNodes((current) => { const next = new Set(current); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); return next; })}>{expandedTraceNodes.has(row.key) ? "⌄" : "›"}</button> : <span className="inline-block h-6 w-6 shrink-0" aria-hidden="true" />}
-                          <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left font-mono text-ink hover:underline" onClick={() => setSelectedTraceNode(row)}>{label}</button>
-                          <span className={state === "failed" ? "text-danger" : state === "done" ? "text-success" : state === "running" ? "text-primary" : "text-muted"}>{t(`knowledgeBase.timeline.${state}`)}</span>
-                          <span className="w-20 shrink-0 text-right font-mono text-[11px] text-muted">{typeof row.node.duration_ms === "number" ? `${row.node.duration_ms}ms` : "—"}</span>
+                        return <li key={row.key} data-state={state} className="wk-kd-125" style={{ paddingLeft: `${12 + row.depth * 16}px` }}>
+                          {row.hasChildren ? <button type="button" className="wk-kd-126" aria-expanded={expandedTraceNodes.has(row.key)} aria-label={t("knowledgeBase.timeline.title")} onClick={() => setExpandedTraceNodes((current) => { const next = new Set(current); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); return next; })}>{expandedTraceNodes.has(row.key) ? "⌄" : "›"}</button> : <span className="wk-kd-127" aria-hidden="true" />}
+                          <button type="button" className="wk-kd-128" onClick={() => setSelectedTraceNode(row)}>{label}</button>
+                          <span className={state === "failed" ? "wk-kd-137" : state === "done" ? "wk-kd-167" : state === "running" ? "wk-kd-168" : "wk-kd-16"}>{t(`knowledgeBase.timeline.${state}`)}</span>
+                          <span className="wk-kd-129">{typeof row.node.duration_ms === "number" ? `${row.node.duration_ms}ms` : "—"}</span>
                         </li>;
                       })}
                     </ol>
                   </div>
                 ) : null}
-                {selectedTraceNode ? <section className="rounded-[8px] border border-line-soft bg-surface-wash p-3" aria-label={String(selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key)}>
-                  <div className="mb-2 flex items-center justify-between gap-2"><strong className="truncate text-[13px] text-ink">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><Button type="button" onClick={() => setSelectedTraceNode(null)}>{t("knowledgeBase.documents.cancel")}</Button></div>
-                  <pre className="m-0 max-h-[240px] overflow-auto whitespace-pre-wrap break-words text-[11px] leading-[1.5] text-muted">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre>
+                {selectedTraceNode ? <section className="wk-kd-130" aria-label={String(selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key)}>
+                  <div className="wk-kd-131"><strong className="wk-kd-132">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><TdButton type="button" onClick={() => setSelectedTraceNode(null)}>{t("knowledgeBase.documents.cancel")}</TdButton></div>
+                  <pre className="wk-kd-133">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre>
                 </section> : null}
                 {traceState.parseStatus === "failed" && traceState.message ? <Status tone="error">{traceState.message}</Status> : null}
               </div>
@@ -5194,9 +5196,9 @@ export function KnowledgeDocumentsPage({
       {confirmingTraceCancel && traceDocument && canContribute ? (
         <Dialog open title={t("knowledgeBase.documents.cancelParse")} onClose={() => setConfirmingTraceCancel(false)}>
           <p>{t("knowledgeBase.cancelParseConfirmBody", { title: displayName(traceDocument) })}</p>
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-            <Button type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.documents.cancelParse")}</Button>
-            <Button type="button" onClick={() => setConfirmingTraceCancel(false)}>{ct("uploadConfirm.cancel")}</Button>
+          <div className="wk-list-actions wk-kd-109">
+            <TdButton type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.documents.cancelParse")}</TdButton>
+            <TdButton type="button" onClick={() => setConfirmingTraceCancel(false)}>{ct("uploadConfirm.cancel")}</TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -5211,13 +5213,13 @@ export function KnowledgeDocumentsPage({
               count: selected.size,
             })}
           </p>
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-            <Button type="button" onClick={() => void deleteSelected()}>
+          <div className="wk-list-actions wk-kd-109">
+            <TdButton type="button" onClick={() => void deleteSelected()}>
               {t("knowledgeBase.documents.delete")}
-            </Button>
-            <Button type="button" onClick={() => setConfirmingDelete(false)}>
+            </TdButton>
+            <TdButton type="button" onClick={() => setConfirmingDelete(false)}>
               {t("knowledgeBase.documents.cancel")}
-            </Button>
+            </TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -5229,9 +5231,9 @@ export function KnowledgeDocumentsPage({
         >
           <p>{t("knowledgeBase.confirmDeleteDocument", { fileName: displayName(confirmingDeleteDocument) })}</p>
           {mutationError ? <Status tone="error">{mutationError}</Status> : null}
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-            <Button type="button" onClick={() => void deleteOneDocument()}>{t("knowledgeBase.confirmDelete")}</Button>
-            <Button type="button" onClick={() => setConfirmingDeleteDocument(null)}>{t("knowledgeBase.documents.cancel")}</Button>
+          <div className="wk-list-actions wk-kd-109">
+            <TdButton type="button" onClick={() => void deleteOneDocument()}>{t("knowledgeBase.confirmDelete")}</TdButton>
+            <TdButton type="button" onClick={() => setConfirmingDeleteDocument(null)}>{t("knowledgeBase.documents.cancel")}</TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -5243,13 +5245,13 @@ export function KnowledgeDocumentsPage({
         >
           <p>{t("knowledgeBase.confirmBatchReparseDocument", { count: pendingBatchReparse.length })}</p>
           {mutationError ? <Status tone="error">{mutationError}</Status> : null}
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-            <Button type="button" onClick={() => void confirmBatchReparse()}>
+          <div className="wk-list-actions wk-kd-109">
+            <TdButton type="button" onClick={() => void confirmBatchReparse()}>
               {ct("uploadConfirm.confirmReparse")}
-            </Button>
-            <Button type="button" onClick={() => setPendingBatchReparse(null)}>
+            </TdButton>
+            <TdButton type="button" onClick={() => setPendingBatchReparse(null)}>
               {ct("uploadConfirm.cancel")}
-            </Button>
+            </TdButton>
           </div>
         </Dialog>
       ) : null}
@@ -5317,7 +5319,7 @@ export function KnowledgeDocumentsPage({
           title={t("knowledgeBase.settings")}
           closeLabel={t("common.close")}
           onClose={() => setKbSettingsOpen(false)}
-          className="wk-kb-settings-dialog h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
+          className="wk-kb-settings-dialog wk-kd-134"
         >
           {/* R484: the Vue settings footer 取消 (handleClose) discards the
               drafts and closes the drawer — onClose wires that close. */}

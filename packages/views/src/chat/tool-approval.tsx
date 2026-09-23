@@ -158,38 +158,40 @@ export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprov
   /* chat.css → utilities: .wk-chat-approval-* card family; the wk-* classes
      remain DOM/test hooks. The approval-scoped button family overrides the
      base .wk-list-actions button recipe (which itself lives in utilities). */
-  const approvalButton = 'cursor-pointer rounded-[8px] border border-[#b9d1f2] bg-white px-[0.75rem] py-[0.3rem] text-[0.8rem] text-[#245a9b] transition-[background-color,color] duration-[150ms] ease-[ease] enabled:hover:bg-[#eef5ff] disabled:cursor-not-allowed disabled:opacity-55';
-  return <div className="wk-chat-action-card wk-chat-approval-card mb-[8px] flex flex-col gap-[6px] rounded-[8px] border border-[#e7e7e7] px-[10px] py-[8px]">
-    <strong className="text-[13px]">{copy?.approvalTitle ?? 'Tool approval'}: {approval.toolName ?? 'unknown tool'}</strong>
-    {pending ? <div className="wk-chat-approval-editor mt-[0.4rem] grid gap-[0.4rem]">
-      <details className="wk-chat-approval-args grid gap-[0.3rem]" onToggle={() => setArgsError(null)}>
-        <summary className="wk-chat-approval-args-toggle w-fit cursor-pointer rounded-[8px] border border-[#b9d1f2] bg-white px-[0.6rem] py-[0.25rem] text-[0.78rem] text-[#245a9b] transition-[background-color,color] duration-[150ms] ease-[ease] hover:bg-[#eef5ff]">{copy?.approvalViewArgs ?? 'View arguments'}</summary>
+  /* T15：旧栈 utility 串语义化为 .wk-chat-approval-btn（含 enabled:hover /
+     disabled 态，views-chat-u.css）。 */
+  const approvalButton = 'wk-chat-approval-btn';
+  return <div className="wk-chat-action-card wk-chat-approval-card wk-vc-tool-approval-1">
+    <strong className="wk-vc-tool-approval-2">{copy?.approvalTitle ?? 'Tool approval'}: {approval.toolName ?? 'unknown tool'}</strong>
+    {pending ? <div className="wk-chat-approval-editor wk-vc-tool-approval-3">
+      <details className="wk-chat-approval-args wk-vc-tool-approval-4" onToggle={() => setArgsError(null)}>
+        <summary className="wk-chat-approval-args-toggle wk-ease-ease wk-vc-tool-approval-5">{copy?.approvalViewArgs ?? 'View arguments'}</summary>
         <textarea
-          className="wk-chat-approval-args-input w-full resize-y rounded-[8px] border border-[#d8e0ea] bg-[#fbfcfe] px-[0.55rem] py-[0.45rem] [font-family:ui-monospace,SFMono-Regular,Menlo,monospace] text-[0.78rem] leading-[1.45] text-[#24313f] outline-none focus:border-[#245a9b]"
+          className="wk-chat-approval-args-input wk-vc-tool-approval-6"
           rows={6}
           spellCheck={false}
           aria-label={`参数 ${approval.toolName ?? approval.pendingId}`}
           value={draft}
           onChange={(event) => { setDraft(event.target.value); setArgsError(null); }}
         />
-        {argsError ? <p role="alert" className="wk-chat-approval-error m-0 text-[0.75rem] text-[#b42318]">{argsError}</p> : null}
+        {argsError ? <p role="alert" className="wk-chat-approval-error wk-vc-tool-approval-7">{argsError}</p> : null}
       </details>
       {/* Vue shows the live args status both collapsed and expanded; one
           always-visible line after the editor covers both placements. */}
-      {!argsStatus.valid ? <p role="alert" className="wk-chat-approval-invalid m-0 text-[0.75rem] text-[#b42318]">{copy?.approvalInvalidJson ?? 'Invalid JSON'}</p>
-        : argsStatus.dirty ? <p role="status" className="wk-chat-approval-dirty m-0 text-[0.75rem] text-[rgba(0,0,0,0.6)]">{copy?.approvalArgsModified ?? 'Modified'}</p> : null}
-      <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+      {!argsStatus.valid ? <p role="alert" className="wk-chat-approval-invalid wk-vc-tool-approval-7">{copy?.approvalInvalidJson ?? 'Invalid JSON'}</p>
+        : argsStatus.dirty ? <p role="status" className="wk-chat-approval-dirty wk-vc-tool-approval-8">{copy?.approvalArgsModified ?? 'Modified'}</p> : null}
+      <div className="wk-list-actions wk-vc-tool-approval-9">
         <button type="button" disabled={busy || submitting} className={approvalButton} onClick={() => void resolve('reject')}>{copy?.approvalReject ?? 'Reject'}</button>
         <button type="button" disabled={busy || submitting || !argsStatus.valid} className={approvalButton} onClick={() => void resolve('approve')}>{copy?.approvalApprove ?? 'Approve'}</button>
         {/* Vue inline layout: "reject · approve · <timer>"; the timer stays
             visible pinned at 0 after expiry and disappears once resolved. */}
-        <span aria-hidden="true" className="text-[12px] text-[rgba(0,0,0,0.4)]">·</span>
+        <span aria-hidden="true" className="wk-vc-tool-approval-10">·</span>
         <span
-          className={`wk-chat-approval-timer whitespace-nowrap text-[12px] leading-[1.55] tabular-nums ${timerClass === 'wk-timer-warning' ? 'wk-timer-warning text-[#e37318]' : timerClass === 'wk-timer-critical' ? 'wk-timer-critical text-[#d54941]' : 'text-[rgba(0,0,0,0.4)]'}`}
+          className={`wk-chat-approval-timer wk-vc-tool-approval-12 ${timerClass === 'wk-timer-warning' ? 'wk-timer-warning wk-vc-tool-approval-13' : timerClass === 'wk-timer-critical' ? 'wk-timer-critical wk-vc-tool-approval-14' : 'wk-vc-tool-approval-11'}`}
         >
           {formatApprovalCountdown(secondsLeft, copy)}
         </span>
       </div>
-    </div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.decision ? `${copy?.approvalResolved ?? 'Resolved'}: ${approval.decision}` : (copy?.approvalResolved ?? 'Resolved')}</small>}
+    </div> : <small className="wk-vc-tool-approval-11">{approval.decision ? `${copy?.approvalResolved ?? 'Resolved'}: ${approval.decision}` : (copy?.approvalResolved ?? 'Resolved')}</small>}
   </div>;
 }

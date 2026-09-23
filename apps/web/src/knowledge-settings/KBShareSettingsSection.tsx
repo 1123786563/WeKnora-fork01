@@ -3,6 +3,7 @@ import type { Organization, WeKnoraClient } from '@weknora/api-client';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { SpaceAvatar } from '../organizations/SpaceAvatar.tsx';
 import { KbIcon } from '../knowledge-bases/kb-list-icons.tsx';
+import './knowledge-settings-u.css';
 
 // R485 (Vue KBShareSettings): the shared-to management list embedded in the
 // KB settings drawer — a count badge next to the "已共享到" header, a search
@@ -135,19 +136,19 @@ export function KBShareSettingsSection({ client, knowledgeBaseId, canShare = fal
   };
 
   return (
-    <div className="grid gap-3" data-kb-share-settings="">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold">{t('organization.share.sharedTo')}</span>
-          <span data-share-count="" className="inline-flex min-w-[1.25rem] items-center justify-center rounded-pill bg-surface-muted px-[0.4rem] py-[0.05rem] text-xs text-muted">{filteredShares.length}</span>
+    <div className="wk-kss-1" data-kb-share-settings="">
+      <div className="wk-kss-2">
+        <div className="wk-kss-3">
+          <span className="wk-kss-4">{t('organization.share.sharedTo')}</span>
+          <span data-share-count="" className="wk-kss-5">{filteredShares.length}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="wk-kss-3">
           {/* Vue share-hint-trigger-btn: an icon-only trigger carrying the
               sharing-notes popover (hintTitle + tip1/tip2). */}
-          <span className="relative inline-flex">
+          <span className="wk-kss-6">
             <button type="button" aria-label={t('knowledgeEditor.share.hintTitle')} title={t('knowledgeEditor.share.hintTitle')} aria-expanded={hintOpen} onClick={() => setHintOpen((current) => !current)}>{/* R490 A7 (Vue t-icon name="info-circle"): the hint trigger is an SVG glyph — the old literal "ⓘ" character leaked into innerText. */}<KbIcon name="info-circle" size={16} /></button>
-            {hintOpen ? <div role="note" data-share-hint="" className="absolute right-0 top-[calc(100%+4px)] z-20 grid max-w-[380px] gap-1 rounded-control border border-line bg-surface p-3 text-xs shadow-[0_8px_20px_rgb(16_24_40/14%)]">
-              <strong className="font-semibold">{t('knowledgeEditor.share.hintTitle')}</strong>
+            {hintOpen ? <div role="note" data-share-hint="" className="wk-kss-7">
+              <strong className="wk-kss-4">{t('knowledgeEditor.share.hintTitle')}</strong>
               <span>{t('knowledgeEditor.share.tip1')}</span>
               <span>{t('knowledgeEditor.share.tip2')}</span>
             </div> : null}
@@ -157,7 +158,7 @@ export function KBShareSettingsSection({ client, knowledgeBaseId, canShare = fal
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder={t('organization.share.searchPlaceholder')}
             aria-label={t('organization.share.searchPlaceholder')}
-            className="box-border min-h-[2rem] rounded-control border border-line-control bg-surface px-[0.55rem] py-[0.3rem] [font:inherit]"
+            className="wk-kss-8"
           />
           {canShare ? (
             <button
@@ -167,82 +168,82 @@ export function KBShareSettingsSection({ client, knowledgeBaseId, canShare = fal
               aria-expanded={addOpen}
               data-share-add-trigger=""
               onClick={() => { setAddOpen((current) => !current); setSelectedOrgId(''); setSelectedPermission('viewer'); }}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-control border border-line-control text-sm"
+              className="wk-kss-9"
             >{/* R490 A7 (Vue t-button #icon + t-icon "add"): the square add trigger is an SVG glyph — the old literal "+" character leaked into innerText. */}<KbIcon name="add" size={16} /></button>
           ) : null}
         </div>
       </div>
-      {error ? <p role="alert" data-share-error="" className="m-0 text-sm" style={{ color: '#b42318' }}>{error}</p> : null}
-      {notice ? <p role="status" data-share-notice="" className="m-0 text-sm" style={{ color: '#067647' }}>{notice}</p> : null}
+      {error ? <p role="alert" data-share-error="" className="wk-kss-10" style={{ color: '#b42318' }}>{error}</p> : null}
+      {notice ? <p role="status" data-share-notice="" className="wk-kss-10" style={{ color: '#067647' }}>{notice}</p> : null}
       {canShare && addOpen ? (
         // Vue share-add-popup: dialog title, org select, permission select,
         // the permission tip and the 取消/共享 footer pair.
-        <div data-share-add-popup="" className="grid gap-3 rounded-card border border-line bg-surface p-3">
-          <strong className="text-sm font-semibold">{t('organization.share.addShareDialogTitle')}</strong>
-          <label className="grid gap-[0.35rem] text-sm">
+        <div data-share-add-popup="" className="wk-kss-11">
+          <strong className="wk-kss-12">{t('organization.share.addShareDialogTitle')}</strong>
+          <label className="wk-kss-13">
             {t('organization.share.selectOrg')}
             <select data-share-add-org="" value={selectedOrgId} aria-label={t('organization.share.selectOrg')} onChange={(event) => setSelectedOrgId(event.target.value)}>
               <option value="">{t('organization.share.selectOrg')}</option>
               {availableOrganizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
             </select>
           </label>
-          <label className="grid gap-[0.35rem] text-sm">
+          <label className="wk-kss-13">
             {t('organization.share.permission')}
             <select data-share-add-permission="" value={selectedPermission} aria-label={t('organization.share.permission')} onChange={(event) => setSelectedPermission(event.target.value === 'editor' ? 'editor' : 'viewer')}>
               <option value="viewer">{t('organization.share.permissionReadonly')}</option>
               <option value="editor">{t('organization.share.permissionEditable')}</option>
             </select>
           </label>
-          <p className="m-0 text-xs text-muted">{t('organization.share.permissionTip')}</p>
-          <div className="flex items-center justify-end gap-2">
+          <p className="wk-kss-14">{t('organization.share.permissionTip')}</p>
+          <div className="wk-kss-15">
             <button type="button" data-share-add-cancel="" onClick={() => setAddOpen(false)}>{t('common.cancel')}</button>
             <button type="button" data-share-add-confirm="" disabled={!selectedOrgId || submitting} onClick={() => void share()} aria-busy={submitting}>{t('knowledgeEditor.share.addShare')}</button>
           </div>
         </div>
       ) : null}
-      {loading && shares.length === 0 ? <p className="m-0 text-sm text-muted" data-share-loading="">{t('organization.share.loading')}</p> : null}
-      {!loading && filteredShares.length === 0 ? <p className="m-0 text-sm text-muted" data-share-empty="">{query ? t('organization.share.emptySearch', { q: searchQuery.trim() }) : t('organization.share.noShares')}</p> : null}
+      {loading && shares.length === 0 ? <p className="wk-kss-16" data-share-loading="">{t('organization.share.loading')}</p> : null}
+      {!loading && filteredShares.length === 0 ? <p className="wk-kss-16" data-share-empty="">{query ? t('organization.share.emptySearch', { q: searchQuery.trim() }) : t('organization.share.noShares')}</p> : null}
       {filteredShares.length > 0 ? (
-        <div className="overflow-auto rounded-card border border-line-soft">
-          <table className="w-full min-w-[560px] border-collapse text-sm">
+        <div className="wk-kss-17">
+          <table className="wk-kss-18">
             <thead>
-              <tr className="border-b border-line-soft bg-surface-muted text-left text-xs text-muted">
-                <th className="px-3 py-2">{t('organization.share.columns.space')}</th>
-                <th className="px-3 py-2">{t('organization.share.columns.permission')}</th>
-                <th className="px-3 py-2">{t('organization.share.columns.sharedAt')}</th>
-                {canShare ? <th className="px-3 py-2">{t('organization.share.columns.operations')}</th> : null}
+              <tr className="wk-kss-19">
+                <th className="wk-kss-20">{t('organization.share.columns.space')}</th>
+                <th className="wk-kss-20">{t('organization.share.columns.permission')}</th>
+                <th className="wk-kss-20">{t('organization.share.columns.sharedAt')}</th>
+                {canShare ? <th className="wk-kss-20">{t('organization.share.columns.operations')}</th> : null}
               </tr>
             </thead>
             <tbody>
               {filteredShares.map((item) => (
-                <tr key={item.id} className="border-b border-line-soft last:border-0">
-                  <td className="px-3 py-2">
-                    <span className="flex items-center gap-2">
+                <tr key={item.id} className="wk-kss-21">
+                  <td className="wk-kss-20">
+                    <span className="wk-kss-3">
                       <SpaceAvatar name={orgName(item)} avatar={item.avatar} size="small" />
-                      <span className="grid">
-                        <span className="truncate">{orgName(item)}</span>
-                        {typeof item.shared_by_username === 'string' && item.shared_by_username ? <small className="text-muted">{t('organization.share.sharedFrom')} {item.shared_by_username}</small> : null}
+                      <span className="wk-kss-22">
+                        <span className="wk-kss-23">{orgName(item)}</span>
+                        {typeof item.shared_by_username === 'string' && item.shared_by_username ? <small className="wk-kss-24">{t('organization.share.sharedFrom')} {item.shared_by_username}</small> : null}
                       </span>
                     </span>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="wk-kss-20">
                     {canShare ? (
                       <select data-share-permission="" value={String(item.permission ?? 'viewer')} aria-label={t('organization.share.permission')} onChange={(event) => void updatePermission(item, event.target.value === 'editor' ? 'editor' : 'viewer')}>
                         <option value="viewer">{t('organization.share.permissionReadonly')}</option>
                         <option value="editor">{t('organization.share.permissionEditable')}</option>
                       </select>
                     ) : (
-                      <span className={`rounded-pill px-2 py-0.5 text-xs ${item.permission === 'editor' || item.permission === 'admin' ? 'bg-warning-wash text-warning-text' : 'bg-surface-muted text-muted'}`}>{permissionLabel(String(item.permission ?? ''), t)}</span>
+                      <span className={`wk-kss-27 ${item.permission === 'editor' || item.permission === 'admin' ? 'wk-kss-28' : 'wk-kss-29'}`}>{permissionLabel(String(item.permission ?? ''), t)}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-muted">{formatShareDate(item.created_at, locale)}</td>
+                  <td className="wk-kss-25">{formatShareDate(item.created_at, locale)}</td>
                   {canShare ? (
-                    <td className="px-3 py-2">
+                    <td className="wk-kss-20">
                       {pendingUnshare?.id === item.id ? (
                         // Vue t-popconfirm: the unshare confirm inline before
                         // the DELETE fires.
-                        <span className="flex items-center gap-2" data-share-unshare-confirm-row="">
-                          <span className="text-xs">{t('knowledgeEditor.share.unshareConfirm', { name: orgName(item) })}</span>
+                        <span className="wk-kss-3" data-share-unshare-confirm-row="">
+                          <span className="wk-kss-26">{t('knowledgeEditor.share.unshareConfirm', { name: orgName(item) })}</span>
                           <button type="button" data-share-unshare-confirm="" onClick={() => void unshare(item)}>{t('common.confirm')}</button>
                           <button type="button" data-share-unshare-cancel="" onClick={() => setPendingUnshare(null)}>{t('common.cancel')}</button>
                         </span>

@@ -3,7 +3,7 @@
  * 归属说明（brief 约束「只删 kb-list 引用段，留守段注明归属」）：
  * 壳层（settings-overlay/settings-modal/sidebar/nav/footer/基础段）已随
  * kb-list.td.css §8 以 Vue KnowledgeBaseEditorModal.vue 为事实源平移，本文件
- * 原有的壳层补丁（@weknora/ui Dialog 几何、kb-editor-nav/footer、索引卡
+ * 原有的壳层补丁（packages/ui 旧栈 Dialog 几何、kb-editor-nav/footer、索引卡
  * fieldset、类型单选框、名称输入、描述计数、遮罩）全部废弃删除。
  * 以下留守规则仅服务于编辑器的「留守段」internals——models / vectorStore /
  * parser / storage / multimodal / asr / advanced 段仍是 R490 的 React 端口
@@ -11,11 +11,9 @@
  * knowledge-settings 批次（R8 批次 3）同构迁移时一并清理。
  * 作用域：.wk-kb-editor-dialog（挂在 .settings-modal 上的测试/留守锚点类）。 */
 
-/* 留守段文本色系：Vue td tokens——主文字 rgba(0,0,0,.9)、提示 rgba(0,0,0,.4)；
-   留守段的 Tailwind text-ink/text-muted 偏蓝，容差 8 下不匹配，统一切回 td 色。 */
+/* 留守段文本色系：Vue td tokens——主文字 rgba(0,0,0,.9)。
+   （原 .text-ink/.text-muted 覆写行随旧栈色类清零而删除——DOM 已无生产者。） */
 .wk-kb-editor-dialog { color: rgba(0, 0, 0, 0.9); }
-.wk-kb-editor-dialog .text-ink { color: rgba(0, 0, 0, 0.9); }
-.wk-kb-editor-dialog .text-muted { color: rgba(0, 0, 0, 0.4); }
 
 /* 留守段区块头（h3 + p 相邻节奏）。 */
 .wk-kb-editor-dialog .kb-editor-content h3 + p { margin-top: 6px; }

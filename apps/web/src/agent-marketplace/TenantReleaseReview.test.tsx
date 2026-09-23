@@ -4,11 +4,16 @@ import test from 'node:test';
 import React from 'react';
 import { act } from 'react';
 import { createAgentMarketplaceApi } from './agent-marketplace-api.ts';
-import { TenantReleaseReview } from './TenantReleaseReview.tsx';
 
+/* S7：组件 tsx 现引入 am-u.css——node 测试运行器需 stub 解析（OrganizationsPage.test 同款）。 */
+{
+  const hooks = (await import('node:module')) as unknown as { registerHooks?: (h: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
+  if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg') ? { shortCircuit: true, url: 'data:text/javascript,export default "stub"' } : nextResolve(specifier, context) });
+}
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
 Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import('react-dom/client');
+const { TenantReleaseReview } = await import('./TenantReleaseReview.tsx');
 
 const digest = 'd'.repeat(64);
 const submission = {
