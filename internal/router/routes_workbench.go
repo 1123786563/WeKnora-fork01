@@ -148,6 +148,7 @@ func RegisterWorkbenchArtifactRoutes(r *gin.RouterGroup, artifacts *session.Work
 		workbench := g.apiKeyGroup(executions, apiKeyChat(apiKeyFullAccess()))
 		workbench.GET("/:run_id/artifacts", artifacts.ListWorkbenchArtifacts)
 		workbench.POST("/:run_id/artifacts/:index/signed-url", artifacts.CreateWorkbenchArtifactSignedURL)
+		workbench.POST("/:run_id/artifact-versions/:version_id/signed-url", artifacts.CreateWorkbenchArtifactVersionSignedURL)
 	}
 	// The credential-free download endpoint is registered on the root router
 	// before the global Auth middleware (see router.go); nothing to do here.

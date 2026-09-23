@@ -283,6 +283,15 @@ func (h *Handler) streamResolvedArtifact(c *gin.Context, ctx context.Context, ms
 // @Router /workbench/artifacts/download [get]
 func (h *Handler) DownloadWorkbenchArtifactGrant(c *gin.Context) {
 	query := c.Request.URL.Query()
+	if query.Get("grant_type") == "artifact_version" {
+		versionHandler := RegisteredArtifactVersionDownloadHandler()
+		if versionHandler == nil {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		versionHandler.DownloadArtifactVersionGrant(c)
+		return
+	}
 	tenantID, tenantErr := strconv.ParseUint(query.Get("tenant_id"), 10, 64)
 	index, indexErr := strconv.Atoi(query.Get("index"))
 	expiresAt, expErr := strconv.ParseInt(query.Get("expires_at"), 10, 64)
@@ -474,6 +483,7 @@ type ArtifactVersionDownloadHandler struct {
 	files    interfaces.FileService
 	storage  interfaces.StorageBackendResolver
 	versions ArtifactVersionSource
+	runs     OwnedRunReader
 }
 
 // NewArtifactVersionDownloadHandler constructs the versioned download
@@ -484,8 +494,13 @@ func NewArtifactVersionDownloadHandler(
 	files interfaces.FileService,
 	storage interfaces.StorageBackendResolver,
 	versions ArtifactVersionSource,
+	runs ...OwnedRunReader,
 ) *ArtifactVersionDownloadHandler {
-	return &ArtifactVersionDownloadHandler{sessions: sessions, tenants: tenants, files: files, storage: storage, versions: versions}
+	h := &ArtifactVersionDownloadHandler{sessions: sessions, tenants: tenants, files: files, storage: storage, versions: versions}
+	if len(runs) > 0 {
+		h.runs = runs[0]
+	}
+	return h
 }
 
 // registeredArtifactVersionDownloadHandler is installed by the container
@@ -599,6 +614,82 @@ func (h *ArtifactVersionDownloadHandler) DownloadArtifactVersion(c *gin.Context)
 		CacheControl: "private, no-store",
 	}); err != nil {
 		logger.Warnf(ctx, "artifact version download stream failed: session=%s version=%s err=%v", sessionID, versionID, err)
+	}
+}
+
+// DownloadArtifactVersionGrant consumes a credential-free signed link. It
+// rechecks run ownership and version publication state on every request.
+func (h *ArtifactVersionDownloadHandler) DownloadArtifactVersionGrant(c *gin.Context) {
+	query := c.Request.URL.Query()
+	tenantID, tenantErr := strconv.ParseUint(query.Get("tenant_id"), 10, 64)
+	expiresAt, expiryErr := strconv.ParseInt(query.Get("expires_at"), 10, 64)
+	grant := workbench.ArtifactVersionGrant{TenantID: tenantID, OwnerID: query.Get("owner_id"), RunID: query.Get("run_id"), SessionID: query.Get("session_id"), VersionID: query.Get("version_id"), ExpiresAt: expiresAt}
+	signature := query.Get("signature")
+	if tenantErr != nil || expiryErr != nil || signature == "" {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	secret, err := workbench.ArtifactSigningKeyFromEnv()
+	if err != nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	if err := workbench.VerifyArtifactVersionGrantAt(secret, grant, signature, time.Now()); err != nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	if h.runs == nil || h.versions == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	run, err := h.runs.GetOwnedRun(c.Request.Context(), grant.TenantID, grant.OwnerID, grant.RunID)
+	if err != nil || run.UserID != grant.OwnerID || run.SessionID != grant.SessionID {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	version, err := h.versions.ReadableArtifactVersion(c.Request.Context(), grant.TenantID, grant.SessionID, grant.VersionID)
+	if err != nil || version.RunID != grant.RunID {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	// Execute in the artifact tenant only after the signed tenant and owner
+	// predicates have been revalidated.
+	ctx := types.WithCaller(c.Request.Context(), types.Caller{TenantID: grant.TenantID, UserID: grant.OwnerID})
+	ctx = types.WithExecutionTenant(ctx, grant.TenantID)
+	h.streamArtifactVersion(c, ctx, grant.TenantID, version)
+}
+
+func (h *ArtifactVersionDownloadHandler) streamArtifactVersion(c *gin.Context, ctx context.Context, tenantID uint64, version repository.ArtifactVersion) {
+	if h.files == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	fileService := h.files
+	if h.tenants != nil {
+		tenant, lookupErr := h.tenants.GetTenantByID(ctx, tenantID)
+		if lookupErr != nil || tenant == nil {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		backendID, providerPath, scoped := types.ParseStorageBackendPath(version.ObjectKey)
+		if !scoped {
+			providerPath = version.ObjectKey
+		}
+		var resolveOK bool
+		fileService, _, resolveOK = filesvc.ResolveTenantFileServiceWithFallback(ctx, "artifact version download", tenant, backendID, types.ParseProviderScheme(providerPath), storageurl.LocalStorageBaseDir(), h.storage, h.files)
+		if !resolveOK {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+	}
+	reader, err := fileService.GetFile(ctx, version.ObjectKey)
+	if err != nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	name := artifactVersionFileName(version)
+	if err := filetransport.Serve(c.Writer, c.Request, reader, filetransport.Options{Filename: name, Download: true, ContentType: version.MIME, Disposition: buildAttachmentHeader(name), Size: version.Size, CacheControl: "private, no-store"}); err != nil {
+		logger.Warnf(ctx, "artifact version grant stream failed: run=%s version=%s err=%v", version.RunID, version.ID, err)
 	}
 }
 

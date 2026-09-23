@@ -230,7 +230,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 	RegisterSandboxTerminalRoutes(r, params.SessionHandler)
 
 	// Workbench artifact grant download: credential-free by design. The HMAC
-	// grant (tenant/session/message/index/expiry) is the authorization fact,
+	// grant (tenant/owner/run/resource/version/expiry) is the authorization fact,
 	// verified in constant time — same pattern as the presigned file routes
 	// below. Must precede the global Auth middleware.
 	if params.SessionHandler != nil {

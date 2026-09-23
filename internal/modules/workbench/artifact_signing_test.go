@@ -39,6 +39,22 @@ func TestArtifactGrantSignVerifyRoundTrip(t *testing.T) {
 	require.NoError(t, VerifyArtifactGrantAt(key, grant, strings.ToUpper(sig), time.Now()))
 }
 
+func TestArtifactVersionGrantBindsOwnerAndFixedVersion(t *testing.T) {
+	key := testSigningKey(t)
+	grant := ArtifactVersionGrant{TenantID: 1, OwnerID: "u1", RunID: "run-1", SessionID: "sess-1", VersionID: "version-1", ExpiresAt: time.Now().Add(time.Minute).Unix()}
+	sig, err := SignArtifactVersionGrant(key, grant)
+	require.NoError(t, err)
+	require.NoError(t, VerifyArtifactVersionGrantAt(key, grant, sig, time.Now()))
+	for _, changed := range []ArtifactVersionGrant{
+		{TenantID: 2, OwnerID: grant.OwnerID, RunID: grant.RunID, SessionID: grant.SessionID, VersionID: grant.VersionID, ExpiresAt: grant.ExpiresAt},
+		{TenantID: grant.TenantID, OwnerID: "u2", RunID: grant.RunID, SessionID: grant.SessionID, VersionID: grant.VersionID, ExpiresAt: grant.ExpiresAt},
+		{TenantID: grant.TenantID, OwnerID: grant.OwnerID, RunID: grant.RunID, SessionID: grant.SessionID, VersionID: "version-2", ExpiresAt: grant.ExpiresAt},
+	} {
+		require.Error(t, VerifyArtifactVersionGrantAt(key, changed, sig, time.Now()))
+	}
+	require.Error(t, VerifyArtifactVersionGrantAt(key, grant, sig, time.Unix(grant.ExpiresAt, 0)))
+}
+
 func TestArtifactGrantTamperRejected(t *testing.T) {
 	key := testSigningKey(t)
 	grant := validGrant()

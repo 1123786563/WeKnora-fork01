@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -33,6 +34,20 @@ func (s *artifactRefReaderStub) GetSessionArtifactRefs(_ context.Context, sessio
 	return s.refs, s.err
 }
 
+type artifactVersionReaderStub struct {
+	version repository.ArtifactVersion
+	err     error
+	calls   int
+}
+
+func (s *artifactVersionReaderStub) ReadableArtifactVersion(_ context.Context, tenantID uint64, sessionID, versionID string) (repository.ArtifactVersion, error) {
+	s.calls++
+	if tenantID != s.version.TenantID || sessionID != s.version.SessionID || versionID != s.version.ID {
+		return repository.ArtifactVersion{}, repository.ErrArtifactVersionNotFound
+	}
+	return s.version, s.err
+}
+
 // grantMessageServiceStub satisfies exactly what DownloadWorkbenchArtifactGrant
 // needs. Embedding the interface keeps the stub honest without implementing
 // every message operation.
@@ -50,7 +65,72 @@ func artifactRunStub() *workbenchRunReaderStub {
 	return &workbenchRunReaderStub{run: agentruntime.Run{
 		Key:       agentruntime.RunKey{TenantID: 1, RunID: "run-1"},
 		SessionID: "sess-1",
+		UserID:    "u1",
 	}}
+}
+
+func TestCreateWorkbenchArtifactVersionSignedURLBindsFixedReadyVersion(t *testing.T) {
+	signingEnv(t)
+	version := repository.ArtifactVersion{TenantID: 1, ID: "version-7", RunID: "run-1", SessionID: "sess-1", Digest: strings.Repeat("a", 64), ScanState: repository.ArtifactScanReady, Size: 42, MIME: "application/pdf"}
+	h := NewWorkbenchArtifactHandler(artifactRunStub(), &artifactRefReaderStub{}).WithArtifactVersions(&artifactVersionReaderStub{version: version})
+	c, rec := artifactContext()
+	c.Request.Method = http.MethodPost
+	c.Params = append(c.Params, gin.Params{{Key: "version_id", Value: version.ID}}...)
+	h.CreateWorkbenchArtifactVersionSignedURL(c)
+	require.Equal(t, http.StatusOK, c.Writer.Status())
+	var body struct {
+		Data struct {
+			URL       string `json:"url"`
+			VersionID string `json:"version_id"`
+			Digest    string `json:"digest"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, version.ID, body.Data.VersionID)
+	require.Equal(t, version.Digest, body.Data.Digest)
+	require.Contains(t, body.Data.URL, "grant_type=artifact_version")
+	require.Contains(t, body.Data.URL, "owner_id=u1")
+	require.Contains(t, body.Data.URL, "version_id=version-7")
+}
+
+func TestDownloadArtifactVersionGrantRechecksOwnerAndRevocation(t *testing.T) {
+	signingEnv(t)
+	version := repository.ArtifactVersion{TenantID: 1, ID: "version-7", RunID: "run-1", SessionID: "sess-1", ScanState: repository.ArtifactScanReady}
+	grant := workbench.ArtifactVersionGrant{TenantID: 1, OwnerID: "u1", RunID: "run-1", SessionID: "sess-1", VersionID: version.ID, ExpiresAt: time.Now().Add(time.Minute).Unix()}
+	key, err := workbench.ArtifactSigningKeyFromEnv()
+	require.NoError(t, err)
+	signature, err := workbench.SignArtifactVersionGrant(key, grant)
+	require.NoError(t, err)
+	query := "grant_type=artifact_version&tenant_id=1&owner_id=u1&run_id=run-1&session_id=sess-1&version_id=version-7&expires_at=" + strconv.FormatInt(grant.ExpiresAt, 10) + "&signature=" + signature
+	versions := &artifactVersionReaderStub{version: version}
+	runs := artifactRunStub()
+	versionHandler := NewArtifactVersionDownloadHandler(nil, nil, nil, nil, versions, runs)
+	RegisterArtifactVersionDownloadHandler(versionHandler)
+	t.Cleanup(func() { RegisterArtifactVersionDownloadHandler(nil) })
+	h := &Handler{}
+	c, _ := grantDownloadContext(query)
+	h.DownloadWorkbenchArtifactGrant(c)
+	require.Equal(t, http.StatusNotFound, c.Writer.Status()) // no file service is wired in this authorization test
+	require.Equal(t, 1, runs.calls)
+	require.Equal(t, 1, versions.calls)
+
+	// Revoked/unpublished versions are intentionally indistinguishable from a
+	// missing version, even while the grant's signature remains valid.
+	revoked := NewArtifactVersionDownloadHandler(nil, nil, nil, nil, &artifactVersionReaderStub{version: version, err: repository.ErrArtifactVersionNotFound}, artifactRunStub())
+	RegisterArtifactVersionDownloadHandler(revoked)
+	c2, _ := grantDownloadContext(query)
+	h.DownloadWorkbenchArtifactGrant(c2)
+	require.Equal(t, http.StatusNotFound, c2.Writer.Status())
+
+	// Owner revocation/deletion is also rechecked against the current run.
+	wrongOwner := artifactRunStub()
+	wrongOwner.err = agentruntime.ErrNotFound
+	revokedOwner := NewArtifactVersionDownloadHandler(nil, nil, nil, nil, &artifactVersionReaderStub{version: version}, wrongOwner)
+	RegisterArtifactVersionDownloadHandler(revokedOwner)
+	c3, _ := grantDownloadContext(query)
+	h.DownloadWorkbenchArtifactGrant(c3)
+	require.Equal(t, http.StatusNotFound, c3.Writer.Status())
+	require.Zero(t, revokedOwner.versions.(*artifactVersionReaderStub).calls)
 }
 
 func artifactRefs() []types.SessionArtifactRef {

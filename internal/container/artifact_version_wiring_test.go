@@ -18,8 +18,11 @@ func TestArtifactVersionDownloadHandlerWired(t *testing.T) {
 		struct{ interfaces.SessionService }{},
 		struct{ interfaces.TenantService }{},
 		struct{ interfaces.FileService }{},
-		struct{ interfaces.StorageBackendResolver }{},
+		struct {
+			interfaces.StorageBackendResolver
+		}{},
 		repository.NewArtifactVersionStore(nil),
+		repository.NewAgentRunStore(nil),
 	)
 	t.Cleanup(func() { session.RegisterArtifactVersionDownloadHandler(nil) })
 	if session.RegisteredArtifactVersionDownloadHandler() == nil {

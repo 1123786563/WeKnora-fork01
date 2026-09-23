@@ -27,8 +27,15 @@ type ArtifactRefReader interface {
 type WorkbenchArtifactHandler struct {
 	runs       OwnedRunReader
 	refs       ArtifactRefReader
+	versions   ArtifactVersionSource
 	signingKey func() ([]byte, error)
 	ttl        time.Duration
+}
+
+// WithArtifactVersions enables grants for immutable, published artifact versions.
+func (h *WorkbenchArtifactHandler) WithArtifactVersions(versions ArtifactVersionSource) *WorkbenchArtifactHandler {
+	h.versions = versions
+	return h
 }
 
 func NewWorkbenchArtifactHandler(runs OwnedRunReader, refs ArtifactRefReader) *WorkbenchArtifactHandler {
@@ -190,6 +197,71 @@ func (h *WorkbenchArtifactHandler) CreateWorkbenchArtifactSignedURL(c *gin.Conte
 			"artifact":   artifactListItemFromRef(run.Key.RunID, index, ref),
 		},
 	})
+}
+
+// CreateWorkbenchArtifactVersionSignedURL godoc
+// @Summary      为固定成果版本签发短时效下载链接
+// @Description  校验执行所有权与版本可读状态后签发绑定 Tenant、所有者、执行和版本的短时链接；下载时会重新检查所有权与撤销状态
+// @Tags         工作台
+// @Produce      json
+// @Param        run_id      path  string true "执行ID"
+// @Param        version_id  path  string true "不可变成果版本ID"
+// @Success      200 {object} map[string]interface{}
+// @Failure      401 {object} errors.AppError
+// @Failure      404 {object} errors.AppError
+// @Failure      501 {object} errors.AppError
+// @Security     Bearer
+// @Router       /workbench/executions/{run_id}/artifact-versions/{version_id}/signed-url [post]
+//
+// It issues a short-lived grant bound to one ready version and the
+// authenticated owner of the run.
+func (h *WorkbenchArtifactHandler) CreateWorkbenchArtifactVersionSignedURL(c *gin.Context) {
+	run, ok := resolveOwnedRun(c, h.runs)
+	if !ok {
+		return
+	}
+	versionID := strings.TrimSpace(c.Param("version_id"))
+	if versionID == "" || h.versions == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	version, err := h.versions.ReadableArtifactVersion(c.Request.Context(), run.Key.TenantID, run.SessionID, versionID)
+	if err != nil || version.RunID != run.Key.RunID {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	secret, keyErr := h.signingKey()
+	if keyErr != nil {
+		c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{"success": false, "code": "artifact_signing_disabled", "error": "artifact signing key not configured"})
+		return
+	}
+	ttl := h.ttl
+	if raw := strings.TrimSpace(c.Query("ttl_seconds")); raw != "" {
+		if requested, parseErr := strconv.Atoi(raw); parseErr == nil && requested > 0 {
+			ttl = time.Duration(requested) * time.Second
+		}
+	}
+	if ttl > workbench.MaxArtifactGrantTTL || ttl <= 0 {
+		ttl = workbench.MaxArtifactGrantTTL
+	}
+	grant := workbench.ArtifactVersionGrant{TenantID: run.Key.TenantID, OwnerID: run.UserID, RunID: run.Key.RunID, SessionID: run.SessionID, VersionID: version.ID, ExpiresAt: time.Now().Add(ttl).Unix()}
+	signature, signErr := workbench.SignArtifactVersionGrant(secret, grant)
+	if signErr != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	values := url.Values{}
+	values.Set("grant_type", "artifact_version")
+	values.Set("tenant_id", strconv.FormatUint(grant.TenantID, 10))
+	values.Set("owner_id", grant.OwnerID)
+	values.Set("run_id", grant.RunID)
+	values.Set("session_id", grant.SessionID)
+	values.Set("version_id", grant.VersionID)
+	values.Set("expires_at", strconv.FormatInt(grant.ExpiresAt, 10))
+	values.Set("signature", signature)
+	link := externalURLBase(c) + "/api/v1/workbench/artifacts/download?" + values.Encode()
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"url": link, "expires_at": time.Unix(grant.ExpiresAt, 0).UTC().Format(time.RFC3339), "version_id": version.ID, "digest": version.Digest, "size": version.Size, "mime": version.MIME}})
 }
 
 // externalURLBase derives the scheme://host the client used to reach this
