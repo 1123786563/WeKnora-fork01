@@ -582,6 +582,17 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 			emit("contract-signature-drift", string(c.ID),
 				"frozen signature %q != current %q (contract revision required)", c.Signature, fact.Signature)
 		}
+		if fact.DeclKind == "method" {
+			// OCR R2 f5：契约符号按顶层语义校验——方法回退命中意味着顶层声明
+			// 已消失（只剩同名方法）。方法引用形态 recv.Name() 的 SelectorExpr.X
+			// 是变量而非定义包限定名，DiscoverSymbolConsumers 的限定名匹配对
+			// 跨包消费方全部不命中 → consumers 恒空 → 已登记消费方全量误报
+			// vanished。故报 no longer declares（签名对照已在上方保留），
+			// 跳过消费方发现与后续消费方面校验。
+			emit("contract-symbol-missing", string(c.ID),
+				"%s no longer declares top-level %s (only a same-named method remains)", file, name)
+			continue
+		}
 		consumers, _, err := DiscoverSymbolConsumers(d, fact)
 		if err != nil {
 			emit("contract-symbol-missing", string(c.ID), "consumer discovery failed: %v", err)
@@ -642,9 +653,11 @@ const eventVersionFrozen = 1
 
 // CheckEvents 把 event-catalog.yaml 的冻结事件与仓库发现对照（OCR R1 #15）：
 // 目录非空（整份缺失按空集加载，必须显式报错而非静默通过）、producer 是
-// file:Symbol 且符号真实声明于该文件（DiscoverSymbol，含方法回退——真实
-// 目录的 producer 绝大多数是带接收者的方法）、consumers 全部存在于当前
-// Go 树、transport/replay/version 遵守 B0 冻结词汇。
+// file:Symbol、文件在发现的 Go 树上（OCR R2 f2：与契约符号侧同构的 goFileSet
+// 预检——testdata/点前缀目录被 discoverGoTree 剪枝，不得作为锚点）且符号
+// 真实声明于该文件（DiscoverSymbol，含方法回退——真实目录的 producer
+// 绝大多数是带接收者的方法）、consumers 全部存在于当前 Go 树、
+// transport/replay/version 遵守 B0 冻结词汇。
 // 返回值已排序去重；空切片即通过。
 func CheckEvents(g *Governance, d *Discovery) []Diagnostic {
 	var ds []Diagnostic
@@ -667,6 +680,14 @@ func CheckEvents(g *Governance, d *Discovery) []Diagnostic {
 		file, sym, err := splitContractSymbol(e.Producer)
 		if err != nil {
 			emit("event-producer-missing", string(e.ID), "producer %q: %v", e.Producer, err)
+		} else if !goFileSet[file] {
+			// OCR R2 f2：与契约符号侧的 goFileSet 文件预检同构。DiscoverSymbol
+			// 只 os.Stat+ParseFile，不经 discoverGoTree 剪枝——testdata/点前缀
+			// 目录下的文件磁盘存在且可解析（甚至声明同名符号），但不在 Go 树上，
+			// producer 不得锚定树外文件。
+			emit("event-producer-missing", string(e.ID),
+				"producer file %s is not in the discovered Go tree "+
+					"(dot-prefixed and testdata directories are pruned)", file)
 		} else {
 			_, found, err := DiscoverSymbol(d.Root, file, sym)
 			if err != nil {

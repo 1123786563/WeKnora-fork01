@@ -690,6 +690,68 @@ func (s *Store) AppendFact(id string) error { return nil }
 	require.True(t, ok, "方法符号缺失必须报 event-producer-missing，got: %v", diags)
 }
 
+// TestCheckEventsProducerOutsideGoTreeRejected 覆盖 OCR R2 f2：producer 文件
+// 必须在发现的 Go 树上。DiscoverSymbol 只 os.Stat+ParseFile，不经 discoverGoTree
+// 剪枝——testdata/ 点前缀目录下的文件磁盘存在且声明同名符号，但不参与构建，
+// 不得作为 producer 锚点（与契约符号侧的 goFileSet 文件预检同构）。
+func TestCheckEventsProducerOutsideGoTreeRejected(t *testing.T) {
+	root := t.TempDir()
+	writeDiscoverFixture(t, root, "internal/store/producer.go", `package store
+
+// EmitFact 是正常树上的 fixture 事件生产者。
+func EmitFact() {}
+`)
+	writeDiscoverFixture(t, root, "internal/store/testdata/producer.go", `package store
+
+// EmitFact 在 testdata 下：磁盘存在且声明同名符号，但不参与构建。
+func EmitFact() {}
+`)
+	writeDiscoverFixture(t, root, ".worktrees/passb-b0/producer.go", `package store
+
+// EmitFact 在点前缀目录（git worktree 树）下：发现树整体剪枝。
+func EmitFact() {}
+`)
+
+	files, imports, err := discoverGoTree(root)
+	require.NoError(t, err)
+	require.Equal(t, []string{"internal/store/producer.go"}, files,
+		"fixture 前置：testdata 与点前缀目录必须被 discoverGoTree 剪枝")
+	d := &Discovery{Root: root, GoFiles: files, Imports: imports}
+
+	// 阳性对照：同一符号锚定正常树上文件零诊断——翻转结果的只有树成员性，
+	// 不是符号存在性（三个文件声明完全同名符号）。
+	e := fixtureEventForCheck("x.fact.emitted")
+	e.Producer = "internal/store/producer.go:EmitFact"
+	e.Consumers = []string{"internal/store/producer.go"}
+	require.Empty(t, CheckEvents(&Governance{Events: []Event{e}}, d),
+		"正常树上的 producer 必须零诊断")
+
+	cases := []struct{ name, producer, want string }{
+		{
+			name:     "testdata directory",
+			producer: "internal/store/testdata/producer.go:EmitFact",
+			want:     "internal/store/testdata/producer.go",
+		},
+		{
+			name:     "dot-prefixed directory",
+			producer: ".worktrees/passb-b0/producer.go:EmitFact",
+			want:     ".worktrees/passb-b0/producer.go",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := fixtureEventForCheck("x.fact.emitted")
+			e.Producer = tc.producer
+			e.Consumers = []string{"internal/store/producer.go"}
+			diags := CheckEvents(&Governance{Events: []Event{e}}, d)
+			diag, ok := findDiag(diags, "event-producer-missing")
+			require.True(t, ok,
+				"树外 producer（磁盘存在且声明同名符号）必须报 event-producer-missing，got: %v", diags)
+			require.Contains(t, diag.Message, tc.want)
+		})
+	}
+}
+
 // TestRealRepoCheckEventsZeroDiagnostics：真实仓库事件目录对照零诊断。
 func TestRealRepoCheckEventsZeroDiagnostics(t *testing.T) {
 	root := repoRootFromTest(t)

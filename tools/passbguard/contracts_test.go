@@ -501,6 +501,81 @@ func TestContractBaselineSkipsComparisonWhenLedgerUnparseable(t *testing.T) {
 	}
 }
 
+// TestContractMethodFallbackFactSkipsConsumerDiscovery 覆盖 OCR R2 f5：
+// DiscoverSymbol 的同名方法回退（DeclKind=="method"）命中时，契约按顶层语义
+// 报 contract-symbol-missing「no longer declares」并保留签名对照，但不得把
+// method fact 送入 DiscoverSymbolConsumers——方法引用形态 recv.Name() 的
+// SelectorExpr.X 是变量而非定义包限定名，qualifiers 匹配对跨包消费方全部
+// 不命中 → consumers 恒空 → 已登记消费方全量误报 contract-consumer-vanished。
+func TestContractMethodFallbackFactSkipsConsumerDiscovery(t *testing.T) {
+	root := t.TempDir()
+	writeDiscoverFixture(t, root, "internal/store/store.go", `package store
+
+// Store 是 fixture 契约符号宿主。
+type Store struct{}
+
+// AppendFact 是方法形态符号：顶层声明缺失，仅方法回退可命中。
+func (s *Store) AppendFact(id string) error { return nil }
+`)
+	writeDiscoverFixture(t, root, "internal/handler/use.go", `package handler
+
+import "github.com/Tencent/WeKnora/internal/store"
+
+// UseAppendFact 以 recv.Name() 形态真实调用方法。
+func UseAppendFact(s *store.Store) error { return s.AppendFact("x") }
+`)
+	files, imports, err := discoverGoTree(root)
+	require.NoError(t, err)
+	d := &Discovery{Root: root, GoFiles: files, Imports: imports}
+
+	// 前置：方法回退命中且 fact 是 method（R1 #15 的事件 producer 语义不变）。
+	fact, found, err := DiscoverSymbol(root, "internal/store/store.go", "AppendFact")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "method", fact.DeclKind)
+
+	newGov := func(signature string) *Governance {
+		return &Governance{Contracts: []Contract{{
+			ID:        "store.append-fact",
+			Owner:     "store",
+			Kind:      "capability-port",
+			Symbol:    "internal/store/store.go:AppendFact",
+			Signature: signature,
+			Stability: "frozen",
+			// use.go 真实调用 s.AppendFact——消费方登记是真实的。
+			Consumers: []string{"internal/handler/use.go"},
+		}}}
+	}
+
+	t.Run("method fact reports no longer declares without false vanished", func(t *testing.T) {
+		g := newGov(fact.Signature) // 冻结签名 == 当前方法签名：无 drift
+		diags := CheckContracts(g, d)
+		diag, ok := findDiag(diags, "contract-symbol-missing")
+		require.True(t, ok, "方法回退命中必须按契约顶层语义报 no longer declares，got: %v", diags)
+		require.Contains(t, diag.Message, "no longer declares")
+		require.Contains(t, diag.Message, "AppendFact")
+		for _, check := range []string{
+			"contract-consumer-vanished", "contract-consumer-unrecorded", "contract-signature-drift",
+		} {
+			_, hit := findDiag(diags, check)
+			require.Falsef(t, hit,
+				"方法 fact 不得产生 %s（use.go 真实调用 s.AppendFact，限定名匹配语义不适用于方法引用形态），got: %v",
+				check, diags)
+		}
+	})
+
+	t.Run("signature drift still reported for method fact", func(t *testing.T) {
+		g := newGov("func AppendFact(id string) error") // 顶层形态的冻结签名
+		diags := CheckContracts(g, d)
+		_, ok := findDiag(diags, "contract-signature-drift")
+		require.True(t, ok, "方法 fact 保留签名对照（drift 必须照报），got: %v", diags)
+		_, ok = findDiag(diags, "contract-symbol-missing")
+		require.True(t, ok, "got: %v", diags)
+		_, hit := findDiag(diags, "contract-consumer-vanished")
+		require.False(t, hit, "got: %v", diags)
+	})
+}
+
 // ---- 真实仓库冻结验证（B0.4 Step 7）----
 
 // TestRealRepoContractsFreezeCurrentSurfaces 覆盖 Review Focus「契约抽取必须含全部

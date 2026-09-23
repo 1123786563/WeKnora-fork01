@@ -274,7 +274,9 @@ func constString(expr ast.Expr) (string, error) {
 
 // SymbolFact 是一个冻结契约符号（顶层导出声明）的发现快照。
 // File 是仓库相对 slash 路径；Name 是顶层声明名；DeclKind ∈
-// func|interface|struct|type|var|const；Signature 是规范化渲染签名
+// func|interface|struct|type|var|const|method（method 仅出自 DiscoverSymbol
+// 的同名方法回退，服务事件 producer 校验——契约侧 CheckContracts 对 method
+// fact 按顶层语义报 no longer declares，OCR R2 f5）；Signature 是规范化渲染签名
 // （源码序文本、单行、空白折叠——冻结与校验共用同一渲染器，签名相等即无漂移）；
 // ImportPath 是定义包完整 import 路径（module path + 目录）。
 type SymbolFact struct {
@@ -307,7 +309,10 @@ func (d *Discovery) parseFileFull(rel string) (*cachedAST, error) {
 // 顶层声明（func/interface/struct/type/var/const）优先；找不到时回退到
 // 同名方法（OCR R1 #15：event-catalog 的 producer 多为带接收者的方法，
 // 如 gate.go:RequestAndWait——方法签名含接收者渲染，绝不与冻结的顶层
-// 签名相等，契约符号的既有发现行为不变）。
+// 签名相等）。方法回退 fact（DeclKind=="method"）仅供事件 producer 存在性
+// 校验；契约符号按顶层语义消费本函数结果，method fact 由 CheckContracts
+// 判为 no longer declares（OCR R2 f5：方法引用形态 recv.Name() 不满足
+// DiscoverSymbolConsumers 的包限定名匹配语义，不得进入消费方发现）。
 // 找到返回 (fact, true, nil)；文件可解析但声明不存在返回 (nil, false, nil)；
 // 文件不存在/不可解析返回错误。
 func DiscoverSymbol(root, file, name string) (*SymbolFact, bool, error) {
