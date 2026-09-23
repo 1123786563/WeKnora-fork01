@@ -23,6 +23,9 @@ function vault() {
   };
 }
 
+/** 与实现的 draftKeySegment 一致（Buffer 版，避免 btoa 的 Node 环境差异）。 */
+const segment = (id: string): string => Buffer.from(id, 'binary').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
 test('drafts are isolated by deployment, user, and tenant scope', async () => {
   const { vault: scoped } = vault();
   const storeA = await scoped.open(lease(SCOPE_A));
@@ -47,7 +50,7 @@ test('stored rows never contain plaintext bodies', async () => {
   for (const [key, value] of storage.entries()) {
     assert.doesNotMatch(value, /plaintext-canary/);
     // 索引行只含不透明 id（明文 JSON 属预期）；草稿行必须是 base64 密文
-    if (key.endsWith('.drafts.draft-1')) assert.match(value, /^[A-Za-z0-9+/]+={0,2}$/);
+    if (key.endsWith(`.d.${segment('draft-1')}`)) assert.match(value, /^[A-Za-z0-9+/]+={0,2}$/);
   }
 });
 
@@ -71,7 +74,7 @@ test('a vault without a valid lease fails closed on open and on every store oper
 
 test('revoke rotates the wrapped key to unusable randomness and erases rows for the scope', async () => {
   const { vault: scoped, keyStore, storage } = vault();
-  const scopeKey = scopeKeyOf(SCOPE_A);
+  const scopeKey = await scopeKeyOf(SCOPE_A);
   const store = await scoped.open(lease(SCOPE_A));
   await store.drafts.put({ id: 'draft-1', body: 'tenant-secret' });
   const keyBefore = keyStore.entries().get(scopeKey);
@@ -89,7 +92,7 @@ test('revoke rotates the wrapped key to unusable randomness and erases rows for 
 
 test('rotate re-keys the scope while preserving readable drafts', async () => {
   const { vault: scoped, keyStore, storage } = vault();
-  const scopeKey = scopeKeyOf(SCOPE_A);
+  const scopeKey = await scopeKeyOf(SCOPE_A);
   const store = await scoped.open(lease(SCOPE_A));
   await store.drafts.put({ id: 'draft-1', body: 'keep-me' });
   const oldKey = keyStore.entries().get(scopeKey)!;
@@ -101,7 +104,7 @@ test('rotate re-keys the scope while preserving readable drafts', async () => {
   const newKey = keyStore.entries().get(scopeKey)!;
   assert.notDeepEqual([...newKey], [...oldKey]);
   // 旧 key 无法解密轮换后的行（真实 GCM 认证失败）
-  const rowB64 = storage.entries().get(`${scopeKey}.drafts.draft-1`)!;
+  const rowB64 = storage.entries().get(`${scopeKey}.d.${segment('draft-1')}`)!;
   const rowBytes = new Uint8Array(Buffer.from(rowB64, 'base64'));
   await assert.rejects(createWebCryptoCipher().open(oldKey, rowBytes), /VAULT_DECRYPT/);
 });
@@ -111,7 +114,7 @@ test('tampered ciphertext and wrong keys fail closed through the cipher seam', a
   const store = await scoped.open(lease(SCOPE_A));
   await store.drafts.put({ id: 'draft-1', body: 'integrity' });
 
-  const rowKey = `${scopeKeyOf(SCOPE_A)}.drafts.draft-1`;
+  const rowKey = `${await scopeKeyOf(SCOPE_A)}.d.${segment('draft-1')}`;
   const bytes = Buffer.from(storage.entries().get(rowKey)!, 'base64');
   bytes[bytes.length - 1] ^= 0xff;
   (storage.entries() as Map<string, string>).set(rowKey, Buffer.from(bytes).toString('base64'));
@@ -142,14 +145,14 @@ test('a failing encryption adapter rejects the write and leaves no row behind', 
 
 test('rotate aborts atomically on a corrupt row, leaving healthy rows readable under the old key', async () => {
   const { vault: scoped, keyStore, storage } = vault();
-  const scopeKey = scopeKeyOf(SCOPE_A);
+  const scopeKey = await scopeKeyOf(SCOPE_A);
   const store = await scoped.open(lease(SCOPE_A));
   await store.drafts.put({ id: 'draft-1', body: 'healthy' });
   await store.drafts.put({ id: 'draft-2', body: 'doomed' });
 
-  const row1Before = storage.entries().get(`${scopeKey}.drafts.draft-1`)!;
+  const row1Before = storage.entries().get(`${scopeKey}.d.${segment('draft-1')}`)!;
   const keyBefore = new Uint8Array(keyStore.entries().get(scopeKey)!);
-  const row2 = `${scopeKey}.drafts.draft-2`;
+  const row2 = `${scopeKey}.d.${segment('draft-2')}`;
   const bytes = Buffer.from(storage.entries().get(row2)!, 'base64');
   bytes[bytes.length - 1] ^= 0xff;
   (storage.entries() as Map<string, string>).set(row2, Buffer.from(bytes).toString('base64'));
@@ -158,7 +161,7 @@ test('rotate aborts atomically on a corrupt row, leaving healthy rows readable u
 
   // 原子中止：未换 key、未重封任何行，损坏只停留在损坏的那一行
   assert.deepEqual([...keyStore.entries().get(scopeKey)!], [...keyBefore]);
-  assert.equal(storage.entries().get(`${scopeKey}.drafts.draft-1`), row1Before);
+  assert.equal(storage.entries().get(`${scopeKey}.d.${segment('draft-1')}`), row1Before);
   const reader = await scoped.open(lease(SCOPE_A));
   assert.equal((await reader.drafts.get('draft-1'))?.body, 'healthy');
 });
@@ -169,4 +172,39 @@ test('draft ids outside the safe alphabet are rejected before any storage write'
   await assert.rejects(store.drafts.put({ id: 'bad id with spaces', body: 'x' }), /VAULT_ID/);
   await assert.rejects(store.drafts.put({ id: 'x'.repeat(65), body: 'x' }), /VAULT_ID/);
   assert.equal(storage.entries().size, 0, 'neither row nor index may be written for an invalid id');
+});
+
+test('reserved index row cannot be hijacked: put/get/remove validate ids symmetrically', async () => {
+  const { vault: scoped } = vault();
+  const store = await scoped.open(lease());
+  // R1-F10：id=index 不得命中索引键；R1-F40：get/remove 与 put 校验对称
+  await assert.rejects(store.drafts.put({ id: 'index', body: 'x' }), /VAULT_ID/);
+  await assert.rejects(store.drafts.get('index'), /VAULT_ID/);
+  await assert.rejects(store.drafts.remove('index'), /VAULT_ID/);
+  await assert.rejects(store.drafts.put({ id: 'a/b', body: 'x' }), /VAULT_ID/); // 非法字符
+  await assert.rejects(store.drafts.get(''), /VAULT_ID/); // 空串
+  const longId = 'x'.repeat(65);
+  await assert.rejects(store.drafts.put({ id: longId, body: 'x' }), /VAULT_ID/); // 超 64
+  await store.drafts.put({ id: 'y'.repeat(64), body: 'ok' }); // 上限仍可用
+  assert.equal((await store.drafts.get('y'.repeat(64)))?.body, 'ok');
+});
+
+test('scope keys are SecureStore-safe and collision-free across dotted inputs (R1-F39/F15)', async () => {
+  // origin 含点号/冒号：v1 分段编码会拼出相同 scopeKey；v2 摘要不冲突且仅含 [0-9a-f.]
+  const a = await scopeKeyOf({ deploymentOrigin: 'https://a.b.test', userId: 'u.1', tenantId: '7' });
+  const b = await scopeKeyOf({ deploymentOrigin: 'https://a.test', userId: 'b.u.1', tenantId: '7' });
+  assert.notEqual(a, b);
+  assert.match(a, /^weknora\.vault\.v2\.[0-9a-f]+$/);
+});
+
+test('revoke of one scope never leaks rows into another scope key', async () => {
+  const { vault: scoped } = vault();
+  const a = await scoped.open(lease());
+  await a.drafts.put({ id: 'd1', body: 'secret-a' });
+  const otherScope = { deploymentOrigin: 'https://other.example.test', userId: 'user-1', tenantId: '7' };
+  const b = await scoped.open(lease(otherScope));
+  await b.drafts.put({ id: 'd1', body: 'secret-b' });
+  const revoked = lease(); // 新 lease（scope A）
+  await scoped.revoke(revoked, 'dispose');
+  assert.equal(await b.drafts.get('d1') !== undefined && (await b.drafts.get('d1'))?.body === 'secret-b', true);
 });

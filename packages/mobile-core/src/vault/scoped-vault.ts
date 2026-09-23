@@ -4,6 +4,9 @@ import type { CipherPort, KeyStorePort, ScopedVaultPorts, VaultStoragePort } fro
 
 const KEY_LENGTH = 32;
 const DRAFT_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+/** 保留字（R1-F10）：即使 v2 键布局已把索引/行命名空间分离，'index' 仍显式拒绝——
+ * put/get/remove 一致（对称校验，R1-F40），防止任何未来键布局回退重开劫持面。 */
+const DRAFT_RESERVED_IDS: ReadonlySet<string> = new Set(['index']);
 const RETENTION_DAYS = 30;
 
 export type VaultRevokeReason = 'tenant-switch' | 'deployment-change' | 'sign-out' | 'dispose';
@@ -30,8 +33,18 @@ export interface ScopedVault {
 
 interface ScopeSession { key: Uint8Array; destroyed: boolean }
 
-export function scopeKeyOf(scope: LeaseScope): string {
-  return `weknora.vault.v1.${encodeURIComponent(scope.deploymentOrigin)}.${encodeURIComponent(scope.userId)}.${encodeURIComponent(scope.tenantId)}`;
+/** 行键段：base64url(id)。合法 id（[A-Za-z0-9._-]{1,64}）的编码产物落在该字符集之外，
+ * 与索引键 `${scopeKey}.ix` 命名空间天然分离——id='ix' 等保留字无法劫持索引键（R1-F10）。 */
+const draftKeySegment = (id: string): string => btoa(id).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+export async function scopeKeyOf(scope: LeaseScope): Promise<string> {
+  // v2：分段拼接后取 SHA-256 hex 摘要。动机：(1) v1 的 encodeURIComponent 产物含 %，
+  // Android expo-secure-store 键字符集（[A-Za-z0-9._-]）直接拒绝（R1-F39）；
+  // (2) 点号分段在段值含点时可拼出相同键（R1-F15）。摘要同时解决两者且长度固定。
+  // 数据兼容：v1 键在 Android 上从未成功写入（R1-F39）、分支未发布，视为无生产数据，不做迁移。
+  const text = new TextEncoder().encode(`${scope.deploymentOrigin}\n${scope.userId}\n${scope.tenantId}`);
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', text));
+  return `weknora.vault.v2.${[...digest].slice(0, 20).map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -80,8 +93,11 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     sessions.set(scopeKey, session);
     return session;
   };
-  const indexKey = (scopeKey: string): string => `${scopeKey}.drafts.index`;
-  const rowKey = (scopeKey: string, id: string): string => `${scopeKey}.drafts.${id}`;
+  const indexKey = (scopeKey: string): string => `${scopeKey}.ix`;
+  const rowKey = (scopeKey: string, id: string): string => `${scopeKey}.d.${draftKeySegment(id)}`;
+  const assertDraftId = (id: string): void => {
+    if (!DRAFT_ID_PATTERN.test(id) || DRAFT_RESERVED_IDS.has(id)) throw new Error('VAULT_ID');
+  };
   const readIndex = async (scopeKey: string): Promise<string[]> => {
     const raw = await ports.storage.read(indexKey(scopeKey));
     if (raw === null) return [];
@@ -120,12 +136,12 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     async open(scopeLease) {
       if (!leaseActive(scopeLease)) throw new Error('VAULT_LEASE');
       const scope = requireScope(scopeLease);
-      const scopeKey = scopeKeyOf(scope);
+      const scopeKey = await scopeKeyOf(scope);
       const session = await requireSession(scopeKey);
       const drafts: ScopedDraftRepository = {
         async put(input) {
           assertAccessible(scopeLease, session);
-          if (!DRAFT_ID_PATTERN.test(input.id)) throw new Error('VAULT_ID');
+          assertDraftId(input.id);
           const ids = await readIndex(scopeKey);
           const entry: DraftEntry = { id: input.id, body: input.body, updatedAt: new Date().toISOString() };
           await ports.storage.write(rowKey(scopeKey, input.id), await sealRow(session.key, entry));
@@ -133,6 +149,7 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
         },
         async get(id) {
           assertAccessible(scopeLease, session);
+          assertDraftId(id);
           const raw = await ports.storage.read(rowKey(scopeKey, id));
           if (raw === null) return undefined;
           return openRow(session.key, raw);
@@ -148,6 +165,7 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
         },
         async remove(id) {
           assertAccessible(scopeLease, session);
+          assertDraftId(id);
           await ports.storage.delete(rowKey(scopeKey, id));
           await writeIndex(scopeKey, (await readIndex(scopeKey)).filter((existing) => existing !== id));
         },
@@ -156,7 +174,7 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     },
     async rotate(scopeLease) {
       if (!leaseActive(scopeLease)) throw new Error('VAULT_LEASE');
-      const scopeKey = scopeKeyOf(requireScope(scopeLease));
+      const scopeKey = await scopeKeyOf(requireScope(scopeLease));
       const session = sessions.get(scopeKey);
       const oldKey = session && !session.destroyed ? session.key : await ports.keyStore.readWrappedKey(scopeKey);
       if (!oldKey) return;
@@ -176,7 +194,7 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     },
     async revoke(scopeLease, _reason) {
       const scope = requireScope(scopeLease);
-      const scopeKey = scopeKeyOf(scope);
+      const scopeKey = await scopeKeyOf(scope);
       const session = sessions.get(scopeKey);
       if (session) session.destroyed = true;
       sessions.delete(scopeKey);
