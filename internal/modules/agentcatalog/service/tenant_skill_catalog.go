@@ -169,7 +169,7 @@ func installView(
 func (s *TenantSkillService) RegisterCatalogFromArchive(
 	ctx context.Context, tenantID uint64, archive []byte,
 ) (*types.TenantSkillCatalogEntity, error) {
-	bundle, err := ParseSkillBundle(archive)
+	bundle, err := parseSkillBundle(archive, SkillBundleParseOptions{}, s.adapters.manifestParsers())
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func (s *TenantSkillService) RegisterCatalogFromArchive(
 func (s *TenantSkillService) RegisterCatalogFromSource(
 	ctx context.Context, tenantID uint64, source string,
 ) (*types.TenantSkillCatalogEntity, error) {
-	bundle, archive, err := fetchNormalizedSkillBundle(ctx, source, s.sourceHTTP)
+	bundle, archive, err := fetchNormalizedSkillBundle(ctx, source, s.sourceHTTP, s.adapters.manifestParsers())
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +210,9 @@ func (s *TenantSkillService) InstallCatalogToConfigs(
 		return nil, err
 	}
 
-	ids := uniqueNonEmptyStrings(configIDs)
+	// uniqueNonEmptyStrings 的会话侧真源注入（跳过空串再去重）；本面
+	// uniqueStrings 保留空串、语义不同，禁止替换。
+	ids := s.adapters.uniqueNonEmptyStrings(configIDs)
 	if len(ids) == 0 {
 		return nil, apperrors.NewBadRequestError("at least one sandbox is required")
 	}
@@ -370,7 +372,7 @@ func (s *TenantSkillService) storeCatalogBundle(
 	if catalog == nil || len(archive) == 0 {
 		return false, none, nil
 	}
-	digest := skillArchiveSHA256(archive)
+	digest := SkillArchiveSHA256(archive)
 	oldRef := strings.TrimSpace(catalog.BundleRef)
 	oldSHA := strings.TrimSpace(catalog.BundleSHA256)
 	if oldRef != "" && oldSHA != "" && oldSHA == digest &&
@@ -415,7 +417,7 @@ func (s *TenantSkillService) catalogBundleStillHeld(
 	archive, ok := s.trySkillBundle(ctx, tenantID, &types.TenantSkillEntity{
 		Name: catalog.Name, BundleRef: catalog.BundleRef, BundleSHA256: catalog.BundleSHA256,
 	})
-	return ok && len(archive) > 0 && (want == "" || archiveMatchesSHA(archive, want))
+	return ok && len(archive) > 0 && (want == "" || ArchiveMatchesSHA(archive, want))
 }
 
 // pinReplacedCatalogBundle stamps the previous archive onto installs that are
@@ -600,7 +602,7 @@ func (s *TenantSkillService) catalogBundleArchive(
 		if !ok || len(archive) == 0 {
 			return nil, false
 		}
-		if wantSHA != "" && !archiveMatchesSHA(archive, wantSHA) {
+		if wantSHA != "" && !ArchiveMatchesSHA(archive, wantSHA) {
 			return nil, false
 		}
 		return archive, true

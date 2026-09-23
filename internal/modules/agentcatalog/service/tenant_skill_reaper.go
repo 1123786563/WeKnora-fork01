@@ -7,6 +7,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
+	acrepo "github.com/Tencent/WeKnora/internal/modules/agentcatalog/repository"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/robfig/cron/v3"
@@ -40,10 +41,10 @@ type skillSnapshotLedger interface {
 	) ([]*types.TenantSkillSnapshotEntity, error)
 }
 
-// skillSnapshotLister is the provider listing ReconcileSnapshots is allowed to
+// SkillSnapshotLister is the provider listing ReconcileSnapshots is allowed to
 // call. It deliberately omits DeleteSnapshot: extras are warned, never removed,
 // because the same provider account may be shared across environments.
-type skillSnapshotLister interface {
+type SkillSnapshotLister interface {
 	ListSnapshots(ctx context.Context, sandboxID string) ([]sandbox.RemoteSnapshotRef, error)
 }
 
@@ -61,11 +62,11 @@ type sandboxConfigEnumerator interface {
 }
 
 var (
-	_ skillReaperStore        = (repository.TenantSkillRepository)(nil)
-	_ skillSnapshotLedger     = (repository.TenantSkillRepository)(nil)
+	_ skillReaperStore        = (acrepo.TenantSkillRepository)(nil)
+	_ skillSnapshotLedger     = (acrepo.TenantSkillRepository)(nil)
 	_ skillReaperConfigReader = (repository.TenantSandboxConfigRepository)(nil)
 	_ sandboxConfigEnumerator = (repository.TenantSandboxConfigRepository)(nil)
-	_ skillSnapshotLister     = (sandbox.RemoteSnapshotManager)(nil)
+	_ SkillSnapshotLister     = (sandbox.RemoteSnapshotManager)(nil)
 	_ skillSnapshotDeleter    = (*sandbox.SessionBoundManager)(nil)
 )
 
@@ -313,7 +314,7 @@ func (s *TenantSkillService) ReconcileSnapshots(
 	if err != nil {
 		return 0, err
 	}
-	listed = snapshotsNotFromOtherConfig(listed, skillSnapshotNamePrefix(tenantID, configID))
+	listed = SnapshotsNotFromOtherConfig(listed, SkillSnapshotNamePrefix(tenantID, configID))
 	extras := 0
 	for _, snap := range listed {
 		id := strings.TrimSpace(snap.ID)
@@ -334,7 +335,7 @@ func (s *TenantSkillService) ReconcileSnapshots(
 
 func snapshotListerFrom(
 	ctx context.Context, resolver sandbox.TenantSandboxResolver, tenantID uint64, configID string,
-) skillSnapshotLister {
+) SkillSnapshotLister {
 	if resolver == nil {
 		return nil
 	}
@@ -346,7 +347,7 @@ func snapshotListerFrom(
 	if mgr == nil {
 		return nil
 	}
-	lister, ok := mgr.(skillSnapshotLister)
+	lister, ok := mgr.(SkillSnapshotLister)
 	if !ok {
 		return nil
 	}
@@ -564,12 +565,12 @@ func (s *TenantSkillService) reapAbandonedBuilds(
 			cfg.ID, err)
 		return 0
 	}
-	listed = snapshotsNotFromOtherConfig(listed, skillSnapshotNamePrefix(cfg.TenantID, cfg.ID))
+	listed = SnapshotsNotFromOtherConfig(listed, SkillSnapshotNamePrefix(cfg.TenantID, cfg.ID))
 
 	live := strings.TrimSpace(currentSnapshotID(cfg))
 	reaped := 0
 	for _, row := range pending {
-		found := matchSnapshotByName(listed, row.PlannedName)
+		found := MatchSnapshotByName(listed, row.PlannedName)
 		// Unreachable by construction — the pointer moves after the ID is
 		// recorded, so a building row cannot be live — but the delete is
 		// irreversible, so the guard stays.
@@ -664,12 +665,13 @@ func (s *TenantSkillService) buildStillRunning(
 	return false
 }
 
-// matchSnapshotByName finds the provider snapshot a planned name refers to.
+// MatchSnapshotByName finds the provider snapshot a planned name refers to.
 //
 // Cube and E2B mint their own ID and echo the requested name in Names. Docker's
 // ID *is* the name, prefixed with the local repository it commits into, which
 // is why a trailing path segment counts as a match.
-func matchSnapshotByName(listed []sandbox.RemoteSnapshotRef, plannedName string) string {
+// (原 matchSnapshotByName，Pass B 25b 导出化——execution 面同名消费。)
+func MatchSnapshotByName(listed []sandbox.RemoteSnapshotRef, plannedName string) string {
 	want := strings.TrimSpace(plannedName)
 	if want == "" {
 		return ""

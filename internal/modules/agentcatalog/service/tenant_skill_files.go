@@ -154,7 +154,7 @@ func (s *TenantSkillService) sameDigestCatalogArchive(
 	if err != nil {
 		return nil, err
 	}
-	if !archiveMatchesSHA(archive, skill.BundleSHA256) {
+	if !ArchiveMatchesSHA(archive, skill.BundleSHA256) {
 		return nil, apperrors.NewNotFoundError("skill files are not available")
 	}
 	return archive, nil
@@ -204,11 +204,11 @@ func (s *TenantSkillService) downloadSkillBundle(
 		return nil, fmt.Errorf("download bundle of skill %s: %w", skill.Name, err)
 	}
 	defer func() { _ = reader.Close() }()
-	archive, err := io.ReadAll(io.LimitReader(reader, maxSkillBundleTotalBytes+1))
+	archive, err := io.ReadAll(io.LimitReader(reader, MaxSkillBundleTotalBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read bundle of skill %s: %w", skill.Name, err)
 	}
-	if len(archive) > maxSkillBundleTotalBytes {
+	if len(archive) > MaxSkillBundleTotalBytes {
 		return nil, fmt.Errorf("skill bundle %s is larger than the upload limit", ref)
 	}
 	return archive, nil

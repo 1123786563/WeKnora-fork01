@@ -12,7 +12,6 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
-	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -38,6 +37,10 @@ type installTranscript struct {
 
 	sessionID          string
 	assistantMessageID string
+
+	// sanitize carries the tool-result presentation helpers, injected from
+	// HostAdapters by the caller of newInstallTranscript.
+	sanitize transcriptSanitizer
 
 	mu      sync.Mutex
 	message *types.Message
@@ -85,6 +88,7 @@ func newInstallTranscript(
 	messages interfaces.MessageRepository,
 	sessionID, assistantMessageID string,
 	onActivity func(steps int, lastCmd string),
+	sanitize transcriptSanitizer,
 ) *installTranscript {
 	return &installTranscript{
 		ctx:                ctx,
@@ -93,6 +97,7 @@ func newInstallTranscript(
 		messages:           messages,
 		sessionID:          sessionID,
 		assistantMessageID: assistantMessageID,
+		sanitize:           sanitize,
 		starts:             map[string]time.Time{},
 		onActivity:         onActivity,
 	}
@@ -313,7 +318,7 @@ func (tr *installTranscript) onToolResult(_ context.Context, evt event.Event) er
 	// A failed command is surfaced as an error, matching the chat path, so the
 	// console highlights it instead of filing it as one more quiet step.
 	responseType := types.ResponseTypeToolResult
-	content := agenttools.StreamContentForToolResult(data.ToolName, data.Success, data.Error, data.Data)
+	content := tr.sanitize.streamContentForToolResult(data.ToolName, data.Success, data.Error, data.Data)
 	if !data.Success {
 		responseType = types.ResponseTypeError
 		if content == "" && data.Error != "" {
@@ -328,7 +333,7 @@ func (tr *installTranscript) onToolResult(_ context.Context, evt event.Event) er
 		"duration_ms":  durationMs,
 		"tool_call_id": data.ToolCallID,
 	}
-	for k, v := range agenttools.SanitizeToolResultForClient(data.ToolName, &types.ToolResult{
+	for k, v := range tr.sanitize.sanitizeToolResultForClient(data.ToolName, &types.ToolResult{
 		Success: data.Success,
 		Output:  data.Output,
 		Error:   data.Error,
@@ -403,7 +408,7 @@ func (tr *installTranscript) onComplete(_ context.Context, evt event.Event) erro
 		msg.IsCompleted = true
 		msg.AgentDurationMs = data.TotalDurationMs
 		if steps, ok := data.AgentSteps.([]types.AgentStep); ok {
-			msg.AgentSteps = agenttools.SanitizeAgentStepsForStorage(steps)
+			msg.AgentSteps = tr.sanitize.sanitizeAgentStepsForStorage(steps)
 		}
 	}
 	// The engine may finish without ever streaming an answer chunk (it stops

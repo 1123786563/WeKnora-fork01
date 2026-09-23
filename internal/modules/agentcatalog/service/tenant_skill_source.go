@@ -111,7 +111,7 @@ func (s *TenantSkillService) InstallSkillFromSource(
 		return "", apperrors.NewNotFoundError("sandbox config not found")
 	}
 
-	bundle, archive, err := fetchNormalizedSkillBundle(ctx, source, s.sourceHTTP)
+	bundle, archive, err := fetchNormalizedSkillBundle(ctx, source, s.sourceHTTP, s.adapters.manifestParsers())
 	if err != nil {
 		return "", err
 	}
@@ -130,13 +130,15 @@ func skillSourceHTTPClient(override *http.Client) *http.Client {
 	return skillSourceHTTPDefault
 }
 
-func fetchSkillArchive(ctx context.Context, source string, client *http.Client) ([]byte, error) {
-	_, archive, err := fetchNormalizedSkillBundle(ctx, source, client)
+func fetchSkillArchive(
+	ctx context.Context, source string, client *http.Client, parsers skillManifestParsers,
+) ([]byte, error) {
+	_, archive, err := fetchNormalizedSkillBundle(ctx, source, client, parsers)
 	return archive, err
 }
 
 func fetchNormalizedSkillBundle(
-	ctx context.Context, source string, client *http.Client,
+	ctx context.Context, source string, client *http.Client, parsers skillManifestParsers,
 ) (*SkillBundle, []byte, error) {
 	parsed, err := parseSkillSource(source)
 	if err != nil {
@@ -147,7 +149,7 @@ func fetchNormalizedSkillBundle(
 	if err != nil {
 		return nil, nil, err
 	}
-	return normalizeFetchedSkill(fetched.body, fetched.contentType, fetched.subdir)
+	return normalizeFetchedSkill(fetched.body, fetched.contentType, fetched.subdir, parsers)
 }
 
 // parseSkillSource maps one paste onto exactly one kind. It does not probe
@@ -853,23 +855,27 @@ func getSkillURL(
 	return body, resp.Header.Get("Content-Type"), nil
 }
 
-func normalizeFetchedSkillArchive(body []byte, contentType, subdir string) ([]byte, error) {
-	_, archive, err := normalizeFetchedSkill(body, contentType, subdir)
+func normalizeFetchedSkillArchive(
+	body []byte, contentType, subdir string, parsers skillManifestParsers,
+) ([]byte, error) {
+	_, archive, err := normalizeFetchedSkill(body, contentType, subdir, parsers)
 	return archive, err
 }
 
-func normalizeFetchedSkill(body []byte, contentType, subdir string) (*SkillBundle, []byte, error) {
+func normalizeFetchedSkill(
+	body []byte, contentType, subdir string, parsers skillManifestParsers,
+) (*SkillBundle, []byte, error) {
 	if looksLikeSkillMarkdown(body) {
 		files := map[string][]byte{"SKILL.md": body}
-		bundle, err := skillBundleFromFiles(body, files)
+		bundle, err := skillBundleFromFiles(body, files, parsers)
 		if err != nil {
 			return nil, nil, err
 		}
-		archive, err := zipSkillFiles(files)
+		archive, err := ZipSkillFiles(files)
 		if err != nil {
 			return nil, nil, err
 		}
-		bundle.SHA256 = skillArchiveSHA256(archive)
+		bundle.SHA256 = SkillArchiveSHA256(archive)
 		return bundle, archive, nil
 	}
 	if !isZipPayload(contentType, body) {
@@ -880,15 +886,15 @@ func normalizeFetchedSkill(body []byte, contentType, subdir string) (*SkillBundl
 		AllowExtraFiles:  true,
 		AllowNestedSkill: true,
 	}
-	bundle, err := ParseSkillBundleWithOptions(body, opts)
+	bundle, err := parseSkillBundle(body, opts, parsers)
 	if err != nil {
 		return nil, nil, err
 	}
-	archive, err := zipSkillFiles(bundle.Files)
+	archive, err := ZipSkillFiles(bundle.Files)
 	if err != nil {
 		return nil, nil, err
 	}
-	bundle.SHA256 = skillArchiveSHA256(archive)
+	bundle.SHA256 = SkillArchiveSHA256(archive)
 	return bundle, archive, nil
 }
 

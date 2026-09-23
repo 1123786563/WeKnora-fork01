@@ -110,7 +110,7 @@ func TestValidateUserEnvNameReservedLayer(t *testing.T) {
 func TestReservedEnvNamesCoverEveryInjectedSandboxVar(t *testing.T) {
 	for _, name := range skills.InjectedSandboxEnvVars() {
 		require.Error(t, validateEnvNameNotReserved(name), name)
-		require.Error(t, validateUserEnvName(name), name)
+		require.Error(t, ValidateUserEnvName(name), name)
 	}
 }
 
@@ -288,23 +288,23 @@ func TestMergeEnvDeclarationWithoutADeclarationStoresNothing(t *testing.T) {
 }
 
 func TestValidateUserEnvNameAcceptsAndRejects(t *testing.T) {
-	require.NoError(t, validateUserEnvName("TAVILY_API_KEY"))
-	require.NoError(t, validateUserEnvName("_PRIVATE"))
+	require.NoError(t, ValidateUserEnvName("TAVILY_API_KEY"))
+	require.NoError(t, ValidateUserEnvName("_PRIVATE"))
 
-	require.Error(t, validateUserEnvName(""))
-	require.Error(t, validateUserEnvName("path_prefix"))
-	require.Error(t, validateUserEnvName("HAS SPACE"))
-	require.Error(t, validateUserEnvName("1LEADING_DIGIT"))
-	require.Error(t, validateUserEnvName("PATH"))
-	require.Error(t, validateUserEnvName("LD_PRELOAD"))
-	require.Error(t, validateUserEnvName("WEKNORA_SKILL_DIR"))
-	require.Error(t, validateUserEnvName("WEKNORA_SESSION_INPUT_DIR"))
-	require.NoError(t, validateUserEnvName("WEKNORA_API_KEY"))
-	require.NoError(t, validateUserEnvName("WEKNORA_BASE_URL"))
+	require.Error(t, ValidateUserEnvName(""))
+	require.Error(t, ValidateUserEnvName("path_prefix"))
+	require.Error(t, ValidateUserEnvName("HAS SPACE"))
+	require.Error(t, ValidateUserEnvName("1LEADING_DIGIT"))
+	require.Error(t, ValidateUserEnvName("PATH"))
+	require.Error(t, ValidateUserEnvName("LD_PRELOAD"))
+	require.Error(t, ValidateUserEnvName("WEKNORA_SKILL_DIR"))
+	require.Error(t, ValidateUserEnvName("WEKNORA_SESSION_INPUT_DIR"))
+	require.NoError(t, ValidateUserEnvName("WEKNORA_API_KEY"))
+	require.NoError(t, ValidateUserEnvName("WEKNORA_BASE_URL"))
 }
 
 // The user path deliberately skips the bundle match: matching exists to catch
 // an LLM's invention, and a user filling a form is not guessing.
 func TestValidateUserEnvNameDoesNotRequireTheNameToBeInAnyBundle(t *testing.T) {
-	require.NoError(t, validateUserEnvName("SOMETHING_NO_SKILL_MENTIONS"))
+	require.NoError(t, ValidateUserEnvName("SOMETHING_NO_SKILL_MENTIONS"))
 }

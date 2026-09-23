@@ -599,7 +599,7 @@ func TestConfiguredSandboxTTLCoversTheDockerIdleWindow(t *testing.T) {
 }
 
 func TestSnapshotBelongsToOtherConfig(t *testing.T) {
-	prefix := skillSnapshotNamePrefix(7, "cfg-1")
+	prefix := SkillSnapshotNamePrefix(7, "cfg-1")
 	dockerOurs := sandbox.RemoteSnapshotRef{
 		ID: "weknora-skill/weknora-sk-t7-cfg1-g1", Names: []string{"weknora-skill/weknora-sk-t7-cfg1-g1"},
 	}
@@ -623,7 +623,7 @@ func TestSnapshotBelongsToOtherConfig(t *testing.T) {
 	require.False(t, snapshotBelongsToOtherConfig(unnamed, prefix),
 		"a listing that does not echo our name is not classified as another config")
 
-	kept := snapshotsNotFromOtherConfig([]sandbox.RemoteSnapshotRef{
+	kept := SnapshotsNotFromOtherConfig([]sandbox.RemoteSnapshotRef{
 		dockerOurs, dockerTheirs, cubeOurs, cubeTheirs, legacy, unnamed,
 	}, prefix)
 	ids := make([]string, 0, len(kept))
@@ -634,7 +634,7 @@ func TestSnapshotBelongsToOtherConfig(t *testing.T) {
 }
 
 func TestTenantSkillServiceStartIsIdempotent(t *testing.T) {
-	svc := NewTenantSkillService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewTenantSkillService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, testHostAdapters())
 
 	require.NoError(t, svc.Start(context.Background()))
 	require.NoError(t, svc.Start(context.Background()),
@@ -680,7 +680,7 @@ func newReaperFixture(t *testing.T) *reaperFixture {
 	resolver := &reaperSandboxResolver{provider: provider}
 	svc := NewTenantSkillService(
 		skills, configs, nil, resolver,
-		nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, testHostAdapters(),
 	)
 	svc.now = func() time.Time { return now }
 	return &reaperFixture{
@@ -755,7 +755,7 @@ var (
 	_ skillReaperConfigReader       = (*reaperConfigStore)(nil)
 	_ sandboxConfigEnumerator       = (*reaperConfigStore)(nil)
 	_ sandbox.TenantSandboxResolver = (*reaperSandboxResolver)(nil)
-	_ skillSnapshotLister           = (*reaperSnapshotProvider)(nil)
+	_ SkillSnapshotLister           = (*reaperSnapshotProvider)(nil)
 	_ skillSnapshotDeleter          = (*reaperSnapshotProvider)(nil)
 )
 

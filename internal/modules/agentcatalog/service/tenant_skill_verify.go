@@ -237,7 +237,7 @@ func (s *TenantSkillService) verifyScriptsParse(
 func (s *TenantSkillService) execVerify(
 	ctx context.Context, mgr sandbox.Manager, sessionID, skillDir, label, command string,
 ) ([]string, error) {
-	executor, err := installExecutor(mgr)
+	executor, err := s.installExecutor(mgr)
 	if err != nil {
 		return nil, err
 	}

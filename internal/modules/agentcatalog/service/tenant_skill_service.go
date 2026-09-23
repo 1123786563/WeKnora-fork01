@@ -13,6 +13,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/common/redislock"
+	acrepo "github.com/Tencent/WeKnora/internal/modules/agentcatalog/repository"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -57,12 +58,14 @@ const (
 
 // TenantSkillService owns the skill image lifecycle for sandbox configs.
 type TenantSkillService struct {
-	skills        repository.TenantSkillRepository
-	configs       repository.TenantSandboxConfigRepository
-	resolver      interfaces.StorageBackendResolver
-	sandboxes     sandbox.TenantSandboxResolver
-	sandboxPolicy WorkspaceSandboxPolicy
-	agents        interfaces.AgentService
+	skills    acrepo.TenantSkillRepository
+	configs   repository.TenantSandboxConfigRepository
+	resolver  interfaces.StorageBackendResolver
+	sandboxes sandbox.TenantSandboxResolver
+	// adapters承接旧宿主包内仍留驻的 conversation/execution 能力与
+	// agentruntime 工具面（见 host_adapters.go）；由构造器装配。
+	adapters HostAdapters
+	agents   interfaces.AgentService
 	// installerAgents reads the stored installer record. It is a separate
 	// dependency from agents because GetAgentByID lives on the custom agent
 	// service, not on interfaces.AgentService.
@@ -119,11 +122,10 @@ type TenantSkillService struct {
 // remove flows share. Redis may be nil; the local lock then serialises one
 // process only.
 func NewTenantSkillService(
-	skillsRepo repository.TenantSkillRepository,
+	skillsRepo acrepo.TenantSkillRepository,
 	configsRepo repository.TenantSandboxConfigRepository,
 	resolver interfaces.StorageBackendResolver,
 	sandboxes sandbox.TenantSandboxResolver,
-	sandboxPolicy WorkspaceSandboxPolicy,
 	agents interfaces.AgentService,
 	customAgents interfaces.CustomAgentService,
 	sessions interfaces.SessionService,
@@ -131,13 +133,17 @@ func NewTenantSkillService(
 	redisClient *redis.Client,
 	streams interfaces.StreamManager,
 	messages interfaces.MessageRepository,
+	adapters HostAdapters,
 ) *TenantSkillService {
+	if err := adapters.validate(); err != nil {
+		panic(err.Error())
+	}
 	return &TenantSkillService{
 		skills:            skillsRepo,
 		configs:           configsRepo,
 		resolver:          resolver,
 		sandboxes:         sandboxes,
-		sandboxPolicy:     sandboxPolicy,
+		adapters:          adapters,
 		agents:            agents,
 		installerAgents:   customAgents,
 		sessions:          sessions,
@@ -176,7 +182,7 @@ func (s *TenantSkillService) withConfigLock(
 
 func (s *TenantSkillService) withSkillLock(ctx context.Context, key string, fn func(context.Context) error) error {
 	if s.redis == nil {
-		release, err := s.localLocks.lock(ctx, key)
+		release, err := s.localLocks.Lock(ctx, key)
 		if err != nil {
 			return err
 		}
@@ -201,6 +207,16 @@ func (s *TenantSkillService) clock() func() time.Time {
 	return time.Now
 }
 
+// KeyedMutex is the exported view of the no-Redis fallback lock. The host-path
+// residual aliases it back to the historical unexported name for the market
+// service files that stay behind (计划 §2.5 未列的消费点，installedSkillLister
+// 同一先例)；IB2 收口后评估收敛回未导出。
+type KeyedMutex = keyedMutex
+
+// NewKeyedMutex is NewTenantSkillService's internal constructor, exported only
+// for the same residual alias. Prefer NewTenantSkillService.
+func NewKeyedMutex() *KeyedMutex { return newKeyedMutex() }
+
 // keyedMutex is the no-Redis fallback for withConfigLock.
 type keyedMutex struct {
 	mu sync.Mutex
@@ -209,7 +225,7 @@ type keyedMutex struct {
 
 func newKeyedMutex() *keyedMutex { return &keyedMutex{m: map[string]chan struct{}{}} }
 
-func (k *keyedMutex) lock(ctx context.Context, key string) (func(), error) {
+func (k *keyedMutex) Lock(ctx context.Context, key string) (func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

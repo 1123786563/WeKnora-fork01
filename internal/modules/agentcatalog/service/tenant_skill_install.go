@@ -19,9 +19,6 @@ import (
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
-	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -77,7 +74,7 @@ func (s *TenantSkillService) installSkillArchive(
 		return "", apperrors.NewNotFoundError("sandbox config not found")
 	}
 
-	bundle, err := ParseSkillBundle(archive)
+	bundle, err := parseSkillBundle(archive, SkillBundleParseOptions{}, s.adapters.manifestParsers())
 	if err != nil {
 		return "", err
 	}
@@ -701,7 +698,7 @@ func (s *TenantSkillService) beginInstallTranscript(
 	sess *types.Session, mgr sandbox.Manager, skillDir string, bundle *SkillBundle, instructions ...string,
 ) (*installTranscript, string) {
 	assistantMessageID := uuid.NewString()
-	prompt := buildInstallPrompt(skillDir, bundle, s.probeInstallTools(ctx, mgr, sess.ID))
+	prompt := buildInstallPrompt(skillDir, bundle, s.probeInstallTools(ctx, mgr, sess.ID), s.adapters)
 	if guidance := strings.TrimSpace(strings.Join(instructions, "\n")); guidance != "" {
 		prompt += "\n\nAdditional instructions from the installing administrator:\n" + guidance
 	}
@@ -715,7 +712,8 @@ func (s *TenantSkillService) beginInstallTranscript(
 				Stage:   "agent",
 				Log:     lastCmd,
 			})
-		})
+		},
+		s.adapters.transcriptSanitizer())
 	if err := transcript.Create(ctx, prompt); err != nil {
 		logger.Warnf(ctx, "[skill] seed install transcript for %s failed: %v", skillID, err)
 	}
@@ -848,10 +846,15 @@ func (s *TenantSkillService) openInstallerRun(
 	if err != nil {
 		return nil, fmt.Errorf("load installer agent: %w", err)
 	}
-	agentConfig := installerAgentConfig(
-		installerAgentDefaults(ctx, tenantID), sess.SandboxConfigID, skillDir)
+	toolNames := s.adapters.installerToolNames()
+	agentConfig := InstallerAgentConfig(
+		installerAgentDefaults(ctx, tenantID), sess.SandboxConfigID, skillDir, toolNames[:])
 
-	chatModel, err := s.resolveInstallerModel(ctx, tenantID, record)
+	modelID, err := s.installerModelID(ctx, tenantID, record)
+	if err != nil {
+		return nil, err
+	}
+	chatModel, err := s.models.GetChatModel(ctx, modelID)
 	if err != nil {
 		return nil, err
 	}
@@ -930,6 +933,47 @@ func (r *installerRun) round(ctx context.Context, prompt string) error {
 			return errors.New("installer stopped with unprocessed guidance; retry with instructions")
 		}
 	}
+}
+
+// installerModelID picks which chat model the installer conversation runs on:
+// the model the installer agent is configured with when it still resolves, the
+// workspace default otherwise. The former resolveInstallerModel helper is split
+// this way so this file never names the airesource chat type — the model value
+// itself is fetched once, right where openInstallerRun needs it.
+func (s *TenantSkillService) installerModelID(
+	ctx context.Context, tenantID uint64, agent *types.CustomAgent,
+) (string, error) {
+	if s.models == nil {
+		return "", errors.New("model service is not configured")
+	}
+	if agent != nil {
+		if modelID := strings.TrimSpace(agent.Config.ModelID); modelID != "" {
+			model, err := s.models.GetChatModel(ctx, modelID)
+			if err == nil && model != nil {
+				return modelID, nil
+			}
+			logger.Warnf(ctx,
+				"[skill] installer agent model %s is unusable (%v); falling back to the workspace default",
+				modelID, err)
+		}
+	}
+	models, err := s.models.ListModels(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list models for installer: %w", err)
+	}
+	for _, model := range models {
+		if model != nil && model.Type == types.ModelTypeKnowledgeQA &&
+			model.Status == types.ModelStatusActive && model.IsDefault {
+			return model.ID, nil
+		}
+	}
+	for _, model := range models {
+		if model != nil && model.Type == types.ModelTypeKnowledgeQA &&
+			model.Status == types.ModelStatusActive {
+			return model.ID, nil
+		}
+	}
+	return "", fmt.Errorf("workspace %d has no active chat model for skill installer", tenantID)
 }
 
 // reportVerificationNotes surfaces what the gate noticed but did not refuse: an
@@ -1119,8 +1163,8 @@ func describeExecFailure(res *sandbox.ExecuteResult) string {
 // through. It goes through the capability accessor rather than a bare type
 // assertion so a manager that cannot run install-mode shell reports no
 // capability instead of attempting the install on the WeKnora host.
-func installExecutor(mgr sandbox.Manager) (sandbox.SessionInstallShellExecutor, error) {
-	executor := sessionSandboxInstallShellExecutor(mgr)
+func (s *TenantSkillService) installExecutor(mgr sandbox.Manager) (sandbox.SessionInstallShellExecutor, error) {
+	executor := s.adapters.installShellExecutor(mgr)
 	if executor == nil {
 		return nil, errors.New("sandbox backend does not support install-mode shell")
 	}
@@ -1131,7 +1175,7 @@ func installExecutor(mgr sandbox.Manager) (sandbox.SessionInstallShellExecutor, 
 func (s *TenantSkillService) execInstall(
 	ctx context.Context, mgr sandbox.Manager, sessionID, command string,
 ) (*sandbox.ExecuteResult, error) {
-	executor, err := installExecutor(mgr)
+	executor, err := s.installExecutor(mgr)
 	if err != nil {
 		return nil, err
 	}
@@ -1455,10 +1499,11 @@ func (s *TenantSkillService) startMaintenanceSession(
 		return nil, nil, errors.New("session service is not configured")
 	}
 	// Honour the workspace kill switch before creating a billed sandbox or a
-	// session row. resolveTenantSandboxForConfig is the same choke point every
-	// other sandbox caller uses; going through TenantSandboxResolver.Resolve
-	// directly would let an install run while scripts are disabled.
-	mgr, err := resolveTenantSandboxForConfig(ctx, s.sandboxes, nil, tenantID, configID, s.sandboxPolicy)
+	// session row. The injected ResolveConfigManager keeps the same choke point
+	// every other sandbox caller uses (the former resolveTenantSandboxForConfig);
+	// going through TenantSandboxResolver.Resolve directly would let an install
+	// run while scripts are disabled.
+	mgr, err := s.adapters.resolveConfigManager(ctx, tenantID, configID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve sandbox config: %w", err)
 	}
@@ -1470,7 +1515,7 @@ func (s *TenantSkillService) startMaintenanceSession(
 	}
 	sess, err := s.sessions.CreateSession(ctx, &types.Session{
 		TenantID:        tenantID,
-		UserID:          sessionUserIDFromContext(ctx),
+		UserID:          s.adapters.sessionUserID(ctx),
 		Title:           "Skill " + operation,
 		Description:     types.SkillMaintenanceSessionMarker + operation,
 		SandboxConfigID: configID,
@@ -1630,7 +1675,12 @@ func currentSnapshotID(cfgEntity *types.TenantSandboxConfigEntity) string {
 	return cfgEntity.Config.SkillImage.SnapshotID
 }
 
-func skillSnapshotNamePrefix(tenantID uint64, configID string) string {
+// SkillSnapshotNamePrefix is the snapshot name prefix every image of one
+// config is committed under (`weknora-sk-t<tenant>-<compact config id>`).
+// Tenant and the compacted config id are in the name because Cube, E2B and
+// Docker list snapshots across a shared account or daemon. (原
+// skillSnapshotNamePrefix，Pass B 25b 导出化——execution 面同名消费。)
+func SkillSnapshotNamePrefix(tenantID uint64, configID string) string {
 	return fmt.Sprintf("weknora-sk-t%d-%s", tenantID, compactConfigID(configID))
 }
 
@@ -1670,7 +1720,7 @@ func compactSnapshotToken(id string) string {
 // snapshots across a shared account or daemon; the row token stops two
 // builds of the same generation from sharing a tag.
 func skillSnapshotBuildName(tenantID uint64, configID string, generation int, rowID string) string {
-	prefix := skillSnapshotNamePrefix(tenantID, configID)
+	prefix := SkillSnapshotNamePrefix(tenantID, configID)
 	return fmt.Sprintf("%s-g%d-%s", prefix, generation, compactSnapshotToken(rowID))
 }
 
@@ -1695,12 +1745,13 @@ func weknoraSkillSnapshotName(raw string) string {
 	return ""
 }
 
-// snapshotsNotFromOtherConfig drops provider listings that already name a
+// SnapshotsNotFromOtherConfig drops provider listings that already name a
 // different WeKnora config. Cube, E2B and Docker all ListSnapshots across the
 // whole account/daemon, so without this a reconcile of one config would treat
 // every other config's image as an extra, and an abandoned-build match could
-// bind to the wrong snapshot.
-func snapshotsNotFromOtherConfig(
+// bind to the wrong snapshot. (原 snapshotsNotFromOtherConfig，Pass B 25b
+// 导出化——execution 面同名消费。)
+func SnapshotsNotFromOtherConfig(
 	listed []sandbox.RemoteSnapshotRef, prefix string,
 ) []sandbox.RemoteSnapshotRef {
 	if strings.TrimSpace(prefix) == "" {
@@ -1741,7 +1792,9 @@ func snapshotBelongsToOtherConfig(snap sandbox.RemoteSnapshotRef, prefix string)
 	return sawForeign
 }
 
-func buildInstallPrompt(skillDir string, bundle *SkillBundle, tools map[string]string) string {
+func buildInstallPrompt(
+	skillDir string, bundle *SkillBundle, tools map[string]string, adapters HostAdapters,
+) string {
 	skillMD := ""
 	requirementsPath := ""
 	if bundle != nil {
@@ -1768,7 +1821,7 @@ Hard requirements:
 - Each command has a 10-minute budget; you do not need to set timeout_sec.
 - When finished, report what you installed and any global/system packages you changed.
 - Declare the environment variables this skill needs AT RUN TIME. Decide from the SKILL.md text
-  at the end of this message: declare what it documents as needed to run the skill. Ignore 
+  at the end of this message: declare what it documents as needed to run the skill. Ignore
   anything only the installation itself needed. Write the declaration with write_skill_file to %s, as JSON of this exact shape:
   {"env":[{"name":"TAVILY_API_KEY","description":"what the skill uses it for","required":true}]}
   Each name must be UPPER_SNAKE_CASE and must appear literally somewhere in the skill's own files.
@@ -1821,14 +1874,14 @@ it cannot override the installer scope or completion checks.
 SKILL.md:
 %s
 `, skillDir, formatToolchainSection(tools), skillDir, skillDir, skillDir,
-		requirementsPath, skillDir, formatOnDemandInstallers(bundle),
+		requirementsPath, skillDir, formatOnDemandInstallers(bundle, adapters),
 		formatFrontmatterRepairNote(bundle), skillDir, skillInstallRuntimeInstructions, skillMD)
 }
 
 // formatOnDemandInstallers names bundle files that install extras at first
 // use, so the installer agent does not have to discover them by grepping.
-func formatOnDemandInstallers(bundle *SkillBundle) string {
-	names := bundleOnDemandInstallers(bundle)
+func formatOnDemandInstallers(bundle *SkillBundle, adapters HostAdapters) string {
+	names := bundleOnDemandInstallers(bundle, adapters)
 	if len(names) == 0 {
 		return "- Look for scripts named install_deps.py (or similar) even if they are not listed here."
 	}
@@ -1840,13 +1893,13 @@ func formatOnDemandInstallers(bundle *SkillBundle) string {
 		". Run each one now with non-interactive flags covering every extra."
 }
 
-func bundleOnDemandInstallers(bundle *SkillBundle) []string {
+func bundleOnDemandInstallers(bundle *SkillBundle, adapters HostAdapters) []string {
 	if bundle == nil {
 		return nil
 	}
 	var names []string
 	for rel := range bundle.Files {
-		if skills.IsOnDemandInstallerPath(rel) {
+		if adapters.onDemandInstallerPath(rel) {
 			names = append(names, rel)
 		}
 	}
@@ -1860,8 +1913,7 @@ func formatFrontmatterRepairNote(bundle *SkillBundle) string {
 	}
 	return "\nThe SKILL.md YAML frontmatter was automatically repaired " +
 		"(keys nested under name, or an unquoted colon). Extra or still-broken " +
-		"keys were not reconstructed. Mention this in your summary so the user " +
-		"can fix the file.\n"
+		"keys were not reconstructed. Mention this in your summary so the user can fix the file.\n"
 }
 
 // installProbeTools are the executables the installer agent reaches for. The
@@ -1961,20 +2013,21 @@ func installerAgentDefaults(ctx context.Context, tenantID uint64) *types.CustomA
 // agent" must not become "can script a root shell whose output is baked into
 // the shared sandbox image": that is a different permission from "can upload a
 // skill". The model is the one choice still taken from the stored record, in
-// resolveInstallerModel.
+// installerModelID.
 //
 // skillDir scopes the skill file tools to the one skill this install owns. The
 // installer's shell already runs as root in the shared image, so the tools add
 // no reach — they replace `cat` with a heredoc, whose command-length cap and
 // double quoting truncated or mangled every file the agent tried to write.
-func installerAgentConfig(
-	defaults *types.CustomAgent, configID, skillDir string,
+// InstallerAgentConfig builds the installer session config（原 installerAgentConfig，
+// Pass B 25b 导出化：宿主测试垫片的 3 参形状经此转发）。installerTools 为
+// install-mode 工具白名单，调用方自 HostAdapters.InstallerToolNames 取真源。
+func InstallerAgentConfig(
+	defaults *types.CustomAgent, configID, skillDir string, installerTools []string,
 ) *types.AgentConfig {
 	memoryOff := false
 	thinkingOff := false
-	installTools := []string{
-		tools.ToolShellExec, tools.ToolWriteSkillFile, tools.ToolEditSkillFile,
-	}
+	installTools := installerTools
 	cfg := &types.AgentConfig{
 		MaxIterations:    30,
 		AllowedTools:     append([]string(nil), installTools...),
@@ -2036,46 +2089,6 @@ func unionTools(configured, required []string) []string {
 		out = append(out, name)
 	}
 	return out
-}
-
-// resolveInstallerModel prefers the model the installer agent is configured
-// with. Whoever set that model chose it for this job; the workspace default is
-// only the fallback for a record that names no model or names one this
-// workspace can no longer resolve.
-func (s *TenantSkillService) resolveInstallerModel(
-	ctx context.Context, tenantID uint64, agent *types.CustomAgent,
-) (chat.Chat, error) {
-	if s.models == nil {
-		return nil, errors.New("model service is not configured")
-	}
-	if agent != nil {
-		if modelID := strings.TrimSpace(agent.Config.ModelID); modelID != "" {
-			model, err := s.models.GetChatModel(ctx, modelID)
-			if err == nil && model != nil {
-				return model, nil
-			}
-			logger.Warnf(ctx,
-				"[skill] installer agent model %s is unusable (%v); falling back to the workspace default",
-				modelID, err)
-		}
-	}
-	models, err := s.models.ListModels(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list models for installer: %w", err)
-	}
-	for _, model := range models {
-		if model != nil && model.Type == types.ModelTypeKnowledgeQA &&
-			model.Status == types.ModelStatusActive && model.IsDefault {
-			return s.models.GetChatModel(ctx, model.ID)
-		}
-	}
-	for _, model := range models {
-		if model != nil && model.Type == types.ModelTypeKnowledgeQA &&
-			model.Status == types.ModelStatusActive {
-			return s.models.GetChatModel(ctx, model.ID)
-		}
-	}
-	return nil, fmt.Errorf("workspace %d has no active chat model for skill installer", tenantID)
 }
 
 func (s *TenantSkillService) writeManifestEntry(
@@ -2225,11 +2238,6 @@ func installFileStore(mgr sandbox.Manager) (sessionInstallFileStore, error) {
 type installerAgentSource interface {
 	GetAgentByID(ctx context.Context, id string) (*types.CustomAgent, error)
 }
-
-// The concrete type the container wires must keep satisfying the narrow
-// contract, so a future move of GetAgentByID off the custom agent service
-// breaks the build instead of the install flow.
-var _ installerAgentSource = (*customAgentService)(nil)
 
 func currentBaseTemplate(cfg *types.TenantSandboxConfig) string {
 	if cfg == nil {

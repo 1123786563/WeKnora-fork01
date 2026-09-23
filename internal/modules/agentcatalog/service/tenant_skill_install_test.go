@@ -605,7 +605,7 @@ func TestBuildInstallPromptAsksForADeclarationWithoutValues(t *testing.T) {
 
 	prompt := buildInstallPrompt(installSkillDir, fx.bundle, map[string]string{
 		"uv": "/root/.local/bin/uv", "python3": "/usr/bin/python3",
-	})
+	}, fx.svc.adapters)
 
 	require.Contains(t, prompt, sandbox.SkillRequirementsPath(fx.bundle.Name))
 	require.Contains(t, prompt, ".weknora/requirements.json")
@@ -632,7 +632,7 @@ func TestBuildInstallPromptAsksForADeclarationWithoutValues(t *testing.T) {
 func TestBuildInstallPromptSaysCommandsAlreadyStartInTheSkillDirectory(t *testing.T) {
 	fx := newInstallFixture(t)
 
-	prompt := buildInstallPrompt(installSkillDir, fx.bundle, nil)
+	prompt := buildInstallPrompt(installSkillDir, fx.bundle, nil, fx.svc.adapters)
 
 	require.Contains(t, prompt, "shell_exec already starts every command in "+installSkillDir)
 	require.Contains(t, prompt, "do NOT prefix")
@@ -646,7 +646,7 @@ func TestBuildInstallPromptSaysCommandsAlreadyStartInTheSkillDirectory(t *testin
 func TestBuildInstallPromptDemandsImportsBeProvenByRunningThem(t *testing.T) {
 	fx := newInstallFixture(t)
 
-	prompt := buildInstallPrompt(installSkillDir, fx.bundle, nil)
+	prompt := buildInstallPrompt(installSkillDir, fx.bundle, nil, fx.svc.adapters)
 
 	require.Contains(t, prompt, "PROVE the skill's imports resolve")
 	require.Contains(t, prompt, "Do not reason about it")
@@ -663,7 +663,7 @@ func TestBuildInstallPromptNamesOnDemandInstallerInTheArchive(t *testing.T) {
 
 	prompt := buildInstallPrompt(installSkillDir, fx.bundle, map[string]string{
 		"uv": "/root/.local/bin/uv", "python3": "/usr/bin/python3",
-	})
+	}, fx.svc.adapters)
 
 	require.Contains(t, prompt, "This archive ships on-demand installer(s)")
 	require.Contains(t, prompt, "scripts/install_deps.py")
@@ -675,7 +675,7 @@ func TestBuildInstallPromptMentionsRepairedFrontmatter(t *testing.T) {
 
 	prompt := buildInstallPrompt(installSkillDir, fx.bundle, map[string]string{
 		"uv": "/root/.local/bin/uv", "python3": "/usr/bin/python3",
-	})
+	}, fx.svc.adapters)
 
 	require.Contains(t, prompt, "YAML frontmatter was automatically repaired")
 	require.Contains(t, prompt, "Mention this in your summary")
@@ -1233,7 +1233,7 @@ func TestRunInstallAbortsWhenANewerBundleOwnsTheRow(t *testing.T) {
 
 func TestRunInstallRefusesWhenWorkspaceScriptsAreDisabled(t *testing.T) {
 	fx := newInstallFixture(t)
-	fx.svc.sandboxPolicy = stubWorkspaceSandboxPolicy{disabled: true}
+	fx.scriptsDisabled = true
 
 	err := fx.svc.runInstall(context.Background(), 7, "cfg-1", "sk-1", fx.bundle)
 
@@ -1503,7 +1503,7 @@ func TestRunInstallFailureIsRecordedAfterALongInstall(t *testing.T) {
 }
 
 func TestInstallSessionIgnoresATenantOverrideOfTheInstallerAgent(t *testing.T) {
-	require.NoError(t, types.LoadBuiltinAgentsConfig(filepath.Join("..", "..", "..", "config")))
+	require.NoError(t, types.LoadBuiltinAgentsConfig(filepath.Join("..", "..", "..", "..", "config")))
 	fx := newInstallFixture(t)
 	// A tenant can persist a Config for any built-in agent ID, this one
 	// included. "Can edit an agent" must not become "can script a root shell
@@ -1770,13 +1770,13 @@ func TestRunInstallAlwaysDestroysTheSandboxButKeepsTheSession(t *testing.T) {
 func TestResolveInstallerModelPrefersTheAgentsOwnModel(t *testing.T) {
 	fx := newInstallFixture(t)
 
-	model, err := fx.svc.resolveInstallerModel(context.Background(), 7, &types.CustomAgent{
+	modelID, err := fx.svc.installerModelID(context.Background(), 7, &types.CustomAgent{
 		ID:     types.BuiltinSkillInstallerID,
 		Config: types.CustomAgentConfig{ModelID: "model-agent"},
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, "model-agent", model.GetModelID(),
+	require.Equal(t, "model-agent", modelID,
 		"whoever configured the installer agent chose that model for this job")
 }
 
@@ -1784,24 +1784,24 @@ func TestResolveInstallerModelFallsBackWhenTheAgentModelIsGone(t *testing.T) {
 	fx := newInstallFixture(t)
 	fx.modelSvc.missing = map[string]bool{"model-gone": true}
 
-	model, err := fx.svc.resolveInstallerModel(context.Background(), 7, &types.CustomAgent{
+	modelID, err := fx.svc.installerModelID(context.Background(), 7, &types.CustomAgent{
 		ID:     types.BuiltinSkillInstallerID,
 		Config: types.CustomAgentConfig{ModelID: "model-gone"},
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, "model-1", model.GetModelID())
+	require.Equal(t, "model-1", modelID)
 }
 
 func TestResolveInstallerModelFallsBackWhenTheAgentNamesNoModel(t *testing.T) {
 	fx := newInstallFixture(t)
 
-	model, err := fx.svc.resolveInstallerModel(context.Background(), 7, &types.CustomAgent{
+	modelID, err := fx.svc.installerModelID(context.Background(), 7, &types.CustomAgent{
 		ID: types.BuiltinSkillInstallerID,
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, "model-1", model.GetModelID())
+	require.Equal(t, "model-1", modelID)
 }
 
 // The console attaches to a running install through the assistant message, so
@@ -1991,6 +1991,9 @@ type installFixture struct {
 	// invalidateErr fails the marking the way an unreachable binding store
 	// would, without failing anything else the run does.
 	invalidateErr error
+	// scriptsDisabled 由 ResolveConfigManager 适配位读取，替代搬迁前的
+	// svc.sandboxPolicy（workspace kill switch 已注入化）。
+	scriptsDisabled bool
 	// rmExitCode fails the removal's directory wipe, the one image step a
 	// removal has.
 	rmExitCode int
@@ -2085,12 +2088,19 @@ func newInstallFixture(t *testing.T) *installFixture {
 	fx.sandboxMgr = &installSandboxManager{fx: fx}
 	fx.agentSvc = &installAgentService{fx: fx}
 	fx.modelSvc = &installModelService{}
+	adapters := testHostAdapters()
+	adapters.ResolveConfigManager = func(ctx context.Context, tenantID uint64, configID string) (sandbox.Manager, error) {
+		if fx.scriptsDisabled {
+			return nil, errors.New("workspace scripts are disabled by policy")
+		}
+		return (&installSandboxResolver{mgr: fx.sandboxMgr}).Resolve(ctx, tenantID, configID)
+	}
+	adapters.InstallShellExecutor = testInstallShellExecutor
 	fx.svc = NewTenantSkillService(
 		fx.skillRepo,
 		fx.configRepo,
 		&installStorageResolver{fx: fx},
 		&installSandboxResolver{mgr: fx.sandboxMgr},
-		nil,
 		fx.agentSvc,
 		&installCustomAgentService{fx: fx},
 		&installSessionService{fx: fx},
@@ -2098,6 +2108,7 @@ func newInstallFixture(t *testing.T) *installFixture {
 		nil,
 		&transcriptStreams{},
 		&transcriptMessages{},
+		adapters,
 	)
 	fx.svc.now = func() time.Time { return time.Date(2026, 8, 19, 9, 30, 0, 0, time.UTC) }
 	return fx

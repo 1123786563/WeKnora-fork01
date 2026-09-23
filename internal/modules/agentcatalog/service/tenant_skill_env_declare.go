@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -53,12 +52,20 @@ var reservedEnvNames = map[string]bool{
 	"NODE_OPTIONS":    true,
 }
 
-func init() {
-	// The names skill environment preparation actually writes, not a guessed prefix. Output
-	// dir, history root and skill dir currently share WEKNORA_SKILL_, but
-	// SESSION_INPUT_DIR does not; pulling the list from skills keeps the
-	// blacklist aligned when a fifth injected name appears.
-	for _, name := range skills.InjectedSandboxEnvVars() {
+// RegisterReservedEnvNames merges the names skill environment preparation
+// actually writes into the reserved set (idempotent map union). It replaces the
+// package-level init() this file carried in the old host package: the injected
+// names live behind agentruntime, so the host-path residual registers them at
+// init time and new-package tests register them explicitly.
+//
+// The names are not a guessed prefix. Output dir, history root and skill dir
+// currently share WEKNORA_SKILL_, but SESSION_INPUT_DIR does not; pulling the
+// list from skills keeps the blacklist aligned when a fifth injected name
+// appears.
+//
+// Pass B 25b 过渡接缝，remove_at: ib2（33/35 面按契约任务决定保留名单归属）。
+func RegisterReservedEnvNames(names []string) {
+	for _, name := range names {
 		reservedEnvNames[name] = true
 	}
 }
@@ -151,11 +158,11 @@ func validateEnvDeclarations(declared []declaredSkillEnv, bundle *SkillBundle) t
 	return out
 }
 
-// validateUserEnvName is the format and reserved-name check, without the
+// ValidateUserEnvName is the format and reserved-name check, without the
 // bundle match. The two are separate because a user typing a name into the
 // settings page must pass these layers but not the match: matching exists to
 // catch a model's invention, and a user filling a form is making a choice.
-func validateUserEnvName(name string) error {
+func ValidateUserEnvName(name string) error {
 	if err := validateEnvNameFormat(name); err != nil {
 		return err
 	}

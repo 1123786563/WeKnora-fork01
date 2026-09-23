@@ -110,7 +110,8 @@ func newTranscriptForTest(t *testing.T) (
 	bus := event.NewEventBus()
 	streams := &transcriptStreams{}
 	messages := &transcriptMessages{}
-	tr := newInstallTranscript(context.Background(), bus, streams, messages, "sess-1", "msg-1", nil)
+	tr := newInstallTranscript(context.Background(), bus, streams, messages, "sess-1", "msg-1", nil,
+		testHostAdapters().transcriptSanitizer())
 	tr.Subscribe()
 	return tr, bus, streams, messages
 }
@@ -266,7 +267,8 @@ func TestInstallTranscriptSwallowsItsOwnFailures(t *testing.T) {
 	bus := event.NewEventBus()
 	streams := &transcriptStreams{err: errors.New("redis down")}
 	messages := &transcriptMessages{err: errors.New("db down")}
-	tr := newInstallTranscript(context.Background(), bus, streams, messages, "sess-1", "msg-1", nil)
+	tr := newInstallTranscript(context.Background(), bus, streams, messages, "sess-1", "msg-1", nil,
+		testHostAdapters().transcriptSanitizer())
 	tr.Subscribe()
 
 	require.NoError(t, bus.Emit(context.Background(), event.Event{
@@ -281,6 +283,7 @@ func TestInstallTranscriptCreateSeedsTheAssistantRow(t *testing.T) {
 	messages := &transcriptMessages{}
 	tr := newInstallTranscript(
 		context.Background(), event.NewEventBus(), streams, messages, "sess-1", "msg-1", nil,
+		testHostAdapters().transcriptSanitizer(),
 	)
 
 	require.NoError(t, tr.Create(context.Background(), "install pdf-tools"))
@@ -299,6 +302,7 @@ func TestInstallTranscriptCreateOpensTheLogWithThePrompt(t *testing.T) {
 	streams := &transcriptStreams{}
 	tr := newInstallTranscript(
 		context.Background(), event.NewEventBus(), streams, &transcriptMessages{}, "sess-1", "msg-1", nil,
+		testHostAdapters().transcriptSanitizer(),
 	)
 
 	require.NoError(t, tr.Create(context.Background(), "install pdf-tools"))
@@ -396,7 +400,8 @@ func TestInstallTranscriptPublishesActivityProgressOnToolCalls(t *testing.T) {
 	}
 	var got []activity
 	tr := newInstallTranscript(context.Background(), bus, streams, messages, "sess-1", "msg-1",
-		func(steps int, lastCmd string) { got = append(got, activity{steps, lastCmd}) })
+		func(steps int, lastCmd string) { got = append(got, activity{steps, lastCmd}) },
+		testHostAdapters().transcriptSanitizer())
 	tr.Subscribe()
 	ctx := context.Background()
 

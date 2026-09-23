@@ -15,7 +15,7 @@ import (
 func (s *TenantSkillService) ListUsableSkills(
 	ctx context.Context, tenantID uint64, configID string,
 ) []*types.TenantSkillEntity {
-	return effectiveTenantSkills(ctx, s.configs, s.skills, tenantID, configID)
+	return EffectiveTenantSkills(ctx, s.configs, s.skills, tenantID, configID)
 }
 
 // ListSkills returns the skills installed onto one sandbox config.

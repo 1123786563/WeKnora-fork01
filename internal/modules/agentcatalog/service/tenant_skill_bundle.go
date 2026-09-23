@@ -13,8 +13,6 @@ import (
 	"sort"
 	"strings"
 	"unicode"
-
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 )
 
 // ErrSkillBundleInvalid marks every rejection of an uploaded archive, so the
@@ -34,7 +32,7 @@ const (
 	// is higher than maxSkillBundleFiles.
 	maxSkillBundleZipEntries = 100_000
 	maxSkillBundleFileBytes  = 32 << 20  // 32 MiB per entry
-	maxSkillBundleTotalBytes = 512 << 20 // 512 MiB across the kept skill files
+	MaxSkillBundleTotalBytes = 512 << 20 // 512 MiB across the kept skill files
 )
 
 // SkillBundle is a validated, in-memory skill archive.
@@ -70,6 +68,42 @@ type SkillBundleParseOptions struct {
 	AllowNestedSkill bool
 }
 
+// skillManifestParsers carries the two SKILL.md parsing abilities the bundle
+// path needs (manifest view + frontmatter version probe). Method paths build
+// them from HostAdapters; the adapters-free entries below use the registered
+// fallback.
+type skillManifestParsers struct {
+	manifest    func(content string) (SkillManifestView, error)
+	frontmatter func(frontmatter string, dest any) (bool, error)
+}
+
+// registeredBundleParsers backs the adapters-free ParseSkillBundle entry
+// points. It is set once at init time by the host-path residual (and by this
+// package's own tests, which may import agentruntime). Nil parsers there fail
+// fast instead of guessing.
+//
+// Pass B 25b 过渡接缝，remove_at: ib2（与 RegisterReservedEnvNames 同类先例，
+// plan §4.4-1：残差 init 显式装载，链接宿主包的二进制行为与搬迁前逐字节一致）。
+var registeredBundleParsers skillManifestParsers
+
+// RegisterBundleParsers binds the SKILL.md parsing ability used by the
+// adapters-free ParseSkillBundle entry points. Init-time, idempotent by
+// re-assignment to the same functions.
+func RegisterBundleParsers(
+	manifest func(content string) (SkillManifestView, error),
+	frontmatter func(frontmatter string, dest any) (bool, error),
+) {
+	registeredBundleParsers = skillManifestParsers{manifest: manifest, frontmatter: frontmatter}
+}
+
+func bundleParsers() (skillManifestParsers, error) {
+	if registeredBundleParsers.manifest == nil || registeredBundleParsers.frontmatter == nil {
+		return skillManifestParsers{}, errors.New(
+			"skill manifest parsers are not registered; link the host residual or call RegisterBundleParsers")
+	}
+	return registeredBundleParsers, nil
+}
+
 // ParseSkillBundle validates an uploaded zip and extracts everything the
 // install flow needs. It accepts both a flat archive and one wrapped in a
 // single top-level directory, because both are what people actually upload.
@@ -80,6 +114,19 @@ func ParseSkillBundle(archive []byte) (*SkillBundle, error) {
 // ParseSkillBundleWithOptions is ParseSkillBundle with the extra knobs remote
 // installs need. SHA256 is still over the input bytes, not the re-rooted view.
 func ParseSkillBundleWithOptions(archive []byte, opts SkillBundleParseOptions) (*SkillBundle, error) {
+	parsers, err := bundleParsers()
+	if err != nil {
+		return nil, err
+	}
+	return parseSkillBundle(archive, opts, parsers)
+}
+
+// parseSkillBundle is the shared parse core. Method paths thread
+// HostAdapters-derived parsers; the adapters-free entries above use the
+// registered fallback.
+func parseSkillBundle(
+	archive []byte, opts SkillBundleParseOptions, parsers skillManifestParsers,
+) (*SkillBundle, error) {
 	raw, err := unzipSkillArchive(archive, opts)
 	if err != nil {
 		return nil, err
@@ -88,7 +135,7 @@ func ParseSkillBundleWithOptions(archive []byte, opts SkillBundleParseOptions) (
 	if err != nil {
 		return nil, err
 	}
-	return skillBundleFromFiles(archive, files)
+	return skillBundleFromFiles(archive, files, parsers)
 }
 
 func unzipSkillArchive(archive []byte, opts SkillBundleParseOptions) (map[string][]byte, error) {
@@ -101,7 +148,7 @@ func unzipSkillArchive(archive []byte, opts SkillBundleParseOptions) (map[string
 	var totalBytes int64
 	for _, item := range entries {
 		entryBytes := item.size
-		if totalBytes+entryBytes > maxSkillBundleTotalBytes {
+		if totalBytes+entryBytes > MaxSkillBundleTotalBytes {
 			return nil, fmt.Errorf("%w: archive is too large", ErrSkillBundleInvalid)
 		}
 		totalBytes += entryBytes
@@ -111,7 +158,7 @@ func unzipSkillArchive(archive []byte, opts SkillBundleParseOptions) (map[string
 		}
 		if int64(len(content)) > entryBytes {
 			actualExcess := int64(len(content)) - entryBytes
-			if totalBytes+actualExcess > maxSkillBundleTotalBytes {
+			if totalBytes+actualExcess > MaxSkillBundleTotalBytes {
 				return nil, fmt.Errorf("%w: archive is too large", ErrSkillBundleInvalid)
 			}
 			totalBytes += actualExcess
@@ -178,7 +225,7 @@ func skillZipEntries(archive []byte, opts SkillBundleParseOptions) ([]skillZipEn
 		if err := inspectKeptSkillZipEntry(item); err != nil {
 			return nil, err
 		}
-		if totalBytes+item.size > maxSkillBundleTotalBytes {
+		if totalBytes+item.size > MaxSkillBundleTotalBytes {
 			return nil, fmt.Errorf("%w: archive is too large", ErrSkillBundleInvalid)
 		}
 		totalBytes += item.size
@@ -301,16 +348,18 @@ func skillZipFileIndex(archive []byte) (map[string]skillZipEntry, error) {
 	return out, nil
 }
 
-func skillBundleFromFiles(archive []byte, files map[string][]byte) (*SkillBundle, error) {
+func skillBundleFromFiles(
+	archive []byte, files map[string][]byte, parsers skillManifestParsers,
+) (*SkillBundle, error) {
 	manifest, ok := files["SKILL.md"]
 	if !ok {
 		return nil, fmt.Errorf("%w: SKILL.md is missing", ErrSkillBundleInvalid)
 	}
-	skill, err := skills.ParseSkillFile(string(manifest))
+	skill, err := parsers.manifest(string(manifest))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSkillBundleInvalid, err)
 	}
-	version, err := parseSkillBundleVersion(string(manifest))
+	version, err := parseSkillBundleVersion(string(manifest), parsers.frontmatter)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSkillBundleInvalid, err)
 	}
@@ -320,31 +369,31 @@ func skillBundleFromFiles(archive []byte, files map[string][]byte) (*SkillBundle
 		Version:             version,
 		Description:         skill.Description,
 		Instructions:        skill.Instructions,
-		SHA256:              skillArchiveSHA256(archive),
+		SHA256:              SkillArchiveSHA256(archive),
 		Files:               files,
 		FrontmatterRepaired: skill.FrontmatterRepaired,
 	}, nil
 }
 
-func skillArchiveSHA256(archive []byte) string {
+func SkillArchiveSHA256(archive []byte) string {
 	sum := sha256.Sum256(archive)
 	return hex.EncodeToString(sum[:])
 }
 
-// archiveMatchesSHA reports whether archive is the digest the row claims.
+// ArchiveMatchesSHA reports whether archive is the digest the row claims.
 // An empty expected digest is treated as unknown, not as a match against
 // whatever happens to be on disk — callers that want a fallback must opt in.
-func archiveMatchesSHA(archive []byte, want string) bool {
+func ArchiveMatchesSHA(archive []byte, want string) bool {
 	want = strings.TrimSpace(want)
 	if want == "" || len(archive) == 0 {
 		return false
 	}
-	return skillArchiveSHA256(archive) == want
+	return SkillArchiveSHA256(archive) == want
 }
 
-// zipSkillFiles writes a deterministic skill-root zip so a remote archive that
+// ZipSkillFiles writes a deterministic skill-root zip so a remote archive that
 // had to be re-rooted can go through the same InstallSkill path as an upload.
-func zipSkillFiles(files map[string][]byte) ([]byte, error) {
+func ZipSkillFiles(files map[string][]byte) ([]byte, error) {
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)
@@ -390,7 +439,7 @@ func validateSkillEntryName(name string) error {
 	return nil
 }
 
-func parseSkillBundleVersion(manifest string) (string, error) {
+func parseSkillBundleVersion(manifest string, frontmatter func(frontmatter string, dest any) (bool, error)) (string, error) {
 	manifest = strings.TrimPrefix(manifest, "\ufeff")
 	lines := strings.Split(manifest, "\n")
 	frontmatterStart := -1
@@ -421,8 +470,8 @@ func parseSkillBundleVersion(manifest string) (string, error) {
 	var metadata struct {
 		Version string `yaml:"version"`
 	}
-	frontmatter := strings.Join(lines[frontmatterStart+1:frontmatterEnd], "\n")
-	if _, err := skills.UnmarshalSkillFrontmatter(frontmatter, &metadata); err != nil {
+	fm := strings.Join(lines[frontmatterStart+1:frontmatterEnd], "\n")
+	if _, err := frontmatter(fm, &metadata); err != nil {
 		return "", err
 	}
 	return metadata.Version, nil
