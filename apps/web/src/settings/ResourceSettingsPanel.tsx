@@ -642,7 +642,7 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
   // header in Vue. Vue has no refresh affordance on these lists — the
   // heading is a plain .list-section-title (16px/600, mb 16).
   const innerListTitle = section === 'storage' ? null : (
-    <h3 className="list-section-title m-0">{t(keys.list)}</h3>
+    <h3 className="list-section-title">{t(keys.list)}</h3>
   );
 
   // -------------------------------------------------------------------------

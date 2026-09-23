@@ -1112,3 +1112,47 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 .wk-audit-detail-head h3 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
 .wk-audit-detail-head p { margin: 0; font-size: 12px; color: #8a96a8; }
 .wk-audit-detail-head button { cursor: pointer; border: 0; background: transparent; font-size: 24px; line-height: 1; }
+
+/* ==== S6 Tailwind 收编（续）：PersonalMemorySettingsPanel 单引号批次 ====
+ * 记忆行/追踪行/文档行为 React 保留实现（前任 task-12a 偏离项），原
+ * 单引号 utilities（前任静态口径未计入）→ .wk-memory-* 规则族。 */
+.wk-settings-drawer-root .wk-memory-pop-anchor { position: relative; display: inline-flex; }
+.wk-settings-drawer-root .wk-memory-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  width: max-content;
+  max-width: 260px;
+  border: 1px solid var(--color-line-neutral, #e7e7e7);
+  border-radius: var(--radius-control, 6px);
+  background: var(--color-surface, #fff);
+  padding: 10px 12px;
+  box-shadow: 0 3px 14px 2px rgba(0, 0, 0, 0.05), 0 8px 10px 1px rgba(0, 0, 0, 0.06), 0 5px 5px -3px rgba(0, 0, 0, 0.1);
+}
+.wk-settings-drawer-root .wk-memory-pop__message { margin: 0 0 8px; font-size: 13px; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-memory-pop__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.wk-settings-drawer-root .wk-memory-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--color-line-neutral, #e7e7e7); padding-block: 16px; }
+.wk-settings-drawer-root .wk-memory-row:last-child { border-bottom: 0; }
+.wk-settings-drawer-root .wk-memory-row__main { min-width: 0; flex: 1 1 0%; }
+.wk-settings-drawer-root .wk-memory-edit { margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; }
+.wk-settings-drawer-root .wk-memory-row__actions { display: flex; flex-shrink: 0; align-items: center; gap: 4px; margin-top: -2px; }
+.wk-settings-drawer-root .wk-memory-action { display: inline-flex; min-height: 24px; width: 24px; min-width: 24px; cursor: pointer; align-items: center; justify-content: center; border: 0; border-radius: 3px; background: transparent; padding: 0; color: rgba(0, 0, 0, 0.6); }
+.wk-settings-drawer-root .wk-memory-action:hover:not(:disabled) { background: #f3f3f3; }
+.wk-settings-drawer-root .wk-memory-action:disabled { cursor: not-allowed; opacity: 0.4; }
+.wk-settings-drawer-root .wk-memory-action--danger { color: #e34d59; }
+.wk-settings-drawer-root .wk-memory-topic-title { margin: 0 0 4px; overflow-wrap: break-word; font-size: 14px; line-height: 1.6; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-memory-track { display: flex; max-width: 360px; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.wk-settings-drawer-root .wk-memory-track__bar { height: 4px; min-width: 80px; flex: 1 1 0%; overflow: hidden; border-radius: 9999px; background: var(--color-line-neutral, #e7e7e7); }
+.wk-settings-drawer-root .wk-memory-track__fill { height: 100%; border-radius: 9999px; background: var(--color-accent, #07c05f); }
+.wk-settings-drawer-root .wk-memory-track__text { flex-shrink: 0; font-size: 12px; line-height: 18px; color: rgba(0, 0, 0, 0.4); }
+.wk-settings-drawer-root .wk-memory-alias { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-settings-drawer-root .wk-memory-pager { display: flex; margin-top: 16px; align-items: center; gap: 4px; }
+.wk-settings-drawer-root .wk-memory-pager-btn { height: 24px; min-width: 24px; cursor: pointer; border: 1px solid transparent; border-radius: 3px; background: transparent; padding: 0 6px; font-size: 13px; color: rgba(0, 0, 0, 0.6); }
+.wk-settings-drawer-root .wk-memory-pager-btn:hover:not(:disabled) { border-color: var(--color-accent, #07c05f); color: var(--color-accent, #07c05f); }
+.wk-settings-drawer-root .wk-memory-pager-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+.wk-settings-drawer-root .wk-memory-pager-btn.is-current { border-color: var(--color-accent, #07c05f); background: var(--color-accent, #07c05f); color: var(--color-surface, #fff); }
+@media (max-width: 720px) {
+  .wk-settings-drawer-root .wk-memory-row { flex-direction: column; gap: 8px; }
+  .wk-settings-drawer-root .wk-memory-row__actions { margin-top: 0; }
+}
