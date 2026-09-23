@@ -63,7 +63,7 @@ type TenantSkillService struct {
 	resolver  interfaces.StorageBackendResolver
 	sandboxes sandbox.TenantSandboxResolver
 	// adapters承接旧宿主包内仍留驻的 conversation/execution 能力与
-	// agentruntime 工具面（见 host_adapters.go）；由构造器装配。
+	// agent 运行时模块工具面（见 host_adapters.go）；由构造器装配。
 	adapters HostAdapters
 	agents   interfaces.AgentService
 	// installerAgents reads the stored installer record. It is a separate

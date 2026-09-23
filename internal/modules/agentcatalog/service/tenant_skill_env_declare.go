@@ -55,7 +55,7 @@ var reservedEnvNames = map[string]bool{
 // RegisterReservedEnvNames merges the names skill environment preparation
 // actually writes into the reserved set (idempotent map union). It replaces the
 // package-level init() this file carried in the old host package: the injected
-// names live behind agentruntime, so the host-path residual registers them at
+// names live behind the agent runtime packages, so the host-path residual registers them at
 // init time and new-package tests register them explicitly.
 //
 // The names are not a guessed prefix. Output dir, history root and skill dir

@@ -10,7 +10,7 @@ import (
 )
 
 // HostAdapters 承接旧宿主包内仍留驻的 conversation/execution 未导出能力与
-// agentruntime 工具面（Pass B 25b 搬迁解耦），由旧路径残差构造器装配（IB2 起、
+// agent 运行时模块工具面（Pass B 25b 搬迁解耦），由旧路径残差构造器装配（IB2 起、
 // 35b/13-execution 搬迁后收口为对端导出端口）。字段语义与被替换符号 1:1；
 // 除 SessionUserID 外全部必填（NewTenantSkillService 内显式校验并 fail-fast）。
 //
@@ -29,22 +29,22 @@ type HostAdapters struct {
 	// internal/application/service/session.go，1:1 委托公共 API）。
 	// nil 缺省为 types.SessionOwnerIDFromContext(ctx)。
 	SessionUserID func(ctx context.Context) string
-	// SkillManifestParser 替代 skills.ParseSkillFile（agentruntime agent/skills）
+	// SkillManifestParser 替代 skills.ParseSkillFile（agent 运行时 skills 包）
 	// + SkillBundle 的 4 字段拷贝，见 SkillManifestView。
 	SkillManifestParser func(content string) (SkillManifestView, error)
 	// FrontmatterVersionParser 替代 skills.UnmarshalSkillFrontmatter
-	// （agentruntime agent/skills），bundle 版本探测 helper 消费。
+	// （agent 运行时 skills 包），bundle 版本探测 helper 消费。
 	FrontmatterVersionParser func(frontmatter string, dest any) (bool, error)
 	// InstallerToolNames 替代 tools.ToolShellExec/ToolWriteSkillFile/ToolEditSkillFile
-	// （agentruntime agent/tools）；返回 [shellExec, writeSkillFile, editSkillFile]。
+	// （agent 运行时 tools 包）；返回 [shellExec, writeSkillFile, editSkillFile]。
 	InstallerToolNames func() [3]string
 	// StreamContentForToolResult / SanitizeToolResultForClient / SanitizeAgentStepsForStorage
-	// 替代 agentruntime agent/tools persist 三个自由函数。
+	// 替代 agent 运行时 tools persist 三个自由函数。
 	StreamContentForToolResult   func(toolName string, success bool, errMsg string, data map[string]interface{}) string
 	SanitizeToolResultForClient  func(toolName string, result *types.ToolResult) map[string]interface{}
 	SanitizeAgentStepsForStorage func(steps []types.AgentStep) []types.AgentStep
-	// OnDemandInstallerPath 替代 skills.IsOnDemandInstallerPath（agentruntime
-	// agent/skills），判定 bundle 内按需安装脚本路径（安装 prompt 消费）。
+	// OnDemandInstallerPath 替代 skills.IsOnDemandInstallerPath（agent 运行时
+	// skills 包），判定 bundle 内按需安装脚本路径（安装 prompt 消费）。
 	OnDemandInstallerPath func(scriptPath string) bool
 	// UniqueNonEmptyStrings 替代 conversation 属主 uniqueNonEmptyStrings
 	// （session_knowledge_qa.go：跳过空串再去重）。本面 uniqueStrings（bundle.go，
@@ -53,7 +53,7 @@ type HostAdapters struct {
 }
 
 // SkillManifestView 是 SKILL.md 解析结果中安装/目录流程实际消费的 4 字段数据视图
-// （数据形状，非逻辑复制；对应 agentruntime skills.Skill 的消费面）。
+// （数据形状，非逻辑复制；对应 agent 运行时 skills.Skill 的消费面）。
 type SkillManifestView struct {
 	Name                string
 	Description         string
@@ -139,7 +139,7 @@ func (a HostAdapters) manifestParsers() skillManifestParsers {
 	}
 }
 
-// transcriptSanitizer 收敛 install 转录对 agentruntime persist 三个函数的消费，
+// transcriptSanitizer 收敛 install 转录对 agent 运行时 persist 三个函数的消费，
 // 由 newInstallTranscript 的调用方从 adapters 装配。
 type transcriptSanitizer struct {
 	streamContentForToolResult   func(toolName string, success bool, errMsg string, data map[string]interface{}) string

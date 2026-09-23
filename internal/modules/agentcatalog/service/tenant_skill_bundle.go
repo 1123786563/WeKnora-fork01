@@ -79,7 +79,7 @@ type skillManifestParsers struct {
 
 // registeredBundleParsers backs the adapters-free ParseSkillBundle entry
 // points. It is set once at init time by the host-path residual (and by this
-// package's own tests, which may import agentruntime). Nil parsers there fail
+// package's own tests, which may import the agent runtime packages). Nil parsers there fail
 // fast instead of guessing.
 //
 // Pass B 25b 过渡接缝，remove_at: ib2（与 RegisterReservedEnvNames 同类先例，
