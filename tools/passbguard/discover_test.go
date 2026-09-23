@@ -104,6 +104,62 @@ var importExceptions = exceptionRows
 	}
 }
 
+// TestReferencesSymbolIgnoresSameNameBindings 覆盖 OCR R1 #05：同包（sameDir）
+// 文件里与符号同名的绑定位置标识符不是引用——字段名（Field.Names）、局部
+// 变量声明（AssignStmt 左侧 :=）、复合字面量键（KeyValueExpr.Key）均不得
+// 计为消费方；真实的裸引用（类型/表达式位置）仍必须命中。
+// 该发现驱动 contract-consumer-unrecorded/vanished 诊断，同包重构引入同名
+// 标识符不应触发误报。
+func TestReferencesSymbolIgnoresSameNameBindings(t *testing.T) {
+	root := t.TempDir()
+	writeDiscoverFixture(t, root, "internal/svc/svc.go", `package svc
+
+// SessionService 是同包冻结符号 fixture。
+type SessionService interface{ Boot() }
+`)
+	// shadow.go 与定义文件同目录同包：仅含同名的绑定位置标识符，无真实引用。
+	writeDiscoverFixture(t, root, "internal/svc/shadow.go", `package svc
+
+type holderConfig struct{ Booted bool }
+
+// 字段名与符号同名（Field.Names 绑定位置）：不是对 SessionService 的引用。
+type Holder struct {
+	SessionService *holderConfig
+}
+
+type cfg struct{ SessionService int }
+
+func shadow() {
+	// 局部变量声明与符号同名（AssignStmt 左侧 := 绑定）：不是引用。
+	SessionService := 1
+	// 复合字面量键与符号同名（KeyValueExpr.Key 绑定）：不是引用。
+	_ = cfg{SessionService: 2}
+}
+
+var _ = Holder{}
+`)
+	// user.go 是阳性对照：类型位置的真实裸引用必须命中。
+	writeDiscoverFixture(t, root, "internal/svc/user.go", `package svc
+
+var booter SessionService
+`)
+
+	files, imports, err := discoverGoTree(root)
+	require.NoError(t, err)
+	d := &Discovery{Root: root, GoFiles: files, Imports: imports}
+
+	fact, found, err := DiscoverSymbol(root, "internal/svc/svc.go", "SessionService")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "github.com/Tencent/WeKnora/internal/svc", fact.ImportPath)
+
+	consumers, tests, err := DiscoverSymbolConsumers(d, fact)
+	require.NoError(t, err)
+	require.Equal(t, []string{"internal/svc/user.go"}, consumers,
+		"同名绑定位置不得计为消费方，真实裸引用必须命中")
+	require.Empty(t, tests)
+}
+
 // TestDiscoverGoTreeKeepsRootItself 确保 SkipDir 收紧到点前缀目录后不误伤
 // 根目录本身：`-root .`（根回调 entry.Name() == "."）与点前缀根名都必须照常
 // 发现（make check-passb-readiness 以 `-root .` 运行）。

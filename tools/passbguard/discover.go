@@ -303,7 +303,11 @@ func (d *Discovery) parseFileFull(rel string) (*cachedAST, error) {
 	return c, nil
 }
 
-// DiscoverSymbol 在仓库内定位 file:Name 顶层声明并渲染其当前签名。
+// DiscoverSymbol 在仓库内定位 file:Name 声明并渲染其当前签名。
+// 顶层声明（func/interface/struct/type/var/const）优先；找不到时回退到
+// 同名方法（OCR R1 #15：event-catalog 的 producer 多为带接收者的方法，
+// 如 gate.go:RequestAndWait——方法签名含接收者渲染，绝不与冻结的顶层
+// 签名相等，契约符号的既有发现行为不变）。
 // 找到返回 (fact, true, nil)；文件可解析但声明不存在返回 (nil, false, nil)；
 // 文件不存在/不可解析返回错误。
 func DiscoverSymbol(root, file, name string) (*SymbolFact, bool, error) {
@@ -363,7 +367,29 @@ func DiscoverSymbol(root, file, name string) (*SymbolFact, bool, error) {
 			}
 		}
 	}
+	// 方法回退：带接收者的 FuncDecl，签名含接收者（与顶层签名天然区分）。
+	for _, decl := range f.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Recv == nil || fd.Name.Name != name {
+			continue
+		}
+		return &SymbolFact{
+			File:       file,
+			Name:       name,
+			DeclKind:   "method",
+			Signature:  "func (" + receiverText(fd, fset) + ") " + name + renderFuncType(fd.Type, fset),
+			ImportPath: importPathOfDir(dirOf(file)),
+		}, true, nil
+	}
 	return nil, false, nil
+}
+
+// receiverText 渲染方法接收者类型文本（如 *Gate）。
+func receiverText(fd *ast.FuncDecl, fset *token.FileSet) string {
+	if len(fd.Recv.List) == 0 {
+		return ""
+	}
+	return exprText(fd.Recv.List[0].Type, fset)
 }
 
 // DiscoverSymbolConsumers 发现一个符号的生产消费方与特征化测试文件。
@@ -412,8 +438,18 @@ func DiscoverSymbolConsumers(d *Discovery, fact *SymbolFact) (consumers, tests [
 
 // referencesSymbol 判断文件是否引用符号：同包时裸 Ident 命中即可；
 // 跨包时须以定义包限定名（含别名）的 SelectorExpr.Sel 命中。
+//
+// 同包裸 Ident 采用绑定位置启发式（OCR R1 #05）：定义同名标识符的上下文
+// ——字段名（Field.Names）、复合字面量键（KeyValueExpr.Key）、var/const 与
+// 赋值左侧绑定（ValueSpec.Names、AssignStmt.Lhs）、函数/方法/类型声明名
+// 与 import 别名——不是引用。同包重构引入同名字段/局部变量不得误判为
+// 消费方（该结果驱动 contract-consumer-unrecorded/vanished 阻断诊断）。
+// 已知局限（保守取向）：局部变量遮蔽后的使用位置（x := 1; use(x) 中 x）
+// 仍是同名裸 Ident，无法与真实引用区分，按引用处理——宁可多报 unrecorded
+// 也不静默漏报真实消费方。
 func referencesSymbol(f *ast.File, name string, sameDir bool, qualifiers map[string]bool) bool {
 	found := false
+	bindings := bindingIdentPositions(f)
 	ast.Inspect(f, func(n ast.Node) bool {
 		if found {
 			return false
@@ -428,7 +464,7 @@ func referencesSymbol(f *ast.File, name string, sameDir bool, qualifiers map[str
 				return false
 			}
 		case *ast.Ident:
-			if sameDir && e.Name == name {
+			if sameDir && e.Name == name && !bindings[e.Pos()] {
 				found = true
 				return false
 			}
@@ -436,6 +472,47 @@ func referencesSymbol(f *ast.File, name string, sameDir bool, qualifiers map[str
 		return true
 	})
 	return found
+}
+
+// bindingIdentPositions 收集文件内全部「绑定位置」Ident 的 Pos 集合：
+// 声明名（函数/方法/类型/值/import 别名/标签）、字段名、复合字面量键、
+// 赋值左侧。这些位置的 Ident 是名字的定义而非使用，不算符号引用。
+func bindingIdentPositions(f *ast.File) map[token.Pos]bool {
+	b := map[token.Pos]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch e := n.(type) {
+		case *ast.FuncDecl:
+			b[e.Name.Pos()] = true
+		case *ast.TypeSpec:
+			b[e.Name.Pos()] = true
+		case *ast.Field: // 结构体字段、参数/结果名、接口方法名、类型参数
+			for _, id := range e.Names {
+				b[id.Pos()] = true
+			}
+		case *ast.ValueSpec: // var/const 声明名
+			for _, id := range e.Names {
+				b[id.Pos()] = true
+			}
+		case *ast.ImportSpec: // import 别名
+			if e.Name != nil {
+				b[e.Name.Pos()] = true
+			}
+		case *ast.LabeledStmt:
+			b[e.Label.Pos()] = true
+		case *ast.AssignStmt: // := 与 = 左侧标识符
+			for _, lhs := range e.Lhs {
+				if id, ok := lhs.(*ast.Ident); ok {
+					b[id.Pos()] = true
+				}
+			}
+		case *ast.KeyValueExpr: // 结构体/映射字面量键
+			if id, ok := e.Key.(*ast.Ident); ok {
+				b[id.Pos()] = true
+			}
+		}
+		return true
+	})
+	return b
 }
 
 // qualifiersFor 返回文件内指向 importPath 的全部限定名（别名或默认包名）。

@@ -127,6 +127,9 @@ var importExceptions = []importException{
 	require.Contains(t, out, "legacy-missing: internal/application/repository/widget.go:")
 	require.Contains(t, out, "alias-missing: internal/application/service/widgets:")
 	require.Contains(t, out, "exception-missing: internal/modules/agentruntime/agent/engine.go:")
+	// OCR R1 #15：event-catalog.yaml 缺失（空集）必须报空目录诊断，
+	// 不得静默通过。
+	require.Contains(t, out, "event-catalog-empty:")
 }
 
 // governanceYAMLCount 用普通 yaml.Unmarshal（KnownFields 关闭）独立计数一份

@@ -478,6 +478,29 @@ func BadAdapters(s ifaces.TenantService) { _ = thing.Adapter{} }
 	}
 }
 
+// TestContractBaselineSkipsComparisonWhenLedgerUnparseable 覆盖 OCR R1 #04：
+// Pass A 验收台账缺失/不可解析时，只报单条 contract-baseline-ledger 结构性
+// 诊断，不得以零值 led 继续三行对照——那会产生「disagrees with pass-a
+// ledger 0」的 drift 与 missing 级联噪声，污染 CI 输出并误导排障方向。
+func TestContractBaselineSkipsComparisonWhenLedgerUnparseable(t *testing.T) {
+	root := cloneContractRepo(t)
+	require.NoError(t, os.Remove(filepath.Join(root,
+		"docs", "architecture", "evidence", "pass-a-acceptance.md")))
+
+	g := fixtureContractGovernance(t, root)
+	d := fixtureContractDiscovery(t, root)
+	diags := CheckContracts(g, d)
+
+	led, ok := findDiag(diags, "contract-baseline-ledger")
+	require.True(t, ok, "台账不可解析必须报 contract-baseline-ledger，got: %v", diags)
+	require.Contains(t, led.Message, "cannot parameterize baseline counts")
+	for _, check := range []string{"contract-baseline-drift", "contract-baseline-missing"} {
+		_, hit := findDiag(diags, check)
+		require.Falsef(t, hit,
+			"台账不可解析时不得以零值基线产生 %s 级联诊断（实得 %v）", check, diags)
+	}
+}
+
 // ---- 真实仓库冻结验证（B0.4 Step 7）----
 
 // TestRealRepoContractsFreezeCurrentSurfaces 覆盖 Review Focus「契约抽取必须含全部

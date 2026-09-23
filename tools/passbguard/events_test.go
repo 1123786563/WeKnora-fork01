@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -537,4 +538,220 @@ func TestRealRepoEventCatalogMapsCurrentProducersAndConsumers(t *testing.T) {
 				tc.id, tc.wantConsumerSubstrs[0], e.Consumers)
 		})
 	}
+}
+
+// ---- OCR R1 #15：CheckEvents 事件目录漂移守卫（守卫路径补齐）----
+//
+// RunPassBGuard 此前只聚合 Ownership/Contracts/Ambiguity/Rulings/Brief，
+// g.Events 仅剩 schema 校验与计数：目录删除或位点漂移不阻断 CI。
+// CheckEvents 把事件目录与仓库发现对照：目录非空、producer 符号真实声明
+// （DiscoverSymbol，含方法）、consumers 在 Go 树上、transport/replay/version
+// 遵守 B0 冻结词汇。
+
+// fixtureEventForCheck 构造一条锚定 contractrepo fixture 的合法事件。
+func fixtureEventForCheck(id string) Event {
+	return Event{
+		ID:               EventID(id),
+		Version:          1,
+		Producer:         "internal/router/routes_tenant.go:RegisterTenantRoutes",
+		Meaning:          "fixture 已发生的事实",
+		Ordering:         "per-fixture 单调",
+		Replay:           "source-query",
+		Transport:        "in_process",
+		Consumers:        []string{"internal/container/container.go"},
+		RequiredMetadata: []string{"idempotency_key"},
+	}
+}
+
+// TestCheckEventsHappyPathProducesNoDiagnostics：合法冻结事件零诊断。
+func TestCheckEventsHappyPathProducesNoDiagnostics(t *testing.T) {
+	root := contractRepoRoot(t)
+	g := &Governance{Events: []Event{fixtureEventForCheck("conversation.message.appended")}}
+	diags := CheckEvents(g, fixtureContractDiscovery(t, root))
+	require.Empty(t, diags, "diags: %v", diags)
+}
+
+// TestCheckEventsDiagnostics 表驱动覆盖漂移面：producer 符号/文件缺失或形态
+// 非法、consumer 不在 Go 树、transport/replay/version 越出 B0 冻结词汇。
+func TestCheckEventsDiagnostics(t *testing.T) {
+	cases := []struct {
+		name  string
+		mut   func(e *Event)
+		check string
+		want  string
+	}{
+		{
+			name: "producer symbol not declared",
+			mut: func(e *Event) {
+				e.Producer = "internal/router/routes_tenant.go:GhostRoutes"
+			},
+			check: "event-producer-missing",
+			want:  "GhostRoutes",
+		},
+		{
+			name: "producer file missing",
+			mut: func(e *Event) {
+				e.Producer = "internal/router/ghost.go:RegisterTenantRoutes"
+			},
+			check: "event-producer-missing",
+			want:  "ghost.go",
+		},
+		{
+			name: "producer malformed",
+			mut: func(e *Event) {
+				e.Producer = "internal/router/routes_tenant.go"
+			},
+			check: "event-producer-missing",
+			want:  "file:Name",
+		},
+		{
+			name: "consumer missing from go tree",
+			mut: func(e *Event) {
+				e.Consumers = []string{"internal/container/ghost.go"}
+			},
+			check: "event-consumer-missing",
+			want:  "ghost.go",
+		},
+		{
+			name: "transport outside frozen vocabulary",
+			mut: func(e *Event) {
+				e.Transport = "kafka"
+			},
+			check: "event-transport-frozen",
+			want:  "kafka",
+		},
+		{
+			name: "replay outside frozen vocabulary",
+			mut: func(e *Event) {
+				e.Replay = "event-sourced-broker"
+			},
+			check: "event-replay-frozen",
+			want:  "source-query",
+		},
+		{
+			name: "version beyond B0 freeze",
+			mut: func(e *Event) {
+				e.Version = 2
+			},
+			check: "event-version-frozen",
+			want:  "version-1",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := contractRepoRoot(t)
+			e := fixtureEventForCheck("conversation.message.appended")
+			tc.mut(&e)
+			g := &Governance{Events: []Event{e}}
+			diags := CheckEvents(g, fixtureContractDiscovery(t, root))
+			diag, ok := findDiag(diags, tc.check)
+			require.True(t, ok, "want check %q, got diags: %v", tc.check, diags)
+			require.Contains(t, diag.Message, tc.want)
+		})
+	}
+}
+
+// TestCheckEventsRequiresNonEmptyCatalog：目录为空（含整份 event-catalog.yaml
+// 缺失按空集加载的形态）必须报 event-catalog-empty。
+func TestCheckEventsRequiresNonEmptyCatalog(t *testing.T) {
+	diags := CheckEvents(&Governance{}, &Discovery{})
+	require.Len(t, diags, 1, "空目录只报一条结构性诊断，got: %v", diags)
+	_, ok := findDiag(diags, "event-catalog-empty")
+	require.True(t, ok, "空目录必须报 event-catalog-empty，got: %v", diags)
+}
+
+// TestCheckEventsProducerMayBeMethod：真实目录的 producer 绝大多数是带接收者
+// 的方法（如 gate.go:RequestAndWait），DiscoverSymbol 必须以方法回退命中
+// ——契约符号语义不变（顶层声明优先，方法仅回退）。
+func TestCheckEventsProducerMayBeMethod(t *testing.T) {
+	root := t.TempDir()
+	writeDiscoverFixture(t, root, "internal/store/store.go", `package store
+
+// Store 是 fixture 事件生产者宿主。
+type Store struct{}
+
+// AppendFact 是方法形态的 producer 符号。
+func (s *Store) AppendFact(id string) error { return nil }
+`)
+	files, imports, err := discoverGoTree(root)
+	require.NoError(t, err)
+	d := &Discovery{Root: root, GoFiles: files, Imports: imports}
+
+	e := fixtureEventForCheck("x.fact.appended")
+	e.Producer = "internal/store/store.go:AppendFact"
+	e.Consumers = []string{"internal/store/store.go"}
+	diags := CheckEvents(&Governance{Events: []Event{e}}, d)
+	require.Empty(t, diags, "diags: %v", diags)
+
+	// 方法同样参与存在性校验：方法被删除必须报 producer-missing。
+	e.Producer = "internal/store/store.go:DropFact"
+	diags = CheckEvents(&Governance{Events: []Event{e}}, d)
+	_, ok := findDiag(diags, "event-producer-missing")
+	require.True(t, ok, "方法符号缺失必须报 event-producer-missing，got: %v", diags)
+}
+
+// TestRealRepoCheckEventsZeroDiagnostics：真实仓库事件目录对照零诊断。
+func TestRealRepoCheckEventsZeroDiagnostics(t *testing.T) {
+	root := repoRootFromTest(t)
+	g, err := LoadGovernance(root)
+	require.NoError(t, err)
+	d, err := DiscoverPassB(root)
+	require.NoError(t, err)
+	require.NotEmpty(t, g.Events)
+	diags := CheckEvents(g, d)
+	require.Empty(t, diags, "diags: %v", diags)
+}
+
+// TestCLIBlocksOnEventCatalogDrift 覆盖 OCR R1 #15 验收的 CLI 路径：
+// 消费方漂移到不存在的文件时守卫以 1 退出（make check-passb-readiness 阻断）。
+func TestCLIBlocksOnEventCatalogDrift(t *testing.T) {
+	root := t.TempDir()
+	writeMainTestFile(t, filepath.Join(root, "docs/architecture/moves/knowledge.yaml"), `module: knowledge
+description: fixture manifest for event drift
+legacy_files:
+  - path: internal/application/repository/widget.go
+    reason: fixture legacy file
+    passb_task: B-knowledge
+`)
+	writeMainTestFile(t, filepath.Join(root, "internal/application/repository/widget.go"),
+		"package repository\n")
+	writeMainTestFile(t, filepath.Join(root, "internal/application/repository/producer.go"),
+		"package repository\n\n// EmitWidget 是 fixture 事件生产者。\nfunc EmitWidget() {}\n")
+	writeMainTestFile(t, filepath.Join(root, "tools/architectureguard/check.go"), `package architectureguard
+
+type importException struct {
+	ImporterFile string
+	ImportedPath string
+	Reason       string
+	PassBTask    string
+}
+
+var importExceptions = []importException{
+	{
+		ImporterFile: "internal/modules/agentruntime/agent/engine.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason:       "fixture 预存横向包耦合",
+		PassBTask:    "B-agentruntime",
+	},
+}
+`)
+	writeMainTestFile(t, filepath.Join(root, filepath.FromSlash(GovernanceDir), "event-catalog.yaml"), `events:
+  - id: widget.fact.emitted
+    version: 1
+    producer: internal/application/repository/producer.go:EmitWidget
+    meaning: fixture 已发生的事实
+    ordering: per-widget 单调
+    replay: source-query
+    transport: in_process
+    consumers:
+      - internal/application/repository/ghost_consumer.go
+    required_metadata: [idempotency_key]
+`)
+
+	var stdout, stderr bytes.Buffer
+	code := run(&stdout, &stderr, []string{"-root", root})
+	require.Equal(t, 1, code, "消费方漂移必须以 1 退出，stderr:\n%s", stderr.String())
+	require.Empty(t, stdout.String())
+	require.Contains(t, stderr.String(), "event-consumer-missing: widget.fact.emitted:",
+		"漂移诊断必须出现在 CLI 输出中")
 }

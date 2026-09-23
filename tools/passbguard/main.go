@@ -46,6 +46,7 @@ func RunPassBGuard(root string) (*ReadinessReport, []Diagnostic, error) {
 	var all []Diagnostic
 	all = append(all, CheckOwnership(g, d)...)
 	all = append(all, CheckContracts(g, d)...)
+	all = append(all, CheckEvents(g, d)...)
 	amb, err := CheckAmbiguity(root)
 	if err != nil {
 		return nil, nil, err

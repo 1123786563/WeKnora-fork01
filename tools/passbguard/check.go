@@ -396,56 +396,60 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 	}
 
 	// ---- 组合基线：三行 composition.baseline-* 必须在册且与台账一致 ----
+	// 台账不可解析时只报单条 contract-baseline-ledger 并跳过三行对照
+	// （OCR R1 #04）：零值 led 的对照会产生「disagrees with pass-a ledger 0」
+	// 的 drift/missing 级联噪声，误导排障方向。
 	acceptanceLedgerRel := filepath.FromSlash("docs/architecture/evidence/pass-a-acceptance.md")
 	led, ledErr := parseCompositionBaseline(filepath.Join(d.Root, acceptanceLedgerRel))
 	if ledErr != nil {
 		emit("contract-baseline-ledger", "", "cannot parameterize baseline counts: %v", ledErr)
-	}
-	baselineWant := map[string]map[string]int{
-		"composition.baseline-routes": {
-			"routes_total":   led.RoutesTotal,
-			"routes_literal": led.RoutesLiteral,
-			"routes_apikey":  led.RoutesAPIKey,
-		},
-		"composition.baseline-workers": {
-			"worker_types": led.WorkerTypes,
-			"worker_pools": led.WorkerPools,
-			"worker_redis": led.WorkerRedis,
-			"worker_lite":  led.WorkerLite,
-		},
-		"composition.baseline-lifecycle": {
-			"hooks": led.Hooks,
-		},
-	}
-	baselineRows := map[string]Contract{}
-	for _, c := range g.Contracts {
-		if strings.HasPrefix(string(c.ID), "composition.baseline-") {
-			baselineRows[string(c.ID)] = c
+	} else {
+		baselineWant := map[string]map[string]int{
+			"composition.baseline-routes": {
+				"routes_total":   led.RoutesTotal,
+				"routes_literal": led.RoutesLiteral,
+				"routes_apikey":  led.RoutesAPIKey,
+			},
+			"composition.baseline-workers": {
+				"worker_types": led.WorkerTypes,
+				"worker_pools": led.WorkerPools,
+				"worker_redis": led.WorkerRedis,
+				"worker_lite":  led.WorkerLite,
+			},
+			"composition.baseline-lifecycle": {
+				"hooks": led.Hooks,
+			},
 		}
-	}
-	for id, want := range baselineWant {
-		row, ok := baselineRows[id]
-		if !ok {
-			emit("contract-baseline-missing", id, "baseline row required (counts parameterized from pass-a ledger)")
-			continue
-		}
-		got := map[string]string{}
-		for _, item := range row.Items {
-			kv := strings.SplitN(item, "=", 2)
-			if len(kv) != 2 {
-				emit("contract-baseline-drift", id, "item %q must be key=value", item)
-				continue
+		baselineRows := map[string]Contract{}
+		for _, c := range g.Contracts {
+			if strings.HasPrefix(string(c.ID), "composition.baseline-") {
+				baselineRows[string(c.ID)] = c
 			}
-			got[kv[0]] = kv[1]
 		}
-		for key, wantVal := range want {
-			gotVal, ok := got[key]
+		for id, want := range baselineWant {
+			row, ok := baselineRows[id]
 			if !ok {
-				emit("contract-baseline-drift", id, "missing %s entry (want %d)", key, wantVal)
+				emit("contract-baseline-missing", id, "baseline row required (counts parameterized from pass-a ledger)")
 				continue
 			}
-			if gotVal != strconv.Itoa(wantVal) {
-				emit("contract-baseline-drift", id, "%s=%s disagrees with pass-a ledger %d", key, gotVal, wantVal)
+			got := map[string]string{}
+			for _, item := range row.Items {
+				kv := strings.SplitN(item, "=", 2)
+				if len(kv) != 2 {
+					emit("contract-baseline-drift", id, "item %q must be key=value", item)
+					continue
+				}
+				got[kv[0]] = kv[1]
+			}
+			for key, wantVal := range want {
+				gotVal, ok := got[key]
+				if !ok {
+					emit("contract-baseline-drift", id, "missing %s entry (want %d)", key, wantVal)
+					continue
+				}
+				if gotVal != strconv.Itoa(wantVal) {
+					emit("contract-baseline-drift", id, "%s=%s disagrees with pass-a ledger %d", key, gotVal, wantVal)
+				}
 			}
 		}
 	}
@@ -621,6 +625,79 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 		}
 	}
 
+	return sortDiagnosticsDiag(ds)
+}
+
+// ---- B0.5/OCR R1 #15：事件目录漂移守卫 ----
+
+// eventTransportsFrozen 是 B0 冻结的投递形态词汇：B0 不新增 broker，durable
+// 仅限已存在的事件事实表，in_process 覆盖进程内总线/回调路径。
+var eventTransportsFrozen = map[string]bool{"in_process": true, "durable": true}
+
+// eventReplayFrozen 是 B0 冻结的重放规则：投影一律从权威源表重建。
+const eventReplayFrozen = "source-query"
+
+// eventVersionFrozen 是 B0 冻结的事件版本：只登记 version-1 记录。
+const eventVersionFrozen = 1
+
+// CheckEvents 把 event-catalog.yaml 的冻结事件与仓库发现对照（OCR R1 #15）：
+// 目录非空（整份缺失按空集加载，必须显式报错而非静默通过）、producer 是
+// file:Symbol 且符号真实声明于该文件（DiscoverSymbol，含方法回退——真实
+// 目录的 producer 绝大多数是带接收者的方法）、consumers 全部存在于当前
+// Go 树、transport/replay/version 遵守 B0 冻结词汇。
+// 返回值已排序去重；空切片即通过。
+func CheckEvents(g *Governance, d *Discovery) []Diagnostic {
+	var ds []Diagnostic
+	emit := func(check, path, format string, args ...any) {
+		ds = append(ds, Diagnostic{Check: check, Path: path, Message: fmt.Sprintf(format, args...)})
+	}
+
+	if len(g.Events) == 0 {
+		emit("event-catalog-empty", "",
+			"event-catalog.yaml has no frozen events (B0.5 catalog is required, not optional)")
+		return sortDiagnosticsDiag(ds)
+	}
+
+	goFileSet := make(map[string]bool, len(d.GoFiles))
+	for _, p := range d.GoFiles {
+		goFileSet[p] = true
+	}
+
+	for _, e := range g.Events {
+		file, sym, err := splitContractSymbol(e.Producer)
+		if err != nil {
+			emit("event-producer-missing", string(e.ID), "producer %q: %v", e.Producer, err)
+		} else {
+			_, found, err := DiscoverSymbol(d.Root, file, sym)
+			if err != nil {
+				emit("event-producer-missing", string(e.ID),
+					"producer symbol %s: %v", e.Producer, err)
+			} else if !found {
+				emit("event-producer-missing", string(e.ID),
+					"producer file %s no longer declares %s (event revision required)", file, sym)
+			}
+		}
+		for _, p := range e.Consumers {
+			if !goFileSet[p] {
+				emit("event-consumer-missing", string(e.ID),
+					"consumer %s does not exist on disk", p)
+			}
+		}
+		if !eventTransportsFrozen[e.Transport] {
+			emit("event-transport-frozen", string(e.ID),
+				"transport %q must be one of {in_process, durable} (B0 adds no broker)", e.Transport)
+		}
+		if e.Replay != eventReplayFrozen {
+			emit("event-replay-frozen", string(e.ID),
+				"replay %q must be %q (projections rebuild from the authoritative source)",
+				e.Replay, eventReplayFrozen)
+		}
+		if e.Version != eventVersionFrozen {
+			emit("event-version-frozen", string(e.ID),
+				"version %d beyond B0 freeze (only version-1 records; revisions go through contract review)",
+				e.Version)
+		}
+	}
 	return sortDiagnosticsDiag(ds)
 }
 
