@@ -178,7 +178,10 @@ func (h *WorkbenchReadHandler) GetWorkbenchSnapshot(c *gin.Context) {
 		return
 	}
 	if h.taskFacts != nil {
-		facts, factsErr := h.taskFacts.ReadTaskFactsForRun(c.Request.Context(), run.Key.TenantID, run.Owner, run.Key.RunID)
+		// Facts are scoped by the business owner (agent_runs.owner_id). run.Owner
+		// is the lease owner: empty once settled, a worker id while leased — it
+		// never matches the facts guard and would 404 every request.
+		facts, factsErr := h.taskFacts.ReadTaskFactsForRun(c.Request.Context(), run.Key.TenantID, run.UserID, run.Key.RunID)
 		if factsErr != nil {
 			writeWorkbenchError(c, factsErr)
 			return
