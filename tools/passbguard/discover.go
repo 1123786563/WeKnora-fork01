@@ -186,6 +186,12 @@ func discoverImportExceptions(path string) ([]DiscoveredException, error) {
 			if !ok || len(vs.Names) != 1 || vs.Names[0].Name != "importExceptions" {
 				continue
 			}
+			// OCR R1 #f3：无值声明（var importExceptions []importException）
+			// 的 vs.Values 为空，索引前必须防护——守卫须以干净错误失败而非
+			// 越界 panic 丢失全部诊断。
+			if len(vs.Values) == 0 {
+				return nil, fmt.Errorf("importExceptions 声明缺少初始化复合字面量")
+			}
 			lit, ok := vs.Values[0].(*ast.CompositeLit)
 			if !ok {
 				return nil, fmt.Errorf("importExceptions 不是复合字面量")
@@ -369,6 +375,14 @@ func DiscoverSymbol(root, file, name string) (*SymbolFact, bool, error) {
 // 返回 consumers（非 _test.go，排序）与 tests（_test.go，排序）。
 func DiscoverSymbolConsumers(d *Discovery, fact *SymbolFact) (consumers, tests []string, err error) {
 	defDir := dirOf(fact.File)
+	// OCR R1 #f12：无别名导入的默认限定名取定义文件 package 子句
+	// （f.Name.Name），不得按 import 路径尾段推导——包名≠目录名时消费方
+	// 以真实包名限定引用，尾段推导会同时漏报 unrecorded 与误报 vanished。
+	defAST, perr := d.parseFileFull(fact.File)
+	if perr != nil {
+		return nil, nil, perr
+	}
+	defPkg := defAST.file.Name.Name
 	for _, f := range d.GoFiles {
 		if f == fact.File {
 			continue
@@ -382,7 +396,7 @@ func DiscoverSymbolConsumers(d *Discovery, fact *SymbolFact) (consumers, tests [
 		if perr != nil {
 			return nil, nil, perr
 		}
-		qualifiers := qualifiersFor(c.file, fact.ImportPath)
+		qualifiers := qualifiersFor(c.file, fact.ImportPath, defPkg)
 		if referencesSymbol(c.file, fact.Name, sameDir, qualifiers) {
 			if strings.HasSuffix(f, "_test.go") {
 				tests = append(tests, f)
@@ -425,7 +439,9 @@ func referencesSymbol(f *ast.File, name string, sameDir bool, qualifiers map[str
 }
 
 // qualifiersFor 返回文件内指向 importPath 的全部限定名（别名或默认包名）。
-func qualifiersFor(f *ast.File, importPath string) map[string]bool {
+// defPkgName 是定义文件 package 子句：无别名导入的默认限定名取它
+// （OCR R1 #f12），不按 import 路径尾段推导——包名可≠目录名。
+func qualifiersFor(f *ast.File, importPath, defPkgName string) map[string]bool {
 	out := map[string]bool{}
 	for _, imp := range f.Imports {
 		v, err := strconv.Unquote(imp.Path.Value)
@@ -436,11 +452,7 @@ func qualifiersFor(f *ast.File, importPath string) map[string]bool {
 			out[imp.Name.Name] = true
 			continue
 		}
-		if i := strings.LastIndex(v, "/"); i >= 0 {
-			out[v[i+1:]] = true
-		} else {
-			out[v] = true
-		}
+		out[defPkgName] = true
 	}
 	return out
 }

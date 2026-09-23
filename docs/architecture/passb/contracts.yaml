@@ -71,7 +71,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -194,7 +193,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -321,7 +319,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -624,7 +621,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -725,7 +721,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -840,6 +835,7 @@ contracts:
       characterization_tests: []
       items:
         - worker_types=23
+        - worker_pools=6
         - worker_redis=23
         - worker_lite=23
     - id: conversation.facade
@@ -876,7 +872,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -937,7 +932,6 @@ contracts:
         - internal/router/files.go
         - internal/router/routes_chat.go
         - internal/router/routes_query_history.go
-        - router.go
       characterization_tests: []
       items:
         - RegisterMessageRoutes — internal/router/routes_chat.go:20
@@ -1078,7 +1072,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
         - internal/container/craft_interaction.go
         - internal/container/craft_lifecycle.go
@@ -1144,7 +1137,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -1345,7 +1337,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -1766,7 +1757,6 @@ contracts:
         - internal/router/files.go
         - internal/router/routes_infra.go
         - internal/router/routes_knowledge.go
-        - router.go
       characterization_tests: []
       items:
         - RegisterChunkerDebugRoutes — internal/router/routes_knowledge.go:18
@@ -1994,7 +1984,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -2055,7 +2044,6 @@ contracts:
       signature: integration_points.lifecycle_hooks
       stability: frozen
       consumers:
-        - container.go
         - internal/container/container.go
       characterization_tests: []
       items:
@@ -2071,7 +2059,6 @@ contracts:
         - internal/handler/artifact_preview.go
         - internal/router/routes_chat.go
         - internal/router/routes_workbench.go
-        - routes_chat.go
       characterization_tests: []
       items:
         - RegisterWorkbenchOverviewRoutes — internal/router/routes_workbench.go:73

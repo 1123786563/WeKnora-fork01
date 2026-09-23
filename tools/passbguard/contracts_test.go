@@ -153,7 +153,7 @@ func fixtureContractGovernance(t *testing.T, root string) *Governance {
 				Symbol:    "docs/architecture/evidence/pass-a-acceptance.md",
 				Signature: "baseline totals",
 				Stability: "frozen",
-				Items:     []string{"worker_types=4", "worker_redis=4", "worker_lite=4"},
+				Items:     []string{"worker_types=4", "worker_pools=6", "worker_redis=4", "worker_lite=4"},
 			},
 			{
 				ID:        "composition.baseline-lifecycle",
@@ -209,6 +209,42 @@ func TestContractCheckHappyPathProducesNoDiagnostics(t *testing.T) {
 	root := contractRepoRoot(t)
 	diags := CheckContracts(fixtureContractGovernance(t, root), fixtureContractDiscovery(t, root))
 	require.Empty(t, diags, "diags: %v", diags)
+}
+
+// TestContractDiscoveryQualifiesByDefinitionPackageClause 覆盖 OCR R1 #f12：
+// 定义包 internal/version/ver 的包子句是 version（≠目录尾段 ver）。无别名
+// 导入的消费方以真实包名（version.APIVersion）限定引用，发现必须命中——
+// 默认限定名取定义文件 package 子句，不得按 import 路径尾段推导。
+func TestContractDiscoveryQualifiesByDefinitionPackageClause(t *testing.T) {
+	root := contractRepoRoot(t)
+	fact, found, err := DiscoverSymbol(root, "internal/version/ver/version.go", "APIVersion")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "github.com/Tencent/WeKnora/internal/version/ver", fact.ImportPath)
+
+	consumers, tests, err := DiscoverSymbolConsumers(fixtureContractDiscovery(t, root), fact)
+	require.NoError(t, err)
+	require.Equal(t, []string{"internal/handler/version_consumer.go"}, consumers,
+		"以包子句 version 限定引用的消费方必须被发现")
+	require.Empty(t, tests)
+}
+
+// TestDiscoverSetConsumersRequiresDirectorySegment 覆盖 OCR R1 #f4：
+// entryFileRE 只认带目录段的 .go 引用——manifest lifecycle_hooks 条目括号内
+// 的交叉引用（如 "(func at container.go:2405)"，见 moves/agentcatalog.yaml）
+// 是裸文件名，不得算作 set 消费方（曾冻结出 14 条幽灵 consumer）。
+func TestDiscoverSetConsumersRequiresDirectorySegment(t *testing.T) {
+	items := []string{
+		"startTenantSkillReaper — internal/container/container.go:702 (func at container.go:2405)",
+		"startChat — internal/container/container.go:2074 (func at routes_chat.go:88)",
+		"startRouter — internal/router/router.go:940",
+	}
+	require.Equal(t,
+		[]string{"internal/container/container.go", "internal/router/router.go"},
+		discoverSetConsumers(&Discovery{}, "lifecycle-set", items))
+	require.Empty(t, discoverSetConsumers(&Discovery{}, "lifecycle-set",
+		[]string{"ghost — (func at bare.go:12)"}),
+		"仅含裸文件名的条目不得产生任何消费方")
 }
 
 // TestContractCheckDiagnostics 表驱动覆盖 Review Focus：
@@ -414,6 +450,22 @@ func BadAdapters(s ifaces.TenantService) { _ = thing.Adapter{} }
 			check: "contract-characterization-missing",
 			want:  "ghost_test.go",
 		},
+		{
+			// 14. worker 池数基线漂移（OCR R1 #f5：台账「N 任务类型 + M 池 / K」
+			// 的池数 M 必须由 worker_pools 键承载并参与比对——fixture 台账池数
+			// 为 6，登记 8 必须报 drift）。
+			name: "worker pools baseline drift",
+			setup: func(t *testing.T) (*Governance, *Discovery) {
+				root := contractRepoRoot(t)
+				g := fixtureContractGovernance(t, root)
+				g.Contracts[6].Items = []string{
+					"worker_types=4", "worker_pools=8", "worker_redis=4", "worker_lite=4",
+				}
+				return g, fixtureContractDiscovery(t, root)
+			},
+			check: "contract-baseline-drift",
+			want:  "worker_pools",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -505,9 +557,9 @@ func compositionBaselineFromLedger(t *testing.T, root string) (routes, workers, 
 	text := string(data)
 	m := regexpFind(t, text, `路由注册 \| (\d+)（(\d+) literal \+ (\d+) apiKeyRoute）`)
 	routes = atoi(t, m[1])
-	m = regexpFind(t, text, `Redis/Lite worker \| (\d+) 任务类型 \+ \d+ 池 / (\d+)`)
+	m = regexpFind(t, text, `Redis/Lite worker \| (\d+) 任务类型 \+ (\d+) 池 / (\d+)`)
 	workers = atoi(t, m[1])
-	redisN, liteN := atoi(t, m[1]), atoi(t, m[2])
+	redisN, liteN := atoi(t, m[1]), atoi(t, m[3])
 	require.Equal(t, redisN, liteN, "台账 Redis/Lite 任务类型数不一致")
 	m = regexpFind(t, text, `container\.Invoke hooks \| (\d+)`)
 	hooks = atoi(t, m[1])

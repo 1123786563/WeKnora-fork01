@@ -311,8 +311,10 @@ var moduleFacadeOps = []string{"NewModule", "RegisterRoutes", "RegisterWorkers",
 
 var (
 	// entryFileRE 从 manifest routes/lifecycle_hooks 条目提取引用的 .go 文件
-	// （形如 "— internal/router/routes_x.go:43"，行号可缺省）。
-	entryFileRE = regexp.MustCompile(`([A-Za-z0-9_./-]+\.go)(:\d+)?`)
+	// （形如 "— internal/router/routes_x.go:43"，行号可缺省）。引用必须带至少
+	// 一个目录段（OCR R1 #f4）：条目括号内的交叉引用（"(func at container.go:2405)"）
+	// 是裸文件名，不得算作消费方。
+	entryFileRE = regexp.MustCompile(`((?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+\.go)(:\d+)?`)
 	// façade 注释提取：门面操作行与「当前 N 项」计数句式（module.go 包注释）。
 	facadeOpRE = regexp.MustCompile(
 		`(?m)^//\t(?:\(m \*Module\) )?(NewModule|RegisterRoutes|RegisterWorkers|Start|Stop)\(`)
@@ -328,7 +330,8 @@ const moduleImportBase = repoModulePath + "/internal/modules/"
 // compositionBaseline 是从 Pass A 验收台账解析出的组合基线计数（F5：期望值参数化）。
 type compositionBaseline struct {
 	RoutesTotal, RoutesLiteral, RoutesAPIKey int
-	WorkerTypes, WorkerRedis, WorkerLite     int
+	WorkerTypes, WorkerPools                 int
+	WorkerRedis, WorkerLite                  int
 	Hooks                                    int
 }
 
@@ -345,11 +348,15 @@ func parseCompositionBaseline(path string) (compositionBaseline, error) {
 		return b, fmt.Errorf("acceptance ledger missing 路由注册 baseline row")
 	}
 	b.RoutesTotal, b.RoutesLiteral, b.RoutesAPIKey = atoiSafe(m[1]), atoiSafe(m[2]), atoiSafe(m[3])
-	m = regexp.MustCompile(`Redis/Lite worker \| (\d+) 任务类型 \+ \d+ 池 / (\d+)`).FindStringSubmatch(text)
+	// 台账 worker 行形态「N 任务类型 + M 池 / K」：N 是 Redis 任务类型数、
+	// M 是池数、K 是 Lite 任务类型数（worker-parity 下 N==K）。三个数字
+	// 各有捕获组（OCR R1 #f5：池数漂移不得静默丢失）。
+	m = regexp.MustCompile(`Redis/Lite worker \| (\d+) 任务类型 \+ (\d+) 池 / (\d+)`).FindStringSubmatch(text)
 	if m == nil {
 		return b, fmt.Errorf("acceptance ledger missing Redis/Lite worker baseline row")
 	}
-	b.WorkerTypes, b.WorkerRedis, b.WorkerLite = atoiSafe(m[1]), atoiSafe(m[1]), atoiSafe(m[2])
+	b.WorkerTypes, b.WorkerPools = atoiSafe(m[1]), atoiSafe(m[2])
+	b.WorkerRedis, b.WorkerLite = atoiSafe(m[1]), atoiSafe(m[3])
 	m = regexp.MustCompile(`container\.Invoke hooks \| (\d+)`).FindStringSubmatch(text)
 	if m == nil {
 		return b, fmt.Errorf("acceptance ledger missing container.Invoke hooks baseline row")
@@ -402,6 +409,7 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 		},
 		"composition.baseline-workers": {
 			"worker_types": led.WorkerTypes,
+			"worker_pools": led.WorkerPools,
 			"worker_redis": led.WorkerRedis,
 			"worker_lite":  led.WorkerLite,
 		},

@@ -50,6 +50,60 @@ func TestDiscoverGoTreeSkipsDotPrefixedDirs(t *testing.T) {
 	}, imports)
 }
 
+// TestDiscoverImportExceptionsRequiresCompositeLiteral 覆盖 OCR R1 #f3：
+// architectureguard 若把 importExceptions 改为无值声明（var importExceptions
+// []importException）或非复合字面量初始化，发现必须返回干净错误而非以
+// vs.Values[0] 越界 panic 丢失全部诊断。
+func TestDiscoverImportExceptionsRequiresCompositeLiteral(t *testing.T) {
+	cases := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{
+			// 无值声明：vs.Values 为空，索引前必须防护。
+			name: "valueless declaration",
+			source: `package architectureguard
+
+type importException struct {
+	ImporterFile string
+	ImportedPath string
+	Reason       string
+	PassBTask    string
+}
+
+var importExceptions []importException
+`,
+			wantErr: "importExceptions 声明缺少初始化复合字面量",
+		},
+		{
+			// 非字面量初始化（Ident 引用）：不是 CompositeLit，返回既有错误。
+			name: "non-literal initializer",
+			source: `package architectureguard
+
+type importException struct {
+	ImporterFile string
+}
+
+var exceptionRows = []importException{{ImporterFile: "a.go"}}
+
+var importExceptions = exceptionRows
+`,
+			wantErr: "importExceptions 不是复合字面量",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "check.go")
+			writeDiscoverFixture(t, root, "check.go", tc.source)
+			_, err := discoverImportExceptions(path)
+			require.Error(t, err, "无值/非字面量声明必须返回错误")
+			require.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
 // TestDiscoverGoTreeKeepsRootItself 确保 SkipDir 收紧到点前缀目录后不误伤
 // 根目录本身：`-root .`（根回调 entry.Name() == "."）与点前缀根名都必须照常
 // 发现（make check-passb-readiness 以 `-root .` 运行）。
