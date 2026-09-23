@@ -32,6 +32,7 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
  const [uploadBusy, setUploadBusy] = useState(false)
  const [uploadNotice, setUploadNotice] = useState('')
  const scopeEpoch = useRef(0)
+ const fileInputRef = useRef<HTMLInputElement>(null)
  const mutationBlocked = Boolean(unknownAction || desk.pendingAction)
  const isCurrent = (epoch: number) => scopeEpoch.current === epoch
  const invalidateForbidden = (parsed?: { code?: string; currentRevision?: number; text: string }) => {
@@ -64,7 +65,7 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
   scopeEpoch.current += 1
   const activeUser = scope.userId ?? userId
   setView(undefined); setUnknownAction(undefined); setReceiptNotice('')
-  setSources([]); setSelectedFile(undefined); setUploadUnknown(undefined); setUploadNotice('')
+  setSources([]); setSelectedFile(undefined); setUploadUnknown(undefined); setUploadNotice(''); setUploadBusy(false)
   desk.activate(activeUser, scope.tenantId)
   void load()
   return () => { scopeEpoch.current += 1; desk.clear() }
@@ -81,39 +82,56 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
    throw cause
   }
  }, [client])
+ const refreshSourceList = useCallback(async () => {
+  const epoch = scopeEpoch.current
+  setUploadBusy(true)
+  try { await refreshSources(); if (isCurrent(epoch)) setUploadNotice('来源列表已刷新。') }
+  catch (cause) { if (isCurrent(epoch) && message(cause).code !== 'forbidden') setError(message(cause)) }
+  finally { if (isCurrent(epoch)) setUploadBusy(false) }
+ }, [refreshSources])
  const sendUpload = useCallback(async (attempt: { file: File; requestId: string; expectedRevision: number }) => {
   const epoch = scopeEpoch.current
   setUploadBusy(true); setUploadNotice('上传中…'); setError(undefined)
+  let result: CareerUpload
   try {
-   const result: CareerUpload = await client.career.upload(attempt.file, attempt.file.name, attempt.requestId, attempt.expectedRevision)
-   if (!isCurrent(epoch)) return
-   setSources((current) => [result.source, ...current.filter((source) => source.id !== result.source.id)])
-   if (result.receipt) {
-    setUploadNotice(`简历已处理，生成 ${result.receipt.proposals.length} 条待确认提案。`)
-    setView((current) => current ? { ...current, revision: Math.max(current.revision, result.receipt!.revision), proposals: [...current.proposals.filter((proposal) => !result.receipt!.proposals.some((candidate) => candidate.id === proposal.id)), ...result.receipt!.proposals] } : current)
-   }
-   else if (result.source.status === 'processing') setUploadNotice('简历正在处理中。可刷新来源状态。')
-   else if (result.source.status === 'failed') setUploadNotice(`处理失败：${result.source.errorMessage || '请重新上传，或手动补充档案。'}`)
-   else setUploadNotice('来源状态已更新。')
-   if (result.source.status === 'failed' || result.source.status === 'ready') { setUploadUnknown(undefined); setSelectedFile(undefined) }
-   else setUploadUnknown(attempt)
-   await refreshSources()
-   if (!isCurrent(epoch)) return
-   if (result.receipt) { await desk.refresh(); if (!isCurrent(epoch)) return; sync() }
+   result = await client.career.upload(attempt.file, attempt.file.name, attempt.requestId, attempt.expectedRevision)
   } catch (cause) {
    if (!isCurrent(epoch)) return
    const parsed = message(cause)
    if (parsed.code === 'forbidden') invalidateForbidden(parsed)
-   else if (parsed.code === 'revision_conflict') {
+   else if (['invalid_request', 'idempotency_conflict', 'revision_conflict'].includes(parsed.code ?? '')) {
     setError(parsed)
-    await desk.refresh().then(() => { if (isCurrent(epoch)) sync() }).catch((refreshError) => { if (isCurrent(epoch) && message(refreshError).code === 'forbidden') invalidateForbidden(message(refreshError)) })
-    if (!isCurrent(epoch)) return
-    await refreshSources().catch(() => undefined)
-    if (!isCurrent(epoch)) return
-    setUploadUnknown(undefined); setUploadNotice('档案已变化。请检查当前修订后明确开始一次新的上传。')
+    setUploadUnknown(undefined); setSelectedFile(undefined); if (fileInputRef.current) fileInputRef.current.value = ''
+    if (parsed.code === 'revision_conflict') {
+     setUploadNotice('档案已变化。请检查当前修订后重新选择文件并开始一次新的上传。')
+     await desk.refresh().then(() => { if (isCurrent(epoch)) sync() }).catch((refreshError) => { if (isCurrent(epoch) && message(refreshError).code === 'forbidden') invalidateForbidden(message(refreshError)) })
+     if (!isCurrent(epoch)) return
+     await refreshSources().catch((refreshError) => { if (isCurrent(epoch) && message(refreshError).code !== 'forbidden') setError(message(refreshError)) })
+    } else setUploadNotice('本次上传已被服务端拒绝。请重新选择简历后开始一次新的上传。')
    }
-   else { setUploadUnknown(attempt); setUploadNotice('上传结果暂时未知。已保留原文件和请求编号；先查询来源状态，再决定是否用相同内容重试。') }
-  } finally { if (isCurrent(epoch)) setUploadBusy(false) }
+   else { setError(parsed); setUploadUnknown(attempt); setUploadNotice('上传结果暂时未知。已保留原文件和请求编号；先查询来源状态，再决定是否用相同内容重试。') }
+   if (isCurrent(epoch)) setUploadBusy(false)
+   return
+  }
+  if (!isCurrent(epoch)) return
+  setSources((current) => [result.source, ...current.filter((source) => source.id !== result.source.id)])
+  if (result.receipt) {
+   setUploadNotice(`简历已处理，生成 ${result.receipt.proposals.length} 条待确认提案。`)
+   setView((current) => current ? { ...current, revision: Math.max(current.revision, result.receipt!.revision), proposals: [...current.proposals.filter((proposal) => !result.receipt!.proposals.some((candidate) => candidate.id === proposal.id)), ...result.receipt!.proposals] } : current)
+  }
+  else if (result.source.status === 'processing') setUploadNotice('简历正在处理中。可刷新来源状态。')
+  else if (result.source.status === 'failed') setUploadNotice(`处理失败：${result.source.errorMessage || '请重新上传，或手动补充档案。'}`)
+  else setUploadNotice('来源状态已更新。')
+  if (result.source.status === 'failed' || result.source.status === 'ready') { setUploadUnknown(undefined); setSelectedFile(undefined); if (fileInputRef.current) fileInputRef.current.value = '' }
+  else setUploadUnknown(attempt)
+  try { await refreshSources() }
+  catch (cause) { if (!isCurrent(epoch)) return; const parsed = message(cause); if (parsed.code === 'forbidden') { invalidateForbidden(parsed); return }; setError(parsed) }
+  if (!isCurrent(epoch)) return
+  if (result.receipt) {
+   try { await desk.refresh(); if (!isCurrent(epoch)) return; sync() }
+   catch (cause) { if (!isCurrent(epoch)) return; const parsed = message(cause); if (parsed.code === 'forbidden') invalidateForbidden(parsed); else setError(parsed) }
+  }
+  if (isCurrent(epoch)) setUploadBusy(false)
  }, [client, desk, refreshSources, sync])
  const doAction = useCallback(async (action: CareerAction) => {
   if (desk.pendingAction || unknownAction) return
@@ -164,7 +182,7 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
    <h2 style={{ marginTop: 0 }}>上传简历</h2>
    <p>系统只会生成待确认提案。上传或解析失败不会覆盖已确认档案。</p>
    <label htmlFor="career-resume-file">选择简历文件</label>{' '}
-   <input id="career-resume-file" type="file" accept=".pdf,.doc,.docx,.txt" disabled={uploadBusy || Boolean(uploadUnknown)} onChange={(event) => { setSelectedFile(event.currentTarget.files?.[0]); setUploadNotice('') }} />
+   <input ref={fileInputRef} id="career-resume-file" type="file" accept=".pdf,.doc,.docx,.txt" disabled={uploadBusy || Boolean(uploadUnknown)} onChange={(event) => { setSelectedFile(event.currentTarget.files?.[0]); setUploadNotice('') }} />
    <Button disabled={!selectedFile || uploadBusy || Boolean(uploadUnknown) || !view} loading={uploadBusy} onClick={() => { if (selectedFile && view) void sendUpload({ file: selectedFile, requestId: makeId(), expectedRevision: view.revision }) }}>开始上传</Button>
    {uploadNotice ? <p role="status" aria-live="polite">{uploadNotice}</p> : null}
    {uploadUnknown ? <div role="group" aria-label="恢复简历上传" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -177,7 +195,7 @@ export function CareerPage({ client, scopeController, userId }: { client: WeKnor
     }}>查询来源状态</Button>
     <Button disabled={uploadBusy} onClick={() => void sendUpload(uploadUnknown)}>用原文件和请求编号重试</Button>
    </div> : null}
-   {sources.length ? <section aria-label="简历来源版本" style={{ marginTop: 16 }}><h3>来源版本</h3><ul>{sources.map((source) => <li key={source.id} style={{ marginBottom: 12 }}>
+   {sources.length ? <section aria-label="简历来源版本" style={{ marginTop: 16 }}><div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}><h3>来源版本</h3><Button size="small" variant="outline" disabled={uploadBusy} onClick={() => void refreshSourceList()}>刷新来源</Button></div><ul>{sources.map((source) => <li key={source.id} style={{ marginBottom: 12 }}>
     <strong>{source.fileName}</strong> · 修订 {source.revision} · {source.status === 'processing' ? '处理中' : source.status === 'ready' ? '已解析' : '失败'} · {source.createdAt}
     {source.status === 'failed' ? <p role="alert">{source.errorMessage || '解析失败'}；可以重新上传或手动补充，原有已确认事实仍保留。</p> : null}
     {source.missingCategories?.length ? <p>缺失类别：{source.missingCategories.join('、')}</p> : null}

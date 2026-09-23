@@ -128,6 +128,64 @@ test('failed resume upload preserves confirmed facts and offers a fresh attempt'
  assert.equal(button(container, '开始上传').hasAttribute('disabled'), false)
 })
 
+test('definitive upload rejections release the retained file so the user can start a fresh request', async () => {
+ for (const code of ['invalid_request', 'idempotency_conflict'] as const) {
+  const attempts: Array<{ file: Blob; requestId: string; revision: number }> = []
+  let callCount = 0
+  const terminalSource = { id: `terminal-${code}`, revision: 2, fileName: 'new.pdf', mimeType: 'application/pdf', size: 3, digest: 'd', status: 'failed' as const, errorMessage: 'new attempt failed', createdAt: 'now' }
+  const container = await mount({
+   open: async () => profile, list: async () => profile, changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+   upload: async (file: Blob, _name: string, requestId: string, revision: number) => { attempts.push({ file, requestId, revision }); callCount += 1; if (callCount === 1) throw Object.assign(new Error(`definitive ${code}`), { code }); return { source: terminalSource } },
+  } as never)
+  const fileInput = container.querySelector<HTMLInputElement>('#career-resume-file')!
+  Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['old'], 'old.pdf', { type: 'application/pdf' })] })
+  await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+  await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+  assert.match(container.textContent ?? '', new RegExp(`definitive ${code}`))
+  assert.match(container.textContent ?? '', /本科/)
+  assert.equal(fileInput.disabled, false)
+  assert.equal(container.querySelector('[aria-label="恢复简历上传"]'), null)
+  Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['new'], 'new.pdf', { type: 'application/pdf' })] })
+  await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+  await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+  assert.equal(attempts.length, 2)
+  assert.notEqual(attempts[0]?.requestId, attempts[1]?.requestId)
+  await act(async () => { root?.unmount() }); root = undefined; host?.remove(); host = undefined
+ }
+})
+
+test('known ready upload stays successful when source or profile refresh fails', async () => {
+ for (const failedRead of ['sources', 'profile'] as const) {
+  const readySource = { id: `ready-${failedRead}`, revision: 2, fileName: 'resume.pdf', mimeType: 'application/pdf', size: 6, digest: 'd', status: 'ready' as const, createdAt: 'now' }
+  const intakeProposal = { id: `proposal-${failedRead}`, key: 'education.school', value: 'Example University', evidence: 'Exact source line', source: { kind: 'resume_extraction', referenceId: readySource.id }, status: 'pending' as const, createdAt: 'now' }
+  let sourceReads = 0
+  let profileReads = 0
+  const container = await mount({
+   open: async () => profile, list: async () => { profileReads += 1; if (failedRead === 'profile' && profileReads > 0) throw Object.assign(new Error('profile refresh offline'), { code: 'NETWORK_ERROR' }); return failedRead === 'sources' ? { ...profile, revision: 2, proposals: [...profile.proposals, intakeProposal] } : profile },
+   changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+   sources: async () => { sourceReads += 1; if (failedRead === 'sources' && sourceReads === 2) throw Object.assign(new Error('source refresh offline'), { code: 'NETWORK_ERROR' }); return sourceReads > 2 ? [readySource] : [] },
+   upload: async () => ({ source: readySource, receipt: { kind: 'intake_completed', requestId: `${readySource.id}:batch`, revision: 2, proposals: [intakeProposal] } }),
+  } as never)
+  const fileInput = container.querySelector<HTMLInputElement>('#career-resume-file')!
+  Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['resume'], 'resume.pdf', { type: 'application/pdf' })] })
+  await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+  await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+  assert.match(container.textContent ?? '', /简历已处理，生成 1 条待确认提案/)
+  assert.match(container.textContent ?? '', /Example University/)
+  assert.match(container.textContent ?? '', /Exact source line/)
+  assert.match(container.textContent ?? '', /本科/)
+  assert.match(container.textContent ?? '', new RegExp(failedRead === 'sources' ? 'source refresh offline' : 'profile refresh offline'))
+  assert.equal(container.querySelector('[aria-label="恢复简历上传"]'), null)
+  assert.equal(fileInput.disabled, false)
+  if (failedRead === 'sources') {
+   await act(async () => { button(container, '刷新来源').click(); await new Promise((resolve) => setImmediate(resolve)) })
+   assert.match(container.textContent ?? '', /来源列表已刷新/)
+   assert.match(container.textContent ?? '', /resume\.pdf/)
+  }
+  await act(async () => { root?.unmount() }); root = undefined; host?.remove(); host = undefined
+ }
+})
+
 test('revision conflict refreshes and requires a deliberate new upload attempt', async () => {
  let viewReads = 0
  const container = await mount({
@@ -138,8 +196,11 @@ test('revision conflict refreshes and requires a deliberate new upload attempt',
  Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['resume'], 'resume.pdf', { type: 'application/pdf' })] })
  await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
  await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
- assert.match(container.textContent ?? '', /请检查当前修订后明确开始一次新的上传/)
+ assert.match(container.textContent ?? '', /请检查当前修订后重新选择文件并开始一次新的上传/)
  assert.match(container.textContent ?? '', /当前修订 4/)
+ assert.equal(fileInput.disabled, false)
+ Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['new resume'], 'new-resume.pdf', { type: 'application/pdf' })] })
+ await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
  assert.equal(button(container, '开始上传').hasAttribute('disabled'), false)
 })
 
