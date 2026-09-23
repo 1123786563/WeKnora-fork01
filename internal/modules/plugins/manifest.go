@@ -28,6 +28,13 @@ const (
 	// maxPluginIDLen bounds the plugin_id total length.
 	maxPluginIDLen = 128
 
+	// maxToolNameLen bounds one tools[].name.
+	maxToolNameLen = 128
+
+	// maxDescriptionRunes bounds free-text descriptions (manifest-level and
+	// live tool descriptions entering the snapshot).
+	maxDescriptionRunes = 1024
+
 	// maxScopesPerList bounds one scopes array (auth-level or per-tool).
 	maxScopesPerList = 64
 
@@ -52,8 +59,11 @@ var (
 	schemaDigestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 	// scopeTokenPattern: RFC 6749 scope-token charset — printable ASCII
-	// excluding '"' (%x22) and '\' (%x5C) — with a length cap.
-	scopeTokenPattern = regexp.MustCompile(`^[\x21\x23-\x5B\x5D-\x7E]{1,128}$`)
+	// excluding '"' (%x22) and '\' (%x5C) — with a length cap derived from
+	// maxScopeLen so the bound and the error message cannot drift apart.
+	scopeTokenPattern = regexp.MustCompile(
+		fmt.Sprintf(`^[\x21\x23-\x5B\x5D-\x7E]{1,%d}$`, maxScopeLen),
+	)
 
 	// pluginTransportTypes lists the transports a plugin endpoint may use.
 	// stdio is excluded by spec: a plugin is always a remote MCP service.
@@ -80,7 +90,10 @@ func ValidateManifest(m *types.PluginManifest) error {
 	if !pluginVersionPattern.MatchString(m.Version) {
 		return fmt.Errorf("invalid version %q (must be MAJOR.MINOR.PATCH without leading zeros)", m.Version)
 	}
-	if err := validateDisplayName(m.Name); err != nil {
+	if err := validateName("name", m.Name, maxPluginNameRunes); err != nil {
+		return err
+	}
+	if err := validateDescription("description", m.Description); err != nil {
 		return err
 	}
 	if !pluginTransportTypes[m.Transport.Type] {
@@ -103,8 +116,8 @@ func ValidateManifest(m *types.PluginManifest) error {
 	}
 	seen := make(map[string]bool, len(m.Tools))
 	for i, tool := range m.Tools {
-		if tool.Name == "" {
-			return fmt.Errorf("tools[%d].name must not be empty", i)
+		if err := validateName(fmt.Sprintf("tools[%d].name", i), tool.Name, maxToolNameLen); err != nil {
+			return err
 		}
 		if seen[tool.Name] {
 			return fmt.Errorf("duplicate tool name %q", tool.Name)
@@ -128,16 +141,37 @@ func ValidateManifest(m *types.PluginManifest) error {
 	return nil
 }
 
-// validateDisplayName bounds the human-readable name: 1..maxPluginNameRunes
-// runes and no control characters (they would corrupt admin-facing display
-// surfaces and logs).
-func validateDisplayName(name string) error {
-	if name == "" || utf8.RuneCountInString(name) > maxPluginNameRunes {
-		return fmt.Errorf("name must be 1..%d characters", maxPluginNameRunes)
+// validateName bounds an identifier-like name: non-empty, at most maxRunes
+// runes, and free of control characters (they would corrupt admin-facing
+// display surfaces and logs).
+func validateName(where, name string, maxRunes int) error {
+	if name == "" {
+		return fmt.Errorf("%s must not be empty", where)
+	}
+	if utf8.RuneCountInString(name) > maxRunes {
+		return fmt.Errorf("%s must be at most %d characters", where, maxRunes)
 	}
 	for _, r := range name {
 		if unicode.IsControl(r) {
-			return fmt.Errorf("name must not contain control characters (U+%04X)", r)
+			return fmt.Errorf("%s must not contain control characters (U+%04X)", where, r)
+		}
+	}
+	return nil
+}
+
+// validateDescription bounds free text (manifest description, live tool
+// descriptions). Empty is legal (the field is optional). Newlines, tabs and
+// CR are allowed — multi-line descriptions are legitimate — but every other
+// control character is rejected. It is shared by the manifest validator and
+// BuildVerifiedSnapshot, so live endpoint data passes the same hygiene the
+// manifest does.
+func validateDescription(where, description string) error {
+	if utf8.RuneCountInString(description) > maxDescriptionRunes {
+		return fmt.Errorf("%s exceeds %d characters", where, maxDescriptionRunes)
+	}
+	for _, r := range description {
+		if unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' {
+			return fmt.Errorf("%s must not contain control characters (U+%04X)", where, r)
 		}
 	}
 	return nil
@@ -179,6 +213,9 @@ func validateScopes(scopes []string, where string) error {
 //     collide with our "1.0". Reproduce digests with this Go package's
 //     ToolSchemaDigest/ManifestContentDigest, or an implementation that
 //     sorts keys, drops whitespace and keeps number literals unchanged.
+//  5. strings are emitted WITHOUT Go's default HTML escaping: '<', '>' and
+//     '&' appear literally, never as \u003c/\u003e/\u0026 (JSON.stringify and
+//     most non-Go serializers behave the same way).
 func CanonicalJSON(v any) []byte {
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -201,11 +238,15 @@ func canonicalizeJSON(raw []byte) []byte {
 	if _, err := dec.Token(); err != io.EOF {
 		return nil // trailing garbage: reject the whole document
 	}
-	out, err := json.Marshal(parsed)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(parsed); err != nil {
 		return nil
 	}
-	return out
+	// json.Encoder.Encode appends a trailing newline; it is not part of the
+	// canonical form.
+	return bytes.TrimRight(buf.Bytes(), "\n")
 }
 
 func sha256Hex(data []byte) string {

@@ -25,18 +25,25 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 	if manifest == nil {
 		return nil, "", fmt.Errorf("manifest is required")
 	}
+	var problems []string
 	liveByName := make(map[string]*types.MCPTool, len(live))
 	for _, tool := range live {
-		if tool != nil {
-			liveByName[tool.Name] = tool
+		if tool == nil {
+			continue
 		}
+		if _, dup := liveByName[tool.Name]; dup {
+			// A directory naming one tool twice is self-contradictory; letting
+			// the last entry win would silently mask the other's schema.
+			problems = append(problems, fmt.Sprintf("live endpoint returned duplicate tool name %q", tool.Name))
+			continue
+		}
+		liveByName[tool.Name] = tool
 	}
 	declared := make(map[string]bool, len(manifest.Tools))
 	for _, decl := range manifest.Tools {
 		declared[decl.Name] = true
 	}
 
-	var problems []string
 	snapshot := make([]types.PluginToolSnapshot, 0, len(manifest.Tools))
 	for _, decl := range manifest.Tools {
 		actual, ok := liveByName[decl.Name]
@@ -52,13 +59,20 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 			))
 			continue
 		}
+		if err := validateDescription(fmt.Sprintf("live description of tool %q", decl.Name), actual.Description); err != nil {
+			problems = append(problems, err.Error())
+			continue
+		}
+		// Defensive copy: the snapshot is the tenant-facing authority and must
+		// not share backing arrays with the untrusted manifest document.
+		scopes := append([]string(nil), decl.Scopes...)
 		snapshot = append(snapshot, types.PluginToolSnapshot{
 			Name:                 decl.Name,
 			Description:          actual.Description,
 			InputSchemaDigest:    liveDigest,
 			ReadOnly:             decl.ReadOnly,
 			RequiresPersonalAuth: decl.RequiresPersonalAuth,
-			Scopes:               decl.Scopes,
+			Scopes:               scopes,
 		})
 	}
 	for _, tool := range live {

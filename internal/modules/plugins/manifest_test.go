@@ -57,6 +57,10 @@ func TestValidateManifestRejects(t *testing.T) {
 		func(m *types.PluginManifest) { m.Tools[0].Scopes = []string{"has space"} },              // scope 非法字符
 		func(m *types.PluginManifest) { m.Tools[0].Scopes = []string{strings.Repeat("x", 129)} }, // scope 超长
 		func(m *types.PluginManifest) { m.Auth.Scopes = []string{"dup", "dup"} },                 // auth scope 重复
+		func(m *types.PluginManifest) { m.Tools[0].Name = strings.Repeat("t", 129) },             // 工具名超长
+		func(m *types.PluginManifest) { m.Tools[0].Name = "bad\x01tool" },                        // 工具名控制字符
+		func(m *types.PluginManifest) { m.Description = strings.Repeat("d", 1025) },              // 描述超长
+		func(m *types.PluginManifest) { m.Description = "desc with \x00nul" },                    // 描述非法控制字符
 		func(m *types.PluginManifest) { m.Auth = nil },                                           // requires_personal_auth 工具要求 PersonalOAuth
 	}
 	for i, mutate := range cases {
@@ -71,6 +75,27 @@ func TestValidateManifestAcceptsScopedManifest(t *testing.T) {
 	m.Auth.Scopes = []string{"read:jira", "write:jira"}
 	m.Tools[0].Scopes = []string{"read:jira"}
 	require.NoError(t, ValidateManifest(m))
+}
+
+// TestValidateManifestAcceptsMultilineDescription: newlines/tabs are legal in
+// free-text descriptions (multi-line tool docs are common); only other
+// control characters are rejected.
+func TestValidateManifestAcceptsMultilineDescription(t *testing.T) {
+	m := validManifest()
+	m.Description = "line one\nline two\tindented\r\nwindows"
+	require.NoError(t, ValidateManifest(m))
+}
+
+// TestCanonicalJSONDoesNotEscapeHTML (OCR T01-R2-3): the canonical form must
+// not apply Go's default HTML escaping (< > & → \u003c \u003e \u0026), or
+// external implementations following the documented algorithm (sorted keys,
+// no whitespace, verbatim number literals) would compute different digests
+// for schemas containing those characters.
+func TestCanonicalJSONDoesNotEscapeHTML(t *testing.T) {
+	out := CanonicalJSON(map[string]any{"pattern": "<a>&"})
+	require.Contains(t, string(out), `"<a>&"`)
+	require.NotContains(t, string(out), `\u003c`)
+	require.NotContains(t, string(out), `\u0026`)
 }
 
 func TestToolSchemaDigestIsCanonical(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -215,4 +216,103 @@ func TestConcurrentVerificationOfSameEndpointIsolated(t *testing.T) {
 	wg.Wait()
 	require.NoError(t, errs[0])
 	require.NoError(t, errs[1])
+}
+
+// TestBuildVerifiedSnapshotScopesAreDefensivelyCopied (OCR T01-R2-2): the
+// snapshot is the tenant-facing authority; its Scopes must not share backing
+// arrays with the untrusted manifest document handed out in the same
+// FetchResult.
+func TestBuildVerifiedSnapshotScopesAreDefensivelyCopied(t *testing.T) {
+	m := validManifest()
+	m.Tools[0].Scopes = []string{"read:jira"}
+	live := []*types.MCPTool{{Name: "search_my_week_issues", InputSchema: []byte(declaredNoArgSchema)}}
+	snapshot, _, err := BuildVerifiedSnapshot(m, live)
+	require.NoError(t, err)
+	m.Tools[0].Scopes[0] = "mutated:jira"
+	require.Equal(t, []string{"read:jira"}, snapshot[0].Scopes)
+}
+
+// TestBuildVerifiedSnapshotRejectsDuplicateLiveTool (OCR T01-R2-6): a live
+// directory containing the same tool name twice is self-contradictory; the
+// last entry must not silently mask the other's differing schema.
+func TestBuildVerifiedSnapshotRejectsDuplicateLiveTool(t *testing.T) {
+	m := validManifest()
+	live := []*types.MCPTool{
+		{Name: "search_my_week_issues", InputSchema: []byte(`{"type":"object","properties":{"rogue":{}}}`)},
+		{Name: "search_my_week_issues", InputSchema: []byte(declaredNoArgSchema)},
+	}
+	_, _, err := BuildVerifiedSnapshot(m, live)
+	require.ErrorContains(t, err, "search_my_week_issues")
+}
+
+// TestBuildVerifiedSnapshotRejectsOversizedLiveDescription (OCR T01-R2-4):
+// live tool descriptions flow into the admin preview and persistence; an
+// oversized one is rejected with the tool named, not silently snapshotted.
+func TestBuildVerifiedSnapshotRejectsOversizedLiveDescription(t *testing.T) {
+	m := validManifest()
+	live := []*types.MCPTool{{
+		Name:        "search_my_week_issues",
+		Description: strings.Repeat("d", 1025),
+		InputSchema: []byte(declaredNoArgSchema),
+	}}
+	_, _, err := BuildVerifiedSnapshot(m, live)
+	require.ErrorContains(t, err, "search_my_week_issues")
+}
+
+// TestEndpointListerRetiresPendingConnectionOnError (OCR T01-R2-1): when the
+// caller's ctx expires mid-handshake, GetOrCreateClient returns an error
+// while its background goroutine (manager lifeCtx) keeps connecting and would
+// mount the connected client under a unique nonce key nothing will ever
+// reference again. The lister must retire the key on the error path, which
+// cancels the in-flight handshake — observed here as the controlled endpoint
+// losing the initialize request mid-flight.
+func TestEndpointListerRetiresPendingConnectionOnError(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	inner := streamableMCPServer(t, "search_my_week_issues", []byte(declaredNoArgSchema))
+	var initializeAborted atomic.Bool
+	mcpHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, readErr := io.ReadAll(r.Body)
+			if readErr == nil {
+				if bytes.Contains(body, []byte(`"method":"initialize"`)) {
+					select {
+					case <-r.Context().Done():
+						initializeAborted.Store(true)
+						return
+					case <-time.After(500 * time.Millisecond):
+						// proceed: serve the initialize normally
+					}
+					r.Body = io.NopCloser(bytes.NewReader(body))
+					inner(w, r)
+					return
+				}
+				r.Body = io.NopCloser(bytes.NewReader(body))
+			}
+		}
+		inner(w, r)
+	}
+	m := validManifest()
+	manifestJSON, _ := json.Marshal(m)
+	base := newControlledPluginHost(t,
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(manifestJSON)
+		},
+		mcpHandler,
+	)
+	m.Transport.Endpoint = base + "/mcp"
+	manifestJSON, _ = json.Marshal(m)
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	_, err := FetchAndVerify(ctx, base+"/manifest.json", NewMCPEndpointLister(manager))
+	require.Error(t, err) // caller ctx expired while the endpoint stalled the handshake
+
+	// Let the stalled handshake observe whether the client abandoned it.
+	time.Sleep(800 * time.Millisecond)
+	require.True(t, initializeAborted.Load(),
+		"pending connection must be retired (CloseClient) when GetOrCreateClient fails; a completed client under an unreferenced nonce key leaks (idle cleanup only removes !IsConnected entries)")
 }

@@ -167,6 +167,15 @@ func NewMCPEndpointLister(manager *mcp.MCPManager) EndpointLister {
 		}
 		client, err := manager.GetOrCreateClient(ctx, service)
 		if err != nil {
+			// The caller's ctx may expire (or the handshake fail) while the
+			// manager's background goroutine — on its own lifeCtx — is still
+			// connecting; a client that then finishes Connect/Initialize is
+			// mounted under this globally unique nonce key, which nothing will
+			// ever reference again, and idle cleanup only removes
+			// !IsConnected() entries. Retire the key on the error path too:
+			// CloseClient cancels a pending connection and disconnects an
+			// already-mounted one.
+			_ = manager.CloseClient(service.ID)
 			return nil, err
 		}
 		defer func() {
