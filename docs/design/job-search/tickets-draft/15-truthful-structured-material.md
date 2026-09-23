@@ -1,6 +1,8 @@
 # T15：可信结构化材料与不可变版本
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#153](https://github.com/1123786563/WeKnora-fork01/issues/153)。
 
 ## Parent
 

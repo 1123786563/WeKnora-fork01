@@ -1262,8 +1262,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
                   </button>)}
                 </div> : null}
                 <div className="menu-divider" aria-hidden="true" />
-                <a role="menuitem" className="menu-item" href="/platform/settings?section=userprofile"
-                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=userprofile', () => setMenuOpen(false))}>
+                {/* T17.5 功能一致性：Vue UserMenu.vue:77「个人设置」落 general 段（用户菜单
+                    是 general 的唯一直达入口），对齐基线。 */}
+                <a role="menuitem" className="menu-item" href="/platform/settings?section=general"
+                  onClick={(event) => handleInternalLink(event, '/platform/settings?section=general', () => setMenuOpen(false))}>
                   <TIcon name="user" className="menu-icon" />
                   <span>{labels.personalSettings}</span>
                 </a>

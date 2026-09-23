@@ -1,6 +1,8 @@
 # T18：本人投递确认与实际材料绑定
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#159](https://github.com/1123786563/WeKnora-fork01/issues/159)。
 
 ## Parent
 

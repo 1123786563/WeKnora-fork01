@@ -1,6 +1,8 @@
 # T07：简历上传、逐步建档与事实确认
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#147](https://github.com/1123786563/WeKnora-fork01/issues/147)。
 
 ## Parent
 

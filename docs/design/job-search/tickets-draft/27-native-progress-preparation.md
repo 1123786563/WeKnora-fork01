@@ -1,6 +1,8 @@
 # T27：Expo 移动端申请时间线与按需准备
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#167](https://github.com/1123786563/WeKnora-fork01/issues/167)。
 
 ## Parent
 

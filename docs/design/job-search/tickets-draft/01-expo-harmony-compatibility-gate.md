@@ -1,6 +1,8 @@
 # T01：Expo 鸿蒙原生兼容性闸口
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#143](https://github.com/1123786563/WeKnora-fork01/issues/143)。
 
 ## Parent
 

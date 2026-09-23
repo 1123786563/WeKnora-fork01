@@ -1,6 +1,8 @@
 # T03：个人求职空间与已确认基础档案
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#141](https://github.com/1123786563/WeKnora-fork01/issues/141)。
 
 ## Parent
 

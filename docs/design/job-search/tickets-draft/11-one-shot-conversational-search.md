@@ -1,6 +1,8 @@
 # T11：C 对话入口的一次性真实找岗
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#152](https://github.com/1123786563/WeKnora-fork01/issues/152)。
 
 ## Parent
 

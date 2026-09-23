@@ -1,6 +1,8 @@
 # T12：多来源去重、岗位更新与覆盖说明
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#151](https://github.com/1123786563/WeKnora-fork01/issues/151)。
 
 ## Parent
 

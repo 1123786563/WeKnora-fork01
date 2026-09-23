@@ -1,6 +1,8 @@
 # T10：三值资格与证据化匹配
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#150](https://github.com/1123786563/WeKnora-fork01/issues/150)。
 
 ## Parent
 

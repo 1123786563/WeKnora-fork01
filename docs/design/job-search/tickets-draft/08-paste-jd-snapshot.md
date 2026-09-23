@@ -1,6 +1,8 @@
 # T08：粘贴 JD 形成岗位机会与快照
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#146](https://github.com/1123786563/WeKnora-fork01/issues/146)。
 
 ## Parent
 

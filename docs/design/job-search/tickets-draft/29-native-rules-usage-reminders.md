@@ -1,6 +1,8 @@
 # T29：Expo 移动端持续规则、额度与提醒
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#168](https://github.com/1123786563/WeKnora-fork01/issues/168)。
 
 ## Parent
 

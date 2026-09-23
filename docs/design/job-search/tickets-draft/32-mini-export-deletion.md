@@ -1,6 +1,8 @@
 # T32：微信小程序（Taro 4 + TDesign Miniprogram）导出与删除
 
-**状态：** 待批准草案；发布时加 ready-for-agent 标签。
+**状态：** 已发布；ready-for-agent。
+
+**GitHub Issue：** [#173](https://github.com/1123786563/WeKnora-fork01/issues/173)。
 
 ## Parent
 
