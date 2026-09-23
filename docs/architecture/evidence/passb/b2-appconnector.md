@@ -2,7 +2,10 @@
 
 > 节点：`b2-appconnector`（7 legacy handlers 搬迁 + shim + 差分 + 别名/例外核销证据）。
 > 分支：`codex/passb-b2-appconnector`；BASE=`ced88ecb17ed560a02a15464500a4b2fa8e2d508`。
-> 状态：**T1 基线冻结（草稿）** —— 本文件由 T1（B2-AC.1）创建，T3（B2-AC.3）差分复跑比对后定稿提交。
+> 状态：**T3 定稿（B2-AC.3）** —— 本文件由 T1（B2-AC.1）创建基线（§1）、B2-AC.2 追加基线变更登记（§4）、
+> T3（B2-AC.3）于 2026-09-24 在节点 HEAD `33f8c3ea3370ba6856acac875bb35abd46e1e223`
+> （= 派发 BASE；树内容与迁移 commit `f545d7d06` 一致，仅多 docs 提交）完成差分复跑比对（§2）、
+> 别名/例外核销证据（§3）与计数核验（§5）后定稿。
 
 ## 1. T1 特征化基线（搬迁前，宿主 `internal/handler` 实跑）
 
@@ -57,13 +60,208 @@ ok  	github.com/Tencent/WeKnora/internal/handler	1.594s
 | 路由注册/装配 | container open_connector_test 4 用例（宿主不动，经 shim 编译） | 全 PASS | 4 |
 | 模块既有 5 包 | `go test ./internal/modules/appconnector/...` | 全 ok | 5 |
 
-## 2. T3 差分复跑（待 T2 搬迁后回填）
+## 2. T3 差分复跑（B2-AC.3，2026-09-24 @ HEAD `33f8c3ea3`）
 
-（占位：T2 完成后同命令复跑，逐用例与 §1 基线比对，回填等价结论。）
+复跑环境：worktree `codex/passb-b2-appconnector`，HEAD=`33f8c3ea3`（树内容与迁移 commit
+`f545d7d06` 完全一致——`git diff f545d7d06..33f8c3ea3` 仅含 docs：pass-a-acceptance 台账、
+本 evidence 文件、`tools/passbguard/ownership_test.go` 字面量计数修正）。10 个搬迁文件为
+R100 字节同一（§4），故**同一测试文件 + 同一 `-run` 过滤器在两个位置运行 = 同一断言集
+作用于同一代码**；PASS 对（基线 PASS + 复跑 PASS）即逐用例等价。
 
-## 3. 别名/例外核销证据（待 T3 回填）
+### 2.1 命令对命令复跑结果（与 §1.1 基线逐条对应）
 
-（占位：§2.4 三条命令复证、exc-0058..0061 现状登记、`go doc` 导出面零变化比对。）
+| # | 基线（§1.1，宿主/搬迁前位置） | 复跑（T3，搬迁后位置） | 退出码对 | 结果对 |
+|---|---|---|---|---|
+| 1 | `go build ./...` | 同命令 | 0 / 0 | 均仅 cmd 链接期预存 `ld: warning: duplicate libraries` 非致命警告 |
+| 2 | `go test ./internal/handler/ -run 'TestAppInstallationLifecycle\|TestAppConnectionCreate\|TestAppSyncStatus\|TestAppActionPipeline' -count=1 -v` | `go test ./internal/modules/appconnector/handler/ -run 'TestAppInstallationLifecycle\|TestAppConnectionCreate\|TestAppSyncStatus\|TestAppActionPipeline' -count=1 -v` | 0 / 0 | T1 新增 4 用例族双跑 PASS（§2.2） |
+| 3 | `go test ./internal/handler/ -run 'TestAppConnectionOAuthFlow\|TestOC\|TestDecodeOCPrepare' -count=1 -v` | `go test ./internal/modules/appconnector/handler/ -run 'TestAppConnectionOAuthFlow\|TestOC\|TestDecodeOCPrepare' -count=1 -v` | 0 / 0 | OC/OAuth 顶层 21 用例 + A02 内 4 子测试双跑全 PASS（§2.3；计数更正见 §2.3 注） |
+| 4 | `go test ./internal/modules/appconnector/... -count=1` | 同命令 | 0 / 0 | 基线 5 包 ok → 复跑 6 包 ok（新增 handler 包；root 0.394s/connectorcontrol 3.781s/handler 3.694s/openconnector 3.141s/repository 3.304s/service 2.313s） |
+| 5 | `go test ./internal/modules/appconnector/ -run 'TestActionExecuteWrapsIntentBudgetInner\|TestActionIntentDenialBlocksEverything\|TestActionBudgetDenialNeverDispatches' -count=1 -v` | 同命令（模块内不动） | 0 / 0 | U05 计量 3 用例双跑 PASS |
+| 6 | `go test ./internal/container/ -run 'TestOCProductRoutesRegisterWithoutConflict\|TestProductionWiringInjectsDispatcherIntoService\|TestNewOCArmedActionServiceEnabledRequiresFullConfig\|TestNewOCArmedActionServiceDisabledKeepsRefusingDispatcher' -count=1 -v` | 同命令（宿主不动，经 shim 编译） | 0 / 0 | 装配面 4 用例双跑 PASS（构造器经 `NewApp*Handler` 转发解析到同一模块类型） |
+| 7 | `make check-backend-architecture` | 同命令 | 0 / 0 | 计数逐字一致（§5.1） |
+| 8 | `make verify-module-moves` | 同命令 | 0 / 0 | `OK (16 manifests verified)` 双跑一致 |
+| 9 | —（T2 命令集） | `go test ./internal/handler/ -count=1` | — / 0 | 宿主包全量零回归（其余宿主测试经 shim 编译通过） |
+
+### 2.2 T1 用例族复跑 `-v` 摘录（模块包）
+
+```
+--- PASS: TestAppInstallationLifecycleAndWriteGate (0.00s)
+--- PASS: TestAppConnectionCreateBranches (0.00s)
+--- PASS: TestAppSyncStatusThreeStates (0.00s)
+--- PASS: TestAppActionPipelineUnwiredFailsClosed (0.00s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/modules/appconnector/handler	0.757s
+```
+
+### 2.3 §6 用例矩阵逐行等价结论
+
+判定依据：断言锚点已在 §1.2 逐条登记（响应码 / body code / stub 收到参数 / 视图字段），
+搬迁文件 R100 字节同一（§4）⇒ 双跑 PASS = 同一 HTTP 可观察行为。
+
+| 面 | 用例 | 基线 | 复跑 | 等价结论（锚点复验） |
+|---|---|---|---|---|
+| OAuth 连接流 | `TestAppConnectionOAuthFlow`（随迁同文件） | PASS | PASS | **等价**：state 签发/兑换与公开 callback leg 断言逐字同一 |
+| connection create 分支族 | `TestAppConnectionCreateBranches` | PASS | PASS | **等价**：400 `INVALID_REQUEST`/404 `INSTALLATION_NOT_FOUND`/409 `VERSION_CONFLICT`/501 `OAUTH_NOT_CONFIGURED`/400 `UNKNOWN_APP`/201 成功流（`authorization_state`/`authorize_url`/`expires_at`/`installation_id`/`kind`） |
+| installation 生命周期+写门+跨租户 404 | `TestAppInstallationLifecycleAndWriteGate` | PASS | PASS | **等价**：member 写 403 `MEMBER_MUST_REQUEST_INSTALLATION`、owner 全链 200/201（视图 `id/app_key/version/state/scopes`）、跨租户与不存在 id 同 404 `INSTALLATION_NOT_FOUND` |
+| sync status 三态 | `TestAppSyncStatusThreeStates` | PASS | PASS | **等价**：404 `DATASOURCE_NOT_FOUND`、200 `binding=null`+`state=completed`、200 绑定视图 `installation_id/connection_id/auth_version`+`pause_reason="permission"` |
+| 原生 action 未接线 fail-closed | `TestAppActionPipelineUnwiredFailsClosed` | PASS | PASS | **等价**：501 `ACTION_PIPELINE_NOT_CONFIGURED` |
+| OC 全链路 | oc_test 随迁同文件 | 全 PASS | 全 PASS | **等价**：catalog 可达性/租户隔离/成员可读、attempt 生命周期/API-key handoff/门禁错误、prepare 端点族、execute 4xx（A02 四子测试 forbidden/not_member/version_stale/revoked）/409/429/happy、跨租户不可见、API-key 默认拒绝（`TestOCProductRoutesDefaultDenyAPIKeys`）——21 顶层用例全部双跑 PASS |
+| U05 计量副作用 | http_policy_test 3 用例（模块内不动） | PASS | PASS | **等价**：intent→budget→call→settle 编排、预算拒绝不派发（同文件同位置，未搬迁） |
+| 路由注册/装配 | container open_connector_test 4 用例（宿主不动） | PASS | PASS | **等价**：经 shim 类型别名+构造器转发，dig Provide/Invoke 装配路径零变化 |
+| 模块既有包回归 | `go test ./internal/modules/appconnector/...` | 5 包 ok | 6 包 ok | **等价**：原 5 包零回归，新增 handler 包含全部随迁用例 |
+
+> 注（计数更正）：§1.1 行 3 草稿记「20 个顶层用例」，实为清点笔误——同一 `-run` 过滤器
+> 复跑实测 **21 个顶层用例**（T2 commit `f545d7d06` 说明同为 21；A02 用例另含 4 子测试）。
+> 文件字节同一 ⇒ 基线侧集合与复跑侧恒等（21=21），不影响等价结论。§1 作为历史记录不改。
+
+### 2.4 Tenant/RBAC 判定口径（conventions §6）
+
+本节点对写门（`appRequireWriteCapability` + `CanInstallInstallation`/`CanManageConnections`/
+`CanManageActions`）、tenant-from-context 读取、by-tenant 查找与 404 防枚举**零代码改动**
+（纯 R100 移动 + shim 转发；模块侧 `appTenantScope` 用 `handler_helpers.go` 本地哨兵，
+消息与宿主 `commercial.go:34` 逐字一致 ⇒ 403 `MISSING_TENANT_SCOPE` 响应字节不变；全仓无
+`errors.Is` 跨值比较）。等价性由 §2.3 的 403 写门族、MISSING_TENANT_SCOPE 锚点、跨租户 404 族
+逐用例双跑 PASS 证明。
+
+## 3. 别名/例外核销证据（B2-AC.3 实跑）
+
+### 3.1 别名核销：5 条 alias 行 = 空义务（§2.4 三命令复证）
+
+日期：2026-09-24 @ HEAD `33f8c3ea3`。
+
+**命令 1 — 旧路径零存活**：
+
+```
+$ git ls-tree HEAD internal/appconnector internal/connectorcontrol \
+    internal/application/repository/appconnector internal/application/service/appconnector
+（输出为空；退出码 0）
+```
+
+`internal/appconnector` 树不存在即覆盖其子路径 `internal/appconnector/openconnector`——
+5 条 alias 路径全部不存在。
+
+**命令 2 — 旧 import path 全仓零命中**：
+
+```
+$ grep -rn 'WeKnora/internal/appconnector"\|WeKnora/internal/connectorcontrol"\
+    \|application/repository/appconnector"\|application/service/appconnector"' \
+    --include='*.go' internal/ cmd/
+（零命中；grep 退出码 1）
+```
+
+**命令 3 — Pass A 集成删除提交自证**：
+
+```
+$ git show b0ef8895a --stat
+commit b0ef8895ac774be44b2f4138beec92d72b39401e
+    refactor(integration): switch appconnector composition to module paths and drop pass-a aliases
+ internal/appconnector/alias.go                     | 151 ---------------------
+ internal/appconnector/openconnector/alias.go       |  29 ----
+ .../application/repository/appconnector/alias.go   |  52 -------
+ internal/application/service/appconnector/alias.go | 122 -----------------
+ internal/connectorcontrol/alias.go                 |  62 ---------
+ internal/container/container.go                    |   4 +-
+ 6 files changed, 2 insertions(+), 418 deletions(-)
+```
+
+**结论**：ownership-matrix :2463-2543 的 5 条 alias 行（plan=27，delete_barrier=ib2）与
+moves/appconnector.yaml 5 条 alias_obligations 在当前树为**空义务**（零路径、零 importer；
+Pass A 集成 `b0ef8895a` 已物理删除并切装配）。本节点不重建、不改治理 YAML；核销回写申请
+交付 IB2（详见 Brief，T4 定稿），B5 终验零残留。
+
+### 3.2 例外核销登记：exc-0058..0061 原样保留 + 解除提案留 IB2
+
+**现状（2026-09-24 实测）**：3 文件 4 行 import 原样在位——
+
+```
+$ grep -n 'modules/commercial' internal/modules/appconnector/adapter.go \
+    internal/modules/appconnector/service/appconnector/action.go \
+    internal/modules/appconnector/service/appconnector/oc_recovery.go
+adapter.go:9:            ".../internal/modules/commercial"                      （exc-0058）
+service/appconnector/action.go:12:      ".../internal/modules/commercial"       （exc-0059）
+service/appconnector/oc_recovery.go:45: ".../internal/modules/commercial"       （exc-0060）
+service/appconnector/oc_recovery.go:46: commsvc ".../internal/modules/commercial/service/commercial" （exc-0061）
+```
+
+ledger 四行在位（`.worktrees/passb-int/docs/architecture/passb/exception-ledger.yaml`
+:350-373，remove_at=ib2，本节点只读不改）。消费符号面（`commercial.ExecutionGate`/
+`BudgetRequest`/`UsageFact`/`Credits`/`ErrInsufficientBudgetGate`/`FundingPlatform`/
+`ServiceConnector`/`DimensionConnector`/`UsageStatusFinal`、`commsvc.ErrGateReservationUnknown`）
+零变化——adapter.go/action.go/oc_recovery.go 三文件在本节点 diff 中**零出现**（§5.2 文件清单）。
+
+**裁定（13-execution EX-8 Step 4 先例）**：解除需「appconnector 消费方端口 + commercial 类型
+适配器」，适配器唯一合法落点是宿主装配层（集成工程师独占），且 B1-CM 零实施 ⇒ 商业门面在
+当前树不存在；conventions §5 禁止新增例外/自行实现上游门面。故**本节点不删行**，登记解除提案
+（消费方端口形态 + IB2 装配适配点，remove_at=ib2 的期限裁决权归 IB2）——提案全文在
+Integration Brief §7.4（T4 定稿交付）。
+
+### 3.3 exc-0028 消费方零受影响声明（agentruntime→appconnector，属主 32-agentruntime-tools）
+
+模块根包导出面 T2 前后零变化，证据三件：
+
+1. **源码零 diff**：`git diff 67ac22c96..HEAD -- internal/modules/appconnector/ ':!internal/modules/appconnector/handler'`
+   中 `.go` 文件**零出现**（该区间 handler/ 外仅 `legacy/README.md` 状态回填）。
+2. **`go doc` 双跑 diff 为空**（T2 前 `67ac22c96` 临时 worktree vs HEAD `33f8c3ea3`）：
+   因离线环境 `GOPROXY=off`，完整 import 路径形式不可解析（两侧同因失败，不计证据），
+   改用相对路径形式双跑——
+
+   ```
+   $ cd <tree@67ac22c96> && go doc ./internal/modules/appconnector   # 退出码 0
+   $ cd <worktree@33f8c3ea3> && go doc ./internal/modules/appconnector  # 退出码 0
+   $ diff /tmp/godoc_pre.txt /tmp/godoc_post.txt   # 输出为空（112 行有效内容逐字节一致）
+   ```
+
+   输出含包文档 + 全部导出常量/类型/函数（`RiskRead`/`ActionAwaitingApproval`/
+   `NewModule` 门面契约等），双跑逐字节一致。
+3. **消费方持续编译**：`go build ./internal/modules/agentruntime/agent/tools/` 退出码 0
+   （`internal/modules/agentruntime/agent/tools/app_connector.go` 消费模块根包导出面，
+   B3 前持续编译成立）。
+
+## 5. 计数核验（B2-AC.3，2026-09-24 @ HEAD `33f8c3ea3`）
+
+### 5.1 守卫实测（与 §1.1 行 7/8 基线逐字一致）
+
+```
+$ make check-backend-architecture
+architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16
+architectureguard: OK (0 violations)                      # 退出码 0
+$ make verify-module-moves
+modulemove: OK (16 manifests verified)                    # 退出码 0
+```
+
+`633 路由 / 23+23 任务 / 58 挂点 / 16 模块` 与基线、pass-a-acceptance 台账（396→390 变更已按
+conventions §8 流程登记于 §4）三方一致；正式三方复核在 IB2。
+
+### 5.2 本节点 diff 零装配触碰证明
+
+```
+$ git diff ced88ecb1 --name-only | sort        # 节点全部分支提交 → 工作树（含本文件定稿）
+docs/architecture/evidence/pass-a-acceptance.md
+docs/architecture/evidence/passb/b2-appconnector.md
+docs/architecture/moves/appconnector.yaml
+docs/architecture/passb/ownership-matrix.yaml
+internal/handler/app_connector.go
+internal/modules/appconnector/handler/app_connector.go
+internal/modules/appconnector/handler/app_connector_action.go
+internal/modules/appconnector/handler/app_connector_connection.go
+internal/modules/appconnector/handler/app_connector_installation.go
+internal/modules/appconnector/handler/app_connector_lifecycle_test.go
+internal/modules/appconnector/handler/app_connector_oauth.go
+internal/modules/appconnector/handler/app_connector_oauth_test.go
+internal/modules/appconnector/handler/app_connector_oc.go
+internal/modules/appconnector/handler/app_connector_oc_test.go
+internal/modules/appconnector/handler/app_connector_sync.go
+internal/modules/appconnector/handler/handler_helpers.go
+internal/modules/appconnector/legacy/README.md
+tools/passbguard/ownership_test.go
+$ git diff ced88ecb1 --name-only | grep -E 'internal/router/|internal/container/|internal/bootstrap/|^go\.(mod|sum)$|^migrations/'
+（零命中；grep 退出码 1）
+```
+
+18 个文件全部 ⊆ 节点范围（7+3 搬迁、shim、helpers、legacy/README、治理两 YAML 行删除
++台账+guard 字面量修正——三者均按 Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP 同窗执行，见 §4）；
+**router/container/bootstrap/go.mod/go.sum/migrations 零出现** ⇒ contracts `appconnector.routes`
+（17 条注册面）与 `appconnector.lifecycle`（5 挂点）注册面零变化，633/23+23/58 计数不受影响。
 
 ## 4. 基线变更登记（Ruling 2026-09-23-LEGACY-ROW-OWNERSHIP，conventions §8 流程；B2-AC.2 写入）
 
