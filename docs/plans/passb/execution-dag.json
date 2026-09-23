@@ -377,10 +377,10 @@
     "b0-evidence.md + 架构评审通过记录"
    ],
    "execution_mode": "serial",
-   "status": "in_progress",
+   "status": "done",
    "base_sha": "b1a3d6dd8",
-   "head_sha": null,
-   "review_status": "pending",
+   "head_sha": "acd7b24011b57704d401c63f4d2fce1819e057fc",
+   "review_status": "approved",
    "evidence_paths": [
     "docs/architecture/passb/b0-evidence.md",
     "docs/plans/passb/reports/b0.md",

@@ -799,6 +799,26 @@
 - **worktree**：`.worktrees/passb-b0`（`codex/passb-b0`，HEAD `971435df3`，工作树含 2 个未提交修改 + untracked 二进制）；DAG/台账所在 `.worktrees/passb-int`（`codex/passb-integration`，HEAD `78193c4e5`）
 - **本次 JSON 变更**：b0 节点 `ocr_tail_base` 行后追加 `ocr_covered` 数组（6 行新增 + 1 行尾逗号）；Edit 后 `python3 json.load` 复验合法（断言全过：ocr_covered 恰 1 条且 SHA 与指令逐字符一致；status/review_status/notes/task_status/base/head_sha 均未动）；`git diff` 相对 HEAD 累计 7+/1−（= 既有 notes #9-#12 + ocr_tail_base + 本次 ocr_covered，review_status 行与 HEAD 一致）
 
+---
+
+## 2026-09-23 18:47 CST · b0 → done（节点收口：head acd7b24 回填，门禁+OCR 通过）
+
+- **节点**：b0 —— B0 契约与所有权冻结（passbguard + 4 份治理 yaml + 证据）——**全 DAG 首个 done 节点**
+- **计划路径**：`docs/plans/passb/00-contract-and-ownership-freeze.md`
+- **前置**：无（depends_on = []；b0 为 DAG 根）
+- **worktree**：`.worktrees/passb-b0`（`codex/passb-b0`，HEAD `acd7b2401`，本会话核验**工作树全净**——18:41 条目登记的 untracked 二进制 `tools/passbguard/passbguard` 亦已不在 status 输出）
+- **base → head**：`b1a3d6dd8` → **`acd7b24011b57704d401c63f4d2fce1819e057fc`**（指令短 SHA `acd7b24`，本会话 `git rev-parse` 解析为完整 40 位；`git merge-base --is-ancestor` 核验 base 是 head 祖先 ✓；分支累计 **19 提交** = 六任务 9 + 历轮 OCR 修复与测试迁移 10）；head 提交内容：18:46:59 `fix(passbguard): 修复同包符号引用漏检 map 键与赋值左侧使用`——**正是 18:41 条目登记的在途未提交修改（discover.go +85/−9 / discover_test.go +58）的提交化**，对应 18:31 终审 #9 medium（bindingIdentPositions map 键 + AssignStmt= 左侧）；`971435df3..acd7b2401` 恰 1 提交
+- **门禁+OCR 通过**：调度指令口径（本管家未重跑，沿 03:40 起先例）；节点 5 项 gates 全过证据见 06:21 条目，OCR 覆盖登记见 18:46 条目（ocr_covered 首条 0 需修 findings）
+- **审查结论**：approved（指令口径"门禁+OCR 通过"→ `review_status` pending → **approved**，推断迁移在此留痕；OCR 共 **15 次运行**（07:09 起至 18:28 终审）+ 4 个修复轮，终态以调度方收口指令为准）
+- **OCR 报告路径**：历轮全录（ocr-r1/r2/r3/r3-a2/ocr-final 各版本，见各条目）；ocr_covered 覆盖区间登记为 [1a5257003 → 971435df3]
+- **修复轮次**：4（全部闭环：R1 #7→`1a5257003`、R2 r2-1/r2-2→`971435df3`、R3 工单与终审 #9→`acd7b2401`；历轮悬置 low 按调度方 18:46 收口口径不再构成修复义务）
+- **测试证据路径**：B0.1–B0.6 六任务报告/审查包（03:40–06:21 各条目）+ 节点 5 项 gates（06:21）+ ocr_covered 登记（18:46）
+- **本次 JSON 变更**（Edit 后 `python3 json.load` 复验合法、断言全过，diff 恰 3 行）：(1) `status` in_progress → **done**；(2) `head_sha` null → **acd7b24011b57704d401c63f4d2fce1819e057fc**；(3) `review_status` pending → **approved**。`base_sha=b1a3d6dd8`、task_status 六任务 done、notes 12 条、ocr_tail_base/ocr_covered 均未动。33 节点分布：**1 done + 32 pending**（review：1 approved + 32 pending）
+- **留痕 1（head_sha 回填口径）**：07:32/09:32 条目曾约定"head_sha 以分支合并进 integration 后的头回填、不得用分支中间提交"——本次调度指令明确 head=acd7b24（分支 HEAD），而 **`codex/passb-b0` 尚未合并进 `codex/passb-integration`**（integration 新增 2 提交 `56bb5542c`/`03e40a543` 均为 docs 提交、不含 b0 fix 提交）。按指令权限以分支头回填；后续合并时如需以合并头覆盖，由调度方显式指令
+- **留痕 2（ocr_covered 区间不含 head）**：ocr_covered 首条止于 `971435df3`，head `acd7b2401`（18:46:59 提交）不在该区间——调度方未要求追加，如实登记；若 tail OCR 已覆盖 (971435df3, acd7b2401]，建议后续指令补登 ocr_covered 条目
+- **留痕 3（依赖节点残留）**：32 个传递依赖节点 status=pending（非 blocked、无需翻转），但其 notes 内 32 处「BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。」文本的解除条件现已满足，**文本残留待清理**——本指令未授权改动这些节点，留痕待调度方指令
+- **后续（调度方事项）**：(1) 合并 `codex/passb-b0`（HEAD `acd7b2401`）进 `codex/passb-integration`；(2) 32 个依赖节点 BLOCKED 文本清理（可随 B1 派发一并）；(3) ocr_covered 区间补登（若适用）；(4) b1-identity/b1-airesource/b1-commercial/b1-execution 四个 B1 节点已解锁可派发
+
 
 
 
