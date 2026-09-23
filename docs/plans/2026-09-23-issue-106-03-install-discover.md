@@ -44,7 +44,7 @@
 **Interfaces:**
 - Consumes: T01/T02 全部产出；`interfaces.MCPServiceService.CreateMCPService(ctx, service *types.MCPService) error`（mcp_service.go:36）；`interfaces.MCPToolApprovalService.SetPolicy(ctx context.Context, tenantID uint64, serviceID, toolName string, requireApproval, enabled *bool) error`（真实签名见 internal/types/interfaces/mcp_tool_approval.go:20）；`types.MCPAuthConfig{AuthType: types.MCPAuthOAuth, Scopes}`。
 - Produces（后续任务依赖的精确签名）:
-  - `types.PluginInstallation`（字段：`ID string`；`TenantID uint64`；`PluginID string`；`Name string`；`Description string`；`AcceptedVersion string`；`TransportType string`；`EndpointURL string`；`ToolsSnapshot datatypes.JSON`（存 `[]types.PluginToolSnapshot` 序列化；若项目未用 datatypes 包则以 `json.RawMessage`+gorm `type:jsonb` 对齐既有 `MCPTool.InputSchema` 惯例）；`ToolsDigest string`；`ServiceID string`；`DriftState string`（`none|detected`）；`DriftDetail json.RawMessage`；`State string`（`active|disabled`）；`CreatedBy string`；`CreatedAt/UpdatedAt time.Time`）
+  - `types.PluginInstallation`（字段：`ID string`；`TenantID uint64`；`PluginID string`；`Name string`；`Description string`；`ManifestURL string`（**从 preview 行复制的长期清单来源**——升级预览/接受升级的重抓依据）；`AcceptedVersion string`；`TransportType string`；`EndpointURL string`；`ToolsSnapshot datatypes.JSON`（存 `[]types.PluginToolSnapshot` 序列化；若项目未用 datatypes 包则以 `json.RawMessage`+gorm `type:jsonb` 对齐既有 `MCPTool.InputSchema` 惯例）；`ToolsDigest string`；`ServiceID string`；`DriftState string`（`none|detected`）；`DriftDetail json.RawMessage`；`State string`（`active|disabled`）；`CreatedBy string`；`CreatedAt/UpdatedAt time.Time`）
   - 状态常量：`types.PluginInstallationActive = "active"`、`types.PluginInstallationDisabled = "disabled"`、`types.PluginDriftNone = "none"`、`types.PluginDriftDetected = "detected"`
   - `interfaces.PluginService.ConfirmInstallation(ctx context.Context, tenantID uint64, actorID, previewID string) (*dto.PluginInstallationResponse, error)`
   - `interfaces.PluginService.SetInstallationState(ctx context.Context, tenantID uint64, installationID, state string) (*dto.PluginInstallationResponse, error)`（state ∈ {active, disabled}）
@@ -101,7 +101,10 @@ Expected: FAIL —— `ConfirmInstallation`/`SetInstallationState`/`types.Plugin
 ```sql
 -- Issue #110: tenant-scoped plugin installations. accepted_version +
 -- tools_snapshot form the runtime verification baseline (issue #116).
--- service_id points at the materialized mcp_services row. up() writes NO
+-- service_id points at the materialized mcp_services row. manifest_url is
+-- copied from the consumed preview at confirm time: it is the long-lived
+-- source the upgrade-preview / upgrade-accept flows re-fetch (issue #114/#115)
+-- — the preview row itself is TTL-bound and consumed once. up() writes NO
 -- mcp_tool_approvals rows: legacy manual tools are never auto-promoted into
 -- approved plugin versions by migration (spec line 55).
 CREATE TABLE plugin_installations (
@@ -110,6 +113,7 @@ CREATE TABLE plugin_installations (
  plugin_id VARCHAR(128) NOT NULL,
  name VARCHAR(255) NOT NULL,
  description TEXT NOT NULL DEFAULT '',
+ manifest_url VARCHAR(512) NOT NULL,
  accepted_version VARCHAR(64) NOT NULL,
  transport_type VARCHAR(50) NOT NULL,
  endpoint_url VARCHAR(512) NOT NULL,
@@ -144,16 +148,21 @@ ALTER TABLE mcp_services DROP COLUMN IF EXISTS plugin_installation_id;
 
 SQLite twin `000111`（类型对照惯例：`JSONB`→`TEXT`、`TIMESTAMPTZ`→`DATETIME`、`BIGINT`→`INTEGER`；`ALTER TABLE` 同款）。`types/mcp.go` 的 `MCPService` 追加字段（json `plugin_installation_id,omitempty`；注释说明 NULL=手工服务，行为不变）。
 
-- [ ] **Step 4: 实现确认/停用服务**
+- [ ] **Step 4: 实现确认/停用服务（事务口径裁决：补偿式）**
 
-`ConfirmInstallation` 流程（单事务或补偿式两段——gorm 跨 repo 事务经 `PluginRepository.WithTx` 暴露 `func(tx *gorm.DB) error` 执行体，repo 方法集增加 `WithTx(ctx, fn)`；物化服务创建与策略行写入都在 tx 句柄上执行）：
+**事务裁决（不留摇摆空间）**：`ConfirmInstallation` 采用**补偿式**而非跨服务单事务——理由：`CreateMCPService`（默认配置/URL 校验，mcp_service.go:36-60）与 `SetPolicy`（000042 既有 upsert 语义）是既有服务接口，各自持有独立 repo 句柄，把它们的内部逻辑下沉进一个 gorm tx 需要复制其校验与默认值逻辑，破坏"复用既有产品层"的架构决策。确认流程罕见失败面 + `(tenant_id, plugin_id)` 唯一索引兜底 + 显式补偿删除使补偿式可接受。执行顺序与补偿：
+
 1. 取 preview（tenant 归属校验）→ `Expired(now)` 拒绝。
 2. `plugins.FetchAndVerify(preview.ManifestURL, lister)` 重抓 → `res.ToolsDigest == preview.ToolsDigest && res.IdentityFingerprint == preview.IdentityFingerprint`，不符拒绝 "preview content changed"。
 3. `(tenant, plugin_id)` 已存在 → "plugin already installed"（幂等语义：同插件重装需先走升级路径）。
-4. 创建安装行（uuid）→ `CreateMCPService`（构造 `types.MCPService{Name: "plugin:" + pluginID, Description: manifest.Description, Enabled: true, TransportType, URL: &endpoint, AuthConfig: oauth?{AuthType: types.MCPAuthOAuth, Scopes: manifest.Auth.Scopes} : nil, PluginInstallationID: &installationID}`）→ 回填 `installation.ServiceID`。
-5. 逐快照工具 `SetPolicy(ctx, tenant, serviceID, tool.Name, nil /* requireApproval */, &enabled /* true（只读）或 false（写） */)`——**写工具 Enabled=false**。
-6. `MarkPreviewConsumed`。
-`SetInstallationState`：更新安装 `state` + `mcpServiceRepo.Update` 物化行 `Enabled`（`updateFields["enabled"]=true`，走 `UpdateMCPService` 或 repo 直更，保持 `UpdatedAt` 刷新触发客户端重建连接，manager.go 按 `UpdatedAt` 缓存失效）。
+4. 创建安装行（uuid，`ManifestURL = preview.ManifestURL` **在此复制**）。
+5. `CreateMCPService`（构造 `types.MCPService{Name: "plugin:" + pluginID, Description: manifest.Description, Enabled: true, TransportType, URL: &endpoint, AuthConfig: oauth?{AuthType: types.MCPAuthOAuth, Scopes: manifest.Auth.Scopes} : nil, PluginInstallationID: &installationID}`）→ 回填 `installation.ServiceID`。
+6. 逐快照工具 `SetPolicy(ctx, tenant, serviceID, tool.Name, nil /* requireApproval */, &enabled /* true（只读）或 false（写） */)`——**写工具 Enabled=false**。
+7. `MarkPreviewConsumed`。
+
+**补偿规则**：步骤 5/6/7 任一失败 → 依序补偿：删除已创建的物化服务行（`mcpServiceRepo.Delete(ctx, tenant, serviceID)`——软删即可，物化行不对外）→ 删除安装行（`pluginRepo` 硬删）→ 返回原错误。补偿动作自身失败时记录错误日志并返回原错误（残留行不破坏语义：无安装行的物化服务不会被 Agent 侧 plugin guard 识别为插件，且 `(tenant, plugin)` 唯一索引未被占用）。测试断言补偿后 `(tenant, plugin_id)` 可重新确认。
+
+`SetInstallationState`：更新安装 `state` + `mcpServiceRepo.Update` 物化行 `Enabled`（`updateFields["enabled"]=true`，保持 `UpdatedAt` 刷新触发客户端重建连接，manager.go 按 `UpdatedAt` 缓存失效）。
 
 - [ ] **Step 5: 运行确认通过**
 
@@ -163,7 +172,7 @@ Expected: PASS。
 - [ ] **Step 6: 写失败测试（handler + 迁移执行 + 回退）**
 
 `internal/handler/plugin_install_test.go`（stub service，模式同 T02 Step 5）：确认 200/400（缺 preview_id）/404（服务层 not found 错误映射）；disable/enable 200。
-迁移执行测试（新增 `internal/modules/plugins/migration_pg_integration_test.go`，`//go:build integration`，环境 `PLUGIN_TEST_DATABASE_URL` 缺失 `t.Fatal("blocked-env: PLUGIN_TEST_DATABASE_URL required")`——先例 oc_integration_test.go:83）：isolated schema 内 `db.Exec` 依次执行 `000189.up`、`000190.up`，断言 `plugin_previews`/`plugin_installations` 表与 `mcp_services.plugin_installation_id` 列存在；插入一行物化 `mcp_services`（`plugin_installation_id` 非空）+ 派生 approvals/tokens 行后依次执行 `000190.down`、`000189.down`，断言表/列已删、派生行已清、预置的一行**手工** `mcp_services` 仍在（回退安全）。
+迁移执行测试（新增 `internal/modules/plugins/migration_pg_integration_test.go`，`//go:build integration`，环境 `PLUGIN_TEST_DATABASE_URL` 缺失 `t.Fatal("blocked-env: PLUGIN_TEST_DATABASE_URL required")`——先例 oc_integration_test.go:83）：isolated schema 内 `db.Exec` 依次执行 `000189.up`、`000190.up`，断言 `plugin_previews`/`plugin_installations` 表存在、`plugin_installations.manifest_url` 列存在且 NOT NULL（升级链长期来源在此定型，T14/T16 只读不改表）、`mcp_services.plugin_installation_id` 列存在；插入一行物化 `mcp_services`（`plugin_installation_id` 非空）+ 派生 approvals/tokens 行后依次执行 `000190.down`、`000189.down`，断言表/列已删、派生行已清、预置的一行**手工** `mcp_services` 仍在（回退安全）。
 
 - [ ] **Step 7: 运行确认失败**
 
@@ -276,7 +285,7 @@ test('成员面板不显示管理操作', () => {
 Run: `pnpm gates`
 Expected: FAIL —— 新方法/组件未实现。
 
-- [ ] **Step 3: 实现**（api-client 方法 + 面板；PluginsPanel 走 `INTEGRATION_SECTIONS` 的 `plugins` section 渲染，管理操作按 `role` 隐藏——面板 props 不带 role 时默认只读展示，与 registry `minRole: 'viewer'` 一致）。
+- [ ] **Step 3: 实现**（api-client 方法 + 面板；PluginsPanel 走 `INTEGRATION_SECTIONS` 的 `plugins` section 渲染，管理操作按 `role` 隐藏——面板 props 不带 role 时默认只读展示，与 registry `minRole: 'viewer'` 一致）。**卸载范围说明（明示）**：本版不提供插件卸载/删除——管理员误装的处置路径是"停用"（阻止后续调用、保留成员连接与审计）；面板与 T20 用户文档均按此口径表述，不出现"删除插件"入口或文案。
 
 - [ ] **Step 4: 运行确认通过 + Commit**
 

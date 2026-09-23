@@ -98,7 +98,15 @@ func TestExpiredTokenGuidesReauthorization(t *testing.T) {
 }
 ```
 
-（plugintest 扩展 OAuth：`Server.EnableOAuth(users map[string]string)`——`/authorize` 按 POST 的 `username` 选择成员、`/token` 发放 `tok-<user>`、MCP `CallTool` 校验并按 token 归属返回数据。WeKnora 客户端侧走 `oauthManager.StartAuthorization/CompleteAuthorization` 真实流；PKCE/state 由既有客户端实现。）
+（plugintest 扩展 OAuth——`Server.EnableOAuth(users map[string]string)` 必须实现**完整端点集**以支撑真实客户端流 `oauthManager.StartAuthorization`（oauth_manager.go:80-165：先做 RFC 9728 保护资源发现与授权服务器元数据发现，再 `RegisterClient` 动态客户端注册 + PKCE，最后授权码交换）：
+- MCP `/mcp` 端点对未认证请求返回 401 + `WWW-Authenticate: Bearer resource_metadata="<base>/.well-known/oauth-protected-resource"`（触发客户端发现）；
+- `GET /.well-known/oauth-protected-resource` → `{"authorization_servers": ["<base>"]}`；
+- `GET /.well-known/oauth-authorization-server` → `{"authorization_endpoint": "<base>/authorize", "token_endpoint": "<base>/token", "registration_endpoint": "<base>/register", "grant_types": ["authorization_code", "refresh_token"]}`；
+- `POST /register`（动态客户端注册）→ `{"client_id": "plugintest-client"}`；
+- `GET /authorize`（带 `code_challenge` S256）→ 按 POST 凭据选择成员（`users` 表：成员名→凭据）→ 302 `redirect_uri?code=...&state=...`；code 一次性；
+- `POST /token`（`grant_type=authorization_code` + `code_verifier` PKCE 校验）→ `{"access_token": "tok-<user>", "token_type": "Bearer"}`；
+- `CallTool` 校验 Bearer 并按 `tok-<user>` 归属返回该成员数据。
+端点清单与 T04 `examples/plugins/jira-todo-mcp/oauth.go` 同构（替身复刻示例服务契约）。）
 
 - [ ] **Step 6: 运行确认失败**
 

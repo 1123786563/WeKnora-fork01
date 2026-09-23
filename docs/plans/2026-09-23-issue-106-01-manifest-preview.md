@@ -384,7 +384,7 @@ git commit -m "feat(plugins): 插件清单协议校验与 SSRF 安全远端核�
 - Create: `internal/handler/plugin.go`
 - Create: `internal/router/routes_plugins.go`
 - Modify: `internal/container/container.go`（DI 注册）
-- Modify: 路由聚合点（挂载 `RegisterPluginRoutes`；聚合文件为注册 `RegisterInfraRoutes` 等的调用处——执行时以 `grep -rn "RegisterInfraRoutes(" internal/router/` 定位并同点挂载）
+- Modify: 路由聚合点（挂载 `RegisterPluginRoutes`——真实聚合点为 `internal/router/router.go:389` 附近的 fx invoke 块：`RegisterMCPServiceRoutes(v1, params.MCPServiceHandler, ..., rbacGuards)` 同款位置追加 `RegisterPluginRoutes(v1, params.PluginHandler, rbacGuards)`；`PluginHandler` 字段须加入同文件 `RouterParams` 结构（router.go:28）；路由签名模式参照 routes_infra.go:145-152 `RegisterMCPServiceRoutes`）
 - Modify: `internal/database/migration_sqlite_versioned_schema_test.go`（`versionedSQLiteTables` 加 `plugin_previews`）
 - Test: `internal/modules/plugins/preview_service_test.go`
 - Test: `internal/handler/plugin_test.go`
@@ -589,7 +589,7 @@ test('插件面板渲染校验失败错误', async () => {
 Run: `pnpm gates`
 Expected: FAIL —— 组件不存在。
 
-- [ ] **Step 7: 实现面板**（输入框 + 提交按钮 + 预览卡：插件名/版本/端点/工具表（名称、读写分类徽标、是否需个人授权、scope）+ 有效期显示 + 错误条；本任务不含"确认安装"按钮——T08 加入）；挂载 SettingsPage 与 registry。
+- [ ] **Step 7: 实现面板**（输入框 + 提交按钮 + 预览卡：插件名/版本/端点/工具表（名称、读写分类徽标、是否需个人授权、scope）+ 有效期显示 + 错误条；本任务不含"确认安装"按钮——T08 加入）。**schema 展示取舍（明示）**：Spec US9 要求管理员"看到工具的 schema"——本实现为**平台核验、界面不渲染原文**：预览 DTO 与面板只展示工具元数据（名称/描述/读写分类/scope）+ 每工具一行的"schema 指纹已核验"徽标（digest 匹配结果），不渲染 schema JSON 原文（远端不可信数据不进管理界面，digest 核验失败则整个预览拒绝——核验语义见 T01 `BuildVerifiedSnapshot`）；该取舍同步写入 T20 的 B1 验收口径与用户文档。
 
 - [ ] **Step 8: 运行确认通过**
 

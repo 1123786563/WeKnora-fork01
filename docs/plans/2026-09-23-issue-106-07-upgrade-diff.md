@@ -36,7 +36,7 @@
 - Test: `internal/handler/plugin_upgrade_test.go`
 
 **Interfaces:**
-- Consumes: T01 `FetchAndVerify`/`FetchResult`；T06 `GetInstallation`/`types.PluginInstallation`。
+- Consumes: T01 `FetchAndVerify`/`FetchResult`；T06 `GetInstallation`/`types.PluginInstallation`（**含 `ManifestURL` 列——`PreviewUpgrade` 重抓来源即 `installation.ManifestURL`**，见总索引"安装后远端真相的统一口径"）。
 - Produces（T15/T16 依赖）:
   - `types.PluginVersionDiff{PluginID string; CurrentVersion, CandidateVersion string; IsDowngrade bool; EndpointChanged bool; CurrentEndpoint, CandidateEndpoint string; AddedTools, RemovedTools []types.PluginToolSnapshot; ChangedTools []types.PluginToolChange{Name string; SchemaChanged, ScopeChanged, ReadWriteClassChanged, PersonalAuthChanged bool; Current, Candidate types.PluginToolSnapshot}}`
   - `plugins.DiffSnapshots(current, candidate []types.PluginToolSnapshot, currentEndpoint, candidateEndpoint string) *types.PluginVersionDiff`
@@ -45,7 +45,7 @@
 
 - [ ] **Step 1: 写失败测试（纯函数五维差异）**
 
-`upgrade_diff_test.go`：
+`internal/modules/plugins/upgrade_diff_test.go`（**`package plugins_test`**——本文件 import `plugintest` 受控服务，外部测试包约定见总索引"测试包名约定"；plugintest import plugins 包，内部测试包会构成导入环）：
 
 ```go
 func TestDiffSnapshotsCoversAllDimensions(t *testing.T) {
@@ -95,7 +95,7 @@ func TestPreviewUpgradeCandidateUnreachable(t *testing.T) {
 Run: `go test ./internal/modules/plugins/ -run 'TestDiffSnapshots|TestPreviewUpgrade' -v`
 Expected: FAIL —— `DiffSnapshots`/`PreviewUpgrade` 未定义。
 
-- [ ] **Step 3: 实现**（`DiffSnapshots` 双 map 对比；`IsDowngrade` 用 semver 三段数值比较；`PreviewUpgrade`：`GetInstallation` → `FetchAndVerify(安装记录中保存的 manifest_url)` → `DiffSnapshots(安装快照, res.Snapshot, 安装 endpoint, res.Manifest.Transport.Endpoint)`；handler/路由 Admin）。
+- [ ] **Step 3: 实现**（`DiffSnapshots` 双 map 对比；`IsDowngrade` 用 semver 三段数值比较；`PreviewUpgrade`：`GetInstallation` → `FetchAndVerify(installation.ManifestURL)` → `DiffSnapshots(安装快照, res.Snapshot, 安装 endpoint, res.Manifest.Transport.Endpoint)`；handler/路由 Admin）。
 
 - [ ] **Step 4: 运行确认通过 + handler 测试 + Commit**
 

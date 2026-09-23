@@ -63,7 +63,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/utils"
 	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/client/transport"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,7 +76,9 @@ func TestListToolsIsPublicAndSchemaIsFixed(t *testing.T) {
 	base, _ := newTestService(t, func(w http.ResponseWriter, _ *http.Request) {
 		t.Fatal("ListTools must not reach Jira")
 	})
-	c := client.NewMCPClient("preview", transport.NewStreamableHttpClient(base+"/mcp", transport.WithHTTPHeaders(nil)))
+	// 构造器与仓库先例一致（internal/modules/airesource/mcp/client.go:221-226：
+	// client.NewStreamableHttpClient(url, transport.WithHTTPBasicClient(...), ...)）。
+	c := client.NewStreamableHttpClient(base+"/mcp")
 	require.NoError(t, c.Start(context.Background()))
 	defer func() { _ = c.Close() }()
 	initRes, err := c.Initialize(context.Background(), mcp.InitializeRequest{})

@@ -57,6 +57,12 @@ func TestSetInstallationToolPolicyTogglesWriteTool(t *testing.T) {
 	// PUT enabled=true → 行更新、列表反映；再关闭 → 回到默认 reason。
 	// 未知工具名 → 错误；非本租户安装 → not found。
 }
+
+func TestListInstallationToolsDropsRemovedSnapshotTools(t *testing.T) {
+	// 升级/漂移 resolve 后快照移除工具 X（其旧 MCPToolApproval 行残留 Enabled=true）：
+	// ListInstallationTools 以快照为源 → X 不出现在列表（残留行不复活已移除工具）；
+	// Agent 目录同样不见 X（T09 快照过滤）。
+}
 ```
 
 - [ ] **Step 2: 运行确认失败**

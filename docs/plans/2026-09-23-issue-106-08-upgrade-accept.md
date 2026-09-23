@@ -4,9 +4,9 @@
 
 **Goal:** 管理员接受候选版本后，空间已接受版本与 Agent 后续调用一起切换；接受前重核候选快照、操作幂等；失败/不可达保旧版；仅管理员可接受；两空间可停留不同版本；升级效果从成员对话验证新旧版调用。
 
-**Architecture:** `PluginService.AcceptUpgrade(ctx, tenantID, actorID, installationID, candidateFingerprint string)`：事务内重抓核验（`FetchAndVerify` 的 `IdentityFingerprint` 必须等于调用方从 T14 预览拿到的 `candidateFingerprint`——防"预览后远端又变"）→ 更新 `plugin_installations`（`accepted_version`/`endpoint_url`/`tools_snapshot`/`tools_digest`/`drift_state=none`/`drift_detail=NULL`）→ 同步物化 `mcp_services`（`URL` 新端点 + `UpdatedAt` 刷新触发 `MCPManager` 连接重建，manager.go 缓存按 `UpdatedAt` 失效）→ 为候选快照**新增**工具写策略行（只读 `Enabled=true`、写 `Enabled=false`）→ 已有工具策略行不动（管理员既有启停/审批决定保留）。幂等：同 fingerprint 再次接受 → 直接返回当前安装（成功）；任何一步失败 → 事务回滚保旧版。
+**Architecture:** `PluginService.AcceptUpgrade(ctx, tenantID, actorID, installationID, candidateFingerprint string)`：补偿式事务（T06 Step 4 同款裁决）内重抓核验（`FetchAndVerify(installation.ManifestURL)` 的 `IdentityFingerprint` 必须等于调用方从 T14 预览拿到的 `candidateFingerprint`——防"预览后远端又变"；`ManifestURL` 是 T06 落列的长期清单来源，preview 行已消费不可复用）→ 更新 `plugin_installations`（`accepted_version`/`endpoint_url`/`tools_snapshot`/`tools_digest`/`drift_state=none`/`drift_detail=NULL`；后续步骤失败时回写内存持有的旧值）→ 同步物化 `mcp_services`（`URL` 新端点 + `UpdatedAt` 刷新触发 `MCPManager` 连接重建，manager.go 缓存按 `UpdatedAt` 失效）→ 为候选快照**新增**工具写策略行（只读 `Enabled=true`、写 `Enabled=false`）→ 已有工具策略行不动（管理员既有启停/审批决定保留）。幂等：同 fingerprint 再次接受 → 直接返回当前安装（成功）；任何一步失败 → 补偿回写保旧版。
 
-**Tech Stack:** Go 1.26；gorm 事务；`//go:build integration` 真 PG（复用 `pluginpg` 基建 + `plugintest.SetTools` 模拟新版）。
+**Tech Stack:** Go 1.26；gorm 补偿式写序；`//go:build integration` 真 PG（复用 `pluginpg` 基建 + `plugintest.SetTools` 模拟新版）。
 
 **Spec:** `docs/specs/2026-09-23-self-hosted-plugins-spec.md`（User Stories 3/12/13/24；Implementation Decisions 51 行）。
 
@@ -35,14 +35,14 @@
 - Test: `internal/modules/plugins/plugin_upgrade_integration_test.go`（`//go:build integration`，真 PG）
 
 **Interfaces:**
-- Consumes: T14 `PreviewUpgrade`/`PluginVersionDiff`/`FetchResult.IdentityFingerprint`；T06 物化与策略行设施；T10 `plugintest`、T11 `pluginpg`。
+- Consumes: T14 `PreviewUpgrade`/`PluginVersionDiff`/`FetchResult.IdentityFingerprint`；T06 `GetInstallation`（**`installation.ManifestURL` 为重抓来源**）与策略行设施；T10 `plugintest`、T11 `pluginpg`。
 - Produces:
   - `interfaces.PluginService.AcceptUpgrade(ctx context.Context, tenantID uint64, actorID, installationID, candidateFingerprint string) (*dto.PluginInstallationResponse, error)`
   - T17/T18/T20 依赖的语义：`drift_state` 在成功接受后重置 `none`；新工具策略行规则（只读启用/写关闭）。
 
 - [ ] **Step 1: 写失败测试（fake 层语义）**
 
-`upgrade_accept_test.go`：
+`upgrade_accept_test.go`（**`package plugins_test`**——import `plugintest`，外部测试包约定见总索引）：
 
 ```go
 func TestAcceptUpgradeSwitchesSnapshotAndEndpoint(t *testing.T) {
@@ -69,7 +69,7 @@ func TestAcceptUpgradeFailureKeepsOldVersion(t *testing.T) {
 Run: `go test ./internal/modules/plugins/ -run 'TestAcceptUpgrade' -v`
 Expected: FAIL —— `AcceptUpgrade` 未定义。
 
-- [ ] **Step 3: 实现**（事务体沿用 T06 `WithTx` 模式；策略行增量 = 遍历候选快照，`GetByServiceID+ToolName` 无行才写）。
+- [ ] **Step 3: 实现**（事务口径沿用 T06 Step 4 的**补偿式**裁决：重核通过后先更新安装行（新快照/端点/版本），再同步物化 `mcp_services.URL` 与策略行增量；任一步失败时把安装行回写为重核前读取的旧值（内存持有）并返回原错误——保旧版语义由补偿回写保证；策略行增量 = 遍历候选快照，`GetByServiceID+ToolName` 无行才写）。
 
 - [ ] **Step 4: 运行确认通过**
 

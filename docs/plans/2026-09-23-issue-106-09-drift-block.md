@@ -4,7 +4,7 @@
 
 **Goal:** 远端在已接受端点改变工具目录或 schema 时，Agent 拒绝未经审阅的能力：新增/移除/schema 变更形成明确漂移状态，调用被阻止并提示管理员复审；从成员对话观察拒绝；其他空间不受影响；手工 MCP 服务不被静默施加版本治理；提供管理员复审后的处置闭环（GAP-6）。
 
-**Architecture:** 运行时阻断已由 T09 提供（快照外剔除 + `ErrPluginDrift`）。本切片补齐**持久化漂移状态与处置闭环**：`PluginService.CheckDrift`（Admin 触发：`FetchAndVerify`（用安装记录的 `manifest_url` 与已接受端点语义——注意核验对象是**已接受端点的当前目录**而非清单候选，因此用 `EndpointLister` 直连 `installation.endpoint_url` 后与快照对比，不经清单重抓）→ 差异持久化 `drift_state=detected` + `drift_detail`（JSON：`{added:[], removed:[], schema_changed:[], checked_at}`））；`GetDrift`（Viewer 读）；`ResolveDrift`（Admin：重核验 → 生成差异 → 以当前远端目录为新快照重置 `tools_digest`/`drift_state=none`——版本号不变，"接受当前目录为已核验快照"；对新增写工具仍按规则写 `Enabled=false` 行）。运行时目录加载检测到差异时 best-effort 置位（loader 内不引 DB——由 `PluginRepository.MarkDriftDetected` 经 provider 闭包调用，失败仅日志）。
+**Architecture:** 运行时阻断已由 T09 提供（快照外剔除 + `ErrPluginDrift`）。本切片补齐**持久化漂移状态与处置闭环**：`PluginService.CheckDrift`（Admin 触发：漂移核验的远端真相来源为 **`EndpointLister` 直连 `installation.endpoint_url` 实时 `ListTools`，不经清单重抓**——见总索引"安装后远端真相的统一口径"：清单可能已改指新版，漂移的定义是"已接受端点偏离已接受快照"→ 差异持久化 `drift_state=detected` + `drift_detail`（JSON：`{added:[], removed:[], schema_changed:[], checked_at}`））；`GetDrift`（Viewer 读）；`ResolveDrift`（Admin：重核验 → 生成差异 → 以当前远端目录为新快照重置 `tools_digest`/`drift_state=none`——版本号不变，"接受当前目录为已核验快照"；对新增写工具仍按规则写 `Enabled=false` 行）。运行时目录加载检测到差异时 best-effort 置位（loader 内不引 DB——由 `PluginRepository.MarkDriftDetected` 经 provider 闭包调用，失败仅日志）。
 
 **Tech Stack:** Go 1.26；T10 `plugintest.SetTools`（运行时改目录）；`//go:build integration` 真 PG。
 
@@ -49,7 +49,7 @@
 
 - [ ] **Step 1: 写失败测试（fake 层）**
 
-`drift_test.go`：
+`drift_test.go`（**`package plugins_test`**——import `plugintest`，外部测试包约定见总索引）：
 
 ```go
 func TestDiffLiveAgainstSnapshot(t *testing.T) {

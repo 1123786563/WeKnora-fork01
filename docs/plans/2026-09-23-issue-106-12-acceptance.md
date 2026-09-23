@@ -52,6 +52,8 @@ func TestPlugin106Acceptance(t *testing.T) {
 		// memberA1（非管理员）调 preview → 403 语义（服务层拒绝）；
 		// owner 预览：版本/端点/工具/读写分类/授权要求齐备；受限地址清单 URL 拒绝；
 		// 清单声明与目录不符（plugintest 目录改）→ 预览拒绝。journal B1。
+		// 口径注记：schema 以"平台 digest 核验、界面不渲染原文"落地（US9 展示粒度取舍，
+		// 见 T03 Step 7；文档节同步声明）。
 	})
 	t.Run("B2 安装固定版本+差异+手动接受+失败保旧", func(t *testing.T) { /* T16 场景复述断言 */ })
 	t.Run("B3 运行时以已接受快照阻断漂移", func(t *testing.T) { /* T17 场景复述断言 */ })
@@ -83,7 +85,7 @@ Expected: 全部通过（integration tag 套件仅在提供 `PLUGIN_TEST_DATABAS
 
 - [ ] **Step 5: 文档与矩阵**
 
-`website-docs/03-features/08-mcp.md` 追加节（内容要点见 Files 描述；含自托管信任边界原文照设计文档 80 行）。`docs/plans/2026-09-23-issue-106-trace-matrix.md` 证据列填实际测试函数名与 evidence 键。
+`website-docs/03-features/08-mcp.md` 追加节（内容要点见 Files 描述；含自托管信任边界原文照设计文档 80 行；**两条明示口径**：① schema 为平台 digest 核验、界面不渲染原文；② 本版无插件卸载——停用即治理终点，成员连接与审计保留）。`docs/plans/2026-09-23-issue-106-trace-matrix.md` 证据列填实际测试函数名与 evidence 键。
 
 - [ ] **Step 6: Commit**
 
