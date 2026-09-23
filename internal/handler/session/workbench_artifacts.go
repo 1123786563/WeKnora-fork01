@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"mime"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/modules/workbench"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
@@ -20,21 +22,35 @@ type ArtifactRefReader interface {
 	GetSessionArtifactRefs(ctx context.Context, sessionID string) ([]types.SessionArtifactRef, error)
 }
 
+// ArtifactVersionRevoker persists the readability revocation fact for an
+// artifact version after the handler has authorized the run owner.
+type ArtifactVersionRevoker interface {
+	Revoke(ctx context.Context, tenantID uint64, versionID string) error
+}
+
 // WorkbenchArtifactHandler serves the mobile execution-artifact surfaces:
 // a metadata list scoped to an owned run, and short-lived signed download
 // links. Storage URLs never leave the server; the signed link carries an
 // HMAC grant (tenant/session/message/index/expiry) instead of credentials.
 type WorkbenchArtifactHandler struct {
-	runs       OwnedRunReader
-	refs       ArtifactRefReader
-	versions   ArtifactVersionSource
-	signingKey func() ([]byte, error)
-	ttl        time.Duration
+	runs           OwnedRunReader
+	refs           ArtifactRefReader
+	versions       ArtifactVersionSource
+	versionRevoker ArtifactVersionRevoker
+	signingKey     func() ([]byte, error)
+	ttl            time.Duration
 }
 
 // WithArtifactVersions enables grants for immutable, published artifact versions.
 func (h *WorkbenchArtifactHandler) WithArtifactVersions(versions ArtifactVersionSource) *WorkbenchArtifactHandler {
 	h.versions = versions
+	return h
+}
+
+// WithArtifactVersionRevoker enables the owner-authorized version revocation
+// endpoint. The mutation remains tenant-scoped in the repository.
+func (h *WorkbenchArtifactHandler) WithArtifactVersionRevoker(revoker ArtifactVersionRevoker) *WorkbenchArtifactHandler {
+	h.versionRevoker = revoker
 	return h
 }
 
@@ -262,6 +278,47 @@ func (h *WorkbenchArtifactHandler) CreateWorkbenchArtifactVersionSignedURL(c *gi
 	link := externalURLBase(c) + "/api/v1/workbench/artifacts/download?" + values.Encode()
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"url": link, "expires_at": time.Unix(grant.ExpiresAt, 0).UTC().Format(time.RFC3339), "version_id": version.ID, "digest": version.Digest, "size": version.Size, "mime": version.MIME}})
+}
+
+// RevokeWorkbenchArtifactVersion godoc
+// @Summary Revoke a fixed artifact version
+// @Description Rechecks run ownership and version scope, then makes the published version unreadable to invalidate existing signed links.
+// @Tags 工作台
+// @Param run_id path string true "执行ID"
+// @Param version_id path string true "不可变成果版本ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} errors.AppError
+// @Failure 404 {object} errors.AppError
+// @Security Bearer
+// @Router /workbench/executions/{run_id}/artifact-versions/{version_id} [delete]
+//
+// It removes a published version from future reads and invalidates previously
+// issued links. The current run owner is resolved from authenticated context
+// before version state is touched.
+func (h *WorkbenchArtifactHandler) RevokeWorkbenchArtifactVersion(c *gin.Context) {
+	run, ok := resolveOwnedRun(c, h.runs)
+	if !ok {
+		return
+	}
+	versionID := strings.TrimSpace(c.Param("version_id"))
+	if versionID == "" || h.versions == nil || h.versionRevoker == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	version, err := h.versions.ReadableArtifactVersion(c.Request.Context(), run.Key.TenantID, run.SessionID, versionID)
+	if err != nil || version.RunID != run.Key.RunID {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	if err := h.versionRevoker.Revoke(c.Request.Context(), run.Key.TenantID, version.ID); err != nil {
+		if errors.Is(err, repository.ErrArtifactVersionNotFound) {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"version_id": version.ID, "revoked": true}})
 }
 
 // externalURLBase derives the scheme://host the client used to reach this

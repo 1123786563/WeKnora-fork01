@@ -35,7 +35,9 @@ func NewWorkbenchArtifactHandler(
 	messages interfaces.MessageService,
 	versions *repository.ArtifactVersionStore,
 ) *session.WorkbenchArtifactHandler {
-	return session.NewWorkbenchArtifactHandler(runs, messages).WithArtifactVersions(versions)
+	return session.NewWorkbenchArtifactHandler(runs, messages).
+		WithArtifactVersions(versions).
+		WithArtifactVersionRevoker(versions)
 }
 
 // NewWorkbenchListHandler wires the mobile workbench list to the ownership-

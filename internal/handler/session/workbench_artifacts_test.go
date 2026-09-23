@@ -243,7 +243,22 @@ func TestDownloadArtifactVersionGrantStreamsExactBytesAndRevokedIssuedLinkFails(
 	require.Equal(t, "private, no-store", response.Header().Get("Cache-Control"))
 	require.Equal(t, strconv.Itoa(len(data)), response.Header().Get("Content-Length"))
 
-	require.NoError(t, versions.Revoke(ctx, 1, version.ID))
+	artifactHandler := NewWorkbenchArtifactHandler(artifactRunStub(), nil).
+		WithArtifactVersions(versions).
+		WithArtifactVersionRevoker(versions)
+	denied, deniedRecorder := workbenchRequest(t, "not-owner")
+	denied.Request.Method = http.MethodDelete
+	denied.Params = gin.Params{{Key: "run_id", Value: "run-1"}, {Key: "version_id", Value: version.ID}}
+	artifactHandler.RevokeWorkbenchArtifactVersion(denied)
+	require.Equal(t, http.StatusNotFound, deniedRecorder.Code, "a non-owner must not revoke another user's version")
+	_, err = versions.ReadableArtifactVersion(ctx, 1, version.SessionID, version.ID)
+	require.NoError(t, err, "denied revocation must leave the issued link readable")
+
+	revokeRequest, revokeRecorder := workbenchRequest(t, "u1")
+	revokeRequest.Request.Method = http.MethodDelete
+	revokeRequest.Params = gin.Params{{Key: "run_id", Value: "run-1"}, {Key: "version_id", Value: version.ID}}
+	artifactHandler.RevokeWorkbenchArtifactVersion(revokeRequest)
+	require.Equal(t, http.StatusOK, revokeRecorder.Code, "the run owner can revoke this version")
 	response = serve()
 	require.Equal(t, http.StatusNotFound, response.Code, "the already-issued link must fail after persisted revocation")
 }

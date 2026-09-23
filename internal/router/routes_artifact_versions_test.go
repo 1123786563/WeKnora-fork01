@@ -56,3 +56,17 @@ func TestArtifactVersionDownloadRouteFailClosedWithoutAssembly(t *testing.T) {
 		t.Fatalf("GET %s must not exist when the container assembly is not wired (fail-closed mounting)", artifactVersionDownloadRoute)
 	}
 }
+
+func TestWorkbenchArtifactVersionRevocationRouteMounted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	RegisterWorkbenchArtifactRoutes(
+		engine.Group("/api/v1"),
+		&sessionhandler.WorkbenchArtifactHandler{},
+		&sessionhandler.Handler{},
+		&rbacGuards{},
+	)
+	if !hasRoute(engine.Routes(), http.MethodDelete, "/api/v1/workbench/executions/:run_id/artifact-versions/:version_id") {
+		t.Fatal("DELETE workbench artifact version route must be registered behind authenticated workbench authorization")
+	}
+}
