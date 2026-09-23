@@ -54,8 +54,8 @@ export function LiveSectionsPanel({ client, section, payload }: { client: WeKnor
       : null}
     {rows.length === 0
       ? <p className="wk-settings-read-note text-muted-strong text-[.9rem]">No rows were returned by the API for this section.</p>
-      : <ul className="wk-list m-0 list-none p-0">{rows.map((row, index) => (
-        <li key={index} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
+      : <ul className="wk-list">{rows.map((row, index) => (
+        <li key={index} className="wk-list-row">
           <strong>{summary(row)}</strong>
           <dl className="wk-settings-values mb-0 mt-4 grid gap-[.65rem]">{settingsValueEntries(row).slice(0, 8).map(([key, value]) => <div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1" key={key}><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{key}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{value}</dd></div>)}</dl>
         </li>

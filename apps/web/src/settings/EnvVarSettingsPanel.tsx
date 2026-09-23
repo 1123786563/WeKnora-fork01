@@ -149,7 +149,7 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
     {sectionHeader}
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
-    <form className="wk-settings-editor my-4 grid max-w-[620px] gap-[.8rem] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold" onSubmit={setVariable}>
+    <form className="wk-settings-editor" onSubmit={setVariable}>
       <label>{t('envVarSettings.sandboxPick')}
         <Select value={scope} onChange={(next) => setScope(String(next) as EnvVarScope)}>
           <Select.Option value="skill" label={t('envVarSettings.skillTitle')}>{t('envVarSettings.skillTitle')}</Select.Option>
@@ -168,9 +168,9 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
       <Button type="submit" loading={busy}>{t('envVarSettings.save')}</Button>
     </form>
     {rows(initialPayload).length === 0
-      ? <p className="wk-settings-read-note text-muted-strong text-[.9rem]">{t('envVarSettings.sandboxEmpty')}</p>
-      : <ul className="wk-list m-0 list-none p-0">{rows(initialPayload).map((row) => (
-        <li key={row.scope + ':' + row.scopeId + ':' + row.name} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
+      ? <p className="wk-settings-read-note">{t('envVarSettings.sandboxEmpty')}</p>
+      : <ul className="wk-list">{rows(initialPayload).map((row) => (
+        <li key={row.scope + ':' + row.scopeId + ':' + row.name} className="wk-list-row">
           <strong>{row.name}</strong> · {row.scope} {row.scopeId}
           <Button type="button" disabled={busy} onClick={() => removeVariable(row)}>{t('envVarSettings.delete')}</Button>
         </li>

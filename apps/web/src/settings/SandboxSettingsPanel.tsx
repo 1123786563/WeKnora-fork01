@@ -1979,7 +1979,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           </div>
           <h4>{t('settings.sandbox.inventorySessions')}</h4>
           {inventory.data.sessionIds.length > 0 ? (
-            <ul className="wk-list m-0 list-none p-0">
+            <ul className="wk-list">
               {/* Vue inventory row (171-178): the raw id stays on the title
                   tooltip; the label shows the resolved session title. Rows are
                   buttons that open the session (openSession, 341-344) only when

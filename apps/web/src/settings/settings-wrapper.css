@@ -459,3 +459,122 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 }
 /* （原 3/3b/3c/3d/4 手搓 tab 条/wk-tag-input/password-reset svg/switch 几何/
    badge 深修 slice 已删——T12c 全部换 tdesign 组件，由库与 §17 自持。） */
+
+/* ==== Settings 域 toast（R472 A2，settings-toast.tsx；S6 Tailwind 收编） ====
+ * 原 utilities 平移：region = pointer-events-none fixed right-4(1rem) top-4(1rem)
+ * z-[1200] flex w-[320px] flex-col gap-2(0.5rem)；item = rounded-card border
+ * px-3(0.75rem) py-2.5(0.625rem) text-[13px] leading-relaxed(1.625) shadow-lg。 */
+.wk-settings-toast-region {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1200;
+  display: flex;
+  width: 320px;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.wk-settings-toast {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid;
+  border-radius: var(--radius-card, 8px);
+  font-size: 13px;
+  line-height: 1.625;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+.wk-settings-toast--error {
+  border-color: var(--color-danger-line, #f1b8b3);
+  background: var(--color-danger-wash, #fdecea);
+  color: var(--color-danger, #b42318);
+}
+.wk-settings-toast--warning {
+  border-color: var(--color-warning-line, #fedf89);
+  background: var(--color-warning-wash, #fffaeb);
+  color: var(--color-warning, #e37318);
+}
+.wk-settings-toast--success {
+  border-color: var(--color-success-line, #8ce0af);
+  background: var(--color-accent-wash, rgba(7, 192, 95, 0.08));
+  color: var(--color-accent-strong, #0a8f4c);
+}
+
+/* ==== EmptyState（EmptyState.tsx，t-empty 中号解剖复刻；S6 Tailwind 收编） ====
+ * 原 utilities 平移：flex flex-col items-center text-center；image 48px 盒
+ * flex items-center justify-center + placeholder 色；title/description 14px/22px
+ * secondary/placeholder 色；hint 13px/22px；actions flex gap-2(0.5rem)。 */
+.wk-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.wk-empty-image {
+  display: flex;
+  width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.4);
+}
+.wk-empty-title {
+  margin: 0;
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.6);
+}
+.wk-empty-description {
+  margin: 0;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.4);
+}
+.wk-empty-description--gap-below { margin-bottom: 16px; }
+.wk-empty-hint {
+  margin: 0;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.4);
+}
+.wk-empty-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+/* ==== S6 Tailwind 收编：wk-list 壳族（原全局规则迁 utilities 后再集中回收） ====
+ * wk-list = m-0 list-none p-0；wk-list-row = flex items-baseline
+ * justify-between gap-4(1rem) border-b border-line-soft py-[0.9rem]。 */
+.wk-list { margin: 0; padding: 0; list-style: none; }
+.wk-list-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--color-line-soft, #edf0f5);
+  padding-block: 0.9rem;
+}
+
+/* EnvVarSettings 编辑表单/只读注记（原 utilities：my-4 grid max-w-[620px]
+ * gap-[.8rem] + [&_label]:grid gap-[.35rem] text-[#27364d] font-semibold；
+ * read-note = text-muted-strong text-[.9rem]）。 */
+.env-settings .wk-settings-editor {
+  margin-block: 1rem;
+  display: grid;
+  max-width: 620px;
+  gap: 0.8rem;
+}
+.env-settings .wk-settings-editor label {
+  display: grid;
+  gap: 0.35rem;
+  color: #27364d;
+  font-weight: 600;
+}
+.env-settings .wk-settings-read-note {
+  color: var(--color-muted-strong, #506078);
+  font-size: 0.9rem;
+}

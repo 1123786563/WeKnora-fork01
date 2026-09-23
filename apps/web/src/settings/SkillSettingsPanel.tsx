@@ -326,7 +326,7 @@ export function SkillSettingsPanel({ client, role, initialSkills, initialCatalog
   const canEdit = role === 'admin' || role === 'owner' || role === 'system-admin';
   const t = useSkillT();
   if (!canEdit) {
-    return <Card data-testid="skill-settings"><h3>{t('settings.skills.title')}</h3><p className="wk-muted">{t('settings.skills.description')}</p>{initialSkills && initialSkills.length > 0 ? <ul className="wk-list m-0 list-none p-0">{initialSkills.map((skill) => <li key={skill.id} className="wk-skill-viewer-row"><strong>{skill.name}</strong><span className="wk-skill-viewer-desc">{skill.description ?? t('settings.skills.emptyDesc')}</span></li>)}</ul> : <Status>{t('settings.skills.noInstalls')}</Status>}</Card>;
+    return <Card data-testid="skill-settings"><h3>{t('settings.skills.title')}</h3><p className="wk-muted">{t('settings.skills.description')}</p>{initialSkills && initialSkills.length > 0 ? <ul className="wk-list">{initialSkills.map((skill) => <li key={skill.id} className="wk-skill-viewer-row"><strong>{skill.name}</strong><span className="wk-skill-viewer-desc">{skill.description ?? t('settings.skills.emptyDesc')}</span></li>)}</ul> : <Status>{t('settings.skills.noInstalls')}</Status>}</Card>;
   }
   return <SkillCatalogSection client={client} initialCatalog={initialCatalog} initialSandboxConfigs={initialSandboxConfigs} />;
 }
