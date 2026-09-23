@@ -4,6 +4,7 @@ import { createInMemoryTaskProjectionStore } from './in-memory-task-detail.ts';
 import { createTaskDetail } from './task-detail.ts';
 import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
 import { TaskOfficeError } from './task-office-errors.ts';
+import type { AttentionState } from './task-office-errors.ts';
 
 export { TaskOfficeError } from './task-office-errors.ts';
 export type { AttentionState, TaskOfficeErrorCode } from './task-office-errors.ts';
@@ -183,6 +184,10 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     if (trimmed === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
     await callBackend(() => action(trimmed));
     if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+    // 写成功作废一切在途读（R1-F19）：settle 比对 epoch，旧查询按 SUPERSEDED 拒绝，
+    // 不得以归档前快照重建 accumulated。home 同理失效。
+    listEpoch += 1;
+    homeEpoch += 1;
     accumulated = undefined;
   };
 
