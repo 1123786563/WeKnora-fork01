@@ -3,6 +3,7 @@ package plugins_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -181,6 +182,49 @@ func TestPreviewRejectsOversizedManifestURL(t *testing.T) {
 	require.Nil(t, resp)
 	require.ErrorContains(t, err, "exceeds")
 	require.Empty(t, repo.created, "oversized manifest URL must not persist anything")
+}
+
+// failingPluginPreviewRepo 让 CreatePreview 恒失败（err 含内部细节标记）。
+type failingPluginPreviewRepo struct {
+	fakePluginPreviewRepo
+	err error
+}
+
+func (r *failingPluginPreviewRepo) CreatePreview(_ context.Context, _ *types.PluginPreview) error {
+	return r.err
+}
+
+// TestPreviewPersistFailureDoesNotLeakRepoError（整分支终评 r3-001）：
+// 持久化失败返回的错误文本只含哨兵语义——该文本经 handler
+// NewInternalServerError(err.Error()) 原样进入 500 响应体，底层 DB 错误
+// 细节（表名/约束名/驱动内部信息）不得拼接进去；细节只留服务端日志
+// （plugin_service.go CreatePreview 失败分支的 Errorf）。
+func TestPreviewPersistFailureDoesNotLeakRepoError(t *testing.T) {
+	t.Cleanup(utils.SnapshotSSRFWhitelistForTest())
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+
+	m := previewFixtureManifest()
+	manifestJSON, err := json.Marshal(m)
+	require.NoError(t, err)
+	base := previewControlledHost(t, &manifestJSON)
+	// 端点指向受控 host：FetchAndVerify 对端点做 SSRF 复检（外网域名会因
+	// DNS 无法判定被拒），复检通过后才会走到 CreatePreview——那才是本测试
+	// 要触发的分支。
+	m.Transport.Endpoint = base + "/mcp"
+	manifestJSON, err = json.Marshal(m)
+	require.NoError(t, err)
+
+	repo := &failingPluginPreviewRepo{err: errors.New(
+		`pq: duplicate key value violates unique constraint "plugin_previews_pkey" SECRET-DB-DETAIL-123`)}
+	svc := service.NewPluginService(repo, previewFakeLister())
+
+	resp, err := svc.PreviewFromManifest(context.Background(), 7, "admin-1", base+"/manifest.json")
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, service.ErrPreviewPersistFailed)
+	require.NotContains(t, err.Error(), "SECRET-DB-DETAIL-123",
+		"underlying DB error detail must not leak into the client-facing error text")
+	require.NotContains(t, err.Error(), "plugin_previews_pkey",
+		"schema/constraint names are internal detail, not client-facing text")
 }
 
 // TestPreviewRejectsOversizedEndpoint（T02-R1-1）：远端清单可声明任意长度

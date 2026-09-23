@@ -140,8 +140,11 @@ func (s *pluginService) PreviewFromManifest(
 		ExpiresAt:           expiresAt,
 	}
 	if err := s.pluginRepo.CreatePreview(ctx, preview); err != nil {
+		// 整分支终评 r3-001：底层 DB 错误细节只进服务端日志；返回给调用方
+		// （进而经 handler NewInternalServerError 原样进入 500 响应体）的
+		// 文本只含哨兵语义——表名/约束名/驱动内部信息不得泄漏给客户端。
 		logger.GetLogger(ctx).Errorf("failed to persist plugin preview: %v", err)
-		return nil, fmt.Errorf("%w: %v", ErrPreviewPersistFailed, err)
+		return nil, ErrPreviewPersistFailed
 	}
 
 	return &dto.PluginPreviewResponse{
