@@ -3007,3 +3007,13 @@
 @media (max-width: 720px) { .wk-kd-singlesel { width: 100%; } }
 .wk-kd-settingrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--wk-border, #e4e7ec); padding-block: 10px; }
 @media (max-width: 720px) { .wk-kd-settingrow { flex-direction: column; } }
+
+/* 手工段：single-select 选项按钮（.trim() 模板）与 stage notice tone palette */
+.wk-kd-selopt { border-radius: 6px; padding: 10px; padding-block: 8px; text-align: left; background: transparent; border: 0; cursor: pointer; font-family: inherit; }
+.wk-kd-selopt:hover { background-color: rgb(7 192 95 / 10%); }
+.wk-kd-selopt:disabled { color: var(--wk-muted, #98a2b3); cursor: not-allowed; opacity: 0.7; }
+.wk-kd-selopt-selected { background-color: rgb(7 192 95 / 10%); }
+.wk-kd-notice-neutral { border-color: var(--wk-border, #e4e7ec); color: var(--wk-text, #101828); }
+.wk-kd-notice-success { border-color: var(--wk-success, #12b76a); color: var(--wk-success, #027a48); }
+.wk-kd-notice-warning { border-color: var(--wk-warning, #b54708); color: var(--wk-warning, #9a3412); }
+.wk-kd-notice-error { border-color: var(--wk-danger, #d92d20); color: var(--wk-danger, #b42318); }

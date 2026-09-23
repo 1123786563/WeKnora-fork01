@@ -9,7 +9,8 @@
   justify-content: center;
   padding: 24px;
   text-align: center;
-  color: var(--text-secondary;
+  /* text-[var(--text-secondary, #6b7280)] 原 utility 因含空格从未生成（无效声明被浏览器丢弃），
+     平移保持有效渲染=继承色，不补写。 */
 }
 
 .wk-emb-2 {

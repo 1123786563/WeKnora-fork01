@@ -43,7 +43,7 @@ import { usePreferredLocale } from '../locale.ts';
 import { navigate } from '../platform/navigation.ts';
 import { loadAgents } from '../agents/api.ts';
 import type { Agent } from '../agents/state.ts';
-import './chat/views-chat-u.css';
+import '../chat/views-chat-u.css';
 import './experts-u.css';
 
 /* Tailwind v4 utility recipes shared across the page (AnalyticsPage constants). */

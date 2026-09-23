@@ -19,9 +19,9 @@ type SharedLoadState =
   | { phase: 'ready'; snapshot: SharedSessionSnapshot };
 
 const ROLE_TONE: Record<'user' | 'assistant' | 'system', string> = {
-  user: 'bg-[rgba(7,192,95,0.1)] border-[rgba(7,192,95,0.24)] text-[#078a45]',
-  assistant: 'bg-[rgba(46,109,230,0.08)] border-[rgba(46,109,230,0.22)] text-[#2f5ca8]',
-  system: 'bg-[rgba(120,135,155,0.1)] border-[rgba(120,135,155,0.2)] text-[#5c6b83]',
+  user: 'wk-shared-role-user',
+  assistant: 'wk-shared-role-assistant',
+  system: 'wk-shared-role-system',
 };
 
 export function SharedSessionPage({ client, token }: { client: WeKnoraClient; token: string }) {

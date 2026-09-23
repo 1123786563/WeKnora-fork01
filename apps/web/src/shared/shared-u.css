@@ -178,3 +178,8 @@
   column-gap: 16px;
   row-gap: 4px;
 }
+
+/* 手工段：消息角色色调（ROLE_TONE map utilities 平移） */
+.wk-shared-role-user { background-color: rgba(7,192,95,0.1); border-color: rgba(7,192,95,0.24); color: #078a45; }
+.wk-shared-role-assistant { background-color: rgba(46,109,230,0.08); border-color: rgba(46,109,230,0.22); color: #2f5ca8; }
+.wk-shared-role-system { background-color: rgba(120,135,155,0.1); border-color: rgba(120,135,155,0.2); color: #5c6b83; }

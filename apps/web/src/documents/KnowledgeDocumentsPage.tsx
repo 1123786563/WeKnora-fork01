@@ -1767,7 +1767,7 @@ export function UploadSingleSelect({ value, options, onChange, ariaLabel, classN
       else if (event.key === "Enter" && open) { event.preventDefault(); choose(activeIndex); }
       else if (event.key === "Escape") setOpen(false);
     }}><span>{options[selectedIndex]?.label ?? placeholder ?? value}</span>{clearable && value ? <span role="button" tabIndex={0} aria-label={`清除${ariaLabel}`} onClick={(event) => { event.stopPropagation(); onChange(""); setOpen(false); }}>×</span> : null}<span aria-hidden="true">⌄</span></button>
-    {open ? <div className="wk-upload-single-select__popup wk-kd-29" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} disabled={option.disabled} className={`${index === activeIndex ? "is-active " : ""}${option.disabled ? "is-disabled " : ""}rounded-[6px] px-[10px] py-2 text-left bg-transparent border-0 cursor-pointer [font:inherit] hover:bg-[rgb(7_192_95/10%)] disabled:text-[var(--wk-muted,#98a2b3)] disabled:cursor-not-allowed disabled:opacity-70 ${option.value === value ? "bg-[rgb(7_192_95/10%)]" : ""}`.trim() || undefined} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
+    {open ? <div className="wk-upload-single-select__popup wk-kd-29" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} disabled={option.disabled} className={`wk-kd-selopt ${index === activeIndex ? "is-active" : ""} ${option.disabled ? "is-disabled" : ""} ${option.value === value ? "wk-kd-selopt-selected" : ""}`.trim()} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
   </div>;
 }
 
@@ -2762,10 +2762,10 @@ export function stageNoticeClass(tone: "neutral" | "success" | "warning" | "erro
 
 /** documents.css toast tone palette, now inlined as utilities (class stays a hook). */
 const STAGE_NOTICE_TONE_CLASS: Record<"neutral" | "success" | "warning" | "error", string> = {
-  neutral: "border-[var(--wk-border,#e4e7ec)] text-[var(--wk-text,#101828)]",
-  success: "border-[var(--wk-success,#12b76a)] text-[var(--wk-success,#027a48)]",
-  warning: "border-[var(--wk-warning,#b54708)] text-[var(--wk-warning,#9a3412)]",
-  error: "border-[var(--wk-danger,#d92d20)] text-[var(--wk-danger,#b42318)]",
+  neutral: "wk-kd-notice-neutral",
+  success: "wk-kd-notice-success",
+  warning: "wk-kd-notice-warning",
+  error: "wk-kd-notice-error",
 };
 
 export function KnowledgeDocumentsPage({

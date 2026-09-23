@@ -44,7 +44,7 @@ import './embed-u.css';
 import './embed-chat.css';
 // Vue EmbedBotMessage.vue imports katex/dist/katex.min.css for the answer face.
 import 'katex/dist/katex.min.css';
-import './chat/views-chat-u.css';
+import '../chat/views-chat-u.css';
 
 // Vue parity for the isolated embed entry:
 // - entry: frontend/embed.html + frontend/src/embed-main.ts (separate document,
@@ -491,8 +491,8 @@ export function EmbedEntryPage(props: EmbedEntryPageProps = {}) {
     })();
   }, [apiToken, channelId, client, messages.length, session]);
 
-  if (phase === 'error') return <div className="#6b7280)] wk-emb-1">{embedText(locale, errorKey)}</div>;
-  if (phase !== 'ready' || !session) return <div className="#6b7280)] wk-emb-1">{embedText(locale, phase === 'awaiting' ? 'awaitingToken' : 'loading')}</div>;
+  if (phase === 'error') return <div className="wk-emb-1">{embedText(locale, errorKey)}</div>;
+  if (phase !== 'ready' || !session) return <div className="wk-emb-1">{embedText(locale, phase === 'awaiting' ? 'awaitingToken' : 'loading')}</div>;
 
   return (
     <div className="wk-emb-2" style={themeVars as CSSProperties}>
