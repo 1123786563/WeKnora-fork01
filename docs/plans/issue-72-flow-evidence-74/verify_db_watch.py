@@ -7,8 +7,9 @@ container's app/models/subscription.rb STATUSES): 0=pending 1=active
 2=terminated 3=canceled 4=incomplete.
 
 Exit codes: 0 PASS, 1 CHECK (an assertion failed), 2 MISSING-EVIDENCE (no
-observer TSV found under runs/ — that directory is a git-ignored runtime
-artifact, so a fresh clone has none until db_watch.sh is replayed).
+usable TSV: no archived verify-db-watch-samples.tsv next to this script and
+no db-watch-verify-*.tsv under runs/ — that directory is a git-ignored
+runtime artifact, so a fresh clone has none until db_watch.sh is replayed).
 """
 import glob
 import json
@@ -18,12 +19,24 @@ from pathlib import Path
 
 EVID = Path(__file__).resolve().parent
 RUNS = Path(__file__).resolve().parents[3] / "deploy/lago-lab/payment-activation/runs"
+# Prefer THIS evidence directory's archived copy (ocr-2): replayed observer
+# TSVs land in the repo-level runs/ dir and db_watch.sh writes a fresh
+# timestamped file per invocation, so "newest TSV under runs/" can silently
+# pair a foreign run's samples with this directory's decline boundary (and
+# the pick was never printed). Fall back to the newest runs/ TSV only when
+# no archive exists, and always print the file actually used.
+archived = EVID / "verify-db-watch-samples.tsv"
 matches = sorted(glob.glob(str(RUNS / "db-watch-verify-*.tsv")))
-if not matches:
-    print(f"DB-WATCH: no observer TSV under {RUNS} "
-          "(db-watch-verify-*.tsv; runs/ is git-ignored)")
+if archived.exists():
+    path = str(archived)
+elif matches:
+    path = matches[-1]
+else:
+    print(f"DB-WATCH: no observer TSV under {RUNS} (db-watch-verify-*.tsv; "
+          "runs/ is git-ignored) and no archived verify-db-watch-samples.tsv "
+          "next to this script")
     sys.exit(2)
-path = matches[-1]
+print(f"DB-WATCH: using {path}")
 lines = Path(path).read_text().splitlines()
 
 # Mid-run boundary: everything the observer sampled strictly before the
@@ -31,7 +44,12 @@ lines = Path(path).read_text().splitlines()
 # after it belong to the tail (decline endgame + cleanup teardown), where
 # canceled/terminated states are the runner's own deletion behavior, not a
 # business-state regression (plan Task 2 Step 5: "只看运行中段样本").
-boundary = json.loads((EVID / "t02-decline.json").read_text())["recorded_at"][:19]
+decline = json.loads((EVID / "t02-decline.json").read_text())
+boundary = decline["recorded_at"][:19]
+# Only THIS directory's run counts: rows are keyed by the
+# weknora-t02-<run_id>- prefix, so a multi-run TSV (an older replay's
+# leftovers) cannot leak foreign states into the sub-a/b/c assertions.
+run_prefix = f"weknora-t02-{decline['run_id']}-"
 
 
 def midrun(ln):
@@ -61,7 +79,7 @@ def rows_for(tag, only_midrun=True):
             continue
         for part in m.group(1).split(";"):
             ext, _, st = part.rpartition("|")
-            if ext.startswith("weknora-t02-") and ext.endswith(tag):
+            if ext.startswith(run_prefix) and ext.endswith(tag):
                 states.append(int(st))
     return states
 

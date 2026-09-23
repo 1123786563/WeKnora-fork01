@@ -1,5 +1,7 @@
 # Issue #72 — OCR 第 1 轮修复记录（ocr-1）
 
+> 第 2 轮（ocr-2）记录追加于本文件末尾「OCR 第 2 轮」章节。
+
 - 日期：2026-09-23（UTC）
 - worktree：`.worktrees/issue72-lago`（分支 `codex/issue-72-lago`）
 - 修复基线：`0ef4577b6`（issue-72: ocr round 1），即 OCR 第 1 轮 findings 所审的 HEAD
@@ -202,3 +204,116 @@ URLError blocked 是 provider 段既有映射，非 gate 段）。
   test_phases,test_lab}.py、docs/plans/issue-72-flow-evidence-74/{verify_db_watch.py,
   test_verify_db_watch.py}；
   记录：docs/plans/issue-72-ocr-fix-log.md；重放证据：docs/plans/issue-72-ocr1-replay/。
+
+---
+
+# OCR 第 2 轮修复记录（ocr-2）
+
+- 日期：2026-09-23（UTC）
+- worktree：`.worktrees/issue72-lago`（分支 `codex/issue-72-lago`）
+- 修复基线：`c7e404f3a`（issue-72(ocr-1) 提交），即 OCR 第 2 轮 findings 所审的 HEAD
+- 有效 findings：OCR2-01（medium）、OCR2-06（medium）、OCR2-07（medium），全部修复，无 deferred
+
+## 逐条 Ruling 与处置
+
+### OCR2-01（medium）两份 verify_db_watch.py 拷贝选 TSV 错配且不可溯源 — 已修复
+
+- Ruling：finding 成立。两份拷贝（issue-72-flow-evidence-74 与 issue-72-ocr1-replay）都解析
+  仓库级 `runs/` 并取字典序最新 `db-watch-verify-*.tsv`，选中路径从不打印：任一后续重放的
+  新 TSV 会静默替换为与本证据目录 run 无关的样本，对照本目录 decline 边界产生错配的
+  CHECK/PASS 且无法溯源；本目录已归档 `verify-db-watch-samples.tsv` 却不可用。
+- 处置（两份拷贝同步修改，主体 diff 证实一致）：
+  1. 归档优先：`archived = EVID / "verify-db-watch-samples.tsv"` 存在即用之，仅当无归档时
+     回退 `runs/` 最新 TSV；
+  2. 始终打印 `DB-WATCH: using <path>`，exit 2 的 MISSING-EVIDENCE 文案同步说明两处来源；
+  3. `rows_for` 前缀从宽泛的 `weknora-t02-` 收紧为本目录 `t02-decline.json` 的
+     `run_id` 对应 `weknora-t02-<run_id>-`，多 run TSV 的外来行不再混入 sub-a/b/c 断言。
+- RED 证据：在基线 worktree（c7e404f3a）构造"replay 之后重跑"场景——`runs/` 放一份时间戳
+  全部 ≥08:00 的外来 TSV（本目录 boundary 为 06:27:38）→ 基线脚本忽略目录内归档、选用
+  runs TSV、无 using 输出 → `DB-WATCH: CHECK` exit 1（错配）；基线 64 行
+  `startswith("weknora-t02-")` 为宽前缀。
+- 回归测试：`test_verify_db_watch.py` 更新并新增
+  `test_archived_tsv_takes_priority_over_runs_and_is_printed`、
+  `test_foreign_run_rows_do_not_leak_into_assertions`，
+  `test_good_tsv_still_passes_and_prints_the_selected_file` 补 using 断言（3→5 个测试）。
+- 修复后即时验证：两份脚本在各自目录运行均输出 `using .../verify-db-watch-samples.tsv`
+  且 DB-WATCH: PASS（exit 0）。
+
+### OCR2-06（medium）phase_duplicates PASS 仅依赖即时探测，无法捕获延迟破坏 — 已修复
+
+- Ruling：finding 成立。代码自述的 deferred-update 风险（200 应答后数分钟订阅被终止并开
+  出续期发票）在即时 final 探测下不可见，exactly-once 门槛可能被虚假满足，expected 也未
+  披露。采用 fixHint 首选方案：PASS 前做一轮有界延迟复查（复用 RunContext 旋钮
+  `stability_rounds * stability_delay`，真实运行约 15s，离线测试 0.02s）。
+- 处置：`phase_duplicates` 在 `probes_harmless and state_intact` 成立时（即唯一的 PASS
+  候选路径；探针已 FAIL 时跳过避免无谓延迟），sleep 后重读订阅（仍 active、同 lago_id）、
+  成功支付（仍 1 笔）、发票列表（无新增：`invoice_count == invoice_count_immediate`）、
+  目标发票字段未变，写入 `observed.deferred_recheck`；任一破坏即 FAIL 并附 contract
+  note。expected 同步披露"immediate window AND re-checked after a bounded settle delay"。
+- RED 证据：基线 `grep -c "deferred_recheck" phases.py` → 0（无任何延迟复查）。
+- 回归测试：FakeLago 新增 `duplicates_probes_done`（由 manual-dup reference POST 标记）、
+  `deferred_terminate_after_duplicates` 旋钮（probes 后第 N 次 subscription-show GET 触发
+  终止+续期发票，N=2 即落在延迟复查内）；
+  `test_fails_when_state_drifts_after_the_settle_window`（即时探测干净、延迟复查抓到终止
+  与新增发票 → FAIL）；
+  `test_passes_when_duplicate_registration_answered_200_with_intact_state` 补
+  `deferred_recheck.checked/ok` 正向断言。
+
+### OCR2-07（medium）phase_retries 对 None 发票 id 空转 POST 且 404 归因错误 — 已修复
+
+- Ruling：finding 成立。gate 发票不可见时 `invoice_lago_id` 为 None，无条件 f-string POST
+  到字面量 `/api/v1/invoices/None/retry_payment`，真实返回的 404 invoice_not_found 是
+  id 不存在所致，而注释/expected 称"发票 API 不可见所以 404"——归因错误且探测空转
+  （payments 0==0 恒真），却被记为 AC3 重试证据判 pass。
+- 处置：`invoice_lago_id is None` 时跳过 retry POST，`rrs, rrb = None,
+  {"code": "not_applicable", "detail": "gate invoice id unknown (API-invisible)"}` 并附
+  contract note 说明未知 id 的 404 不是重试证据；expected 与段内注释的 404 归因同步修正；
+  `no_succeeded_payment_for_gate` 检查仅在发票 id 已知（探针真实发出）时纳入 checks，
+  不可见路径 PASS 判定为 fixHint 指定的三项有效检查（same_identity_recovered /
+  gate_not_activated / no_second_payment_row）。
+- RED 证据：基线 949 行 `rrs, rrb = ctx.lago.post(f"/api/v1/invoices/{invoice_lago_id}/
+  retry_payment", {})` 无任何 None 守卫（grep 证实）。
+- 回归测试：`test_gate_invoice_id_unknown_skips_retry_post`（http_status 为 None、
+  retry_payment code=not_applicable、checks 恰为三项且全真、note 含 skipped）。
+
+## 测试与验证
+
+### 离线回归
+
+- 命令（与 ocr-1 同方式）：
+  `cd deploy/lago-lab/payment-activation && python3 -m pytest test_lab.py
+  test_phases.py ../../../docs/plans/issue-72-flow-evidence-74/test_verify_db_watch.py -q`
+- 结果：`78 passed in 52.30s`（ocr-1 后 74 + 新增 4：test_phases.py +2、
+  test_verify_db_watch.py 3→5）。
+
+### 真实流程重放（OCR2-06/07 改变 run_lab 流程行为 → 按 ask 要求重放）
+
+环境（与 #74 原方式一致）：`docker volume rm` 清陈旧卷（全局 payments/subscriptions 计数
+跨 run 累计，干净 DB 是 max_succeeded==1 断言的前提；rows[] 层面的多 run 混入则由本轮
+OCR2-01 的 run_id 前缀收紧兜底）→ `lab.sh up`（v1.53.0 全 healthy）→ Stripe TEST key
+经 env source 注入。证据目录 `docs/plans/issue-72-ocr2-replay/`。
+
+- `run_lab.py --output-dir docs/plans/issue-72-ocr2-replay --poll-timeout 300`
+  + 并行 db_watch 观察者（197 点 TSV 归档为 verify-db-watch-samples.tsv）：
+  9 阶段全 pass，overall verdict: pass，exit 0，secrets scan 11 files 0 hits。
+  - duplicates 16.9s（原 ~3s）：含 OCR2-06 的 settle 延迟复查
+    （stability_rounds 3 × stability_delay 5s = 15s），t02-duplicates.json 的
+    deferred_recheck = {checked: true, ok: true, subscription_status: active,
+    invoice_count 1==1, payments_succeeded_count 1}；
+  - retries：OCR2-07 在真实环境触发——gate 发票不可见，pending_gate_retry.http_status
+    为 null，evidence.responses.retry_payment = {code: not_applicable, detail: gate
+    invoice id unknown (API-invisible)}，checks 恰为三项有效检查全真，contract note
+    记录 skip 理由（不再有对 /invoices/None/ 的空转 POST 与 404 误归因）。
+- `verify_ac_assertions.py`（本目录副本，含 ocr-2 新增 2 条断言：deferred re-check
+  clean、gate retry probe recorded not_applicable）→ 23/23 ALL PASS（exit 0，输出归档
+  verify-ac-assertions-output.txt）。
+- 修复版 `verify_db_watch.py`（本目录副本）→ `DB-WATCH: PASS`（exit 0）：输出首行
+  `using .../issue-72-ocr2-replay/verify-db-watch-samples.tsv`（归档优先 + 可溯源），
+  mid-run 样本 sub-a 全程 incomplete(4)、sub-b 4→1 不回退、sub-c 从未 active、
+  succeeded 峰值恰 1。
+- 提交前对证据目录 `sk_test_|rk_test_` 形状扫描 = 0 命中。
+- 环境回收：`lab.sh down`（容器 0）；#73 主栈未受影响。
+
+## 提交
+
+- 提交 message 前缀：`issue-72(ocr-2):`

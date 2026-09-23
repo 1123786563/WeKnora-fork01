@@ -172,6 +172,15 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
             if sub is None:
                 self._send(404, {"status": 404, "error": "Not Found", "code": "subscription_not_found"})
             else:
+                # ocr-2 deferred-update knob: after phase_duplicates has
+                # fired its three probes, the Nth subscription-show GET
+                # terminates the subscription and issues a renewal invoice
+                # (the minutes-late drift a real 200-answered duplicate
+                # once produced; N=2 lands inside the deferred re-check).
+                if s.duplicates_probes_done and s.deferred_terminate_after_duplicates:
+                    s.duplicates_show_gets += 1
+                    if s.duplicates_show_gets == s.deferred_terminate_after_duplicates:
+                        self._deferred_terminate(sub)
                 self._advance(sub)  # polling itself drives async settlement
                 if sub["status"] != wanted:
                     self._send(404, {"status": 404, "error": "Not Found", "code": "subscription_not_found"})
@@ -323,6 +332,12 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
             self._send(200, {"subscription": self._subscription_json(record)})
             return
         if path == "/api/v1/payments":
+            # ocr-2: phase_duplicates' manual probe carries reference
+            # *-manual-dup (phase_manual uses *-manual-1); its completion
+            # arms the deferred-terminate knob above.
+            reference = ((body or {}).get("payment") or {}).get("reference")
+            if isinstance(reference, str) and reference.endswith("-manual-dup"):
+                s.duplicates_probes_done = True
             if s.manual_allowed:
                 invoice_id = body["payment"]["invoice_id"]
                 invoice = s.invoices[invoice_id]
@@ -471,6 +486,27 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
         sub["status"] = "canceled"
         sub["cancellation_reason"] = "payment_failed"
 
+    def _deferred_terminate(self, sub):
+        """ocr-2 knob: the minutes-late drift a 200-answered duplicate once
+        produced — the subscription terminates and a renewal invoice pops
+        into the list after the immediate probes already passed."""
+        s = self.server
+        if sub is None or sub["status"] == "terminated":
+            return
+        sub["status"] = "terminated"
+        invoice_id = s.seq("inv")
+        s.invoices[invoice_id] = {
+            "lago_id": invoice_id,
+            "external_customer_id": sub["external_customer_id"],
+            "subscription_external_id": sub["external_id"],
+            "invoice_type": "subscription",
+            "status": "open", "payment_status": "pending", "number": None,
+            "total_amount_cents": s.plan_amount_cents,
+            "total_paid_amount_cents": 0,
+            "revealed_polls": 10 ** 6, "revealed": True,
+            "pending_payment_added": True,
+        }
+
     def _maybe_reveal_invoices(self, ext):
         s = self.server
         for invoice in s.invoices.values():
@@ -529,6 +565,10 @@ class FakeLago(ThreadingHTTPServer):
         self.mutate_after_duplicates = False
         self.fail_feature_create = False
         self.decline_invoice_terminal_invisible = False
+        # ocr-2 deferred-update knobs (see FakeLagoHandler.do_GET)
+        self.duplicates_probes_done = False
+        self.duplicates_show_gets = 0
+        self.deferred_terminate_after_duplicates = 0
 
     def seq(self, kind):
         self.seq_counters[kind] += 1
@@ -867,6 +907,34 @@ class TestDuplicatesPhase(unittest.TestCase):
         self.assertEqual(report["status"], "pass", report)
         self.assertEqual(report["observed"]["re_post"]["http_status"], 200)
         self.assertTrue(report["observed"]["final"]["subscription_same_lago_id"])
+        # ocr-2: the PASS also stands on the deferred re-check after the
+        # settle window (the 200-duplicate minutes-late drift risk).
+        recheck = report["observed"]["deferred_recheck"]
+        self.assertTrue(recheck["checked"])
+        self.assertTrue(recheck["ok"])
+
+    def test_fails_when_state_drifts_after_the_settle_window(self):
+        # ocr-2: a 200-answered duplicate has once terminated the
+        # subscription and issued a renewal invoice minutes after the
+        # response; the immediate probes stay clean, only the bounded
+        # deferred re-check catches it and the phase must FAIL.
+        with stack() as env:
+            ctx = seeded(env)
+            settled_gate_and_activation(ctx)
+            env.lago.duplicate_sub_accepted = True
+            # 2nd post-probe subscription-show GET == the deferred re-check
+            env.lago.deferred_terminate_after_duplicates = 2
+            report = phase_duplicates(ctx)
+        self.assertEqual(report["status"], "fail", report)
+        recheck = report["observed"]["deferred_recheck"]
+        self.assertTrue(recheck["checked"])
+        self.assertFalse(recheck["ok"])
+        self.assertNotEqual(recheck["subscription_status"], "active")
+        self.assertGreater(recheck["invoice_count"], recheck["invoice_count_immediate"])
+        # the immediate window alone would have passed (the drift is late)
+        self.assertTrue(report["observed"]["final"]["subscription_same_lago_id"])
+        notes = " ".join(report["contract_notes"])
+        self.assertIn("deferred re-check", notes)
 
     def test_fails_on_state_drift_despite_correct_error_codes(self):
         with stack() as env:
@@ -923,6 +991,33 @@ class TestRetriesPhase(unittest.TestCase):
             report = phase_retries(ctx)
         self.assertEqual(report["status"], "fail", report)
         self.assertEqual(report["observed"]["response_loss_recovery"]["subscription_count"], 2)
+
+    def test_gate_invoice_id_unknown_skips_retry_post(self):
+        # ocr-2: when the gate invoice never became API-visible its lago_id
+        # is unknown; the retry POST must be skipped and recorded
+        # not_applicable instead of running empty against a literal
+        # /invoices/None/retry_payment and dressing the unknown-id 404 up
+        # as AC3 retry evidence.
+        with stack() as env:
+            ctx = seeded(env)
+            settled_gate_and_activation(ctx)
+            ctx.state["gate"]["invoice_lago_id"] = None  # API-invisible gate
+            report = phase_retries(ctx)
+        self.assertEqual(report["status"], "pass", report)
+        gate_retry = report["observed"]["pending_gate_retry"]
+        self.assertIsNone(gate_retry["http_status"])
+        self.assertEqual(
+            report["evidence"]["responses"]["retry_payment"]["code"],
+            "not_applicable",
+        )
+        checks = report["observed"]["checks"]
+        self.assertEqual(
+            sorted(checks),
+            ["gate_not_activated", "no_second_payment_row", "same_identity_recovered"],
+        )
+        self.assertTrue(all(checks.values()))
+        notes = " ".join(report["contract_notes"])
+        self.assertIn("skipped", notes)
 
 
 class TestDeclineControlPhase(unittest.TestCase):

@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Offline regression tests for verify_db_watch.py (issue-72 ocr round 1).
+"""Offline regression tests for verify_db_watch.py (issue-72 ocr rounds 1+2).
 
-The verifier reads a git-ignored runtime artifact (runs/db-watch-verify-*.tsv
-under deploy/lago-lab/payment-activation) plus a sibling evidence JSON. Each
-test rebuilds that layout under a temp dir — keeping the script's relative
-path depth — and executes a copy of the script in-process (runpy, exactly
-like ``python3 verify_db_watch.py``), asserting the exit-code contract:
-0 PASS, 1 CHECK (assertion failed), 2 MISSING-EVIDENCE (no observer TSV:
-fresh clone / cleaned runs/).
+The verifier reads an archived observer TSV (verify-db-watch-samples.tsv
+next to the script) or, absent that, the newest runs/db-watch-verify-*.tsv
+(git-ignored runtime artifact), plus a sibling evidence JSON. Each test
+rebuilds that layout under a temp dir — keeping the script's relative path
+depth — and executes a copy of the script in-process (runpy, exactly like
+``python3 verify_db_watch.py``), asserting the exit-code contract:
+0 PASS, 1 CHECK (assertion failed), 2 MISSING-EVIDENCE (no usable TSV).
+
+ocr-2 regression scope: the archived copy takes priority over any runs/
+TSV (a foreign replay's TSV must never silently pair with this directory's
+decline boundary), the selected file is printed, and rows are filtered by
+this run's weknora-t02-<run_id>- prefix so foreign-run samples cannot leak
+into the sub-a/b/c assertions.
 """
 import contextlib
 import io
@@ -21,6 +27,7 @@ from pathlib import Path
 EVID = Path(__file__).resolve().parent
 SCRIPT = EVID / "verify_db_watch.py"
 BOUNDARY = "2026-09-23T06:27:38"  # t02-decline.json recorded_at (truncated)
+RUN_ID = "run"                    # t02-decline.json run_id (test sentinel)
 
 # Observer TSV rows (ts \t subs[] \t payments[] \t rows[]), all strictly
 # before the mid-run boundary so they count as commercial-window samples.
@@ -39,6 +46,18 @@ NO_SUB_A_TSV = [
      "subs[1|1]", "payments[succeeded|1]",
      "rows[weknora-t02-run-sub-b|1;weknora-t02-run-sub-c|4]"),
 ]
+# A multi-run TSV: this run's rows are clean, a foreign run's sub-a sits in
+# a terminal state (3=canceled). Foreign rows must not leak into the
+# assertions (ocr-2 run-prefix tightening).
+FOREIGN_MIX_TSV = [
+    ("2026-09-23T06:16:56Z",
+     "subs[3|1;4|1]", "payments[failed|1;pending|1]",
+     "rows[weknora-t02-other-run-sub-a|3;weknora-t02-run-sub-a|4]"),
+    ("2026-09-23T06:22:16Z",
+     "subs[3|1;1|1;4|1]", "payments[failed|1;requires_action|1;succeeded|1]",
+     "rows[weknora-t02-other-run-sub-a|3;weknora-t02-run-sub-a|4;"
+     "weknora-t02-run-sub-b|1;weknora-t02-run-sub-c|4]"),
+]
 
 
 def tsv_text(rows):
@@ -55,13 +74,17 @@ class layout:
         self.evd.mkdir(parents=True)
         shutil.copy(SCRIPT, self.evd / "verify_db_watch.py")
         (self.evd / "t02-decline.json").write_text(
-            json.dumps({"recorded_at": BOUNDARY + "Z"}), encoding="utf-8")
+            json.dumps({"run_id": RUN_ID, "recorded_at": BOUNDARY + "Z"}),
+            encoding="utf-8")
         self.runs = root / "deploy/lago-lab/payment-activation/runs"
         self.runs.mkdir(parents=True)
         return self
 
     def write_tsv(self, name, text):
         (self.runs / name).write_text(text, encoding="utf-8")
+
+    def write_archive(self, text):
+        (self.evd / "verify-db-watch-samples.tsv").write_text(text, encoding="utf-8")
 
     def run(self):
         """Execute the copied script like a CLI call; returns (exit_code, stdout)."""
@@ -82,8 +105,7 @@ class layout:
 
 class TestVerifyDbWatch(unittest.TestCase):
     def test_missing_tsv_exits_2_with_actionable_message(self):
-        # runs/ is git-ignored: a fresh clone or a cleaned checkout has no
-        # observer TSV. That is missing evidence (exit 2), never an
+        # No archive AND no runs/ TSV: missing evidence (exit 2), never an
         # IndexError crash and never a PASS.
         with layout() as env:
             code, out = env.run()
@@ -99,10 +121,39 @@ class TestVerifyDbWatch(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("DB-WATCH: CHECK", out)
 
-    def test_good_tsv_still_passes(self):
+    def test_good_tsv_still_passes_and_prints_the_selected_file(self):
         with layout() as env:
             env.write_tsv("db-watch-verify-20260923T061349Z.tsv",
                           tsv_text(GOOD_TSV))
+            code, out = env.run()
+        self.assertEqual(code, 0, out)
+        self.assertIn("DB-WATCH: PASS", out)
+        self.assertIn("sub-a states: [4]", out)
+        self.assertIn("DB-WATCH: using ", out)
+        self.assertIn("db-watch-verify-20260923T061349Z.tsv", out)
+
+    def test_archived_tsv_takes_priority_over_runs_and_is_printed(self):
+        # ocr-2: this directory's archive must win over whatever replay TSV
+        # currently sits in runs/ (a foreign run's samples against this
+        # boundary would produce an untraceable CHECK/PASS).
+        with layout() as env:
+            env.write_tsv("db-watch-verify-20261231T235959Z.tsv",
+                          tsv_text(NO_SUB_A_TSV))  # would CHECK if used
+            env.write_archive(tsv_text(GOOD_TSV))
+            code, out = env.run()
+        self.assertEqual(code, 0, out)
+        self.assertIn("DB-WATCH: PASS", out)
+        selected = [ln for ln in out.splitlines() if "using" in ln][0]
+        self.assertIn("verify-db-watch-samples.tsv", selected)
+        self.assertNotIn("db-watch-verify-20261231", selected)
+
+    def test_foreign_run_rows_do_not_leak_into_assertions(self):
+        # ocr-2: a multi-run TSV mixes a foreign run's terminal sub-a with
+        # this run's clean rows; only weknora-t02-<this run_id>- prefixed
+        # rows may feed the assertions.
+        with layout() as env:
+            env.write_tsv("db-watch-verify-20260923T061349Z.tsv",
+                          tsv_text(FOREIGN_MIX_TSV))
             code, out = env.run()
         self.assertEqual(code, 0, out)
         self.assertIn("DB-WATCH: PASS", out)

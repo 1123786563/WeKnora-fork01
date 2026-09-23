@@ -11,9 +11,9 @@ usable TSV: no archived verify-db-watch-samples.tsv next to this script and
 no db-watch-verify-*.tsv under runs/ — that directory is a git-ignored
 runtime artifact, so a fresh clone has none until db_watch.sh is replayed).
 
-ocr-1 replay copy: the fixed script, executed against the
-docs/plans/issue-72-ocr1-replay/ evidence directory (t02-decline.json
-boundary) and the runs/ observer TSV of the replay.
+ocr-2 replay copy: the fixed script (archived-copy priority, selected-file
+printout, run_id-prefixed row filtering), executed against the
+docs/plans/issue-72-ocr2-replay/ evidence directory.
 """
 import glob
 import json

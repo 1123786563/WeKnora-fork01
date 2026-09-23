@@ -908,7 +908,10 @@ def phase_duplicates(ctx):
         "answers 200 + same lago_id); retry_payment on the paid invoice -> "
         "not allowed; manual re-POST -> forbidden; final authoritative state "
         "byte-identical (one active subscription, one succeeded payment, "
-        "invoice unchanged)"
+        "invoice unchanged) — asserted in the immediate window AND re-checked "
+        "after a bounded settle delay (a 200-answered duplicate has once "
+        "terminated the subscription and issued a renewal invoice minutes "
+        "later; the deferred re-check must stay clean or the phase fails)"
     )
     activation = ctx.state.get("activation")
     if not activation:
@@ -1000,13 +1003,53 @@ def phase_duplicates(ctx):
             and final["total_paid_amount_cents"] == baseline["total_paid_amount_cents"]
             and final["payments_succeeded_count"] == baseline["payments_succeeded_count"] == 1
         )
+        # Deferred-update guard (ocr-2): a 200-answered duplicate
+        # registration has once terminated the subscription and issued a
+        # renewal invoice minutes after the response. The probes above only
+        # see the immediate window; before any PASS verdict the
+        # authoritative state is re-read after a bounded settle delay and
+        # must be unchanged again (still active, same lago_id, still
+        # exactly one succeeded payment, no new invoice).
+        deferred = {"checked": False, "ok": None}
+        if probes_harmless and state_intact:
+            time.sleep(ctx.stability_rounds * ctx.stability_delay)
+            _, sub_body3 = _subscription_show(ctx, sub_ext, "active")
+            sub3 = (sub_body3 or {}).get("subscription", {}) if isinstance(sub_body3, dict) else {}
+            _, invoices3 = _invoices_for(ctx, customer["external_id"])
+            invoice3 = next(
+                (inv for inv in invoices3 if inv.get("lago_id") == invoice_lago_id),
+                None,
+            )
+            _, payments3 = _payments_for(ctx, customer["external_id"])
+            deferred = {
+                "checked": True,
+                "subscription_status": sub3.get("status"),
+                "subscription_same_lago_id": sub3.get("lago_id") == base_lago_id,
+                "payments_succeeded_count": len(_succeeded(payments3)),
+                "invoice_count": len(invoices3),
+                "invoice_count_immediate": len(invoices2),
+                "invoice_status": invoice3.get("status") if invoice3 else None,
+                "invoice_payment_status": invoice3.get("payment_status") if invoice3 else None,
+            }
+            deferred["ok"] = (
+                deferred["subscription_status"] == "active"
+                and deferred["subscription_same_lago_id"]
+                and deferred["payments_succeeded_count"] == 1
+                and deferred["invoice_count"] == deferred["invoice_count_immediate"]
+                and deferred["invoice_status"] == baseline["invoice_status"]
+                and deferred["invoice_payment_status"] == baseline["invoice_payment_status"]
+            )
         observed = {
             "re_post": re_post,
             "retry_payment": retry,
             "manual_re_post": manual_re_post,
             "final": final,
+            "deferred_recheck": deferred,
         }
-        status = PASS if probes_harmless and state_intact else FAIL
+        status = PASS if (
+            probes_harmless and state_intact
+            and (not deferred["checked"] or deferred["ok"])
+        ) else FAIL
         if _ok(rs):
             ctx.note(
                 "duplicate registration POST answered 200 (idempotent same-"
@@ -1020,6 +1063,13 @@ def phase_duplicates(ctx):
             ctx.note("a duplicate registration attempt caused real harm")
         if not state_intact:
             ctx.note("final state drifted after duplicate attempts (exactly-once violated)")
+        if deferred["checked"] and not deferred["ok"]:
+            ctx.note(
+                "deferred re-check after the settle window caught state "
+                "drifting minutes-late after the duplicate probes "
+                "(exactly-once violated; the immediate window alone would "
+                "have passed)"
+            )
         return _report(ctx, "duplicates", expected, observed, status,
                        evidence={"baseline": baseline,
                                  "responses": {"re_post": rb, "retry_payment": rrb,
@@ -1034,9 +1084,10 @@ def phase_retries(ctx):
         "response-loss on create recovers the SAME Lago subscription via "
         "GET by external_id (no second commercial object); a retry probe "
         "against customer A's gated invoice creates no second payment row "
-        "and the gate never activates (v1.53.0: the unsettled gate invoice "
-        "is API-invisible, so the retry answers 404); customer A payment "
-        "count unchanged"
+        "and the gate never activates (v1.53.0: while the unsettled gate "
+        "invoice stays API-invisible its lago_id is unknown, so the retry "
+        "probe is skipped and recorded not_applicable — an unknown-id 404 "
+        "would prove nothing); customer A payment count unchanged"
     )
     activation = ctx.state.get("activation")
     gate = ctx.state.get("gate")
@@ -1082,7 +1133,26 @@ def phase_retries(ctx):
             None,
         )
         _, payments_before = _payments_for(ctx, customer_a["external_id"])
-        rrs, rrb = ctx.lago.post(f"/api/v1/invoices/{invoice_lago_id}/retry_payment", {})
+        if invoice_lago_id is None:
+            # v1.53.0: the unsettled gate invoice never became API-visible,
+            # so the lab never learned its lago_id. POSTing to a literal
+            # /api/v1/invoices/None/retry_payment would only answer 404
+            # invoice_not_found — an unknown id, NOT an invisibility signal
+            # — while proving nothing (the probe would run empty). Skip it
+            # and record the reason instead of dressing the 404 up as
+            # retry evidence (ocr-2).
+            rrs, rrb = None, {
+                "code": "not_applicable",
+                "detail": "gate invoice id unknown (API-invisible)",
+            }
+            ctx.note(
+                "gate retry probe skipped: the gating invoice never became "
+                "API-visible and its lago_id is unknown; POSTing to an "
+                "unknown id would only fetch invoice_not_found (404), which "
+                "is not retry evidence"
+            )
+        else:
+            rrs, rrb = ctx.lago.post(f"/api/v1/invoices/{invoice_lago_id}/retry_payment", {})
         time.sleep(ctx.stability_delay)
         _, invoices_after = _invoices_for(ctx, customer_a["external_id"])
         invoice_after = next(
@@ -1103,9 +1173,11 @@ def phase_retries(ctx):
             "pending_gate_retry": gate_retry,
         }
         # v1.53.0 endgame for the 3DS gate: the invoice turns closed (an
-        # INVISIBLE_STATUS), so the retry probe answers 404 and a "pending"
-        # gate state is not observable via the API. AC3's bar is that the
-        # retry creates no new payment row and the gate never activates.
+        # INVISIBLE_STATUS) and the gate state below stays incomplete/canceled.
+        # When its lago_id is unknown the retry probe was skipped above (an
+        # unknown-id 404 is not evidence of anything); AC3's bar on this
+        # branch is the same-identity recovery, the gate never activating,
+        # and no new payment row appearing around the (skipped) retry.
         as_, asub = _subscription_status_any(
             ctx, gate["subscription_external_id"], ("incomplete", "canceled")
         )
@@ -1117,8 +1189,13 @@ def phase_retries(ctx):
             "no_second_payment_row": (
                 gate_retry["payments_count_after"] == gate_retry["payments_count_before"]
             ),
-            "no_succeeded_payment_for_gate": gate_retry["succeeded_count_after"] == 0,
         }
+        if invoice_lago_id is not None:
+            # The invoice-relative check is only meaningful when the retry
+            # probe actually ran against a known invoice id.
+            checks["no_succeeded_payment_for_gate"] = (
+                gate_retry["succeeded_count_after"] == 0
+            )
         observed["checks"] = checks
         status = PASS if all(checks.values()) else FAIL
         return _report(ctx, "retries", expected, observed, status,
