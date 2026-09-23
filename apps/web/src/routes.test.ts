@@ -38,6 +38,8 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1?tab=wiki&slug=docs/start'), { kind: 'knowledge-base', path: '/platform/knowledge-bases/kb-1', knowledgeBaseId: 'kb-1', tab: 'wiki', slug: 'docs/start' });
   assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1?knowledge_id=doc-1'), { kind: 'knowledge-base', path: '/platform/knowledge-bases/kb-1', knowledgeBaseId: 'kb-1', initialDocumentId: 'doc-1' });
   assert.equal(resolveRoute('/knowledgeBase/%E0%A4%A').kind, 'not-found');
+  assert.deepEqual(resolveRoute('/platform/career'), { kind: 'platform', path: '/platform/career' });
+  assert.deepEqual(guardRoute('/platform/career', authenticated), { kind: 'allow' });
   assert.deepEqual(resolveRoute('/platform/agents'), { kind: 'platform', path: '/platform/agents' });
   assert.deepEqual(resolveRoute('/platform/experts'), { kind: 'platform', path: '/platform/experts' });
   assert.deepEqual(resolveRoute('/platform/market'), { kind: 'platform', path: '/platform/market' });

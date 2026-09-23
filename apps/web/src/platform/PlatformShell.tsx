@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { formatMessage, type Locale } from '@weknora/i18n';
@@ -212,6 +213,7 @@ const NAV_ICON_URLS: Record<string, { default: string; active: string }> = {
 export function buildNavItems(t: (key: string) => string, labels: Record<string, string>): NavItem[] {
   return [
     { key: 'newChat', href: '/platform/creatChat', label: labels.newChat, icon: 'creatChat', match: NEW_CHAT_ACTIVE, guide: 'nav-creatChat' },
+    { key: 'career', href: '/platform/career', label: '求职档案', icon: 'career', iconNode: <ReactOnlyNavIcon paths={['M4 7.5H20', 'M6 4.5H18V20H6Z', 'M9 12H15', 'M9 15.5H13']} />, match: (p: string) => p === '/platform/career' },
     { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: 'knowledge-bases', match: (p: string) => KB_ACTIVE(p) && !/\/creatChat$/.test(p), guide: 'nav-knowledge-bases' },
     { key: 'agents', href: '/platform/agents', label: labels.agents, icon: 'agents', match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
     // M2 expert templates — a creation surface next to agents; unconditional

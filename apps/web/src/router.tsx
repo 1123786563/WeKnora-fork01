@@ -44,6 +44,7 @@ const WikiPage = lazy(() => import('./wiki/WikiPage.tsx').then((module) => ({ de
 const FAQPage = lazy(() => import('./faq/FAQPage.tsx').then((module) => ({ default: module.FAQPage })));
 const KnowledgeSettingsPage = lazy(() => import('./knowledge-settings/KnowledgeSettingsPage.tsx').then((module) => ({ default: module.KnowledgeSettingsPage })));
 const ConfigurationPage = lazy(() => import('./configuration/ConfigurationPage.tsx').then((module) => ({ default: module.ConfigurationPage })));
+const CareerPage = lazy(() => import('./career/CareerPage.tsx').then((module) => ({ default: module.CareerPage })));
 const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) => ({ default: module.AgentsPage })));
 const AdministrationPage = lazy(() => import('./administration/AdministrationPage.tsx').then((module) => ({ default: module.AdministrationPage })));
 const OrganizationsPage = lazy(() => import('./organizations/OrganizationsPage.tsx').then((module) => ({ default: module.OrganizationsPage })));
@@ -708,6 +709,12 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
 
   // Octop M2 expert-template catalog; list/detail are Viewer+ reads, the
   // instantiate write stays Contributor+ server-side (routes_expert.go guard).
+  const careerRoute = createRoute({
+    getParentRoute: () => platformRoute,
+    path: 'career',
+    component: (): ReactNode => <CareerPage client={client} scopeController={scopeController} userId={scopeController.current().scope.userId} />,
+  });
+
   const expertsRoute = createRoute({
     getParentRoute: () => platformRoute,
     path: 'experts',
@@ -914,6 +921,7 @@ export function createWeKnoraRouter(deps: WeKnoraRouterDeps, options: { history?
       chatIndexRoute,
       chatSplatRoute,
       agentsRoute,
+      careerRoute,
       expertsRoute,
       marketRoute,
       configurationRoute,

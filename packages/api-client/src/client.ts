@@ -32,6 +32,7 @@ import { createKnowledgeSettingsApi } from './knowledge/settings.ts';
 import { createAnalyticsApi } from './analytics/index.ts';
 import { createUsageApi } from './usage/index.ts';
 import { createQueryHistoryApi } from './queryHistory/index.ts';
+import { createCareerApi } from './career.ts';
 
 export type { KnowledgeBase } from '@weknora/contracts';
 
@@ -351,6 +352,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   return {
     request,
     requestBinary,
+    career: createCareerApi(request),
     knowledgeBases: {
       async list(params: KnowledgeBaseListParams = {}): Promise<KnowledgeBase[]> {
         const path = withQuery('/api/v1/knowledge-bases', { ...params });

@@ -29,3 +29,11 @@ test('plain string body still becomes the message (kept verbatim)', () => {
   const error = errorFromResult(500, ' upstream exploded ');
   assert.equal(error.message, ' upstream exploded ');
 });
+
+
+test('career conflicts and unknown outcomes preserve backend reconciliation fields', () => {
+  const conflict = errorFromResult(409, { error: { code: 'revision_conflict', message: 'stale', currentRevision: 7 } });
+  assert.equal(conflict.currentRevision, 7);
+  const unknown = errorFromResult(504, { error: { code: 'outcome_unknown', message: 'unknown', requestId: 'same-id' } });
+  assert.equal(unknown.requestId, 'same-id');
+});

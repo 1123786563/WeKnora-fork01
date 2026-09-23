@@ -203,3 +203,7 @@ export type {
   SteerMutationResponse,
   SteerQueueItem,
 } from '@weknora/contracts';
+
+export { createCareerApi } from './career.ts';
+export type { CareerRequest } from './career.ts';
+export type { CareerAction, CareerView, CareerFact, CareerProposal, CareerReceipt, CareerChangeSet, CareerChange, CareerSource } from '../../career-core/src/contracts.ts';

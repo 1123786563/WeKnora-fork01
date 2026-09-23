@@ -30,7 +30,7 @@ test('M2: the rail carries the experts entry right after agents', () => {
     analytics: 'Analytics',
   });
   assert.deepEqual(items.map((item) => item.key), [
-    'newChat', 'knowledgeBases', 'agents', 'experts', 'market', 'organizations', 'analytics',
+    'newChat', 'career', 'knowledgeBases', 'agents', 'experts', 'market', 'organizations', 'analytics',
   ]);
   const experts = items.find((item) => item.key === 'experts');
   assert.ok(experts);
