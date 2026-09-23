@@ -7,11 +7,33 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
 )
+
+// pluginListerListToolsTimeout bounds a single live tools/list call against
+// an untrusted third-party endpoint, mirroring the 30s ListTools deadlines
+// every other production caller already derives (agentruntime mcp_tool.go
+// listToolsTimeout; the manager's initializeClient handshake 30s) and the
+// 15s manifest-fetch cap on this same preview path. The preview request ctx
+// carries no deadline of its own — cmd/server's http.Server sets no
+// ReadTimeout/WriteTimeout and there is no route timeout middleware — so
+// without this bound a hanging or slow-dripping endpoint could pin the
+// handler goroutine and this adapter's dedicated (nonce-exclusive) MCP
+// client indefinitely (OCR T01-R2-F8). A const, not a var: it is a safety
+// boundary value.
+const pluginListerListToolsTimeout = 30 * time.Second
+
+// withListToolsDeadline derives the ListTools context: min(caller deadline,
+// pluginListerListToolsTimeout). context.WithTimeout keeps the nearer of the
+// two deadlines, so a caller-supplied deadline (e.g. the admin request
+// timing out) is still honored.
+func withListToolsDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, pluginListerListToolsTimeout)
+}
 
 // NewPluginMCPEndpointLister verifies plugin endpoints through the production
 // MCP client stack. It lives in the composition root because
@@ -63,7 +85,11 @@ func NewPluginMCPEndpointLister(manager *mcp.MCPManager) plugins.EndpointLister 
 			_ = client.Disconnect()
 			_ = manager.CloseClient(service.ID)
 		}()
-		tools, err := client.ListTools(ctx)
+		// Bound the tools/list call (untrusted endpoint; the request ctx has
+		// no deadline of its own) — see pluginListerListToolsTimeout.
+		listCtx, cancel := withListToolsDeadline(ctx)
+		defer cancel()
+		tools, err := client.ListTools(listCtx)
 		if err != nil {
 			return nil, wrapPluginOAuth(err)
 		}

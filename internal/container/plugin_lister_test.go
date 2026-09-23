@@ -210,6 +210,84 @@ func TestPluginConcurrentVerificationOfSameEndpointIsolated(t *testing.T) {
 	require.NoError(t, errs[1])
 }
 
+// TestWithListToolsDeadlineDerivesBound (OCR T01-R2-F8): the lister's
+// ListTools call must carry a deadline even when the caller's ctx has none —
+// the preview request ctx is only cancelled by the admin client disconnecting
+// (cmd/server sets no http.Server timeouts, no route timeout middleware), so
+// without a derived bound a hanging third-party endpoint pins the handler
+// goroutine indefinitely. Every other production ListTools caller already
+// derives 30s (mcp_tool.go listToolsTimeout; manager initializeClient 30s);
+// the manifest fetch on the same preview path has 15s.
+func TestWithListToolsDeadlineDerivesBound(t *testing.T) {
+	ctx, cancel := withListToolsDeadline(context.Background())
+	defer cancel()
+	dl, ok := ctx.Deadline()
+	require.True(t, ok, "a deadline-free caller ctx must still yield a bounded ListTools ctx")
+	remaining := time.Until(dl)
+	require.Greater(t, remaining, 25*time.Second)
+	require.LessOrEqual(t, remaining, 30*time.Second)
+
+	// A nearer caller-supplied deadline must win (context.WithTimeout keeps
+	// the closer of the two): admin-side cancellation still propagates.
+	parent, parentCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer parentCancel()
+	child, childCancel := withListToolsDeadline(parent)
+	defer childCancel()
+	childDL, _ := child.Deadline()
+	parentDL, _ := parent.Deadline()
+	require.False(t, childDL.After(parentDL), "the nearer parent deadline must be preserved")
+}
+
+// TestPluginListerBoundsHangingListTools (OCR T01-R2-F8 regression anchor):
+// an endpoint that completes the initialize handshake but then holds
+// tools/list open must not outlive the deadline the caller derived — the
+// lister must surface the ctx error instead of returning after the endpoint
+// eventually answers. (This exercises deadline propagation through the whole
+// GetOrCreateClient → ListTools chain; the 30s default bound itself is
+// covered by TestWithListToolsDeadlineDerivesBound.)
+func TestPluginListerBoundsHangingListTools(t *testing.T) {
+	narrowSSRFWhitelistToLoopback(t)
+	inner := streamableMCPServer(t, "search_my_week_issues", []byte(pluginDeclaredNoArgSchema))
+	mcpHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, readErr := io.ReadAll(r.Body)
+			if readErr == nil {
+				if bytes.Contains(body, []byte(`"tools/list"`)) {
+					// Hold tools/list until the request itself is abandoned.
+					select {
+					case <-r.Context().Done():
+						return
+					case <-time.After(10 * time.Second):
+					}
+				}
+				r.Body = io.NopCloser(bytes.NewReader(body))
+			}
+		}
+		inner(w, r)
+	}
+	m := pluginFixtureManifest()
+	manifestJSON, _ := json.Marshal(m)
+	base := newControlledPluginHost(t,
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(manifestJSON)
+		},
+		mcpHandler,
+	)
+	m.Transport.Endpoint = base + "/mcp"
+	manifestJSON, _ = json.Marshal(m)
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := plugins.FetchAndVerify(ctx, base+"/manifest.json", NewPluginMCPEndpointLister(manager))
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 5*time.Second,
+		"a hanging tools/list must surface the ctx deadline error, not wait for the endpoint")
+}
+
 // TestPluginEndpointListerRetiresPendingConnectionOnError (OCR T01-R2-1): when the
 // caller's ctx expires mid-handshake, GetOrCreateClient returns an error
 // while its background goroutine (manager lifeCtx) keeps connecting and would
