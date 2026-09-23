@@ -26,7 +26,14 @@ import (
 //     exported and must not silently rely on the caller having validated
 //     first; an unchecked empty digest would ""==""-match ToolSchemaDigest's
 //     "" for an unparseable live schema and mint a snapshot whose digest is
-//     not 64-hex).
+//     not 64-hex); a declaration whose name fails the identifier hygiene
+//     rules or whose scopes fail the RFC 6749 checks — re-checked for the
+//     same reason: unchecked scopes would flow verbatim into the persisted
+//     snapshot and the admin/member authorization surfaces.
+//
+// A name the endpoint serves several times (declared or not) is ONE
+// discrepancy and is reported once — duplicate and undeclared echoes are
+// both deduplicated.
 //
 // The returned error names EVERY differing tool — up to
 // maxVerificationProblems entries, with the remainder collapsed into a
@@ -56,6 +63,9 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 	var problems []string
 	liveByName := make(map[string]*types.MCPTool, len(live))
 	unvettedName := make(map[int]bool, len(live))
+	// One duplicated live name is ONE contradiction — report it once, not
+	// (N-1) times (OCR T01-R3-F3).
+	reportedDuplicate := make(map[string]bool)
 	for i, tool := range live {
 		if tool == nil {
 			continue
@@ -69,6 +79,10 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 			continue
 		}
 		if _, dup := liveByName[tool.Name]; dup {
+			if reportedDuplicate[tool.Name] {
+				continue
+			}
+			reportedDuplicate[tool.Name] = true
 			// A directory naming one tool twice is self-contradictory; letting
 			// the last entry win would silently mask the other's schema.
 			problems = append(problems, fmt.Sprintf("live endpoint returned duplicate tool name %q", tool.Name))
@@ -77,7 +91,21 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 		liveByName[tool.Name] = tool
 	}
 	declared := make(map[string]bool, len(manifest.Tools))
-	for _, decl := range manifest.Tools {
+	for i, decl := range manifest.Tools {
+		// Re-check the declaration's name hygiene and scopes as well: this
+		// function must not silently rely on the caller having validated
+		// first — unchecked scopes would flow verbatim into the persisted
+		// snapshot and the admin/member authorization surfaces, and an
+		// unhygienic name would otherwise get a misleading "missing from
+		// live endpoint" (it can never match a vetted live name). The
+		// `where` uses the position index, never the untrusted name itself
+		// (OCR T01-R3-F4).
+		if err := validateName(fmt.Sprintf("manifest tools[%d].name", i), decl.Name, maxToolNameLen); err != nil {
+			return nil, "", err
+		}
+		if err := validateScopes(decl.Scopes, fmt.Sprintf("manifest tools[%d]", i)); err != nil {
+			return nil, "", err
+		}
 		// Re-check here instead of trusting the caller to have run
 		// ValidateManifest: a duplicate declaration would otherwise append
 		// the same tool to the snapshot twice, silently. The name echoed
@@ -136,10 +164,17 @@ func BuildVerifiedSnapshot(manifest *types.PluginManifest, live []*types.MCPTool
 			Scopes:               scopes,
 		})
 	}
+	// One undeclared name is ONE discrepancy — report it once even when the
+	// endpoint served it N times (OCR T01-R3-F3).
+	reportedUndeclared := make(map[string]bool)
 	for i, tool := range live {
 		if tool == nil || unvettedName[i] || declared[tool.Name] {
 			continue
 		}
+		if reportedUndeclared[tool.Name] {
+			continue
+		}
+		reportedUndeclared[tool.Name] = true
 		problems = append(problems, fmt.Sprintf("undeclared tool %q present on endpoint", tool.Name))
 	}
 	if len(problems) > maxVerificationProblems {

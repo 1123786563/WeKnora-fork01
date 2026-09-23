@@ -31,6 +31,84 @@ func newControlledPluginHost(t *testing.T, manifestHandler http.HandlerFunc, mcp
 // 错误路径连接回收 / OAuth 哨兵映射）位于 internal/container/plugin_lister_test.go：
 // 适配器自本模块迁往组合根（internal/modules 之间禁止互相 import），测试随迁。
 
+// TestFetchRejectsUserinfoCredentialsInManifestURL (OCR T01-R3-F2): the
+// manifest URL must be refused BEFORE any request when it embeds userinfo
+// credentials, mirroring ValidateManifest's transport-endpoint rule
+// (T01-R1-F3). ValidateURLForSSRF never inspects parsed.User (Hostname()
+// strips it), so without this gate the stdlib http client would send the
+// credentials as a Basic Auth header to the host — asserted here directly
+// by the controlled server — and the credential-bearing URL would be
+// persisted into plugin_previews.manifest_url.
+func TestFetchRejectsUserinfoCredentialsInManifestURL(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	var sawAuthHeader atomic.Bool
+	m := validManifest()
+	manifestJSON, _ := json.Marshal(m)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			sawAuthHeader.Store(true)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(manifestJSON)
+	}))
+	t.Cleanup(srv.Close)
+	lister := func(context.Context, string, string) ([]*types.MCPTool, error) {
+		t.Fatal("lister must not be called for a userinfo credential URL")
+		return nil, nil
+	}
+	_, err := FetchAndVerify(context.Background(), "http://user:pw@"+srv.Listener.Addr().String()+"/manifest.json", lister)
+	require.ErrorContains(t, err, "userinfo")
+	require.False(t, sawAuthHeader.Load(),
+		"credentials embedded in the manifest URL must never be sent to any host")
+}
+
+// TestBuildVerifiedSnapshotDeduplicatesUndeclaredEchoes (OCR T01-R3-F3): a
+// live name appearing N times while undeclared used to emit (N-1) duplicate
+// messages plus N undeclared messages for the SAME fact — one name, one
+// contradiction. Each must be reported exactly once.
+func TestBuildVerifiedSnapshotDeduplicatesUndeclaredEchoes(t *testing.T) {
+	m := validManifest()
+	live := []*types.MCPTool{
+		{Name: "rogue", InputSchema: []byte(declaredNoArgSchema)},
+		{Name: "rogue", InputSchema: []byte(declaredNoArgSchema)},
+		{Name: "rogue", InputSchema: []byte(declaredNoArgSchema)},
+	}
+	_, _, err := BuildVerifiedSnapshot(m, live)
+	require.Error(t, err)
+	require.Equal(t, 1, strings.Count(err.Error(), `undeclared tool "rogue"`),
+		"one undeclared name is one discrepancy, reported once")
+	require.Equal(t, 1, strings.Count(err.Error(), `duplicate tool name "rogue"`),
+		"one duplicated name is one discrepancy, reported once")
+}
+
+// TestBuildVerifiedSnapshotRechecksDeclaredNameAndScopes (OCR T01-R3-F4):
+// BuildVerifiedSnapshot's contract says it must not silently rely on the
+// caller having run ValidateManifest. It already re-checks duplicates,
+// digest format and emptiness — but not the declaration's name hygiene and
+// scopes: unchecked scopes would flow verbatim into the persisted snapshot
+// and the admin/member authorization surfaces, and an unhygienic name gets
+// a misleading "missing from live endpoint" (it can never match a vetted
+// live name) instead of the real problem.
+func TestBuildVerifiedSnapshotRechecksDeclaredNameAndScopes(t *testing.T) {
+	// (1) Malformed scopes on a fully matching declaration: without the
+	// re-check the snapshot is minted carrying the hostile scope.
+	m := validManifest()
+	m.Tools[0].Scopes = []string{strings.Repeat("s", maxScopeLen+1)} // ValidateManifest would reject this
+	live := []*types.MCPTool{{Name: "search_my_week_issues", InputSchema: []byte(declaredNoArgSchema)}}
+	snapshot, _, err := BuildVerifiedSnapshot(m, live)
+	require.ErrorContains(t, err, "scope")
+	require.Nil(t, snapshot, "a rejected verification must not produce a snapshot")
+
+	// (2) Unhygienic declared name (Cf bidi override): must be rejected for
+	// the name itself, not reported as missing from the endpoint.
+	m2 := validManifest()
+	m2.Tools[0].Name = "bad\u202Ename"
+	_, _, err = BuildVerifiedSnapshot(m2, nil)
+	require.ErrorContains(t, err, "must not contain control")
+	require.NotContains(t, err.Error(), "missing from live endpoint")
+}
+
 func TestFetchRejectsNonHTTPAndPrivateManifestURLs(t *testing.T) {
 	lister := func(context.Context, string, string) ([]*types.MCPTool, error) {
 		t.Fatal("lister must not be called for rejected URLs")
@@ -52,10 +130,11 @@ func TestFetchRejectsNonHTTPAndPrivateManifestURLs(t *testing.T) {
 // 原样回显任意长度的未审核名字（本测试直接以未校验清单调用，绕过
 // ValidateManifest 的 ≤128 runes 前置，正是该不变量要防的调用形态）。
 func TestBuildVerifiedSnapshotDuplicateNameEchoIsBounded(t *testing.T) {
-	longName := strings.Repeat("x", 3000)
-	// digest 取合法 64-hex：本轮起 BuildVerifiedSnapshot 复检 digest 格式
-	// （OCR T01-R1-F4），非法 fixture 会在到达重复名路径前被拦——fixture
-	// 合法化让本测试仍聚焦其原本断言（长名回显截断）。
+	// 名字须为合法长度（≤128）：本轮起 BuildVerifiedSnapshot 复检声明名
+	// hygiene（OCR T01-R3-F4），3000 字符超长名在到达 duplicate 路径前即被
+	// 名字复检拒绝（消息只含索引 where，天然有界）。100 字符合法名保持
+	// duplicate 回显截断覆盖：echoQuoted 截到 maxEchoRunes=64 runes。
+	longName := strings.Repeat("x", 100)
 	m := validManifest()
 	m.Tools = []types.PluginToolDecl{
 		{Name: longName, InputSchemaDigest: strings.Repeat("a", 64)},
@@ -77,15 +156,15 @@ func TestBuildVerifiedSnapshotProblemEchoIsBounded(t *testing.T) {
 	long := strings.Repeat("x", 3000)
 	schema := []byte(`{"type":"object","properties":{}}`)
 
-	// 场景 1：missing——未匹配 live 的 decl.Name 原样回显（无任何长度前置）。
-	// digest 取合法 64-hex（本轮起 digest 格式在 missing 检查前被复检，
-	// OCR T01-R1-F4），fixture 合法化以仍到达 missing 路径。
+	// 场景 1：missing——未匹配 live 的 decl.Name 原样回显。名字与 digest 均
+	// 须合法（本轮起两者在 missing 前被复检，OCR T01-R1-F4/T01-R3-F4），
+	// 100 字符合法长名保持 missing 回显截断覆盖（echoQuoted 截到 64 runes）。
 	m := validManifest()
-	m.Tools = []types.PluginToolDecl{{Name: long, InputSchemaDigest: strings.Repeat("a", 64)}}
+	m.Tools = []types.PluginToolDecl{{Name: strings.Repeat("x", 100), InputSchemaDigest: strings.Repeat("a", 64)}}
 	_, _, err := BuildVerifiedSnapshot(m, nil)
 	require.ErrorContains(t, err, "missing from live endpoint")
 	require.LessOrEqual(t, len(err.Error()), 400, "missing-tool echo must be truncated")
-	require.NotContains(t, err.Error(), long)
+	require.NotContains(t, err.Error(), strings.Repeat("x", 100))
 
 	// 场景 2：任意长度假 digest——原威胁（进 schema digest mismatch 回显）
 	// 已被本轮 digest 格式复检消灭：格式非法的声明在 mismatch 比较前即被

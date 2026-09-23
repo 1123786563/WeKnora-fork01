@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -66,7 +67,19 @@ func FetchAndVerify(ctx context.Context, manifestURL string, lister EndpointList
 		return nil, fmt.Errorf("endpoint lister is required")
 	}
 	// 1) SSRF gate on the manifest URL: http/https only, and reject
-	// localhost/loopback/private/reserved targets before any dial.
+	// localhost/loopback/private/reserved targets before any dial. The gate
+	// never inspects userinfo (Hostname() strips it), so a URL embedding
+	// credentials (https://user:pass@host/manifest.json) is refused here
+	// first — mirroring ValidateManifest's transport-endpoint rule
+	// (T01-R1-F3): the stdlib http client would otherwise send them as a
+	// Basic Auth header to the host, and the credential-bearing URL would
+	// be persisted into plugin_previews.manifest_url. The message does not
+	// echo the URL, which contains the credentials (OCR T01-R3-F2).
+	if u, err := url.Parse(manifestURL); err != nil {
+		return nil, fmt.Errorf("invalid manifest URL: %w", err)
+	} else if u.User != nil {
+		return nil, fmt.Errorf("manifest URL must not embed userinfo credentials")
+	}
 	if err := utils.ValidateURLForSSRF(manifestURL); err != nil {
 		return nil, fmt.Errorf("manifest URL rejected: %w", err)
 	}
