@@ -71,3 +71,34 @@ test('a stale in-flight projection never overwrites a newer one', async () => {
 
   assert.equal(controller.state().page?.tenantId, '9');
 });
+
+test('disposing the controller detaches the shelf subscription so invalidation stops triggering browse', async () => {
+  let browses = 0;
+  const listeners = new Set<(event: ShelfInvalidationEvent) => void>();
+  const handle: ResourceShelfHandle & { emit(event: ShelfInvalidationEvent): void } = {
+    async browse() { browses += 1; return PAGE; },
+    selection: () => ({ allowed: false, state: 'unavailable', reason: 'not_used' }),
+    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    close() {},
+    emit(event) { for (const listener of [...listeners]) listener(event); },
+  };
+  const controller = createResourceShelfController(handle);
+  await controller.whenSettled();
+  assert.equal(listeners.size, 1, 'a live controller holds exactly one handle subscription');
+
+  handle.emit({ type: 'authorization-revoked', resourceClass: 'knowledge' });
+  await controller.whenSettled();
+  assert.equal(browses, 2, 'invalidation reloads while the controller is live');
+
+  controller.dispose();
+  assert.equal(listeners.size, 0, 'dispose must detach the handle subscription');
+  handle.emit({ type: 'scope-closed', reason: 'tenant-switch' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(browses, 2, 'invalidation after dispose must not trigger another browse');
+
+  const second = createResourceShelfController(handle);
+  await second.whenSettled();
+  assert.equal(listeners.size, 1, 'a fresh controller re-subscribes');
+  second.dispose();
+  assert.equal(listeners.size, 0, 'repeated mount/unmount cycles must not accumulate subscriptions');
+});

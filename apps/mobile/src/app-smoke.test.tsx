@@ -23,7 +23,7 @@ const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-linking': 'module.exports = { useLinkingURL() { return null; } }',
   'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, navigate() {} } }",
   'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button' }",
-  react: "let values = []; let cursor = 0; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = next; }]; }, useRef(value) { return { current: value }; }, useEffect() {}, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
+  react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
 };
 const stubDir = mkdtempSync(join(tmpdir(), 'weknora-mobile-stub-'));
 const stubPath = (name: string): string => join(stubDir, `${name.replaceAll('/', '+')}.cjs`);
@@ -48,8 +48,8 @@ const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..
 const require = createRequire(import.meta.url);
 (globalThis as typeof globalThis & { React?: unknown }).React = require('react');
 
-function hooks(): { __beginRender(): void; __reset(): void } {
-  return require('react') as { __beginRender(): void; __reset(): void };
+function hooks(): { __beginRender(): void; __reset(): void; __mount(): void; __unmount(): void } {
+  return require('react') as { __beginRender(): void; __reset(): void; __mount(): void; __unmount(): void };
 }
 
 function render(component: (props: any) => unknown, props: any): unknown {
@@ -304,4 +304,37 @@ test('the resources view modules never import contracts or api-client wire adapt
     const source = readFileSync(join(here, relative), 'utf8');
     assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Resource Shelf Interface only (AC2)`);
   }
+});
+
+test('the resources route detaches its shelf controller from the long-lived handle on unmount', async () => {
+  const { ResourcesScreen } = await import('./screens/ResourcesScreen.tsx');
+  const { ResourcesRouteLifecycle } = await import('./app/resources.tsx');
+  const page: import('@weknora/mobile-core').ResourcePage = {
+    tenantId: '7',
+    agents: [],
+    knowledge: [],
+    connections: [],
+    classVerdicts: { agent: { state: 'supported', reason: '' }, knowledge: { state: 'supported', reason: '' }, connection: { state: 'supported', reason: '' } },
+  };
+  let browses = 0;
+  const listeners = new Set<(event: import('@weknora/mobile-core').ShelfInvalidationEvent) => void>();
+  const handle = {
+    async browse() { browses += 1; return page; },
+    selection: () => ({ allowed: false, state: 'unavailable', reason: 'not_used' }),
+    subscribe(listener: (event: import('@weknora/mobile-core').ShelfInvalidationEvent) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    close() {},
+    emit(event: import('@weknora/mobile-core').ShelfInvalidationEvent) { for (const listener of [...listeners]) listener(event); },
+    audit: () => ({ listeners: listeners.size, browses }),
+  };
+  hooks().__reset();
+  const element = render(ResourcesRouteLifecycle, { handle });
+  assert.equal(descendants(element).some(({ type }) => type === ResourcesScreen), true, 'authorized route renders the resources screen');
+  hooks().__mount();
+  assert.equal(handle.audit().listeners, 1, 'exactly one controller subscribes to the shelf handle while mounted');
+  assert.equal(handle.audit().browses, 1, 'the mounted controller loads once');
+  hooks().__unmount();
+  assert.equal(handle.audit().listeners, 0, 'unmount must dispose the controller: the per-scope shelf handle keeps no leaked subscription');
+  handle.emit({ type: 'authorization-revoked', resourceClass: 'knowledge' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(handle.audit().browses, 1, 'an invalidation event after unmount must not trigger a leaked browse');
 });
