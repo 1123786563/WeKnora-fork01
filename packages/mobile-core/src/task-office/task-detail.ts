@@ -120,6 +120,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   const buildView = (connection: TaskConnectionState): TaskDetailView => {
     const base = detail!;
     const runStatus = terminalRunStatusOf(base.execution.runStatus, events);
+    const terminal = isTerminalRunStatus(runStatus);
     return {
       taskId: base.taskId,
       runId: base.runId,
@@ -127,8 +128,11 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       lifecycle: taskLifecycleOf(base.archivedAt, runStatus),
       runStatus,
       attention: base.attention,
-      executionStatus: base.execution.executionStatus,
-      settlementStatus: base.execution.settlementStatus,
+      // 镜像 internal/application/repository/agent_run_snapshot.go:83-88（executionFromRun）：
+      // runStatus 为终态（succeeded/failed/canceled）即 settlement='settled'、executionStatus=runStatus。
+      // 快照未刷新前流内终态事件也要推进视图，不得停留在旧 'pending'（R1-F27）。
+      executionStatus: terminal ? runStatus : base.execution.executionStatus,
+      settlementStatus: terminal ? 'settled' : base.execution.settlementStatus,
       revision: base.execution.revision,
       cursor: committedCursor,
       incomplete: base.incomplete,
@@ -141,7 +145,24 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
   const notify = (connection: TaskConnectionState): void => {
     if (closed || detail === undefined) return;
     current = buildView(connection);
-    for (const listener of [...listeners]) listener(current);
+    for (const listener of [...listeners]) {
+      try {
+        listener(current);
+      } catch {
+        /* 订阅者异常不截断广播（R1-F24）：其余订阅者仍收到通知 */
+      }
+    }
+  };
+  // 四个流式入口共用（R1-F44）：lease 失效即静默停流（abort + 不再 notify），
+  // 对齐模块注释「scope lease 撤销后的一切结果按 TASK_OFFICE_SCOPE_CHANGED 拒绝」的流内语义。
+  const streamGuard = (): boolean => {
+    if (closed) return false;
+    const lease = ports.lease();
+    if (!lease || !leaseActive(lease)) {
+      abortStream();
+      return false;
+    }
+    return true;
   };
   const abortStream = (): void => {
     streamEpoch += 1;
@@ -217,7 +238,8 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     );
   };
   const processEvent = async (event: TaskBackendEvent): Promise<void> => {
-    if (closed || detail === undefined) return;
+    if (!streamGuard() || detail === undefined) return;
+    const stepEpoch = streamEpoch; // 步骤开始时的快照：persist 挂起点期间被 resync/interrupt 取代则丢弃回写
     if (event.runId !== input.runId) {
       await interrupt('stream-error', `event belongs to run ${event.runId}`);
       return;
@@ -242,13 +264,16 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
       await interrupt('persist-failed', cause instanceof Error ? cause.message : String(cause));
       return;
     }
+    // 挂起点期间被取代（resync 开了新流 / lease 撤销）：陈旧回写不得回退游标（R1-F43，对齐 hydrate 的既有守卫语义）。
+    if (stepEpoch !== streamEpoch || !streamGuard()) return;
     events = nextEvents;
     committedCursor = event.seq;
     autoResyncs = 0;
     notify('live');
   };
   const processControl = async (frame: TaskStreamControlFrame): Promise<void> => {
-    if (closed) return;
+    if (!streamGuard()) return;
+    if (frame.code === 'heartbeat' || frame.code === 'keepalive') return; // 保活帧良性（R1-F45），不打断流
     if (frame.code === 'cursor_expired') {
       await interrupt('cursor-expired', frame.message);
       return;
@@ -256,7 +281,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     await interrupt('stream-error', `${frame.code}: ${frame.message}`);
   };
   const streamEnded = async (): Promise<void> => {
-    if (closed || detail === undefined) return;
+    if (!streamGuard() || detail === undefined) return;
     if (isTerminalRunStatus(terminalRunStatusOf(detail.execution.runStatus, events))) {
       interruption = undefined;
       notify('drained');
@@ -265,7 +290,7 @@ export function createTaskDetail(input: { taskId: string; runId: string }, ports
     await interrupt('stream-ended-nonterminal', 'the event stream ended before a terminal status');
   };
   const streamFailed = async (error: unknown): Promise<void> => {
-    if (closed) return;
+    if (!streamGuard()) return;
     const message = error instanceof Error ? error.message : String(error);
     // code 优先（R1-F22）：跨包错误合同靠结构化 code，message 全等仅作过渡兼容。
     const code = (error as { code?: unknown } | null)?.code;

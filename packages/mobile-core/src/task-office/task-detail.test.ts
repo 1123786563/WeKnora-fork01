@@ -517,3 +517,122 @@ test('stream-unavailable is detected by error code, not message text (R1-F22)', 
   assert.equal(handle.view()!.interruption?.reason, 'stream-unavailable');
   handle.close();
 });
+
+test('a throwing listener does not starve later subscribers (R1-F24)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const { office } = officeWithDetail(leaseRef, { detail: async () => detail$() });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  const seen: number[] = [];
+  handle.updates(() => { throw new Error('listener boom'); });
+  handle.updates(() => { seen.push(1); });
+  await handle.resync(); // 触发 notify（resync 期间 syncing + live 两次广播）
+  // 隔离语义：抛错的订阅者不得截断广播——后续订阅者每次广播都收到（修复前 resync 直接 reject 且 seen=0）。
+  assert.ok(seen.length >= 1, `later subscriber must be notified on every broadcast, got ${seen.length}`);
+  handle.close();
+});
+
+test('events arriving after lease revocation are dropped, not merged (R1-F44)', async () => {
+  const { revocable, lease } = leased();
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = lease;
+  let emit: ((event: TaskBackendEvent) => void) | undefined;
+  const detailBackend: TaskDetailBackendPort = {
+    detail: async () => detail$(),
+    stream: ({ onEvent, signal }) => new Promise<void>((resolve) => {
+      emit = onEvent;
+      signal.addEventListener('abort', () => resolve());
+    }),
+  };
+  const office = createTaskOffice({
+    backend: createScenarioTaskBackend({}),
+    lease: () => leaseRef.lease,
+    detail: detailBackend,
+    store: createInMemoryTaskProjectionStore(),
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  const before = handle.view()!;
+  revocable.revoke();
+  emit!(event$(3));
+  await settle();
+  assert.equal(handle.view()?.cursor, before.cursor); // 撤销后事件未合并
+  handle.close();
+});
+
+test('a stale processEvent does not rewind the cursor after resync (R1-F43)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const gate = deferred<void>(); // 卡住 cursor=3 的 persist（hydrate 首次 persist cursor=2 不卡）
+  const store = createInMemoryTaskProjectionStore();
+  const gatedStore: TaskProjectionStore = {
+    load: (runId) => store.load(runId),
+    save: async (projection) => { if (projection.cursor === 3) await gate.promise; await store.save(projection); },
+  };
+  let detailCalls = 0;
+  const secondDetail = deferred<TaskBackendDetail>();
+  const laterDetail = deferred<TaskBackendDetail>(); // 第三次起卡住：旧实现中陈旧回写+自动 resync 会先暴露回退的游标
+  const detailBackend = createScenarioTaskDetailBackend({
+    detail: async () => {
+      detailCalls += 1;
+      return detailCalls <= 1 ? detail$() : detailCalls === 2 ? secondDetail.promise : laterDetail.promise;
+    },
+    stream: () => {
+      const scripted = createScriptedTaskStream();
+      queueMicrotask(() => { scripted.emit(event$(3)); scripted.end(); });
+      return scripted;
+    },
+  });
+  const office = createTaskOffice({ backend: createScenarioTaskBackend({}), lease: () => leaseRef.lease, detail: detailBackend, store: gatedStore });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate(); // events 推进到 3 的 processEvent 挂起在 gatedStore.save 上
+  const resynced = handle.resync(); // 挂起期间 resync：watermark=10 的新 detail
+  secondDetail.resolve(detail$({ watermark: 10, events: [event$(1, 'run.started'), event$(2, 'tool.started'), event$(3), event$(10, 'text.delta')] }));
+  await resynced;
+  gate.resolve(); // 放行陈旧 persist → 旧 processEvent 恢复，不得把游标回退到 3
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.cursor, 10);
+  assert.notEqual(view.interruption?.reason, 'gap'); // 无陈旧赋值引发的 gap 连锁抖动
+  handle.close();
+});
+
+test('terminal run settles the execution view without waiting for resync (R1-F27)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => detail$(),
+    stream: () => {
+      const scripted = createScriptedTaskStream();
+      queueMicrotask(() => { scripted.emit(event$(3, 'run.completed')); scripted.end(); });
+      return scripted;
+    },
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle();
+  const view = handle.view()!;
+  assert.equal(view.runStatus, 'succeeded');
+  assert.equal(view.settlementStatus, 'settled'); // 当前保持快照 'pending' → 失败
+  assert.equal(view.executionStatus, 'succeeded');
+  handle.close();
+});
+
+test('heartbeat control frames are benign (R1-F45)', async () => {
+  const leaseRef: { lease?: ScopeLease } = {};
+  leaseRef.lease = leased().lease;
+  const { office } = officeWithDetail(leaseRef, {
+    detail: async () => detail$(),
+    stream: () => {
+      const scripted = createScriptedTaskStream();
+      queueMicrotask(() => { scripted.control({ code: 'heartbeat', message: '' }); });
+      return scripted;
+    },
+  });
+  const handle = office.open({ taskId: 'task-1', runId: 'run-1' });
+  await handle.hydrate();
+  await settle();
+  assert.equal(handle.view()?.connection, 'live'); // 心跳不打断流
+  handle.close();
+});
