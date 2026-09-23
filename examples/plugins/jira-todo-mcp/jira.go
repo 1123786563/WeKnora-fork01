@@ -32,6 +32,13 @@ const (
 	maxSearchPages = 10
 )
 
+// jiraMaxResponseBytes 封顶单次 Jira 响应体的解码读取量（整分支 OCR 二轮
+// F5）：分页/条数封顶只约束请求参数，响应体积由对端决定——被攻陷或异常的
+// Jira 可在 30s 超时窗口内推送超大 JSON 流，Decoder 随解码逐步分配造成内存
+// 放大。截断导致 unexpected EOF 天然 fail-closed（显式报错，不静默当空结果）。
+// var 供测试改写（同 maxPendingAuths 先例）。
+var jiraMaxResponseBytes int64 = 16 << 20
+
 // jiraHTTPError 是 Jira REST 返回 HTTP ≥400 时的类型化错误：携带状态码，
 // 供调用方区分「凭据性失败」（401/403）与「上游故障」（5xx/网络错误）——
 // OCR T04-R1-10：上游故障不得伪装成凭据错误。
@@ -134,7 +141,9 @@ func (c *JiraClient) do(ctx context.Context, method, path string, payload any, o
 	if out == nil {
 		return nil
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	// 解码前封顶读取量（整分支 OCR 二轮 F5）：超限截断 → Decoder 报
+	// unexpected EOF → 调用方按上游故障处理，绝不静默吞成空结果。
+	if err := json.NewDecoder(io.LimitReader(resp.Body, jiraMaxResponseBytes)).Decode(out); err != nil {
 		return fmt.Errorf("decode jira %s response: %w", path, err)
 	}
 	return nil

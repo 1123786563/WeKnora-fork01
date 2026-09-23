@@ -782,3 +782,111 @@ func TestRegisteredClientsExpiredByTTL(t *testing.T) {
 	second := testRegisterClient(t, base, "https://client.example/cb-b")
 	require.NotEqual(t, first, second)
 }
+
+// --- 整分支 OCR 二轮（R6）：F3 过期判定取时 / F5 响应体上限 / F6 防框架 ---
+
+// TestAuthorizeStateExpiryJudgedAtConsumeTime（整分支 OCR 二轮 F3）：state
+// 的过期判定必须用消费时刻的时钟——Myself 跨网络调用最长 30s，若复用进入
+// 前的旧 now，调用期间恰好跨过 pendingAuthTTL 边界的 state 仍会发码，且
+// 授权码 ExpiresAt 以回溯时间签发（实际存活期短于声明）。
+func TestAuthorizeStateExpiryJudgedAtConsumeTime(t *testing.T) {
+	inner := testJiraAuthOK(t, "member@example.com", "tok", nil)
+	slowJira := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/rest/api/3/myself" {
+			time.Sleep(60 * time.Millisecond) // 消费时刻已越过 30ms 的 TTL 边界
+		}
+		inner(w, r)
+	})
+	base, _ := newTestService(t, slowJira)
+	oldTTL := pendingAuthTTL
+	pendingAuthTTL = 30 * time.Millisecond
+	t.Cleanup(func() { pendingAuthTTL = oldTTL })
+
+	redirect := "https://client.example/cb"
+	clientID := testRegisterClient(t, base, redirect)
+	_, challenge := testPKCE(t)
+	state := "ttl-boundary-state"
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, clientID, redirect, state, challenge))
+
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	form := url.Values{}
+	form.Set("state", state)
+	form.Set("email", "member@example.com")
+	form.Set("api_token", "tok")
+	resp, err := noRedirect.PostForm(base+"/authorize", form)
+	require.NoError(t, err)
+	location := resp.Header.Get("Location")
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	require.NotEqual(t, http.StatusFound, resp.StatusCode,
+		"a state that crossed its TTL boundary during the Myself round trip must not be issued a code (location: %s)", location)
+	require.NotContains(t, location, "code=", "no authorization code may appear in the redirect")
+}
+
+// TestJiraResponseBodyBounded（整分支 OCR 二轮 F5）：响应体解码必须有大小
+// 上限——分页封顶只约束请求参数，被攻陷/异常 Jira 可在超时窗口内推送超大
+// JSON 流造成解码内存放大。截断导致 unexpected EOF 必须显式报错（fail-closed），
+// 不得静默当作空结果。
+func TestJiraResponseBodyBounded(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	bigSummary := strings.Repeat("s", 2048)
+	fakeJira := httptest.NewServer(testJiraAuthOK(t, "member@example.com", "tok", []map[string]any{{
+		"key":    "X-1",
+		"fields": map[string]any{"summary": bigSummary, "status": map[string]any{"name": "To Do"}, "duedate": "2026-09-30"},
+	}}))
+	t.Cleanup(fakeJira.Close)
+
+	oldLimit := jiraMaxResponseBytes
+	jiraMaxResponseBytes = 256 // 响应 >2KB，远超测试上限
+	t.Cleanup(func() { jiraMaxResponseBytes = oldLimit })
+
+	client := &JiraClient{BaseURL: fakeJira.URL, Email: "member@example.com", APIToken: "tok"}
+	issues, _, err := client.SearchMyWeek(context.Background())
+	require.Error(t, err, "a response body over the cap must fail the decode, not parse")
+	require.Nil(t, issues)
+	require.ErrorContains(t, err, "decode", "the failure must surface as a decode error (truncation → unexpected EOF)")
+}
+
+// TestAuthorizePagesDenyFraming（整分支 OCR 二轮 F6）：凭据同意页与凭据
+// 错误页是凭据录入面，必须携带 X-Frame-Options: DENY 与 CSP
+// frame-ancestors 'none'——否则可被第三方站点 iframe 嵌入做视觉诱导。
+func TestAuthorizePagesDenyFraming(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirect := "https://client.example/cb"
+	clientID := testRegisterClient(t, base, redirect)
+	_, challenge := testPKCE(t)
+	q := url.Values{}
+	q.Set("response_type", "code")
+	q.Set("client_id", clientID)
+	q.Set("redirect_uri", redirect)
+	q.Set("state", "framing-state")
+	q.Set("code_challenge", challenge)
+	q.Set("code_challenge_method", "S256")
+
+	page, err := http.Get(base + "/authorize?" + q.Encode())
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, page.Body)
+	_ = page.Body.Close()
+	require.Equal(t, http.StatusOK, page.StatusCode)
+	require.Equal(t, "DENY", page.Header.Get("X-Frame-Options"), "consent page must deny framing")
+	require.Equal(t, "frame-ancestors 'none'", page.Header.Get("Content-Security-Policy"), "consent page must set frame-ancestors")
+
+	// 凭据错误页（401）同属凭据录入面。
+	form := url.Values{}
+	form.Set("state", "framing-state")
+	form.Set("email", "member@example.com")
+	form.Set("api_token", "wrong-token")
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	bad, err := noRedirect.PostForm(base+"/authorize", form)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, bad.Body)
+	_ = bad.Body.Close()
+	require.Equal(t, http.StatusUnauthorized, bad.StatusCode)
+	require.Equal(t, "DENY", bad.Header.Get("X-Frame-Options"), "credential-error page must deny framing")
+	require.Equal(t, "frame-ancestors 'none'", bad.Header.Get("Content-Security-Policy"))
+}

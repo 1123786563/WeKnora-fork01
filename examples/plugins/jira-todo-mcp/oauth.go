@@ -439,7 +439,7 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 	}
 	// 表单把授权参数（含 state）藏在隐藏字段；凭据字段仅在提交瞬间经
 	// HTTPS 到达本服务，不进入任何存储。
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	setHTMLPageHeaders(w)
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>Jira 授权</title></head>
 <body>
@@ -456,6 +456,16 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 </form>
 </body></html>`,
 		html.EscapeString(displayName), html.EscapeString(redirectDisplay), html.EscapeString(state))
+}
+
+// setHTMLPageHeaders 写凭据录入面 HTML 页前的统一响应头：凭据同意页与
+// 凭据错误/上游故障页都可能承载成员凭据交互，必须拒绝第三方 iframe 嵌入
+// （整分支 OCR 二轮 F6：X-Frame-Options: DENY + CSP frame-ancestors 'none'，
+// 双头并存以覆盖新旧浏览器）。
+func setHTMLPageHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 }
 
 // validateAuthorizationRequest 校验授权请求：response_type=code、client 已
@@ -540,7 +550,7 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 		var httpErr *jiraHTTPError
 		credentialFailure := errors.As(err, &httpErr) &&
 			(httpErr.StatusCode == http.StatusUnauthorized || httpErr.StatusCode == http.StatusForbidden)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		setHTMLPageHeaders(w)
 		if credentialFailure {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprint(w, `<!DOCTYPE html>
@@ -558,8 +568,12 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 	// 存在性检查与这里的消费之间隔着一次跨网络调用（Myself，最长 30s），
 	// 并发同 state 双提交会双双通过检查（整分支终评 r2-004/r3-008/r4-009）：
 	// 复查存在性并消费放进同一临界区，输者 409，保证一个 state 恰发一个码。
+	// 过期判定与发码 TTL 都必须用消费时刻的时钟（整分支 OCR 二轮 F3）——
+	// 复用进入前的旧 now 会放行调用期间跨过 TTL 边界的 state，且授权码
+	// ExpiresAt 以回溯时间签发（实际存活期短于声明）。
 	code := randomToken()
 	s.mu.Lock()
+	now = time.Now()
 	consumed, still := s.pendingAuths[state]
 	if still && now.After(consumed.ExpiresAt) {
 		delete(s.pendingAuths, state)
