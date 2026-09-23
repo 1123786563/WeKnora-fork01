@@ -40,6 +40,13 @@
 - **强制条件落实**：(1) t09 DECISION.md 完整记录（Task 12 Step 6 五项清单）；(2) 本 Ruling；(3) `PurchaseSnapshot.InvoiceFees []InvoiceLineSnapshot` 为 #82/#84 显式接口交付（Task 4 Produces）；(4) 偏差不外溢。
 - 用户同时声明将向 spec owner 呈报正式修订案，#81 无需等待其完成。
 
+## 计划审查第 2 轮（2026-09-23）反馈处置记录
+
+| # | 严重度 | 问题 | 处置 |
+|---|---|---|---|
+| 1 | medium | Task 3 stub customers 集合 POST 分支以 `s.customer[ext]` 为 key，POST /api/v1/customers（无尾斜杠）时 key 为空串 → 断言查真实 external_id 必 nil；「已绑定则跳过」语义未被测试 | 已修：(a) POST 分支 key 改从请求体 `customer.external_id` 取；(b) 编译运行验证时发现审查描述之外的**真实根因**——`TrimPrefix("/api/v1/customers", "/api/v1/customers/")` 前缀不命中会**原样返回完整路径**（非空串），`ext == ""` 的 case 条件永不成立、落入 default `http.NotFound` 404，比空串 key 更早失败 → case 条件改为 `r.URL.Path == "/api/v1/customers"` 精确比较；(c) 新增 `countCustomerPosts()` 并在 replay 用例断言「重放不重打绑定 POST」（已绑定则跳过语义）；(d) 自查另发现 handler 持 `s.mu` 调 `respond`（其内部再 `mu.Lock()`）会死锁——改为既有先例的「锁内取数、解锁后 respond」风格（lago_subscription_test.go 同款纪律），struct 增加 `mux *http.ServeMux` 字段、`ServeHTTP` 委托 s.mux。**验证**：将修复版 stub + 仓库真实 respond/stubReq/subscriptionsJSON 拼成临时程序实跑（go1.26.3），断言全部通过——绑定按 external_id 落键、重放 GET 命中已绑定、index 显式 status[] 可见 incomplete 且缺省不可见、422 副作用仍记录（STUB-CHECK PASS，临时目录已清理） |
+| 2 | low | Task 8 `newPurchaseEngine` 函数体 return 4 值 vs 注释/用例按 6 值解包，照抄无法编译 | 已修：函数签名与 `return engine, db, fake, provider, plans, orders` 统一为 6 值（签名注释写在函数头，删除用例上方冗余旧注释），所有用例解包与之一致 |
+
 ## 计划审查第 1 轮（2026-09-23）反馈处置记录
 
 | # | 严重度 | 问题 | 处置 |

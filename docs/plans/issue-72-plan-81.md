@@ -411,35 +411,55 @@ type purchaseStub struct {
 	subs        []stubSubscription
 	subBodies   []map[string]any   // 每次订阅 POST 的原始 body
 	createNext  []int              // 脚本化状态；空则 200
+	mux         *http.ServeMux     // newPurchaseStub 组装
 }
 
 func newPurchaseStub() *purchaseStub {
 	s := &purchaseStub{customer: map[string]map[string]any{}}
+	// 锁纪律（既有 respond 先例）：handler 各分支内临时持锁读写状态，解锁后再调
+	// respond（respond 内部自己拿 mu 记录请求——持锁调用会死锁）。
 	customers := func(w http.ResponseWriter, r *http.Request) {
-		s.mu.Lock()
-		defer s.mu.Unlock()
 		blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		ext := strings.TrimPrefix(r.URL.Path, "/api/v1/customers/")
 		switch {
 		case r.Method == http.MethodGet && ext != "": // GET /api/v1/customers/{id}
+			s.mu.Lock()
 			c, ok := s.customer[ext]
+			var b []byte
+			if ok {
+				b, _ = json.Marshal(map[string]any{"customer": c})
+			}
+			s.mu.Unlock()
 			if !ok {
 				respond(w, r, &s.requests, &s.mu, http.StatusNotFound, "{}", nil)
 				return
 			}
-			b, _ := json.Marshal(map[string]any{"customer": c})
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, string(b), nil)
-		case r.Method == http.MethodPost && ext == "": // POST /api/v1/customers（无尾斜杠）
-			var parsed map[string]any
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/customers": // 集合端点（无尾斜杠）。
+			// case 条件必须用精确路径比较：TrimPrefix 的前缀带 "/"，对无尾斜杠的
+			// /api/v1/customers 原样返回完整路径（非空串），`ext == ""` 永不成立、
+			// 落进 default 404（本计划以临时编译运行验证发现；key 亦从请求体
+			// customer.external_id 取，绝不用 s.customer[ext]）。
+			var parsed struct {
+				Customer map[string]any `json:"customer"`
+			}
 			_ = json.Unmarshal(blob, &parsed)
-			if existing, ok := s.customer[ext]; ok { // upsert：合并 billing_configuration
-				if bc, ok := parsed["billing_configuration"]; ok {
+			body := parsed.Customer
+			if body == nil {
+				respond(w, r, &s.requests, &s.mu, http.StatusUnprocessableEntity, "{}", blob)
+				return
+			}
+			id, _ := body["external_id"].(string)
+			s.mu.Lock()
+			if existing, ok := s.customer[id]; ok { // upsert：合并 billing_configuration
+				if bc, ok := body["billing_configuration"]; ok {
 					existing["billing_configuration"] = bc
 				}
-				parsed = existing
+				body = existing
 			}
-			s.customer[ext] = parsed
-			b, _ := json.Marshal(map[string]any{"customer": parsed})
+			s.customer[id] = body
+			s.mu.Unlock()
+			b, _ := json.Marshal(map[string]any{"customer": body})
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, string(b), blob)
 		default:
 			http.NotFound(w, r)
@@ -450,31 +470,37 @@ func newPurchaseStub() *purchaseStub {
 	mux.HandleFunc("/api/v1/customers/", customers) // 单查子树
 	mux.HandleFunc("/api/v1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		blob, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-		s.mu.Lock()
-		defer s.mu.Unlock()
 		switch r.Method {
 		case http.MethodPost:
 			var body map[string]any
 			_ = json.Unmarshal(blob, &body)
-			s.subBodies = append(s.subBodies, body)
-			status := http.StatusOK
-			if len(s.createNext) > 0 {
-				status = s.createNext[0]
-				s.createNext = s.createNext[1:]
-			}
-			// 副作用总是发生：脚本化 422 模拟「已创建但响应失败」的竞态。
-			if sub, ok := body["subscription"].(map[string]any); ok {
-				if id, _ := sub["external_id"].(string); id != "" {
-					code, _ := sub["plan_code"].(string)
-					cust, _ := sub["external_customer_id"].(string)
-					s.subs = append(s.subs, stubSubscription{
-						ExternalID: id, ExternalCustomer: cust, PlanCode: code, Status: "incomplete",
-					})
+			status := func() int {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				s.subBodies = append(s.subBodies, body)
+				st := http.StatusOK
+				if len(s.createNext) > 0 {
+					st = s.createNext[0]
+					s.createNext = s.createNext[1:]
 				}
-			}
-			respond(w, r, &s.requests, &s.mu, status,
-				subscriptionsJSON(append([]stubSubscription(nil), s.subs...)), blob)
+				// 副作用总是发生：脚本化 422 模拟「已创建但响应失败」的竞态。
+				if sub, ok := body["subscription"].(map[string]any); ok {
+					if id, _ := sub["external_id"].(string); id != "" {
+						code, _ := sub["plan_code"].(string)
+						cust, _ := sub["external_customer_id"].(string)
+						s.subs = append(s.subs, stubSubscription{
+							ExternalID: id, ExternalCustomer: cust, PlanCode: code, Status: "incomplete",
+						})
+					}
+				}
+				return st
+			}()
+			s.mu.Lock()
+			snapshot := append([]stubSubscription(nil), s.subs...)
+			s.mu.Unlock()
+			respond(w, r, &s.requests, &s.mu, status, subscriptionsJSON(snapshot), blob)
 		case http.MethodGet: // identity index：模拟 v1.53.0 默认 status=active 的过滤
+			s.mu.Lock()
 			s.rawQueries = append(s.rawQueries, r.URL.RawQuery)
 			q := r.URL.Query()
 			want := q.Get("external_id")
@@ -497,13 +523,18 @@ func newPurchaseStub() *purchaseStub {
 					out = append(out, sub)
 				}
 			}
+			s.mu.Unlock()
 			respond(w, r, &s.requests, &s.mu, http.StatusOK, subscriptionsJSON(out), nil)
 		default:
 			http.NotFound(w, r)
 		}
 	})
+	s.mux = mux
 	return s
 }
+
+// ServeHTTP 把 stub 作为 http.Handler 暴露（server() 挂 s.mux）。
+func (s *purchaseStub) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
 func (s *purchaseStub) server(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -512,15 +543,26 @@ func (s *purchaseStub) server(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// ServeHTTP 让 purchaseStub 本身成为 handler（mux 逻辑挂 ServeHTTP 或包一层均可）。
-func (s *purchaseStub) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.serve(w, r) }
-
 func (s *purchaseStub) countSubscriptionPosts() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := 0
 	for _, req := range s.requests {
 		if req.Method == http.MethodPost && strings.HasSuffix(req.Path, "/api/v1/subscriptions") {
+			n++
+		}
+	}
+	return n
+}
+
+// countCustomerPosts 统计集合端点 POST 次数（「已绑定则跳过」语义的断言面：
+// 重放路径的 ensureProviderBinding 必须 GET 命中已绑定而不再 POST）。
+func (s *purchaseStub) countCustomerPosts() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, req := range s.requests {
+		if req.Method == http.MethodPost && req.Path == "/api/v1/customers" {
 			n++
 		}
 	}
@@ -599,6 +641,11 @@ func TestLagoCreatePurchaseReplayNeverReposts(t *testing.T) {
 	if n := stub.countSubscriptionPosts(); n != 1 {
 		t.Fatalf("replay must NEVER re-POST the subscription (F7 deferred-terminate risk), posts=%d", n)
 	}
+	// 「已绑定则跳过」：重放的 ensureProviderBinding 必须 GET 命中已绑定，
+	// 不得再次 POST /api/v1/customers。
+	if n := stub.countCustomerPosts(); n != 1 {
+		t.Fatalf("replay must skip the provider-binding POST (GET hit expected), customer posts=%d", n)
+	}
 }
 
 func TestLagoCreatePurchase422ResolvedByIdentityReread(t *testing.T) {
@@ -660,7 +707,7 @@ func TestValidateOutboundHost(t *testing.T) {
 	}
 }
 ```
-（import 里补 `"encoding/json"`；`ServeHTTP` 委托的 `serve` 即上文 mux 组装逻辑——实现时把 mux 组装放进一个 `serve(w,r)` 方法并由 `ServeHTTP` 调用，或直接 `httptest.NewServer(mux)` 结构等价均可，保持单一路径即可。）
+（import 里补 `"encoding/json"`；`ServeHTTP` 委托 `s.mux`（newPurchaseStub 末尾 `s.mux = mux` 组装），`server()` 直接 `httptest.NewServer(s)`。）
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -1303,7 +1350,8 @@ func (p *routePurchaseProvider) QueryRefund(context.Context, string) (payment.Re
 }
 
 // newPurchaseEngine 组装真实 PurchaseService 链 + 渠道计数 stub。
-func newPurchaseEngine(t *testing.T) (*gin.Engine, *gorm.DB, *commercialplatform.FakeAdapter, *routePurchaseProvider) {
+// 返回 6 值：engine/db/fake/provider 供断言，plans/orders 供用例做 draft→publish→quote seed。
+func newPurchaseEngine(t *testing.T) (*gin.Engine, *gorm.DB, *commercialplatform.FakeAdapter, *routePurchaseProvider, *commercialsvc.PlanVersionService, *commercialsvc.OrderService) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
@@ -1344,7 +1392,7 @@ func newPurchaseEngine(t *testing.T) (*gin.Engine, *gorm.DB, *commercialplatform
 	engine := gin.New()
 	v1 := engine.Group("/api/v1")
 	RegisterCommercialRoutes(v1, h)
-	return engine, db, fake, provider
+	return engine, db, fake, provider, plans, orders
 }
 
 // routeSeedPlanAndQuote 走真实 draft→publish→quote 链。
@@ -1390,9 +1438,6 @@ func purchaseReq(t *testing.T, engine *gin.Engine, tenant uint64, method, path, 
 	return w, served
 }
 
-// newPurchaseEngine 的返回签名实现为 (*gin.Engine, *gorm.DB, *commercialplatform.FakeAdapter,
-// *routePurchaseProvider, *commercialsvc.PlanVersionService, *commercialsvc.OrderService)
-// —— plans/orders 一并返回，供用例做 seed/报价。
 func TestPurchaseRouteHappyPathAwaitingPayment(t *testing.T) {
 	engine, _, _, provider, plans, orders := newPurchaseEngine(t)
 	q := routeSeedPlanAndQuote(t, engine, plans, orders, 41, "pro")
