@@ -5,8 +5,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/skills"
 	agenttools "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
@@ -71,7 +71,7 @@ func (k *keyedMutex) lock(ctx context.Context, key string) (func(), error) {
 type skillSnapshotLister = acatsvc.SkillSnapshotLister
 
 // archiveMatchesSHA / zipSkillFiles / maxSkillBundleTotalBytes：
-// agent_service.go:685,779,783（agentruntime，禁改）与
+// agent_service.go:685,779,783（agent runtime 面属主，禁改）与
 // skill_market_service.go:259（25c，禁改）的转发（计划 §2.5 未列消费点）。
 func archiveMatchesSHA(archive []byte, want string) bool {
 	return acatsvc.ArchiveMatchesSHA(archive, want)
@@ -104,7 +104,7 @@ func ParseSkillBundleWithOptions(archive []byte, opts SkillBundleParseOptions) (
 }
 
 // NewTenantSkillService：旧 12 参签名原样保留（container.go:566 零改动）；
-// sandboxPolicy 吸收进 ResolveConfigManager 闭包；计划 §4.4 的 agentruntime
+// sandboxPolicy 吸收进 ResolveConfigManager 闭包；计划 §4.4 的 agent 运行时
 // 能力位在此绑真源。
 func NewTenantSkillService(
 	skillsRepo repository.TenantSkillRepository,
@@ -126,9 +126,9 @@ func NewTenantSkillService(
 			ResolveConfigManager: func(ctx context.Context, tenantID uint64, configID string) (sandbox.Manager, error) {
 				return resolveTenantSandboxForConfig(ctx, sandboxes, nil, tenantID, configID, sandboxPolicy)
 			},
-			InstallShellExecutor:     sessionSandboxInstallShellExecutor,
-			SessionUserID:            nil, // nil → 新包缺省 types.SessionOwnerIDFromContext（与 session.go:26 等价）
-			SkillManifestParser:      parseSkillManifest,
+			InstallShellExecutor: sessionSandboxInstallShellExecutor,
+			SessionUserID:        nil, // nil → 新包缺省 types.SessionOwnerIDFromContext（与 session.go:26 等价）
+			SkillManifestParser:  parseSkillManifest,
 			FrontmatterVersionParser: skills.UnmarshalSkillFrontmatter,
 			InstallerToolNames: func() [3]string {
 				return [3]string{agenttools.ToolShellExec, agenttools.ToolWriteSkillFile, agenttools.ToolEditSkillFile}

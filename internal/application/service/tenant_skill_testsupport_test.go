@@ -111,6 +111,38 @@ func (r *installSkillRepo) ListSkillsByConfig(
 	return out, nil
 }
 
+func (r *installSkillRepo) ListSkillsByTenant(
+	ctx context.Context, tenantID uint64,
+) ([]*types.TenantSkillEntity, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*types.TenantSkillEntity
+	for _, e := range r.skills {
+		if e.TenantID == tenantID {
+			cp := *e
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func (r *installSkillRepo) GetSkillByName(
+	_ context.Context, tenantID uint64, configID, name string,
+) (*types.TenantSkillEntity, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, e := range r.skills {
+		if e.TenantID == tenantID && e.SandboxConfigID == configID && e.Name == name {
+			cp := *e
+			return &cp, nil
+		}
+	}
+	return nil, nil
+}
+
 func (r *installSkillRepo) UpdateSkill(ctx context.Context, e *types.TenantSkillEntity) error {
 	if err := ctx.Err(); err != nil {
 		return err

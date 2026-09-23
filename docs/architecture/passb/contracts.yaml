@@ -34,6 +34,7 @@ contracts:
         - internal/application/service/message_suggestion.go
         - internal/application/service/subagent_service.go
         - internal/application/service/tenant_skill_service.go
+        - internal/modules/agentcatalog/service/tenant_skill_service.go
         - internal/container/container.go
         - internal/handler/custom_agent.go
         - internal/handler/organization.go
@@ -44,7 +45,7 @@ contracts:
         - internal/application/service/embed_channel_public_config_test.go
         - internal/application/service/expert_service_test.go
         - internal/application/service/subagent_service_test.go
-        - internal/application/service/tenant_skill_install_test.go
+        - internal/modules/agentcatalog/service/tenant_skill_install_test.go
         - internal/handler/custom_agent_api_key_scope_test.go
         - internal/handler/persona_test.go
         - internal/handler/rbac_lookups_test.go
@@ -155,9 +156,9 @@ contracts:
       stability: frozen
       consumers:
         - internal/application/service/agent_service.go
-        - internal/application/service/tenant_skill_install.go
+        - internal/modules/agentcatalog/service/tenant_skill_install.go
       characterization_tests:
-        - internal/application/service/tenant_skill_install_test.go
+        - internal/modules/agentcatalog/service/tenant_skill_install_test.go
       items: []
     - id: agentruntime.agent-service
       owner: agentruntime
@@ -169,8 +170,9 @@ contracts:
         - internal/application/service/agent_service.go
         - internal/application/service/session.go
         - internal/application/service/tenant_skill_service.go
+        - internal/modules/agentcatalog/service/tenant_skill_service.go
       characterization_tests:
-        - internal/application/service/tenant_skill_install_test.go
+        - internal/modules/agentcatalog/service/tenant_skill_install_test.go
       items: []
     - id: agentruntime.facade
       owner: agentruntime
@@ -353,6 +355,7 @@ contracts:
         - internal/application/service/craft_session.go
         - internal/application/service/evaluation.go
         - internal/application/service/extract.go
+        - internal/application/service/tenant_skill_service.go
         - internal/application/service/image_multimodal.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledge_auto_tag.go
@@ -365,7 +368,7 @@ contracts:
         - internal/application/service/session.go
         - internal/application/service/tag.go
         - internal/application/service/temporary_document.go
-        - internal/application/service/tenant_skill_service.go
+        - internal/modules/agentcatalog/service/tenant_skill_service.go
         - internal/application/service/wiki_ingest.go
         - internal/container/container.go
         - internal/container/craft_model_gateway.go
@@ -455,8 +458,9 @@ contracts:
         - internal/application/service/image_multimodal.go
         - internal/application/service/knowledge.go
         - internal/application/service/knowledgebase.go
-        - internal/application/service/storagebackend.go
         - internal/application/service/tenant_skill_service.go
+        - internal/application/service/storagebackend.go
+        - internal/modules/agentcatalog/service/tenant_skill_service.go
         - internal/container/container.go
         - internal/handler/artifact_preview.go
         - internal/handler/initialization.go
@@ -955,6 +959,7 @@ contracts:
         - internal/application/service/sandbox_terminal_auth.go
         - internal/application/service/session.go
         - internal/application/service/tenant_skill_service.go
+        - internal/modules/agentcatalog/service/tenant_skill_service.go
         - internal/container/container.go
         - internal/container/craft_lifecycle.go
         - internal/container/craft_runtime.go
@@ -999,8 +1004,9 @@ contracts:
       signature: interface { AppendEvent(ctx context.Context, sessionID, messageID string, event StreamEvent) error; GetEvents(ctx context.Context, sessionID, messageID string, fromOffset int) ([]StreamEvent, int, error); AppendSteerEvents(ctx context.Context, sessionID, messageID string, events []StreamEvent) error; GetSteerEvents(ctx context.Context, sessionID, messageID string, fromOffset int) ([]StreamEvent, int, error); UpdateSteerEventData(ctx context.Context, sessionID, messageID, eventID string, data map[string]interface{}) (bool, error); DeleteSteerEvent(ctx context.Context, sessionID, messageID, eventID string) (bool, error); SetLiveRun(ctx context.Context, sessionID, assistantMessageID, requestID string) error; ClaimLiveRun(ctx context.Context, sessionID, assistantMessageID, requestID string) error; GetLiveRun(ctx context.Context, sessionID string) (assistantMessageID, requestID string, err error); ClearLiveRun(ctx context.Context, sessionID, assistantMessageID string) error }
       stability: frozen
       consumers:
+        - internal/modules/agentcatalog/service/tenant_skill_service.go
+        - internal/modules/agentcatalog/service/tenant_skill_transcript.go
         - internal/application/service/tenant_skill_service.go
-        - internal/application/service/tenant_skill_transcript.go
         - internal/container/container.go
         - internal/container/workbench.go
         - internal/handler/sandbox_skill.go
@@ -1013,7 +1019,7 @@ contracts:
         - internal/stream/memory_manager.go
         - internal/stream/redis_manager.go
       characterization_tests:
-        - internal/application/service/tenant_skill_steer_test.go
+        - internal/modules/agentcatalog/service/tenant_skill_steer_test.go
         - internal/handler/session/artifact_completion_test.go
         - internal/handler/session/steer_delivery_test.go
         - internal/handler/session/steer_live_run_test.go
