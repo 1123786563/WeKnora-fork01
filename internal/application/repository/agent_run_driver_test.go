@@ -114,6 +114,8 @@ func TestWorkbenchOwnedRunIsTenantScoped(t *testing.T) {
 	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 'tenant-2', 'test')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id)
 		VALUES ('u2', 'u2', 'u2@example.test', 'x', 2)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id, user_id, role, status)
+		VALUES (2, 'u2', 'admin', 'active')`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type)
 		VALUES ('s3', 2, 'tenant-two', 'u2', 'trpc')`).Error)
 	second := testAdmission()
