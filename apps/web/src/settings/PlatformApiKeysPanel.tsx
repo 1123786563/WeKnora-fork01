@@ -1,5 +1,5 @@
 import type { ApiKey, WeKnoraClient } from '@weknora/api-client';
-import { Button as WkButton, Checkbox, Input } from '@weknora/ui';
+import { Button as TButton, Checkbox as TCheckbox, Input as TInput } from 'tdesign-react';
 // T12c：t-alert warning + t-button(size small, variant outline, add icon)
 // 对齐 Vue PlatformAPIKeys.vue:8-18 / :31-37（sprite glyph 图标）。
 import { Alert, Button } from 'tdesign-react';
@@ -89,13 +89,13 @@ export function PlatformApiKeysPanel({ client, initialKeys }: { client: WeKnoraC
       <h2>{title}</h2>
       <p className="section-description">{copy.description}</p>
     </header>
-    <Alert theme="warning" message={copy.securityNotice} className="security-alert" operation={<Button size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{copy.create}</Button>} />
-    {message ? <p className="wk-api-key-message m-0 mb-3 text-[13px] text-[#c23434]" role="status">{message}</p> : null}
-    {token ? <div className="pak-token-card" role="alert"><strong className="text-sm font-semibold text-[#1f2733]">{copy.created}</strong><code className="bg-[rgba(120,135,155,0.1)] px-2 py-2 [overflow-wrap:anywhere]">{token}</code><div className="flex gap-2"><WkButton type="button" onClick={() => void copyToken()}>{copied ? copy.copied : copy.copy}</WkButton><WkButton type="button" onClick={() => setToken(null)}>{copy.close}</WkButton></div></div> : null}
+    <Alert theme="warning" message={copy.securityNotice} className="security-alert" operation={<TButton size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{copy.create}</TButton>} />
+    {message ? <p className="wk-api-key-message" role="status">{message}</p> : null}
+    {token ? <div className="pak-token-card" role="alert"><strong>{copy.created}</strong><code>{token}</code><div className="pak-token-actions"><TButton type="button" onClick={() => void copyToken()}>{copied ? copy.copied : copy.copy}</TButton><TButton type="button" onClick={() => setToken(null)}>{copy.close}</TButton></div></div> : null}
     <section className="pak-keys-section">
       {keys.length === 0 ? <div className="pak-keys-state pak-keys-state--empty">
         <span>{copy.empty}</span>
-        <Button size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{copy.create}</Button>
+        <TButton size="small" variant="outline" icon={<TIcon name="add" />} onClick={openCreate}>{copy.create}</TButton>
       </div> : <div className="pak-table-wrap"><table className="pak-table">
         <thead><tr><th>{copy.nameHead}</th><th>{copy.keyHead}</th><th>{copy.permissionsHead}</th><th>{copy.lastUsedHead}</th><th>{copy.createdHead}</th><th className="pak-table__actions">{copy.actionHead}</th></tr></thead>
         <tbody>{keys.map((key) => { const keyCapabilities = key.capabilities ?? []; return <tr key={key.id}>
@@ -119,16 +119,16 @@ export function PlatformApiKeysPanel({ client, initialKeys }: { client: WeKnoraC
           </div>
           <button type="button" aria-label={copy.close} onClick={() => setDrawerOpen(false)}>×</button>
         </header>
-        <label className="pak-field"><span>{copy.name}</span><Input value={name} onChange={(event) => setName(event.target.value)} disabled={creating} aria-label={copy.name} /></label>
+        <label className="pak-field"><span>{copy.name}</span><TInput value={name} onChange={(value) => setName(String(value))} disabled={creating} aria-label={copy.name} /></label>
         <div className="pak-field"><span>{copy.permissionsHead}</span>
           <div className="pak-cap-group">
             <div className="pak-cap-group__title">平台控制面</div>
-            <div className="pak-cap-items">{capabilities.map((value) => <label key={value} className="pak-cap-item"><Checkbox checked={selected.includes(value)} onChange={() => toggle(value)} disabled={creating} />{capabilityLabels[value] ?? value}<span className="block text-[11px] leading-[1.45] font-normal text-[#8a94a6]">{capabilityDescriptions[value] ?? ''}</span></label>)}</div>
+            <div className="pak-cap-items">{capabilities.map((value) => <label key={value} className="pak-cap-item"><TCheckbox checked={selected.includes(value)} onChange={() => toggle(value)} disabled={creating} />{capabilityLabels[value] ?? value}<span className="pak-cap-item-desc">{capabilityDescriptions[value] ?? ''}</span></label>)}</div>
           </div>
         </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <WkButton type="button" onClick={() => setDrawerOpen(false)}>{copy.close}</WkButton>
-          <WkButton type="button" loading={creating} onClick={() => void createAndClose()}>{creating ? copy.creating : copy.create}</WkButton>
+        <div className="pak-drawer-actions">
+          <TButton type="button" onClick={() => setDrawerOpen(false)}>{copy.close}</TButton>
+          <TButton type="button" loading={creating} onClick={() => void createAndClose()}>{creating ? copy.creating : copy.create}</TButton>
         </div>
       </div>
     </div> : null}

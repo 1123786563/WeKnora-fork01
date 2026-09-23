@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { AuditLog, TenantInvitation, TenantMember, TenantRole, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
-import { Button, Dialog, Input, Select, Status } from '@weknora/ui';
+import { Dialog as TDialog } from 'tdesign-react';
+import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 // T12a：可见面直译 TenantMembers.vue 的 t-tag / t-pagination / t-popup /
 // t-button / t-icon；表格暂保留原生实现（偏离项见 task-12a 报告）。
 import { Icon as TIcon } from 'tdesign-icons-react';
@@ -163,17 +164,9 @@ function formatDate(value: string | undefined, locale: string): string {
   }
 }
 
-// Tailwind recipes migrated 1:1 from TenantMembersPanel.css (file deleted).
-/* Vue t-table 默认 table-layout: fixed —— 列宽严格按 width 生效，成员列吃掉余量 */
-// Vue t-table 基准字号 14px/22px（headless 实测 tbody fs14 lh22）
-const TBL = 'w-full table-fixed border-collapse text-sm leading-[22px]';
-// Vue th：白底、13px/22px、色 rgba(0,0,0,0.4)、左右 padding 16px
-const TH = 'box-border bg-white py-2 px-4 text-left text-[13px] leading-[22px] font-semibold whitespace-nowrap text-[rgba(0,0,0,0.4)]';
-const TD = 'box-border border-t border-[var(--wk-border,#dce3ed)] px-4 align-middle text-[rgba(0,0,0,0.9)]';
-const TR_HOVER = 'hover:bg-[rgb(46_109_230/4%)]';
-// Audit table header (TenantMembers.vue:1745-1780 .audit-table-shell): the
-// drawer's scroll area is the scroll container, so thead pins to its top.
-const AUDIT_TH = TH + ' sticky top-0 z-[2] [box-shadow:inset_0_-1px_0_var(--wk-border,#dce3ed)]';
+/* S6 Tailwind 收编：审计抽屉原生表（Vue TenantMembers.vue:1745-1780 / 2085-2320
+ * 平移，类名沿用 Vue audit-* 原名；抽屉经 createPortal 挂 body，规则不加
+ * .tenant-members 前缀——见 settings.td.css §7d）。 */
 // TenantMembers.vue:983-1001 auditColumns widths (target/path wrap instead of clip).
 const AUDIT_COLUMNS: Array<{ key: string; label: string; width?: number; minWidth?: number; align?: 'center' }> = [
   { key: 'created_at', label: 'tenantMember.audit.columns.time', width: 120 },
@@ -183,26 +176,6 @@ const AUDIT_COLUMNS: Array<{ key: string; label: string; width?: number; minWidt
   { key: 'request_path', label: 'tenantMember.audit.columns.path', minWidth: 160 },
   { key: 'outcome', label: 'tenantMember.audit.columns.outcome', width: 80, align: 'center' },
 ];
-// Vue t-pagination default: borderless numbers, radius 3px, 24px box; current =
-// brand #07c05f fill + white text; hover = brand text on transparent.
-const PAGER_BTN = 'inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent px-1 py-0 font-normal text-[rgb(0_0_0/90%)] [font:inherit]';
-// wk-tag base + tone variants — Vue t-tag default variant="dark": solid theme
-// color fill + white text (owner=primary #07c05f, admin=warning, contributor/
-// accepted=success #00a870), small size = height 20px, radius 3px, padding 0 7px.
-// Vue t-tag size-s：padding 0 4px + 1px 透明边框，lh 20px（实测）；box-border
-// 使 h-5=20px 含边框（全局无 border-box reset）；相对 baseline 悬挂，
-// +0.3px 使文字 Range 与 Vue t-tag 文字 y 对齐（邀请行 -0.19 / 成员行 +0.41）。
-const WK_TAG_BASE = 'relative top-[0.3px] inline-flex box-border h-5 items-center rounded-[3px] border border-solid border-transparent text-xs font-normal leading-[20px] px-[4px] whitespace-nowrap align-middle ';
-function wkTag(tone: 'primary' | 'success' | 'warning' | 'danger' | 'default'): string {
-  switch (tone) {
-    case 'primary': return WK_TAG_BASE + 'bg-[#07c05f] text-white';
-    case 'success': return WK_TAG_BASE + 'bg-[#00a870] text-white';
-    case 'warning': return WK_TAG_BASE + 'bg-[#ed7b2f] text-white';
-    case 'danger': return WK_TAG_BASE + 'bg-[#e34d59] text-white';
-    default: return WK_TAG_BASE + 'bg-[var(--wk-canvas,#f3f3f3)] text-[var(--wk-text,rgba(0,0,0,0.9))]';
-  }
-}
-
 // T12a：t-tag theme 映射（Vue t-tag 默认 variant=dark，映射保持不变）。
 function roleTagTone(role: TenantRole): 'primary' | 'warning' | 'success' | 'default' {
   return role === 'owner' ? 'primary' : role === 'admin' ? 'warning' : role === 'contributor' ? 'success' : 'default';
@@ -847,9 +820,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
           </div>
           <span className="pending-invitations-desc">{tr('tenantInvitation.pendingSectionDesc', { days: INVITATION_TTL_DAYS })}</span>
         </div>
-        {invitationsLoading ? <div className="flex items-center gap-2"><Status>{tr('tenantMember.loading')}</Status></div>
-          : invitationsError ? <div className="flex items-center gap-2"><Status tone="error">{invitationsError}</Status><Button type="button" onClick={() => void loadInvitations()}>{tr('tenantMember.retry')}</Button></div>
-          : invitationsTotal === 0 ? <div className="rounded-[8px] border border-dashed border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-3 py-2.5 text-[0.8125rem] text-[rgba(0,0,0,0.6)]">{tr('tenantInvitation.pendingEmpty')}</div>
+        {invitationsLoading ? <div className="wk-inline-state"><Status>{tr('tenantMember.loading')}</Status></div>
+          : invitationsError ? <div className="wk-inline-state"><Status tone="error">{invitationsError}</Status><TButton type="button" onClick={() => void loadInvitations()}>{tr('tenantMember.retry')}</TButton></div>
+          : invitationsTotal === 0 ? <div className="pending-invitations-empty">{tr('tenantInvitation.pendingEmpty')}</div>
           : <div className="data-table-shell data-table-shell--with-footer pending-invitations-table">
               <div className="data-table-shell__scroll">
                 <Table rowKey="id" data={invitations} columns={invitationTableColumns} size="medium" hover />
@@ -862,11 +835,11 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       {/* mt 4.3px：邀请 shell 底（gap-5=20px 上邻）到列表头 y363.3 的 Vue 实测链距 */}
       <div className="members-list-wrap">
         <div className="members-list-header">
-          <div className="inline-flex min-w-0 items-center gap-2">
-            <span className="members-list-title text-sm font-semibold leading-[normal] text-[rgba(0,0,0,0.9)]">{tr('tenantMember.listTitle')}</span>
-            <span className="members-list-count-badge inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full bg-[#f3f3f3] px-[7px] text-xs font-semibold leading-none text-[rgba(0,0,0,0.9)]">{total}</span>
+          <div className="members-list-titlewrap">
+            <span className="members-list-title">{tr('tenantMember.listTitle')}</span>
+            <span className="members-list-count-badge">{total}</span>
           </div>
-          <div className="m-0 inline-flex min-w-0 flex-[0_1_auto] items-center gap-2 max-[720px]:flex-wrap max-[720px]:w-full max-[720px]:justify-start">
+          <div className="members-list-actions">
             {/* flex：input 换成 flex item，避免 inline-block baseline descent 把
                 form 撑到 25.5px（Vue 列表头行高 24px） */}
             {/* T12a：t-input size=small + prefix-icon/clearable、t-button
@@ -884,10 +857,10 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         </div>
         {/* R472 A2 — Vue TenantMembers.vue:313-318 t-alert theme=error + retry：
             浅红横幅透传后端原文 + 重试按钮（load() 重发同请求）。 */}
-        {error ? <div data-testid="tenant-members-error" role="alert" className="flex items-center gap-2"><Status tone="error">{error}</Status><Button type="button" onClick={() => void load()}>{tr('tenantMember.retry')}</Button></div> : null}
+        {error ? <div data-testid="tenant-members-error" role="alert" className="wk-inline-state"><Status tone="error">{error}</Status><TButton type="button" onClick={() => void load()}>{tr('tenantMember.retry')}</TButton></div> : null}
         {notice ? <Status tone="success">{notice}</Status> : null}
         {loading && members.length === 0 ? <Status>{tr('tenantMember.loading')}</Status>
-          : total === 0 ? <div className="py-2"><Status>{query.trim() ? tr('tenantMember.emptySearch', { q: query }) : tr('tenantMember.empty')}</Status></div>
+          : total === 0 ? <div className="wk-empty-pad"><Status>{query.trim() ? tr('tenantMember.emptySearch', { q: query }) : tr('tenantMember.empty')}</Status></div>
           : <div className="data-table-shell data-table-shell--with-footer">
               <div className="data-table-shell__scroll">
                 <Table rowKey="user_id" data={members} columns={memberTableColumns} size="medium" hover stripe loading={loading} />
@@ -910,21 +883,21 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       maxWidth={1600}
       storageKey="setting-drawer:width:tenant-members-audit"
     >
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-3.5">
-        <div className="flex items-center justify-between gap-3 rounded-card bg-[var(--wk-canvas,#f7f9fc)] px-4 py-3">
-          <span className="min-w-0 flex-1 text-[13px] text-[rgba(0,0,0,0.6)]">{tr('tenantMember.audit.description')}</span>
-          <Button type="button" variant="text" size="small" className="shrink-0" loading={auditLoading} disabled={auditLoading} onClick={() => void loadAudit(true)}>
+      <div className="audit-drawer-inner">
+        <div className="audit-header">
+          <span className="audit-desc">{tr('tenantMember.audit.description')}</span>
+          <TButton type="button" variant="text" size="small" className="audit-refresh-btn" loading={auditLoading} disabled={auditLoading} onClick={() => void loadAudit(true)}>
             <Icon name="refresh" /> {tr('tenantMember.audit.refresh')}
-          </Button>
+          </TButton>
         </div>
-        {auditError ? <div className="flex flex-1 flex-col items-start"><div className="flex items-center gap-2"><Status tone="error">{auditError}</Status><Button type="button" onClick={() => void loadAudit(true)}>{tr('tenantMember.retry')}</Button></div></div>
-          : !auditLoading && audit.length === 0 ? <div className="flex flex-1 flex-col items-center justify-center px-3 py-6"><EmptyState description={tr('tenantMember.audit.empty')} /></div>
-          : <div ref={auditScrollRef} className="audit-scroll-area min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-              <div className="overflow-hidden rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)]">
-                <table className={TBL}>
+        {auditError ? <div className="audit-drawer-branch audit-drawer-branch--error"><div className="wk-inline-state"><Status tone="error">{auditError}</Status><TButton type="button" onClick={() => void loadAudit(true)}>{tr('tenantMember.retry')}</TButton></div></div>
+          : !auditLoading && audit.length === 0 ? <div className="audit-drawer-branch audit-drawer-branch--empty"><EmptyState description={tr('tenantMember.audit.empty')} /></div>
+          : <div ref={auditScrollRef} className="audit-scroll-area">
+              <div className="audit-table-shell">
+                <table className="audit-table">
                   <thead><tr>
-                    <th className={AUDIT_TH + ' w-9'} aria-label={tr('tenantMember.audit.expanded.details')} />
-                    {AUDIT_COLUMNS.map((column) => <th key={column.key} className={AUDIT_TH + (column.align === 'center' ? ' text-center' : '')} style={column.width ? { width: column.width } : { minWidth: column.minWidth }}>{tr(column.label)}</th>)}
+                    <th className="audit-th audit-th--expand" aria-label={tr('tenantMember.audit.expanded.details')} />
+                    {AUDIT_COLUMNS.map((column) => <th key={column.key} className={'audit-th' + (column.align === 'center' ? ' audit-th--center' : '')} style={column.width ? { width: column.width } : { minWidth: column.minWidth }}>{tr(column.label)}</th>)}
                   </tr></thead>
                   <tbody>
                     {audit.map((entry) => {
@@ -933,64 +906,64 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                       const diff = auditTargetDiff(entry);
                       const parts = auditDateParts(entry.created_at, locale);
                       return <Fragment key={entry.id}>
-                        <tr className={TR_HOVER + ' cursor-pointer'} aria-expanded={expanded} onClick={() => toggleAuditExpand(entry.id)}>
-                          <td className={TD + ' pr-0'}>
-                            <span className={'inline-flex text-[rgba(0,0,0,0.6)] transition-transform ' + (expanded ? 'rotate-180' : '')}><Icon name="chevron-down" /></span>
+                        <tr className="audit-tr" aria-expanded={expanded} onClick={() => toggleAuditExpand(entry.id)}>
+                          <td className="audit-td audit-td--expand">
+                            <span className={'audit-expand-toggle' + (expanded ? ' is-open' : '')}><Icon name="chevron-down" /></span>
                           </td>
-                          <td className={TD}>
-                            <div className="flex flex-col gap-[2px] leading-[1.3]">
-                              <span className="text-xs text-[rgba(0,0,0,0.6)]">{parts.date}</span>
-                              <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)] [font-variant-numeric:tabular-nums]">{parts.time}</span>
+                          <td className="audit-td">
+                            <div className="audit-time">
+                              <span className="audit-time-date">{parts.date}</span>
+                              <span className="audit-time-clock">{parts.time}</span>
                             </div>
                           </td>
-                          <td className={TD}>
-                            <div className="flex min-w-0 flex-col gap-[2px] leading-[1.3]">
-                              <span className="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap text-[rgba(0,0,0,0.9)]">
+                          <td className="audit-td">
+                            <div className="audit-actor">
+                              <span className="audit-actor-name">
                                 {entry.actor_user_id ? actorDisplayName(entry.actor_user_id) : tr('tenantMember.audit.systemActor')}
                               </span>
-                              {entry.actor_role ? <span className="text-xs text-[rgba(0,0,0,0.6)]">{tr('tenantMember.role.' + entry.actor_role)}</span> : null}
+                              {entry.actor_role ? <span className="audit-actor-role">{tr('tenantMember.role.' + entry.actor_role)}</span> : null}
                             </div>
                           </td>
-                          <td className={TD}><Tag theme={auditActionTone(entry.action)} size="small">{auditActionLabel(entry.action)}</Tag></td>
-                          <td className={TD}>
-                            <div className="flex min-w-0 flex-col gap-1 py-[2px] leading-[1.35]">
-                              {subject ? <span className="break-all text-[13px] text-[rgba(0,0,0,0.9)]">{subject}</span> : null}
-                              {diff ? <span className="break-all font-mono text-xs leading-[1.4] text-[rgba(0,0,0,0.6)]">{diff}</span> : null}
-                              {!subject && !diff ? <span className="text-[rgba(0,0,0,0.4)]">—</span> : null}
+                          <td className="audit-td"><Tag theme={auditActionTone(entry.action)} size="small">{auditActionLabel(entry.action)}</Tag></td>
+                          <td className="audit-td">
+                            <div className="audit-target">
+                              {subject ? <span className="audit-target-key">{subject}</span> : null}
+                              {diff ? <span className="audit-target-diff">{diff}</span> : null}
+                              {!subject && !diff ? <span className="audit-target-empty">—</span> : null}
                             </div>
                           </td>
-                          <td className={TD}>
-                            {entry.request_path ? <span className="break-all font-mono text-xs text-[rgba(0,0,0,0.6)]">
-                              {entry.request_method ? <span className="mr-1 inline-block font-semibold text-[rgba(0,0,0,0.9)]">{entry.request_method}</span> : null}
+                          <td className="audit-td">
+                            {entry.request_path ? <span className="audit-path">
+                              {entry.request_method ? <span className="audit-method">{entry.request_method}</span> : null}
                               {entry.request_path}
-                            </span> : <span className="text-[rgba(0,0,0,0.4)]">—</span>}
+                            </span> : <span className="audit-target-empty">—</span>}
                           </td>
-                          <td className={TD + ' text-center'}><Tag theme={entry.outcome === 'denied' ? 'danger' : entry.outcome === 'success' ? 'success' : 'default'} size="small">{auditOutcomeLabel(entry.outcome)}</Tag></td>
+                          <td className="audit-td audit-td--center"><Tag theme={entry.outcome === 'denied' ? 'danger' : entry.outcome === 'success' ? 'success' : 'default'} size="small">{auditOutcomeLabel(entry.outcome)}</Tag></td>
                         </tr>
                         {expanded ? <tr className="audit-expanded-row">
-                          <td colSpan={AUDIT_COLUMNS.length + 1} className="border-t border-[var(--wk-border,#dce3ed)] p-0! align-top!">
-                            <div className="flex flex-col gap-3 bg-[var(--wk-canvas,#f7f9fc)] px-4 py-3">
-                              <div className="grid gap-x-[18px] gap-y-2.5 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
-                                <div className="flex min-w-0 flex-col gap-[2px]">
-                                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[rgba(0,0,0,0.6)]">{tr('tenantMember.audit.expanded.actorId')}</span>
-                                  <span className="break-all font-mono text-xs text-[rgba(0,0,0,0.9)]">{entry.actor_user_id || '—'}</span>
+                          <td colSpan={AUDIT_COLUMNS.length + 1}>
+                            <div className="audit-expanded">
+                              <div className="audit-expanded-grid">
+                                <div className="audit-expanded-cell">
+                                  <span className="audit-expanded-label">{tr('tenantMember.audit.expanded.actorId')}</span>
+                                  <span className="audit-expanded-value">{entry.actor_user_id || '—'}</span>
                                 </div>
-                                {entry.target_user_id ? <div className="flex min-w-0 flex-col gap-[2px]">
-                                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[rgba(0,0,0,0.6)]">{tr('tenantMember.audit.expanded.targetUserId')}</span>
-                                  <span className="break-all font-mono text-xs text-[rgba(0,0,0,0.9)]">{entry.target_user_id}</span>
+                                {entry.target_user_id ? <div className="audit-expanded-cell">
+                                  <span className="audit-expanded-label">{tr('tenantMember.audit.expanded.targetUserId')}</span>
+                                  <span className="audit-expanded-value">{entry.target_user_id}</span>
                                 </div> : null}
-                                {entry.target_type ? <div className="flex min-w-0 flex-col gap-[2px]">
-                                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[rgba(0,0,0,0.6)]">{tr('tenantMember.audit.expanded.targetType')}</span>
-                                  <span className="break-all font-mono text-xs text-[rgba(0,0,0,0.9)]">{entry.target_type}</span>
+                                {entry.target_type ? <div className="audit-expanded-cell">
+                                  <span className="audit-expanded-label">{tr('tenantMember.audit.expanded.targetType')}</span>
+                                  <span className="audit-expanded-value">{entry.target_type}</span>
                                 </div> : null}
-                                {entry.target_id ? <div className="flex min-w-0 flex-col gap-[2px]">
-                                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[rgba(0,0,0,0.6)]">{tr('tenantMember.audit.expanded.targetId')}</span>
-                                  <span className="break-all font-mono text-xs text-[rgba(0,0,0,0.9)]">{entry.target_id}</span>
+                                {entry.target_id ? <div className="audit-expanded-cell">
+                                  <span className="audit-expanded-label">{tr('tenantMember.audit.expanded.targetId')}</span>
+                                  <span className="audit-expanded-value">{entry.target_id}</span>
                                 </div> : null}
                               </div>
-                              <div className="flex flex-col gap-1">
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[rgba(0,0,0,0.6)]">{tr('tenantMember.audit.expanded.details')}</span>
-                                <pre className="m-0 max-h-[280px] overflow-auto whitespace-pre-wrap break-all rounded-[6px] border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-3 py-2.5 font-mono text-xs leading-[1.55] text-[rgba(0,0,0,0.9)]">{auditDetailsJSON(entry)}</pre>
+                              <div className="audit-expanded-details">
+                                <span className="audit-expanded-label">{tr('tenantMember.audit.expanded.details')}</span>
+                                <pre className="audit-expanded-json">{auditDetailsJSON(entry)}</pre>
                               </div>
                             </div>
                           </td>
@@ -1001,59 +974,55 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                 </table>
               </div>
               {/* 触底 sentinel：IntersectionObserver root 指向 .audit-scroll-area（TenantMembers.vue:497-498） */}
-              <div ref={auditSentinelRef} className="audit-load-sentinel pointer-events-none h-px w-full" aria-hidden="true" />
-              {auditLoading && audit.length > 0 ? <div className="audit-loading-more flex items-center justify-center gap-2.5 p-3 text-xs text-[rgba(0,0,0,0.6)]"><Status>{tr('tenantMember.loading')}</Status></div> : null}
-              {!auditHasMore && audit.length > 0 && !auditLoading ? <p className="audit-end-hint m-0 py-2 pb-3.5 text-center text-xs text-[rgba(0,0,0,0.4)]">{tr('tenantMember.audit.end')}</p> : null}
+              <div ref={auditSentinelRef} className="audit-load-sentinel" aria-hidden="true" />
+              {auditLoading && audit.length > 0 ? <div className="audit-loading-more"><Status>{tr('tenantMember.loading')}</Status></div> : null}
+              {!auditHasMore && audit.length > 0 && !auditLoading ? <p className="audit-end-hint">{tr('tenantMember.audit.end')}</p> : null}
             </div>}
       </div>
     </TenantAuditDrawer>
 
-    <Dialog open={inviteOpen} title={tr('tenantMember.add.dialogTitle')} onClose={() => setInviteOpen(false)} closeLabel={tr('common.close')}>
-      <form className="flex flex-col gap-3" onSubmit={submitInvite}>
-        <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
-          <span className="text-[0.8125rem] font-semibold text-[rgba(0,0,0,0.9)]">{tr('tenantMember.add.emailLabel')}</span>
-          <Input required type="email" className="w-full rounded-md! px-[0.55rem]! py-[0.45rem]! text-[rgba(0,0,0,0.9)]!" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder')}
-            onChange={(event) => setInviteEmail(event.target.value)} />
+    <TDialog footer={false} visible={inviteOpen} header={tr('tenantMember.add.dialogTitle')} onClose={() => setInviteOpen(false)}>
+      <form className="wk-tenant-invite-form" onSubmit={submitInvite}>
+        <label className="wk-tenant-invite-field">
+          <span className="wk-tenant-invite-label">{tr('tenantMember.add.emailLabel')}</span>
+          <TInput type="text" className="wk-tenant-invite-input" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder')}
+            onChange={(value) => setInviteEmail(String(value))} />
         </label>
-        <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
-          <span className="text-[0.8125rem] font-semibold text-[rgba(0,0,0,0.9)]">{tr('tenantMember.add.roleLabel')}</span>
-          <Select className="w-full [font:inherit]" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as TenantRole)}>
-            {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
-          </Select>
+        <label className="wk-tenant-invite-field">
+          <span className="wk-tenant-invite-label">{tr('tenantMember.add.roleLabel')}</span>
+          <TSelect className="wk-tenant-sel-invite-role" value={inviteRole} options={roles.map((item) => ({ value: item, label: tr('tenantMember.role.' + item) }))} onChange={(value) => setInviteRole(String(value) as TenantRole)} />
         </label>
-        <div className="mt-1 flex justify-end gap-2">
-          <Button type="button" disabled={busy} onClick={() => setInviteOpen(false)}>{tr('common.cancel')}</Button>
-          <Button type="submit" loading={busy}>{tr('tenantInvitation.inviteSubmit')}</Button>
+        <div className="wk-tenant-invite-actions">
+          <TButton type="button" disabled={busy} onClick={() => setInviteOpen(false)}>{tr('common.cancel')}</TButton>
+          <TButton type="submit" loading={busy}>{tr('tenantInvitation.inviteSubmit')}</TButton>
         </div>
       </form>
-    </Dialog>
+    </TDialog>
 
-    <Dialog open={shareLinkOpen} title={shareLink ? tr('tenantInvitation.shareLink.resultTitle') : tr('tenantInvitation.shareLink.dialogTitle')} onClose={() => setShareLinkOpen(false)} closeLabel={tr('common.close')}>
-      {shareLink ? <div className="flex flex-col gap-3">
-        <p className="m-0 text-[0.8125rem] leading-[1.5] text-[rgba(0,0,0,0.6)]">{tr('tenantInvitation.shareLink.resultBody')}</p>
-        <div className="flex items-center gap-2">
-          <Input className="min-w-0 flex-[1_1_auto] rounded-md! px-[0.55rem]! py-[0.45rem]! text-[0.8125rem]! read-only:text-muted" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
-            onFocus={(event) => event.currentTarget.select()} />
-          <Button type="button" onClick={() => void copyText(shareLink.invite_url ?? '')}>
+    <TDialog footer={false} visible={shareLinkOpen} header={shareLink ? tr('tenantInvitation.shareLink.resultTitle') : tr('tenantInvitation.shareLink.dialogTitle')} onClose={() => setShareLinkOpen(false)}>
+      {shareLink ? <div className="wk-tenant-share-result">
+        <p className="wk-tenant-share-body">{tr('tenantInvitation.shareLink.resultBody')}</p>
+        <div className="wk-tenant-share-row">
+          <TInput className="wk-tenant-share-input" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
+            onFocus={(_, context) => { const input = (context.e.target as HTMLInputElement | null); input?.select?.(); }} />
+          <TButton type="button" onClick={() => void copyText(shareLink.invite_url ?? '')}>
             <Icon name="copy" /> {tr('tenantInvitation.copyLink')}
-          </Button>
+          </TButton>
         </div>
-        <div className="mt-1 flex justify-end gap-2">
-          <Button type="button" onClick={() => setShareLinkOpen(false)}>{tr('common.close')}</Button>
+        <div className="wk-tenant-invite-actions">
+          <TButton type="button" onClick={() => setShareLinkOpen(false)}>{tr('common.close')}</TButton>
         </div>
-      </div> : <div className="flex flex-col gap-3">
-        <p className="m-0 text-[0.8125rem] leading-[1.5] text-[rgba(0,0,0,0.6)]">{tr('tenantInvitation.shareLink.description', { days: INVITATION_TTL_DAYS })}</p>
-        <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
-          <span className="text-[0.8125rem] font-semibold text-[rgba(0,0,0,0.9)]">{tr('tenantMember.add.roleLabel')}</span>
-          <Select className="w-full [font:inherit]" value={shareLinkRole} onChange={(event) => setShareLinkRole(event.target.value as TenantRole)}>
-            {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
-          </Select>
+      </div> : <div className="wk-tenant-invite-form">
+        <p className="wk-tenant-share-body">{tr('tenantInvitation.shareLink.description', { days: INVITATION_TTL_DAYS })}</p>
+        <label className="wk-tenant-invite-field">
+          <span className="wk-tenant-invite-label">{tr('tenantMember.add.roleLabel')}</span>
+          <TSelect className="wk-tenant-sel-share-role" value={shareLinkRole} options={roles.map((item) => ({ value: item, label: tr('tenantMember.role.' + item) }))} onChange={(value) => setShareLinkRole(String(value) as TenantRole)} />
         </label>
-        <div className="mt-1 flex justify-end gap-2">
-          <Button type="button" disabled={busy} onClick={() => setShareLinkOpen(false)}>{tr('common.cancel')}</Button>
-          <Button type="button" loading={busy} onClick={() => void submitShareLink()}>{tr('tenantInvitation.shareLink.generate')}</Button>
+        <div className="wk-tenant-invite-actions">
+          <TButton type="button" disabled={busy} onClick={() => setShareLinkOpen(false)}>{tr('common.cancel')}</TButton>
+          <TButton type="button" loading={busy} onClick={() => void submitShareLink()}>{tr('tenantInvitation.shareLink.generate')}</TButton>
         </div>
       </div>}
-    </Dialog>
+    </TDialog>
   </section>;
 }

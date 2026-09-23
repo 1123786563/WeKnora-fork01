@@ -13,3 +13,177 @@
   width: 1em;
   height: 1em;
 }
+
+/* ==== 2. ApiPlaygroundDrawer Tailwind 收编（S6，原 utilities 逐值平移） ====
+ * 作用域：.wk-api-playground-overlay（portal 到 body 的抽屉根，类名页内唯一）。 */
+.wk-api-playground-overlay .wk-api-playground-aside { overflow: auto; height: 100vh; }
+.wk-api-playground-overlay .wk-api-playground-body { display: grid; gap: 18px; }
+.wk-api-playground-overlay .wk-api-playground-section {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--wk-border, #e5e7eb);
+  border-radius: 10px;
+}
+.wk-api-playground-overlay .wk-api-playground-section > h4 { margin: 0; font-size: 14px; }
+.wk-api-playground-overlay .wk-api-playground-field { font-size: 13px; }
+.wk-api-playground-overlay .wk-api-playground-agent,
+.wk-api-playground-overlay .wk-api-playground-external-user,
+.wk-api-playground-overlay .wk-api-playground-query { box-sizing: border-box; }
+.wk-api-playground-overlay .wk-muted { color: var(--color-muted, #66758b); }
+.wk-api-playground-overlay .wk-api-playground-error { margin: 0; }
+.wk-api-playground-overlay .wk-api-playground-empty,
+.wk-api-playground-overlay .wk-api-playground-disabled-reason { margin: 0; }
+.wk-api-playground-overlay .wk-api-playground-results [data-step] { display: grid; gap: 0.5rem; }
+.wk-api-playground-overlay .wk-api-playground-step-label { font-size: 13px; }
+
+/* 状态字色（原 text-[#16803c]/text-[#b42318]/text-[#a15c00]/
+ * text-[var(--wk-muted-foreground,#64748b)] 按 data-status 落 CSS）。 */
+.wk-api-playground-overlay .wk-api-playground-status[data-status='success'] { color: #16803c; }
+.wk-api-playground-overlay .wk-api-playground-status[data-status='failed'] { color: #b42318; }
+.wk-api-playground-overlay .wk-api-playground-status[data-status='stopped'] { color: #a15c00; }
+.wk-api-playground-overlay .wk-api-playground-status[data-status='none'] { color: var(--wk-muted-foreground, #64748b); }
+
+/* 结果 pre（原 m-0 max-h-[260px] overflow-auto whitespace-pre-wrap
+ * rounded-[6px] [font:12px/1.5_…]；inline preStyle 继续覆盖背景/内距等）。 */
+.wk-api-playground-pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border-radius: 6px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* 手搓按钮族（原 wk-button + 长 utility 串）。
+ * --text：透明底/透明描边/muted-strong 字色 + hover/focus 洗底 + 描边变 primary；
+ * base/--primary：surface 底/line-control 描边/ink 字色 + hover 描边变 primary。 */
+.wk-api-playground-overlay .wk-button {
+  cursor: pointer;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--color-line-control, #cbd5e1);
+  border-radius: var(--radius-control, 6px);
+  background: var(--color-surface, #ffffff);
+  color: var(--color-ink, #172033);
+  font: inherit;
+}
+.wk-api-playground-overlay .wk-button:disabled { cursor: not-allowed; opacity: 0.55; }
+.wk-api-playground-overlay .wk-button:hover:not(:disabled) { border-color: var(--color-primary, #2e6de6); }
+.wk-api-playground-overlay .wk-button--text {
+  padding: 0.3rem 0.5rem;
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-muted-strong, #506078);
+}
+.wk-api-playground-overlay .wk-button--text:hover:not(:disabled),
+.wk-api-playground-overlay .wk-button--text:focus-visible {
+  background: var(--color-hover-wash, #f2f5fa);
+}
+
+/* ==== 3. EmbedPreviewModal Tailwind 收编（S6） ====
+ * 原 styles.css .wk-embed-preview-* 规则移 utilities 后按原类名回填
+ * （组件注释所指 former rules；值逐项对照现 utilities 平移）。 */
+.wk-embed-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.5);
+}
+.wk-embed-preview-drawer {
+  box-sizing: border-box;
+  height: 100%;
+  width: min(720px, 100vw);
+  overflow: auto;
+  background: var(--color-surface, #ffffff);
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.14);
+}
+@media (max-width: 720px) {
+  .wk-embed-preview-drawer { width: 100vw; }
+}
+.wk-embed-preview-header {
+  position: relative;
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #eef1f5;
+  padding-inline: 24px;
+}
+.wk-embed-preview-header h2 {
+  margin: 0;
+  padding-right: 40px;
+  font-size: 17px;
+  color: var(--color-ink, #172033);
+}
+.wk-integration-drawer-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: #667085;
+}
+.wk-integration-drawer-close:hover,
+.wk-integration-drawer-close:focus-visible {
+  background: #f3f4f6;
+  color: var(--color-ink, #172033);
+}
+.wk-integration-drawer-close:focus-visible { outline: none; }
+.wk-embed-preview-body {
+  box-sizing: border-box;
+  display: flex;
+  height: calc(100% - 57px);
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 24px 24px;
+}
+@media (max-width: 720px) {
+  .wk-embed-preview-body { padding-inline: 16px; }
+}
+.wk-embed-preview-device {
+  position: relative;
+  min-height: 480px;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--color-line, #dce3ed);
+  border-radius: 12px;
+  background: #f5f7fa;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+.wk-embed-preview-chrome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--color-line, #dce3ed);
+  background: #eef1f5;
+  padding: 10px 14px;
+  font-size: 10px;
+  color: #98a2b3;
+}
+.wk-embed-preview-chrome span:nth-child(1) { color: #ff5f57; }
+.wk-embed-preview-chrome span:nth-child(2) { color: #febc2e; }
+.wk-embed-preview-chrome span:nth-child(3) { color: #28c840; }
+.wk-embed-preview-chrome code {
+  margin-left: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #98a2b3;
+}
+.wk-embed-preview-screen {
+  position: absolute;
+  inset: 37px 0 0;
+  display: grid;
+  place-items: center;
+}
+.wk-embed-preview-screen .wk-muted { color: var(--color-muted, #66758b); }

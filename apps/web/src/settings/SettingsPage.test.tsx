@@ -393,7 +393,9 @@ test('platform API keys section renders the Vue table and one-time token surface
   // The settings shell itself is role="dialog" — scope to the create drawer.
   const drawer = container.querySelector('.pak-drawer[role="dialog"]');
   assert.ok(drawer, 'the Vue create drawer renders');
-  const name = drawer.querySelector<HTMLInputElement>('[aria-label="密钥名称"]');
+  // S6：tdesign Input 的 aria-label 落在 wrapper 上（restProps 透传根），取
+  // 内层 input 驱动。
+  const name = drawer.querySelector<HTMLInputElement>('[aria-label="密钥名称"] input');
   assert.ok(name);
   await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(name, 'new-key'); name.dispatchEvent(new dom.window.Event('input', { bubbles: true })); });
   const capability = drawer.querySelector<HTMLInputElement>('.pak-cap-item input');

@@ -1,0 +1,21 @@
+/* S6：@weknora/ui 语义封装平移块（Card/Status 无 TDesign 对应，playbook §1
+   附行）。取值逐项复制 packages/ui/src/styles.css:102-114 与 theme.css token
+   字面量（--color-line #dce3ed / --color-surface #ffffff / --radius-card 8px /
+   --color-muted-strong #506078 / --color-danger #b42318 /
+   --color-success-text #137333 / --color-warning-text #9a6700），T15 删除
+   @weknora/ui 后渲染不变。 */
+.wk-card {
+  border: 1px solid #dce3ed;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 1rem;
+}
+
+.wk-status {
+  margin: 0.25rem 0;
+  font-size: 13px;
+  color: #506078;
+}
+.wk-status--error { color: #b42318; }
+.wk-status--success { color: #137333; }
+.wk-status--warning { color: #9a6700; }

@@ -243,7 +243,7 @@ test('the reset-password dialog validates and calls resetPassword with the trimm
   await clickButton(container, '重置密码');
   // The Dialog portals to body; re-query after every interaction because a
   // re-render can replace the portal subtree (stale refs read empty text).
-  const activeDialog = () => document.querySelector('[role="dialog"]');
+  const activeDialog = () => document.querySelector('.t-dialog');
   assert.ok(activeDialog(), 'the reset-password dialog opened');
   assert.ok((activeDialog()?.textContent ?? '').includes('重置其他用户的密码'), 'the Vue dialog title renders');
   assert.ok((activeDialog()?.textContent ?? '').includes('这是高风险操作。请核对用户邮箱'), 'the Vue warning renders');
@@ -266,7 +266,7 @@ test('creating a user with a generated password shows the one-time reveal view',
   const calls = { promote: [], revoke: [], resetPassword: [], createUser: [] as Array<unknown>, update: [] as Array<[string, unknown]>, reset: [], bulk: 0 };
   const container = await mountPanel(makeClient({ settings: fullSettings(), calls }), fullSettings());
   await clickButton(container, '创建用户');
-  const activeDialog = () => document.querySelector('[role="dialog"]');
+  const activeDialog = () => document.querySelector('.t-dialog');
   assert.ok(activeDialog(), 'the create-user dialog opened');
   assert.ok((activeDialog()?.textContent ?? '').includes('创建新用户'), 'the Vue dialog title renders');
   const inputs = () => Array.from((activeDialog()?.querySelectorAll<HTMLInputElement>('input')) ?? []);

@@ -339,17 +339,24 @@ test('invite dialog opens from the add-member button and sends the invitation', 
 
   const addBtn = container.querySelector<HTMLButtonElement>('button[aria-label="邀请成员"]');
   await act(async () => addBtn?.click());
-  // The project Dialog follows Vue Teleport/Radix Portal semantics and mounts
-  // the modal under document.body rather than inside the panel root.
-  const dialog = document.querySelector('[role="dialog"]');
+  // S6：tdesign Dialog 渲染 .t-dialog（无 role=dialog），portal 到 body；
+  // email 字段落 tdesign Input 后 type=email 不再透传（jsdom 邮箱校验由
+  // submitInvite 的 JS 分支承担），按 placeholder 查询。
+  const dialog = document.querySelector('.t-dialog');
   assert.ok(dialog);
   assert.match(dialog?.textContent ?? '', /邀请成员/);
-  const email = dialog?.querySelector<HTMLInputElement>('input[type="email"]');
+  const email = dialog?.querySelector<HTMLInputElement>('input[placeholder]');
   assert.ok(email, 'email field');
   assert.equal(email?.placeholder, 'invitee@example.com');
-  const labels = dialog?.querySelector('select');
-  assert.ok(labels, 'role select');
-  assert.deepEqual([...(labels?.options ?? [])].map((option) => option.textContent), ['所有者', '管理员', '编辑', '访客']);
+  // S6：role select 换 tdesign Select（弹层 portal 到 body，台账 #8）——
+  // 开弹层断言四个角色选项；默认 inviteRole 仍为编辑（contributor）。
+  const roleTrigger = dialog?.querySelector('.t-select__wrap');
+  assert.ok(roleTrigger, 'role select');
+  await act(async () => roleTrigger?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })));
+  assert.deepEqual(
+    Array.from(document.body.querySelectorAll('.t-select-option')).map((option) => (option.textContent ?? '').trim()),
+    ['所有者', '管理员', '编辑', '访客'],
+  );
   assert.match(dialog?.textContent ?? '', /取消/);
   assert.match(dialog?.textContent ?? '', /发送邀请/);
 

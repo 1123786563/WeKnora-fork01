@@ -381,7 +381,7 @@ test('join modal previews an invite code and submits an approval-gated request',
   assert.ok(dialogAfterPreview);
   assert.match(dialogAfterPreview.textContent ?? '', /previewed-org/);
   assert.match(dialogAfterPreview.textContent ?? '', /需要审核/);
-  const roleSelect = dialogAfterPreview.querySelector('select');
+  const roleSelect = dialogAfterPreview.querySelector('.t-select__wrap');
   assert.ok(roleSelect, 'approval-gated preview must offer a requested role');
 
   const submitButtons = textButtons(dialogAfterPreview as HTMLElement, '申请加入');
@@ -537,9 +537,10 @@ test('members list renders the Vue table anatomy with joined dates and owner bad
   const bobRow = rows.find((row) => (row.textContent ?? '').includes('Bob Workspace')) as HTMLTableRowElement;
   assert.ok(bobRow);
   assert.match(bobRow.textContent ?? '', /2030-03-06/, 'non-owner row carries its joined date too');
-  const bobSelect = bobRow.querySelector('select[aria-label="角色"]') as HTMLSelectElement | null;
+  // 台账 #8：tdesign Select 根不透传 aria-*；语义类钩子 org-member-role-sel 定位。
+  const bobSelect = bobRow.querySelector('.org-member-role-sel') as HTMLElement | null;
   assert.ok(bobSelect, 'non-owner role cell keeps the change-role select (Vue :476-478)');
-  assert.equal(bobSelect.disabled, false);
+  assert.equal(bobSelect.classList.contains('t-is-disabled'), false, 'change-role select stays enabled (台账 #7 classList 断言)');
   assert.equal(textButtons(bobRow, '移除').length, 1, 'non-owner actions cell keeps the remove affordance');
 });
 
@@ -607,7 +608,8 @@ test('add-member entry is a popup behind the icon button, not a resident form', 
   assert.equal(confirmBtn.disabled, true, 'confirm stays disabled until a workspace is selected (Vue :selectedTenantId == null)');
 
   // Search → candidate appears → select it → confirm becomes enabled.
-  const tenantSearch = [...dialog.querySelectorAll('input')].find((input) => input.getAttribute('aria-label') === '选择空间') as HTMLInputElement | undefined;
+  // 台账 #8 衍生：tdesign Input 的 aria-label 落 wrapper，内层 input 才是可输入节点。
+  const tenantSearch = dialog.querySelector('.t-input__wrap[aria-label="选择空间"] input') as HTMLInputElement | null;
   assert.ok(tenantSearch, 'popup exposes the tenant search input (Vue searchTenant)');
   await setInputValueAsync(tenantSearch, 'team');
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
@@ -633,23 +635,32 @@ test('settings modal exposes an equivalent section selector when the sidebar is 
   await act(async () => {});
 
   const dialog = settingsDialog();
-  const sectionSelector = dialog.querySelector('[data-testid="organization-settings-section-selector"]') as HTMLSelectElement | null;
+  // 台账 #8：tdesign Select 根丢弃 data-*/aria-*，语义类钩子定位；选项列表
+  // 只在弹层打开后进入 DOM（closed select 不泄露选项，同 validity 判例）。
+  const sectionSelector = dialog.querySelector('.organization-settings-section-selector') as HTMLElement | null;
   assert.ok(sectionSelector, 'expected mobile section selector');
   assert.match(sectionSelector.parentElement?.className ?? '', /max-\[720px\]:block/, 'selector should be available at the mobile breakpoint');
   // R487 K1: the standalone invite nav item is gone (Vue embeds the invite
   // affordances in the basic 邀请成员 card) and the members entry reads
   // organization.manageMembers (成员管理).
-  assert.deepEqual([...sectionSelector.options].map((option) => [option.value, option.textContent]), [
-    ['basic', '基本信息'],
-    ['members', '成员管理'],
-    ['requests', '加入申请'],
-    ['shares', '共享知识库'],
-    ['agents', '共享智能体'],
-  ]);
-  assert.equal(sectionSelector.value, 'basic');
+  const selectorValue = () => (sectionSelector.querySelector('input') as HTMLInputElement | null)?.value ?? '';
+  assert.equal(selectorValue(), '基本信息', 'selector starts on the basic section');
 
-  await selectValue(sectionSelector, 'members');
-  assert.equal(sectionSelector.value, 'members');
+  await click(sectionSelector.querySelector('.t-input') as HTMLElement);
+  await act(async () => {});
+  const optionTexts = [...document.body.querySelectorAll('.t-select-option')].map((node) => (node.textContent ?? '').trim());
+  assert.deepEqual(optionTexts, [
+    '基本信息',
+    '成员管理',
+    '加入申请',
+    '共享知识库',
+    '共享智能体',
+  ]);
+  const membersOption = [...document.body.querySelectorAll('.t-select-option')].find((node) => (node.textContent ?? '').trim() === '成员管理') as HTMLElement;
+  assert.ok(membersOption, 'members option renders in the select popup');
+  await click(membersOption);
+  await act(async () => {});
+  assert.equal(selectorValue(), '成员管理', 'selector reflects the chosen section');
   assert.match(dialog.textContent ?? '', /Alice/, 'selector change should render the selected section');
 });
 
@@ -1008,7 +1019,7 @@ test('basic embeds the Vue invite-member card with all six control groups', asyn
   assert.match(text, /\/join\?code=INV-7X/, 'control 3: invite link uses the Vue /join?code= formula');
   assert.ok(dialog.querySelector('[role="switch"][aria-label="需要审核"]'), 'control 4: require-approval switch');
   assert.ok(dialog.querySelector('[role="switch"][aria-label="开放可被搜索"]'), 'control 5: searchable switch');
-  const limit = dialog.querySelector('input[aria-label="成员数量上限"]') as HTMLInputElement | null;
+  const limit = dialog.querySelector('.t-input__wrap[aria-label="成员数量上限"] input') as HTMLInputElement | null;
   assert.ok(limit, 'control 6: member-limit input renders');
   assert.equal(limit.value, '50', 'member limit initializes from the org detail');
   assert.match(text, /当前成员数：2/, 'control 6: live member-count hint');
@@ -1032,7 +1043,7 @@ test('validity change and the approval toggle save immediately like Vue', async 
   await click(approval);
   assert.equal(calls.update.length, 2, 'approval toggle saves immediately (Vue handleApprovalToggle)');
   assert.deepEqual(calls.update[1], ['org-1', { require_approval: true }]);
-  assert.equal((dialog.querySelector('[role="switch"][aria-label="需要审核"]') as HTMLElement).getAttribute('aria-checked'), 'true', 'switch reflects the saved value');
+  assert.equal((dialog.querySelector('[role="switch"][aria-label="需要审核"]') as HTMLElement).classList.contains('t-is-checked'), true, 'switch reflects the saved value (tdesign t-is-checked，台账 #7)');
 });
 
 // R488 D-B4.1 — Vue keeps the name/description field hints in EDIT mode too
@@ -1070,7 +1081,7 @@ test('validity options stay inside the dropdown and the member limit drops the s
   const text = dialog.textContent ?? '';
 
   assert.doesNotMatch(text, /(?<!\d)1 天|30 天/, 'unselected validity options do not leak into the closed panel');
-  const limit = dialog.querySelector('input[aria-label="成员数量上限"]') as HTMLInputElement | null;
+  const limit = dialog.querySelector('.t-input__wrap[aria-label="成员数量上限"] input') as HTMLInputElement | null;
   assert.ok(limit, 'member-limit input renders');
   assert.equal(limit.type, 'number', 'member limit uses a plain number input');
   assert.doesNotMatch(text, /[▲▼]/, 'no stepper glyphs leak (Vue t-input-number theme=normal)');
@@ -1117,7 +1128,7 @@ test('edit footer save mirrors the Vue handleSave payload and basic keeps no inl
   assert.equal(description.maxLength, 500, 'Vue :maxlength=500 applies in edit mode too');
   await setInputValueAsync(description, '更新后的描述');
 
-  const limit = dialog.querySelector('input[aria-label="成员数量上限"]') as HTMLInputElement;
+  const limit = dialog.querySelector('.t-input__wrap[aria-label="成员数量上限"] input') as HTMLInputElement;
   await setInputValueAsync(limit, '100');
 
   const picker = dialog.querySelector('button[aria-label="选择 Emoji 作为共享空间头像"]') as HTMLButtonElement;

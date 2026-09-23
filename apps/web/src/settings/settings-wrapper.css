@@ -158,21 +158,8 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
 
 /* —— R5xx settings 面板清扫切片 —————————————————————————————————————— */
 
-/* CSS retention criteria（settings-parser TDesign 迁移后仅剩此块）：列表域
-   已迁 tdesign（settings.td.css §13，--td-* token 直用）；配置抽屉沿用
-   React 表单栈（批次先例：resource/mcp/models 编辑器同口径），其 Tailwind
-   色 utilities（text-ink/text-muted/border-line-soft/bg-surface-wash…）仍
-   读 --color-* 蓝-gray 系（#172033/#66758b/#edf0f5），而 Vue SettingDrawer
-   抽屉是 TDesign 中性灰 token——保留子树重映射对齐抽屉，待抽屉收编时删除。 */
-.parser-engine-settings {
-  --color-ink: rgba(0, 0, 0, 0.9);
-  --color-ink-strong: rgba(0, 0, 0, 0.9);
-  --color-muted: rgba(0, 0, 0, 0.6);
-  --color-muted-strong: rgba(0, 0, 0, 0.9);
-  --color-faint: rgba(0, 0, 0, 0.4);
-  --color-line-soft: #e7e7e7;
-  --color-surface-wash: #f3f3f3;
-}
+/* （parser --color-* 子树重映射块已删——S6 抽屉收编：配置抽屉 Tailwind
+   utilities 全数平移 settings.td.css §S6 语义类，直写 TDesign 中性灰值。）
 
 /* （原 .wk-system-audit 手搓 slice 已删——S1 评审回收：面板可见域真迁
    tdesign 组件 + Vue 类名，样式由 settings.td.css §18 平移块自持
@@ -472,3 +459,700 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 }
 /* （原 3/3b/3c/3d/4 手搓 tab 条/wk-tag-input/password-reset svg/switch 几何/
    badge 深修 slice 已删——T12c 全部换 tdesign 组件，由库与 §17 自持。） */
+
+/* ==== Settings 域 toast（R472 A2，settings-toast.tsx；S6 Tailwind 收编） ====
+ * 原 utilities 平移：region = pointer-events-none fixed right-4(1rem) top-4(1rem)
+ * z-[1200] flex w-[320px] flex-col gap-2(0.5rem)；item = rounded-card border
+ * px-3(0.75rem) py-2.5(0.625rem) text-[13px] leading-relaxed(1.625) shadow-lg。 */
+.wk-settings-toast-region {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1200;
+  display: flex;
+  width: 320px;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.wk-settings-toast {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid;
+  border-radius: var(--radius-card, 8px);
+  font-size: 13px;
+  line-height: 1.625;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+.wk-settings-toast--error {
+  border-color: var(--color-danger-line, #f1b8b3);
+  background: var(--color-danger-wash, #fdecea);
+  color: var(--color-danger, #b42318);
+}
+.wk-settings-toast--warning {
+  border-color: var(--color-warning-line, #fedf89);
+  background: var(--color-warning-wash, #fffaeb);
+  color: var(--color-warning, #e37318);
+}
+.wk-settings-toast--success {
+  border-color: var(--color-success-line, #8ce0af);
+  background: var(--color-accent-wash, rgba(7, 192, 95, 0.08));
+  color: var(--color-accent-strong, #0a8f4c);
+}
+
+/* ==== EmptyState（EmptyState.tsx，t-empty 中号解剖复刻；S6 Tailwind 收编） ====
+ * 原 utilities 平移：flex flex-col items-center text-center；image 48px 盒
+ * flex items-center justify-center + placeholder 色；title/description 14px/22px
+ * secondary/placeholder 色；hint 13px/22px；actions flex gap-2(0.5rem)。 */
+.wk-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.wk-empty-image {
+  display: flex;
+  width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.4);
+}
+.wk-empty-title {
+  margin: 0;
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.6);
+}
+.wk-empty-description {
+  margin: 0;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.4);
+}
+.wk-empty-description--gap-below { margin-bottom: 16px; }
+.wk-empty-hint {
+  margin: 0;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 22px;
+  color: rgba(0, 0, 0, 0.4);
+}
+.wk-empty-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+/* ==== S6 Tailwind 收编：wk-list 壳族（原全局规则迁 utilities 后再集中回收） ====
+ * wk-list = m-0 list-none p-0；wk-list-row = flex items-baseline
+ * justify-between gap-4(1rem) border-b border-line-soft py-[0.9rem]。 */
+.wk-list { margin: 0; padding: 0; list-style: none; }
+.wk-list-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--color-line-soft, #edf0f5);
+  padding-block: 0.9rem;
+}
+
+/* EnvVarSettings 编辑表单/只读注记（原 utilities：my-4 grid max-w-[620px]
+ * gap-[.8rem] + [&_label]:grid gap-[.35rem] text-[#27364d] font-semibold；
+ * read-note = text-muted-strong text-[.9rem]）。 */
+.env-settings .wk-settings-editor {
+  margin-block: 1rem;
+  display: grid;
+  max-width: 620px;
+  gap: 0.8rem;
+}
+.env-settings .wk-settings-editor label {
+  display: grid;
+  gap: 0.35rem;
+  color: #27364d;
+  font-weight: 600;
+}
+.env-settings .wk-settings-read-note {
+  color: var(--color-muted-strong, #506078);
+  font-size: 0.9rem;
+}
+
+/* ==== PersonalMemory 记忆条目 meta/内容（S6 Tailwind 收编） ==== */
+.wk-memory-content { margin: 0 0 4px; overflow-wrap: break-word; font-size: 14px; line-height: 1.6; color: rgba(0, 0, 0, 0.9); }
+.wk-memory-content.is-retired { color: rgba(0, 0, 0, 0.4); text-decoration: line-through; }
+.wk-memory-meta { display: flex; flex-wrap: wrap; align-items: center; font-size: 12px; line-height: 18px; color: rgba(0, 0, 0, 0.4); }
+.wk-memory-meta > span:not(:last-child)::after { content: '·'; margin: 0 6px; color: rgba(0, 0, 0, 0.4); }
+.wk-memory-topic { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ==== PlatformApiKeys 补充（S6 Tailwind 收编） ==== */
+.wk-api-key-message { margin: 0 0 12px; font-size: 13px; color: #c23434; }
+.pak-token-card strong { font-size: 14px; font-weight: 600; color: #1f2733; }
+.pak-token-card code { background: rgba(120, 135, 155, 0.1); padding: 8px; overflow-wrap: anywhere; }
+.pak-token-actions { display: flex; gap: 8px; }
+.pak-cap-item-desc { display: block; font-size: 11px; line-height: 1.45; font-weight: 400; color: #8a94a6; }
+.pak-drawer-actions { display: flex; margin-top: 16px; justify-content: flex-end; gap: 8px; }
+
+/* ==== SettingsPage 抽屉面板头/错误横幅（S6 Tailwind 收编；
+ * 原注释规范：20px/600 h2 + 8px 间距 + 14px/1.5 次级描述 + 裸 32px 下边距） ==== */
+.wk-settings-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 32px; }
+.wk-settings-panel-heading > div { width: 100%; }
+.wk-settings-panel-heading h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; line-height: normal; }
+.wk-settings-panel-heading p { margin: 0; font-size: 14px; line-height: 21px; color: rgba(0, 0, 0, 0.6); }
+@media (max-width: 720px) {
+  .wk-settings-panel-heading { flex-direction: column; }
+}
+.wk-settings-error-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
+.wk-settings-error-banner-alert { min-width: 0; flex: 1; }
+
+/* ==== McpTestResultBody（S6 Tailwind 收编） ==== */
+.wk-mcp-test-result { border-radius: 6px; margin-top: 0.8rem; padding: 0.7rem; }
+.wk-mcp-test-result.is-success { background: #ecfdf3; color: #137333; }
+.wk-mcp-test-result.is-failure { background: #fef3f2; color: #b42318; }
+.wk-mcp-test-list { margin: 0; margin-top: 8px; padding: 0; list-style: none; }
+.wk-mcp-test-item { padding-block: 0.55rem; border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
+.wk-mcp-test-toggle { border: 0; background: transparent; padding: 0; cursor: pointer; font: inherit; color: inherit; font-weight: 600; }
+.wk-mcp-test-desc { margin-block: 4px; }
+.wk-mcp-test-schema { margin: 8px 0 0; max-height: 256px; overflow: auto; white-space: pre-wrap; }
+.wk-mcp-test-uri { overflow-wrap: anywhere; }
+
+/* ==== ChatPreferencesPanel（S6 Tailwind 收编） ==== */
+.wk-chat-prefs { width: 100%; color: rgba(0, 0, 0, 0.9); }
+.wk-chat-prefs-body { display: flex; flex-direction: column; }
+.wk-chat-prefs-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid #e7e7e7;
+  padding-block: 20px;
+}
+.wk-chat-prefs-row:last-child { border-bottom: 0; }
+.wk-chat-prefs-row-copy { max-width: 65%; flex: 1; padding-right: 24px; }
+.wk-chat-prefs-label { display: block; margin-bottom: 4px; font-size: 15px; font-weight: 500; color: rgba(0, 0, 0, 0.9); }
+.wk-chat-prefs-desc { margin: 0; font-size: 13px; line-height: 1.5; color: rgba(0, 0, 0, 0.6); }
+.wk-chat-prefs-hint { margin: 0; margin-top: 4px; font-size: 13px; line-height: 1.5; color: rgba(0, 0, 0, 0.4); }
+.wk-chat-prefs-control { width: 280px; max-width: 280px; flex-shrink: 0; }
+@media (max-width: 720px) {
+  .wk-chat-prefs-row { flex-direction: column; gap: 8px; }
+  .wk-chat-prefs-row-copy { max-width: 100%; padding-right: 0; }
+  .wk-chat-prefs-control { width: 100%; }
+}
+
+/* ==== PortedSections 留守面板（S6 Tailwind 收编） ==== */
+.wk-ported-note { color: var(--color-muted, #66758b); }
+.wk-settings-values { margin: 16px 0 0; display: grid; gap: 0.65rem; }
+.wk-settings-values-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr);
+  gap: 0.8rem;
+  border-bottom: 1px solid var(--color-line-soft, #edf0f5);
+  padding-block: 0.55rem;
+}
+.wk-settings-values-row > dt { color: var(--color-muted-strong, #506078); font-weight: 650; overflow-wrap: anywhere; }
+.wk-settings-values-row > dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+@media (max-width: 720px) {
+  .wk-settings-values-row { grid-template-columns: 1fr; gap: 4px; }
+}
+
+/* ==== S6 Tailwind 收编：McpSettingsPanel 页面/编辑抽屉（settings 域收尾） ====
+ * 取值 = 原 utility 串字面量；但落在 tdesign 组件 className / [&_input] 后代
+ * 上的 utility 在 v4 utilities layer 中本就输给 unlayered 的 .t-button* /
+ * .t-input__inner / select chrome 规则（死样式）——这些不移植，仅保留语义
+ * hook，现渲染不变（McpSettingsPanel.tsx 头注同款说明）。 */
+.wk-settings-drawer-root .wk-mcp-page { display: grid; gap: 16px; }
+.wk-settings-drawer-root .wk-mcp-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.wk-settings-drawer-root .wk-mcp-page-header h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; line-height: normal; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-mcp-page-header p { margin: 0; font-size: 14px; line-height: 1.6; color: rgba(0, 0, 0, 0.6); }
+.wk-settings-drawer-root .wk-mcp-load-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px 16px; text-align: center; }
+.wk-settings-drawer-root .wk-mcp-card-grid { display: grid; align-items: stretch; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.wk-settings-drawer-root .wk-mcp-service-card { min-width: 0; overflow: hidden; border: 1px solid #dce3ed; border-radius: 10px; background: #fff; }
+.wk-settings-drawer-root .wk-mcp-service-card-main { display: flex; min-width: 0; flex: 1 1 0%; align-items: stretch; padding: 12px; }
+.wk-settings-drawer-root .wk-mcp-card-icon { display: inline-flex; width: 26px; height: 26px; flex-shrink: 0; align-items: center; justify-content: center; align-self: flex-start; border-radius: 7px; background: #f3f5f8; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-service-card-body { display: flex; min-width: 0; flex: 1 1 0%; flex-direction: column; }
+.wk-settings-drawer-root .wk-mcp-service-card-header { display: flex; min-height: 28px; align-items: center; justify-content: space-between; }
+.wk-settings-drawer-root .wk-mcp-service-card-header h4 { margin: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 20px; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-mcp-builtin { font-size: 0.75rem; color: #2e6de6; }
+.wk-settings-drawer-root .wk-mcp-card-actions { display: flex; flex-shrink: 0; align-items: center; gap: 2px; }
+.wk-settings-drawer-root .wk-mcp-icon-btn { width: 24px; height: 24px; cursor: pointer; border: 0; border-radius: 6px; background: transparent; padding: 0; font-size: 16px; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-icon-btn:hover,
+.wk-settings-drawer-root .wk-mcp-icon-btn:focus-visible { background: #f3f5f8; color: #245a9b; outline: none; }
+.wk-settings-drawer-root .wk-mcp-icon-btn--danger:hover,
+.wk-settings-drawer-root .wk-mcp-icon-btn--danger:focus-visible { color: #b42318; }
+.wk-settings-drawer-root .wk-mcp-service-card-desc { min-height: 2.6rem; overflow-wrap: anywhere; }
+.wk-settings-drawer-root .wk-mcp-add-usage { display: flex; align-items: center; align-self: flex-start; border: 0; background: transparent; padding: 0; color: #245a9b; font-family: inherit; font-size: 0.82rem; cursor: pointer; }
+.wk-settings-drawer-root .wk-mcp-add-usage:hover,
+.wk-settings-drawer-root .wk-mcp-add-usage:focus-visible { text-decoration: underline; }
+.wk-settings-drawer-root .wk-mcp-no-usage { font-size: 0.82rem; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-service-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; }
+.wk-settings-drawer-root .wk-mcp-card-meta { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 6px; }
+.wk-settings-drawer-root .wk-mcp-tools-link { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: 4px; border: 0; border-radius: 6px; background: #f3f5f8; padding: 2px 6px; text-align: left; font-family: inherit; font-size: 12px; line-height: 18px; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-tools-link:hover { background: #f3f5f8; color: rgba(0, 0, 0, 0.9); outline: none; }
+.wk-settings-drawer-root .wk-mcp-tools-link:focus-visible { color: #245a9b; outline: none; }
+.wk-settings-drawer-root .wk-mcp-tools-link.is-stale { background: #fffaeb; color: #b42318; }
+.wk-settings-drawer-root .wk-mcp-type { flex-shrink: 0; font-size: 11px; line-height: 18px; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-status-btn { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; cursor: pointer; border: 0; border-radius: 6px; background: transparent; padding: 2px 4px; font-family: inherit; font-size: 12px; line-height: 18px; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-status-btn:hover { background: #f3f5f8; }
+.wk-settings-drawer-root .wk-mcp-status-btn:disabled { cursor: wait; }
+.wk-settings-drawer-root .wk-mcp-status-btn.is-on { color: #137333; }
+.wk-settings-drawer-root .wk-mcp-status-dot { display: inline-block; width: 5px; height: 5px; border-radius: 9999px; background: #98a2b8; }
+.wk-settings-drawer-root .wk-mcp-status-dot.is-on { background: #07c05f; }
+.wk-settings-drawer-root .wk-mcp-add-tile { display: flex; min-height: 88px; cursor: pointer; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 1px dashed #e7e7e7; border-radius: 10px; background: transparent; padding: 12px; text-align: center; color: rgba(0, 0, 0, 0.4); font-family: inherit; transition: border-color 0.18s ease, background-color 0.18s ease; }
+.wk-settings-drawer-root .wk-mcp-add-tile:hover,
+.wk-settings-drawer-root .wk-mcp-add-tile:focus-visible { border-color: #07c05f; background: rgba(7, 192, 95, 0.06); color: #07c05f; outline: none; }
+.wk-settings-drawer-root .wk-mcp-add-tile__icon { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: 8px; background: #f3f3f3; font-size: 18px; color: rgba(0, 0, 0, 0.6); }
+.wk-settings-drawer-root .wk-mcp-add-tile__label { font-size: 13px; font-weight: 500; line-height: 1.4; }
+
+/* 编辑抽屉：overlay z（原 z-[1200]! important 胜 .wks-overlay 的 1100）、
+ * 吸顶头（104px，-18px 负 margin 抵 .wks-mcp-drawer 的 0 18px padding）、
+ * 步骤条、表单布局。display/gap/margin-bottom 由共享 .wk-settings-panel-heading
+ * 规则继续供给（原 utility 与其冲突时 unlayered 恒胜，不重复声明）。 */
+.wk-settings-drawer-root .wks-mcp-overlay { z-index: 1200; }
+.wk-settings-drawer-root .wk-mcp-drawer-head { position: sticky; top: 0; z-index: 1; box-sizing: border-box; height: 104px; flex-shrink: 0; flex-direction: column; margin-inline: -18px; border-bottom: 1px solid #eef1f5; background: #fff; padding: 14px 18px 12px; }
+.wk-settings-drawer-root .wk-mcp-drawer-title-row { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.wk-settings-drawer-root .wk-mcp-drawer-icon { display: inline-flex; width: 32px; height: 32px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 9px; }
+.wk-settings-drawer-root .wk-mcp-drawer-icon--http { background: rgba(0, 82, 217, 0.1); color: #0052d9; }
+.wk-settings-drawer-root .wk-mcp-drawer-icon--sse { background: rgba(17, 128, 83, 0.12); color: #118053; }
+.wk-settings-drawer-root .wk-mcp-drawer-title-text { display: flex; min-width: 0; flex: 1 1 0%; flex-direction: column; gap: 1px; }
+.wk-settings-drawer-root .wk-mcp-drawer-title-text h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; line-height: 21px; }
+.wk-settings-drawer-root .wk-mcp-drawer-title-text p { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; line-height: 18px; }
+.wk-settings-drawer-root .wk-mcp-badge { border-radius: 9999px; padding: 0.1rem 8px; font-size: 0.72rem; }
+.wk-settings-drawer-root .wk-mcp-badge--ok { background: #ecfdf3; color: #137333; }
+.wk-settings-drawer-root .wk-mcp-badge--info { background: #e8f1ff; color: #2e6de6; }
+.wk-settings-drawer-root .wk-mcp-badge--warn { background: #fffaeb; color: #b54708; }
+.wk-settings-drawer-root .wk-mcp-badge--muted { background: #f2f4f8; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-drawer-steps { display: flex; height: 24px; align-items: center; gap: 8px; }
+.wk-settings-drawer-root .wk-mcp-step-btn { display: flex; min-width: 0; align-items: center; gap: 8px; cursor: pointer; border: 0; background: transparent; padding: 0; font-family: inherit; font-size: 13px; font-weight: 500; color: #98a2b8; }
+.wk-settings-drawer-root .wk-mcp-step-btn:disabled { cursor: default; opacity: 0.6; }
+.wk-settings-drawer-root .wk-mcp-step-btn.is-active { color: #07c05f; }
+.wk-settings-drawer-root .wk-mcp-step-btn.is-done { color: #506078; }
+.wk-settings-drawer-root .wk-mcp-step-btn--grow { flex: 1 1 0%; }
+.wk-settings-drawer-root .wk-mcp-step-marker { display: inline-flex; width: 22px; height: 22px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid; border-radius: 9999px; font-size: 11px; font-weight: 600; line-height: 1; }
+.wk-settings-drawer-root .wk-mcp-step-marker.is-current { border-color: #07c05f; background: #07c05f; color: #fff; }
+.wk-settings-drawer-root .wk-mcp-step-marker.is-done { border-color: #07c05f; background: rgba(7, 192, 95, 0.12); color: #07c05f; }
+.wk-settings-drawer-root .wk-mcp-step-marker.is-idle { border-color: #cbd5e1; color: #98a2b8; }
+.wk-settings-drawer-root .wk-mcp-step-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-settings-drawer-root .wk-mcp-step-line { height: 1px; min-width: 16px; flex: 1 1 0%; margin-inline: 4px; background: #dcdcdc; }
+.wk-settings-drawer-root .wk-mcp-step-line.is-done { background: rgba(7, 192, 95, 0.35); }
+
+/* 表单：grid 骨架 + 内层原生 input/textarea/select。边框/内距/底色由
+ * unlayered 的 tdesign .t-input__inner / select chrome 拥有（原 [&_input]
+ * utilities 为死样式），仅平移实际生效的 width/height。 */
+.wk-settings-drawer-root .wk-mcp-editor-form { margin-block: 1rem; display: grid; gap: 0.8rem; max-width: none; }
+.wk-settings-drawer-root .wk-mcp-editor-form input { width: 100%; height: 32px; }
+.wk-settings-drawer-root .wk-mcp-editor-form textarea { width: 100%; }
+.wk-settings-drawer-root .wk-mcp-editor-form select { width: 100%; }
+
+/* 段内结构：enable 行 / 自定义 headers / oauth / 凭据卡 / 高级参数单位 /
+ * 用法编辑行 / 底部动作条。 */
+.wk-settings-drawer-root .wk-mcp-enable-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.wk-settings-drawer-root .wk-mcp-form .wk-checkbox { flex: none; white-space: nowrap; }
+.wk-settings-drawer-root .wk-mcp-custom-headers { display: flex; min-width: 0; flex-direction: column; gap: 0.7rem; border: 0; padding: 0; margin: 0; }
+.wk-settings-drawer-root .wk-mcp-custom-headers legend { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 0; font-size: 13px; font-weight: 600; line-height: 18px; }
+.wk-settings-drawer-root .wk-mcp-source-options { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #dce3ed; border-radius: 8px; background: #f2f4f8; padding: 3px; }
+.wk-settings-drawer-root .wk-mcp-source-options--wrap { max-width: 100%; flex-wrap: wrap; }
+.wk-settings-drawer-root .wk-mcp-source-option { display: inline-flex; height: 28px; cursor: pointer; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; padding: 5px 12px; font-size: 13px; line-height: 1; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-source-option:hover { background: #f3f5f8; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-mcp-source-option:focus-visible { outline: 2px solid #07c05f; outline-offset: 1px; }
+.wk-settings-drawer-root .wk-mcp-source-option.is-active { border-color: #07c05f; background: #fff; font-weight: 500; color: #07c05f; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
+.wk-settings-drawer-root .wk-mcp-oauth { display: grid; gap: 8px; }
+.wk-settings-drawer-root .wk-mcp-oauth-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wk-settings-drawer-root .wk-mcp-oauth-hint { margin: 0; font-size: 12px; line-height: 1.5; }
+.wk-settings-drawer-root .wk-mcp-credential-card { display: grid; gap: 0.65rem; border: 1px solid #dce3ed; border-radius: 7px; background: #f7f9fc; padding: 12px; }
+.wk-settings-drawer-root .wk-mcp-credential-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.wk-settings-drawer-root .wk-mcp-credential-state { font-size: 0.8rem; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-credential-state.is-set { color: #16845b; font-weight: 600; }
+.wk-settings-drawer-root .wk-mcp-number-field { position: relative; }
+.wk-settings-drawer-root .wk-mcp-unit { position: absolute; top: 0; bottom: 0; right: 12px; display: inline-flex; align-items: center; pointer-events: none; font-size: 12px; color: #98a2b8; }
+.wk-settings-drawer-root .wk-mcp-sticky-head { position: sticky; top: 0; z-index: 1; background: #fff; border-bottom: 1px solid #eef1f5; padding-block: 0.25rem 1rem; }
+.wk-settings-drawer-root .wk-mcp-head-desc { margin: 0; }
+.wk-settings-drawer-root .wk-mcp-sync-line { position: relative; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-sync-line.is-stale { color: #b54708; font-size: 0.85rem; }
+.wk-settings-drawer-root .wk-mcp-metadata { margin-top: 1.1rem; border-top: 1px solid #edf0f5; padding-top: 1rem; }
+.wk-settings-drawer-root .wk-mcp-docs-btn { margin-left: 8px; border: 0; border-radius: 4px; background: transparent; padding: 1px 4px; color: #2e6de6; cursor: pointer; font-family: inherit; }
+.wk-settings-drawer-root .wk-mcp-docs-btn:hover { background: #eef4ff; }
+.wk-settings-drawer-root .wk-mcp-docs-popover { position: absolute; z-index: 20; top: 100%; margin-top: 0.4rem; left: 0; display: grid; width: min(360px, calc(100vw - 2rem)); gap: 8px; border: 1px solid #dce3ed; border-radius: 7px; background: #fff; padding: 12px; box-shadow: 0 12px 30px rgb(23 32 51 / 18%); white-space: normal; color: #172033; }
+.wk-settings-drawer-root .wk-mcp-docs-popover pre { margin: 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font-family: inherit; }
+.wk-settings-drawer-root .wk-mcp-usage-row { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; }
+.wk-settings-drawer-root .wk-mcp-usage-count { display: block; text-align: right; font-size: 0.78rem; }
+.wk-settings-drawer-root .wk-mcp-footer { position: sticky; bottom: 0; margin-block: 1.2rem 0; margin-inline: -18px; display: flex; min-height: 53px; flex-shrink: 0; box-sizing: border-box; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #edf0f5; background: #fff; padding: 0.6rem 18px 0.2rem; }
+.wk-settings-drawer-root .wk-mcp-footer-prev { display: flex; flex: 1 1 0%; }
+.wk-settings-drawer-root .wk-mcp-footer-actions { display: flex; gap: 0.6rem; }
+
+/* 拖宽柄（原 group/mcp-resize + bg-primary utilities；--color-primary 存在于
+ * packages/ui theme.css，为 live utility）。 */
+.wk-settings-drawer-root .wk-mcp-resize-handle { position: fixed; top: 0; bottom: 0; right: var(--mcp-drawer-width); z-index: 2600; width: 12px; cursor: col-resize; }
+.wk-settings-drawer-root .wk-mcp-resize-bar { width: 2px; height: 100%; margin: 0 auto; background: transparent; }
+.wk-settings-drawer-root .wk-mcp-resize-handle:hover .wk-mcp-resize-bar,
+.wk-settings-drawer-root .wk-mcp-resize-bar.is-active { background: var(--color-primary, #2e6de6); }
+
+/* ==== S6 Tailwind 收编：McpToolsDirectory（MCP 编辑抽屉 step-2 工具目录） ====
+ * 列表区在抽屉 body 内（scoped）；详情弹层 wk-mcp-tool-detail-popup 经
+ * createPortal 挂 body（unscoped，§2.5）。 */
+.wk-settings-drawer-root .wk-mcp-directory { display: flex; flex-direction: column; gap: 0.65rem; }
+.wk-settings-drawer-root .wk-mcp-directory-error { display: flex; flex-direction: column; gap: 0.65rem; }
+.wk-settings-drawer-root .wk-mcp-directory-search { display: grid; gap: 4px; }
+/* 原 rounded-[6px] p-[.45rem]! important utilities（胜 .t-input chrome）。 */
+.wk-mcp-directory-search-input.t-input,
+.wk-settings-drawer-root .wk-mcp-directory-search-input.t-input { border-radius: 6px; padding: 0.45rem; }
+.wk-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.wk-settings-drawer-root .wk-mcp-directory-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid #edf0f5; }
+.wk-settings-drawer-root .wk-mcp-directory-item { min-width: 0; border-bottom: 1px solid #edf0f5; padding-block: 0.875rem; }
+.wk-settings-drawer-root .wk-mcp-directory-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.wk-settings-drawer-root .wk-mcp-directory-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.wk-settings-drawer-root .wk-mcp-directory-heading strong { min-width: 0; font-size: 13px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.wk-settings-drawer-root .wk-mcp-directory-details { flex-shrink: 0; cursor: pointer; border: 0; background: transparent; padding: 0; font-family: inherit; font-size: 12px; line-height: 1.7; color: #66758b; }
+.wk-settings-drawer-root .wk-mcp-directory-details:hover,
+.wk-settings-drawer-root .wk-mcp-directory-details:focus-visible { color: #07c05f; outline: none; }
+.wk-settings-drawer-root .wk-mcp-directory-details.is-open { color: #07c05f; }
+.wk-settings-drawer-root .wk-mcp-directory-desc { display: -webkit-box; margin: 6px 0 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: 12px; line-height: 1.65; color: #506078; overflow-wrap: anywhere; }
+.wk-settings-drawer-root .wk-mcp-directory-policy { display: flex; margin-top: 10px; flex-wrap: wrap; gap: 24px; font-size: 12px; color: #506078; }
+.wk-settings-drawer-root .wk-mcp-directory-policy label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; line-height: 20px; font-size: 12px; }
+.wk-settings-drawer-root .wk-mcp-directory-pager { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; }
+/* 详情弹层（portal 挂 body）。 */
+.wk-mcp-tool-detail-popup { position: fixed; z-index: 3100; width: min(400px, calc(100vw - 24px)); }
+.wk-mcp-tool-detail-card { margin: 0; overflow: hidden; border: 1px solid #dce3ed; border-radius: 8px; background: #fff; padding: 0; box-shadow: 0 12px 30px rgb(23 32 51 / 16%); }
+.wk-mcp-tool-detail-tabs { display: flex; gap: 16px; border-bottom: 1px solid #dce3ed; padding: 0 14px; }
+.wk-mcp-tool-detail-tab { cursor: pointer; border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 10px 0 8px; margin-bottom: -1px; color: #66758b; font-family: inherit; font-size: 13px; line-height: 1.2; }
+.wk-mcp-tool-detail-tab:hover,
+.wk-mcp-tool-detail-tab:focus-visible { color: #172033; outline: none; }
+.wk-mcp-tool-detail-tab.is-active { border-bottom-color: #07c05f; font-weight: 500; color: #172033; }
+.wk-mcp-tool-detail-panel { margin: 0; }
+.wk-mcp-tool-detail-body { margin: 0; padding: 12px 14px 14px; }
+.wk-mcp-tool-detail-schema { max-height: 256px; overflow: auto; white-space: pre-wrap; }
+
+/* ==== S6 Tailwind 收编：ResourceSettingsPanel（storage/vectorstore/websearch） ====
+ * 面板卡片网格在面板 body 内；TDrawer 编辑表单 portal 挂 body——rs-* 规则一律
+ * unscoped（前缀唯一，无全局冲突）。取值 = 原 utilities 字面量；
+ * text-muted/text-danger/bg-surface/border-line-soft 等语义 utility 对应
+ * packages/ui theme.css 的 --color-* token，按同名字面量平移。 */
+/* Vue StorageBackendSettings.vue:398-401 .backend-grid（网格值与原 utility 串一致）。 */
+.wk-settings-drawer-root .wk-settings-resource .backend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.rs-card { display: flex; cursor: pointer; align-items: flex-start; gap: 12px; border: 1px solid #e7e7e7; border-radius: 10px; background: #fff; transition: box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1); }
+.rs-card:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07); }
+.rs-card.is-env { background: #f3f3f3; }
+.rs-card.is-storage { padding: 14px 16px; }
+.rs-card.is-list { padding: 14px 14px 14px 12px; }
+.rs-card__badge { margin-top: 1px; display: inline-flex; width: 36px; height: 36px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 9px; }
+.rs-card__badge--frame { box-shadow: inset 0 0 0 1px #e7e7e7; }
+.rs-card__badge--frame img { width: 24px; height: 24px; object-fit: contain; }
+.rs-card__badge--text { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+.rs-card__main { min-width: 0; flex: 1 1 0%; }
+.rs-card__header { display: flex; align-items: center; gap: 6px; }
+.rs-card__title { margin: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 1.4; color: rgba(0, 0, 0, 0.9); }
+.rs-card__tag.t-tag { flex-shrink: 0; }
+.rs-card__more { flex-shrink: 0; }
+.rs-card__action-spacer { width: 24px; height: 24px; flex-shrink: 0; }
+.rs-card__subtitle { display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; margin: 4px 0 0; line-height: 1.4; color: var(--td-text-color-secondary, rgba(0, 0, 0, 0.6)); }
+.rs-card__subtitle.is-storage { line-height: 18px; color: rgba(0, 0, 0, 0.6); }
+.rs-card__type { font-weight: 400; }
+.rs-card__type.is-strong { font-weight: 500; }
+.rs-card__sep { color: rgba(0, 0, 0, 0.4); margin-inline: 4px; }
+.rs-card__sep.is-storage { margin-inline: 6px; }
+.rs-card__meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rs-env-pill { flex-shrink: 0; border-radius: 3px; background: #fef3e6; padding: 1px 6px; font-size: 11px; font-weight: 500; line-height: 16px; color: var(--td-warning-color-7, #B85C00); }
+.rs-card-add { display: flex; min-height: 68px; cursor: pointer; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1px dashed #e7e7e7; border-radius: 10px; background: transparent; color: rgba(0, 0, 0, 0.4); font-family: inherit; transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1); }
+.rs-card-add:hover { background: rgba(7, 192, 95, 0.06); color: #07c05f; }
+.rs-card-add.is-storage { padding: 14px 16px; }
+.rs-card-add.is-list { padding: 14px 14px 14px 12px; }
+.rs-card-add__icon { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: 8px; background: rgba(7, 192, 95, 0.1); font-size: 18px; color: #07c05f; }
+.rs-card-add__label { font-size: 13px; font-weight: 500; line-height: 1.4; }
+
+/* 抽屉头徽章（TDrawer header portal 挂 body）。 */
+.resource-drawer-header__badge { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: 9px; }
+.resource-drawer-header__badge--color { border: 1px solid rgba(0, 0, 0, 0.06); background: #fff; }
+.resource-drawer-header__badge--color img { width: 24px; height: 24px; object-fit: contain; }
+.resource-drawer-header__badge--text { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+
+/* 抽屉表单原子（.form-item/.form-label 解剖）与分区。 */
+.rs-form-item { display: grid; gap: 6px; }
+.rs-form-item > label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; line-height: 1.4; color: #101828; }
+.rs-required-star { margin-right: 4px; color: var(--color-danger, #b42318); }
+.rs-form-desc { margin: 0; font-size: 12px; line-height: 1.5; color: var(--color-muted, #66758b); }
+.rs-form-desc.is-warn { color: var(--color-danger, #b42318); }
+.rs-section-title { margin: 0; font-size: 13px; font-weight: 600; color: #101828; }
+.rs-drawer-section { display: grid; gap: 14px; border-top: 1px solid #eef0f3; padding-top: 14px; }
+.rs-drawer-section:first-child { border-top: 0; padding-top: 0; }
+.rs-notice { margin: 0; border-radius: 8px; background: #f6f8fa; padding: 10px 12px; font-size: 13px; line-height: 1.5; color: #101828; }
+.rs-readonly-list { display: grid; border-radius: 8px; background: #f6f8fa; padding: 10px 12px; }
+.rs-readonly-row { display: flex; align-items: baseline; gap: 8px; border-bottom: 1px solid #eef0f3; padding-block: 4px; font-size: 12px; }
+.rs-readonly-row:last-child { border-bottom: 0; }
+.rs-readonly-key { width: 80px; flex-shrink: 0; font-size: 11px; color: var(--color-muted, #66758b); }
+.rs-readonly-value { min-width: 0; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; color: #101828; }
+.rs-advanced-toggle { justify-self: start; border: 0; background: transparent; padding: 0; font-size: 13px; color: var(--color-muted, #66758b); }
+.rs-advanced-toggle:hover { color: var(--color-accent, #07c05f); }
+.rs-mode-seg { display: inline-flex; gap: 4px; border: 1px solid #e4e7ec; border-radius: 8px; background: var(--color-surface, #fff); padding: 3px; }
+.rs-mode-seg__btn { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; padding: 5px 12px; font-size: 13px; background: transparent; color: var(--color-muted, #66758b); }
+.rs-mode-seg__btn.is-active { background: #e8f8f2; color: #0a7f43; }
+.rs-switch-row { display: flex; align-items: center; gap: 8px; }
+.rs-switch-row > span { font-size: 12px; color: var(--color-muted, #66758b); }
+.rs-provider-head { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: var(--color-muted, #66758b); }
+.rs-provider-head a { color: var(--color-accent, #07c05f); }
+.rs-credential-edit { display: grid; gap: 6px; }
+.rs-credential-edit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.rs-credential-card { display: flex; height: 32px; align-items: center; gap: 8px; border: 1px solid var(--color-line-soft, #edf0f5); border-radius: 6px; background: var(--color-surface, #fff); padding-inline: 12px; font-size: 13px; }
+.rs-credential-card--danger { border-color: rgb(180 35 24 / 40%); background: rgb(180 35 24 / 5%); }
+.rs-credential-card__icon { flex: none; color: var(--color-danger, #b42318); }
+.rs-credential-card__icon--ok { color: var(--color-success-text, #137333); }
+.rs-credential-card__icon--flash { color: #0a7f43; }
+.rs-credential-card__prompt { min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--color-danger, #b42318); }
+.rs-credential-card__text { min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-muted, #66758b); }
+.rs-credential-card__text.is-flash { color: #0a7f43; }
+.rs-credential-card__actions { display: flex; flex: none; align-items: center; gap: 2px; }
+.rs-credential-card__divider { width: 1px; height: 14px; background: var(--color-line, #dce3ed); }
+.rs-credential-card__configure.t-button { flex: none; }
+.rs-credential-card.is-flash { border-color: #9edec0; background: #e8f8f2; }
+.rs-drawer-form { margin-block: 1rem; display: grid; gap: 16px; }
+.rs-drawer-actions { flex-wrap: wrap; margin-top: 4px; }
+.rs-actions-spacer { flex: 1 1 0%; }
+
+/* ==== S6 Tailwind 收编：QueryHistoryPanel（查询审计分区） ====
+ * 面板体在 .wk-settings-drawer-root 内（scoped）；快照抽屉 createPortal 挂
+ * body（.qh-drawer* unscoped）。tag 色板 = 原 PRIVACY_TAG_TONES/role 色串。 */
+.wk-settings-drawer-root .qh-panel { display: flex; flex-direction: column; gap: 16px; }
+.wk-settings-drawer-root .qh-privacy { display: flex; flex-direction: column; gap: 8px; }
+.wk-settings-drawer-root .qh-privacy h3 { margin: 0; font-size: 15px; font-weight: 600; color: rgba(23, 26, 29, 0.92); }
+.wk-settings-drawer-root .qh-privacy-desc { margin: 0; font-size: 13px; color: rgba(23, 26, 29, 0.6); }
+.wk-settings-drawer-root .qh-privacy-modes { display: flex; flex-direction: column; gap: 6px; }
+.wk-settings-drawer-root .qh-privacy-mode { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.wk-settings-drawer-root .qh-privacy-hint { color: rgba(23, 26, 29, 0.6); }
+.wk-settings-drawer-root .qh-privacy-note { margin: 0; font-size: 12px; color: #8a96a8; }
+.qh-tag { display: inline-flex; flex-shrink: 0; white-space: nowrap; border: 1px solid; border-radius: 999px; padding-inline: 7px; font-size: 12px; line-height: 18px; }
+.qh-tag--normal { background: rgba(7, 192, 95, 0.1); border-color: rgba(7, 192, 95, 0.24); color: #078a45; }
+.qh-tag--anonymized { background: rgba(234, 167, 49, 0.1); border-color: rgba(234, 167, 49, 0.22); color: #9a6a0b; }
+.qh-tag--disabled { background: rgba(220, 60, 60, 0.08); border-color: rgba(220, 60, 60, 0.2); color: #c03939; }
+.qh-tag--assistant { background: rgba(46, 109, 230, 0.08); border-color: rgba(46, 109, 230, 0.22); color: #2f5ca8; }
+.qh-tag--system { background: rgba(120, 135, 155, 0.1); border-color: rgba(120, 135, 155, 0.2); color: #5c6b83; }
+.wk-settings-drawer-root .qh-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wk-settings-drawer-root .qh-filter { display: flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(23, 26, 29, 0.6); }
+.wk-settings-drawer-root .qh-input { box-sizing: border-box; height: 32px; border: 1px solid #e7e7ea; border-radius: 6px; background: var(--color-surface, #fff); padding-inline: 8px; font-family: inherit; font-size: 13px; color: rgba(23, 26, 29, 0.92); }
+.wk-settings-drawer-root .qh-input:focus { border-color: var(--color-accent, #07c05f); outline: none; }
+.wk-settings-drawer-root .qh-input--text { width: 180px; }
+.wk-settings-drawer-root .qh-inline-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wk-settings-drawer-root .qh-table-wrap { overflow-x: auto; }
+.wk-settings-drawer-root .qh-table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: 13px; }
+.wk-settings-drawer-root .qh-table thead tr { border-bottom: 1px solid #e7e7ea; }
+.wk-settings-drawer-root .qh-th { border-bottom: 1px solid #eef1f5; padding: 8px 10px; text-align: left; font-weight: 600; }
+.wk-settings-drawer-root .qh-tr { cursor: pointer; outline: none; }
+.wk-settings-drawer-root .qh-tr:hover,
+.wk-settings-drawer-root .qh-tr:focus { background: rgba(7, 192, 95, 0.05); }
+.wk-settings-drawer-root .qh-td { border-bottom: 1px solid #eef1f5; padding: 8px 10px; text-align: left; }
+.wk-settings-drawer-root .qh-td--truncate { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-settings-drawer-root .qh-td--mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+.wk-settings-drawer-root .qh-time { display: flex; flex-direction: column; gap: 2px; }
+.wk-settings-drawer-root .qh-time__clock { font-size: 11px; color: #8a96a8; }
+.wk-settings-drawer-root .qh-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.wk-settings-drawer-root .qh-pager-group { display: flex; align-items: center; gap: 8px; }
+.wk-settings-drawer-root .qh-pager-group--wrap { flex-wrap: wrap; }
+.wk-settings-drawer-root .qh-page-indicator { font-size: 13px; color: rgba(23, 26, 29, 0.6); }
+
+/* 快照抽屉（portal 挂 body，unscoped；原 [&_*] 任意变体 → 后代选择器）。 */
+.qh-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3200;
+  width: min(640px, 100vw);
+  max-width: 640px;
+  overflow-y: auto;
+  border-left: 1px solid rgba(120, 135, 155, 0.25);
+  background: #fff;
+  padding: 24px;
+  box-shadow: -8px 0 24px rgba(23, 32, 51, 0.14);
+}
+.qh-drawer h4 { margin: 18px 0 12px; border-top: 1px solid rgba(120, 135, 155, 0.16); padding-top: 18px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #8a96a8; }
+.qh-drawer h4:first-of-type { margin-top: 0; }
+.qh-drawer-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+.qh-drawer-head h3 { margin: 0 0 6px; font-size: 18px; font-weight: 600; word-break: break-all; }
+.qh-drawer-head p { margin: 0; font-size: 12px; color: #8a96a8; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.qh-drawer-head button { cursor: pointer; border: 0; background: transparent; font-size: 24px; line-height: 1; }
+.qh-drawer-titlewrap { min-width: 0; }
+.qh-drawer-empty { margin: 0; font-size: 13px; color: #8a96a8; }
+.qh-meta-list { margin: 0; display: grid; gap: 10px; }
+.qh-meta-row { border-bottom: 1px solid rgba(120, 135, 155, 0.18); padding-bottom: 8px; }
+.qh-meta-row dt { font-size: 12px; color: #5c6b83; }
+.qh-meta-row dd { margin: 4px 0 0; word-break: break-all; }
+.qh-msg-list { margin: 0; display: flex; flex-direction: column; gap: 10px; padding: 0; list-style: none; }
+.qh-msg { border: 1px solid rgba(120, 135, 155, 0.18); border-radius: 8px; background: #f7f9fb; padding: 12px; }
+.qh-msg-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.qh-ref-badge { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; border: 1px solid rgba(120, 135, 155, 0.2); border-radius: 999px; background: rgba(120, 135, 155, 0.08); padding-inline: 7px; font-size: 12px; line-height: 18px; color: #5c6b83; }
+.qh-msg-content { margin: 0; white-space: pre-wrap; word-break: break-all; font-size: 13px; line-height: 1.55; }
+.qh-truncated-note { margin: 8px 0 0; font-size: 12px; color: #9a6a0b; }
+.qh-feedback-list { margin: 0; display: flex; flex-direction: column; gap: 8px; padding: 0; list-style: none; }
+.qh-feedback { border: 1px solid rgba(120, 135, 155, 0.18); border-radius: 8px; padding: 12px; }
+.qh-feedback-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #5c6b83; }
+.qh-feedback-id { word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.qh-feedback-user { word-break: break-all; }
+.qh-feedback-comment { margin: 6px 0 0; white-space: pre-wrap; word-break: break-all; font-size: 13px; }
+
+/* ==== S6 Tailwind 收编：SystemGlobalSettingsPanel（React 保留实现段） ====
+ * 面板体内联确认/提示弹层 scoped；ResetPassword/CreateUser TDialog portal
+ * 挂 body（.wk-dialog-*/.wk-create-user-* unscoped）。!bg-*!text-white 等
+ * important utility 平移为 !important 声明（语义不变：压制 tdesign 按钮
+ * variant chrome 与 hover）。 */
+.wk-settings-drawer-root .wk-system-global-message { margin: 0; font-size: 13px; }
+.wk-settings-drawer-root .wk-system-global-message.is-success { color: #0a8f4c; }
+.wk-settings-drawer-root .wk-system-global-message.is-error { color: #b23b34; }
+.wk-settings-drawer-root .wk-system-global-confirm { border: 1px solid rgba(178, 106, 8, 0.35); border-radius: 8px; background: #fff8e6; padding: 14px 16px; }
+.wk-settings-drawer-root .wk-system-global-confirm strong { font-size: 14px; font-weight: 600; color: #1f2937; }
+.wk-settings-drawer-root .wk-system-global-confirm.is-danger strong { color: #b23b34; }
+.wk-settings-drawer-root .wk-system-global-confirm p { margin: 6px 0 12px; font-size: 13px; white-space: pre-line; color: #5c6b83; }
+.wk-settings-drawer-root .wk-system-global-confirm-btn { margin-right: 8px; cursor: pointer; border: 1px solid #b26a08; border-radius: 4px; background: #b26a08; padding: 5px 12px; color: #fff; }
+.wk-settings-drawer-root .wk-system-global-confirm.is-danger .wk-system-global-confirm-btn { border-color: #b23b34; background: #b23b34; }
+.wk-settings-drawer-root .wk-system-global-confirm-cancel { cursor: pointer; border: 1px solid rgba(120, 135, 155, 0.35); border-radius: 4px; background: transparent; padding: 5px 12px; }
+.wk-settings-drawer-root .wk-system-global-hint-popover { position: absolute; left: 0; top: 100%; z-index: 20; margin-top: 4px; width: max-content; max-width: 420px; border: 1px solid var(--color-line-soft, #edf0f5); border-radius: 8px; background: var(--color-surface, #fff); padding: 12px 16px; box-shadow: 0 6px 30px rgba(0, 0, 0, 0.12); }
+.wk-settings-drawer-root .wk-system-global-hint-popover p { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--color-ink, #172033); }
+.wk-settings-drawer-root .wk-system-global-hint-popover ul { margin: 0; padding-left: 18px; list-style: disc; font-size: 12px; line-height: 1.6; color: var(--color-muted, #66758b); }
+.wk-settings-drawer-root .wk-system-global-hint-popover ul li + li { margin-top: 4px; }
+
+/* 高危对话框（portal）。 */
+.wk-dialog-warning { margin: 4px 0 12px; font-size: 13px; line-height: normal; color: var(--color-muted, #66758b); }
+.wk-dialog-form { display: grid; gap: 12px; }
+.wk-dialog-field { display: grid; gap: 4px; font-size: 13px; font-weight: 500; color: var(--color-ink, #172033); }
+.wk-dialog-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-ink, #172033); }
+.wk-dialog-errors { display: grid; gap: 2px; font-size: 12px; color: var(--color-danger, #b42318); }
+.wk-dialog-actions { display: flex; margin-top: 4px; justify-content: flex-end; gap: 8px; }
+.wk-dialog-actions--reveal { margin-top: 12px; }
+.wk-reset-password-submit.t-button { background-color: var(--color-danger, #b42318) !important; border-color: var(--color-danger, #b42318) !important; color: #fff !important; }
+.wk-create-user-submit.t-button,
+.wk-create-user-acknowledge.t-button { background-color: var(--color-accent, #07c05f) !important; border-color: var(--color-accent, #07c05f) !important; color: #fff !important; }
+.wk-create-user-reveal { display: grid; gap: 8px; border: 1px solid var(--color-line-soft, #edf0f5); border-radius: 8px; background: var(--color-surface-alt, #f2f4f8); padding: 12px; font-size: 13px; }
+.wk-create-user-reveal-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
+.wk-create-user-reveal-row dt { font-weight: 500; color: var(--color-muted, #66758b); }
+.wk-create-user-reveal-row dd { margin: 0; word-break: break-all; }
+.wk-create-user-reveal-row dd.is-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+/* ==== S6 Tailwind 收编：ConfigSettingsPanel（retrieval/parser 配置表单） ====
+ * 前任判例 #2 的 wk-settings-editor 同型表单——加作用域复用；其余为
+ * slider 行/分段卡/toggle 行的 utilities 平移。 */
+.wk-settings-drawer-root .wk-config-editor { margin-block: 1rem; display: grid; max-width: 620px; gap: 0.8rem; }
+.wk-settings-drawer-root .wk-config-editor label { display: grid; gap: 0.35rem; color: #27364d; font-weight: 600; }
+.wk-settings-drawer-root .wk-config-header { display: grid; gap: 4px; margin-bottom: 8px; }
+.wk-settings-drawer-root .wk-config-header h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--color-ink, #172033); }
+.wk-settings-drawer-root .wk-config-header .section-description { margin: 0; font-size: 12px; line-height: 20px; color: var(--color-muted, #66758b); }
+.wk-settings-drawer-root .wk-config-model-row { display: grid; gap: 4px; border-bottom: 1px solid var(--color-line-soft, #edf0f5); padding-block: 16px; }
+.wk-settings-drawer-root .wk-config-model-label { font-size: 14px; font-weight: 500; color: var(--color-ink, #172033); }
+.wk-settings-drawer-root .wk-config-star { color: var(--color-danger, #b42318); }
+.wk-settings-drawer-root .wk-config-model-desc { font-size: 12px; font-weight: 400; line-height: 20px; color: var(--color-muted, #66758b); }
+.wk-settings-drawer-root .wk-config-model-warn { font-size: 12px; font-weight: 400; color: var(--color-warning-text, #9a6700); }
+.wk-settings-drawer-root .wk-config-slider-row { display: grid; gap: 8px; border-bottom: 1px solid var(--color-line-soft, #edf0f5); padding-block: 16px; }
+.wk-settings-drawer-root .wk-config-slider-row:last-of-type { border-bottom: 0; }
+.wk-settings-drawer-root .wk-config-slider-head { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; color: var(--color-ink, #172033); }
+.wk-settings-drawer-root .wk-config-slider-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; font-weight: 600; color: var(--color-accent, #07c05f); }
+.wk-settings-drawer-root .wk-config-toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 400; }
+.wk-settings-drawer-root .wk-config-toggles { display: flex; flex-wrap: wrap; gap: 16px; }
+.wk-settings-drawer-root .wk-config-section { display: grid; gap: 12px; border: 1px solid #dce3ed; border-radius: 8px; padding: 16px; }
+.wk-settings-drawer-root .wk-config-section h3 { margin: 0; font-size: 16px; }
+
+/* ==== S6 Tailwind 收编：UsagePanel（用量分区） ==== */
+.wk-settings-drawer-root .usage-panel { display: flex; flex-direction: column; gap: 16px; }
+.wk-settings-drawer-root .usage-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wk-settings-drawer-root .usage-filter { display: flex; align-items: center; gap: 6px; font-size: 13px; color: rgba(23, 26, 29, 0.6); }
+.wk-settings-drawer-root .usage-input { box-sizing: border-box; height: 32px; border: 1px solid #e7e7ea; border-radius: 6px; background: var(--color-surface, #fff); padding-inline: 8px; font-family: inherit; font-size: 13px; color: rgba(23, 26, 29, 0.92); }
+.wk-settings-drawer-root .usage-input:focus { border-color: var(--color-accent, #07c05f); outline: none; }
+.wk-settings-drawer-root .usage-budget-card { display: flex; flex-wrap: wrap; column-gap: 24px; row-gap: 6px; }
+.wk-settings-drawer-root .usage-budget-card h3 { width: 100%; margin: 0; font-size: 15px; font-weight: 600; color: rgba(23, 26, 29, 0.92); }
+.wk-settings-drawer-root .usage-budget-card > span { font-size: 13px; }
+.wk-settings-drawer-root .usage-budget-label { color: rgba(23, 26, 29, 0.6); }
+.wk-settings-drawer-root .usage-inline-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wk-settings-drawer-root .usage-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.wk-settings-drawer-root .usage-table thead tr { border-bottom: 1px solid #e7e7ea; }
+.wk-settings-drawer-root .usage-th { border-bottom: 1px solid #eef1f5; padding: 8px 10px; text-align: left; font-weight: 600; }
+.wk-settings-drawer-root .usage-td { border-bottom: 1px solid #eef1f5; padding: 8px 10px; text-align: left; }
+.wk-settings-drawer-root .usage-th--num,
+.wk-settings-drawer-root .usage-td--num { text-align: right; font-variant-numeric: tabular-nums; }
+.wk-settings-drawer-root .usage-total-row { font-weight: 600; }
+
+/* ==== S6 Tailwind 收编：SystemAuditLogPanel 表格/明细抽屉（React 保留实现） ====
+ * 表格在面板 body 内（scoped）；wk-audit-detail 明细经 createPortal 挂 body
+ * （unscoped）。原 [&_*] 任意变体 → 后代选择器，值 = utilities 字面量。 */
+.wk-settings-drawer-root .wk-audit-table-wrap { overflow-x: auto; }
+.wk-settings-drawer-root .wk-audit-table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: 12px; }
+.wk-settings-drawer-root .wk-audit-table th,
+.wk-settings-drawer-root .wk-audit-table td { border-bottom: 1px solid rgba(120, 135, 155, 0.18); padding: 8px 12px; text-align: left; }
+.wk-settings-drawer-root .wk-audit-table tbody tr { cursor: pointer; outline: none; }
+.wk-settings-drawer-root .wk-audit-table tbody tr:hover,
+.wk-settings-drawer-root .wk-audit-table tbody tr:focus { background: rgba(7, 192, 95, 0.05); }
+.wk-settings-drawer-root .wk-audit-time { display: flex; flex-direction: column; gap: 2px; }
+.wk-settings-drawer-root .wk-audit-time > span:last-child { font-size: 11px; color: #8a96a8; }
+.wk-settings-drawer-root .wk-audit-actor { display: flex; flex-direction: column; gap: 2px; }
+.wk-settings-drawer-root .wk-audit-actor > small { font-size: 11px; color: #8a96a8; }
+.wk-settings-drawer-root .wk-audit-target { display: flex; flex-direction: column; gap: 2px; }
+.wk-settings-drawer-root .wk-audit-target > strong { word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; font-weight: 500; }
+.wk-settings-drawer-root .wk-audit-target > small { font-size: 11px; color: #8a96a8; }
+.wk-settings-drawer-root .wk-audit-tag { display: inline-flex; flex-shrink: 0; white-space: nowrap; border: 1px solid; border-radius: 999px; padding-inline: 7px; font-size: 12px; line-height: 18px; }
+.wk-settings-drawer-root .wk-audit-tag--success { background: rgba(7, 192, 95, 0.1); border-color: rgba(7, 192, 95, 0.24); color: #078a45; }
+.wk-settings-drawer-root .wk-audit-tag--danger { background: rgba(220, 60, 60, 0.08); border-color: rgba(220, 60, 60, 0.2); color: #c03939; }
+.wk-settings-drawer-root .wk-audit-tag--warning { background: rgba(234, 167, 49, 0.1); border-color: rgba(234, 167, 49, 0.22); color: #9a6a0b; }
+.wk-settings-drawer-root .wk-audit-tag--neutral { background: rgba(120, 135, 155, 0.1); border-color: rgba(120, 135, 155, 0.2); color: #5c6b83; }
+.wk-settings-drawer-root .wk-audit-load-more { display: block; margin: 14px auto 0; cursor: pointer; border: 1px solid rgba(120, 135, 155, 0.35); border-radius: 4px; background: transparent; padding: 5px 12px; }
+.wk-audit-detail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3200;
+  width: min(640px, 100vw);
+  max-width: 640px;
+  overflow-y: auto;
+  border-left: 1px solid rgba(120, 135, 155, 0.25);
+  background: #fff;
+  padding: 24px;
+  box-shadow: -8px 0 24px rgba(23, 32, 51, 0.14);
+}
+.wk-audit-detail section { border-top: 1px solid rgba(120, 135, 155, 0.16); padding-block: 18px; }
+.wk-audit-detail h4 { margin: 0 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #8a96a8; }
+.wk-audit-detail dl { margin: 0; display: grid; gap: 10px; }
+.wk-audit-detail dl > div { border-bottom: 1px solid rgba(120, 135, 155, 0.18); padding-bottom: 8px; }
+.wk-audit-detail dt { font-size: 12px; color: #5c6b83; }
+.wk-audit-detail dd { margin: 4px 0 0; word-break: break-all; }
+.wk-audit-detail pre { margin: 0; white-space: pre-wrap; border: 1px solid rgba(120, 135, 155, 0.18); border-radius: 8px; background: #f7f9fb; padding: 12px; font-size: 12px; line-height: 1.55; }
+.wk-audit-detail-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
+.wk-audit-detail-head h3 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
+.wk-audit-detail-head p { margin: 0; font-size: 12px; color: #8a96a8; }
+.wk-audit-detail-head button { cursor: pointer; border: 0; background: transparent; font-size: 24px; line-height: 1; }
+
+/* ==== S6 Tailwind 收编（续）：PersonalMemorySettingsPanel 单引号批次 ====
+ * 记忆行/追踪行/文档行为 React 保留实现（前任 task-12a 偏离项），原
+ * 单引号 utilities（前任静态口径未计入）→ .wk-memory-* 规则族。 */
+.wk-settings-drawer-root .wk-memory-pop-anchor { position: relative; display: inline-flex; }
+.wk-settings-drawer-root .wk-memory-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  width: max-content;
+  max-width: 260px;
+  border: 1px solid var(--color-line-neutral, #e7e7e7);
+  border-radius: var(--radius-control, 6px);
+  background: var(--color-surface, #fff);
+  padding: 10px 12px;
+  box-shadow: 0 3px 14px 2px rgba(0, 0, 0, 0.05), 0 8px 10px 1px rgba(0, 0, 0, 0.06), 0 5px 5px -3px rgba(0, 0, 0, 0.1);
+}
+.wk-settings-drawer-root .wk-memory-pop__message { margin: 0 0 8px; font-size: 13px; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-memory-pop__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.wk-settings-drawer-root .wk-memory-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--color-line-neutral, #e7e7e7); padding-block: 16px; }
+.wk-settings-drawer-root .wk-memory-row:last-child { border-bottom: 0; }
+.wk-settings-drawer-root .wk-memory-row__main { min-width: 0; flex: 1 1 0%; }
+.wk-settings-drawer-root .wk-memory-edit { margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; }
+.wk-settings-drawer-root .wk-memory-row__actions { display: flex; flex-shrink: 0; align-items: center; gap: 4px; margin-top: -2px; }
+.wk-settings-drawer-root .wk-memory-action { display: inline-flex; min-height: 24px; width: 24px; min-width: 24px; cursor: pointer; align-items: center; justify-content: center; border: 0; border-radius: 3px; background: transparent; padding: 0; color: rgba(0, 0, 0, 0.6); }
+.wk-settings-drawer-root .wk-memory-action:hover:not(:disabled) { background: #f3f3f3; }
+.wk-settings-drawer-root .wk-memory-action:disabled { cursor: not-allowed; opacity: 0.4; }
+.wk-settings-drawer-root .wk-memory-action--danger { color: #e34d59; }
+.wk-settings-drawer-root .wk-memory-topic-title { margin: 0 0 4px; overflow-wrap: break-word; font-size: 14px; line-height: 1.6; color: rgba(0, 0, 0, 0.9); }
+.wk-settings-drawer-root .wk-memory-track { display: flex; max-width: 360px; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.wk-settings-drawer-root .wk-memory-track__bar { height: 4px; min-width: 80px; flex: 1 1 0%; overflow: hidden; border-radius: 9999px; background: var(--color-line-neutral, #e7e7e7); }
+.wk-settings-drawer-root .wk-memory-track__fill { height: 100%; border-radius: 9999px; background: var(--color-accent, #07c05f); }
+.wk-settings-drawer-root .wk-memory-track__text { flex-shrink: 0; font-size: 12px; line-height: 18px; color: rgba(0, 0, 0, 0.4); }
+.wk-settings-drawer-root .wk-memory-alias { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-settings-drawer-root .wk-memory-pager { display: flex; margin-top: 16px; align-items: center; gap: 4px; }
+.wk-settings-drawer-root .wk-memory-pager-btn { height: 24px; min-width: 24px; cursor: pointer; border: 1px solid transparent; border-radius: 3px; background: transparent; padding: 0 6px; font-size: 13px; color: rgba(0, 0, 0, 0.6); }
+.wk-settings-drawer-root .wk-memory-pager-btn:hover:not(:disabled) { border-color: var(--color-accent, #07c05f); color: var(--color-accent, #07c05f); }
+.wk-settings-drawer-root .wk-memory-pager-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+.wk-settings-drawer-root .wk-memory-pager-btn.is-current { border-color: var(--color-accent, #07c05f); background: var(--color-accent, #07c05f); color: var(--color-surface, #fff); }
+@media (max-width: 720px) {
+  .wk-settings-drawer-root .wk-memory-row { flex-direction: column; gap: 8px; }
+  .wk-settings-drawer-root .wk-memory-row__actions { margin-top: 0; }
+}

@@ -1,5 +1,5 @@
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Card, Status } from '@weknora/ui';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { settingsValueEntries } from './surface.ts';
 
@@ -40,7 +40,7 @@ function summary(row: Record<string, unknown>): string {
 const NOT_YET_PORTED_NOTE = () => formatMessage(readInitialLocale(), 'settings.notYetPorted');
 
 export function PortedSectionsPanel({ section }: { section: string }) {
-  return <Card data-testid={'ported-panel-' + section}><p className="wk-muted text-muted">{NOT_YET_PORTED_NOTE()}</p></Card>;
+  return <Card data-testid={'ported-panel-' + section}><p className="wk-ported-note">{NOT_YET_PORTED_NOTE()}</p></Card>;
 }
 
 export function LiveSectionsPanel({ client, section, payload }: { client: WeKnoraClient; section: string; payload: unknown }) {
@@ -48,16 +48,16 @@ export function LiveSectionsPanel({ client, section, payload }: { client: WeKnor
   const rows = rowsOf(payload);
   const totals = payload !== null && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
   return <Card data-testid={'live-panel-' + section}>
-    <p className="wk-muted text-muted">{NOT_YET_PORTED_NOTE()}</p>
+    <p className="wk-ported-note">{NOT_YET_PORTED_NOTE()}</p>
     {section === 'runtime-queues' && typeof totals.available === 'boolean'
       ? <Status tone={totals.available ? 'success' : 'error'}>{totals.available ? 'Runtime queues are available.' : 'Runtime queues are unavailable.'}</Status>
       : null}
     {rows.length === 0
-      ? <p className="wk-settings-read-note text-muted-strong text-[.9rem]">No rows were returned by the API for this section.</p>
-      : <ul className="wk-list m-0 list-none p-0">{rows.map((row, index) => (
-        <li key={index} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
+      ? <p className="wk-settings-read-note">No rows were returned by the API for this section.</p>
+      : <ul className="wk-list">{rows.map((row, index) => (
+        <li key={index} className="wk-list-row">
           <strong>{summary(row)}</strong>
-          <dl className="wk-settings-values mb-0 mt-4 grid gap-[.65rem]">{settingsValueEntries(row).slice(0, 8).map(([key, value]) => <div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)] gap-[.8rem] border-b border-line-soft py-[.55rem] max-[720px]:grid-cols-1 max-[720px]:gap-1" key={key}><dt className="text-muted-strong font-[650] [overflow-wrap:anywhere]">{key}</dt><dd className="m-0 font-mono text-[.85rem] [overflow-wrap:anywhere] whitespace-pre-wrap">{value}</dd></div>)}</dl>
+          <dl className="wk-settings-values">{settingsValueEntries(row).slice(0, 8).map(([key, value]) => <div className="wk-settings-values-row" key={key}><dt className="wk-settings-values-key">{key}</dt><dd>{value}</dd></div>)}</dl>
         </li>
       ))}</ul>}
   </Card>;

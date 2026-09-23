@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { ActionDetail } from '@weknora/contracts';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button as TButton } from 'tdesign-react';
+import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { actionMessage } from './action-state.ts';
 
 /** Connection context needed to re-prepare edited content as a NEW action. */
@@ -167,16 +168,16 @@ export function ActionApproval({ client, actionId, prepare, canDrive = false }: 
           {state === 'unknown' ? (
             <>
               <Status tone="error">外部执行结果未确认。此处不提供“再发一次”，重复发送可能造成重复写操作。</Status>
-              <Button type="button" aria-label="查询外部执行结果" onClick={() => void load(currentId, '已重新查询：' + actionMessage('unknown'))}>查询结果</Button>
+              <TButton type="button" aria-label="查询外部执行结果" onClick={() => void load(currentId, '已重新查询：' + actionMessage('unknown'))}>查询结果</TButton>
               <p className="wk-muted">若查询后仍未确认，请联系管理员与提供方核对后再处理。</p>
             </>
           ) : (
             <>
               {canDrive && (state === 'awaiting_approval' || state === 'authorized') ? (
-                <Button type="button" aria-label="批准当前内容摘要" disabled={busy} onClick={() => void approve()}>批准此内容</Button>
+                <TButton type="button" aria-label="批准当前内容摘要" disabled={busy} onClick={() => void approve()}>批准此内容</TButton>
               ) : null}
               {canDrive && state === 'authorized' ? (
-                <Button type="button" aria-label="执行已批准的操作" disabled={busy} onClick={() => void execute()}>执行</Button>
+                <TButton type="button" aria-label="执行已批准的操作" disabled={busy} onClick={() => void execute()}>执行</TButton>
               ) : null}
               {canDrive && prepare !== undefined && state === 'awaiting_approval' ? (
                 <div>
@@ -186,12 +187,12 @@ export function ActionApproval({ client, actionId, prepare, canDrive = false }: 
                     aria-label="编辑操作内容 JSON"
                     value={draftContent}
                     rows={4}
-                    onChange={(event) => setDraftContent(event.target.value)}
+                    onChange={(value) => setDraftContent(String(value))}
                   />
-                  <Button type="button" aria-label="以编辑后的内容重新准备" disabled={busy} onClick={() => void reprepare()}>重新准备内容</Button>
+                  <TButton type="button" aria-label="以编辑后的内容重新准备" disabled={busy} onClick={() => void reprepare()}>重新准备内容</TButton>
                 </div>
               ) : null}
-              <Button type="button" aria-label="刷新操作状态" onClick={() => void load(currentId)}>刷新状态</Button>
+              <TButton type="button" aria-label="刷新操作状态" onClick={() => void load(currentId)}>刷新状态</TButton>
             </>
           )}
         </>

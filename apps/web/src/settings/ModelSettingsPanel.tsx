@@ -4,17 +4,22 @@ import type {
   ModelConfiguration,
   WeKnoraClient,
 } from "@weknora/api-client";
-import { Button, Card, Input, NumberInput, Status, Switch } from "@weknora/ui";
 import { Icon as TIcon } from "tdesign-icons-react";
 import {
   Button as TButton,
   Dropdown as TDropdown,
   Empty as TEmpty,
+  Input as TInput,
+  InputNumber as TInputNumber,
   Loading as TLoading,
   Popconfirm as TPopconfirm,
+  Switch as TSwitch,
   Tabs,
   Tooltip as TTooltip,
 } from "tdesign-react";
+// S6 抽屉收编：@weknora/ui 表单栈离开（T15 硬前置）。Status 为无 TDesign 对应
+// 的语义 p 封装，走 shared/wk-legacy 原生标签 + .wk-status 类平移。
+import { WkStatus as Status } from "../shared/wk-legacy.tsx";
 import { roleAtLeast } from "@weknora/views/settings/registry";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
 import { ModelOptionSelect } from "./ModelOptionSelect.tsx";
@@ -103,6 +108,10 @@ function payloadNumber(value: unknown, key: string): number | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const candidate = (value as Record<string, unknown>)[key];
   return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : undefined;
+}
+function fromTInputNumber(value: number | string): number | "" {
+  if (typeof value === "number") return value;
+  return value.trim() === "" ? "" : Number(value);
 }
 function toNumberInput(value: string): number | "" {
   if (value === "") return "";
@@ -1080,27 +1089,27 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       </TLoading>
       {draft ? (
         <div
-          className="wk-model-editor-overlay fixed inset-0 z-[1300] flex items-stretch justify-end bg-[rgba(23,32,51,.34)]"
+          className="wk-model-editor-overlay"
           onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}
         >
         <div
-          className="wk-model-editor wk-model-editor-drawer box-border h-full w-[560px] max-w-full overflow-y-auto border-l border-l-[#dce3ed] bg-white pt-[1.25rem] pr-6 pb-8 pl-6 shadow-[-10px_0_30px_rgba(23,32,51,.12)] max-[720px]:w-full max-[720px]:p-4"
+          className="wk-model-editor wk-model-editor-drawer"
           role="dialog"
           aria-modal="true"
           aria-label={draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}
         >
-          <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky -top-[1.25rem] z-[1] bg-white pt-[1.25rem] max-[720px]:-top-[1rem] max-[720px]:pt-4">
+          <div className="wk-settings-panel-heading">
             <div>
               <h3>{draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}</h3>
-              <p className="wk-muted text-muted m-0">
+              <p className="wk-muted">
                 {t(`model.editor.description.${draft.type}`) || t("model.editor.description.default")}
               </p>
             </div>
-            <Button type="button" disabled={busy} onClick={closeEditor}>
+            <TButton type="button" disabled={busy} onClick={closeEditor}>
               {t("common.close")}
-            </Button>
+            </TButton>
           </div>
-          <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]" onSubmit={(event) => void save(event)}>
+          <form className="wk-settings-editor" onSubmit={(event) => void save(event)}>
             {!draft.id ? (
               <div className="form-item">
                 <h4>{t("model.editor.sectionType")}</h4>
@@ -1145,13 +1154,13 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 </button>
               </div>
               {draft.type === "rerank" ? (
-                <p className="wk-muted text-muted">{t("model.editor.ollamaNotSupportRerank")}</p>
+                <p className="wk-muted">{t("model.editor.ollamaNotSupportRerank")}</p>
               ) : draft.source === "local" && ollamaStatus === false ? (
-                <p className="wk-muted text-muted">
+                <p className="wk-muted">
                   {t("model.editor.ollamaUnavailable")}{" "}
-                  <Button type="button" onClick={() => navigate("/platform/settings?section=ollama")}>
+                  <TButton type="button" variant="text" onClick={() => navigate("/platform/settings?section=ollama")}>
                     {t("model.editor.goToOllamaSettings")}
-                  </Button>
+                  </TButton>
                 </p>
               ) : null}
               {draft.source === "local" ? (
@@ -1159,8 +1168,12 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   <label>
                     {t("model.modelName")}
                   </label>
-                  <div className="wk-ollama-combobox-wrap relative grid w-full gap-1">
-                      <Input
+                  <div className="wk-ollama-combobox-wrap">
+                      {/* 自研 combobox（Vue 端为 ModelEditorDialog.vue 的 filterable
+                          t-select；React 侧逻辑零改动保留自研键盘导航），input 走原生
+                          标签以保住 role/aria 契约（tdesign Input 不透传，台账 #8 同因），
+                          chrome 由 .wk-ollama-combobox-wrap input 对齐 t-input。 */}
+                      <input
                         role="combobox"
                         aria-expanded={ollamaOpen}
                         aria-controls="wk-ollama-listbox"
@@ -1173,19 +1186,19 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         onKeyDown={onComboboxKeyDown}
                       />
                       {ollamaOpen ? (
-                        <div className="relative z-[6] grid max-h-[220px] overflow-auto rounded-lg border border-[rgba(120,135,155,0.35)] bg-white shadow-[0_8px_24px_rgba(23,32,51,0.14)]" id="wk-ollama-listbox" role="listbox">
+                        <div className="wk-ollama-listbox" id="wk-ollama-listbox" role="listbox">
                           {ollamaSuggestions.map((item, index) => (
                             <button
                               type="button"
                               key={item.name}
                               role="option"
                               aria-selected={index === ollamaHighlight}
-                              className={"flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-[inherit] hover:bg-[rgba(7,192,95,0.1)]" + (index === ollamaHighlight ? " bg-[rgba(7,192,95,0.1)]" : "")}
+                              className={"wk-ollama-option" + (index === ollamaHighlight ? " is-active" : "")}
                               onMouseDown={(event) => { event.preventDefault(); selectOllamaModel(item.name); }}
                             >
-                              <span className="text-xs text-[#0a8f4c]" aria-hidden="true">✓</span>
-                              <span className="flex-1 text-[13px]">{item.name}</span>
-                              <span className="text-xs text-[#7a879c]">{formatModelSize((item as Record<string, unknown>).size)}</span>
+                              <span className="wk-ollama-option__check" aria-hidden="true">✓</span>
+                              <span className="wk-ollama-option__name">{item.name}</span>
+                              <span className="wk-ollama-option__size">{formatModelSize((item as Record<string, unknown>).size)}</span>
                             </button>
                           ))}
                           {ollamaDownloadOffered ? (
@@ -1193,21 +1206,21 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                               type="button"
                               role="option"
                               aria-selected={ollamaHighlight === ollamaSuggestions.length}
-                              className={"flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-[inherit] hover:bg-[rgba(7,192,95,0.1)]" + (ollamaHighlight === ollamaSuggestions.length ? " bg-[rgba(7,192,95,0.1)]" : "")}
+                              className={"wk-ollama-option" + (ollamaHighlight === ollamaSuggestions.length ? " is-active" : "")}
                               onMouseDown={(event) => { event.preventDefault(); setOllamaOpen(false); void downloadOllamaModel(); }}
                             >
                               <span aria-hidden="true">⬇</span>
-                              <span className="flex-1 text-[13px] text-[#0a8f4c]">{t("model.editor.downloadLabel", { keyword: ollamaKeyword })}</span>
+                              <span className="wk-ollama-option__name wk-ollama-option__download">{t("model.editor.downloadLabel", { keyword: ollamaKeyword })}</span>
                             </button>
                           ) : null}
                         </div>
                       ) : null}
                     </div>
-                    {nameError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{nameError}</span> : null}
-                  <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-                    <Button type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
+                    {nameError ? <span className="wk-field-error">{nameError}</span> : null}
+                  <div className="wk-list-actions">
+                    <TButton type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
                       {t("model.editor.refreshList")}
-                    </Button>
+                    </TButton>
                   </div>
                   {ollamaBusy ? <Status>{t("common.loading")}</Status> : null}
                   {downloadTask || downloadProgress !== null ? (
@@ -1237,104 +1250,102 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   ) : (
                     <Status tone="warning">
                       {t(wkcState === "expired" ? "settings.weknoraCloud.credentialExpired" : "settings.weknoraCloud.credentialUnconfigured")}{" "}
-                      <Button type="button" onClick={() => navigate("/platform/settings?section=weknoracloud")}>
+                      <TButton type="button" variant="text" onClick={() => navigate("/platform/settings?section=weknoracloud")}>
                         {t("settings.weknoraCloud.goToSettings")}
-                      </Button>
+                      </TButton>
                     </Status>
                   )
                 ) : null}
                 <label>
                   {t("model.modelName")}
-                  <Input
-                    required
-                    maxLength={100}
+                  <TInput
+                    maxlength={100}
                     placeholder={t(modelNamePlaceholderKey(draft.type, draft.source))}
                     disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
                     value={draft.name}
-                    onChange={(event) => changeName(event.target.value)}
+                    onChange={(value) => changeName(String(value))}
                     onBlur={blurName}
                   />
-                  {nameError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{nameError}</span> : null}
+                  {nameError ? <span className="wk-field-error">{nameError}</span> : null}
                 </label>
                 <label>
                   {t("model.editor.displayNameLabel")}
-                      <Input
-                    maxLength={100}
+                      <TInput
+                    maxlength={100}
                     placeholder={t("model.editor.displayNamePlaceholder")}
                     value={draft.displayName}
-                    onChange={(event) => updateDraft("displayName", event.target.value)}
+                    onChange={(value) => updateDraft("displayName", String(value))}
                   />
-                  <span className="wk-muted text-muted">{t("model.editor.displayNameDesc")}</span>
+                  <span className="wk-muted">{t("model.editor.displayNameDesc")}</span>
                 </label>
                 {draft.provider !== "weknoracloud" ? (
                   <>
                     <label>
                       {t("model.editor.baseUrlLabel")}
-                      <Input
+                      <TInput
                         type="url"
-                        required
                         placeholder={t(baseUrlPlaceholderKey(draft.type))}
                         value={draft.baseUrl}
-                        onChange={(event) => changeBaseUrl(event.target.value)}
+                        onChange={(value) => changeBaseUrl(String(value))}
                         onBlur={blurBaseUrl}
                       />
-                      {baseUrlError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{baseUrlError}</span> : null}
+                      {baseUrlError ? <span className="wk-field-error">{baseUrlError}</span> : null}
                     </label>
                     {draft.id ? (
                       <div className="form-item">
                         <label>
                           {apiKeyLabel}
-                          <Input
+                          <TInput
                             type="password"
-                            autoComplete="new-password"
+                            autocomplete="new-password"
                             placeholder={apiKeyPlaceholder}
                             value={credentialValues.apiKey}
-                            onChange={(event) => setCredentialValues((current) => ({ ...current, apiKey: event.target.value }))}
+                            onChange={(value) => setCredentialValues((current) => ({ ...current, apiKey: String(value) }))}
                           />
                         </label>
-                        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-                          {draft.credentials?.api_key?.configured ? <span title="configured" className="mr-auto text-[0.85rem] text-muted">✓</span> : null}
-                          <Button
+                        <div className="wk-list-actions">
+                          {draft.credentials?.api_key?.configured ? <span title="configured" className="wk-cred-configured">✓</span> : null}
+                          <TButton
                             type="button"
                             disabled={credentialBusy || !credentialValues.apiKey.trim()}
                             onClick={() => void saveCredentialField("apiKey")}
                           >
                             {t("common.save")}
-                          </Button>
+                          </TButton>
                           {draft.credentials?.api_key?.configured ? (
-                            <Button type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("api_key")}>
+                            <TButton type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("api_key")}>
                               {t("common.delete")}
-                            </Button>
+                            </TButton>
                           ) : null}
                         </div>
                         {signed ? (
                           <>
                             <label>
                               {secretKeyLabel}
-                              <Input
+                              <TInput
                                 type="password"
-                                autoComplete="new-password"
+                                autocomplete="new-password"
                                 placeholder={secretKeyPlaceholder}
                                 value={credentialValues.appSecret}
-                                onChange={(event) => setCredentialValues((current) => ({ ...current, appSecret: event.target.value }))}
+                                onChange={(value) => setCredentialValues((current) => ({ ...current, appSecret: String(value) }))}
                               />
                             </label>
-                            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-                              {draft.credentials?.app_secret?.configured ? <span title="configured" className="mr-auto text-[0.85rem] text-muted">✓</span> : null}
-                              <Button
+                            <div className="wk-list-actions">
+                              {draft.credentials?.app_secret?.configured ? <span title="configured" className="wk-cred-configured">✓</span> : null}
+                              <TButton
                                 type="button"
                                 disabled={credentialBusy || !credentialValues.appSecret.trim()}
                                 onClick={() => void saveCredentialField("appSecret")}
                               >
                                 {t("common.save")}
-                              </Button>
+                              </TButton>
                               {draft.credentials?.app_secret?.configured ? (
-                                <Button type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("app_secret")}>
+                                <TButton type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("app_secret")}>
                                   {t("common.delete")}
-                                </Button>
+                                </TButton>
                               ) : null}
                             </div>
-                            <p className="wk-muted text-muted">{credentialHint}</p>
+                            <p className="wk-muted">{credentialHint}</p>
                           </>
                         ) : null}
                       </div>
@@ -1342,29 +1353,29 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       <>
                         <label>
                           {apiKeyLabel}
-                  <Input
+                  <TInput
                             type="password"
-                            autoComplete="new-password"
+                            autocomplete="new-password"
                             spellCheck={false}
                             placeholder={apiKeyPlaceholder}
                             value={draft.apiKey}
-                            onChange={(event) => updateDraft("apiKey", event.target.value)}
+                            onChange={(value) => updateDraft("apiKey", String(value))}
                           />
                         </label>
                         {signed ? (
                           <>
                             <label>
                               {secretKeyLabel}
-                      <Input
+                      <TInput
                                 type="password"
-                                autoComplete="new-password"
+                                autocomplete="new-password"
                                 spellCheck={false}
                                 placeholder={secretKeyPlaceholder}
                                 value={draft.appSecret}
-                                onChange={(event) => updateDraft("appSecret", event.target.value)}
+                                onChange={(value) => updateDraft("appSecret", String(value))}
                               />
                             </label>
-                            <p className="wk-muted text-muted">{credentialHint}</p>
+                            <p className="wk-muted">{credentialHint}</p>
                           </>
                         ) : null}
                       </>
@@ -1372,43 +1383,43 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     {signed === "lkeap" ? (
                       <label>
                         {t("model.editor.lkeap.regionLabel")}
-                        <Input
+                        <TInput
                           placeholder={t("model.editor.lkeap.regionPlaceholder")}
                           value={draft.lkeapRegion}
-                          onChange={(event) => updateDraft("lkeapRegion", event.target.value)}
+                          onChange={(value) => updateDraft("lkeapRegion", String(value))}
                         />
-                        <span className="wk-muted text-muted">{t("model.editor.lkeap.regionDesc")}</span>
+                        <span className="wk-muted">{t("model.editor.lkeap.regionDesc")}</span>
                       </label>
                     ) : null}
                     <fieldset>
                       <legend>{t("model.editor.customHeadersLabel")}</legend>
-                      <p className="wk-muted text-muted">{t("model.editor.customHeadersDesc")}</p>
+                      <p className="wk-muted">{t("model.editor.customHeadersDesc")}</p>
                       {draft.customHeaders.map((item, index) => (
                         <div className="wk-model-header-row" key={index}>
-                                <Input
+                                <TInput
                             value={item.key}
                             placeholder={t("model.editor.customHeadersKeyPlaceholder")}
                             aria-label={t("model.editor.customHeadersKeyPlaceholder")}
-                            onChange={(event) => updateCustomHeader(index, "key", event.target.value)}
+                            onChange={(value) => updateCustomHeader(index, "key", String(value))}
                           />
-                          <Input
+                          <TInput
                             value={item.value}
                             placeholder={t("model.editor.customHeadersValuePlaceholder")}
                             aria-label={t("model.editor.customHeadersValuePlaceholder")}
-                            onChange={(event) => updateCustomHeader(index, "value", event.target.value)}
+                            onChange={(value) => updateCustomHeader(index, "value", String(value))}
                           />
-                          <Button
+                          <TButton
                             type="button"
                             aria-label={t("common.delete")}
                             onClick={() => removeCustomHeader(index)}
                           >
                             ✕
-                          </Button>
+                          </TButton>
                         </div>
                       ))}
-                      <Button type="button" onClick={addCustomHeader}>
+                      <TButton type="button" onClick={addCustomHeader}>
                         {t("model.editor.customHeadersAdd")}
-                      </Button>
+                      </TButton>
                     </fieldset>
                   </>
                 ) : null}
@@ -1422,49 +1433,49 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   <>
                     <label>
                       {t("model.editor.dimensionLabel")}
-                      <NumberInput
+                      <TInputNumber
                         min={128}
                         max={4096}
                         placeholder={t("model.editor.dimensionPlaceholder")}
                         disabled={!draft.supportsDimensionOverride || (draft.source === "local" && checking)}
                         value={draft.dimension}
-                        onValueChange={(value) => updateDraft("dimension", value)}
+                        onChange={(value) => updateDraft("dimension", fromTInputNumber(value))}
                       />
                     </label>
                     {draft.source === "local" && draft.name ? (
-                      <Button type="button" disabled={checking || !draft.name.trim()} onClick={() => void checkOllamaDimension()}>
+                      <TButton type="button" disabled={checking || !draft.name.trim()} onClick={() => void checkOllamaDimension()}>
                         {t("model.editor.checkDimension")}
-                      </Button>
+                      </TButton>
                     ) : null}
                     {dimensionMessage ? (
                       <Status tone={dimensionMessage.ok ? "success" : "error"}>{dimensionMessage.text}</Status>
                     ) : null}
-                    <div className="mt-1 flex min-h-[22px] cursor-pointer flex-wrap items-center gap-x-2">
-                      <Switch checked={draft.supportsDimensionOverride} onCheckedChange={(checked) => updateDraft("supportsDimensionOverride", checked)} aria-label={t("model.editor.dimensionOverrideLabel")} />
-                      <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{t("model.editor.dimensionOverrideLabel")}</span>
-                      <span className="ml-11 mt-[2px] basis-full text-xs leading-[1.5] text-[#8a8a8a]">{t("model.editor.dimensionOverrideDesc")}</span>
+                    <div className="wk-switch-row">
+                      <TSwitch value={draft.supportsDimensionOverride} onChange={(checked) => updateDraft("supportsDimensionOverride", Boolean(checked))} aria-label={t("model.editor.dimensionOverrideLabel")} />
+                      <span className="wk-switch-row__label">{t("model.editor.dimensionOverrideLabel")}</span>
+                      <span className="wk-switch-row__desc">{t("model.editor.dimensionOverrideDesc")}</span>
                     </div>
                   </>
                 ) : null}
                 {draft.type === "chat" || draft.type === "vllm" ? (
                   <label>
                     {t("model.editor.contextWindowLabel")}
-                    <NumberInput
+                    <TInputNumber
                       min={1024}
                       max={10000000}
                       placeholder={t("model.editor.contextWindowPlaceholder", { value: DEFAULT_MODEL_CONTEXT_WINDOW })}
                       value={draft.contextWindow}
-                      onValueChange={(value) => updateDraft("contextWindow", value)}
+                      onChange={(value) => updateDraft("contextWindow", fromTInputNumber(value))}
                     />
-                    <span className="wk-muted text-muted">{t("model.editor.contextWindowDesc")}</span>
+                    <span className="wk-muted">{t("model.editor.contextWindowDesc")}</span>
                   </label>
                 ) : null}
                 {draft.type === "chat" ? (
                   <>
-                    <div className="mt-1 flex min-h-[22px] cursor-pointer flex-wrap items-center gap-x-2">
-                      <Switch checked={draft.supportsVision} onCheckedChange={(checked) => updateDraft("supportsVision", checked)} aria-label={t("model.editor.supportsVisionLabel")} />
-                      <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{t("model.editor.supportsVisionLabel")}</span>
-                      <span className="ml-11 mt-[2px] basis-full text-xs leading-[1.5] text-[#8a8a8a]">{t("model.editor.supportsVisionDesc")}</span>
+                    <div className="wk-switch-row">
+                      <TSwitch value={draft.supportsVision} onChange={(checked) => updateDraft("supportsVision", Boolean(checked))} aria-label={t("model.editor.supportsVisionLabel")} />
+                      <span className="wk-switch-row__label">{t("model.editor.supportsVisionLabel")}</span>
+                      <span className="wk-switch-row__desc">{t("model.editor.supportsVisionDesc")}</span>
                     </div>
                   </>
                 ) : null}
@@ -1479,27 +1490,27 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         updateDraft("thinkingControl", value);
                       }}
                     />
-                    <span className="wk-muted text-muted">{t("model.editor.thinkingControlDesc")}</span>
+                    <span className="wk-muted">{t("model.editor.thinkingControlDesc")}</span>
                   </label>
                 ) : null}
                 <label>
                   {t("model.editor.maxConcurrencyLabel")}
-                  <NumberInput
+                  <TInputNumber
                     min={0}
                     max={4096}
                     placeholder={t("model.editor.maxConcurrencyPlaceholder")}
                     value={draft.maxConcurrency}
-                    onValueChange={(value) => updateDraft("maxConcurrency", value)}
+                    onChange={(value) => updateDraft("maxConcurrency", fromTInputNumber(value))}
                   />
-                  <span className="wk-muted text-muted">{t("model.editor.maxConcurrencyDesc")}</span>
+                  <span className="wk-muted">{t("model.editor.maxConcurrencyDesc")}</span>
                 </label>
               </div>
             ) : null}
 
             {draftError ? <Status tone="error">{draftError}</Status> : null}
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+            <div className="wk-list-actions">
               {draft.source === "remote" ? (
-                <Button
+                <TButton
                   type="button"
                   loading={checking}
                   disabled={
@@ -1510,23 +1521,23 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   onClick={() => void testConnection()}
                 >
                   {t("model.editor.testConnection")}
-                </Button>
+                </TButton>
               ) : null}
               {remoteMessage ? (
                 <Status tone={remoteMessage.ok ? "success" : "error"}>{remoteMessage.text}</Status>
               ) : null}
               {/* R484 G4 D4 — Vue footer order (SettingDrawer.vue footer):
                   footer-left 测试连接, footer-right 取消 then 保存. */}
-              <Button type="button" disabled={busy} onClick={closeEditor}>
+              <TButton type="button" disabled={busy} onClick={closeEditor}>
                 {t("common.cancel")}
-              </Button>
-              <Button
+              </TButton>
+              <TButton
                 type="submit"
                 loading={busy}
                 disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
               >
                 {t("common.save")}
-              </Button>
+              </TButton>
             </div>
           </form>
         </div>
