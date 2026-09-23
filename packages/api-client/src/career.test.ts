@@ -25,3 +25,23 @@ test('career API calls authenticated tenant-scoped routes and preserves action b
  ])
  assert.deepEqual(JSON.parse(calls[4]!.body!), action)
 })
+
+test('career upload sends a browser multipart body and lists source versions', async () => {
+ const calls: Array<{ url: string; headers: Record<string, string>; body: unknown }> = []
+ const client = createWeKnoraClient({ baseURL: 'https://example.test', transport: createJsonTransport(async (url, init) => {
+  calls.push({ url, headers: init?.headers ?? {}, body: init?.body })
+  const payload = url.endsWith('/sources/upload') ? { source: { id: 's1', revision: 3, fileName: 'resume.pdf', mimeType: 'application/pdf', size: 6, digest: 'd', status: 'processing', createdAt: 'now' } } : { sources: [] }
+  return { status: 201, headers: { get: () => 'application/json' }, json: async () => payload, text: async () => '' }
+ }) })
+ const file = new Blob(['resume'], { type: 'application/pdf' })
+ await client.career.upload(file, 'resume.pdf', 'stable-request', 3)
+ await client.career.sources()
+ assert.equal(calls[0]?.url, 'https://example.test/api/v1/career/sources/upload')
+ assert.ok(calls[0]?.body instanceof FormData)
+ const form = calls[0]?.body as FormData
+ assert.equal(form.get('requestId'), 'stable-request')
+ assert.equal(form.get('expectedRevision'), '3')
+ assert.equal((form.get('file') as File).name, 'resume.pdf')
+ assert.equal(Object.keys(calls[0]?.headers ?? {}).some((key) => key.toLowerCase() === 'content-type'), false)
+ assert.equal(calls[1]?.url, 'https://example.test/api/v1/career/sources')
+})

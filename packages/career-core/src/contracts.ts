@@ -1,7 +1,7 @@
 export type CareerSource = { kind: string; label?: string; referenceId?: string }
 export type CareerConfirmation = { userId: string; confirmedAt: string }
 export type CareerFact = { key: string; value: string; revision: number; source: CareerSource; confirmation: CareerConfirmation; confirmedAt: string }
-export type CareerProposal = { id: string; key: string; value: string; source: CareerSource; status: 'pending' | 'confirmed' | 'dismissed'; revision?: number; confirmation?: CareerConfirmation; resolutionSource?: CareerSource; createdAt: string }
+export type CareerProposal = { id: string; key: string; value: string; evidence?: string; source: CareerSource; status: 'pending' | 'confirmed' | 'dismissed'; revision?: number; confirmation?: CareerConfirmation; resolutionSource?: CareerSource; createdAt: string }
 export type CareerView = { revision: number; facts: CareerFact[]; proposals: CareerProposal[] }
 export type CareerReceipt =
   | { kind: 'proposed'; requestId: string; revision: number; proposal: CareerProposal }
@@ -23,7 +23,7 @@ function validSource(value: unknown): boolean { return isRecord(value) && typeof
 function validProposal(value: unknown): boolean {
  if (!isRecord(value)) return false
  const validConfirmation = value.confirmation === undefined || (isRecord(value.confirmation) && typeof value.confirmation.userId === 'string' && typeof value.confirmation.confirmedAt === 'string')
- return typeof value.id === 'string' && typeof value.key === 'string' && typeof value.value === 'string' && validSource(value.source) && ['pending', 'confirmed', 'dismissed'].includes(String(value.status)) && typeof value.createdAt === 'string' && (value.revision === undefined || typeof value.revision === 'number') && validConfirmation && (value.resolutionSource === undefined || validSource(value.resolutionSource))
+ return typeof value.id === 'string' && typeof value.key === 'string' && typeof value.value === 'string' && (value.evidence === undefined || typeof value.evidence === 'string') && validSource(value.source) && ['pending', 'confirmed', 'dismissed'].includes(String(value.status)) && typeof value.createdAt === 'string' && (value.revision === undefined || typeof value.revision === 'number') && validConfirmation && (value.resolutionSource === undefined || validSource(value.resolutionSource))
 }
 function validFact(value: unknown): boolean {
  if (!isRecord(value) || !isRecord(value.confirmation)) return false
@@ -42,4 +42,31 @@ export function decodeCareerError(value: unknown): CareerError {
  const codes: CareerErrorCode[] = ['forbidden', 'revision_conflict', 'idempotency_conflict', 'invalid_request', 'not_found', 'proposal_resolved', 'outcome_unknown', 'internal']
  if (typeof body.message !== 'string' || !codes.includes(body.code as CareerErrorCode) || (body.currentRevision !== undefined && typeof body.currentRevision !== 'number') || (body.requestId !== undefined && typeof body.requestId !== 'string') || (body.code === 'outcome_unknown' && typeof body.requestId !== 'string')) throw new TypeError('invalid career error')
  return value as CareerError
+}
+
+export type CareerDocumentSource = {
+ id: string; revision: number; fileName: string; mimeType: string; size: number; digest: string; status: 'processing' | 'ready' | 'failed';
+ errorCategory?: string; errorMessage?: string; missingCategories?: string[]; reviewFlags?: string[]; createdAt: string; completedAt?: string
+}
+export type CareerIntakeReceipt = { kind: 'intake_completed'; requestId: string; revision: number; proposals: CareerProposal[] }
+export type CareerUpload = { source: CareerDocumentSource; receipt?: CareerIntakeReceipt }
+
+export function decodeCareerSource(value: unknown): CareerDocumentSource {
+ if (!isRecord(value) || typeof value.id !== 'string' || typeof value.revision !== 'number' || typeof value.fileName !== 'string' || typeof value.mimeType !== 'string' || typeof value.size !== 'number' || typeof value.digest !== 'string' || !['processing', 'ready', 'failed'].includes(String(value.status)) || typeof value.createdAt !== 'string' || (value.errorCategory !== undefined && typeof value.errorCategory !== 'string') || (value.errorMessage !== undefined && typeof value.errorMessage !== 'string') || (value.completedAt !== undefined && typeof value.completedAt !== 'string') || (value.missingCategories !== undefined && (!Array.isArray(value.missingCategories) || !value.missingCategories.every((item) => typeof item === 'string'))) || (value.reviewFlags !== undefined && (!Array.isArray(value.reviewFlags) || !value.reviewFlags.every((item) => typeof item === 'string')))) throw new TypeError('invalid career source')
+ return value as CareerDocumentSource
+}
+export function decodeCareerUpload(value: unknown): CareerUpload {
+ if (!isRecord(value) || !('source' in value)) throw new TypeError('invalid career upload')
+ const source = decodeCareerSource(value.source)
+ let receipt: CareerIntakeReceipt | undefined
+ if (value.receipt !== undefined) {
+  const raw = value.receipt
+  if (!isRecord(raw) || raw.kind !== 'intake_completed' || typeof raw.requestId !== 'string' || typeof raw.revision !== 'number' || !Array.isArray(raw.proposals) || !raw.proposals.every(validProposal)) throw new TypeError('invalid career intake receipt')
+  receipt = raw as CareerIntakeReceipt
+ }
+ return { source, ...(receipt ? { receipt } : {}) }
+}
+export function decodeCareerSources(value: unknown): CareerDocumentSource[] {
+ if (!isRecord(value) || !Array.isArray(value.sources)) throw new TypeError('invalid career sources')
+ return value.sources.map(decodeCareerSource)
 }

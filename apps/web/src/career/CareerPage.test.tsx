@@ -21,7 +21,7 @@ let host: HTMLDivElement | undefined
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; host?.remove(); host = undefined; document.body.replaceChildren() })
 async function mount(api: Record<string, (...args: never[]) => unknown>) {
  host = document.createElement('div'); document.body.append(host); root = createRoot(host)
- const client = { career: api } as unknown as WeKnoraClient
+ const client = { career: { ...api, sources: api.sources ?? (async () => []), upload: api.upload ?? (async () => { throw new Error('unused upload') }) } } as unknown as WeKnoraClient
  const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
  await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'u' })); await new Promise((resolve) => setImmediate(resolve)) })
  return host
@@ -75,4 +75,104 @@ test('forbidden receipt after an ambiguous action hides cached facts in the moun
  assert.match(container.textContent ?? '', /当前空间不可访问/)
  assert.doesNotMatch(container.textContent ?? '', /本科/)
  assert.equal([...container.querySelectorAll('.t-button')].some((item) => ['保存为提案', '直接确认', '确认', '忽略'].includes(item.textContent?.trim() ?? '')), false)
+})
+
+test('resume upload renders six category review, exact evidence and confirmed facts stay separate', async () => {
+ const documentSource = { id: 'source-1', revision: 2, fileName: 'resume.pdf', mimeType: 'application/pdf', size: 12, digest: 'digest', status: 'ready' as const, missingCategories: ['education.graduation_date'], reviewFlags: ['experience.date_conflict'], createdAt: 'now' }
+ const intakeProposals = [
+  { id: 'e1', key: 'education.school', value: 'Example University', evidence: '教育背景：Example University', source: { kind: 'resume_extraction', referenceId: 'source-1' }, status: 'pending' as const, createdAt: 'now' },
+  { id: 'e2', key: 'experience.company', value: 'Example Co', source: { kind: 'resume_extraction', referenceId: 'source-1' }, status: 'pending' as const, createdAt: 'now' },
+  { id: 'e3', key: 'project.name', value: 'Search Engine', source: { kind: 'resume_extraction', referenceId: 'source-1' }, status: 'pending' as const, createdAt: 'now' },
+  { id: 'e4', key: 'skill.language', value: 'Go', source: { kind: 'resume_extraction', referenceId: 'source-1' }, status: 'pending' as const, createdAt: 'now' },
+  { id: 'e5', key: 'achievement.metric', value: 'Reduced latency 20%', source: { kind: 'resume_extraction', referenceId: 'source-1' }, status: 'pending' as const, createdAt: 'now' },
+  { id: 'e6', key: 'certificate.name', value: 'Cloud certificate', source: { kind: 'resume_extraction', referenceId: 'source-1' }, status: 'pending' as const, createdAt: 'now' },
+ ]
+ let uploadedExpectedRevision = -1
+ const container = await mount({
+  open: async () => profile, list: async () => ({ ...profile, revision: 2, proposals: [...profile.proposals, ...intakeProposals] }), changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+  sources: async () => [documentSource], upload: async (_file: Blob, _name: string, _requestId: string, revision: number) => { uploadedExpectedRevision = revision; return { source: documentSource, receipt: { kind: 'intake_completed', requestId: 'source-1:batch', revision: 2, proposals: intakeProposals } } },
+ } as never)
+ assert.match(container.textContent ?? '', /来源版本/)
+ assert.match(container.textContent ?? '', /缺失类别：education\.graduation_date/)
+ assert.match(container.textContent ?? '', /experience\.date_conflict/)
+ const fileInput = container.querySelector<HTMLInputElement>('#career-resume-file')!
+ const file = new dom.window.File(['resume'], 'resume.pdf', { type: 'application/pdf' })
+ Object.defineProperty(fileInput, 'files', { configurable: true, value: [file] })
+ await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+ await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+ assert.equal(uploadedExpectedRevision, 1)
+ assert.match(container.textContent ?? '', /简历已处理/)
+ assert.match(container.textContent ?? '', /本科/)
+ assert.match(container.textContent ?? '', /Example University/)
+ assert.match(container.textContent ?? '', /教育背景：Example University/)
+ assert.match(container.textContent ?? '', /待确认/)
+ for (const value of ['Example Co', 'Search Engine', 'Go', 'Reduced latency 20%', 'Cloud certificate']) assert.match(container.textContent ?? '', new RegExp(value))
+})
+
+test('failed resume upload preserves confirmed facts and offers a fresh attempt', async () => {
+ const failedSource = { id: 'failed-1', revision: 2, fileName: 'bad.pdf', mimeType: 'application/pdf', size: 3, digest: 'd', status: 'failed' as const, errorMessage: '无法解析简历', createdAt: 'now' }
+ const container = await mount({
+  open: async () => profile, list: async () => profile, changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+  sources: async () => [failedSource], upload: async () => ({ source: failedSource }),
+ } as never)
+ const fileInput = container.querySelector<HTMLInputElement>('#career-resume-file')!
+ Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['bad'], 'bad.pdf', { type: 'application/pdf' })] })
+ await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+ await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+ assert.match(container.textContent ?? '', /无法解析简历/)
+ assert.match(container.textContent ?? '', /本科/)
+ assert.match(container.textContent ?? '', /不会覆盖已确认档案/)
+ assert.equal(fileInput.disabled, false)
+ Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['new'], 'new.pdf', { type: 'application/pdf' })] })
+ await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+ assert.equal(button(container, '开始上传').hasAttribute('disabled'), false)
+})
+
+test('revision conflict refreshes and requires a deliberate new upload attempt', async () => {
+ let viewReads = 0
+ const container = await mount({
+  open: async () => profile, list: async () => { viewReads += 1; return { ...profile, revision: viewReads > 1 ? 4 : 1 } }, changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+  upload: async () => { throw Object.assign(new Error('profile changed'), { code: 'revision_conflict', currentRevision: 4 }) },
+ } as never)
+ const fileInput = container.querySelector<HTMLInputElement>('#career-resume-file')!
+ Object.defineProperty(fileInput, 'files', { configurable: true, value: [new dom.window.File(['resume'], 'resume.pdf', { type: 'application/pdf' })] })
+ await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+ await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+ assert.match(container.textContent ?? '', /请检查当前修订后明确开始一次新的上传/)
+ assert.match(container.textContent ?? '', /当前修订 4/)
+ assert.equal(button(container, '开始上传').hasAttribute('disabled'), false)
+})
+
+test('ambiguous resume upload retains the original identity and processing prevents another claim', async () => {
+ const pendingSource = { id: 'source-1', revision: 2, fileName: 'resume.pdf', mimeType: 'application/pdf', size: 12, digest: 'digest', status: 'processing' as const, createdAt: 'now' }
+ const attempts: Array<{ id: string; revision: number; file: Blob }> = []
+ const container = await mount({
+  open: async () => profile, list: async () => profile, changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') },
+  sources: async () => [pendingSource], upload: async (file: Blob, _name: string, id: string, revision: number) => { attempts.push({ file, id, revision }); throw Object.assign(new Error('network timeout'), { code: 'TIMEOUT' }) },
+ } as never)
+ const fileInput = container.querySelector<HTMLInputElement>('#career-resume-file')!
+ const file = new dom.window.File(['resume'], 'resume.pdf', { type: 'application/pdf' })
+ Object.defineProperty(fileInput, 'files', { configurable: true, value: [file] })
+ await act(async () => { fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+ await act(async () => { button(container, '开始上传').click(); await new Promise((resolve) => setImmediate(resolve)) })
+ assert.equal(attempts.length, 1)
+ assert.match(container.textContent ?? '', /上传结果暂时未知/)
+ await act(async () => { button(container, '查询来源状态').click(); await new Promise((resolve) => setImmediate(resolve)) })
+ assert.match(container.textContent ?? '', /仍在处理中/)
+ assert.equal(button(container, '开始上传').hasAttribute('disabled'), true)
+})
+
+test('scope switch clears resume source and upload state before old async response renders', async () => {
+ let finishOld: ((value: unknown) => void) | undefined
+ let sourceCall = 0
+ const api = { open: async () => profile, list: async () => profile, changes: async () => ({ revision: 1, changes: [] }), act: async () => { throw new Error('unused') }, receipt: async () => { throw new Error('unused') }, sources: () => ++sourceCall === 1 ? new Promise((resolve) => { finishOld = resolve }) : Promise.resolve([]) }
+ host = document.createElement('div'); document.body.append(host); root = createRoot(host)
+ const client = { career: api } as unknown as WeKnoraClient
+ const scopeController = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
+ await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'u' })); await new Promise((resolve) => setImmediate(resolve)) })
+ scopeController.switchScope('https://weknora.test', 'other', 'other-tenant')
+ await act(async () => { root!.render(React.createElement(CareerPage, { client, scopeController, userId: 'other' })); await new Promise((resolve) => setImmediate(resolve)) })
+ finishOld?.([{ id: 'private-old', revision: 1, fileName: 'private.pdf', mimeType: 'application/pdf', size: 1, digest: 'd', status: 'ready', createdAt: 'now' }])
+ await act(async () => { await new Promise((resolve) => setImmediate(resolve)) })
+ assert.doesNotMatch(host.textContent ?? '', /private\.pdf/)
 })
