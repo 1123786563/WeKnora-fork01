@@ -64,6 +64,7 @@ type RouterParams struct {
 	NativeArchiveHandler         *session.NativeArchiveHandler         `optional:"true"`
 	WorkbenchArtifactHandler     *session.WorkbenchArtifactHandler     `optional:"true"`
 	WorkbenchOverviewHandler     *session.WorkbenchOverviewHandler     `optional:"true"`
+	WorkbenchTaskStateHandler    *session.WorkbenchTaskStateHandler    `optional:"true"`
 	WorkbenchInboxHandler        *session.WorkbenchInboxHandler        `optional:"true"`
 	ExecutionTargetHandler       *handler.ExecutionTargetHandler       `optional:"true"`
 	ExecutionRegistrationHandler *handler.ExecutionRegistrationHandler `optional:"true"`
@@ -368,6 +369,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterExecutionRegistrationRoutes(v1, params.ExecutionRegistrationHandler, rbacGuards, params.ExecutionTargetHandler)
 		RegisterWorkbenchStartRoutes(v1, params.WorkbenchStartHandler, rbacGuards)
 		RegisterWorkbenchOverviewRoutes(v1, params.WorkbenchOverviewHandler, rbacGuards)
+		RegisterWorkbenchTaskStateRoutes(v1, params.WorkbenchTaskStateHandler, rbacGuards)
 		RegisterWorkbenchInboxRoutes(v1, params.WorkbenchInboxHandler, rbacGuards)
 		RegisterWorkbenchCommandRoutes(v1, params.WorkbenchCommandHandler, rbacGuards)
 		RegisterMobileVoiceRoutes(v1, params.MobileVoiceHandler, rbacGuards)
