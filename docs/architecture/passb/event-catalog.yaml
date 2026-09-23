@@ -1,0 +1,324 @@
+# Pass B 冻结版本化事件目录（B0.5 生成，passbguard 严格 schema + events_test 逐行校验）
+# 语义（Spec §6.5 / freeze B0.5）：事件只记录已发生的事实；命令式操作保持同步命令/port，
+# 命令式动词命名（send/create/update/...）被 loader 直接拒绝。
+# producer 是当前事实写入位点（file:Symbol，符号须真实声明于该文件）；
+# consumers 是当前消费/投影位点（仓库相对 .go 路径，须存在于磁盘）。
+# transport ∈ {in_process, durable}：durable 仅限已存在的事件事实表
+# （agent_run_events / native 台账），in_process 覆盖进程内 EventBus/回调/投影路径；
+# replay 一律 source-query（从权威源表重建投影）——B0 不新增 broker。
+# 每条 tenant-scoped 事件强制 tenant_id/occurred_at/event_id/idempotency_key/actor_origin。
+# 事件语义/版本变更须走串行契约修订 + 架构审查（framework:26）。
+
+events:
+    # ---- Agent Run 家族（durable 事实表 agent_run_events，per-run seq 单调）----
+    - id: agentrun.run.started
+      version: 1
+      producer: internal/application/service/agent_run_graph.go:ExecuteDurableRun
+      meaning: durable Agent Run 已开始执行（run_started 事实入 agent_run_events，含 run_id/session_id）
+      ordering: per-run seq 单调递增（run 行锁内分配）
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/application/repository/mobile_notification.go
+        - internal/modules/workbench/service/workbench/notification_worker.go
+        - internal/handler/session/agent_run.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, session_id]
+    - id: agentrun.run.attention_required
+      version: 1
+      producer: internal/modules/agentruntime/agent/approval/gate.go:RequestAndWait
+      meaning: 运行停靠等待用户注意（approval_requested/run_waiting：MCP 审批、MCP OAuth、开放连接器动作）
+      ordering: per-run seq 单调递增；同一 run 同时至多一个未决等待
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/modules/workbench/service/workbench/interaction.go
+        - internal/application/repository/mobile_notification.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, wait_kind]
+    - id: agentrun.run.completed
+      version: 1
+      producer: internal/application/repository/agent_run_events.go:Finalize
+      meaning: durable Agent Run 成功终态（run_completed 幂等收尾凭据，Finalize 去重依据其存在性）
+      ordering: per-run seq 单调递增；终态事件恰一条（幂等落账）
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/application/repository/mobile_notification.go
+        - internal/modules/workbench/service/workbench/notification.go
+        - internal/handler/session/agent_run.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, session_id]
+    - id: agentrun.run.failed
+      version: 1
+      producer: internal/application/service/agent_run_graph.go:durableRunFailureEvent
+      meaning: durable Agent Run 失败终态（run_failed 或预算耗尽 budget_exhausted 分类）
+      ordering: per-run seq 单调递增；终态事件恰一条
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/application/repository/mobile_notification.go
+        - internal/handler/session/agent_run.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, error_class]
+    - id: agentrun.run.cancelled
+      version: 1
+      producer: internal/application/repository/agent_run_lifecycle.go:CancelRun
+      meaning: Agent Run 被取消进入 canceled 终态（cancellation_requested 事实 + 会话槽原子释放）
+      ordering: per-run seq 单调递增；终态事件恰一条
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/handler/session/agent_run.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, reason]
+    - id: agentrun.tool.result
+      version: 1
+      producer: internal/modules/agentruntime/agent/trpc/engine.go:emitRunEvent
+      meaning: 一次工具调用结果已落账（tool_dispatched/tool_result 进入 run 事件流与 durable tool journal）
+      ordering: per-run seq 单调递增；同一 call_id 结果恰一条
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/handler/session/quick_answer_timeline.go
+        - internal/application/repository/execution_observation.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, tool_call_id]
+    - id: agentrun.approval.resolved
+      version: 1
+      producer: internal/modules/agentruntime/agent/approval/gate.go:Resolve
+      meaning: 一次人工审批等待已被裁决（Decision 落定并唤醒等待中的运行；retention 保护 approval.* 族）
+      ordering: per-pending 恰一次有效裁决；重复裁决被拒（ErrAlreadyResolved）
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/handler/mcp_service.go
+        - internal/modules/workbench/service/workbench/interaction.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, pending_id, approved]
+    # ---- Conversation 家族（messages/sessions 权威表 + 进程内 EventBus 流）----
+    - id: conversation.message.appended
+      version: 1
+      producer: internal/application/repository/message.go:CreateMessage
+      meaning: 一条消息已追加到会话（user/assistant/system 消息入 messages 表）
+      ordering: per-session 写入序；消息按 session 内偏移可排序
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/modules/channels/im/service.go
+        - internal/application/service/session.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, session_id, message_id]
+    - id: conversation.turn.appended
+      version: 1
+      producer: internal/modules/agentruntime/agent/finalize.go:emitCompletionEvent
+      meaning: 一轮问答已完成（EventAgentComplete：最终答案就绪、assistant 消息标记完成）
+      ordering: per-session 轮次单调；每轮恰一条完成事实
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/modules/channels/im/service.go
+        - internal/application/service/tenant_skill_transcript.go
+        - internal/handler/session/qa.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, session_id, request_id]
+    - id: conversation.session.created
+      version: 1
+      producer: internal/application/repository/session.go:Create
+      meaning: 会话已创建（sessions 表新行，含来源与属主）
+      ordering: per-tenant 创建序；会话 id 唯一
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/service/session.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, session_id, source]
+    - id: conversation.session.deleted
+      version: 1
+      producer: internal/application/repository/session.go:Delete
+      meaning: 会话已删除（软删除 + 运行删除屏障：durable run/control/usage 行保留至清理证明）
+      ordering: per-session 删除恰一次；删除屏障先行
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/repository/agent_run_lifecycle.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, session_id]
+    # ---- Knowledge 家族（knowledge 权威表 + worker 回调路径）----
+    - id: knowledge.processing.completed
+      version: 1
+      producer: internal/application/repository/knowledge.go:CompleteProcessingWithoutSubtasks
+      meaning: 知识文档处理全部完成（parse_status → completed：解析与全部 enrichment 子任务终态）
+      ordering: per-knowledge 恰一次完成跃迁（原子 promote）
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/service/knowledge_post_process.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, knowledge_id]
+    - id: knowledge.processing.failed
+      version: 1
+      producer: internal/application/service/knowledge_housekeeping.go:runSweep
+      meaning: 知识文档处理失败（parse_status → failed：解析失败或滞留文档被巡检置败）
+      ordering: per-knowledge 终态跃迁一次
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/service/knowledge_transfer.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, knowledge_id, failure_reason]
+    - id: knowledge.index.completed
+      version: 1
+      producer: internal/application/service/chunk.go:CreateChunks
+      meaning: 知识分块索引完成（chunk 连同向量写入，文档进入可检索状态 ChunkStatusIndexed）
+      ordering: per-knowledge 分批写入序；检索仅在 indexed 状态可见
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/service/knowledgebase_search.go
+        - internal/application/repository/chunk.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, knowledge_id, chunk_ids]
+    - id: knowledge.deletion.completed
+      version: 1
+      producer: internal/application/repository/knowledge.go:HardDeleteKnowledge
+      meaning: 知识文档删除完成（向量/分块随删除计划清除，硬删除终态）
+      ordering: per-knowledge 删除恰一次（删除计划先行）
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/service/knowledge_delete.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, knowledge_id]
+    # ---- Craft 家族（craft 权威表；craft 事件经 run 事件流投递）----
+    - id: craft.run.started
+      version: 1
+      producer: internal/application/service/craft_session.go:StartRun
+      meaning: Craft 运行已受理启动（活跃运行冲突检查 + 预算门 + run 创建）
+      ordering: per-session 活跃运行互斥；同时至多一个活跃 run
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/service/craft_lifecycle.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, workspace_id, run_id]
+    - id: craft.run.completed
+      version: 1
+      producer: internal/container/craft_runtime.go:Execute
+      meaning: Craft 运行执行完成（执行器返回 Result：产物/预览/结论落账，craft 事件帧已投影入 run 流）
+      ordering: per-run 终态一次
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/service/craft_scheduled.go
+        - internal/application/repository/workbench_list.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, workspace_id, run_id]
+    - id: craft.interaction.appended
+      version: 1
+      producer: internal/application/service/craft_control.go:RegisterInteraction
+      meaning: 一次 Craft 交互已登记（决策/命令交互入账，含出站投递同步状态）
+      ordering: per-session 交互序单调
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/repository/mobile_notification.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, interaction_id, kind]
+    - id: craft.artifact.published
+      version: 1
+      producer: internal/application/repository/craft_version.go:Publish
+      meaning: Craft 产物版本已发布（craft_versions 不可变版本行 + 版本文件集）
+      ordering: per-artifact 版本号单调递增；版本不可变
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/handler/session/workbench_artifacts.go
+        - internal/application/repository/craft_preview_check.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, workspace_id, version_id]
+    - id: craft.scheduled_run.completed
+      version: 1
+      producer: internal/application/repository/craft_scheduled.go:UpdateRunStatus
+      meaning: 计划任务运行终态（succeeded/failed 状态落账，含错误分类与完成时间）
+      ordering: per-run 状态机单向跃迁至终态一次
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/application/service/craft_scheduled.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, task_id, run_id, status]
+    # ---- Usage 家族（commercial 计量权威：native 台账 + 预算结算）----
+    - id: usage.observed
+      version: 1
+      producer: internal/application/repository/native_usage.go:Observe
+      meaning: 一次用量事实已被观察（累计提供方观测增量入 NativeUsageLedger；对齐 nativecontract EventKind "usage.observed"，retention 保护 usage.* 族）
+      ordering: per-run revision CAS 单调（累计回放增量不重复计费）
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/application/repository/execution_cleanup.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, run_id, revision]
+    - id: usage.settlement.completed
+      version: 1
+      producer: internal/modules/commercial/repository/commercial/budget_settlement.go:SettleReservationHold
+      meaning: 预算预留已结算（SettleReservationHold 幂等收口：占用量按水位落定，商用结算凭证持久化）
+      ordering: per-reservation 结算恰一次（幂等水印去重）
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/modules/commercial/service/commercial/settlement.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, reservation_key, watermark]
+    # ---- Workbench 家族（工作台投影更新：source-query 重建）----
+    - id: workbench.task.updated
+      version: 1
+      producer: internal/application/repository/workbench_request.go:UpdateFromState
+      meaning: 工作台任务请求状态已更新（pending → admitted/rejected 等状态机跃迁，含预留引用与原因）
+      ordering: per-request 状态机单向跃迁（期望状态 CAS）
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/handler/session/workbench_list.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, request_id, state]
+    - id: workbench.attention.updated
+      version: 1
+      producer: internal/modules/workbench/service/workbench/interaction.go:CreatePending
+      meaning: 工作台注意项已登记（审批/交互 pending 入工作台交互表，等待用户决定）
+      ordering: per-run pending 登记与裁决一次配对
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/handler/session/workbench_commands.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, interaction_id, run_id]
+    - id: workbench.timeline.updated
+      version: 1
+      producer: internal/handler/session/quick_answer_timeline.go:registerQuickAnswerTimelineRecorder
+      meaning: 运行时间线投影已更新（quick answer 时间线记录器消费 tool_call/tool_result 事实追加工序帧）
+      ordering: per-session 时间线序单调（工具调用/结果成对）
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/handler/session/qa.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, session_id, tool_call_id]
+    - id: workbench.artifact.updated
+      version: 1
+      producer: internal/application/service/message.go:UpdateMessage
+      meaning: 会话产物已更新（技能产物随消息 artifacts 列持久化，供工作台产物列表/签名下载）
+      ordering: per-message 产物追加序单调
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/handler/session/workbench_artifacts.go
+        - internal/application/repository/message.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, session_id, message_id]
+    # ---- Notification / Channel 家族（通知意图权威表 + 渠道投递路径）----
+    - id: notification.delivery.completed
+      version: 1
+      producer: internal/application/repository/mobile_notification.go:Ack
+      meaning: 移动通知送达完成（intent 状态落定 delivered/回执确认）
+      ordering: per-intent 恰一次终态确认（fence 防重复确认）
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/modules/workbench/service/workbench/notification_delivery.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, intent_id, receipt_id]
+    - id: notification.delivery.failed
+      version: 1
+      producer: internal/application/repository/mobile_notification.go:Expire
+      meaning: 移动通知投递失败终态（过期/重试耗尽落定，含失败原因）
+      ordering: per-intent 重试序递增后终态一次
+      replay: source-query
+      transport: durable
+      consumers:
+        - internal/modules/workbench/service/workbench/notification_worker.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, intent_id, failure_reason]
+    - id: channel.delivery.completed
+      version: 1
+      producer: internal/modules/channels/im/service.go:sendStreamReply
+      meaning: IM 渠道消息投递完成（流式回复送达渠道适配器）
+      ordering: per-session 回复序单调
+      replay: source-query
+      transport: in_process
+      consumers:
+        - internal/modules/channels/im/adapter.go
+      required_metadata: [tenant_id, occurred_at, event_id, idempotency_key, actor_origin, channel_id, session_id]

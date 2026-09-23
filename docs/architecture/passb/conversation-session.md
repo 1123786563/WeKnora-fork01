@@ -1,8 +1,9 @@
 # Pass B Brief — conversation-session（任务 B-conversation 之会话面）
 
-来源：`docs/architecture/moves/conversation.yaml`（scope 事实源）+ Pass A task A10 交付。
-本文是 Pass B 义务拆分之一；Query History/审计面见
-`docs/architecture/passb/conversation-queryhistory.md`。
+> child plan：**35-conversation-program**（B0.3 裁定标注，framework:71）。
+> 来源：`docs/architecture/moves/conversation.yaml`（scope 事实源）+ Pass A task A10 交付。
+> 本文是 Pass B 义务拆分之一；Query History/审计面见
+> `docs/architecture/passb/conversation-queryhistory.md`。
 
 ## Scope（scope）
 
@@ -34,10 +35,21 @@
 Session/Message/Feedback/分享/建议/临时文档的完整纵向切片；横向 host 包只留
 platform 本体（`list_pagination.go`、`upload_limit.go` 等）与其他模块尚未拆完的 legacy 文件。
 
+**B0.3 Step 3 裁定（共享宿主/platform 边界，passbguard 机器校验）**：本 brief 独占
+认领 handler/session 内其余 Session/Message/Feedback/share/attachment/stream 文件
+（wiki 修复器作用域文件→23-knowledge-wikifaq、workbench_*/artifact 文件→40-workbench、
+craft* 文件→41-craft、Agent Run/stream 文件→33-agentruntime-engine、
+native_archive 传输→34-agentruntime-protocol、browserskill/sandbox_terminal_*→13-execution，
+均不在本 brief scope，逐路径唯一属主见 ownership-matrix）；通用分页/上传限制/错误判定
+helper（`internal/handler/list_pagination.go`、`upload_limit.go`，含 isRequestBodyTooLarge）
+**保持 platform**，任何子计划不得认领，直至独立的消费者抽取计划另行裁定。
+
 ## Obligations（obligations）
 
 1. **删除别名**：删除 `internal/application/service/chat_pipeline/alias.go`
    （前置：IA3 已把 `internal/container/container.go:52` 切到新路径；删除前 grep 确认零 importer）。
+   **B0.3 裁定：删除动作由本义务独占执行**（单一属主 35-conversation-program 单一
+   执行面；conversation-queryhistory.md 义务 4 不执行删除、不重复认领）。
 2. **行为零变化的外部契约**（回归必测）：
    - Session/message SSE 流式端点与事件序列（`internal/handler/session/stream.go`）；
    - Share token：仅 `POST /share` 一次性揭示、`Session.ShareToken` json:"-"、

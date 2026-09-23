@@ -1,11 +1,68 @@
-package main
+package movemanifest_test
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Tencent/WeKnora/tools/internal/movemanifest"
 )
+
+// writeTree 在临时目录中落一批文件（目录自动创建）。
+func writeTree(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for rel, content := range files {
+		abs := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(abs), err)
+		}
+		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", abs, err)
+		}
+	}
+}
+
+// demoManifestYAML 是覆盖 LOCKED schema 全部字段的合法 manifest 样例。
+const demoManifestYAML = `module: demo
+description: demo module for tests
+move_packages:
+  - from: internal/demo
+    to: internal/modules/demo
+alias_obligations:
+  - old_import_path: internal/demo
+    passb_task: B-demo
+legacy_files:
+  - path: internal/application/service/demo.go
+    reason: trapped in horizontal service package
+    navigation_label: Demo service
+    passb_task: B-demo
+owned_files:
+  move_sources:
+  - internal/demo
+  move_targets:
+    - internal/modules/demo
+  importers:
+  - internal/container
+  module_files:
+    - internal/modules/demo/README.md
+    - internal/modules/demo/module.go
+    - internal/modules/demo/legacy/README.md
+test_commands:
+  - go test ./internal/modules/demo/... -count=1
+integration_points:
+  routes: []
+  workers: []
+  lifecycle_hooks: []
+forbidden_shared_files:
+  - internal/router/router.go
+  - internal/router/task.go
+  - internal/router/sync_task.go
+  - internal/container/container.go
+  - go.mod
+  - go.sum
+  - migrations/
+`
 
 func TestLoadManifestStrictAcceptsCompleteManifest(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "demo.yaml")
@@ -13,7 +70,7 @@ func TestLoadManifestStrictAcceptsCompleteManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := LoadManifestStrict(path)
+	m, err := movemanifest.LoadManifestStrict(path)
 	if err != nil {
 		t.Fatalf("合法 manifest 不应报错: %v", err)
 	}
@@ -44,7 +101,7 @@ func TestLoadManifestStrictRejectsUnknownField(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := LoadManifestStrict(path)
+	_, err := movemanifest.LoadManifestStrict(path)
 	if err == nil {
 		t.Fatal("schema 外字段（bogus_field）必须被 KnownFields(true) 拒绝")
 	}
@@ -62,7 +119,7 @@ func TestLoadManifestStrictRejectsUnknownNestedField(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := LoadManifestStrict(path)
+	_, err := movemanifest.LoadManifestStrict(path)
 	if err == nil {
 		t.Fatal("嵌套 mapping 中的 schema 外字段同样必须被拒绝")
 	}
@@ -80,7 +137,7 @@ func TestListManifestModulesSortedAndSkipsReadme(t *testing.T) {
 		"docs/architecture/moves/not-a-move.txt": "skip me",
 	})
 
-	mods, err := ListManifestModules(root)
+	mods, err := movemanifest.ListManifestModules(root)
 	if err != nil {
 		t.Fatal(err)
 	}

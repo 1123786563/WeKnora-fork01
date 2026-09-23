@@ -1,0 +1,18 @@
+# 合法治理 fixture：legacy 行故意倒序，loader 必须按稳定 ID（路径）排序后返回。
+legacy_files:
+  - path: internal/application/service/zeta_widget.go
+    module: workbench
+    plan: 40-workbench
+    destination: internal/modules/workbench/service
+    integration_owner: ib4
+    delete_barrier: ib4
+  - path: internal/application/service/alpha_chat.go
+    module: conversation
+    plan: 35-conversation-program
+    destination: internal/modules/conversation/service
+    integration_owner: ""
+    delete_barrier: ib3
+aliases:
+  - old_import_path: internal/application/service/chat_pipeline
+    plan: 35-conversation-program
+    delete_barrier: ib2
