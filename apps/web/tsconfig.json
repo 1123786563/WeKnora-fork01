@@ -92,12 +92,6 @@
       "@weknora/domain/auth/onboarding": [
         "../../packages/domain/src/auth/onboarding.ts"
       ],
-      "@weknora/ui": [
-        "../../packages/ui/src/index.tsx"
-      ],
-      "@weknora/ui/*": [
-        "../../packages/ui/src/*.tsx"
-      ],
       "@weknora/views": [
         "../../packages/views/src/index.ts"
       ],

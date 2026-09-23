@@ -15,7 +15,6 @@
     "@weknora/core": "workspace:*",
     "@weknora/domain": "file:../../packages/domain",
     "@weknora/i18n": "workspace:*",
-    "@weknora/ui": "file:../../packages/ui",
     "@weknora/views": "workspace:*",
     "dompurify": "^3.4.11",
     "katex": "^0.16.45",
