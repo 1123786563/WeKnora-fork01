@@ -141,15 +141,12 @@ export function sessionSourceText(row: QueryHistorySessionRow): string {
 
 function errorText(reason: unknown, fallback: string): string { return reason instanceof Error ? reason.message : fallback; }
 
-const QH_DATE_INPUT = 'box-border h-[32px] rounded-[6px] border border-[#e7e7ea] bg-surface px-[8px] font-[inherit] text-[13px] text-[rgba(23,26,29,0.92)] focus:border-accent focus:outline-none';
-const QH_TEXT_INPUT = QH_DATE_INPUT + ' w-[180px]';
-const QH_TABLE = 'w-full min-w-[680px] border-collapse text-[13px]';
-const QH_TABLE_CELL = 'border-b border-[#eef1f5] px-[10px] py-[8px] text-left';
+/* S6 Tailwind 收编：输入/表格/tag utility 串 → settings-wrapper.css .qh-* 规则。 */
 const PRIVACY_MODES: readonly QueryHistoryMode[] = ['normal', 'anonymized', 'disabled'];
 const PRIVACY_TAG_TONES: Record<QueryHistoryMode, string> = {
-  normal: 'bg-[rgba(7,192,95,0.1)] border-[rgba(7,192,95,0.24)] text-[#078a45]',
-  anonymized: 'bg-[rgba(234,167,49,0.1)] border-[rgba(234,167,49,0.22)] text-[#9a6a0b]',
-  disabled: 'bg-[rgba(220,60,60,0.08)] border-[rgba(220,60,60,0.2)] text-[#c03939]',
+  normal: 'qh-tag--normal',
+  anonymized: 'qh-tag--anonymized',
+  disabled: 'qh-tag--disabled',
 };
 
 /** Snapshot drawer body (createPortal into document.body — SystemAuditLogPanel
@@ -169,55 +166,56 @@ function QueryHistorySnapshotDrawer({ snapshot, locale, t, onClose }: { snapshot
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
+  /* 抽屉 portal 挂 body → settings-wrapper.css 的 .qh-drawer*（unscoped）。 */
   return createPortal(
-    <div className="fixed bottom-0 right-0 top-0 z-[3200] w-[min(640px,100vw)] max-w-[640px] overflow-y-auto border-l border-[rgba(120,135,155,0.25)] bg-white p-6 shadow-[-8px_0_24px_rgba(23,32,51,0.14)] [&_h4]:m-0 [&_h4]:mb-3 [&_h4]:mt-[18px] [&_h4]:border-t [&_h4]:border-[rgba(120,135,155,0.16)] [&_h4]:pt-[18px] [&_h4]:text-xs [&_h4]:font-semibold [&_h4]:tracking-[0.04em] [&_h4]:text-[#8a96a8] first:[&_h4]:mt-0" role="dialog" aria-modal="true" aria-label={t('settings.queryHistory.detailTitle')}>
-      <div className="mb-4 flex items-start justify-between [&_h3]:m-0 [&_h3]:mb-1.5 [&_h3]:text-lg [&_h3]:font-semibold [&_p]:m-0 [&_p]:text-xs [&_p]:text-[#8a96a8] [&_button]:cursor-pointer [&_button]:border-0 [&_button]:bg-transparent [&_button]:text-2xl">
-        <div className="min-w-0">
-          <h3 className="break-all">{session.title}</h3>
-          <p className="break-all font-mono">{session.id}</p>
+    <div className="qh-drawer" role="dialog" aria-modal="true" aria-label={t('settings.queryHistory.detailTitle')}>
+      <div className="qh-drawer-head">
+        <div className="qh-drawer-titlewrap">
+          <h3>{session.title}</h3>
+          <p>{session.id}</p>
         </div>
         <button type="button" aria-label={t('settings.queryHistory.close')} onClick={onClose}>×</button>
       </div>
       <h4>{t('settings.queryHistory.snapshotMeta')}</h4>
-      <dl className="m-0 grid gap-2.5">
+      <dl className="qh-meta-list">
         {meta.map(([label, value]) => (
-          <div key={label} className="border-b border-[rgba(120,135,155,0.18)] pb-2">
-            <dt className="text-xs text-[#5c6b83]">{label}</dt>
-            <dd className="m-0 mt-1 break-all">{value}</dd>
+          <div key={label} className="qh-meta-row">
+            <dt>{label}</dt>
+            <dd>{value}</dd>
           </div>
         ))}
       </dl>
       <h4>{t('settings.queryHistory.snapshotMessages')}</h4>
-      {snapshot.messages.length === 0 ? <p className="m-0 text-[13px] text-[#8a96a8]">{t('common.empty')}</p> : (
-        <ol className="m-0 flex list-none flex-col gap-2.5 p-0">
+      {snapshot.messages.length === 0 ? <p className="qh-drawer-empty">{t('common.empty')}</p> : (
+        <ol className="qh-msg-list">
           {snapshot.messages.map((message) => {
             const refs = messageReferenceCount(message);
             return (
-              <li key={message.id} className="rounded-lg border border-[rgba(120,135,155,0.18)] bg-[#f7f9fb] p-3">
-                <div className="mb-1.5 flex items-center gap-2">
-                  <span className={`inline-flex shrink-0 whitespace-nowrap rounded-[999px] border px-[7px] text-xs leading-[18px] ${message.role === 'user' ? PRIVACY_TAG_TONES.normal : message.role === 'assistant' ? 'bg-[rgba(46,109,230,0.08)] border-[rgba(46,109,230,0.22)] text-[#2f5ca8]' : 'bg-[rgba(120,135,155,0.1)] border-[rgba(120,135,155,0.2)] text-[#5c6b83]'}`}>
+              <li key={message.id} className="qh-msg">
+                <div className="qh-msg-head">
+                  <span className={'qh-tag ' + (message.role === 'user' ? PRIVACY_TAG_TONES.normal : message.role === 'assistant' ? 'qh-tag--assistant' : 'qh-tag--system')}>
                     {message.role === 'user' ? t('settings.queryHistory.roleUser') : message.role === 'assistant' ? t('settings.queryHistory.roleAssistant') : t('settings.queryHistory.roleSystem')}
                   </span>
-                  {refs > 0 ? <span className="inline-flex shrink-0 items-center gap-1 rounded-[999px] border border-[rgba(120,135,155,0.2)] bg-[rgba(120,135,155,0.08)] px-[7px] text-xs leading-[18px] text-[#5c6b83]" data-testid="query-history-ref-badge">{t('settings.queryHistory.refCount', { n: refs })}</span> : null}
+                  {refs > 0 ? <span className="qh-ref-badge" data-testid="query-history-ref-badge">{t('settings.queryHistory.refCount', { n: refs })}</span> : null}
                 </div>
-                <p className="m-0 whitespace-pre-wrap break-all text-[13px] leading-[1.55]">{message.content}</p>
+                <p className="qh-msg-content">{message.content}</p>
               </li>
             );
           })}
         </ol>
       )}
-      {snapshot.truncated ? <p className="m-0 mt-2 text-xs text-[#9a6a0b]" role="note">{t('settings.queryHistory.truncated')}</p> : null}
+      {snapshot.truncated ? <p className="qh-truncated-note" role="note">{t('settings.queryHistory.truncated')}</p> : null}
       <h4>{t('settings.queryHistory.snapshotFeedback', { like: summary.like, dislike: summary.dislike })}</h4>
-      {snapshot.feedback.length === 0 ? <p className="m-0 text-[13px] text-[#8a96a8]">{t('settings.queryHistory.noFeedback')}</p> : (
-        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+      {snapshot.feedback.length === 0 ? <p className="qh-drawer-empty">{t('settings.queryHistory.noFeedback')}</p> : (
+        <ul className="qh-feedback-list">
           {snapshot.feedback.map((row) => (
-            <li key={row.id} className="rounded-lg border border-[rgba(120,135,155,0.18)] p-3">
-              <div className="flex items-center gap-2 text-xs text-[#5c6b83]">
-                <span className={`inline-flex shrink-0 whitespace-nowrap rounded-[999px] border px-[7px] leading-[18px] ${row.rating === 'like' ? PRIVACY_TAG_TONES.normal : PRIVACY_TAG_TONES.disabled}`}>{row.rating === 'like' ? t('settings.queryHistory.feedbackLike') : t('settings.queryHistory.feedbackDislike')}</span>
-                <span className="break-all font-mono">{row.message_id}</span>
-                <span className="break-all">{row.user_id}</span>
+            <li key={row.id} className="qh-feedback">
+              <div className="qh-feedback-meta">
+                <span className={'qh-tag ' + (row.rating === 'like' ? PRIVACY_TAG_TONES.normal : PRIVACY_TAG_TONES.disabled)}>{row.rating === 'like' ? t('settings.queryHistory.feedbackLike') : t('settings.queryHistory.feedbackDislike')}</span>
+                <span className="qh-feedback-id">{row.message_id}</span>
+                <span className="qh-feedback-user">{row.user_id}</span>
               </div>
-              {typeof row.comment === 'string' && row.comment ? <p className="m-0 mt-1.5 whitespace-pre-wrap break-all text-[13px]">{row.comment}</p> : null}
+              {typeof row.comment === 'string' && row.comment ? <p className="qh-feedback-comment">{row.comment}</p> : null}
             </li>
           ))}
         </ul>
@@ -439,12 +437,12 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
   // placeholder): a plain JSX-returning closure keeps one definition without
   // remounting the radio group on every parent render.
   const privacyPolicyCard = (
-    <Card data-testid="query-history-privacy" className="flex flex-col gap-2">
-      <h3 className="m-0 text-[15px] font-semibold text-[rgba(23,26,29,0.92)]">{t('settings.queryHistory.privacyTitle')}</h3>
-      <p className="m-0 text-[13px] text-[rgba(23,26,29,0.6)]">{t('settings.queryHistory.privacyDescription')}</p>
-      <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t('settings.queryHistory.privacyTitle')}>
+    <Card data-testid="query-history-privacy" className="qh-privacy">
+      <h3>{t('settings.queryHistory.privacyTitle')}</h3>
+      <p className="qh-privacy-desc">{t('settings.queryHistory.privacyDescription')}</p>
+      <div className="qh-privacy-modes" role="radiogroup" aria-label={t('settings.queryHistory.privacyTitle')}>
         {PRIVACY_MODES.map((candidate) => (
-          <label key={candidate} className="flex items-center gap-2 text-[13px]">
+          <label key={candidate} className="qh-privacy-mode">
             <input
               type="radio"
               name="query-history-mode"
@@ -453,13 +451,13 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
               onChange={() => { void updateMode(candidate); }}
               data-testid={`query-history-mode-${candidate}`}
             />
-            <span className={`inline-flex shrink-0 whitespace-nowrap rounded-[999px] border px-[7px] text-xs leading-[18px] ${PRIVACY_TAG_TONES[candidate]}`}>{t(`settings.queryHistory.mode_${candidate}`)}</span>
-            <span className="text-[rgba(23,26,29,0.6)]">{t(`settings.queryHistory.mode_${candidate}_hint`)}</span>
+            <span className={'qh-tag ' + PRIVACY_TAG_TONES[candidate]}>{t(`settings.queryHistory.mode_${candidate}`)}</span>
+            <span className="qh-privacy-hint">{t(`settings.queryHistory.mode_${candidate}_hint`)}</span>
           </label>
         ))}
       </div>
-      {!canEditPolicy ? <p className="m-0 text-xs text-[#8a96a8]">{t('settings.queryHistory.privacyReadonly')}</p> : null}
-      {policySaving ? <p className="m-0 text-xs text-[#8a96a8]">{t('settings.queryHistory.privacySaving')}</p> : null}
+      {!canEditPolicy ? <p className="qh-privacy-note">{t('settings.queryHistory.privacyReadonly')}</p> : null}
+      {policySaving ? <p className="qh-privacy-note">{t('settings.queryHistory.privacySaving')}</p> : null}
       {policyError ? <Status tone="error">{policyError}</Status> : null}
     </Card>
   );
@@ -468,7 +466,7 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
 
   if (effectiveMode === 'disabled') {
     return (
-      <div data-testid="query-history-panel" className="flex flex-col gap-4">
+      <div data-testid="query-history-panel" className="qh-panel">
         <Card data-testid="query-history-disabled">
           <Status>{t('settings.queryHistory.disabledPlaceholder')}</Status>
         </Card>
@@ -478,25 +476,25 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
   }
 
   return (
-    <div data-testid="query-history-panel" className="flex flex-col gap-4">
+    <div data-testid="query-history-panel" className="qh-panel">
       {privacyPolicyCard}
 
-      <div className="flex flex-wrap items-center gap-[8px]">
-        <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
+      <div className="qh-filters">
+        <label className="qh-filter">
           {t('settings.queryHistory.filterUser')}
-          <input type="text" className={QH_TEXT_INPUT} value={userIdInput} onChange={(value) => setUserIdInput(String(value))} data-testid="query-history-user-input" />
+          <input type="text" className="qh-input qh-input--text" value={userIdInput} onChange={(value) => setUserIdInput(String(value))} data-testid="query-history-user-input" />
         </label>
-        <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
+        <label className="qh-filter">
           {t('settings.usage.rangeFrom')}
-          <input type="date" className={QH_DATE_INPUT} value={fromInput} onChange={(value) => setFromInput(String(value))} />
+          <input type="date" className="qh-input" value={fromInput} onChange={(value) => setFromInput(String(value))} />
         </label>
-        <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
+        <label className="qh-filter">
           {t('settings.usage.rangeTo')}
-          <input type="date" className={QH_DATE_INPUT} value={toInput} onChange={(value) => setToInput(String(value))} />
+          <input type="date" className="qh-input" value={toInput} onChange={(value) => setToInput(String(value))} />
         </label>
-        <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
+        <label className="qh-filter">
           {t('settings.queryHistory.filterFeedback')}
-          <select className={QH_DATE_INPUT} value={feedbackInput} onChange={(value) => setFeedbackInput(String(value) as QueryHistoryFeedbackFilter)} data-testid="query-history-feedback-select">
+          <select className="qh-input" value={feedbackInput} onChange={(value) => setFeedbackInput(String(value) as QueryHistoryFeedbackFilter)} data-testid="query-history-feedback-select">
             <option value="all">{t('settings.queryHistory.feedbackAll')}</option>
             <option value="like">{t('settings.queryHistory.feedbackLike')}</option>
             <option value="dislike">{t('settings.queryHistory.feedbackDislike')}</option>
@@ -508,22 +506,22 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
       {loading ? (
         <Status>{t('common.loading')}</Status>
       ) : loadError ? (
-        <div role="alert" className="flex flex-wrap items-center gap-2">
+        <div role="alert" className="qh-inline-error">
           <Status tone="error">{loadError}</Status>
           <TButton type="button" onClick={() => void load(page, filter)}>{t('common.retry')}</TButton>
         </div>
       ) : rows.length === 0 ? (
         <Status>{t('common.empty')}</Status>
       ) : (
-        <div className="overflow-x-auto">
-          <table className={QH_TABLE} data-testid="query-history-table">
+        <div className="qh-table-wrap">
+          <table className="qh-table" data-testid="query-history-table">
             <thead>
-              <tr className="border-b border-[#e7e7ea]">
-                <th className={QH_TABLE_CELL + ' font-semibold'}>{t('settings.queryHistory.colTitle')}</th>
-                <th className={QH_TABLE_CELL + ' font-semibold'}>{t('settings.queryHistory.colUser')}</th>
-                <th className={QH_TABLE_CELL + ' font-semibold'}>{t('settings.queryHistory.colSource')}</th>
-                <th className={QH_TABLE_CELL + ' font-semibold'}>{t('settings.queryHistory.colEngine')}</th>
-                <th className={QH_TABLE_CELL + ' font-semibold'}>{t('settings.queryHistory.colCreated')}</th>
+              <tr>
+                <th className="qh-th">{t('settings.queryHistory.colTitle')}</th>
+                <th className="qh-th">{t('settings.queryHistory.colUser')}</th>
+                <th className="qh-th">{t('settings.queryHistory.colSource')}</th>
+                <th className="qh-th">{t('settings.queryHistory.colEngine')}</th>
+                <th className="qh-th">{t('settings.queryHistory.colCreated')}</th>
               </tr>
             </thead>
             <tbody>
@@ -533,18 +531,18 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
                   <tr
                     key={row.id}
                     tabIndex={0}
-                    className="cursor-pointer outline-none hover:bg-[rgba(7,192,95,0.05)] focus:bg-[rgba(7,192,95,0.05)]"
+                    className="qh-tr"
                     onClick={() => { void openSnapshot(row); }}
                     onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openSnapshot(row); } }}
                   >
-                    <td className={QH_TABLE_CELL + ' max-w-[280px] truncate'}>{row.title}</td>
-                    <td className={QH_TABLE_CELL + ' font-mono text-xs'}>{row.user_id ?? '—'}</td>
-                    <td className={QH_TABLE_CELL}>{sessionSourceText(row)}</td>
-                    <td className={QH_TABLE_CELL}>{row.engine_type ?? '—'}</td>
-                    <td className={QH_TABLE_CELL}>
-                      <div className="flex flex-col gap-0.5">
+                    <td className="qh-td qh-td--truncate">{row.title}</td>
+                    <td className="qh-td qh-td--mono">{row.user_id ?? '—'}</td>
+                    <td className="qh-td">{sessionSourceText(row)}</td>
+                    <td className="qh-td">{row.engine_type ?? '—'}</td>
+                    <td className="qh-td">
+                      <div className="qh-time">
                         <span>{created.date}</span>
-                        <span className="text-[11px] text-[#8a96a8]">{created.time}</span>
+                        <span className="qh-time__clock">{created.time}</span>
                       </div>
                     </td>
                   </tr>
@@ -555,13 +553,13 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="qh-pager">
+        <div className="qh-pager-group">
           <TButton type="button" onClick={() => setPage(prevPage(page))} disabled={loading || !canGoPrevPage(page)}>{t('settings.queryHistory.prevPage')}</TButton>
-          <span className="text-[13px] text-[rgba(23,26,29,0.6)]" data-testid="query-history-page-indicator">{t('settings.queryHistory.pageIndicator', { page, totalPages })}</span>
+          <span className="qh-page-indicator" data-testid="query-history-page-indicator">{t('settings.queryHistory.pageIndicator', { page, totalPages })}</span>
           <TButton type="button" onClick={() => setPage(nextPage(page, totalPages))} disabled={loading || !canGoNextPage(page, totalPages)}>{t('settings.queryHistory.nextPage')}</TButton>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="qh-pager-group qh-pager-group--wrap">
           {exportPhase === 'done' ? (
             <>
               <TButton type="button" onClick={() => void downloadExport()} data-testid="query-history-export-download">{t('settings.queryHistory.exportDownload')}</TButton>
@@ -593,7 +591,7 @@ export function QueryHistoryPanel({ client, locale = 'zh-CN', role = 'owner' }: 
       ) : null}
       {snapshotSession && snapshotLoading ? <Status>{t('common.loading')}</Status> : null}
       {snapshotSession && snapshotError ? (
-        <div role="alert" className="flex flex-wrap items-center gap-2">
+        <div role="alert" className="qh-inline-error">
           <Status tone="error">{snapshotError}</Status>
           <TButton type="button" onClick={() => { void openSnapshot(snapshotSession); }}>{t('common.retry')}</TButton>
         </div>
