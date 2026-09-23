@@ -5,6 +5,7 @@ import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 import { attachMermaidViewerToolbar, hydrateMermaidBlocksWithBrowserDefaults, type MermaidViewerToolbarLabels } from '@weknora/views/chat/mermaid';
 import { previewKindForFile, type KnowledgePreviewKind } from '@weknora/domain/knowledge/preview';
 import './documents-u.css';
+import './chat/views-chat-u.css';
 
 export interface KnowledgeDocumentPreviewModel {
   kind: DocumentPreviewKind;

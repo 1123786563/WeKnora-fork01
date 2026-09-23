@@ -43,6 +43,7 @@ import { usePreferredLocale } from '../locale.ts';
 import { navigate } from '../platform/navigation.ts';
 import { loadAgents } from '../agents/api.ts';
 import type { Agent } from '../agents/state.ts';
+import './chat/views-chat-u.css';
 
 /* Tailwind v4 utility recipes shared across the page (AnalyticsPage constants). */
 const XP_PAGE = 'wk-page box-border h-full overflow-y-auto px-[28px] pt-[24px] pb-[32px]';

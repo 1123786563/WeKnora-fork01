@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Popup, Tooltip } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import type { ChatCopyTable } from '@weknora/views/chat/chat-copy';
+import './chat/views-chat-u.css';
 
 /*
  * Vue 事实源：frontend/src/components/ChatHeader.vue（DOM/类名 1:1）。

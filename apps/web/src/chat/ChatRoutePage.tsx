@@ -66,6 +66,7 @@ import { chatClearConfirmation } from './clear-confirmation.ts';
 import { SessionShareDialog } from './SessionShareDialog.tsx';
 import { clearPrefillParamsFromUrl, readPrefillKbIds, readPrefillQuery } from './prefill-query.ts';
 import './chat.css';
+import './chat/views-chat-u.css';
 
 interface ChatRoutePageProps {
   client: WeKnoraClient;

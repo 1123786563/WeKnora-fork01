@@ -236,17 +236,17 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
    * 语义钩点：role/aria 锚点、details ⋯ 菜单、wk-* hook 类、input aria-label。
    */
   return <>
-    {!batchMode && sourceOptions && onSourceChange ? <label className="grid gap-[0.25rem] mx-[4px] my-[0.55rem] text-[rgba(0,0,0,0.4)] text-[12px]">{t.sourceLabel}<select aria-label={t.sourceSelectLabel} className="w-full box-border rounded-[6px] border border-[#cbd5e1] bg-white p-[0.45rem] text-[rgba(0,0,0,0.9)] text-[13px]" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
-    {onBatchDelete && batchMode ? <div className="sticky bottom-0 z-10 flex items-center justify-between gap-[6px] mx-[4px] my-[6px] bg-[#f6f8fa]" role="toolbar" aria-label={formatChatCopy(t, 'batchManage')}>
+    {!batchMode && sourceOptions && onSourceChange ? <label className="wk-vc-session-sidebar-1">{t.sourceLabel}<select aria-label={t.sourceSelectLabel} className="wk-vc-session-sidebar-2" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
+    {onBatchDelete && batchMode ? <div className="wk-vc-session-sidebar-3" role="toolbar" aria-label={formatChatCopy(t, 'batchManage')}>
       <>
-        <button type="button" aria-label={formatChatCopy(t, 'batchCancel')} className="border-0 bg-transparent p-0 text-[12px] text-[#66758b] cursor-pointer hover:text-[#07c05f]" onClick={toggleBatchMode} disabled={batchBusy}>{formatChatCopy(t, 'batchCancel')}</button>
-        <label className="inline-flex items-center gap-[4px] text-[12px] text-[#66758b]">
+        <button type="button" aria-label={formatChatCopy(t, 'batchCancel')} className="wk-vc-session-sidebar-4" onClick={toggleBatchMode} disabled={batchBusy}>{formatChatCopy(t, 'batchCancel')}</button>
+        <label className="wk-vc-session-sidebar-5">
           <input ref={selectAllRef} type="checkbox" aria-label={formatChatCopy(t, 'batchSelectAll')} checked={allSelected} onChange={toggleAll} disabled={batchBusy || totalItems === 0} />{formatChatCopy(t, 'batchSelectAll')}
         </label>
-        <button type="button" aria-label={formatChatCopy(t, 'batchDelete', { count: selectedIds.size })} className="border-0 bg-transparent p-0 text-[12px] text-[#e34d59] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void submitBatchDelete()} disabled={batchBusy || selectedIds.size === 0}>{batchBusy ? formatChatCopy(t, 'batchDeleteBusy') : formatChatCopy(t, 'batchDelete', { count: selectedIds.size })}</button>
+        <button type="button" aria-label={formatChatCopy(t, 'batchDelete', { count: selectedIds.size })} className="wk-vc-session-sidebar-6" onClick={() => void submitBatchDelete()} disabled={batchBusy || selectedIds.size === 0}>{batchBusy ? formatChatCopy(t, 'batchDeleteBusy') : formatChatCopy(t, 'batchDelete', { count: selectedIds.size })}</button>
       </>
     </div> : null}
-    {batchError ? <p role="alert" className="mx-[4px] my-[4px] text-[12px] text-[#e34d59]">{formatChatCopy(t, 'batchDeleteError', { message: batchError })} <button type="button" aria-label={formatChatCopy(t, 'batchRetry')} className="border-0 bg-transparent p-0 text-[12px] text-[#07c05f] underline cursor-pointer" onClick={() => void submitBatchDelete()} disabled={batchBusy}>{formatChatCopy(t, 'batchRetry')}</button></p> : null}
+    {batchError ? <p role="alert" className="wk-vc-session-sidebar-7">{formatChatCopy(t, 'batchDeleteError', { message: batchError })} <button type="button" aria-label={formatChatCopy(t, 'batchRetry')} className="wk-vc-session-sidebar-8" onClick={() => void submitBatchDelete()} disabled={batchBusy}>{formatChatCopy(t, 'batchRetry')}</button></p> : null}
     {/* Vue menu.vue:113-131 renders four gradient skeleton rows while the
         first bucket loads (never a text "Loading..." label); menu.vue:162-167
         shows a small spinner below the rows while a later page streams in.
@@ -298,7 +298,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
                         if (event.key === 'Enter') { event.preventDefault(); void submitRename(session); }
                       }}
                       onBlur={() => { void submitRename(session); }} />
-                    {renameError ? <span role="alert" className="text-[11px] leading-[16px] text-[#e34d59]">{renameError}</span> : null}
+                    {renameError ? <span role="alert" className="wk-vc-session-sidebar-10">{renameError}</span> : null}
                   </form> : <>
                     {batchMode ? <input type="checkbox" className="batch-checkbox" aria-label={formatChatCopy(t, 'batchSelectSession', { title: session.title || untitledLabel || t.untitledChat })} checked={selectedIds.has(session.id)} onChange={() => toggleSelected(session.id)} onClick={(event) => event.stopPropagation()} disabled={batchBusy} /> : null}
                     <span className={batchMode ? 'submenu_title submenu_title--batch' : 'submenu_title'} title={session.title || untitledLabel || t.untitledChat}>
@@ -350,7 +350,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
                           {sessionDangerAction?.sessionId === session.id ? <div className="session-action-confirm wk-chat-session-confirm" role="dialog" aria-label={sessionDangerAction.type === 'clear' ? t.clearMessages : t.deleteSession}>
                             <div className="session-action-confirm__title">{sessionDangerAction.type === 'clear' ? t.clearConfirmTitle : t.deleteConfirmTitle}</div>
                             <div className="session-action-confirm__body">{sessionDangerAction.type === 'clear' ? t.clearConfirmBody : t.deleteConfirmBody}</div>
-                            {sessionDangerError ? <p role="alert" className="m-0 px-[6px] pb-[4px] text-[11px] text-[#e34d59]">{sessionDangerError}</p> : null}
+                            {sessionDangerError ? <p role="alert" className="wk-vc-session-sidebar-11">{sessionDangerError}</p> : null}
                             <div className="session-action-confirm__footer">
                               <button type="button" className="session-action-confirm__btn" onClick={() => setSessionDangerAction(null)} disabled={sessionDangerBusy}>{t.renameCancel}</button>
                               <button type="button" className="session-action-confirm__btn is-danger" onClick={() => void submitSessionDangerAction()} disabled={sessionDangerBusy}>{sessionDangerAction.type === 'clear' ? t.clearConfirmAction : t.deleteConfirmAction}</button>
@@ -385,16 +385,16 @@ export function SessionSidebar({ copy, sessions, selectedSessionId, loading = fa
    * stays unstyled: its old styling came from a .wk-chat-sidebar-scoped rule
    * that only ever reached this fallback context.
    */
-  return <aside className="flex min-w-0 flex-col gap-0 overflow-y-auto bg-[#f9f9f9] border-r border-[#e7e7e7] box-border p-[12px] pb-[16px]" aria-label={t.sidebarTitle}>
-    <div className="flex items-center justify-between gap-[0.6rem] mb-[8px]">
-      <button type="button" className="flex w-full box-border items-center gap-[8px] rounded-[8px] border-0 bg-transparent px-[10px] py-[8px] text-[#07c05f] text-[14px] font-medium cursor-pointer transition-[background-color] duration-[150ms] ease-[ease] hover:bg-[#e9f8ec]" onClick={onCreate}>
+  return <aside className="wk-vc-session-sidebar-12" aria-label={t.sidebarTitle}>
+    <div className="wk-vc-session-sidebar-13">
+      <button type="button" className="wk-ease-ease wk-vc-session-sidebar-14" onClick={onCreate}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg>
         <span>{t.newChat}</span>
       </button>
     </div>
-    {sourceOptions && onSourceChange ? <label className="grid gap-[0.25rem] my-[0.55rem] text-[rgba(0,0,0,0.4)] text-[12px]">{t.sourceLabel}<select aria-label={t.sourceSelectLabel} className="w-full box-border rounded-[6px] border border-[#cbd5e1] bg-white p-[0.45rem] text-[rgba(0,0,0,0.9)] text-[13px]" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
-    {onKeywordChange ? <label className="grid gap-[0.25rem] my-[0.55rem] text-[rgba(0,0,0,0.4)] text-[12px]">{t.searchSessions}<input className="w-full box-border rounded-[6px] border border-[#cbd5e1] bg-white p-[0.45rem] text-[rgba(0,0,0,0.9)] text-[13px] placeholder:text-[rgba(0,0,0,0.26)]" value={keyword ?? ''} onChange={(event) => onKeywordChange(event.target.value)} placeholder={t.searchSessions} /></label> : null}
-    {onGroupModeChange ? <label className="grid gap-[0.25rem] my-[0.55rem] text-[rgba(0,0,0,0.4)] text-[12px]">{t.groupLabel}<select className="w-full box-border rounded-[6px] border border-[#cbd5e1] bg-white p-[0.45rem] text-[rgba(0,0,0,0.9)] text-[13px]" value={groupMode ?? 'none'} onChange={(event) => onGroupModeChange(event.target.value === 'date' ? 'date' : 'none')}><option value="none">{t.groupAll}</option><option value="date">{t.groupByDate}</option></select></label> : null}
+    {sourceOptions && onSourceChange ? <label className="wk-vc-session-sidebar-15">{t.sourceLabel}<select aria-label={t.sourceSelectLabel} className="wk-vc-session-sidebar-2" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
+    {onKeywordChange ? <label className="wk-vc-session-sidebar-15">{t.searchSessions}<input className="placeholder:text-[rgba(0,0,0,0.26)] wk-vc-session-sidebar-2" value={keyword ?? ''} onChange={(event) => onKeywordChange(event.target.value)} placeholder={t.searchSessions} /></label> : null}
+    {onGroupModeChange ? <label className="wk-vc-session-sidebar-15">{t.groupLabel}<select className="wk-vc-session-sidebar-2" value={groupMode ?? 'none'} onChange={(event) => onGroupModeChange(event.target.value === 'date' ? 'date' : 'none')}><option value="none">{t.groupAll}</option><option value="date">{t.groupByDate}</option></select></label> : null}
     <SessionSidebarList
       copy={t}
       sessions={sessions}
@@ -408,6 +408,6 @@ export function SessionSidebar({ copy, sessions, selectedSessionId, loading = fa
       onDelete={onDelete}
       onShareSession={onShareSession}
     />
-    {onPageChange && pageCount > 1 ? <nav className="mt-auto flex items-center justify-center gap-[0.4rem] pt-[0.75rem] text-[rgba(0,0,0,0.4)] text-[12px]" aria-label={t.conversationPagesLabel}><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[8px] py-[2px] text-[rgba(0,0,0,0.6)] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" disabled={page <= 1 || loading} onClick={() => onPageChange(Math.max(1, page - 1))}>{t.previous}</button><span>{formatChatCopy(t, 'pageOf', { page, total: pageCount })}</span><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[8px] py-[2px] text-[rgba(0,0,0,0.6)] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" disabled={page >= pageCount || loading} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>{t.next}</button></nav> : null}
+    {onPageChange && pageCount > 1 ? <nav className="wk-vc-session-sidebar-16" aria-label={t.conversationPagesLabel}><button type="button" className="wk-vc-session-sidebar-17" disabled={page <= 1 || loading} onClick={() => onPageChange(Math.max(1, page - 1))}>{t.previous}</button><span>{formatChatCopy(t, 'pageOf', { page, total: pageCount })}</span><button type="button" className="wk-vc-session-sidebar-17" disabled={page >= pageCount || loading} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>{t.next}</button></nav> : null}
   </aside>;
 }

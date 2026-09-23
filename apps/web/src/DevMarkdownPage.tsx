@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { hydrateMermaidBlocksWithBrowserDefaults } from '@weknora/views/chat/mermaid';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
+import './chat/views-chat-u.css';
 
 export const MARKDOWN_FIXTURE_SECTIONS = [
   'basic', 'latex', 'code', 'table', 'lists', 'mixed', 'mermaid', 'stream', 'custom',
