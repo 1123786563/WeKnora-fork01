@@ -18,6 +18,45 @@ import (
 // must reject the request instead of silently restarting the list.
 var ErrWorkbenchCursor = errors.New("invalid workbench list cursor")
 
+const workbenchSearchMaxLen = 200
+
+// normalizeWorkbenchSearch collapses whitespace and caps length so a hostile
+// or accidental giant term cannot balloon the LIKE pattern.
+func normalizeWorkbenchSearch(value string) string {
+	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	if len(value) > workbenchSearchMaxLen {
+		value = value[:workbenchSearchMaxLen]
+	}
+	return value
+}
+
+// likeEscaped escapes LIKE wildcards so user input matches literally.
+func likeEscaped(term string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(term)
+}
+
+// searchPredicate is dialect-specific only in the ESCAPE literal: MySQL parses
+// a single backslash as the empty string, PostgreSQL/SQLite do not.
+func searchPredicate(db *gorm.DB) string {
+	if db.Dialector.Name() == "mysql" {
+		return "LOWER(sessions.title) LIKE LOWER(?) ESCAPE '\\\\'"
+	}
+	return "LOWER(sessions.title) LIKE LOWER(?) ESCAPE '\\'"
+}
+
+// attentionPendingExpr is a portable EXISTS projection: one query, no
+// per-session follow-up reads (the N+1 rule applies to reads, not SQL).
+const attentionPendingExpr = `EXISTS (SELECT 1 FROM workbench_interactions wi
+	WHERE wi.tenant_id = agent_runs.tenant_id AND wi.run_id = agent_runs.run_id
+	AND wi.owner_id = agent_runs.owner_id AND wi.status = 'pending')`
+
+func attentionOf(status string, pendingInteraction bool) string {
+	if status == "waiting_user" || pendingInteraction {
+		return "required"
+	}
+	return "none"
+}
+
 const (
 	workbenchListDefaultLimit = 30
 	workbenchListMaxLimit     = 100
@@ -27,10 +66,12 @@ const (
 // never part of the filter: they are separate, required arguments so every
 // generated query binds them.
 type WorkbenchExecutionFilter struct {
-	Status  string
-	AgentID string
-	Cursor  string
-	Limit   int
+	Status       string
+	AgentID      string
+	Query        string // 任务标题子串搜索（忽略大小写；全空白归一为无搜索）
+	ArchivedOnly bool   // false（默认）=仅未归档；true=仅已归档
+	Cursor       string
+	Limit        int
 }
 
 // WorkbenchExecutionSummary is one list row. The agent/target/workspace/space
@@ -44,6 +85,9 @@ type WorkbenchExecutionSummary struct {
 	WorkspaceRef string `json:"workspace_ref,omitempty"`
 	SpaceID      string `json:"space_id,omitempty"`
 	Status       string `json:"status"`
+	Title        string `json:"title,omitempty"`
+	Attention    string `json:"attention"` // "none" | "required"：waiting_user 或存在 pending interaction
+	ArchivedAt   string `json:"archived_at,omitempty"`
 	WaitReason   string `json:"wait_reason,omitempty"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
@@ -58,24 +102,29 @@ type WorkbenchExecutionPage struct {
 // scope and filter it was created under: a token replayed against a different
 // tenant, owner, agent or status is rejected rather than trusted.
 type workbenchListCursor struct {
-	Version   int    `json:"v"`
-	TenantID  uint64 `json:"tenant_id"`
-	OwnerID   string `json:"owner_id"`
-	AgentID   string `json:"agent_id,omitempty"`
-	Status    string `json:"status,omitempty"`
-	CreatedAt string `json:"created_at"`
-	RunID     string `json:"run_id"`
+	Version      int    `json:"v"`
+	TenantID     uint64 `json:"tenant_id"`
+	OwnerID      string `json:"owner_id"`
+	AgentID      string `json:"agent_id,omitempty"`
+	Status       string `json:"status,omitempty"`
+	Query        string `json:"q,omitempty"`
+	ArchivedOnly bool   `json:"archived_only,omitempty"`
+	CreatedAt    string `json:"created_at"`
+	RunID        string `json:"run_id"`
 }
 
 type workbenchListRow struct {
-	TenantID   uint64
-	RunID      string
-	SessionID  string
-	Status     string
-	WaitReason string
-	Snapshot   string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	TenantID         uint64
+	RunID            string
+	SessionID        string
+	Status           string
+	WaitReason       string
+	Snapshot         string
+	Title            string
+	ArchivedAt       *time.Time
+	AttentionPending bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 func (workbenchListRow) TableName() string { return "agent_runs" }
@@ -118,16 +167,16 @@ func snapshotAgentExpr(db *gorm.DB) string {
 // PostgreSQL TIMESTAMPTZ and MySQL DATETIME compare natively.
 func listOrderExpr(db *gorm.DB) string {
 	if db.Dialector.Name() == "sqlite" {
-		return "julianday(created_at) DESC, run_id DESC"
+		return "julianday(agent_runs.created_at) DESC, agent_runs.run_id DESC"
 	}
-	return "created_at DESC, run_id DESC"
+	return "agent_runs.created_at DESC, agent_runs.run_id DESC"
 }
 
 func listKeysetPredicate(db *gorm.DB, anchor time.Time, runID string) string {
 	if db.Dialector.Name() == "sqlite" {
-		return "(julianday(created_at) < julianday(?) OR (julianday(created_at) = julianday(?) AND run_id < ?))"
+		return "(julianday(agent_runs.created_at) < julianday(?) OR (julianday(agent_runs.created_at) = julianday(?) AND agent_runs.run_id < ?))"
 	}
-	return "(created_at < ? OR (created_at = ? AND run_id < ?))"
+	return "(agent_runs.created_at < ? OR (agent_runs.created_at = ? AND agent_runs.run_id < ?))"
 }
 
 func encodeWorkbenchListCursor(cursor workbenchListCursor) string {
@@ -165,6 +214,7 @@ func (s *WorkbenchListStore) ListOwnedExecutions(ctx context.Context, tenantID u
 	}
 	filter.Status = strings.TrimSpace(filter.Status)
 	filter.AgentID = strings.TrimSpace(filter.AgentID)
+	filter.Query = normalizeWorkbenchSearch(filter.Query)
 	if filter.Status != "" && !validWorkbenchListStatus(filter.Status) {
 		return WorkbenchExecutionPage{}, fmt.Errorf("%w: unknown status %q", ErrWorkbenchCursor, filter.Status)
 	}
@@ -177,13 +227,22 @@ func (s *WorkbenchListStore) ListOwnedExecutions(ctx context.Context, tenantID u
 	}
 
 	query := s.db.WithContext(ctx).Table("agent_runs").
-		Select("tenant_id", "run_id", "session_id", "status", "wait_reason", "snapshot", "created_at", "updated_at").
-		Where("tenant_id = ? AND owner_id = ?", tenantID, ownerID)
+		Select("agent_runs.tenant_id, agent_runs.run_id, agent_runs.session_id, agent_runs.status, agent_runs.wait_reason, agent_runs.snapshot, agent_runs.created_at, agent_runs.updated_at, sessions.title AS title, sessions.archived_at AS archived_at, "+attentionPendingExpr+" AS attention_pending").
+		Joins("JOIN sessions ON sessions.tenant_id = agent_runs.tenant_id AND sessions.id = agent_runs.session_id").
+		Where("agent_runs.tenant_id = ? AND agent_runs.owner_id = ?", tenantID, ownerID)
 	if filter.Status != "" {
-		query = query.Where("status = ?", filter.Status)
+		query = query.Where("agent_runs.status = ?", filter.Status)
 	}
 	if filter.AgentID != "" {
 		query = query.Where(snapshotAgentExpr(s.db)+" = ?", filter.AgentID)
+	}
+	if filter.Query != "" {
+		query = query.Where(searchPredicate(s.db), "%"+likeEscaped(filter.Query)+"%")
+	}
+	if filter.ArchivedOnly {
+		query = query.Where("sessions.archived_at IS NOT NULL")
+	} else {
+		query = query.Where("sessions.archived_at IS NULL")
 	}
 	if strings.TrimSpace(filter.Cursor) != "" {
 		cursor, err := decodeWorkbenchListCursor(filter.Cursor)
@@ -191,7 +250,8 @@ func (s *WorkbenchListStore) ListOwnedExecutions(ctx context.Context, tenantID u
 			return WorkbenchExecutionPage{}, err
 		}
 		if cursor.TenantID != tenantID || cursor.OwnerID != ownerID ||
-			cursor.AgentID != filter.AgentID || cursor.Status != filter.Status {
+			cursor.AgentID != filter.AgentID || cursor.Status != filter.Status ||
+			cursor.Query != filter.Query || cursor.ArchivedOnly != filter.ArchivedOnly {
 			return WorkbenchExecutionPage{}, fmt.Errorf("%w: cursor does not match the active filter", ErrWorkbenchCursor)
 		}
 		anchor, err := time.Parse(time.RFC3339Nano, cursor.CreatedAt)
@@ -218,6 +278,7 @@ func (s *WorkbenchListStore) ListOwnedExecutions(ctx context.Context, tenantID u
 		page.NextCursor = encodeWorkbenchListCursor(workbenchListCursor{
 			Version: 1, TenantID: tenantID, OwnerID: ownerID,
 			AgentID: filter.AgentID, Status: filter.Status,
+			Query: filter.Query, ArchivedOnly: filter.ArchivedOnly,
 			CreatedAt: last.CreatedAt.UTC().Format(time.RFC3339Nano), RunID: last.RunID,
 		})
 	}
@@ -231,8 +292,13 @@ func workbenchSummaryFromRow(row workbenchListRow) WorkbenchExecutionSummary {
 	summary := WorkbenchExecutionSummary{
 		RunID: row.RunID, SessionID: row.SessionID,
 		Status: row.Status, WaitReason: row.WaitReason,
+		Title:     strings.TrimSpace(row.Title),
+		Attention: attentionOf(row.Status, row.AttentionPending),
 		CreatedAt: row.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt: row.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	}
+	if row.ArchivedAt != nil {
+		summary.ArchivedAt = row.ArchivedAt.UTC().Format(time.RFC3339Nano)
 	}
 	if strings.TrimSpace(row.Snapshot) == "" {
 		return summary

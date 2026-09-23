@@ -357,3 +357,158 @@ func TestWorkbenchListCursorErrorDistinct(t *testing.T) {
 	require.False(t, errors.Is(ErrWorkbenchCursor, agentruntime.ErrNotFound))
 	require.True(t, strings.Contains(ErrWorkbenchCursor.Error(), "cursor"))
 }
+
+// seedSearchableSessions adds titled sessions that pin LIKE-escape semantics:
+// '%' and '_' must match literally, never as wildcards.
+func seedSearchableSessions(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	require.NoError(t, db.Exec(
+		`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES
+		 ('s-pct', 1, '100% done', 'u1', 'trpc'),
+		 ('s-pct-wild', 1, '100x done', 'u1', 'trpc'),
+		 ('s-und', 1, 'status_report', 'u1', 'trpc'),
+		 ('s-und-wild', 1, 'statusXreport', 'u1', 'trpc'),
+		 ('s-long', 1, 'quarterly review', 'u1', 'trpc')`,
+	).Error)
+}
+
+// TestWorkbenchListSearchFiltersByTaskTitleWithinOwnerScope: 搜索按任务标题
+// 子串、忽略大小写，且始终在 tenant+owner 谓词内——同租户他人、异租户的
+// 同名邻居不可见；LIKE 通配符按字面匹配；全空白与空串等价于无搜索。
+func TestWorkbenchListSearchFiltersByTaskTitleWithinOwnerScope(t *testing.T) {
+	db := openRunTestDB(t)
+	seedWorkbenchListFixtures(t, db)
+	seedSearchableSessions(t, db)
+	base := time.Date(2026, 9, 23, 8, 0, 0, 0, time.UTC)
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 1, owner: "u1", runID: "r-pct", session: "s-pct", status: "running", agent: "agent-x", target: "platform", at: base})
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 1, owner: "u1", runID: "r-pct-wild", session: "s-pct-wild", status: "running", agent: "agent-x", target: "platform", at: base.Add(time.Second)})
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 1, owner: "u1", runID: "r-und", session: "s-und", status: "succeeded", agent: "agent-y", target: "platform", at: base.Add(2 * time.Second)})
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 1, owner: "u1", runID: "r-und-wild", session: "s-und-wild", status: "succeeded", agent: "agent-y", target: "platform", at: base.Add(3 * time.Second)})
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 1, owner: "u1", runID: "r-long", session: "s-long", status: "failed", agent: "agent-z", target: "platform", at: base.Add(4 * time.Second)})
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 1, owner: "u2", runID: "r-neighbor", session: "s3", status: "running", agent: "agent-x", target: "platform", at: base.Add(5 * time.Second)})
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 2, owner: "v1", runID: "r-foreign", session: "t1", status: "running", agent: "agent-x", target: "platform", at: base.Add(6 * time.Second)})
+
+	store := NewWorkbenchListStore(db)
+	ctx := context.Background()
+
+	// 子串、忽略大小写。
+	page, err := store.ListOwnedExecutions(ctx, 1, "u1", WorkbenchExecutionFilter{Query: "quarterly"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"r-long"}, runIDs(page))
+	require.Equal(t, "quarterly review", page.Items[0].Title)
+
+	// '%' 字面匹配：不得把 '100x done' 通配进来。
+	page, err = store.ListOwnedExecutions(ctx, 1, "u1", WorkbenchExecutionFilter{Query: "100%"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"r-pct"}, runIDs(page))
+
+	// '_' 字面匹配：不得把 'statusXreport' 通配进来。
+	page, err = store.ListOwnedExecutions(ctx, 1, "u1", WorkbenchExecutionFilter{Query: "status_report"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"r-und"}, runIDs(page))
+
+	// 反斜杠字面量不破坏查询。
+	page, err = store.ListOwnedExecutions(ctx, 1, "u1", WorkbenchExecutionFilter{Query: `100\%`})
+	require.NoError(t, err)
+	require.Empty(t, runIDs(page))
+
+	// 搜索始终在 owner 谓词内：u2 搜 'session-1'（u1 的标题）为空。
+	page, err = store.ListOwnedExecutions(ctx, 1, "u2", WorkbenchExecutionFilter{Query: "session-1"})
+	require.NoError(t, err)
+	require.Empty(t, runIDs(page))
+	// 异租户同理：v1 搜 'quarterly' 为空（其会话标题为 session-t1）。
+	page, err = store.ListOwnedExecutions(ctx, 2, "v1", WorkbenchExecutionFilter{Query: "quarterly"})
+	require.NoError(t, err)
+	require.Empty(t, runIDs(page))
+
+	// 全空白与空串等价：归一化后是无搜索，返回全部 5 条。
+	page, err = store.ListOwnedExecutions(ctx, 1, "u1", WorkbenchExecutionFilter{Query: "   "})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 5)
+}
+
+// TestWorkbenchListArchiveFilterAndAttentionProjection: 默认视图只含未归档；
+// ArchivedOnly 只含已归档并携带 archived_at；attention 由 waiting_user 或
+// pending interaction 派生，其余为 none。
+func TestWorkbenchListArchiveFilterAndAttentionProjection(t *testing.T) {
+	db := openRunTestDB(t)
+	seedWorkbenchListFixtures(t, db)
+	base := time.Date(2026, 9, 23, 7, 0, 0, 0, time.UTC)
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 1, owner: "u1", runID: "r-keep", session: "s1", status: "running", agent: "agent-x", target: "platform", at: base})
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 1, owner: "u1", runID: "r-gone", session: "s2", status: "succeeded", agent: "agent-y", target: "platform", at: base.Add(time.Second)})
+	insertWorkbenchRun(t, db, workbenchRunSeed{tenant: 1, owner: "u1", runID: "r-wait", session: "s3", status: "waiting_user", agent: "agent-x", target: "platform", at: base.Add(2 * time.Second)})
+	archived := base.Add(time.Hour)
+	require.NoError(t, db.Exec("UPDATE sessions SET archived_at = ? WHERE id = 's2'", archived).Error)
+	// r-keep 有 pending interaction → attention=required（即使状态不是 waiting_user）。
+	require.NoError(t, db.Exec(
+		`INSERT INTO workbench_interactions (tenant_id, id, run_id, owner_id, kind, args_hash, status, expected_revision, created_at, updated_at)
+		 VALUES (1, 'ix-1', 'r-keep', 'u1', 'tool_approval', 'h1', 'pending', 1, ?, ?)`, archived, archived,
+	).Error)
+
+	store := NewWorkbenchListStore(db)
+	ctx := context.Background()
+
+	page, err := store.ListOwnedExecutions(ctx, 1, "u1", WorkbenchExecutionFilter{})
+	require.NoError(t, err)
+	require.Equal(t, []string{"r-wait", "r-keep"}, runIDs(page))
+	require.Equal(t, "session-1", page.Items[1].Title)
+
+	byID := func(items []WorkbenchExecutionSummary) map[string]WorkbenchExecutionSummary {
+		out := map[string]WorkbenchExecutionSummary{}
+		for _, item := range items {
+			out[item.RunID] = item
+		}
+		return out
+	}
+	all := byID(page.Items)
+	require.Equal(t, "required", all["r-wait"].Attention, "waiting_user derives attention")
+	require.Equal(t, "required", all["r-keep"].Attention, "a pending interaction derives attention")
+	require.Empty(t, all["r-wait"].ArchivedAt)
+
+	archivedOnly, err := store.ListOwnedExecutions(ctx, 1, "u1", WorkbenchExecutionFilter{ArchivedOnly: true})
+	require.NoError(t, err)
+	require.Equal(t, []string{"r-gone"}, runIDs(archivedOnly))
+	require.Equal(t, "session-2", archivedOnly.Items[0].Title)
+	require.Equal(t, archived.UTC().Format(time.RFC3339Nano), archivedOnly.Items[0].ArchivedAt)
+	require.Equal(t, "none", archivedOnly.Items[0].Attention)
+
+	// 归档的行对异 owner 依然不可见（u2 在同租户）。
+	foreign, err := store.ListOwnedExecutions(ctx, 1, "u2", WorkbenchExecutionFilter{ArchivedOnly: true})
+	require.NoError(t, err)
+	require.Empty(t, runIDs(foreign))
+}
+
+// TestWorkbenchListCursorBindsSearchAndArchiveFacets: cursor 携带并校验
+// q/archived_only——换 facet 重放一律拒绝，原 facet 续页有效。
+func TestWorkbenchListCursorBindsSearchAndArchiveFacets(t *testing.T) {
+	db := openRunTestDB(t)
+	seedSearchableSessions(t, db)
+	base := time.Date(2026, 9, 23, 6, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		insertWorkbenchRun(t, db, workbenchRunSeed{
+			tenant: 1, owner: "u1", runID: fmt.Sprintf("rs-%d", i), session: "s-und",
+			status: "succeeded", agent: "agent-y", target: "platform", at: base.Add(time.Duration(i) * time.Second),
+		})
+	}
+	store := NewWorkbenchListStore(db)
+	ctx := context.Background()
+
+	page, err := store.ListOwnedExecutions(ctx, 1, "u1", WorkbenchExecutionFilter{Query: "status_report", Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 2)
+	require.NotEmpty(t, page.NextCursor)
+
+	for name, filter := range map[string]WorkbenchExecutionFilter{
+		"replayed without search":  {Cursor: page.NextCursor},
+		"replayed with other term": {Query: "quarterly", Cursor: page.NextCursor},
+		"replayed archived":        {Query: "status_report", ArchivedOnly: true, Cursor: page.NextCursor},
+	} {
+		_, err := store.ListOwnedExecutions(ctx, 1, "u1", filter)
+		require.ErrorIs(t, err, ErrWorkbenchCursor, "cursor case %q must be rejected", name)
+	}
+
+	rest, err := store.ListOwnedExecutions(ctx, 1, "u1", WorkbenchExecutionFilter{Query: "status_report", Limit: 2, Cursor: page.NextCursor})
+	require.NoError(t, err)
+	require.Equal(t, []string{"rs-0"}, runIDs(rest))
+	require.Empty(t, rest.NextCursor)
+}
