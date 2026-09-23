@@ -36,17 +36,30 @@ const (
 	// maxStateBytes 限制 state 长度：state 是未认证输入的存储键，必须封顶
 	// （OCR T04-R1-4：无界内存增长面）。
 	maxStateBytes = 1024
-	// maxRegisteredClients 封顶动态注册客户端数量（OCR T04-R1-4）。
-	maxRegisteredClients = 4096
 	// maxRedirectURIsPerRegistration 封顶单次注册的 redirect_uris 条数
 	//（OCR T04-R2-8：聚合内存大小必须有界）。
 	maxRedirectURIsPerRegistration = 16
 	// maxRedirectURIBytes 封顶单条注册 redirect_uri 长度（OCR T04-R2-8）。
 	maxRedirectURIBytes = 2048
+	// maxClientNameBytes 封顶注册 client_name 长度（整分支 OCR 一轮 F7）：
+	// /register 无认证，1MiB 注册体可携任意长度名字——不封顶则 4096 条
+	// 注册可把聚合内存界「4096×16×2KiB」击穿到 GiB 级。字节计（内存单位）。
+	maxClientNameBytes = 256
 	// maxFormBodyBytes 封顶 /authorize 与 /token 的表单体大小（整分支终评
 	// r3-006/r3-007/r4-006/r4-007）：两个端点都是未认证输入面，ParseForm
 	// 前必须套 http.MaxBytesReader——与 /register 的 1MiB JSON 注册体对齐。
 	maxFormBodyBytes = 1 << 20
+)
+
+var (
+	// maxRegisteredClients 封顶动态注册客户端数量（OCR T04-R1-4）。var 以便
+	// 测试改写：配合 clientRegistrationTTL 淘汰验证容量释放。
+	maxRegisteredClients = 4096
+	// clientRegistrationTTL 是动态注册客户端的存活期（整分支 OCR 一轮
+	// F5）：/register 无认证，无淘汰时攻击者可在重启前把上限永久填满
+	// （此后合法客户端一律 429）。过期条目由 sweepExpiredLocked 惰性淘汰，
+	// 淘汰即时释放容量。合法流程注册后数分钟内完成授权，24h 远充裕。
+	clientRegistrationTTL = 24 * time.Hour
 )
 
 // maxPendingAuths 封顶窗口内未消费的授权表单 state 数量（OCR T04-R2-3：
@@ -62,7 +75,10 @@ var maxPendingAuths = 1024
 // 会话数据（成员 Jira 邮箱 + API token）仅驻留内存；code、state、
 // refresh_token 一次性使用，access_token 按 accessTokenTTL 过期；凭据不落盘、
 // 不写日志、不出现在任何重定向或错误页。注册客户端、待授权 state 与授权码
-// 均在写入/读取时惰性清扫过期条目（OCR T04-R1-4）。这是示例服务的教学级
+// 均在写入/读取时惰性清扫过期条目（OCR T04-R1-4）；动态注册客户端按
+// clientRegistrationTTL（24h）淘汰并即时释放注册容量（整分支 OCR 一轮
+// F5——/register 无认证，无淘汰则上限可被未认证方永久占满）。这是示例
+// 服务的教学级
 // 实现：单实例、无持久化、无后台清理协程——生产部署应替换为专业 OAuth
 // 实现（见 README）。
 type oauthServer struct {
@@ -89,10 +105,14 @@ type oauthServer struct {
 }
 
 // registeredClient 记录一次动态注册（ClientName 供同意页展示请求方——
-// 整分支终评 r2-012/r4-008：成员必须在提交凭据前识别请求方）。
+// 整分支终评 r2-012/r4-008：成员必须在提交凭据前识别请求方）。ExpiresAt
+// 是注册存活边界（整分支 OCR 一轮 F5）：/register 无认证，无淘汰时未认证
+// 攻击者可在重启前把 maxRegisteredClients 上限永久填满，合法 WeKnora 客户端
+// 将一律 429——过期注册由 sweepExpiredLocked 惰性淘汰并即时释放容量。
 type registeredClient struct {
 	ClientName   string
 	RedirectURIs []string
+	ExpiresAt    time.Time
 }
 
 // oauthSession 是一次成功授权后的成员会话（内存驻留）。
@@ -166,10 +186,16 @@ func randomToken() string {
 	return hex.EncodeToString(buf)
 }
 
-// sweepExpiredLocked 惰性清扫已过期的 pendingAuths / codes / tokens /
-// refreshTokens（调用方需持锁；OCR T04-R1-4 与 T04-R2-7：所有令牌类
-// map 都必须有 TTL 退出路径，不留孤儿条目）。
+// sweepExpiredLocked 惰性清扫已过期的 clients / pendingAuths / codes /
+// tokens / refreshTokens（调用方需持锁；OCR T04-R1-4 与 T04-R2-7：所有
+// 令牌类 map 都必须有 TTL 退出路径，不留孤儿条目；clients 的淘汰见
+// 整分支 OCR 一轮 F5——否则未认证 /register 可把注册容量永久占满）。
 func (s *oauthServer) sweepExpiredLocked(now time.Time) {
+	for clientID, client := range s.clients {
+		if now.After(client.ExpiresAt) {
+			delete(s.clients, clientID)
+		}
+	}
 	for state, pending := range s.pendingAuths {
 		if now.After(pending.ExpiresAt) {
 			delete(s.pendingAuths, state)
@@ -274,6 +300,14 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// 整分支 OCR 一轮 F7：client_name 封顶——注册体原样入 map，聚合内存
+	// 必须有界（与 redirect_uri 的条数/单条封顶同一不变量；字节计）。
+	if len(registration.ClientName) > maxClientNameBytes {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid_client_metadata", "error_description": "client_name is too long",
+		})
+		return
+	}
 	// OCR T04-R2-8：条数与单条长度封顶——注册体原样入 map，聚合内存大小
 	// 必须有界（4096 客户端 × 16 条 × 2KiB）。
 	if len(registration.RedirectURIs) > maxRedirectURIsPerRegistration {
@@ -309,7 +343,11 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	clientID := "jtm-" + randomToken()
+	now := time.Now()
 	s.mu.Lock()
+	// 先清扫再查容量（整分支 OCR 一轮 F5）：过期注册即时释放名额——否则
+	// 未认证 /register 填满上限后，合法客户端到重启前都拿不到注册位。
+	s.sweepExpiredLocked(now)
 	if len(s.clients) >= maxRegisteredClients {
 		s.mu.Unlock()
 		writeJSON(w, http.StatusTooManyRequests, map[string]any{
@@ -320,6 +358,7 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	s.clients[clientID] = registeredClient{
 		ClientName:   registration.ClientName,
 		RedirectURIs: registration.RedirectURIs,
+		ExpiresAt:    now.Add(clientRegistrationTTL),
 	}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -428,6 +467,9 @@ func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, res
 		return registeredClient{}, fmt.Errorf("response_type must be \"code\"")
 	}
 	s.mu.Lock()
+	// 先清扫再查（整分支 OCR 一轮 F5）：过期注册在此即时失效——authorize
+	// 不能依赖下一条写路径碰巧触发淘汰。
+	s.sweepExpiredLocked(time.Now())
 	client, registered := s.clients[req.ClientID]
 	s.mu.Unlock()
 	if !registered {

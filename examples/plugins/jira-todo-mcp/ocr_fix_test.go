@@ -716,3 +716,69 @@ func TestRegisterRestrictedToAllowedRedirectHosts(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, register("https://evil.example.com/cb"),
 		"redirect host outside the allowlist must be rejected at registration")
 }
+
+// --- 整分支 OCR 一轮（R5-D）：F7 client_name 封顶 + F5 注册表 TTL 淘汰 ---
+
+// registerStatus 注册一个绑定单 redirect_uri 的客户端，返回 HTTP 状态码
+// （不要求 201——容量 429 等拒绝路径也走这里）。
+func registerStatus(t *testing.T, base, redirectURI string) int {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{"redirect_uris": []string{redirectURI}})
+	require.NoError(t, err)
+	resp, err := http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode
+}
+
+// TestRegisterBoundsClientName（整分支 OCR 一轮 F7）：client_name 是未认证
+// /register 的不可信输入，必须封顶（maxClientNameBytes，字节）——否则 1MiB
+// 注册体可把 ~1MiB 名字原样塞进注册表，4096 条击穿「4096×16×2KiB」聚合
+// 内存界，与 redirect_uri 的条数/单条封顶不一致。
+func TestRegisterBoundsClientName(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	register := func(name string) int {
+		body, err := json.Marshal(map[string]any{
+			"redirect_uris": []string{"https://client.example/cb"},
+			"client_name":   name,
+		})
+		require.NoError(t, err)
+		resp, err := http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode
+	}
+	require.Equal(t, http.StatusCreated, register(strings.Repeat("x", 256)),
+		"a 256-byte client_name must be accepted")
+	require.Equal(t, http.StatusBadRequest, register(strings.Repeat("x", 257)),
+		"client_name over the cap must be rejected at registration")
+}
+
+// TestRegisteredClientsExpiredByTTL（整分支 OCR 一轮 F5）：动态注册表必须
+// 有 TTL 淘汰——/register 无认证，无淘汰时攻击者可在重启前永久填满
+// maxRegisteredClients 上限（此后合法 WeKnora 客户端一律 429，个人授权链路
+// 整体不可用）。过期条目必须：(a) 释放容量（新注册成功）；(b) 不再通过
+// /authorize 校验（unknown client_id）。
+func TestRegisteredClientsExpiredByTTL(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	oldMax, oldTTL := maxRegisteredClients, clientRegistrationTTL
+	maxRegisteredClients = 1
+	clientRegistrationTTL = 10 * time.Millisecond
+	t.Cleanup(func() { maxRegisteredClients, clientRegistrationTTL = oldMax, oldTTL })
+
+	// A 占满唯一名额；容量满后 B 被拒（429，既有语义不变）。
+	first := testRegisterClient(t, base, "https://client.example/cb-a")
+	require.Equal(t, http.StatusTooManyRequests, registerStatus(t, base, "https://client.example/cb-b"),
+		"capacity 1 must still reject while the slot is live")
+
+	// 过期后：惰性清扫释放名额，B 可注册；A 的授权请求按 unknown client 拒绝。
+	time.Sleep(30 * time.Millisecond)
+	_, challenge := testPKCE(t)
+	require.Equal(t, http.StatusBadRequest,
+		testAuthorizeGET(t, base, first, "https://client.example/cb-a", "state-after-evict", challenge),
+		"the expired client registration must no longer authorize")
+	second := testRegisterClient(t, base, "https://client.example/cb-b")
+	require.NotEqual(t, first, second)
+}
