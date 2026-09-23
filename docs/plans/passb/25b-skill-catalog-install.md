@@ -24,7 +24,7 @@
 
 1. **b0 已 done**：`execution-dag.json` b0 节点 `status=done`、`head_sha=d57a2fa708c3fecf5f0510553ea26db3de51d3c9`、`review=approved`（本会话 python 读 DAG 实测）。B0 四产物（ownership-matrix/contracts/event-catalog/exception-ledger.yaml）已固化在集成头。
    - 节点 `b2-ac-skills.notes` 残留「BLOCKED（2026-09-23）：前置 b0 阻塞」为当日早间历史登记文本；b0 已于当日修复并收口（commit `0be903ef2` 合并、`d57a2fa70` 台账覆盖，git log 实测）。实施者以 DAG `status`/`base_sha`/`depends_on` 字段与台账登记为准，不因残留文本停工（与 12-commercial §前置条件 1 同口径）。
-2. **depends_on=ib1**：ib1 已执行并登记（commit `8c45a8815`：四支计划合入、三门禁绿色；因 B1 零实施，装配切换未发生——本计划 §2 断链面按「B1 未搬迁」现状编写，非按 13-execution 计划的假想状态），`status=in_progress` 未收口。**派发前置**：协调者将 ib1 置 done 或显式裁定放行 b2 派发；25a/25b 并行的契约前提（framework:139 共享 immutable-version 契约）已满足——`agentcatalog.agent-version-service`（FreezeAgentVersion/GetAgentVersion/ListAgentVersions + AgentVersionSnapshot）`stability: frozen`（contracts.yaml :9-22）。
+2. **depends_on=ib1（撰写时点状态如实记录）**：ib1 已执行并登记（commit `8c45a8815`：四支计划合入、三门禁绿色；因 B1 零实施，装配切换未发生——本计划 §2 断链面按「B1 未搬迁」现状编写，非按 13-execution 计划的假想状态），但 DAG 实测 `status=in_progress`、`review_status=pending`、`head_sha=null`，且 `b2-ac-skills.status=pending`、`base_sha=null`——**派发 gate 尚未收口**。**派发前置**：协调者将 ib1 置 done，或在 DAG `corrections`/`notes` 显式登记放行裁定并回写 `b2-ac-skills.base_sha`（conventions §9：DAG 字段仅协调者可写，本计划不代替该裁定）；裁定落 DAG 前实施者不得开工。25a/25b 并行的契约前提（framework:139 共享 immutable-version 契约）已满足——`agentcatalog.agent-version-service`（FreezeAgentVersion/GetAgentVersion/ListAgentVersions + AgentVersionSnapshot）`stability: frozen`（contracts.yaml :9-22）。
 3. worktree `codex/passb-b2-ac-skills` 起点等于集成头 `8c45a8815`（`git rev-parse HEAD` 实测一致），工作树干净（`git status --short` 空）。
 4. **基线门禁绿（撰写者在 8c45a8815 未改动工作树实跑记录，实施者开工前须复跑同命令）**：
    - `go build ./...` → 退出码 0；
@@ -66,7 +66,7 @@
 | 19 | `internal/handler/skill_handler.go` | `internal/modules/agentcatalog/handler/skill_handler.go`（新包 `handler`） |
 | 20 | `internal/handler/skill_catalog.go` | `internal/modules/agentcatalog/handler/skill_catalog.go` |
 
-随迁 `_test.go`（framework:29，19 个，同名同目录随迁）：service 17 个——`tenant_skill_{admin,bundle,catalog,effective,env_declare,files,install,reaper,remove,runtime_verify,service,source,stale_sandbox,steer,stop,transcript,verify_python}_test.go`（`ls internal/application/service/tenant_skill*_test.go` 实测 17 个，全部归属本面；其中 `env_declare_test.go`、`install_test.go` 现引用 agentruntime 测试辅助——guard 扫描跳过 `_test.go`（tools/architectureguard/check.go:1182），随迁后可保留）；handler 2 个——`skill_catalog_test.go`、`skill_handler_test.go`。
+随迁 `_test.go`（framework:29，19 个，同名同目录随迁）：service 17 个——`tenant_skill_{admin,bundle,catalog,effective,env_declare,files,install,reaper,remove,runtime_verify,service,source,stale_sandbox,steer,stop,transcript,verify_python}_test.go`（`ls internal/application/service/tenant_skill*_test.go` 实测 **18** 个，上列 17 个归属本面，另 1 个 `tenant_skill_market_service_test.go` 属 25c——对应 §前置条件 5 列名的 25c 文件 `tenant_skill_market_service.go`——**不随迁**；其中 `env_declare_test.go`、`install_test.go` 现引用 agentruntime 测试辅助，guard 扫描跳过 `_test.go`（tools/architectureguard/check.go:1182），随迁后可保留）；handler 2 个——`skill_catalog_test.go`、`skill_handler_test.go`。
 
 **范围外（一律不动）**：
 - `internal/router/router.go`、`internal/router/routes_agent.go`、`internal/container/container.go`、`internal/bootstrap/**`、`go.mod`、`go.sum`、`migrations/`、`tools/**`（conventions §3；architectureguard 豁免表属集成/后续契约任务）。
@@ -107,7 +107,7 @@
 | `tenant_skill_install.go:1123` | `sessionSandboxInstallShellExecutor(mgr sandbox.Manager) sandbox.SessionInstallShellExecutor`（conversation，`session_attachment_staging.go:49`） | `HostAdapters.InstallShellExecutor` 注入 |
 | `tenant_skill_install.go:1461` | `resolveTenantSandboxForConfig(ctx, resolver, _ sandbox.Manager, tenantID, configID string, policy WorkspaceSandboxPolicy)`（execution，`tenant_sandbox_resolve.go:70`；不静默回退默认 Manager） | `HostAdapters.ResolveConfigManager` 注入（闭包捕获 sandboxes + policy + nil Manager 位） |
 | `tenant_skill_install.go:1473` | `sessionUserIDFromContext(ctx)`（conversation，`session.go:26`，1:1 委托公共 `types.SessionOwnerIDFromContext`） | `HostAdapters.SessionUserID`，缺省实现直接调公共 API |
-| `tenant_skill_catalog.go:213` | `uniqueNonEmptyStrings(values []string) []string`（conversation，`session_knowledge_qa.go:638`，去空去重） | 改用本面同语义 `uniqueStrings`（`tenant_skill_bundle.go:502`），奇偶断言进差分测试 |
+| `tenant_skill_catalog.go:213` | `uniqueNonEmptyStrings(values []string) []string`（conversation，`session_knowledge_qa.go:638-648`：**跳过空串再去重**） | `HostAdapters.UniqueNonEmptyStrings` 注入（conversation 真源）。**不可**用本面 `uniqueStrings`（bundle.go:502-513，仅去重、**保留空串**）替换——调用点 catalog.go:214-216 依赖 `len(ids)==0 → 400 "at least one sandbox is required"` 语义，输入含空串（如 `["","a",""]`）时两者结果不同（`["a"]` vs `["","a",""]`），属行为破坏 |
 | `tenant_skill_effective.go:45` | `sandboxConfigForExistingSandbox`（见 §2.2） | `PinnedConfigReader` 窄接口参数化 |
 
 `s.sandboxPolicy`（execution 属主类型 `WorkspaceSandboxPolicy`，`tenant_sandbox_resolve.go:60` 定义）在本面文件的唯一消费点即 :1461——新包构造器去除该参数，由残差闭包吸收。
@@ -121,7 +121,7 @@ tools/architectureguard/check.go:1175-1220：`internal/modules/<owner>/**` 下�
 | `tenant_skill_bundle.go` | `agentruntime/agent/skills`（:17） | `skills.ParseSkillFile(content string) (*skills.Skill, error)`（skills/skill.go:161） | bundle.go:309，消费 `skill.Name/.Description/.Instructions/.FrontmatterRepaired` 4 字段（:319-325） |
 | 同上 | 同上 | `skills.UnmarshalSkillFrontmatter(frontmatter string, dest any) (repaired bool, err error)`（skills/skill_frontmatter.go:24） | bundle.go:425（版本探测 helper，dest 为本地 `struct{Version string}`） |
 | `tenant_skill_env_declare.go` | `agentruntime/agent/skills`（:10） | `skills.InjectedSandboxEnvVars() []string`（skills/manager.go:51） | env_declare.go:61 **init()**（:56-64，把注入名并入包级 `reservedEnvNames`，:44-54 字面 9 名 + `reservedEnvPrefix="WEKNORA_SKILL_"` :69；注入名含不带该前缀的 `SESSION_INPUT_DIR` 等，见 :58-59 注释） |
-| `tenant_skill_install.go` | `agentruntime/agent/skills`（:22）+ `agentruntime/agent/tools`（:23） | `tools.ToolShellExec="shell_exec"`/`ToolWriteSkillFile="write_skill_file"`/`ToolEditSkillFile="edit_skill_file"`（tools/definitions.go:52-62） | install.go:1976（自由函数 `installerAgentConfig` :1970 的 AllowedTools） |
+| `tenant_skill_install.go` | `agentruntime/agent/skills`（:22）+ `agentruntime/agent/tools`（:23） | `tools.ToolShellExec="shell_exec"`/`ToolWriteSkillFile="write_skill_file"`/`ToolEditSkillFile="edit_skill_file"`（tools/definitions.go:52-62）；`skills.IsOnDemandInstallerPath(scriptPath string) bool`（skills/skill.go:246） | install.go:1976（自由函数 `installerAgentConfig` :1970 的 AllowedTools）；install.go:1849（自由函数 `bundleOnDemandInstallers` :1843-1855，链 `formatOnDemandInstallers` :1830 ← `buildRepairPrompt` :965 ← caller :808 在方法 `installDependenciesAndVerify` :763 内） |
 | `tenant_skill_transcript.go` | `agentruntime/agent/tools`（:15，别名 agenttools） | `agenttools.StreamContentForToolResult(toolName string, success bool, errMsg string, data map[string]interface{}) string`（tools/persist.go:99）、`agenttools.SanitizeToolResultForClient(toolName string, result *types.ToolResult) map[string]interface{}`（persist.go:82）、`agenttools.SanitizeAgentStepsForStorage(steps []types.AgentStep) []types.AgentStep`（persist.go:113） | transcript.go:316、:331、:406（均在 `installTranscript` 方法内） |
 
 调用链锚点：`skillBundleFromFiles` 自由函数（bundle.go:304，caller `:91`、`tenant_skill_source.go:864`）；`newInstallTranscript`（transcript.go:81，caller `install.go:708` 在 `s.beginInstallTranscript` 内）；`installerAgentConfig`（install.go:1970，caller `:851`）。
@@ -222,6 +222,13 @@ type HostAdapters struct {
     StreamContentForToolResult  func(toolName string, success bool, errMsg string, data map[string]interface{}) string
     SanitizeToolResultForClient func(toolName string, result *types.ToolResult) map[string]interface{}
     SanitizeAgentStepsForStorage func(steps []types.AgentStep) []types.AgentStep
+    // OnDemandInstallerPath 替代 skills.IsOnDemandInstallerPath（skill.go:246），
+    // 判定 bundle 内按需安装脚本路径（install.go:1849 消费）。
+    OnDemandInstallerPath func(scriptPath string) bool
+    // UniqueNonEmptyStrings 替代 conversation 属主 uniqueNonEmptyStrings
+    // （session_knowledge_qa.go:638-648，跳过空串再去重）。本面 uniqueStrings
+    // （bundle.go:502-513）语义不同（保留空串），禁止替代（§2.3）。
+    UniqueNonEmptyStrings func(values []string) []string
 }
 
 // SkillManifestView 是 bundle.go:319-325 实际消费的 4 字段数据视图（数据形状，非逻辑复制）。
@@ -248,7 +255,7 @@ func NewTenantSkillService(
     redisClient *redis.Client,
     streams interfaces.StreamManager,
     messages interfaces.MessageRepository,
-    adapters HostAdapters,                                  // 新增尾参；7 个 §4.4 字段由残差绑真源，nil 即 panic-fast（构造器内显式校验非 nil 并 fail-fast）
+    adapters HostAdapters,                                  // 新增尾参；除 SessionUserID 外全部必填，构造器内显式校验非 nil 并 fail-fast
 ) *TenantSkillService
 ```
 
@@ -259,8 +266,9 @@ func NewTenantSkillService(
 - install:1461 → `mgr, err := s.adapters.resolveConfigManager(ctx, tenantID, configID)`；
 - install:1473 → `UserID: s.adapters.sessionUserID(ctx)`；
 - install:1976（`installerAgentConfig` 增加 `installTools []string` 参数，caller :851 传 `s.adapters.installerToolNames()` 展开）；
+- install:1849（`bundleOnDemandInstallers`/`formatOnDemandInstallers`/`buildRepairPrompt` 自由函数链增加 `adapters` 参数，:1849 → `adapters.onDemandInstallerPath(rel)`；链路 :1830 ← :965 ← caller :808 在方法 `installDependenciesAndVerify` 内，透传 `s.adapters`）；
 - install:708（`newInstallTranscript` 增加 sanitize 三函数参数或收 `adapters`，caller 传 `s.adapters`）；
-- catalog:213 → `ids := uniqueStrings(configIDs)`（本面 helper，bundle.go:502）；
+- catalog:213 → `ids := s.adapters.uniqueNonEmptyStrings(configIDs)`（conversation 真源注入；**不得**改为本面 `uniqueStrings`，语义差异与 400 行为依赖见 §2.3）；
 - bundle:309 → `skill, err := adapters.skillManifestParser(string(manifest))`（`skillBundleFromFiles` 加 `adapters` 参数，caller `:91`、`source.go:864` 透传）；
 - bundle:425 → `adapters.frontmatterVersionParser(frontmatter, &metadata)`。
 
@@ -270,7 +278,7 @@ func NewTenantSkillService(
    - `RegisterReservedEnvNames(names []string)`（§4.1 新增导出，map 并集、幂等、init 时期调用）——由残差文件的 `init()` 调 `acatsvc.RegisterReservedEnvNames(skills.InjectedSandboxEnvVars())`（宿主包 import agentruntime 合法，见 §2.4 现状）。凡链接旧包的二进制（含 `user_env.go`/`user_env_test.go` 所在测试二进制）行为与今日逐字节一致；
    - 备用通道：`HostAdapters` 不再设该字段，运行期无其他消费点（:61 是唯一使用处）。
    - 该接缝 `remove_at: ib2`（IB2 后由 33/35 面按契约任务决定保留名单归属）。诚实记录：包级表为 Pass A 现状（:44-64 init 副作用），本设计只把隐式 init 副作用显式化为导出注册接缝，不新增第二份名单。
-2. **测试文件豁免**：随迁的 `env_declare_test.go`/`install_test.go` 对 agentruntime 的引用可保留（guard 跳过 `_test.go`，check.go:1182 实测），不改测试语义。
+2. **测试文件豁免与注入名注册前提**：随迁的 `env_declare_test.go`/`install_test.go` 对 agentruntime 的引用可保留（guard 跳过 `_test.go`，check.go:1182 实测），不改测试语义。**可执行性前提**：注入名注册 `init()` 位于宿主残差 `tenant_skill_residual.go`（§5.1），新包测试二进制（`internal/modules/agentcatalog/service` 的测试）不链接宿主包、该通道不运行——新包内依赖注入名行为的用例（`env_declare_test.go` 的 `SESSION_INPUT_DIR` 等注入名断言）必须在测试内先显式 `service.RegisterReservedEnvNames(skills.InjectedSandboxEnvVars())` 再断言（随迁测试文件可 import agentruntime，同本条豁免）；宿主包 parity 测试（`tenant_skill_export_parity_test.go`）链接残差、init 已运行，无需显式注册。
 3. **新包纪律**：`internal/modules/agentcatalog/{service,repository,handler}` 生产文件 import 集合 = `internal/types`、`internal/types/interfaces`、`internal/application/repository`（仅 TenantSandboxConfigRepository 等留驻接口）、`internal/modules/execution/sandbox`、`internal/modules/agentcatalog/repository`、公共库（redis/cron/singleflight/gorm/gin）——**零 `internal/modules/agentruntime/**`、零 `internal/application/service`、零 `internal/handler`**（验收 §10.10）。
 
 ### 4.5 `internal/modules/agentcatalog/repository`（package repository，别名 acrepo）
@@ -365,9 +373,11 @@ func NewTenantSkillService(
             },
             FrontmatterVersionParser: skills.UnmarshalSkillFrontmatter,
             InstallerToolNames:       func() [3]string { return [3]string{agenttools.ToolShellExec, agenttools.ToolWriteSkillFile, agenttools.ToolEditSkillFile} },
+            OnDemandInstallerPath:       skills.IsOnDemandInstallerPath,
             StreamContentForToolResult:  agenttools.StreamContentForToolResult,      // 与工具名常量同包（agent/tools），单一 import
             SanitizeToolResultForClient: agenttools.SanitizeToolResultForClient,
             SanitizeAgentStepsForStorage: agenttools.SanitizeAgentStepsForStorage,
+            UniqueNonEmptyStrings:       uniqueNonEmptyStrings,                      // conversation 真源（session_knowledge_qa.go:638，同包捕获）
         })
 }
 
@@ -463,9 +473,10 @@ func NewTenantSkillRepository(db *gorm.DB) TenantSkillRepository {
 - [ ] 建 `host_adapters.go`（§4.3/§4.4：HostAdapters + SkillManifestView + 构造器 nil 校验）。
 - [ ] `git mv` §1 #2-18 的 17 个文件 + 17 个测试到 `internal/modules/agentcatalog/service`，package 改 `service`。
 - [ ] 导出化更名：`matchSnapshotByName`/`skillSnapshotNamePrefix`/`snapshotsNotFromOtherConfig`/`validateUserEnvName`/`skillsForRun`/`effectiveTenantSkills` → §4.1 导出名（包内调用点 reaper:316/567/572、install:1673 同步改引导出名）；`SkillsForRun` 按 §4.2 改造；`effective.go` 参数接口导出（§4.2）。
-- [ ] §2.3/§2.4 调用点按 §4.3 末表改写（含 `installerAgentConfig`/`newInstallTranscript`/`skillBundleFromFiles` 增参或升方法）；`uniqueNonEmptyStrings`→`uniqueStrings`；env_declare.go 删 `init()`、增 `RegisterReservedEnvNames`（§4.4-1）。
-- [ ] §5.1 残差文件落位（类型别名族 + 构造器残差 + 4 符号转发 + init 注册）；§5.2 effective 残差重写。
-- [ ] 新增 `internal/application/service/tenant_skill_export_parity_test.go`（差分装置，表驱动，`remove_at: ib2`）：`skillSnapshotNamePrefix(t,c) == acatsvc.SkillSnapshotNamePrefix(t,c)`（含空 configID/大写/含连字符长 ID 用例）、`snapshotsNotFromOtherConfig`/`matchSnapshotByName` 同表等价、`validateUserEnvName` 合法/字面保留名/`WEKNORA_SKILL_` 前缀/注入名（如 `SESSION_INPUT_DIR`，验证 §4.4-1 init 通道）/非法格式逐例等价、`uniqueStrings == uniqueNonEmptyStrings` 序列等价。
+- [ ] §2.3/§2.4 调用点按 §4.3 末表改写（含 `installerAgentConfig`/`newInstallTranscript`/`skillBundleFromFiles`/`bundleOnDemandInstallers` 链增参或升方法）；catalog:213 改走 `s.adapters.uniqueNonEmptyStrings`（**禁止**替换为本面 `uniqueStrings`，语义差异见 §2.3）；env_declare.go 删 `init()`、增 `RegisterReservedEnvNames`（§4.4-1）。
+- [ ] §5.1 残差文件落位（类型别名族 + 构造器残差 + 4 符号转发 + init 注册 + `UniqueNonEmptyStrings`/`OnDemandInstallerPath` 真源绑定）；§5.2 effective 残差重写。
+- [ ] 新增 `internal/application/service/tenant_skill_export_parity_test.go`（差分装置，表驱动，`remove_at: ib2`）：`skillSnapshotNamePrefix(t,c) == acatsvc.SkillSnapshotNamePrefix(t,c)`（含空 configID/大写/含连字符长 ID 用例）、`snapshotsNotFromOtherConfig`/`matchSnapshotByName` 同表等价、`validateUserEnvName` 合法/字面保留名/`WEKNORA_SKILL_` 前缀/注入名（如 `SESSION_INPUT_DIR`，验证 §4.4-1 init 通道——本测试在宿主包、残差 init 已运行，无需显式注册）/非法格式逐例等价、`UniqueNonEmptyStrings` 注入位空串跳过语义断言（对照会话真源行为：`["","a","","a"]` → `["a"]`；并断言与本面 `uniqueStrings` 结果**不同**以防回归混淆）。
+- [ ] 随迁进新包的 `env_declare_test.go` 注入名用例：测试内先 `service.RegisterReservedEnvNames(skills.InjectedSandboxEnvVars())` 再断言（新包测试二进制不链接宿主残差，§4.4-2）。
 - [ ] GREEN：`go build ./...` 0；`go test ./internal/modules/agentcatalog/... -count=1` ok；`go test ./internal/application/service -count=1` ok（execution/conversation/agentruntime/25a/25c 消费方零回归）；`grep -r "agentruntime" internal/modules/agentcatalog/service --include="*.go" -l` 仅命中 `_test.go`（§4.4-3）。
 - commit：`refactor(agentcatalog): move tenant skill service into module with host adapters`
 
@@ -489,7 +500,7 @@ func NewTenantSkillRepository(db *gorm.DB) TenantSkillRepository {
 本面不在 framework:40 点名六面内，按 §14.3「Worker 状态机、重试和幂等」「HTTP 响应/错误码」执行：
 
 1. **搬迁等价差分（必做）**：19 个既有测试文件搬迁前后同集合双跑（T1 基线 vs T5 终态），逐包 `ok/FAIL` 比对；重点用例组：install/remove 状态机与补偿（install_test/remove_test）、reaper 三任务幂等与保留窗（reaper_test：`ReapStuckRuns`/`PruneSupersededSnapshots`/`ReconcileSnapshots`、`skillSnapshotRetention`、Conflict 重试）、环境变量声明校验（env_declare_test）、steer/转录（steer_test/transcript_test 锚定 `conversation.turn.appended` 消费与 StreamManager 面）。
-2. **导出化差分（必做）**：`tenant_skill_export_parity_test.go`（T3）——4 符号 + `uniqueStrings` + 注入保留名通道逐例等价。
+2. **导出化差分（必做）**：`tenant_skill_export_parity_test.go`（T3）——4 execution 符号 + `UniqueNonEmptyStrings` 注入位（空串跳过语义，且断言与本面 `uniqueStrings` 不等价以防混淆）+ 注入保留名通道（`SESSION_INPUT_DIR`）逐例等价。
 3. **消费方面差分（必做）**：`user_env_test.go`/`tenant_sandbox_config_test.go`（execution 面，validateUserEnvName/快照名匹配经残差）、session_agent_qa 相关 service 测试（skillsForRun 经残差）、`router_api_key_capabilities_test.go`（RBAC 面）零回归。
 4. **快照命名外部契约锚点**：`weknora-sk-t<tenant>-<config>` 命名与 `compactConfigID` 规格进 parity 用例（Cube/E2B/Docker 跨账号 listing 依赖该前缀，install.go:1699-1705 注释为锚）。
 5. 差分失败只修新实现，不改期望（spec §14.3）；证据落 `docs/architecture/evidence/passb/b2-ac-skills.md`；legacy 残差删除前差分必须已通过。
@@ -523,7 +534,7 @@ func NewTenantSkillRepository(db *gorm.DB) TenantSkillRepository {
 8. `internal/container/**`、`internal/router/**`、`internal/modules/agentcatalog/module.go`、`go.mod`、`go.sum`、`migrations/`、`tools/**`、25a/25c 文件、execution/conversation/agentruntime 属主文件在 diff 中零出现（`git diff --name-only` 核验）。
 9. 4 条 execution→agentcatalog 符号在新包为导出名且残差 1:1：`rg -n "func (MatchSnapshotByName|SkillSnapshotNamePrefix|SnapshotsNotFromOtherConfig|ValidateUserEnvName)" internal/modules/agentcatalog/service/` 命中 4；旧名仅在残差文件出现。
 10. 新包生产文件零 `internal/modules/agentruntime/**`、零 `internal/application/service`、零 `internal/handler` import（`grep -rn --include="*.go" -v _test` + `go list -deps` 核验；§4.4-3）；architectureguard `forbidden-import` 0（含在 §10.5 的 make 目标内）。
-11. env_declare 注入名行为等价：parity 用例覆盖字面保留名、`WEKNORA_SKILL_` 前缀名、`SESSION_INPUT_DIR` 注入名三类拒绝（§7.2）。
+11. env_declare 注入名行为等价：parity 用例覆盖字面保留名、`WEKNORA_SKILL_` 前缀名、`SESSION_INPUT_DIR` 注入名三类拒绝（宿主包 parity 测试经残差 init 通道）；新包 `env_declare_test.go` 注入名用例已按 §4.4-2 在测试内显式 `RegisterReservedEnvNames` 注册（T3 步骤核验）。
 
 ## 11. 升级路径（conventions §5）
 
@@ -534,8 +545,14 @@ func NewTenantSkillRepository(db *gorm.DB) TenantSkillRepository {
 ## 12. 计划自检记录（撰写者已执行于 8c45a8815）
 
 - **Spec 覆盖**：§5.4/§5.8 边界（§1 表 + §2.1 归属）、§4.2 端口方向（§4.3/§4.4 使用方端口/注入）、§11/§12/§13（§6 任务/提交、§5 残差删除批次）、§14（§7 差分）、§15（§4.6 API 最小化）、§16（§4.4-1 无新增包级可变 DI 状态：reservedEnvNames 为 Pass A 既有表，注入时点由 init 显式化）、§17.2 对应 IB2/b5 义务（§8/§9）。
-- **无占位符**：全部接口签名取自源码实测——tenant_skill_reaper.go:16/88/287/432/672/771/794、tenant_skill_install.go:1970-1977/1633/1703、tenant_skill_env_declare.go:44-69/154-180/56-64、tenant_skill_effective.go:14-83、tenant_skill_bundle.go:304-327/502、tenant_skill_catalog.go:213、tenant_skill_transcript.go:316/331/406、tenant_skill_service.go:59-169、tenant_skill_source.go:864、repository/tenant_skill.go:15-106、skill_handler.go:15-42、routes_agent.go:76-97、container.go:293/566/702/801/2406、tenant_sandbox_resolve.go:60/70、tenant_sandbox_config.go:193/313-317/1134-1137、session.go:26、session_sandbox_pin.go:205-213、session_attachment_staging.go:49、session_knowledge_qa.go:638、user_env.go:67/275/381、execution/sandbox/remote_client.go:529、tenant_resolver.go:69、agentruntime skills/skill.go:161、skills/skill_frontmatter.go:24、skills/manager.go:51、tools/definitions.go:52-62、tools/persist.go:82/99/113、tools/architectureguard/check.go:1175-1220、tools/passbguard/check.go:64——无 TODO/TBD/待定接口。
+- **无占位符**：全部接口签名取自源码实测——tenant_skill_reaper.go:16/88/287/432/672/771/794、tenant_skill_install.go:808/965/1970-1977/1633/1703/1843-1855（含 :1849 `skills.IsOnDemandInstallerPath`）/1473/1461/1123、tenant_skill_env_declare.go:44-69/154-180/56-64、tenant_skill_effective.go:14-83、tenant_skill_bundle.go:304-327/425/502-513、tenant_skill_catalog.go:201-216、tenant_skill_transcript.go:316/331/406、tenant_skill_service.go:59-169、tenant_skill_source.go:864、repository/tenant_skill.go:15-106、skill_handler.go:15-42、routes_agent.go:76-97、container.go:293/566/702/801/2406、tenant_sandbox_resolve.go:60/70、tenant_sandbox_config.go:193/313-317/1134-1137、session.go:26、session_sandbox_pin.go:205-213、session_attachment_staging.go:49、session_knowledge_qa.go:638-648、user_env.go:67/275/381、execution/sandbox/remote_client.go:529、tenant_resolver.go:69、agentruntime skills/skill.go:161/246、skills/skill_frontmatter.go:24、skills/manager.go:51、tools/definitions.go:52-62、tools/persist.go:82/99/113、tools/architectureguard/check.go:1175-1220、tools/passbguard/check.go:64——无 TODO/TBD/待定接口。
 - **类型一致**：`RemoteSnapshotRef`/`TenantSandboxResolver`/`SessionInstallShellExecutor`/`Manager` 均为 `internal/modules/execution/sandbox` 既有导出；`WorkspaceSandboxPolicy` 不进新包签名；`skills.Skill` 4 消费字段有 `SkillManifestView` 数据视图承接（bundle.go:319-325 实测）；`[3]string` 工具名元组对应 definitions.go:52-62 三个常量。
-- **跨任务接口一致**：T2 残差→T3 消费（repository 别名）；T3 HostAdapters 七位↔§5.1 残差绑真源一一对应；T3 导出名↔§5.1 转发/§8(b) 切换清单一致；T4 `acatsvc.` 前缀↔T3 导出面；T5 Brief↔§5 删除清单一致。
+- **跨任务接口一致**：T2 残差→T3 消费（repository 别名）；T3 HostAdapters 11 位（ResolveConfigManager/InstallShellExecutor/SessionUserID/SkillManifestParser/FrontmatterVersionParser/InstallerToolNames/StreamContentForToolResult/SanitizeToolResultForClient/SanitizeAgentStepsForStorage/OnDemandInstallerPath/UniqueNonEmptyStrings——除 SessionUserID 外必填）↔§5.1 残差绑真源一一对应；T3 导出名↔§5.1 转发/§8(b) 切换清单一致；T4 `acatsvc.` 前缀↔T3 导出面；T5 Brief↔§5 删除清单一致。
 - **原子性论证**：service 层单任务搬迁因 `func (s *TenantSkillService)` 方法接收者分布全部 17 文件（`grep -c "func (s \*TenantSkillService)"` 实测非零于 admin/install/catalog/reaper/effective 等各文件），拆批必断方法集编译。
 - **基线实跑**：§前置条件 4 全部命令撰写者已跑，输出如实记录（含全量 service 包 154.512s）；`go test ./internal/modules/agentcatalog/...` 当前为骨架包（无测试文件）`ok` 预期，T2 起转为真实门禁。
+- **审校修复记录（2026-09-23 第二轮，commit a6afa4fb1 → 本修订）**：
+  1. 【important】补 §2.4/§4.3/§4.4 遗漏的 `tenant_skill_install.go:1849` agentruntime 消费点（`skills.IsOnDemandInstallerPath`，skill.go:246；`rg -n 'skills\.[A-Z]' …` 复测命中）→ 新增 `HostAdapters.OnDemandInstallerPath` + 自由函数链（`bundleOnDemandInstallers`/`formatOnDemandInstallers`/`buildRepairPrompt`，caller :808）增参改写。
+  2. 【important】撤回 §2.3「uniqueStrings 与 uniqueNonEmptyStrings 同语义」错误声明（实测 bundle.go:502-513 保留空串 vs session_knowledge_qa.go:638-648 跳空去重；catalog.go:214-216 依赖 `len(ids)==0 → 400` 语义）→ 改 `HostAdapters.UniqueNonEmptyStrings` 注入 conversation 真源；§7.2 parity 中自相矛盾的「两者序列等价」断言改为「注入位空串跳过语义 + 与本面 uniqueStrings 不等价」断言。
+  3. 【minor】§1 计数措辞修正：glob 实测 18 个（复跑 `ls … | wc -l` = 18），其中 `tenant_skill_market_service_test.go` 属 25c 不随迁，本面 17 个；19 随迁清单与归属判断不变。
+  4. 【minor】前置条件 2 如实收严：DAG 实测 ib1 `status=in_progress/review_status=pending/head_sha=null`、`b2-ac-skills.status=pending/base_sha=null`，派发 gate 未收口；裁定须由协调者登记进 DAG（corrections/notes + base_sha 回写，conventions §9），本计划不代替裁定；DAG 文件本节点不可写，不作修改。
+  5. 【minor】§4.4-2/T3/§10.11 补测试可执行性前提：新包测试二进制不链接宿主残差、init 注册通道不运行，新包注入名用例须测试内先 `RegisterReservedEnvNames(skills.InjectedSandboxEnvVars())`；宿主包 parity 测试链接残差、无需显式注册。
