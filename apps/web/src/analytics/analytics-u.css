@@ -240,9 +240,7 @@
 
 .wk-anl-an-usage-cell {
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-bottom-width: 1px;border-color: #eef1f5;
   padding-inline: 10px;
   padding-block: 8px;
   text-align: left;
@@ -303,9 +301,7 @@
 
 .wk-anl-2 {
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #e7e7ea;
+  border-bottom-width: 1px;border-color: #e7e7ea;
 }
 
 .wk-anl-3 {

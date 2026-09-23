@@ -152,9 +152,7 @@
 
 .wk-kss-19 {
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #edf0f5;
   background-color: #f3f3f3;
   text-align: left;
   font-size: 12px;
@@ -168,9 +166,7 @@
 
 .wk-kss-21 {
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #edf0f5;
 }
 
 .wk-kss-21:last-child {

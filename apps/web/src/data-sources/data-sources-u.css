@@ -490,9 +490,7 @@
 
 .wk-ds-58 {
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #edf0f5;
   padding-block: 0.9rem;
 }
 
@@ -594,9 +592,7 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #edf0f5;
   padding-block: 0.9rem;
 }
 

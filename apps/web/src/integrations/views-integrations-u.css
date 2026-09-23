@@ -1,5 +1,5 @@
 /* views-integrations-u.css — S7 Tailwind utilities 平移（packages/views/src/integrations/page.tsx）
- * 前缀 wk-vi-*；常量类名由 CHANNEL_*/INTEGRATION_*/EMBED_*/CHIP_*/CODE_* 派生。
+ * 前缀 wk-vi-*；常量类名由 CHANNEL_*、INTEGRATION_*、EMBED_*、CHIP_*、CODE_* 派生。
  * 整体包 @layer utilities：这些规则原为 Tailwind utilities（layered），与 unlayered 页 CSS 的
  * 既有胜负关系（恒输）经 layer 归位逐字保留；!important 例外照旧胜出。
  * views 包不带 css 依赖，由 apps/web/src/integrations 消费方 import。 */
@@ -529,9 +529,7 @@
   margin-inline: -24px;
   margin-bottom: -24px;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-top-width: 1px;border-color: #eef1f5;
   padding-inline: 24px;
   padding-block: 14px;
   background-color: rgba(255,255,255,.96);
@@ -673,7 +671,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-family: 450;
+  font-weight: 450;
   color: #07c05f;
   text-decoration-line: none;
 }
@@ -725,9 +723,7 @@
   align-items: center;
   justify-content: space-between;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-bottom-width: 1px;border-color: #eef1f5;
   padding-inline: 24px;
 }
 
@@ -774,9 +770,7 @@
   align-items: center;
   gap: 6px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #dce3ed;
+  border-bottom-width: 1px;border-color: #dce3ed;
   background-color: #eef1f5;
   padding-inline: 14px;
   padding-block: 10px;
@@ -1090,9 +1084,7 @@
   display: flex;
   flex-direction: column;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-top-width: 1px;border-color: #e7e7e7;
 }
 
 .wk-vi-53 {
@@ -1101,9 +1093,7 @@
   gap: 24px;
   padding-block: 20px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-bottom-width: 1px;border-color: #e7e7e7;
 }
 
 @media (max-width: 780px) {
@@ -1183,9 +1173,7 @@
   gap: 24px;
   padding-block: 20px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-bottom-width: 1px;border-color: #e7e7e7;
 }
 
 .wk-vi-60 {
@@ -1207,9 +1195,7 @@
   flex-direction: column;
   gap: 14px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 20px;
 }
 
@@ -1302,9 +1288,7 @@
 .wk-vi-70 {
   white-space: nowrap;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-bottom-width: 1px;border-color: #eef1f5;
   padding-inline: 0.6rem;
   padding-block: 0.45rem;
   text-align: left;
@@ -1315,9 +1299,7 @@
 
 .wk-vi-71 {
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #f2f5fa;
+  border-bottom-width: 1px;border-color: #f2f5fa;
   padding-inline: 0.6rem;
   padding-block: 0.5rem;
   overflow-wrap: anywhere;
@@ -1337,9 +1319,7 @@
   gap: 0.4rem;
   white-space: nowrap;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #f2f5fa;
+  border-bottom-width: 1px;border-color: #f2f5fa;
   padding-inline: 0.6rem;
   padding-block: 0.5rem;
   overflow-wrap: anywhere;
@@ -1350,9 +1330,7 @@
   flex-direction: column;
   gap: 20px;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-top-width: 1px;border-color: #e7e7e7;
   padding-block: 20px;
 }
 
@@ -1429,9 +1407,7 @@
   justify-content: space-between;
   gap: 8px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-bottom-width: 1px;border-color: #e7e7e7;
   background-color: #ffffff;
   padding-inline: 10px;
   padding-block: 8px;
@@ -1750,9 +1726,7 @@
   min-width: 0;
   gap: 10px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-block: 9px;
 }
 
@@ -1917,9 +1891,7 @@
   flex-direction: column;
   gap: 12px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-bottom-width: 1px;border-color: #e7e7e7;
   padding-bottom: 14px;
   padding-top: 10px;
 }

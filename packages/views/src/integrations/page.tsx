@@ -724,18 +724,18 @@ interface ChannelListCopy {
 // tile matches the existing channel cards even in an empty list.
 const CHANNEL_CARD_CLASS = 'ease-[ease] wk-vi-channel-card-class';
 
-const CHANNEL_CARD_CLICKABLE_CLASS = CHANNEL_CARD_CLASS + 'wk-vi-channel-card-clickable-class';
+const CHANNEL_CARD_CLICKABLE_CLASS = CHANNEL_CARD_CLASS + ' wk-vi-channel-card-clickable-class';
 
-const CHANNEL_CARD_STATIC_CLASS = CHANNEL_CARD_CLASS + 'wk-vi-channel-card-static-class';
+const CHANNEL_CARD_STATIC_CLASS = CHANNEL_CARD_CLASS + ' wk-vi-channel-card-static-class';
 
 // Vue .channel-card--add inherits --td-text-color-placeholder rgba(0,0,0,0.4).
-const CHANNEL_CARD_ADD_CLASS = CHANNEL_CARD_CLASS + 'wk-vi-channel-card-add-class';
+const CHANNEL_CARD_ADD_CLASS = CHANNEL_CARD_CLASS + ' wk-vi-channel-card-add-class';
 
 const CHANNEL_BADGE_CLASS = 'wk-vi-channel-badge-class';
 
-const CHANNEL_BADGE_STATIC_CLASS = CHANNEL_BADGE_CLASS + 'wk-vi-channel-badge-static-class';
+const CHANNEL_BADGE_STATIC_CLASS = CHANNEL_BADGE_CLASS + ' wk-vi-channel-badge-static-class';
 
-const CHANNEL_BADGE_ADD_CLASS = CHANNEL_BADGE_CLASS + 'wk-vi-channel-badge-add-class';
+const CHANNEL_BADGE_ADD_CLASS = CHANNEL_BADGE_CLASS + ' wk-vi-channel-badge-add-class';
 
 const CHANNEL_CARD_BODY_CLASS = 'wk-vi-channel-card-body-class';
 
@@ -743,9 +743,9 @@ const CHANNEL_CARD_HEADER_CLASS = 'wk-vi-channel-card-header-class';
 
 const CHANNEL_CARD_TITLE_CLASS = 'wk-vi-channel-card-title-class';
 
-const CHANNEL_CARD_TITLE_STATIC_CLASS =CHANNEL_CARD_TITLE_CLASS + 'wk-vi-channel-card-title-static-class';
+const CHANNEL_CARD_TITLE_STATIC_CLASS = CHANNEL_CARD_TITLE_CLASS + ' wk-vi-channel-card-title-static-class';
 
-const CHANNEL_CARD_TITLE_ADD_CLASS =CHANNEL_CARD_TITLE_CLASS + 'wk-vi-channel-card-title-add-class';
+const CHANNEL_CARD_TITLE_ADD_CLASS = CHANNEL_CARD_TITLE_CLASS + ' wk-vi-channel-card-title-add-class';
 
 const CHANNEL_CARD_AGENT_CLASS = 'wk-vi-channel-card-agent-class';
 
@@ -760,7 +760,7 @@ const CHANNEL_CARD_ACTIONS_CLASS = 'wk-vi-channel-card-actions-class';
 // source order (the base itself no longer competes with unlayered css).
 const INT_TAB_CLASS = 'wk-vi-int-tab-class';
 
-const INT_TAB_ACTIVE_CLASS = INT_TAB_CLASS + 'wk-vi-int-tab-active-class';
+const INT_TAB_ACTIVE_CLASS = INT_TAB_CLASS + ' wk-vi-int-tab-active-class';
 
 const INT_DOC_LINK_CLASS = 'wk-vi-int-doc-link-class';
 
@@ -810,7 +810,7 @@ const IM_STEP_CHROME = 'wk-vi-im-step-chrome';
 // so interpolated selectors would never be generated)
 const EMBED_STEP_CHROME = 'wk-vi-embed-step-chrome';
 
-const INTEGRATION_DRAWER_CLASS_STEPS = INTEGRATION_DRAWER_CLASS + IM_STEP_CHROME + EMBED_STEP_CHROME + 'wk-vi-integration-drawer-class-steps';
+const INTEGRATION_DRAWER_CLASS_STEPS = INTEGRATION_DRAWER_CLASS + ' ' + IM_STEP_CHROME + ' ' + EMBED_STEP_CHROME + ' wk-vi-integration-drawer-class-steps';
 
 // .wk-integration-drawer-close (hover mirrors the old :hover/:focus-visible
 // rule; the class name remains as a test/DOM hook on every consumer).

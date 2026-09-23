@@ -169,9 +169,7 @@
   align-items: center;
   justify-content: space-between;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-bottom-width: 1px;border-color: #eef1f5;
   padding-inline: 24px;
 }
 
@@ -246,9 +244,7 @@
   align-items: center;
   gap: 6px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #dce3ed;
+  border-bottom-width: 1px;border-color: #dce3ed;
   background-color: #eef1f5;
   padding-inline: 14px;
   padding-block: 10px;

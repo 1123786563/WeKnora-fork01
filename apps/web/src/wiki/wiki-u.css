@@ -173,9 +173,7 @@
   align-items: center;
   gap: 8px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #edf0f5;
   padding-block: 0.55rem;
 }
 
@@ -327,9 +325,7 @@
   flex-shrink: 0;
   flex-direction: column;
   border-right-style: solid;
-  border-right-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-right-width: 1px;border-color: #e7e7e7;
   background-color: #fff;
 }
 
@@ -354,9 +350,7 @@
   margin-block: 6px;
   margin-right: 8px;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-top-width: 1px;border-color: #e7e7e7;
 }
 
 .wk-wiki-32 {
@@ -619,9 +613,7 @@
   justify-content: space-between;
   gap: 16px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #edf0f5;
   padding-block: 0.9rem;
 }
 

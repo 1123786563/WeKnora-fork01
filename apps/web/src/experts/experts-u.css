@@ -408,9 +408,7 @@
   justify-content: space-between;
   gap: 8px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: rgba(127,127,127,0.2);
+  border-bottom-width: 1px;border-color: rgba(127,127,127,0.2);
   padding-inline: 24px;
   padding-block: 20px;
 }
@@ -582,9 +580,7 @@
   justify-content: space-between;
   gap: 10px;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: rgba(127,127,127,0.2);
+  border-top-width: 1px;border-color: rgba(127,127,127,0.2);
   background-color: var(--wk-bg,#fff);
   padding-inline: 24px;
   padding-block: 16px;
@@ -693,9 +689,7 @@
   justify-content: flex-end;
   gap: 10px;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: rgba(127,127,127,0.2);
+  border-top-width: 1px;border-color: rgba(127,127,127,0.2);
   padding-inline: 24px;
   padding-block: 16px;
 }

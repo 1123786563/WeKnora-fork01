@@ -169,9 +169,7 @@
 
 .wk-kba-10 {
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #edf0f5;
   background-color: #f3f3f3;
   text-align: left;
   font-size: 12px;
@@ -192,9 +190,7 @@
 .wk-kba-13 {
   cursor: pointer;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #edf0f5;
 }
 
 .wk-kba-13:last-child {
@@ -263,9 +259,7 @@
   grid-template-columns: repeat(9rem minmax(0,1fr), minmax(0, 1fr));
   gap: 12px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-bottom-width: 1px;border-color: #edf0f5;
   padding-block: 8px;
 }
 
@@ -539,9 +533,7 @@
   align-items: center;
   gap: 0.6rem;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #edf0f5;
+  border-top-width: 1px;border-color: #edf0f5;
   padding-top: 16px;
 }
 
@@ -696,9 +688,7 @@
   border-bottom-width: 0px;
   border-left-width: 0px;
   border-right-style: solid;
-  border-right-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-right-width: 1px;border-color: #e7e7e7;
   padding-inline: 16px;
   padding-block: 0;
   font-family: inherit;

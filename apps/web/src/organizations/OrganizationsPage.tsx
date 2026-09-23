@@ -39,9 +39,9 @@ const UPLOAD_SVG_DATA = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYyIiBoZWlna
 
 /* ---- 留守段共享 Tailwind recipes（R490 编辑模式/加入弹框 internals） ---- */
 const ORG_BTN = 'wk-org-org-btn';
-const ORG_BTN_PRIMARY = ORG_BTN + 'wk-org-org-btn-primary';
-const ORG_BTN_OUTLINE = ORG_BTN + 'wk-org-org-btn-outline';
-const ORG_BTN_NEUTRAL = ORG_BTN + 'wk-org-org-btn-neutral';
+const ORG_BTN_PRIMARY = ORG_BTN + ' wk-org-org-btn-primary';
+const ORG_BTN_OUTLINE = ORG_BTN + ' wk-org-org-btn-outline';
+const ORG_BTN_NEUTRAL = ORG_BTN + ' wk-org-org-btn-neutral';
 const ORG_FIELD = 'wk-org-org-field';
 const ORG_MEMBER_ROW = 'wk-org-org-member-row';
 const ORG_MEMBER_COPY = 'wk-org-org-member-copy';

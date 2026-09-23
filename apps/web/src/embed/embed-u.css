@@ -27,9 +27,7 @@
   align-items: center;
   gap: 12px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-bottom-width: 1px;border-color: #eef1f5;
   padding-inline: 16px;
   padding-block: 12px;
 }
@@ -296,9 +294,7 @@
 .wk-emb-31 {
   margin-top: 8px;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #e7eaef;
+  border-top-width: 1px;border-color: #e7eaef;
   padding-top: 8px;
   font-size: 12px;
 }

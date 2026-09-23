@@ -988,7 +988,7 @@ html:not(.wk-kbd-nav) .wk-settings-drawer-root :focus-visible { outline: none; }
 
 /* ==== S6 Tailwind 收编：SystemGlobalSettingsPanel（React 保留实现段） ====
  * 面板体内联确认/提示弹层 scoped；ResetPassword/CreateUser TDialog portal
- * 挂 body（.wk-dialog-*/.wk-create-user-* unscoped）。!bg-*!text-white 等
+ * 挂 body（.wk-dialog-* 与 .wk-create-user-* unscoped）。bg-* 与 text-white 等
  * important utility 平移为 !important 声明（语义不变：压制 tdesign 按钮
  * variant chrome 与 hover）。 */
 .wk-settings-drawer-root .wk-system-global-message { margin: 0; font-size: 13px; }

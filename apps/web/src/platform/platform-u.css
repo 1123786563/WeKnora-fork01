@@ -12,9 +12,7 @@
 
 .wk-cmdk-2 {
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #f2f5f9;
+  border-top-width: 1px;border-color: #f2f5f9;
 }
 
 .wk-cmdk-2:first-child {
@@ -63,9 +61,7 @@
   align-items: center;
   gap: 8px;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-bottom-width: 1px;border-color: #eef1f5;
   padding-inline: 14px;
   padding-block: 12px;
 }
@@ -126,9 +122,7 @@
   width: 14px;
   flex-shrink: 0;
   animation: spin 1s linear infinite;
-  border-radius: 9999px;
-  border-style: solid;
-  border-width: 8px;
+  border-radius: 9999px;border-width: 8px;
   border-color: #d7dde5;
   border-top-style: solid;
   border-top-color: #2f6fed;
@@ -305,9 +299,7 @@
   flex-wrap: wrap;
   gap: 16px;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #e7e7e7;
+  border-top-width: 1px;border-color: #e7e7e7;
   padding-inline: 14px;
   padding-block: 8px;
   font-size: 11px;
@@ -362,9 +354,7 @@
   align-items: center;
   justify-content: space-between;
   border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-bottom-width: 1px;border-color: #eef1f5;
   padding-inline: 16px;
   padding-block: 12px;
 }

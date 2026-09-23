@@ -204,9 +204,7 @@
   justify-content: flex-end;
   gap: 8px;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-top-width: 1px;border-color: #eef1f5;
   padding-top: 12px;
 }
 
@@ -451,9 +449,7 @@
   justify-content: flex-end;
   gap: 8px;
   border-top-style: solid;
-  border-top-width: 1px;
-  border-style: solid;
-  border-color: #eef1f5;
+  border-top-width: 1px;border-color: #eef1f5;
   padding-top: 14px;
 }
 
