@@ -131,6 +131,10 @@ type sourceRevision struct {
 	MIMEType          string `gorm:"size:128"`
 	Size              int64
 	Digest            string `gorm:"size:64"`
+	RequestID         string `gorm:"size:128"`
+	IntentHash        string `gorm:"size:64"`
+	ExpectedRevision  uint64
+	LeaseUntil        *time.Time
 	ResourceRef       string `gorm:"type:text"`
 	Status            string `gorm:"size:16;index"`
 	ErrorCategory     string `gorm:"size:64"`
@@ -243,6 +247,9 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 			return nil, e
 		}
 	}
+	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS career_source_request_scope ON career_source_revisions (tenant_id, user_id, request_id) WHERE request_id <> ''").Error; err != nil {
+		return nil, err
+	}
 	return &Office{db: db}, nil
 }
 
@@ -255,7 +262,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_proposals":        {"id", "public_id", "tenant_id", "user_id", "key", "value", "evidence", "source", "status", "resolved_at", "resolved_revision", "confirmation", "resolution_source", "created_at"},
 		"career_changes":          {"id", "tenant_id", "user_id", "revision", "kind", "body", "created_at"},
 		"career_receipts":         {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
-		"career_source_revisions": {"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"},
+		"career_source_revisions": {"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {

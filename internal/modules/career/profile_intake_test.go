@@ -2,7 +2,9 @@ package career
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -137,4 +139,85 @@ func TestSourceLifecyclePersistsProcessingReadyAndFailedWithoutReplacingFacts(t 
 	require.NoError(t, err)
 	require.Len(t, view.Facts, 1)
 	require.Equal(t, "Confirmed University", view.Facts[0].Value)
+}
+
+func TestSameCategoryExtractedItemsRemainDistinctAfterConfirmation(t *testing.T) {
+	o, ctx := testOffice(t)
+	text := "Experience: Acme, 2022-2024, backend engineer\nExperience: Beta, 2020-2022, analyst"
+	fields, _, _ := ExtractResumeFields(text)
+	source, err := o.CreateProcessingSource(ctx, SourceUpload{ID: "multi-exp", FileName: "resume.txt", MIMEType: "text/plain", Size: int64(len(text)), Digest: "digest", ResourceRef: "ref"})
+	require.NoError(t, err)
+	_, err = o.CompleteIntake(ctx, source.ID, text, fields, nil, nil, "multi-exp-batch", 0)
+	require.NoError(t, err)
+	view, err := o.Open(ctx)
+	require.NoError(t, err)
+	require.Len(t, view.Proposals, 2)
+	for i, p := range view.Proposals {
+		_, err = o.Act(ctx, "confirm_proposal", p.ID, "", "", fmt.Sprintf("confirm-%d", i), uint64(i+1), Source{Kind: "user_confirmation"})
+		require.NoError(t, err)
+	}
+	view, err = o.Open(ctx)
+	require.NoError(t, err)
+	require.Len(t, view.Facts, 2)
+	require.NotEqual(t, view.Facts[0].Key, view.Facts[1].Key)
+}
+
+func TestPurposeModelJSONOmitsIdentityFromKeyAndSourceMetadata(t *testing.T) {
+	o, ctx := testOffice(t)
+	_, err := o.Confirm(ctx, "experience.company_110105199001011234", "Acme 110105199001011234", "identity-meta-confirm", 0, Source{Kind: "manual", Label: "110105199001011234", ReferenceID: "source-110105199001011234"})
+	require.NoError(t, err)
+	input, err := o.BuildModelInput(ctx, "profile_summary")
+	require.NoError(t, err)
+	encoded := input.String()
+	require.NotContains(t, encoded, "110105199001011234")
+	require.Contains(t, encoded, "Acme [REDACTED]")
+	require.NotContains(t, encoded, "source")
+}
+
+func TestUploadClaimReplaysAndRejectsChangedIntentBeforeWork(t *testing.T) {
+	o, ctx := testOffice(t)
+	u := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 12, Digest: "digest-a", RequestID: "request-a", IntentHash: "intent-a", ExpectedRevision: 0}
+	first, terminal, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	require.False(t, terminal)
+	require.Equal(t, "processing", first.Status)
+	replay, terminal, err := o.ClaimUpload(ctx, u)
+	require.ErrorIs(t, err, ErrUploadInProgress)
+	require.False(t, terminal)
+	require.Equal(t, first.ID, replay.ID)
+	changed := u
+	changed.Digest = "digest-b"
+	_, _, err = o.ClaimUpload(ctx, changed)
+	require.ErrorIs(t, err, ErrIdempotencyConflict)
+	changed = u
+	changed.IntentHash = "intent-b"
+	_, _, err = o.ClaimUpload(ctx, changed)
+	require.ErrorIs(t, err, ErrIdempotencyConflict)
+	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", first.ID).Update("lease_until", time.Now().Add(-time.Minute)).Error)
+	recovered, terminal, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	require.False(t, terminal)
+	require.Equal(t, first.ID, recovered.ID)
+}
+
+func TestStaleProcessingUploadBecomesVisibleTerminalFailure(t *testing.T) {
+	o, ctx := testOffice(t)
+	u := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 12, Digest: "digest-stale", RequestID: "request-stale", IntentHash: "intent-stale"}
+	source, _, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	require.NoError(t, o.PersistUploadResource(ctx, source.ID, "private://stale"))
+	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", source.ID).Update("lease_until", time.Now().Add(-time.Hour)).Error)
+	resources, err := o.FailStaleUploads(ctx, time.Now().Add(-30*time.Minute))
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	require.Equal(t, "private://stale", resources[0].ResourceRef)
+	failed, err := o.GetSource(ctx, source.ID)
+	require.NoError(t, err)
+	require.Equal(t, "failed", failed.Status)
+	require.Equal(t, "interrupted", failed.ErrorCategory)
+	replayed, terminal, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	require.True(t, terminal)
+	require.Equal(t, failed.ID, replayed.ID)
+	require.Equal(t, "failed", replayed.Status)
 }

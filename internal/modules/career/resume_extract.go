@@ -1,6 +1,8 @@
 package career
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"regexp"
 	"strings"
 )
@@ -56,7 +58,9 @@ func ExtractResumeFields(text string) ([]ExtractedField, []string, []string) {
 			flags = appendUnique(flags, "achievement_without_explicit_number")
 			continue
 		}
-		key := category + ".details"
+		sum := sha256.Sum256([]byte(strings.ToLower(strings.Join(strings.Fields(line), " "))))
+		itemID := hex.EncodeToString(sum[:6])
+		key := category + ".item_" + itemID + ".details"
 		if category == "education" {
 			if isGraduationLabel(label) {
 				key = "education.graduation_year"

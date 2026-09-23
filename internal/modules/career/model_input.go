@@ -9,10 +9,18 @@ import (
 )
 
 var identityNumberPattern = regexp.MustCompile(`(?i)\b(?:[A-Z]{1,2}\d{6,10}|\d{15,19}[\dX]?)\b`)
+var identityNumberInTokenPattern = regexp.MustCompile(`(?i)(?:[A-Z]{1,2})?\d{15,19}[\dX]?`)
 
 type PurposeModelInput struct {
-	Purpose string `json:"purpose"`
-	Facts   []Fact `json:"facts"`
+	Purpose string      `json:"purpose"`
+	Facts   []ModelFact `json:"facts"`
+}
+
+// ModelFact deliberately excludes source and confirmation metadata. Those fields
+// are useful to the application but are not needed by model consumers.
+type ModelFact struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 func (input PurposeModelInput) String() string {
@@ -37,7 +45,7 @@ func (o *Office) BuildModelInput(ctx context.Context, purpose string) (PurposeMo
 	if purpose == "qualification_evaluation" {
 		allowed = map[string]bool{"education": true, "experience": true, "skill": true, "preference": true}
 	}
-	input := PurposeModelInput{Purpose: purpose, Facts: []Fact{}}
+	input := PurposeModelInput{Purpose: purpose, Facts: []ModelFact{}}
 	for _, fact := range view.Facts {
 		category := strings.SplitN(fact.Key, ".", 2)[0]
 		if legacyCategory, ok := legacy[fact.Key]; ok {
@@ -46,8 +54,9 @@ func (o *Office) BuildModelInput(ctx context.Context, purpose string) (PurposeMo
 		if strings.HasPrefix(fact.Key, "identity.") || !allowed[category] {
 			continue
 		}
-		fact.Value = identityNumberPattern.ReplaceAllString(fact.Value, "[REDACTED]")
-		input.Facts = append(input.Facts, fact)
+		key := identityNumberInTokenPattern.ReplaceAllString(fact.Key, "[REDACTED]")
+		value := identityNumberPattern.ReplaceAllString(fact.Value, "[REDACTED]")
+		input.Facts = append(input.Facts, ModelFact{Key: key, Value: value})
 	}
 	return input, nil
 }

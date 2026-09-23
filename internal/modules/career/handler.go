@@ -2,6 +2,9 @@ package career
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -145,9 +148,28 @@ func (h *Handler) Act(c *gin.Context) {
 		writeError(c, ErrInvalidRequest)
 		return
 	}
-	// Resume extraction provenance is server-issued by CompleteIntake. A client
-	// may add manual facts but cannot label its own values as parser output.
-	if req.Action == "propose" && (req.Source.Kind != "manual" || req.Source.ReferenceID != "") {
+	// Client writes cannot claim parser provenance. Direct confirmation is
+	// explicitly manual; proposal resolution keeps the stored proposal source.
+	switch req.Action {
+	case "propose":
+		if req.Source.Kind != "manual" || req.Source.ReferenceID != "" {
+			writeError(c, ErrInvalidRequest)
+			return
+		}
+		req.Source = Source{Kind: "manual"}
+	case "confirm":
+		if req.Source.Kind != "manual" || req.Source.ReferenceID != "" {
+			writeError(c, ErrInvalidRequest)
+			return
+		}
+		req.Source = Source{Kind: "manual"}
+	case "confirm_proposal", "dismiss":
+		if req.Source.Kind != "user_confirmation" || req.Source.ReferenceID != "" {
+			writeError(c, ErrInvalidRequest)
+			return
+		}
+		req.Source = Source{Kind: "user_confirmation"}
+	default:
 		writeError(c, ErrInvalidRequest)
 		return
 	}
@@ -193,6 +215,10 @@ func (h *Handler) Sources(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if err := h.reconcileStaleSources(ctx); err != nil {
+		writeError(c, err)
+		return
+	}
 	v, err := h.office.ListSources(ctx)
 	if err != nil {
 		writeError(c, err)
@@ -204,6 +230,10 @@ func (h *Handler) Sources(c *gin.Context) {
 func (h *Handler) Upload(c *gin.Context) {
 	ctx, ok := h.scope(c, true)
 	if !ok {
+		return
+	}
+	if err := h.reconcileStaleSources(ctx); err != nil {
+		writeError(c, err)
 		return
 	}
 	currentView, err := h.office.Open(ctx)
@@ -242,23 +272,54 @@ func (h *Handler) Upload(c *gin.Context) {
 		}
 	}
 	requestID := strings.TrimSpace(c.Request.PostFormValue("requestId"))
-	processingCreated := false
-	result, err := h.upload.StoreAndParse(ctx, tenantID, header.Filename, header.Header.Get("Content-Type"), data, func(upload UploadResult) error {
-		_, createErr := h.office.CreateProcessingSource(ctx, upload.Upload)
-		processingCreated = createErr == nil
-		return createErr
+	if requestID == "" || len(requestID) > 128 {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	safeName, nameValid := secutils.ValidateInput(strings.TrimSpace(header.Filename))
+	if !nameValid {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	baseName, nameErr := secutils.SafeFileName(safeName)
+	if nameErr != nil {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	digestBytes := sha256.Sum256(data)
+	digest := hex.EncodeToString(digestBytes[:])
+	intentBytes, _ := json.Marshal([]any{baseName, strings.TrimSpace(header.Header.Get("Content-Type")), expectedRevision})
+	intentSum := sha256.Sum256(intentBytes)
+	claim, terminal, claimErr := h.office.ClaimUpload(ctx, SourceUpload{FileName: baseName, MIMEType: header.Header.Get("Content-Type"), Size: int64(len(data)), Digest: digest, RequestID: requestID, IntentHash: hex.EncodeToString(intentSum[:]), ExpectedRevision: expectedRevision})
+	if errors.Is(claimErr, ErrUploadInProgress) {
+		c.JSON(202, UploadResponse{Source: claim})
+		return
+	}
+	if claimErr != nil {
+		writeError(c, claimErr)
+		return
+	}
+	if terminal {
+		var receipt *Receipt
+		if claim.Status == "ready" {
+			r, e := h.office.Receipt(ctx, claim.ID+":batch")
+			if e == nil {
+				receipt = &r
+			}
+		}
+		c.JSON(200, UploadResponse{Source: claim, Receipt: receipt})
+		return
+	}
+	result, err := h.upload.StoreAndParseWithID(ctx, tenantID, claim.ID, baseName, header.Header.Get("Content-Type"), data, func(upload UploadResult) error {
+		return h.office.PersistUploadResource(ctx, upload.SourceID, upload.Upload.ResourceRef)
 	})
 	if err != nil {
-		if result.SourceID != "" {
+		if claim.ID != "" {
 			failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			defer cancel()
 			var failed CareerSource
 			var createErr error
-			if processingCreated {
-				failed, createErr = h.office.FinishSource(failureCtx, result.SourceID, "", nil, nil, err)
-			} else {
-				failed, createErr = h.office.CreateFailedSource(failureCtx, result.Upload, err.Error())
-			}
+			failed, createErr = h.office.FinishSource(failureCtx, claim.ID, "", nil, nil, err)
 			if createErr != nil {
 				writeError(c, createErr)
 				return
@@ -271,12 +332,17 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 	var receipt *Receipt
 	if len(result.Fields) > 0 {
-		if requestID == "" {
-			requestID = result.SourceID + ":batch"
-		}
-		batch, batchErr := h.office.CompleteIntake(ctx, result.SourceID, result.Upload.Text, result.Fields, result.MissingCategories, result.ReviewFlags, requestID, expectedRevision)
+		batchID := result.SourceID + ":batch"
+		batch, batchErr := h.office.CompleteIntake(ctx, result.SourceID, result.Upload.Text, result.Fields, result.MissingCategories, result.ReviewFlags, batchID, expectedRevision)
 		if batchErr != nil {
-			if !errors.Is(batchErr, ErrOutcomeUnknown) {
+			if errors.Is(batchErr, ErrOutcomeUnknown) {
+				if source, sourceErr := h.office.GetSource(ctx, result.SourceID); sourceErr == nil && source.Status == "ready" {
+					if receipt, receiptErr := h.office.Receipt(ctx, batchID); receiptErr == nil {
+						c.JSON(201, UploadResponse{Source: source, Receipt: &receipt})
+						return
+					}
+				}
+			} else {
 				failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 				_, _ = h.office.FinishSource(failureCtx, result.SourceID, "", nil, nil, batchErr)
 				_ = h.upload.Release(failureCtx, result.Upload.ResourceRef, result.SourceID)
@@ -298,4 +364,23 @@ func (h *Handler) Upload(c *gin.Context) {
 		return
 	}
 	c.JSON(201, UploadResponse{Source: source, Receipt: receipt})
+}
+
+func (h *Handler) reconcileStaleSources(ctx context.Context) error {
+	resources, err := h.office.FailStaleUploads(ctx, time.Now().UTC().Add(-30*time.Minute))
+	if err != nil {
+		return err
+	}
+	for _, resource := range resources {
+		if resource.ResourceRef == "" {
+			continue
+		}
+		if err = h.upload.Release(ctx, resource.ResourceRef, resource.ID); err != nil {
+			return err
+		}
+		if err = h.office.ClearSourceResource(ctx, resource.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }

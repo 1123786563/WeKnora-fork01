@@ -41,6 +41,15 @@ func TestCareerActRejectsClientClaimedResumeExtractionSource(t *testing.T) {
 	view, err := office.Open(WithScope(baseCtx, scope))
 	require.NoError(t, err)
 	require.Empty(t, view.Proposals)
+	confirmBody := `{"action":"confirm","key":"education.school","value":"Forged School","requestId":"forged-confirm-1","expectedRevision":0,"source":{"kind":"resume_extraction","referenceId":"client-controlled"}}`
+	recorder = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest("POST", "/api/v1/career/act", strings.NewReader(confirmBody)).WithContext(baseCtx)
+	h.Act(c)
+	require.Equal(t, 400, recorder.Code)
+	view, err = office.Open(WithScope(baseCtx, scope))
+	require.NoError(t, err)
+	require.Empty(t, view.Facts)
 }
 
 type memberListStub struct{ members []*types.TenantMember }

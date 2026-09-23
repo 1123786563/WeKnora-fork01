@@ -18,13 +18,151 @@ import (
 var ErrSourceNotFound = errors.New("career source not found")
 
 type SourceUpload struct {
+	ID               string
+	FileName         string
+	MIMEType         string
+	Size             int64
+	Digest           string
+	ResourceRef      string
+	Text             string
+	RequestID        string
+	IntentHash       string
+	ExpectedRevision uint64
+}
+
+var ErrUploadInProgress = errors.New("career upload is already processing")
+
+type StaleSourceResource struct {
 	ID          string
-	FileName    string
-	MIMEType    string
-	Size        int64
-	Digest      string
 	ResourceRef string
-	Text        string
+}
+
+// FailStaleUploads turns abandoned processing claims into visible failures.
+// Resource references remain until the caller has successfully released them.
+func (o *Office) FailStaleUploads(ctx context.Context, cutoff time.Time) ([]StaleSourceResource, error) {
+	s, err := getScope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var rows []sourceRevision
+	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND ((status='processing' AND lease_until IS NOT NULL AND lease_until < ?) OR (status='failed' AND error_category='interrupted' AND resource_ref <> ''))", s.TenantID, s.UserID, cutoff).Find(&rows).Error; e != nil {
+			return e
+		}
+		for i := range rows {
+			r := &rows[i]
+			if r.Status == "processing" {
+				r.Status = "failed"
+				r.ErrorCategory = "interrupted"
+				r.ErrorMessage = "Resume processing was interrupted. Upload again or enter profile details manually."
+				r.ExtractedText = ""
+				r.LeaseUntil = nil
+				if e := tx.Save(r).Error; e != nil {
+					return e
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]StaleSourceResource, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, StaleSourceResource{ID: r.ID, ResourceRef: r.ResourceRef})
+	}
+	return out, nil
+}
+
+func (o *Office) ClearSourceResource(ctx context.Context, id string) error {
+	s, e := getScope(ctx)
+	if e != nil {
+		return e
+	}
+	return o.db.WithContext(ctx).Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='failed'", s.TenantID, s.UserID, id).Update("resource_ref", "").Error
+}
+
+// ClaimUpload durably binds a scoped request ID to one canonical upload intent
+// before storage begins. A stale lease can be resumed with the same source ID.
+func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSource, bool, error) {
+	s, err := getScope(ctx)
+	if err != nil {
+		return CareerSource{}, false, err
+	}
+	if err = o.requireSpace(ctx, s); err != nil {
+		return CareerSource{}, false, err
+	}
+	if strings.TrimSpace(upload.RequestID) == "" || strings.TrimSpace(upload.IntentHash) == "" || upload.Size <= 0 || upload.Digest == "" || strings.TrimSpace(upload.FileName) == "" {
+		return CareerSource{}, false, ErrInvalidRequest
+	}
+	var row sourceRevision
+	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var prior sourceRevision
+		e := tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, upload.RequestID).First(&prior).Error
+		if e == nil {
+			if prior.IntentHash != upload.IntentHash || prior.Digest != upload.Digest || prior.ExpectedRevision != upload.ExpectedRevision {
+				return ErrIdempotencyConflict
+			}
+			if prior.Status == "ready" || prior.Status == "failed" {
+				row = prior
+				return nil
+			}
+			now := time.Now().UTC()
+			if prior.LeaseUntil != nil && prior.LeaseUntil.After(now) {
+				row = prior
+				return ErrUploadInProgress
+			}
+			prior.LeaseUntil = &[]time.Time{now.Add(30 * time.Minute)}[0]
+			if e = tx.Model(&prior).Where("status='processing'").Update("lease_until", prior.LeaseUntil).Error; e != nil {
+				return e
+			}
+			row = prior
+			return nil
+		} else if !errors.Is(e, gorm.ErrRecordNotFound) {
+			return e
+		}
+		p := profile{TenantID: s.TenantID, UserID: s.UserID}
+		if e = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&p).Error; e != nil {
+			return e
+		}
+		if tx.Dialector.Name() == "postgres" {
+			if e = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&p).Error; e != nil {
+				return e
+			}
+		}
+		var last uint64
+		if e = tx.Model(&sourceRevision{}).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Select("COALESCE(MAX(revision),0)").Scan(&last).Error; e != nil {
+			return e
+		}
+		now := time.Now().UTC()
+		row = sourceRevision{ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID, Revision: last + 1, FileName: upload.FileName, MIMEType: upload.MIMEType, Size: upload.Size, Digest: upload.Digest, RequestID: upload.RequestID, IntentHash: upload.IntentHash, ExpectedRevision: upload.ExpectedRevision, LeaseUntil: &[]time.Time{now.Add(30 * time.Minute)}[0], Status: "processing"}
+		return tx.Create(&row).Error
+	})
+	if err != nil {
+		var prior sourceRevision
+		if lookupErr := o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, upload.RequestID).First(&prior).Error; lookupErr == nil {
+			if prior.IntentHash != upload.IntentHash || prior.Digest != upload.Digest || prior.ExpectedRevision != upload.ExpectedRevision {
+				return CareerSource{}, false, ErrIdempotencyConflict
+			}
+			if prior.Status == "ready" || prior.Status == "failed" {
+				return sourceView(prior), true, nil
+			}
+			if prior.LeaseUntil != nil && prior.LeaseUntil.After(time.Now().UTC()) {
+				return sourceView(prior), false, ErrUploadInProgress
+			}
+			return o.ClaimUpload(ctx, upload)
+		}
+		return sourceView(row), false, err
+	}
+	return sourceView(row), row.Status == "ready" || row.Status == "failed", nil
+}
+
+func (o *Office) PersistUploadResource(ctx context.Context, sourceID, ref string) error {
+	s, err := getScope(ctx)
+	if err != nil {
+		return err
+	}
+	return o.db.WithContext(ctx).Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='processing'", s.TenantID, s.UserID, sourceID).Updates(map[string]any{"resource_ref": ref, "lease_until": time.Now().UTC().Add(30 * time.Minute)}).Error
 }
 
 // CareerSource intentionally omits the private resource handle and extracted text.
@@ -175,11 +313,13 @@ func (o *Office) FinishSource(ctx context.Context, id, text string, missing, rev
 			}
 			row.ResourceRef = ""
 			row.ExtractedText = ""
+			row.LeaseUntil = nil
 		} else {
 			if strings.TrimSpace(text) == "" {
 				return ErrInvalidRequest
 			}
 			row.Status = "ready"
+			row.LeaseUntil = nil
 			row.ExtractedText = text
 			missingJSON, _ := json.Marshal(missing)
 			flagsJSON, _ := json.Marshal(reviewFlags)
@@ -305,6 +445,7 @@ func (o *Office) CompleteIntake(ctx context.Context, sourceID, text string, fiel
 		}
 		now := time.Now().UTC()
 		source.Status = "ready"
+		source.LeaseUntil = nil
 		source.ExtractedText = text
 		missingJSON, _ := json.Marshal(missing)
 		flagsJSON, _ := json.Marshal(reviewFlags)

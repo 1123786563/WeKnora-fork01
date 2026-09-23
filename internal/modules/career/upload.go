@@ -40,6 +40,10 @@ func NewUploadAdapter(files interfaces.FileService, catalog interfaces.ResourceC
 }
 
 func (a *UploadAdapter) StoreAndParse(ctx context.Context, tenantID uint64, fileName, declaredMIME string, data []byte, onStored func(UploadResult) error) (UploadResult, error) {
+	return a.StoreAndParseWithID(ctx, tenantID, uuid.NewString(), fileName, declaredMIME, data, onStored)
+}
+
+func (a *UploadAdapter) StoreAndParseWithID(ctx context.Context, tenantID uint64, sourceID, fileName, declaredMIME string, data []byte, onStored func(UploadResult) error) (UploadResult, error) {
 	if a == nil || a.files == nil || a.catalog == nil || a.reader == nil || tenantID == 0 {
 		return UploadResult{}, fmt.Errorf("career upload dependencies unavailable")
 	}
@@ -64,7 +68,7 @@ func (a *UploadAdapter) StoreAndParse(ctx context.Context, tenantID uint64, file
 		return UploadResult{}, err
 	}
 	digest := sha256.Sum256(data)
-	result := UploadResult{SourceID: uuid.NewString()}
+	result := UploadResult{SourceID: sourceID}
 	result.Upload = SourceUpload{ID: result.SourceID, FileName: baseName, MIMEType: strings.TrimSpace(declaredMIME), Size: int64(len(data)), Digest: hex.EncodeToString(digest[:])}
 	resourceRef, err := a.files.SaveBytes(ctx, data, tenantID, "career_source_"+result.SourceID+ext, false)
 	if err != nil {

@@ -1,12 +1,18 @@
 package career
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"mime/multipart"
+	"net/http/httptest"
+	"net/textproto"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,11 +20,63 @@ type careerUploadFiles struct {
 	interfaces.FileService
 	stored, deleted string
 	temporary       bool
+	saves           int
+	entered, resume chan struct{}
 }
 
 func (f *careerUploadFiles) SaveBytes(_ context.Context, _ []byte, _ uint64, name string, temporary bool) (string, error) {
 	f.stored, f.temporary = name, temporary
+	f.saves++
+	if f.entered != nil {
+		close(f.entered)
+		<-f.resume
+	}
 	return "private://" + name, nil
+}
+
+func TestUploadHTTPRequestIDReplayAndChangedBytesConflictBeforeStorage(t *testing.T) {
+	o, _ := testOffice(t)
+	files := &careerUploadFiles{}
+	catalog := &careerUploadCatalog{}
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 1, Role: types.TenantRoleOwner}}}, upload: NewUploadAdapter(files, catalog, careerUploadReader{result: &types.ReadResult{MarkdownContent: "Education: Example University"}})}
+	request := func(data, requestID string) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		partHeader := make(textproto.MIMEHeader)
+		partHeader.Set("Content-Disposition", `form-data; name="file"; filename="resume.txt"`)
+		partHeader.Set("Content-Type", "text/plain")
+		part, _ := mw.CreatePart(partHeader)
+		_, _ = part.Write([]byte(data))
+		_ = mw.WriteField("requestId", requestID)
+		_ = mw.WriteField("expectedRevision", "0")
+		_ = mw.Close()
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		ctx := context.WithValue(context.Background(), types.UserIDContextKey, "u1")
+		ctx = context.WithValue(ctx, types.TenantIDContextKey, uint64(1))
+		req := httptest.NewRequest("POST", "/api/v1/career/sources/upload", &body)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		c.Request = req.WithContext(ctx)
+		h.Upload(c)
+		return rec
+	}
+	first := request("Resume plaintext", "resume-request-1")
+	require.Equal(t, 201, first.Code)
+	var one UploadResponse
+	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &one))
+	require.Equal(t, "ready", one.Source.Status)
+	require.NotNil(t, one.Receipt)
+	require.Equal(t, 1, files.saves)
+	replay := request("Resume plaintext", "resume-request-1")
+	require.Equal(t, 200, replay.Code)
+	var two UploadResponse
+	require.NoError(t, json.Unmarshal(replay.Body.Bytes(), &two))
+	require.Equal(t, one.Source.ID, two.Source.ID)
+	require.Equal(t, *one.Receipt, *two.Receipt)
+	require.Equal(t, 1, files.saves)
+	changed := request("Different resume", "resume-request-1")
+	require.Equal(t, 409, changed.Code)
+	require.Equal(t, 1, files.saves)
 }
 func (f *careerUploadFiles) DeleteFile(_ context.Context, ref string) error {
 	f.deleted = ref
@@ -43,9 +101,13 @@ type careerUploadReader struct {
 	interfaces.DocumentReader
 	result *types.ReadResult
 	err    error
+	calls  *int
 }
 
 func (r careerUploadReader) Read(context.Context, *types.ReadRequest) (*types.ReadResult, error) {
+	if r.calls != nil {
+		*r.calls++
+	}
 	return r.result, r.err
 }
 
@@ -68,6 +130,48 @@ func TestUploadAdapterValidatesStoresAndParsesDurableCareerSource(t *testing.T) 
 	require.Equal(t, "Education: Example University", result.Upload.Text)
 	require.Equal(t, "private://"+files.stored, catalog.bound)
 	require.Empty(t, files.deleted)
+}
+
+func TestConcurrentSameUploadRequestOnlyClaimsOneParser(t *testing.T) {
+	o, _ := testOffice(t)
+	files := &careerUploadFiles{entered: make(chan struct{}), resume: make(chan struct{})}
+	catalog := &careerUploadCatalog{}
+	calls := 0
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 1, Role: types.TenantRoleOwner}}}, upload: NewUploadAdapter(files, catalog, careerUploadReader{result: &types.ReadResult{MarkdownContent: "Education: Example University"}, calls: &calls})}
+	request := func() *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		head := make(textproto.MIMEHeader)
+		head.Set("Content-Disposition", `form-data; name="file"; filename="resume.txt"`)
+		head.Set("Content-Type", "text/plain")
+		part, _ := mw.CreatePart(head)
+		_, _ = part.Write([]byte("Resume plaintext"))
+		_ = mw.WriteField("requestId", "concurrent-request")
+		_ = mw.WriteField("expectedRevision", "0")
+		_ = mw.Close()
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		ctx := context.WithValue(context.Background(), types.UserIDContextKey, "u1")
+		ctx = context.WithValue(ctx, types.TenantIDContextKey, uint64(1))
+		req := httptest.NewRequest("POST", "/api/v1/career/sources/upload", &body)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		c.Request = req.WithContext(ctx)
+		h.Upload(c)
+		return rec
+	}
+	firstDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() { firstDone <- request() }()
+	<-files.entered
+	second := request()
+	require.Equal(t, 202, second.Code)
+	var response UploadResponse
+	require.NoError(t, json.Unmarshal(second.Body.Bytes(), &response))
+	require.Equal(t, "processing", response.Source.Status)
+	close(files.resume)
+	first := <-firstDone
+	require.Equal(t, 201, first.Code)
+	require.Equal(t, 1, files.saves)
+	require.Equal(t, 1, calls)
 }
 
 func TestUploadAdapterRejectsMismatchedAndFailedParserInputs(t *testing.T) {

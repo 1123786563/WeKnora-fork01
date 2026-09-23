@@ -8,6 +8,10 @@ CREATE TABLE career_source_revisions (
   mime_type VARCHAR(128) NOT NULL,
   size BIGINT NOT NULL,
   digest VARCHAR(64) NOT NULL,
+  request_id VARCHAR(128) NOT NULL DEFAULT '',
+  intent_hash VARCHAR(64) NOT NULL DEFAULT '',
+  expected_revision BIGINT NOT NULL DEFAULT 0,
+  lease_until TIMESTAMPTZ,
   resource_ref TEXT NOT NULL DEFAULT '',
   status VARCHAR(16) NOT NULL,
   error_category VARCHAR(64) NOT NULL DEFAULT '',
@@ -20,3 +24,4 @@ CREATE TABLE career_source_revisions (
   UNIQUE (tenant_id, user_id, revision)
 );
 CREATE INDEX idx_career_source_revisions_status ON career_source_revisions (status);
+CREATE UNIQUE INDEX career_source_request_scope ON career_source_revisions (tenant_id, user_id, request_id) WHERE request_id <> '';
