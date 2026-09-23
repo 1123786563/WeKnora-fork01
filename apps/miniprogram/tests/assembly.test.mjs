@@ -206,7 +206,7 @@ test('assembly: signed download 401 is a fresh-grant expiry and a second tap suc
     if (call.kind !== 'downloadFile') { call.options.fail({ errMsg: 'unexpected request' }); return; }
     downloads++;
     stub.succeed(call, downloads === 1
-      ? { statusCode: 401, data: { code: 'artifact_grant_expired' }, tempFilePath: '/tmp/expired.json' }
+      ? { statusCode: 401, data: JSON.stringify({ success: false, code: 'artifact_grant_expired' }), tempFilePath: '/tmp/expired.json' }
       : { tempFilePath: '/tmp/report.pdf' });
   });
   const files = await import('../src/platform/files.ts');
@@ -235,6 +235,26 @@ test('assembly: revoked download is denied and its non-200 temporary body is rem
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=revoked', 'report.pdf'), error => error.status === 403);
   assert.equal(stub.state.openedDocuments.length, 0);
   assert.deepEqual(stub.state.removedFiles, ['/tmp/denied.json']);
+});
+
+test('assembly: invalid signed-download 401 is an authorization failure rather than an expiry retry', async () => {
+  await freshLogin();
+  stub.use(call => stub.succeed(call, {
+    statusCode: 401,
+    data: JSON.stringify({ success: false, code: 'artifact_grant_invalid' }),
+    tempFilePath: '/tmp/invalid-grant.json',
+  }));
+  const files = await import('../src/platform/files.ts');
+  const { errorMessage } = await import('../src/core/errors.ts');
+  await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=tampered', 'report.pdf'), error => {
+    assert.equal(error.status, 401);
+    assert.equal(error.code, 'ARTIFACT_GRANT_INVALID');
+    assert.match(errorMessage(error), /无效|拒绝|重新读取/);
+    assert.doesNotMatch(errorMessage(error), /再次点击|重新获取/);
+    return true;
+  });
+  assert.equal(stub.state.openedDocuments.length, 0);
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/invalid-grant.json']);
 });
 
 test('assembly: a scope switch during transfer prevents opening and removes the late file', async () => {

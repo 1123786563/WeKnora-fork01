@@ -2,6 +2,7 @@ export function errorMessage(error:unknown):string{
   if(error instanceof Error&&error.name==='AbortError')return '操作已中断。离开页面不会取消后台任务。';
   const e=error!==null&&typeof error==='object'?error as {status?:number;code?:string}:{};
   if(e.code==='ARTIFACT_GRANT_EXPIRED')return '下载授权已过期，请再次点击“打开或保存”重新获取。';
+  if(e.code==='ARTIFACT_GRANT_INVALID')return '下载授权无效或已被撤销，请重新读取任务产物。';
   if(e.status===401)return '登录已失效，请重新登录。';
   if(e.status===403)return '你没有访问当前空间资源的权限。';
   if(e.status===404||e.status===501||e.status===503)return '此资源不存在，或当前部署尚未开放该能力。';

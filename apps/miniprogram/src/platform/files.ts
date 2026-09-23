@@ -3,6 +3,15 @@ import type { NativeFileSource } from '@weknora/api-client';
 import { auth, apiOrigin } from '../services/runtime.ts';
 import type { ScopeStamp } from '../core/scope.ts';
 const MAX_BYTES=20*1024*1024; // Conservative client memory/transfer guard; server may impose a lower bound.
+function downloadErrorCode(data:unknown):string|undefined{
+ let body=data;
+ if(typeof body==='string'){
+  try{body=JSON.parse(body)}catch{return undefined}
+ }
+ if(body===null||typeof body!=='object')return undefined;
+ const code=(body as {code?:unknown}).code;
+ return typeof code==='string'?code:undefined;
+}
 export async function chooseDocument():Promise<NativeFileSource>{
  const result=await Taro.chooseMessageFile({count:1,type:'file'});const f=result.tempFiles[0];if(!f)throw new Error('未选择文件');
  if(f.size>MAX_BYTES)throw new Error('客户端单文件上限为 20 MiB');
@@ -20,7 +29,13 @@ export async function openProtectedDocument(path:string,name:string,showMenu=fal
      // Completed HTTP responses can still materialize an error body locally. Own it before
      // validating status so the finally block removes it just like a successful download.
      filePath=r.tempFilePath;
-     if(r.statusCode!==200){reject(Object.assign(new Error('下载失败'),{status:r.statusCode,...(r.statusCode===401?{code:'ARTIFACT_GRANT_EXPIRED'}:{})}));return}
+     if(r.statusCode!==200){
+      const code=r.statusCode===401
+       ?downloadErrorCode((r as unknown as {data?:unknown}).data)==='artifact_grant_expired'?'ARTIFACT_GRANT_EXPIRED':'ARTIFACT_GRANT_INVALID'
+       :undefined;
+      reject(Object.assign(new Error('下载失败'),{status:r.statusCode,...(code?{code}:{})}));
+      return;
+     }
      resolve(r.tempFilePath);
     },fail:reject});
    const stop=()=>task.abort();controller.signal.addEventListener('abort',stop,{once:true});
