@@ -31,20 +31,20 @@ import './orgs.td.css';
 const UPLOAD_SVG_DATA = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYyIiBoZWlnaHQ9IjE2MiIgdmlld0JveD0iMCAwIDE2MiAxNjIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGZpbHRlcj0idXJsKCNmaWx0ZXIwX2RfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNMzYuODc1IDc4TDIwIDExMS43NVYxMzMuMDQ3QzIwIDE0MC43NiAyNi4yNTI2IDE0Ny4wMTMgMzMuOTY1NSAxNDcuMDEzSDgwLjc1SDEyNy41MzRDMTM1LjI0NyAxNDcuMDEzIDE0MS41IDE0MC43NiAxNDEuNSAxMzMuMDQ3VjExMS43NUwxMjQuNjI1IDc4SDgwLjc1SDM2Ljg3NVoiIGZpbGw9InVybCgjcGFpbnQwX2xpbmVhcl82MDIyXzUxNzMxKSIvPgo8L2c+CjxwYXRoIGQ9Ik0zNy4xMjUgMTExLjM3NVY3Ny42MjVMMjAuMjUgMTExLjM3NUgzNy4xMjVaIiBmaWxsPSJ1cmwoI3BhaW50MV9saW5lYXJfNjAyMl81MTczMSkiLz4KPHBhdGggZD0iTTEyNSAxMTEuNzVWNzhMMTQxLjg3NSAxMTEuNzVIMTI1WiIgZmlsbD0idXJsKCNwYWludDJfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxwYXRoIGQ9Ik03Ny45ODY0IDEwOC42MjdMNjYuMjc0IDkzLjc0MzZDNjUuNDAyOSA5Mi42MzY1IDY2LjE5MTUgOTEuMDEyNSA2Ny42MDAyIDkxLjAxMjVINzIuNjM1QzczLjU2NyA5MS4wMTI1IDc0LjMyOTIgOTAuMjYyNSA3NC4yMDExIDg5LjMzOTRDNzIuNjc1NCA3OC4zNTAzIDU2Ljg4MDUgNTkuNDM1NSAzMy4xMDA3IDUwLjg1NDlDMzIuMTcyOSA1MC41MjAxIDMyLjQwNjcgNDguOTM3NSAzMy4zOTMgNDguOTM3NUgxMjUuMjMyQzEyNi4yMTggNDguOTM3NSAxMjYuNDUyIDUwLjUyMDEgMTI1LjUyNCA1MC44NTQ5QzEwMS43NDQgNTkuNDM1NSA4NS45NDk2IDc4LjM1MDMgODQuNDIzOSA4OS4zMzk0Qzg0LjI5NTcgOTAuMjYyNSA4NS4wNTggOTEuMDEyNSA4NS45OSA5MS4wMTI1SDkxLjAyNDhDOTIuNDMzNSA5MS4wMTI1IDkzLjIyMjEgOTIuNjM2NSA5Mi4zNTEgOTMuNzQzNkw4MC42Mzg2IDEwOC42MjdDNzkuOTYzIDEwOS40ODYgNzguNjYyIDEwOS40ODYgNzcuOTg2NCAxMDguNjI3WiIgZmlsbD0idXJsKCNwYWludDNfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNjcuNjA0IDExMS4zNzVIMjAuMjVWMTMzLjEzOEMyMC4yNSAxNDAuNTk0IDI2LjI5NDIgMTQ2LjYzOCAzMy43NSAxNDYuNjM4SDEyOC4yNUMxMzUuNzA2IDE0Ni42MzggMTQxLjc1IDE0MC41OTQgMTQxLjc1IDEzMy4xMzhWMTExLjM3NUg5NC4zOTUxQzkzLjU2NDcgMTE4LjAzNCA4Ny44ODM5IDEyMy4xODggODAuOTk5NSAxMjMuMTg4Qzc0LjExNTIgMTIzLjE4OCA2OC40MzQ0IDExOC4wMzQgNjcuNjA0IDExMS4zNzVaIiBmaWxsPSJ1cmwoI3BhaW50NF9saW5lYXJfNjAyMl81MTczMSkiLz4KPHBhdGggZD0iTTQ2LjkzNjYgMTguNTQzNkM0Ni43NDA4IDE4LjE0MTEgNDYuNzEyOSAxNy42Nzc0IDQ2Ljg1OTEgMTcuMjU0NEw0OS4xMTAyIDEwLjczNzVDNDkuODcxIDguNTM1MiA1Mi4yNzI5IDcuMzY2NjEgNTQuNDc1MiA4LjEyNzM0TDY4LjgzMDQgMTMuMDg2MUM3MS4wMzI2IDEzLjg0NjggNzIuMjAxMiAxNi4yNDg4IDcxLjQ0MDUgMTguNDUxMUw2Ny41ODM3IDI5LjYxNjJDNjYuODIyOSAzMS44MTg1IDY0LjQyMSAzMi45ODcxIDYyLjIxODcgMzIuMjI2M0w1Mi41MTE3IDI4Ljg3MzJDNTIuMDg4NyAyOC43MjcxIDUxLjc0MTEgMjguNDE4OSA1MS41NDUzIDI4LjAxNjVMNDYuOTM2NiAxOC41NDM2WiIgZmlsbD0idXJsKCNwYWludDVfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxtYXNrIGlkPSJtYXNrMF82MDIyXzUxNzMxIiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSI0NiIgeT0iNyIgd2lkdGg9IjI2IiBoZWlnaHQ9IjI2Ij4KPHBhdGggZD0iTTQ2LjkzNjYgMTguNTQzNkM0Ni43NDA4IDE4LjE0MTEgNDYuNzEyOSAxNy42Nzc0IDQ2Ljg1OTEgMTcuMjU0NEw0OS4xMTAyIDEwLjczNzVDNDkuODcxIDguNTM1MiA1Mi4yNzI5IDcuMzY2NjEgNTQuNDc1MiA4LjEyNzM0TDY4LjgzMDQgMTMuMDg2MUM3MS4wMzI2IDEzLjg0NjggNzIuMjAxMiAxNi4yNDg4IDcxLjQ0MDUgMTguNDUxMUw2Ny41ODM3IDI5LjYxNjJDNjYuODIyOSAzMS44MTg1IDY0LjQyMSAzMi45ODcxIDYyLjIxODcgMzIuMjI2M0w1Mi41MTE3IDI4Ljg3MzJDNTIuMDg4NyAyOC43MjcxIDUxLjc0MTEgMjguNDE4OSA1MS41NDUzIDI4LjAxNjVMNDYuOTM2NiAxOC41NDM2WiIgZmlsbD0iI0Q5RDlEOSIvPgo8L21hc2s+CjxnIG1hc2s9InVybCgjbWFzazBfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNNDMuODc2IDI1Ljg5MDFMNDYuNjMwOCAxNy45MTVMNTEuNDE1OSAxOS41NjhDNTMuMTc3NyAyMC4xNzY1IDU0LjExMjYgMjIuMDk4MSA1My41MDQgMjMuODU5OUw1MS44NTExIDI4LjY0NUw0My44NzYgMjUuODkwMVoiIGZpbGw9IiNCNUVDQ0YiLz4KPC9nPgo8cGF0aCBkPSJNODkuNTU3MiAxNi40Mzg1Qzg5LjY2NjUgMTYuMTE4MSA4OS44OTg3IDE1Ljg1NDMgOTAuMjAyNSAxNS43MDUxTDk0Ljg4MzIgMTMuNDA2NkM5Ni40NjQ5IDEyLjYyOTkgOTguMzc2OCAxMy4yODI1IDk5LjE1MzUgMTQuODY0MkwxMDQuMjE3IDI1LjE3NDZDMTA0Ljk5MyAyNi43NTYzIDEwNC4zNDEgMjguNjY4MiAxMDIuNzU5IDI5LjQ0NUw5NC43Mzk4IDMzLjM4MjlDOTMuMTU4MSAzNC4xNTk2IDkxLjI0NjIgMzMuNTA3MSA5MC40Njk1IDMxLjkyNTNMODcuMDQ1OCAyNC45NTM1Qzg2Ljg5NjYgMjQuNjQ5NiA4Ni44NzQyIDI0LjI5OSA4Ni45ODM2IDIzLjk3ODZMODkuNTU3MiAxNi40Mzg1WiIgZmlsbD0idXJsKCNwYWludDZfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxtYXNrIGlkPSJtYXNrMV82MDIyXzUxNzMxIiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSI4NiIgeT0iMTMiIHdpZHRoPSIxOSIgaGVpZ2h0PSIyMSI+CjxwYXRoIGQ9Ik04OS41NTcyIDE2LjQzODVDODkuNjY2NSAxNi4xMTgxIDg5Ljg5ODcgMTUuODU0MyA5MC4yMDI1IDE1LjcwNTFMOTQuODgzMiAxMy40MDY2Qzk2LjQ2NDkgMTIuNjI5OSA5OC4zNzY4IDEzLjI4MjUgOTkuMTUzNSAxNC44NjQyTDEwNC4yMTcgMjUuMTc0NkMxMDQuOTkzIDI2Ljc1NjMgMTA0LjM0MSAyOC42NjgyIDEwMi43NTkgMjkuNDQ1TDk0LjczOTggMzMuMzgyOUM5My4xNTgxIDM0LjE1OTYgOTEuMjQ2MiAzMy41MDcxIDkwLjQ2OTUgMzEuOTI1M0w4Ny4wNDU4IDI0Ljk1MzVDODYuODk2NiAyNC42NDk2IDg2Ljg3NDIgMjQuMjk5IDg2Ljk4MzYgMjMuOTc4Nkw4OS41NTcyIDE2LjQzODVaIiBmaWxsPSIjRDlEOUQ5Ii8+CjwvbWFzaz4KPGcgbWFzaz0idXJsKCNtYXNrMV82MDIyXzUxNzMxKSI+CjxwYXRoIGQ9Ik04NCAxOC43NTFMODkuNzI4IDE1LjkzODJMOTEuNDE1NyAxOS4zNzVDOTIuMDM3MSAyMC42NDAzIDkxLjUxNSAyMi4xNjk5IDkwLjI0OTYgMjIuNzkxM0w4Ni44MTI4IDI0LjQ3OUw4NCAxOC43NTFaIiBmaWxsPSIjRTdFN0U3Ii8+CjwvZz4KPHBhdGggZD0iTTQ2LjM3MzQgNTcuMjI4OUM0Ni4yNTAyIDU3LjYxMjUgNDUuOTc5NiA1Ny45MzE1IDQ1LjYyMTMgNTguMTE1N0w0MC4xMDAxIDYwLjk1MzJDMzguMjM0NCA2MS45MTIxIDM1Ljk0NDUgNjEuMTc2OSAzNC45ODU3IDU5LjMxMTFMMjguNzM1NCA0Ny4xNDk0QzI3Ljc3NjYgNDUuMjgzNiAyOC41MTE4IDQyLjk5MzggMzAuMzc3NSA0Mi4wMzQ5TDM5LjgzNjYgMzcuMTczNkM0MS43MDI0IDM2LjIxNDggNDMuOTkyMiAzNi45NSA0NC45NTExIDM4LjgxNTdMNDkuMTc3NSA0Ny4wMzk1QzQ5LjM2MTcgNDcuMzk3OSA0OS4zOTU5IDQ3LjgxNDcgNDkuMjcyOCA0OC4xOTg0TDQ2LjM3MzQgNTcuMjI4OVoiIGZpbGw9InVybCgjcGFpbnQ3X2xpbmVhcl82MDIyXzUxNzMxKSIvPgo8bWFzayBpZD0ibWFzazJfNjAyMl81MTczMSIgc3R5bGU9Im1hc2stdHlwZTphbHBoYSIgbWFza1VuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeD0iMjgiIHk9IjM2IiB3aWR0aD0iMjIiIGhlaWdodD0iMjYiPgo8cGF0aCBkPSJNNDYuMzczNCA1Ny4yMjg5QzQ2LjI1MDIgNTcuNjEyNSA0NS45Nzk2IDU3LjkzMTUgNDUuNjIxMyA1OC4xMTU3TDQwLjEwMDEgNjAuOTUzMkMzOC4yMzQ0IDYxLjkxMjEgMzUuOTQ0NSA2MS4xNzY5IDM0Ljk4NTcgNTkuMzExMUwyOC43MzU0IDQ3LjE0OTRDMjcuNzc2NiA0NS4yODM2IDI4LjUxMTggNDIuOTkzOCAzMC4zNzc1IDQyLjAzNDlMMzkuODM2NiAzNy4xNzM2QzQxLjcwMjQgMzYuMjE0OCA0My45OTIyIDM2Ljk1IDQ0Ljk1MTEgMzguODE1N0w0OS4xNzc1IDQ3LjAzOTVDNDkuMzYxNyA0Ny4zOTc5IDQ5LjM5NTkgNDcuODE0NyA0OS4yNzI4IDQ4LjE5ODRMNDYuMzczNCA1Ny4yMjg5WiIgZmlsbD0iI0Q5RDlEOSIvPgo8L21hc2s+CjxnIG1hc2s9InVybCgjbWFzazJfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNNTIuOTM3NSA1NC4zNTU3TDQ2LjE4MSA1Ny44MjgxTDQ0LjA5NzYgNTMuNzc0MkM0My4zMzA1IDUyLjI4MTYgNDMuOTE4NiA1MC40NDk3IDQ1LjQxMTIgNDkuNjgyNkw0OS40NjUxIDQ3LjU5OTJMNTIuOTM3NSA1NC4zNTU3WiIgZmlsbD0iI0U3RTdFNyIvPgo8L2c+CjxwYXRoIGQ9Ik0xMjAuODggMzcuMzg5MkMxMjEuMjAzIDM3LjQ3NTggMTIxLjQ3OSAzNy42ODcyIDEyMS42NDYgMzcuOTc2OUwxMjQuMjIzIDQyLjQzOTlDMTI1LjA5MyA0My45NDgxIDEyNC41NzcgNDUuODc2NiAxMjMuMDY5IDQ2Ljc0NzRMMTEzLjIzOCA1Mi40MjMzQzExMS43MjkgNTMuMjk0IDEwOS44MDEgNTIuNzc3MyAxMDguOTMgNTEuMjY5MUwxMDQuNTE1IDQzLjYyMjhDMTAzLjY0NSA0Mi4xMTQ2IDEwNC4xNjEgNDAuMTg2MSAxMDUuNjcgMzkuMzE1M0wxMTIuMzE3IDM1LjQ3NzNDMTEyLjYwNyAzNS4zMSAxMTIuOTUxIDM1LjI2NDcgMTEzLjI3NCAzNS4zNTEzTDEyMC44OCAzNy4zODkyWiIgZmlsbD0idXJsKCNwYWludDhfbGluZWFyXzYwMjJfNTE3MzEpIi8+CjxtYXNrIGlkPSJtYXNrM182MDIyXzUxNzMxIiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSIxMDQiIHk9IjM1IiB3aWR0aD0iMjEiIGhlaWdodD0iMTgiPgo8cGF0aCBkPSJNMTIwLjg4IDM3LjM4OTJDMTIxLjIwMyAzNy40NzU4IDEyMS40NzkgMzcuNjg3MiAxMjEuNjQ2IDM3Ljk3NjlMMTI0LjIyMyA0Mi40Mzk5QzEyNS4wOTMgNDMuOTQ4MSAxMjQuNTc3IDQ1Ljg3NjYgMTIzLjA2OSA0Ni43NDc0TDExMy4yMzggNTIuNDIzM0MxMTEuNzI5IDUzLjI5NCAxMDkuODAxIDUyLjc3NzMgMTA4LjkzIDUxLjI2OTFMMTA0LjUxNSA0My42MjI4QzEwMy42NDUgNDIuMTE0NiAxMDQuMTYxIDQwLjE4NjEgMTA1LjY3IDM5LjMxNTNMMTEyLjMxNyAzNS40NzczQzExMi42MDcgMzUuMzEgMTEyLjk1MSAzNS4yNjQ3IDExMy4yNzQgMzUuMzUxM0wxMjAuODggMzcuMzg5MloiIGZpbGw9IiNEOUQ5RDkiLz4KPC9tYXNrPgo8ZyBtYXNrPSJ1cmwoI21hc2szXzYwMjJfNTE3MzEpIj4KPHBhdGggZD0iTTExOC4yMzEgMzIuMDYyN0wxMjEuMzg1IDM3LjUyNDRMMTE4LjEwOCAzOS40MTY0QzExNi45MDEgNDAuMTEzIDExNS4zNTggMzkuNjk5NiAxMTQuNjYyIDM4LjQ5M0wxMTIuNzcgMzUuMjE2TDExOC4yMzEgMzIuMDYyN1oiIGZpbGw9IiNCNUVDQ0YiLz4KPC9nPgo8cGF0aCBkPSJNNzMuMzQ4MyA0NS4wOTg0QzczLjM0NzggNDQuODQ2OCA3My40NDczIDQ0LjYwNTMgNzMuNjI0OCA0NC40MjdMNzYuMzYwMyA0MS42ODA1Qzc3LjI4NDcgNDAuNzUyNCA3OC43ODY0IDQwLjc0OTQgNzkuNzE0NSA0MS42NzM4TDg1Ljc2NDMgNDcuNjk5M0M4Ni42OTI0IDQ4LjYyMzcgODYuNjk1NSA1MC4xMjU1IDg1Ljc3MTEgNTEuMDUzNkw4MS4wODQ1IDU1Ljc1OUM4MC4xNjAxIDU2LjY4NzEgNzguNjU4NCA1Ni42OTAxIDc3LjczMDMgNTUuNzY1N0w3My42Mzk0IDUxLjY5MTJDNzMuNDYxMSA1MS41MTM3IDczLjM2MDcgNTEuMjcyNiA3My4zNjAyIDUxLjAyMUw3My4zNDgzIDQ1LjA5ODRaIiBmaWxsPSJ1cmwoI3BhaW50OV9saW5lYXJfNjAyMl81MTczMSkiLz4KPG1hc2sgaWQ9Im1hc2s0XzYwMjJfNTE3MzEiIHN0eWxlPSJtYXNrLXR5cGU6YWxwaGEiIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiIHg9IjczIiB5PSI0MCIgd2lkdGg9IjE0IiBoZWlnaHQ9IjE3Ij4KPHBhdGggZD0iTTczLjM0ODMgNDUuMDk4NEM3My4zNDc4IDQ0Ljg0NjggNzMuNDQ3MyA0NC42MDUzIDczLjYyNDggNDQuNDI3TDc2LjM2MDMgNDEuNjgwNUM3Ny4yODQ3IDQwLjc1MjQgNzguNzg2NCA0MC43NDk0IDc5LjcxNDUgNDEuNjczOEw4NS43NjQzIDQ3LjY5OTNDODYuNjkyNCA0OC42MjM3IDg2LjY5NTUgNTAuMTI1NSA4NS43NzExIDUxLjA1MzZMODEuMDg0NSA1NS43NTlDODAuMTYwMSA1Ni42ODcxIDc4LjY1ODQgNTYuNjkwMSA3Ny43MzAzIDU1Ljc2NTdMNzMuNjM5NCA1MS42OTEyQzczLjQ2MTEgNTEuNTEzNyA3My4zNjA3IDUxLjI3MjYgNzMuMzYwMiA1MS4wMjFMNzMuMzQ4MyA0NS4wOTg0WiIgZmlsbD0iI0Q5RDlEOSIvPgo8L21hc2s+CjxnIG1hc2s9InVybCgjbWFzazRfNjAyMl81MTczMSkiPgo8cGF0aCBkPSJNNzAgNDguMDY2NEw3My4zNDc1IDQ0LjcwNTRMNzUuMzY0MSA0Ni43MTM5Qzc2LjEwNjYgNDcuNDUzNCA3Ni4xMDkgNDguNjU0OCA3NS4zNjk1IDQ5LjM5NzNMNzMuMzYxIDUxLjQxMzlMNzAgNDguMDY2NFoiIGZpbGw9IiMwN0MwNUYiLz4KPC9nPgo8cGF0aCBkPSJNMTA2LjEzOCAxMjAuMTAzQzEwNi4xMzggMTE4Ljk0NiAxMDcuMDc2IDExOC4wMDkgMTA4LjIzMyAxMTguMDA5SDExMy44MTlDMTE0Ljk3NiAxMTguMDA5IDExNS45MTQgMTE4Ljk0NiAxMTUuOTE0IDEyMC4xMDNWMTIwLjEwM0MxMTUuOTE0IDEyMS4yNiAxMTQuOTc2IDEyMi4xOTggMTEzLjgxOSAxMjIuMTk4SDEwOC4yMzNDMTA3LjA3NiAxMjIuMTk4IDEwNi4xMzggMTIxLjI2IDEwNi4xMzggMTIwLjEwM1YxMjAuMTAzWiIgZmlsbD0iIzE0ODVFRSIvPgo8cGF0aCBkPSJNMTIyLjg5NiAxMjAuMTAzQzEyMi44OTYgMTE4Ljk0NiAxMjMuODM0IDExOC4wMDkgMTI0Ljk5MSAxMTguMDA5SDEzMC41NzhDMTMxLjczNCAxMTguMDA5IDEzMi42NzIgMTE4Ljk0NiAxMzIuNjcyIDEyMC4xMDNWMTIwLjEwM0MxMzIuNjcyIDEyMS4yNiAxMzEuNzM0IDEyMi4xOTggMTMwLjU3OCAxMjIuMTk4SDEyNC45OTFDMTIzLjgzNCAxMjIuMTk4IDEyMi44OTYgMTIxLjI2IDEyMi44OTYgMTIwLjEwM1YxMjAuMTAzWiIgZmlsbD0iIzA3QzA1RiIvPgo8cmVjdCB4PSIxMDYuMTM4IiB5PSIxMTcuMzEiIHdpZHRoPSI5Ljc3NTg2IiBoZWlnaHQ9IjQuMTg5NjYiIHJ4PSIyLjA5NDgzIiBmaWxsPSIjNDM5REYxIi8+CjxyZWN0IHg9IjEyMi44OTYiIHk9IjExNy4zMSIgd2lkdGg9IjkuNzc1ODYiIGhlaWdodD0iNC4xODk2NiIgcng9IjIuMDk0ODMiIGZpbGw9IiMzOUNEODAiLz4KPGRlZnM+CjxmaWx0ZXIgaWQ9ImZpbHRlcjBfZF82MDIyXzUxNzMxIiB4PSIxNC40MTM4IiB5PSI3NS4yMDY5IiB3aWR0aD0iMTMyLjY3MiIgaGVpZ2h0PSI4MC4xODU0IiBmaWx0ZXJVbml0cz0idXNlclNwYWNlT25Vc2UiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+CjxmZUZsb29kIGZsb29kLW9wYWNpdHk9IjAiIHJlc3VsdD0iQmFja2dyb3VuZEltYWdlRml4Ii8+CjxmZUNvbG9yTWF0cml4IGluPSJTb3VyY2VBbHBoYSIgdHlwZT0ibWF0cml4IiB2YWx1ZXM9IjAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDEyNyAwIiByZXN1bHQ9ImhhcmRBbHBoYSIvPgo8ZmVPZmZzZXQgZHk9IjIuNzkzMSIvPgo8ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIyLjc5MzEiLz4KPGZlQ29tcG9zaXRlIGluMj0iaGFyZEFscGhhIiBvcGVyYXRvcj0ib3V0Ii8+CjxmZUNvbG9yTWF0cml4IHR5cGU9Im1hdHJpeCIgdmFsdWVzPSIwIDAgMCAwIDAuMTkyNjkxIDAgMCAwIDAgMC4xOTI2OTEgMCAwIDAgMCAwLjE5MjY5MSAwIDAgMCAwLjEgMCIvPgo8ZmVCbGVuZCBtb2RlPSJub3JtYWwiIGluMj0iQmFja2dyb3VuZEltYWdlRml4IiByZXN1bHQ9ImVmZmVjdDFfZHJvcFNoYWRvd182MDIyXzUxNzMxIi8+CjxmZUJsZW5kIG1vZGU9Im5vcm1hbCIgaW49IlNvdXJjZUdyYXBoaWMiIGluMj0iZWZmZWN0MV9kcm9wU2hhZG93XzYwMjJfNTE3MzEiIHJlc3VsdD0ic2hhcGUiLz4KPC9maWx0ZXI+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQwX2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iODAuNzUiIHkxPSI3OCIgeDI9IjgwLjc1IiB5Mj0iMTMyIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiNFNEY5RUUiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjOUVERUJEIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQxX2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iMjguNjg3NSIgeTE9Ijc3LjYyNSIgeDI9IjI4LjY4NzUiIHkyPSIxMTEuMzc1IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiNEQkZBRTkiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMkNEODdFIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQyX2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iMTMzLjQzOCIgeTE9Ijc4IiB4Mj0iMTMzLjQzOCIgeTI9IjExMS43NSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjREJGQUU5Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzJDRDg3RSIvPgo8L2xpbmVhckdyYWRpZW50Pgo8bGluZWFyR3JhZGllbnQgaWQ9InBhaW50M19saW5lYXJfNjAyMl81MTczMSIgeDE9Ijc5LjMxMjUiIHkxPSIxMDYuMzEyIiB4Mj0iNzkuMzEyNSIgeTI9IjQ4LjkzNzUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KPHN0b3Agc3RvcC1jb2xvcj0iIzgzQzFGQSIvPgo8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM4M0MxRkEiIHN0b3Atb3BhY2l0eT0iMCIvPgo8L2xpbmVhckdyYWRpZW50Pgo8bGluZWFyR3JhZGllbnQgaWQ9InBhaW50NF9saW5lYXJfNjAyMl81MTczMSIgeDE9IjgxIiB5MT0iMTExLjM3NSIgeDI9IjgxIiB5Mj0iMTQ2LjYzOCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjRjNGRkY3Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0id2hpdGUiLz4KPC9saW5lYXJHcmFkaWVudD4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDVfbGluZWFyXzYwMjJfNTE3MzEiIHgxPSI0Ny4xODE4IiB5MT0iMTYuMzIiIHgyPSI2OS41MTIxIiB5Mj0iMjQuMDMzNiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjMDdDMDVGIi8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzA3QzA1RiIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQ2X2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iOTAuODczNiIgeTE9IjE1LjM3NTYiIHgyPSI5OC43NDk0IiB5Mj0iMzEuNDEzOSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjQzVDNUM1Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI0M1QzVDNSIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQ3X2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iNDQuODI5NyIgeTE9IjU4LjUyMjUiIHgyPSIzNS4xMDcxIiB5Mj0iMzkuNjA0MyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjQzVDNUM1Ii8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI0M1QzVDNSIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQ4X2xpbmVhcl82MDIyXzUxNzMxIiB4MT0iMTIxLjczMiIgeTE9IjM4LjEyNjIiIHgyPSIxMDUuOTc0IiB5Mj0iNDUuODI0NCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjNTRFODlBIi8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzA3QzA1RiIgc3RvcC1vcGFjaXR5PSIwLjEiLz4KPC9saW5lYXJHcmFkaWVudD4KPGxpbmVhckdyYWRpZW50IGlkPSJwYWludDlfbGluZWFyXzYwMjJfNTE3MzEiIHgxPSI3My42NTYyIiB5MT0iNDQuMzk1NSIgeDI9IjgyLjI0NDYiIHkyPSI1NC4zNzMxIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiM2RUUxQTUiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNkVFMUE1IiBzdG9wLW9wYWNpdHk9IjAiLz4KPC9saW5lYXJHcmFkaWVudD4KPC9kZWZzPgo8L3N2Zz4K';
 
 /* ---- 留守段共享 Tailwind recipes（R490 编辑模式/加入弹框 internals） ---- */
-const ORG_BTN = 'box-border inline-flex min-h-[32px] cursor-pointer items-center justify-center gap-0 rounded-[3px] border px-4 py-0 font-[inherit] text-[14px] font-medium [transition:all_.2s_ease] disabled:cursor-not-allowed disabled:opacity-55';
-const ORG_BTN_PRIMARY = ORG_BTN + ' border-0 bg-accent text-white shadow-[0_2px_8px_rgba(7,192,95,0.25)] hover:shadow-[0_4px_14px_rgba(7,192,95,0.35)]';
-const ORG_BTN_OUTLINE = ORG_BTN + ' border-[rgba(7,192,95,0.5)] bg-surface text-accent hover:border-accent hover:bg-accent-wash';
-const ORG_BTN_NEUTRAL = ORG_BTN + ' border-[#e7e7ea] bg-surface text-[rgba(23,26,29,0.92)] hover:border-[#c9c9cf]';
-const ORG_FIELD = 'box-border w-full rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[6px] font-[inherit] text-[14px]! text-[rgba(23,26,29,0.92)] focus:border-accent focus:outline-none';
-const ORG_MEMBER_ROW = 'flex items-center justify-between gap-[12px] border-b border-[#e7e7ea] py-[10px] last:border-b-0';
-const ORG_MEMBER_COPY = 'flex min-w-0 flex-col gap-[2px]';
-const ORG_ROW_ACTIONS = 'flex shrink-0 items-center gap-[8px]';
-const ORG_FORM_ITEM = 'mb-[16px]';
-const ORG_FORM_LABEL = 'mb-[4px] block text-[14px] font-medium text-[rgba(23,26,29,0.92)]';
-const ORG_FORM_DESC = 'm-0 mb-[10px] text-[13px] leading-[1.5] text-[rgba(23,26,29,0.6)]';
-const ORG_SECTION_TITLE = 'm-0 mb-[4px] text-[15px] font-semibold text-[rgba(23,26,29,0.92)]';
-const ORG_SECTION_DESC = 'm-0 mb-[16px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]';
-const ORG_EMPTY_INLINE = 'py-[18px] text-[13px] text-[rgba(23,26,29,0.4)]';
+const ORG_BTN = 'wk-org-org-btn';
+const ORG_BTN_PRIMARY = ORG_BTN + 'wk-org-org-btn-primary';
+const ORG_BTN_OUTLINE = ORG_BTN + 'wk-org-org-btn-outline';
+const ORG_BTN_NEUTRAL = ORG_BTN + 'wk-org-org-btn-neutral';
+const ORG_FIELD = 'wk-org-org-field';
+const ORG_MEMBER_ROW = 'wk-org-org-member-row';
+const ORG_MEMBER_COPY = 'wk-org-org-member-copy';
+const ORG_ROW_ACTIONS = 'wk-org-org-row-actions';
+const ORG_FORM_ITEM = 'wk-org-org-form-item';
+const ORG_FORM_LABEL = 'wk-org-org-form-label';
+const ORG_FORM_DESC = 'wk-org-org-form-desc';
+const ORG_SECTION_TITLE = 'wk-org-org-section-title';
+const ORG_SECTION_DESC = 'wk-org-org-section-desc';
+const ORG_EMPTY_INLINE = 'wk-org-org-empty-inline';
 const ORG_AVATAR_EMOJIS = ['🚀', '📁', '👥', '🏢', '💡', '📚', '🌟', '🔧', '📌', '🎯', '📂', '🔒', '🌐', '⚡', '🎨', '📊', '🤝', '💼', '📧', '🏠', '🔑', '📈', '✨', '📋', '🌍', '💬', '🔔', '📦', '🎉', '🌈'];
 const ORG_PERMISSION_ITEMS: Record<'admin' | 'editor' | 'viewer', Array<[string, boolean]>> = {
   admin: [['organization.editor.adminPerm1', true], ['organization.editor.adminPerm2', true], ['organization.editor.adminPerm3', true], ['organization.editor.adminPerm4', true], ['organization.editor.useSharedAgentsPerm', true]],
@@ -65,24 +65,24 @@ const ORG_INVITE_VALIDITY_OPTIONS: Array<[number, string]> = [
   [30, 'organization.settings.validity30Days'],
   [0, 'organization.settings.validityNever'],
 ];
-const ORG_MODAL_OVERLAY = 'fixed inset-0 z-[2000] flex items-center justify-center bg-[rgba(0,0,0,0.5)] p-[20px] backdrop-blur-[4px]';
-const ORG_CLOSE_BTN = 'absolute right-[16px] top-[16px] z-[10] flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-[rgba(23,26,29,0.92)]';
-const FEATURE_BADGE_BASE = 'box-border inline-flex h-[20px] cursor-default items-center justify-center gap-[3px] rounded-[5px] px-[5px] text-[11px] font-medium [transition:background_.2s_ease]';
+const ORG_MODAL_OVERLAY = 'backdrop-blur-[4px] wk-org-org-modal-overlay';
+const ORG_CLOSE_BTN = 'wk-org-org-close-btn';
+const FEATURE_BADGE_BASE = 'wk-org-feature-badge-base';
 const FEATURE_BADGE_TONES: Record<string, string> = {
-  'stat-member': 'bg-[rgba(100,116,139,0.08)] text-[rgba(23,26,29,0.6)] hover:bg-[rgba(100,116,139,0.12)]',
-  'stat-kb': 'bg-accent-wash text-accent hover:bg-accent-soft',
-  'stat-agent': 'bg-[rgba(124,77,255,0.08)] text-[#7c4dff] hover:bg-[rgba(124,77,255,0.12)]',
+  'stat-member': 'wk-org-fb-stat-member',
+  'stat-kb': 'wk-org-fb-stat-kb',
+  'stat-agent': 'wk-org-fb-stat-agent',
 };
-const RELATION_ROLE_TAG = 'inline-flex h-[22px] items-center gap-[4px] rounded-[6px] px-[6px] text-[12px] font-medium';
+const RELATION_ROLE_TAG = 'wk-org-relation-role-tag';
 const RELATION_ROLE_TAG_TONES: Record<string, string> = {
-  owner: 'bg-[rgba(124,77,255,0.1)] text-accent',
-  admin: 'bg-accent-soft text-accent',
-  editor: 'bg-accent-wash text-accent',
+  owner: 'wk-org-rrt-owner',
+  admin: 'wk-org-rrt-admin',
+  editor: 'wk-org-rrt-editor',
 };
-const ORG_TAG = 'inline-flex rounded-[4px] px-[8px] text-[12px] leading-[20px]';
+const ORG_TAG = 'wk-org-org-tag';
 const ORG_TAG_TONES: Record<string, string> = {
-  warning: 'bg-[rgba(250,173,20,0.12)] text-[#faad14]',
-  success: 'bg-accent-wash text-accent',
+  warning: 'wk-org-tag-warning',
+  success: 'wk-org-tag-success',
 };
 
 function t(locale: string, key: string, values?: Record<string, string | number>): string {
@@ -113,17 +113,17 @@ function formatDateYmd(dateStr: string): string {
 
 /* R488 D-B5 — static role tag tones mirroring Vue getRoleTheme (L1807-1814):
  * admin=primary (accent), editor=warning (amber), viewer=default (grey). */
-const MEMBER_ROLE_TAG = 'inline-flex h-[22px] items-center rounded-[4px] px-[6px] text-[12px] font-medium';
+const MEMBER_ROLE_TAG = 'wk-org-member-role-tag';
 const MEMBER_ROLE_TAG_TONES: Record<string, string> = {
-  admin: 'bg-accent-soft text-accent',
-  editor: 'bg-[rgba(250,173,20,0.12)] text-[#faad14]',
-  viewer: 'bg-[rgba(100,116,139,0.08)] text-[rgba(23,26,29,0.6)]',
+  admin: 'wk-org-mrt-admin',
+  editor: 'wk-org-mrt-editor',
+  viewer: 'wk-org-mrt-viewer',
 };
 /* Table recipes for the members table (Vue members-table-shell, t-table
  * medium: 13px rows on #f9f9fc zebra-free header). */
-const MEMBER_TABLE = 'w-full border-collapse text-[13px]';
-const MEMBER_TH = 'border-b border-[#e7e7ea] bg-[#f9f9f9] px-[12px] py-[10px] text-left text-[12px] font-semibold whitespace-nowrap text-[rgba(23,26,29,0.6)]';
-const MEMBER_TD = 'border-b border-[#e7e7ea] px-[12px] py-[10px] align-middle text-[rgba(23,26,29,0.92)]';
+const MEMBER_TABLE = 'wk-org-member-table';
+const MEMBER_TH = 'wk-org-member-th';
+const MEMBER_TD = 'wk-org-member-td';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 function strOf(value: unknown): string { return typeof value === 'string' ? value : ''; }
@@ -284,7 +284,7 @@ function FeatureBadge(props: { tone: 'stat-member' | 'stat-kb' | 'stat-agent'; t
       {props.tone === 'stat-member' ? <IconUser /> : props.tone === 'stat-kb' ? (
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M2 3.5h7L11 6h11v14H2V3.5Z" stroke="currentColor" strokeWidth="2" /></svg>
       ) : (
-        <svg width={14} height={14} viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="shrink-0">
+        <svg width={14} height={14} viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="wk-org-1">
           <path d="M10 3l.8 3.2c.1.5.5.9 1 1L15 8l-3.2.8c-.5.1-.9.5-1 1L10 13l-.8-3.2c-.1-.5-.5-.9-1-1L5 8l3.2-.8c.5-.1.9-.5 1-1L10 3Z" />
         </svg>
       )}
@@ -1184,7 +1184,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const feedStatus = (key: DetailFeedKey, fallback: string) => {
     const state = detailFeeds[key];
     if (state.status === 'loading') return <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p>;
-    if (state.status === 'error') return <div className="flex flex-col items-start gap-[8px] rounded-[8px] bg-[rgba(213,73,65,0.08)] px-[12px] py-[10px] text-[13px] text-[#d54941]" role="alert"><span>{state.message || fallback}</span><button type="button" className={ORG_BTN_OUTLINE} onClick={() => { if (settingsOrg) void loadOrganizationDetail(settingsOrg.id); }}>{t(locale, 'common.retry')}</button></div>;
+    if (state.status === 'error') return <div className="wk-org-2" role="alert"><span>{state.message || fallback}</span><button type="button" className={ORG_BTN_OUTLINE} onClick={() => { if (settingsOrg) void loadOrganizationDetail(settingsOrg.id); }}>{t(locale, 'common.retry')}</button></div>;
     return null;
   };
 
@@ -1255,10 +1255,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
             </div>
           ) : listError ? (
             /* React 韧性补充（Vue 模板无列表失败态）：重试入口。 */
-            <div className="flex flex-col items-center justify-center px-[20px] py-[60px] text-center" role="alert">
+            <div className="wk-org-3" role="alert">
               <IconInfoCircle size={24} />
-              <p className="m-0 mt-[12px] text-[14px] text-[#d54941]">{listError}</p>
-              <button type="button" className={ORG_BTN_OUTLINE + ' mt-[16px]'} onClick={() => void load()}>{t(locale, 'common.retry')}</button>
+              <p className="wk-org-4">{listError}</p>
+              <button type="button" className={ORG_BTN_OUTLINE + ' wk-org-92'} onClick={() => void load()}>{t(locale, 'common.retry')}</button>
             </div>
           ) : ordered.length === 0 && !loading ? (
             /* 空状态（Vue :177-198）。 */
@@ -1324,11 +1324,11 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
               <div className="settings-content">
                 {/* React 韧性补充（<720px 时侧栏不可见时的等价 section 切换），
                     Vue 无对应物；桌面扫描态 display:none 零像素影响。 */}
-                <div className="hidden border-b border-[#e7e7ea] px-4 pb-3 pt-4 max-[720px]:block">
+                <div className="wk-org-5">
                   <WkSelect
                     data-testid="organization-settings-section-selector"
                     aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}
-                    className="min-h-[34px]"
+                    className="wk-org-6"
                     value={settingsSection}
                     onChange={(event) => setSettingsSection(event.target.value)}
                   >
@@ -1454,26 +1454,26 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label>
                           {/* R488 D-B4.1 — Vue keeps the field hints in edit mode
                               too (setting-info .desc, Vue :59). */}
-                          <p className={ORG_FORM_DESC + ' mb-[6px]'}>{t(locale, 'organization.editor.nameTip')}</p>
-                          <div className="flex min-w-0 items-center gap-3">
-                            <div className="relative flex shrink-0 flex-col items-center gap-1">
-                              <button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)} disabled={!settingsCanManage}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button>
-                              {settingsCanManage ? <span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.avatar')}</span> : null}
-                              {avatarPickerOpen && settingsCanManage ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}
+                          <p className={ORG_FORM_DESC + ' wk-org-93'}>{t(locale, 'organization.editor.nameTip')}</p>
+                          <div className="wk-org-7">
+                            <div className="wk-org-8">
+                              <button type="button" className="wk-org-9" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)} disabled={!settingsCanManage}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button>
+                              {settingsCanManage ? <span className="wk-org-10">{t(locale, 'organization.avatar')}</span> : null}
+                              {avatarPickerOpen && settingsCanManage ? <div className="wk-org-11">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="wk-org-12" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="wk-org-13" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}
                             </div>
-                            <WkInput id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px] min-w-0 flex-1'} value={formName} onChange={(event) => setFormName(event.target.value)} required disabled={!settingsCanManage} />
+                            <WkInput id="organization-name" name="organization-name" className={ORG_FIELD + ' wk-org-94'} value={formName} onChange={(event) => setFormName(event.target.value)} required disabled={!settingsCanManage} />
                           </div>
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label>
                           {/* R488 D-B4.1 — the description hint survives edit mode
                               like Vue (setting-info .desc, Vue :97). */}
-                          <p className={ORG_FORM_DESC + ' mb-[6px]'}>{t(locale, 'organization.editor.descriptionTip')}</p>
+                          <p className={ORG_FORM_DESC + ' wk-org-93'}>{t(locale, 'organization.editor.descriptionTip')}</p>
                           {/* Vue t-textarea :maxlength="500" (L102) — the edit
                               mode shows the same 0/500 counter as create. */}
-                          <div className="min-w-0">
-                            <WkTextarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} disabled={!settingsCanManage} />
-                            <p className="m-0 mt-1 text-right text-[12px] text-[rgba(23,26,29,0.4)]">{formDescription.length}/500</p>
+                          <div className="wk-org-14">
+                            <WkTextarea id="organization-description" name="organization-description" className={ORG_FIELD + ' wk-org-95'} rows={3} maxLength={500} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} disabled={!settingsCanManage} />
+                            <p className="wk-org-15">{formDescription.length}/500</p>
                           </div>
                         </div>
                       </form>
@@ -1481,78 +1481,78 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           all six invite control groups live INSIDE basic, not
                           behind a standalone nav item. */}
                       {settingsCanManage && settingsOrg ? (
-                        <div className="mt-[8px] border-t border-dashed border-[#e7e7ea] pt-[16px]">
+                        <div className="wk-org-16">
                           <h3 className={ORG_SECTION_TITLE}>{t(locale, 'organization.settings.inviteMembers')}</h3>
                           <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.inviteMembersDesc')}</p>
-                          <div className="flex flex-col rounded-[8px] border border-[#e7e7ea] bg-[#f9f9f9]">
+                          <div className="wk-org-17">
                             {/* ① 邀请码：值 + 复制 + 刷新 + 剩余有效期 */}
-                            <div className="flex flex-col gap-[6px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
-                              <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.inviteCode')}</strong>
-                              <div className="flex min-w-0 items-center gap-[8px]">
-                                <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[6px] text-[13px] text-[rgba(23,26,29,0.92)]">{settingsInviteCode || '—'}</code>
+                            <div className="wk-org-18">
+                              <strong className="wk-org-19">{t(locale, 'organization.inviteCode')}</strong>
+                              <div className="wk-org-20">
+                                <code className="wk-org-21">{settingsInviteCode || '—'}</code>
                                 {/* R488 D-B4.2 — Vue t-button variant=text icon-only with a tooltip (L123-127). */}
-                                <button type="button" className="box-border inline-flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-accent disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'common.copy')} title={t(locale, 'common.copy')} disabled={!settingsInviteCode} onClick={() => { void copyText(settingsInviteCode).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}><IconCopy size={15} /></button>
-                                <button type="button" className="box-border inline-flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-accent disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'organization.refreshInviteCode')} title={t(locale, 'organization.refreshInviteCode')} disabled={refreshingCode} onClick={() => void refreshInviteCode()}><span className={refreshingCode ? 'inline-flex animate-[orgSpin_1s_linear_infinite]' : 'inline-flex'}><IconRefresh size={15} /></span></button>
+                                <button type="button" className="wk-org-22" aria-label={t(locale, 'common.copy')} title={t(locale, 'common.copy')} disabled={!settingsInviteCode} onClick={() => { void copyText(settingsInviteCode).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}><IconCopy size={15} /></button>
+                                <button type="button" className="wk-org-22" aria-label={t(locale, 'organization.refreshInviteCode')} title={t(locale, 'organization.refreshInviteCode')} disabled={refreshingCode} onClick={() => void refreshInviteCode()}><span className={refreshingCode ? 'wk-org-96' : 'wk-org-97'}><IconRefresh size={15} /></span></button>
                               </div>
-                              {settingsInviteCode ? <p className="m-0 text-[12px] text-[rgba(23,26,29,0.6)]">{remainingValidityText(locale, inviteCodeExpiresAt)}</p> : null}
+                              {settingsInviteCode ? <p className="wk-org-23">{remainingValidityText(locale, inviteCodeExpiresAt)}</p> : null}
                             </div>
                             {/* ② 邀请链接有效期：立即保存 */}
-                            <div className="flex flex-col gap-[6px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
-                              <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.inviteLinkValidity')}</strong>
-                              <p className="m-0 text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.inviteLinkValidityDesc')}</p>
+                            <div className="wk-org-18">
+                              <strong className="wk-org-19">{t(locale, 'organization.settings.inviteLinkValidity')}</strong>
+                              <p className="wk-org-24">{t(locale, 'organization.settings.inviteLinkValidityDesc')}</p>
                               {/* R488 D-B4.3 — Vue t-select renders only the
                                   selected label until opened; a native select
                                   leaks every option into the DOM text. */}
-                              <div className="relative w-[220px] max-w-full">
-                                <button type="button" className={ORG_FIELD + ' flex min-h-[30px] cursor-pointer items-center justify-between gap-[6px] text-left'} aria-label={t(locale, 'organization.settings.inviteLinkValidity')} aria-expanded={validityPopupOpen} aria-haspopup="listbox" onClick={() => setValidityPopupOpen((open) => !open)}>
+                              <div className="wk-org-25">
+                                <button type="button" className={ORG_FIELD + ' wk-org-98'} aria-label={t(locale, 'organization.settings.inviteLinkValidity')} aria-expanded={validityPopupOpen} aria-haspopup="listbox" onClick={() => setValidityPopupOpen((open) => !open)}>
                                   {t(locale, (ORG_INVITE_VALIDITY_OPTIONS.find(([value]) => value === formValidityDays) ?? ORG_INVITE_VALIDITY_OPTIONS[1])[1])}
                                   <IconChevron size={14} direction="down" />
                                 </button>
                                 {validityPopupOpen ? (
-                                  <div role="listbox" aria-label={t(locale, 'organization.settings.inviteLinkValidity')} className="absolute left-0 top-[34px] z-30 w-full overflow-hidden rounded-[6px] border border-[#e7e7ea] bg-surface py-[4px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+                                  <div role="listbox" aria-label={t(locale, 'organization.settings.inviteLinkValidity')} className="wk-org-26">
                                     {ORG_INVITE_VALIDITY_OPTIONS.map(([value, labelKey]) => (
-                                      <button type="button" key={value} role="option" aria-selected={value === formValidityDays} className={'block w-full cursor-pointer border-0 bg-transparent px-[10px] py-[6px] text-left text-[13px] text-[rgba(23,26,29,0.92)] hover:bg-[#f3f3f5] ' + (value === formValidityDays ? 'font-semibold text-accent' : '')} onClick={() => { setValidityPopupOpen(false); void handleValidityChange(value); }}>{t(locale, labelKey)}</button>
+                                      <button type="button" key={value} role="option" aria-selected={value === formValidityDays} className={'wk-org-99 ' + (value === formValidityDays ? 'wk-org-100' : '')} onClick={() => { setValidityPopupOpen(false); void handleValidityChange(value); }}>{t(locale, labelKey)}</button>
                                     ))}
                                   </div>
                                 ) : null}
                               </div>
                             </div>
                             {/* ③ 邀请链接：/join?code= + 复制 */}
-                            <div className="flex flex-col gap-[6px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
-                              <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.inviteLink')}</strong>
-                              <div className="flex min-w-0 items-center gap-[8px]">
-                                <code className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[6px] text-[13px] text-[rgba(23,26,29,0.92)] [overflow-wrap:anywhere]">{settingsInviteLink || '—'}</code>
+                            <div className="wk-org-18">
+                              <strong className="wk-org-19">{t(locale, 'organization.settings.inviteLink')}</strong>
+                              <div className="wk-org-20">
+                                <code className="wk-org-27">{settingsInviteLink || '—'}</code>
                                 {/* R488 D-B4.2 — icon-only copy like Vue (L164-168). */}
-                                <button type="button" className="box-border inline-flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-accent disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'common.copy')} title={t(locale, 'common.copy')} disabled={!settingsInviteLink} onClick={() => { void copyText(settingsInviteLink).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}><IconCopy size={15} /></button>
+                                <button type="button" className="wk-org-22" aria-label={t(locale, 'common.copy')} title={t(locale, 'common.copy')} disabled={!settingsInviteLink} onClick={() => { void copyText(settingsInviteLink).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}><IconCopy size={15} /></button>
                               </div>
                             </div>
                             {/* ④ 需要审核：立即保存 */}
-                            <div className="flex items-start justify-between gap-[12px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
-                              <div className="flex min-w-0 flex-col gap-[2px]">
-                                <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.requireApproval')}</strong>
-                                <span className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.requireApprovalDesc')}</span>
+                            <div className="wk-org-28">
+                              <div className="wk-org-org-member-copy">
+                                <strong className="wk-org-19">{t(locale, 'organization.settings.requireApproval')}</strong>
+                                <span className="wk-org-29">{t(locale, 'organization.settings.requireApprovalDesc')}</span>
                               </div>
                               <WkSwitch aria-label={t(locale, 'organization.settings.requireApproval')} checked={formRequireApproval} onCheckedChange={(value) => void handleApprovalToggle(value)} />
                             </div>
                             {/* ⑤ 开放可被搜索：立即保存 */}
-                            <div className="flex items-start justify-between gap-[12px] border-b border-[#e7e7ea] px-[12px] py-[10px]">
-                              <div className="flex min-w-0 flex-col gap-[2px]">
-                                <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.searchable')}</strong>
-                                <span className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.searchableDesc')}</span>
+                            <div className="wk-org-28">
+                              <div className="wk-org-org-member-copy">
+                                <strong className="wk-org-19">{t(locale, 'organization.settings.searchable')}</strong>
+                                <span className="wk-org-29">{t(locale, 'organization.settings.searchableDesc')}</span>
                               </div>
                               <WkSwitch aria-label={t(locale, 'organization.settings.searchable')} checked={formSearchable} onCheckedChange={(value) => void handleSearchableToggle(value)} />
                             </div>
                             {/* ⑥ 成员数量上限：0-10000 + 当前成员数 hint */}
-                            <div className="flex flex-col gap-[6px] px-[12px] py-[10px]">
-                              <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.memberLimit')}</strong>
-                              <p className="m-0 text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.memberLimitDesc')}</p>
-                              <div className="flex items-center gap-[10px]">
+                            <div className="wk-org-30">
+                              <strong className="wk-org-19">{t(locale, 'organization.settings.memberLimit')}</strong>
+                              <p className="wk-org-24">{t(locale, 'organization.settings.memberLimitDesc')}</p>
+                              <div className="wk-org-31">
                                 {/* R488 D-B4.3 — Vue t-input-number theme="normal"
                                     carries no stepper column; the ▲▼ glyphs were
                                     scrape noise. Clamping keeps the 0-10000
                                     contract (submitBasic payload unchanged). */}
-                                <WkInput type="number" aria-label={t(locale, 'organization.settings.memberLimit')} className={ORG_FIELD + ' min-h-[30px] w-[140px]'} min={0} max={10000} step={1} value={formMemberLimit === '' ? '' : String(formMemberLimit)} placeholder={t(locale, 'organization.settings.memberLimitPlaceholder')} onChange={(event) => { const raw = event.target.value; if (raw === '') { setFormMemberLimit(''); return; } const next = Math.min(10000, Math.max(0, Math.round(Number(raw)))); if (Number.isSafeInteger(next)) setFormMemberLimit(next); }} />
-                                <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.settings.memberLimitHint', { count: numOf(settingsOrg?.member_count) })}</span>
+                                <WkInput type="number" aria-label={t(locale, 'organization.settings.memberLimit')} className={ORG_FIELD + ' wk-org-101'} min={0} max={10000} step={1} value={formMemberLimit === '' ? '' : String(formMemberLimit)} placeholder={t(locale, 'organization.settings.memberLimitPlaceholder')} onChange={(event) => { const raw = event.target.value; if (raw === '') { setFormMemberLimit(''); return; } const next = Math.min(10000, Math.max(0, Math.round(Number(raw)))); if (Number.isSafeInteger(next)) setFormMemberLimit(next); }} />
+                                <span className="wk-org-32">{t(locale, 'organization.settings.memberLimitHint', { count: numOf(settingsOrg?.member_count) })}</span>
                               </div>
                             </div>
                           </div>
@@ -1565,25 +1565,25 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           organization.manageMembers (成员管理) with the
                           permission-matrix info trigger beside it; the shared
                           共享空间成员 wording stays on the INNER list title. */}
-                      <div className="mb-[16px] flex flex-wrap items-start justify-between gap-[12px]">
+                      <div className="wk-org-33">
                         <div>
-                          <div className="flex items-center gap-[8px]">
-                            <h2 className={ORG_SECTION_TITLE + ' mb-0'}>{t(locale, 'organization.manageMembers')}</h2>
-                            <span className="relative inline-flex">
-                              <button type="button" className="flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-[rgba(23,26,29,0.45)] hover:bg-[#f3f3f5] hover:text-accent" aria-label={t(locale, 'organization.editor.permissionsTitle')} title={t(locale, 'organization.settings.permissionsIconHint')} aria-expanded={permissionsPopupOpen} onClick={() => setPermissionsPopupOpen((open) => !open)}><IconInfoCircle size={16} /></button>
+                          <div className="wk-org-34">
+                            <h2 className={ORG_SECTION_TITLE + ' wk-org-102'}>{t(locale, 'organization.manageMembers')}</h2>
+                            <span className="wk-org-35">
+                              <button type="button" className="wk-org-36" aria-label={t(locale, 'organization.editor.permissionsTitle')} title={t(locale, 'organization.settings.permissionsIconHint')} aria-expanded={permissionsPopupOpen} onClick={() => setPermissionsPopupOpen((open) => !open)}><IconInfoCircle size={16} /></button>
                               {permissionsPopupOpen ? (
-                                <div className="absolute left-[26px] top-0 z-30 w-[min(520px,calc(100vw-24px))] overflow-hidden rounded-[8px] border border-[#e7e7ea] bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
-                                  <div className="border-b border-[#e7e7ea] px-[14px] py-[10px]">
-                                    <div className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.permissionsTitle')}</div>
-                                    <div className="text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.editor.permissionsDesc')}</div>
+                                <div className="wk-org-37">
+                                  <div className="wk-org-38">
+                                    <div className="wk-org-39">{t(locale, 'organization.editor.permissionsTitle')}</div>
+                                    <div className="wk-org-29">{t(locale, 'organization.editor.permissionsDesc')}</div>
                                   </div>
-                                  <div className="grid grid-cols-1 gap-[8px] p-[10px] min-[560px]:grid-cols-3">
+                                  <div className="wk-org-40">
                                     {ORG_ROLE_MATRIX.map(({ role, perms }) => (
-                                      <div key={role} className={'rounded-[8px] border px-[10px] py-[8px] ' + (strOf(settingsOrg?.my_role) === role ? 'border-accent bg-accent-wash' : 'border-[#e7e7ea] bg-[#f9f9f9]')}>
-                                        <div className="mb-[6px] flex items-center gap-[4px] text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.role.' + role)}{strOf(settingsOrg?.my_role) === role ? <span className="rounded-[4px] bg-accent-soft px-[4px] text-[11px] font-medium text-accent">{t(locale, 'common.me')}</span> : null}</div>
-                                        <div className="flex flex-col gap-[3px]">
+                                      <div key={role} className={'wk-org-103 ' + (strOf(settingsOrg?.my_role) === role ? 'wk-org-104' : 'wk-org-105')}>
+                                        <div className="wk-org-41">{t(locale, 'organization.role.' + role)}{strOf(settingsOrg?.my_role) === role ? <span className="wk-org-42">{t(locale, 'common.me')}</span> : null}</div>
+                                        <div className="wk-org-43">
                                           {perms.map(([permKey, allowed]) => (
-                                            <span key={permKey} className={'text-[12px] leading-[1.45] ' + (allowed ? 'text-[rgba(23,26,29,0.82)]' : 'text-[rgba(23,26,29,0.4)]')}><span className="mr-[4px]" aria-hidden="true">{allowed ? '✓' : '✗'}</span>{t(locale, permKey)}</span>
+                                            <span key={permKey} className={'wk-org-106 ' + (allowed ? 'wk-org-107' : 'wk-org-108')}><span className="wk-org-44" aria-hidden="true">{allowed ? '✓' : '✗'}</span>{t(locale, permKey)}</span>
                                           ))}
                                         </div>
                                       </div>
@@ -1601,44 +1601,44 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           left; the right side carries the member search and —
                           for managing admins — the add-member icon button with
                           its popup (R488 D-B5: no resident form anymore). */}
-                      <div className="mb-[8px] flex flex-wrap items-center justify-between gap-[12px]">
-                        <div className="flex items-center gap-[8px]">
-                          <span className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.members.listTitle')}</span>
-                          <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span>
+                      <div className="wk-org-45">
+                        <div className="wk-org-34">
+                          <span className="wk-org-39">{t(locale, 'organization.members.listTitle')}</span>
+                          <span className="wk-org-46" aria-label={t(locale, 'organization.members.listTitle') + ' count'}>{filteredMembers.length}</span>
                         </div>
-                        <div className="flex items-center gap-[8px]">
-                          {detailFeeds.members.status === 'ready' && members.length > 0 ? <WkInput className={ORG_FIELD + ' min-h-[30px] w-[min(100%,200px)]'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
+                        <div className="wk-org-34">
+                          {detailFeeds.members.status === 'ready' && members.length > 0 ? <WkInput className={ORG_FIELD + ' wk-org-109'} aria-label={t(locale, 'organization.members.listTitle')} placeholder={t(locale, 'organization.members.searchPlaceholder')} value={memberSearchQuery} onChange={(event) => setMemberSearchQuery(event.target.value)} /> : null}
                           {settingsCanManage ? (
-                            <div className="relative">
-                              <button type="button" className="box-border inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-[3px] border border-[rgba(7,192,95,0.5)] bg-surface text-accent [transition:all_.2s_ease] hover:border-accent hover:bg-accent-wash" aria-label={t(locale, 'organization.addMember.button')} title={t(locale, 'organization.addMember.button')} aria-expanded={addMemberPopupOpen} onClick={() => { setAddMemberPopupOpen((open) => !open); setSelectedInviteTenant(null); }}><IconUsergroupAdd size={16} /></button>
+                            <div className="wk-org-47">
+                              <button type="button" className="wk-org-48" aria-label={t(locale, 'organization.addMember.button')} title={t(locale, 'organization.addMember.button')} aria-expanded={addMemberPopupOpen} onClick={() => { setAddMemberPopupOpen((open) => !open); setSelectedInviteTenant(null); }}><IconUsergroupAdd size={16} /></button>
                               {addMemberPopupOpen ? (
-                                <div className="absolute right-0 top-[36px] z-30 w-[min(340px,calc(100vw-48px))] rounded-[8px] border border-[#e7e7ea] bg-surface p-[14px] text-left shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
-                                  <div className="mb-[4px] text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.addMember.dialogTitle')}</div>
-                                  <p className="m-0 mb-[12px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.addMember.tipTenant')}</p>
-                                  <div className="mb-[12px]">
-                                    <label className={ORG_FORM_LABEL + ' mb-[4px]'}>{t(locale, 'organization.addMember.searchTenant')}</label>
-                                    <WkInput className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />
-                                    <p className="m-0 mt-[4px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.addMember.searchTenantHint')}</p>
+                                <div className="wk-org-49">
+                                  <div className="wk-org-50">{t(locale, 'organization.addMember.dialogTitle')}</div>
+                                  <p className="wk-org-51">{t(locale, 'organization.addMember.tipTenant')}</p>
+                                  <div className="wk-org-52">
+                                    <label className={ORG_FORM_LABEL + ' wk-org-110'}>{t(locale, 'organization.addMember.searchTenant')}</label>
+                                    <WkInput className={ORG_FIELD + ' wk-org-111'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />
+                                    <p className="wk-org-53">{t(locale, 'organization.addMember.searchTenantHint')}</p>
                                     {memberInviteLoading ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p> : memberInviteCandidates.map((candidate) => {
                                       const candidateId = String(candidate.tenant_id);
                                       const selected = selectedInviteTenant != null && String(selectedInviteTenant.tenant_id) === candidateId;
                                       return (
-                                        <button type="button" key={candidateId} className={'mb-[6px] flex w-full cursor-pointer flex-col items-start gap-[2px] rounded-[6px] border px-[10px] py-[8px] text-left last:mb-0 ' + (selected ? 'border-accent bg-accent-wash' : 'border-[#e7e7ea] bg-surface hover:border-[#c9c9cf]')} aria-pressed={selected} onClick={() => setSelectedInviteTenant(candidate)}>
-                                          <strong className="text-[13px] font-semibold text-[rgba(23,26,29,0.92)]">{strOf(candidate.tenant_name) || ('tenant#' + candidateId)}</strong>
-                                          <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(candidate.representative_username) || strOf(candidate.representative_email)}</span>
+                                        <button type="button" key={candidateId} className={'wk-org-112 ' + (selected ? 'wk-org-104' : 'wk-org-113')} aria-pressed={selected} onClick={() => setSelectedInviteTenant(candidate)}>
+                                          <strong className="wk-org-19">{strOf(candidate.tenant_name) || ('tenant#' + candidateId)}</strong>
+                                          <span className="wk-org-32">{strOf(candidate.representative_username) || strOf(candidate.representative_email)}</span>
                                         </button>
                                       );
                                     })}
                                   </div>
-                                  <div className="mb-[12px]">
-                                    <label className={ORG_FORM_LABEL + ' mb-[4px]'}>{t(locale, 'organization.addMember.selectRole')}</label>
-                                    <WkSelect className={ORG_FIELD + ' min-h-[30px]'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
+                                  <div className="wk-org-52">
+                                    <label className={ORG_FORM_LABEL + ' wk-org-110'}>{t(locale, 'organization.addMember.selectRole')}</label>
+                                    <WkSelect className={ORG_FIELD + ' wk-org-111'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
                                       {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
                                     </WkSelect>
                                   </div>
-                                  <div className="flex items-center justify-end gap-[8px]">
-                                    <button type="button" className={ORG_BTN_OUTLINE + ' min-h-[30px] px-[12px] text-[13px]'} onClick={() => setAddMemberPopupOpen(false)}>{t(locale, 'common.cancel')}</button>
-                                    <button type="button" className={ORG_BTN_PRIMARY + ' min-h-[30px] px-[12px] text-[13px]'} disabled={selectedInviteTenant == null || memberInviteSaving != null} onClick={() => { if (selectedInviteTenant) void inviteMember(selectedInviteTenant); }}>{t(locale, 'organization.addMember.confirmBtn')}</button>
+                                  <div className="wk-org-54">
+                                    <button type="button" className={ORG_BTN_OUTLINE + ' wk-org-114'} onClick={() => setAddMemberPopupOpen(false)}>{t(locale, 'common.cancel')}</button>
+                                    <button type="button" className={ORG_BTN_PRIMARY + ' wk-org-114'} disabled={selectedInviteTenant == null || memberInviteSaving != null} onClick={() => { if (selectedInviteTenant) void inviteMember(selectedInviteTenant); }}>{t(locale, 'organization.addMember.confirmBtn')}</button>
                                   </div>
                                 </div>
                               ) : null}
@@ -1654,14 +1654,14 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                          * memberColumns (L1124-1134): 成员/角色/加入时间 plus
                          * 操作 for managing admins; the owner row renders
                          * static role/创建者/我 badges (L462-497). */
-                        <div className="overflow-hidden rounded-[8px] border border-[#e7e7ea]">
+                        <div className="wk-org-55">
                           <table className={MEMBER_TABLE}>
                             <thead>
                               <tr>
                                 <th className={MEMBER_TH}>{t(locale, 'organization.members.columns.member')}</th>
-                                <th className={MEMBER_TH + ' w-[132px]'}>{t(locale, 'organization.members.columns.role')}</th>
-                                <th className={MEMBER_TH + ' w-[154px]'}>{t(locale, 'organization.members.columns.joinedAt')}</th>
-                                {settingsCanManage ? <th className={MEMBER_TH + ' w-[96px]'}>{t(locale, 'organization.members.columns.operations')}</th> : null}
+                                <th className={MEMBER_TH + ' wk-org-115'}>{t(locale, 'organization.members.columns.role')}</th>
+                                <th className={MEMBER_TH + ' wk-org-116'}>{t(locale, 'organization.members.columns.joinedAt')}</th>
+                                {settingsCanManage ? <th className={MEMBER_TH + ' wk-org-117'}>{t(locale, 'organization.members.columns.operations')}</th> : null}
                               </tr>
                             </thead>
                             <tbody>
@@ -1671,26 +1671,26 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                                 return (
                                   <tr key={member.id}>
                                     <td className={MEMBER_TD}>
-                                      <div className="flex min-w-0 flex-col gap-[2px]">
-                                        <span className="flex min-w-0 items-center gap-[6px] text-[14px] font-medium text-[rgba(23,26,29,0.92)]">
-                                          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{memberPrimaryLabelOf(member)}</span>
-                                          {memberIsOwner ? <span className="inline-flex h-[16px] shrink-0 items-center rounded-[3px] bg-accent-wash px-[5px] text-[10px] font-medium text-accent">{t(locale, 'organization.owner')}</span> : null}
-                                          {member.user_id === currentUserId ? <span className="inline-flex h-[16px] shrink-0 items-center rounded-[3px] bg-accent px-[5px] text-[10px] font-medium text-white">{t(locale, 'common.me')}</span> : null}
+                                      <div className="wk-org-org-member-copy">
+                                        <span className="wk-org-56">
+                                          <span className="wk-org-57">{memberPrimaryLabelOf(member)}</span>
+                                          {memberIsOwner ? <span className="wk-org-58">{t(locale, 'organization.owner')}</span> : null}
+                                          {member.user_id === currentUserId ? <span className="wk-org-59">{t(locale, 'common.me')}</span> : null}
                                         </span>
-                                        {secondary ? <span className="text-[12px] leading-[1.35] text-[rgba(23,26,29,0.6)]">{secondary}</span> : null}
+                                        {secondary ? <span className="wk-org-60">{secondary}</span> : null}
                                       </div>
                                     </td>
                                     <td className={MEMBER_TD}>
                                       {settingsCanManage && !memberIsOwner ? (
-                                        <WkSelect className={ORG_FIELD + ' min-h-[28px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
+                                        <WkSelect className={ORG_FIELD + ' wk-org-118'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
                                           {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
                                         </WkSelect>
                                       ) : (
                                         <span className={MEMBER_ROLE_TAG + ' ' + (MEMBER_ROLE_TAG_TONES[member.role] ?? MEMBER_ROLE_TAG_TONES.viewer)}>{t(locale, 'organization.role.' + member.role)}</span>
                                       )}
                                     </td>
-                                    <td className={MEMBER_TD + ' text-[13px] text-[rgba(23,26,29,0.82)]'}>{formatDateYmd(strOf(member.joined_at))}</td>
-                                    {settingsCanManage ? <td className={MEMBER_TD}>{memberIsOwner ? null : <button type="button" className={ORG_BTN_NEUTRAL + ' min-h-[28px] px-[10px] text-[12px]'} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button>}</td> : null}
+                                    <td className={MEMBER_TD + ' wk-org-119'}>{formatDateYmd(strOf(member.joined_at))}</td>
+                                    {settingsCanManage ? <td className={MEMBER_TD}>{memberIsOwner ? null : <button type="button" className={ORG_BTN_NEUTRAL + ' wk-org-120'} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button>}</td> : null}
                                   </tr>
                                 );
                               })}
@@ -1703,19 +1703,19 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           not in basic. */}
                       {canRequestUpgrade ? <form onSubmit={submitUpgradeRequest} style={{ marginTop: '24px', borderTop: '1px dashed #e7e7ea', paddingTop: '16px' }}>
                         <h3 className={ORG_SECTION_TITLE}>{t(locale, 'organization.upgrade.requestUpgrade')}</h3>
-                        <div className="mb-[16px] flex items-center gap-[8px]">
-                          <span className="text-[13px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.upgrade.currentRole')}</span>
-                          <span className={RELATION_ROLE_TAG + ' ' + (RELATION_ROLE_TAG_TONES[upgradeCurrentRole] ?? 'bg-[rgba(107,114,128,0.08)] text-[rgba(23,26,29,0.6)]')}>{t(locale, 'organization.role.' + upgradeCurrentRole)}</span>
+                        <div className="wk-org-61">
+                          <span className="wk-org-62">{t(locale, 'organization.upgrade.currentRole')}</span>
+                          <span className={RELATION_ROLE_TAG + ' ' + (RELATION_ROLE_TAG_TONES[upgradeCurrentRole] ?? 'wk-org-121')}>{t(locale, 'organization.role.' + upgradeCurrentRole)}</span>
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-role">{t(locale, 'organization.upgrade.selectRole')}</label>
-                          <WkSelect id="upgrade-role" className={ORG_FIELD + ' min-h-[34px]'} value={upgradeRole} onChange={(event) => setUpgradeRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
+                          <WkSelect id="upgrade-role" className={ORG_FIELD + ' wk-org-6'} value={upgradeRole} onChange={(event) => setUpgradeRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
                             {upgradeChoices.map((value) => <option key={value} value={value}>{t(locale, 'organization.role.' + value)}</option>)}
                           </WkSelect>
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-note">{t(locale, 'organization.upgrade.reason')}</label>
-                          <WkTextarea id="upgrade-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={upgradeNote} onChange={(event) => setUpgradeNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
+                          <WkTextarea id="upgrade-note" className={ORG_FIELD + ' wk-org-95'} rows={2} maxLength={500} value={upgradeNote} onChange={(event) => setUpgradeNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
                         </div>
                         <button type="submit" className={ORG_BTN_OUTLINE} disabled={hasPendingUpgrade} title={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined} aria-label={hasPendingUpgrade ? t(locale, 'organization.upgrade.pending') : undefined}>{t(locale, 'organization.upgrade.submitBtn')}</button>
                       </form> : null}
@@ -1727,17 +1727,17 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           live count is the inner list title below it. */}
                       <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.settings.joinRequests')}</h2>
                       <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.joinRequestsDesc')}</p>
-                      <div className="mb-[8px] flex items-center gap-[8px]">
-                        <span className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.joinRequests.listTitle')}</span>
-                        <span className="inline-flex min-w-[24px] items-center justify-center rounded-full bg-accent-wash px-[7px] py-[2px] text-[12px] font-medium text-accent" aria-label={t(locale, 'organization.joinRequests.listTitle') + ' count'}>{requests.filter((request) => request.status === 'pending').length}</span>
+                      <div className="wk-org-63">
+                        <span className="wk-org-39">{t(locale, 'organization.joinRequests.listTitle')}</span>
+                        <span className="wk-org-46" aria-label={t(locale, 'organization.joinRequests.listTitle') + ' count'}>{requests.filter((request) => request.status === 'pending').length}</span>
                       </div>
                       {feedStatus('requests', t(locale, 'organization.settings.reviewFailed'))}
                       {detailFeeds.requests.status === 'ready' && requests.filter((request) => request.status === 'pending').length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noPendingRequests')}</p> : null}
                       {detailFeeds.requests.status === 'ready' ? requests.filter((request) => request.status === 'pending').map((request) => (
                         <div key={request.id} className={ORG_MEMBER_ROW}>
                           <div className={ORG_MEMBER_COPY}>
-                            <strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{request.username}</strong>
-                            <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.joinRequests.columns.requestedRole')}: {t(locale, 'organization.role.' + request.requested_role)}</span>
+                            <strong className="wk-org-39">{request.username}</strong>
+                            <span className="wk-org-32">{t(locale, 'organization.joinRequests.columns.requestedRole')}: {t(locale, 'organization.role.' + request.requested_role)}</span>
                           </div>
                           <div className={ORG_ROW_ACTIONS}>
                             {settingsCanManage ? <><button type="button" className={ORG_BTN_OUTLINE} onClick={() => void reviewRequest(request, true)}>{t(locale, 'organization.settings.approve')}</button><button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void reviewRequest(request, false)}>{t(locale, 'organization.settings.reject')}</button></> : null}
@@ -1759,8 +1759,8 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         return (
                           <div key={row.shareId || index} className={ORG_MEMBER_ROW}>
                             <div className={ORG_MEMBER_COPY}>
-                              <strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{row.name}</strong>
-                              <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{row.permission || t(locale, 'organization.sharedResources.columns.permission')}</span>
+                              <strong className="wk-org-39">{row.name}</strong>
+                              <span className="wk-org-32">{row.permission || t(locale, 'organization.sharedResources.columns.permission')}</span>
                             </div>
                             {row.canUnshare && settingsCanManage ? (
                               <div className={ORG_ROW_ACTIONS}>
@@ -1777,7 +1777,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.sharedAgentsDesc')}</p>
                       {feedStatus('agents', t(locale, 'organization.settings.removeShareFailed'))}
                       {detailFeeds.agents.status === 'ready' && sharedAgents.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noSharedAgents')}</p> : null}
-                      {detailFeeds.agents.status === 'ready' ? sharedAgents.map((agent, index) => <div key={strOf(agent.id) || index} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{strOf(agent.agent_name) || strOf(agent.name) || strOf(agent.agent_id)}</strong><span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(agent.permission) || t(locale, 'organization.sharedResources.columns.permission')}</span></div>{settingsCanManage && strOf(agent.agent_id) && (strOf(agent.id) || strOf(agent.share_id)) ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void unshareAgent(agent)}>{t(locale, 'organization.share.unshareAction')}</button> : null}</div>) : null}
+                      {detailFeeds.agents.status === 'ready' ? sharedAgents.map((agent, index) => <div key={strOf(agent.id) || index} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="wk-org-39">{strOf(agent.agent_name) || strOf(agent.name) || strOf(agent.agent_id)}</strong><span className="wk-org-32">{strOf(agent.permission) || t(locale, 'organization.sharedResources.columns.permission')}</span></div>{settingsCanManage && strOf(agent.agent_id) && (strOf(agent.id) || strOf(agent.share_id)) ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void unshareAgent(agent)}>{t(locale, 'organization.share.unshareAction')}</button> : null}</div>) : null}
                     </>
                   ) : null}
                 </div>
@@ -1800,76 +1800,76 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
       {/* Join modal (invite code / search / preview). */}
       {joinOpen ? (
         <div className={ORG_MODAL_OVERLAY} onClick={closeJoin}>
-          <div className={'relative box-border flex w-full flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)] max-h-[90vh] ' + (!joinPreview && !joinPreviewLoading && joinStep === 'search' ? 'max-w-[560px]' : 'max-w-[480px]')} role="dialog" aria-label={t(locale, joinPreview ? 'organization.invite.previewTitle' : 'organization.joinOrg')} onClick={(event) => event.stopPropagation()}>
+          <div className={'wk-org-122 ' + (!joinPreview && !joinPreviewLoading && joinStep === 'search' ? 'wk-org-123' : 'wk-org-124')} role="dialog" aria-label={t(locale, joinPreview ? 'organization.invite.previewTitle' : 'organization.joinOrg')} onClick={(event) => event.stopPropagation()}>
             <button type="button" className={ORG_CLOSE_BTN} aria-label={t(locale, 'common.close')} onClick={closeJoin}><IconClose /></button>
-            <div className="flex shrink-0 items-center justify-between gap-[12px] border-b border-[#e7e7ea] py-[16px] pl-[20px] pr-[48px]">
+            <div className="wk-org-64">
               {joinPreview && !joinCode ? (
-                <button type="button" className="flex h-[32px] w-[32px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-accent" aria-label={t(locale, 'organization.join.backToSearch')} onClick={() => { setJoinPreview(null); setJoinStep('search'); }}><IconBack /></button>
+                <button type="button" className="wk-org-65" aria-label={t(locale, 'organization.join.backToSearch')} onClick={() => { setJoinPreview(null); setJoinStep('search'); }}><IconBack /></button>
               ) : null}
-              <h2 className="m-0 min-w-0 flex-1 text-[16px] font-semibold leading-[1.4] text-[rgba(23,26,29,0.92)]">{joinPreview ? t(locale, 'organization.invite.previewTitle') : t(locale, 'organization.joinOrg')}</h2>
+              <h2 className="wk-org-66">{joinPreview ? t(locale, 'organization.invite.previewTitle') : t(locale, 'organization.joinOrg')}</h2>
             </div>
-            <div className="max-h-[calc(90vh-120px)] min-h-0 overflow-x-hidden overflow-y-auto px-[24px] pt-[20px]">
+            <div className="wk-org-67">
               {joinPreviewLoading ? (
                 <div className={ORG_EMPTY_INLINE} style={{ textAlign: 'center', padding: '48px 0' }}>{t(locale, 'organization.invite.loading')}</div>
               ) : joinPreview ? (
                 <>
-                  <div className="flex flex-col items-center pt-[8px] pb-[20px] text-center">
-                    <SpaceAvatar name={previewName} avatar={joinPreview.avatar} size="large" className="mb-[12px]" />
-                    <h3 className="mx-0 mt-0 mb-[6px] max-w-full truncate text-[18px] font-semibold leading-[1.35] text-[rgba(23,26,29,0.92)]">{previewName}</h3>
-                    <p className="mx-0 mt-0 mb-[14px] line-clamp-2 max-w-[360px] text-[13px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{previewDescription || t(locale, 'organization.noDescription')}</p>
-                    <div className="flex items-center justify-center gap-[4px] mb-[12px]">
+                  <div className="wk-org-68">
+                    <SpaceAvatar name={previewName} avatar={joinPreview.avatar} size="large" className="wk-org-52" />
+                    <h3 className="wk-org-69">{previewName}</h3>
+                    <p className="wk-org-70">{previewDescription || t(locale, 'organization.noDescription')}</p>
+                    <div className="wk-org-71">
                       <FeatureBadge tone="stat-member" title={t(locale, 'organization.memberCount')} count={numOf(joinPreview.member_count)} />
                       <FeatureBadge tone="stat-kb" title={t(locale, 'organization.invite.knowledgeBases')} count={numOf(joinPreview.share_count)} />
                       <FeatureBadge tone="stat-agent" title={t(locale, 'organization.invite.agents')} count={numOf(joinPreview.agent_share_count)} />
                     </div>
-                    <button type="button" className="inline-flex max-w-full items-center gap-[6px] rounded-full border-0 bg-[#f3f3f5] px-[10px] py-[4px] font-[inherit] text-[12px] text-[rgba(23,26,29,0.4)] hover:bg-accent-wash hover:text-accent" aria-label={t(locale, 'organization.join.spaceId')} onClick={() => { void copyText(strOf(joinPreview.id)).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}>
-                      <span>{t(locale, 'organization.join.spaceId')}</span><code className="font-mono text-[11px] text-[rgba(23,26,29,0.6)]">{shortId(joinPreview.id)}</code><span aria-hidden="true">⧉</span>
+                    <button type="button" className="wk-org-72" aria-label={t(locale, 'organization.join.spaceId')} onClick={() => { void copyText(strOf(joinPreview.id)).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}>
+                      <span>{t(locale, 'organization.join.spaceId')}</span><code className="wk-org-73">{shortId(joinPreview.id)}</code><span aria-hidden="true">⧉</span>
                     </button>
                   </div>
                   {previewIsAlreadyMember ? (
-                    <div className="flex items-center justify-center gap-[8px] pt-[12px] pb-[4px] text-[14px] font-medium text-accent"><IconCheckCircle /><span>{t(locale, 'organization.invite.alreadyMember')}</span></div>
+                    <div className="wk-org-74"><IconCheckCircle /><span>{t(locale, 'organization.invite.alreadyMember')}</span></div>
                   ) : (
                     <div style={{ borderTop: '1px solid #e7e7ea', paddingTop: '16px' }}>
-                      <div className="flex min-h-[28px] items-center justify-between gap-[12px]">
-                        <span className="text-[14px] font-medium text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.invite.approvalLabel')}</span>
+                      <div className="wk-org-75">
+                        <span className="wk-org-76">{t(locale, 'organization.invite.approvalLabel')}</span>
                         <span className={ORG_TAG + ' ' + ORG_TAG_TONES[previewJoinMode === 'request' ? 'warning' : 'success']}>{t(locale, previewJoinMode === 'request' ? 'organization.invite.needApproval' : 'organization.invite.noApproval')}</span>
                       </div>
                       {previewJoinMode === 'request' ? (
                         <>
-                          <p className="mx-0 mb-0 mt-[8px] text-[13px] leading-[1.5] text-[#faad14]">{t(locale, 'organization.invite.requireApprovalTip')}</p>
-                          <div className="mt-[14px] flex flex-col gap-[12px] border-t border-dashed border-[#e7e7ea] pt-[14px]">
+                          <p className="wk-org-77">{t(locale, 'organization.invite.requireApprovalTip')}</p>
+                          <div className="wk-org-78">
                             <div className={ORG_FORM_ITEM} style={{ marginBottom: '0' }}>
                               <label className={ORG_FORM_LABEL} htmlFor="join-request-role">{t(locale, 'organization.invite.requestRole')}</label>
-                              <WkSelect id="join-request-role" className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.invite.requestRole')} value={requestRole} onChange={(event) => setRequestRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
+                              <WkSelect id="join-request-role" className={ORG_FIELD + ' wk-org-6'} aria-label={t(locale, 'organization.invite.requestRole')} value={requestRole} onChange={(event) => setRequestRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
                                 {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
                               </WkSelect>
                             </div>
                             <div className={ORG_FORM_ITEM} style={{ marginBottom: '0' }}>
                               <label className={ORG_FORM_LABEL} htmlFor="join-request-note">{t(locale, 'organization.invite.applicationNote')}</label>
-                              <WkTextarea id="join-request-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={requestNote} onChange={(event) => setRequestNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.invite.messagePlaceholder')} />
+                              <WkTextarea id="join-request-note" className={ORG_FIELD + ' wk-org-95'} rows={2} maxLength={500} value={requestNote} onChange={(event) => setRequestNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.invite.messagePlaceholder')} />
                             </div>
                           </div>
                         </>
                       ) : (
-                        <p className="mx-0 mb-0 mt-[8px] text-[13px] leading-[1.5] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.invite.defaultRoleAfterJoin', { role: t(locale, 'organization.role.viewer') })}</p>
+                        <p className="wk-org-79">{t(locale, 'organization.invite.defaultRoleAfterJoin', { role: t(locale, 'organization.role.viewer') })}</p>
                       )}
                     </div>
                   )}
                 </>
               ) : (
                 <>
-                  <div className="mb-[20px] flex flex-wrap gap-[8px]">
-                    <button type="button" className={'cursor-pointer rounded-[6px] border-0 px-[14px] py-[6px] font-[inherit] text-[13px] leading-[1.4] ' + (joinStep === 'invite' ? 'bg-accent-soft font-medium text-accent' : 'bg-[#f3f3f5] text-[rgba(23,26,29,0.6)] hover:text-accent')} onClick={() => setJoinStep('invite')}>{t(locale, 'organization.join.byInviteCode')}</button>
-                    <button type="button" className={'cursor-pointer rounded-[6px] border-0 px-[14px] py-[6px] font-[inherit] text-[13px] leading-[1.4] ' + (joinStep === 'search' ? 'bg-accent-soft font-medium text-accent' : 'bg-[#f3f3f5] text-[rgba(23,26,29,0.6)] hover:text-accent')} onClick={openSearchTab}>{t(locale, 'organization.join.searchSpaces')}</button>
+                  <div className="wk-org-80">
+                    <button type="button" className={'wk-org-125 ' + (joinStep === 'invite' ? 'wk-org-126' : 'wk-org-127')} onClick={() => setJoinStep('invite')}>{t(locale, 'organization.join.byInviteCode')}</button>
+                    <button type="button" className={'wk-org-125 ' + (joinStep === 'search' ? 'wk-org-126' : 'wk-org-127')} onClick={openSearchTab}>{t(locale, 'organization.join.searchSpaces')}</button>
                   </div>
                   {joinStep === 'invite' ? (
                     <>
-                      {joinPreviewError ? <div className="mb-[12px] flex items-center gap-[8px] rounded-[8px] bg-[rgba(213,73,65,0.08)] px-[12px] py-[10px] text-[13px] text-[#d54941]"><IconInfoCircle size={20} /><span>{joinPreviewError}</span></div> : null}
+                      {joinPreviewError ? <div className="wk-org-81"><IconInfoCircle size={20} /><span>{joinPreviewError}</span></div> : null}
                       <div className={ORG_FORM_ITEM}>
                         <label className={ORG_FORM_LABEL} htmlFor="join-code">{t(locale, 'organization.inviteCode')}</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.invite.inputDesc')}</p>
-                        <WkInput id="join-code" name="join-code" className={ORG_FIELD + ' min-h-[34px]'} value={joinInputCode} maxLength={32} placeholder={t(locale, 'organization.inviteCodePlaceholder')} onChange={(event) => setJoinInputCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void doPreviewFromInput(); }} />
-                        <p className="m-0 mt-[8px] text-[12px] leading-[1.45] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.inviteCodeTip')}</p>
+                        <WkInput id="join-code" name="join-code" className={ORG_FIELD + ' wk-org-6'} value={joinInputCode} maxLength={32} placeholder={t(locale, 'organization.inviteCodePlaceholder')} onChange={(event) => setJoinInputCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void doPreviewFromInput(); }} />
+                        <p className="wk-org-82">{t(locale, 'organization.editor.inviteCodeTip')}</p>
                       </div>
                     </>
                   ) : (
@@ -1878,28 +1878,28 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         <label className={ORG_FORM_LABEL} htmlFor="join-search">{t(locale, 'organization.join.searchSpaces')}</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.join.searchSpacesDesc')}</p>
                         <div style={{ position: 'relative' }}>
-                          <WkInput id="join-search" className={ORG_FIELD + ' min-h-[34px]'} value={searchQuery} placeholder={t(locale, 'organization.join.searchSpacesPlaceholder')} onChange={(event) => onSearchQueryChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') runSearch(searchQuery.trim()); }} />
+                          <WkInput id="join-search" className={ORG_FIELD + ' wk-org-6'} value={searchQuery} placeholder={t(locale, 'organization.join.searchSpacesPlaceholder')} onChange={(event) => onSearchQueryChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') runSearch(searchQuery.trim()); }} />
                           <span style={{ position: 'absolute', right: '10px', top: '8px', color: 'rgba(23, 26, 29, 0.4)' }}><IconSearch /></span>
                         </div>
                       </div>
-                      <div className="mb-[16px] flex max-h-[320px] min-h-[143px] flex-col overflow-y-auto rounded-[10px] border border-[#e7e7ea] bg-surface">
+                      <div className="wk-org-83">
                         {searchLoading ? (
                           <div className={ORG_EMPTY_INLINE} style={{ textAlign: 'center' }}>{t(locale, 'common.loading')}</div>
                         ) : searchItems.length === 0 ? (
-                          <div className="flex min-h-0 flex-col items-center justify-center gap-[4px] px-[12px] py-[18px] text-center">
-                            <div className="text-[13px] leading-[22px] text-[rgba(23,26,29,0.6)]">{t(locale, 'common.noData') === 'common.noData' ? '暂无数据' : t(locale, 'common.noData')}</div>
-                            <div className="text-[13px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, searchQuery ? 'organization.join.noSearchResult' : 'organization.join.noSearchableSpaces')}</div>
+                          <div className="wk-org-84">
+                            <div className="wk-org-85">{t(locale, 'common.noData') === 'common.noData' ? '暂无数据' : t(locale, 'common.noData')}</div>
+                            <div className="wk-org-86">{t(locale, searchQuery ? 'organization.join.noSearchResult' : 'organization.join.noSearchableSpaces')}</div>
                           </div>
                         ) : searchItems.map((row) => (
-                          <div key={strOf(row.id)} className="flex cursor-pointer items-center justify-between gap-[12px] border-b border-[#e7e7ea] px-[14px] py-[12px] last:border-b-0 hover:bg-[#f3f3f5]" onClick={() => { if (!searchRowFull(row)) previewSearchableOrg(row); }}>
-                            <div className="flex min-w-0 flex-1 items-center gap-[10px]">
+                          <div key={strOf(row.id)} className="wk-org-87" onClick={() => { if (!searchRowFull(row)) previewSearchableOrg(row); }}>
+                            <div className="wk-org-88">
                               <SpaceAvatar name={strOf(row.name)} avatar={row.avatar} size="small" />
-                              <div className="flex min-w-0 flex-col gap-[2px]">
-                                <span className="truncate text-[14px] font-medium text-[rgba(23,26,29,0.92)]" title={strOf(row.name)}>{strOf(row.name)}</span>
-                                <span className="truncate text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(row.description) || t(locale, 'organization.noDescription')}</span>
+                              <div className="wk-org-org-member-copy">
+                                <span className="wk-org-89" title={strOf(row.name)}>{strOf(row.name)}</span>
+                                <span className="wk-org-90">{strOf(row.description) || t(locale, 'organization.noDescription')}</span>
                               </div>
                             </div>
-                            <div className="flex shrink-0 items-center gap-[8px]">
+                            <div className="wk-org-org-row-actions">
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'rgba(23, 26, 29, 0.6)' }}><IconUser size={12} />{numOf(row.member_limit) > 0 ? numOf(row.member_count) + '/' + numOf(row.member_limit) : numOf(row.member_count)}</span>
                               {row.require_approval === true ? <span className={ORG_TAG + ' ' + ORG_TAG_TONES.warning}>{t(locale, 'organization.invite.needApproval')}</span> : null}
                               {searchRowFull(row) ? <span className={ORG_TAG}>{t(locale, 'organization.join.memberLimitReached')}</span> : <button type="button" className={ORG_BTN_OUTLINE} style={{ minHeight: '26px', fontSize: '12px', padding: '0 10px' }} onClick={(event) => { event.stopPropagation(); previewSearchableOrg(row); }}>{t(locale, 'organization.invite.previewAction')}</button>}
@@ -1912,7 +1912,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                 </>
               )}
             </div>
-            <div className="flex shrink-0 justify-end gap-[12px] border-t border-[#e7e7ea] px-[24px] pt-[16px] pb-[20px]">
+            <div className="wk-org-91">
               {joinPreview ? (
                 <>
                   <button type="button" className={ORG_BTN_NEUTRAL + ' !px-[15px]'} onClick={() => { setJoinPreview(null); if (!joinCode) setJoinStep('search'); }}>{!joinCode ? t(locale, 'organization.join.backToSearch') : t(locale, 'common.cancel')}</button>
@@ -1958,7 +1958,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
         </div>
 </Dialog> : null}
 
-      {toast ? <div className={'fixed left-1/2 top-[24px] z-[3000] flex items-center rounded-[8px] px-[18px] py-[10px] shadow-[0_6px_20px_rgba(0,0,0,0.18)] box-border max-w-[420px] bg-[rgba(23,26,29,0.86)] -translate-x-1/2 ' + (toast.tone === 'success' ? 'text-[#7bf2b6]' : toast.tone === 'warning' ? 'text-[#faad14]' : 'text-[#ffb4ae]')} role="status">{toast.text}</div> : null}
+      {toast ? <div className={'wk-org-128 ' + (toast.tone === 'success' ? 'wk-org-129' : toast.tone === 'warning' ? 'wk-org-130' : 'wk-org-131')} role="status">{toast.text}</div> : null}
     </div>
   );
 }

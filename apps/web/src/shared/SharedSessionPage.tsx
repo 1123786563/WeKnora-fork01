@@ -85,7 +85,7 @@ export function SharedSessionPage({ client, token }: { client: WeKnoraClient; to
           <h1 className="wk-shared-7">{session.title}</h1>
           <span className="wk-shared-8" data-testid="shared-session-readonly-badge">{t('settings.queryHistory.sharedReadonlyBadge')}</span>
         </div>
-        <dl className="gap-x-[16px] gap-y-[4px] wk-shared-9">
+        <dl className="wk-shared-9 wk-shared-1">
           {meta.map(([label, value]) => (
             <div key={label} className="wk-shared-10">
               <dt>{label}</dt>

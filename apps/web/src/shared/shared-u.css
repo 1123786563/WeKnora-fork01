@@ -173,3 +173,8 @@
   line-height: 18px;
 }
 .wk-shared-main { padding-block: 40px; }
+
+.wk-shared-1 {
+  column-gap: 16px;
+  row-gap: 4px;
+}
