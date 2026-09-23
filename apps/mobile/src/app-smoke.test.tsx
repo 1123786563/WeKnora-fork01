@@ -21,7 +21,7 @@ const moduleWithHooks = nodeModule as typeof nodeModule & {
 
 const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-linking': 'module.exports = { useLinkingURL() { return null; } }',
-  'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {} } }",
+  'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, navigate() {} } }",
   'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button' }",
   react: "let values = []; let cursor = 0; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = next; }]; }, useRef(value) { return { current: value }; }, useEffect() {}, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
 };
@@ -63,7 +63,8 @@ function descendants(node: unknown): Array<{ type: unknown; props: Record<string
   const element = node as { type?: unknown; props?: Record<string, unknown> };
   const here = element.props ? [{ type: element.type, props: element.props }] : [];
   const children = element.props?.children;
-  return [...here, ...(Array.isArray(children) ? children : [children]).flatMap(descendants)];
+  const childList = Array.isArray(children) ? children.flat(Infinity) : [children];
+  return [...here, ...childList.flatMap(descendants)];
 }
 
 test('app module exports an application root', async () => {
@@ -223,4 +224,84 @@ test('RuntimeSurface derives tenant options from the snapshot identity', async (
     { id: '7', name: 'Acme', active: true },
     { id: '9', name: 'Beta', active: false },
   ]);
+});
+
+test('the resources screen renders only the Resource Shelf projection with explicit states', async () => {
+  const { ResourcesScreen } = await import('./screens/ResourcesScreen.tsx');
+  hooks().__reset();
+  const base = {
+    loading: false,
+    onRefresh: () => {},
+  };
+  const element = render(ResourcesScreen, {
+    ...base,
+    page: {
+      tenantId: '7',
+      agents: [
+        { id: 'agent-1', name: 'Research', summary: '', kind: 'custom', capability: { state: 'supported', reason: '' } },
+        { id: 'agent-2', name: 'Blocked', summary: '', kind: 'custom', capability: { state: 'forbidden', reason: 'policy' } },
+      ],
+      knowledge: [{ id: 'kb-1', title: 'Handbook', scanStatus: 'indexed', documentCount: 3, updatedAt: '2026-09-01T00:00:00Z' }],
+      connections: [{ id: 'conn-1', kind: 'personal', state: 'revoked', connected: false, capability: { state: 'unavailable', reason: 'connection_revoked' } }],
+      classVerdicts: { agent: { state: 'supported', reason: '' }, knowledge: { state: 'supported', reason: '' }, connection: { state: 'supported', reason: '' } },
+    },
+  });
+  const texts = descendants(element)
+    .filter(({ type }) => type === 'Text')
+    .flatMap(({ props }) => props.children)
+    .flatMap((part) => (typeof part === 'string' ? [part] : []));
+
+  assert.equal(texts.some((text) => text.includes('tenant 7')), true);
+  assert.equal(texts.some((text) => text.includes('Research')), true);
+  assert.equal(texts.some((text) => text.includes('Blocked') && text.includes('policy')), true, 'forbidden agents must explain their reason');
+  assert.equal(texts.some((text) => text.includes('Handbook') && text.includes('已索引')), true);
+  assert.equal(texts.some((text) => text.includes('connection_revoked')), true, 'connection state must be explained');
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.equal(buttons.includes('Refresh'), true);
+
+  const revokedElement = render(ResourcesScreen, {
+    ...base,
+    page: {
+      tenantId: '7',
+      agents: [],
+      knowledge: [],
+      connections: [],
+      classVerdicts: { agent: { state: 'supported', reason: '' }, knowledge: { state: 'forbidden', reason: 'http_403' }, connection: { state: 'supported', reason: '' } },
+    },
+  });
+  const revokedTexts = descendants(revokedElement)
+    .filter(({ type }) => type === 'Text')
+    .flatMap(({ props }) => props.children)
+    .flatMap((part) => (typeof part === 'string' ? [part] : []));
+  assert.equal(revokedTexts.some((text) => text.includes('Access revoked') && text.includes('http_403')), true, 'the forbidden class banner must show the reason');
+  assert.equal(revokedTexts.some((text) => text.includes('Handbook')), false, 'revoked knowledge rows must disappear');
+});
+
+test('the resources route and landing entry consume the shelf interface only', async () => {
+  const route = await import('./app/resources.tsx');
+  assert.equal(typeof route.default, 'function', 'src/app/resources.tsx must default-export the Expo Router screen');
+
+  const { AuthorizedLandingScreen } = await import('./screens/AuthorizedLandingScreen.tsx');
+  hooks().__reset();
+  const element = render(AuthorizedLandingScreen, {
+    deploymentLabel: 'WeKnora',
+    userId: 'member-1',
+    tenantId: '7',
+    tenants: [{ id: '7', name: 'Acme', active: true }],
+    onSignOut: async () => {},
+    onActivateTenant: async () => {},
+  });
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.equal(buttons.includes('Open Resources'), true);
+});
+
+test('the resources view modules never import contracts or api-client wire adapters', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const relative of ['screens/ResourcesScreen.tsx', 'resources-view.ts', 'app/resources.tsx']) {
+    const source = readFileSync(join(here, relative), 'utf8');
+    assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Resource Shelf Interface only (AC2)`);
+  }
 });

@@ -1,4 +1,5 @@
 import { Button, Text, View } from 'react-native';
+import { router } from 'expo-router';
 
 export interface TenantOptionView {
   id: string;
@@ -26,6 +27,7 @@ export function AuthorizedLandingScreen({ deploymentLabel, userId, tenantId, ten
       {tenants.map((tenant) => tenant.active
         ? <Text key={tenant.id}>{`${tenant.name ?? tenant.id} (active)`}</Text>
         : <Button key={tenant.id} title={`Switch to ${tenant.name ?? tenant.id}`} onPress={() => { void onActivateTenant(tenant.id); }} />)}
+      <Button title="Open Resources" onPress={() => { router.navigate('/resources'); }} />
       <Button title="Sign out" onPress={() => { void onSignOut(); }} />
     </View>
   );

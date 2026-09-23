@@ -1,6 +1,7 @@
 import { createElement, useEffect, useRef, useSyncExternalStore } from 'react';
 import { createWeKnoraClient } from '@weknora/api-client';
 import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
+import { createMobileResourceRemote } from '@weknora/api-client/mobile/resources';
 import { createJsonTransport } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createMobileRuntime } from '@weknora/mobile-core';
@@ -51,6 +52,12 @@ export function createNativeMobileRuntime(): MobileRuntime {
       const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
       return createMobileRuntimeRemote({ origin, request: client.request });
     },
+    resourceShelf: {
+      remoteFor(origin) {
+        const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
+        return createMobileResourceRemote({ origin, request: client.request });
+      },
+    },
     pendingOidcStore: createNativeSecurePendingOidcStore(),
     oidcBrowser: {
       async open(authorizationUrl) {
@@ -89,6 +96,11 @@ let nativeRuntime: MobileRuntime | undefined;
 function runtime(): MobileRuntime {
   nativeRuntime ??= createNativeMobileRuntime();
   return nativeRuntime;
+}
+
+/** Route files reach the app-lifetime runtime through this accessor only. */
+export function activeMobileRuntime(): MobileRuntime {
+  return runtime();
 }
 
 /** Starts verified Runtime restoration once for an application lifetime. */
