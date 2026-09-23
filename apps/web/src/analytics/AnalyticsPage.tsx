@@ -323,6 +323,10 @@ export function AnalyticsPage({ client, role }: { client: WeKnoraClient; role?: 
           so changing it (or switching tabs) refetches the active dataset. */}
       {/* S5 组件层换 tdesign：Tabs/Radix 组合式 → tdesign Tabs + TabPanel
           （value 受控 + onChange；tab 项从 Trigger 子元素变为 TabPanel label）。 */}
+      {/* S5 评审 Minor（Tabs aria-label）：tdesign-react 1.18.3 Tabs 根 div
+          只取 className/style（tabs/Tabs.js），aria-* 与 data-* 一样被丢弃
+          （playbook 台账 #8 的 Tabs 同族）——tablist 可访问名称无法经 props
+          落地，库行为登记待升级；勿在此传无效 aria-label 死 prop。 */}
       <Tabs value={tab} onChange={(value) => setTab(value === 'usage' ? 'usage' : 'charts')}>
         <Tabs.TabPanel value="charts" label={t(locale, 'analytics.tabCharts')}>
           <div className={AN_GRID}>

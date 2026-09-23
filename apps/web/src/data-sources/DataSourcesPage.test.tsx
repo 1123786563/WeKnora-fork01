@@ -298,12 +298,14 @@ test('keeps the empty-state, add-card and loading copy on i18n keys', () => {
 });
 
 // SP2-a Task 10: the card delete action no longer window.confirms — it opens
-// a controlled Sheet dual-choice panel. Entering the panel fetches the
-// synced-documents count (GET /datasource/:id/documents-count, Task 9) that
-// drives the "N synced documents" line, the purge checkbox label and the
-// purge warning; a request serial keeps a late count response from landing
-// in a panel opened for a different source.
-test('delete opens a controlled dual-choice Sheet and drops window.confirm', () => {
+// a controlled centered tdesign Dialog dual-choice panel (S5 评审 Important
+// 回收：对齐 Vue DataSourceSettings.vue:414-441 — width=440、
+// close-on-overlay-click=false、footer cancel/confirm). Entering the panel
+// fetches the synced-documents count (GET /datasource/:id/documents-count,
+// Task 9) that drives the "N synced documents" line, the purge checkbox label
+// and the purge warning; a request serial keeps a late count response from
+// landing in a panel opened for a different source.
+test('delete opens a controlled dual-choice Dialog and drops window.confirm', () => {
   assert.doesNotMatch(page, /window\.confirm/);
   assert.match(page, /const \[deleteSource, setDeleteSource\] = useState<DataSource \| null>\(null\);/);
   assert.match(page, /const \[deletePurge, setDeletePurge\] = useState\(false\);/);
@@ -314,16 +316,30 @@ test('delete opens a controlled dual-choice Sheet and drops window.confirm', () 
   assert.match(page, /t\('dataSource\.deletePanelTitle', \{ name: deleteSource\.name \}\)/);
 });
 
+// The panel container is the Vue t-dialog isomorph: centered modal Dialog at
+// width=440 with overlay-click disabled and the cancel/confirm actions on the
+// dialog footer (confirm theme=danger rides the purge choice + submitting
+// loading; cancel disables while submitting).
+test('delete panel is a centered tdesign Dialog with footer actions matching the Vue t-dialog', () => {
+  assert.match(page, /<Dialog\s*visible\s*header=\{t\('dataSource\.deletePanelTitle', \{ name: deleteSource\.name \}\)\}/);
+  assert.match(page, /confirmBtn=\{\{ content: deletePurge \? t\('dataSource\.deleteAndPurge'\) : t\('dataSource\.delete'\), theme: 'danger', loading: deleteSubmitting \}\}/);
+  assert.match(page, /cancelBtn=\{\{ content: t\('common\.cancel'\), disabled: deleteSubmitting \}\}/);
+  assert.match(page, /closeOnOverlayClick=\{false\}/);
+  assert.match(page, /width=\{440\}/);
+  assert.match(page, /onConfirm=\{\(\) => void confirmDelete\(\)\}/);
+  assert.doesNotMatch(page, /wk-data-source-delete-drawer/);
+});
+
 // Default state keeps the existing promise copy (documents stay); checking
 // the purge checkbox swaps the body to the red irreversible warning and the
 // confirm button to the deleteAndPurge label.
 test('delete panel keeps the keep copy by default and swaps to the red purge warning once checked', () => {
   assert.match(page, /data-kind=\{deletePurge \? 'delete-purge-warning' : 'delete-keep'\}/);
   assert.match(page, /\{deletePurge \? <span className="font-medium text-danger">\{purgeWarningText\}<\/span> : t\('dataSource\.deletePanelKeep'\)\}/);
-  assert.match(page, /<Checkbox checked=\{deletePurge\} onChange=\{\(checked\) => setDeletePurge\(checked\)\} label=\{purgeLabelText\} \/>/);
+  assert.match(page, /<Checkbox checked=\{deletePurge\} disabled=\{deleteSubmitting\} onChange=\{\(checked\) => setDeletePurge\(checked\)\} label=\{purgeLabelText\} \/>/);
   assert.match(page, /purgeLabelText = deleteCount !== null \? t\('dataSource\.deletePanelPurgeLabel', \{ count: deleteCount \}\) : t\('dataSource\.deletePanelPurgeLabelUnknown'\)/);
   assert.match(page, /purgeWarningText = deleteCount !== null \? t\('dataSource\.deletePanelPurgeWarning', \{ count: deleteCount \}\) : t\('dataSource\.deletePanelPurgeWarningUnknown'\)/);
-  assert.match(page, /\{deletePurge \? t\('dataSource\.deleteAndPurge'\) : t\('dataSource\.delete'\)\}/);
+  assert.match(page, /content: deletePurge \? t\('dataSource\.deleteAndPurge'\) : t\('dataSource\.delete'\), theme: 'danger', loading: deleteSubmitting/);
 });
 
 // The count line loads behind the panel: a loading placeholder first, the

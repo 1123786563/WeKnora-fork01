@@ -1,8 +1,8 @@
 // S5 tdesign 迁移（data-sources 域，Vue 对应 frontend/src/views/knowledge/
 // settings/DataSourceSettings.vue + DataSourceEditorDialog.vue）：旧栈 UI 包
 // 拆除后的域内原生语义封装。playbook §1 附注：Card/Status 无 TDesign 对应
-// 组件——保留原生标签 + 既有类名；类值与 packages/ui card.tsx/status.tsx 的
-// utilities 逐字一致，视觉零变化。
+// 组件——保留原生标签 + 既有类名；类值与 packages/ui/src/index.tsx:29-37
+// （Card/Status 合并定义处）的 utilities 逐字一致，视觉零变化。
 import type { HTMLAttributes, ReactNode } from 'react';
 
 /** 语义卡片：白底、line 描边、card 圆角（视觉 = 既有 .wk-card）。 */

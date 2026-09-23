@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiError, type DataSource, type DataSourceConnectorType, type DataSourceResource, type DataSourceSyncItemError, type DataSourceSyncLog, type WeKnoraClient } from '@weknora/api-client';
-import { Button, Checkbox, Drawer, Input, Select, Textarea } from 'tdesign-react';
+import { Button, Checkbox, Dialog, Drawer, Input, Select, Textarea } from 'tdesign-react';
 import { Card, Status } from './ui.tsx';
 import { buildDataSourceInput, credentialStepKind, credentialStepReducer, credentialValue, credentialsRequiredForValidation, dataSourceFormFrom, firstMissingRequiredCredential, initialCredentialStepState, serializeAuthHeaders, VUE_CONNECTOR_GUIDES, VUE_CREDENTIAL_FIELDS, VUE_SETTINGS_FIELDS, type CredentialField, type DataSourceFormValues, type GitLabProjectInput, type HeaderRow } from './form.ts';
 import { extractDriveFolderToken, isDriveConnector, resourceCheckStates, toggleResourceSelection } from './resource-selection.ts';
@@ -459,20 +459,30 @@ export function DataSourcesPage({ client, knowledgeBaseId, canManage = false, em
   // SP2-a Task 10 dual-choice delete panel: keep-documents promise by
   // default; the checked state swaps the body to the red irreversible purge
   // warning and the confirm button to deleteAndPurge. Count-less fallbacks
-  // cover a failed/unresolved documentsCount.
+  // cover a failed/unresolved documentsCount. S5 评审 Important 回收：对齐
+  // Vue DataSourceSettings.vue:414-441 的居中 t-dialog（width=440、
+  // close-on-overlay-click=false、footer cancel/confirm 按钮 + confirm
+  // theme=danger/loading、checkbox 随提交禁用），不再用右置 Drawer 自绘按钮。
   const purgeLabelText = deleteCount !== null ? t('dataSource.deletePanelPurgeLabel', { count: deleteCount }) : t('dataSource.deletePanelPurgeLabelUnknown');
   const purgeWarningText = deleteCount !== null ? t('dataSource.deletePanelPurgeWarning', { count: deleteCount }) : t('dataSource.deletePanelPurgeWarningUnknown');
-  const deleteSurface = deleteSource === null ? null : <Drawer visible header={t('dataSource.deletePanelTitle', { name: deleteSource.name })} onClose={() => setDeleteSource(null)} size="640px" placement="right" className="wk-data-source-delete-drawer">
+  const deleteSubmitting = deleteSource === null ? false : action === `delete:${deleteSource.id}`;
+  const deleteSurface = deleteSource === null ? null : <Dialog
+    visible
+    header={t('dataSource.deletePanelTitle', { name: deleteSource.name })}
+    confirmBtn={{ content: deletePurge ? t('dataSource.deleteAndPurge') : t('dataSource.delete'), theme: 'danger', loading: deleteSubmitting }}
+    cancelBtn={{ content: t('common.cancel'), disabled: deleteSubmitting }}
+    closeOnOverlayClick={false}
+    width={440}
+    onClose={() => setDeleteSource(null)}
+    onConfirm={() => void confirmDelete()}
+    className="wk-data-source-delete-dialog"
+  >
     <div className="grid gap-3 text-[13px]" data-kind="delete-panel">
       <p className="m-0" data-kind={deletePurge ? 'delete-purge-warning' : 'delete-keep'}>{deletePurge ? <span className="font-medium text-danger">{purgeWarningText}</span> : t('dataSource.deletePanelKeep')}</p>
       {deleteCountLoading ? <p className="m-0 text-muted" data-kind="delete-count-loading">{t('common.loading')}</p> : deleteCount !== null ? <p className="m-0 text-muted" data-kind="delete-count">{t('dataSource.deletePanelCount', { count: deleteCount })}</p> : null}
-      <label className="flex items-center gap-2"><Checkbox checked={deletePurge} onChange={(checked) => setDeletePurge(checked)} label={purgeLabelText} /></label>
-      <div className="flex items-center justify-end gap-2">
-        <Button type="button" theme="default" variant="text" onClick={() => setDeleteSource(null)}>{t('common.cancel')}</Button>
-        <Button type="button" theme="danger" variant="text" loading={action === `delete:${deleteSource.id}`} onClick={() => void confirmDelete()}>{deletePurge ? t('dataSource.deleteAndPurge') : t('dataSource.delete')}</Button>
-      </div>
+      <label className="flex items-center gap-2"><Checkbox checked={deletePurge} disabled={deleteSubmitting} onChange={(checked) => setDeletePurge(checked)} label={purgeLabelText} /></label>
     </div>
-  </Drawer>;
+  </Dialog>;
   // R484 (R482 B1 差异4): embedded inside the KB settings drawer the page
   // header stays hidden — the drawer's tab heading already renders the Vue
   // DataSourceSettings title/description — and the standalone page frame
