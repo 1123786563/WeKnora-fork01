@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Diagnostic 是 passbguard 的一条治理违规。
@@ -491,7 +493,14 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 					"items disagree with manifest integration_points: %s", strings.Join(diff, "; "))
 			}
 			// set 行消费方 = 注册/装配位点（见各 kind 语义），必须与发现值一致。
-			discovered := discoverSetConsumers(d, kind, want)
+			// OCR R2 b0-ocr-r2-2：discovered 只含归一化（Clean/ToSlash）且磁盘
+			// 验证过的位点；结构性问题（位点缺失/裸名不可推导）由
+			// discoverSetConsumers 显式返回诊断，unrecorded/vanished 比较只在
+			// 归一化且磁盘验证过的路径上进行。
+			discovered, siteIssues := discoverSetConsumers(d, kind, want)
+			for _, is := range siteIssues {
+				emit(is.Check, string(row.ID), "%s", is.Message)
+			}
 			for _, p := range discovered {
 				if !containsExact(row.Consumers, p) {
 					emit("contract-consumer-unrecorded", string(row.ID),
@@ -499,6 +508,14 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 				}
 			}
 			for _, p := range row.Consumers {
+				if !goFileSet[p] {
+					// 与符号契约 recorded consumer 的磁盘预检（check.go:608
+					// contract-consumer-file-missing）同构：文件不存在时由
+					// missing 层捕获，vanished 层不越界误报。
+					emit("contract-consumer-file-missing", string(row.ID),
+						"recorded consumer %s does not exist on disk", p)
+					continue
+				}
 				if !containsExact(discovered, p) {
 					emit("contract-consumer-vanished", string(row.ID),
 						"recorded consumer %s no longer registers this %s", p, kind)
@@ -805,26 +822,87 @@ func moduleOfPath(p string) string {
 // consumers 去重后只有这 3 个 router 文件），裸标识符条目以该根为扫描范围。
 const workerRegisterRootPrefix = "internal/router/"
 
+// setSiteIssue 是 set 条目位点推导的结构性问题：discoverSetConsumers 内部
+// 无法入集也不得静默跳过时返回，由调用方以契约行为 path emit。
+type setSiteIssue struct {
+	Check   string
+	Message string
+}
+
+// setSiteCollector 收集归一化且磁盘验证过的 set 注册位点（OCR R2
+// b0-ocr-r2-2）：三种 set kind 的位点入集共用同一规则——
+// filepath.ToSlash(filepath.Clean(…)) 归一化后对照由 d.GoFiles 重建的磁盘
+// Go 树（仓库相对 slash 路径，见 discoverGoTree）验证。
+type setSiteCollector struct {
+	goFileSet map[string]bool
+	seen      map[string]bool
+	files     []string
+	issues    []setSiteIssue
+}
+
+func newSetSiteCollector(d *Discovery) *setSiteCollector {
+	goFileSet := make(map[string]bool, len(d.GoFiles))
+	for _, p := range d.GoFiles {
+		goFileSet[p] = true
+	}
+	return &setSiteCollector{goFileSet: goFileSet, seen: map[string]bool{}}
+}
+
+// add 归一化并磁盘验证一个 entryFileRE 位点：合法则去重入集；不在磁盘上时
+// 追加 contract-consumer-file-missing issue（与符号契约 recorded consumer
+// 磁盘预检同构），不静默入集也不静默跳过。
+func (c *setSiteCollector) add(site, entry string) {
+	norm := filepath.ToSlash(filepath.Clean(site))
+	if !c.goFileSet[norm] {
+		c.issues = append(c.issues, setSiteIssue{
+			Check: "contract-consumer-file-missing",
+			Message: fmt.Sprintf(
+				"registration site %s (from entry %q) does not exist on disk", norm, entry),
+		})
+		return
+	}
+	if !c.seen[norm] {
+		c.seen[norm] = true
+		c.files = append(c.files, norm)
+	}
+}
+
+// addVerified 把已归一化且已知在磁盘上的发现文件（如回退扫描命中的
+// d.GoFiles 成员）去重入集。
+func (c *setSiteCollector) addVerified(file string) {
+	if !c.seen[file] {
+		c.seen[file] = true
+		c.files = append(c.files, file)
+	}
+}
+
+// sorted 返回去重排序后的位点集（只含归一化且磁盘验证过的路径）。
+func (c *setSiteCollector) sorted() []string {
+	out := append([]string(nil), c.files...)
+	sort.Strings(out)
+	return out
+}
+
 // discoverSetConsumers 发现组合面 set 的注册/装配位点：
 //   - route-set / lifecycle-set：manifest 条目中引用的 .go 文件（去重排序）；
 //   - worker-set：见下方 OCR R1 #b0-ocr-r1-7 义务说明——条目带注册位点后缀
 //     时从条目推导；裸标识符条目（B0 形态）回退扫描 workerRegisterRootPrefix
 //     下引用任一任务类型标识符的非测试文件。
-func discoverSetConsumers(d *Discovery, kind string, items []string) []string {
+//
+// OCR R2 b0-ocr-r2-2：位点入集规则见 setSiteCollector——manifest 手写位点
+// 的点段形态（"./x"、"x/./y.go"）归一化后照常入集，不在磁盘上的位点显式
+// 返回 file-missing issue。返回的位点集只含归一化且磁盘验证过的路径，
+// unrecorded/vanished 比较因此只在同一形态上进行。
+func discoverSetConsumers(d *Discovery, kind string, items []string) ([]string, []setSiteIssue) {
+	c := newSetSiteCollector(d)
 	switch kind {
 	case "route-set", "lifecycle-set":
-		seen := map[string]bool{}
-		var out []string
 		for _, entry := range items {
 			for _, m := range entryFileRE.FindAllStringSubmatch(entry, -1) {
-				if !seen[m[1]] {
-					seen[m[1]] = true
-					out = append(out, m[1])
-				}
+				c.add(m[1], entry)
 			}
 		}
-		sort.Strings(out)
-		return out
+		return c.sorted(), c.issues
 	case "worker-set":
 		// OCR R1 #b0-ocr-r1-7（B1+ 演进义务）：worker-set 消费方 = 任务
 		// handler 注册位点。B0 口径正确的前提有二：RegisterWorkers 在 16 个
@@ -841,25 +919,38 @@ func discoverSetConsumers(d *Discovery, kind string, items []string) []string {
 		//     （contract-consumer-unrecorded 永不触发）；
 		//   - router 旧注册删除而契约 consumers 未更新：已登记 consumers
 		//     批量假 vanished（contract-consumer-vanished 误报）。
-		seen := map[string]bool{}
-		var out []string
-		// 1) 带位点后缀的条目：直接从条目推导注册位点（含模块树内位点）。
 		var idents []string // 回退扫描的标识符集合
 		for _, entry := range items {
 			sites := entryFileRE.FindAllStringSubmatch(entry, -1)
-			if base, _, ok := strings.Cut(entry, " — "); ok {
-				// 条目已带位点后缀：位点入集，裸名也进扫描集合——迁移
-				// 中间态（新位点已登记、router 旧注册未删）两个真实引用
-				// 位点都必须被发现。
-				idents = append(idents, base)
-			} else {
+			// OCR R2 b0-ocr-r2-1：裸名推导与位点提取共用 entryFileRE 这一
+			// 单一事实源——以首个匹配索引为锚取位点前缀，剔除尾部非标识符
+			// 字符（" — "/"–"/"——"/"—"/" - " 等任意分隔符形态一律适用），
+			// 不再依赖 strings.Cut 的 " — " 字面量（此前分隔符漂移时完整
+			// 条目串进扫描集合，fileReferencesIdent 只匹配 ast.Ident 名，
+			// 永不命中 → 回退扫描静默失效）。位点命中但裸名不可推导的矛盾
+			// 形态（锚前缀为空或非标识符，如 "— internal/x.go:1" 或
+			// "TypeFoo-internal/…" 被正则整体吞并）显式 entry-drift 诊断。
+			if loc := entryFileRE.FindStringIndex(entry); loc == nil {
 				idents = append(idents, entry) // B0 裸标识符形态
+			} else {
+				bare := trimTrailingNonIdent(entry[:loc[0]])
+				if !isGoIdent(bare) {
+					c.issues = append(c.issues, setSiteIssue{
+						Check: "contract-set-entry-drift",
+						Message: fmt.Sprintf(
+							"worker-set entry %q references registration site %q but its bare "+
+								"task type cannot be derived from prefix %q (want a Go identifier)",
+							entry, sites[0][1], bare),
+					})
+				} else {
+					// 条目已带位点后缀：裸名也进扫描集合——迁移中间态
+					// （新位点已登记、router 旧注册未删）两个真实引用
+					// 位点都必须被发现。
+					idents = append(idents, bare)
+				}
 			}
 			for _, m := range sites {
-				if !seen[m[1]] {
-					seen[m[1]] = true
-					out = append(out, m[1])
-				}
+				c.add(m[1], entry)
 			}
 		}
 		// 2) 裸标识符回退：扫描 B0 注册根下引用任一标识符的非测试文件。
@@ -877,15 +968,51 @@ func discoverSetConsumers(d *Discovery, kind string, items []string) []string {
 					break
 				}
 			}
-			if relevant && !seen[f] {
-				seen[f] = true
-				out = append(out, f)
+			if relevant {
+				c.addVerified(f) // f 本身来自 d.GoFiles：已归一化且在磁盘
 			}
 		}
-		sort.Strings(out)
-		return out
+		return c.sorted(), c.issues
 	}
-	return nil
+	return nil, c.issues
+}
+
+// isIdentRune 报告 r 是否可出现在 Go 标识符中（unicode letter / digit / '_'）。
+func isIdentRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+// trimTrailingNonIdent 剔除 s 尾部所有非 Go 标识符字符（含 " — "/"–"/"——"
+// 等多字节分隔符），用于从 entryFileRE 位点锚前缀推导裸任务类型名。
+func trimTrailingNonIdent(s string) string {
+	for len(s) > 0 {
+		r, size := utf8.DecodeLastRuneInString(s)
+		if isIdentRune(r) {
+			break
+		}
+		s = s[:len(s)-size]
+	}
+	return s
+}
+
+// isGoIdent 报告 s 是否为完整合法的 Go 标识符（首字符 letter/'_'，其余
+// letter/digit/'_'）——裸任务类型名必须能作为 ast.Ident 名被回退扫描命中。
+func isGoIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if i == 0 {
+			if r != '_' && !unicode.IsLetter(r) {
+				return false
+			}
+			continue
+		}
+		if !isIdentRune(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // fileReferencesIdent 判断文件 AST 内任意位置（含限定名 Sel）出现同名 Ident。

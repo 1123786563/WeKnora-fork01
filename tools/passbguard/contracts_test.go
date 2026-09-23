@@ -233,21 +233,38 @@ func TestContractDiscoveryQualifiesByDefinitionPackageClause(t *testing.T) {
 // entryFileRE 只认带目录段的 .go 引用——manifest lifecycle_hooks 条目括号内
 // 的交叉引用（如 "(func at container.go:2405)"，见 moves/agentcatalog.yaml）
 // 是裸文件名，不得算作 set 消费方（曾冻结出 14 条幽灵 consumer）。
+// OCR R2 b0-ocr-r2-2：位点入集需归一化后对照磁盘 Go 树验证，fixture 改用
+// 克隆仓库提供真实 d.GoFiles（含补写的 internal/router/router.go）。
 func TestDiscoverSetConsumersRequiresDirectorySegment(t *testing.T) {
+	root := cloneContractRepo(t)
+	writeWorkerSiteFiles(t, root, "internal/router/router.go", "package router\n")
+	d := workerSiteDiscovery(t, root)
 	items := []string{
 		"startTenantSkillReaper — internal/container/container.go:702 (func at container.go:2405)",
 		"startChat — internal/container/container.go:2074 (func at routes_chat.go:88)",
 		"startRouter — internal/router/router.go:940",
 	}
+	consumers, issues := discoverSetConsumers(d, "lifecycle-set", items)
 	require.Equal(t,
-		[]string{"internal/container/container.go", "internal/router/router.go"},
-		discoverSetConsumers(&Discovery{}, "lifecycle-set", items))
-	require.Empty(t, discoverSetConsumers(&Discovery{}, "lifecycle-set",
-		[]string{"ghost — (func at bare.go:12)"}),
-		"仅含裸文件名的条目不得产生任何消费方")
+		[]string{"internal/container/container.go", "internal/router/router.go"}, consumers)
+	require.Empty(t, issues)
+	ghost, issues := discoverSetConsumers(d, "lifecycle-set",
+		[]string{"ghost — (func at bare.go:12)"})
+	require.Empty(t, ghost, "仅含裸文件名的条目不得产生任何消费方")
+	require.Empty(t, issues)
+
+	// OCR R2 b0-ocr-r2-2（route/lifecycle-set 同构）：位点不在磁盘上时显式
+	// file-missing 诊断，不静默入集也不静默跳过。
+	ghost, issues = discoverSetConsumers(d, "lifecycle-set",
+		[]string{"startGhost — internal/container/ghost.go:9"})
+	require.Empty(t, ghost, "不在磁盘上的位点不得入集")
+	require.Len(t, issues, 1)
+	require.Equal(t, "contract-consumer-file-missing", issues[0].Check)
+	require.Contains(t, issues[0].Message, "internal/container/ghost.go")
 }
 
-// TestDiscoverSetConsumersWorkerSetEntrySites 覆盖 OCR R1 #b0-ocr-r1-7：
+// TestDiscoverSetConsumersWorkerSetEntrySites 覆盖 OCR R1 #b0-ocr-r1-7 +
+// OCR R2 b0-ocr-r2-1/b0-ocr-r2-2：
 // worker-set 消费方 = 任务 handler 注册位点。B0 注册全在 internal/router
 // （RegisterWorkers 在 16 个 module.go 中均为注释形态），故裸标识符条目回退
 // 扫描该根；B1+ RegisterWorkers 落地模块树时，manifest integration_points.workers
@@ -256,15 +273,12 @@ func TestDiscoverSetConsumersRequiresDirectorySegment(t *testing.T) {
 // 静默漏报（树内 enqueue 引用与注册位点无法用标识符引用区分，见
 // internal/modules/datasource/scheduler.go），而 router 旧注册删除后已登记
 // consumers 会批量假 vanished。
+//
+// OCR R2 追加锚定：裸名推导以 entryFileRE 首个匹配索引为单一事实源锚
+// （任意分隔符形态可推导、矛盾形态显式诊断）；位点入集前一律
+// Clean/ToSlash 归一化并对照磁盘 Go 树验证。
 func TestDiscoverSetConsumersWorkerSetEntrySites(t *testing.T) {
-	// 1. 条目带注册位点后缀：直接从条目推导（含模块树内位点），不依赖扫描根。
-	require.Equal(t,
-		[]string{"internal/modules/identity/workers.go"},
-		discoverSetConsumers(&Discovery{}, "worker-set",
-			[]string{"TypeFoo — internal/modules/identity/workers.go:12"}),
-		"带位点后缀的条目必须从条目推导注册位点")
-
-	// 磁盘 fixture：router 旧注册未删 + 模块树内引用并存（迁移中间态形态）。
+	// 磁盘 fixture：router 旧注册未删 + 模块树内注册并存（迁移中间态形态）。
 	root := cloneContractRepo(t)
 	writeWorkerSiteFiles(t, root,
 		"internal/router/task.go", "package router\n"+
@@ -280,18 +294,78 @@ func TestDiscoverSetConsumersWorkerSetEntrySites(t *testing.T) {
 	)
 	d := workerSiteDiscovery(t, root)
 
-	// 2. 混合中间态：条目已登记模块树位点 + router 旧注册仍在，两个真实
-	// 引用位点都必须被发现（防止迁移期假 vanished / 漏报）。
+	// 1. 条目带注册位点后缀：直接从条目推导（含模块树内位点），不依赖扫描根；
+	//    裸名同步进回退扫描集合——迁移中间态（新位点已登记、router 旧注册
+	//    未删）两个真实引用位点都必须被发现（防止迁移期假 vanished / 漏报）。
+	consumers, issues := discoverSetConsumers(d, "worker-set",
+		[]string{"TypeFoo — internal/modules/identity/workers.go:12"})
 	require.Equal(t,
-		[]string{"internal/modules/identity/workers.go", "internal/router/task.go"},
-		discoverSetConsumers(d, "worker-set",
-			[]string{"TypeFoo — internal/modules/identity/workers.go:12"}))
+		[]string{"internal/modules/identity/workers.go", "internal/router/task.go"}, consumers,
+		"带位点后缀的条目必须从条目推导注册位点")
+	require.Empty(t, issues)
 
-	// 3. B0 裸标识符条目：回退扫描 internal/router 注册根；模块树内裸标识符
-	// 引用不是登记口径（现状行为回归锚，条目更新义务由注释登记）。
-	require.Equal(t,
-		[]string{"internal/router/task.go"},
-		discoverSetConsumers(d, "worker-set", []string{"TypeFoo"}))
+	// 2. B0 裸标识符条目：回退扫描 internal/router 注册根；模块树内裸标识符
+	//    引用不是登记口径（现状行为回归锚，条目更新义务由注释登记）。
+	consumers, issues = discoverSetConsumers(d, "worker-set", []string{"TypeFoo"})
+	require.Equal(t, []string{"internal/router/task.go"}, consumers)
+	require.Empty(t, issues)
+
+	// 3. OCR R2 b0-ocr-r2-1：裸名推导不再依赖 " — " 字面分隔符——以
+	//    entryFileRE 首个匹配索引为锚取位点前缀并剔除尾部非标识符字符。
+	//    en dash / 全角破折号 / em dash 无空格 / 连字符带空格等手写形态下
+	//    位点与裸名都必须照常推导，回退扫描（router/task.go 引用 TypeFoo）
+	//    必须命中，不得因分隔符漂移把完整条目串静默塞进扫描集合。
+	for _, entry := range []string{
+		"TypeFoo – internal/modules/identity/workers.go:12", // en dash
+		"TypeFoo——internal/modules/identity/workers.go:12",  // 全角破折号
+		"TypeFoo—internal/modules/identity/workers.go:12",   // em dash 无空格
+		"TypeFoo - internal/modules/identity/workers.go:12", // 连字符带空格
+	} {
+		got, entryIssues := discoverSetConsumers(d, "worker-set", []string{entry})
+		require.Equal(t,
+			[]string{"internal/modules/identity/workers.go", "internal/router/task.go"}, got,
+			"条目 %q 的位点与裸名都必须照常推导", entry)
+		require.Empty(t, entryIssues, "条目 %q 不得产生诊断", entry)
+	}
+
+	// 4. OCR R2 b0-ocr-r2-1 矛盾形态：连字符无空格时 entryFileRE 把
+	//    "TypeFoo-internal" 整体吞并为首个匹配（锚前缀为空），裸名推导失败
+	//    且位点不在磁盘——显式 entry-drift + file-missing 诊断，完整条目串
+	//    绝不静默进入回退扫描集合。
+	consumers, issues = discoverSetConsumers(d, "worker-set",
+		[]string{"TypeFoo-internal/modules/identity/workers.go:12"})
+	require.Empty(t, consumers, "矛盾形态位点不得入集")
+	require.Len(t, issues, 2)
+	checks := []string{issues[0].Check, issues[1].Check}
+	require.ElementsMatch(t,
+		[]string{"contract-set-entry-drift", "contract-consumer-file-missing"}, checks)
+	for _, is := range issues {
+		require.Contains(t, is.Message, "TypeFoo-internal/modules/identity/workers.go")
+	}
+
+	// 5. OCR R2 b0-ocr-r2-2：manifest 手写位点的点段形态（"./x"、"x/./y.go"）
+	//    必须 filepath.Clean 归一化后与 d.GoFiles 同形照常入集。
+	for _, entry := range []string{
+		"TypeFoo — ./internal/modules/identity/workers.go:12",
+		"TypeFoo — internal/modules/./identity/workers.go:12",
+	} {
+		got, entryIssues := discoverSetConsumers(d, "worker-set", []string{entry})
+		require.Equal(t,
+			[]string{"internal/modules/identity/workers.go", "internal/router/task.go"}, got,
+			"条目 %q 的位点归一化后必须照常入集", entry)
+		require.Empty(t, entryIssues, "条目 %q", entry)
+	}
+
+	// 6. OCR R2 b0-ocr-r2-2：位点不在磁盘上——显式 file-missing 诊断，不静默
+	//    入集（否则归一化后字符串不等会同时误报 unrecorded + vanished）也不
+	//    静默跳过；裸名仍进回退扫描集合（router 旧注册可被发现）。
+	consumers, issues = discoverSetConsumers(d, "worker-set",
+		[]string{"TypeFoo — internal/modules/identity/ghost.go:12"})
+	require.Equal(t, []string{"internal/router/task.go"}, consumers,
+		"幽灵位点不得入集，但裸名回退扫描仍须发现 router 旧注册")
+	require.Len(t, issues, 1)
+	require.Equal(t, "contract-consumer-file-missing", issues[0].Check)
+	require.Contains(t, issues[0].Message, "internal/modules/identity/ghost.go")
 }
 
 // writeWorkerSiteFiles 在克隆 fixture 中写入相对路径 rel 的文件（自动建目录）。
@@ -554,6 +628,54 @@ func TestSomethingElse() {}
 			},
 			check: "contract-characterization-drift",
 			want:  "tenant_api_test.go",
+		},
+		{
+			// 16. worker-set 条目位点不在磁盘（OCR R2 b0-ocr-r2-2）：manifest
+			// 手写位点入集前必须归一化并对照 d.GoFiles 验证，缺失时显式
+			// file-missing 诊断（与符号契约 recorded consumer 预检同构），
+			// 不静默入集也不静默跳过。
+			name: "worker-set entry site missing on disk",
+			setup: func(t *testing.T) (*Governance, *Discovery) {
+				root := contractRepoRoot(t)
+				g := fixtureContractGovernance(t, root)
+				entry := "TypeFoo — internal/modules/identity/ghost.go:12"
+				g.Contracts[3].Items = []string{entry}
+				d := fixtureContractDiscovery(t, root)
+				d.Manifests[0].IntegrationPoints.Workers = []string{entry}
+				return g, d
+			},
+			check: "contract-consumer-file-missing",
+			want:  "internal/modules/identity/ghost.go",
+		},
+		{
+			// 17. worker-set 条目位点命中但裸名不可推导（OCR R2 b0-ocr-r2-1
+			// 矛盾形态）：显式 entry-drift 诊断而非把复合串静默塞进回退扫描。
+			name: "worker-set entry bare type underivable",
+			setup: func(t *testing.T) (*Governance, *Discovery) {
+				root := contractRepoRoot(t)
+				g := fixtureContractGovernance(t, root)
+				entry := "— internal/router/routes_tenant.go:10"
+				g.Contracts[3].Items = []string{entry}
+				d := fixtureContractDiscovery(t, root)
+				d.Manifests[0].IntegrationPoints.Workers = []string{entry}
+				return g, d
+			},
+			check: "contract-set-entry-drift",
+			want:  "bare task type",
+		},
+		{
+			// 18. set 行登记消费方文件不存在（OCR R2 b0-ocr-r2-2）：与符号
+			// 契约 recorded consumer 磁盘预检同构，file-missing 层捕获，
+			// vanished 层不越界误报。
+			name: "set recorded consumer file missing",
+			setup: func(t *testing.T) (*Governance, *Discovery) {
+				root := contractRepoRoot(t)
+				g := fixtureContractGovernance(t, root)
+				g.Contracts[2].Consumers = append(g.Contracts[2].Consumers, "internal/router/ghost.go")
+				return g, fixtureContractDiscovery(t, root)
+			},
+			check: "contract-consumer-file-missing",
+			want:  "recorded consumer internal/router/ghost.go",
 		},
 	}
 	for _, tc := range cases {
