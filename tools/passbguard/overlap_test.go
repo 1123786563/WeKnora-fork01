@@ -176,6 +176,51 @@ func TestBriefClaimChecks(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, diags, "diags: %v", diags)
 	})
+	t.Run("same basename in a different full path is not a claim", func(t *testing.T) {
+		// OCR R1 ocr-r1-5：ruled 集含 types.go/handler.go 等极常见 basename，
+		// 非属主 brief 提及「另一个文件的完整路径」（如此处 workbench 自有
+		// 的 internal/modules/workbench/types.go）不得触发对 ruled
+		// internal/handler/session/types.go 的 brief-claim-conflict。
+		rulings := map[string]PlanID{
+			"internal/handler/session/types.go": "35-conversation-program",
+		}
+		root := t.TempDir()
+		writePassbFile(t, root, "conversation-session.md",
+			"# s\n\n- `internal/handler/session/`（14）：`types.go`（会话请求/响应类型）\n")
+		writePassbFile(t, root, "workbench.md",
+			"# w\n\n已就位：`internal/modules/workbench/types.go`（workbench 自有类型，非 session 宿主文件）。\n")
+		diags, err := checkBriefClaims(root, rulings)
+		require.NoError(t, err)
+		require.Empty(t, diags,
+			"非属主 brief 提及 internal/modules/workbench/types.go 不得触发对 "+
+				"internal/handler/session/types.go 的 brief-claim-conflict，got: %v", diags)
+	})
+}
+
+// TestBriefClaimsPathMatchingSemantics 覆盖 OCR R1 ocr-r1-5 的匹配语义重写：
+// (1) ruled 完整 path 以独立 token 出现即认领（沿用 :line 跳过——那是消费方
+// 引用不是认领）；(2) basename 回退时，出现位置前驱为 '/'（即属于更长路径
+// 的一部分，如 internal/modules/workbench/types.go 之于 ruled
+// internal/handler/session/types.go）不得计为该 ruled 文件的裸 basename 认领。
+func TestBriefClaimsPathMatchingSemantics(t *testing.T) {
+	const ruled = "internal/handler/session/types.go"
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"full path independent token", "迁入：`internal/handler/session/types.go`（独占）。", true},
+		{"full path with :line is consumer reference not claim", "消费方：`internal/handler/session/types.go:22`（trpcagent import）。", false},
+		{"bare basename under directory header", "- `internal/handler/session/`（14）：`types.go`、`share.go`", true},
+		{"basename tail of a different longer path", "已就位：`internal/modules/workbench/types.go`。", false},
+		{"basename tail of the ruled full path itself", "`internal/handler/session/types.go`", true},
+		{"word-extended substring is not a claim", "见 `agent_types.go.list` 与 `mytypes.gox`。", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, briefClaimsPath(tc.text, ruled))
+		})
+	}
 }
 
 // matrixOwners 返回 matrix 中 path -> plan（真实仓库）。

@@ -259,23 +259,40 @@ func checkRulings(g *Governance, rulings map[string]PlanID, platform []string) [
 	return sortDiagnosticsDiag(ds)
 }
 
-// briefClaimsPath 判断 brief 文本是否认领了 ruled path：basename 以独立 token
-// 出现——前一字符不得是词字符或 '.'（排除 `agent_stream_handler.go` 含
-// `handler.go`、`craft_preview}.go` 族子串误报）；basename 之后若紧跟 `:数字`
-// 则该出现是 :line 消费方引用（如 `agent_run_graph.go:22`），不算认领。
+// briefClaimsPath 判断 brief 文本是否认领了 ruled path。brief 两种认领形态
+// 并存（agentruntime-protocol.md 完整路径、conversation-session.md 目录标题下
+// 裸 basename），匹配分两层（OCR R1 ocr-r1-5：ruled 集含 types.go/handler.go
+// 等极常见 basename，仅凭 basename 认领会让非属主 brief 提及「另一个文件的
+// 更长路径」即误报 brief-claim-conflict）：
+//  1. 完整 path 以独立 token 出现即认领——前一字符不得是词字符或 '.'
+//     （排除子串误报），之后若紧跟 `:数字` 则该出现是 :line 消费方引用
+//     （如 `agent_run_graph.go:22`），不算认领；
+//  2. basename 回退——同上边界约束，且出现位置前驱为 '/'（即属于更长路径
+//     的一部分，如 internal/modules/workbench/types.go 之于 ruled
+//     internal/handler/session/types.go）不得计为裸 basename 认领。
 func briefClaimsPath(text, path string) bool {
-	basename := pathBase(path)
+	if matchIndependentToken(text, path) {
+		return true
+	}
+	return matchIndependentToken(text, pathBase(path))
+}
+
+// matchIndependentToken 判断 needle 在 text 中是否以独立 token 出现：
+// 前一字符不得是词字符、'.' 或 '/'（更长路径的尾段不是裸名认领）；后一
+// 字符若是词字符则是更长标识符的子串，若是 `:数字` 则是 :line 消费方引用。
+func matchIndependentToken(text, needle string) bool {
 	for i := 0; i < len(text); {
-		idx := strings.Index(text[i:], basename)
+		idx := strings.Index(text[i:], needle)
 		if idx < 0 {
 			return false
 		}
 		start := i + idx
-		end := start + len(basename)
+		end := start + len(needle)
 		i = end
-		prevOK := start == 0 || (!isWordRune(text[start-1]) && text[start-1] != '.')
-		if !prevOK || end > len(text) {
-			continue
+		if start > 0 {
+			if prev := text[start-1]; isWordRune(prev) || prev == '.' || prev == '/' {
+				continue
+			}
 		}
 		if end == len(text) {
 			return true

@@ -593,7 +593,7 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 				"%s no longer declares top-level %s (only a same-named method remains)", file, name)
 			continue
 		}
-		consumers, _, err := DiscoverSymbolConsumers(d, fact)
+		consumers, characterization, err := DiscoverSymbolConsumers(d, fact)
 		if err != nil {
 			emit("contract-symbol-missing", string(c.ID), "consumer discovery failed: %v", err)
 			continue
@@ -614,10 +614,23 @@ func CheckContracts(g *Governance, d *Discovery) []Diagnostic {
 					"recorded consumer %s no longer references %s", p, name)
 			}
 		}
+		// OCR R1 ocr-r1-1：与消费方 vanished 同构的符号引用层。此前生产调用点
+		// 丢弃 DiscoverSymbolConsumers 返回的 tests，登记特征化测试只剩文件
+		// 存在一层校验——改名/被删尚有 missing 兜底，「不再引用符号」完全无感。
+		// unrecorded 反方向（树上有测试引用符号但未登记）不在此强制。
+		charTestSet := make(map[string]bool, len(characterization))
+		for _, p := range characterization {
+			charTestSet[p] = true
+		}
 		for _, p := range c.CharacterizationTests {
 			if !goFileSet[p] {
 				emit("contract-characterization-missing", string(c.ID),
 					"characterization test %s does not exist on disk", p)
+				continue
+			}
+			if !charTestSet[p] {
+				emit("contract-characterization-drift", string(c.ID),
+					"recorded test %s no longer references %s", p, name)
 			}
 		}
 

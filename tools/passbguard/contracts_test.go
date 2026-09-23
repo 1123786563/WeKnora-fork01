@@ -466,6 +466,26 @@ func BadAdapters(s ifaces.TenantService) { _ = thing.Adapter{} }
 			check: "contract-baseline-drift",
 			want:  "worker_pools",
 		},
+		{
+			// 15. 登记的特征化测试文件仍在 Go 树上但不再引用契约符号
+			// （OCR R1 ocr-r1-1）：改名/被删由 contract-characterization-missing
+			// 文件存在层兜底，「不再引用符号」此前完全无感——冻结既有特征化
+			// 测试的承诺必须有符号引用层校验。
+			name: "characterization test no longer references symbol",
+			setup: func(t *testing.T) (*Governance, *Discovery) {
+				root := cloneContractRepo(t)
+				require.NoError(t, os.WriteFile(
+					filepath.Join(root, "internal", "handler", "tenant_api_test.go"), []byte(
+						`package handler
+
+// TestSomethingElse 不再引用 TenantService（特征化锚点漂移形态）。
+func TestSomethingElse() {}
+`), 0o644))
+				return fixtureContractGovernance(t, root), fixtureContractDiscovery(t, root)
+			},
+			check: "contract-characterization-drift",
+			want:  "tenant_api_test.go",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -476,6 +496,49 @@ func BadAdapters(s ifaces.TenantService) { _ = thing.Adapter{} }
 			require.Contains(t, diag.Message, tc.want)
 		})
 	}
+}
+
+// TestContractCharacterizationDriftLayering 覆盖 OCR R1 ocr-r1-1：登记特征化
+// 测试的漂移形态分层归属。生产调用点此前丢弃 DiscoverSymbolConsumers 返回的
+// tests（grep 证实仅 *_test.go 消费该返回值），对 c.CharacterizationTests 只做
+// goFileSet 磁盘存在性检查——「冻结既有特征化测试」弱化为单层防线：
+//   - 改名/被删（路径不在 Go 树上）：仍由 contract-characterization-missing
+//     文件存在层捕获，drift 层不得越界误报；
+//   - 不再引用符号（文件仍在树上）：由新的 contract-characterization-drift
+//     符号引用层捕获，且不得同时误报 missing。
+//
+// unrecorded 反方向（树上有测试引用符号但未登记）按验收口径不强制。
+func TestContractCharacterizationDriftLayering(t *testing.T) {
+	t.Run("no longer references symbol triggers drift not missing", func(t *testing.T) {
+		root := cloneContractRepo(t)
+		require.NoError(t, os.WriteFile(
+			filepath.Join(root, "internal", "handler", "tenant_api_test.go"), []byte(
+				`package handler
+
+// TestSomethingElse 不再引用 TenantService（特征化锚点漂移形态）。
+func TestSomethingElse() {}
+`), 0o644))
+		diags := CheckContracts(fixtureContractGovernance(t, root), fixtureContractDiscovery(t, root))
+		diag, ok := findDiag(diags, "contract-characterization-drift")
+		require.True(t, ok, "登记测试仍在 Go 树上但不再引用符号必须报 drift，got: %v", diags)
+		require.Equal(t,
+			"recorded test internal/handler/tenant_api_test.go no longer references TenantService",
+			diag.Message)
+		_, missing := findDiag(diags, "contract-characterization-missing")
+		require.False(t, missing, "文件仍在磁盘上不得误报 missing，got: %v", diags)
+	})
+	t.Run("renamed away stays with missing file layer", func(t *testing.T) {
+		root := contractRepoRoot(t)
+		g := fixtureContractGovernance(t, root)
+		// 改名形态：登记路径已不在 Go 树上（测试文件被改名带走）。
+		g.Contracts[0].CharacterizationTests = []string{"internal/handler/renamed_away_test.go"}
+		diags := CheckContracts(g, fixtureContractDiscovery(t, root))
+		diag, ok := findDiag(diags, "contract-characterization-missing")
+		require.True(t, ok, "改名/被删形态必须仍由 missing 文件存在层捕获，got: %v", diags)
+		require.Contains(t, diag.Message, "renamed_away_test.go")
+		_, drift := findDiag(diags, "contract-characterization-drift")
+		require.False(t, drift, "路径不在 Go 树上不得报 drift（那是 missing 层语义），got: %v", diags)
+	})
 }
 
 // TestContractBaselineSkipsComparisonWhenLedgerUnparseable 覆盖 OCR R1 #04：
