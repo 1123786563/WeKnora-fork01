@@ -3,6 +3,7 @@ export { createInMemoryCredentialStore, createInMemoryDeploymentRegistry } from 
 export type { AppLifecyclePort, CredentialStore, DeploymentRegistry, DeploymentStore, MobileRuntimePorts, OidcBrowserPort, PendingOidc, PendingOidcStore, RuntimeRemote, StoredCredential } from './runtime/ports.ts';
 export type { Deployment, DeploymentInput, MobileRuntime, RuntimeReason, RuntimeSnapshot, RuntimeSurface, ScopeLease, TenantOption } from './runtime/types.ts';
 export { createScopedVault, scopeKeyOf } from './vault/scoped-vault.ts';
+export { base64ToBytes, bytesToBase64 } from './vault/base64.ts';
 export { createWebCryptoCipher } from './vault/web-crypto-cipher.ts';
 export { createInMemoryVaultKeyStore, createInMemoryVaultStorage } from './vault/in-memory-adapters.ts';
 export type { CipherPort, KeyStorePort, ScopedVaultPorts, VaultStoragePort } from './vault/ports.ts';

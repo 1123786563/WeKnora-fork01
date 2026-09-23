@@ -1,6 +1,7 @@
 import type { ScopeLease } from '../runtime/types.ts';
 import { leaseActive, leaseScopeOf, type LeaseScope } from '../runtime/scope-lease.ts';
 import type { CipherPort, KeyStorePort, ScopedVaultPorts, VaultStoragePort } from './ports.ts';
+import { base64ToBytes, bytesToBase64 } from './base64.ts';
 
 const KEY_LENGTH = 32;
 const DRAFT_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
@@ -35,7 +36,7 @@ interface ScopeSession { key: Uint8Array; destroyed: boolean }
 
 /** 行键段：base64url(id)。合法 id（[A-Za-z0-9._-]{1,64}）的编码产物落在该字符集之外，
  * 与索引键 `${scopeKey}.ix` 命名空间天然分离——id='ix' 等保留字无法劫持索引键（R1-F10）。 */
-const draftKeySegment = (id: string): string => btoa(id).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const draftKeySegment = (id: string): string => bytesToBase64(new TextEncoder().encode(id)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
 export async function scopeKeyOf(scope: LeaseScope): Promise<string> {
   // v2：分段拼接后取 SHA-256 hex 摘要。动机：(1) v1 的 encodeURIComponent 产物含 %，
@@ -47,19 +48,6 @@ export async function scopeKeyOf(scope: LeaseScope): Promise<string> {
   return `weknora.vault.v2.${[...digest].slice(0, 20).map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-function base64ToBytes(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
-
 /**
  * Scoped Vault（Spec §9）：唯一拥有 deployment/user/tenant scope 下的加密缓存与撤销。
  * ScopedStore 只暴露 drafts 仓储；每次访问重新校验 lease 有效性，任何没有有效
@@ -67,6 +55,7 @@ function base64ToBytes(value: string): Uint8Array {
  */
 export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
   const sessions = new Map<string, ScopeSession>();
+  const sessionFlights = new Map<string, Promise<ScopeSession>>();
   const text = new TextEncoder();
 
   const randomBytes = (size: number): Uint8Array => {
@@ -78,20 +67,34 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     if (!globalThis.crypto?.getRandomValues) throw new Error('VAULT_ENTROPY');
     return globalThis.crypto.getRandomValues(new Uint8Array(size));
   };
+  // 会话创建 single-flight（R1-F41）：并发首次 open 必须共享同一次 keyStore 读+写，
+  // 否则两个调用方各持一把 key，先写者的行被后写者的 key 永久锁死。
   const requireSession = async (scopeKey: string): Promise<ScopeSession> => {
     const existing = sessions.get(scopeKey);
     if (existing && !existing.destroyed) return existing;
-    const wrapped = await ports.keyStore.readWrappedKey(scopeKey);
-    if (wrapped && wrapped.length === KEY_LENGTH) {
-      const session: ScopeSession = { key: wrapped, destroyed: false };
+    const inFlight = sessionFlights.get(scopeKey);
+    if (inFlight) return inFlight;
+    const flight = (async (): Promise<ScopeSession> => {
+      const wrapped = await ports.keyStore.readWrappedKey(scopeKey);
+      if (wrapped !== undefined) {
+        // 长度异常 = 持久化值损坏：覆写等于把旧密文永久变成不可解且无告警（R1-F13），必须 fail closed。
+        if (wrapped.length !== KEY_LENGTH) throw new Error('VAULT_KEYSTORE');
+        const session: ScopeSession = { key: wrapped, destroyed: false };
+        sessions.set(scopeKey, session);
+        return session;
+      }
+      const key = randomBytes(KEY_LENGTH);
+      await ports.keyStore.writeWrappedKey(scopeKey, key);
+      const session: ScopeSession = { key, destroyed: false };
       sessions.set(scopeKey, session);
       return session;
+    })();
+    sessionFlights.set(scopeKey, flight);
+    try {
+      return await flight;
+    } finally {
+      sessionFlights.delete(scopeKey);
     }
-    const key = randomBytes(KEY_LENGTH);
-    await ports.keyStore.writeWrappedKey(scopeKey, key);
-    const session: ScopeSession = { key, destroyed: false };
-    sessions.set(scopeKey, session);
-    return session;
   };
   const indexKey = (scopeKey: string): string => `${scopeKey}.ix`;
   const rowKey = (scopeKey: string, id: string): string => `${scopeKey}.d.${draftKeySegment(id)}`;

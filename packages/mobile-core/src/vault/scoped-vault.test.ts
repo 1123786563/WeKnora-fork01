@@ -208,3 +208,27 @@ test('revoke of one scope never leaks rows into another scope key', async () => 
   await scoped.revoke(revoked, 'dispose');
   assert.equal(await b.drafts.get('d1') !== undefined && (await b.drafts.get('d1'))?.body === 'secret-b', true);
 });
+
+test('concurrent first open shares one key (single-flight, R1-F41)', async () => {
+  const { keyStore, storage, vault: scoped } = vault();
+  let reads = 0;
+  const slowKeyStore = {
+    ...keyStore,
+    readWrappedKey: async (k: string) => { reads += 1; await new Promise((r) => setTimeout(r, 5)); return keyStore.readWrappedKey(k); },
+    writeWrappedKey: async (k: string, v: Uint8Array) => { await new Promise((r) => setTimeout(r, 5)); return keyStore.writeWrappedKey(k, v); },
+  };
+  const slow = createScopedVault({ keyStore: slowKeyStore, storage, cipher: createWebCryptoCipher() });
+  await Promise.all([slow.open(lease()), slow.open(lease())]);
+  await (await slow.open(lease())).drafts.put({ id: 'a', body: 'persisted' });
+  const reopened = await slow.open(lease());
+  assert.equal((await reopened.drafts.get('a'))?.body, 'persisted'); // 未持久化的 K1 不会再出现
+  assert.ok(reads >= 1);
+});
+
+test('a wrapped key of wrong length fails closed instead of being overwritten (R1-F13)', async () => {
+  const { keyStore, storage } = vault();
+  const key = await scopeKeyOf(SCOPE_A);
+  await keyStore.writeWrappedKey(key, new Uint8Array(31)); // 持久化值损坏/长度异常
+  const scoped = createScopedVault({ keyStore, storage, cipher: createWebCryptoCipher() });
+  await assert.rejects(scoped.open(lease()), /VAULT_KEYSTORE/);
+});

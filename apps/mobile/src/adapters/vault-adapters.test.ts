@@ -36,3 +36,10 @@ test('secure vault storage delegates opaque rows without transformation', async 
   await storage.delete('row-1');
   assert.equal(await storage.read('row-1'), null);
 });
+
+test('a corrupt wrapped-key value fails closed with VAULT_KEYSTORE (R1-F18)', async () => {
+  const store = secureStore();
+  await store.setItemAsync('scope-key', '!!!not-base64!!!');
+  const keyStore = createSecureVaultKeyStore(store);
+  await assert.rejects(keyStore.readWrappedKey('scope-key'), /VAULT_KEYSTORE/);
+});

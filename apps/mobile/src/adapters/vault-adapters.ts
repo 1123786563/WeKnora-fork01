@@ -1,23 +1,20 @@
 import type { KeyStorePort, VaultStoragePort } from '@weknora/mobile-core';
+import { base64ToBytes, bytesToBase64 } from '@weknora/mobile-core';
 import type { SecureStorePort } from './secure-store.ts';
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-function base64ToBytes(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
 
 /** OS-backed wrapped-key storage; the vault scope key doubles as the SecureStore key. */
 export function createSecureVaultKeyStore(store: SecureStorePort): KeyStorePort {
   return {
-    async readWrappedKey(scopeKey) { const raw = await store.getItemAsync(scopeKey); return raw === null ? undefined : base64ToBytes(raw); },
+    // 损坏值（非 base64）不得被当作「无 key」触发新生成——那会静默锁死既有密文（R1-F18）。
+    async readWrappedKey(scopeKey) {
+      const raw = await store.getItemAsync(scopeKey);
+      if (raw === null) return undefined;
+      try {
+        return base64ToBytes(raw);
+      } catch {
+        throw new Error('VAULT_KEYSTORE');
+      }
+    },
     async writeWrappedKey(scopeKey, key) { await store.setItemAsync(scopeKey, bytesToBase64(key)); },
     async deleteWrappedKey(scopeKey) { await store.deleteItemAsync(scopeKey); },
   };
