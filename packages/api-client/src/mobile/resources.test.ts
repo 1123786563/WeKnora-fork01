@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMobileResourceRemote } from './resources.ts';
+import { createMobileRuntimeRemote } from './runtime.ts';
 import type { ClientRequest } from '../client.ts';
 
 const ORIGIN = 'https://weknora.example.test';
@@ -129,4 +130,38 @@ test('origin and access token are validated before any request leaves', async ()
   const remote = createMobileResourceRemote({ origin: ORIGIN, request: spy.request });
   await assert.rejects(remote.availableAgents('  '), /access token is required/);
   assert.equal(spy.seen.length, 0, 'invalid input must not reach the wire');
+});
+
+/**
+ * 防漂移回归：resources.ts 的 requireDeploymentOrigin/requireAccessToken/bearerRequest 与
+ * runtime.ts:40-63 是计划记录在案的逐字复制（简报取舍：本计划不触碰 runtime.ts）。
+ * 本测试把「两处构造期 Origin 防线必须行为等价」钉进测试——未来任一侧单独加固
+ * （如 host 白名单）而另一侧未跟进时，等价断言在这里变红，漂移不再是静默的。
+ */
+test('duplicated deployment-origin guard stays in lockstep with runtime.ts (anti-drift)', () => {
+  const invalidOrigins = [
+    '',
+    'weknora.example.test',
+    'http://weknora.example.test',
+    'https://user:pass@weknora.example.test',
+    'https://weknora.example.test/path',
+    'https://weknora.example.test?q=1',
+    'https://weknora.example.test#frag',
+  ];
+  const throwsSync = (fn: () => unknown): boolean => {
+    try {
+      fn();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  for (const origin of invalidOrigins) {
+    const spy = recorder(() => AGENTS_WIRE);
+    const runtimeThrows = throwsSync(() => createMobileRuntimeRemote({ origin, request: spy.request }));
+    const resourcesThrows = throwsSync(() => createMobileResourceRemote({ origin, request: spy.request }));
+    assert.equal(resourcesThrows, true, `resources factory must reject origin ${JSON.stringify(origin)}`);
+    assert.equal(resourcesThrows, runtimeThrows, `origin guard drift between runtime.ts and resources.ts for ${JSON.stringify(origin)}`);
+    assert.equal(spy.seen.length, 0, 'construction-time rejection must not reach the wire');
+  }
 });
