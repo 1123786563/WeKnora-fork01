@@ -283,7 +283,13 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
             if existing is not None:
                 if s.duplicate_sub_accepted:
                     clone = dict(existing, lago_id=s.seq("sub"), polls=0)
-                    s.subscriptions[ext + "-dup"] = clone
+                    # duplicate_sub_replaces: the 200 answer carries a NEW
+                    # lago_id under the same external_id (idempotency broken)
+                    # instead of echoing the same subscription.
+                    if s.duplicate_sub_replaces:
+                        s.subscriptions[ext] = clone
+                    else:
+                        s.subscriptions[ext + "-dup"] = clone
                     self._send(200, {"subscription": self._subscription_json(clone)})
                 elif existing["status"] == "incomplete":
                     self._send(422, {"status": 422, "error": "Unprocessable Entity",
@@ -507,6 +513,7 @@ class FakeLago(ThreadingHTTPServer):
         self.duplicate_payment_injection = False
         self.manual_allowed = False
         self.duplicate_sub_accepted = False
+        self.duplicate_sub_replaces = False
         self.fail_first_terminate = False
         self.terminates_failed = False
         self.entitlements_200_while_incomplete = False
@@ -673,6 +680,22 @@ class TestGatePhase(unittest.TestCase):
         notes = " ".join(report["contract_notes"])
         self.assertIn("canceled", notes)
 
+    def test_passes_when_invoice_stays_api_invisible_and_incomplete_holds(self):
+        # v1.53.0 contract: open/closed invoices are INVISIBLE_STATUS, so the
+        # gate can legitimately never see the gating invoice. AC1 then rests
+        # on subscription incomplete + entitlements 404 holding across the
+        # window (with the visibility fact noted), never on invoice fields.
+        with stack() as env:
+            ctx = seeded(env)
+            env.lago.invoice_appear_polls = 10 ** 6  # never revealed
+            report = phase_gate(ctx)
+        self.assertEqual(report["status"], "pass", report)
+        observed = report["observed"]
+        self.assertFalse(observed["invoice_api_visible"])
+        self.assertEqual(observed["recheck_subscription_status"], "incomplete")
+        notes = " ".join(report["contract_notes"])
+        self.assertIn("API-invisible", notes)
+
 
 class TestManualPhase(unittest.TestCase):
     def test_records_forbidden_without_mutating_state(self):
@@ -697,6 +720,23 @@ class TestManualPhase(unittest.TestCase):
         self.assertEqual(report["status"], "fail", report)
         self.assertEqual(report["observed"]["http_status"], 200)
         self.assertFalse(report["observed"]["state_unchanged"])
+
+    def test_targets_activation_invoice_when_gate_invoice_invisible(self):
+        # When the 3DS gate invoice never becomes API-visible (v1.53.0
+        # INVISIBLE_STATUS), the 403 probe falls back to customer B's
+        # settled activation invoice — the Premium gate fires before any
+        # invoice-state check, so the 403 evidences the Community gate.
+        with stack() as env:
+            ctx = seeded(env)
+            settled_gate_and_activation(ctx)
+            ctx.state["gate"]["invoice_lago_id"] = None  # invisible gate
+            report = phase_manual(ctx)
+        self.assertEqual(report["status"], "pass", report)
+        observed = report["observed"]
+        self.assertEqual(observed["target"], "activation")
+        self.assertEqual(observed["http_status"], 403)
+        self.assertTrue(observed["forbidden"])
+        self.assertTrue(observed["state_unchanged"])
 
 
 class TestActivatePhase(unittest.TestCase):
@@ -780,6 +820,23 @@ class TestDuplicatesPhase(unittest.TestCase):
         self.assertEqual(report["observed"]["re_post"]["http_status"], 422)
         self.assertEqual(report["observed"]["final"]["payments_succeeded_count"], 2)
 
+    def test_fails_when_duplicate_200_returns_a_different_subscription(self):
+        # The 200-answered duplicate probe is only harmless when it echoes
+        # the SAME subscription; a 200 carrying a new lago_id under the same
+        # external_id breaks idempotency and must fail AC2.
+        with stack() as env:
+            ctx = seeded(env)
+            settled_gate_and_activation(ctx)
+            env.lago.duplicate_sub_accepted = True
+            env.lago.duplicate_sub_replaces = True
+            report = phase_duplicates(ctx)
+        self.assertEqual(report["status"], "fail", report)
+        observed = report["observed"]
+        self.assertEqual(observed["re_post"]["http_status"], 200)
+        self.assertFalse(observed["final"]["subscription_same_lago_id"])
+        notes = " ".join(report["contract_notes"])
+        self.assertIn("harm", notes)
+
 
 class TestRetriesPhase(unittest.TestCase):
     def test_recovers_same_identity_and_keeps_gate_pending(self):
@@ -837,6 +894,20 @@ class TestDeclineControlPhase(unittest.TestCase):
         checks = report["observed"]["checks"]
         self.assertTrue(checks["not_activated"])
         self.assertTrue(checks["entitlements_unusable"])
+
+    def test_timeout_fails_when_negative_control_activates(self):
+        # If the failed-charge subscription ever reaches active, the
+        # negative control is broken and the phase must fail — whatever the
+        # invoice or payment counts say.
+        with stack() as env:
+            ctx = seeded(env)
+            env.lago.mode_for_customer["c"] = "activate"  # C activates instead
+            report = phase_decline_control(ctx)
+        self.assertEqual(report["status"], "fail", report)
+        observed = report["observed"]
+        self.assertTrue(observed["poll_exhausted"])
+        self.assertFalse(observed["checks"]["not_activated"])
+        self.assertIn("neither canceled nor held incomplete", observed["error"])
 
 
 class TestCleanupPhase(unittest.TestCase):
