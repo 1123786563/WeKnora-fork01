@@ -746,3 +746,27 @@ test('a stream opened before a scope change is dropped, and its chunks never flu
   await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
   assert.deepEqual(chunks, [], 'no late frame is delivered after the scope died');
 });
+
+test('a stream still open when the scope dies stops delivering chunks and settles with RUNTIME_SCOPE_CHANGED', async () => {
+  const streamOpened = deferred<void>();
+  const release = deferred<void>();
+  const chunks: string[] = [];
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedStream: () => async (_input, _accessToken, onChunk) => {
+      streamOpened.resolve();
+      onChunk('id: 1\nevent: run.started\n\n');
+      await release.promise;
+      onChunk('late frame after scope death');
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const pending = runtime.authorizedEventStream({ method: 'GET', path: '/api/v1/workbench/executions/r1/events?version=2' }, (chunk) => chunks.push(chunk));
+  await streamOpened.promise;
+  await runtime.signOut();
+  release.resolve();
+  await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
+  assert.deepEqual(chunks, ['id: 1\nevent: run.started\n\n'], 'pre-death frames were delivered; the post-death frame never flushes');
+});

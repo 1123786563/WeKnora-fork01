@@ -366,7 +366,11 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       const transport = deployment && state.surface === 'authorized' ? ports.authorizedStream?.(deployment.origin) : undefined;
       if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
       const requestEpoch = epoch;
-      const send = async (token: string): Promise<void> => transport(input, token, onChunk);
+      const guardedChunk = (chunk: string): void => {
+        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+        onChunk(chunk);
+      };
+      const send = async (token: string): Promise<void> => transport(input, token, guardedChunk);
       const credential = await ports.credentialStore.read(deployment.origin);
       if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
       if (!credential) throw new Error('RUNTIME_UNAUTHORIZED');
