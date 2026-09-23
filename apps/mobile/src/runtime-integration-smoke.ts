@@ -108,7 +108,8 @@ function disallowedIpv6Bytes(bytes: number[], variable: string): string | undefi
   return undefined;
 }
 
-function disallowedDeploymentHost(hostname: string, variable: string): string | undefined {
+/** 部署主机防线：拒绝 localhost/环回/私网/链路本地/保留地址。导出供 task-detail smoke 复用（B2-F15）。 */
+export function disallowedDeploymentHost(hostname: string, variable: string): string | undefined {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host.endsWith('.localhost')) return `${variable} must not target localhost`;
   const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);

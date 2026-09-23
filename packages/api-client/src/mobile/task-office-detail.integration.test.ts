@@ -17,6 +17,8 @@ test('real HTTP task detail hydrates, streams and resyncs through the task offic
     else assert.fail(`TASK_DETAIL_HTTP_INVALID: ${config.reason}`);
     return;
   }
+  // runTaskDetailIntegration 是 total 的（从不 reject，异常路径经 evidence.opened:'failed' + failure 留证），
+  // 此处 await 无需 catch。
   const evidence = await runTaskDetailIntegration(config);
   emitTaskDetailIntegrationEvidence(evidence, (record) => t.diagnostic(record));
   assert.equal(evidence.opened, 'hydrated', 'opening a real task must hydrate end to end');

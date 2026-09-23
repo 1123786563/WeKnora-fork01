@@ -3,7 +3,8 @@ import { createMobileRuntimeRemote } from '@weknora/api-client/mobile/runtime';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
-import { createInMemoryCredentialStore, createMobileRuntime, createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
+import { createInMemoryCredentialStore, createMobileRuntime, createTaskOffice, type TaskHandle, type TaskOffice } from '@weknora/mobile-core';
+import { disallowedDeploymentHost } from './runtime-integration-smoke.ts';
 import { streamAuthorizedSse } from './adapters/sse-stream.ts';
 
 export type TaskDetailIntegrationConfig =
@@ -13,6 +14,8 @@ export type TaskDetailIntegrationConfig =
 export interface TaskDetailIntegrationEvidence {
   deploymentOrigin: string;
   opened: 'hydrated' | 'no-tasks' | 'failed';
+  /** 异常路径的失败摘要（仅 error message，证据契约仍无凭据字段）。 */
+  failure?: string;
   connection?: 'syncing' | 'live' | 'interrupted' | 'drained';
   lifecycle?: string;
   runStatus?: string;
@@ -38,6 +41,9 @@ export function taskDetailIntegrationConfig(env: Record<string, string | undefin
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
     return { enabled: false, disposition: 'invalid', reason: 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL must be a credential-free HTTPS origin' };
   }
+  // 主机防线（B2-F15）：拒绝 localhost/环回/私网/链路本地/保留地址，与 runtime-integration-smoke 同一语义。
+  const hostRejection = disallowedDeploymentHost(parsed.hostname, 'WEKNORA_MOBILE_TEST_DEPLOYMENT_URL');
+  if (hostRejection) return { enabled: false, disposition: 'invalid', reason: hostRejection };
   return { enabled: true, deploymentOrigin: parsed.origin, email, password };
 }
 
@@ -45,7 +51,8 @@ const settle = async (rounds = 10): Promise<void> => {
   for (let index = 0; index < rounds; index += 1) await new Promise<void>((resolve) => setTimeout(resolve, 25));
 };
 
-/** 真实 JSON transport + 授权 SSE 通道 + 具体 Remote Adapter + Task Office 详情编排。账号无任务时如实记 'no-tasks'。 */
+/** 真实 JSON transport + 授权 SSE 通道 + 具体 Remote Adapter + Task Office 详情编排。账号无任务时如实记 'no-tasks'。
+ * total 契约（B2-F14）：任何步骤异常 → opened:'failed' + failure 摘要，从不 reject；所有路径经同一 finally 清理。 */
 export async function runTaskDetailIntegration(config: Extract<TaskDetailIntegrationConfig, { enabled: true }>): Promise<TaskDetailIntegrationEvidence> {
   const evidence: TaskDetailIntegrationEvidence = { deploymentOrigin: config.deploymentOrigin, opened: 'failed', resync: 'skipped', commandTimestamp: new Date().toISOString() };
   const fetcher: FetchLike = (input, init) => fetch(input, init as RequestInit);
@@ -66,40 +73,47 @@ export async function runTaskDetailIntegration(config: Extract<TaskDetailIntegra
       return (input, accessToken, onChunk) => streamAuthorizedSse(origin, input, accessToken, onChunk, fetch);
     },
   });
-  const snapshot = await runtime.signIn({ deployment: { origin: config.deploymentOrigin, label: 'Integration deployment' }, email: config.email, password: config.password });
-  if (snapshot.surface !== 'authorized' || !snapshot.deployment) return evidence;
-
-  // 同一 remote 同时作为 backend 与 detail：漏传 detail 会让 open() fail closed，
-  // 具备真实环境时 AC3 用例将以 opened:'failed' 如实暴露（本处由 Task 9 的
-  // app-smoke 源级断言 `detail:\s*remote` 同类防护）。
-  const remote = createTaskOfficeRemote({
-    origin: config.deploymentOrigin,
-    request: (input) => runtime.authorizedRequest(input),
-    stream: (input, onChunk) => runtime.authorizedEventStream(input, onChunk),
-  });
-  const office: TaskOffice = createTaskOffice({ backend: remote, detail: remote, lease: () => runtime.scopeLease() });
-  const page = await office.tasks({});
-  if (page.items.length === 0) { evidence.opened = 'no-tasks'; return evidence; }
-  const target = page.items[0]!;
-  const handle = office.open({ taskId: target.taskId, runId: target.runId });
-  const view = await handle.hydrate();
-  await settle();
-  evidence.opened = 'hydrated';
-  const settled = handle.view() ?? view;
-  evidence.connection = settled.connection;
-  evidence.lifecycle = settled.lifecycle;
-  evidence.runStatus = settled.runStatus;
-  evidence.attention = settled.attention;
-  evidence.timelineEntries = settled.timeline.length;
-  evidence.cursor = settled.cursor;
+  let handle: TaskHandle | undefined;
   try {
-    const resynced = await handle.resync();
-    evidence.resync = resynced.connection === 'interrupted' ? 'failed' : 'resynced';
-  } catch {
-    evidence.resync = 'failed';
+    const snapshot = await runtime.signIn({ deployment: { origin: config.deploymentOrigin, label: 'Integration deployment' }, email: config.email, password: config.password });
+    if (snapshot.surface !== 'authorized' || !snapshot.deployment) return evidence; // 早退也经 finally 清理
+
+    // 同一 remote 同时作为 backend 与 detail：漏传 detail 会让 open() fail closed，
+    // 具备真实环境时 AC3 用例将以 opened:'failed' 如实暴露（本处由 Task 9 的
+    // app-smoke 源级断言 `detail:\s*remote` 同类防护）。
+    const remote = createTaskOfficeRemote({
+      origin: config.deploymentOrigin,
+      request: (input) => runtime.authorizedRequest(input),
+      stream: (input, onChunk) => runtime.authorizedEventStream(input, onChunk),
+    });
+    const office: TaskOffice = createTaskOffice({ backend: remote, detail: remote, lease: () => runtime.scopeLease() });
+    const page = await office.tasks({});
+    if (page.items.length === 0) { evidence.opened = 'no-tasks'; return evidence; }
+    const target = page.items[0]!;
+    handle = office.open({ taskId: target.taskId, runId: target.runId });
+    const view = await handle.hydrate();
+    await settle();
+    evidence.opened = 'hydrated';
+    const settled = handle.view() ?? view;
+    evidence.connection = settled.connection;
+    evidence.lifecycle = settled.lifecycle;
+    evidence.runStatus = settled.runStatus;
+    evidence.attention = settled.attention;
+    evidence.timelineEntries = settled.timeline.length;
+    evidence.cursor = settled.cursor;
+    try {
+      const resynced = await handle.resync();
+      evidence.resync = resynced.connection === 'interrupted' ? 'failed' : 'resynced';
+    } catch {
+      evidence.resync = 'failed';
+    }
+  } catch (error) {
+    evidence.opened = 'failed';
+    evidence.failure = error instanceof Error ? error.message : String(error); // 异常路径也留证据（不含凭据）
+  } finally {
+    try { handle?.close('integration-complete'); } catch { /* 清理不得再抛 */ }
+    runtime.dispose();
   }
-  handle.close('integration-complete');
-  runtime.dispose();
   return evidence;
 }
 
