@@ -247,6 +247,75 @@ func TestDiscoverSetConsumersRequiresDirectorySegment(t *testing.T) {
 		"仅含裸文件名的条目不得产生任何消费方")
 }
 
+// TestDiscoverSetConsumersWorkerSetEntrySites 覆盖 OCR R1 #b0-ocr-r1-7：
+// worker-set 消费方 = 任务 handler 注册位点。B0 注册全在 internal/router
+// （RegisterWorkers 在 16 个 module.go 中均为注释形态），故裸标识符条目回退
+// 扫描该根；B1+ RegisterWorkers 落地模块树时，manifest integration_points.workers
+// 条目必须同步演进为带注册位点后缀的形态（与 routes/lifecycle_hooks 条目同构），
+// 守卫随即从条目推导位点——只改代码不改 manifest 时，模块树内新注册位点会
+// 静默漏报（树内 enqueue 引用与注册位点无法用标识符引用区分，见
+// internal/modules/datasource/scheduler.go），而 router 旧注册删除后已登记
+// consumers 会批量假 vanished。
+func TestDiscoverSetConsumersWorkerSetEntrySites(t *testing.T) {
+	// 1. 条目带注册位点后缀：直接从条目推导（含模块树内位点），不依赖扫描根。
+	require.Equal(t,
+		[]string{"internal/modules/identity/workers.go"},
+		discoverSetConsumers(&Discovery{}, "worker-set",
+			[]string{"TypeFoo — internal/modules/identity/workers.go:12"}),
+		"带位点后缀的条目必须从条目推导注册位点")
+
+	// 磁盘 fixture：router 旧注册未删 + 模块树内引用并存（迁移中间态形态）。
+	root := cloneContractRepo(t)
+	writeWorkerSiteFiles(t, root,
+		"internal/router/task.go", "package router\n"+
+			"\n"+
+			"import \"github.com/Tencent/WeKnora/internal/types\"\n"+
+			"\n"+
+			"func RegisterTasks() { _ = types.TypeFoo }\n",
+		"internal/modules/identity/workers.go", "package identity\n"+
+			"\n"+
+			"import \"github.com/Tencent/WeKnora/internal/types\"\n"+
+			"\n"+
+			"func RegisterWorkers() { _ = types.TypeFoo }\n",
+	)
+	d := workerSiteDiscovery(t, root)
+
+	// 2. 混合中间态：条目已登记模块树位点 + router 旧注册仍在，两个真实
+	// 引用位点都必须被发现（防止迁移期假 vanished / 漏报）。
+	require.Equal(t,
+		[]string{"internal/modules/identity/workers.go", "internal/router/task.go"},
+		discoverSetConsumers(d, "worker-set",
+			[]string{"TypeFoo — internal/modules/identity/workers.go:12"}))
+
+	// 3. B0 裸标识符条目：回退扫描 internal/router 注册根；模块树内裸标识符
+	// 引用不是登记口径（现状行为回归锚，条目更新义务由注释登记）。
+	require.Equal(t,
+		[]string{"internal/router/task.go"},
+		discoverSetConsumers(d, "worker-set", []string{"TypeFoo"}))
+}
+
+// writeWorkerSiteFiles 在克隆 fixture 中写入相对路径 rel 的文件（自动建目录）。
+func writeWorkerSiteFiles(t *testing.T, root string, relContents ...string) {
+	t.Helper()
+	if len(relContents)%2 != 0 {
+		t.Fatalf("relContents 必须是 (rel, content) 偶数项，got %d", len(relContents))
+	}
+	for i := 0; i < len(relContents); i += 2 {
+		rel, content := relContents[i], relContents[i+1]
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte(content), 0o644))
+	}
+}
+
+// workerSiteDiscovery 从磁盘重新发现 Go 树（含新写入的 worker 位点文件）。
+func workerSiteDiscovery(t *testing.T, root string) *Discovery {
+	t.Helper()
+	goFiles, imports, err := discoverGoTree(root)
+	require.NoError(t, err)
+	return &Discovery{Root: root, GoFiles: goFiles, Imports: imports}
+}
+
 // TestContractCheckDiagnostics 表驱动覆盖 Review Focus：
 // 符号缺失、签名漂移、未记录新消费方、消费方消失、消费方导入 /adapters 或
 // 其他模块非公开子包、集合漂移/缺失、基线漂移、门面形态/计数矛盾、特征化测试缺失。

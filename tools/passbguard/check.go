@@ -800,9 +800,16 @@ func moduleOfPath(p string) string {
 	return rest
 }
 
+// workerRegisterRootPrefix 是 B0 阶段 worker handler 注册根：B0 的任务注册
+// 全部位于 internal/router/{task,sync_task}.go（17 条 worker-set 契约的登记
+// consumers 去重后只有这 3 个 router 文件），裸标识符条目以该根为扫描范围。
+const workerRegisterRootPrefix = "internal/router/"
+
 // discoverSetConsumers 发现组合面 set 的注册/装配位点：
 //   - route-set / lifecycle-set：manifest 条目中引用的 .go 文件（去重排序）；
-//   - worker-set：internal/router 下引用任一任务类型标识符的非测试文件。
+//   - worker-set：见下方 OCR R1 #b0-ocr-r1-7 义务说明——条目带注册位点后缀
+//     时从条目推导；裸标识符条目（B0 形态）回退扫描 workerRegisterRootPrefix
+//     下引用任一任务类型标识符的非测试文件。
 func discoverSetConsumers(d *Discovery, kind string, items []string) []string {
 	switch kind {
 	case "route-set", "lifecycle-set":
@@ -819,13 +826,49 @@ func discoverSetConsumers(d *Discovery, kind string, items []string) []string {
 		sort.Strings(out)
 		return out
 	case "worker-set":
+		// OCR R1 #b0-ocr-r1-7（B1+ 演进义务）：worker-set 消费方 = 任务
+		// handler 注册位点。B0 口径正确的前提有二：RegisterWorkers 在 16 个
+		// module.go 中均为注释形态（无模块树内注册位点），注册全在
+		// internal/router；且树内/树外的 enqueue 生产方引用
+		// （internal/application/service/*、internal/modules/datasource/scheduler.go 等）
+		// 与注册位点无法用"标识符被引用"区分，只能靠已知注册根圈定。
+		//
+		// B1+ 落地 RegisterWorkers 到模块树时，必须同步把 manifest
+		// integration_points.workers 条目更新为带注册位点后缀的形态
+		// （"TypeX — internal/modules/<m>/workers.go:NN"，与 routes/
+		// lifecycle_hooks 条目同构），本分支随即从条目推导位点。否则：
+		//   - 只改代码不改 manifest：模块树内新注册位点静默漏报
+		//     （contract-consumer-unrecorded 永不触发）；
+		//   - router 旧注册删除而契约 consumers 未更新：已登记 consumers
+		//     批量假 vanished（contract-consumer-vanished 误报）。
+		seen := map[string]bool{}
 		var out []string
+		// 1) 带位点后缀的条目：直接从条目推导注册位点（含模块树内位点）。
+		var idents []string // 回退扫描的标识符集合
+		for _, entry := range items {
+			sites := entryFileRE.FindAllStringSubmatch(entry, -1)
+			if base, _, ok := strings.Cut(entry, " — "); ok {
+				// 条目已带位点后缀：位点入集，裸名也进扫描集合——迁移
+				// 中间态（新位点已登记、router 旧注册未删）两个真实引用
+				// 位点都必须被发现。
+				idents = append(idents, base)
+			} else {
+				idents = append(idents, entry) // B0 裸标识符形态
+			}
+			for _, m := range sites {
+				if !seen[m[1]] {
+					seen[m[1]] = true
+					out = append(out, m[1])
+				}
+			}
+		}
+		// 2) 裸标识符回退：扫描 B0 注册根下引用任一标识符的非测试文件。
 		for _, f := range d.GoFiles {
-			if !strings.HasPrefix(f, "internal/router/") || strings.HasSuffix(f, "_test.go") {
+			if !strings.HasPrefix(f, workerRegisterRootPrefix) || strings.HasSuffix(f, "_test.go") {
 				continue
 			}
 			relevant := false
-			for _, taskType := range items {
+			for _, taskType := range idents {
 				if taskType == "" {
 					continue
 				}
@@ -834,7 +877,8 @@ func discoverSetConsumers(d *Discovery, kind string, items []string) []string {
 					break
 				}
 			}
-			if relevant {
+			if relevant && !seen[f] {
+				seen[f] = true
 				out = append(out, f)
 			}
 		}
