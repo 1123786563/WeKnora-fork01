@@ -277,7 +277,7 @@ func (o *Office) propose(ctx context.Context, k, v, r string, rev uint64, src So
 	}
 	pid := uuid.NewString()
 	p := Proposal{ID: pid, Key: k, Value: v, Source: src, Status: "pending"}
-	return o.mutate(ctx, s, "proposed", r, rev, []any{"propose", k, v, src}, func(tx *gorm.DB, next uint64) (Receipt, error) {
+	return o.mutate(ctx, s, "proposed", r, rev, []any{"propose", k, v, rev, src}, func(tx *gorm.DB, next uint64) (Receipt, error) {
 		sb, _ := json.Marshal(src)
 		row := proposal{PublicID: pid, TenantID: s.TenantID, UserID: s.UserID, Key: k, Value: v, Source: string(sb), Status: "pending"}
 		if e := tx.Create(&row).Error; e != nil {
@@ -298,30 +298,23 @@ func (o *Office) confirm(ctx context.Context, pid, k, v, r string, rev uint64, s
 	if e = o.requireSpace(ctx, s); e != nil {
 		return out, e
 	}
-	if r == "" || confirmationSrc.Kind == "" {
+	if r == "" || confirmationSrc.Kind == "" || (pid == "" && (strings.TrimSpace(k) == "" || src.Kind == "")) {
 		return out, ErrInvalidRequest
 	}
-	var p proposal
-	if pid != "" {
-		if e = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND public_id=?", s.TenantID, s.UserID, pid).First(&p).Error; e != nil {
-			return out, ErrProposalNotFound
-		}
-		if p.Status != "pending" {
-			return out, ErrProposalResolved
-		}
-		k, v = p.Key, p.Value
-		src = decodeSource(p.Source)
-	}
-	if strings.TrimSpace(k) == "" || src.Kind == "" {
-		return out, ErrInvalidRequest
-	}
-	return o.mutate(ctx, s, "confirmed", r, rev, []any{"confirm", pid, k, v, src, confirmationSrc}, func(tx *gorm.DB, next uint64) (Receipt, error) {
+	return o.mutate(ctx, s, "confirmed", r, rev, []any{"confirm", pid, k, v, rev, src, confirmationSrc}, func(tx *gorm.DB, next uint64) (Receipt, error) {
 		var prop *Proposal
 		if pid != "" {
 			var row proposal
-			if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND public_id=? AND status='pending'", s.TenantID, s.UserID, pid).First(&row).Error; e != nil {
+			if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND public_id=?", s.TenantID, s.UserID, pid).First(&row).Error; errors.Is(e, gorm.ErrRecordNotFound) {
+				return Receipt{}, ErrProposalNotFound
+			} else if e != nil {
+				return Receipt{}, e
+			}
+			if row.Status != "pending" {
 				return Receipt{}, ErrProposalResolved
 			}
+			k, v = row.Key, row.Value
+			src = decodeSource(row.Source)
 			now := time.Now().UTC()
 			row.Status = "confirmed"
 			row.ResolvedAt = &now
@@ -365,7 +358,7 @@ func (o *Office) dismiss(ctx context.Context, pid, r string, rev uint64, src Sou
 	if pid == "" || r == "" || src.Kind == "" {
 		return out, ErrInvalidRequest
 	}
-	return o.mutate(ctx, s, "dismissed", r, rev, []any{"dismiss", pid, src}, func(tx *gorm.DB, next uint64) (Receipt, error) {
+	return o.mutate(ctx, s, "dismissed", r, rev, []any{"dismiss", pid, rev, src}, func(tx *gorm.DB, next uint64) (Receipt, error) {
 		var p proposal
 		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND public_id=? AND status='pending'", s.TenantID, s.UserID, pid).First(&p).Error; e != nil {
 			return Receipt{}, ErrProposalResolved
@@ -460,18 +453,34 @@ func (o *Office) Changes(ctx context.Context, since uint64) (ChangeSet, error) {
 	if e = o.requireSpace(ctx, s); e != nil {
 		return ChangeSet{}, e
 	}
-	v, e := o.Open(ctx)
+	type changeRow struct {
+		Head          uint64  `gorm:"column:head"`
+		EventRevision *uint64 `gorm:"column:event_revision"`
+		Body          *string `gorm:"column:body"`
+	}
+	var rows []changeRow
+	e = o.db.WithContext(ctx).Table("career_profiles AS cp").
+		Select("cp.revision AS head, cc.revision AS event_revision, cc.body AS body").
+		Joins("LEFT JOIN career_changes AS cc ON cc.tenant_id = cp.tenant_id AND cc.user_id = cp.user_id AND cc.revision > ?", since).
+		Where("cp.tenant_id = ? AND cp.user_id = ?", s.TenantID, s.UserID).
+		Order("cc.revision ASC").Scan(&rows).Error
 	if e != nil {
 		return ChangeSet{}, e
 	}
-	var rows []change
-	if e = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND revision>?", s.TenantID, s.UserID, since).Order("revision ASC").Find(&rows).Error; e != nil {
-		return ChangeSet{}, e
+	head := uint64(0)
+	if len(rows) > 0 {
+		head = rows[0].Head
 	}
-	out := ChangeSet{Revision: v.Revision, Changes: []Change{}}
+	if since > head {
+		return ChangeSet{}, &RevisionConflictError{CurrentRevision: head}
+	}
+	out := ChangeSet{Revision: head, Changes: []Change{}}
 	for _, row := range rows {
+		if row.Body == nil || row.EventRevision == nil {
+			continue
+		}
 		var c Change
-		if e = json.Unmarshal([]byte(row.Body), &c); e != nil {
+		if e = json.Unmarshal([]byte(*row.Body), &c); e != nil {
 			return out, e
 		}
 		out.Changes = append(out.Changes, c)

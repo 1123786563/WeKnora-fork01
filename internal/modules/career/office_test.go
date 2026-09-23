@@ -2,6 +2,7 @@ package career
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -36,6 +37,17 @@ func TestConfirmProposalResolvesAndRetainsConfirmationHistory(t *testing.T) {
 	confirmed, e := o.Act(ctx, "confirm_proposal", p.Proposal.ID, "", "", "c1", 1, Source{Kind: "user_confirmation"})
 	require.NoError(t, e)
 	require.Equal(t, "confirmed", confirmed.Kind)
+	replayed, e := o.Act(ctx, "confirm_proposal", p.Proposal.ID, "", "", "c1", 1, Source{Kind: "user_confirmation"})
+	require.NoError(t, e)
+	confirmedJSON, err := json.Marshal(confirmed)
+	require.NoError(t, err)
+	replayedJSON, err := json.Marshal(replayed)
+	require.NoError(t, err)
+	require.JSONEq(t, string(confirmedJSON), string(replayedJSON))
+	_, e = o.Act(ctx, "confirm_proposal", p.Proposal.ID, "", "", "c1", 1, Source{Kind: "edited_confirmation"})
+	require.ErrorIs(t, e, ErrIdempotencyConflict)
+	_, e = o.Act(ctx, "confirm_proposal", p.Proposal.ID, "", "", "c1", 2, Source{Kind: "user_confirmation"})
+	require.ErrorIs(t, e, ErrIdempotencyConflict)
 	view, e := o.Open(ctx)
 	require.NoError(t, e)
 	require.Len(t, view.Facts, 1)
@@ -66,6 +78,7 @@ func TestDismissProposalAndChangesAreDurableOrderedEvents(t *testing.T) {
 	require.Equal(t, "dismissed", set.Changes[1].Kind)
 	require.Equal(t, "u1", set.Changes[1].Proposal.Confirmation.UserID)
 	require.Equal(t, "user_confirmation", set.Changes[1].Proposal.ResolutionSource.Kind)
+	require.Equal(t, set.Revision, set.Changes[len(set.Changes)-1].Revision)
 	view, e := o.Open(ctx)
 	require.NoError(t, e)
 	require.Empty(t, view.Proposals)
@@ -89,6 +102,11 @@ func TestConfirmedFactVersionsAreImmutable(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, secondClientChanges.Changes, 1)
 	require.Equal(t, "2028", secondClientChanges.Changes[0].Fact.Value)
+	require.Equal(t, secondClientChanges.Revision, secondClientChanges.Changes[0].Revision)
+	_, err = o.Changes(ctx, 3)
+	var conflict *RevisionConflictError
+	require.ErrorAs(t, err, &conflict)
+	require.Equal(t, uint64(2), conflict.CurrentRevision)
 }
 func TestRevisionConflictHasCurrentValueAndIdempotency(t *testing.T) {
 	o, ctx := testOffice(t)
