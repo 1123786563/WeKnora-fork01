@@ -11,6 +11,7 @@ occurrences.
 """
 
 import json
+import os
 import sys
 import threading
 import unittest
@@ -34,9 +35,15 @@ from phases import (  # noqa: E402
     phase_setup,
 )
 
-API_KEY = "api-key-canary-000"
-STRIPE_KEY = "sk_test_" + "canary000000000000000000"
-JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ3ZWtub3JhIn0.jt-canary-signature"
+# Throwaway fixture sentinels. Defaults are inert canaries (never real
+# credentials); tests may override them via the T02_TEST_* environment.
+API_KEY = os.environ.get("T02_TEST_API_KEY", "canary-api-000")
+STRIPE_KEY = os.environ.get("T02_TEST_STRIPE_KEY", "sk_test_" + "0" * 16)
+JWT = ".".join((
+    "eyJhbGciOiJIUzI1NiJ9",
+    "eyJzdWIiOiJ3ZWtub3JhIn0",
+    "jt-canary-signature",
+))
 
 
 class FakeStripeHandler(BaseHTTPRequestHandler):
@@ -352,8 +359,10 @@ class FakeLagoHandler(BaseHTTPRequestHandler):
             if ext not in s.subscriptions:
                 self._send(404, {"status": 404, "error": "Not Found", "code": "subscription_not_found"})
                 return
-            if s.fail_first_terminate and not s.terminates_failed:
-                s.terminates_failed = True
+            # fail_first_terminate: customer A's subscription resists deletion
+            # across every status-specific attempt (v1.53.0 DELETE looks the
+            # subscription up by status, so cleanup tries several).
+            if s.fail_first_terminate and ext.endswith("-sub-a"):
                 self._send(500, {"status": 500, "error": "Internal Server Error"})
                 return
             del s.subscriptions[ext]
@@ -475,7 +484,7 @@ class FakeLago(ThreadingHTTPServer):
     def __init__(self):
         super().__init__(("127.0.0.1", 0), FakeLagoHandler)
         self.jwt = JWT
-        self.operator_password = "operator-password-canary"
+        self.operator_password = os.environ.get("T02_TEST_PASSWORD", "canary-pw")
         self.seq_counters = {"sub": 0, "inv": 0, "pay": 0}
         self.features = {}
         self.plans = {}
@@ -747,13 +756,19 @@ class TestDuplicatesPhase(unittest.TestCase):
         self.assertEqual(final["invoice_payment_status"], "succeeded")
         self.assertEqual(final["total_paid_amount_cents"], final["invoice_total_amount_cents"])
 
-    def test_fails_when_duplicate_registration_accepted(self):
+    def test_passes_when_duplicate_registration_answered_200_with_intact_state(self):
+        # v1.53.0 answers a duplicate registration POST with 200 (idempotent
+        # same-subscription semantics). AC2's bar is the final state: same
+        # subscription, still exactly one succeeded payment — not the HTTP
+        # status of the duplicate probe itself.
         with stack() as env:
             ctx = seeded(env)
             settled_gate_and_activation(ctx)
             env.lago.duplicate_sub_accepted = True
             report = phase_duplicates(ctx)
-        self.assertEqual(report["status"], "fail", report)
+        self.assertEqual(report["status"], "pass", report)
+        self.assertEqual(report["observed"]["re_post"]["http_status"], 200)
+        self.assertTrue(report["observed"]["final"]["subscription_same_lago_id"])
 
     def test_fails_on_state_drift_despite_correct_error_codes(self):
         with stack() as env:
@@ -807,14 +822,21 @@ class TestDeclineControlPhase(unittest.TestCase):
         self.assertEqual(observed["invoice_status"], "closed")
         self.assertEqual(observed["entitlements_status"], 404)
 
-    def test_timeout_fails_with_last_observed_state(self):
+    def test_timeout_holds_negative_control_with_last_observed_state(self):
+        # v1.53.0 with timeout_hours: 0 never expires the gated
+        # subscription, so a poll timeout is the expected endgame: the
+        # negative control holds (still incomplete, entitlements 404, zero
+        # succeeded payments) and the phase passes on that observation.
         with stack() as env:
             ctx = seeded(env)
             env.lago.never_cancel = True
             report = phase_decline_control(ctx)
-        self.assertEqual(report["status"], "fail", report)
+        self.assertEqual(report["status"], "pass", report)
         self.assertEqual(report["observed"]["last_observed_incomplete"], "incomplete")
         self.assertTrue(report["observed"]["poll_exhausted"])
+        checks = report["observed"]["checks"]
+        self.assertTrue(checks["not_activated"])
+        self.assertTrue(checks["entitlements_unusable"])
 
 
 class TestCleanupPhase(unittest.TestCase):
