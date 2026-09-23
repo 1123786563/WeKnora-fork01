@@ -232,3 +232,45 @@ test('a wrapped key of wrong length fails closed instead of being overwritten (R
   const scoped = createScopedVault({ keyStore, storage, cipher: createWebCryptoCipher() });
   await assert.rejects(scoped.open(lease()), /VAULT_KEYSTORE/);
 });
+
+test('concurrent puts do not lose index entries (R1-F12)', async () => {
+  const { vault: scoped } = vault();
+  const store = await scoped.open(lease());
+  await Promise.all(Array.from({ length: 20 }, (_, i) => store.drafts.put({ id: `d${i}`, body: `b${i}` })));
+  const ids = (await store.drafts.list()).map((e) => e.id).sort();
+  assert.deepEqual(ids, Array.from({ length: 20 }, (_, i) => `d${i}`).sort());
+});
+
+test('a corrupt index fails closed instead of being silently orphaned (R1-F12)', async () => {
+  const { keyStore, storage, vault: scoped } = vault();
+  const store = await scoped.open(lease());
+  await store.drafts.put({ id: 'd1', body: 'x' });
+  const scopeKey = await scopeKeyOf(SCOPE_A);
+  await storage.write(`${scopeKey}.ix`, '{not-json');
+  await assert.rejects(store.drafts.list(), /VAULT_INDEX/);
+  await assert.rejects(store.drafts.put({ id: 'd2', body: 'y' }), /VAULT_INDEX/); // 不得覆写索引孤儿化全部行
+});
+
+test('rotate holds the scope lock against concurrent puts (R1-F11)', async () => {
+  const { vault: scoped } = vault();
+  const store = await scoped.open(lease());
+  await store.drafts.put({ id: 'd1', body: 'v1' });
+  const rotated = scoped.rotate(lease());
+  const put = store.drafts.put({ id: 'd2', body: 'v2' });
+  await Promise.all([rotated, put]);
+  assert.equal((await store.drafts.get('d1'))?.body, 'v1');
+  assert.equal((await store.drafts.get('d2'))?.body, 'v2');
+  const reopened = await scoped.open(lease()); // 新会话强制重读 keyStore
+  assert.equal((await reopened.drafts.list()).length, 2); // 重启后无 VAULT_DECRYPT
+});
+
+test('revoke tolerates a corrupt index and still erases key material', async () => {
+  const { storage, vault: scoped } = vault();
+  const store = await scoped.open(lease());
+  await store.drafts.put({ id: 'd1', body: 'x' });
+  const scopeKey = await scopeKeyOf(SCOPE_A);
+  await storage.write(`${scopeKey}.ix`, '{corrupt');
+  await scoped.revoke(lease(), 'dispose');
+  assert.equal(await storage.read(`${scopeKey}.ix`), null);
+  assert.equal(await storage.read(`${scopeKey}.d.${segment('d1')}`), null);
+});

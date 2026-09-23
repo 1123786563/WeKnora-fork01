@@ -56,6 +56,9 @@ export async function scopeKeyOf(scope: LeaseScope): Promise<string> {
 export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
   const sessions = new Map<string, ScopeSession>();
   const sessionFlights = new Map<string, Promise<ScopeSession>>();
+  // 本实例写入过的行 id（Review Focus #1）：索引损坏时 revoke 无法枚举行，
+  // 以写入侧记忆兜底尽力擦除（跨实例残留行的 wrapped key 已被覆写，密文不可解）。
+  const knownRowIds = new Map<string, Set<string>>();
   const text = new TextEncoder();
 
   const randomBytes = (size: number): Uint8Array => {
@@ -101,11 +104,27 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
   const assertDraftId = (id: string): void => {
     if (!DRAFT_ID_PATTERN.test(id) || DRAFT_RESERVED_IDS.has(id)) throw new Error('VAULT_ID');
   };
+  // per-scope 互斥队列（R1-F12/F11）：同一 scope 的仓储操作（含 rotate/revoke）串行执行，
+  // 消除「并发 put 各自读旧索引 → 后写覆盖前写丢条目」与「rotate 期间 put 半新半旧」两类竞态。
+  const scopeTails = new Map<string, Promise<unknown>>();
+  const enqueue = <T>(scopeKey: string, action: () => Promise<T>): Promise<T> => {
+    const tail = scopeTails.get(scopeKey) ?? Promise.resolve();
+    const next = tail.then(action, action);
+    scopeTails.set(scopeKey, next.catch(() => undefined));
+    return next;
+  };
   const readIndex = async (scopeKey: string): Promise<string[]> => {
     const raw = await ports.storage.read(indexKey(scopeKey));
     if (raw === null) return [];
-    const value: unknown = JSON.parse(raw);
-    return Array.isArray(value) && value.every((id) => typeof id === 'string') ? value : [];
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      // 损坏索引 fail closed（R1-F12）：静默按 [] 处理的写入路径会覆写索引、孤儿化全部行。
+      throw new Error('VAULT_INDEX');
+    }
+    if (!Array.isArray(value) || !value.every((id) => typeof id === 'string')) throw new Error('VAULT_INDEX');
+    return value;
   };
   const writeIndex = (scopeKey: string, ids: string[]): Promise<void> => ports.storage.write(indexKey(scopeKey), JSON.stringify(ids));
   const sealRow = async (key: Uint8Array, entry: DraftEntry): Promise<string> => {
@@ -145,32 +164,44 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
         async put(input) {
           assertAccessible(scopeLease, session);
           assertDraftId(input.id);
-          const ids = await readIndex(scopeKey);
-          const entry: DraftEntry = { id: input.id, body: input.body, updatedAt: new Date().toISOString() };
-          await ports.storage.write(rowKey(scopeKey, input.id), await sealRow(session.key, entry));
-          if (!ids.includes(input.id)) await writeIndex(scopeKey, [...ids, input.id]);
+          await enqueue(scopeKey, async () => {
+            const ids = await readIndex(scopeKey);
+            const entry: DraftEntry = { id: input.id, body: input.body, updatedAt: new Date().toISOString() };
+            await ports.storage.write(rowKey(scopeKey, input.id), await sealRow(session.key, entry));
+            let known = knownRowIds.get(scopeKey);
+            if (!known) { known = new Set(); knownRowIds.set(scopeKey, known); }
+            known.add(input.id);
+            if (!ids.includes(input.id)) await writeIndex(scopeKey, [...ids, input.id]);
+          });
         },
         async get(id) {
           assertAccessible(scopeLease, session);
           assertDraftId(id);
-          const raw = await ports.storage.read(rowKey(scopeKey, id));
-          if (raw === null) return undefined;
-          return openRow(session.key, raw);
+          return enqueue(scopeKey, async () => {
+            const raw = await ports.storage.read(rowKey(scopeKey, id));
+            if (raw === null) return undefined;
+            return openRow(session.key, raw);
+          });
         },
         async list() {
           assertAccessible(scopeLease, session);
-          const entries: DraftEntry[] = [];
-          for (const id of await readIndex(scopeKey)) {
-            const raw = await ports.storage.read(rowKey(scopeKey, id));
-            if (raw !== null) entries.push(await openRow(session.key, raw));
-          }
-          return entries;
+          return enqueue(scopeKey, async () => {
+            const ids = await readIndex(scopeKey);
+            // 并行读行（R1-F16b）：索引顺序保持，缺行跳过；单行损坏仍按整体 reject。
+            const rows = await Promise.all(ids.map(async (id) => {
+              const raw = await ports.storage.read(rowKey(scopeKey, id));
+              return raw === null ? undefined : openRow(session.key, raw);
+            }));
+            return rows.filter((row): row is DraftEntry => row !== undefined);
+          });
         },
         async remove(id) {
           assertAccessible(scopeLease, session);
           assertDraftId(id);
-          await ports.storage.delete(rowKey(scopeKey, id));
-          await writeIndex(scopeKey, (await readIndex(scopeKey)).filter((existing) => existing !== id));
+          await enqueue(scopeKey, async () => {
+            await ports.storage.delete(rowKey(scopeKey, id));
+            await writeIndex(scopeKey, (await readIndex(scopeKey)).filter((existing) => existing !== id));
+          });
         },
       };
       return { drafts };
@@ -178,22 +209,37 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     async rotate(scopeLease) {
       if (!leaseActive(scopeLease)) throw new Error('VAULT_LEASE');
       const scopeKey = await scopeKeyOf(requireScope(scopeLease));
-      const session = sessions.get(scopeKey);
-      const oldKey = session && !session.destroyed ? session.key : await ports.keyStore.readWrappedKey(scopeKey);
-      if (!oldKey) return;
-      // 两阶段原子 rotate：任一行解密失败时在任何写入之前中止，健康行保持旧 key 可读。
-      const decrypted: Array<{ id: string; entry: DraftEntry }> = [];
-      for (const id of await readIndex(scopeKey)) {
-        const raw = await ports.storage.read(rowKey(scopeKey, id));
-        if (raw === null) continue;
-        decrypted.push({ id, entry: await openRow(oldKey, raw) });
-      }
-      const newKey = randomBytes(KEY_LENGTH);
-      for (const { id, entry } of decrypted) {
-        await ports.storage.write(rowKey(scopeKey, id), await sealRow(newKey, entry));
-      }
-      await ports.keyStore.writeWrappedKey(scopeKey, newKey);
-      if (session && !session.destroyed) session.key = newKey;
+      await enqueue(scopeKey, async () => {
+        const session = sessions.get(scopeKey);
+        const oldKey = session && !session.destroyed ? session.key : await ports.keyStore.readWrappedKey(scopeKey);
+        if (!oldKey) return;
+        // 两阶段原子 rotate：任一行解密失败时在任何写入之前中止，健康行保持旧 key 可读。
+        const decrypted: Array<{ id: string; entry: DraftEntry }> = [];
+        for (const id of await readIndex(scopeKey)) {
+          const raw = await ports.storage.read(rowKey(scopeKey, id));
+          if (raw === null) continue;
+          decrypted.push({ id, entry: await openRow(oldKey, raw) });
+        }
+        const newKey = randomBytes(KEY_LENGTH);
+        const rewritten: Array<{ id: string; entry: DraftEntry }> = [];
+        try {
+          for (const { id, entry } of decrypted) {
+            await ports.storage.write(rowKey(scopeKey, id), await sealRow(newKey, entry));
+            rewritten.push({ id, entry });
+          }
+        } catch (cause) {
+          // best-effort 回滚至旧 key；回滚再失败则该 scope fail-closed（session 置 destroyed），不留半状态。
+          try {
+            for (const { id, entry } of rewritten) await ports.storage.write(rowKey(scopeKey, id), await sealRow(oldKey, entry));
+          } catch {
+            if (session && !session.destroyed) session.destroyed = true;
+            sessions.delete(scopeKey);
+          }
+          throw cause instanceof Error ? cause : new Error('VAULT_ROTATE', { cause });
+        }
+        await ports.keyStore.writeWrappedKey(scopeKey, newKey);
+        if (session && !session.destroyed) session.key = newKey;
+      });
     },
     async revoke(scopeLease, _reason) {
       const scope = requireScope(scopeLease);
@@ -201,12 +247,17 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
       const session = sessions.get(scopeKey);
       if (session) session.destroyed = true;
       sessions.delete(scopeKey);
-      // 先把 wrapped key 覆写成全新随机值：即使后续删行/删 key 部分失败，旧密文也不可再解。
-      await ports.keyStore.writeWrappedKey(scopeKey, randomBytes(KEY_LENGTH));
-      const ids = await readIndex(scopeKey);
-      for (const id of ids) await ports.storage.delete(rowKey(scopeKey, id));
-      await ports.storage.delete(indexKey(scopeKey));
-      await ports.keyStore.deleteWrappedKey(scopeKey);
+      await enqueue(scopeKey, async () => {
+        // 先把 wrapped key 覆写成全新随机值：即使后续删行/删 key 部分失败，旧密文也不可再解。
+        await ports.keyStore.writeWrappedKey(scopeKey, randomBytes(KEY_LENGTH));
+        // 损坏索引不得中止撤销（Review Focus #1）：吞 VAULT_INDEX，尽力删行与索引键。
+        const indexed = await readIndex(scopeKey).catch(() => [] as string[]);
+        const ids = [...new Set([...indexed, ...(knownRowIds.get(scopeKey) ?? [])])];
+        await Promise.all(ids.map((id) => ports.storage.delete(rowKey(scopeKey, id))));
+        knownRowIds.delete(scopeKey);
+        await ports.storage.delete(indexKey(scopeKey));
+        await ports.keyStore.deleteWrappedKey(scopeKey);
+      });
     },
     inspectPolicy() {
       return { categories: [{ category: 'drafts', retentionDays: RETENTION_DAYS }] };
