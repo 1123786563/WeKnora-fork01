@@ -20,11 +20,17 @@ export function createSecureVaultKeyStore(store: SecureStorePort): KeyStorePort 
   };
 }
 
+/** Android expo-secure-store 每值约 2048 字节软限制：超限静默丢写，显式失败优于静默（R1-F17）。 */
+const SECURE_STORE_MAX_VALUE_BYTES = 2000;
+
 /** OS-backed encrypted-row storage; values are opaque base64 ciphertext from the vault. */
 export function createSecureVaultStorage(store: SecureStorePort): VaultStoragePort {
   return {
     async read(key) { return store.getItemAsync(key); },
-    async write(key, value) { await store.setItemAsync(key, value); },
+    async write(key, value) {
+      if (value.length > SECURE_STORE_MAX_VALUE_BYTES) throw new Error('VAULT_ROW_TOO_LARGE');
+      await store.setItemAsync(key, value);
+    },
     async delete(key) { await store.deleteItemAsync(key); },
   };
 }

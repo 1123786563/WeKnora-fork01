@@ -274,3 +274,28 @@ test('revoke tolerates a corrupt index and still erases key material', async () 
   assert.equal(await storage.read(`${scopeKey}.ix`), null);
   assert.equal(await storage.read(`${scopeKey}.d.${segment('d1')}`), null);
 });
+
+test('a row relocated under another id is rejected (R1-F42)', async () => {
+  const { storage, vault: scoped } = vault();
+  const store = await scoped.open(lease());
+  await store.drafts.put({ id: 'a', body: 'A' });
+  const scopeKey = await scopeKeyOf(SCOPE_A);
+  const rowA = await storage.read(`${scopeKey}.d.${segment('a')}`);
+  await storage.write(`${scopeKey}.d.${segment('b')}`, rowA!); // 把 a 的密文挪到 b 的键下
+  await assert.rejects(store.drafts.get('b'), /VAULT_DECRYPT/);
+});
+
+test('list prunes rows older than the retention window (R1-F14)', async () => {
+  const { keyStore, storage } = vault();
+  const real = new Date();
+  let clock = new Date(real.getTime() - 31 * 24 * 3600 * 1000); // 受控时钟：31 天前
+  const scoped = createScopedVault({ keyStore, storage, cipher: createWebCryptoCipher(), now: () => clock.toISOString() });
+  const store = await scoped.open(lease());
+  await store.drafts.put({ id: 'stale', body: 'old' }); // updatedAt = 31 天前
+  clock = real; // 回到现在
+  await store.drafts.put({ id: 'fresh', body: 'keep' }); // updatedAt = 现在
+  const scopeKey = await scopeKeyOf(SCOPE_A);
+  const listed = await store.drafts.list();
+  assert.deepEqual(listed.map((e) => e.id), ['fresh']);
+  assert.equal(await storage.read(`${scopeKey}.d.${segment('stale')}`), null); // 已被清理
+});

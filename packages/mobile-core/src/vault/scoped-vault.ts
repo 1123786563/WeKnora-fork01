@@ -127,11 +127,14 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     return value;
   };
   const writeIndex = (scopeKey: string, ids: string[]): Promise<void> => ports.storage.write(indexKey(scopeKey), JSON.stringify(ids));
+  const now = (): string => ports.now?.() ?? new Date().toISOString();
   const sealRow = async (key: Uint8Array, entry: DraftEntry): Promise<string> => {
     const sealed = await ports.cipher.seal(key, text.encode(JSON.stringify(entry)));
     return bytesToBase64(sealed);
   };
-  const openRow = async (key: Uint8Array, raw: string): Promise<DraftEntry> => {
+  // expectedId 绑定（R1-F42 最小充分修复）：行内容必须与键上的 id 一致，阻断同 scope 内
+  // 把 A 的密文挪到 B 键下的行移动攻击；不引入 AAD 密文格式变更。
+  const openRow = async (key: Uint8Array, raw: string, expectedId: string): Promise<DraftEntry> => {
     let bytes: Uint8Array;
     try {
       bytes = base64ToBytes(raw);
@@ -143,6 +146,7 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
     if (typeof value !== 'object' || value === null) throw new Error('VAULT_DECRYPT');
     const entry = value as Partial<DraftEntry>;
     if (typeof entry.id !== 'string' || typeof entry.body !== 'string' || typeof entry.updatedAt !== 'string') throw new Error('VAULT_DECRYPT');
+    if (entry.id !== expectedId) throw new Error('VAULT_DECRYPT');
     return { id: entry.id, body: entry.body, updatedAt: entry.updatedAt };
   };
   const requireScope = (scopeLease: ScopeLease): LeaseScope => {
@@ -166,7 +170,7 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
           assertDraftId(input.id);
           await enqueue(scopeKey, async () => {
             const ids = await readIndex(scopeKey);
-            const entry: DraftEntry = { id: input.id, body: input.body, updatedAt: new Date().toISOString() };
+            const entry: DraftEntry = { id: input.id, body: input.body, updatedAt: now() };
             await ports.storage.write(rowKey(scopeKey, input.id), await sealRow(session.key, entry));
             let known = knownRowIds.get(scopeKey);
             if (!known) { known = new Set(); knownRowIds.set(scopeKey, known); }
@@ -180,7 +184,7 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
           return enqueue(scopeKey, async () => {
             const raw = await ports.storage.read(rowKey(scopeKey, id));
             if (raw === null) return undefined;
-            return openRow(session.key, raw);
+            return openRow(session.key, raw, id);
           });
         },
         async list() {
@@ -190,9 +194,18 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
             // 并行读行（R1-F16b）：索引顺序保持，缺行跳过；单行损坏仍按整体 reject。
             const rows = await Promise.all(ids.map(async (id) => {
               const raw = await ports.storage.read(rowKey(scopeKey, id));
-              return raw === null ? undefined : openRow(session.key, raw);
+              return raw === null ? undefined : openRow(session.key, raw, id);
             }));
-            return rows.filter((row): row is DraftEntry => row !== undefined);
+            const entries = rows.filter((row): row is DraftEntry => row !== undefined);
+            // 惰性保留清理（R1-F14）：30 天窗口外的行在遍历时删除并收缩索引。
+            const retentionCutoff = Date.parse(now()) - RETENTION_DAYS * 24 * 3600 * 1000;
+            const retained: string[] = [];
+            for (const entry of entries) {
+              if (Date.parse(entry.updatedAt) < retentionCutoff) await ports.storage.delete(rowKey(scopeKey, entry.id));
+              else retained.push(entry.id);
+            }
+            if (retained.length !== entries.length) await writeIndex(scopeKey, retained);
+            return entries.filter((entry) => Date.parse(entry.updatedAt) >= retentionCutoff);
           });
         },
         async remove(id) {
@@ -218,7 +231,7 @@ export function createScopedVault(ports: ScopedVaultPorts): ScopedVault {
         for (const id of await readIndex(scopeKey)) {
           const raw = await ports.storage.read(rowKey(scopeKey, id));
           if (raw === null) continue;
-          decrypted.push({ id, entry: await openRow(oldKey, raw) });
+          decrypted.push({ id, entry: await openRow(oldKey, raw, id) });
         }
         const newKey = randomBytes(KEY_LENGTH);
         const rewritten: Array<{ id: string; entry: DraftEntry }> = [];

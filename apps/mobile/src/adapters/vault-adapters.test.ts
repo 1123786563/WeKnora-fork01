@@ -43,3 +43,9 @@ test('a corrupt wrapped-key value fails closed with VAULT_KEYSTORE (R1-F18)', as
   const keyStore = createSecureVaultKeyStore(store);
   await assert.rejects(keyStore.readWrappedKey('scope-key'), /VAULT_KEYSTORE/);
 });
+
+test('oversized rows fail loudly instead of vanishing (R1-F17)', async () => {
+  const store = secureStore();
+  const storage = createSecureVaultStorage(store);
+  await assert.rejects(storage.write('k', 'x'.repeat(2001)), /VAULT_ROW_TOO_LARGE/);
+});

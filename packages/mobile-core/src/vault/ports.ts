@@ -24,4 +24,6 @@ export interface ScopedVaultPorts {
   cipher: CipherPort;
   /** 32 bytes of entropy per fresh data key; omit only where Web Crypto is available. */
   randomBytes?: (size: number) => Uint8Array;
+  /** 受控时钟（测试注入）；缺省 new Date().toISOString()。行的 updatedAt 与保留清理共用。 */
+  now?: () => string;
 }
