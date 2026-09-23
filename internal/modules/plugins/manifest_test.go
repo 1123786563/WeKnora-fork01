@@ -83,6 +83,12 @@ func TestValidateManifestRejects(t *testing.T) {
 		func(m *types.PluginManifest) { m.Description = "d\uFEFFbom" },                               // Cf BOM
 		func(m *types.PluginManifest) { m.Auth = nil },                                               // requires_personal_auth 工具要求 PersonalOAuth
 		func(m *types.PluginManifest) { m.Transport.Endpoint = "https://user:pass@example.com/mcp" }, // userinfo 内嵌凭据（OCR T01-R1-F3）
+		// 终评 R5 F9：豁免仅限自由文本的 U+200C/U+200D——其余 Cf 仍拒，且
+		// 名称（标识符面）不豁免任何 Cf。
+		func(m *types.PluginManifest) { m.Description = "d\u200Bzwsp" },   // Cf 零宽空格（描述面仍拒）
+		func(m *types.PluginManifest) { m.Description = "d\u202Erlo" },    // Cf 双向覆盖符（描述面仍拒）
+		func(m *types.PluginManifest) { m.Name = "名\u200D称" },             // 名称不豁免 ZWJ
+		func(m *types.PluginManifest) { m.Tools[0].Name = "t\u200Ctool" }, // 工具名不豁免 ZWNJ
 	}
 	for i, mutate := range cases {
 		m := validManifest()
@@ -120,6 +126,19 @@ func TestValidateManifestBoundsURLErrorEcho(t *testing.T) {
 func TestValidateManifestAcceptsMultilineDescription(t *testing.T) {
 	m := validManifest()
 	m.Description = "line one\nline two\tindented\r\nwindows"
+	require.NoError(t, ValidateManifest(m))
+}
+
+// TestValidateManifestAcceptsZWJAndZWNJDescription (final-review R5 F9,
+// round-3 finding): U+200D (ZWJ) is a mandatory joiner inside legitimate
+// compound emoji sequences (family, mixed-skin-tone handshake) and U+200C
+// (ZWNJ) is required by some orthographies (Persian). Blanket Cf rejection
+// denied benign remote-controlled descriptions at the install gate with no
+// way for the admin to fix them. Free text exempts exactly these two runes;
+// names keep rejecting all Cf (see TestValidateManifestRejects).
+func TestValidateManifestAcceptsZWJAndZWNJDescription(t *testing.T) {
+	m := validManifest()
+	m.Description = "家庭待办 👨‍👩‍👧‍👦 与混肤色握手 🫱🏿‍🫲🏽，含波斯语正字法 می‌خواهم"
 	require.NoError(t, ValidateManifest(m))
 }
 

@@ -232,8 +232,16 @@ func validateName(where, name string, maxRunes int) error {
 // CR are allowed — multi-line descriptions are legitimate — but every other
 // control character AND every format (Cf) character is rejected: bidi
 // overrides and zero-width marks would visually reorder or alter the text
-// shown to admins and members. Private-use (Co) characters keep their
-// ordinary visible glyphs and stay legal in free text. Shared by the
+// shown to admins and members. Two exceptions (final-review R5 F9, round-3
+// finding): U+200C (ZWNJ) and U+200D (ZWJ) are mandatory parts of legitimate
+// compound emoji sequences (family, mixed-skin-tone handshake) and of some
+// orthographies (Persian); blanket Cf rejection denied benign
+// remote-controlled descriptions at the install gate with no way for the
+// admin to fix them. Residual trade-off, recorded here: a ZWJ/ZWNJ between
+// ASCII letters can still visually hide text in the review surface — names
+// (validateName) keep rejecting ALL Cf/Co/Zl/Zp, and this exemption is
+// limited to these two runes in free text. Private-use (Co) characters keep
+// their ordinary visible glyphs and stay legal in free text. Shared by the
 // manifest validator and BuildVerifiedSnapshot, so live endpoint data passes
 // the same hygiene the manifest does.
 func validateDescription(where, description string) error {
@@ -241,7 +249,7 @@ func validateDescription(where, description string) error {
 		return fmt.Errorf("%s exceeds %d characters", where, maxDescriptionRunes)
 	}
 	for _, r := range description {
-		if r != '\n' && r != '\r' && r != '\t' &&
+		if r != '\n' && r != '\r' && r != '\t' && r != '\u200c' && r != '\u200d' &&
 			(unicode.IsControl(r) || unicode.Is(unicode.Cf, r)) {
 			return fmt.Errorf("%s must not contain control or format characters (U+%04X)", where, r)
 		}
