@@ -219,9 +219,8 @@ test('workspace onboarding keeps the Vue workspace mark before the heading', asy
   const mark = document.querySelector('[data-testid="workspace-mark"]') as HTMLElement | null;
   assert.ok(mark, 'Vue renders a workspace mark above the onboarding heading');
   assert.equal(mark?.getAttribute('aria-hidden'), 'true');
-  assert.match(mark?.className ?? '', /h-16/);
-  assert.match(mark?.className ?? '', /w-16/);
-  assert.match(mark?.className ?? '', /rounded-\[18px\]/);
+  // S7：utilities 平移为 auth-u.css 语义类（h-16 w-16 rounded-[18px] → .wk-onb-1）
+  assert.match(mark?.className ?? '', /wk-onb-1/);
   assert.equal(mark?.querySelector('svg')?.getAttribute('width'), '30');
   assert.equal(mark?.nextElementSibling?.tagName, 'H1');
 });

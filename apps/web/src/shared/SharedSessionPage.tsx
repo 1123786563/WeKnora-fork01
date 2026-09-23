@@ -10,6 +10,7 @@ import { formatMessage, type Locale } from '@weknora/i18n';
 import { useAppLocale } from '../i18n.ts';
 import { isShareLinkInvalidError, normalizeShareToken } from '../chat/session-share.ts';
 import { messageReferenceCount, queryHistoryDateParts, sessionSourceText } from '../settings/QueryHistoryPanel.tsx';
+import './shared-u.css';
 
 type SharedLoadState =
   | { phase: 'loading' }
@@ -51,21 +52,21 @@ export function SharedSessionPage({ client, token }: { client: WeKnoraClient; to
   }, [client, shareToken, reloadCount]);
 
   if (state.phase === 'loading') {
-    return <main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12" data-testid="shared-session-loading"><p role="status">{t('common.loading')}</p></main>;
+    return <main className="wk-page wk-page--std" data-testid="shared-session-loading"><p role="status">{t('common.loading')}</p></main>;
   }
   if (state.phase === 'invalid') {
     return (
-      <main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12" data-testid="shared-session-invalid">
-        <h1 className="m-0 mb-[8px] text-[20px] font-semibold text-[rgba(23,26,29,0.92)]">{t('settings.queryHistory.sharedInvalid')}</h1>
-        <p className="m-0 text-[13px] text-[#8a96a8]">{t('settings.queryHistory.sharedInvalidHint')}</p>
+      <main className="wk-page wk-page--std" data-testid="shared-session-invalid">
+        <h1 className="wk-shared-1">{t('settings.queryHistory.sharedInvalid')}</h1>
+        <p className="wk-shared-2">{t('settings.queryHistory.sharedInvalidHint')}</p>
       </main>
     );
   }
   if (state.phase === 'error') {
     return (
-      <main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12" data-testid="shared-session-error" role="alert">
-        <p className="m-0 mb-[8px] text-[13px] text-[#b42318]">{state.message || t('settings.queryHistory.sharedLoadFailed')}</p>
-        <button type="button" className="min-h-[32px] cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] text-[13px] hover:bg-[#f3f3f3]" onClick={() => setReloadCount((count) => count + 1)}>{t('common.retry')}</button>
+      <main className="wk-page wk-page--std" data-testid="shared-session-error" role="alert">
+        <p className="wk-shared-3">{state.message || t('settings.queryHistory.sharedLoadFailed')}</p>
+        <button type="button" className="wk-shared-4" onClick={() => setReloadCount((count) => count + 1)}>{t('common.retry')}</button>
       </main>
     );
   }
@@ -78,40 +79,40 @@ export function SharedSessionPage({ client, token }: { client: WeKnoraClient; to
     [t('settings.queryHistory.colEngine'), typeof session.engine_type === 'string' && session.engine_type ? session.engine_type : '—'],
   ];
   return (
-    <main className="wk-page mx-auto box-border max-w-[960px] px-5 py-10" data-testid="shared-session-page" aria-label={t('settings.queryHistory.sharedPageTitle')}>
-      <header className="mb-[16px] flex flex-col gap-[6px] border-b border-[#eef1f5] pb-[14px]">
-        <div className="flex flex-wrap items-center gap-[8px]">
-          <h1 className="m-0 break-all text-[20px] font-semibold text-[rgba(23,26,29,0.92)]">{session.title}</h1>
-          <span className="inline-flex shrink-0 items-center rounded-[999px] border border-[rgba(46,109,230,0.22)] bg-[rgba(46,109,230,0.08)] px-[7px] text-xs leading-[18px] text-[#2f5ca8]" data-testid="shared-session-readonly-badge">{t('settings.queryHistory.sharedReadonlyBadge')}</span>
+    <main className="wk-page wk-page--std wk-shared-main" data-testid="shared-session-page" aria-label={t('settings.queryHistory.sharedPageTitle')}>
+      <header className="wk-shared-5">
+        <div className="wk-shared-6">
+          <h1 className="wk-shared-7">{session.title}</h1>
+          <span className="wk-shared-8" data-testid="shared-session-readonly-badge">{t('settings.queryHistory.sharedReadonlyBadge')}</span>
         </div>
-        <dl className="m-0 flex flex-wrap gap-x-[16px] gap-y-[4px] text-xs text-[#8a96a8]">
+        <dl className="gap-x-[16px] gap-y-[4px] wk-shared-9">
           {meta.map(([label, value]) => (
-            <div key={label} className="flex items-center gap-[4px]">
+            <div key={label} className="wk-shared-10">
               <dt>{label}</dt>
-              <dd className="m-0 text-[rgba(23,26,29,0.75)]">{value}</dd>
+              <dd className="wk-shared-11">{value}</dd>
             </div>
           ))}
         </dl>
       </header>
-      {messages.length === 0 ? <p className="m-0 text-[13px] text-[#8a96a8]">{t('common.empty')}</p> : (
-        <ol className="m-0 flex list-none flex-col gap-[10px] p-0">
+      {messages.length === 0 ? <p className="wk-shared-2">{t('common.empty')}</p> : (
+        <ol className="wk-shared-12">
           {messages.map((message) => {
             const refs = messageReferenceCount(message);
             return (
-              <li key={message.id} className="rounded-[8px] border border-[rgba(120,135,155,0.18)] bg-[#f7f9fb] p-[12px]">
-                <div className="mb-[6px] flex items-center gap-[8px]">
-                  <span className={`inline-flex shrink-0 whitespace-nowrap rounded-[999px] border px-[7px] text-xs leading-[18px] ${ROLE_TONE[message.role]}`}>
+              <li key={message.id} className="wk-shared-13">
+                <div className="wk-shared-14">
+                  <span className={`wk-shared-18${ROLE_TONE[message.role]}`}>
                     {message.role === 'user' ? t('settings.queryHistory.roleUser') : message.role === 'assistant' ? t('settings.queryHistory.roleAssistant') : t('settings.queryHistory.roleSystem')}
                   </span>
-                  {refs > 0 ? <span className="inline-flex shrink-0 items-center gap-[4px] rounded-[999px] border border-[rgba(120,135,155,0.2)] bg-[rgba(120,135,155,0.08)] px-[7px] text-xs leading-[18px] text-[#5c6b83]">{t('settings.queryHistory.refCount', { n: refs })}</span> : null}
+                  {refs > 0 ? <span className="wk-shared-15">{t('settings.queryHistory.refCount', { n: refs })}</span> : null}
                 </div>
-                <p className="m-0 whitespace-pre-wrap break-all text-[13px] leading-[1.55] text-[rgba(23,26,29,0.92)]">{message.content}</p>
+                <p className="wk-shared-16">{message.content}</p>
               </li>
             );
           })}
         </ol>
       )}
-      {truncated ? <p className="m-0 mt-[10px] text-xs text-[#9a6a0b]" role="note">{t('settings.queryHistory.truncated')}</p> : null}
+      {truncated ? <p className="wk-shared-17" role="note">{t('settings.queryHistory.truncated')}</p> : null}
     </main>
   );
 }

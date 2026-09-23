@@ -94,7 +94,7 @@ export interface WeKnoraRouterDeps {
 // package's theme.css.
 function RoutePending(props: { loadingText: string }): ReactNode {
   return (
-    <main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12">
+    <main className="wk-page wk-page--std">
       <p role="status">{props.loadingText}</p>
     </main>
   );

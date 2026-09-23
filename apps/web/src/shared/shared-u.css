@@ -1,0 +1,175 @@
+/* shared-u.css — S7 Tailwind utilities 平移（SharedSessionPage）
+ * 生成类前缀 wk-shared-*；值 = 迁移时 utilities 编码的生效值。 */
+
+
+.wk-shared-1 {
+  margin: 0;
+  margin-bottom: 8px;
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(23,26,29,0.92);
+}
+
+.wk-shared-2 {
+  margin: 0;
+  font-size: 13px;
+  color: #8a96a8;
+}
+
+.wk-shared-3 {
+  margin: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #b42318;
+}
+
+.wk-shared-4 {
+  min-height: 32px;
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #dcdcdc;
+  background-color: #fff;
+  padding-inline: 12px;
+  font-size: 13px;
+}
+
+.wk-shared-4:hover {
+  background-color: #f3f3f3;
+}
+
+.wk-shared-5 {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-style-bottom: solid;
+  border-width-bottom: 1px;
+  border-style: solid;
+  border-color: #eef1f5;
+  padding-bottom: 14px;
+}
+
+.wk-shared-6 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-shared-7 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(23,26,29,0.92);
+}
+
+.wk-shared-8 {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  border-radius: 999px;
+  border-style: solid;
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgba(46,109,230,0.22);
+  background-color: rgba(46,109,230,0.08);
+  padding-inline: 7px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #2f5ca8;
+}
+
+.wk-shared-9 {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #8a96a8;
+}
+
+.wk-shared-10 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wk-shared-11 {
+  margin: 0;
+  color: rgba(23,26,29,0.75);
+}
+
+.wk-shared-12 {
+  margin: 0;
+  display: flex;
+  list-style-type: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+}
+
+.wk-shared-13 {
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgba(120,135,155,0.18);
+  background-color: #f7f9fb;
+  padding: 12px;
+}
+
+.wk-shared-14 {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-shared-15 {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  border-style: solid;
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgba(120,135,155,0.2);
+  background-color: rgba(120,135,155,0.08);
+  padding-inline: 7px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #5c6b83;
+}
+
+.wk-shared-16 {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(23,26,29,0.92);
+}
+
+.wk-shared-17 {
+  margin: 0;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #9a6a0b;
+}
+
+.wk-shared-18 {
+  display: inline-flex;
+  flex-shrink: 0;
+  white-space: nowrap;
+  border-radius: 999px;
+  border-style: solid;
+  border-width: 1px;
+  padding-inline: 7px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.wk-shared-main { padding-block: 40px; }

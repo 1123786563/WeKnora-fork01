@@ -42,6 +42,17 @@ body { margin: 0; min-width: 320px; background: var(--wk-color-page, #eee);
   color: var(--td-text-color-primary); }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
+/* S7 壳层回收（判例同 S6 wk-list 集中回收）：.wk-page 标准版（960px 居中）
+   自消费者 utilities 回迁为修饰类规则，值 = 消费者编码的生效值
+   （mx-auto box-border max-w-[960px] px-5/px-[1.25rem] py-12 → 20px/48px）。
+   注意：只挂在原携带该组 utilities 的页面上（.wk-page 裸类消费者现今无
+   样式，保持不动）；宽版 1180px 页由各域 u.css 页规则承载。
+   PlatformShell 壳内由 platform-shell.td.css 的 .plat-shell__outlet .wk-page
+   覆盖为全宽滚动（max-width:none!important，层叠与先前壳层 utility 等价）。 */
+.wk-page--std { margin-inline: auto; box-sizing: border-box; max-width: 960px; padding: 48px 20px; }
+/* NotFoundPage（404）：壳内实际生效值（h-full w-full box-border overflow-y-auto
+   px-[1.25rem] py-12）——不挂 .wk-page，直接全宽滚动版式。 */
+.wk-notfound { height: 100%; width: 100%; box-sizing: border-box; overflow-y: auto; padding: 48px 20px; }
 /* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/
    .wk-list-item-copy/.wk-list-item-actions/.wk-list-actions ± span/select/.wk-form ± label/input/select/
    .wk-form-grid(±--two/--three)/.wk-form-label/.wk-toolbar ± label/select/input) moved to Tailwind

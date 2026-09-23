@@ -1,0 +1,84 @@
+/* auth-u.css — S7 Tailwind utilities 平移（JoinPage / WorkspaceOnboardingPage）
+ * 生成类前缀 wk-join-* / wk-onb-*；值 = 迁移时 utilities 编码的生效值。
+ * 导入顺序：需在本域 .td.css（login.td.css）之前——冲突时以 .td.css 为准（保持既有层叠）。 */
+
+
+.wk-join-1 {
+  font-size: clamp(1.8rem,5vw,2.5rem);
+  margin-block: 0.35rem;
+}
+
+
+.wk-onb-1 {
+  margin-inline: auto;
+  margin-bottom: 22px;
+  display: flex;
+  height: 64px;
+  width: 64px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  background-color: color-mix(in srgb, #2e6de6 10%, transparent);
+  color: #2e6de6;
+}
+
+.wk-onb-2 {
+  font-size: clamp(1.8rem,5vw,2.5rem);
+  margin-block: 0.35rem;
+}
+
+.wk-onb-3 {
+  color: #66758b;
+}
+
+.wk-onb-4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-onb-5 {
+  color: #2e6de6;
+  flex-shrink: 0;
+}
+
+.wk-onb-6 {
+  width: min(480px,100%) !important;
+}
+
+.wk-onb-7 {
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.wk-onb-8 {
+  display: grid;
+  gap: 4px;
+}
+
+.wk-onb-9 {
+  border-radius: 6px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #b8c5d6;
+  padding: 0.55rem;
+}
+
+.wk-onb-10 {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  padding-inline: 0.6rem;
+  padding-block: 0.5rem;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-onb-11 {
+  width: min(560px,100%) !important;
+}
