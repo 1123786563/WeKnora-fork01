@@ -8,16 +8,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/utils"
@@ -338,6 +341,94 @@ func TestValidateBaseURLRejectsEmptyHostname(t *testing.T) {
 	require.Error(t, validateBaseURL("BaseURL", "http://:8020"), "host-only URL must not pass")
 	require.Error(t, validateBaseURL("JiraBaseURL", "https://:443"))
 	require.NoError(t, validateBaseURL("BaseURL", "http://127.0.0.1:8020"))
+}
+
+// --- 跨任务转交 R7：main.go 三项 + jira.go 输出封顶 ---
+
+// TestValidateBaseURLRejectsUnspecifiedHost（T01-R2-F7）：PLUGIN_LISTEN_ADDR
+// ="0.0.0.0:8020" 且未设 PLUGIN_BASE_URL 时回退拼出 "http://0.0.0.0:8020"
+// ——hostname 非空可过校验，服务带着不可用元数据地址静默启动（OAuth 元数据
+// /WWW-Authenticate/同意页表单全部指向 0.0.0.0，授权流必然失败）。非具体
+// host 必须拒绝，部署者须显式设置 PLUGIN_BASE_URL。
+func TestValidateBaseURLRejectsUnspecifiedHost(t *testing.T) {
+	require.Error(t, validateBaseURL("BaseURL", "http://0.0.0.0:8020"),
+		"an unspecified IPv4 host must not pass (silent unusable metadata)")
+	require.Error(t, validateBaseURL("BaseURL", "http://[::]:8020"),
+		"an unspecified IPv6 host must not pass")
+	require.NoError(t, validateBaseURL("BaseURL", "http://127.0.0.1:8020"))
+	require.NoError(t, validateBaseURL("BaseURL", "https://plugins.example.com"))
+}
+
+// TestValidateBaseURLRejectsUserinfo（T01-R4-F5）：BaseURL 会传播进 RFC
+// 8414/9728 元数据、WWW-Authenticate challenge 与 manifest endpoint——
+// 内嵌凭据（u.User != nil）与 manifest URL/transport endpoint 两个面已建立
+// 的 userinfo 卫生一致，必须 fail-closed 拒绝。
+func TestValidateBaseURLRejectsUserinfo(t *testing.T) {
+	require.Error(t, validateBaseURL("BaseURL", "https://user:pass@example.com/"),
+		"userinfo credentials must not pass BaseURL validation")
+	require.Error(t, validateBaseURL("JiraBaseURL", "https://token@jira.example.com/"))
+	require.NoError(t, validateBaseURL("BaseURL", "https://example.com/"))
+}
+
+// TestRunShutdownReturnsAfterContextCancel（T01-R2-F6 守卫）：ctx 取消后
+// Run 必须在 Shutdown 超时（5s）内返回且不泄漏监听——活跃 SSE 长连接下
+// 的确定性 RED 不可构造（streamable HTTP 会话状态依赖真实 MCP 握手），
+// 本测试作为无连接快速路径的行为守卫；Close 兜底修复以代码审查保障。
+func TestRunShutdownReturnsAfterContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, Options{
+			BaseURL:     "http://127.0.0.1:8021",
+			JiraBaseURL: "http://127.0.0.1:9",
+			ListenAddr:  "127.0.0.1:0",
+		})
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	_ = deadline                       // 守卫语义见上：只需 cancel 后有限时间返回
+	time.Sleep(200 * time.Millisecond) // 让监听与 Serve goroutine 就绪
+	cancel()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(8 * time.Second):
+		t.Fatal("Run must return shortly after context cancellation")
+	}
+}
+
+// TestRenderIssuesOutputBounded（T01-R4-F2）：工具输出文本无行数/字节封顶
+// ——1000 事项 × 255 字符可达数百 KB 整体进入 CallToolResult（LLM 上下文）。
+// renderIssuesOutput 必须行数/字节双界封顶并追加显式标注（非静默截断）。
+func TestRenderIssuesOutputBounded(t *testing.T) {
+	// 行数界：250 条事项 → 截到 200 行 + 显式标注。
+	many := make([]JiraIssue, 250)
+	for i := range many {
+		many[i] = JiraIssue{Key: fmt.Sprintf("A-%d", i), Summary: "任务", Status: "进行中", Due: "2026-09-25", URL: "https://jira.example.com/browse/A-1"}
+	}
+	out := renderIssuesOutput(many, false)
+	require.LessOrEqual(t, len(strings.Split(out, "\n")), maxToolOutputLines+1, "line cap + at most the notes")
+	require.Contains(t, out, fmt.Sprintf("输出超过 %d 行被截断", maxToolOutputLines),
+		"line truncation must be explicitly annotated")
+	require.NotContains(t, out, "[A-249]", "entries past the line cap must be dropped")
+
+	// 字节界：少量超长行同样触发封顶（截断不产生非法 UTF-8）。
+	fat := make([]JiraIssue, 3)
+	longSummary := strings.Repeat("长", 40000) // 每行 ~120KB
+	for i := range fat {
+		fat[i] = JiraIssue{Key: "B-1", Summary: longSummary}
+	}
+	out = renderIssuesOutput(fat, false)
+	require.LessOrEqual(t, len(out), maxToolOutputBytes+512, "byte cap plus annotation headroom")
+	require.Contains(t, out, fmt.Sprintf("输出超过 %d 字节被截断", maxToolOutputBytes),
+		"byte truncation must be explicitly annotated")
+	require.True(t, utf8.ValidString(out), "byte truncation must cut on rune boundaries")
+
+	// 正常量输出不封顶、不标注；页数截断标注保持原样。
+	normal := []JiraIssue{{Key: "C-1", Summary: "本周任务", Status: "进行中"}}
+	out = renderIssuesOutput(normal, true)
+	require.Contains(t, out, "[C-1] 本周任务")
+	require.NotContains(t, out, "被截断，请到 Jira 查看完整列表\n⚠", "no size annotation expected")
+	require.Contains(t, out, fmt.Sprintf("结果超过 %d 页被截断", maxSearchPages))
 }
 
 // --- OCR T04-R1-10：上游故障不得伪装成凭据错误 ---
@@ -976,4 +1067,120 @@ func TestLookupSessionDoesNotSweepUnrelatedEntries(t *testing.T) {
 	_, expiredStillThere := s.tokens["at-expired"]
 	require.False(t, expiredStillThere,
 		"the looked-up expired entry itself must still be removed on sight")
+}
+
+// --- 跨任务转交 R7：oauth.go 四项（T01-R1-F2 / T01-R2-F5 / T01-R2-F9 / T01-R4-F1 补充） ---
+
+// TestAuthorizeFormRoundTripsEscapedState（T01-R1-F2）：隐藏 state 字段曾用
+// %q 渲染——Go 字面量转义（\\ 等）浏览器不逆转变，含此类字符的合法 state
+// 表单回传值 ≠ 登记键，POST 对未过期 state 400 中断授权流。测试模拟浏览器：
+// 从表单 HTML 提取 hidden state 属性值并做 HTML 实体解码（浏览器只解 HTML
+// 转义，不逆转 Go 字面量转义），用该值 POST 必须命中登记键并成功发码。
+func TestAuthorizeFormRoundTripsEscapedState(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirectURI := "https://client.example/callback"
+	clientID := testRegisterClient(t, base, redirectURI)
+	_, challenge := testPKCE(t)
+	state := `r7\state "<>&` // 含反斜杠、引号与 HTML 元字符
+
+	// 单次 GET 登记并取回表单（同 state 二次 GET 会被防覆盖 409 拒）。
+	q := url.Values{}
+	q.Set("response_type", "code")
+	q.Set("client_id", clientID)
+	q.Set("redirect_uri", redirectURI)
+	q.Set("state", state)
+	q.Set("code_challenge", challenge)
+	q.Set("code_challenge_method", "S256")
+	page, err := http.Get(base + "/authorize?" + q.Encode())
+	require.NoError(t, err)
+	body, err := io.ReadAll(page.Body)
+	_ = page.Body.Close()
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, page.StatusCode)
+	m := regexp.MustCompile(`<input type="hidden" name="state" value="([^"]*)">`).FindSubmatch(body)
+	require.NotNil(t, m, "the consent form must carry the hidden state field")
+	browserState := html.UnescapeString(string(m[1]))
+
+	status, location := testAuthorizePOST(t, base, browserState, "member@example.com", "tok")
+	require.Equal(t, http.StatusFound, status,
+		"the state a browser would submit must match the registered key, location: %s", location)
+	require.Contains(t, location, "code=", "the authorization code must be issued")
+}
+
+// TestRegisterRejectsPartialDecodes（T01-R2-F5）：/register 曾仅在「err!=nil
+// 且 redirect_uris==nil」时拒绝——类型不匹配的注册体（client_name:123）在
+// json 部分解码后 redirect_uris 已填充，会带着空 client_name 入库（本会话
+// 以 json.Decoder 实验证实：UnmarshalTypeError 下已解码字段保留；截断形态
+// 则不发生部分 unmarshal，现行已拒）。解析失败必须一律 400。
+func TestRegisterRejectsPartialDecodes(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	for _, body := range []string{
+		`{"redirect_uris":["https://client.example/cb"],"client_name":123}`, // 类型不匹配，部分解码
+		`{"redirect_uris":["https://client.example/cb"],"client_name":"x`,   // 截断（对照：现行已拒）
+	} {
+		resp, err := http.Post(base+"/register", "application/json", strings.NewReader(body))
+		require.NoError(t, err)
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		require.Equalf(t, http.StatusBadRequest, resp.StatusCode,
+			"partially decoded registration %q must be rejected wholesale", body)
+	}
+}
+
+// TestAuthorizeBoundsCodeChallenge（T01-R2-F9）：code_challenge 是未认证
+// GET /authorize 的存储键成分（随 pendingAuths 驻留 TTL），与 state 同一
+// 威胁面却无长度封顶——1024 × ~1MiB 击穿聚合内存界。RFC 7636 S256 的
+// challenge 恰为 43 个 base64url 字符：超长与非 base64url 字符集都必须拒绝。
+func TestAuthorizeBoundsCodeChallenge(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirectURI := "https://client.example/callback"
+	clientID := testRegisterClient(t, base, redirectURI)
+	_, validChallenge := testPKCE(t)
+	long := strings.Repeat("A", 129)
+	illegal := "!!!not-base64url!!!"
+
+	require.Equal(t, http.StatusBadRequest,
+		testAuthorizeGET(t, base, clientID, redirectURI, "st-long", long),
+		"an overlong code_challenge must be rejected")
+	require.Equal(t, http.StatusBadRequest,
+		testAuthorizeGET(t, base, clientID, redirectURI, "st-illegal", illegal),
+		"non-base64url code_challenge characters must be rejected")
+	require.Equal(t, http.StatusOK,
+		testAuthorizeGET(t, base, clientID, redirectURI, "st-valid", validChallenge),
+		"a legal 43-char base64url challenge must still register")
+}
+
+// TestRefreshTokensBoundedOnExchange（T01-R4-F1 补充，跨任务转交）：tokens
+// 表已由 maxActiveTokens 封顶（终评 R5 F8）；refreshTokens 的写入只发生在
+// 授权码交换（refresh 轮换 1 删 1 增净零），同样按 pendingAuths 的不变量
+// 封窗口内总量——满容 429 且不消费 code（暂时态可重试）。
+func TestRefreshTokensBoundedOnExchange(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirectURI := "https://client.example/callback"
+
+	oldMax := maxRefreshTokens
+	maxRefreshTokens = 1
+	t.Cleanup(func() { maxRefreshTokens = oldMax })
+
+	// 第一次授权流：唯一名额被占用。
+	_, refreshToken := testOAuthFlow(t, base, redirectURI, "member@example.com", "tok")
+	require.NotEmpty(t, refreshToken)
+
+	// 第二次授权流：exchange 满 429，且未消费的 code 保留可重试。
+	clientID := testRegisterClient(t, base, redirectURI)
+	verifier, challenge := testPKCE(t)
+	require.Equal(t, http.StatusOK,
+		testAuthorizeGET(t, base, clientID, redirectURI, "r7-rt-state", challenge))
+	status, location := testAuthorizePOST(t, base, "r7-rt-state", "member@example.com", "tok")
+	require.Equal(t, http.StatusFound, status, "location: %s", location)
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	code := parsed.Query().Get("code")
+	require.NotEmpty(t, code)
+	exStatus, _ := testExchangeCode(t, base, code, verifier, clientID, redirectURI)
+	require.Equal(t, http.StatusTooManyRequests, exStatus,
+		"exchange beyond maxRefreshTokens must be rejected with 429")
+	exStatus, _ = testExchangeCode(t, base, code, verifier, clientID, redirectURI)
+	require.Equal(t, http.StatusTooManyRequests, exStatus,
+		"an unconsumed code must survive a 429 (not burned)")
 }

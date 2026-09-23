@@ -49,6 +49,10 @@ const (
 	// r3-006/r3-007/r4-006/r4-007）：两个端点都是未认证输入面，ParseForm
 	// 前必须套 http.MaxBytesReader——与 /register 的 1MiB JSON 注册体对齐。
 	maxFormBodyBytes = 1 << 20
+	// maxCodeChallengeBytes 封顶 code_challenge 长度（跨任务转交 T01-R2-F9）：
+	// 它与 state 同为未认证输入的存储键成分；RFC 7636 S256 的 challenge 恰为
+	// 43 个 base64url 字符，128 字节余量充分。
+	maxCodeChallengeBytes = 128
 )
 
 var (
@@ -72,6 +76,12 @@ var maxPendingAuths = 1024
 // 窗口内可把 tokens 表推至任意大；pendingAuths 已有同款不变量（OCR
 // T04-R2-3）。var 以便测试改写。
 var maxActiveTokens = 8192
+
+// maxRefreshTokens 封顶窗口内未过期 refresh_token 条目数（跨任务转交 R7
+// T01-R4-F1 补充）：refreshTokens 只在授权码交换时净增（refresh 轮换 1 删
+// 1 增），与 pendingAuths/clients 的「未认证/半认证写入面聚合内存有界」
+// 不变量对齐。var 以便测试改写。
+var maxRefreshTokens = 4096
 
 // oauthServer 是一个简化的 OAuth 2.0 授权码服务器（内存态）：
 //   - RFC 9728 protected-resource / RFC 8414 authorization-server metadata；
@@ -301,10 +311,13 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		RedirectURIs []string `json:"redirect_uris"`
 		ClientName   string   `json:"client_name"`
 	}
-	// 解析失败按空注册处理 → 下面的非空校验拒绝。
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&registration); err != nil && registration.RedirectURIs == nil {
+	// 解析失败一律拒绝（跨任务转交 T01-R2-F5）：encoding/json 在类型不匹配
+	// 等错误下会保留已成功解码的字段（截断形态则不发生部分 unmarshal），
+	// 「err!=nil 且 redirect_uris==nil 才拒」会让部分解码的注册体带着空
+	// client_name 入库——与 RFC 7591 严格解析不符。
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&registration); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
-			"error": "invalid_client_metadata", "error_description": "request body must be a JSON registration document with redirect_uris",
+			"error": "invalid_client_metadata", "error_description": "request body must be a valid JSON registration document with redirect_uris",
 		})
 		return
 	}
@@ -463,7 +476,7 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 <p>⚠ 请核对以上请求方与跳转地址；不认识请勿输入凭据。</p>
 <p>输入你的 Jira 邮箱与 API token（仅用于本次授权验证，服务不保存凭据）。</p>
 <form method="POST" action="/authorize">
-<input type="hidden" name="state" value=%q>
+<input type="hidden" name="state" value="%s">
 <label>邮箱 <input type="email" name="email" required autocomplete="off"></label><br>
 <label>API token <input type="password" name="api_token" required autocomplete="off"></label><br>
 <button type="submit">授权</button>
@@ -520,10 +533,33 @@ func (s *oauthServer) validateAuthorizationRequest(req authorizationRequest, res
 	if req.CodeChallenge == "" {
 		return registeredClient{}, fmt.Errorf("code_challenge is required (PKCE)")
 	}
+	// 跨任务转交 T01-R2-F9：code_challenge 与 state 同为未认证 GET
+	// /authorize 的存储键成分（随 pendingAuths 驻留 TTL），必须同样封顶——
+	// 否则 1024 × ~1MiB 击穿聚合内存界。RFC 7636 S256 的 challenge 恰为
+	// 43 个 base64url 字符，字符集一并收紧。
+	if len(req.CodeChallenge) > maxCodeChallengeBytes {
+		return registeredClient{}, fmt.Errorf("code_challenge is too long")
+	}
+	if !isBase64URL(req.CodeChallenge) {
+		return registeredClient{}, fmt.Errorf("code_challenge must contain base64url characters only")
+	}
 	if req.CodeChallengeMethod != "S256" {
 		return registeredClient{}, fmt.Errorf("code_challenge_method must be S256")
 	}
 	return client, nil
+}
+
+// isBase64URL 报告 s 是否只含 base64url 字母表字符（RFC 4648 §5：A-Z、
+// a-z、0-9、-、_，无填充）——PKCE S256 challenge 的规范字符集。
+func isBase64URL(s string) bool {
+	for _, c := range s {
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '-', c == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // submitAuthorizeForm 处理凭据提交：凭据经 Jira /rest/api/3/myself 验证成功
@@ -655,11 +691,13 @@ func (s *oauthServer) exchangeCode(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	s.mu.Lock()
 	s.sweepExpiredLocked(now)
-	// 终评 R5 F8：先清扫再查容量（过期条目即时释放名额）。满容时不消费
-	// code——容量是暂时态，客户端可稍后重试而非重启整条授权流。检查与
-	// 后续写入跨临界区的并发窗口仅允许临时超出并发请求数条，稳态上界
-	// = maxActiveTokens + 并发数，非无界。
-	if len(s.tokens) >= maxActiveTokens {
+	// 终评 R5 F8 + 跨任务转交 R7（T01-R4-F1 补充）：先清扫再查容量（过期
+	// 条目即时释放名额）。tokens 与 refreshTokens 任一满容即 429——满容时
+	// 不消费 code，容量是暂时态，客户端可稍后重试而非重启整条授权流。检查
+	// 与后续写入跨临界区的并发窗口仅允许临时超出并发请求数条，稳态上界
+	// = 上限 + 并发数，非无界（refresh 轮换对 refreshTokens 1 删 1 增，不受
+	// 该上限影响）。
+	if len(s.tokens) >= maxActiveTokens || len(s.refreshTokens) >= maxRefreshTokens {
 		s.mu.Unlock()
 		writeJSON(w, http.StatusTooManyRequests, map[string]any{
 			"error": "temporarily_unavailable", "error_description": "too many active tokens; retry later",
