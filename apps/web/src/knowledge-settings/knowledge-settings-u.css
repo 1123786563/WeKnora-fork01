@@ -1,0 +1,220 @@
+/* knowledge-settings-u.css — S7 Tailwind utilities 平移（knowledge-settings 域漂零段：KBShareSettingsSection 等）
+ * 前缀见各规则；值 = utilities 编码的生效值。导入顺序：须在本域 .td.css 之前。 */
+
+
+.wk-kss-1 {
+  display: grid;
+  gap: 12px;
+}
+
+.wk-kss-2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wk-kss-3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-kss-4 {
+  font-weight: 600;
+}
+
+.wk-kss-5 {
+  display: inline-flex;
+  min-width: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background-color: #f3f3f3;
+  padding-inline: 0.4rem;
+  padding-block: 0.05rem;
+  font-size: 12px;
+  color: #66758b;
+}
+
+.wk-kss-6 {
+  position: relative;
+  display: inline-flex;
+}
+
+.wk-kss-7 {
+  position: absolute;
+  right: 0;
+  top: calc(100%+4px);
+  z-index: 20;
+  display: grid;
+  max-width: 380px;
+  gap: 4px;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #dce3ed;
+  background-color: #ffffff;
+  padding: 12px;
+  font-size: 12px;
+  box-shadow: 0 8px 20px rgb(16 24 40/14%);
+}
+
+.wk-kss-8 {
+  box-sizing: border-box;
+  min-height: 2rem;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #cbd5e1;
+  background-color: #ffffff;
+  padding-inline: 0.55rem;
+  padding-block: 0.3rem;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.wk-kss-9 {
+  display: inline-flex;
+  height: 28px;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #cbd5e1;
+  font-size: 14px;
+}
+
+.wk-kss-10 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.wk-kss-11 {
+  display: grid;
+  gap: 12px;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #dce3ed;
+  background-color: #ffffff;
+  padding: 12px;
+}
+
+.wk-kss-12 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.wk-kss-13 {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 14px;
+}
+
+.wk-kss-14 {
+  margin: 0;
+  font-size: 12px;
+  color: #66758b;
+}
+
+.wk-kss-15 {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wk-kss-16 {
+  margin: 0;
+  font-size: 14px;
+  color: #66758b;
+}
+
+.wk-kss-17 {
+  overflow: auto;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #edf0f5;
+}
+
+.wk-kss-18 {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.wk-kss-19 {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-style: solid;
+  border-color: #edf0f5;
+  background-color: #f3f3f3;
+  text-align: left;
+  font-size: 12px;
+  color: #66758b;
+}
+
+.wk-kss-20 {
+  padding-inline: 12px;
+  padding-block: 8px;
+}
+
+.wk-kss-21 {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-style: solid;
+  border-color: #edf0f5;
+}
+
+.wk-kss-21:last-child {
+  border-style: solid;
+  border-width: 0;
+}
+
+.wk-kss-22 {
+  display: grid;
+}
+
+.wk-kss-23 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-kss-24 {
+  color: #66758b;
+}
+
+.wk-kss-25 {
+  padding-inline: 12px;
+  padding-block: 8px;
+  color: #66758b;
+}
+
+.wk-kss-26 {
+  font-size: 12px;
+}
+
+.wk-kss-27 {
+  border-radius: 999px;
+  padding-inline: 8px;
+  padding-block: 2px;
+  font-size: 12px;
+}
+
+.wk-kss-28 {
+  background-color: #fffaeb;
+  color: #9a6700;
+}
+
+.wk-kss-29 {
+  background-color: #f3f3f3;
+  color: #66758b;
+}

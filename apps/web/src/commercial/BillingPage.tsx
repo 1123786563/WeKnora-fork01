@@ -5,6 +5,7 @@ import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button } from 'tdesign-react';
 import { Card, Status } from './surface.tsx';
+import './commercial-u.css';
 
 export type CommercialSummaryState =
   | { status: 'success'; summary: CommercialSummary }
@@ -51,9 +52,12 @@ interface BillingPageProps {
 }
 
 // 与 UsagePanel 模型表格同款样式（tailwind utilities）。
-const USAGE_TABLE = 'w-full border-collapse text-[13px]';
-const USAGE_TABLE_CELL = 'border-b border-[#eef1f5] px-[10px] py-[8px] text-left';
-const USAGE_NUMBER_CELL = USAGE_TABLE_CELL + ' text-right tabular-nums';
+const USAGE_TABLE = 'wk-bill-usage-table';
+
+const USAGE_TABLE_CELL = 'wk-bill-usage-table-cell';
+
+const USAGE_NUMBER_CELL =USAGE_TABLE_CELL + 'tabular-nums wk-bill-usage-number-cell';
+
 
 export function BillingPage({ client, scopeController }: BillingPageProps) {
   const [reloadToken, setReloadToken] = useState(0);
@@ -112,10 +116,10 @@ export function BillingPage({ client, scopeController }: BillingPageProps) {
           ) : (
             <table className={USAGE_TABLE} data-testid="billing-usage-table">
               <thead>
-                <tr className="border-b border-[#e7e7ea]">
-                  <th className={USAGE_TABLE_CELL + ' font-semibold'}>资源</th>
-                  <th className={USAGE_NUMBER_CELL + ' font-semibold'}>已用</th>
-                  <th className={USAGE_NUMBER_CELL + ' font-semibold'}>上限</th>
+                <tr className="wk-bill-1">
+                  <th className={USAGE_TABLE_CELL + ' wk-bill-2'}>资源</th>
+                  <th className={USAGE_NUMBER_CELL + ' wk-bill-2'}>已用</th>
+                  <th className={USAGE_NUMBER_CELL + ' wk-bill-2'}>上限</th>
                 </tr>
               </thead>
               <tbody>

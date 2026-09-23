@@ -4,10 +4,11 @@
 // 组件——保留原生标签 + 既有类名；类值与 packages/ui/src/index.tsx:29-37
 // （Card/Status 合并定义处）的 utilities 逐字一致，视觉零变化。
 import type { HTMLAttributes, ReactNode } from 'react';
+import './data-sources-u.css';
 
 /** 语义卡片：白底、line 描边、card 圆角（视觉 = 既有 .wk-card）。 */
 export function Card({ children, className, ...props }: HTMLAttributes<HTMLDivElement> & { children?: ReactNode }) {
-  const classes = ['rounded-card border border-line bg-surface p-4', className].filter(Boolean).join(' ');
+  const classes = ['wk-dsui-card', className].filter(Boolean).join(' ');
   return <section className={classes} {...props}>{children}</section>;
 }
 

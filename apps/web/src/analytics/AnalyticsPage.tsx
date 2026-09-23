@@ -21,6 +21,7 @@ import { formatMessage, isLocale } from '@weknora/i18n';
 import { usePreferredLocale } from '../locale.ts';
 import { AGENT_SERIES, TREND_SERIES } from './chart-series.ts';
 import { clampAnalyticsRange, defaultAnalyticsRange, type AnalyticsDateRange } from './analytics-range.ts';
+import './analytics-u.css';
 
 /** Tenant membership role, mirroring scopeRuntime.role() (router wiring). */
 export type AnalyticsRole = 'owner' | 'admin' | 'contributor' | 'viewer';
@@ -64,32 +65,56 @@ function csvDownloadName(response: Pick<ClientBinaryResponse, 'headers'>, range:
 }
 
 /* Tailwind v4 utility recipes shared across the page's cards and controls. */
-const AN_PAGE = 'wk-page box-border h-full overflow-y-auto px-[28px] pt-[24px] pb-[32px]';
-const AN_HEADER = 'mb-[20px] flex flex-col gap-[12px]';
-const AN_TITLE = 'm-0 text-[24px] font-semibold leading-[32px] text-[rgba(23,26,29,0.92)]';
-const AN_SUBTITLE = 'm-0 text-[14px] font-normal leading-[20px] text-[rgba(23,26,29,0.6)]';
-const AN_FILTERS = 'flex flex-wrap items-center gap-[8px]';
-const AN_DATE_INPUT = 'box-border h-[32px] rounded-[6px] border border-[#e7e7ea] bg-surface px-[8px] font-[inherit] text-[13px] text-[rgba(23,26,29,0.92)] focus:border-accent focus:outline-none';
-const AN_BTN_PRIMARY = 'box-border inline-flex h-[32px] cursor-pointer items-center justify-center rounded-[3px] border-0 bg-accent px-[15px] font-[inherit] text-[14px] font-medium text-white shadow-[0_2px_8px_rgba(7,192,95,0.25)] [transition:all_.2s_ease] hover:shadow-[0_4px_14px_rgba(7,192,95,0.35)] disabled:cursor-not-allowed disabled:opacity-55';
-const AN_BTN_OUTLINE = 'box-border inline-flex h-[32px] cursor-pointer items-center justify-center rounded-[3px] border border-[rgba(7,192,95,0.5)] bg-surface px-[15px] font-[inherit] text-[14px] font-medium text-accent [transition:all_.2s_ease] hover:border-accent hover:bg-accent-wash';
-const AN_TEXT_INPUT = 'box-border h-[32px] w-[220px] rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] font-[inherit] text-[13px] text-[rgba(23,26,29,0.92)] placeholder:text-[rgba(23,26,29,0.35)] focus:border-accent focus:outline-none';
-const AN_GRID = 'grid grid-cols-1 gap-[16px] min-[1100px]:grid-cols-2';
-const AN_CARD = 'box-border rounded-[10px] border border-[#e7e7ea] bg-surface px-[16px] py-[14px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
-const AN_CARD_TITLE = 'm-0 mb-[8px] text-[15px] font-semibold text-[rgba(23,26,29,0.92)]';
-const AN_STATE = 'flex h-[240px] items-center justify-center text-[13px] text-[rgba(23,26,29,0.4)]';
-const AN_ERROR = 'flex h-[240px] flex-col items-center justify-center gap-[10px] text-[13px] text-[#d54941]';
-const AN_AGENT_BAR = 'mb-[16px] flex flex-wrap items-center gap-[8px]';
-const AN_FORBIDDEN = 'flex h-full min-h-[240px] flex-col items-center justify-center gap-[8px] px-[20px] py-[60px] text-center';
+const AN_PAGE = 'wk-page wk-anl-an-page';
+
+const AN_HEADER = 'wk-anl-an-header';
+
+const AN_TITLE = 'wk-anl-an-title';
+
+const AN_SUBTITLE = 'wk-anl-an-subtitle';
+
+const AN_FILTERS = 'wk-anl-an-filters';
+
+const AN_DATE_INPUT = 'wk-anl-an-date-input';
+
+const AN_BTN_PRIMARY = 'wk-anl-an-btn-primary';
+
+const AN_BTN_OUTLINE = 'wk-anl-an-btn-outline';
+
+const AN_TEXT_INPUT = 'wk-anl-an-text-input placeholder:text-[rgba(23,26,29,0.35)]';
+
+const AN_GRID = 'wk-anl-an-grid';
+
+const AN_CARD = 'wk-anl-an-card';
+
+const AN_CARD_TITLE = 'wk-anl-an-card-title';
+
+const AN_STATE = 'wk-anl-an-state';
+
+const AN_ERROR = 'wk-anl-an-error';
+
+const AN_AGENT_BAR = 'wk-anl-an-agent-bar';
+
+const AN_FORBIDDEN = 'wk-anl-an-forbidden';
+
 // SP12 Task 8 — by-user table, same recipes as the settings UsagePanel so
 // both usage surfaces read as one feature.
-const AN_USAGE_NOTE = 'm-0 mb-[12px] text-[13px] text-[rgba(23,26,29,0.6)]';
-const AN_USAGE_BAR = 'mb-[12px] flex flex-wrap items-center gap-[8px]';
-const AN_USAGE_EXPORT_ERROR = 'text-[13px] text-[#d54941]';
-const AN_USAGE_TABLE = 'w-full border-collapse text-[13px]';
-const AN_USAGE_CELL = 'border-b border-[#eef1f5] px-[10px] py-[8px] text-left';
-const AN_USAGE_NUM = AN_USAGE_CELL + ' text-right tabular-nums';
-const AN_USAGE_PAGER = 'mt-[12px] flex flex-wrap items-center gap-[8px] text-[13px] text-[rgba(23,26,29,0.6)]';
-const AN_BTN_PAGER = 'box-border inline-flex h-[28px] cursor-pointer items-center justify-center rounded-[3px] border border-[rgba(7,192,95,0.5)] bg-surface px-[10px] font-[inherit] text-[12px] font-medium text-accent [transition:all_.2s_ease] hover:border-accent hover:bg-accent-wash disabled:cursor-not-allowed disabled:opacity-55';
+const AN_USAGE_NOTE = 'wk-anl-an-usage-note';
+
+const AN_USAGE_BAR = 'wk-anl-an-usage-bar';
+
+const AN_USAGE_EXPORT_ERROR = 'wk-anl-an-usage-export-error';
+
+const AN_USAGE_TABLE = 'wk-anl-an-usage-table';
+
+const AN_USAGE_CELL = 'wk-anl-an-usage-cell';
+
+const AN_USAGE_NUM =AN_USAGE_CELL + 'tabular-nums wk-anl-an-usage-num';
+
+const AN_USAGE_PAGER = 'wk-anl-an-usage-pager';
+
+const AN_BTN_PAGER = 'wk-anl-an-btn-pager';
+
 
 // Channel stack palette cycles beyond the fourth source.
 const AN_SERIES_COLORS = ['#07c05f', '#2e6de6', '#7c4dff', '#faad14', '#13c2c2', '#e37318', '#8b97a8'];
@@ -307,11 +332,11 @@ export function AnalyticsPage({ client, role }: { client: WeKnoraClient; role?: 
           <p className={AN_SUBTITLE}>{t(locale, 'analytics.subtitle')}</p>
         </div>
         <div className={AN_FILTERS}>
-          <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
+          <label className="wk-anl-1">
             {t(locale, 'analytics.rangeFrom')}
             <input type="date" className={AN_DATE_INPUT} value={fromInput} onChange={(event) => setFromInput(event.target.value)} />
           </label>
-          <label className="flex items-center gap-[6px] text-[13px] text-[rgba(23,26,29,0.6)]">
+          <label className="wk-anl-1">
             {t(locale, 'analytics.rangeTo')}
             <input type="date" className={AN_DATE_INPUT} value={toInput} onChange={(event) => setToInput(event.target.value)} />
           </label>
@@ -431,14 +456,14 @@ export function AnalyticsPage({ client, role }: { client: WeKnoraClient; role?: 
             ) : (
               <table className={AN_USAGE_TABLE} data-testid="usage-by-user-table">
                 <thead>
-                  <tr className="border-b border-[#e7e7ea]">
-                    <th className={AN_USAGE_CELL + ' font-semibold'}>{t(locale, 'analytics.colUser')}</th>
-                    <th className={AN_USAGE_CELL + ' font-semibold'}>{t(locale, 'analytics.colModel')}</th>
-                    <th className={AN_USAGE_CELL + ' font-semibold'}>{t(locale, 'analytics.colWindow')}</th>
-                    <th className={AN_USAGE_NUM + ' font-semibold'}>{t(locale, 'analytics.colInput')}</th>
-                    <th className={AN_USAGE_NUM + ' font-semibold'}>{t(locale, 'analytics.colOutput')}</th>
-                    <th className={AN_USAGE_NUM + ' font-semibold'}>{t(locale, 'analytics.colCache')}</th>
-                    <th className={AN_USAGE_NUM + ' font-semibold'}>{t(locale, 'analytics.colCost')}</th>
+                  <tr className="wk-anl-2">
+                    <th className={AN_USAGE_CELL + ' wk-anl-3'}>{t(locale, 'analytics.colUser')}</th>
+                    <th className={AN_USAGE_CELL + ' wk-anl-3'}>{t(locale, 'analytics.colModel')}</th>
+                    <th className={AN_USAGE_CELL + ' wk-anl-3'}>{t(locale, 'analytics.colWindow')}</th>
+                    <th className={AN_USAGE_NUM + ' wk-anl-3'}>{t(locale, 'analytics.colInput')}</th>
+                    <th className={AN_USAGE_NUM + ' wk-anl-3'}>{t(locale, 'analytics.colOutput')}</th>
+                    <th className={AN_USAGE_NUM + ' wk-anl-3'}>{t(locale, 'analytics.colCache')}</th>
+                    <th className={AN_USAGE_NUM + ' wk-anl-3'}>{t(locale, 'analytics.colCost')}</th>
                   </tr>
                 </thead>
                 <tbody>

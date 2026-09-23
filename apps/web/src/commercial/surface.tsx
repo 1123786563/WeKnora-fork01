@@ -4,10 +4,11 @@
 // 处）的 utilities 逐字一致，视觉零变化。Button 一律走 tdesign-react（本域
 // 调用点 theme="default" variant="outline" 对应旧栈默认白底细描边）。
 import type { HTMLAttributes, ReactNode } from 'react';
+import './commercial-u.css';
 
 /** 语义卡片：白底、line 描边、card 圆角（视觉 = 既有 .wk-card）。 */
 export function Card({ children, className, ...props }: HTMLAttributes<HTMLDivElement> & { children?: ReactNode }) {
-  const classes = ['rounded-card border border-line bg-surface p-4', className].filter(Boolean).join(' ');
+  const classes = ['wk-cs-card', className].filter(Boolean).join(' ');
   return <section className={classes} {...props}>{children}</section>;
 }
 

@@ -6,6 +6,7 @@ import { displayGraphEdges, filterGraphNodes, graphEdgeEndpoints, fitGraphViewpo
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { navigate } from '../platform/navigation.ts';
 import { DocumentsBreadcrumb, ParserHint, type DocumentsBreadcrumbTab, type KBChromeListItem } from '../documents/DocumentsPageChrome.tsx';
+import './knowledge-u.css';
 import '../documents/documents.td.css';
 import { computeSupportedFileTypes, computeUnsupportedFileTypes } from '../documents/page-chrome.ts';
 import { KnowledgeSettingsPage, type KnowledgeSettingsSectionKey } from '../knowledge-settings/KnowledgeSettingsPage.tsx';
@@ -628,10 +629,10 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           border or radius — the Card chrome (rounded-card + border) is a
           React-only addition, so the surface renders as a plain flex region. */}
       <div className="wiki-main-area">
-      <div className="flex min-h-0 h-full w-full flex-1 flex-col overflow-hidden">
-        <div ref={surfaceRef} data-testid="knowledge-graph-surface" className="relative min-h-[420px] flex-1 overflow-hidden bg-white max-[720px]:min-h-[26rem]">
+      <div className="wk-kg-1">
+        <div ref={surfaceRef} data-testid="knowledge-graph-surface" className="wk-kg-2">
           {status.kind === 'success' && graph && visible && visible.nodes.length > 0 ? (
-            <svg className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none active:cursor-grabbing" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={cancelGraphGesture} onClick={(event) => {
+            <svg className="touch-none wk-kg-3" viewBox={`0 0 ${surfaceSize.width} ${surfaceSize.height}`} role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={cancelGraphGesture} onClick={(event) => {
               // Vue setupPanZoom mouseup (L4544-4553): a near-stationary click
               // on the svg background clears the selection, the drawer, and
               // the highlight with it.
@@ -683,7 +684,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                       : (selectedSlug ?? hoveredSlug)!)
                     : null;
                   const stroke = focusSlug ? (GRAPH_NODE_FILL[nodeBySlug.get(focusSlug)?.page_type ?? ''] ?? '#0052d9') : '#c0c4cc';
-                  return <line key={`${edge.source}-${edge.target}`} {...ends} markerEnd={showArrows ? `url(#wk-graph-arrow-end${lit ? '-hl' : ''})` : undefined} markerStart={showArrows && edge.bidirectional ? `url(#wk-graph-arrow-start${lit ? '-hl' : ''})` : undefined} className="stroke-[#c0c4cc] [stroke-width:1.2] [stroke-opacity:0.4]" style={highlight ? { stroke, strokeWidth: lit ? 2 : 1, strokeOpacity: lit ? 0.9 : 0.08, transition: 'stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s' } : undefined} />;
+                  return <line key={`${edge.source}-${edge.target}`} {...ends} markerEnd={showArrows ? `url(#wk-graph-arrow-end${lit ? '-hl' : ''})` : undefined} markerStart={showArrows && edge.bidirectional ? `url(#wk-graph-arrow-start${lit ? '-hl' : ''})` : undefined} className=" wk-graph-arrow-stroke wk-kg-4" style={highlight ? { stroke, strokeWidth: lit ? 2 : 1, strokeOpacity: lit ? 0.9 : 0.08, transition: 'stroke 0.2s, stroke-width 0.2s, stroke-opacity 0.2s' } : undefined} />;
                 })}
                 {visible.nodes.map((node, index) => {
                   const position = displayPositions[index]!;
@@ -699,82 +700,82 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                   // stay at full opacity, everything else fades to 0.2.
                   const enlarged = highlight?.enlargedNodes.has(node.slug) ?? false;
                   const dimmed = highlight ? !highlight.litNodes.has(node.slug) : false;
-                  return <g key={node.slug} className="group/node cursor-pointer outline-none" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} style={{ opacity: dimmed ? 0.2 : 1, transition: 'opacity 0.2s' }} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onMouseEnter={() => enterNodeHover(node.slug)} onMouseLeave={leaveNodeHover} onDoubleClick={() => void load('ego', node.slug)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedSlug(node.slug); void openNode(node); } }}>
-                    {showExpansionRing ? <circle cx={position.x} cy={position.y} r={radius + 3} className="node-expansion-ring [fill:none] [stroke-width:1.5] [stroke-dasharray:3_3]" style={{ stroke: fill, opacity: 0.55 }} aria-hidden="true" /> : null}
-                    {node.familiar ? <circle cx={position.x} cy={position.y} r={radius + 7} className="wk-graph-familiar-ring [fill:none] [stroke:#0052d9] [stroke-width:2]" style={{ opacity: 0.9 }} aria-hidden="true" /> : null}
-                    {selectedSlug === node.slug ? <circle cx={position.x} cy={position.y} r={radius + 5} className="wk-graph-active-ring pointer-events-none [fill:none]" style={{ stroke: fill, strokeWidth: 2, transformOrigin: position.x + "px " + position.y + "px", animation: 'wk-node-active-pulse 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite' }} aria-hidden="true" /> : null}
-                    <circle cx={position.x} cy={position.y} r={enlarged ? radius + 3 : radius} style={{ fill, strokeWidth: enlarged ? 3 : 2, transition: 'r 0.2s, stroke-width 0.2s, opacity 0.2s' }} className="[stroke:#fff] [stroke-width:2]" />
-                    <text x={position.x} y={position.y + radius + 14} textAnchor="middle" className="pointer-events-none text-[11px] [fill:#66758b]">{node.title.length > 14 ? `${node.title.slice(0, 14)}…` : node.title}</text>
-                    {mode === 'ego' && !isEgoCenter && Math.max(0, node.link_count - neighborCount) > 0 ? <g className="node-bloom-btn pointer-events-none opacity-0 transition-opacity group-hover/node:pointer-events-auto group-hover/node:opacity-100" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void bloomNeighbors(node.slug); }}>
-                      <circle cx={position.x + Math.SQRT1_2 * (radius + 6)} cy={position.y - Math.SQRT1_2 * (radius + 6)} r={8} className="[fill:#fff] [stroke:#0052d9] [stroke-width:1.5]" />
-                      <line x1={position.x + Math.SQRT1_2 * (radius + 6)} x2={position.x + Math.SQRT1_2 * (radius + 6)} y1={position.y - Math.SQRT1_2 * (radius + 6) - 4} y2={position.y - Math.SQRT1_2 * (radius + 6) + 4} className="stroke-[#0052d9] [stroke-width:1.8] [stroke-linecap:round]" />
-                      <line x1={position.x + Math.SQRT1_2 * (radius + 6) - 4} x2={position.x + Math.SQRT1_2 * (radius + 6) + 4} y1={position.y - Math.SQRT1_2 * (radius + 6)} y2={position.y - Math.SQRT1_2 * (radius + 6)} className="stroke-[#0052d9] [stroke-width:1.8] [stroke-linecap:round]" />
+                  return <g key={node.slug} className="wk-graph-node-group wk-kg-5" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} style={{ opacity: dimmed ? 0.2 : 1, transition: 'opacity 0.2s' }} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onMouseEnter={() => enterNodeHover(node.slug)} onMouseLeave={leaveNodeHover} onDoubleClick={() => void load('ego', node.slug)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedSlug(node.slug); void openNode(node); } }}>
+                    {showExpansionRing ? <circle cx={position.x} cy={position.y} r={radius + 3} className="node-expansion-ring wk-kg-6" style={{ stroke: fill, opacity: 0.55 }} aria-hidden="true" /> : null}
+                    {node.familiar ? <circle cx={position.x} cy={position.y} r={radius + 7} className="wk-graph-familiar-ring wk-kg-7" style={{ opacity: 0.9 }} aria-hidden="true" /> : null}
+                    {selectedSlug === node.slug ? <circle cx={position.x} cy={position.y} r={radius + 5} className="wk-graph-active-ring wk-kg-8" style={{ stroke: fill, strokeWidth: 2, transformOrigin: position.x + "px " + position.y + "px", animation: 'wk-node-active-pulse 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite' }} aria-hidden="true" /> : null}
+                    <circle cx={position.x} cy={position.y} r={enlarged ? radius + 3 : radius} style={{ fill, strokeWidth: enlarged ? 3 : 2, transition: 'r 0.2s, stroke-width 0.2s, opacity 0.2s' }} className="wk-kg-9" />
+                    <text x={position.x} y={position.y + radius + 14} textAnchor="middle" className="wk-kg-10">{node.title.length > 14 ? `${node.title.slice(0, 14)}…` : node.title}</text>
+                    {mode === 'ego' && !isEgoCenter && Math.max(0, node.link_count - neighborCount) > 0 ? <g className="node-bloom-btn wk-kg-11 wk-graph-bloom" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void bloomNeighbors(node.slug); }}>
+                      <circle cx={position.x + Math.SQRT1_2 * (radius + 6)} cy={position.y - Math.SQRT1_2 * (radius + 6)} r={8} className="wk-kg-12" />
+                      <line x1={position.x + Math.SQRT1_2 * (radius + 6)} x2={position.x + Math.SQRT1_2 * (radius + 6)} y1={position.y - Math.SQRT1_2 * (radius + 6) - 4} y2={position.y - Math.SQRT1_2 * (radius + 6) + 4} className="wk-kg-13 wk-graph-bloom-stroke" />
+                      <line x1={position.x + Math.SQRT1_2 * (radius + 6) - 4} x2={position.x + Math.SQRT1_2 * (radius + 6) + 4} y1={position.y - Math.SQRT1_2 * (radius + 6)} y2={position.y - Math.SQRT1_2 * (radius + 6)} className="wk-kg-13 wk-graph-bloom-stroke" />
                     </g> : null}
                   </g>;
                 })}
               </g>
             </svg>
           ) : null}
-          {graphReady ? <div role="search" className="absolute left-4 top-4 z-10 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3 max-[720px]:left-2 max-[720px]:top-2">
-            <div className="flex items-center gap-2">
+          {graphReady ? <div role="search" className="wk-kg-14">
+            <div className="wk-kg-15">
               {/* Vue renders the graph search as a t-select (filterable):
                   search prefix icon + suffix chevron that rotates when the
                   popup expands, 32px control height, and an empty keyword
                   falls back to the overview snapshot. WikiBrowser.vue L12-17. */}
-              <div ref={searchShellRef} className="relative min-w-0 flex-1">
-                <div className="flex h-8 items-center rounded-[4px] border border-line-input bg-white/95 pl-2 pr-1 shadow-[0_1px_10px_rgba(0,0,0,0.05)] transition-colors focus-within:border-accent">
-                  <svg viewBox="0 0 16 16" aria-hidden="true" className="size-4 shrink-0 text-faint"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M10.4 10.4 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-                  <Input value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => setSearchOpen(true)} onKeyDown={onSearchKeyDown} placeholder={t('wikiBrowser.searchPlaceholder')} role="combobox" aria-expanded={searchOpen} aria-controls="wk-graph-search-results" aria-autocomplete="list" aria-activedescendant={searchActive >= 0 ? `wk-graph-search-option-${searchActive}` : undefined} aria-label={t('wikiBrowser.page.search')} className="h-8 min-w-0 flex-1 rounded-[4px]! border-0! bg-transparent! px-1! shadow-none! outline-none! focus-visible:outline-none!" />
-                  <button type="button" tabIndex={-1} aria-hidden="true" data-testid="graph-search-chevron" className="flex size-6 shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-faint" onClick={() => setSearchOpen((open) => !open)}>
-                    <svg viewBox="0 0 10 6" aria-hidden="true" className={`size-[10px] transition-transform duration-150 ${searchOpen ? 'rotate-180' : ''}`}><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <div ref={searchShellRef} className="wk-kg-16">
+                <div className="bg-white/95 wk-kg-17">
+                  <svg viewBox="0 0 16 16" aria-hidden="true" className="wk-kg-18"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M10.4 10.4 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+                  <Input value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => setSearchOpen(true)} onKeyDown={onSearchKeyDown} placeholder={t('wikiBrowser.searchPlaceholder')} role="combobox" aria-expanded={searchOpen} aria-controls="wk-graph-search-results" aria-autocomplete="list" aria-activedescendant={searchActive >= 0 ? `wk-graph-search-option-${searchActive}` : undefined} aria-label={t('wikiBrowser.page.search')} className="wk-kg-19" />
+                  <button type="button" tabIndex={-1} aria-hidden="true" data-testid="graph-search-chevron" className="wk-kg-20" onClick={() => setSearchOpen((open) => !open)}>
+                    <svg viewBox="0 0 10 6" aria-hidden="true" className={`wk-kg-58 ${searchOpen ? 'wk-kg-59' : ''}`}><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>
                 </div>
-                {searchOpen ? <ul id="wk-graph-search-results" role="listbox" aria-label={t('wikiBrowser.page.search')} className="absolute left-0 top-[calc(100%+4px)] z-[3] m-0 max-h-[16rem] w-full list-none overflow-auto rounded-[6px] border border-[#d8e0eb] bg-white p-1 shadow-[0_8px_20px_rgba(31,52,84,.12)]">
-                  {searchLoading ? <li className="flex h-8 items-center px-2 text-[13px] text-faint">{t('wikiBrowser.loading')}</li> : null}
-                  {!searchLoading && searchOptions.length === 0 ? <li className="flex h-8 items-center px-2 text-[13px] text-faint">{t('common.empty')}</li> : null}
-                  {searchOptions.map((option, index) => <li key={option.slug} id={`wk-graph-search-option-${index}`} role="option" aria-selected={index === searchActive}><button type="button" className={`flex h-8 w-full cursor-pointer items-center truncate rounded-[3px] border-0 bg-transparent px-2 text-left text-[13px] text-ink hover:bg-[#f3f3f3] focus-visible:bg-[#f3f3f3] focus-visible:outline-none ${index === searchActive ? 'bg-[#f3f3f3]' : ''}`} onMouseEnter={() => setSearchActive(index)} onClick={() => selectSearchResult(option)}>{option.title}</button></li>)}
+                {searchOpen ? <ul id="wk-graph-search-results" role="listbox" aria-label={t('wikiBrowser.page.search')} className="wk-kg-21">
+                  {searchLoading ? <li className="wk-kg-22">{t('wikiBrowser.loading')}</li> : null}
+                  {!searchLoading && searchOptions.length === 0 ? <li className="wk-kg-22">{t('common.empty')}</li> : null}
+                  {searchOptions.map((option, index) => <li key={option.slug} id={`wk-graph-search-option-${index}`} role="option" aria-selected={index === searchActive}><button type="button" className={`wk-kg-60 ${index === searchActive ? 'wk-kg-61' : ''}`} onMouseEnter={() => setSearchActive(index)} onClick={() => selectSearchResult(option)}>{option.title}</button></li>)}
                 </ul> : null}
               </div>
-              <details className="relative shrink-0">
-                <summary className="inline-flex size-8 cursor-pointer select-none items-center justify-center text-[18px] text-faint transition-colors hover:text-primary [&::-webkit-details-marker]:hidden" title={t('wikiBrowser.helpButtonTitle')} aria-label={t('wikiBrowser.helpButtonTitle')}>?</summary>
-                <dl className="absolute right-0 top-[calc(100%+8px)] z-20 m-0 min-w-[240px] max-w-[320px] rounded-[6px] border border-line-neutral bg-white p-[.65rem_.8rem] shadow-[0_8px_20px_rgba(31,52,84,.12)]">
-                  <div className="mb-2 select-none text-[11px] font-normal uppercase leading-[14px] tracking-[.04em] text-faint">{t('wikiBrowser.helpTitle')}</div>
-                  <div className="flex flex-col gap-[6px]">
-                    <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-ink">{t('wikiBrowser.helpClickAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpClickDesc')}</dd></div>
-                    <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-ink">{t('wikiBrowser.helpDblClickAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpDblClickDesc')}</dd></div>
-                    <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-ink">{t('wikiBrowser.helpShiftClickAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpShiftClickDesc')}</dd></div>
-                    <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-ink">{t('wikiBrowser.helpHoverPlusAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpHoverPlusDesc')}</dd></div>
-                    <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-ink">{t('wikiBrowser.helpDragAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpDragDesc')}</dd></div>
-                    <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-ink">{t('wikiBrowser.helpPanAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpPanDesc')}</dd></div>
-                    <div className="grid grid-cols-[110px_1fr] gap-3 text-[12px] leading-4"><dt className="whitespace-nowrap font-medium text-ink">{t('wikiBrowser.helpZoomAction')}</dt><dd className="m-0 text-muted">{t('wikiBrowser.helpZoomDesc')}</dd></div>
+              <details className="wk-kg-23">
+                <summary className="wk-kg-24" title={t('wikiBrowser.helpButtonTitle')} aria-label={t('wikiBrowser.helpButtonTitle')}>?</summary>
+                <dl className="wk-kg-25">
+                  <div className="wk-kg-26">{t('wikiBrowser.helpTitle')}</div>
+                  <div className="wk-kg-27">
+                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpClickAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpClickDesc')}</dd></div>
+                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpDblClickAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpDblClickDesc')}</dd></div>
+                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpShiftClickAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpShiftClickDesc')}</dd></div>
+                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpHoverPlusAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpHoverPlusDesc')}</dd></div>
+                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpDragAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpDragDesc')}</dd></div>
+                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpPanAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpPanDesc')}</dd></div>
+                    <div className="wk-kg-28"><dt className="wk-kg-29">{t('wikiBrowser.helpZoomAction')}</dt><dd className="wk-kg-30">{t('wikiBrowser.helpZoomDesc')}</dd></div>
                   </div>
                 </dl>
               </details>
             </div>
           </div> : null}
-          {graphReady ? <div data-testid="knowledge-graph-legend" className="absolute right-4 top-4 z-10 flex flex-col gap-3 rounded-[6px] border border-line-neutral bg-white p-[10px_12px] opacity-95 shadow-[0_1px_10px_rgba(0,0,0,0.05)] transition-all duration-300 max-[720px]:right-2 max-[720px]:top-2" style={drawerNode ? { right: 'calc(480px + 16px)' } : undefined}>
-            <div className="flex flex-col gap-2">
+          {graphReady ? <div data-testid="knowledge-graph-legend" className="wk-kg-31" style={drawerNode ? { right: 'calc(480px + 16px)' } : undefined}>
+            <div className="wk-kg-32">
               {LEGEND_GRAPH_TYPES.map((graphType) => {
                 const enabled = selectedTypes.includes(graphType);
-                return <button key={graphType} type="button" className={`flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left text-[11px] transition-colors ${enabled ? 'text-muted-strong hover:text-ink' : 'text-faint line-through opacity-50'}`} onClick={() => toggleGraphType(graphType)}>
-                  <span className={`inline-block size-[10px] shrink-0 rounded-full ${GRAPH_TYPE_DOT_BG[graphType] ?? 'bg-[#98a2b3]'}`} aria-hidden="true" />
+                return <button key={graphType} type="button" className={`wk-kg-62 ${enabled ? 'wk-kg-63' : 'wk-kg-64'}`} onClick={() => toggleGraphType(graphType)}>
+                  <span className={`wk-kg-65 ${GRAPH_TYPE_DOT_BG[graphType] ?? 'wk-kg-66'}`} aria-hidden="true" />
                   {graphTypeLabel(graphType)}
                 </button>;
               })}
-              {familiarCount > 0 ? <div className="flex items-center gap-2 text-[11px] text-muted-strong">
-                <span className="inline-block size-[10px] shrink-0 rounded-full border-2 border-[#0052d9] bg-transparent" aria-hidden="true" />
+              {familiarCount > 0 ? <div className="wk-kg-33">
+                <span className="wk-kg-34" aria-hidden="true" />
                 {t('wikiBrowser.legendFamiliar')}
               </div> : null}
             </div>
-            <div className="-mx-3 h-px bg-line-neutral" aria-hidden="true" />
-            <div className="flex flex-col gap-2">
-              <button type="button" className="flex cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[11px] leading-[14px] text-muted-strong transition-colors hover:text-primary" title="Fit to View" onClick={() => flyViewportTo(fitGraphViewport(displayPositions, surfaceSize.width, surfaceSize.height, Boolean(drawerNode)))}>
-                <span className="inline-flex size-[14px] shrink-0 items-center justify-center text-[13px] text-faint" aria-hidden="true">◎</span>
+            <div className="-mx-3 wk-kg-35" aria-hidden="true" />
+            <div className="wk-kg-32">
+              <button type="button" className="wk-kg-36" title="Fit to View" onClick={() => flyViewportTo(fitGraphViewport(displayPositions, surfaceSize.width, surfaceSize.height, Boolean(drawerNode)))}>
+                <span className="wk-kg-37" aria-hidden="true">◎</span>
                 <span>{t('wikiBrowser.fitView')}</span>
               </button>
-              <button type="button" className="flex cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[11px] leading-[14px] text-muted-strong transition-colors hover:text-primary" onClick={() => setShowArrows((value) => !value)} aria-pressed={showArrows}>
+              <button type="button" className="wk-kg-36" onClick={() => setShowArrows((value) => !value)} aria-pressed={showArrows}>
                 {/* Vue toggleArrows icon semantics: browse-off while arrows are shown, browse when hidden. */}
-                <span className="inline-flex size-[14px] shrink-0 items-center justify-center text-faint" aria-hidden="true">
+                <span className="wk-kg-38" aria-hidden="true">
                   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1.6 8s2.4-4.2 6.4-4.2S14.4 8 14.4 8 12 12.2 8 12.2 1.6 8 1.6 8Z" />
                     <circle cx="8" cy="8" r="2.1" />
@@ -783,31 +784,31 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                 </span>
                 <span>{showArrows ? t('wikiBrowser.hideArrows') : t('wikiBrowser.showArrows')}</span>
               </button>
-              {mode === 'ego' && frontier.length > 0 ? <button type="button" className="flex cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[11px] leading-[14px] text-muted-strong transition-colors hover:text-primary" title={t('wikiBrowser.growFrontierTitle', { count: frontier.length })} onClick={() => void growFrontier()}>
-                <span className="inline-flex size-[14px] shrink-0 items-center justify-center text-[13px] text-faint" aria-hidden="true">◌</span>
+              {mode === 'ego' && frontier.length > 0 ? <button type="button" className="wk-kg-36" title={t('wikiBrowser.growFrontierTitle', { count: frontier.length })} onClick={() => void growFrontier()}>
+                <span className="wk-kg-37" aria-hidden="true">◌</span>
                 <span>{t('wikiBrowser.growFrontier', { count: frontier.length })}</span>
               </button> : null}
-              {mode === 'ego' ? <button type="button" className="flex cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[11px] leading-[14px] text-muted-strong transition-colors hover:text-primary" onClick={() => void load('overview')}>
-                <span className="inline-flex size-[14px] shrink-0 items-center justify-center text-[13px] text-faint" aria-hidden="true">↩</span>
+              {mode === 'ego' ? <button type="button" className="wk-kg-36" onClick={() => void load('overview')}>
+                <span className="wk-kg-37" aria-hidden="true">↩</span>
                 <span>{t('wikiBrowser.backToOverview')}</span>
               </button> : null}
             </div>
-            {graphStatusCard ? <div className="flex select-none flex-col gap-1 border-t border-dashed border-line-neutral pt-2">
-              <div className="flex items-center gap-1 text-[11px] leading-[14px] text-faint"><span aria-hidden="true">{graphStatusCard.icon}</span><span className="font-medium">{graphStatusCard.title}</span></div>
-              <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-4 text-ink" title={graphStatusCard.primary}>{graphStatusCard.primary}</div>
-              {graphStatusCard.secondary ? <div className="text-[11px] leading-[14px] text-muted-strong">{graphStatusCard.secondary}</div> : null}
+            {graphStatusCard ? <div className="wk-kg-39">
+              <div className="wk-kg-40"><span aria-hidden="true">{graphStatusCard.icon}</span><span className="wk-kg-41">{graphStatusCard.title}</span></div>
+              <div className="wk-kg-42" title={graphStatusCard.primary}>{graphStatusCard.primary}</div>
+              {graphStatusCard.secondary ? <div className="wk-kg-43">{graphStatusCard.secondary}</div> : null}
             </div> : null}
           </div> : null}
           {/* Vue .wiki-graph-empty: absolute 100%×100% + padding 60px 20px in
               a content-box (TDesign reset), so the padded box overflows the
               canvas by exactly the padding and centers the icon inside the
               unpadded content area. Mirrored with w-full/h-full + content-box. */}
-          {status.kind === 'loading' ? <div className="wiki-graph-empty absolute left-0 top-0 z-20 flex h-full w-full flex-col items-center justify-center bg-white p-[60px_20px] text-center [box-sizing:content-box]"><Status>{t('wikiBrowser.graphEmpty')}</Status></div> : null}
-          {status.kind === 'error' ? <div className="wiki-graph-empty absolute left-0 top-0 z-20 flex h-full w-full flex-col items-center justify-center gap-2 bg-white p-[60px_20px] text-center [box-sizing:content-box]"><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('common.retry')}</Button></div> : null}
-          {status.kind === 'success' && visible && visible.nodes.length === 0 ? <div className="wiki-graph-empty absolute left-0 top-0 z-20 flex h-full w-full flex-col items-center justify-center bg-white p-[60px_20px] text-center [box-sizing:content-box]">
+          {status.kind === 'loading' ? <div className="wiki-graph-empty wk-kg-44"><Status>{t('wikiBrowser.graphEmpty')}</Status></div> : null}
+          {status.kind === 'error' ? <div className="wiki-graph-empty wk-kg-45"><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('common.retry')}</Button></div> : null}
+          {status.kind === 'success' && visible && visible.nodes.length === 0 ? <div className="wiki-graph-empty wk-kg-44">
             {/* Vue empty icon: 64px circle (bg #f3f3f3) wrapping a 48px
                 t-icon-chart-bubble, both tinted text-color-placeholder. */}
-            <span className="mb-4 flex size-16 shrink-0 items-center justify-center rounded-full bg-[#f3f3f3] text-[rgba(0,0,0,0.4)]" aria-hidden="true">
+            <span className="wk-kg-46" aria-hidden="true">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true">
                 <path d="M21 21H3V3" />
                 <path d="M18 6C18 7.10457 17.1046 8 16 8C14.8954 8 14 7.10457 14 6C14 4.89543 14.8954 4 16 4C17.1046 4 18 4.89543 18 6Z" />
@@ -815,29 +816,29 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
                 <path d="M19 15C18.4477 15 18 14.5523 18 14C18 13.4477 18.4477 13 19 13C19.5523 13 20 13.4477 20 14C20 14.5523 19.5523 15 19 15Z" />
               </svg>
             </span>
-            <p className="m-0 text-[13px] leading-[18px] text-[rgba(0,0,0,0.4)]">{t('wikiBrowser.graphNoData')}</p>
+            <p className="wk-kg-47">{t('wikiBrowser.graphNoData')}</p>
           </div> : null}
         </div>
       </div>
-      {drawerNode ? <aside className="fixed right-0 top-0 z-40 h-full w-[min(480px,100%)] overflow-auto border-l border-line-neutral bg-white p-4 shadow-[-4px_0_16px_rgba(0,0,0,0.08)]" aria-label={drawerNode.title} role="dialog" aria-modal="true">
-        <div className="wk-header mb-[.75rem]! flex items-start justify-between gap-4">
+      {drawerNode ? <aside className="wk-kg-48" aria-label={drawerNode.title} role="dialog" aria-modal="true">
+        <div className="wk-header wk-kg-49">
           <div>
             <h2>{drawerNode.title}</h2>
-            <p className="wk-muted text-muted">{drawerNode.page_type} · {drawerNode.link_count} {t('knowledgeBase.graph.links')}</p>
+            <p className="wk-muted wk-kg-50">{drawerNode.page_type} · {drawerNode.link_count} {t('knowledgeBase.graph.links')}</p>
           </div>
           <Button type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>{t('common.close')}</Button>
         </div>
         {drawerStatus === 'loading' ? <Status>{t('wikiBrowser.loading')}</Status> : null}
         {drawerStatus === 'error' ? <Status tone="error">{t('wikiBrowser.revisionLoadFailed')}</Status> : null}
         {drawerPage ? <>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center rounded-pill border border-line-neutral px-2 py-[1px] text-[11px] text-muted-strong">{graphTypeLabel(drawerNode.page_type)}</span>
-            <span className="text-[12px] text-muted">{t('wikiBrowser.version', { ver: drawerPage.version })}</span>
-            {mode === 'ego' && center !== drawerNode.slug ? <Button type="button" size="small" className="ml-auto!" disabled={drawerNeighbor ? !drawerNeighbor.canBloom : false} onClick={() => void bloomNeighbors(drawerNode.slug)}>{t('wikiBrowser.bloomNeighbors')}</Button> : null}
-            {mode !== 'ego' || center !== drawerNode.slug ? <Button type="button" size="small" className={mode === 'ego' ? '' : 'ml-auto!'} onClick={() => void load('ego', drawerNode.slug)}>{t('wikiBrowser.expandNeighbors')}</Button> : null}
+          <div className="wk-kg-51">
+            <span className="wk-kg-52">{graphTypeLabel(drawerNode.page_type)}</span>
+            <span className="wk-kg-53">{t('wikiBrowser.version', { ver: drawerPage.version })}</span>
+            {mode === 'ego' && center !== drawerNode.slug ? <Button type="button" size="small" className="wk-kg-54" disabled={drawerNeighbor ? !drawerNeighbor.canBloom : false} onClick={() => void bloomNeighbors(drawerNode.slug)}>{t('wikiBrowser.bloomNeighbors')}</Button> : null}
+            {mode !== 'ego' || center !== drawerNode.slug ? <Button type="button" size="small" className={mode === 'ego' ? '' : 'wk-kg-54'} onClick={() => void load('ego', drawerNode.slug)}>{t('wikiBrowser.expandNeighbors')}</Button> : null}
           </div>
-          {drawerNeighborHint ? <p className="mb-4 select-none text-[12px] leading-4 text-muted-strong">{drawerNeighborHint}</p> : null}
-          <div data-testid="knowledge-graph-reader" className="wk-reader-body max-h-[24rem] overflow-auto leading-[1.6]" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(drawerPage.content) }} />
+          {drawerNeighborHint ? <p className="wk-kg-55">{drawerNeighborHint}</p> : null}
+          <div data-testid="knowledge-graph-reader" className="wk-reader-body wk-kg-56" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(drawerPage.content) }} />
         </> : null}
       </aside> : null}
       {/* Vue ⚙ opens the KB settings overlay in place (uiStore.openKBSettings);
@@ -851,7 +852,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           title={t('knowledgeBase.settings')}
           closeLabel={t('common.close')}
           onClose={() => setSettingsOpen(false)}
-          className="h-[min(85vh,750px)] w-[min(1000px,90vw)]! max-h-[min(750px,85vh)]! overflow-auto"
+          className="wk-kg-57"
         >
           <KnowledgeSettingsPage client={client} knowledgeBaseId={knowledgeBaseId} role={canManage ? 'admin' : 'viewer'} initialSection={settingsSection} />
         </Dialog>

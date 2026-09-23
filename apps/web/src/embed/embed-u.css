@@ -1,0 +1,344 @@
+/* embed-u.css — S7 Tailwind utilities 平移（embed 域漂零段：EmbedEntryPage 等）
+ * 前缀见各规则；值 = utilities 编码的生效值。导入顺序：须在本域 .td.css 之前。 */
+
+
+.wk-emb-1 {
+  display: flex;
+  height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary;
+}
+
+.wk-emb-2 {
+  display: flex;
+  height: 100vh;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #fff;
+}
+
+.wk-emb-3 {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+  border-style: solid;
+  border-color: #eef1f5;
+  padding-inline: 16px;
+  padding-block: 12px;
+}
+
+.wk-emb-4 {
+  display: grid;
+  height: 36px;
+  width: 36px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 18px;
+}
+
+.wk-emb-5 {
+  min-width: 0;
+  flex: 1 1 0%;
+}
+
+.wk-emb-6 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #1f2329;
+}
+
+.wk-emb-7 {
+  flex-shrink: 0;
+  cursor: pointer;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding: 4px;
+  color: #6b7280;
+}
+
+.wk-emb-7:hover {
+  color: color:var(--embed-primary,#2563eb);
+}
+
+.wk-emb-7:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.wk-emb-8 {
+  flex-shrink: 0;
+  padding-inline: 12px;
+  padding-bottom: 12px;
+}
+
+.wk-emb-9 {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.wk-emb-10 {
+  align-self: flex-start;
+  max-width: 85%;
+  border-radius: 12px;
+  background-color: #f5f7fa;
+  padding-inline: 12px;
+  padding-block: 8px;
+  font-size: 14px;
+  color: #1f2329;
+}
+
+.wk-emb-11 {
+  align-self: center;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.wk-emb-12 {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wk-emb-13 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.wk-emb-14 {
+  height: 40px;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  border-radius: 10px;
+  background-color: #f0f0f0;
+}
+
+.wk-emb-15 {
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  border-radius: 10px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #eef1f5;
+  background-color: #fff;
+  padding-inline: 12px;
+  padding-block: 10px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.375;
+  color: #1f2329;
+}
+
+.wk-emb-15:hover {
+  border-style: solid;
+  border-color: #d8dde5;
+}
+
+.wk-emb-16 {
+  align-self: flex-end;
+  max-width: 85%;
+  border-radius: 12px;
+  padding-inline: 12px;
+  padding-block: 8px;
+  font-size: 14px;
+  color: #fff;
+}
+
+.wk-emb-17 {
+  align-self: flex-start;
+  display: flex;
+  max-width: 85%;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wk-emb-18 {
+  border-radius: 12px;
+  background-color: #f5f7fa;
+  padding-inline: 12px;
+  padding-block: 8px;
+  font-size: 14px;
+  color: #1f2329;
+}
+
+.wk-emb-19 {
+  position: fixed;
+  z-index: 50;
+  max-width: 300px;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #e7eaef;
+  background-color: #fff;
+  padding-inline: 12px;
+  padding-block: 8px;
+  font-size: 12px;
+  color: #1f2329;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.wk-emb-20 {
+  font-weight: 500;
+}
+
+.wk-emb-21 {
+  color: #b91c1c;
+}
+
+.wk-emb-22 {
+  margin-top: 4px;
+  max-height: 192px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: #4b5563;
+}
+
+.wk-emb-23 {
+  color: #6b7280;
+}
+
+.wk-emb-24 {
+  width: 100%;
+  border-radius: 12px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #eef1f5;
+  background-color: #f8fafc;
+  padding: 12px;
+}
+
+.wk-emb-25 {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.wk-emb-26 {
+  display: flex;
+  gap: 4px;
+}
+
+.wk-emb-27 {
+  cursor: pointer;
+  border-radius: 6px;
+  border-style: solid;
+  border-width: 0;
+  background-color: transparent;
+  padding-inline: 8px;
+  padding-block: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.wk-emb-27:hover {
+  color: color:var(--embed-primary,#2563eb);
+}
+
+.wk-emb-28 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wk-emb-29 {
+  display: flex;
+  width: 100%;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 8px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #eef1f5;
+  background-color: #fff;
+  padding-inline: 12px;
+  padding-block: 8px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.375;
+  color: #1f2329;
+}
+
+.wk-emb-29:hover {
+  border-style: solid;
+  border-color: #d8dde5;
+}
+
+.wk-emb-30 {
+  color: #9ca3af;
+}
+
+.wk-emb-31 {
+  margin-top: 8px;
+  border-top-style: solid;
+  border-top-width: 1px;
+  border-style: solid;
+  border-color: #e7eaef;
+  padding-top: 8px;
+  font-size: 12px;
+}
+
+.wk-emb-32 {
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.wk-emb-33 {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wk-emb-34 {
+  overflow-wrap: anywhere;
+  color: color:var(--embed-primary,#2563eb);
+}
+
+.wk-emb-34:hover {
+  text-decoration-line: underline;
+}
+
+.wk-emb-35 {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  color: #1f2329;
+}
+
+.wk-emb-36 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border-width: 0;
+}
+@keyframes pulse { 50% { opacity: .5; } }
+

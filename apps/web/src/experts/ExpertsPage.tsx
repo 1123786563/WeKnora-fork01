@@ -44,28 +44,49 @@ import { navigate } from '../platform/navigation.ts';
 import { loadAgents } from '../agents/api.ts';
 import type { Agent } from '../agents/state.ts';
 import './chat/views-chat-u.css';
+import './experts-u.css';
 
 /* Tailwind v4 utility recipes shared across the page (AnalyticsPage constants). */
-const XP_PAGE = 'wk-page box-border h-full overflow-y-auto px-[28px] pt-[24px] pb-[32px]';
-const XP_HEADER = 'mb-[20px] flex flex-col gap-[12px]';
-const XP_TITLE = 'm-0 text-[24px] font-semibold leading-[32px] text-[rgba(23,26,29,0.92)]';
-const XP_SUBTITLE = 'm-0 text-[14px] font-normal leading-[20px] text-[rgba(23,26,29,0.6)]';
-const XP_TAB = 'box-border inline-flex h-[32px] cursor-pointer items-center rounded-[6px] border border-[#e7e7ea] bg-surface px-[14px] font-[inherit] text-[13px] font-medium text-[rgba(23,26,29,0.75)] [transition:all_.2s_ease] hover:border-accent hover:text-accent aria-selected:border-accent aria-selected:bg-accent-wash aria-selected:text-accent';
-const XP_GRID = 'grid grid-cols-1 gap-[16px] min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4';
-const XP_CARD = 'box-border flex cursor-pointer flex-col gap-[10px] rounded-[10px] border border-[#e7e7ea] bg-surface px-[16px] py-[14px] text-left shadow-[0_1px_3px_rgba(0,0,0,0.04)] [transition:all_.2s_ease] hover:border-accent hover:shadow-[0_4px_14px_rgba(0,0,0,0.08)]';
-const XP_CARD_STATIC = 'box-border flex flex-col gap-[10px] rounded-[10px] border border-[#e7e7ea] bg-surface px-[16px] py-[14px] text-left shadow-[0_1px_3px_rgba(0,0,0,0.04)]';
-const XP_CARD_TITLE = 'm-0 flex items-center gap-[8px] text-[16px] font-semibold leading-[24px] text-[rgba(23,26,29,0.92)]';
-const XP_CARD_DESC = 'm-0 line-clamp-2 text-[13px] font-normal leading-[19px] text-[rgba(23,26,29,0.6)]';
-const XP_CHIP = 'inline-flex shrink-0 items-center rounded-[10px] bg-[rgba(127,127,127,0.1)] px-[8px] py-[2px] text-[11px] font-medium text-[rgba(23,26,29,0.75)]';
-const XP_STATE = 'flex h-[240px] items-center justify-center text-[13px] text-[rgba(23,26,29,0.4)]';
-const XP_ERROR = 'flex h-[240px] flex-col items-center justify-center gap-[10px] text-[13px] text-[#d54941]';
-const XP_BTN_PRIMARY = 'box-border inline-flex h-[32px] cursor-pointer items-center justify-center rounded-[3px] border-0 bg-accent px-[15px] font-[inherit] text-[14px] font-medium text-white shadow-[0_2px_8px_rgba(7,192,95,0.25)] [transition:all_.2s_ease] hover:shadow-[0_4px_14px_rgba(7,192,95,0.35)] disabled:cursor-not-allowed disabled:opacity-55';
-const XP_BTN_OUTLINE = 'box-border inline-flex h-[32px] cursor-pointer items-center justify-center rounded-[3px] border border-[rgba(7,192,95,0.5)] bg-surface px-[15px] font-[inherit] text-[14px] font-medium text-accent [transition:all_.2s_ease] hover:border-accent hover:bg-accent-wash disabled:cursor-not-allowed disabled:opacity-55';
-const XP_BTN_DANGER = 'box-border inline-flex h-[32px] cursor-pointer items-center justify-center rounded-[3px] border border-[rgba(213,73,65,0.5)] bg-surface px-[15px] font-[inherit] text-[14px] font-medium text-[#d54941] [transition:all_.2s_ease] hover:border-[#d54941] hover:bg-[rgba(213,73,65,0.06)] disabled:cursor-not-allowed disabled:opacity-55';
-const XP_INPUT = 'box-border h-[32px] w-[200px] rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] font-[inherit] text-[13px] text-[rgba(23,26,29,0.92)] placeholder:text-[rgba(23,26,29,0.35)] focus:border-accent focus:outline-none';
-const XP_TEXTAREA = 'box-border min-h-[64px] w-full resize-y rounded-[6px] border border-[#e7e7ea] bg-surface px-[10px] py-[8px] font-[inherit] text-[13px] leading-[19px] text-[rgba(23,26,29,0.92)] placeholder:text-[rgba(23,26,29,0.35)] focus:border-accent focus:outline-none';
-const XP_SECTION_TITLE = 'm-0 mb-[8px] text-[13px] font-semibold uppercase tracking-[0.04em] text-[rgba(23,26,29,0.45)]';
-const XP_STALE = 'mb-[16px] rounded-[8px] border border-[rgba(237,123,47,0.4)] bg-[rgba(237,123,47,0.08)] px-[14px] py-[10px] text-[13px] leading-[19px] text-[#b45309]';
+const XP_PAGE = 'wk-page wk-exp-xp-page';
+
+const XP_HEADER = 'wk-exp-xp-header';
+
+const XP_TITLE = 'wk-exp-xp-title';
+
+const XP_SUBTITLE = 'wk-exp-xp-subtitle';
+
+const XP_TAB = 'wk-exp-xp-tab aria-selected:border-accent aria-selected:bg-accent-wash aria-selected:text-accent';
+
+const XP_GRID = 'wk-exp-xp-grid';
+
+const XP_CARD = 'wk-exp-xp-card';
+
+const XP_CARD_STATIC = 'wk-exp-xp-card-static';
+
+const XP_CARD_TITLE = 'wk-exp-xp-card-title';
+
+const XP_CARD_DESC = 'wk-exp-xp-card-desc';
+
+const XP_CHIP = 'wk-exp-xp-chip';
+
+const XP_STATE = 'wk-exp-xp-state';
+
+const XP_ERROR = 'wk-exp-xp-error';
+
+const XP_BTN_PRIMARY = 'wk-exp-xp-btn-primary';
+
+const XP_BTN_OUTLINE = 'wk-exp-xp-btn-outline';
+
+const XP_BTN_DANGER = 'wk-exp-xp-btn-danger';
+
+const XP_INPUT = 'wk-exp-xp-input placeholder:text-[rgba(23,26,29,0.35)]';
+
+const XP_TEXTAREA = 'wk-exp-xp-textarea placeholder:text-[rgba(23,26,29,0.35)]';
+
+const XP_SECTION_TITLE = 'wk-exp-xp-section-title';
+
+const XP_STALE = 'wk-exp-xp-stale';
+
 
 /** expert.color is server-controlled; only plain hex literals reach the style
  * attribute so a hostile catalog value cannot smuggle CSS into the DOM. */
@@ -504,14 +525,14 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
     return (
       <article key={expert.id} data-tenant-expert={expert.id} className={XP_CARD_STATIC}>
         <h3 className={XP_CARD_TITLE}>
-          <span className="truncate" title={expert.name}>{expert.name}</span>
+          <span className="wk-exp-1" title={expert.name}>{expert.name}</span>
         </h3>
         {expert.description ? <p className={XP_CARD_DESC} title={expert.description}>{expert.description}</p> : null}
-        <div className="mt-auto flex flex-wrap items-center gap-[6px]">
+        <div className="wk-exp-2">
           {expert.installed ? <span className={XP_CHIP}>{t(locale, 'experts.market.installedTag')}</span> : null}
           {expert.publisher_name ? <span className={XP_CHIP}>{t(locale, 'market.publisher', { name: expert.publisher_name })}</span> : null}
           {formatDateTime(expert.created_at, locale) ? <span className={XP_CHIP}>{formatDateTime(expert.created_at, locale)}</span> : null}
-          <span className="ml-auto flex items-center gap-[6px]">
+          <span className="wk-exp-3">
             <button
               type="button"
               className={XP_BTN_PRIMARY}
@@ -541,7 +562,7 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
           <h2 className={XP_TITLE}>{t(locale, 'experts.title')}</h2>
           <p className={XP_SUBTITLE}>{t(locale, 'experts.subtitle')}</p>
         </div>
-        <div role="tablist" aria-label={t(locale, 'experts.tabsLabel')} className="flex items-center gap-[8px]">
+        <div role="tablist" aria-label={t(locale, 'experts.tabsLabel')} className="wk-exp-4">
           {EXPERTS_TABS.map(tabButton)}
         </div>
       </header>
@@ -549,7 +570,7 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
       {toast ? (
         <div
           role="status"
-          className={'fixed left-1/2 top-[24px] z-[3000] box-border flex max-w-[420px] -translate-x-1/2 items-center rounded-[8px] bg-[rgba(23,26,29,0.86)] px-[18px] py-[10px] text-[13px] shadow-[0_6px_20px_rgba(0,0,0,0.18)] ' + (toast.tone === 'success' ? 'text-[#7bf2b6]' : 'text-[#ffb4ae]')}
+          className={'wk-exp-42 ' + (toast.tone === 'success' ? 'wk-exp-43' : 'wk-exp-44')}
         >{toast.text}</div>
       ) : null}
 
@@ -573,11 +594,11 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
                   onClick={() => void openDetail(expert)}
                 >
                   <h3 className={XP_CARD_TITLE}>
-                    <span aria-hidden="true" className="inline-block h-[10px] w-[10px] shrink-0 rounded-full" style={{ background: dotColor(expert.color) }} />
-                    <span className="truncate" title={expert.label}>{expert.label}</span>
+                    <span aria-hidden="true" className="wk-exp-5" style={{ background: dotColor(expert.color) }} />
+                    <span className="wk-exp-1" title={expert.label}>{expert.label}</span>
                   </h3>
                   <p className={XP_CARD_DESC}>{expert.description}</p>
-                  <div className="mt-auto flex flex-wrap items-center gap-[6px]">
+                  <div className="wk-exp-2">
                     <span className={XP_CHIP}>{t(locale, 'experts.skillCount', { count: expert.skills.length })}</span>
                     {expert.persona_mbti ? <span className={XP_CHIP}>{expert.persona_mbti}</span> : null}
                   </div>
@@ -610,10 +631,10 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
                       onClick={() => openRemoteDetail(skillset)}
                     >
                       <h3 className={XP_CARD_TITLE}>
-                        <span className="truncate" title={skillset.name || skillset.slug}>{skillset.name || skillset.slug}</span>
+                        <span className="wk-exp-1" title={skillset.name || skillset.slug}>{skillset.name || skillset.slug}</span>
                       </h3>
                       <p className={XP_CARD_DESC}>{skillset.description}</p>
-                      <div className="mt-auto flex flex-wrap items-center gap-[6px]">
+                      <div className="wk-exp-2">
                         <span className={XP_CHIP}>{t(locale, 'experts.skillCount', { count: skillset.skill_slugs.length })}</span>
                         {skillset.installed ? <span className={XP_CHIP}>{t(locale, 'experts.market.installedTag')}</span> : null}
                       </div>
@@ -638,7 +659,7 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
           {!tenantLoading && !tenantError && tenantExperts !== null ? (
             <>
               {canPublish ? (
-                <div className="mb-[16px] flex justify-end">
+                <div className="wk-exp-6">
                   <button type="button" className={XP_BTN_PRIMARY} data-expert-publish-open onClick={openPublish}>{t(locale, 'experts.tenant.publishOpen')}</button>
                 </div>
               ) : null}
@@ -652,44 +673,44 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
 
       {detailId !== '' ? (
         <div
-          className="fixed inset-0 z-[1000] flex justify-end bg-[rgba(0,0,0,0.4)]"
+          className="wk-exp-7"
           onClick={(event) => { if (event.target === event.currentTarget) closeDetail(); }}
         >
           <aside
-            className="flex h-full w-[420px] max-w-[90vw] flex-col bg-[var(--wk-bg,#fff)] shadow-[-4px_0_24px_rgba(0,0,0,0.12)]"
+            className="wk-exp-8"
             role="dialog"
             aria-label={t(locale, 'experts.title')}
             data-expert-detail={detailId}
           >
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[rgba(127,127,127,0.2)] px-6 py-5">
-              <h3 className="m-0 flex min-w-0 items-center gap-[8px] text-[18px] font-semibold">
+            <div className="wk-exp-9">
+              <h3 className="wk-exp-10">
                 {detail ? (
                   <>
-                    <span aria-hidden="true" className="inline-block h-[10px] w-[10px] shrink-0 rounded-full" style={{ background: dotColor(detail.color) }} />
-                    <span className="truncate">{detail.label}</span>
+                    <span aria-hidden="true" className="wk-exp-5" style={{ background: dotColor(detail.color) }} />
+                    <span className="wk-exp-1">{detail.label}</span>
                   </>
                 ) : t(locale, 'experts.title')}
               </h3>
               <button
                 type="button"
-                className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-[rgba(127,127,127,0.1)] text-[15px]"
+                className="wk-exp-11"
                 aria-label={t(locale, 'common.cancel')}
                 onClick={closeDetail}
               >✕</button>
             </div>
 
-            <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">
+            <div className="wk-exp-12">
               {detailLoading ? <div role="status">{t(locale, 'common.loading')}</div> : null}
               {!detailLoading && detailError ? (
-                <div className="flex flex-col items-start gap-[10px] text-[13px] text-[#d54941]" role="alert">
+                <div className="wk-exp-13" role="alert">
                   <span>{detailError}</span>
                   {detailId ? <button type="button" className={XP_BTN_OUTLINE} onClick={() => { const id = detailId; const summary = experts.find((row) => row.id === id); if (summary) void openDetail(summary); }}>{t(locale, 'common.retry')}</button> : null}
                 </div>
               ) : null}
               {!detailLoading && !detailError && detail ? (
                 <>
-                  <p className="m-0 text-[14px] leading-[22px] text-[rgba(23,26,29,0.6)]">{detail.description}</p>
-                  <div className="flex flex-wrap items-center gap-[6px]">
+                  <p className="wk-exp-14">{detail.description}</p>
+                  <div className="wk-exp-15">
                     {detail.persona_mbti ? <span className={XP_CHIP}>{detail.persona_mbti}</span> : null}
                     {detail.skills.map((skill) => <span key={skill} className={XP_CHIP}>{skill}</span>)}
                   </div>
@@ -698,7 +719,7 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
                     <h4 className={XP_SECTION_TITLE}>{t(locale, 'experts.detail.persona')}</h4>
                     {/* renderChatMarkdown escapes raw HTML and allow-lists links */}
                     <div
-                      className="wk-experts-persona text-[13px] leading-[21px] text-[rgba(23,26,29,0.85)] [&_a]:text-accent [&_a]:underline [&_h1]:mt-[12px] [&_h1]:mb-[6px] [&_h1]:text-[16px] [&_h1]:font-semibold [&_h2]:mt-[12px] [&_h2]:mb-[6px] [&_h2]:text-[15px] [&_h2]:font-semibold [&_h3]:mt-[12px] [&_h3]:mb-[6px] [&_h3]:text-[14px] [&_h3]:font-semibold [&_p]:m-0 [&_p]:mb-[8px] [&_ul]:m-0 [&_ul]:mb-[8px] [&_ul]:list-disc [&_ul]:pl-[18px] [&_ol]:m-0 [&_ol]:mb-[8px] [&_ol]:list-decimal [&_ol]:pl-[18px] [&_code]:rounded-[4px] [&_code]:bg-[rgba(127,127,127,0.1)] [&_code]:px-[4px] [&_pre]:overflow-x-auto [&_pre]:rounded-[6px] [&_pre]:bg-[rgba(127,127,127,0.08)] [&_pre]:p-[10px]"
+                      className="wk-experts-persona wk-exp-16"
                       data-expert-persona
                       dangerouslySetInnerHTML={{ __html: renderChatMarkdown(detail.persona_markdown) }}
                     />
@@ -707,14 +728,14 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
                   {detail.quick_prompts.length > 0 ? (
                     <section aria-label={t(locale, 'experts.detail.quickPrompts')}>
                       <h4 className={XP_SECTION_TITLE}>{t(locale, 'experts.detail.quickPrompts')}</h4>
-                      <ul className="m-0 flex list-none flex-col gap-[8px] p-0">
+                      <ul className="wk-exp-17">
                         {detail.quick_prompts.map((prompt) => (
-                          <li key={prompt.title} className="rounded-[8px] border border-[#e7e7ea] px-[12px] py-[10px]" data-expert-prompt>
-                            <div className="flex items-center gap-[8px]">
-                              <span aria-hidden="true" className="inline-block h-[8px] w-[8px] shrink-0 rounded-full" style={{ background: dotColor(prompt.color) }} />
-                              <span className="text-[14px] font-semibold leading-[20px]">{prompt.title}</span>
+                          <li key={prompt.title} className="wk-exp-18" data-expert-prompt>
+                            <div className="wk-exp-4">
+                              <span aria-hidden="true" className="wk-exp-19" style={{ background: dotColor(prompt.color) }} />
+                              <span className="wk-exp-20">{prompt.title}</span>
                             </div>
-                            {prompt.description ? <p className="m-0 mt-[4px] text-[12px] leading-[18px] text-[rgba(23,26,29,0.6)]">{prompt.description}</p> : null}
+                            {prompt.description ? <p className="wk-exp-21">{prompt.description}</p> : null}
                           </li>
                         ))}
                       </ul>
@@ -724,11 +745,11 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
               ) : null}
             </div>
 
-            <div className="flex shrink-0 items-center justify-between gap-[10px] border-t border-[rgba(127,127,127,0.2)] bg-[var(--wk-bg,#fff)] px-6 py-4">
-              <label className="flex min-w-0 flex-1 flex-col gap-[4px] text-[12px] leading-[16px] text-[rgba(23,26,29,0.6)]">
+            <div className="wk-exp-22">
+              <label className="wk-exp-23">
                 {t(locale, 'experts.create.nameLabel')}
                 <input
-                  className={XP_INPUT + ' w-full'}
+                  className={XP_INPUT + ' wk-exp-45'}
                   value={agentName}
                   placeholder={t(locale, 'experts.create.namePlaceholder')}
                   onChange={(event) => setAgentName(event.target.value)}
@@ -736,7 +757,7 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
               </label>
               <button
                 type="button"
-                className={XP_BTN_PRIMARY + ' shrink-0'}
+                className={XP_BTN_PRIMARY + ' wk-exp-46'}
                 disabled={!detail || detailError !== '' || instantiating}
                 data-expert-instantiate={detailId}
                 onClick={() => void instantiate()}
@@ -748,41 +769,41 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
 
       {remoteSlug !== '' ? (
         <div
-          className="fixed inset-0 z-[1000] flex justify-end bg-[rgba(0,0,0,0.4)]"
+          className="wk-exp-7"
           onClick={(event) => { if (event.target === event.currentTarget) closeRemoteDetail(); }}
         >
           <aside
-            className="flex h-full w-[420px] max-w-[90vw] flex-col bg-[var(--wk-bg,#fff)] shadow-[-4px_0_24px_rgba(0,0,0,0.12)]"
+            className="wk-exp-8"
             role="dialog"
             aria-label={t(locale, 'experts.tabRemote')}
             data-skillset-detail={remoteSlug}
           >
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[rgba(127,127,127,0.2)] px-6 py-5">
-              <h3 className="m-0 flex min-w-0 items-center text-[18px] font-semibold">
-                {remoteDetail ? <span className="truncate">{remoteDetail.name || remoteDetail.slug}</span> : t(locale, 'experts.tabRemote')}
+            <div className="wk-exp-9">
+              <h3 className="wk-exp-24">
+                {remoteDetail ? <span className="wk-exp-1">{remoteDetail.name || remoteDetail.slug}</span> : t(locale, 'experts.tabRemote')}
               </h3>
               <button
                 type="button"
-                className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-[rgba(127,127,127,0.1)] text-[15px]"
+                className="wk-exp-11"
                 aria-label={t(locale, 'common.cancel')}
                 onClick={closeRemoteDetail}
               >✕</button>
             </div>
 
-            <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">
+            <div className="wk-exp-12">
               {remoteDetailLoading ? <div role="status">{t(locale, 'common.loading')}</div> : null}
               {!remoteDetailLoading && remoteDetailError ? (
-                <div className="flex flex-col items-start gap-[10px] text-[13px] text-[#d54941]" role="alert">
+                <div className="wk-exp-13" role="alert">
                   <span>{remoteDetailError}</span>
                   <button type="button" className={XP_BTN_OUTLINE} onClick={() => setRemoteDetailEpoch((current) => current + 1)}>{t(locale, 'common.retry')}</button>
                 </div>
               ) : null}
               {!remoteDetailLoading && !remoteDetailError && remoteDetail ? (
                 <>
-                  <p className="m-0 text-[14px] leading-[22px] text-[rgba(23,26,29,0.6)]">{remoteDetail.description}</p>
+                  <p className="wk-exp-14">{remoteDetail.description}</p>
                   <section aria-label={t(locale, 'experts.detail.skills')}>
                     <h4 className={XP_SECTION_TITLE}>{t(locale, 'experts.detail.skills')}</h4>
-                    <div className="flex flex-wrap items-center gap-[6px]">
+                    <div className="wk-exp-15">
                       {remoteDetail.installed ? <span className={XP_CHIP}>{t(locale, 'experts.market.installedTag')}</span> : null}
                       {remoteDetail.skill_slugs.map((slug) => <span key={slug} className={XP_CHIP} title={slug}>{slug}</span>)}
                     </div>
@@ -791,11 +812,11 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
               ) : null}
             </div>
 
-            <div className="flex shrink-0 items-center justify-between gap-[10px] border-t border-[rgba(127,127,127,0.2)] bg-[var(--wk-bg,#fff)] px-6 py-4">
-              <label className="flex min-w-0 flex-1 flex-col gap-[4px] text-[12px] leading-[16px] text-[rgba(23,26,29,0.6)]">
+            <div className="wk-exp-22">
+              <label className="wk-exp-23">
                 {t(locale, 'experts.create.nameLabel')}
                 <input
-                  className={XP_INPUT + ' w-full'}
+                  className={XP_INPUT + ' wk-exp-45'}
                   value={agentName}
                   placeholder={t(locale, 'experts.create.namePlaceholder')}
                   onChange={(event) => setAgentName(event.target.value)}
@@ -803,7 +824,7 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
               </label>
               <button
                 type="button"
-                className={XP_BTN_PRIMARY + ' shrink-0'}
+                className={XP_BTN_PRIMARY + ' wk-exp-46'}
                 disabled={!remoteDetail || remoteDetailError !== '' || instantiating}
                 data-skillset-install={remoteSlug}
                 onClick={() => void installSkillset()}
@@ -815,33 +836,33 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
 
       {publishOpen ? (
         <div
-          className="fixed inset-0 z-[1100] flex items-start justify-center bg-[rgba(0,0,0,0.4)] pt-[12vh]"
+          className="wk-exp-25"
           onClick={(event) => { if (event.target === event.currentTarget) setPublishOpen(false); }}
         >
           <div
-            className="flex max-h-[76vh] w-[480px] max-w-[92vw] flex-col rounded-md bg-[var(--wk-bg,#fff)] shadow-[0_8px_32px_rgba(0,0,0,0.18)]"
+            className="wk-exp-26"
             role="dialog"
             aria-label={t(locale, 'experts.tenant.publishTitle')}
             data-expert-publish-dialog
           >
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[rgba(127,127,127,0.2)] px-6 py-5">
-              <h3 className="m-0 text-[18px] font-semibold">{t(locale, 'experts.tenant.publishTitle')}</h3>
+            <div className="wk-exp-9">
+              <h3 className="wk-exp-27">{t(locale, 'experts.tenant.publishTitle')}</h3>
               <button
                 type="button"
-                className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-[rgba(127,127,127,0.1)] text-[15px]"
+                className="wk-exp-11"
                 aria-label={t(locale, 'common.cancel')}
                 onClick={() => setPublishOpen(false)}
               >✕</button>
             </div>
 
-            <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">
-              <p className="m-0 text-[13px] leading-[19px] text-[rgba(23,26,29,0.6)]">{t(locale, 'experts.tenant.publishDesc')}</p>
+            <div className="wk-exp-12">
+              <p className="wk-exp-28">{t(locale, 'experts.tenant.publishDesc')}</p>
               <section aria-label={t(locale, 'experts.tenant.publishAgentLabel')}>
                 <h4 className={XP_SECTION_TITLE}>{t(locale, 'experts.tenant.publishAgentLabel')}</h4>
-                {agentsError !== '' ? <p className="m-0 text-[13px] text-[#d54941]" role="alert">{agentsError}</p> : null}
+                {agentsError !== '' ? <p className="wk-exp-29" role="alert">{agentsError}</p> : null}
                 {allAgents === null && agentsError === '' ? <div role="status">{t(locale, 'common.loading')}</div> : null}
-                {allAgents !== null && ownAgents.length === 0 ? <p className="m-0 text-[13px] text-[rgba(23,26,29,0.6)]">{t(locale, 'experts.tenant.publishAgentEmpty')}</p> : null}
-                <ul className="m-0 flex list-none flex-col gap-[8px] p-0">
+                {allAgents !== null && ownAgents.length === 0 ? <p className="wk-exp-30">{t(locale, 'experts.tenant.publishAgentEmpty')}</p> : null}
+                <ul className="wk-exp-17">
                   {ownAgents.map((agent) => {
                     const selected = publishAgentId === agent.id;
                     return (
@@ -850,27 +871,27 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
                           type="button"
                           data-publish-agent={agent.id}
                           aria-pressed={selected ? 'true' : 'false'}
-                          className={'flex w-full cursor-pointer flex-col gap-[4px] rounded-[10px] border px-[12px] py-[10px] text-left font-[inherit] ' + (selected ? 'border-[rgba(7,192,95,0.5)] bg-accent-wash' : 'border-[#e7e7ea] bg-surface')}
+                          className={'wk-exp-47 ' + (selected ? 'wk-exp-48' : 'wk-exp-49')}
                           onClick={() => setPublishAgentId(agent.id)}
                         >
-                          <span className="truncate text-[14px] font-semibold text-[rgba(23,26,29,0.92)]" title={agent.name}>{agent.name}</span>
-                          {agent.description ? <span className="m-0 line-clamp-2 text-[12px] leading-[18px] text-[rgba(23,26,29,0.6)]">{agent.description}</span> : null}
+                          <span className="wk-exp-31" title={agent.name}>{agent.name}</span>
+                          {agent.description ? <span className="wk-exp-32">{agent.description}</span> : null}
                         </button>
                       </li>
                     );
                   })}
                 </ul>
               </section>
-              <label className="flex flex-col gap-[4px] text-[12px] leading-[16px] text-[rgba(23,26,29,0.6)]">
+              <label className="wk-exp-33">
                 {t(locale, 'experts.tenant.publishNameLabel')}
                 <input
-                  className={XP_INPUT + ' w-full'}
+                  className={XP_INPUT + ' wk-exp-45'}
                   value={publishName}
                   placeholder={t(locale, 'experts.tenant.publishNamePlaceholder')}
                   onChange={(event) => setPublishName(event.target.value)}
                 />
               </label>
-              <label className="flex flex-col gap-[4px] text-[12px] leading-[16px] text-[rgba(23,26,29,0.6)]">
+              <label className="wk-exp-33">
                 {t(locale, 'experts.tenant.publishDescriptionLabel')}
                 <textarea
                   className={XP_TEXTAREA}
@@ -882,7 +903,7 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
               </label>
             </div>
 
-            <div className="flex shrink-0 items-center justify-end gap-[10px] border-t border-[rgba(127,127,127,0.2)] px-6 py-4">
+            <div className="wk-exp-34">
               <button type="button" className={XP_BTN_OUTLINE} onClick={() => setPublishOpen(false)}>{t(locale, 'common.cancel')}</button>
               <button
                 type="button"
@@ -898,20 +919,20 @@ export function ExpertsPage({ client }: ExpertsPageProps) {
 
       {unpublishTarget ? (
         <div
-          className="fixed inset-0 z-[1100] flex items-start justify-center bg-[rgba(0,0,0,0.4)] pt-[40vh]"
+          className="wk-exp-35"
           onClick={(event) => { if (event.target === event.currentTarget) setUnpublishTarget(null); }}
         >
           <div
-            className="w-[400px] max-w-[90vw] rounded-md bg-[var(--wk-bg,#fff)] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.18)]"
+            className="wk-exp-36"
             role="alertdialog"
             aria-label={t(locale, 'experts.tenant.unpublishTitle')}
             data-expert-unpublish-dialog
           >
-            <div className="mb-2 text-[16px] font-semibold leading-6">{t(locale, 'experts.tenant.unpublishTitle')}</div>
-            <p className="m-0 mb-[18px] text-[14px] leading-[22px] text-[rgba(23,26,29,0.6)]">{t(locale, 'experts.tenant.unpublishMessage', { name: unpublishTarget.name })}</p>
-            <div className="flex justify-end gap-[24px]">
-              <button type="button" className="cursor-pointer border-none bg-transparent p-0 font-[inherit] text-[14px] text-inherit" onClick={() => setUnpublishTarget(null)}>{t(locale, 'common.cancel')}</button>
-              <button type="button" className="cursor-pointer border-none bg-transparent p-0 font-[inherit] text-[14px] font-medium text-[#d54941]" data-expert-unpublish-confirm disabled={unpublishing} onClick={() => void unpublishConfirmed()}>
+            <div className="wk-exp-37">{t(locale, 'experts.tenant.unpublishTitle')}</div>
+            <p className="wk-exp-38">{t(locale, 'experts.tenant.unpublishMessage', { name: unpublishTarget.name })}</p>
+            <div className="wk-exp-39">
+              <button type="button" className="wk-exp-40" onClick={() => setUnpublishTarget(null)}>{t(locale, 'common.cancel')}</button>
+              <button type="button" className="wk-exp-41" data-expert-unpublish-confirm disabled={unpublishing} onClick={() => void unpublishConfirmed()}>
                 {unpublishing ? t(locale, 'common.loading') : t(locale, 'experts.tenant.unpublish')}
               </button>
             </div>

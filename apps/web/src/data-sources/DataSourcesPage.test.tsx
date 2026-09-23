@@ -9,7 +9,7 @@ test('keeps datasource editing in a body-level 640px drawer with a real isolated
   assert.match(page, /<Drawer visible header=\{editorTitle\}/);
   assert.match(page, /size="640px"/);
   assert.match(page, /createPortal\(editorSurface, document\.body\)/);
-  assert.match(page, /<form className="wk-wiki-editor grid gap-3" onSubmit=\{\(event\) => void save\(event\)\}/);
+  assert.match(page, /<form className="wk-wiki-editor wk-ds-4" onSubmit=\{\(event\) => void save\(event\)\}/);
   assert.match(page, /<Button type="submit" theme="default" variant="outline" loading=\{saving\}>/);
   assert.doesNotMatch(page, /<Card className="mt-4">.*dataSource\.createTitle/s, 'editor must not regress to an outer content card');
 });
@@ -74,16 +74,16 @@ test('localizes the create type step title instead of hardcoding Chinese', () =>
 // R438 A3: Vue DataSourceSettings.vue renders the list as a responsive card
 // grid (ds-grid, repeat(auto-fill,minmax(320px,1fr))) — not plain rows.
 test('renders sources as a Vue-style card grid with a connector icon badge', () => {
-  assert.match(page, /wk-data-source-grid grid grid-cols-\[repeat\(auto-fill,minmax\(320px,1fr\)\)\] gap-3/);
-  assert.match(page, /wk-data-source-badge flex h-9 w-9 flex-none items-center justify-center rounded-\[9px\]/);
-  assert.match(page, /bg-\[rgba\(7,192,95,0\.12\)\] text-\[15px\] font-semibold tracking-\[0\.02em\] text-\[#07c05f\]/);
-  assert.match(page, /rounded-\[10px\] border border-line-soft bg-white px-4 py-\[14px\]/);
+  assert.match(page, /wk-data-source-grid wk-ds-44/);
+  assert.match(page, /wk-data-source-badge wk-ds-45/);
+  assert.match(page, /wk-ds-46/);
+  assert.match(page, /wk-data-source-card wk-ds-77/);
 });
 
 // Vue ds-card__status dot: active→success, paused→warning, error→error.
 test('card subtitle carries the Vue status dot color semantics', () => {
-  assert.match(page, /active' \? 'text-success-text' : status === 'paused' \? 'text-warning-text' : status === 'error' \? 'text-danger'/);
-  assert.match(page, /h-1\.5 w-1.5 flex-none rounded-full bg-current/);
+  assert.match(page, /active' \? 'wk-ds-tone-success' : status === 'paused' \? 'wk-ds-tone-warning' : status === 'error' \? 'wk-ds-tone-danger'/);
+  assert.match(page, /className="wk-ds-51"/);
 });
 
 // Vue ds-card__detail: humanized schedule · relative last sync (full time on
@@ -93,9 +93,9 @@ test('card detail humanizes cron, relative time, sync result tone and metric pil
   assert.match(page, /\{humanizeCron\(source\.sync_schedule, t\)\}/);
   assert.match(page, /\{relativeTime\(source\.last_sync_at, t\)\}/);
   assert.match(page, /title=\{fullTime \|\| undefined\}/);
-  assert.match(page, /success' \? 'text-success-text' : status === 'failed' \? 'text-danger' : status === 'running' \? 'text-primary' : status === 'partial' \? 'text-warning-text'/);
-  assert.match(page, /wk-data-source-metric font-mono text-\[11px\] tabular-nums/);
-  assert.match(page, /source\.error_message \? <div className="mt-2 flex items-start gap-1\.5 rounded-md bg-danger\/10 px-2\.5 py-2 text-xs leading-snug text-danger">/);
+  assert.match(page, /success' \? 'wk-ds-tone-success' : status === 'failed' \? 'wk-ds-tone-danger' : status === 'running' \? 'wk-ds-tone-primary' : status === 'partial' \? 'wk-ds-tone-warning'/);
+  assert.match(page, /wk-data-source-metric tabular-nums wk-ds-53/);
+  assert.match(page, /source\.error_message \? <div className="wk-ds-54">/);
 });
 
 // R437 pending adjudication: the extra test-connection button stays; action
@@ -170,7 +170,7 @@ test('a committed replacement collapses back to the configured row', () => {
 // editor renders key-value rows (add / remove) with the authHeaders hint and
 // "Key: Value" placeholders, replacing the generic credentials textarea.
 test('rss renders the Vue custom header rows editor in place of the generic textarea', () => {
-  assert.match(page, /form\.type === 'rss' \? <div className="grid gap-2" data-kind="rss-auth-headers">/);
+  assert.match(page, /form\.type === 'rss' \? <div className="wk-ds-8" data-kind="rss-auth-headers">/);
   assert.match(page, /t\('dataSource\.credential\.headerAdd'\)/);
   assert.match(page, /t\('dataSource\.credential\.headerKeyPlaceholder'\)/);
   assert.match(page, /t\('dataSource\.credential\.headerValuePlaceholder'\)/);
@@ -219,7 +219,7 @@ test('replace mode drives the validation exemption and cancel discards the draft
 // (form-desc) and falls empty placeholders back to credential.inputPlaceholder.
 test('credential fields render Vue hints and the input placeholder fallback', () => {
   assert.match(page, /placeholder=\{field\.placeholder \|\| t\('dataSource\.credential\.inputPlaceholder'\)\}/);
-  assert.match(page, /\{field\.hint \? <small className="text-muted">\{t\(field\.hint\)\}<\/small> : null\}/);
+  assert.match(page, /\{field\.hint \? <small className="wk-ds-12">\{t\(field\.hint\)\}<\/small> : null\}/);
 });
 
 // R452 A2: Vue DataSourceEditorDialog renders the gitlab projects editor as
@@ -335,7 +335,7 @@ test('delete panel is a centered tdesign Dialog with footer actions matching the
 // confirm button to the deleteAndPurge label.
 test('delete panel keeps the keep copy by default and swaps to the red purge warning once checked', () => {
   assert.match(page, /data-kind=\{deletePurge \? 'delete-purge-warning' : 'delete-keep'\}/);
-  assert.match(page, /\{deletePurge \? <span className="font-medium text-danger">\{purgeWarningText\}<\/span> : t\('dataSource\.deletePanelKeep'\)\}/);
+  assert.match(page, /\{deletePurge \? <span className="wk-ds-37">\{purgeWarningText\}<\/span> : t\('dataSource\.deletePanelKeep'\)\}/);
   assert.match(page, /<Checkbox checked=\{deletePurge\} disabled=\{deleteSubmitting\} onChange=\{\(checked\) => setDeletePurge\(checked\)\} label=\{purgeLabelText\} \/>/);
   assert.match(page, /purgeLabelText = deleteCount !== null \? t\('dataSource\.deletePanelPurgeLabel', \{ count: deleteCount \}\) : t\('dataSource\.deletePanelPurgeLabelUnknown'\)/);
   assert.match(page, /purgeWarningText = deleteCount !== null \? t\('dataSource\.deletePanelPurgeWarning', \{ count: deleteCount \}\) : t\('dataSource\.deletePanelPurgeWarningUnknown'\)/);
@@ -345,7 +345,7 @@ test('delete panel keeps the keep copy by default and swaps to the red purge war
 // The count line loads behind the panel: a loading placeholder first, the
 // interpolated "synced documents: N" once the count resolves.
 test('delete panel renders the documents count with a loading state', () => {
-  assert.match(page, /deleteCountLoading \? <p className="m-0 text-muted" data-kind="delete-count-loading">\{t\('common\.loading'\)\}<\/p> : deleteCount !== null \? <p className="m-0 text-muted" data-kind="delete-count">\{t\('dataSource\.deletePanelCount', \{ count: deleteCount \}\)\}<\/p> : null/);
+  assert.match(page, /deleteCountLoading \? <p className="wk-ds-18" data-kind="delete-count-loading">\{t\('common\.loading'\)\}<\/p> : deleteCount !== null \? <p className="wk-ds-18" data-kind="delete-count">\{t\('dataSource\.deletePanelCount', \{ count: deleteCount \}\)\}<\/p> : null/);
 });
 
 // Confirm runs the dual-choice delete: the checkbox rides into
