@@ -55,6 +55,7 @@ import (
 	infra_web_search "github.com/Tencent/WeKnora/internal/modules/airesource/web_search"
 	repoappconn "github.com/Tencent/WeKnora/internal/modules/appconnector/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/modules/appconnector/service/appconnector"
+	"github.com/Tencent/WeKnora/internal/modules/career"
 	imPkg "github.com/Tencent/WeKnora/internal/modules/channels/im"
 	"github.com/Tencent/WeKnora/internal/modules/channels/im/dingtalk"
 	"github.com/Tencent/WeKnora/internal/modules/channels/im/feishu"
@@ -706,6 +707,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// HTTP handlers layer
 	logger.Debugf(ctx, "[Container] Registering HTTP handlers...")
+	must(container.Provide(career.NewHandler))
 	must(container.Provide(handler.NewTenantHandler))
 	must(container.Provide(handler.NewTenantMemberHandler))
 	must(container.Provide(handler.NewTenantInvitationHandler))

@@ -1,0 +1,5 @@
+CREATE TABLE career_profiles (tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (tenant_id, user_id));
+CREATE TABLE career_facts (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, revision INTEGER NOT NULL, request_id TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, user_id, key));
+CREATE TABLE career_proposals (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX idx_career_proposal_scope ON career_proposals (tenant_id, user_id);
+CREATE TABLE career_receipts (tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, request_id TEXT NOT NULL, fingerprint VARCHAR(64) NOT NULL, body TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, user_id, request_id));

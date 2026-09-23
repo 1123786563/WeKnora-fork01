@@ -18,6 +18,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
+	"github.com/Tencent/WeKnora/internal/modules/career"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 
@@ -44,6 +45,7 @@ type RouterParams struct {
 	KBHandler                  *handler.KnowledgeBaseHandler
 	SemanticModelPolicyHandler *handler.SemanticModelPolicyHandler
 	KnowledgeHandler           *handler.KnowledgeHandler
+	CareerHandler              *career.Handler `optional:"true"`
 	TenantHandler              *handler.TenantHandler
 	TenantService              interfaces.TenantService
 	TenantAPIKeyService        interfaces.TenantAPIKeyService
@@ -320,6 +322,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 
 		RegisterAuthRoutes(v1, params.AuthHandler, rbacGuards)
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
+		RegisterCareerRoutes(v1, params.CareerHandler)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
 		// Member-scoped local-browser management (A13): pairing, status,
 		// revoke and the extension download for the calling member.

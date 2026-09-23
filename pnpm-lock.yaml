@@ -299,6 +299,7 @@ importers:
         specifier: workspace:*
         version: link:../domain
 
+  packages/career-core: {}
   packages/contracts: {}
 
   packages/core:

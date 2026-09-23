@@ -1,0 +1,5 @@
+CREATE TABLE career_profiles (tenant_id BIGINT NOT NULL, user_id VARCHAR(512) NOT NULL, revision BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (tenant_id, user_id));
+CREATE TABLE career_facts (id BIGSERIAL PRIMARY KEY, tenant_id BIGINT NOT NULL, user_id VARCHAR(512) NOT NULL, key VARCHAR(128) NOT NULL, value TEXT NOT NULL, revision BIGINT NOT NULL, request_id VARCHAR(128) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (tenant_id, user_id, key));
+CREATE TABLE career_proposals (id BIGSERIAL PRIMARY KEY, tenant_id BIGINT NOT NULL, user_id VARCHAR(512) NOT NULL, key VARCHAR(128) NOT NULL, value TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE INDEX idx_career_proposal_scope ON career_proposals (tenant_id, user_id);
+CREATE TABLE career_receipts (tenant_id BIGINT NOT NULL, user_id VARCHAR(512) NOT NULL, request_id VARCHAR(128) NOT NULL, fingerprint VARCHAR(64) NOT NULL, body TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (tenant_id, user_id, request_id));

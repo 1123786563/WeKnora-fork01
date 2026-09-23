@@ -1,0 +1,5 @@
+import { strict as assert } from 'node:assert'
+import { test } from 'node:test'
+import type { CareerAction, CareerError, CareerReceipt, CareerView } from './contracts.ts'
+test('career wire fixture keeps proposals separate from confirmed facts', () => { const view: CareerView = { revision: 1, facts: [], proposals: [{ key: 'graduation_year', value: '2027', createdAt: '2026-09-24T00:00:00Z' }] }; assert.equal(view.facts.length, 0); assert.equal(view.proposals[0]?.key, 'graduation_year') })
+test('career actions and receipts carry idempotency and revision fields', () => { const action: CareerAction = { key: 'degree', value: 'bachelor', requestId: 'r1', expectedRevision: 2, confirmed: true }; const receipt: CareerReceipt = { requestId: 'r1', revision: 3, fact: { key: action.key, value: action.value, revision: 3, confirmedAt: '2026-09-24T00:00:00Z' } }; const conflict: CareerError = { code: 'revision_conflict', message: 'conflict', currentRevision: 3 }; assert.equal(receipt.revision, conflict.currentRevision) })
