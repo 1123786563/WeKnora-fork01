@@ -18,7 +18,7 @@ export interface ScopeLease {
   readonly [scopeLeaseBrand]: never;
 }
 
-export type RuntimeSurface = 'deployment-login' | 'upgrade-required' | 'authorized';
+export type RuntimeSurface = 'deployment-login' | 'upgrade-required' | 'authorized' | 'read-only';
 export type RuntimeReason = 'protocol-mismatch' | 'unknown-capability' | 'tenant-required' | 'authentication-required';
 
 /** Presentation-safe tenant switcher option; ids match activateTenant input. */

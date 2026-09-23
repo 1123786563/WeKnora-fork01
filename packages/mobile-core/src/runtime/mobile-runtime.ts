@@ -4,7 +4,7 @@ import type { ScopedVault, VaultRevokeReason } from '../vault/scoped-vault.ts';
 import { RuntimeScopeLease } from './scope-lease.ts';
 import { createResourceShelf } from '../shelf/resource-shelf.ts';
 import type { ResourceShelfHandle } from '../shelf/types.ts';
-import type { Deployment, DeploymentInput, MobileRuntime, RuntimeAuthorizedRequest, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
+import type { Deployment, DeploymentInput, MobileRuntime, RuntimeAuthorizedRequest, RuntimeReason, RuntimeSnapshot, RuntimeSurface, ScopeLease } from './types.ts';
 
 function normalizeDeployment(input: DeploymentInput): Deployment {
   if (!input || typeof input.origin !== 'string' || input.origin.trim() === '') throw new Error('deployment origin is required');
@@ -182,7 +182,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
   };
   const accessTokenFor = async (origin: string, options?: { refresh?: boolean }): Promise<string> => {
     const deployment = activeDeployment;
-    if (!deployment || deployment.origin !== origin || state.surface !== 'authorized' || !activeCredential) throw new Error('SHELF_SCOPE');
+    if (!deployment || deployment.origin !== origin || (state.surface !== 'authorized' && state.surface !== 'read-only') || !activeCredential) throw new Error('SHELF_SCOPE');
     if (!options?.refresh) return activeCredential.token;
     const refreshed = await refreshedCredential(epoch, deployment, activeCredential);
     if (!refreshed) throw new Error('SHELF_AUTH');
@@ -211,7 +211,10 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       const capabilities = await remote.deploymentCapabilities(verifiedCredential.token);
       if (!current(requestEpoch, deployment)) return state;
       const gate = clientGate(ports.clientVersion, capabilities);
-      if (gate.mode !== 'full') return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
+      if (gate.mode !== 'full' && gate.mode !== 'server_upgrade_required') {
+        return safe(requestEpoch, deployment, gate.mode === 'unknown_schema' ? 'unknown-capability' : 'protocol-mismatch');
+      }
+      const surface: RuntimeSurface = gate.mode === 'full' ? 'authorized' : 'read-only';
       await mutateDeployment(async () => {
         await ports.deploymentStore?.write(deployment);
         await ports.deploymentRegistry?.upsert(deployment);
@@ -223,7 +226,12 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       activeShelf = ports.resourceShelf
         ? createResourceShelf({ remote: ports.resourceShelf.remoteFor(deployment.origin), accessTokenFor }).open({ lease })
         : undefined;
-      return publish({ surface: 'authorized', deployment, identity: { userId: authenticatedUserId, activeTenantId, ...tenantOptions(me.memberships, activeTenantId) } });
+      return publish({
+        surface,
+        deployment,
+        identity: { userId: authenticatedUserId, activeTenantId, ...tenantOptions(me.memberships, activeTenantId) },
+        ...(surface === 'read-only' ? { reason: 'protocol-mismatch' as const } : {}),
+      });
     } catch {
       return safe(requestEpoch, deployment, 'authentication-required');
     }
@@ -311,7 +319,7 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       if (!ports.pendingOidcStore) return state;
       const pending = await mutatePendingOidc(async () => await ports.pendingOidcStore!.consumePending());
       if (!pending) {
-        if (state.surface === 'authorized' && lease) return state;
+        if ((state.surface === 'authorized' || state.surface === 'read-only') && lease) return state;
         if (!activeDeployment) return state;
         const requestEpoch = begin(activeDeployment);
         return safe(requestEpoch, activeDeployment, 'authentication-required');
