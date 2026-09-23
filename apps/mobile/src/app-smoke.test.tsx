@@ -524,3 +524,63 @@ test('TasksScreen drives search, filters, archive and pagination through the mod
   const emptyText = descendants(render(TasksScreen, { taskOffice: emptyOffice as unknown as import('@weknora/mobile-core').TaskOffice })).filter(({ type }) => type === 'Text').flatMap(({ props: p }) => p.children).join(' ');
   assert.equal(emptyText.includes('No tasks yet'), true, 'empty is an empty state, never a silent success');
 });
+
+test('the login surface lists registered deployments and switches through the runtime callback', async () => {
+  const { DeploymentLoginScreen } = await import('./screens/DeploymentLoginScreen.tsx');
+  hooks().__reset();
+  const switched: string[] = [];
+  const props = {
+    deployments: [{ origin: 'https://weknora.example.test', label: 'WeKnora' }, { origin: 'https://other.example.test', label: 'Other' }],
+    onSignIn: async () => {},
+    onBeginOidc: async () => {},
+    onSwitchDeployment: async (origin: string) => { switched.push(origin); },
+  };
+  const element = render(DeploymentLoginScreen, props);
+  const texts = descendants(element).filter(({ type }) => type === 'Text').flatMap(({ props: p }) => p.children).flatMap((part) => (typeof part === 'string' ? [part] : []));
+  assert.equal(texts.includes('Registered deployments'), true, 'the registered instance list is visible before manual origin entry');
+  const other = descendants(element).find(({ type, props: p }) => type === 'Button' && p.title === 'Other');
+  assert.ok(other, 'each registered instance renders a switch button');
+  (other!.props.onPress as () => void)();
+  assert.deepEqual(switched, ['https://other.example.test']);
+});
+
+test('the home header switches to another registered deployment through the callback', async () => {
+  const { HomeScreen } = await import('./screens/HomeScreen.tsx');
+  hooks().__reset();
+  const switched: string[] = [];
+  const element = render(HomeScreen, {
+    deploymentLabel: 'WeKnora',
+    tenants: [{ id: '7', name: 'Acme' }],
+    activeTenantId: '7',
+    onActivateTenant: () => {},
+    onSignOut: async () => {},
+    taskOffice: fakeTaskOffice({}),
+    otherDeployments: [{ origin: 'https://other.example.test', label: 'Other' }],
+    onSwitchDeployment: async (origin: string) => { switched.push(origin); },
+  });
+  const button = descendants(element).find(({ type, props: p }) => type === 'Button' && p.title === 'Switch to Other');
+  assert.ok(button, 'another registered deployment must render a switch button on the authorized surface');
+  (button!.props.onPress as () => void)();
+  assert.deepEqual(switched, ['https://other.example.test']);
+});
+
+test('RuntimeSurface passes other registered deployments to the home screen and the full list to login', async () => {
+  const { RuntimeSurface } = await import('./composition.ts');
+  const authorized = RuntimeSurface({
+    snapshot: { surface: 'authorized', deployment: { origin: 'https://weknora.example.test', label: 'WeKnora' }, identity: { userId: 'member-1', activeTenantId: '7', tenants: [{ id: '7' }] } },
+    deployments: [{ origin: 'https://weknora.example.test', label: 'WeKnora' }, { origin: 'https://other.example.test', label: 'Other' }],
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {}, onActivateTenant: async () => {},
+    onSwitchDeployment: async () => {},
+  });
+  assert.equal(authorized.type.name, 'HomeScreen');
+  assert.deepEqual((authorized.props as { otherDeployments?: Array<{ origin: string; label: string }> }).otherDeployments, [{ origin: 'https://other.example.test', label: 'Other' }]);
+
+  const login = RuntimeSurface({
+    snapshot: { surface: 'deployment-login' },
+    deployments: [{ origin: 'https://other.example.test', label: 'Other' }],
+    onSignIn: async () => {}, onBeginOidc: async () => {}, onSignOut: async () => {}, onActivateTenant: async () => {},
+    onSwitchDeployment: async () => {},
+  });
+  assert.equal(login.type.name, 'DeploymentLoginScreen');
+  assert.deepEqual((login.props as { deployments?: Array<{ origin: string; label: string }> }).deployments, [{ origin: 'https://other.example.test', label: 'Other' }]);
+});
