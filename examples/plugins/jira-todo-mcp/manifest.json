@@ -1,0 +1,22 @@
+{
+  "protocol": "weknora.plugin/1",
+  "plugin_id": "jira-todo-mcp",
+  "version": "1.0.0",
+  "name": "Jira 本周待办（只读示例）",
+  "description": "查询授权成员本周未解决的 Jira 待办事项；只读、固定 JQL、不接受模型传参。",
+  "transport": {
+    "type": "http-streamable",
+    "endpoint": "https://REPLACE-WITH-YOUR-DEPLOYMENT-HOST/mcp"
+  },
+  "auth": {
+    "personal_oauth": true
+  },
+  "tools": [
+    {
+      "name": "search_my_week_issues",
+      "read_only": true,
+      "requires_personal_auth": true,
+      "input_schema_digest": "99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa"
+    }
+  ]
+}
