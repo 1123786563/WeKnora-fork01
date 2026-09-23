@@ -27,6 +27,15 @@ export interface TenantOption {
   name?: string;
 }
 
+/** Authorized channel input for child modules; structurally assignable from api-client ClientRequest. */
+export interface RuntimeAuthorizedRequest {
+  method: string;
+  path: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+  signal?: AbortSignal;
+}
+
 /** Presentation-safe state: credentials, protocol details, leases, and epochs never escape here. */
 export interface RuntimeSnapshot {
   surface: RuntimeSurface;
@@ -42,6 +51,8 @@ export interface MobileRuntime {
   signIn(input: { deployment: DeploymentInput; email: string; password: string }): Promise<RuntimeSnapshot>;
   beginOidc(input: { deployment: DeploymentInput; redirectUri: string }): Promise<void>;
   completeOidc(callbackUrl: string): Promise<RuntimeSnapshot>;
+  /** Sends one request through the active deployment with the current credential (refresh-once on 401). Tokens never escape the Runtime. */
+  authorizedRequest(input: RuntimeAuthorizedRequest): Promise<unknown>;
   scopeLease(): ScopeLease | undefined;
   /** Resource Shelf for the active scope; undefined unless authorized with ports.resourceShelf provided. */
   resourceShelf(): ResourceShelfHandle | undefined;

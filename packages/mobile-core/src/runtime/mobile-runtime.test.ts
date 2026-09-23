@@ -8,6 +8,10 @@ import type { DeploymentInput } from './types.ts';
 
 const DEPLOYMENT: DeploymentInput = { origin: 'https://weknora.example.test', label: 'Test Deployment' };
 const FULL_CAPABILITIES = { protocol_minimum: 2, protocol_maximum: 3 };
+/** Fixture grants for the `.test` deployment; wire-shaped refresh responses are mapped from these. */
+const DEFAULT_GRANT: StoredCredential = { token: 'access-1', refreshToken: 'refresh-1' };
+const FRESH_GRANT: StoredCredential = { token: 'fresh-access', refreshToken: 'fresh-refresh' };
+const LATE_GRANT: StoredCredential = { token: 'late-access', refreshToken: 'late-refresh' };
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -45,7 +49,7 @@ function remote(overrides: Partial<RuntimeRemote> = {}): RuntimeRemote {
     oidcUrl: async () => ({ authorizationUrl: 'https://idp.example.test/authorize', state: 'state-1' }),
     oidcExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
     oidcNativeExchange: async () => ({ token: 'access-1', refreshToken: 'refresh-1' }),
-    refresh: async () => ({ access_token: 'access-1', refresh_token: 'refresh-1' }),
+    refresh: async () => ({ access_token: DEFAULT_GRANT.token, refresh_token: DEFAULT_GRANT.refreshToken }),
     switchTenant: async (input) => ({ credential: { token: `tenant-${input.tenantId}-access`, refreshToken: `refresh-${input.tenantId}` }, tenant: { id: `tenant-${input.tenantId}` } }),
     ...overrides,
   };
@@ -390,7 +394,7 @@ test('concurrent OIDC completions share one refresh after identity rejects an ex
   const second = runtime.completeOidc('weknora://oidc?code=code-1&state=state-1');
   await refreshStarted.promise;
   assert.equal(refreshes, 1);
-  releaseRefresh.resolve({ access_token: 'fresh-access', refresh_token: 'fresh-refresh' });
+  releaseRefresh.resolve({ access_token: FRESH_GRANT.token, refresh_token: FRESH_GRANT.refreshToken });
   await Promise.all([first, second]);
 
   assert.equal(refreshes, 1);
@@ -409,7 +413,7 @@ test('a refresh that settles after sign-out cannot persist or authorize', async 
   const boot = runtime.boot(DEPLOYMENT);
   await refreshStarted.promise;
   await runtime.signOut();
-  releaseRefresh.resolve({ access_token: 'late-access', refresh_token: 'late-refresh' });
+  releaseRefresh.resolve({ access_token: LATE_GRANT.token, refresh_token: LATE_GRANT.refreshToken });
   await boot;
 
   assert.equal(await store.read(DEPLOYMENT.origin), undefined);
@@ -433,7 +437,7 @@ test('a refresh that settles after a deployment change cannot persist or authori
   const boot = runtime.boot(DEPLOYMENT);
   await refreshStarted.promise;
   await runtime.signIn({ deployment: other, email: 'member@example.test', password: 'password' });
-  releaseRefresh.resolve({ access_token: 'late-access', refresh_token: 'late-refresh' });
+  releaseRefresh.resolve({ access_token: LATE_GRANT.token, refresh_token: LATE_GRANT.refreshToken });
   await boot;
 
   assert.deepEqual(await store.read(DEPLOYMENT.origin), { token: 'expired-access', refreshToken: 'refresh-1' });
@@ -610,6 +614,60 @@ test('a rejected tenant switch fails closed without keeping the prior lease', as
   assert.notEqual(runtime.scopeLease(), priorLease);
   assert.equal(runtime.scopeLease(), undefined);
   assert.deepEqual(await store.read(DEPLOYMENT.origin), { token: 'access-1', refreshToken: 'refresh-1' });
+});
+
+test('authorizedRequest rejects before any transport call when unauthorized', async () => {
+  const runtime = createMobileRuntime(ports(fakeStore(), () => remote()));
+  await assert.rejects(runtime.authorizedRequest({ method: 'GET', path: '/api/v1/workbench/overview' }), /RUNTIME_UNAUTHORIZED/);
+});
+
+test('authorizedRequest carries the credential and refreshes exactly once on a 401', async () => {
+  const sentTokens: Array<string | undefined> = [];
+  const rotatedCredential = { token: 'access-2', refreshToken: 'refresh-2' };
+  const store = fakeStore();
+  const runtime = createMobileRuntime({
+    credentialStore: store,
+    remoteFor: () => remote({
+      me: async (token) => ({ user: { id: 'user-1' }, tenant: { id: 'tenant-1' } }),
+      refresh: async () => ({ access_token: rotatedCredential.token, refresh_token: rotatedCredential.refreshToken }),
+    }),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedTransport: () => async (input, accessToken) => {
+      sentTokens.push(`${input.method} ${input.path} ${accessToken}`);
+      if (accessToken === 'access-1') {
+        const error = new Error('HTTP 401');
+        error.name = 'ApiError';
+        (error as unknown as { status?: number }).status = 401;
+        throw error;
+      }
+      return { success: true, data: { ok: true } };
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const response = await runtime.authorizedRequest({ method: 'GET', path: '/api/v1/workbench/overview' });
+  assert.deepEqual(response, { success: true, data: { ok: true } });
+  assert.deepEqual(sentTokens, [
+    'GET /api/v1/workbench/overview access-1',
+    'GET /api/v1/workbench/overview access-2',
+  ]);
+});
+
+test('a late authorized response after a scope change is dropped', async () => {
+  const release = deferred<void>();
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(),
+    remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION,
+    authorizedTransport: () => async () => {
+      await release.promise;
+      return { success: true, data: { stale: true } };
+    },
+  });
+  await runtime.signIn({ deployment: DEPLOYMENT, email: 'member@example.test', password: 'password' });
+  const pending = runtime.authorizedRequest({ method: 'GET', path: '/api/v1/workbench/overview' });
+  await runtime.signOut();
+  release.resolve();
+  await assert.rejects(pending, /RUNTIME_SCOPE_CHANGED/);
 });
 
 test('a late tenant verification cannot override a completed later switch', async () => {

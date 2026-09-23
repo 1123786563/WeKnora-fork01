@@ -40,6 +40,12 @@ export interface PendingOidcStore {
   clearPending(): Promise<void>;
 }
 
+/** Receives the access token; never exposes it upward. */
+export type AuthorizedTransport = (
+  input: { method: string; path: string; headers?: Record<string, string>; body?: unknown; signal?: AbortSignal },
+  accessToken: string,
+) => Promise<unknown>;
+
 export interface PendingOidc {
   deploymentOrigin: string;
   state: string;
@@ -72,4 +78,6 @@ export interface MobileRuntimePorts {
   resourceShelf?: { remoteFor(origin: string): ResourceRemote };
   /** Native platform entropy hook. Omit only where Web Crypto is available. */
   randomBytes?: (size: number) => Uint8Array;
+  /** Authorized channel for child modules (Task Office &c.); omitted = fail closed. */
+  authorizedTransport?: (deploymentOrigin: string) => AuthorizedTransport;
 }

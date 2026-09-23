@@ -4,7 +4,7 @@ import type { ScopedVault, VaultRevokeReason } from '../vault/scoped-vault.ts';
 import { RuntimeScopeLease } from './scope-lease.ts';
 import { createResourceShelf } from '../shelf/resource-shelf.ts';
 import type { ResourceShelfHandle } from '../shelf/types.ts';
-import type { Deployment, DeploymentInput, MobileRuntime, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
+import type { Deployment, DeploymentInput, MobileRuntime, RuntimeAuthorizedRequest, RuntimeReason, RuntimeSnapshot, ScopeLease } from './types.ts';
 
 function normalizeDeployment(input: DeploymentInput): Deployment {
   if (!input || typeof input.origin !== 'string' || input.origin.trim() === '') throw new Error('deployment origin is required');
@@ -81,6 +81,12 @@ async function codeChallenge(verifier: string): Promise<string> {
 
 function serverOidcCallback(deployment: Deployment): string {
   return `${deployment.origin}/api/v1/auth/oidc/callback`;
+}
+
+function unauthorizedStatus(error: unknown): boolean {
+  return typeof error === 'object' && error !== null &&
+    (error as { name?: unknown }).name === 'ApiError' &&
+    (error as { status?: unknown }).status === 401;
 }
 
 export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
@@ -330,6 +336,29 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         return await completion;
       } finally {
         if (oidcCompletion === completion) oidcCompletion = undefined;
+      }
+    },
+    async authorizedRequest(input: RuntimeAuthorizedRequest): Promise<unknown> {
+      const deployment = activeDeployment;
+      const transport = deployment && state.surface === 'authorized' ? ports.authorizedTransport?.(deployment.origin) : undefined;
+      if (!deployment || !transport) throw new Error('RUNTIME_UNAUTHORIZED');
+      const requestEpoch = epoch;
+      const send = async (token: string): Promise<unknown> => transport(input, token);
+      const credential = await ports.credentialStore.read(deployment.origin);
+      if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+      if (!credential) throw new Error('RUNTIME_UNAUTHORIZED');
+      try {
+        const response = await send(credential.token);
+        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+        return response;
+      } catch (error) {
+        if (!unauthorizedStatus(error)) throw error;
+        const refreshed = await refreshedCredential(requestEpoch, deployment, credential);
+        if (!refreshed) throw new Error('RUNTIME_UNAUTHORIZED');
+        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+        const retried = await send(refreshed.token);
+        if (!current(requestEpoch, deployment)) throw new Error('RUNTIME_SCOPE_CHANGED');
+        return retried;
       }
     },
     scopeLease: () => lease,
