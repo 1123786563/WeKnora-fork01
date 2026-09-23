@@ -888,5 +888,92 @@ func TestAuthorizePagesDenyFraming(t *testing.T) {
 	_ = bad.Body.Close()
 	require.Equal(t, http.StatusUnauthorized, bad.StatusCode)
 	require.Equal(t, "DENY", bad.Header.Get("X-Frame-Options"), "credential-error page must deny framing")
-	require.Equal(t, "frame-ancestors 'none'", bad.Header.Get("Content-Security-Policy"))
+	require.Equal(t, "frame-ancestors 'none'", bad.Header.Get("Content-Security-Policy"), "credential-error page must set frame-ancestors")
+}
+
+// --- 终评 R5 F8（T01-R4-F1 转交闭环）：access_token 表窗口总量封顶 ---
+
+// TestActiveTokensBoundedOnExchangeAndRefresh：持有任一有效 refresh_token
+// 的调用方可零门槛高频 /token——每次刷新令一个新 access_token 存活
+// accessTokenTTL，窗口内 s.tokens 可被推至任意大（pendingAuths 已有同款
+// 不变量 maxPendingAuths）。满容后 refresh 与新授权流的 exchange 都必须
+// 429，且失败不得烧毁调用方现有凭据（旧 refresh_token 保留可重试、未消费
+// 的 code 保留可重试）。
+func TestActiveTokensBoundedOnExchangeAndRefresh(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirectURI := "https://client.example/callback"
+
+	oldMax := maxActiveTokens
+	maxActiveTokens = 2
+	t.Cleanup(func() { maxActiveTokens = oldMax })
+
+	// 初始授权（tokens 1 条）+ 一次刷新（tokens 2 条）占满容量。
+	_, refreshToken := testOAuthFlow(t, base, redirectURI, "member@example.com", "tok")
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refreshToken)
+	resp, err := http.PostForm(base+"/token", form)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "second token slot must still be issued")
+
+	// 满容后的再次刷新：429，且旧 refresh_token 未被烧毁（重试仍 429 而非
+	// 400 invalid_grant——容量是暂时态，不该迫使成员重启授权流）。
+	form.Set("refresh_token", refreshToken)
+	resp, err = http.PostForm(base+"/token", form)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode,
+		"refresh beyond maxActiveTokens must be rejected with 429")
+	form.Set("refresh_token", refreshToken)
+	resp, err = http.PostForm(base+"/token", form)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode,
+		"the caller's refresh_token must survive a 429 (not rotated away)")
+
+	// 满容后的新授权流：exchange 也必须 429，且未消费的 code 保留可重试
+	//（重试同 code 仍 429 而非 400 unknown code）。
+	clientID := testRegisterClient(t, base, redirectURI)
+	verifier, challenge := testPKCE(t)
+	require.Equal(t, http.StatusOK,
+		testAuthorizeGET(t, base, clientID, redirectURI, "r5-bounded-state", challenge))
+	status, location := testAuthorizePOST(t, base, "r5-bounded-state", "member@example.com", "tok")
+	require.Equal(t, http.StatusFound, status, "location: %s", location)
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	code := parsed.Query().Get("code")
+	require.NotEmpty(t, code)
+	exStatus, _ := testExchangeCode(t, base, code, verifier, clientID, redirectURI)
+	require.Equal(t, http.StatusTooManyRequests, exStatus,
+		"exchange beyond maxActiveTokens must be rejected with 429")
+	exStatus, _ = testExchangeCode(t, base, code, verifier, clientID, redirectURI)
+	require.Equal(t, http.StatusTooManyRequests, exStatus,
+		"an unconsumed code must survive a 429 (not burned)")
+}
+
+// TestLookupSessionDoesNotSweepUnrelatedEntries：/mcp 每请求经 gate 与
+// contextFunc 两次 lookupSession，原实现持锁对 5 个 map 全量清扫——tokens
+// 表被推大后形成请求串行化 O(n)×2 放大。读路径必须只做单条 O(1) 查找：
+// 查有效 token 不删无关过期条目（全量清扫职责在写路径）；查到过期条目
+// 仍即时删除并拒绝（过期即拒语义不变）。
+func TestLookupSessionDoesNotSweepUnrelatedEntries(t *testing.T) {
+	s := newOAuthServer("http://auth.example", "http://jira.example", nil)
+	session := &oauthSession{Email: "member@example.com", APIToken: "tok"}
+	now := time.Now()
+	s.tokens["at-expired"] = tokenEntry{Session: session, ExpiresAt: now.Add(-time.Minute)}
+	s.tokens["at-valid"] = tokenEntry{Session: session, ExpiresAt: now.Add(time.Minute)}
+
+	require.NotNil(t, s.lookupSession("at-valid"))
+	_, unrelatedStillThere := s.tokens["at-expired"]
+	require.True(t, unrelatedStillThere,
+		"lookupSession must not sweep unrelated expired entries on the hot /mcp read path")
+
+	require.Nil(t, s.lookupSession("at-expired"), "expired token must be rejected")
+	_, expiredStillThere := s.tokens["at-expired"]
+	require.False(t, expiredStillThere,
+		"the looked-up expired entry itself must still be removed on sight")
 }

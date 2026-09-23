@@ -66,6 +66,13 @@ var (
 // TTL 清扫只约束时间维度，窗口内总量必须有界）。var 以便测试改写。
 var maxPendingAuths = 1024
 
+// maxActiveTokens 封顶窗口内未过期 access_token 条目数（终评 R5 F8，闭环
+// T01 账本第八轮转交的 T01-R4-F1）：持有任一有效 refresh_token 的调用方
+// 可零门槛高频 /token——每次刷新令一个新 access_token 存活 accessTokenTTL，
+// 窗口内可把 tokens 表推至任意大；pendingAuths 已有同款不变量（OCR
+// T04-R2-3）。var 以便测试改写。
+var maxActiveTokens = 8192
+
 // oauthServer 是一个简化的 OAuth 2.0 授权码服务器（内存态）：
 //   - RFC 9728 protected-resource / RFC 8414 authorization-server metadata；
 //   - RFC 7591 动态客户端注册（POST /register，注册时绑定 redirect_uris）；
@@ -233,16 +240,23 @@ func sessionFromContext(ctx context.Context) *oauthSession {
 }
 
 // lookupSession 返回 access_token 对应会话；无效、缺失或已过期的 token
-// 返回 nil（过期条目顺手清扫，OCR T04-R1-2）。
+// 返回 nil。只做单条 O(1) 查找（终评 R5 F8：原实现持锁调 sweepExpiredLocked
+// 对 5 个 map 全量清扫，而每个 /mcp 请求经 gate 与 contextFunc 触发两次
+// ——tokens 表被推大后形成请求串行化 O(n)×2 放大）。全量清扫职责收敛到
+// 写路径（/register、/authorize、/token 均仍调 sweepExpiredLocked）；查到的
+// 过期条目仍即时删除并拒绝（OCR T04-R1-2 过期即拒语义不变）。
 func (s *oauthServer) lookupSession(token string) *oauthSession {
 	if token == "" {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sweepExpiredLocked(time.Now())
 	entry, ok := s.tokens[token]
 	if !ok {
+		return nil
+	}
+	if time.Now().After(entry.ExpiresAt) {
+		delete(s.tokens, token)
 		return nil
 	}
 	return entry.Session
@@ -641,6 +655,17 @@ func (s *oauthServer) exchangeCode(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	s.mu.Lock()
 	s.sweepExpiredLocked(now)
+	// 终评 R5 F8：先清扫再查容量（过期条目即时释放名额）。满容时不消费
+	// code——容量是暂时态，客户端可稍后重试而非重启整条授权流。检查与
+	// 后续写入跨临界区的并发窗口仅允许临时超出并发请求数条，稳态上界
+	// = maxActiveTokens + 并发数，非无界。
+	if len(s.tokens) >= maxActiveTokens {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{
+			"error": "temporarily_unavailable", "error_description": "too many active tokens; retry later",
+		})
+		return
+	}
 	issued, ok := s.codes[code]
 	delete(s.codes, code) // code 一次性：无论后续校验成败都不再可用
 	s.mu.Unlock()
@@ -684,6 +709,15 @@ func (s *oauthServer) refresh(w http.ResponseWriter, r *http.Request) {
 	newRefresh := "rt-" + randomToken()
 	s.mu.Lock()
 	s.sweepExpiredLocked(now)
+	// 终评 R5 F8：满容时保留调用方现有 refresh_token（与「失败不烧毁有效
+	// 条目」语义一致），429 后稍后重试即可。
+	if len(s.tokens) >= maxActiveTokens {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{
+			"error": "temporarily_unavailable", "error_description": "too many active tokens; retry later",
+		})
+		return
+	}
 	entry, ok := s.refreshTokens[refreshToken]
 	valid := ok && !now.After(entry.ExpiresAt)
 	if valid {
