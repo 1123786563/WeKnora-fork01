@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -36,6 +37,22 @@ var (
 // misconfigured environment degrades to the spec'd bound instead of an
 // unbounded or zero TTL.
 const defaultPluginPreviewTTL = 15 * time.Minute
+
+// maxPluginURLRunes aligns with plugin_previews.manifest_url /
+// endpoint_url varchar(512) — in runes, the unit PostgreSQL varchar counts.
+// Inputs longer than the column must be rejected as client-input problems
+// BEFORE any network I/O (manifest URL) or BEFORE persistence (endpoint):
+// otherwise an admin's oversized paste, or a remote manifest declaring an
+// oversized endpoint, would complete a full fetch-and-verify round trip and
+// then fail at CreatePreview with a column overflow misreported as a 500.
+const maxPluginURLRunes = 512
+
+func validatePluginURLLength(where, rawURL string) error {
+	if utf8.RuneCountInString(rawURL) > maxPluginURLRunes {
+		return fmt.Errorf("%s exceeds %d characters", where, maxPluginURLRunes)
+	}
+	return nil
+}
 
 func pluginPreviewTTL() time.Duration {
 	raw := strings.TrimSpace(os.Getenv("PLUGIN_PREVIEW_TTL"))
@@ -78,6 +95,12 @@ func (s *pluginService) PreviewFromManifest(
 	tenantID uint64,
 	actorID, manifestURL string,
 ) (*dto.PluginPreviewResponse, error) {
+	// Length first, before ANY network I/O: an oversized URL is a client
+	// input problem and must not cost a fetch round trip (nor surface later
+	// as a column-overflow 500).
+	if err := validatePluginURLLength("plugin manifest URL", manifestURL); err != nil {
+		return nil, err
+	}
 	// Classify the SSRF rejection here (FetchAndVerify re-validates the same
 	// URL — defense in depth — but its plain error carries no identity the
 	// handler could map onto a status code).
@@ -90,6 +113,13 @@ func (s *pluginService) PreviewFromManifest(
 		// protected endpoint, unreachable endpoint) are deterministic
 		// rejections of the admin's input; pass them through — the handler
 		// maps the OAuth sentinel and everything else to 4xx.
+		return nil, err
+	}
+	// The remote manifest declares the endpoint; ValidateManifest (T01)
+	// checks scheme/host but not length. Bound it here, before persistence,
+	// so an oversized declaration is a 4xx input rejection rather than an
+	// endpoint_url column overflow reported as 500.
+	if err := validatePluginURLLength("plugin transport endpoint", result.Manifest.Transport.Endpoint); err != nil {
 		return nil, err
 	}
 

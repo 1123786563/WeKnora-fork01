@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -160,4 +161,49 @@ func TestPreviewTTLBoundary(t *testing.T) {
 	// 已消费即过期：一次性消费语义。
 	consumed := &types.PluginPreview{ExpiresAt: now.Add(time.Minute), ConsumedAt: &now}
 	require.True(t, consumed.Expired(now))
+}
+
+// TestPreviewRejectsOversizedManifestURL（T02-R1-1）：manifest_url 列宽
+// varchar(512)。超长 URL 必须在任何网络 I/O 之前被拒绝——否则会先完成
+// SSRF 校验与整轮远端抓取核验，再在 CreatePreview 因列溢出失败被误报为
+// 500 服务端故障。host 用白名单内回环地址：长度校验缺失（RED）时错误
+// 会是 connection refused 而非长度拒绝，测试不依赖外网 DNS。
+func TestPreviewRejectsOversizedManifestURL(t *testing.T) {
+	t.Cleanup(utils.SnapshotSSRFWhitelistForTest())
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+
+	repo := &fakePluginPreviewRepo{}
+	svc := service.NewPluginService(repo, previewFakeLister())
+	oversized := "http://127.0.0.1/m/" + strings.Repeat("a", 600)
+	require.Greater(t, len(oversized), 512)
+
+	resp, err := svc.PreviewFromManifest(context.Background(), 7, "admin-1", oversized)
+	require.Nil(t, resp)
+	require.ErrorContains(t, err, "exceeds")
+	require.Empty(t, repo.created, "oversized manifest URL must not persist anything")
+}
+
+// TestPreviewRejectsOversizedEndpoint（T02-R1-1）：远端清单可声明任意长度
+// 的 transport.endpoint，而 endpoint_url 列宽 varchar(512)。超长端点必须在
+// 持久化之前被拒绝为输入问题（4xx 语义），而非落库溢出走 500 路径。
+func TestPreviewRejectsOversizedEndpoint(t *testing.T) {
+	t.Cleanup(utils.SnapshotSSRFWhitelistForTest())
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+
+	m := previewFixtureManifest()
+	manifestJSON, err := json.Marshal(m)
+	require.NoError(t, err)
+	base := previewControlledHost(t, &manifestJSON)
+	// host 在白名单内（跳过 DNS），超长的是 path 部分。
+	m.Transport.Endpoint = base + "/mcp?" + strings.Repeat("x", 600)
+	manifestJSON, err = json.Marshal(m)
+	require.NoError(t, err)
+
+	repo := &fakePluginPreviewRepo{}
+	svc := service.NewPluginService(repo, previewFakeLister())
+
+	resp, err := svc.PreviewFromManifest(context.Background(), 7, "admin-1", base+"/manifest.json")
+	require.Nil(t, resp)
+	require.ErrorContains(t, err, "exceeds")
+	require.Empty(t, repo.created, "oversized endpoint must not persist anything")
 }

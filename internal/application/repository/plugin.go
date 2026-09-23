@@ -42,15 +42,20 @@ func (r *pluginRepository) GetPreview(ctx context.Context, tenantID uint64, id s
 	return &preview, nil
 }
 
-// MarkPreviewConsumed flips consumed_at exactly once. The WHERE
-// consumed_at IS NULL guard makes the update one-shot: a second call (or a
-// call against an absent ID) affects zero rows, which surfaces as
-// gorm.ErrRecordNotFound so the confirmation path must reject.
+// MarkPreviewConsumed flips consumed_at exactly once, with the TTL verdict
+// INSIDE the same atomic UPDATE: the WHERE clause carries both
+// consumed_at IS NULL and expires_at > now. A second call, a call against
+// an absent ID, or a call after the preview crossed its expiry boundary all
+// affect zero rows, which surfaces as gorm.ErrRecordNotFound — the
+// confirmation path reads one rejection for "already consumed / expired /
+// absent" and there is no check-then-act window between an Expired() read
+// and this update.
 func (r *pluginRepository) MarkPreviewConsumed(ctx context.Context, tenantID uint64, id string) error {
+	now := time.Now()
 	result := r.db.WithContext(ctx).
 		Model(&types.PluginPreview{}).
-		Where("tenant_id = ? AND id = ? AND consumed_at IS NULL", tenantID, id).
-		Update("consumed_at", time.Now())
+		Where("tenant_id = ? AND id = ? AND consumed_at IS NULL AND expires_at > ?", tenantID, id, now).
+		Update("consumed_at", now)
 	if result.Error != nil {
 		return result.Error
 	}

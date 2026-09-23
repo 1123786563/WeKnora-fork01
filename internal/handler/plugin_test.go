@@ -102,6 +102,18 @@ func TestPreviewManifestHandlerRejectsMissingManifestURL(t *testing.T) {
 	}
 }
 
+// TestPreviewManifestHandlerRejectsOversizedManifestURL（T02-R1-1）：
+// plugin_previews.manifest_url 列宽 varchar(512)，超长清单 URL 必须在
+// 绑定层被 400 拒绝，而不是走完抓取核验后以 500 落库溢出。
+func TestPreviewManifestHandlerRejectsOversizedManifestURL(t *testing.T) {
+	stub := &stubPluginService{resp: fixedPreviewResponse()}
+	oversized := `{"manifest_url":"https://example.com/` + strings.Repeat("a", 600) + `"}`
+	w := postPluginPreview(t, stub, oversized)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	// 绑定层拒绝：service 根本未被调用（零抓取、零写入）。
+	require.Empty(t, stub.gotURL)
+}
+
 func TestPreviewManifestHandlerMapsOAuthProtectedEndpoint(t *testing.T) {
 	stub := &stubPluginService{classifier: func(string) error {
 		return fmt.Errorf("%w: endpoint demands OAuth", plugins.ErrOAuthProtectedEndpoint)

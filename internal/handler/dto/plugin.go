@@ -6,8 +6,11 @@ import (
 
 // PluginPreviewRequest is the body of POST /plugins/installations/preview:
 // the manifest URL the admin pasted. It is the only input the endpoint takes.
+// max=512 aligns with plugin_previews.manifest_url varchar(512) (runes, the
+// same unit PostgreSQL varchar uses): an oversized URL must die here as a
+// 400, not after a full fetch-and-verify round trip as a 500 column overflow.
 type PluginPreviewRequest struct {
-	ManifestURL string `json:"manifest_url" binding:"required"`
+	ManifestURL string `json:"manifest_url" binding:"required,max=512"`
 }
 
 // PluginPreviewTool is one row of the admin's review table: the tool's

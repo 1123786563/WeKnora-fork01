@@ -17,10 +17,12 @@ type PluginRepository interface {
 	// Not found returns (nil, nil) — the MCPServiceRepository convention.
 	GetPreview(ctx context.Context, tenantID uint64, id string) (*types.PluginPreview, error)
 
-	// MarkPreviewConsumed atomically flips consumed_at, exactly once:
-	// the UPDATE carries WHERE consumed_at IS NULL and a zero RowsAffected
+	// MarkPreviewConsumed atomically flips consumed_at, exactly once and
+	// only while unexpired: the UPDATE carries WHERE consumed_at IS NULL
+	// AND expires_at > now in one statement, and a zero RowsAffected
 	// yields gorm.ErrRecordNotFound — the caller reads that as "already
-	// consumed (or absent)" and must reject the confirmation.
+	// consumed, expired, or absent" (one rejection path, no check-then-act
+	// window) and must reject the confirmation.
 	MarkPreviewConsumed(ctx context.Context, tenantID uint64, id string) error
 }
 
