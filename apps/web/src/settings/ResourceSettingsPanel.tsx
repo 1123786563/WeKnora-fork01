@@ -906,7 +906,7 @@ export function ResourceSettingsPanel({ client, section, initialValue, role = 'o
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
     {innerListTitle}
-    <div className="backend-grid rs-card-grid">
+    <div className="backend-grid">
       {rows.map((row, index) => {
         const id = rowId(row);
         const provider = rowText(row, 'provider') || rowText(row, 'type') || rowText(row, 'engine_type');
