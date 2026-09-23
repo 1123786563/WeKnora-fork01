@@ -6,18 +6,22 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
-	ErrUnauthorized        = errors.New("career scope missing")
+	ErrUnauthorized        = errors.New("career scope missing or not authorized")
 	ErrRevisionConflict    = errors.New("career revision conflict")
 	ErrReceiptNotFound     = errors.New("career receipt not found")
 	ErrIdempotencyConflict = errors.New("request id was already used with different content")
 	ErrInvalidRequest      = errors.New("invalid career request")
+	ErrProposalNotFound    = errors.New("career proposal not found")
+	ErrProposalResolved    = errors.New("career proposal is no longer pending")
 )
 
 type Scope struct {
@@ -37,27 +41,72 @@ func getScope(ctx context.Context) (Scope, error) {
 	return s, nil
 }
 
+type Source struct {
+	Kind        string `json:"kind"`
+	Label       string `json:"label,omitempty"`
+	ReferenceID string `json:"referenceId,omitempty"`
+}
+type Confirmation struct {
+	UserID      string    `json:"userId"`
+	ConfirmedAt time.Time `json:"confirmedAt"`
+}
 type profile struct {
 	TenantID uint64 `gorm:"primaryKey"`
 	UserID   string `gorm:"primaryKey;size:512"`
 	Revision uint64 `gorm:"not null"`
 }
+type space struct {
+	TenantID    uint64 `gorm:"primaryKey"`
+	OwnerUserID string `gorm:"uniqueIndex;size:512"`
+	CreatedAt   time.Time
+}
 type fact struct {
-	ID        uint   `gorm:"primaryKey"`
-	TenantID  uint64 `gorm:"uniqueIndex:career_fact_scope_key"`
-	UserID    string `gorm:"uniqueIndex:career_fact_scope_key;size:512"`
-	Key       string `gorm:"uniqueIndex:career_fact_scope_key;size:128"`
-	Value     string `gorm:"type:text;not null"`
-	Revision  uint64
-	RequestID string `gorm:"size:128"`
-	CreatedAt time.Time
+	ID           uint   `gorm:"primaryKey"`
+	TenantID     uint64 `gorm:"uniqueIndex:career_fact_scope_key"`
+	UserID       string `gorm:"uniqueIndex:career_fact_scope_key;size:512"`
+	Key          string `gorm:"uniqueIndex:career_fact_scope_key;size:128"`
+	Value        string `gorm:"type:text;not null"`
+	Revision     uint64
+	Source       string `gorm:"type:text"`
+	Confirmation string `gorm:"type:text"`
+	RequestID    string `gorm:"size:128"`
+	CreatedAt    time.Time
+}
+type factVersion struct {
+	ID           uint   `gorm:"primaryKey"`
+	TenantID     uint64 `gorm:"index:idx_career_fact_version_scope"`
+	UserID       string `gorm:"index:idx_career_fact_version_scope;size:512"`
+	Key          string `gorm:"index:idx_career_fact_version_scope;size:128"`
+	Value        string `gorm:"type:text"`
+	Revision     uint64 `gorm:"index:idx_career_fact_version_scope"`
+	Source       string `gorm:"type:text"`
+	Confirmation string `gorm:"type:text"`
+	ProposalID   string `gorm:"size:36"`
+	RequestID    string `gorm:"size:128"`
+	CreatedAt    time.Time
 }
 type proposal struct {
+	ID               uint   `gorm:"primaryKey"`
+	PublicID         string `gorm:"uniqueIndex;size:36"`
+	TenantID         uint64 `gorm:"index:idx_career_proposal_scope"`
+	UserID           string `gorm:"index:idx_career_proposal_scope;size:512"`
+	Key              string `gorm:"size:128"`
+	Value            string `gorm:"type:text"`
+	Source           string `gorm:"type:text"`
+	Status           string `gorm:"size:16;index:idx_career_proposal_scope"`
+	ResolvedAt       *time.Time
+	ResolvedRevision *uint64
+	Confirmation     string    `gorm:"type:text"`
+	ResolutionSource string    `gorm:"type:text"`
+	CreatedAt        time.Time `gorm:"index:idx_career_proposal_scope"`
+}
+type change struct {
 	ID        uint   `gorm:"primaryKey"`
-	TenantID  uint64 `gorm:"index:career_proposal_scope"`
-	UserID    string `gorm:"index:career_proposal_scope;size:512"`
-	Key       string `gorm:"size:128"`
-	Value     string `gorm:"type:text"`
+	TenantID  uint64 `gorm:"uniqueIndex:career_change_revision"`
+	UserID    string `gorm:"uniqueIndex:career_change_revision;size:512"`
+	Revision  uint64 `gorm:"uniqueIndex:career_change_revision"`
+	Kind      string `gorm:"size:32"`
+	Body      string `gorm:"type:text"`
 	CreatedAt time.Time
 }
 type receipt struct {
@@ -69,15 +118,23 @@ type receipt struct {
 	CreatedAt   time.Time
 }
 type Fact struct {
-	Key         string    `json:"key"`
-	Value       string    `json:"value"`
-	Revision    uint64    `json:"revision"`
-	ConfirmedAt time.Time `json:"confirmedAt"`
+	Key          string       `json:"key"`
+	Value        string       `json:"value"`
+	Revision     uint64       `json:"revision"`
+	Source       Source       `json:"source"`
+	Confirmation Confirmation `json:"confirmation"`
+	ConfirmedAt  time.Time    `json:"confirmedAt"`
 }
 type Proposal struct {
-	Key       string    `json:"key"`
-	Value     string    `json:"value"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID               string        `json:"id"`
+	Key              string        `json:"key"`
+	Value            string        `json:"value"`
+	Source           Source        `json:"source"`
+	Status           string        `json:"status"`
+	Revision         *uint64       `json:"revision,omitempty"`
+	Confirmation     *Confirmation `json:"confirmation,omitempty"`
+	ResolutionSource *Source       `json:"resolutionSource,omitempty"`
+	CreatedAt        time.Time     `json:"createdAt"`
 }
 type View struct {
 	Revision  uint64     `json:"revision"`
@@ -85,17 +142,32 @@ type View struct {
 	Proposals []Proposal `json:"proposals"`
 }
 type Receipt struct {
-	RequestID string `json:"requestId"`
-	Revision  uint64 `json:"revision"`
-	Fact      Fact   `json:"fact"`
+	Kind      string    `json:"kind"`
+	RequestID string    `json:"requestId"`
+	Revision  uint64    `json:"revision"`
+	Proposal  *Proposal `json:"proposal,omitempty"`
+	Fact      *Fact     `json:"fact,omitempty"`
+}
+type Change struct {
+	Revision uint64    `json:"revision"`
+	Kind     string    `json:"kind"`
+	Proposal *Proposal `json:"proposal,omitempty"`
+	Fact     *Fact     `json:"fact,omitempty"`
+}
+type ChangeSet struct {
+	Revision uint64   `json:"revision"`
+	Changes  []Change `json:"changes"`
 }
 type RevisionConflictError struct{ CurrentRevision uint64 }
 
 func (e *RevisionConflictError) Error() string        { return ErrRevisionConflict.Error() }
 func (e *RevisionConflictError) Is(target error) bool { return target == ErrRevisionConflict }
 func (profile) TableName() string                     { return "career_profiles" }
+func (space) TableName() string                       { return "career_spaces" }
 func (fact) TableName() string                        { return "career_facts" }
+func (factVersion) TableName() string                 { return "career_fact_versions" }
 func (proposal) TableName() string                    { return "career_proposals" }
+func (change) TableName() string                      { return "career_changes" }
 func (receipt) TableName() string                     { return "career_receipts" }
 
 type Office struct{ db *gorm.DB }
@@ -104,14 +176,51 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	if e := db.AutoMigrate(&profile{}, &fact{}, &proposal{}, &receipt{}); e != nil {
+	if e := db.AutoMigrate(&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}); e != nil {
 		return nil, e
 	}
 	return &Office{db}, nil
 }
+func (o *Office) ClaimSpace(ctx context.Context) error {
+	s, e := getScope(ctx)
+	if e != nil {
+		return e
+	}
+	row := space{TenantID: s.TenantID, OwnerUserID: s.UserID}
+	res := o.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if res.Error != nil {
+		return res.Error
+	}
+	var actual space
+	e = o.db.WithContext(ctx).Where("tenant_id=?", s.TenantID).First(&actual).Error
+	if e != nil {
+		return ErrUnauthorized
+	}
+	if actual.OwnerUserID != s.UserID {
+		return ErrUnauthorized
+	}
+	return nil
+}
+func (o *Office) requireSpace(ctx context.Context, s Scope) error {
+	var row space
+	e := o.db.WithContext(ctx).Where("tenant_id=? AND owner_user_id=?", s.TenantID, s.UserID).First(&row).Error
+	if errors.Is(e, gorm.ErrRecordNotFound) {
+		return ErrUnauthorized
+	}
+	return e
+}
+func decodeSource(v string) Source { var s Source; _ = json.Unmarshal([]byte(v), &s); return s }
+func decodeConfirmation(v string) Confirmation {
+	var c Confirmation
+	_ = json.Unmarshal([]byte(v), &c)
+	return c
+}
 func (o *Office) Open(ctx context.Context) (View, error) {
 	s, e := getScope(ctx)
 	if e != nil {
+		return View{}, e
+	}
+	if e = o.requireSpace(ctx, s); e != nil {
 		return View{}, e
 	}
 	v := View{Facts: []Fact{}, Proposals: []Proposal{}}
@@ -125,36 +234,165 @@ func (o *Office) Open(ctx context.Context) (View, error) {
 		return v, e
 	}
 	for _, f := range fs {
-		v.Facts = append(v.Facts, Fact{f.Key, f.Value, f.Revision, f.CreatedAt})
+		c := decodeConfirmation(f.Confirmation)
+		v.Facts = append(v.Facts, Fact{f.Key, f.Value, f.Revision, decodeSource(f.Source), c, c.ConfirmedAt})
 	}
 	var ps []proposal
-	if e = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).Order("id").Find(&ps).Error; e != nil {
+	if e = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND status='pending'", s.TenantID, s.UserID).Order("created_at,id").Find(&ps).Error; e != nil {
 		return v, e
 	}
 	for _, p := range ps {
-		v.Proposals = append(v.Proposals, Proposal{p.Key, p.Value, p.CreatedAt})
+		v.Proposals = append(v.Proposals, Proposal{ID: p.PublicID, Key: p.Key, Value: p.Value, Source: decodeSource(p.Source), Status: p.Status, Revision: p.ResolvedRevision, CreatedAt: p.CreatedAt})
 	}
 	return v, nil
 }
-func (o *Office) Propose(ctx context.Context, k, v, r string, rev uint64) (Receipt, error) {
-	return o.act(ctx, k, v, r, rev, false)
+func (o *Office) Act(ctx context.Context, action, proposalID, k, v, r string, rev uint64, source Source) (Receipt, error) {
+	switch action {
+	case "propose":
+		return o.propose(ctx, k, v, r, rev, source)
+	case "confirm":
+		return o.confirm(ctx, "", k, v, r, rev, source, source)
+	case "confirm_proposal":
+		return o.confirm(ctx, proposalID, "", "", r, rev, Source{}, source)
+	case "dismiss":
+		return o.dismiss(ctx, proposalID, r, rev, source)
+	default:
+		return Receipt{}, ErrInvalidRequest
+	}
 }
-func (o *Office) Confirm(ctx context.Context, k, v, r string, rev uint64) (Receipt, error) {
-	return o.act(ctx, k, v, r, rev, true)
+func (o *Office) Propose(ctx context.Context, k, v, r string, rev uint64, src Source) (Receipt, error) {
+	return o.propose(ctx, k, v, r, rev, src)
 }
-func (o *Office) act(ctx context.Context, k, v, r string, rev uint64, confirmed bool) (out Receipt, err error) {
+func (o *Office) propose(ctx context.Context, k, v, r string, rev uint64, src Source) (out Receipt, err error) {
 	s, e := getScope(ctx)
 	if e != nil {
 		return out, e
 	}
+	if e = o.requireSpace(ctx, s); e != nil {
+		return out, e
+	}
 	k = strings.TrimSpace(k)
-	if k == "" || len(k) > 128 || strings.TrimSpace(r) == "" || len(r) > 128 {
+	if k == "" || r == "" || src.Kind == "" {
 		return out, ErrInvalidRequest
 	}
-	fb, _ := json.Marshal([]any{k, v, rev, confirmed})
+	pid := uuid.NewString()
+	p := Proposal{ID: pid, Key: k, Value: v, Source: src, Status: "pending"}
+	return o.mutate(ctx, s, "proposed", r, rev, []any{"propose", k, v, src}, func(tx *gorm.DB, next uint64) (Receipt, error) {
+		sb, _ := json.Marshal(src)
+		row := proposal{PublicID: pid, TenantID: s.TenantID, UserID: s.UserID, Key: k, Value: v, Source: string(sb), Status: "pending"}
+		if e := tx.Create(&row).Error; e != nil {
+			return Receipt{}, e
+		}
+		p.CreatedAt = row.CreatedAt
+		return Receipt{Kind: "proposed", RequestID: r, Revision: next, Proposal: &p}, nil
+	}, &Change{Kind: "proposed", Proposal: &p})
+}
+func (o *Office) Confirm(ctx context.Context, k, v, r string, rev uint64, source Source) (Receipt, error) {
+	return o.confirm(ctx, "", k, v, r, rev, source, source)
+}
+func (o *Office) confirm(ctx context.Context, pid, k, v, r string, rev uint64, src, confirmationSrc Source) (out Receipt, err error) {
+	s, e := getScope(ctx)
+	if e != nil {
+		return out, e
+	}
+	if e = o.requireSpace(ctx, s); e != nil {
+		return out, e
+	}
+	if r == "" || confirmationSrc.Kind == "" {
+		return out, ErrInvalidRequest
+	}
+	var p proposal
+	if pid != "" {
+		if e = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND public_id=?", s.TenantID, s.UserID, pid).First(&p).Error; e != nil {
+			return out, ErrProposalNotFound
+		}
+		if p.Status != "pending" {
+			return out, ErrProposalResolved
+		}
+		k, v = p.Key, p.Value
+		src = decodeSource(p.Source)
+	}
+	if strings.TrimSpace(k) == "" || src.Kind == "" {
+		return out, ErrInvalidRequest
+	}
+	return o.mutate(ctx, s, "confirmed", r, rev, []any{"confirm", pid, k, v, src, confirmationSrc}, func(tx *gorm.DB, next uint64) (Receipt, error) {
+		var prop *Proposal
+		if pid != "" {
+			var row proposal
+			if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND public_id=? AND status='pending'", s.TenantID, s.UserID, pid).First(&row).Error; e != nil {
+				return Receipt{}, ErrProposalResolved
+			}
+			now := time.Now().UTC()
+			row.Status = "confirmed"
+			row.ResolvedAt = &now
+			row.ResolvedRevision = &next
+			cb, _ := json.Marshal(Confirmation{UserID: s.UserID, ConfirmedAt: now})
+			row.Confirmation = string(cb)
+			rsb, _ := json.Marshal(confirmationSrc)
+			row.ResolutionSource = string(rsb)
+			if e := tx.Save(&row).Error; e != nil {
+				return Receipt{}, e
+			}
+			conf := decodeConfirmation(row.Confirmation)
+			resolutionSource := decodeSource(row.ResolutionSource)
+			q := Proposal{ID: row.PublicID, Key: row.Key, Value: row.Value, Source: decodeSource(row.Source), Status: row.Status, Revision: row.ResolvedRevision, CreatedAt: row.CreatedAt, Confirmation: &conf, ResolutionSource: &resolutionSource}
+			prop = &q
+		}
+		now := time.Now().UTC()
+		confirmation := Confirmation{UserID: s.UserID, ConfirmedAt: now}
+		sb, _ := json.Marshal(src)
+		cb, _ := json.Marshal(confirmation)
+		f := fact{TenantID: s.TenantID, UserID: s.UserID, Key: k, Value: v, Revision: next, Source: string(sb), Confirmation: string(cb), RequestID: r}
+		if e := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "tenant_id"}, {Name: "user_id"}, {Name: "key"}}, DoUpdates: clause.AssignmentColumns([]string{"value", "revision", "source", "confirmation", "request_id", "created_at"})}).Create(&f).Error; e != nil {
+			return Receipt{}, e
+		}
+		ver := factVersion{TenantID: s.TenantID, UserID: s.UserID, Key: k, Value: v, Revision: next, Source: string(sb), Confirmation: string(cb), ProposalID: pid, RequestID: r}
+		if e := tx.Create(&ver).Error; e != nil {
+			return Receipt{}, e
+		}
+		factOut := Fact{k, v, next, src, confirmation, now}
+		return Receipt{Kind: "confirmed", RequestID: r, Revision: next, Proposal: prop, Fact: &factOut}, nil
+	}, &Change{Kind: "confirmed"})
+}
+func (o *Office) dismiss(ctx context.Context, pid, r string, rev uint64, src Source) (out Receipt, err error) {
+	s, e := getScope(ctx)
+	if e != nil {
+		return out, e
+	}
+	if e = o.requireSpace(ctx, s); e != nil {
+		return out, e
+	}
+	if pid == "" || r == "" || src.Kind == "" {
+		return out, ErrInvalidRequest
+	}
+	return o.mutate(ctx, s, "dismissed", r, rev, []any{"dismiss", pid, src}, func(tx *gorm.DB, next uint64) (Receipt, error) {
+		var p proposal
+		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND public_id=? AND status='pending'", s.TenantID, s.UserID, pid).First(&p).Error; e != nil {
+			return Receipt{}, ErrProposalResolved
+		}
+		now := time.Now().UTC()
+		p.Status = "dismissed"
+		p.ResolvedAt = &now
+		p.ResolvedRevision = &next
+		resolutionSourceBytes, _ := json.Marshal(src)
+		p.ResolutionSource = string(resolutionSourceBytes)
+		confirmation, _ := json.Marshal(Confirmation{UserID: s.UserID, ConfirmedAt: now})
+		p.Confirmation = string(confirmation)
+		if e := tx.Save(&p).Error; e != nil {
+			return Receipt{}, e
+		}
+		conf := decodeConfirmation(p.Confirmation)
+		resolutionSource := decodeSource(p.ResolutionSource)
+		q := Proposal{ID: p.PublicID, Key: p.Key, Value: p.Value, Source: decodeSource(p.Source), Status: p.Status, Revision: p.ResolvedRevision, CreatedAt: p.CreatedAt, Confirmation: &conf, ResolutionSource: &resolutionSource}
+		return Receipt{Kind: "dismissed", RequestID: r, Revision: next, Proposal: &q}, nil
+	}, &Change{Kind: "dismissed"})
+}
+func (o *Office) mutate(ctx context.Context, s Scope, kind, r string, rev uint64, fpInput any, apply func(*gorm.DB, uint64) (Receipt, error), event *Change) (Receipt, error) {
+	fb, _ := json.Marshal(fpInput)
 	hash := sha256.Sum256(fb)
 	fp := hex.EncodeToString(hash[:])
-	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var out Receipt
+	e := o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var old receipt
 		e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, r).First(&old).Error
 		if e == nil {
@@ -171,38 +409,81 @@ func (o *Office) act(ctx context.Context, k, v, r string, rev uint64, confirmed 
 			return e
 		}
 		next := rev + 1
-		updated := tx.Model(&profile{}).Where("tenant_id = ? AND user_id = ? AND revision = ?", s.TenantID, s.UserID, rev).Update("revision", next)
+		updated := tx.Model(&profile{}).Where("tenant_id=? AND user_id=? AND revision=?", s.TenantID, s.UserID, rev).Update("revision", next)
 		if updated.Error != nil {
 			return updated.Error
 		}
 		if updated.RowsAffected == 0 {
-			if e = tx.Where("tenant_id = ? AND user_id = ?", s.TenantID, s.UserID).First(&p).Error; e != nil {
+			if e = tx.Where("tenant_id=? AND user_id=?", s.TenantID, s.UserID).First(&p).Error; e != nil {
 				return e
 			}
-			return &RevisionConflictError{CurrentRevision: p.Revision}
+			return &RevisionConflictError{p.Revision}
 		}
-		if confirmed {
-			f := fact{TenantID: s.TenantID, UserID: s.UserID, Key: k, Value: v, Revision: next, RequestID: r}
-			if e = tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "tenant_id"}, {Name: "user_id"}, {Name: "key"}}, DoUpdates: clause.AssignmentColumns([]string{"value", "revision", "request_id", "created_at"})}).Create(&f).Error; e != nil {
-				return e
-			}
-			out.Fact = Fact{k, v, next, f.CreatedAt}
-		} else if e = tx.Create(&proposal{TenantID: s.TenantID, UserID: s.UserID, Key: k, Value: v}).Error; e != nil {
+		out, e = apply(tx, next)
+		if e != nil {
 			return e
 		}
 		out.RequestID = r
 		out.Revision = next
+		if event != nil {
+			event.Revision = next
+			if out.Proposal != nil {
+				event.Proposal = out.Proposal
+			}
+			if out.Fact != nil {
+				event.Fact = out.Fact
+			}
+			body, _ := json.Marshal(event)
+			if e = tx.Create(&change{TenantID: s.TenantID, UserID: s.UserID, Revision: next, Kind: kind, Body: string(body)}).Error; e != nil {
+				return e
+			}
+		} else if out.Proposal != nil {
+			event = &Change{Revision: next, Kind: kind, Proposal: out.Proposal}
+			body, _ := json.Marshal(event)
+			if e = tx.Create(&change{TenantID: s.TenantID, UserID: s.UserID, Revision: next, Kind: kind, Body: string(body)}).Error; e != nil {
+				return e
+			}
+		}
 		body, e := json.Marshal(out)
 		if e != nil {
 			return e
 		}
 		return tx.Create(&receipt{TenantID: s.TenantID, UserID: s.UserID, RequestID: r, Fingerprint: fp, Body: string(body)}).Error
 	})
-	return
+	return out, e
+}
+func (o *Office) Changes(ctx context.Context, since uint64) (ChangeSet, error) {
+	s, e := getScope(ctx)
+	if e != nil {
+		return ChangeSet{}, e
+	}
+	if e = o.requireSpace(ctx, s); e != nil {
+		return ChangeSet{}, e
+	}
+	v, e := o.Open(ctx)
+	if e != nil {
+		return ChangeSet{}, e
+	}
+	var rows []change
+	if e = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND revision>?", s.TenantID, s.UserID, since).Order("revision ASC").Find(&rows).Error; e != nil {
+		return ChangeSet{}, e
+	}
+	out := ChangeSet{Revision: v.Revision, Changes: []Change{}}
+	for _, row := range rows {
+		var c Change
+		if e = json.Unmarshal([]byte(row.Body), &c); e != nil {
+			return out, e
+		}
+		out.Changes = append(out.Changes, c)
+	}
+	return out, nil
 }
 func (o *Office) Receipt(ctx context.Context, r string) (Receipt, error) {
 	s, e := getScope(ctx)
 	if e != nil {
+		return Receipt{}, e
+	}
+	if e = o.requireSpace(ctx, s); e != nil {
 		return Receipt{}, e
 	}
 	var row receipt
@@ -216,4 +497,24 @@ func (o *Office) Receipt(ctx context.Context, r string) (Receipt, error) {
 	var out Receipt
 	e = json.Unmarshal([]byte(row.Body), &out)
 	return out, e
+}
+func (o *Office) History(ctx context.Context, key string) ([]Fact, error) {
+	s, e := getScope(ctx)
+	if e != nil {
+		return nil, e
+	}
+	if e = o.requireSpace(ctx, s); e != nil {
+		return nil, e
+	}
+	var rows []factVersion
+	e = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND key=?", s.TenantID, s.UserID, key).Order("revision ASC").Find(&rows).Error
+	if e != nil {
+		return nil, e
+	}
+	out := make([]Fact, 0, len(rows))
+	for _, r := range rows {
+		c := decodeConfirmation(r.Confirmation)
+		out = append(out, Fact{r.Key, r.Value, r.Revision, decodeSource(r.Source), c, c.ConfirmedAt})
+	}
+	return out, nil
 }

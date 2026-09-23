@@ -1,0 +1,50 @@
+package career
+
+import (
+	"context"
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestCareerTenantRequiresSingleActiveOwner(t *testing.T) {
+	owner := &types.TenantMember{UserID: "u1", TenantID: 7, Role: types.TenantRoleOwner}
+	require.NoError(t, validateOwnerOnlyCareerTenant("u1", 7, []*types.TenantMember{owner}))
+	require.ErrorIs(t, validateOwnerOnlyCareerTenant("u1", 7, []*types.TenantMember{owner, {UserID: "u2", TenantID: 7, Role: types.TenantRoleViewer}}), ErrUnauthorized)
+	require.ErrorIs(t, validateOwnerOnlyCareerTenant("u2", 7, []*types.TenantMember{owner}), ErrUnauthorized)
+	require.ErrorIs(t, validateOwnerOnlyCareerTenant("u1", 7, []*types.TenantMember{{UserID: "u1", TenantID: 7, Role: types.TenantRoleAdmin}}), ErrUnauthorized)
+	require.ErrorIs(t, validateOwnerOnlyCareerTenant("u1", 7, nil), ErrUnauthorized)
+}
+
+type memberListStub struct{ members []*types.TenantMember }
+
+func (s *memberListStub) ListByTenant(context.Context, uint64) ([]*types.TenantMember, error) {
+	return s.members, nil
+}
+func TestCareerHTTPRechecksTenantMembershipOnEveryRequest(t *testing.T) {
+	db, e := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, e)
+	o, e := NewOffice(db)
+	require.NoError(t, e)
+	members := &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 7, Role: types.TenantRoleOwner}}}
+	h := &Handler{office: o, members: members}
+	request := func() *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		ctx := context.WithValue(context.Background(), types.UserIDContextKey, "u1")
+		ctx = context.WithValue(ctx, types.TenantIDContextKey, uint64(7))
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest("GET", "/api/v1/career/open", nil).WithContext(ctx)
+		h.Open(c)
+		return rec
+	}
+	require.Equal(t, 200, request().Code)
+	members.members = append(members.members, &types.TenantMember{UserID: "u2", TenantID: 7, Role: types.TenantRoleViewer})
+	require.Equal(t, 403, request().Code)
+	members.members = nil
+	require.Equal(t, 403, request().Code)
+}

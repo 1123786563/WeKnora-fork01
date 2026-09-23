@@ -4,36 +4,64 @@ import (
 	"context"
 	"errors"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"strconv"
 )
 
-type Handler struct{ office *Office }
+type Handler struct {
+	office  *Office
+	members interface {
+		ListByTenant(context.Context, uint64) ([]*types.TenantMember, error)
+	}
+}
 
-func NewHandler(db *gorm.DB) (*Handler, error) {
+func NewHandler(db *gorm.DB, members interfaces.TenantMemberService) (*Handler, error) {
 	o, e := NewOffice(db)
 	if e != nil {
 		return nil, e
 	}
-	return &Handler{o}, nil
+	return &Handler{office: o, members: members}, nil
 }
-func (h *Handler) scope(c *gin.Context) (context.Context, bool) {
+func validateOwnerOnlyCareerTenant(userID string, tenantID uint64, members []*types.TenantMember) error {
+	if userID == "" || tenantID == 0 || len(members) != 1 || members[0] == nil || members[0].UserID != userID || members[0].TenantID != tenantID || members[0].Role != types.TenantRoleOwner {
+		return ErrUnauthorized
+	}
+	return nil
+}
+func (h *Handler) scope(c *gin.Context, claim bool) (context.Context, bool) {
 	ctx := c.Request.Context()
 	uid, uok := types.UserIDFromContext(ctx)
 	tid, tok := types.TenantIDFromContext(ctx)
-	if !uok || !tok {
-		c.JSON(401, gin.H{"error": gin.H{"code": "unauthorized", "message": ErrUnauthorized.Error()}})
+	if !uok || !tok || h.members == nil {
+		writeError(c, ErrUnauthorized)
 		return nil, false
 	}
-	return WithScope(ctx, Scope{UserID: uid, TenantID: tid}), true
+	members, e := h.members.ListByTenant(ctx, tid)
+	if e != nil {
+		c.JSON(500, gin.H{"error": gin.H{"code": "internal", "message": "failed to verify personal career workspace"}})
+		return nil, false
+	}
+	if e = validateOwnerOnlyCareerTenant(uid, tid, members); e != nil {
+		writeError(c, e)
+		return nil, false
+	}
+	ctx = WithScope(ctx, Scope{UserID: uid, TenantID: tid})
+	if claim {
+		if e = h.office.ClaimSpace(ctx); e != nil {
+			writeError(c, e)
+			return nil, false
+		}
+	}
+	return ctx, true
 }
 func writeError(c *gin.Context, e error) {
 	status, code := 500, "internal"
 	switch {
 	case errors.Is(e, ErrUnauthorized):
-		status = 401
-		code = "unauthorized"
+		status = 403
+		code = "forbidden"
 	case errors.Is(e, ErrRevisionConflict):
 		status = 409
 		code = "revision_conflict"
@@ -43,24 +71,36 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrInvalidRequest):
 		status = 400
 		code = "invalid_request"
-	case errors.Is(e, ErrReceiptNotFound):
+	case errors.Is(e, ErrReceiptNotFound), errors.Is(e, ErrProposalNotFound):
 		status = 404
 		code = "not_found"
-	case errors.Is(e, gorm.ErrRecordNotFound):
-		status = 404
-		code = "not_found"
+	case errors.Is(e, ErrProposalResolved):
+		status = 409
+		code = "proposal_resolved"
 	}
 	body := gin.H{"code": code, "message": e.Error()}
 	if errors.Is(e, ErrRevisionConflict) {
-		var conflict *RevisionConflictError
-		if errors.As(e, &conflict) {
-			body["currentRevision"] = conflict.CurrentRevision
+		var ce *RevisionConflictError
+		if errors.As(e, &ce) {
+			body["currentRevision"] = ce.CurrentRevision
 		}
 	}
 	c.JSON(status, gin.H{"error": body})
 }
 func (h *Handler) Open(c *gin.Context) {
-	ctx, ok := h.scope(c)
+	ctx, ok := h.scope(c, true)
+	if !ok {
+		return
+	}
+	v, e := h.office.Open(ctx)
+	if e != nil {
+		writeError(c, e)
+		return
+	}
+	c.JSON(200, v)
+}
+func (h *Handler) List(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
 	if !ok {
 		return
 	}
@@ -72,28 +112,24 @@ func (h *Handler) Open(c *gin.Context) {
 	c.JSON(200, v)
 }
 func (h *Handler) Act(c *gin.Context) {
-	ctx, ok := h.scope(c)
+	ctx, ok := h.scope(c, false)
 	if !ok {
 		return
 	}
 	var req struct {
+		Action           string `json:"action"`
+		ProposalID       string `json:"proposalId"`
 		Key              string `json:"key"`
 		Value            string `json:"value"`
 		RequestID        string `json:"requestId"`
 		ExpectedRevision uint64 `json:"expectedRevision"`
-		Confirmed        bool   `json:"confirmed"`
+		Source           Source `json:"source"`
 	}
 	if e := c.ShouldBindJSON(&req); e != nil {
 		writeError(c, ErrInvalidRequest)
 		return
 	}
-	var r Receipt
-	var e error
-	if req.Confirmed {
-		r, e = h.office.Confirm(ctx, req.Key, req.Value, req.RequestID, req.ExpectedRevision)
-	} else {
-		r, e = h.office.Propose(ctx, req.Key, req.Value, req.RequestID, req.ExpectedRevision)
-	}
+	r, e := h.office.Act(ctx, req.Action, req.ProposalID, req.Key, req.Value, req.RequestID, req.ExpectedRevision, req.Source)
 	if e != nil {
 		writeError(c, e)
 		return
@@ -101,7 +137,7 @@ func (h *Handler) Act(c *gin.Context) {
 	c.JSON(200, r)
 }
 func (h *Handler) Receipt(c *gin.Context) {
-	ctx, ok := h.scope(c)
+	ctx, ok := h.scope(c, false)
 	if !ok {
 		return
 	}
@@ -113,24 +149,19 @@ func (h *Handler) Receipt(c *gin.Context) {
 	c.JSON(200, r)
 }
 func (h *Handler) Changes(c *gin.Context) {
-	ctx, ok := h.scope(c)
+	ctx, ok := h.scope(c, false)
 	if !ok {
 		return
 	}
-	v, e := h.office.Open(ctx)
+	since, e := strconv.ParseUint(c.Query("since"), 10, 64)
+	if e != nil && c.Query("since") != "" {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	v, e := h.office.Changes(ctx, since)
 	if e != nil {
 		writeError(c, e)
 		return
 	}
-	since, _ := strconv.ParseUint(c.Query("since"), 10, 64)
-	changes := []Fact{}
-	for _, f := range v.Facts {
-		if f.Revision > since {
-			changes = append(changes, f)
-		}
-	}
-	c.JSON(200, gin.H{"revision": v.Revision, "changes": changes})
+	c.JSON(200, v)
 }
-
-// List returns confirmed facts and pending proposals from the authenticated scope.
-func (h *Handler) List(c *gin.Context) { h.Open(c) }

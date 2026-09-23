@@ -1,5 +1,16 @@
 import { strict as assert } from 'node:assert'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import type { CareerAction, CareerError, CareerReceipt, CareerView } from './contracts.ts'
-test('career wire fixture keeps proposals separate from confirmed facts', () => { const view: CareerView = { revision: 1, facts: [], proposals: [{ key: 'graduation_year', value: '2027', createdAt: '2026-09-24T00:00:00Z' }] }; assert.equal(view.facts.length, 0); assert.equal(view.proposals[0]?.key, 'graduation_year') })
-test('career actions and receipts carry idempotency and revision fields', () => { const action: CareerAction = { key: 'degree', value: 'bachelor', requestId: 'r1', expectedRevision: 2, confirmed: true }; const receipt: CareerReceipt = { requestId: 'r1', revision: 3, fact: { key: action.key, value: action.value, revision: 3, confirmedAt: '2026-09-24T00:00:00Z' } }; const conflict: CareerError = { code: 'revision_conflict', message: 'conflict', currentRevision: 3 }; assert.equal(receipt.revision, conflict.currentRevision) })
+import { decodeCareerError, decodeCareerReceipt } from './contracts.ts'
+const fixture = JSON.parse(readFileSync(new URL('../testdata/wire-fixtures.json', import.meta.url), 'utf8')) as Record<string, unknown>
+test('Go wire fixtures decode proposed and confirmed receipts without type ambiguity', () => {
+ const proposed = decodeCareerReceipt(fixture.proposed); assert.equal(proposed.kind, 'proposed')
+ if (proposed.kind === 'proposed') assert.equal(proposed.proposal.id, 'proposal-1')
+ const confirmed = decodeCareerReceipt(fixture.confirmed); assert.equal(confirmed.kind, 'confirmed')
+ if (confirmed.kind === 'confirmed') { assert.equal(confirmed.fact.source.referenceId, 'file-1'); assert.equal(confirmed.proposal?.status, 'confirmed') }
+ assert.throws(() => decodeCareerReceipt({ requestId: 'x', revision: 1, kind: 'proposed', fact: {} }))
+})
+test('Go HTTP error fixtures decode not found and revision conflict responses', () => {
+ assert.equal(decodeCareerError(fixture.not_found).error.code, 'not_found')
+ assert.equal(decodeCareerError(fixture.revision_conflict).error.currentRevision, 2)
+})
