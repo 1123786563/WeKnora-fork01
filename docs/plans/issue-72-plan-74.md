@@ -745,3 +745,61 @@ git commit -m "issue-72(#74): ledger final — evidence complete, secrets scans 
 6. **（Low）db_watch.sh 瞬时失败即整体退出**：q() 管道末尾补 `|| true`，单采样点丢失不终止观察者。
 7. **（Low）phases.py 行号漂移**：gate canceled 回退分支 `479-494` → `487-499`（`status = FAIL` 在 484，实测核对）。
 8. **（审查环境受限项）AC 原文在线比对**：审查会话 gh 网络被重置；本会话 `gh issue view 74` 实取 Issue 正文，4 条 AC 与计划表格逐字一致（见上节标注）。
+
+
+## 计划偏差记录（2026-09-23 执行期，主 Agent 已裁决接受）
+
+本计划「明确不改动」6 个 lab 文件的前提被真实运行证伪：该前提依赖「60 个
+离线测试绿 ⇒ lab 对 Lago v1.53.0/Stripe 现行契约正确」，而 2026-09-20 首跑
+因缺 Stripe TEST key 在 provider/payment 路径之前即全部 blocked-env，下列
+线上契约**从未被真实执行过**；离线 fake（本地 HTTP 假服务）按计划编写时的
+同一组假设建模，故离线测试无法暴露。2026-09-23 带 key 重跑（11 轮）逐一
+暴露后，按计划 fail 分支会把「实验工具缺陷」记成「商业语义失败」误导
+#81/#82，与本计划 Goal 及 spec completion gate 冲突，故实施者修复并完整
+记录（Ruling 2-8，Ledger）。主 Agent 于审查第 3 轮后裁决**接受**（依据与
+错误代价见 Ledger「审查第 3 轮与主 Agent 裁决」节）；拒绝路径（revert
+`52e22b366`/`4aa74ce34`/`0aa976c64`）被否决。
+
+契约修复清单（每处一句话：改了什么、为什么）：
+
+1. **phases.py — GraphQL `x-lago-organization` 头**：`RunContext` 惰性经 REST
+   `GET /api/v1/organizations` 解析组织 `lago_id` 并随每个 GraphQL 请求发送
+   该头；因为 v1.53.0 `authenticable_user.rb` 从该头读组织、缺失即
+   `addStripePaymentProvider` 返回 forbidden「Missing organization id」
+   （首跑 blocked-env 从未执行到该 mutation，缺陷不可见）。
+2. **phases.py / clients.py — Stripe attach 克隆语义**：默认支付方式更新改用
+   attach 响应返回的客户级 `pm_` id；因为 Stripe 对共享测试 token 在 attach
+   时克隆出新 id，用旧 token 设默认支付方式返回 400
+   「must be attached to the customer」。
+3. **fixtures.py / phases.py — 客户 provider 关联嵌套**：`customer_payload`
+   把 `payment_provider`/`payment_provider_code`/`provider_customer_id`/
+   `provider_payment_methods` 移入 `customer.billing_configuration`；因为
+   v1.53.0 REST permitted params 只认嵌套形态，顶层键被静默忽略导致 Lago 侧
+   支付方式永不导入（实测 99 次轮询 0 方法）。
+4. **phases.py — 负对照卡改 3DS**：客户 C 改用 `pm_card_authenticationRequired`
+   （attach 实测 200、off_session 扣款真实失败）；因为 Stripe 现行 TEST 政策
+   对 decline 类共享 token 在 attach 即 402、raw PAN 一律 402
+   （「attach 成功且扣款拒付」的测试卡已不存在，实测两轮确认）。
+5. **phases.py / run_lab.py — invoice 可见性与判据对齐**：gate 接受
+   v1.53.0 的 `open`/`closed` 属 `INVISIBLE_STATUS`（未决门发票 API 不可见）
+   的事实，AC1 以「订阅 incomplete + entitlements 404 跨窗口保持」为核心
+   判据；manual 的 403 探测移到 activate 之后并回退用 B 的已结算发票
+   （Premium 门控先于发票状态检查，任何真实发票上的 403 等价）；retries 以
+   「门未激活 + 无第二笔支付行」替代「门保持 pending」；decline_control 接受
+   `timeout_hours: 0` 永不超时的真实语义（负对照 = 订阅保持 incomplete、
+   entitlements 404、0 笔 succeeded，`canceled(payment_failed)` 仅在非零
+   timeout 的 hourly clock 后出现）；duplicates 以「终态不变 + 同 lago_id +
+   无第二笔扣款」替代「必须 422 拒绝」（实测重复 POST 返回 200 且同一订阅，
+   幂等；延迟 terminate+续订发票风险已记 DECISION 供 #81/#82 防重放）。
+6. **phases.py / clients.py / test_*.py — 工程健壮性与测试同步**：cleanup 的
+   订阅 DELETE 按状态显式尝试（v1.53.0 按 `params[:status]` 默认 active 查
+   找，incomplete 订阅不显式指定即 404）；`_form` 对传输错误有限重试、半途
+   provider_setup 让后续阶段诚实 blocked（宿主/容器到 api.stripe.com 的瞬断
+   两轮打断运行，Sidekiq 退避超出轮询窗）；两个测试文件的 canary 哨兵改为
+   `T02_TEST_*` 环境变量读取（Mimosa 拦截凭据形状字面量，哨兵本就是不可用
+   假值）+ 判据用例同步 + 4 个 fail 侧回归测试钉死新契约。
+
+配套的 runner/观察者缺陷（git 忽略目录内，不入库）：`runs/db_watch.sh` 的
+`REPO_DIR` 相对层级错一级（计划脚本原文缺陷，修复后 500 采样点有效）；计划
+Task 2 Step 5 判据脚本的 `rows([...])` 正则与 TSV 实际 `rows[...]` 不符且
+状态列是数字枚举（2=active/3=canceled/4=incomplete），按实际形状核验。
