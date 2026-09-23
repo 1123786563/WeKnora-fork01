@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CLIENT_PROTOCOL_VERSION } from '@weknora/domain/mobile';
 import { createMobileRuntime } from './mobile-runtime.ts';
 import { createInMemoryDeploymentRegistry } from './in-memory-adapters.ts';
-import type { CredentialStore, RuntimeRemote, StoredCredential } from './ports.ts';
+import type { CredentialStore, DeploymentRegistry, RuntimeRemote, StoredCredential } from './ports.ts';
 import type { ResourceRemote } from '../shelf/ports.ts';
 import type { Deployment } from './types.ts';
 
@@ -234,6 +234,69 @@ test('forgetting the active deployment signs out and clears its registration', a
   assert.deepEqual(await runtime.listDeployments(), []);
   assert.deepEqual(runtime.snapshot(), { surface: 'deployment-login', reason: 'authentication-required' });
   assert.equal(runtime.scopeLease(), undefined);
+});
+
+// registry 读取/写入失败的注入夹具（async throw 推断 Promise<never>，结构兼容 DeploymentRegistry）
+function failingRegistry(): DeploymentRegistry {
+  const failure = async (): Promise<never> => { throw new Error('SECURESTORE_UNAVAILABLE'); };
+  return { list: failure, upsert: failure, remove: failure };
+}
+
+test('listDeployments resolves to an empty list when the registry read rejects', async () => {
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION, deploymentRegistry: failingRegistry(),
+  });
+  assert.deepEqual(await runtime.listDeployments(), []);
+});
+
+test('switchDeployment keeps the current surface when the registry read rejects', async () => {
+  const remoteCalls: string[] = [];
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), clientVersion: CLIENT_PROTOCOL_VERSION,
+    remoteFor: () => remote({ passwordLogin: async () => { remoteCalls.push('login'); return { ...DEFAULT_GRANT }; } }),
+    deploymentRegistry: { list: async () => { throw new Error('SECURESTORE_UNAVAILABLE'); }, upsert: async () => {}, remove: async () => {} },
+  });
+  await runtime.signIn({ deployment: FIRST, email: 'user@example.test', password: 'pw' });
+  const before = runtime.snapshot();
+  const after = await runtime.switchDeployment(SECOND.origin); // registry.list reject —— 不得 reject、不得扰动当前面
+  assert.equal(after.surface, before.surface);
+  assert.equal(after.deployment?.origin, FIRST.origin);
+  assert.deepEqual(remoteCalls, ['login'], '未对目标实例发出任何远程调用');
+});
+
+test('an authorized sign-in survives a registry write failure', async () => {
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION, deploymentRegistry: failingRegistry(), // upsert reject
+  });
+  const snapshot = await runtime.signIn({ deployment: FIRST, email: 'user@example.test', password: 'pw' });
+  assert.equal(snapshot.surface, 'authorized', 'registry 是 presentation 辅助数据，写失败不得把登录裁决为 authentication-required');
+});
+
+test('forgetDeployment resolves when persistence fails', async () => {
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), remoteFor: () => remote(),
+    clientVersion: CLIENT_PROTOCOL_VERSION, deploymentRegistry: failingRegistry(),
+  });
+  await runtime.signIn({ deployment: FIRST, email: 'user@example.test', password: 'pw' });
+  await runtime.forgetDeployment(FIRST.origin); // 不得 reject（mutateCredential/registry.remove 失败均包含）
+});
+
+test('switchDeployment onto the active origin short-circuits without re-authentication', async () => {
+  const remoteCalls: string[] = [];
+  const deployments = createInMemoryDeploymentRegistry();
+  const runtime = createMobileRuntime({
+    credentialStore: fakeStore(), clientVersion: CLIENT_PROTOCOL_VERSION,
+    remoteFor: () => remote({ passwordLogin: async () => { remoteCalls.push('login'); return { ...DEFAULT_GRANT }; } }),
+    deploymentRegistry: deployments,
+  });
+  const signedIn = await runtime.signIn({ deployment: FIRST, email: 'user@example.test', password: 'pw' });
+  const switched = await runtime.switchDeployment(FIRST.origin);
+  assert.equal(switched.surface, 'authorized');
+  assert.equal(switched.deployment?.origin, FIRST.origin);
+  assert.deepEqual(remoteCalls, ['login'], '同 origin 且当前会话有效时不得重走 begin/authenticate');
+  assert.equal(switched, signedIn, '快照对象不重建（短路返回当前 state）');
 });
 
 function deferred<T>() {

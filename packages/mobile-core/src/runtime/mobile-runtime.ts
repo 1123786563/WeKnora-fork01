@@ -235,8 +235,11 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       }
       const surface: RuntimeSurface = gate.mode === 'full' ? 'authorized' : 'read-only';
       await mutateDeployment(async () => {
+        // deploymentStore.write 是活动实例记忆（授权主流程），失败语义保持；
+        // registry.upsert 是 presentation 辅助数据，失败单独包含，不得把已验证的
+        // 授权拖入外层 catch 而呈现 authentication-required（B2-F32）。
         await ports.deploymentStore?.write(deployment);
-        await ports.deploymentRegistry?.upsert(deployment);
+        try { await ports.deploymentRegistry?.upsert(deployment); } catch { /* presentation 辅助：写失败不阻塞授权 */ }
       });
       if (!current(requestEpoch, deployment)) return state;
       revocableLease = new RuntimeScopeLease({ deploymentOrigin: deployment.origin, userId: authenticatedUserId, tenantId: activeTenantId });
@@ -410,7 +413,9 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
       }
     },
     async listDeployments(): Promise<Deployment[]> {
-      return ports.deploymentRegistry ? await ports.deploymentRegistry.list() : [];
+      // 失败包含（B2-F42）：registry 读取失败按 fail-closed 语义返回空数组，与端口缺失一致，从不 reject。
+      if (!ports.deploymentRegistry) return [];
+      try { return await ports.deploymentRegistry.list(); } catch { return []; }
     },
     async switchDeployment(origin: string): Promise<RuntimeSnapshot> {
       try {
@@ -419,7 +424,12 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
         let target: Deployment | undefined;
         try { target = normalizeDeployment({ origin }); } catch { target = undefined; }
         if (!target) return state;
-        const record = (await ports.deploymentRegistry.list()).find((entry) => entry.origin === target!.origin);
+        // 同 origin 短路（B2-F44）：目标即当前活动实例且不在登录面时不重走 begin/authenticate。
+        if (state.surface !== 'deployment-login' && state.deployment?.origin === target.origin) return state;
+        // 失败包含（B2-F17）：SecureStore 读取失败按未登记处理，保持当前面，不得 reject。
+        let entries: Deployment[] | undefined;
+        try { entries = await ports.deploymentRegistry.list(); } catch { entries = undefined; }
+        const record = entries?.find((entry) => entry.origin === target!.origin);
         if (!record) return state;
         const deployment = normalizeDeployment({ origin: record.origin, label: record.label });
         const requestEpoch = begin(deployment);
@@ -447,6 +457,8 @@ export function createMobileRuntime(ports: MobileRuntimePorts): MobileRuntime {
           await mutateCredential(async () => { await ports.credentialStore.clear(deployment.origin); });
         }
         await mutateDeployment(async () => { await ports.deploymentRegistry?.remove(deployment.origin); });
+      } catch {
+        // 失败包含（B2-F43）：持久化失败 resolve 而非 reject，与 Runtime 其余状态迁移从不 reject 的约定一致。
       } finally {
         await vaultTail;
       }
