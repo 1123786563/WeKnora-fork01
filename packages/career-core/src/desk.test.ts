@@ -165,3 +165,48 @@ test('same-id retry conflict safely resolves the unknown action and unlocks new 
  assert.equal(desk.pendingAction, undefined)
  await assert.rejects(desk.mutate({ ...action, requestId: 'next', expectedRevision: 3, value: '硕士' }), (error: unknown) => (error as { code?: string }).code !== 'unresolved_action')
 })
+
+test('forbidden read invalidates concurrent same-scope reads so late success cannot repopulate facts', async () => {
+ let resolveLate!: (result: CareerView) => void
+ let openCalls = 0
+ const privateView = view(1, [{ key: '学历', value: '秘密本科', revision: 1, source: { kind: 'user' }, confirmation: { userId: 'u', confirmedAt: 'now' }, confirmedAt: 'now' }])
+ const desk = new CareerDesk(remote({
+  open: async () => { openCalls += 1; return openCalls === 1 ? privateView : new Promise((resolve) => { resolveLate = resolve }) },
+  list: async () => { throw Object.assign(new Error('revoked'), { code: 'forbidden' }) },
+ }))
+ desk.activate('u', 't'); await desk.open()
+ const lateRead = desk.open()
+ await assert.rejects(desk.refresh(), (error: unknown) => (error as { code?: string }).code === 'forbidden')
+ assert.equal(desk.snapshot, undefined)
+ resolveLate(privateView)
+ assert.equal(await lateRead, undefined)
+ assert.equal(desk.snapshot, undefined)
+})
+
+test('forbidden receipt after ambiguous act invalidates scope and clears facts and pending action', async () => {
+ const privateView = view(1, [{ key: '学历', value: '秘密本科', revision: 1, source: { kind: 'user' }, confirmation: { userId: 'u', confirmedAt: 'now' }, confirmedAt: 'now' }])
+ const desk = new CareerDesk(remote({
+  open: async () => privateView,
+  act: async () => { throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' }) },
+  receipt: async () => { throw Object.assign(new Error('revoked'), { code: 'forbidden' }) },
+ }))
+ desk.activate('u', 't'); await desk.open()
+ await assert.rejects(desk.mutate({ action: 'confirm', key: '学历', value: '本科', source: { kind: 'user' }, requestId: 'same', expectedRevision: 1 }), (error: unknown) => (error as { code?: string }).code === 'forbidden')
+ assert.equal(desk.snapshot, undefined)
+ assert.equal(desk.pendingAction, undefined)
+})
+
+
+test('retry receipt forbidden stays a forbidden state after a previous receipt miss', async () => {
+ let receiptCalls = 0
+ const desk = new CareerDesk(remote({
+  act: async () => { throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' }) },
+  receipt: async () => { receiptCalls += 1; if (receiptCalls === 1) throw Object.assign(new Error('missing'), { code: 'not_found' }); throw Object.assign(new Error('revoked'), { code: 'forbidden' }) },
+ }))
+ desk.activate('u', 't'); await desk.open()
+ const action: CareerAction = { action: 'confirm', key: '学历', value: '本科', source: { kind: 'user' }, requestId: 'r', expectedRevision: 0 }
+ await assert.rejects(desk.mutate(action), (error: unknown) => (error as { code?: string }).code === 'outcome_unknown')
+ await assert.rejects(desk.retryUnknown(action), (error: unknown) => (error as { code?: string }).code === 'forbidden')
+ assert.equal(desk.pendingAction, undefined)
+ assert.equal(desk.snapshot, undefined)
+})

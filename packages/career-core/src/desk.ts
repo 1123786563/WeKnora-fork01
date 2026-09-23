@@ -48,6 +48,12 @@ export class CareerDesk {
  }
  clear(): void { this.activate(null, null) }
  private clearPrivateState(): void { this.currentView = undefined; this.unresolved = undefined; this.receiptMissing = false }
+ private invalidatePrivateState(): void {
+  this.epoch += 1
+  this.controller?.abort()
+  this.controller = new AbortController()
+  this.clearPrivateState()
+ }
  private capture(): { epoch: number; signal: AbortSignal } {
   if (!this.currentScope?.userId || !this.currentScope.tenantId) throw Object.assign(new Error('Career workspace requires an active user and tenant'), { code: 'forbidden' })
   if (!this.controller || this.controller.signal.aborted) this.controller = new AbortController()
@@ -62,7 +68,7 @@ export class CareerDesk {
    commit(value)
    return result()
   } catch (error) {
-   if (this.current(epoch) && errorCode(error) === 'forbidden') this.clearPrivateState()
+   if (this.current(epoch) && errorCode(error) === 'forbidden') this.invalidatePrivateState()
    throw error
   }
  }
@@ -102,6 +108,7 @@ export class CareerDesk {
     const existing = await this.reconcile(action.requestId)
     if (existing) return existing
    } catch (error) {
+    if (errorCode(error) === 'forbidden') throw error
     if (errorCode(error) !== 'not_found') throw outcomeUnknown(action, error, false)
    }
   }
@@ -120,7 +127,7 @@ export class CareerDesk {
    return receipt
   } catch (error) {
    if (!this.current(epoch)) return undefined
-   if (errorCode(error) === 'forbidden') this.clearPrivateState()
+   if (errorCode(error) === 'forbidden') this.invalidatePrivateState()
    if (!isAmbiguousOutcome(error)) throw error
    this.unresolved = action
    this.receiptMissing = false
@@ -132,6 +139,7 @@ export class CareerDesk {
     return receipt
    } catch (receiptError) {
     if (!this.current(epoch)) return undefined
+    if (errorCode(receiptError) === 'forbidden') { this.invalidatePrivateState(); throw receiptError }
     const missing = errorCode(receiptError) === 'not_found'
     this.receiptMissing = missing
     throw outcomeUnknown(action, receiptError, missing)

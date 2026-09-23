@@ -61,5 +61,18 @@ const button = (container: HTMLElement, label: string): HTMLElement => {
   await act(async () => { button(container, '刷新').click(); await new Promise((resolve) => setImmediate(resolve)) })
   assert.match(container.textContent ?? '', /当前空间不可访问/)
   assert.doesNotMatch(container.textContent ?? '', /本科/)
-  for (const label of ['保存为提案', '直接确认', '确认', '忽略']) assert.equal([...container.querySelectorAll('button')].some((item) => item.textContent?.trim() === label), false, `${label} is hidden`)
+  for (const label of ['保存为提案', '直接确认', '确认', '忽略']) assert.equal([...container.querySelectorAll('.t-button')].some((item) => item.textContent?.trim() === label), false, `${label} is hidden`)
  })
+
+test('forbidden receipt after an ambiguous action hides cached facts in the mounted page', async () => {
+ const container = await mount({
+  open: async () => profile, list: async () => profile, changes: async () => ({ revision: 1, changes: [] }),
+  act: async () => { throw Object.assign(new Error('timed out'), { code: 'TIMEOUT' }) },
+  receipt: async () => { throw Object.assign(new Error('access revoked'), { code: 'forbidden' }) },
+ } as never)
+ assert.match(container.textContent ?? '', /本科/)
+ await act(async () => { button(container, '确认').click(); await new Promise((resolve) => setImmediate(resolve)) })
+ assert.match(container.textContent ?? '', /当前空间不可访问/)
+ assert.doesNotMatch(container.textContent ?? '', /本科/)
+ assert.equal([...container.querySelectorAll('.t-button')].some((item) => ['保存为提案', '直接确认', '确认', '忽略'].includes(item.textContent?.trim() ?? '')), false)
+})
