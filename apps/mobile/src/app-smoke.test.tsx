@@ -702,3 +702,61 @@ test('MobileApp subscribes deployment list reads with containment and narrowed d
   assert.match(source, /createDeploymentListSync/);
   assert.match(source, /snapshot\.surface, snapshot\.deployment\?\.origin/, '依赖收窄：不再以整快照对象触发重复读取安全存储');
 });
+
+test('switching deployment from the login screen resets the form onto the target origin', async () => {
+  const { DeploymentLoginScreen } = await import('./screens/DeploymentLoginScreen.tsx');
+  hooks().__reset();
+  const switched: string[] = [];
+  const props = {
+    officialCloudOrigin: 'https://cloud.example.test',
+    deployments: [{ origin: 'https://selfhost.example.test', label: 'Selfhost' }],
+    onSignIn: async () => {},
+    onBeginOidc: async () => {},
+    onSwitchDeployment: async (origin: string) => { switched.push(origin); },
+  };
+  let tree = render(DeploymentLoginScreen, props);
+  // 预置本地状态：用户先在表单里输入了另一个 origin/凭据（经 TextInput 的 onChangeText 写入 stub state）
+  const textInputs = descendants(tree).filter(({ type }) => type === 'TextInput');
+  (textInputs[0]!.props.onChangeText as (value: string) => void)('https://stale.example.test');
+  (textInputs[1]!.props.onChangeText as (value: string) => void)('user@stale.example.test');
+  (textInputs[2]!.props.onChangeText as (value: string) => void)('stale-password');
+  const switchButton = descendants(tree).find(({ type, props: p }) => type === 'Button' && p.title === 'Selfhost');
+  (switchButton!.props.onPress as () => void)();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(switched, ['https://selfhost.example.test']);
+  // 重渲染：状态经 stub 保留，origin 输入框现在显示目标 origin（而非残留的 stale）
+  tree = render(DeploymentLoginScreen, props);
+  const rerenderedInputs = descendants(tree).filter(({ type }) => type === 'TextInput');
+  assert.equal((rerenderedInputs[0]!.props as { value?: string }).value, 'https://selfhost.example.test', '切换后表单 origin 必须指向目标实例');
+  assert.equal((rerenderedInputs[1]!.props as { value?: string }).value, '', 'email 残留必须清空');
+  assert.equal((rerenderedInputs[2]!.props as { value?: string }).value, '', 'password 残留必须清空');
+});
+
+test('the registered deployments block is hidden without an onSwitchDeployment handler', async () => {
+  const { DeploymentLoginScreen } = await import('./screens/DeploymentLoginScreen.tsx');
+  hooks().__reset();
+  const tree = render(DeploymentLoginScreen, {
+    deployments: [{ origin: 'https://a.example.test', label: 'A' }],
+    onSignIn: async () => {},
+    onBeginOidc: async () => {},
+  });
+  const texts = descendants(tree).filter(({ type }) => type === 'Text').flatMap(({ props: p }) => p.children).flatMap((part) => (typeof part === 'string' ? [part] : []));
+  assert.equal(texts.includes('Registered deployments'), false, 'handler 缺失：区块不渲染（无反馈死交互不出现）');
+  assert.equal(descendants(tree).some(({ type, props: p }) => type === 'Button' && p.title === 'A'), false);
+});
+
+test('the home header hides switch entries without an onSwitchDeployment handler', async () => {
+  const { HomeScreen } = await import('./screens/HomeScreen.tsx');
+  hooks().__reset();
+  const element = render(HomeScreen, {
+    deploymentLabel: 'WeKnora',
+    tenants: [{ id: '7', name: 'Acme' }],
+    activeTenantId: '7',
+    onActivateTenant: () => {},
+    onSignOut: async () => {},
+    taskOffice: fakeTaskOffice({}),
+    otherDeployments: [{ origin: 'https://other.example.test', label: 'Other' }],
+    // onSwitchDeployment 缺失
+  });
+  assert.equal(descendants(element).some(({ type, props: p }) => type === 'Button' && p.title === 'Switch to Other'), false, '无 handler 时不渲染 Switch to … 按钮');
+});

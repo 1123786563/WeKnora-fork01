@@ -37,9 +37,11 @@ export function HomeScreen({ deploymentLabel, tenants, activeTenantId, onActivat
             <Button key={tenant.id} title={tenant.name ?? tenant.id} onPress={() => onActivateTenant(tenant.id)} />
           ))
         : <Text>{tenants[0]?.name ?? activeTenantId}</Text>}
-      {(otherDeployments ?? []).map((deployment) => (
-        <Button key={deployment.origin} title={`Switch to ${deployment.label}`} onPress={() => { void onSwitchDeployment?.(deployment.origin); }} />
-      ))}
+      {onSwitchDeployment
+        ? (otherDeployments ?? []).map((deployment) => (
+            <Button key={deployment.origin} title={`Switch to ${deployment.label}`} onPress={() => { void onSwitchDeployment(deployment.origin); }} />
+          ))
+        : null}
       <Button title="Sign out" onPress={() => { void onSignOut(); }} />
       <Button title="View all tasks" onPress={() => router.push('/tasks')} />
       {/* /resources 屏（#32 交付）的常驻入口：占位屏删除后不得丢失可达性。 */}
