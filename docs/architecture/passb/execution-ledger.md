@@ -74,7 +74,7 @@
 - **OCR 报告路径**：无（本任务未运行 open-code-review）
 - **修复轮次**：0
 - **本次 JSON 变更**：b0.`task_status` B0.3 pending → done（B0.1/B0.2 仍 done；B0.4–B0.6 pending）；节点级 `status=in_progress`、`head_sha=null`、`review_status=pending` 未动
-- **要点留痕**：(1) 上条预告闭环——`native_archive.go`（service+handler 两文件）已改派 **34-protocol**，engine brief 计数同步 39→38；(2) shared-host 36 文件 HandlerSessionRuling 全量冻结（wiki_fixer_scope→23、workbench 族→40、craft 族→41、agent_run/agent_stream_handler→33、session 族 15 文件→35；pagination/upload-limit/error helper 保持 platform 零认领）；(3) housekeeping 裁定入 knowledge-process.md（业务规则归 24、System 经窄端口调度、禁双实现）；(4) 歧义短语（先合并者/二选一执行等）已由 CheckAmbiguity 机器禁止；(5) Mimosa hook 仍 `scanner_enobufs`
+- **要点留痕**：(1) 上条预告闭环——`native_archive.go`（service+handler 两文件）已改派 **34-protocol**，engine brief 计数同步 39→38；(2) shared-host 36 文件 HandlerSessionRuling 全量冻结（wiki_fixer_scope→23、workbench 族→40、craft 族→41、agent_run/agent_stream_handler→33、session 族 15 文件→35；pagination/upload-limit/error helper 保持 platform 零认领）；(3) housekeeping 裁定入 knowledge-process.md（业务规则归 24、System 经窄端口调度、禁双实现）；(4) 歧义短语（先合并为准、二择其一执行等）已由 CheckAmbiguity 机器禁止（条目原以字面引用短语样例，2026-09-23 b0 合入 integration 后禁令自指命中，按 freeze B0.3 Step 1 上游契约改写措辞，语义不变，详见当日集成合并台账条目）；(5) Mimosa hook 仍 `scanner_enobufs`
 
 ---
 
@@ -818,6 +818,24 @@
 - **留痕 2（ocr_covered 区间不含 head）**：ocr_covered 首条止于 `971435df3`，head `acd7b2401`（18:46:59 提交）不在该区间——调度方未要求追加，如实登记；若 tail OCR 已覆盖 (971435df3, acd7b2401]，建议后续指令补登 ocr_covered 条目
 - **留痕 3（依赖节点残留）**：32 个传递依赖节点 status=pending（非 blocked、无需翻转），但其 notes 内 32 处「BLOCKED（2026-09-23）：前置 b0 阻塞；解除条件：修复并 done b0 后恢复。」文本的解除条件现已满足，**文本残留待清理**——本指令未授权改动这些节点，留痕待调度方指令
 - **后续（调度方事项）**：(1) 合并 `codex/passb-b0`（HEAD `acd7b2401`）进 `codex/passb-integration`；(2) 32 个依赖节点 BLOCKED 文本清理（可随 B1 派发一并）；(3) ocr_covered 区间补登（若适用）；(4) b1-identity/b1-airesource/b1-commercial/b1-execution 四个 B1 节点已解锁可派发
+
+---
+
+## 2026-09-23 18:53 CST · b0 合入 integration（集成合并：门禁绿色，台账措辞冲突以上游契约解决）
+
+- **执行者**：Pass B 总集成工程师（集成分支 `codex/passb-integration` 唯一合并执行者）
+- **合并前清理**：`.worktrees/passb-int` 工作树含上一管家会话遗留的 2 个未提交修改（本台账 18:47 b0 收口条目 + `execution-dag.json` b0 done/head_sha 回填）——先以 docs 提交 **`1a85809ee`** 固化（2 文件 23+/3−）
+- **合并**：`git merge codex/passb-b0 --no-edit`（ort 策略，**无冲突**），合并提交 **`0be903ef2`**；merge-base `5bf228a40`，b0 侧 19 提交，52 文件 +12832/−68（passbguard 全部源码+测试+二进制、4 份治理 yaml：contracts/ownership-matrix/event-catalog/exception-ledger、b0-evidence.md、`tools/modulemove→tools/internal/movemanifest` 库迁移等）。合并后工作树全净
+- **门禁 1 首跑 RED**：`make -C .worktrees/passb-int check-passb-readiness`（= `go run ./tools/passbguard -root .`，Makefile:262-263）→ exit 1，2 条诊断：`docs/architecture/passb/execution-ledger.md:77` 命中 ForbiddenPhrases 中的两条中文样例（原字样不在此逐字复现，定义见 `tools/passbguard/overlap.go:13-20`；CheckAmbiguity 扫 `docs/architecture/passb/` 全部 `*.md`/`*.yaml`，无文件豁免）
+- **根因**：本台账文件**仅存在于 integration 分支**（`git cat-file -e codex/passb-b0:docs/architecture/passb/execution-ledger.md` → "exists on disk, but not in 'codex/passb-b0'"），b0 worktree 门禁运行从未扫描过它；合并后治理目录并集才暴露。台账 77 行系 B0.3 收口条目**引用短语样例以记录禁令本身**，非悬置所有权
+- **解决口径（上游契约优先）**：按集成职责"冲突时以上游契约与子计划为准解决并记录"——freeze B0.3 Step 1 机器禁令获胜，**改写台账 77 行 (4) 措辞**（原两条字面样例短语改写为「先合并为准、二择其一执行」+ 括注改写缘由；本条目亦不逐字复现原短语以免禁令自指），语义不变；**未改动已审查通过的 passbguard 代码、未给守卫加文件豁免**。全治理目录 grep 复验：三个 ForbiddenPhrases 0 命中
+- **门禁 1 重跑 GREEN**：`make -C .worktrees/passb-int check-passb-readiness` → `pass-b readiness: legacy=396 aliases=99 exceptions=105 contracts=125 events=29 overlaps=0 missing=0`（exit 0）
+- **门禁 2 GREEN**：`make -C .worktrees/passb-int check-backend-architecture`（= `go run ./tools/architectureguard`，Makefile:255-256）→ `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 | redis=23 lite=23 | hooks=58 | modules=16` / `OK (0 violations)`（exit 0；与 B0.3 条目登记基线 633/23+23/58 一致）
+- **DAG 变更**：无（b0 节点已于 18:47 收口条目置 done/head_sha=`acd7b2401`；该条留痕 1 约定"如需以合并头覆盖 head_sha 由调度方显式指令"，本次未获该指令，维持分支头口径）
+- **调度方后续事项更新**：18:47 收口条目"后续"清单第 (1) 项（合并 b0 进 integration）**已完成**；(2) 32 节点 BLOCKED 文本清理、(3) ocr_covered 区间补登、(4) B1 四节点派发，维持待办
+- **Mimosa**：本会话 2 次 git commit 钩子均报 `scanner_enobufs`（未获完整扫描结论，按钩子兼容策略继续提交，不宣称项目安全审计通过）
+- **集成后 HEAD**：本条目所在 docs 提交（完整 SHA 见 `git rev-parse HEAD`，已回报调度方）
+
 
 
 
