@@ -191,28 +191,93 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 		return nil, errors.New("career database required")
 	}
 	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}}
-	// The versioned SQL migrations create this schema before router/module
-	// initialization. GORM's SQLite table rebuild cannot introspect table-level
-	// UNIQUE clauses reliably and may interpret UNIQUE as a column. Preserve
-	// the migrated schema instead of rebuilding it on every startup. For
-	// installations without the versioned tables, AutoMigrate remains the
-	// compatibility path.
-	versionedSchemaPresent := db.Dialector.Name() == "sqlite"
-	if versionedSchemaPresent {
+	if db.Dialector.Name() == "sqlite" {
+		present := 0
 		for _, model := range models {
-			if !db.Migrator().HasTable(model) {
-				versionedSchemaPresent = false
-				break
+			if db.Migrator().HasTable(model) {
+				present++
 			}
 		}
-	}
-	if !versionedSchemaPresent {
+		switch {
+		case present == 0:
+			// Keep AutoMigrate as a compatibility path for a truly new
+			// database. The application migration runner still owns upgrades.
+		case present != len(models):
+			return nil, fmt.Errorf("incomplete Career SQLite schema: found %d of %d tables; apply database migrations before startup", present, len(models))
+		default:
+			if err := validateSQLiteCareerSchema(db); err != nil {
+				return nil, err
+			}
+		}
+		if present == 0 {
+			if err := db.AutoMigrate(models...); err != nil {
+				return nil, err
+			}
+		}
+	} else {
 		if e := db.AutoMigrate(models...); e != nil {
 			return nil, e
 		}
 	}
 	return &Office{db: db}, nil
 }
+
+func validateSQLiteCareerSchema(db *gorm.DB) error {
+	requiredColumns := map[string][]string{
+		"career_profiles":      {"tenant_id", "user_id", "revision"},
+		"career_spaces":        {"tenant_id", "owner_user_id", "created_at"},
+		"career_facts":         {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "request_id", "created_at"},
+		"career_fact_versions": {"id", "tenant_id", "user_id", "key", "value", "revision", "source", "confirmation", "proposal_id", "request_id", "created_at"},
+		"career_proposals":     {"id", "public_id", "tenant_id", "user_id", "key", "value", "source", "status", "resolved_at", "resolved_revision", "confirmation", "resolution_source", "created_at"},
+		"career_changes":       {"id", "tenant_id", "user_id", "revision", "kind", "body", "created_at"},
+		"career_receipts":      {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
+	}
+	for table, columns := range requiredColumns {
+		for _, column := range columns {
+			if !db.Migrator().HasColumn(table, column) {
+				return fmt.Errorf("incomplete Career SQLite schema: %s.%s is missing; apply database migrations before startup", table, column)
+			}
+		}
+	}
+	for table, columns := range map[string][]string{
+		"career_facts":    {"tenant_id", "user_id", "key"},
+		"career_changes":  {"tenant_id", "user_id", "revision"},
+		"career_receipts": {"tenant_id", "user_id", "request_id"},
+	} {
+		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
+			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)
+		}
+	}
+	return nil
+}
+
+func requireSQLiteUniqueConstraint(db *gorm.DB, table string, columns []string) error {
+	var indexes []struct{ Name string }
+	if err := db.Raw(`SELECT name FROM pragma_index_list(?) WHERE "unique" = 1`, table).Scan(&indexes).Error; err != nil {
+		return fmt.Errorf("inspect %s unique constraints: %w", table, err)
+	}
+	for _, index := range indexes {
+		var indexedColumns []string
+		if err := db.Raw("SELECT name FROM pragma_index_info(?) ORDER BY seqno", index.Name).Scan(&indexedColumns).Error; err != nil {
+			return fmt.Errorf("inspect %s unique constraint %s: %w", table, index.Name, err)
+		}
+		if len(indexedColumns) != len(columns) {
+			continue
+		}
+		matches := true
+		for i := range columns {
+			if indexedColumns[i] != columns[i] {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s uniqueness on (%s) is missing", table, strings.Join(columns, ", "))
+}
+
 func (o *Office) ClaimSpace(ctx context.Context) error {
 	s, e := getScope(ctx)
 	if e != nil {

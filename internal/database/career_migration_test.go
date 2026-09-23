@@ -57,3 +57,55 @@ func TestCareerOfficeOpensAfterVersionedSQLiteMigration(t *testing.T) {
 	require.NoError(t, db.Exec("INSERT INTO career_changes (tenant_id,user_id,revision,kind,body,created_at) VALUES (42,'startup-user',1,'fact_confirmed','{}',CURRENT_TIMESTAMP)").Error)
 	require.Error(t, db.Exec("INSERT INTO career_changes (tenant_id,user_id,revision,kind,body,created_at) VALUES (42,'startup-user',1,'fact_confirmed','{}',CURRENT_TIMESTAMP)").Error)
 }
+
+func TestCareerOfficeRejectsMalformedVersionedSQLiteSchema(t *testing.T) {
+	root := sqliteRepoRoot(t)
+	chdirAndRestore(t, root)
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(*testing.T, *gorm.DB)
+		want   string
+	}{
+		{
+			name: "missing required column",
+			mutate: func(t *testing.T, db *gorm.DB) {
+				require.NoError(t, db.Exec("ALTER TABLE career_facts DROP COLUMN confirmation").Error)
+			},
+			want: "career_facts.confirmation",
+		},
+		{
+			name: "missing fact uniqueness",
+			mutate: func(t *testing.T, db *gorm.DB) {
+				require.NoError(t, db.Exec("ALTER TABLE career_facts RENAME TO career_facts_old").Error)
+				require.NoError(t, db.Exec("CREATE TABLE career_facts (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, revision INTEGER NOT NULL, source TEXT NOT NULL, confirmation TEXT NOT NULL, request_id TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)").Error)
+				require.NoError(t, db.Exec("DROP TABLE career_facts_old").Error)
+			},
+			want: "career_facts uniqueness",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "malformed.db")
+			require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
+			db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+			require.NoError(t, err)
+			tc.mutate(t, db)
+			_, err = career.NewOffice(db)
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}
+
+func TestCareerOfficeRejectsPartialVersionedSQLiteSchema(t *testing.T) {
+	root := sqliteRepoRoot(t)
+	chdirAndRestore(t, root)
+	path := filepath.Join(t.TempDir(), "partial.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec("DROP TABLE career_receipts").Error)
+
+	_, err = career.NewOffice(db)
+	require.ErrorContains(t, err, "incomplete Career SQLite schema")
+	require.False(t, db.Migrator().HasTable("career_receipts"), "startup must not run AutoMigrate over a partial versioned schema")
+}
