@@ -1189,3 +1189,12 @@
 
 
 
+
+## 2026-09-24 · b2-ac-skills T3 · 临时测试装置垫片（B5 清理范围）——Ruling 2026-09-24-TEST-SUPPORT-SHIM
+
+- **垫片文件（唯一超出 owned_files 的改动，裁定授权）**：`internal/application/service/tenant_skill_testsupport_test.go`（_test.go，不进生产编译）
+- **符号清单（5）**：`validSkillMD`（SKILL.md fixture 副本）/ `skillArchiveSHA256`（转发 acatsvc.SkillArchiveSHA256）/ `installerAgentConfig`（3 参包装，转发 acatsvc.InstallerAgentConfig + agent/tools 三工具名常量）/ `installSkillRepo` + `newInstallSkillRepo`（acrepo.TenantSkillRepository 全接口测试替身副本：嵌入接口满足编译，显式实现 user_env_test.go 方法面 CreateSkill/UpdateSkill/GetSkill/ListSkillsByConfig + userEnvs 存储五方法）
+- **依赖方（禁改测试）**：user_env_test.go（execution）/ agent_service_skill_bundle_test.go、agent_service_install_shell_test.go（agentruntime）
+- **remove_at**：IB2 核查——25c 或 execution/agentruntime 后续节点把上述 3 个依赖测试文件迁走后立即删除；最迟不晚于 B5（先到先删）
+- **责任节点**：b2-ac-skills（随 T3 独立 commit 落盘）
+- **同日关联裁定**：Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY（例外台账 105→113，exc-0106..0113，owner 25-agentcatalog-program，remove_at ib2）
