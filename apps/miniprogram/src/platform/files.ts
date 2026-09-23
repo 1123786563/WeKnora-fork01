@@ -3,14 +3,16 @@ import type { NativeFileSource } from '@weknora/api-client';
 import { auth, apiOrigin } from '../services/runtime.ts';
 import type { ScopeStamp } from '../core/scope.ts';
 const MAX_BYTES=20*1024*1024; // Conservative client memory/transfer guard; server may impose a lower bound.
-function downloadErrorCode(data:unknown):string|undefined{
- let body=data;
- if(typeof body==='string'){
-  try{body=JSON.parse(body)}catch{return undefined}
- }
- if(body===null||typeof body!=='object')return undefined;
- const code=(body as {code?:unknown}).code;
- return typeof code==='string'?code:undefined;
+const MAX_DOWNLOAD_ERROR_BYTES=4096;
+async function downloadErrorCode(filePath:string):Promise<string|undefined>{
+ try{
+  const {size}=await Taro.getFileInfo({filePath}) as {size:number};
+  if(size<1)return undefined;
+  const body=Taro.getFileSystemManager().readFileSync(filePath,'utf8',0,Math.min(size,MAX_DOWNLOAD_ERROR_BYTES));
+  if(typeof body!=='string')return undefined;
+  const parsed=JSON.parse(body) as {code?:unknown};
+  return typeof parsed.code==='string'?parsed.code:undefined;
+ }catch{return undefined}
 }
 export async function chooseDocument():Promise<NativeFileSource>{
  const result=await Taro.chooseMessageFile({count:1,type:'file'});const f=result.tempFiles[0];if(!f)throw new Error('未选择文件');
@@ -30,10 +32,12 @@ export async function openProtectedDocument(path:string,name:string,showMenu=fal
      // validating status so the finally block removes it just like a successful download.
      filePath=r.tempFilePath;
      if(r.statusCode!==200){
-      const code=r.statusCode===401
-       ?downloadErrorCode((r as unknown as {data?:unknown}).data)==='artifact_grant_expired'?'ARTIFACT_GRANT_EXPIRED':'ARTIFACT_GRANT_INVALID'
-       :undefined;
-      reject(Object.assign(new Error('下载失败'),{status:r.statusCode,...(code?{code}:{})}));
+      void downloadErrorCode(r.tempFilePath).then(responseCode=>{
+       const code=r.statusCode===401
+        ?responseCode==='artifact_grant_expired'?'ARTIFACT_GRANT_EXPIRED':'ARTIFACT_GRANT_INVALID'
+        :undefined;
+       reject(Object.assign(new Error('下载失败'),{status:r.statusCode,...(code?{code}:{})}));
+      });
       return;
      }
      resolve(r.tempFilePath);

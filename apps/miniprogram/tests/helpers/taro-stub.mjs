@@ -7,6 +7,8 @@ const state = {
   calls: [],
   openedDocuments: [],
   removedFiles: [],
+  fileContents: new Map(),
+  fileReads: [],
   fileInfoSize: 128,
   fileInfoError: null,
   openDocumentError: null,
@@ -52,9 +54,24 @@ const Taro = {
   request(options) { return dispatch('request', options); },
   uploadFile(options) { return dispatch('uploadFile', options); },
   downloadFile(options) { return dispatch('downloadFile', options); },
-  getFileInfo(options) { return state.fileInfoError ? Promise.reject(state.fileInfoError) : Promise.resolve({ size: state.fileInfoSize }); },
+  getFileInfo(options) {
+    if (state.fileInfoError) return Promise.reject(state.fileInfoError);
+    const content = state.fileContents.get(options.filePath);
+    return Promise.resolve({ size: content === undefined ? state.fileInfoSize : Buffer.byteLength(content) });
+  },
   openDocument(options) { if (state.openDocumentError) return Promise.reject(state.openDocumentError); state.openedDocuments.push(options); return Promise.resolve(); },
-  getFileSystemManager() { return { unlinkSync(path) { state.removedFiles.push(path); } }; },
+  getFileSystemManager() {
+    return {
+      readFileSync(path, encoding, position = 0, length) {
+        state.fileReads.push({ filePath: path, encoding, position, length });
+        const content = state.fileContents.get(path);
+        if (content === undefined) throw new Error(`stub: missing file ${path}`);
+        const bytes = Buffer.from(content, 'utf8').subarray(position, length === undefined ? undefined : position + length);
+        return encoding === 'utf8' ? bytes.toString('utf8') : bytes.buffer;
+      },
+      unlinkSync(path) { state.removedFiles.push(path); state.fileContents.delete(path); },
+    };
+  },
   getStorageSync(key) { return state.storage.has(key) ? state.storage.get(key) : ''; },
   setStorageSync(key, value) { state.storage.set(key, value); },
   removeStorageSync(key) { state.storage.delete(key); },
@@ -67,6 +84,8 @@ function reset() {
   state.calls.length = 0;
   state.openedDocuments.length = 0;
   state.removedFiles.length = 0;
+  state.fileContents.clear();
+  state.fileReads.length = 0;
   state.fileInfoSize = 128;
   state.fileInfoError = null;
   state.openDocumentError = null;

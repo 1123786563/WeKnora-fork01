@@ -196,6 +196,7 @@ test('assembly: protected DOCX opens with the user menu and removes its local te
 
 test('assembly: signed download 401 is a fresh-grant expiry and a second tap succeeds', async () => {
   let grants = 0, downloads = 0;
+  const expiredBody = JSON.stringify({ success: false, code: 'artifact_grant_expired' });
   await freshLogin();
   stub.use(call => {
     if (call.kind === 'request' && new URL(call.options.url).pathname.endsWith('/signed-url')) {
@@ -205,9 +206,12 @@ test('assembly: signed download 401 is a fresh-grant expiry and a second tap suc
     }
     if (call.kind !== 'downloadFile') { call.options.fail({ errMsg: 'unexpected request' }); return; }
     downloads++;
-    stub.succeed(call, downloads === 1
-      ? { statusCode: 401, data: JSON.stringify({ success: false, code: 'artifact_grant_expired' }), tempFilePath: '/tmp/expired.json' }
-      : { tempFilePath: '/tmp/report.pdf' });
+    if (downloads === 1) {
+      stub.state.fileContents.set('/tmp/expired.json', expiredBody);
+      stub.succeed(call, { statusCode: 401, tempFilePath: '/tmp/expired.json' });
+    } else {
+      stub.succeed(call, { tempFilePath: '/tmp/report.pdf' });
+    }
   });
   const files = await import('../src/platform/files.ts');
   const { errorMessage } = await import('../src/core/errors.ts');
@@ -225,12 +229,13 @@ test('assembly: signed download 401 is a fresh-grant expiry and a second tap suc
   assert.equal(grants, 2, 'retry obtains a new grant instead of reusing the expired URL');
   assert.equal(downloads, 2);
   assert.deepEqual(stub.state.removedFiles, ['/tmp/expired.json', '/tmp/report.pdf']);
+  assert.deepEqual(stub.state.fileReads, [{ filePath: '/tmp/expired.json', encoding: 'utf8', position: 0, length: Buffer.byteLength(expiredBody) }]);
   assert.equal(stub.state.openedDocuments.length, 1);
 });
 
 test('assembly: revoked download is denied and its non-200 temporary body is removed', async () => {
   await freshLogin();
-  stub.use(call => stub.succeed(call, { statusCode: 403, data: { code: 'artifact_access_revoked' }, tempFilePath: '/tmp/denied.json' }));
+  stub.use(call => stub.succeed(call, { statusCode: 403, tempFilePath: '/tmp/denied.json' }));
   const files = await import('../src/platform/files.ts');
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=revoked', 'report.pdf'), error => error.status === 403);
   assert.equal(stub.state.openedDocuments.length, 0);
@@ -239,11 +244,11 @@ test('assembly: revoked download is denied and its non-200 temporary body is rem
 
 test('assembly: invalid signed-download 401 is an authorization failure rather than an expiry retry', async () => {
   await freshLogin();
-  stub.use(call => stub.succeed(call, {
-    statusCode: 401,
-    data: JSON.stringify({ success: false, code: 'artifact_grant_invalid' }),
-    tempFilePath: '/tmp/invalid-grant.json',
-  }));
+  const invalidBody = JSON.stringify({ success: false, code: 'artifact_grant_invalid' });
+  stub.use(call => {
+    stub.state.fileContents.set('/tmp/invalid-grant.json', invalidBody);
+    stub.succeed(call, { statusCode: 401, tempFilePath: '/tmp/invalid-grant.json' });
+  });
   const files = await import('../src/platform/files.ts');
   const { errorMessage } = await import('../src/core/errors.ts');
   await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=tampered', 'report.pdf'), error => {
@@ -255,6 +260,25 @@ test('assembly: invalid signed-download 401 is an authorization failure rather t
   });
   assert.equal(stub.state.openedDocuments.length, 0);
   assert.deepEqual(stub.state.removedFiles, ['/tmp/invalid-grant.json']);
+  assert.deepEqual(stub.state.fileReads, [{ filePath: '/tmp/invalid-grant.json', encoding: 'utf8', position: 0, length: Buffer.byteLength(invalidBody) }]);
+});
+
+test('assembly: unknown signed-download 401 body defaults to denial and still removes its temp file', async () => {
+  await freshLogin();
+  const unknownBody = JSON.stringify({ success: false, code: 'different_auth_failure', detail: 'x'.repeat(5000) });
+  stub.use(call => {
+    stub.state.fileContents.set('/tmp/unknown-grant.json', unknownBody);
+    stub.succeed(call, { statusCode: 401, tempFilePath: '/tmp/unknown-grant.json' });
+  });
+  const files = await import('../src/platform/files.ts');
+  const { errorMessage } = await import('../src/core/errors.ts');
+  await assert.rejects(files.openProtectedDocument('/api/v1/workbench/artifacts/download?signature=unknown', 'report.pdf'), error => {
+    assert.equal(error.code, 'ARTIFACT_GRANT_INVALID');
+    assert.doesNotMatch(errorMessage(error), /再次点击|重新获取/);
+    return true;
+  });
+  assert.deepEqual(stub.state.removedFiles, ['/tmp/unknown-grant.json']);
+  assert.deepEqual(stub.state.fileReads, [{ filePath: '/tmp/unknown-grant.json', encoding: 'utf8', position: 0, length: 4096 }]);
 });
 
 test('assembly: a scope switch during transfer prevents opening and removes the late file', async () => {
