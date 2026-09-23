@@ -187,3 +187,16 @@ test('list rejects malformed pages instead of trusting them', async () => {
   const badCursor = createExecutionsApi(respond({ items: [], next_cursor: 7 }));
   await assert.rejects(badCursor.list(), /next_cursor/);
 });
+
+test('list forwards search and archived facets on the wire', async () => {
+  const requests: ClientRequest[] = [];
+  const api = createExecutionsApi(async (input) => {
+    requests.push(input);
+    return { success: true, data: { items: [] } };
+  });
+  await api.list({ search: 'quarterly review', archived: true, status: 'succeeded' });
+  assert.equal(requests[0]!.path, '/api/v1/workbench/executions?status=succeeded&q=quarterly+review&archived=true');
+  // 无筛选时不携带 q/archived 参数（与上面的参数序列化断言互补）。
+  await api.list({});
+  assert.equal(requests[1]!.path, '/api/v1/workbench/executions');
+});
