@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-var identityNumberPattern = regexp.MustCompile(`(?i)\b(?:[A-Z]{1,2}\d{6,10}|\d{15,19}[\dX]?)\b`)
-var identityNumberInTokenPattern = regexp.MustCompile(`(?i)(?:[A-Z]{1,2})?\d{15,19}[\dX]?`)
+var identityNumberPattern = regexp.MustCompile(`(?i)\d{15,}[\dX]?`)
+var identityPassportPattern = regexp.MustCompile(`(?i)[A-Z]{1,2}\d{6,10}`)
 
 type PurposeModelInput struct {
 	Purpose string      `json:"purpose"`
@@ -54,9 +54,14 @@ func (o *Office) BuildModelInput(ctx context.Context, purpose string) (PurposeMo
 		if strings.HasPrefix(fact.Key, "identity.") || !allowed[category] {
 			continue
 		}
-		key := identityNumberInTokenPattern.ReplaceAllString(fact.Key, "[REDACTED]")
-		value := identityNumberPattern.ReplaceAllString(fact.Value, "[REDACTED]")
+		key := redactModelString(fact.Key)
+		value := redactModelString(fact.Value)
 		input.Facts = append(input.Facts, ModelFact{Key: key, Value: value})
 	}
 	return input, nil
+}
+
+func redactModelString(value string) string {
+	value = identityNumberPattern.ReplaceAllString(value, "[REDACTED]")
+	return identityPassportPattern.ReplaceAllString(value, "[REDACTED]")
 }

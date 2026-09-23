@@ -134,6 +134,7 @@ type sourceRevision struct {
 	RequestID         string `gorm:"size:128"`
 	IntentHash        string `gorm:"size:64"`
 	ExpectedRevision  uint64
+	ClaimToken        string `gorm:"size:36"`
 	LeaseUntil        *time.Time
 	ResourceRef       string `gorm:"type:text"`
 	Status            string `gorm:"size:16;index"`
@@ -262,7 +263,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_proposals":        {"id", "public_id", "tenant_id", "user_id", "key", "value", "evidence", "source", "status", "resolved_at", "resolved_revision", "confirmation", "resolution_source", "created_at"},
 		"career_changes":          {"id", "tenant_id", "user_id", "revision", "kind", "body", "created_at"},
 		"career_receipts":         {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
-		"career_source_revisions": {"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"},
+		"career_source_revisions": {"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "claim_token", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {

@@ -2,6 +2,8 @@ package career
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -50,6 +52,45 @@ func TestCareerActRejectsClientClaimedResumeExtractionSource(t *testing.T) {
 	view, err = office.Open(WithScope(baseCtx, scope))
 	require.NoError(t, err)
 	require.Empty(t, view.Facts)
+}
+
+func TestCareerActAcceptsT03UserSourceAliasForEveryAction(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	office, err := NewOffice(db)
+	require.NoError(t, err)
+	scope := Scope{UserID: "u1", TenantID: 7}
+	base := context.WithValue(context.Background(), types.UserIDContextKey, scope.UserID)
+	base = context.WithValue(base, types.TenantIDContextKey, scope.TenantID)
+	ctx := WithScope(base, scope)
+	require.NoError(t, office.ClaimSpace(ctx))
+	h := &Handler{office: office, members: &memberListStub{members: []*types.TenantMember{{UserID: "u1", TenantID: 7, Role: types.TenantRoleOwner}}}}
+	act := func(body string) (int, []byte) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest("POST", "/api/v1/career/act", strings.NewReader(body)).WithContext(base)
+		h.Act(c)
+		return rec.Code, rec.Body.Bytes()
+	}
+	status, body := act(`{"action":"propose","key":"education.school","value":"Example U","requestId":"alias-propose","expectedRevision":0,"source":{"kind":"user"}}`)
+	require.Equal(t, 200, status)
+	var proposed Receipt
+	require.NoError(t, json.Unmarshal(body, &proposed))
+	require.NotNil(t, proposed.Proposal)
+	status, _ = act(`{"action":"confirm","key":"skill.go","value":"Go","requestId":"alias-confirm","expectedRevision":1,"source":{"kind":"user"}}`)
+	require.Equal(t, 200, status)
+	status, body = act(`{"action":"propose","key":"project.name","value":"Compiler","requestId":"alias-propose-2","expectedRevision":2,"source":{"kind":"user"}}`)
+	require.Equal(t, 200, status)
+	var second Receipt
+	require.NoError(t, json.Unmarshal(body, &second))
+	status, _ = act(fmt.Sprintf(`{"action":"confirm_proposal","proposalId":%q,"requestId":"alias-resolve","expectedRevision":3,"source":{"kind":"user"}}`, second.Proposal.ID))
+	require.Equal(t, 200, status)
+	status, body = act(`{"action":"propose","key":"certificate.name","value":"Cloud","requestId":"alias-propose-3","expectedRevision":4,"source":{"kind":"user"}}`)
+	require.Equal(t, 200, status)
+	var third Receipt
+	require.NoError(t, json.Unmarshal(body, &third))
+	status, _ = act(fmt.Sprintf(`{"action":"dismiss","proposalId":%q,"requestId":"alias-dismiss","expectedRevision":5,"source":{"kind":"user"}}`, third.Proposal.ID))
+	require.Equal(t, 200, status)
 }
 
 type memberListStub struct{ members []*types.TenantMember }

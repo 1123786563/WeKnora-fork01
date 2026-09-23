@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -44,6 +45,14 @@ func (a *UploadAdapter) StoreAndParse(ctx context.Context, tenantID uint64, file
 }
 
 func (a *UploadAdapter) StoreAndParseWithID(ctx context.Context, tenantID uint64, sourceID, fileName, declaredMIME string, data []byte, onStored func(UploadResult) error) (UploadResult, error) {
+	return a.parseClaim(ctx, tenantID, sourceID, fileName, declaredMIME, data, "", onStored)
+}
+
+func (a *UploadAdapter) ResumeAndParse(ctx context.Context, tenantID uint64, sourceID, fileName, declaredMIME string, data []byte, resourceRef string) (UploadResult, error) {
+	return a.parseClaim(ctx, tenantID, sourceID, fileName, declaredMIME, data, resourceRef, nil)
+}
+
+func (a *UploadAdapter) parseClaim(ctx context.Context, tenantID uint64, sourceID, fileName, declaredMIME string, data []byte, existingRef string, onStored func(UploadResult) error) (UploadResult, error) {
 	if a == nil || a.files == nil || a.catalog == nil || a.reader == nil || tenantID == 0 {
 		return UploadResult{}, fmt.Errorf("career upload dependencies unavailable")
 	}
@@ -70,26 +79,45 @@ func (a *UploadAdapter) StoreAndParseWithID(ctx context.Context, tenantID uint64
 	digest := sha256.Sum256(data)
 	result := UploadResult{SourceID: sourceID}
 	result.Upload = SourceUpload{ID: result.SourceID, FileName: baseName, MIMEType: strings.TrimSpace(declaredMIME), Size: int64(len(data)), Digest: hex.EncodeToString(digest[:])}
-	resourceRef, err := a.files.SaveBytes(ctx, data, tenantID, "career_source_"+result.SourceID+ext, false)
-	if err != nil {
-		return result, fmt.Errorf("store resume: %w", err)
-	}
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = a.Release(context.Background(), resourceRef, result.SourceID)
+	storedData := data
+	resourceRef := existingRef
+	if existingRef != "" {
+		reader, readErr := a.files.GetFile(ctx, existingRef)
+		if readErr != nil {
+			return result, fmt.Errorf("read claimed resume: %w", readErr)
 		}
-	}()
+		storedData, readErr = io.ReadAll(io.LimitReader(reader, maxSize+1))
+		closeErr := reader.Close()
+		if readErr != nil {
+			return result, readErr
+		}
+		if closeErr != nil {
+			return result, closeErr
+		}
+		if int64(len(storedData)) > maxSize {
+			return result, fmt.Errorf("stored resume exceeds configured limit")
+		}
+		storedDigest := sha256.Sum256(storedData)
+		if hex.EncodeToString(storedDigest[:]) != hex.EncodeToString(digest[:]) {
+			return result, ErrIdempotencyConflict
+		}
+	} else {
+		resourceRef, err = a.files.SaveBytes(ctx, data, tenantID, "career_source_"+result.SourceID+ext, false)
+		if err != nil {
+			return result, fmt.Errorf("store resume: %w", err)
+		}
+		result.Upload.ResourceRef = resourceRef
+		if onStored != nil {
+			if err := onStored(result); err != nil {
+				return result, fmt.Errorf("record processing resume: %w", err)
+			}
+		}
+	}
 	result.Upload.ResourceRef = resourceRef
-	if onStored != nil {
-		if err := onStored(result); err != nil {
-			return result, fmt.Errorf("record processing resume: %w", err)
-		}
-	}
 	if err := a.catalog.Bind(ctx, resourceRef, careerSourceOwner, result.SourceID, types.ResourceRelationSourceFile); err != nil {
 		return result, fmt.Errorf("bind resume source: %w", err)
 	}
-	parsed, parseErr := a.reader.Read(ctx, &types.ReadRequest{FileContent: data, FileName: baseName, FileType: strings.TrimPrefix(ext, "."), RequestID: result.SourceID})
+	parsed, parseErr := a.reader.Read(ctx, &types.ReadRequest{FileContent: storedData, FileName: baseName, FileType: strings.TrimPrefix(ext, "."), RequestID: result.SourceID})
 	if parseErr != nil {
 		return result, fmt.Errorf("parse resume: %w", parseErr)
 	}
@@ -101,7 +129,6 @@ func (a *UploadAdapter) StoreAndParseWithID(ctx context.Context, tenantID uint64
 	}
 	result.Upload.Text = parsed.MarkdownContent
 	result.Fields, result.MissingCategories, result.ReviewFlags = ExtractResumeFields(parsed.MarkdownContent)
-	cleanup = false
 	return result, nil
 }
 

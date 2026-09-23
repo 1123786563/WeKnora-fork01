@@ -31,35 +31,80 @@ type SourceUpload struct {
 }
 
 var ErrUploadInProgress = errors.New("career upload is already processing")
+var ErrUploadClaimLost = errors.New("career upload claim was superseded")
 
 type StaleSourceResource struct {
-	ID          string
-	ResourceRef string
+	ID                 string
+	ResourceRef        string
+	ClaimToken         string
+	FinalErrorCategory string
+}
+
+type UploadClaimIntent struct {
+	FileName         string
+	MIMEType         string
+	Digest           string
+	ExpectedRevision uint64
+}
+
+func (o *Office) FindUploadClaim(ctx context.Context, requestID string) (UploadClaimIntent, bool, error) {
+	s, err := getScope(ctx)
+	if err != nil {
+		return UploadClaimIntent{}, false, err
+	}
+	if err = o.requireSpace(ctx, s); err != nil {
+		return UploadClaimIntent{}, false, err
+	}
+	var row sourceRevision
+	err = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, requestID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return UploadClaimIntent{}, false, nil
+	}
+	if err != nil {
+		return UploadClaimIntent{}, false, err
+	}
+	return UploadClaimIntent{FileName: row.FileName, MIMEType: row.MIMEType, Digest: row.Digest, ExpectedRevision: row.ExpectedRevision}, true, nil
 }
 
 // FailStaleUploads turns abandoned processing claims into visible failures.
 // Resource references remain until the caller has successfully released them.
-func (o *Office) FailStaleUploads(ctx context.Context, cutoff time.Time) ([]StaleSourceResource, error) {
+func (o *Office) FailStaleUploads(ctx context.Context, cutoff time.Time, excludeRequestID ...string) ([]StaleSourceResource, error) {
 	s, err := getScope(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var rows []sourceRevision
 	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND ((status='processing' AND lease_until IS NOT NULL AND lease_until < ?) OR (status='failed' AND error_category='interrupted' AND resource_ref <> ''))", s.TenantID, s.UserID, cutoff).Find(&rows).Error; e != nil {
+		leaseDeadlineSQL := "lease_until <= ?"
+		if tx.Dialector.Name() == "sqlite" {
+			leaseDeadlineSQL = "julianday(lease_until) <= julianday(?)"
+		}
+		query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id=? AND user_id=? AND ((status='processing' AND lease_until IS NOT NULL AND "+leaseDeadlineSQL+") OR (status='failed' AND error_category LIKE 'cleanup_pending_%' AND resource_ref <> ''))", s.TenantID, s.UserID, cutoff)
+		if len(excludeRequestID) > 0 && excludeRequestID[0] != "" {
+			query = query.Where("request_id <> ?", excludeRequestID[0])
+		}
+		if e := query.Find(&rows).Error; e != nil {
 			return e
 		}
 		for i := range rows {
 			r := &rows[i]
 			if r.Status == "processing" {
-				r.Status = "failed"
-				r.ErrorCategory = "interrupted"
-				r.ErrorMessage = "Resume processing was interrupted. Upload again or enter profile details manually."
-				r.ExtractedText = ""
-				r.LeaseUntil = nil
-				if e := tx.Save(r).Error; e != nil {
-					return e
+				category := "interrupted"
+				if r.ResourceRef != "" {
+					category = "cleanup_pending_interrupted"
 				}
+				newToken := uuid.NewString()
+				res := tx.Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='processing' AND claim_token=? AND "+leaseDeadlineSQL, s.TenantID, s.UserID, r.ID, r.ClaimToken, cutoff).Updates(map[string]any{"status": "failed", "claim_token": newToken, "error_category": category, "error_message": "Resume processing was interrupted. Upload again or enter profile details manually.", "extracted_text": "", "lease_until": nil})
+				if res.Error != nil {
+					return res.Error
+				}
+				if res.RowsAffected == 0 {
+					r.Status = "superseded"
+					continue
+				}
+				r.Status = "failed"
+				r.ClaimToken = newToken
+				r.ErrorCategory = category
 			}
 		}
 		return nil
@@ -69,17 +114,38 @@ func (o *Office) FailStaleUploads(ctx context.Context, cutoff time.Time) ([]Stal
 	}
 	out := make([]StaleSourceResource, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, StaleSourceResource{ID: r.ID, ResourceRef: r.ResourceRef})
+		if r.Status == "superseded" || r.ResourceRef == "" {
+			continue
+		}
+		final := strings.TrimPrefix(r.ErrorCategory, "cleanup_pending_")
+		out = append(out, StaleSourceResource{ID: r.ID, ResourceRef: r.ResourceRef, ClaimToken: r.ClaimToken, FinalErrorCategory: final})
 	}
 	return out, nil
 }
 
-func (o *Office) ClearSourceResource(ctx context.Context, id string) error {
+func (o *Office) ClearSourceResource(ctx context.Context, id, token, ref, finalCategory string) error {
 	s, e := getScope(ctx)
 	if e != nil {
 		return e
 	}
-	return o.db.WithContext(ctx).Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='failed'", s.TenantID, s.UserID, id).Update("resource_ref", "").Error
+	res := o.db.WithContext(ctx).Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='failed' AND claim_token=? AND resource_ref=? AND error_category LIKE 'cleanup_pending_%'", s.TenantID, s.UserID, id, token, ref).Updates(map[string]any{"resource_ref": "", "error_category": finalCategory})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return ErrUploadClaimLost
+	}
+	return nil
+}
+
+func (o *Office) privateSource(ctx context.Context, id string) (sourceRevision, error) {
+	s, e := getScope(ctx)
+	if e != nil {
+		return sourceRevision{}, e
+	}
+	var row sourceRevision
+	e = o.db.WithContext(ctx).Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, id).First(&row).Error
+	return row, e
 }
 
 // ClaimUpload durably binds a scoped request ID to one canonical upload intent
@@ -112,10 +178,21 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 				row = prior
 				return ErrUploadInProgress
 			}
-			prior.LeaseUntil = &[]time.Time{now.Add(30 * time.Minute)}[0]
-			if e = tx.Model(&prior).Where("status='processing'").Update("lease_until", prior.LeaseUntil).Error; e != nil {
+			leaseDeadlineSQL := "lease_until <= ?"
+			if tx.Dialector.Name() == "sqlite" {
+				leaseDeadlineSQL = "julianday(lease_until) <= julianday(?)"
+			}
+			newToken := uuid.NewString()
+			newLease := now.Add(30 * time.Minute)
+			res := tx.Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='processing' AND claim_token=? AND lease_until IS NOT NULL AND "+leaseDeadlineSQL, s.TenantID, s.UserID, prior.ID, prior.ClaimToken, now).Updates(map[string]any{"claim_token": newToken, "lease_until": newLease})
+			if e = res.Error; e != nil {
 				return e
 			}
+			if res.RowsAffected != 1 {
+				return ErrUploadInProgress
+			}
+			prior.ClaimToken = newToken
+			prior.LeaseUntil = &newLease
 			row = prior
 			return nil
 		} else if !errors.Is(e, gorm.ErrRecordNotFound) {
@@ -135,7 +212,7 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 			return e
 		}
 		now := time.Now().UTC()
-		row = sourceRevision{ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID, Revision: last + 1, FileName: upload.FileName, MIMEType: upload.MIMEType, Size: upload.Size, Digest: upload.Digest, RequestID: upload.RequestID, IntentHash: upload.IntentHash, ExpectedRevision: upload.ExpectedRevision, LeaseUntil: &[]time.Time{now.Add(30 * time.Minute)}[0], Status: "processing"}
+		row = sourceRevision{ID: uuid.NewString(), TenantID: s.TenantID, UserID: s.UserID, Revision: last + 1, FileName: upload.FileName, MIMEType: upload.MIMEType, Size: upload.Size, Digest: upload.Digest, RequestID: upload.RequestID, IntentHash: upload.IntentHash, ExpectedRevision: upload.ExpectedRevision, ClaimToken: uuid.NewString(), LeaseUntil: &[]time.Time{now.Add(30 * time.Minute)}[0], Status: "processing"}
 		return tx.Create(&row).Error
 	})
 	if err != nil {
@@ -150,19 +227,26 @@ func (o *Office) ClaimUpload(ctx context.Context, upload SourceUpload) (CareerSo
 			if prior.LeaseUntil != nil && prior.LeaseUntil.After(time.Now().UTC()) {
 				return sourceView(prior), false, ErrUploadInProgress
 			}
-			return o.ClaimUpload(ctx, upload)
+			return sourceView(prior), false, ErrUploadInProgress
 		}
 		return sourceView(row), false, err
 	}
 	return sourceView(row), row.Status == "ready" || row.Status == "failed", nil
 }
 
-func (o *Office) PersistUploadResource(ctx context.Context, sourceID, ref string) error {
+func (o *Office) PersistUploadResource(ctx context.Context, sourceID, token, ref string) error {
 	s, err := getScope(ctx)
 	if err != nil {
 		return err
 	}
-	return o.db.WithContext(ctx).Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='processing'", s.TenantID, s.UserID, sourceID).Updates(map[string]any{"resource_ref": ref, "lease_until": time.Now().UTC().Add(30 * time.Minute)}).Error
+	res := o.db.WithContext(ctx).Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='processing' AND claim_token=?", s.TenantID, s.UserID, sourceID, token).Updates(map[string]any{"resource_ref": ref, "lease_until": time.Now().UTC().Add(30 * time.Minute)})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return ErrUploadClaimLost
+	}
+	return nil
 }
 
 // CareerSource intentionally omits the private resource handle and extracted text.
@@ -180,6 +264,8 @@ type CareerSource struct {
 	ReviewFlags       []string   `json:"reviewFlags,omitempty"`
 	CreatedAt         time.Time  `json:"createdAt"`
 	CompletedAt       *time.Time `json:"completedAt,omitempty"`
+	ClaimToken        string     `json:"-"`
+	ResourceRef       string     `json:"-"`
 }
 
 type ExtractedField struct {
@@ -197,7 +283,7 @@ func sourceView(row sourceRevision) CareerSource {
 	var missing, flags []string
 	_ = json.Unmarshal([]byte(row.MissingCategories), &missing)
 	_ = json.Unmarshal([]byte(row.ReviewFlags), &flags)
-	return CareerSource{ID: row.ID, Revision: row.Revision, FileName: row.FileName, MIMEType: row.MIMEType, Size: row.Size, Digest: row.Digest, Status: row.Status, ErrorCategory: row.ErrorCategory, ErrorMessage: row.ErrorMessage, MissingCategories: missing, ReviewFlags: flags, CreatedAt: row.CreatedAt, CompletedAt: row.CompletedAt}
+	return CareerSource{ID: row.ID, Revision: row.Revision, FileName: row.FileName, MIMEType: row.MIMEType, Size: row.Size, Digest: row.Digest, Status: row.Status, ErrorCategory: row.ErrorCategory, ErrorMessage: row.ErrorMessage, MissingCategories: missing, ReviewFlags: flags, CreatedAt: row.CreatedAt, CompletedAt: row.CompletedAt, ClaimToken: row.ClaimToken, ResourceRef: row.ResourceRef}
 }
 
 func (o *Office) CreateSource(ctx context.Context, upload SourceUpload, failure string) (CareerSource, error) {
@@ -286,6 +372,14 @@ func (o *Office) CreateProcessingSource(ctx context.Context, upload SourceUpload
 }
 
 func (o *Office) FinishSource(ctx context.Context, id, text string, missing, reviewFlags []string, failure error) (CareerSource, error) {
+	return o.finishSource(ctx, id, "", text, missing, reviewFlags, failure)
+}
+
+func (o *Office) FinishSourceClaim(ctx context.Context, id, token, text string, missing, reviewFlags []string, failure error) (CareerSource, error) {
+	return o.finishSource(ctx, id, token, text, missing, reviewFlags, failure)
+}
+
+func (o *Office) finishSource(ctx context.Context, id, token, text string, missing, reviewFlags []string, failure error) (CareerSource, error) {
 	s, err := getScope(ctx)
 	if err != nil {
 		return CareerSource{}, err
@@ -300,6 +394,9 @@ func (o *Office) FinishSource(ctx context.Context, id, text string, missing, rev
 		} else if e != nil {
 			return e
 		}
+		if token != "" && row.ClaimToken != token {
+			return ErrUploadClaimLost
+		}
 		if row.Status != "processing" {
 			return ErrInvalidRequest
 		}
@@ -311,7 +408,12 @@ func (o *Office) FinishSource(ctx context.Context, id, text string, missing, rev
 				row.ErrorCategory = "revision_conflict"
 				row.ErrorMessage = "The profile changed during review. Upload again or enter profile details manually."
 			}
-			row.ResourceRef = ""
+			if row.ResourceRef != "" {
+				row.ErrorCategory = "cleanup_pending_" + row.ErrorCategory
+			}
+			if row.ResourceRef == "" {
+				row.ResourceRef = ""
+			}
 			row.ExtractedText = ""
 			row.LeaseUntil = nil
 		} else {
@@ -326,7 +428,22 @@ func (o *Office) FinishSource(ctx context.Context, id, text string, missing, rev
 			row.MissingCategories = string(missingJSON)
 			row.ReviewFlags = string(flagsJSON)
 		}
-		return tx.Save(&row).Error
+		updates := map[string]any{"status": row.Status, "error_category": row.ErrorCategory, "error_message": row.ErrorMessage, "resource_ref": row.ResourceRef, "extracted_text": row.ExtractedText, "missing_categories": row.MissingCategories, "review_flags": row.ReviewFlags, "lease_until": row.LeaseUntil}
+		q := tx.Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='processing'", s.TenantID, s.UserID, id)
+		if token != "" {
+			q = q.Where("claim_token=?", token)
+		}
+		res := q.Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			if token != "" {
+				return ErrUploadClaimLost
+			}
+			return ErrInvalidRequest
+		}
+		return nil
 	})
 	return sourceView(row), err
 }
@@ -398,6 +515,14 @@ func validFieldKey(key string) bool {
 }
 
 func (o *Office) CompleteIntake(ctx context.Context, sourceID, text string, fields []ExtractedField, missing, reviewFlags []string, requestID string, expectedRevision uint64) (Receipt, error) {
+	return o.completeIntake(ctx, sourceID, "", text, fields, missing, reviewFlags, requestID, expectedRevision)
+}
+
+func (o *Office) CompleteIntakeClaim(ctx context.Context, sourceID, token, text string, fields []ExtractedField, missing, reviewFlags []string, requestID string, expectedRevision uint64) (Receipt, error) {
+	return o.completeIntake(ctx, sourceID, token, text, fields, missing, reviewFlags, requestID, expectedRevision)
+}
+
+func (o *Office) completeIntake(ctx context.Context, sourceID, token, text string, fields []ExtractedField, missing, reviewFlags []string, requestID string, expectedRevision uint64) (Receipt, error) {
 	s, err := getScope(ctx)
 	if err != nil {
 		return Receipt{}, err
@@ -440,6 +565,9 @@ func (o *Office) CompleteIntake(ctx context.Context, sourceID, text string, fiel
 		} else if e != nil {
 			return Receipt{}, e
 		}
+		if token != "" && source.ClaimToken != token {
+			return Receipt{}, ErrUploadClaimLost
+		}
 		if source.Status != "processing" || source.CompletedAt != nil {
 			return Receipt{}, ErrInvalidRequest
 		}
@@ -452,8 +580,12 @@ func (o *Office) CompleteIntake(ctx context.Context, sourceID, text string, fiel
 		source.MissingCategories = string(missingJSON)
 		source.ReviewFlags = string(flagsJSON)
 		source.CompletedAt = &now
-		if e := tx.Save(&source).Error; e != nil {
-			return Receipt{}, e
+		res := tx.Model(&sourceRevision{}).Where("tenant_id=? AND user_id=? AND id=? AND status='processing' AND claim_token=?", s.TenantID, s.UserID, sourceID, token).Updates(map[string]any{"status": source.Status, "lease_until": source.LeaseUntil, "extracted_text": source.ExtractedText, "missing_categories": source.MissingCategories, "review_flags": source.ReviewFlags, "completed_at": source.CompletedAt})
+		if res.Error != nil {
+			return Receipt{}, res.Error
+		}
+		if res.RowsAffected != 1 {
+			return Receipt{}, ErrUploadClaimLost
 		}
 		for i := range proposals {
 			pview := &proposals[i]

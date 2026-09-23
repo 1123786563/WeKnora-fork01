@@ -2,6 +2,8 @@ package career
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -56,7 +58,7 @@ func TestCompleteIntakeRejectsChangedReplayAndStaleRevisionAtomically(t *testing
 	failed, err := o.FinishSource(ctx, second.ID, "", nil, nil, ErrRevisionConflict)
 	require.NoError(t, err)
 	require.Equal(t, "failed", failed.Status)
-	require.Equal(t, "revision_conflict", failed.ErrorCategory)
+	require.Equal(t, "cleanup_pending_revision_conflict", failed.ErrorCategory)
 	view, err := o.Open(ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), view.Revision)
@@ -164,13 +166,17 @@ func TestSameCategoryExtractedItemsRemainDistinctAfterConfirmation(t *testing.T)
 
 func TestPurposeModelJSONOmitsIdentityFromKeyAndSourceMetadata(t *testing.T) {
 	o, ctx := testOffice(t)
-	_, err := o.Confirm(ctx, "experience.company_110105199001011234", "Acme 110105199001011234", "identity-meta-confirm", 0, Source{Kind: "manual", Label: "110105199001011234", ReferenceID: "source-110105199001011234"})
+	_, err := o.Confirm(ctx, "experience.companyX110105199001011234A", "AcmeX110105199001011234A", "identity-meta-confirm", 0, Source{Kind: "manual", Label: "110105199001011234A", ReferenceID: "source-110105199001011234A"})
+	require.NoError(t, err)
+	_, err = o.Confirm(ctx, "certificate.passport", "PassportAB12345678Z", "passport-meta-confirm", 1, Source{Kind: "manual"})
 	require.NoError(t, err)
 	input, err := o.BuildModelInput(ctx, "profile_summary")
 	require.NoError(t, err)
 	encoded := input.String()
 	require.NotContains(t, encoded, "110105199001011234")
-	require.Contains(t, encoded, "Acme [REDACTED]")
+	require.Contains(t, encoded, "AcmeX[REDACTED]A")
+	require.NotContains(t, encoded, "AB12345678")
+	require.Contains(t, encoded, "Passport[REDACTED]Z")
 	require.NotContains(t, encoded, "source")
 }
 
@@ -181,6 +187,9 @@ func TestUploadClaimReplaysAndRejectsChangedIntentBeforeWork(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, terminal)
 	require.Equal(t, "processing", first.Status)
+	encoded, _ := json.Marshal(first)
+	require.NotContains(t, string(encoded), first.ClaimToken)
+	require.NotContains(t, string(encoded), "private://")
 	replay, terminal, err := o.ClaimUpload(ctx, u)
 	require.ErrorIs(t, err, ErrUploadInProgress)
 	require.False(t, terminal)
@@ -193,11 +202,16 @@ func TestUploadClaimReplaysAndRejectsChangedIntentBeforeWork(t *testing.T) {
 	changed.IntentHash = "intent-b"
 	_, _, err = o.ClaimUpload(ctx, changed)
 	require.ErrorIs(t, err, ErrIdempotencyConflict)
+	changed = u
+	changed.ExpectedRevision = 9
+	_, _, err = o.ClaimUpload(ctx, changed)
+	require.ErrorIs(t, err, ErrIdempotencyConflict)
 	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", first.ID).Update("lease_until", time.Now().Add(-time.Minute)).Error)
 	recovered, terminal, err := o.ClaimUpload(ctx, u)
 	require.NoError(t, err)
 	require.False(t, terminal)
 	require.Equal(t, first.ID, recovered.ID)
+	require.NotEqual(t, first.ClaimToken, recovered.ClaimToken)
 }
 
 func TestStaleProcessingUploadBecomesVisibleTerminalFailure(t *testing.T) {
@@ -205,19 +219,68 @@ func TestStaleProcessingUploadBecomesVisibleTerminalFailure(t *testing.T) {
 	u := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 12, Digest: "digest-stale", RequestID: "request-stale", IntentHash: "intent-stale"}
 	source, _, err := o.ClaimUpload(ctx, u)
 	require.NoError(t, err)
-	require.NoError(t, o.PersistUploadResource(ctx, source.ID, "private://stale"))
+	require.NoError(t, o.PersistUploadResource(ctx, source.ID, source.ClaimToken, "private://stale"))
 	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", source.ID).Update("lease_until", time.Now().Add(-time.Hour)).Error)
-	resources, err := o.FailStaleUploads(ctx, time.Now().Add(-30*time.Minute))
+	resources, err := o.FailStaleUploads(ctx, time.Now())
 	require.NoError(t, err)
 	require.Len(t, resources, 1)
 	require.Equal(t, "private://stale", resources[0].ResourceRef)
 	failed, err := o.GetSource(ctx, source.ID)
 	require.NoError(t, err)
 	require.Equal(t, "failed", failed.Status)
-	require.Equal(t, "interrupted", failed.ErrorCategory)
+	require.Equal(t, "cleanup_pending_interrupted", failed.ErrorCategory)
 	replayed, terminal, err := o.ClaimUpload(ctx, u)
 	require.NoError(t, err)
 	require.True(t, terminal)
 	require.Equal(t, failed.ID, replayed.ID)
 	require.Equal(t, "failed", replayed.Status)
+}
+
+func TestUploadClaimTakeoverFencesOldWriterWithoutReplacingResource(t *testing.T) {
+	o, ctx := testOffice(t)
+	u := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 12, Digest: "digest-fence", RequestID: "request-fence", IntentHash: "intent-fence"}
+	old, _, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	require.NoError(t, o.PersistUploadResource(ctx, old.ID, old.ClaimToken, "private://original"))
+	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", old.ID).Update("lease_until", time.Now().Add(-time.Second)).Error)
+	current, terminal, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	require.False(t, terminal)
+	require.Equal(t, old.ID, current.ID)
+	require.NotEqual(t, old.ClaimToken, current.ClaimToken)
+	require.Equal(t, "private://original", current.ResourceRef)
+	stale, err := o.FailStaleUploads(ctx, time.Now())
+	require.NoError(t, err)
+	require.Empty(t, stale, "a renewed claim cannot be cleaned by the stale worker")
+	require.ErrorIs(t, o.PersistUploadResource(ctx, old.ID, old.ClaimToken, "private://late"), ErrUploadClaimLost)
+	_, err = o.FinishSourceClaim(ctx, old.ID, old.ClaimToken, "", nil, nil, errors.New("old parser failed"))
+	require.ErrorIs(t, err, ErrUploadClaimLost)
+	_, err = o.CompleteIntakeClaim(ctx, current.ID, old.ClaimToken, "text", []ExtractedField{{Key: "education.school", Value: "Old"}}, nil, nil, current.ID+":batch", 0)
+	require.ErrorIs(t, err, ErrUploadClaimLost)
+	row, err := o.privateSource(ctx, current.ID)
+	require.NoError(t, err)
+	require.Equal(t, "private://original", row.ResourceRef)
+	require.Equal(t, current.ClaimToken, row.ClaimToken)
+	receipt, err := o.CompleteIntakeClaim(ctx, current.ID, current.ClaimToken, "text", []ExtractedField{{Key: "education.school", Value: "Current"}}, nil, nil, current.ID+":batch", 0)
+	require.NoError(t, err)
+	require.Len(t, receipt.Proposals, 1)
+	view, err := o.Open(ctx)
+	require.NoError(t, err)
+	require.Len(t, view.Proposals, 1)
+	require.Equal(t, "Current", view.Proposals[0].Value)
+}
+
+func TestUploadClaimTakeoverRequiresLeaseStillExpiredAtUpdate(t *testing.T) {
+	o, ctx := testOffice(t)
+	u := SourceUpload{FileName: "resume.txt", MIMEType: "text/plain", Size: 12, Digest: "digest-renew", RequestID: "request-renew", IntentHash: "intent-renew"}
+	claim, _, err := o.ClaimUpload(ctx, u)
+	require.NoError(t, err)
+	// Model a lease renewal after the takeover worker read the expired claim but
+	// before its conditional update. The update must recheck expiry in SQL.
+	require.NoError(t, o.db.Model(&sourceRevision{}).Where("id=?", claim.ID).Update("lease_until", time.Now().UTC().Add(30*time.Minute)).Error)
+	replay, terminal, err := o.ClaimUpload(ctx, u)
+	require.ErrorIs(t, err, ErrUploadInProgress)
+	require.False(t, terminal)
+	require.Equal(t, claim.ClaimToken, replay.ClaimToken)
+	require.Equal(t, "processing", replay.Status)
 }

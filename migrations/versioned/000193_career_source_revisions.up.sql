@@ -11,6 +11,7 @@ CREATE TABLE career_source_revisions (
   request_id VARCHAR(128) NOT NULL DEFAULT '',
   intent_hash VARCHAR(64) NOT NULL DEFAULT '',
   expected_revision BIGINT NOT NULL DEFAULT 0,
+  claim_token VARCHAR(36) NOT NULL DEFAULT '',
   lease_until TIMESTAMPTZ,
   resource_ref TEXT NOT NULL DEFAULT '',
   status VARCHAR(16) NOT NULL,

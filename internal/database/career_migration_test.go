@@ -21,7 +21,7 @@ func TestCareerMigrationCreatesPersonalEvidenceSchema(t *testing.T) {
 	for _, table := range []string{"career_spaces", "career_profiles", "career_facts", "career_fact_versions", "career_proposals", "career_changes", "career_receipts", "career_source_revisions"} {
 		require.Truef(t, sqliteTableExists(t, db, table), "career migration must create %s", table)
 	}
-	for _, column := range []string{"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"} {
+	for _, column := range []string{"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "claim_token", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"} {
 		var count int
 		require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('career_source_revisions') WHERE name = ?", column).Scan(&count))
 		require.Equalf(t, 1, count, "career_source_revisions must include %s", column)

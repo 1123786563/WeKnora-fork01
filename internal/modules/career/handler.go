@@ -152,19 +152,19 @@ func (h *Handler) Act(c *gin.Context) {
 	// explicitly manual; proposal resolution keeps the stored proposal source.
 	switch req.Action {
 	case "propose":
-		if req.Source.Kind != "manual" || req.Source.ReferenceID != "" {
+		if (req.Source.Kind != "manual" && req.Source.Kind != "user") || req.Source.ReferenceID != "" {
 			writeError(c, ErrInvalidRequest)
 			return
 		}
 		req.Source = Source{Kind: "manual"}
 	case "confirm":
-		if req.Source.Kind != "manual" || req.Source.ReferenceID != "" {
+		if (req.Source.Kind != "manual" && req.Source.Kind != "user") || req.Source.ReferenceID != "" {
 			writeError(c, ErrInvalidRequest)
 			return
 		}
 		req.Source = Source{Kind: "manual"}
 	case "confirm_proposal", "dismiss":
-		if req.Source.Kind != "user_confirmation" || req.Source.ReferenceID != "" {
+		if (req.Source.Kind != "user_confirmation" && req.Source.Kind != "user") || req.Source.ReferenceID != "" {
 			writeError(c, ErrInvalidRequest)
 			return
 		}
@@ -232,10 +232,6 @@ func (h *Handler) Upload(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.reconcileStaleSources(ctx); err != nil {
-		writeError(c, err)
-		return
-	}
 	currentView, err := h.office.Open(ctx)
 	if err != nil {
 		writeError(c, err)
@@ -264,7 +260,9 @@ func (h *Handler) Upload(c *gin.Context) {
 		return
 	}
 	expectedRevision := currentView.Revision
+	explicitExpectedRevision := false
 	if rawRevision := c.Request.PostFormValue("expectedRevision"); rawRevision != "" {
+		explicitExpectedRevision = true
 		expectedRevision, err = strconv.ParseUint(rawRevision, 10, 64)
 		if err != nil {
 			writeError(c, ErrInvalidRequest)
@@ -274,6 +272,10 @@ func (h *Handler) Upload(c *gin.Context) {
 	requestID := strings.TrimSpace(c.Request.PostFormValue("requestId"))
 	if requestID == "" || len(requestID) > 128 {
 		writeError(c, ErrInvalidRequest)
+		return
+	}
+	if err := h.reconcileStaleSourcesExcept(ctx, requestID); err != nil {
+		writeError(c, err)
 		return
 	}
 	safeName, nameValid := secutils.ValidateInput(strings.TrimSpace(header.Filename))
@@ -288,9 +290,24 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 	digestBytes := sha256.Sum256(data)
 	digest := hex.EncodeToString(digestBytes[:])
-	intentBytes, _ := json.Marshal([]any{baseName, strings.TrimSpace(header.Header.Get("Content-Type")), expectedRevision})
+	declaredMIME := strings.TrimSpace(header.Header.Get("Content-Type"))
+	if !explicitExpectedRevision {
+		prior, found, e := h.office.FindUploadClaim(ctx, requestID)
+		if e != nil {
+			writeError(c, e)
+			return
+		}
+		if found {
+			if prior.Digest != digest || prior.FileName != baseName || prior.MIMEType != declaredMIME {
+				writeError(c, ErrIdempotencyConflict)
+				return
+			}
+			expectedRevision = prior.ExpectedRevision
+		}
+	}
+	intentBytes, _ := json.Marshal([]any{baseName, declaredMIME})
 	intentSum := sha256.Sum256(intentBytes)
-	claim, terminal, claimErr := h.office.ClaimUpload(ctx, SourceUpload{FileName: baseName, MIMEType: header.Header.Get("Content-Type"), Size: int64(len(data)), Digest: digest, RequestID: requestID, IntentHash: hex.EncodeToString(intentSum[:]), ExpectedRevision: expectedRevision})
+	claim, terminal, claimErr := h.office.ClaimUpload(ctx, SourceUpload{FileName: baseName, MIMEType: declaredMIME, Size: int64(len(data)), Digest: digest, RequestID: requestID, IntentHash: hex.EncodeToString(intentSum[:]), ExpectedRevision: expectedRevision})
 	if errors.Is(claimErr, ErrUploadInProgress) {
 		c.JSON(202, UploadResponse{Source: claim})
 		return
@@ -310,30 +327,42 @@ func (h *Handler) Upload(c *gin.Context) {
 		c.JSON(200, UploadResponse{Source: claim, Receipt: receipt})
 		return
 	}
-	result, err := h.upload.StoreAndParseWithID(ctx, tenantID, claim.ID, baseName, header.Header.Get("Content-Type"), data, func(upload UploadResult) error {
-		return h.office.PersistUploadResource(ctx, upload.SourceID, upload.Upload.ResourceRef)
-	})
-	if err != nil {
-		if claim.ID != "" {
-			failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			var failed CareerSource
-			var createErr error
-			failed, createErr = h.office.FinishSource(failureCtx, claim.ID, "", nil, nil, err)
-			if createErr != nil {
-				writeError(c, createErr)
-				return
+	var result UploadResult
+	if claim.ResourceRef != "" {
+		result, err = h.upload.ResumeAndParse(ctx, tenantID, claim.ID, baseName, declaredMIME, data, claim.ResourceRef)
+	} else {
+		result, err = h.upload.StoreAndParseWithID(ctx, tenantID, claim.ID, baseName, declaredMIME, data, func(upload UploadResult) error {
+			persistErr := h.office.PersistUploadResource(ctx, upload.SourceID, claim.ClaimToken, upload.Upload.ResourceRef)
+			if persistErr == nil {
+				return nil
 			}
-			c.JSON(200, UploadResponse{Source: failed})
+			current, readErr := h.office.privateSource(context.WithoutCancel(ctx), claim.ID)
+			if readErr == nil && current.ResourceRef == upload.Upload.ResourceRef {
+				return nil
+			}
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			_ = h.upload.Release(cleanupCtx, upload.Upload.ResourceRef, upload.SourceID)
+			return persistErr
+		})
+	}
+	if err != nil {
+		failed, superseded, finishErr := h.finishClaimFailure(ctx, claim.ID, claim.ClaimToken, err)
+		if finishErr != nil {
+			writeError(c, finishErr)
 			return
 		}
-		writeError(c, ErrInvalidRequest)
+		if superseded {
+			c.JSON(202, UploadResponse{Source: failed})
+			return
+		}
+		c.JSON(200, UploadResponse{Source: failed})
 		return
 	}
 	var receipt *Receipt
 	if len(result.Fields) > 0 {
 		batchID := result.SourceID + ":batch"
-		batch, batchErr := h.office.CompleteIntake(ctx, result.SourceID, result.Upload.Text, result.Fields, result.MissingCategories, result.ReviewFlags, batchID, expectedRevision)
+		batch, batchErr := h.office.CompleteIntakeClaim(ctx, result.SourceID, claim.ClaimToken, result.Upload.Text, result.Fields, result.MissingCategories, result.ReviewFlags, batchID, expectedRevision)
 		if batchErr != nil {
 			if errors.Is(batchErr, ErrOutcomeUnknown) {
 				if source, sourceErr := h.office.GetSource(ctx, result.SourceID); sourceErr == nil && source.Status == "ready" {
@@ -342,11 +371,17 @@ func (h *Handler) Upload(c *gin.Context) {
 						return
 					}
 				}
+			} else if errors.Is(batchErr, ErrUploadClaimLost) {
+				if source, sourceErr := h.office.GetSource(ctx, result.SourceID); sourceErr == nil {
+					c.JSON(202, UploadResponse{Source: source})
+					return
+				}
 			} else {
-				failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-				_, _ = h.office.FinishSource(failureCtx, result.SourceID, "", nil, nil, batchErr)
-				_ = h.upload.Release(failureCtx, result.Upload.ResourceRef, result.SourceID)
-				cancel()
+				failed, superseded, finishErr := h.finishClaimFailure(ctx, claim.ID, claim.ClaimToken, batchErr)
+				if finishErr == nil && superseded {
+					c.JSON(202, UploadResponse{Source: failed})
+					return
+				}
 			}
 			writeError(c, batchErr)
 			return
@@ -355,11 +390,17 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 	var source CareerSource
 	if len(result.Fields) == 0 {
-		source, err = h.office.FinishSource(ctx, result.SourceID, result.Upload.Text, result.MissingCategories, result.ReviewFlags, nil)
+		source, err = h.office.FinishSourceClaim(ctx, result.SourceID, claim.ClaimToken, result.Upload.Text, result.MissingCategories, result.ReviewFlags, nil)
 	} else {
 		source, err = h.office.GetSource(ctx, result.SourceID)
 	}
 	if err != nil {
+		if errors.Is(err, ErrUploadClaimLost) {
+			if latest, e := h.office.GetSource(ctx, result.SourceID); e == nil {
+				c.JSON(202, UploadResponse{Source: latest})
+				return
+			}
+		}
 		writeError(c, err)
 		return
 	}
@@ -367,20 +408,52 @@ func (h *Handler) Upload(c *gin.Context) {
 }
 
 func (h *Handler) reconcileStaleSources(ctx context.Context) error {
-	resources, err := h.office.FailStaleUploads(ctx, time.Now().UTC().Add(-30*time.Minute))
+	return h.reconcileStaleSourcesExcept(ctx, "")
+}
+
+func (h *Handler) reconcileStaleSourcesExcept(ctx context.Context, skipRequestID string) error {
+	resources, err := h.office.FailStaleUploads(ctx, time.Now().UTC(), skipRequestID)
 	if err != nil {
 		return err
 	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
 	for _, resource := range resources {
 		if resource.ResourceRef == "" {
 			continue
 		}
-		if err = h.upload.Release(ctx, resource.ResourceRef, resource.ID); err != nil {
+		if err = h.upload.Release(cleanupCtx, resource.ResourceRef, resource.ID); err != nil {
 			return err
 		}
-		if err = h.office.ClearSourceResource(ctx, resource.ID); err != nil {
+		if err = h.office.ClearSourceResource(cleanupCtx, resource.ID, resource.ClaimToken, resource.ResourceRef, resource.FinalErrorCategory); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (h *Handler) finishClaimFailure(ctx context.Context, id, token string, failure error) (CareerSource, bool, error) {
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	source, err := h.office.FinishSourceClaim(detached, id, token, "", nil, nil, failure)
+	if errors.Is(err, ErrUploadClaimLost) {
+		latest, e := h.office.GetSource(detached, id)
+		return latest, true, e
+	}
+	if err != nil {
+		return CareerSource{}, false, err
+	}
+	if source.ResourceRef != "" {
+		final := strings.TrimPrefix(source.ErrorCategory, "cleanup_pending_")
+		if e := h.upload.Release(detached, source.ResourceRef, source.ID); e == nil {
+			if e = h.office.ClearSourceResource(detached, source.ID, token, source.ResourceRef, final); e != nil {
+				return source, false, e
+			}
+			source, e = h.office.GetSource(detached, id)
+			if e != nil {
+				return CareerSource{}, false, e
+			}
+		}
+	}
+	return source, false, nil
 }
