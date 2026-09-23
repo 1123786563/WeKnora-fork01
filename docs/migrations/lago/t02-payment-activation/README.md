@@ -8,7 +8,10 @@ build on. Produced 2026-09-20 on the T02 worktree
 (`lago-74-payment-activation-lab`) by the lab under
 `deploy/lago-lab/payment-activation/` (isolated Compose project
 `weknora-lago-74`, loopback ports 48891/48892, never touching the #73
-`weknora-lago` project or OpenMeter).
+`weknora-lago` project or OpenMeter). Re-run with a Stripe TEST-mode key
+on 2026-09-23 (worktree `.worktrees/issue72-n74`); the files below are
+that passing run (run id `5d06a277-c487-4e1b-a669-ae138032aed7`, all nine
+phases `pass`).
 
 ## Evidence contract
 
@@ -19,11 +22,10 @@ build on. Produced 2026-09-20 on the T02 worktree
   construction and a secrets scan over the run output and the tracked tree
   must show zero hits.
 - **A blocked environment is recorded as `blocked-env` and clearly labeled.**
-  In this run the caller environment had no Stripe TEST-mode key
-  (`STRIPE_TEST_SECRET_KEY` / `STRIPE_SECRET_KEY`), so every
-  provider/payment-dependent phase reports `blocked-env` with its explicit
-  reason. That is honest evidence of an environment gap — never a passed
-  contract and never a runtime failure verdict.
+  In the first attempt (2026-09-20) the caller environment had no Stripe
+  TEST-mode key, so every provider/payment-dependent phase reported
+  `blocked-env`; the 2026-09-23 re-run had the test key present and every
+  phase reports a real verdict.
 - These files evidence the **Community** runtime only (no `LAGO_LICENSE`,
   never unlocked). They are not AGPL legal approval.
 
@@ -32,14 +34,14 @@ build on. Produced 2026-09-20 on the T02 worktree
 | File | What it proves | Status in this run | How it was produced |
 |------|----------------|--------------------|---------------------|
 | `t02-run.txt` | Operator timeline: isolated stack lifecycle (init → up healthy → run → status ready → down, volumes preserved), the entitlement-contract fix discovered by the first attempt, and the verbatim runner timeline | context | sanitized operator narrative + verbatim `run_lab.py` timeline |
-| `t02-environment.json` | Pinned release identity (v1.53.0 + all five locked digests from `images.lock.json`), API health 200, GraphQL operator login ok, Stripe test key absent (source env var recorded by name only), per-phase statuses, secrets-scan result (0 hits) | `blocked-env` overall (Stripe key missing) | `run_lab.py` (sanitized) |
-| `t02-gating.json` | **AC1** gating observation: customer A subscription `incomplete`, entitlements `404`, gating invoice `open`/`pending`/numberless, stable window | `blocked-env` — requires provider-connected customer A (Stripe key missing) | `run_lab.py` phase `gate` |
-| `t02-manual.json` | **AC4** manual path: `POST /api/v1/payments` forbidden (Premium-gated), state unchanged, actual accepted parameter contract recorded | `blocked-env` — requires customer A gating invoice | `run_lab.py` phase `manual` |
-| `t02-activation.json` | **AC2** activation: exactly one succeeded provider payment, finalized numbered paid invoice, entitlement list, totals match | `blocked-env` — requires provider-connected customer B | `run_lab.py` phase `activate` |
-| `t02-duplicates.json` | **AC2** exactly-once: duplicate re-registration probes rejected, final state byte-identical | `blocked-env` — requires settled customer B state | `run_lab.py` phase `duplicates` |
-| `t02-retries.json` | **AC3** recovery: same-identity GET recovery, retry on the pending gate creates no second payment row | `blocked-env` — requires A pending gate + B settled state | `run_lab.py` phase `retries` |
-| `t02-decline.json` | Negative control: declined provider payment → invoice closed, subscription `canceled` (`payment_failed`), entitlements `404` | `blocked-env` — requires provider-connected customer C | `run_lab.py` phase `decline_control` |
-| `t02-cleanup.json` | Cleanup duty: every object the run created is deleted and verified (plan/feature re-read 404) | **pass** | `run_lab.py` phase `cleanup` |
+| `t02-environment.json` | Pinned release identity (v1.53.0 + all five locked digests from `images.lock.json`), API health 200, GraphQL operator login ok, Stripe test key present (source env var recorded by name only), per-phase statuses, secrets-scan result (0 hits) | `pass` (real run, Stripe TEST key present) | `run_lab.py` (sanitized) |
+| `t02-gating.json` | **AC1** gating observation: customer A subscription `incomplete`, entitlements `404`, held across the window; the gating invoice stays API-invisible on v1.53.0 (`open`/`closed` are `INVISIBLE_STATUS`) — recorded as such | `pass` (real run, Stripe TEST key present) | `run_lab.py` phase `gate` |
+| `t02-manual.json` | **AC4** manual path: `POST /api/v1/payments` forbidden (Premium-gated, HTTP 403), state unchanged, actual accepted parameter contract recorded | `pass` (real run, Stripe TEST key present) | `run_lab.py` phase `manual` |
+| `t02-activation.json` | **AC2** activation: exactly one succeeded provider payment, finalized numbered paid invoice, entitlement list, totals match | `pass` (real run, Stripe TEST key present) | `run_lab.py` phase `activate` |
+| `t02-duplicates.json` | **AC2** exactly-once: duplicate re-registration answered 200 with the SAME subscription (idempotent), `retry_payment` 405, manual 403; final state byte-identical | `pass` (real run, Stripe TEST key present) | `run_lab.py` phase `duplicates` |
+| `t02-retries.json` | **AC3** recovery: same-identity GET recovery (same `lago_id`, one object); the gate retry creates no second payment row and the gate never activates | `pass` (real run, Stripe TEST key present) | `run_lab.py` phase `retries` |
+| `t02-decline.json` | Negative control: a charge that cannot succeed never activates — with `timeout_hours: 0` the subscription stays `incomplete`, entitlements `404`, zero succeeded payments | `pass` (real run, Stripe TEST key present) | `run_lab.py` phase `decline_control` |
+| `t02-cleanup.json` | Cleanup duty: every object the run created is deleted and verified (plan/feature re-read 404) | `pass` (real run, Stripe TEST key present) | `run_lab.py` phase `cleanup` |
 
 Working reports for the non-AC phases (`t02-setup.json` — feature/plan/
 entitlement creation, **pass** on the pinned runtime; `t02-provider.json`;
@@ -54,13 +56,16 @@ entitlement creation, **pass** on the pinned runtime; `t02-provider.json`;
   cleanup with verification).
 - The four acceptance criteria map to `t02-gating` (AC1), `t02-activation` +
   `t02-duplicates` (AC2), `t02-retries` (AC3), and `t02-manual` +
-  `t02-decline` + `DECISION.md` (AC4). In **this** run those files carry
-  `blocked-env` verdicts because no Stripe TEST-mode key was available;
-  the contract claims themselves are NOT asserted from this run.
+  `t02-decline` + `DECISION.md` (AC4). In the re-run (Stripe TEST key
+  present via caller environment) those files carry real runtime verdicts —
+  every phase `pass` — so the AC1–AC4 contract claims ARE asserted from
+  this run; the first attempt's `blocked-env` reports remain in git history
+  as the honest environment-gap record.
 - `DECISION.md` states the decision analysis, the manual-vs-provider
   verdicts grounded in the pinned source (Premium gate on
-  `Payments::ManualCreateService`; provider-driven activation flow), and
-  exactly what remains to be re-run once a Stripe test key is supplied.
+  `Payments::ManualCreateService`; provider-driven activation flow) and
+  now confirmed at runtime (manual 403; provider path activating exactly
+  once).
 
 ## Regenerating
 

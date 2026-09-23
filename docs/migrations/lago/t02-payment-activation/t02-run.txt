@@ -1,100 +1,66 @@
 Lago T02 payment-activation lab — real-run operator timeline (sanitized)
 =========================================================================
 
-All times UTC, recorded on 2026-09-20 from the T02 worktree
-(lago-74-payment-activation-lab). Secrets (API key, operator password,
-GraphQL JWT, Stripe key) are never included; the runner's own timeline is
-embedded verbatim below.
+Recorded 2026-09-23 (UTC) from worktree .worktrees/issue72-n74 (branch
+codex/issue-72-lago-74). Secrets (API key, operator password, GraphQL JWT,
+Stripe key) are never included; the runner's own timeline is embedded
+verbatim below. First attempt 2026-09-20 was blocked-env (no Stripe TEST
+key); the 2026-09-23 re-run had STRIPE_SECRET_KEY (sk_test_ test mode)
+sourced from the operator's local env file and is the full AC1-AC4
+contract run.
 
-[2026-09-20T17:55:49Z] ./deploy/lago-lab/payment-activation/lab.sh init
-    wrote deploy/lago-lab/payment-activation/lab.env (mode 600) with the full
-    random secret set plus the one-shot seed values (LAGO_CREATE_ORG=true,
-    generated LAGO_ORG_USER_EMAIL/PASSWORD/NAME, random LAGO_ORG_API_KEY).
-    Compose project pinned: weknora-lago-74, ports 48891 (API) / 48892 (front),
-    loopback only.
+[stack] lab.sh volumes wiped (stale seed from the deleted 2026-09-20
+worktree), lab.sh init (fresh lab.env, mode 600), lab.sh up healthy,
+lab.sh status overall "ready" on release v1.53.0 (evidence/t02-health.json
+in the lab directory).
 
-[2026-09-20T17:55:5xZ] ./deploy/lago-lab/payment-activation/lab.sh config
-    resolved Compose config verified: name weknora-lago-74, published ports
-    127.0.0.1:48891->3000 and 127.0.0.1:48892->80, all secret values
-    ***REDACTED*** (41 replacements); zero live secret values in the output.
-    Isolation check: sibling projects weknora-lago-75 / weknora-lago-76 keep
-    running; the #73 weknora-lago project and OpenMeter are untouched.
+[2026-09-23 iterations] The re-run took eleven real-stack attempts. The
+first failures were lab-tool contract gaps, each fixed against container
+source or observed API/DB evidence and kept green by the 60 offline
+tests: GraphQL needs the x-lago-organization header; Stripe clones shared
+test PM tokens on attach; customer provider linkage belongs under
+customer.billing_configuration; the declined-card tokens are now rejected
+at attach (HTTP 402) so the negative control rides the 3DS card's
+off-session failure instead; v1.53.0 keeps unsettled gating invoices
+API-invisible (open/closed are INVISIBLE_STATUS); a duplicate
+registration POST answers 200 with the same subscription; subscription
+DELETE needs the status spelled out. Two attempts were lost to flaky
+host/container routes to api.stripe.com (Sidekiq retried the charge jobs
+through the outage windows; transport retries and honest blocked verdicts
+now cover that). Runs 10 and 11 then passed all nine phases end to end.
 
-[2026-09-20T17:56:56Z] ./deploy/lago-lab/payment-activation/lab.sh up
-    (docker compose up -d --wait on the pinned #73 stack, project
-    weknora-lago-74; images already cached locally from the #73 digests.)
-    Completed healthy at [2026-09-20T17:59:23Z]: db, redis, api, api-worker,
-    pdf Compose-healthy; api-clock, front running. The one-shot migrate
-    service ran the seed: operator account + organization API key minted
-    from lab.env.
+[run 5d06a277-c487-4e1b-a669-ae138032aed7] DB-side observer (read-only psql sampling every ~2-4s) ran
+in parallel; its exactly-once findings are in the execution ledger.
 
-[2026-09-20T18:00:05Z] FIRST runner attempt (run c34dfe95-…): health 200,
-    graphql loginUser ok; feature create 200, plan create 200, but
-    POST /api/v1/plans/{code}/entitlements returned HTTP 500.
-    Root cause (pinned-source verified): the v1.53.0 entitlement attach
-    contract expects `entitlements` as a HASH keyed by feature code
-    (PlanEntitlementsUpdateService iterates `feature_code, privilege_values`),
-    not an array of {feature_code} items. Fix applied to fixtures.py; the
-    two leftover objects (plan, feature of run c34dfe95) were deleted via
-    the API (both 200) before re-running. This contract fact is recorded as
-    a cross-ticket note in DECISION.md.
+--- verbatim runner timeline (evidence/t02-run.txt) ---
+[2026-09-23T05:04:52.818780+00:00] run start
+[2026-09-23T05:04:52.819719+00:00] run_id=5d06a277-c487-4e1b-a669-ae138032aed7 output_dir=deploy/lago-lab/payment-activation/evidence
+[2026-09-23T05:04:52.877436+00:00] lago health HTTP 200
+[2026-09-23T05:04:53.635688+00:00] graphql loginUser: ok
+[2026-09-23T05:04:55.570555+00:00] stripe reachability from api container: 401
+[2026-09-23T05:04:55.593715+00:00] phase setup: start
+[2026-09-23T05:04:55.930423+00:00] phase setup: pass (0.3s)
+[2026-09-23T05:04:55.930480+00:00] phase provider_setup: start
+[2026-09-23T05:05:19.245211+00:00] phase provider_setup: pass (23.3s)
+[2026-09-23T05:05:19.247422+00:00] phase gate: start
+[2026-09-23T05:15:20.941896+00:00] phase gate: pass (601.7s)
+[2026-09-23T05:15:20.942299+00:00] phase activate: start
+[2026-09-23T05:17:19.683491+00:00] phase activate: pass (118.7s)
+[2026-09-23T05:17:19.683566+00:00] phase manual: start
+[2026-09-23T05:17:20.137173+00:00] phase manual: pass (0.5s)
+[2026-09-23T05:17:20.137358+00:00] phase duplicates: start
+[2026-09-23T05:17:20.574670+00:00] phase duplicates: pass (0.4s)
+[2026-09-23T05:17:20.574730+00:00] phase retries: start
+[2026-09-23T05:17:25.944564+00:00] phase retries: pass (5.4s)
+[2026-09-23T05:17:25.944592+00:00] phase decline_control: start
+[2026-09-23T05:27:27.632393+00:00] phase decline_control: pass (601.7s)
+[2026-09-23T05:27:27.632439+00:00] phase cleanup: start
+[2026-09-23T05:27:31.730430+00:00] phase cleanup: pass (4.1s)
+[2026-09-23T05:27:31.730667+00:00] overall verdict: pass
+[2026-09-23T05:27:31.730685+00:00] run finished
+[2026-09-23T05:27:31.735968+00:00] secrets scan: 13 files, 0 scrubbed, hits_after_scrub=0
+[2026-09-23T05:27:31.736197+00:00] run finished
+--- end verbatim timeline ---
 
-[2026-09-20T18:02:17Z] REAL RUN (no STRIPE_TEST_SECRET_KEY / STRIPE_SECRET_KEY
-    present in the caller environment, so the provider-dependent phases are
-    honestly blocked-env; nothing is mocked or claimed as passed):
-
-    python3 deploy/lago-lab/payment-activation/run_lab.py \
-        --output-dir deploy/lago-lab/payment-activation/evidence
-
-    --- verbatim runner timeline (evidence/t02-run.txt) ---
-    [2026-09-20T18:02:17.987210+00:00] run start
-    [2026-09-20T18:02:17.987563+00:00] run_id=e8ae6c00-65dd-40a1-82fd-e8b34b8043db output_dir=deploy/lago-lab/payment-activation/evidence
-    [2026-09-20T18:02:18.005225+00:00] lago health HTTP 200
-    [2026-09-20T18:02:18.244216+00:00] graphql loginUser: ok
-    [2026-09-20T18:02:18.251568+00:00] phase setup: start
-    [2026-09-20T18:02:18.322911+00:00] phase setup: pass (0.1s)
-    [2026-09-20T18:02:18.322961+00:00] phase provider_setup: start
-    [2026-09-20T18:02:18.323429+00:00] phase provider_setup: blocked-env (0.0s)
-    [2026-09-20T18:02:18.323463+00:00] phase gate: start
-    [2026-09-20T18:02:18.323890+00:00] phase gate: blocked-env (0.0s)
-    [2026-09-20T18:02:18.323921+00:00] phase manual: start
-    [2026-09-20T18:02:18.324252+00:00] phase manual: blocked-env (0.0s)
-    [2026-09-20T18:02:18.324271+00:00] phase activate: start
-    [2026-09-20T18:02:18.324535+00:00] phase activate: blocked-env (0.0s)
-    [2026-09-20T18:02:18.324553+00:00] phase duplicates: start
-    [2026-09-20T18:02:18.324799+00:00] phase duplicates: blocked-env (0.0s)
-    [2026-09-20T18:02:18.324826+00:00] phase retries: start
-    [2026-09-20T18:02:18.325089+00:00] phase retries: blocked-env (0.0s)
-    [2026-09-20T18:02:18.325108+00:00] phase decline_control: start
-    [2026-09-20T18:02:18.325549+00:00] phase decline_control: blocked-env (0.0s)
-    [2026-09-20T18:02:18.325587+00:00] phase cleanup: start
-    [2026-09-20T18:02:18.358894+00:00] phase cleanup: pass (0.0s)
-    [2026-09-20T18:02:18.359302+00:00] overall verdict: blocked-env
-    [2026-09-20T18:02:18.359348+00:00] run finished
-    [2026-09-20T18:02:18.362334+00:00] secrets scan: 11 files, 0 scrubbed, hits_after_scrub=0
-    [2026-09-20T18:02:18.362559+00:00] run finished
-    --- end verbatim timeline ---
-
-    Exit code 2 (blocked-env). setup PASSED on the pinned runtime: feature
-    create 200, plan create 200 (monthly / pay_in_advance / 5000 cents USD),
-    plan entitlement attach 200. cleanup PASSED: the run's plan and feature
-    were deleted (verified 404 on re-read). All provider/payment phases
-    report blocked-env with the explicit reason "missing Stripe test key
-    (set STRIPE_SECRET_KEY, sk_test_/rk_test_ only)" — honest evidence of an
-    environment gap, NOT a passed contract, and NOT a runtime failure.
-
-[2026-09-20T18:02:33Z] ./deploy/lago-lab/payment-activation/lab.sh status --json
-    overall "ready": api/api-worker/db/redis healthy, api-clock running,
-    release v1.53.0 with all five locked digests (captured verbatim as
-    evidence/t02-health.json in the lab directory).
-
-[2026-09-20T18:03:4xZ] ./deploy/lago-lab/payment-activation/lab.sh down
-    all seven weknora-lago-74 containers stopped and removed; named volumes
-    weknora-lago-74_lago_* preserved; sibling projects weknora-lago-75/76
-    still running and untouched.
-
-Environment gap to close for the full contract run: provide a Stripe
-TEST-mode operator key (STRIPE_TEST_SECRET_KEY or STRIPE_SECRET_KEY with
-sk_test_/rk_test_ prefix) and re-run the exact workflow above; the
-provider/payment phases then exercise AC1–AC4 for real. Everything else
-(the stack, the runner, the offline 60-test suite) is already proven.
+[post] lab.sh down (volumes preserved); sibling projects weknora-lago
+(#73), weknora-lago-75/76 untouched throughout.

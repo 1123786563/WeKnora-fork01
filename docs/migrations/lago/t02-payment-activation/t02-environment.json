@@ -60,32 +60,37 @@
     "release": "v1.53.0"
   },
   "run": {
-    "finished_at": "2026-09-20T18:02:18.358925+00:00",
-    "overall": "blocked-env",
+    "finished_at": "2026-09-23T05:27:31.730475+00:00",
+    "overall": "pass",
     "phase_statuses": {
-      "activate": "blocked-env",
+      "activate": "pass",
       "cleanup": "pass",
-      "decline_control": "blocked-env",
-      "duplicates": "blocked-env",
-      "gate": "blocked-env",
-      "manual": "blocked-env",
-      "provider_setup": "blocked-env",
-      "retries": "blocked-env",
+      "decline_control": "pass",
+      "duplicates": "pass",
+      "gate": "pass",
+      "manual": "pass",
+      "provider_setup": "pass",
+      "retries": "pass",
       "setup": "pass"
     },
-    "run_id": "e8ae6c00-65dd-40a1-82fd-e8b34b8043db",
-    "started_at": "2026-09-20T18:02:17.987210+00:00"
+    "run_id": "5d06a277-c487-4e1b-a669-ae138032aed7",
+    "started_at": "2026-09-23T05:04:52.818780+00:00"
   },
   "secrets_scan": {
     "clean": true,
-    "files_scanned": 11,
+    "files_scanned": 13,
     "hits_after_scrub": 0,
     "scrubbed": []
   },
   "stripe": {
-    "api_container_reachability": null,
-    "key_source": null,
+    "api_container_reachability": {
+      "checked": true,
+      "http_code": "401",
+      "reachable": true,
+      "returncode": 0
+    },
+    "key_source": "STRIPE_SECRET_KEY",
     "refused_non_test_key": false,
-    "test_mode_key_present": false
+    "test_mode_key_present": true
   }
 }
