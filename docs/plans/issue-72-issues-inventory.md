@@ -1,7 +1,7 @@
 # Issue #72 子 Issue 清单（Lago 计费迁移）
 
-> 生成：2026-09-23 ｜ 分支：`codex/issue-72-lago`
-> 来源：33 个子 Issue（#73–#105）逐票调查结果（本 worktree 会话汇总，代码证据均为调查会话实查/实跑）。
+> 生成：2026-09-23（同日修订：#74 运行时解锁改判 todo）｜ 分支：`codex/issue-72-lago`
+> 来源：33 个子 Issue（#73–#105）逐票调查结果（本 worktree 会话汇总，代码证据均为调查会话实查/实跑）；GitHub 状态本次经 `gh issue list` 复测（#73/75/76/77/78/79/80 CLOSED，其余 OPEN，与调查一致）。
 > 父 Issue：[#72](https://github.com/1123786563/WeKnora-fork01/issues/72)（Lago 替换 OpenMeter 迁移 Spec 总票）——只提供总体目标与验收，**不计入 DAG 节点**；33 个子 Issue 均为 #72 直接子票，层级树退化为单层（无嵌套父子）。
 > 状态口径：`done`=已有完成证据不重新实施；`blocked`=依赖缺失（外部输入或前置未决），保留原因；`todo`=待实施。
 
@@ -10,7 +10,7 @@
 | 编号 | 标题（短） | GitHub | DAG status | 一句话依据 |
 |---|---|---|---|---|
 | #73 | Lago01 固定版本集成环境 | CLOSED | **done** | 四 AC 有代码+46 测试实跑+t01 证据 |
-| #74 | Lago02 外部付款激活实验 | OPEN | **blocked** | AC1-3 需 Stripe TEST 密钥 + Premium 三选项裁决 |
+| #74 | Lago02 外部付款激活实验 | OPEN | **todo** | 密钥已到位，重跑 run_lab.py 收 AC1-3 证据 |
 | #75 | Lago03 Wallet 批次语义验证 | CLOSED | **done** | e1-e4 实测+104 测试实跑+verdict（遗留 a2 决策） |
 | #76 | Lago04 Pricing Group 计价批次 | CLOSED | **done** | 60 测试实跑+6 份真实栈证据（p95 6.893s） |
 | #77 | Lago05 Commercial Platform seam | CLOSED | **done** | 冻结 seam+双适配器契约+build/test 全绿 |
@@ -43,7 +43,8 @@
 | #104 | Lago32 备份恢复+商业对账 | OPEN | todo | 工具链/演练全缺，待 #102/#103 |
 | #105 | Lago33 切换 Lago 移除 OpenMeter | OPEN | todo | 收官票，9 个 blocker 全 OPEN |
 
-统计：done 7 ｜ blocked 10 ｜ todo 16（合计 33）。
+统计：done 7 ｜ blocked 9 ｜ todo 17（合计 33）。
+状态变更记录（2026-09-23 修订）：#74 由 blocked 改判 **todo**——调查判 blocked 的唯一环境缺口（Stripe TEST 密钥）已由用户提供（`~/.zcode/issue72-stripe.env`，本次 `ls` 核实文件存在，仅测试环境凭据），运行时解锁；#74 代码实现与 60 离线测试已在基线（#74 评论），剩余交付仅为加载该密钥重跑 `deploy/lago-lab/payment-activation/run_lab.py` 收集 AC1-AC3 运行时证据。**注意**：#74 关闭不会自动解锁 #81/#82——T02 三选项裁决（(a) Premium manual Payment /(b) 受支持 Provider 真实轨道 /(c) 修改 spec）所需的用户裁决仍未提供，两票维持 blocked；#85 链所需的 #75-a2 裁决同样未提供，维持 blocked。
 
 ## 2. 逐票清单
 
@@ -61,7 +62,7 @@
 - 实现现状：部分实现（实验设施+AC4 决策已交付，AC1-AC3 运行时证据缺失）。`deploy/lago-lab/payment-activation/phases.py` 9 阶段、60 个离线测试调查会话实跑通过；真实栈 `t02-setup/t02-cleanup.json` pass，其余 7 阶段 blocked-env；`docs/migrations/lago/t02-payment-activation/DECISION.md` §2 源码级证实 manual Payment 403 为 Premium 门控、§5 给出三选项。
 - 验收标准：①付款前 incomplete/Entitlement 不可用 ②登记后恰好一次 active、重复不重复激活 ③响应丢失/超时/重试同身份可恢复 ④manual 不能激活时给出替代路径或 blocker。
 - 依赖：前置 #73（已满足）；下游 #81/#82（blocking，timeline 交叉证实）。
-- 处理决定：**blocked**——AC1-AC3 运行时证据需用户提供 Stripe TEST 密钥（sk_test_…）重跑 `run_lab.py`（解锁命令在 Issue 唯一评论）；T02 DECISION.md 推荐选项 (a) Premium manual Payment 需 spec/ADR owner 与产品方在三选项中裁决；传递阻塞 #81/#82 及其余 25 票主链。
+- 处理决定：**todo**（2026-09-23 由 blocked 改判）——调查判 blocked 的唯一环境缺口是 Stripe TEST 密钥，现用户已提供（`~/.zcode/issue72-stripe.env`，本次 `ls -la` 核实存在，mode 600，仅测试环境凭据）；代码实现与 60 离线测试、AC4 决策文档均已在基线交付（#74 唯一评论），剩余交付=以该密钥重跑 `deploy/lago-lab/payment-activation/run_lab.py` 收集 AC1-AC3 运行时证据（解锁命令在 Issue 评论）。#74 证据齐备后，T02 三选项裁决（(a) Premium manual Payment /(b) 受支持 Provider 真实轨道 /(c) 修改 spec）仍需 spec/ADR owner 与产品方拍板，裁决前 #81/#82 维持 blocked。
 
 ### issue-75 ｜ [Lago 03] 证明 Wallet 批次到期、消费顺序和撤回语义
 - URL: https://github.com/1123786563/WeKnora-fork01/issues/75 ｜ 父节点: #72 ｜ GitHub: CLOSED
@@ -314,6 +315,6 @@
 ## 3. 外部依赖核查（范围外，不纳入 DAG 节点）
 
 - **#30（移动 AI Office Spec，OPEN）**：成果部分已在基线——`docs/specs/2026-09-20-mobile-ai-office-design.md`、`mobile-module-seams.md`、`apps/mobile`、`packages/mobile-core`、`tests/mobile-v2`、`deploy/mobile-workbench` 均在当前 main；issue30-sweep worktree 分支 `codex/issue30-mobile-office` 仅领先 1 个 docs 提交（16dddb2d5，未合并）。与 Lago 迁移**无代码耦合**，仅 CONTEXT.md 移动/账单权限语义与 Billing API provider-neutral 契约存在交集。结论：仅记录，不建节点、不加依赖边。
-- **#74 的外部输入**（DAG 内 blocked 节点的外部触发器）：①Stripe TEST 模式密钥（sk_test_…/rk_test_…）重跑 `deploy/lago-lab/payment-activation/run_lab.py`（解锁命令在 Issue 唯一评论）；②T02 DECISION.md 三选项（(a) 采购 Premium 用 manual Payment /(b) 受支持 Provider 真实轨道 /(c) 修改 spec）需 spec/ADR owner 与产品方裁决。
+- **#74 的外部输入**（本次部分到位）：①Stripe TEST 模式密钥——**已提供**（`~/.zcode/issue72-stripe.env`，本次 `ls -la` 核实存在，仅测试环境凭据），#74 据此改判 todo（重跑 `deploy/lago-lab/payment-activation/run_lab.py` 收集 AC1-AC3 运行时证据，解锁命令在 Issue 唯一评论）；②T02 DECISION.md 三选项（(a) 采购 Premium 用 manual Payment /(b) 受支持 Provider 真实轨道 /(c) 修改 spec）**仍待** spec/ADR owner 与产品方裁决——这是 #74 关闭后 #81/#82 维持 blocked 的剩余外部输入。
 - **#75-a2 设计决策**（done 节点遗留的外部输入）：充值批次 12 个月到期归属——产品上限 ≤5 并发充值批次（适配 Lago 6 活跃钱包硬上限）vs 批次到期权威移入 WeKnora 协调层+修订 ADR-0012（ADR 自 ef2ccb24d 后无修订）。该决策卡 #85 起整条充值链（传递 21 票）。
 - gh CLI 可用（进度 7/33 实测来源）；`docs/plans/ledgers/` 现存 lago-78/79/80（本次 worktree `ls` 核实）。
