@@ -125,6 +125,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // scene(_:openURLContexts:)), so forward it before the JS bundle runs and
     // expo-router reads Linking.getLinkingURL() as the initial route.
     forwardURLContexts(connectionOptions.urlContexts)
+    // Cold launch by universal link: UIKit delivers NSUserActivity here (not
+    // through scene(_:continue:)); forward before the JS bundle runs so
+    // expo-router resolves the initial route (file-header promise, R1-F5).
+    forwardUserActivities(connectionOptions.userActivities)
   }
 
   func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
@@ -148,6 +152,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         options[.annotation] = annotation
       }
       _ = appDelegate.application(UIApplication.shared, open: context.url, options: options)
+    }
+  }
+
+  private func forwardUserActivities(_ activities: Set<NSUserActivity>) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+    for activity in activities where activity.activityType == NSUserActivityTypeBrowsingWeb {
+      _ = appDelegate.application(
+        UIApplication.shared,
+        continue: activity,
+        restorationHandler: { (_: [UIUserActivityRestoring]?) in })
     }
   }
 }
@@ -180,7 +194,8 @@ const TEMPLATE_POST_INSTALL = `    react_native_post_install(
     )
 `;
 
-const PODFILE_CLAMP = `    # Xcode 27 rejects pod deployment targets below 15.0 (SDWebImage declares
+const PODFILE_CLAMP = `    # weknora_ios_xcode27_clamp
+    # Xcode 27 rejects pod deployment targets below 15.0 (SDWebImage declares
     # 9.0) while expo-router Swift sources use iOS 16 APIs at 15.1: clamp every
     # pod up to the app deployment target.
     installer.pods_project.targets.each do |t|
@@ -203,9 +218,10 @@ const PODFILE_CLAMP = `    # Xcode 27 rejects pod deployment targets below 15.0 
     end
 `;
 
-/** Inject the per-pod deployment-target clamp into the generated Podfile. Idempotent. */
+/** Inject the per-pod deployment-target clamp into the generated Podfile. Idempotent（唯一锚 R1-F7：
+ * 不得以 clamp 自身子串（如 Xcodeproj::Plist.read_from_path）判已注入——无关注入含同串会被误判跳过）。 */
 function applyPodfileClamp(contents) {
-  if (contents.includes('Xcodeproj::Plist.read_from_path')) {
+  if (contents.includes('# weknora_ios_xcode27_clamp')) {
     return contents;
   }
   if (!contents.includes(TEMPLATE_POST_INSTALL)) {
@@ -216,13 +232,13 @@ function applyPodfileClamp(contents) {
   return contents.replace(TEMPLATE_POST_INSTALL, `${TEMPLATE_POST_INSTALL}${PODFILE_CLAMP}`);
 }
 
-/** Raise every iOS deployment target below DEPLOYMENT_TARGET in the pbxproj. */
+/** Raise every iOS deployment target below DEPLOYMENT_TARGET in the pbxproj. 引号包裹的目标值先 strip（R1-F8）。 */
 function raiseDeploymentTargets(project) {
   const configurations = project.pbxXCBuildConfigurationSection();
   for (const key of Object.keys(configurations)) {
     const settings = configurations[key] && configurations[key].buildSettings;
     if (settings && settings.IPHONEOS_DEPLOYMENT_TARGET) {
-      const current = parseFloat(settings.IPHONEOS_DEPLOYMENT_TARGET);
+      const current = parseFloat(String(settings.IPHONEOS_DEPLOYMENT_TARGET).replace(/^"|"$/g, ''));
       if (!Number.isNaN(current) && current < parseFloat(DEPLOYMENT_TARGET)) {
         settings.IPHONEOS_DEPLOYMENT_TARGET = DEPLOYMENT_TARGET;
       }
@@ -231,21 +247,33 @@ function raiseDeploymentTargets(project) {
   return project;
 }
 
+/** R1-F6：app.json 声明优先于硬编码；iOS 27 模拟器 Fabric 不渲染，opt-in 时显式告警而非静默覆盖。 */
+function resolveNewArchEnabled(config) {
+  const declared = config && config.newArchEnabled === true;
+  if (declared) {
+    console.warn(
+      'ios-xcode27 plugin: app.json sets newArchEnabled=true, but Fabric renders nothing on the iOS 27.0 simulator runtime; forcing old architecture on iOS. Remove this plugin when RN/Expo support the iOS 27 SDK.',
+    );
+  }
+  return { effective: false, warned: declared };
+}
+
 module.exports = function withIosXcode27(config) {
+  const newArch = resolveNewArchEnabled(config);
   config = withAppDelegate(config, (mod) => {
     mod.modResults.contents = applySceneLifecycle(mod.modResults.contents);
     return mod;
   });
   config = withInfoPlist(config, (mod) => {
     mod.modResults.UIApplicationSceneManifest = SCENE_MANIFEST;
-    mod.modResults.RCTNewArchEnabled = false;
+    mod.modResults.RCTNewArchEnabled = newArch.effective;
     return mod;
   });
   config = withPodfileProperties(config, (mod) => {
     mod.modResults = {
       ...mod.modResults,
       'ios.deploymentTarget': DEPLOYMENT_TARGET,
-      'expo.newArchEnabled': 'false',
+      'expo.newArchEnabled': String(newArch.effective),
     };
     return mod;
   });
@@ -265,3 +293,4 @@ module.exports.SCENE_MANIFEST = SCENE_MANIFEST;
 module.exports.applySceneLifecycle = applySceneLifecycle;
 module.exports.applyPodfileClamp = applyPodfileClamp;
 module.exports.raiseDeploymentTargets = raiseDeploymentTargets;
+module.exports.resolveNewArchEnabled = resolveNewArchEnabled;

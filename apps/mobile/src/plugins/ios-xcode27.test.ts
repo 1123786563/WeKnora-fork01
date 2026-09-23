@@ -11,6 +11,7 @@ const plugin = require('../../plugins/ios-xcode27.js') as {
   applySceneLifecycle(contents: string): string;
   applyPodfileClamp(contents: string): string;
   raiseDeploymentTargets(project: unknown): unknown;
+  resolveNewArchEnabled(config: unknown): { effective: boolean; warned: boolean };
 };
 
 // Expo SDK 55 模板原文（expo/template.tgz → package/ios/HelloWorld/AppDelegate.swift）。
@@ -170,4 +171,52 @@ test('raiseDeploymentTargets lifts every iOS deployment target below the clamp',
   assert.equal(buildSettings('BBBB')!.IPHONEOS_DEPLOYMENT_TARGET, '16.0', 'already at/above the clamp: untouched');
   assert.equal(buildSettings('CCCC')!.IPHONEOS_DEPLOYMENT_TARGET, '18.2', 'higher targets are never lowered');
   assert.equal(buildSettings('DDDD')!.IPHONEOS_DEPLOYMENT_TARGET, undefined);
+});
+
+test('willConnectTo forwards userActivities for cold-launch universal links (R1-F5)', () => {
+  const rewritten = plugin.applySceneLifecycle(TEMPLATE_APP_DELEGATE);
+  const willConnectStart = rewritten.indexOf('func scene(_ scene: UIScene, willConnectTo');
+  const nextFunc = rewritten.indexOf('func scene(_ scene: UIScene, openURLContexts', willConnectStart);
+  const willConnect = rewritten.slice(willConnectStart, nextFunc);
+  assert.match(willConnect, /userActivities/);
+  assert.match(rewritten, /forwardUserActivities\(connectionOptions\.userActivities\)/);
+});
+
+test('the clamp is idempotent by a unique anchor, not by its own substring (R1-F7)', () => {
+  // 构造：模板 post_install + 一段含 'Xcodeproj::Plist.read_from_path' 的无关注入——
+  // 旧实现以自身子串判已注入，会误判跳过（R1-F7 复现）。
+  const unrelated = `${TEMPLATE_PODFILE.replace('end\n', '')}    # unrelated tooling block\n    other_plist = Xcodeproj::Plist.read_from_path('config/Other.plist')\n  end\nend\n`;
+  const once = plugin.applyPodfileClamp(unrelated);
+  assert.ok(once.includes('# weknora_ios_xcode27_clamp'));
+  const twice = plugin.applyPodfileClamp(once);
+  assert.equal(twice.split('# weknora_ios_xcode27_clamp').length - 1, 1, '不重复注入');
+});
+
+test('quoted deployment targets are still raised (R1-F8)', () => {
+  const section: Record<string, { buildSettings?: Record<string, string> } | string> = {
+    BC1: { buildSettings: { IPHONEOS_DEPLOYMENT_TARGET: '"15.1"' } },
+  };
+  const project = { pbxXCBuildConfigurationSection: () => section };
+  const result = plugin.raiseDeploymentTargets(project) as typeof project;
+  const raised = (result.pbxXCBuildConfigurationSection() as typeof section).BC1 as { buildSettings?: Record<string, string> };
+  assert.equal(raised.buildSettings!.IPHONEOS_DEPLOYMENT_TARGET, plugin.DEPLOYMENT_TARGET);
+});
+
+test('the plugin honors and warns about an opt-in newArchEnabled declaration (R1-F6)', () => {
+  // 决策函数单测：opt-in 声明显式告警且仍按 false 处理（iOS 27 模拟器 Fabric 不渲染）。
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (message: unknown) => { warnings.push(String(message)); };
+  try {
+    const optedIn = plugin.resolveNewArchEnabled({ newArchEnabled: true });
+    assert.equal(optedIn.effective, false);
+    assert.equal(optedIn.warned, true);
+    assert.equal(warnings.length, 1, 'opt-in 声明必须 console.warn 说明强制旧架构的原因');
+    const absent = plugin.resolveNewArchEnabled({});
+    assert.equal(absent.effective, false);
+    assert.equal(absent.warned, false);
+    assert.equal(warnings.length, 1, '未声明时不得告警');
+  } finally {
+    console.warn = originalWarn;
+  }
 });
