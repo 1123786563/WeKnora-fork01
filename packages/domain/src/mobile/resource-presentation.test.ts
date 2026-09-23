@@ -58,3 +58,7 @@ test('toConnectionResource projects wire rows without credentials or fabricated 
   const projected = toConnectionResource({ id: 'conn-4', kind: 'space', state: 'active', access_token: 'SECRET', credential_ref: 'SECRET-REF' });
   assert.equal(JSON.stringify(projected).includes('SECRET'), false, 'credential-looking fields must not survive projection');
 });
+
+test('unknown connection kind maps to unknown, not silently personal; blank ids are filtered by the shelf', () => {
+  assert.equal(toConnectionResource({ id: 'c1', kind: 'weird' }).kind, 'unknown');
+});
