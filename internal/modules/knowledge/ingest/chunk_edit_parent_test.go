@@ -1,4 +1,4 @@
-package service
+package ingest
 
 import (
 	"context"
@@ -141,7 +141,7 @@ func TestSyncEditedChunkImagesDisablesAndRestoresImageChildren(t *testing.T) {
 		t.Fatalf("restore image child: %v", err)
 	}
 	if !repo.children[0].IsEnabled || repo.children[0].IndexStatus != "ready" {
-		t.Fatalf("restored image child was not re-enabled: %+v", repo.children[0])
+		t.Fatalf("restored image child was not re-enabled cleanly: %+v", repo.children[0])
 	}
 }
 

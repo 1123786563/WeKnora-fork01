@@ -1,7 +1,4 @@
-// Package service provides business logic implementations for WeKnora application
-// This package contains service layer implementations that coordinate between
-// repositories and handlers, applying business rules and transaction management
-package service
+package ingest
 
 import (
 	"context"
@@ -312,8 +309,8 @@ func (s *chunkService) DeleteChunks(ctx context.Context, ids []string) error {
 	err = s.chunkRepository.DeleteChunks(ctx, tenantID, ids)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
-			"chunk_ids": ids,
-			"tenant_id": tenantID,
+			"chunk_ids":    ids,
+			"tenant_id":    tenantID,
 		})
 		return err
 	}

@@ -124,14 +124,6 @@ legacy_files:
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Wiki page (application/repository)
     passb_task: B-knowledge
-  - path: internal/application/service/chunk.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Chunk (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/chunk_write.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Chunk write (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/extract.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Extract (application/service)
