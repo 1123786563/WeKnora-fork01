@@ -16,7 +16,10 @@ const packageRoot = path.resolve(srcRoot, '..');
  * 只允许出现在 App Shell 的 Adapter 里；一旦有人把平台依赖引入本包，本测试立即失败。
  */
 const FORBIDDEN_DEPENDENCIES = [/^expo($|\/)/, /^expo-/, /^@tarojs\//, /^react-native($|\/)/, /^weixin/, /^wechat/, /^wx-/];
-const FORBIDDEN_IMPORTS = [/^expo($|\/)/, /^expo-/, /^@tarojs\//, /^react-native($|\/)/, /^weixin/, /^wx\//];
+// 修复轮 1（审查发现）：补 /^wechat/ 与 /^wx-/，对齐依赖门与本任务 Produces 契约
+// （import/require 均不得含 wechat*/wx-*；计划 plan-t68.md:148 逐字代码漏此二形态，
+// 由计划层同步修订，测试按契约先行补齐）。
+const FORBIDDEN_IMPORTS = [/^expo($|\/)/, /^expo-/, /^@tarojs\//, /^react-native($|\/)/, /^weixin/, /^wechat/, /^wx-/, /^wx\//];
 
 function tsFiles(dir: string): string[] {
   const out: string[] = [];
