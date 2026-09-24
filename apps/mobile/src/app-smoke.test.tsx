@@ -1057,7 +1057,8 @@ test('the attention inbox route, screen and view consume the task office interfa
     assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Task Office Interface only (T08)`);
   }
   const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
-  assert.match(composition, /interactions:\s*remote/, 'taskOfficeFor must pass the remote as the interactions port; inbox()/decide() fail closed without it (T08)');
+  // T10（#40）AC2 后 interactions 端口经 Offline Gate 包装——仍必须派生自 remote（缺失即 fail closed）。
+  assert.match(composition, /interactions:\s*guardInteractionBackend\(remote/, 'taskOfficeFor must pass the remote (offline-guarded) as the interactions port; inbox()/decide() fail closed without it (T08/T10)');
 });
 
 test('the attention inbox screen renders honest receipt copy and per-kind matrix actions', async () => {
@@ -1294,4 +1295,22 @@ test('composition caches instances by deployment scope key and registration fail
   assert.match(source, /registrationAttempts/, '会话内有界重试的尝试计数存在');
   // B3-F29：openNotificationFromInbox 的 item 参数类型对齐实现（读 deepLink），删除 as 断言。
   assert.doesNotMatch(source, /as InboxItem/, 'as InboxItem 断言必须删除');
+});
+
+test('the composition guards offline-dangerous ports and persists projections through the scoped vault (T10)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, 'composition.ts'), 'utf8');
+  // 离线危险动作门（AC2）：backend(run=start)/interactions(approval=decide)/legacy(run=followUp) 全部经 gate
+  assert.match(source, /guardTaskBackend\(remote/, 'taskOfficeFor must guard the start channel');
+  assert.match(source, /guardInteractionBackend\(remote/, 'taskOfficeFor must guard the decide channel');
+  assert.match(source, /guardLegacyTaskBackend\(/, 'taskOfficeFor must guard the legacy follow-up channel');
+  assert.match(source, /createOfflineGate\(/, 'the gate must be constructed once at the composition root');
+  // 加密投影持久化（AC1）：vault 在场时 store 走 Scoped Vault Adapter
+  assert.match(source, /createVaultTaskProjectionStore\(\{\s*vault:\s*nativeScopedVault/, 'the task office store must be the scoped-vault adapter when the vault exists');
+  assert.match(source, /: createInMemoryTaskProjectionStore\(\)/, 'vault absence must be an explicit in-memory decision');
+  // 既有防线不回归（#35 源级断言，app-smoke.test.tsx:590）
+  assert.match(source, /detail:\s*remote/, 'taskOfficeFor must still pass the remote as the detail port');
 });
