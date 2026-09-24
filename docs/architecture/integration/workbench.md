@@ -137,6 +137,12 @@ asynq/Lite 队列。
     `MOBILE_NOTIFICATION_PROVIDER_URL`、`MOBILE_NOTIFICATION_PROVIDER`（expo/gateway/http，
     未知模式 fail-closed 到 gateway）、`MOBILE_NOTIFICATION_ACCESS_TOKEN`
     （`Config.MobileNotification.{ProviderURL,Provider,AccessToken}`）。
+  - 盲推/禁用/企业自签名（T37 #67）：`MOBILE_NOTIFICATION_PAYLOAD`（blind=无正文盲推送，
+    去除 kind/title 元数据）、`MOBILE_NOTIFICATION_PROVIDER=disabled|none`（显式禁用，
+    durable 暂停不丢行）、`MOBILE_ENTERPRISE_APP_ID`（企业自构建 App 唯一允许清单，
+    `enterprise:<slug>`）、`MOBILE_ENTERPRISE_PUSH_PROVIDER`（apns|fcm）、
+    `MOBILE_APNS_{ENDPOINT,TOPIC,KEY_PATH,KEY_ID,TEAM_ID}`、
+    `MOBILE_FCM_{ENDPOINT,PROJECT_ID,CREDENTIALS_PATH}`（凭据只从密钥文件路径读取）。
 
 ## 8. 横向包内遗留文件（Pass B 拆分，本任务未动）
 
