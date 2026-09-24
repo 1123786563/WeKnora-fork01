@@ -1,10 +1,14 @@
 // Pass B 过渡 shim：删除点 ib2（Integration Brief 登记，plan 21-knowledge-ingest §6.2/§7.5）。
-// K1（b2-k-ingest）定义的 chunk 摄取域符号已随 service/chunk.go + chunk_write.go
-// 搬迁至 internal/modules/knowledge/ingest；本文件为宿主包仍被引用的调用方保留
-// 无逻辑转发声明（spec §13 M3 兼容别名，真源唯一在 ingest 包）。
+// K1（b2-k-ingest）定义的 chunk 摄取域符号已随 service/chunk.go + chunk_write.go +
+// service/extract.go 搬迁至 internal/modules/knowledge/ingest；本文件为宿主包仍被
+// 引用的调用方保留无逻辑转发声明（spec §13 M3 兼容别名，真源唯一在 ingest 包）。
 package service
 
 import (
+	"context"
+	"database/sql"
+
+	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -53,4 +57,100 @@ func NewChunkService(
 		EnqueueSummaryRefreshProvider(spanTracker),
 		BuildKnowledgeIndexContentProvider(),
 	)
+}
+
+// NewChunkExtractService 转发（plan §6.2 R1-3）：保护 container.go:409（dig
+// Provide，dig.Name("chunkExtractor")）。签名保持搬迁前原样（末参
+// spanTracker SpanTracker）——dig 容器在 K1→K4 期间仍按旧装配解析；seam 新参
+// （spanTrace/attemptSupersededFn）经适配器就地提供，previewTextFn/
+// finalizeSubtaskFn/isFinalAttemptFn/resolveProcessConfigFn 以本包函数值直供
+// （K1.3 增量 seam，零复制）。ib2 由集成工程师切换 container 直供后删除。
+func NewChunkExtractService(
+	config *config.Config,
+	modelService interfaces.ModelService,
+	knowledgeBaseRepo interfaces.KnowledgeBaseRepository,
+	knowledgeRepo interfaces.KnowledgeRepository,
+	chunkRepo interfaces.ChunkRepository,
+	graphEngine interfaces.RetrieveGraphRepository,
+	spanTracker SpanTracker,
+) interfaces.TaskHandler {
+	return ingest.NewChunkExtractService(
+		config,
+		modelService,
+		knowledgeBaseRepo,
+		knowledgeRepo,
+		chunkRepo,
+		graphEngine,
+		NewSpanTraceSeamAdapter(spanTracker),
+		AttemptSupersededProvider(spanTracker),
+		previewText,
+		finalizeSubtaskDetached,
+		isFinalAsynqAttempt,
+		ResolveProcessConfig,
+		GraphExtractorSeamFactory(),
+	)
+}
+
+// NewDataTableSummaryService 转发（plan §6.2 R1-4）：保护 container.go:410
+// （dig Provide，dig.Name("dataTableSummary")）。原 10 参签名不变；增量 seam
+// （knowledgeWriteKBFn/resolveProcessConfigFn）在本函数体内以本包函数值/提供器
+// 供给，零复制。ib2 由集成工程师切换 container 直供后删除。
+func NewDataTableSummaryService(
+	modelService interfaces.ModelService,
+	knowledgeBaseService interfaces.KnowledgeBaseService,
+	knowledgeService interfaces.KnowledgeService,
+	fileService interfaces.FileService,
+	chunkService interfaces.ChunkService,
+	tenantService interfaces.TenantService,
+	retrieveEngine interfaces.RetrieveEngineRegistry,
+	ownership retriever.TenantStoreOwnership,
+	sqlDB *sql.DB,
+	storageResolver interfaces.StorageBackendResolver,
+) interfaces.TaskHandler {
+	return ingest.NewDataTableSummaryService(
+		modelService,
+		knowledgeBaseService,
+		knowledgeService,
+		fileService,
+		chunkService,
+		tenantService,
+		retrieveEngine,
+		ownership,
+		sqlDB,
+		storageResolver,
+		KnowledgeWriteKBProvider(),
+		ResolveProcessConfig,
+		DataAnalysisToolSeamFactory(),
+	)
+}
+
+// NewChunkExtractTask 转发（plan §6.2 R1-6）：保护 knowledge_post_process.go:418
+// （K4 属主，禁改）；签名与搬迁前原样一致。
+func NewChunkExtractTask(
+	ctx context.Context,
+	client interfaces.TaskEnqueuer,
+	tenantID uint64,
+	chunkID string,
+	modelID string,
+	knowledgeID string,
+	attempt int,
+	chunkIndex int,
+) (bool, error) {
+	return ingest.NewChunkExtractTask(ctx, client, tenantID, chunkID, modelID, knowledgeID, attempt, chunkIndex)
+}
+
+// enqueueDataTableSummaryIfNeeded 转发（plan §6.2 R1-9）：保护
+// knowledge_create.go:295/:746、knowledge_process.go:2629/:2682（K4 属主，禁改）。
+// knowledge_util.go 三 helper（K4 属主）以本包函数值构造 enqueuer seam 注入，
+// 零复制；K4 搬迁 knowledge_util.go 导出后由其直接传导出形式。
+func enqueueDataTableSummaryIfNeeded(
+	ctx context.Context,
+	client interfaces.TaskEnqueuer,
+	tenantID uint64,
+	knowledgeID string,
+	fileName, fileType, summaryModelID, embeddingModelID string,
+) {
+	ingest.EnqueueDataTableSummaryIfNeeded(
+		ingest.NewDataTableSummaryEnqueuer(normalizeFileExtension, isDataTableFileType, getFileType),
+		ctx, client, tenantID, knowledgeID, fileName, fileType, summaryModelID, embeddingModelID)
 }

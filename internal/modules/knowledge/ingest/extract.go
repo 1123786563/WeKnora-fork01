@@ -11,10 +11,8 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/logger"
-	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
-	chatpipeline "github.com/Tencent/WeKnora/internal/modules/conversation/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
@@ -157,27 +155,6 @@ func NewDataTableSummaryTask(
 	return nil
 }
 
-// enqueueDataTableSummaryIfNeeded enqueues table summary work for spreadsheet
-// imports. fileName is a fallback for older records whose FileType is empty.
-func enqueueDataTableSummaryIfNeeded(
-	ctx context.Context,
-	client interfaces.TaskEnqueuer,
-	tenantID uint64,
-	knowledgeID string,
-	fileName, fileType, summaryModelID, embeddingModelID string,
-) {
-	ft := normalizeFileExtension(fileType)
-	if ft == "" && fileName != "" {
-		ft = getFileType(fileName)
-	}
-	if !isDataTableFileType(ft) {
-		return
-	}
-	if err := NewDataTableSummaryTask(ctx, client, tenantID, knowledgeID, summaryModelID, embeddingModelID); err != nil {
-		logger.Warnf(ctx, "Failed to enqueue data table summary task for knowledge %s: %v", knowledgeID, err)
-	}
-}
-
 // ChunkExtractService is a service for extracting chunks
 type ChunkExtractService struct {
 	template          *types.PromptTemplateStructured
@@ -186,13 +163,37 @@ type ChunkExtractService struct {
 	knowledgeRepo     interfaces.KnowledgeRepository
 	chunkRepo         interfaces.ChunkRepository
 	graphEngine       interfaces.RetrieveGraphRepository
-	// spanTracker records this graph-extract task's subspan under the
+	// spanTrace records this graph-extract task's subspan under the
 	// parent attempt's postprocess stage so the trace viewer shows real
 	// per-chunk graph extraction time rather than the upstream's enqueue.
-	spanTracker SpanTracker
+	// Pass B K1.3 R2 seam（plan 21 §6.3）：原 spanTracker SpanTracker（K4 属主
+	// knowledge_span_tracker.go）改经 SpanTraceSeam 投影，构造注入，禁包级 var。
+	spanTrace SpanTraceSeam
+	// attemptSupersededFn 承载宿主 attemptSuperseded（knowledge.go:202，K4 属主；
+	// 原 4 参吸收 tracker 为闭包）。plan §6.3。
+	attemptSupersededFn func(context.Context, string, int) bool
+	// previewTextFn 承载宿主 previewText（wiki_ingest.go:1383，K3 属主）。
+	// plan §6.3 组 A；生产接线 K5 接 K3 导出 PreviewText。
+	previewTextFn func(s string, maxRunes int) string
+	// 以下三项为 K1.3 增量 seam（plan §6.3 未枚举，按既有 R2 机制具体化，
+	// 节点报告登记）：finalizeSubtaskFn 承载宿主 finalizeSubtaskDetached
+	// （knowledge.go:235，K4）；isFinalAttemptFn 承载宿主 isFinalAsynqAttempt
+	// （image_multimodal.go:413，K1 自有，K1.4 随文件入包后同包收敛）；
+	// resolveProcessConfigFn 承载宿主 ResolveProcessConfig
+	// （knowledge_process_config.go:40，K4）。
+	finalizeSubtaskFn      func(ctx context.Context, repo interfaces.KnowledgeRepository, knowledgeID, source string, retErr error, superseded, final bool)
+	isFinalAttemptFn       func(ctx context.Context) bool
+	resolveProcessConfigFn func(kb *types.KnowledgeBase, overrides *types.KnowledgeProcessOverrides) types.EffectiveProcessConfig
+	// newGraphExtractor 承载 conversation/chat_pipeline.NewExtractor（K1.3
+	// 增量 seam：chat_pipeline 传递依赖 repository 成环，见 seams.go 注释）。
+	newGraphExtractor GraphExtractorFactory
 }
 
 // NewChunkExtractService creates a new chunk extract service
+// Pass B K1.3：末参 spanTracker SpanTracker 改为 spanTrace SpanTraceSeam +
+// attemptSupersededFn（plan §6.1）；previewTextFn/finalizeSubtaskFn/
+// isFinalAttemptFn/resolveProcessConfigFn/newGraphExtractor 为增量 seam
+// 闭包（R2 构造注入）。
 func NewChunkExtractService(
 	config *config.Config,
 	modelService interfaces.ModelService,
@@ -200,24 +201,38 @@ func NewChunkExtractService(
 	knowledgeRepo interfaces.KnowledgeRepository,
 	chunkRepo interfaces.ChunkRepository,
 	graphEngine interfaces.RetrieveGraphRepository,
-	spanTracker SpanTracker,
+	spanTrace SpanTraceSeam,
+	attemptSupersededFn func(context.Context, string, int) bool,
+	previewTextFn func(s string, maxRunes int) string,
+	finalizeSubtaskFn func(ctx context.Context, repo interfaces.KnowledgeRepository, knowledgeID, source string, retErr error, superseded, final bool),
+	isFinalAttemptFn func(ctx context.Context) bool,
+	resolveProcessConfigFn func(kb *types.KnowledgeBase, overrides *types.KnowledgeProcessOverrides) types.EffectiveProcessConfig,
+	newGraphExtractor GraphExtractorFactory,
 ) interfaces.TaskHandler {
 	return &ChunkExtractService{
-		template:          config.ExtractManager.ExtractGraph,
-		modelService:      modelService,
-		knowledgeBaseRepo: knowledgeBaseRepo,
-		knowledgeRepo:     knowledgeRepo,
-		chunkRepo:         chunkRepo,
-		graphEngine:       graphEngine,
-		spanTracker:       spanTracker,
+		template:               config.ExtractManager.ExtractGraph,
+		modelService:           modelService,
+		knowledgeBaseRepo:      knowledgeBaseRepo,
+		knowledgeRepo:          knowledgeRepo,
+		chunkRepo:              chunkRepo,
+		graphEngine:            graphEngine,
+		spanTrace:              spanTrace,
+		attemptSupersededFn:    attemptSupersededFn,
+		previewTextFn:          previewTextFn,
+		finalizeSubtaskFn:      finalizeSubtaskFn,
+		isFinalAttemptFn:       isFinalAttemptFn,
+		resolveProcessConfigFn: resolveProcessConfigFn,
+		newGraphExtractor:      newGraphExtractor,
 	}
 }
 
-func (s *ChunkExtractService) tracker() SpanTracker {
-	if s.spanTracker == nil {
-		return noopSpanTracker{}
+// trace 返回 seam 句柄；nil 回退 noopSpanTraceSeam，零值语义与原
+// tracker() 的 noopSpanTracker{} 一致（plan §6.3）。
+func (s *ChunkExtractService) trace() SpanTraceSeam {
+	if s.spanTrace == nil {
+		return noopSpanTraceSeam{}
 	}
-	return s.spanTracker
+	return s.spanTrace
 }
 
 // Handle handles the chunk extraction task
@@ -235,7 +250,7 @@ func (s *ChunkExtractService) Handle(ctx context.Context, t *asynq.Task) error {
 	// skip before opening the span or registering the FinalizeSubtask defer.
 	// The chunk this task references was deleted by the new attempt's cleanup,
 	// and decrementing here would drain the new attempt's counter.
-	if attemptSuperseded(ctx, s.tracker(), p.KnowledgeID, p.Attempt) {
+	if s.attemptSupersededFn(ctx, p.KnowledgeID, p.Attempt) {
 		logger.Infof(ctx, "graph extract: attempt %d superseded for %s, skipping stale enrichment",
 			p.Attempt, p.KnowledgeID)
 		return nil
@@ -245,11 +260,11 @@ func (s *ChunkExtractService) Handle(ctx context.Context, t *asynq.Task) error {
 	// shows real per-chunk graph extraction time. Skipped silently when
 	// upstream didn't pass the parent attempt (legacy in-flight tasks)
 	// or when the postprocess stage span isn't found.
-	var gSpan *Span
+	var gSpan any
 	if p.KnowledgeID != "" && p.Attempt > 0 {
-		parent := s.tracker().LookupStage(ctx, p.KnowledgeID, p.Attempt, types.StagePostProcess)
+		parent := s.trace().LookupStage(ctx, p.KnowledgeID, p.Attempt, types.StagePostProcess)
 		if parent != nil {
-			gSpan = s.tracker().BeginSubSpan(ctx, parent,
+			gSpan = s.trace().BeginSubSpan(ctx, parent,
 				fmt.Sprintf("postprocess.graph.chunk[%d]", p.ChunkIndex),
 				types.SpanKindSubSpan,
 				types.JSONMap{
@@ -266,16 +281,16 @@ func (s *ChunkExtractService) Handle(ctx context.Context, t *asynq.Task) error {
 		// completed (or terminally-failed) per-chunk extract releases its
 		// slot in pending_subtasks_count. KnowledgeID is the new (post-#? )
 		// payload field; legacy in-flight tasks without it are skipped.
-		finalizeSubtaskDetached(ctx, s.knowledgeRepo, p.KnowledgeID,
+		s.finalizeSubtaskFn(ctx, s.knowledgeRepo, p.KnowledgeID,
 			fmt.Sprintf("graph_chunk[%d]", p.ChunkIndex),
-			handleErr, false, isFinalAsynqAttempt(ctx))
+			handleErr, false, s.isFinalAttemptFn(ctx))
 		if gSpan == nil {
 			return
 		}
 		if handleErr != nil {
-			s.tracker().FailSpan(ctx, gSpan, "GRAPH_EXTRACT_FAILED", handleErr.Error(), handleErr)
+			s.trace().FailSpan(ctx, gSpan, "GRAPH_EXTRACT_FAILED", handleErr.Error(), handleErr)
 		} else {
-			s.tracker().EndSpan(ctx, gSpan, graphOut)
+			s.trace().EndSpan(ctx, gSpan, graphOut)
 		}
 	}()
 
@@ -306,7 +321,7 @@ func (s *ChunkExtractService) Handle(ctx context.Context, t *asynq.Task) error {
 	// Preview is truncated to keep span rows reasonable.
 	if gSpan != nil {
 		graphOut["chunk_chars"] = len([]rune(chunk.Content))
-		graphOut["chunk_preview"] = previewText(chunk.Content, 200)
+		graphOut["chunk_preview"] = s.previewTextFn(chunk.Content, 200)
 	}
 	kb, err := s.knowledgeBaseRepo.GetKnowledgeBaseByID(ctx, chunk.KnowledgeBaseID)
 	if err != nil {
@@ -325,7 +340,7 @@ func (s *ChunkExtractService) Handle(ctx context.Context, t *asynq.Task) error {
 			processOverrides, _ = k.ProcessOverrides()
 		}
 	}
-	extractCfg := ResolveProcessConfig(kb, processOverrides).ExtractConfig
+	extractCfg := s.resolveProcessConfigFn(kb, processOverrides).ExtractConfig
 	if !extractCfg.Enabled {
 		logger.Warnf(ctx, "extract config not enabled")
 		graphOut["skipped"] = "extract_disabled"
@@ -351,7 +366,7 @@ func (s *ChunkExtractService) Handle(ctx context.Context, t *asynq.Task) error {
 			},
 		},
 	}
-	extractor := chatpipeline.NewExtractor(chatModel, template)
+	extractor := s.newGraphExtractor(chatModel, template)
 	graph, err := extractor.Extract(ctx, chunk.Content)
 	if err != nil {
 		handleErr = err
@@ -428,9 +443,22 @@ type DataTableSummaryService struct {
 	ownership            retriever.TenantStoreOwnership
 	sqlDB                *sql.DB
 	storageResolver      interfaces.StorageBackendResolver
+	// Pass B K1.3 增量 seam（plan §6.3 未枚举，按既有 R2 机制具体化，节点报告
+	// 登记）：knowledgeWriteKBFn 承载宿主 knowledgeWriteKB（knowledge_write.go:42，
+	// K4 属主；lookup 参数结构等价 KBByIDLookup）；resolveProcessConfigFn 承载宿主
+	// ResolveProcessConfig（knowledge_process_config.go:40，K4 属主）。
+	knowledgeWriteKBFn     func(ctx context.Context, lookup KBByIDLookup, knowledge *types.Knowledge) (*types.KnowledgeBase, error)
+	resolveProcessConfigFn func(kb *types.KnowledgeBase, overrides *types.KnowledgeProcessOverrides) types.EffectiveProcessConfig
+	// newDataAnalysisTool 承载 agentruntime/agent/tools 的 DuckDB 分析工具工厂
+	// （K1.3 增量 seam：直连 tools 构成 repository→ingest→tools→repository
+	// import 环，见 seams.go DataAnalysisToolSeam 注释）。
+	newDataAnalysisTool DataAnalysisToolFactory
 }
 
 // NewDataTableSummaryService creates a new DataTableSummaryService
+// Pass B K1.3：原 10 参签名追加 knowledgeWriteKBFn/resolveProcessConfigFn/
+// newDataAnalysisTool 三项增量 seam（R2 构造注入）；宿主旧装配经 R1-4 shim
+// 以本包函数值/提供器供给。
 func NewDataTableSummaryService(
 	modelService interfaces.ModelService,
 	knowledgeBaseService interfaces.KnowledgeBaseService,
@@ -442,18 +470,24 @@ func NewDataTableSummaryService(
 	ownership retriever.TenantStoreOwnership,
 	sqlDB *sql.DB,
 	storageResolver interfaces.StorageBackendResolver,
+	knowledgeWriteKBFn func(ctx context.Context, lookup KBByIDLookup, knowledge *types.Knowledge) (*types.KnowledgeBase, error),
+	resolveProcessConfigFn func(kb *types.KnowledgeBase, overrides *types.KnowledgeProcessOverrides) types.EffectiveProcessConfig,
+	newDataAnalysisTool DataAnalysisToolFactory,
 ) interfaces.TaskHandler {
 	return &DataTableSummaryService{
-		modelService:         modelService,
-		knowledgeBaseService: knowledgeBaseService,
-		knowledgeService:     knowledgeService,
-		fileService:          fileService,
-		chunkService:         chunkService,
-		tenantService:        tenantService,
-		retrieveEngine:       retrieveEngine,
-		ownership:            ownership,
-		sqlDB:                sqlDB,
-		storageResolver:      storageResolver,
+		modelService:           modelService,
+		knowledgeBaseService:   knowledgeBaseService,
+		knowledgeService:       knowledgeService,
+		fileService:            fileService,
+		chunkService:           chunkService,
+		tenantService:          tenantService,
+		retrieveEngine:         retrieveEngine,
+		ownership:              ownership,
+		sqlDB:                  sqlDB,
+		storageResolver:        storageResolver,
+		knowledgeWriteKBFn:     knowledgeWriteKBFn,
+		resolveProcessConfigFn: resolveProcessConfigFn,
+		newDataAnalysisTool:    newDataAnalysisTool,
 	}
 }
 
@@ -492,8 +526,8 @@ func (s *DataTableSummaryService) Handle(ctx context.Context, t *asynq.Task) err
 	}
 
 	// 4. 索引到向量数据库
-	if err := s.indexToVectorDB(ctx, chunks, resources.retrieveEngine, resources.embeddingModel); err != nil {
-		s.cleanupOnFailure(ctx, resources, chunks, err)
+	if err := s.indexToVectorDB(ctx, chunks, resources.RetrieveEngine, resources.EmbeddingModel); err != nil {
+		s.CleanupOnFailure(ctx, resources, chunks, err)
 		return err
 	}
 
@@ -501,19 +535,23 @@ func (s *DataTableSummaryService) Handle(ctx context.Context, t *asynq.Task) err
 	return nil
 }
 
-// extractionResources 封装提取过程所需的所有资源
-type extractionResources struct {
-	knowledge      *types.Knowledge
+// ExtractionResources 封装提取过程所需的所有资源。
+// Pass B K1.3 R1 窄端口（增量，超出 §6.2 字面清单）：cleanup 失败清理路径的
+// 三字段（Knowledge/RetrieveEngine/EmbeddingModel）导出，供宿主孤儿测试夹具
+// （knowledge_transfer_test.go，Ruling 2026-09-24-TEST-SUPPORT-SHIM 垫片）构造
+// 投影调用真实现；knowledgeBase/tenant/chatModel 保持包内私有。
+type ExtractionResources struct {
+	Knowledge      *types.Knowledge
 	knowledgeBase  *types.KnowledgeBase
 	tenant         *types.Tenant
 	chatModel      chat.Chat
-	embeddingModel embedding.Embedder
-	retrieveEngine *retriever.CompositeRetrieveEngine
+	EmbeddingModel embedding.Embedder
+	RetrieveEngine *retriever.CompositeRetrieveEngine
 }
 
 // prepareResources 准备提取所需的所有资源
 // 思路：集中加载所有依赖，统一错误处理，避免分散的资源获取逻辑
-func (s *DataTableSummaryService) prepareResources(ctx context.Context, payload DataTableSummaryPayload) (*extractionResources, error) {
+func (s *DataTableSummaryService) prepareResources(ctx context.Context, payload DataTableSummaryPayload) (*ExtractionResources, error) {
 	// 获取并验证知识文件
 	knowledge, err := s.knowledgeService.GetRepository().GetKnowledgeByID(ctx, payload.TenantID, payload.KnowledgeID)
 	if err != nil {
@@ -524,7 +562,7 @@ func (s *DataTableSummaryService) prepareResources(ctx context.Context, payload 
 	if knowledge == nil || knowledge.ID != payload.KnowledgeID || knowledge.TenantID != payload.TenantID {
 		return nil, fmt.Errorf("invalid table summary knowledge scope")
 	}
-	kb, err := knowledgeWriteKB(ctx, s.knowledgeBaseService, knowledge)
+	kb, err := s.knowledgeWriteKBFn(ctx, s.knowledgeBaseService, knowledge)
 	if err != nil {
 		return nil, err
 	}
@@ -574,33 +612,33 @@ func (s *DataTableSummaryService) prepareResources(ctx context.Context, payload 
 		return nil, err
 	}
 
-	return &extractionResources{
-		knowledge:      knowledge,
+	return &ExtractionResources{
+		Knowledge:      knowledge,
 		knowledgeBase:  kb,
 		tenant:         tenantInfo,
 		chatModel:      chatModel,
-		embeddingModel: embeddingModel,
-		retrieveEngine: retrieveEngine,
+		EmbeddingModel: embeddingModel,
+		RetrieveEngine: retrieveEngine,
 	}, nil
 }
 
 // resolveFileServiceForKnowledge resolves a provider-specific file service for the current knowledge file.
 // It falls back to the global service when tenant storage config is unavailable.
-func (s *DataTableSummaryService) resolveFileServiceForKnowledge(ctx context.Context, resources *extractionResources) interfaces.FileService {
-	if resources == nil || resources.knowledge == nil {
+func (s *DataTableSummaryService) resolveFileServiceForKnowledge(ctx context.Context, resources *ExtractionResources) interfaces.FileService {
+	if resources == nil || resources.Knowledge == nil {
 		return s.fileService
 	}
 	if resources.tenant == nil {
 		return s.fileService
 	}
 
-	provider := types.InferStorageFromFilePath(resources.knowledge.FilePath)
+	provider := types.InferStorageFromFilePath(resources.Knowledge.FilePath)
 	if provider == "" && resources.tenant.StorageEngineConfig != nil {
 		provider = strings.ToLower(strings.TrimSpace(resources.tenant.StorageEngineConfig.DefaultProvider))
 	}
 
 	baseDir := strings.TrimSpace(os.Getenv("LOCAL_STORAGE_BASE_DIR"))
-	backendID, _, _ := types.ParseStorageBackendPath(resources.knowledge.FilePath)
+	backendID, _, _ := types.ParseStorageBackendPath(resources.Knowledge.FilePath)
 	if backendID == "" && resources.knowledgeBase != nil && resources.knowledgeBase.StorageBackendID != nil {
 		backendID = strings.TrimSpace(*resources.knowledgeBase.StorageBackendID)
 	}
@@ -617,56 +655,48 @@ func (s *DataTableSummaryService) resolveFileServiceForKnowledge(ctx context.Con
 		logger.Warnf(ctx, "[TableSummary] Failed to resolve file service for provider=%s, fallback to default: %v", provider, err)
 		return s.fileService
 	}
-	logger.Infof(ctx, "[TableSummary] Resolved file service for knowledge=%s provider=%s", resources.knowledge.ID, resolvedProvider)
+	logger.Infof(ctx, "[TableSummary] Resolved file service for knowledge=%s provider=%s", resources.Knowledge.ID, resolvedProvider)
 	return resolvedSvc
 }
 
 // processTableData 处理表格数据：加载 -> 分析 -> 生成摘要 -> 创建chunks
 // 思路：将数据处理的核心流程集中在一起，保持逻辑连贯性
-func (s *DataTableSummaryService) processTableData(ctx context.Context, resources *extractionResources) ([]*types.Chunk, error) {
+func (s *DataTableSummaryService) processTableData(ctx context.Context, resources *ExtractionResources) ([]*types.Chunk, error) {
 	// 创建DuckDB会话并加载数据
-	sessionID := fmt.Sprintf("table_summary_%s", resources.knowledge.ID)
+	sessionID := fmt.Sprintf("table_summary_%s", resources.Knowledge.ID)
 	fileSvc := s.resolveFileServiceForKnowledge(ctx, resources)
-	duckdbTool := tools.NewDataAnalysisTool(s.knowledgeBaseService, s.knowledgeService, s.tenantService, fileSvc, s.sqlDB, sessionID, s.storageResolver)
+	duckdbTool := s.newDataAnalysisTool(s.knowledgeBaseService, s.knowledgeService, s.tenantService, fileSvc, s.sqlDB, sessionID, s.storageResolver)
 	defer duckdbTool.Cleanup(ctx)
 
 	// 使用knowledge.ID作为表名，根据文件类型自动加载数据
-	tableSchema, err := duckdbTool.LoadFromKnowledge(ctx, resources.knowledge)
+	tableSchema, err := duckdbTool.LoadFromKnowledge(ctx, resources.Knowledge)
 	if err != nil {
 		logger.Errorf(ctx, "failed to load data into DuckDB: %v", err)
 		return nil, err
 	}
 
-	logger.Infof(ctx, "Loaded table %s with %d columns and %d rows", tableSchema.TableName, len(tableSchema.Columns), tableSchema.RowCount)
+	logger.Infof(ctx, "Loaded table %s with %d columns and %d rows", tableSchema.TableName, tableSchema.ColumnCount, tableSchema.RowCount)
 
-	// 获取样本数据用于生成摘要
-	input := tools.DataAnalysisInput{
-		KnowledgeID: resources.knowledge.ID,
-		Sql:         fmt.Sprintf("SELECT * FROM \"%s\" LIMIT 10", tableSchema.TableName),
-	}
-	jsonData, err := json.Marshal(input)
-	if err != nil {
-		logger.Errorf(ctx, "failed to marshal input: %v", err)
-		return nil, err
-	}
-	sampleResult, err := duckdbTool.Execute(ctx, jsonData)
+	// 获取样本数据用于生成摘要（DataAnalysisInput 的 JSON 序列化由 seam 适配侧承载）
+	sampleResult, err := duckdbTool.Execute(ctx, resources.Knowledge.ID,
+		fmt.Sprintf("SELECT * FROM \"%s\" LIMIT 10", tableSchema.TableName))
 	if err != nil {
 		logger.Errorf(ctx, "failed to get sample data: %v", err)
 		return nil, err
 	}
 
 	// 构建共用的schema和样本数据描述
-	schemaDesc := tableSchema.Description()
+	schemaDesc := tableSchema.Description
 	sampleDesc := s.buildSampleDataDescription(ctx, sampleResult, 10)
 
 	// 使用AI生成表格摘要和列描述
 	customInstructions := ""
 	if resources.knowledgeBase != nil {
 		var processOverrides *types.KnowledgeProcessOverrides
-		if resources.knowledge != nil {
-			processOverrides, _ = resources.knowledge.ProcessOverrides()
+		if resources.Knowledge != nil {
+			processOverrides, _ = resources.Knowledge.ProcessOverrides()
 		}
-		customInstructions = ResolveProcessConfig(resources.knowledgeBase, processOverrides).ChunkingConfig.TableMetadataInstructions
+		customInstructions = s.resolveProcessConfigFn(resources.knowledgeBase, processOverrides).ChunkingConfig.TableMetadataInstructions
 	}
 	tableDescription, err := s.generateTableDescription(ctx, resources.chatModel, tableSchema.TableName,
 		schemaDesc, sampleDesc, customInstructions)
@@ -674,7 +704,7 @@ func (s *DataTableSummaryService) processTableData(ctx context.Context, resource
 		logger.Errorf(ctx, "failed to generate table description: %v", err)
 		return nil, err
 	}
-	logger.Debugf(ctx, "table describe of knowledge %s: %s", resources.knowledge.ID, tableDescription)
+	logger.Debugf(ctx, "table describe of knowledge %s: %s", resources.Knowledge.ID, tableDescription)
 
 	columnDescription, err := s.generateColumnDescriptions(ctx, resources.chatModel, tableSchema.TableName,
 		schemaDesc, sampleDesc, customInstructions)
@@ -682,7 +712,7 @@ func (s *DataTableSummaryService) processTableData(ctx context.Context, resource
 		logger.Errorf(ctx, "failed to generate column descriptions: %v", err)
 		return nil, err
 	}
-	logger.Debugf(ctx, "column describe of knowledge %s: %s", resources.knowledge.ID, columnDescription)
+	logger.Debugf(ctx, "column describe of knowledge %s: %s", resources.Knowledge.ID, columnDescription)
 
 	// 构建chunks：一个表格摘要chunk + 多个列描述chunks
 	chunks := s.buildChunks(resources, tableDescription, columnDescription)
@@ -691,15 +721,15 @@ func (s *DataTableSummaryService) processTableData(ctx context.Context, resource
 
 // buildChunks 构建chunk对象
 // tableDescription和columnDescriptions分别生成一个chunk
-func (s *DataTableSummaryService) buildChunks(resources *extractionResources, tableDescription string, columnDescription string) []*types.Chunk {
+func (s *DataTableSummaryService) buildChunks(resources *ExtractionResources, tableDescription string, columnDescription string) []*types.Chunk {
 	chunks := make([]*types.Chunk, 0, 2)
 
 	// 表格摘要chunk
 	summaryChunk := &types.Chunk{
 		ID:              uuid.New().String(),
-		TenantID:        resources.knowledge.TenantID,
-		KnowledgeID:     resources.knowledge.ID,
-		KnowledgeBaseID: resources.knowledge.KnowledgeBaseID,
+		TenantID:        resources.Knowledge.TenantID,
+		KnowledgeID:     resources.Knowledge.ID,
+		KnowledgeBaseID: resources.Knowledge.KnowledgeBaseID,
 		Content:         tableDescription,
 		ChunkIndex:      0,
 		IsEnabled:       true,
@@ -711,9 +741,9 @@ func (s *DataTableSummaryService) buildChunks(resources *extractionResources, ta
 	// 列描述chunk（所有列的描述合并为一个chunk）
 	columnChunk := &types.Chunk{
 		ID:              uuid.New().String(),
-		TenantID:        resources.knowledge.TenantID,
-		KnowledgeID:     resources.knowledge.ID,
-		KnowledgeBaseID: resources.knowledge.KnowledgeBaseID,
+		TenantID:        resources.Knowledge.TenantID,
+		KnowledgeID:     resources.Knowledge.ID,
+		KnowledgeBaseID: resources.Knowledge.KnowledgeBaseID,
 		Content:         columnDescription,
 		ChunkIndex:      1,
 		IsEnabled:       true,
@@ -776,13 +806,16 @@ func (s *DataTableSummaryService) indexToVectorDB(
 	return nil
 }
 
-// cleanupOnFailure 索引失败时的清理工作
+// CleanupOnFailure 索引失败时的清理工作。
+// Pass B K1.3 R1 窄端口（增量，超出 §6.2 字面清单）：原 cleanupOnFailure 导出，
+// 供宿主孤儿测试夹具经垫片委托到本真实现（同 K1.2 SameChunkDocument 先例），
+// 唯一定义仍在 ingest。
 // 思路：删除已创建的chunk和对应的向量索引，避免脏数据残留
-func (s *DataTableSummaryService) cleanupOnFailure(ctx context.Context, resources *extractionResources, chunks []*types.Chunk, indexErr error) {
+func (s *DataTableSummaryService) CleanupOnFailure(ctx context.Context, resources *ExtractionResources, chunks []*types.Chunk, indexErr error) {
 	logger.Warnf(ctx, "Starting cleanup due to failure: %v", indexErr)
 
 	// 1. 更新知识状态为失败
-	before, after := *resources.knowledge, *resources.knowledge
+	before, after := *resources.Knowledge, *resources.Knowledge
 	after.ParseStatus = types.ParseStatusFailed
 	after.ErrorMessage = indexErr.Error()
 	if err := s.knowledgeService.GetRepository().UpdateKnowledgeForTransfer(ctx, &before, &after); err != nil {
@@ -798,7 +831,7 @@ func (s *DataTableSummaryService) cleanupOnFailure(ctx context.Context, resource
 
 	// 删除已创建的chunks
 	if len(chunkIDs) > 0 {
-		if err := s.chunkService.GetRepository().DeleteChunks(ctx, resources.knowledge.TenantID, chunkIDs); err != nil {
+		if err := s.chunkService.GetRepository().DeleteChunks(ctx, resources.Knowledge.TenantID, chunkIDs); err != nil {
 			logger.Errorf(ctx, "Failed to delete chunks: %v", err)
 		} else {
 			logger.Infof(ctx, "Deleted %d chunks", len(chunkIDs))
@@ -807,8 +840,8 @@ func (s *DataTableSummaryService) cleanupOnFailure(ctx context.Context, resource
 
 	// 删除对应的向量索引
 	if len(chunkIDs) > 0 {
-		if err := resources.retrieveEngine.DeleteBySourceIDList(
-			ctx, chunkIDs, resources.embeddingModel.GetDimensions(), types.KnowledgeBaseTypeDocument,
+		if err := resources.RetrieveEngine.DeleteBySourceIDList(
+			ctx, chunkIDs, resources.EmbeddingModel.GetDimensions(), types.KnowledgeBaseTypeDocument,
 		); err != nil {
 			logger.Errorf(ctx, "Failed to delete vector index: %v", err)
 		} else {
