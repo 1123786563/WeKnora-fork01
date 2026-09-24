@@ -78,6 +78,7 @@ func NewFcmServiceAccountTokenSource(credentialsPath, tokenURL string, client *h
 	if err != nil {
 		return nil, fmt.Errorf("fcm service account private key: %w", err)
 	}
+	// scheme-only by design: host validation (loopback/private/reserved rejection) is the config-assembly layer's responsibility (Tasks 3/4, controller ruling) — keeps provider unit-testable with httptest.
 	tokenURL = strings.TrimSpace(tokenURL)
 	if tokenURL == "" {
 		tokenURL = credentials.TokenURI

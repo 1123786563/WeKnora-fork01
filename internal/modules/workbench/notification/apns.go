@@ -126,6 +126,7 @@ func (p *ApnsProvider) Configured() bool {
 	return true
 }
 
+// scheme-only by design: host validation (loopback/private/reserved rejection) is the config-assembly layer's responsibility (Tasks 3/4, controller ruling) — keeps provider unit-testable with httptest.
 func validPushEndpoint(endpoint string) bool {
 	u, err := url.Parse(strings.TrimSpace(endpoint))
 	return err == nil && u.Scheme != "" && u.Host != "" && (u.Scheme == "http" || u.Scheme == "https")
