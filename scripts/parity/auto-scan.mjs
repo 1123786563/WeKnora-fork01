@@ -237,8 +237,10 @@ const ALL_PAGES = [
   { id: 'px-kb-wiki-tagfilter-suffix', kind: 'kb', name: 'Wiki Parity Fixture',
     actions: [{ clickCss: ['.doc-tag-filter-trigger__suffix'] }] },
   // KB 文档工具栏筛选 select（.t-select-input(Vue) ↔ .t-select(React) 命名异构；
-  // 双端同名 .doc-type-select，取第 1 个 = 文件类型筛选，代表整排 select 弹层）
-  { id: 'px-kb-faq-doctype-select', kind: 'kb', name: 'Parity FAQ Fixture',
+  // 双端同名 .doc-type-select，取第 1 个 = 文件类型筛选，代表整排 select 弹层）。
+  // B2 批 2 修正：FAQ KB 的 FAQ 视图工具栏没有该 select（matrix kb-faq 行无此
+  // 触发器，基线假零）——代表页改文档库 kb-demo；kb-wiki 页同款由下项覆盖。
+  { id: 'px-kb-faq-doctype-select', kind: 'kb', name: 'Parity KB Demo',
     actions: [{ clickCss: ['.doc-type-select >> nth=0'] }] },
   { id: 'px-kb-wiki-doctype-select', kind: 'kb', name: 'Wiki Parity Fixture',
     actions: [{ clickCss: ['.doc-type-select >> nth=0'] }] },
