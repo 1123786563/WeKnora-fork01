@@ -7,6 +7,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -70,4 +71,115 @@ func (s *TaskComplianceStore) UpsertTaskPolicy(ctx context.Context, policy types
 		return types.TenantTaskPolicy{}, err
 	}
 	return policy, nil
+}
+
+// OpenComplianceAccess inserts one administrator access window.
+func (s *TaskComplianceStore) OpenComplianceAccess(ctx context.Context, access types.TaskComplianceAccess) (types.TaskComplianceAccess, error) {
+	if s == nil || s.db == nil {
+		return types.TaskComplianceAccess{}, errors.New("task compliance store is not assembled")
+	}
+	if access.CreatedAt.IsZero() {
+		access.CreatedAt = time.Now().UTC()
+	}
+	if err := s.db.WithContext(ctx).Create(&access).Error; err != nil {
+		return types.TaskComplianceAccess{}, err
+	}
+	return access, nil
+}
+
+// ActiveComplianceAccess returns the administrator's newest unexpired window
+// on the task at `now`, or (nil, nil) when none covers the instant. The
+// real-time filter is the whole enforcement — no grace, no cache.
+func (s *TaskComplianceStore) ActiveComplianceAccess(ctx context.Context, tenantID uint64, taskID, adminID string, now time.Time) (*types.TaskComplianceAccess, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("task compliance store is not assembled")
+	}
+	var window types.TaskComplianceAccess
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND task_id = ? AND admin_id = ? AND expires_at > ?", tenantID, taskID, adminID, now).
+		Order("id DESC").Limit(1).Take(&window).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &window, nil
+}
+
+// TaskMetadataFacts projects ONE task's metadata (title/owner/state/run
+// counts). It includes soft-deleted tasks — the administrator must see that
+// a task was deleted — and carries no message content. A miss (unknown or
+// cross-tenant task) is one uniform ErrTaskComplianceNotFound.
+func (s *TaskComplianceStore) TaskMetadataFacts(ctx context.Context, tenantID uint64, taskID string) (*types.TaskMetadataFacts, error) {
+	if s == nil || s.db == nil || tenantID == 0 || strings.TrimSpace(taskID) == "" {
+		return nil, errors.New("task compliance store is not assembled")
+	}
+	taskID = strings.TrimSpace(taskID)
+	facts := types.TaskMetadataFacts{TaskID: taskID}
+	row := struct {
+		Title      *string
+		UserID     *string
+		CreatedAt  *time.Time
+		ArchivedAt *time.Time
+		DeletedAt  *time.Time
+	}{}
+	err := s.db.WithContext(ctx).Table("sessions").
+		Select("title, user_id, created_at, archived_at, deleted_at").
+		Where("tenant_id = ? AND id = ?", tenantID, taskID).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, types.ErrTaskComplianceNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if row.Title != nil {
+		facts.Title = *row.Title
+	}
+	if row.UserID != nil {
+		facts.OwnerID = *row.UserID
+	}
+	if row.CreatedAt != nil {
+		facts.CreatedAt = *row.CreatedAt
+	}
+	facts.ArchivedAt, facts.DeletedAt = row.ArchivedAt, row.DeletedAt
+
+	if err := s.db.WithContext(ctx).Table("agent_runs").
+		Where("tenant_id = ? AND session_id = ?", tenantID, taskID).
+		Count(&facts.RunCount).Error; err != nil {
+		return nil, err
+	}
+	var lastStatus *string
+	if err := s.db.WithContext(ctx).Table("agent_runs").Select("status").
+		Where("tenant_id = ? AND session_id = ?", tenantID, taskID).
+		Order("created_at DESC").Limit(1).Scan(&lastStatus).Error; err != nil {
+		return nil, err
+	}
+	if lastStatus != nil {
+		facts.LastRunState = *lastStatus
+	}
+	return &facts, nil
+}
+
+// ListTaskMessages reads the task's private conversation rows (the content
+// projection). Scoped by session_id; the caller proves the session's tenant
+// ownership first (TaskMetadataFacts).
+func (s *TaskComplianceStore) ListTaskMessages(ctx context.Context, taskID string, limit int) ([]types.TaskMessageFact, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("task compliance store is not assembled")
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	var rows []types.TaskMessageFact
+	err := s.db.WithContext(ctx).Table("messages").
+		Select("id, role, content, created_at").
+		Where("session_id = ?", taskID).
+		Order("created_at ASC, id ASC").Limit(limit).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
 }

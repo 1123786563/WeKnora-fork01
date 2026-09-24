@@ -53,3 +53,25 @@ func (a TaskComplianceAccess) ExpiredAt(now time.Time) bool { return !a.ExpiresA
 
 // Covers reports whether the window still authorizes access at now.
 func (a TaskComplianceAccess) Covers(now time.Time) bool { return !a.ExpiredAt(now) }
+
+// TaskMetadataFacts is the metadata-only projection of one task: everything
+// a compliance administrator sees by default, BEFORE any reasoned access
+// window. It deliberately carries no message content (CONTEXT.md 合规访问).
+type TaskMetadataFacts struct {
+	TaskID       string     `json:"task_id"`
+	Title        string     `json:"title"`
+	OwnerID      string     `json:"owner_id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
+	RunCount     int64      `json:"run_count"`
+	LastRunState string     `json:"last_run_state,omitempty"`
+}
+
+// TaskMessageFact is one message row of the private content projection.
+type TaskMessageFact struct {
+	ID        string    `json:"id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
