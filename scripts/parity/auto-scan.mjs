@@ -181,12 +181,17 @@ const ALL_PAGES = [
   // chat 沙箱终端：Vue drawer(chat-sandbox-panel) vs React 首检出 tooltip（异构 A3，待核）
   { id: 'px-chat-sandbox', kind: 'chat', name: '工具调用 Parity Fixture',
     actions: [{ clickAria: ['沙箱终端'], clickCss: ['.sandbox-header-toggle__btn'] }] },
-  // chat 添加到知识库：Vue drawer(t-drawer--right) vs React dialog(wk-bookmark-dialog)（异构 A1）
+  // chat 添加到知识库：Vue drawer(t-drawer--right) vs React dialog(wk-bookmark-dialog)（异构 A1）。
+  // 双端均为 answer-toolbar 纯图标 t-button（title=添加到知识库，无可见文本），
+  // clickText 无命中——走 clickAria(title) + 图标 CSS 兜底；pickLast 取最新一条
+  // 回答的工具栏（React 历史消息也渲染 toolbar，首个可见匹配会错位取景）。
   { id: 'px-chat-addtokb', kind: 'chat', name: '工具调用 Parity Fixture',
-    actions: [{ clickText: ['添加到知识库'] }] },
-  // chat 请求信息：Vue popover(chat-request-info-popup) vs React dialog(chat-request-card)（异构 A2）
+    actions: [{ clickAria: ['添加到知识库'], clickCss: ['.answer-toolbar button:has(.t-icon-bookmark-add)', '.wk-chat-bookmark'], pickLast: true }] },
+  // chat 请求信息：Vue popover(chat-request-info-popup) vs React dialog(chat-request-card)（异构 A2）。
+  // 触发器同为纯图标按钮 title=请求信息（Vue ChatRequestInfoButton.vue / React message-face.tsx），
+  // pickLast 同上取最新一条回答。
   { id: 'px-chat-reqinfo', kind: 'chat', name: '工具调用 Parity Fixture',
-    actions: [{ clickText: ['请求信息'] }] },
+    actions: [{ clickAria: ['请求信息'], pickLast: true }] },
   // composer 智能体选择（B1 组）：Vue .control-btn.agent-mode-btn（文案"快速问答"）与
   // React .wk-chat-agent-chip（aria=选择智能体）打开同一 agent-selector overlay——
   // 双端触发器异构、面板同功能，一条兜底链覆盖两行矩阵记录
@@ -433,8 +438,18 @@ async function clickFirst(page, action) {
           ...await page.getByText(c.t, { exact: false }).all(),
         ];
       }
-      for (const loc of locs) {
-        if (await loc.isVisible().catch(() => false)) { await loc.click(); return true; }
+      // pickLast（panel-matrix px 项）：消息工具栏类触发器双端 DOM 数量不同（Vue
+      // 只给最后一条回答渲染 toolbar，React 每条 assistant 消息都有）——首个可见
+      // 匹配在 React 端可能是滚出视口上缘的历史消息按钮，click 自动滚动会错位
+      // 双端取景。取最后一个可见匹配＝最新消息的工具栏，双端同一逻辑按钮。
+      if (action.pickLast) {
+        for (let i = locs.length - 1; i >= 0; i--) {
+          if (await locs[i].isVisible().catch(() => false)) { await locs[i].click(); return true; }
+        }
+      } else {
+        for (const loc of locs) {
+          if (await loc.isVisible().catch(() => false)) { await loc.click(); return true; }
+        }
       }
     } catch { /* next candidate */ }
   }

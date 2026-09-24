@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
-import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import { formatChatCopy, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
 import { AgentSelectorPanel, type AgentSelectorAgent, type AgentSelectorModel } from './agent-selector.tsx';
 
 export interface ChatSubmission {
@@ -237,6 +237,10 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
   // Vue kb-btn t-tooltip（Input-field.vue:2756-2774，theme light / placement top）。
   const [kbTipOpen, setKbTipOpen] = useState(false);
   const kbTipTimer = useRef<number | null>(null);
+  // Vue Input-field.vue:2737 附件按钮 t-tooltip（top/light，input-field-tooltip 覆盖）；
+  // 与 kb-btn 同款 in-tree 手写 tooltip（300ms 显示 / 80ms 隐藏），文案带附件计数态。
+  const [attachTipOpen, setAttachTipOpen] = useState(false);
+  const attachTipTimer = useRef<number | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const agentChipRef = useRef<HTMLButtonElement>(null);
@@ -502,11 +506,22 @@ export function ChatComposer({ draft, focusSignal = 0, disabled = false, onDraft
             </button>
           </> : null}
           <input ref={attachmentInputRef} type="file" accept={attachmentAccept?.join(',')} multiple className="wk-vc-composer-19" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />
-          <button type="button" className="wk-chat-control-icon wk-vc-composer-22" aria-label={t.uploadAttachment} disabled={disabled || !onAttachmentSelect} title={t.uploadAttachment} onClick={() => attachmentInputRef.current?.click()}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-            </svg>
-          </button>
+          <div className="wk-chat-attach-btn-wrap wk-vc-composer-23"
+            onMouseEnter={() => { if (attachTipTimer.current !== null) window.clearTimeout(attachTipTimer.current); attachTipTimer.current = window.setTimeout(() => setAttachTipOpen(true), 300); }}
+            onMouseLeave={() => { if (attachTipTimer.current !== null) window.clearTimeout(attachTipTimer.current); attachTipTimer.current = window.setTimeout(() => setAttachTipOpen(false), 80); }}
+          >
+            <button type="button" className="wk-chat-control-icon wk-vc-composer-22" aria-label={t.uploadAttachment} disabled={disabled || !onAttachmentSelect} title={t.uploadAttachment} onClick={() => attachmentInputRef.current?.click()}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
+            {attachTipOpen ? (
+              <span className="t-popup t-tooltip t-tooltip--light wk-attach-tip" role="tooltip">
+                <span className="t-popup__content">{attachments.length > 0 ? formatChatCopy(t, 'attachmentWithCount', { count: attachments.length }) : t.attachmentUploadTooltip}</span>
+                <span className="wk-kb-tip__arrow" aria-hidden="true" />
+              </span>
+            ) : null}
+          </div>
           <div className="wk-chat-kb-btn-wrap wk-vc-composer-23"
             onMouseEnter={() => { if (kbTipTimer.current !== null) window.clearTimeout(kbTipTimer.current); kbTipTimer.current = window.setTimeout(() => setKbTipOpen(true), 300); }}
             onMouseLeave={() => { if (kbTipTimer.current !== null) window.clearTimeout(kbTipTimer.current); kbTipTimer.current = window.setTimeout(() => setKbTipOpen(false), 80); }}

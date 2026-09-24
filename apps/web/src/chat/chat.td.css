@@ -194,9 +194,12 @@
   width: 100%;
 }
 
-.msg_list .msg-item-wrapper {
-  contain: layout style;
-}
+/* Vue index.vue:1949 .msg-item-wrapper 带 contain: layout style（滚动重排性能
+   提示；其浮层走 t-popup body portal，不受 containment 影响）。React 侧浮层
+   （请求信息卡等）为 in-tree fixed 定位（views 包无 react-dom，无法 portal），
+   layout containment 会劫持 fixed 后代的包含块（弹层错位）且其祖链 overflow
+   裁剪会截断弹层——故 React 不加 containment，浮层经视口 CB 逃逸裁剪。 */
+.msg_list .msg-item-wrapper.is-empty-segment { display: none; }
 
 .msg_list .msg-item-wrapper.is-empty-segment { display: none; }
 .msg_list .msg-item-wrapper.is-steer-prefix { margin-bottom: -4px; }
@@ -1337,16 +1340,52 @@
 .chat .markdown-content .mermaid { margin: 0; }
 
 /* ===== §10 ChatRequestInfoButton.vue ===== */
-/* views 包不带 tdesign：请求信息卡以同构手写弹层呈现（Vue 为 t-popup portal，
-   内容/几何同源：260-360 宽卡、8px 圆角、--td-shadow-2）。 */
+/* views 包不带 tdesign：请求信息卡以同构手写弹层呈现（Vue 为 t-popup body
+   portal，placement top + show-arrow）。视口 fixed 锚定（消息列 .msg-item-wrapper
+   有 overflow 裁剪，absolute 会被截断；fixed CB=视口不被裁剪，宽度 shrink-to-fit
+   也以视口为可用宽度）；inline style 由组件按按钮几何取整锚定（popper 口径）；
+   content（=.chat-request-card）白底/radius 8/shadow-2、margin-bottom 16px 让位
+   箭头；箭头 8px 居中朝下（tdesign popup top placement 原方复刻：rotate 45°
+   方块 + 左上圆角 + inset 发丝影）。 */
+.chat-request-popover-wrap {
+  position: fixed;
+  z-index: 6000;
+}
+
 .chat-request-card--popover {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  z-index: 20;
+  position: relative;
+  width: max-content;
+  margin-bottom: 16px;
   border-radius: 8px;
   box-shadow: var(--td-shadow-2);
   background: var(--td-bg-color-container);
+}
+
+/* Vue 端标题行高自 t-popup body 继承 22px（React 工具栏上下文为 normal），
+   对齐后标题盒与 Vue 同位（y+2px 差消除）。 */
+.chat-request-card--popover .chat-request-card-title {
+  line-height: 22px;
+}
+
+.chat-request-popover-arrow {
+  position: absolute;
+  z-index: 1;
+  bottom: 8px;
+  left: 50%;
+  margin-left: -4px;
+  width: 8px;
+  height: 8px;
+}
+
+.chat-request-popover-arrow::before {
+  position: absolute;
+  content: '';
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: var(--td-bg-color-container);
+  border-top-left-radius: 100%;
+  box-shadow: var(--td-shadow-inset-left), var(--td-shadow-inset-bottom);
 }
 
 .chat-request-card-copy {
@@ -1359,8 +1398,12 @@
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: var(--td-text-color-secondary);
+  /* Vue 触发钮是 t-button variant=text（图标随按钮 primary 色 0.9），非 secondary。 */
+  color: var(--td-text-color-primary);
   cursor: pointer;
+  /* SpriteIcon svg 尺寸=1em：Vue t-button 内 t-icon 为 14px（按钮 24×24 居中），
+     继承的 13.3333px 会让图标小 0.67px → 显式对齐 14px。 */
+  font-size: 14px;
   font-family: Arial;
 }
 
@@ -1536,9 +1579,10 @@
   font-size: var(--td-font-size-body-medium, 14px);
 }
 
-/* ===== §13 kb-btn 悬停 tooltip（Vue Input-field.vue:2756 t-tooltip light/top，
+/* ===== §13 kb-btn/attach-btn 悬停 tooltip（Vue Input-field.vue:2737/2756 t-tooltip light/top，
    实测：content 4/8 pad、#fff、radius 6、--td-shadow-2、14/22，箭头 8px 居中朝下） ===== */
-.wk-kb-tip {
+.wk-kb-tip,
+.wk-attach-tip {
   pointer-events: none;
   position: absolute;
   /* Vue 实测：content 底缘距按钮顶 16px（content30 + arrow8），箭头随流外定位 */
@@ -1548,7 +1592,8 @@
   z-index: 5600;
 }
 
-.wk-kb-tip .t-popup__content {
+.wk-kb-tip .t-popup__content,
+.wk-attach-tip .t-popup__content {
   display: inline-block;
   box-sizing: border-box;
   padding: 4px 8px;
@@ -1565,7 +1610,8 @@
 
 /* Vue tdesign（tdesign.css:4166-4213）原方复刻：8px 箭头容器 + ::before 旋转方块
    （border-top-left-radius 100% + inset 发丝影）；top placement 下中心压 content 底缘。 */
-.wk-kb-tip .wk-kb-tip__arrow {
+.wk-kb-tip .wk-kb-tip__arrow,
+.wk-attach-tip .wk-kb-tip__arrow {
   position: absolute;
   /* tdesign-react 侧 .t-tooltip .t-popup__content 携 z-index:5600 与外投影，
      箭头须压过其投影层才可见（vue-next 侧无此 z，天然可见） */
@@ -1577,7 +1623,8 @@
   top: calc(100% - 5px);
 }
 
-.wk-kb-tip .wk-kb-tip__arrow::before {
+.wk-kb-tip .wk-kb-tip__arrow::before,
+.wk-attach-tip .wk-kb-tip__arrow::before {
   position: absolute;
   content: '';
   width: 8px;

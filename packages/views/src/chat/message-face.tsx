@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage, FeedbackRating } from '@weknora/contracts';
 import { copyAnswerText } from '@weknora/domain/chat/copy-answer';
 import { groupChatReferences } from '@weknora/domain/chat/references';
@@ -229,17 +229,19 @@ export function RagPipelineProgressFace(props: {
   );
 }
 
-/** Vue ChatRequestInfoButton.vue（info-circle t-button + .chat-request-card 弹层）。 */
+/** Vue ChatRequestInfoButton.vue（info-circle t-button + t-popup placement=top 带箭头弹层）。 */
 function RequestInfoButton(props: { copy: ChatCopyTable; message: ChatMessage; sessionId: string | null }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const row = props.message as Record<string, unknown>;
   const requestId = typeof row.request_id === 'string' ? row.request_id : '';
+  // Vue rows（ChatRequestInfoButton.vue computed）：requestId/messageId/sessionId +
+  // method+url、sentAt —— 后两者仅在 debugRequest（实时调试负载）存在时展示；
+  // 历史消息无 debug 负载，React 不从 created_at 伪造 sentAt 行。
   const rows = [
     { label: 'Request ID', value: requestId },
     { label: props.copy.requestInfoMessageId, value: props.message.id },
     { label: props.copy.requestInfoSessionId, value: props.sessionId ?? '' },
-    { label: props.copy.requestInfoSentAt, value: typeof props.message.created_at === 'string' ? props.message.created_at : '' },
   ].filter((item) => item.value);
   useEffect(() => {
     if (!open) return;
@@ -253,31 +255,59 @@ function RequestInfoButton(props: { copy: ChatCopyTable; message: ChatMessage; s
     const text = rows.map((item) => `${item.label}: ${item.value}`).join('\n');
     void navigator.clipboard?.writeText(text).catch(() => undefined);
   };
+  const toggle = () => setOpen((value) => !value);
+  // Vue t-popup 经 popper 落位（偏移取整到设备像素）；纯 CSS 的 left:50% +
+  // translateX(-50%) / bottom:100% 会停在分数坐标（卡片宽 342.42、React 工具栏
+  // 行高分数 → 204.79/339.78 vs Vue 205/340），全卡文字 AA 随之错位。开层后一次
+  // 性测量取整锚定（偏移相对触发钮 wrap，布局回流仍自动跟随；宽度/行高由内容
+  // 决定、开层后不变）：水平按"卡片中心=按钮中心"取整、垂直按"wrap 底缘=按钮
+  // 顶缘"取整。
+  const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const span = rootRef.current;
+    const card = span?.querySelector('.chat-request-card--popover');
+    if (span && card) {
+      // 视口坐标 fixed 锚定：消息列 .msg-item-wrapper 有 overflow 裁剪（contain:
+      // layout style），absolute 弹层左缘越出消息列左界会被裁掉 56px——fixed 的
+      // CB 是视口，不被中间裁剪祖先截断（同 composer mention-menu 先例）。
+      // 偏移取整到设备像素（Vue popper 行为），否则全卡文字 AA 错位。
+      const sr = span.getBoundingClientRect();
+      const cw = card.getBoundingClientRect().width;
+      setAnchor({
+        left: Math.round(sr.left + sr.width / 2 - cw / 2),
+        bottom: Math.round(window.innerHeight - sr.top),
+      });
+    }
+  }, [open]);
   return (
     <span className="chat-request-info-wrap" ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
-      <ToolbarButton icon="info-circle" title={props.copy.requestInfo} onClick={() => setOpen((value) => !value)} />
+      <ToolbarButton icon="info-circle" title={props.copy.requestInfo} onClick={toggle} />
       {open ? (
-        <div className="chat-request-card chat-request-card--popover" role="dialog" aria-label={props.copy.requestInfo}>
-          <div className="chat-request-card-header">
-            <span className="chat-request-card-title">{props.copy.requestInfo}</span>
-            {rows.length > 0 ? (
-              <button type="button" className="chat-request-card-copy" title={props.copy.copy} aria-label={props.copy.copy} onClick={copyAll}>
-                <SpriteIcon name="copy" />
-              </button>
-            ) : null}
-          </div>
-          {rows.length === 0 ? (
-            <div className="chat-request-empty">{props.copy.requestInfoEmpty}</div>
-          ) : (
-            <div className="chat-request-card-body">
-              {rows.map((item) => (
-                <div key={item.label} className="chat-request-row">
-                  <span className="chat-request-label">{item.label}</span>
-                  <span className="chat-request-value">{item.value}</span>
-                </div>
-              ))}
+        <div className="chat-request-popover-wrap" style={anchor === null ? undefined : { left: `${anchor.left}px`, bottom: `${anchor.bottom}px`, transform: 'none' }}>
+          <div className="chat-request-card chat-request-card--popover" role="dialog" aria-label={props.copy.requestInfo}>
+            <div className="chat-request-card-header">
+              <span className="chat-request-card-title">{props.copy.requestInfo}</span>
+              {rows.length > 0 ? (
+                <button type="button" className="chat-request-card-copy" title={props.copy.copy} aria-label={props.copy.copy} onClick={copyAll}>
+                  <SpriteIcon name="copy" />
+                </button>
+              ) : null}
             </div>
-          )}
+            {rows.length === 0 ? (
+              <div className="chat-request-empty">{props.copy.requestInfoEmpty}</div>
+            ) : (
+              <div className="chat-request-card-body">
+                {rows.map((item) => (
+                  <div key={item.label} className="chat-request-row">
+                    <span className="chat-request-label">{item.label}</span>
+                    <span className="chat-request-value">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <span className="chat-request-popover-arrow" aria-hidden="true" />
         </div>
       ) : null}
     </span>
