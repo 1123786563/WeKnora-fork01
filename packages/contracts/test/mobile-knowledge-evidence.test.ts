@@ -63,3 +63,16 @@ test('parseAnswerEvidence type-level sanity: parsed cited envelope matches Answe
   assert.ok(Array.isArray(parsed.citations));
   assert.ok(Array.isArray(parsed.conclusions));
 });
+
+test('parseAnswerEvidence rejects non-boolean reasoning.requested/retryable instead of coercing to false', () => {
+  // 回归（修复轮审查 finding）：requested/retryable 存在但非 boolean 时必须整体拒绝，
+  // 不得静默归 false；缺省（undefined）仍兼容——Go 生产者 EvidenceReasoning 的
+  // Requested/Retryable 无 omitempty，真实 wire 恒带这两个 boolean 键。
+  const base = { state: 'no_evidence', semantic_graph_used: false, retrieved_at: '2026-09-24T08:00:00Z', citations: [], conclusions: [] };
+  assert.throws(() => parseAnswerEvidence({ ...base, reasoning: { state: 'not_requested', requested: 'yes', retryable: false } }), undefined, 'must reject string requested');
+  assert.throws(() => parseAnswerEvidence({ ...base, reasoning: { state: 'not_requested', requested: false, retryable: 1 } }), undefined, 'must reject numeric retryable');
+  assert.throws(() => parseAnswerEvidence({ ...base, reasoning: { state: 'not_requested', requested: null } }), undefined, 'must reject null requested');
+  const explicitFalse = parseAnswerEvidence({ ...base, reasoning: { state: 'not_requested', requested: false, retryable: false } });
+  assert.equal(explicitFalse.reasoning.requested, false);
+  assert.equal(explicitFalse.reasoning.retryable, false);
+});

@@ -146,6 +146,15 @@ export function parseAnswerEvidence(value: unknown): AnswerEvidenceWire {
   if (reasoningState !== 'not_requested' && reasoningState !== 'incomplete') {
     throw new Error('answer evidence reasoning.state must be not_requested | incomplete');
   }
+  // requested/retryable 存在但非 boolean 时整体拒绝（fail-closed，不静默归
+  // false）；undefined 缺省仍兼容——Go 生产者 EvidenceReasoning 的
+  // Requested/Retryable 无 omitempty，真实 wire 恒带这两个 boolean 键。
+  if (reasoningValue.requested !== undefined && typeof reasoningValue.requested !== 'boolean') {
+    throw new Error('answer evidence reasoning.requested must be a boolean');
+  }
+  if (reasoningValue.retryable !== undefined && typeof reasoningValue.retryable !== 'boolean') {
+    throw new Error('answer evidence reasoning.retryable must be a boolean');
+  }
   const reasoning: EvidenceReasoningWire = {
     requested: reasoningValue.requested === true,
     state: reasoningState,
