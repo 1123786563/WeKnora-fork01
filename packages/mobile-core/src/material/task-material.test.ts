@@ -240,3 +240,52 @@ test('a failed index load clears the previous projection instead of serving stal
   assert.equal(first.materials.length, 1);
   await assert.rejects(() => handle.index({ runId: 'run-1' }), /MATERIAL_BACKEND/);
 });
+
+test('the blob cache evicts oldest entries beyond MAX_BLOB_ENTRIES', async () => {
+  // 8 个不同材料（各自独立 grant/fetch）；缓存上限为 6——最早两个被逐出。
+  const artifacts = Array.from({ length: 8 }, (_unused, index) => artifactRow({ id: `mat-${index}`, index, name: `file-${index}.md`, version: `v${index}` }));
+  const remote = createScenarioMaterialRemote({
+    list: (runId) => ({ runId, artifacts, terminalAvailable: true }),
+    signedUrl: ({ index }) => ({ url: `https://weknora.example.test/g/${index}`, expiresAt: '2026-09-24T01:00:00Z', artifact: artifacts[index]! }),
+    terminalLog: ({ after }) => ({ lines: [], nextCursor: after }),
+    events: () => [],
+  });
+  const blobScript: Record<string, { bytes: Uint8Array; mime: string }> = {};
+  for (let index = 0; index < 8; index += 1) blobScript[`https://weknora.example.test/g/${index}`] = { bytes: new TextEncoder().encode(`# file ${index}\n`), mime: 'text/markdown' };
+  const blob = createScriptedBlobFetch(blobScript);
+  const lease = new RuntimeScopeLease(SCOPE);
+  const handle = createTaskMaterial({ remote, blob, share: createRecordingSharePort() }).open({ lease: lease.asScopeLease() });
+
+  for (let index = 0; index < 8; index += 1) {
+    await handle.open({ kind: 'artifact', runId: 'run-1', materialId: `mat-${index}` });
+  }
+  const grantsAfterFill = remote.grantCalls.length;
+  // 最早两个（mat-0/mat-1）已被逐出：重开必须重新铸造。
+  await handle.open({ kind: 'artifact', runId: 'run-1', materialId: 'mat-0' });
+  assert.equal(remote.grantCalls.length, grantsAfterFill + 1, 'B3-F31：超限后最旧条目被逐出，重开需重新铸造');
+  await handle.open({ kind: 'artifact', runId: 'run-1', materialId: 'mat-7' });
+  assert.equal(remote.grantCalls.length, grantsAfterFill + 1, '最近条目仍在缓存，零新铸造');
+});
+
+test('a grant whose artifact identity mismatches the requested material fails closed', async () => {
+  // signedUrl 按易变 index 铸造；列表重排后 entry.index 与 materialId 错位时，
+  // 响应自带的 artifact 身份用于回验（B3-F58）——不匹配即拒绝，不得外发/缓存。
+  const requested = artifactRow({ id: 'mat-1', index: 1, name: 'requested.md', version: 'vvvvvvvvvvvvvvvv' });
+  const other = artifactRow({ id: 'mat-OTHER', index: 1, name: 'other.md', version: 'vvvvvvvvvvvvvvvv' });
+  const remote = createScenarioMaterialRemote({
+    list: (runId) => ({ runId, artifacts: [artifactRow({ id: 'mat-0', index: 0 }), requested], terminalAvailable: true }),
+    signedUrl: () => ({ url: GRANT_URL, expiresAt: '2026-09-24T01:00:00Z', artifact: other }),
+    terminalLog: ({ after }) => ({ lines: [], nextCursor: after }),
+    events: () => [],
+  });
+  const blob = createScriptedBlobFetch({ [GRANT_URL]: { bytes: new TextEncoder().encode('# other\n'), mime: 'text/markdown' } });
+  const lease = new RuntimeScopeLease(SCOPE);
+  const handle = createTaskMaterial({ remote, blob, share: createRecordingSharePort() }).open({ lease: lease.asScopeLease() });
+
+  await assert.rejects(
+    handle.open({ kind: 'artifact', runId: 'run-1', materialId: 'mat-1' }),
+    (error: unknown) => error instanceof MaterialError && error.code === 'MATERIAL_GRANT_MISMATCH',
+    'B3-F58：index 错位铸造出的凭据必须回验身份后拒绝',
+  );
+  assert.equal(blob.calls.length, 0, '错位凭据不得外发抓取');
+});

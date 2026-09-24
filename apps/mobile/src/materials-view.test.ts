@@ -82,3 +82,16 @@ test('dispose closes the handle exactly once', async () => {
   assert.equal(closes, 1, 'double dispose must close the handle exactly once');
   assert.equal(controller.state().loading, false);
 });
+
+test('MATERIAL_ERROR_COPY covers every MaterialErrorCode (exhaustiveness)', () => {
+  // code 清单 = mobile-core MaterialErrorCode 联合的运行时全集；新码无文案在此红。
+  for (const code of [
+    'MATERIAL_SCOPE_CHANGED', 'MATERIAL_CLOSED', 'MATERIAL_INVALID_INPUT', 'MATERIAL_NOT_FOUND',
+    'MATERIAL_GRANT_EXPIRED', 'MATERIAL_GRANT_INVALID', 'MATERIAL_SIGNING_DISABLED',
+    'MATERIAL_TERMINAL_READ_ONLY', 'MATERIAL_GRANT_ORIGIN', 'MATERIAL_SHARE_UNAVAILABLE',
+    'MATERIAL_GRANT_MISMATCH', 'MATERIAL_BACKEND',
+  ] as const) {
+    new MaterialError(code as never); // 类型层：Record<MaterialErrorCode,string> 下缺键即 tsc 红
+    assert.ok(MATERIAL_ERROR_COPY[code] !== undefined, `缺少 ${code} 文案（B3-F55 穷尽性）`);
+  }
+});

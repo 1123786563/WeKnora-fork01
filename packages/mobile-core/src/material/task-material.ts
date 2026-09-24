@@ -1,6 +1,6 @@
 import { leaseActive, leaseScopeOf } from '../runtime/scope-lease.ts';
 import { MaterialError } from './material-errors.ts';
-import { isInlineImageMime, materialKindOf, previewVerdictOf } from './material-kinds.ts';
+import { isInlineImageMime, materialKindOf, previewVerdictOf, PREVIEW_MAX_BYTES } from './material-kinds.ts';
 import { parseUnifiedDiff } from './diff.ts';
 import { projectCitations } from './evidence.ts';
 import type {
@@ -12,6 +12,9 @@ import type {
 } from './types.ts';
 
 const TERMINAL_PAGE_LIMIT = 200;
+
+/** 字节缓存条目上限（B3-F31）：单条 ≤2MB（PREVIEW_MAX_BYTES）→ 常驻上限 ~12MB。 */
+const MAX_BLOB_ENTRIES = 6;
 
 /** 结构化读取（不读 message 字面量）：与 shelf 的 httpStatus 同一纪律。 */
 function errorStatus(error: unknown): number | undefined {
@@ -28,10 +31,23 @@ function errorCode(error: unknown): string | undefined {
 
 function decodeUtf8(bytes: Uint8Array): string {
   if (typeof TextDecoder !== 'undefined') return new TextDecoder('utf-8').decode(bytes);
+  // 无 TextDecoder 环境的正确 UTF-8 解码回退（B3-F34）：码点循环替代 Latin-1 拼接。
   let out = '';
-  const CHUNK = 0x8000;
-  for (let index = 0; index < bytes.length; index += CHUNK) {
-    out += String.fromCharCode(...bytes.subarray(index, index + CHUNK));
+  for (let index = 0; index < bytes.length; ) {
+    const byte0 = bytes[index]!;
+    let codePoint: number;
+    let width: number;
+    if (byte0 < 0x80) { codePoint = byte0; width = 1; }
+    else if ((byte0 & 0xe0) === 0xc0) { codePoint = byte0 & 0x1f; width = 2; }
+    else if ((byte0 & 0xf0) === 0xe0) { codePoint = byte0 & 0x0f; width = 3; }
+    else if ((byte0 & 0xf8) === 0xf0) { codePoint = byte0 & 0x07; width = 4; }
+    else { codePoint = 0xfffd; width = 1; } // 无效前导字节以替换符落地，不抛错
+    for (let offset = 1; offset < width && index + offset < bytes.length; offset += 1) {
+      const continuation = bytes[index + offset]!;
+      codePoint = (codePoint << 6) | (continuation & 0x3f);
+    }
+    out += String.fromCodePoint(codePoint > 0x10ffff ? 0xfffd : codePoint);
+    index += width;
   }
   return out;
 }
@@ -91,9 +107,14 @@ export function createTaskMaterial(ports: TaskMaterialPorts): TaskMaterial {
           throw mapError(error);
         }
       };
-      /** grant 铸造 + origin 钉住：URL 只在当次调用内存活，永不缓存（AC1）。 */
+      /** grant 铸造 + 身份回验 + origin 钉住：URL 只在当次调用内存活，永不缓存（AC1）。 */
       const mintGrant = async (runId: string, entry: MaterialEntry): Promise<MaterialBackendGrant> => {
         const grant = await callRemote(() => ports.remote.signedUrl({ runId, index: entry.index }));
+        // signedUrl 按易变 index 铸造——回验响应自带的 artifact 身份，错位即拒绝
+        // （fail closed，B3-F58）：校验数据已在手，零额外往返。
+        if (grant.artifact.id !== entry.materialId || grant.artifact.version !== entry.version) {
+          throw new MaterialError('MATERIAL_GRANT_MISMATCH', { cause: new Error(`grant artifact ${grant.artifact.id}@${grant.artifact.version} does not match requested ${entry.materialId}@${entry.version}`) });
+        }
         let origin: string;
         try {
           origin = new URL(grant.url).origin;
@@ -108,7 +129,11 @@ export function createTaskMaterial(ports: TaskMaterialPorts): TaskMaterial {
       const fetchBytes = async (runId: string, entry: MaterialEntry): Promise<Uint8Array> => {
         const cacheKey = `${entry.materialId}@${entry.version}`;
         const cached = blobs.get(cacheKey);
-        if (cached !== undefined) return cached;
+        if (cached !== undefined) {
+          blobs.delete(cacheKey); // LRU 命中重排（B3-F31）
+          blobs.set(cacheKey, cached);
+          return cached;
+        }
         const grant = await mintGrant(runId, entry);
         let fetched: { bytes: Uint8Array; mime: string };
         try {
@@ -118,7 +143,13 @@ export function createTaskMaterial(ports: TaskMaterialPorts): TaskMaterial {
           if (mapped.code === 'MATERIAL_GRANT_EXPIRED') notify({ type: 'grant-expired', materialId: entry.materialId });
           throw mapped;
         }
+        // 实际字节数复检预览上限（B3-F32）：后端声明的 size 之外，真实超限不入缓存。
+        if (fetched.bytes.length > PREVIEW_MAX_BYTES) {
+          throw new MaterialError('MATERIAL_INVALID_INPUT', { cause: new Error(`fetched ${fetched.bytes.length} bytes exceeds the preview budget`) });
+        }
+        blobs.delete(cacheKey);
         blobs.set(cacheKey, fetched.bytes);
+        while (blobs.size > MAX_BLOB_ENTRIES) blobs.delete(blobs.keys().next().value!); // LRU 逐出最旧（B3-F31）
         return fetched.bytes;
       };
       const entryFor = async (runId: string, materialId: string): Promise<MaterialEntry> => {
@@ -199,14 +230,19 @@ export function createTaskMaterial(ports: TaskMaterialPorts): TaskMaterial {
           const materialId = intent.materialId.trim();
           if (runId === '' || materialId === '') throw new MaterialError('MATERIAL_INVALID_INPUT');
           const entry = await entryFor(runId, materialId);
+          const share = ports.share;
+          if (intent.kind === 'share' && share === undefined) {
+            // 先检查端口再铸造（B3-F33）：无系统分享通道时不白铸短时效签名 URL。
+            throw new MaterialError('MATERIAL_SHARE_UNAVAILABLE');
+          }
           const grant = await mintGrant(runId, entry); // 每次 act 新鲜铸造，不复用任何旧 URL（AC1）
           guard();
           if (intent.kind === 'download') {
             return { kind: 'grant', materialId: entry.materialId, url: grant.url, expiresAt: grant.expiresAt };
           }
-          if (ports.share === undefined) throw new MaterialError('MATERIAL_SHARE_UNAVAILABLE');
+          if (share === undefined) throw new MaterialError('MATERIAL_SHARE_UNAVAILABLE'); // 运行时双保险（download 已返回）
           try {
-            await ports.share.share({ url: grant.url, name: entry.name });
+            await share.share({ url: grant.url, name: entry.name });
           } catch (error) {
             throw mapError(error);
           }

@@ -1,5 +1,5 @@
 import { MaterialError } from '@weknora/mobile-core';
-import type { MaterialActResult, MaterialIndex, MaterialView, TaskMaterialHandle } from '@weknora/mobile-core';
+import type { MaterialActResult, MaterialErrorCode, MaterialIndex, MaterialView, TaskMaterialHandle } from '@weknora/mobile-core';
 
 export interface MaterialsViewState {
   index?: MaterialIndex;
@@ -9,8 +9,8 @@ export interface MaterialsViewState {
   grant?: { name: string; url: string; expiresAt: string };
 }
 
-/** MaterialError 错误码 → 用户文案（message 即裸错误码）。 */
-export const MATERIAL_ERROR_COPY: Record<string, string> = {
+/** MaterialError 错误码 → 用户文案（message 即裸错误码；键类型=MaterialErrorCode，新码缺文案即类型错——B3-F55）。 */
+export const MATERIAL_ERROR_COPY: Record<MaterialErrorCode, string> = {
   MATERIAL_SCOPE_CHANGED: '登录状态或活动空间已变化，请重新进入。',
   MATERIAL_CLOSED: '材料视图已关闭。',
   MATERIAL_INVALID_INPUT: '材料参数缺失，请从任务详情重新进入。',
@@ -20,6 +20,7 @@ export const MATERIAL_ERROR_COPY: Record<string, string> = {
   MATERIAL_SIGNING_DISABLED: '此部署未配置签名密钥，暂无法下载（请联系管理员）。',
   MATERIAL_TERMINAL_READ_ONLY: '终端为只读，不能输入。',
   MATERIAL_GRANT_ORIGIN: '下载链接与当前部署不一致，已拒绝。',
+  MATERIAL_GRANT_MISMATCH: '材料凭据校验失败，请刷新列表后重试。',
   MATERIAL_SHARE_UNAVAILABLE: '此设备暂无系统分享通道。',
   MATERIAL_BACKEND: '服务端暂时不可用，请稍后重试。',
 };

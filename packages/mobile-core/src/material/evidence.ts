@@ -28,6 +28,9 @@ export function projectCitations(
     } catch {
       detail = '[unserializable]';
     }
+    // 大载荷截断（B3-F35）：detail 进入视图状态前压到 2000 字符（含省略号）——
+    // 完整事实仍在服务端事件流，视图不承载整包 payload。
+    if (detail.length > 2000) detail = `${detail.slice(0, 1999)}…`;
     citations.push({ seq: event.seq, occurredAt: event.occurredAt, type: event.type, ...(source === undefined ? {} : { source }), detail });
   }
   return citations.sort((a, b) => a.seq - b.seq);
