@@ -105,7 +105,7 @@ func publishAdoptionRelease(t *testing.T, r *gin.Engine) (listingID, releaseID s
 	metadata := map[string]any{
 		"semantic_version": "1.0.0", "display_name": "Release helper", "summary": "A helpful agent",
 		"supported_languages": []string{"en"}, "use_cases": []string{"support"},
-		"capability_requirements": []string{"model", "knowledge"},
+		"capability_requirements":    []string{"model", "knowledge"},
 		"minimum_weknora_capability": "1", "license_id": "MIT",
 	}
 	submitted := adoptionCall(r, 1, http.MethodPost, "/api/v1/marketplace/tenant/release-submissions", "contributor", "contributor", map[string]any{"agent_version_id": frozenBody.Data.ID, "metadata": metadata})
@@ -505,4 +505,25 @@ func TestTenantAgentAdoptionPublishesIndependentVariantsIntoMobileAvailableAgent
 	}
 	require.NoError(t, json.Unmarshal(crossTenantAvailable.Body.Bytes(), &crossTenantAvailableBody))
 	require.Empty(t, crossTenantAvailableBody.Data, "another tenant never sees tenant-1 availability")
+}
+
+func TestAvailableAgentsAPIKeyFloorMatchesAgentList(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	// The available-agents read model is the mobile read-only surface (spec
+	// §2); the API-key floor must mirror GET /api/v1/agents' OR stack instead
+	// of admin=full-access (B3-F69).
+	g := &rbacGuards{}
+	v1 := gin.New().Group("/api/v1")
+	RegisterAgentAdoptionRoutes(v1, handler.NewAgentAdoptionHandler(nil), g)
+
+	policy := mustLookupAPIKeyPolicy(t, g, http.MethodGet, "/api/v1/marketplace/tenant/available-agents")
+	require.True(t, policy.RequireFullAccess, "full-access 仍然放行（OR 语义）")
+	require.True(t, policyHasCapability(policy, types.APIKeyCapabilityReadAgents), "持 read_agents 能力的集成 key 必须可读移动只读面（B3-F69）")
+	require.True(t, policyHasCapability(policy, types.APIKeyCapabilityChat), "chat 能力镜像 GET /api/v1/agents 同样可读")
+	require.True(t, policyHasCapability(policy, types.APIKeyCapabilityManageAgents), "manage_agents 同样放行（镜像端点 OR 栈）")
+	require.False(t, policyHasCapability(policy, types.APIKeyCapabilityIngest), "无关能力不得放行")
+
+	// 治理写面保持 admin/full-access 地板不变。
+	publishPolicy := mustLookupAPIKeyPolicy(t, g, http.MethodPost, "/api/v1/marketplace/tenant/variants/:id/publish")
+	require.True(t, publishPolicy.RequireFullAccess, "publish 仍是 full-access 治理写面")
 }

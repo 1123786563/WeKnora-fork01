@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"net/http"
 	stderrors "errors"
+	"net/http"
 	"strings"
 	"time"
 
@@ -116,7 +116,8 @@ func adoptionClientError(err error) error {
 		return apperrors.NewNotFoundError("agent adoption resource not found")
 	case stderrors.Is(err, marketservice.ErrAgentAdoptionVariantNotRunnable),
 		stderrors.Is(err, marketservice.ErrAgentAdoptionStateConflict),
-		stderrors.Is(err, marketrepo.ErrAgentAdoptionVariantTransition):
+		stderrors.Is(err, marketrepo.ErrAgentAdoptionVariantTransition),
+		stderrors.Is(err, marketrepo.ErrAgentAdoptionRemapStateConflict):
 		// The refusal message IS the explicit reason (missing capability
 		// names, conflicting state) — pass it through verbatim.
 		return apperrors.NewConflictError(err.Error())
@@ -228,7 +229,9 @@ func (h *AgentAdoptionHandler) PublishVariant(c *gin.Context) {
 		_ = c.Error(adoptionClientError(err))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"variant": adoptionVariantDTO(result.Variant)}})
+	// Same envelope as Adopt/CreateVariant/TestVariant/UpdateCapabilityMapping:
+	// data IS the variant body (B3-F86).
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": adoptionVariantDTO(result.Variant)})
 }
 
 func (h *AgentAdoptionHandler) ListAvailableAgents(c *gin.Context) {
@@ -242,7 +245,7 @@ func (h *AgentAdoptionHandler) ListAvailableAgents(c *gin.Context) {
 		data = append(data, availableAgentResponse{
 			AgentID: view.AgentID, VariantID: view.VariantID, AdoptionID: view.AdoptionID,
 			ReleaseID: view.ReleaseID, Name: view.Name, Description: view.Description,
-			IsBuiltin: view.IsBuiltin,
+			IsBuiltin:  view.IsBuiltin,
 			Capability: availableAgentCapability{State: view.Capability.State, Reason: view.Capability.Reason},
 		})
 	}

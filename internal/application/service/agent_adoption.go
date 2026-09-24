@@ -455,7 +455,12 @@ func capabilityBound(mapping types.AgentVariantCapabilityMappingEntity) bool {
 
 func decodeIDList(encoded string) []string {
 	ids := []string{}
-	_ = json.Unmarshal([]byte(encoded), &ids)
+	// A malformed payload degrades to the empty binding, but the failure is
+	// observable in logs instead of being silently swallowed (B3-F73): rows
+	// are produced by encodeIDList, so corruption means a storage defect.
+	if err := json.Unmarshal([]byte(encoded), &ids); err != nil {
+		logger.Errorf(context.Background(), "agent adoption: malformed id list payload %q: %v", encoded, err)
+	}
 	return ids
 }
 

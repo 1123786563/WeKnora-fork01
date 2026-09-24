@@ -26,5 +26,11 @@ func RegisterAgentAdoptionRoutes(r *gin.RouterGroup, adoptionHandler *handler.Ag
 	g.apiKeyRoute(r, http.MethodPut, "/marketplace/tenant/variants/:id/capability-mapping", admin, g.Admin(), adoptionHandler.UpdateCapabilityMapping)
 	g.apiKeyRoute(r, http.MethodPost, "/marketplace/tenant/variants/:id/test", admin, g.Admin(), adoptionHandler.TestVariant)
 	g.apiKeyRoute(r, http.MethodPost, "/marketplace/tenant/variants/:id/publish", admin, g.Admin(), adoptionHandler.PublishVariant)
-	g.apiKeyRoute(r, http.MethodGet, "/marketplace/tenant/available-agents", admin, g.Viewer(), adoptionHandler.ListAvailableAgents)
+	// The available-agents read model is the mobile read-only surface (spec
+	// §2): its API-key floor mirrors GET /api/v1/agents' OR stack — read_agents,
+	// manage_agents, chat or full-access — instead of admin=full-access, so a
+	// scoped integration key with read or chat capability is not 403'd here
+	// while reading the sibling endpoint (B3-F69).
+	g.apiKeyRoute(r, http.MethodGet, "/marketplace/tenant/available-agents",
+		apiKeyReadAgents(apiKeyManageAgents(apiKeyChat(apiKeyFullAccess()))), g.Viewer(), adoptionHandler.ListAvailableAgents)
 }

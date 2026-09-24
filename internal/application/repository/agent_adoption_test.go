@@ -6,7 +6,9 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // seedAdoptionRelease drives the REAL marketplace repository to publish one
@@ -237,4 +239,37 @@ func TestAgentAdoptionRepositoryAdoptListingLostRaceDifferentRelease(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, stored)
 	require.Equal(t, "loser-release", stored.AcceptedReleaseID, "the pointer advance is persisted")
+}
+
+// openAdoptionVariantDB builds only the tables ReplaceCapabilityMappings
+// touches (gorm AutoMigrate of the entities). The B3-F87 CAS guard under
+// test is store-level SQL semantics, so the case stays runnable independently
+// of the pre-existing migrations/sqlite 000112 duplicate-number conflict.
+func openAdoptionVariantDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"),
+		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&types.AgentAdoptionVariantEntity{}, &types.AgentVariantCapabilityMappingEntity{}))
+	t.Cleanup(func() { conn, _ := db.DB(); _ = conn.Close() })
+	return db
+}
+
+func TestReplaceCapabilityMappingsRefusesToDowngradeConcurrentState(t *testing.T) {
+	db := openAdoptionVariantDB(t)
+	repo := NewAgentAdoptionRepository(db)
+	ctx := context.Background()
+	// 夹具：variant 处于 published（模拟并发 PublishVariant 的 CAS 恰好落地）。
+	require.NoError(t, db.Create(&types.AgentAdoptionVariantEntity{
+		TenantID: 1, ID: "v1", AdoptionID: "a1", ReleaseID: "r1", State: "published", Name: "V",
+	}).Error)
+
+	err := repo.ReplaceCapabilityMappings(ctx, 1, "v1",
+		[]types.AgentVariantCapabilityMappingEntity{{TenantID: 1, VariantID: "v1", Capability: "model", ModelID: "m1"}}, "mapped")
+
+	require.ErrorIs(t, err, ErrAgentAdoptionRemapStateConflict, "并发 CAS 落地后不得被静默打回（B3-F87）")
+	after, err := repo.GetVariant(ctx, 1, "v1")
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	require.Equal(t, "published", after.State, "published 状态必须保持")
 }

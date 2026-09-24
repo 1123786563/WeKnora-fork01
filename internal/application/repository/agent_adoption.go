@@ -17,6 +17,11 @@ import (
 var (
 	ErrAgentAdoptionNotFound          = errors.New("agent adoption resource not found")
 	ErrAgentAdoptionVariantTransition = errors.New("agent adoption variant state transition failed")
+	// ErrAgentAdoptionRemapStateConflict marks a ReplaceCapabilityMappings
+	// whose guarded state UPDATE lost to a concurrent transition (e.g.
+	// publish landing between the service's pre-check and this write): the
+	// rewrite fails loudly instead of silently downgrading the state (B3-F87).
+	ErrAgentAdoptionRemapStateConflict = errors.New("agent adoption variant state changed during capability rewrite")
 )
 
 // AgentAdoptionPublishedRow pairs one published Variant with its live local
@@ -162,6 +167,12 @@ func (r *agentAdoptionRepository) ListVariantsByAdoption(ctx context.Context, te
 	return rows, err
 }
 
+// allowedRemapStates mirrors the service-side pre-check (draft/mapped/
+// tested are re-mappable; published is terminal). The UPDATE carries it as a
+// guard so a concurrent CAS landing between the service's read and this
+// write cannot be silently downgraded (B3-F87).
+var allowedRemapStates = []string{"draft", "mapped", "tested"}
+
 // ReplaceCapabilityMappings atomically swaps the Variant's mapping rows and
 // records the recomputed state (draft while incomplete, mapped once every
 // required capability is bound). One transaction, all parameters bound.
@@ -182,12 +193,20 @@ func (r *agentAdoptionRepository) ReplaceCapabilityMappings(ctx context.Context,
 			}
 		}
 		updated := tx.Model(&types.AgentAdoptionVariantEntity{}).
-			Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).
+			Where("tenant_id = ? AND id = ? AND state IN ?", tenantID, strings.TrimSpace(variantID), allowedRemapStates).
 			Updates(map[string]any{"state": nextState, "updated_at": now})
 		if updated.Error != nil {
 			return updated.Error
 		}
 		if updated.RowsAffected != 1 {
+			// The guarded UPDATE missed: the variant is gone OR its state moved
+			// past the re-mappable set concurrently. Distinguish the two so the
+			// caller surfaces a state conflict (409) instead of a plain 404.
+			var current types.AgentAdoptionVariantEntity
+			if err := tx.Where("tenant_id = ? AND id = ?", tenantID, strings.TrimSpace(variantID)).
+				Take(&current).Error; err == nil {
+				return fmt.Errorf("%w: state is %q", ErrAgentAdoptionRemapStateConflict, current.State)
+			}
 			return ErrAgentAdoptionNotFound
 		}
 		return nil
