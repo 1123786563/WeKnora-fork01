@@ -140,4 +140,61 @@ test('a fresh narrow shell starts collapsed without changing the desktop prefere
 test('shell stylesheet removes the 600px width floor on narrow viewports', async () => {
   const css = await readFile(new URL('./platform-u.css', import.meta.url), 'utf8');
   assert.match(css, /@media[^{}]*max-width:\s*640px[\s\S]*?\.wk-shell-1\s*\{[^}]*min-width:\s*0/, 'narrow media rule allows the platform shell to fit the viewport');
+  const shellCss = await readFile(new URL('./platform-shell.td.css', import.meta.url), 'utf8');
+  assert.match(shellCss, /@media[^{}]*max-width:\s*640px[\s\S]*?\.aside_box--mobile-overlay\s*\{[^}]*position:\s*fixed/, 'expanded narrow navigation overlays the route instead of shrinking it');
+});
+
+async function resizeViewport(width: number): Promise<void> {
+  await act(async () => {
+    Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+    window.dispatchEvent(new window.Event('resize'));
+  });
+}
+
+test('desktop preference is restored when resizing from desktop to narrow and back', async () => {
+  window.localStorage.setItem('sidebar_collapsed', 'false');
+  await mountShell();
+  assert.ok(collapseButton(), 'desktop starts expanded from the saved preference');
+  await resizeViewport(390);
+  await settle(0);
+  assert.ok(expandButton(), 'entering narrow mode collapses the rail');
+  assert.equal(window.localStorage.getItem('sidebar_collapsed'), 'false', 'automatic narrow collapse does not overwrite desktop preference');
+  await resizeViewport(1024);
+  await settle(0);
+  assert.ok(collapseButton(), 'returning to desktop restores its expanded preference');
+  assert.equal(window.localStorage.getItem('sidebar_collapsed'), 'false');
+});
+
+test('stored collapsed preference stays collapsed on desktop across a narrow resize', async () => {
+  window.localStorage.setItem('sidebar_collapsed', 'true');
+  await mountShell();
+  assert.ok(expandButton(), 'desktop honors saved collapsed preference');
+  await resizeViewport(390);
+  await settle(0);
+  assert.ok(expandButton(), 'narrow mode remains collapsed');
+  await resizeViewport(1024);
+  await settle(0);
+  assert.ok(expandButton(), 'desktop restores saved collapsed preference');
+  assert.equal(window.localStorage.getItem('sidebar_collapsed'), 'true');
+});
+
+test('narrow explicit expansion overlays content and closes without changing desktop preference', async () => {
+  window.localStorage.setItem('sidebar_collapsed', 'false');
+  await resizeViewport(390);
+  const container = await mountShell();
+  assert.ok(expandButton(), 'narrow rail starts collapsed');
+  await act(async () => { expandButton()!.click(); });
+  const sidebar = container.querySelector('aside');
+  assert.ok(collapseButton(), 'expanded overlay retains the accessible collapse button');
+  assert.ok(sidebar?.classList.contains('aside_box--mobile-overlay'), 'expanded narrow sidebar uses overlay layout');
+  assert.equal(window.localStorage.getItem('sidebar_collapsed'), 'false', 'narrow explicit toggle does not change desktop preference');
+  await act(async () => { collapseButton()!.click(); });
+  assert.ok(expandButton(), 'closing the overlay returns to the narrow rail');
+  assert.ok(container.querySelector('.plat-shell__outlet'), 'main content remains mounted under the overlay');
+  await act(async () => { expandButton()!.click(); });
+  await resizeViewport(1024);
+  assert.ok(collapseButton(), 'desktop preference returns after leaving an expanded narrow overlay');
+  assert.equal(window.localStorage.getItem('sidebar_collapsed'), 'false');
+  await resizeViewport(390);
+  assert.ok(expandButton(), 're-entering narrow mode closes the overlay and restores the rail');
 });

@@ -319,9 +319,24 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   const shellSidebarCopy = useMemo(() => resolveChatCopy(locale), [locale]);
 
   const [pathname, setPathname] = useState(() => window.location.pathname);
-  const [collapsed, setCollapsed] = useState(() =>
-    window.innerWidth <= 640 || window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true',
+  const [isNarrowViewport, setIsNarrowViewport] = useState(() => window.innerWidth <= 640);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(() =>
+    window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true',
   );
+  const [narrowSidebarExpanded, setNarrowSidebarExpanded] = useState(false);
+  const collapsed = isNarrowViewport ? !narrowSidebarExpanded : desktopSidebarCollapsed;
+  const isNarrowViewportRef = useRef(isNarrowViewport);
+  useEffect(() => {
+    const handleResize = () => {
+      const nextIsNarrow = window.innerWidth <= 640;
+      const wasNarrow = isNarrowViewportRef.current;
+      isNarrowViewportRef.current = nextIsNarrow;
+      setIsNarrowViewport(nextIsNarrow);
+      if (nextIsNarrow && !wasNarrow) setNarrowSidebarExpanded(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [tenantMenuOpen, setTenantMenuOpen] = useState(false);
   const [tenantSwitchPending, setTenantSwitchPending] = useState<string | null>(null);
@@ -1009,7 +1024,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
 
   // Welcome-tour shell callbacks (Vue: uiStore.expandSidebar / openSettings('models')).
   const guideActions = useMemo(() => ({
-    expandSidebar: () => setCollapsed(false),
+    expandSidebar: () => {
+      if (isNarrowViewport) setNarrowSidebarExpanded(true);
+      else setDesktopSidebarCollapsed(false);
+    },
     openModelsSettings: () => {
       window.history.pushState({}, '', '/platform/settings?section=models');
       guideOpenedSettingsRef.current = true;
@@ -1019,7 +1037,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       guideOpenedSettingsRef.current = false;
       window.history.back();
     },
-  }), []);
+  }), [isNarrowViewport]);
 
   // Vue menu.vue:1151-1169 onDragHandleMouseDown — collapsed-rail drag handle:
   // track the drag, expand once the pointer moves >40px to the right.
@@ -1029,8 +1047,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     const expandThreshold = 40;
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (moveEvent.clientX - startX > expandThreshold) {
-        setCollapsed(false);
-        window.localStorage.setItem(COLLAPSE_STORAGE_KEY, 'false');
+        if (isNarrowViewport) setNarrowSidebarExpanded(true);
+        else {
+          setDesktopSidebarCollapsed(false);
+          window.localStorage.setItem(COLLAPSE_STORAGE_KEY, 'false');
+        }
         cleanup();
       }
     };
@@ -1044,7 +1065,11 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   };
 
   const toggleCollapsed = () => {
-    setCollapsed((current) => {
+    if (isNarrowViewport) {
+      setNarrowSidebarExpanded((current) => !current);
+      return;
+    }
+    setDesktopSidebarCollapsed((current) => {
       window.localStorage.setItem(COLLAPSE_STORAGE_KEY, String(!current));
       return !current;
     });
@@ -1070,7 +1095,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     // 类名与结构 1:1（样式 platform-shell.td.css）；根容器与右侧 outlet 的
     // 布局 utilities 维持原值（与 Vue .main/.platform-route-outlet 计算值一致）。
     <div className="wk-shell-1">
-      <aside className={collapsed ? 'aside_box aside_box--collapsed' : 'aside_box'}>
+      <aside className={[
+        collapsed ? 'aside_box aside_box--collapsed' : 'aside_box',
+        isNarrowViewport && !collapsed ? 'aside_box--mobile-overlay' : '',
+      ].filter(Boolean).join(' ')}>
         {/* 展开时：Logo + 搜索/折叠按钮同行（Vue menu.vue logo_row）。 */}
         {!collapsed ? <div className="logo_row">
           <a className="logo_box" style={{ cursor: 'pointer' }} href="/platform/knowledge-bases" aria-label="WeKnora" onClick={(event) => {
