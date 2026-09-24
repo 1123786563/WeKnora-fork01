@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // 令牌与一次性凭据的生命周期（测试可临时改写以覆盖过期路径）。
@@ -126,6 +127,8 @@ type oauthServer struct {
 	tokens map[string]tokenEntry
 	// refreshTokens: refresh_token -> 会话条目（独立 TTL，一次性轮换）。
 	refreshTokens map[string]refreshEntry
+	// lastSweep 上次全量清扫时刻（s.mu 保护；OCR 二轮 F2 节流用）。
+	lastSweep time.Time
 }
 
 // registeredClient 记录一次动态注册（ClientName 供同意页展示请求方——
@@ -242,6 +245,37 @@ func (s *oauthServer) sweepExpiredLocked(now time.Time) {
 	}
 }
 
+// validateClientName 校验动态注册的请求方显示名（OCR 二轮 F6）：拒绝
+// Cc 控制字符、Zl/Zp 分隔符与 Cf 格式字符（RLO/isolate/BOM/软连字符等
+// 可视觉重排或隐藏文本），豁免 U+200C/U+200D（复合 emoji 序列的必要
+// 组成，与 internal/modules/plugins 的 validateDescription 同款双重标准）；
+// Co 私用区有普通可见字形、按 validateDescription 先例保留合法。
+func validateClientName(name string) error {
+	for _, r := range name {
+		invisible := unicode.IsControl(r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) ||
+			(unicode.Is(unicode.Cf, r) && r != '\u200c' && r != '\u200d')
+		if invisible {
+			return fmt.Errorf("client_name must not contain control, format or separator characters (U+%04X)", r)
+		}
+	}
+	return nil
+}
+
+// maybeSweepLocked 是写路径的节流清扫入口（OCR 二轮 F2）：5 个未认证
+// 写路径都曾每请求全量清扫（达上限 21504 条目、全程持 s.mu，与 /mcp
+// 每请求两次的 lookupSession 争抢同一把锁）——按 sweepMinInterval 节流，
+// 窗口内直接返回。过期判定不受影响（各查找路径都有单条过期判定）；
+// 过期条目的容量释放从「即时」弱化为「≤窗口」。var 供测试改写。
+var sweepMinInterval = time.Second
+
+func (s *oauthServer) maybeSweepLocked(now time.Time) {
+	if now.Sub(s.lastSweep) < sweepMinInterval {
+		return
+	}
+	s.lastSweep = now
+	s.sweepExpiredLocked(now)
+}
+
 // contextFunc 是 StreamableHTTPServer 的 HTTPContextFunc：从每个入站请求
 // 提取 Bearer 并解析为已授权会话，注入工具 handler 的 context。无效或缺失
 // token 注入 nil 会话（工具执行防御性拒绝；HTTP 层 gate 已先行拦截）。
@@ -260,8 +294,8 @@ func sessionFromContext(ctx context.Context) *oauthSession {
 // 返回 nil。只做单条 O(1) 查找（终评 R5 F8：原实现持锁调 sweepExpiredLocked
 // 对 5 个 map 全量清扫，而每个 /mcp 请求经 gate 与 contextFunc 触发两次
 // ——tokens 表被推大后形成请求串行化 O(n)×2 放大）。全量清扫职责收敛到
-// 写路径（/register、/authorize、/token 均仍调 sweepExpiredLocked）；查到的
-// 过期条目仍即时删除并拒绝（OCR T04-R1-2 过期即拒语义不变）。
+// 写路径（/register、/authorize、/token 经 maybeSweepLocked 节流执行）；
+// 查到的过期条目仍即时删除并拒绝（OCR T04-R1-2 过期即拒语义不变）。
 func (s *oauthServer) lookupSession(token string) *oauthSession {
 	if token == "" {
 		return nil
@@ -342,6 +376,18 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// OCR 二轮 F6：client_name 是同意页的「请求方标识」，渲染只经
+	// html.EscapeString（仅覆盖 5 个 ASCII 字符）——Unicode Cf（RLO、
+	// isolate、BOM、软连字符）原样穿透，可视觉重排/隐藏伪装可信请求方
+	//（深链钓鱼面，/register 缺省无认证）。注册期 fail-closed 拒绝该
+	// 字符类；ZWJ/ZWNJ 复合 emoji 按 manifest validateDescription 的双重
+	// 标准豁免（显示文本），Co 私用区有可见字形按同先例保留。
+	if err := validateClientName(registration.ClientName); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid_client_metadata", "error_description": err.Error(),
+		})
+		return
+	}
 	// OCR T04-R2-8：条数与单条长度封顶——注册体原样入 map，聚合内存大小
 	// 必须有界（4096 客户端 × 16 条 × 2KiB）。
 	if len(registration.RedirectURIs) > maxRedirectURIsPerRegistration {
@@ -381,7 +427,7 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	// 先清扫再查容量（整分支 OCR 一轮 F5）：过期注册即时释放名额——否则
 	// 未认证 /register 填满上限后，合法客户端到重启前都拿不到注册位。
-	s.sweepExpiredLocked(now)
+	s.maybeSweepLocked(now)
 	if len(s.clients) >= maxRegisteredClients {
 		s.mu.Unlock()
 		writeJSON(w, http.StatusTooManyRequests, map[string]any{
@@ -441,7 +487,7 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 	}
 	now := time.Now()
 	s.mu.Lock()
-	s.sweepExpiredLocked(now)
+	s.maybeSweepLocked(now)
 	// OCR T04-R2-4：对未过期的同 state 条目拒绝覆盖——否则攻击者获知成员
 	// state 后可用自己的 client/redirect/PKCE 重新绑定（授权请求固定）。
 	// 合法客户端每次授权流生成新 state（OAuth 语义），POST 重试不受影响。
@@ -637,7 +683,7 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 	code := randomToken()
 	s.mu.Lock()
 	now = time.Now()
-	s.sweepExpiredLocked(now)
+	s.maybeSweepLocked(now)
 	// OCR 一轮 F9：先清扫再查容量（过期 code 即时释放名额）。满容不消费
 	// state——容量是暂时态，成员可稍后重试提交而非重启授权流（与
 	// exchangeCode 满容语义一致）。
@@ -712,7 +758,7 @@ func (s *oauthServer) exchangeCode(w http.ResponseWriter, r *http.Request) {
 	redirectURI := r.PostFormValue("redirect_uri")
 	now := time.Now()
 	s.mu.Lock()
-	s.sweepExpiredLocked(now)
+	s.maybeSweepLocked(now)
 	// 终评 R5 F8 + 跨任务转交 R7（T01-R4-F1 补充）：先清扫再查容量（过期
 	// 条目即时释放名额）。tokens 与 refreshTokens 任一满容即 429——满容时
 	// 不消费 code，容量是暂时态，客户端可稍后重试而非重启整条授权流。检查
@@ -768,7 +814,7 @@ func (s *oauthServer) refresh(w http.ResponseWriter, r *http.Request) {
 	newAccess := "at-" + randomToken()
 	newRefresh := "rt-" + randomToken()
 	s.mu.Lock()
-	s.sweepExpiredLocked(now)
+	s.maybeSweepLocked(now)
 	// 终评 R5 F8：满容时保留调用方现有 refresh_token（与「失败不烧毁有效
 	// 条目」语义一致），429 后稍后重试即可。
 	if len(s.tokens) >= maxActiveTokens {

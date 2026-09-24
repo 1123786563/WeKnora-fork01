@@ -858,6 +858,12 @@ func TestRegisteredClientsExpiredByTTL(t *testing.T) {
 	maxRegisteredClients = 1
 	clientRegistrationTTL = 10 * time.Millisecond
 	t.Cleanup(func() { maxRegisteredClients, clientRegistrationTTL = oldMax, oldTTL })
+	// OCR 二轮 F2：写路径清扫按 sweepMinInterval 节流——本测试的原意是
+	// 「register 写路径的惰性清扫释放容量」，关掉节流保持该断言语义
+	//（不依赖 authorize 读路径的单条过期删除顺带腾名额）。
+	oldInterval := sweepMinInterval
+	sweepMinInterval = 0
+	t.Cleanup(func() { sweepMinInterval = oldInterval })
 
 	// A 占满唯一名额；容量满后 B 被拒（429，既有语义不变）。
 	first := testRegisterClient(t, base, "https://client.example/cb-a")
@@ -1291,4 +1297,145 @@ func TestSearchMyWeekOverallDeadline(t *testing.T) {
 	_, err := handleSearchMyWeek(ctx, fake.URL)
 	require.Error(t, err,
 		"the overall tool-call deadline must cut a slow upstream before page timeouts pile up")
+}
+
+// --- OCR 二轮 R9：main.go 三项 + oauth.go 两项 ---
+
+// TestHTTPServerTimeouts（OCR 二轮 F1）：/mcp、/register、/authorize、/token
+// 都是未认证 1MiB 输入面，MaxBytesReader 只封顶字节数不封顶读取时间——
+// 慢速 body 连接可无限期占用连接与 goroutine。server 必须配
+// ReadTimeout（请求读取阶段，不影响 SSE 响应）与 IdleTimeout；
+// WriteTimeout 不得设置（会切断 /mcp 流式长响应）。
+func TestHTTPServerTimeouts(t *testing.T) {
+	srv := newHTTPServer(http.NotFoundHandler())
+	require.NotNil(t, srv.ReadTimeout, "ReadTimeout must be set (slow-body DoS)")
+	require.NotNil(t, srv.IdleTimeout, "IdleTimeout must be set (keep-alive reaping)")
+	require.NotNil(t, srv.ReadHeaderTimeout, "ReadHeaderTimeout must stay set")
+	require.Equal(t, time.Duration(0), srv.WriteTimeout,
+		"WriteTimeout must stay zero (it would cut /mcp SSE streams)")
+}
+
+// TestSweepThrottledOnWritePaths（OCR 二轮 F2）：sweepExpiredLocked 曾在
+// 5 个未认证写路径请求内全量遍历 5 个 map 且全程持 s.mu（达上限 21504
+// 条目），与 /mcp 每请求两次的 lookupSession 争抢同一把锁。写路径清扫
+// 必须按 sweepMinInterval 节流：窗口内跳过（过期条目留给窗口后的下一次
+// 清扫），过期判定本身不受影响。
+func TestSweepThrottledOnWritePaths(t *testing.T) {
+	s := newOAuthServer("http://auth.example", "http://jira.example", nil)
+	now := time.Now()
+	s.tokens["at-expired"] = tokenEntry{
+		Session: &oauthSession{Email: "e", APIToken: "t"}, ExpiresAt: now.Add(-time.Minute),
+	}
+
+	// 刚清扫过（lastSweep=now）：窗口内的写路径清扫被节流跳过。
+	s.mu.Lock()
+	s.lastSweep = now
+	s.maybeSweepLocked(now.Add(sweepMinInterval / 2))
+	s.mu.Unlock()
+	_, still := s.tokens["at-expired"]
+	require.True(t, still,
+		"a write-path sweep inside the throttle window must not run the O(n) pass")
+
+	// 窗口过后：清扫照常执行。
+	s.mu.Lock()
+	s.maybeSweepLocked(now.Add(2 * sweepMinInterval))
+	s.mu.Unlock()
+	_, still = s.tokens["at-expired"]
+	require.False(t, still, "a sweep past the window must still run")
+}
+
+// TestRegisterRejectsFormatCharactersInClientName（OCR 二轮 F6）：同意页
+// 请求方标识 client_name 只经 html.EscapeString 渲染——Unicode Cf（RLO、
+// isolate、BOM、软连字符）原样穿透，可视觉重排伪装可信请求方（深链钓鱼
+// 面）。注册期必须 fail-closed 拒绝该字符类；ZWJ/ZWNJ 复合 emoji 按
+// manifest validateDescription 的双重标准豁免（显示文本）。
+func TestRegisterRejectsFormatCharactersInClientName(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirect := "https://client.example/cb"
+
+	for name, note := range map[string]string{
+		"evil\u202Ename":            "RLO (Cf) must be rejected (visual reordering)",
+		"iso\u2066lated":            "LRI (Cf) must be rejected (isolate override)",
+		"bom\uFEFFname":             "BOM (Cf) must be rejected",
+		"soft\u00ADhyphen":          "soft hyphen (Cf) must be rejected",
+		"line\u2028sep":             "Zl separator must be rejected",
+		"ctl\x01name":               "Cc control must be rejected",
+		strings.Repeat("\u200E", 3): "LRM run (Cf) must be rejected",
+	} {
+		body, err := json.Marshal(map[string]any{"redirect_uris": []string{redirect}, "client_name": name})
+		require.NoError(t, err)
+		resp, err := http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+		require.NoError(t, err)
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		require.Equalf(t, http.StatusBadRequest, resp.StatusCode, "%s: %q", note, name)
+	}
+
+	// 对照：ZWJ 复合 emoji 名合法（manifest validateDescription 同款豁免）。
+	body, err := json.Marshal(map[string]any{"redirect_uris": []string{redirect}, "client_name": "家庭待办 👨‍👩‍👧‍👦"})
+	require.NoError(t, err)
+	resp, err := http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusCreated, resp.StatusCode,
+		"compound emoji (ZWJ) client names must stay legal")
+}
+
+// TestValidateServiceBaseURLRejectsPathQueryFragment（OCR 二轮 F3）：
+// 服务自身 BaseURL 携带 path/query/fragment 时，拼出的 OAuth 元数据、
+// WWW-Authenticate challenge 与 manifest endpoint 全部不可用却静默启动
+// （fragment 吞路径、query 干扰路由、sub-path 与根挂载 mux 不匹配）。
+// JiraBaseURL 不适用本规则（可合法携带 /jira 等路径）。
+func TestValidateServiceBaseURLRejectsPathQueryFragment(t *testing.T) {
+	for _, raw := range []string{
+		"https://host#f",
+		"https://host?q",
+		"https://host/sub",
+		"https://host/sub?x=1#y",
+	} {
+		require.Errorf(t, validateServiceBaseURL("BaseURL", raw),
+			"service BaseURL %q must not carry path/query/fragment", raw)
+	}
+	require.NoError(t, validateServiceBaseURL("BaseURL", "https://plugins.example.com"))
+	require.NoError(t, validateServiceBaseURL("BaseURL", "http://127.0.0.1:8020"))
+	// JiraBaseURL 仍走 validateBaseURL：路径合法（Jira DC 常部署 /jira 下）。
+	require.NoError(t, validateBaseURL("JiraBaseURL", "https://jira.example.com/jira"))
+}
+
+// TestShutdownGracefullyReturnsNilAfterClose（OCR 二轮 F4）：Shutdown 超时
+// 分支 Close 兜底后进程状态已干净，却仍返回超时错误令调用方
+// log.Fatalf 误判失败。graceful 停机在宽限关闭与强制回收两种结局下都
+// 必须返回 nil。
+func TestShutdownGracefullyReturnsNilAfterClose(t *testing.T) {
+	release := make(chan struct{})
+	srv := newHTTPServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		<-release // 挂起活跃请求：Shutdown 等不到 idle，必走超时分支
+	}))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { close(release); _ = srv.Close() })
+
+	done := make(chan struct{})
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String() + "/metadata")
+		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+		}
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond) // 让请求进入 handler
+
+	err = shutdownGracefully(srv, 100*time.Millisecond)
+	require.NoError(t, err,
+		"a forced close after graceful-timeout still leaves the server down cleanly")
+
+	// Close 已强制断开挂起连接：请求 goroutine 必然被解除。
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the hung request must be released by Close")
+	}
 }
