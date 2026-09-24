@@ -65,49 +65,65 @@ export async function runTaskStartIntegration(config: Extract<TaskStartIntegrati
       return (input, accessToken) => client.request({ ...input, headers: { ...input.headers, authorization: `Bearer ${accessToken}` } });
     },
   });
-  const snapshot = await runtime.signIn({
-    deployment: { origin: config.deploymentOrigin, label: 'Integration deployment' },
-    email: config.email,
-    password: config.password,
-  });
-  if (snapshot.surface !== 'authorized' || !snapshot.deployment) {
-    evidence.errorReason = `surface ${snapshot.surface}`;
-    return evidence;
-  }
-  const agentsEnvelope = await runtime.authorizedRequest({ method: 'GET', path: '/api/v1/agents' }) as { success?: boolean; data?: Array<{ id?: unknown }> };
-  const agentId = typeof agentsEnvelope?.data?.[0]?.id === 'string' ? agentsEnvelope.data[0].id : undefined;
-  if (!agentId) {
-    evidence.errorReason = 'no agent available on the deployment';
-    return evidence;
-  }
-  const newRequestId = createNativeRequestId();
-  // intentLog 用 office 缺省的进程内实现（同一 office 实例内的重入语义即可支撑本证据；
-  // 跨进程耐久由 Task 4 的 secure Adapter 在组合根承载，真机重启证据属 #40）
-  const office: TaskOffice = createTaskOffice({
-    backend: createTaskOfficeRemote({ origin: config.deploymentOrigin, request: (input) => runtime.authorizedRequest(input) }),
-    lease: () => runtime.scopeLease(),
-    newRequestId,
-  });
-  const goal = { text: `T06 集成验证：${new Date().toISOString()}`, agentId, budgetUpper: 10 };
-  const first = await office.start(goal);
-  evidence.requestId = first.requestId;
-  evidence.runId = first.runId;
-  evidence.start = first.phase === 'bound' ? 'admitted' : first.phase === 'rejected' ? 'rejected' : 'pending';
-  if (first.phase !== 'bound' || first.runId === undefined) {
-    evidence.errorReason = `first receipt phase ${first.phase}`;
-    return evidence;
-  }
-  // 同一意图重入（真服务端）：不得产生第二次派发
-  const second = await office.start(goal, { requestId: first.requestId });
-  evidence.repeatSubmitSameRequest = second.dispatched === false && second.runId === first.runId ? 'no-second-dispatch' : 'second-dispatch';
-  // 创建的 run 可在任务列表观测（端到端闭环）
+  // total 化收口（B3-F60/F45）：任何步骤异常也产出证据对象（含 errorReason，不含凭据），
+  // 绝不让整函数 reject 把证据丢弃——「including failed live outcomes」是本函数的契约。
   try {
-    const page = await office.tasks({});
-    evidence.runVisibleInTasks = page.items.some((card) => card.runId === first.runId);
-  } catch {
-    evidence.runVisibleInTasks = 'unavailable';
+    const snapshot = await runtime.signIn({
+      deployment: { origin: config.deploymentOrigin, label: 'Integration deployment' },
+      email: config.email,
+      password: config.password,
+    });
+    if (snapshot.surface !== 'authorized' || !snapshot.deployment) {
+      evidence.errorReason = `surface ${snapshot.surface}`;
+      return evidence;
+    }
+    const agentsEnvelope = await runtime.authorizedRequest({ method: 'GET', path: '/api/v1/agents' }) as { success?: boolean; data?: Array<{ id?: unknown }> };
+    const agentId = typeof agentsEnvelope?.data?.[0]?.id === 'string' ? agentsEnvelope.data[0].id : undefined;
+    if (!agentId) {
+      evidence.errorReason = 'no agent available on the deployment';
+      return evidence;
+    }
+    const newRequestId = createNativeRequestId();
+    // intentLog 用 office 缺省的进程内实现（同一 office 实例内的重入语义即可支撑本证据；
+    // 跨进程耐久由 Task 4 的 secure Adapter 在组合根承载，真机重启证据属 #40）
+    const office: TaskOffice = createTaskOffice({
+      backend: createTaskOfficeRemote({ origin: config.deploymentOrigin, request: (input) => runtime.authorizedRequest(input) }),
+      lease: () => runtime.scopeLease(),
+      newRequestId,
+    });
+    const goal = { text: `T06 集成验证：${new Date().toISOString()}`, agentId, budgetUpper: 10 };
+    const first = await office.start(goal);
+    evidence.requestId = first.requestId;
+    evidence.runId = first.runId;
+    evidence.start = first.phase === 'bound' ? 'admitted' : first.phase === 'rejected' ? 'rejected' : 'pending';
+    if (first.phase !== 'bound' || first.runId === undefined) {
+      evidence.errorReason = `first receipt phase ${first.phase}`;
+      return evidence;
+    }
+    // 同一意图重入（真服务端）：不得产生第二次派发。Task 6 后预期零网络幂等回执
+    // （intentLog 记录已 remove、store 内 bound entry 即凭据），但失败也产出证据（B3-F45）。
+    try {
+      const second = await office.start(goal, { requestId: first.requestId });
+      evidence.repeatSubmitSameRequest = second.dispatched === false && second.runId === first.runId ? 'no-second-dispatch' : 'second-dispatch';
+    } catch (error) {
+      evidence.repeatSubmitSameRequest = 'failed';
+      evidence.errorReason = `replay rejected: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    // 创建的 run 可在任务列表观测（端到端闭环；既有 try/catch 保护保持）
+    try {
+      const page = await office.tasks({});
+      evidence.runVisibleInTasks = page.items.some((card) => card.runId === first.runId);
+    } catch {
+      evidence.runVisibleInTasks = 'unavailable';
+    }
+    return evidence;
+  } catch (error) {
+    evidence.start = 'failed';
+    evidence.errorReason = error instanceof Error ? error.message : String(error); // 失败仍产出证据（不含凭据）
+    return evidence;
+  } finally {
+    runtime.dispose(); // 释放 lease/凭据通道（batch2 Task 9 先例）
   }
-  return evidence;
 }
 
 /** Emits only the redacted evidence contract, including failed live outcomes. */

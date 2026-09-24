@@ -30,3 +30,17 @@ test('live end-to-end task creation through the highest stable interface (opt-in
   assert.equal(evidence.repeatSubmitSameRequest, 'no-second-dispatch', 'AC1: the same intent never dispatches twice');
   assert.notEqual(evidence.runVisibleInTasks, false, 'when the list is reachable, the created run must be observable in it');
 });
+
+test('the integration runner is total: a failing transport still yields evidence, not a rejection', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, 'task-start-integration-smoke.ts'), 'utf8');
+  // 结构级断言（对照 batch2 Task 9 的先例模式）：主流程包 try/catch/finally。
+  assert.match(source, /finally\s*\{/);
+  assert.match(source, /catch \(error\)/);
+  // B3-F45：第二次同 ID 重入必须在 try 内且 catch 记 failed + errorReason（不裸 await）。
+  assert.match(source, /try \{\s*\n\s*(?:const second = )?await office\.start\(goal, \{ requestId: first\.requestId \}\)/, '重入受 try 保护');
+  assert.match(source, /repeatSubmitSameRequest = 'failed'/, '重入失败也落证据字段');
+});
