@@ -133,3 +133,10 @@
 - **根因**：CheckoutPage 自旧实现继承即无支付链接渲染，计划 Task 10 Produces 又漏列该项；上轮报告对 Step 3 未执行的披露只归因于 awaiting_payment 截图态不可稳定构造，未披露断言面本身缺失——披露不完整。
 - **修复（RED→GREEN）**：`CheckoutPage.test.tsx` 增断言 `a[href=checkout_url]` 存在且文案含「前往支付」（RED 实测 AssertionError 'checkout must render the payment link'）；实现 `packages/contracts` OrderView 增可选 `checkout_url`（解析器 verbatim 透传本就携带该字段）+ CheckoutPage ready 态渲染 `<a target=_blank rel=noreferrer>前往支付</a>`。GREEN：单文件 1/1；commercial 全部 4 个测试文件 11/11；`pnpm test:shared` 979/983（与修复前一致，失败均为基线既有）；`typecheck:web` 零新增错误。
 - **披露补全**：Task 12 Step 3 浏览器验收未执行的原因现有两条——(a) 真实栈在可收款 PM 下数秒推进到 active，「待付款」截图态不可稳定构造；(b) 支付跳转链接渲染面当时缺失（本条已修复，测试断言覆盖）。
+
+### F8（medium｜回归未处置）architectureguard 基线常量未随 #81 增量同步
+
+- **证据复现（worktree 内）**：`go test ./tools/architectureguard/ -count=1` → 三测 FAIL：`TestGuardCleanAtHead`（发现规模 {RoutesLiteral:566 RoutesTotal:635 Hooks:59} vs 基线 564/633/58）、`TestDiscoverRealRepoRouteTotals`（literal=566(564)、总数 635 want 633）、`TestDiscoverRealRepoHooks`（挂点 59, want 58）。增量来源：routes_commercial.go +2 literal（POST /purchases、GET /purchase）+ container.go +1 Invoke（SetPurchaseService 装配）。
+- **根因（两层）**：(a) 直接根因——#81 交付 2 条路由 + 1 个 Invoke 后未同步 discovery_test.go:187-192 的硬编码基线；(b) **为何上轮未暴露**——实现员上轮的 `go test ./...`、`make lint`、`make check-backend-architecture` 是在 shell cwd 被 harness 重置到主 checkout（/Users/wuyongjun/trea/WeKnora-fork01，无 #81 增量）之后执行的，得到的是**基线代码的假阴性**（本轮以 `pwd` 输出 + 探针文件在 worktree 存在但主 checkout 的 go list 不可见实证了 cwd 污染）。上轮「go test ./... exit 0」「lint 本 worktree 零违规」「check-backend-architecture OK」三条验证记录的执行目录全部无效，特此更正；F8 上轮「未处置且未记录」因此成立。
+- **修复**：基线常量随代码同步（代码为事实源，仓库先例：f4acb2154 曾因同类偏差修过一次）——`wantRouteLiteral 564→566`、`wantRouteTotal 633→635`、`wantHooks 58→59`，注释追加 #81 增量溯源。
+- **验证（全部在 worktree 内、每条命令前校验 pwd）**：`go test ./tools/architectureguard/ -count=1` → ok（全部用例 PASS）；`make check-backend-architecture` → `literal=566 total=635 hooks=59 OK (0 violations)`；stash 对照（撤销常量修改）→ FAIL 复现，恢复后 ok，证明 FAIL 与修复的因果；`make lint` 修复前后违规总数 273=273（零新增）；worktree 内 `go test ./...` → 125 包 ok、仅 `agentruntime/agent/recoverytest` 的 `TestCrashMatrixSQLite` 全量并发下 flaky 超时（147.85s），单独重跑 ok（22.9s）且该目录 grep "commercial" 零命中（与 #81 零耦合，基线既有 flaky）。
