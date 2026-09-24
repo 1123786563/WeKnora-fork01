@@ -17,7 +17,8 @@ export type TaskOfficeErrorCode =
   | 'TASK_OFFICE_DETAIL_CLOSED'
   | 'TASK_OFFICE_ATTACHMENTS_NOT_READY'
   | 'TASK_OFFICE_SUBMISSION_CONFLICT'
-  | 'TASK_OFFICE_INTERACTIONS_UNAVAILABLE';
+  | 'TASK_OFFICE_INTERACTIONS_UNAVAILABLE'
+  | 'TASK_OFFICE_LEGACY_UNAVAILABLE';
 
 export class TaskOfficeError extends Error {
   constructor(readonly code: TaskOfficeErrorCode, options?: { cause?: unknown }) {

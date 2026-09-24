@@ -17,6 +17,11 @@ import type { ScopeLease } from '../runtime/types.ts';
 import { createAttentionDecider } from './attention-inbox.ts';
 import type { AttentionDecisionInput, AttentionDecisionReceipt, InboxView, InteractionBackendPort } from './attention-inbox.ts';
 import { createInMemoryTaskProjectionStore } from './in-memory-task-detail.ts';
+import { legacyTaskGates } from './legacy-tasks.ts';
+import type {
+  LegacyBackendTask, LegacyFollowUpInput, LegacyMessage, LegacyTaskBackendPage, LegacyTaskBackendPort,
+  LegacyTaskCard, LegacyTaskListPage,
+} from './legacy-tasks.ts';
 import { createTaskDetail } from './task-detail.ts';
 import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
 import { TaskOfficeError } from './task-office-errors.ts';
@@ -176,6 +181,8 @@ export interface TaskOfficePorts {
   newRequestId?: () => string;
   /** T08: 类型化交互端口（Attention Inbox 读 + 决定）。缺失时 inbox()/decide() fail closed。 */
   interactions?: InteractionBackendPort;
+  /** T14（#44）Legacy Task 端口；缺失时 legacy 入口 fail closed（TASK_OFFICE_LEGACY_UNAVAILABLE）。 */
+  legacy?: LegacyTaskBackendPort;
 }
 
 export interface TaskOffice {
@@ -191,6 +198,11 @@ export interface TaskOffice {
   open(input: { taskId: string; runId: string }): TaskHandle;
   start(goal: TaskOfficeGoal, options?: { requestId?: string }): Promise<TaskStartReceipt>;
   reconcilePending(): Promise<TaskStartReceipt[]>;
+  /** T14（#44）追加区：Legacy Task 读投影与普通追问。 */
+  legacyTasks(query: { search?: string; archived?: boolean; limit?: number }): Promise<LegacyTaskListPage>;
+  moreLegacyTasks(): Promise<LegacyTaskListPage>;
+  legacyHistory(taskId: string): Promise<LegacyMessage[]>;
+  followUp(input: LegacyFollowUpInput): Promise<void>;
 }
 
 /** T06 耐久意图记录：重启后用原 session 与原 goal 重建 digest 一致的 Start 输入。 */
@@ -308,6 +320,48 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     },
   });
 
+  let legacyListEpoch = 0;
+  let legacyAccumulated: legacyListAccumulation | undefined;
+
+  interface legacyListAccumulation {
+    input: { search?: string; archived?: boolean; limit?: number };
+    cursor?: string;
+    seen: Set<string>;
+    duplicates: string[];
+  }
+
+  const requireLegacy = (): LegacyTaskBackendPort => {
+    if (ports.legacy === undefined) throw new TaskOfficeError('TASK_OFFICE_LEGACY_UNAVAILABLE');
+    return ports.legacy;
+  };
+  const toLegacyCard = (task: LegacyBackendTask): LegacyTaskCard => ({
+    taskId: task.taskId,
+    title: task.title,
+    attention: 'none',
+    ...(task.archivedAt === undefined ? {} : { archivedAt: task.archivedAt }),
+    updatedAt: task.updatedAt,
+    kind: 'legacy',
+    gates: legacyTaskGates(),
+  });
+  const accumulateLegacy = (state: legacyListAccumulation, page: LegacyTaskBackendPage): LegacyTaskListPage => {
+    const items: LegacyTaskCard[] = [];
+    for (const task of page.items) {
+      if (state.seen.has(task.taskId)) {
+        state.duplicates.push(task.taskId);
+        continue;
+      }
+      state.seen.add(task.taskId);
+      items.push(toLegacyCard(task));
+    }
+    state.cursor = page.nextCursor;
+    return { items, ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }), duplicateTaskIds: [...state.duplicates] };
+  };
+  const normalizeLegacyQuery = (query: { search?: string; archived?: boolean; limit?: number }): { search?: string; archived?: boolean; limit?: number } => {
+    const search = typeof query.search === 'string' ? query.search.trim().replace(/\s+/g, ' ').slice(0, searchMaxLen) : '';
+    const limit = typeof query.limit === 'number' && Number.isSafeInteger(query.limit) && query.limit > 0 ? Math.min(query.limit, 100) : 20;
+    return { ...(search === '' ? {} : { search }), ...(query.archived === true ? { archived: true } : {}), limit };
+  };
+
   const requireLease = (): ScopeLease => {
     const lease = ports.lease();
     if (!lease || !leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
@@ -321,8 +375,8 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       throw new TaskOfficeError('TASK_OFFICE_BACKEND', { cause: error });
     }
   };
-  const settle = <T>(epoch: number, kind: 'home' | 'list', lease: ScopeLease, value: T): T => {
-    const currentEpoch = kind === 'home' ? homeEpoch : listEpoch;
+  const settle = <T>(epoch: number, kind: 'home' | 'list' | 'legacy', lease: ScopeLease, value: T): T => {
+    const currentEpoch = kind === 'home' ? homeEpoch : kind === 'list' ? listEpoch : legacyListEpoch;
     if (epoch !== currentEpoch) throw new TaskOfficeError('TASK_OFFICE_SUPERSEDED');
     if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
     return value;
@@ -351,7 +405,9 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
     // 不得以归档前快照重建 accumulated。home 同理失效。
     listEpoch += 1;
     homeEpoch += 1;
+    legacyListEpoch += 1;
     accumulated = undefined;
+    legacyAccumulated = undefined;
   };
 
   return {
@@ -464,6 +520,47 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       }
       if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
       return receipts;
+    },
+    /** T14（#44）追加区。 */
+    async legacyTasks(query: { search?: string; archived?: boolean; limit?: number }): Promise<LegacyTaskListPage> {
+      const epoch = ++legacyListEpoch;
+      const lease = requireLease();
+      const input = normalizeLegacyQuery(query);
+      const page = settle(epoch, 'legacy', lease, await callBackend(() => requireLegacy().list(input)));
+      const state: legacyListAccumulation = { input, seen: new Set<string>(), duplicates: [] };
+      legacyAccumulated = state;
+      return accumulateLegacy(state, page);
+    },
+    async moreLegacyTasks(): Promise<LegacyTaskListPage> {
+      const state = legacyAccumulated;
+      if (state === undefined) throw new TaskOfficeError('TASK_OFFICE_NO_ACTIVE_QUERY');
+      if (state.cursor === undefined) return { items: [], duplicateTaskIds: [...state.duplicates] };
+      const epoch = ++legacyListEpoch;
+      const lease = requireLease();
+      const page = settle(epoch, 'legacy', lease, await callBackend(() => requireLegacy().list({ ...state.input, cursor: state.cursor })));
+      return accumulateLegacy(state, page);
+    },
+    async legacyHistory(taskId: string): Promise<LegacyMessage[]> {
+      const lease = requireLease();
+      const trimmed = taskId.trim();
+      if (trimmed === '') throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      const messages = await callBackend(() => requireLegacy().history(trimmed));
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      return messages;
+    },
+    async followUp(input: LegacyFollowUpInput): Promise<void> {
+      const lease = requireLease();
+      const taskId = (input?.taskId ?? '').trim();
+      const question = (input?.question ?? '').trim();
+      if (taskId === '' || question === '' || question.length > 8000) throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      await callBackend(() => requireLegacy().followUp({ taskId, question, ...(input.signal === undefined ? {} : { signal: input.signal }) }));
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      // 追问改变了会话 updated_at：一切在途读失效（与 archive/restore 同规则）。
+      listEpoch += 1;
+      homeEpoch += 1;
+      legacyListEpoch += 1;
+      accumulated = undefined;
+      legacyAccumulated = undefined;
     },
   };
 }

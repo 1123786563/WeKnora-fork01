@@ -136,3 +136,10 @@ func NewWorkbenchTaskGrantsHandler(
 ) *session.WorkbenchTaskGrantsHandler {
 	return session.NewWorkbenchTaskGrantsHandler(service.NewTaskGrantService(grants, sessions, members))
 }
+
+// NewWorkbenchLegacyListHandler wires the T14 legacy task projection to the
+// ownership-scoped repository; tenant/owner always come from the
+// authenticated context.
+func NewWorkbenchLegacyListHandler(db *gorm.DB) *session.WorkbenchLegacyListHandler {
+	return session.NewWorkbenchLegacyListHandler(repository.NewWorkbenchLegacyListStore(db))
+}

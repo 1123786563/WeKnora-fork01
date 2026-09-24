@@ -53,3 +53,9 @@ export type {
 } from './inbox/notification-inbox.ts';
 export { createScenarioInboxRemote } from './inbox/in-memory-inbox-remote.ts';
 export type { InboxScriptPage, ScenarioInboxRemote } from './inbox/in-memory-inbox-remote.ts';
+export { legacyTaskGates, LEGACY_TASK_NEW_RUN_REASON, createScenarioLegacyTaskBackend } from './task-office/legacy-tasks.ts';
+export type {
+  LegacyBackendTask, LegacyFollowUpInput, LegacyMessage, LegacyTaskBackendPage, LegacyTaskBackendPort,
+  LegacyTaskCapability, LegacyTaskCard, LegacyTaskGates, LegacyTaskIntent, LegacyTaskListPage,
+  ScenarioLegacyTaskBackend, ScenarioLegacyTaskBackendHandlers,
+} from './task-office/legacy-tasks.ts';
