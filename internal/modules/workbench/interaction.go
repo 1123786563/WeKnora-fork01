@@ -33,6 +33,9 @@ type InteractionDecision struct {
 	ExpectedRevision  int64  `json:"expected_revision"`
 	ExternalPendingID string `json:"external_pending_id,omitempty"`
 	CredentialVersion int64  `json:"credential_version,omitempty"`
+	// CreatedAt is an output-only projection field carried by list reads
+	// (RFC3339). Request bodies ignore it; the service never trusts it.
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 func ValidateInteractionAction(kind, action string) error {

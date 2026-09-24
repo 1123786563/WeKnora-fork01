@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ClientRequest } from '../client.ts';
 import { createTaskOfficeRemote } from './task-office.ts';
+import { ApiError } from '../errors.ts';
 
 const overviewData = {
   counts: { active_runs: 1, pending_interactions: 2, unread_notifications: 3 },
@@ -226,4 +227,58 @@ test('task office remote start validates the frozen seven fields before any requ
     /budget_upper/,
   );
   assert.equal(calls, 0, 'validation must reject before any HTTP traffic');
+});
+
+test('task office remote maps the inbox wire into module DTO rows', async () => {
+  const requests: ClientRequest[] = [];
+  const remote = createTaskOfficeRemote({
+    origin: 'https://weknora.example.test',
+    request: async (input) => {
+      requests.push(input);
+      return {
+        success: true,
+        data: [
+          { id: 'i-1', decision_id: '', kind: 'tool_approval', action: '', args_hash: 'sha256:aa', expected_revision: 4, run_id: 'run-1', created_at: '2026-09-24T00:00:00Z' },
+        ],
+      };
+    },
+  });
+  const items = await remote.inbox();
+  assert.deepEqual(items, [{ interactionId: 'i-1', runId: 'run-1', kind: 'tool_approval', argsHash: 'sha256:aa', expectedRevision: 4, createdAt: '2026-09-24T00:00:00Z' }]);
+  assert.equal(requests[0].path, '/api/v1/workbench/interactions?limit=50');
+});
+
+test('task office remote decide maps the ack and classifies honest outcomes', async () => {
+  const requests: ClientRequest[] = [];
+  const ack = { id: 'i-1', decision_id: 'd-1', kind: 'tool_approval', action: 'approve', args_hash: 'sha256:aa', expected_revision: 5, run_id: 'run-1' };
+  const remote = createTaskOfficeRemote({
+    origin: 'https://weknora.example.test',
+    request: async (input) => {
+      requests.push(input);
+      if (requests.length === 1) return { success: true, data: ack };
+      throw new ApiError({ status: 409, code: 'HTTP_409', message: 'conflict' });
+    },
+  });
+  const item = { interactionId: 'i-1', runId: 'run-1', kind: 'tool_approval' as const, argsHash: 'sha256:aa', expectedRevision: 4, createdAt: '' };
+  const record = await remote.decide({ item, decisionId: 'd-1', action: 'approve' });
+  assert.deepEqual(record, { interactionId: 'i-1', runId: 'run-1', kind: 'tool_approval', decisionId: 'd-1', action: 'approve', argsHash: 'sha256:aa', expectedRevision: 5 });
+  assert.deepEqual(requests[0].body, { id: 'i-1', decision_id: 'd-1', kind: 'tool_approval', action: 'approve', args_hash: 'sha256:aa', expected_revision: 4 });
+
+  const coded = async (error: ApiError): Promise<string | undefined> => {
+    const failing = createTaskOfficeRemote({ origin: 'https://weknora.example.test', request: async () => { throw error; } });
+    try {
+      await failing.decide({ item, decisionId: 'd-1', action: 'approve' });
+      return undefined;
+    } catch (caught) {
+      return (caught as { code?: string }).code;
+    }
+  };
+  assert.equal(await coded(new ApiError({ status: 409, code: 'HTTP_409', message: 'conflict' })), 'INTERACTION_SUPERSEDED');
+  assert.equal(await coded(new ApiError({ status: 400, code: 'HTTP_400', message: 'interaction_action_mismatch' })), 'INTERACTION_SUPERSEDED');
+  assert.equal(await coded(new ApiError({ status: 502, code: 'command_recovery_unknown', message: 'command_recovery_unknown: remote interaction' })), 'INTERACTION_DELIVERY_UNKNOWN');
+  assert.equal(await coded(new ApiError({ status: 502, code: 'HTTP_502', message: 'upstream broke' })), 'HTTP_502', '非 command_recovery_unknown 的 502 不得伪装成 delivery-unknown（原样上抛，wire code 透传）');
+  assert.equal(await coded(new ApiError({ status: 410, code: 'HTTP_410', message: 'interaction_expired' })), 'INTERACTION_GONE');
+  assert.equal(await coded(new ApiError({ status: 404, code: 'HTTP_404', message: 'not found' })), 'INTERACTION_GONE');
+  assert.equal(await coded(new ApiError({ status: 403, code: 'HTTP_403', message: 'revoked' })), 'INTERACTION_GONE');
+  assert.equal(await coded(new ApiError({ status: 500, code: 'HTTP_500', message: 'boom' })), 'HTTP_500', '未知错误原样上抛（由上层折叠为后端错误）');
 });

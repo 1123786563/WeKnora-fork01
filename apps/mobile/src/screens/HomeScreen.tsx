@@ -45,6 +45,8 @@ export function HomeScreen({ deploymentLabel, tenants, activeTenantId, onActivat
       <Button title="Sign out" onPress={() => { void onSignOut(); }} />
       <Button title="New task" onPress={() => router.push('/new')} />
       <Button title="View all tasks" onPress={() => router.push('/tasks')} />
+      {/* T08 Attention Inbox 常驻入口：首页 needsMe 与收件箱同一 Interaction 身份。 */}
+      <Button title="Open Inbox" onPress={() => router.push('/inbox')} />
       {/* /resources 屏（#32 交付）的常驻入口：占位屏删除后不得丢失可达性。 */}
       <Button title="Open Resources" onPress={() => router.push('/resources')} />
       {loading && <Text>Loading</Text>}

@@ -1,7 +1,10 @@
 import { parseExecutionEvent } from '@weknora/contracts';
+import type { InteractionAction } from '@weknora/contracts';
+import { ApiError } from '../errors.ts';
 import { createServerSentEventParser } from '../chat/stream.ts';
 import { createChatSessionsApi } from '../chat/sessions.ts';
 import { createExecutionsApi, executionEventsRequest } from './executions.ts';
+import { createInteractionsApi } from './interactions.ts';
 import { createOverviewApi } from './overview.ts';
 import type { ClientRequest } from '../client.ts';
 import type { RequestLookup, StartAck, StartExecutionInput } from './executions.ts';
@@ -35,6 +38,26 @@ export interface RemoteTaskDetail {
 }
 export type TaskOfficeStreamOption = NonNullable<TaskOfficeRemoteOptions['stream']>;
 
+/** 与 mobile-core InteractionBackendPort 的 InboxItem 逐字一致（结构可赋值由 apps/mobile typecheck 证明）。 */
+export interface RemoteInboxItem {
+  interactionId: string;
+  runId: string;
+  kind: 'tool_approval' | 'budget' | 'recovery';
+  argsHash: string;
+  expectedRevision: number;
+  createdAt: string;
+}
+/** 与 mobile-core InteractionBackendPort 的 ResolvedDecisionRecord 逐字一致（action 为六值联合，非 string）。 */
+export interface RemoteDecisionRecord {
+  interactionId: string;
+  runId: string;
+  kind: 'tool_approval' | 'budget' | 'recovery';
+  decisionId: string;
+  action: InteractionAction;
+  argsHash: string;
+  expectedRevision: number;
+}
+
 function requireDeploymentOrigin(origin: string): string {
   let parsed: URL;
   if (typeof origin !== 'string' || origin.trim() === '') throw new Error('deployment origin is required');
@@ -60,6 +83,7 @@ export function createTaskOfficeRemote(options: TaskOfficeRemoteOptions) {
   const overviewApi = createOverviewApi(request);
   const executionsApi = createExecutionsApi(request);
   const sessionsApi = createChatSessionsApi(request);
+  const interactionsApi = createInteractionsApi(request);
 
   const runFromSummary = (summary: { run_id: string; session_id: string; title?: string; run_status: string; attention?: 'none' | 'required'; updated_at: string }): RemoteTaskRun => ({
     runId: summary.run_id,
@@ -174,6 +198,54 @@ export function createTaskOfficeRemote(options: TaskOfficeRemoteOptions) {
         throw error;
       });
       parser.finish();
+    },
+    async inbox(): Promise<RemoteInboxItem[]> {
+      const rows = await interactionsApi.inbox(50);
+      return rows.map((row) => ({
+        interactionId: row.id,
+        runId: row.run_id,
+        kind: row.kind,
+        argsHash: row.args_hash,
+        expectedRevision: row.expected_revision,
+        createdAt: row.created_at ?? '',
+      }));
+    },
+    async decide(input: { item: RemoteInboxItem; decisionId: string; action: InteractionAction }): Promise<RemoteDecisionRecord> {
+      try {
+        const ack = await interactionsApi.decide({
+          id: input.item.interactionId,
+          decision_id: input.decisionId,
+          kind: input.item.kind,
+          action: input.action,
+          args_hash: input.item.argsHash,
+          expected_revision: input.item.expectedRevision,
+        });
+        // 2xx ack 的 decision_id 非空 ⇒ action 恒为矩阵内具体动作；空串只可能出现在 pending 行，
+        // 此处窄化仅为类型收敛（F3），运行时行为不变。
+        if (ack.action === '') throw new Error('decide ack must carry a concrete action');
+        return {
+          interactionId: ack.id,
+          runId: ack.run_id,
+          kind: ack.kind,
+          decisionId: ack.decision_id,
+          action: ack.action,
+          argsHash: ack.args_hash,
+          expectedRevision: ack.expected_revision,
+        };
+      } catch (error) {
+        if (error instanceof ApiError) {
+          const coded = (message: string): Error => {
+            const translated = new Error(message);
+            // 跨包契约码（沿 TASK_STREAM_CURSOR_EXPIRED 先例）：mobile-core 按 error.code 分类，不得改名。
+            (translated as unknown as { code?: string }).code = message;
+            throw translated;
+          };
+          if (error.status === 409 || error.status === 400) coded('INTERACTION_SUPERSEDED');
+          if (error.status === 502 && error.code === 'command_recovery_unknown') coded('INTERACTION_DELIVERY_UNKNOWN');
+          if (error.status === 404 || error.status === 403 || error.status === 410) coded('INTERACTION_GONE');
+        }
+        throw error;
+      }
     },
   };
 }

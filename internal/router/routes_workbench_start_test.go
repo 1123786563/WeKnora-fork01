@@ -36,4 +36,5 @@ func TestRegisterWorkbenchCommandRoutesDeclaresTypedEndpoints(t *testing.T) {
 	require.True(t, seen[http.MethodGet+" /api/v1/workbench/executions/:run_id/interactions"])
 	require.True(t, seen[http.MethodPost+" /api/v1/workbench/executions/interactions/:id/decisions"])
 	require.True(t, seen[http.MethodPost+" /api/v1/workbench/executions/:run_id/commands"])
+	require.True(t, seen[http.MethodGet+" /api/v1/workbench/interactions"])
 }

@@ -161,6 +161,7 @@ test('surface routing keeps upgrade-required free of authorized controls and gua
   const homeButtons = descendants(homeElement).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
   assert.equal(homeButtons.includes('View all tasks'), true);
   assert.equal(homeButtons.includes('Open Resources'), true, 'removing the landing screen must not take away the only /resources entry');
+  assert.equal(homeButtons.includes('Open Inbox'), true, 'the authorized home keeps a resident attention inbox entry (T08)');
   const homeText = descendants(homeElement).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
   assert.equal(homeText.includes('Acme'), true);
   assert.equal((authorized.props as { key?: string }).key, 'https://weknora.example.test::tenant-1', 'the home screen is keyed by deployment origin + active tenant');
@@ -230,7 +231,7 @@ test('the home header activates any listed tenant through the runtime callback',
   });
 
   const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
-  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'New task', 'View all tasks', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');
+  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'New task', 'View all tasks', 'Open Inbox', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');
   const single = render(HomeScreen, {
     deploymentLabel: 'WeKnora',
     tenants: [{ id: '7', name: 'Acme' }],
@@ -965,4 +966,46 @@ test('the /new lifecycle host disposes its controller on unmount, including afte
   const afterSecond = calls.length;
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls.length, afterSecond);
+});
+
+test('the inbox route, screen and view consume the task office interface only', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const relative of ['screens/AttentionInboxScreen.tsx', 'attention-inbox-view.ts', 'app/inbox.tsx']) {
+    const source = readFileSync(join(here, relative), 'utf8');
+    assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Task Office Interface only (T08)`);
+  }
+  const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
+  assert.match(composition, /interactions:\s*remote/, 'taskOfficeFor must pass the remote as the interactions port; inbox()/decide() fail closed without it (T08)');
+});
+
+test('the attention inbox screen renders honest receipt copy and per-kind matrix actions', async () => {
+  const { AttentionInboxScreen } = await import('./screens/AttentionInboxScreen.tsx');
+  const { ATTENTION_RECEIPT_COPY } = await import('./attention-inbox-view.ts');
+  hooks().__reset();
+  const state = {
+    loading: false,
+    items: [{
+      interactionId: 'i-1', runId: 'run-1', kind: 'tool_approval' as const, argsHash: 'sha256:aa', expectedRevision: 4, createdAt: '2026-09-24T00:00:00Z',
+    }],
+    receipts: [{ key: 'i-1:0', copy: ATTENTION_RECEIPT_COPY['delivery-unknown'] }],
+  };
+  const decided: Array<{ interactionId: string; action: string }> = [];
+  const element = render(AttentionInboxScreen, {
+    state,
+    onRefresh: () => {},
+    onDecide: (item: { interactionId: string }, action: string) => { decided.push({ interactionId: item.interactionId, action }); },
+  });
+  const texts = descendants(element).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).flatMap((part) => (typeof part === 'string' ? [part] : []));
+  assert.equal(texts.some((text) => text.includes('工具审批')), true);
+  assert.equal(texts.some((text) => text.includes('外部执行通道状态未知')), true, 'delivery-unknown 文案必须出现（AC2）');
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.equal(buttons.includes('批准'), true);
+  assert.equal(buttons.includes('拒绝'), true);
+  assert.equal(buttons.includes('扩展预算'), false, 'tool_approval 行不得渲染 budget 域动作（矩阵冻结）');
+  const approve = descendants(element).find(({ type, props }) => type === 'Button' && props.title === '批准');
+  (approve!.props.onPress as () => void)();
+  assert.deepEqual(decided, [{ interactionId: 'i-1', action: 'approve' }]);
 });

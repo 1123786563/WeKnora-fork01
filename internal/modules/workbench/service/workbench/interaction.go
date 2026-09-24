@@ -149,7 +149,7 @@ type interactionRow struct {
 func (interactionRow) TableName() string { return "workbench_interactions" }
 
 func (r interactionRow) decision() workbench.InteractionDecision {
-	return workbench.InteractionDecision{ID: r.ID, RunID: r.RunID, DecisionID: r.DecisionID, Kind: r.Kind, Action: r.Action, ArgsHash: r.ArgsHash, ExpectedRevision: r.ExpectedRevision, ExternalPendingID: r.ExternalPendingID, CredentialVersion: r.CredentialVersion}
+	return workbench.InteractionDecision{ID: r.ID, RunID: r.RunID, DecisionID: r.DecisionID, Kind: r.Kind, Action: r.Action, ArgsHash: r.ArgsHash, ExpectedRevision: r.ExpectedRevision, ExternalPendingID: r.ExternalPendingID, CredentialVersion: r.CredentialVersion, CreatedAt: r.CreatedAt.UTC().Format(time.RFC3339)}
 }
 
 // GormInteractionStore is the production persistence adapter. All reads are
@@ -176,7 +176,10 @@ func (s *GormInteractionStore) CreatePending(ctx context.Context, req approval.P
 		return ErrCapabilityUnavailable
 	}
 	hash := sha256.Sum256(req.Args)
-	expires := time.Now().Add(10 * time.Minute)
+	// SQLite serializes time.Time as offset-bearing text; the expiry predicate
+	// below compares that text. Both ends must share the UTC offset or rows
+	// written in one zone get misjudged in another (see mobile_notification.go).
+	expires := time.Now().UTC().Add(10 * time.Minute)
 	credentialVersion := req.CredentialVersion
 	// Keep an unresolved version visible in the durable projection. The
 	// decision path rejects non-positive snapshots; persisting zero here lets
@@ -198,6 +201,43 @@ func (s *GormInteractionStore) List(ctx context.Context, tenantID uint64, ownerI
 	}
 	out := make([]workbench.InteractionDecision, 0, len(rows))
 	for _, row := range rows {
+		if err := validateInteractionRow(row); err != nil {
+			return nil, err
+		}
+		out = append(out, row.decision())
+	}
+	return out, nil
+}
+
+// ListPending returns the owner's open interactions across runs: the Attention
+// Inbox read (T08). It reuses the overview's archived-task LEFT JOIN so the
+// inbox and the home projection never disagree, and expired prompts are pruned
+// by a bound SQL predicate so they can never fill the LIMIT window and starve
+// live prompts; a Go-side skip remains as a clock-skew guard between the
+// predicate and the scan. Interactions whose run row is dangling stay visible:
+// the LEFT JOIN keeps sessions.archived_at NULL, matching the overview
+// semantics exactly.
+func (s *GormInteractionStore) ListPending(ctx context.Context, tenantID uint64, ownerID string, limit int) ([]workbench.InteractionDecision, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	var rows []interactionRow
+	err := s.db.WithContext(ctx).
+		Table("workbench_interactions").
+		Select("workbench_interactions.*").
+		Joins("LEFT JOIN agent_runs ar ON ar.tenant_id = workbench_interactions.tenant_id AND ar.run_id = workbench_interactions.run_id").
+		Joins("LEFT JOIN sessions ON sessions.tenant_id = ar.tenant_id AND sessions.id = ar.session_id").
+		Where("workbench_interactions.tenant_id = ? AND workbench_interactions.owner_id = ? AND workbench_interactions.status = ? AND sessions.archived_at IS NULL AND (workbench_interactions.expires_at IS NULL OR workbench_interactions.expires_at > ?)", tenantID, ownerID, "pending", time.Now().UTC()).
+		Order("workbench_interactions.created_at ASC, workbench_interactions.id ASC").
+		Limit(limit).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]workbench.InteractionDecision, 0, len(rows))
+	for _, row := range rows {
+		if row.ExpiresAt != nil && time.Now().After(*row.ExpiresAt) {
+			continue
+		}
 		if err := validateInteractionRow(row); err != nil {
 			return nil, err
 		}
@@ -467,6 +507,29 @@ func (s *Service) List(ctx context.Context, runID string) ([]workbench.Interacti
 		return nil, ErrInteractionNotFound
 	}
 	return s.store.List(ctx, tenant, owner, strings.TrimSpace(runID))
+}
+
+// pendingLister is the narrowed inbox capability: only durable stores that can
+// serve the cross-run pending read answer it; anything else fails closed.
+type pendingLister interface {
+	ListPending(ctx context.Context, tenantID uint64, ownerID string, limit int) ([]workbench.InteractionDecision, error)
+}
+
+// ListInbox serves the Attention Inbox: the caller's open interactions across
+// runs, ordered oldest-first. Identity always comes from the context.
+func (s *Service) ListInbox(ctx context.Context, limit int) ([]workbench.InteractionDecision, error) {
+	tenant, owner, err := identity(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s == nil || s.store == nil {
+		return nil, ErrInteractionNotFound
+	}
+	lister, ok := s.store.(pendingLister)
+	if !ok {
+		return nil, ErrCapabilityUnavailable
+	}
+	return lister.ListPending(ctx, tenant, owner, limit)
 }
 
 func (s *Service) Decide(ctx context.Context, id string, input workbench.InteractionDecision) (workbench.InteractionDecision, error) {

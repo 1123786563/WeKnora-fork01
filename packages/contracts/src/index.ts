@@ -658,6 +658,8 @@ export {
   parseInteraction,
   parseInteractionDecision,
 } from './mobile/interactions.ts';
+export { parseInteractionWithRun } from './mobile/interaction-inbox.ts';
+export type { InboxInteractionRecord } from './mobile/interaction-inbox.ts';
 
 export type {
   ArtifactSummary,
