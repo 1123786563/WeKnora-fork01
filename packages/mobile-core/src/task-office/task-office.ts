@@ -22,6 +22,8 @@ import type {
   LegacyBackendTask, LegacyFollowUpInput, LegacyMessage, LegacyTaskBackendPage, LegacyTaskBackendPort,
   LegacyTaskCard, LegacyTaskListPage,
 } from './legacy-tasks.ts';
+// T15 追加区（#45）：知识问答端口与回合类型。
+import type { KnowledgeQABackendPort, KnowledgeQATurn } from './knowledge-qa.ts';
 import { createTaskDetail } from './task-detail.ts';
 import type { TaskDetailBackendPort, TaskHandle, TaskProjectionStore } from './task-detail.ts';
 import { TaskOfficeError } from './task-office-errors.ts';
@@ -183,6 +185,8 @@ export interface TaskOfficePorts {
   interactions?: InteractionBackendPort;
   /** T14（#44）Legacy Task 端口；缺失时 legacy 入口 fail closed（TASK_OFFICE_LEGACY_UNAVAILABLE）。 */
   legacy?: LegacyTaskBackendPort;
+  /** T15 追加区（#45）知识问答端口；缺失时 askKnowledge() fail closed（TASK_OFFICE_KNOWLEDGE_QA_UNAVAILABLE）。 */
+  knowledgeQA?: KnowledgeQABackendPort;
 }
 
 export interface TaskOffice {
@@ -203,6 +207,9 @@ export interface TaskOffice {
   moreLegacyTasks(): Promise<LegacyTaskListPage>;
   legacyHistory(taskId: string, options?: { limit?: number; before?: string }): Promise<LegacyMessage[]>;
   followUp(input: LegacyFollowUpInput): Promise<void>;
+  /** T15 追加区（#45）：一次知识问答回合。无 sessionId 时先创建目标会话（快速问题也是 Task，ADR-0004），
+   *  同一 Task 的追问传入原 sessionId（绝不新建 session）。答案携带版本/时间/三类证据。 */
+  askKnowledge(input: { question: string; sessionId?: string; knowledgeBaseIds?: string[]; signal?: AbortSignal }): Promise<KnowledgeQATurn>;
 }
 
 /** T06 耐久意图记录：重启后用原 session 与原 goal 重建 digest 一致的 Start 输入。 */
@@ -607,6 +614,37 @@ export function createTaskOffice(ports: TaskOfficePorts): TaskOffice {
       legacyListEpoch += 1;
       accumulated = undefined;
       legacyAccumulated = undefined;
+    },
+    /** T15 追加区（#45）：知识问答回合。 */
+    async askKnowledge(askInput: { question: string; sessionId?: string; knowledgeBaseIds?: string[]; signal?: AbortSignal }): Promise<KnowledgeQATurn> {
+      const lease = requireLease();
+      const question = (askInput?.question ?? '').trim();
+      if (question === '' || question.length > 8000) throw new TaskOfficeError('TASK_OFFICE_INVALID_INPUT');
+      if (ports.knowledgeQA === undefined) throw new TaskOfficeError('TASK_OFFICE_KNOWLEDGE_QA_UNAVAILABLE');
+      let sessionId = (askInput?.sessionId ?? '').trim();
+      if (sessionId === '') {
+        // 快速知识问题也是 Task（spec 故事 12/24）：一次初始提问创建目标会话。
+        const session = await callBackend(() => ports.backend.createSession({ title: question.slice(0, 60) }));
+        if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+        sessionId = session.sessionId;
+      }
+      const knowledgeBaseIds = Array.isArray(askInput.knowledgeBaseIds)
+        ? askInput.knowledgeBaseIds.map((id) => id.trim()).filter((id) => id !== '')
+        : undefined;
+      const turn = await callBackend(() => ports.knowledgeQA!.ask({
+        sessionId,
+        question,
+        ...(knowledgeBaseIds === undefined || knowledgeBaseIds.length === 0 ? {} : { knowledgeBaseIds }),
+        ...(askInput.signal === undefined ? {} : { signal: askInput.signal }),
+      }));
+      if (!leaseActive(lease)) throw new TaskOfficeError('TASK_OFFICE_SCOPE_CHANGED');
+      // 新会话/新追问都改变了列表事实：与 start/followUp 同规则作废在途读。
+      listEpoch += 1;
+      homeEpoch += 1;
+      legacyListEpoch += 1;
+      accumulated = undefined;
+      legacyAccumulated = undefined;
+      return { ...turn, sessionId };
     },
   };
 }
