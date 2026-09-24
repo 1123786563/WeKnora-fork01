@@ -64,6 +64,11 @@ export async function runAttentionInboxIntegration(config: Extract<AttentionInbo
       return (input, accessToken) => client.request({ ...input, headers: { ...input.headers, authorization: `Bearer ${accessToken}` } });
     },
   });
+  // 证据契约如实证伪（review fix 1）：越过门控且有 pending 行后置位——决定「已尝试但抛错」
+  // 必须记 decide:'failed'，不得误记 'skipped'（语义=未尝试）。原计划模板以
+  // evidence.decide !== 'skipped' 判定，但 decide 只在赋值后立即 return 的路径上变化，
+  // catch 时恒为初始 'skipped'，'failed' 不可达。
+  let decideAttempted = false;
   try {
     const snapshot = await runtime.signIn({ deployment: { origin: config.deploymentOrigin, label: 'Integration deployment' }, email: config.email, password: config.password });
     if (snapshot.surface !== 'authorized' || !snapshot.deployment) return evidence;
@@ -82,12 +87,13 @@ export async function runAttentionInboxIntegration(config: Extract<AttentionInbo
     }
     const target = view.items[0]!;
     const action = INTERACTION_ACTIONS[target.kind][0]!;
+    decideAttempted = true;
     const receipt = await office.decide({ item: target, action });
     evidence.decide = receipt.status;
     return evidence;
   } catch (error) {
     evidence.failure = error instanceof Error ? error.message : String(error);
-    if (evidence.decide !== 'skipped') evidence.decide = 'failed';
+    if (decideAttempted) evidence.decide = 'failed';
     return evidence;
   } finally {
     runtime.dispose(); // dispose(): void（packages/mobile-core/src/runtime/types.ts:72）

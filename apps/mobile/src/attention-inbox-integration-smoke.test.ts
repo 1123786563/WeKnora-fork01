@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { attentionInboxIntegrationConfig, emitAttentionInboxIntegrationEvidence } from './attention-inbox-integration-smoke.ts';
+import { attentionInboxIntegrationConfig, emitAttentionInboxIntegrationEvidence, runAttentionInboxIntegration } from './attention-inbox-integration-smoke.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -48,4 +48,54 @@ test('runs the live attention inbox loop when the environment is present', { ski
   const evidence = await runAttentionInboxIntegration(config);
   assert.ok(['browsed', 'browse-failed'].includes(evidence.inbox));
   assert.ok(['skipped', 'no-pending', 'recorded', 'delivery-unknown', 'superseded', 'gone', 'failed'].includes(evidence.decide));
+});
+
+// 修复轮 1（review fix）：证据契约如实证伪——决定已越过门控、有 pending 行、决定调用抛错时，
+// 证据必须记 decide:'failed'（已尝试但失败），不得误记 'skipped'（语义=未尝试）。
+// 通过 mock 全局 fetch 驱动真实 signIn → inbox → decide 链路（与 runAttentionInboxIntegration
+// 内部 fetcher 引用全局 fetch 的接缝对齐），不依赖 WEKNORA_MOBILE_TEST_* 环境。
+test('a failed decide attempt is recorded as failed, not skipped (evidence contract)', async () => {
+  const jsonResponse = (status: number, body: unknown) => ({
+    status,
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  });
+  const seen: string[] = [];
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    seen.push(`${init?.method ?? 'GET'} ${url}`);
+    if (url.endsWith('/api/v1/auth/login')) {
+      return jsonResponse(200, { success: true, data: { token: 't-1', refresh_token: 'r-1', user: { id: 'user-1' }, tenant: { id: 7 } } }) as unknown as Response;
+    }
+    if (url.endsWith('/api/v1/auth/me')) {
+      return jsonResponse(200, { success: true, data: { user: { id: 'user-1' }, tenant: { id: 7 } } }) as unknown as Response;
+    }
+    if (url.endsWith('/api/v1/system/capabilities')) {
+      return jsonResponse(200, { code: 0, data: { protocol_minimum: 3, protocol_maximum: 3 } }) as unknown as Response;
+    }
+    if (url.includes('/api/v1/workbench/interactions?')) {
+      return jsonResponse(200, { success: true, data: [{ id: 'i-1', decision_id: '', kind: 'tool_approval', action: '', args_hash: 'sha256:aa', expected_revision: 4, run_id: 'run-1', created_at: '2026-09-24T00:00:00Z' }] }) as unknown as Response;
+    }
+    if (url.includes('/api/v1/workbench/executions/interactions/i-1/decisions')) {
+      // 决定端点 500：remote.decide 无契约码映射 → mobile-core 折叠 TASK_OFFICE_BACKEND 抛出。
+      return jsonResponse(500, { success: false, message: 'boom' }) as unknown as Response;
+    }
+    throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+  }) as typeof fetch;
+  try {
+    const evidence = await runAttentionInboxIntegration({
+      enabled: true, deploymentOrigin: 'https://weknora.example.org', email: 'user@example.test', password: 'pw', decideEnabled: true,
+    });
+    // 前两个断言证明 mock 链路真实走通（signIn 授权 + 收件箱读到 1 行 pending + 决定调用已发出）：
+    // 若链路未走通，inbox 将为 'browse-failed'，此处即失败并显示实际值。
+    assert.equal(evidence.inbox, 'browsed');
+    assert.equal(evidence.pendingCount, 1);
+    assert.ok(seen.some((entry) => entry.includes('/decisions')), '决定调用必须已发出（到达 catch 的前提是尝试过决定）');
+    assert.equal(evidence.decide, 'failed', '决定已尝试且抛错：证据必须记 failed（已尝试但失败），不得误记 skipped（未尝试）');
+    assert.ok(evidence.failure !== undefined && evidence.failure.length > 0, '失败摘要必须携带 error message');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
