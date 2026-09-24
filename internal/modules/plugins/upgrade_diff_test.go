@@ -416,6 +416,25 @@ func TestPreviewUpgradeCandidateUnreachable(t *testing.T) {
 		s.assertInstallationUntouched(t, tenantID)
 	})
 
+	t.Run("manifest swapped to another plugin is rejected", func(t *testing.T) {
+		s := newUpgradeStack(t, tenantID)
+		s.takeBaseline()
+		// 身份漂移（T14-OCR1-F1）：ManifestURL 指向的清单被整体替换为
+		// 另一插件（PluginID 不同但清单自洽——T01 核验照常通过）。预览
+		// 必须确定性拒绝：否则 diff.PluginID 声称安装行插件、而候选
+		// 指纹/工具行实际属于另一插件，后续 accept 会把另一插件的
+		// 快照写进本安装行，静默绕过 (tenant, plugin) 唯一性治理。
+		s.remoteV2.PluginID = "com.example.other-plugin"
+		s.switchManifestToV2(t)
+
+		_, err := s.svc.PreviewUpgrade(context.Background(), tenantID, s.inst.ID)
+		require.Error(t, err)
+		require.ErrorIs(t, err, service.ErrPluginVerifyFailed)
+		require.Contains(t, err.Error(), "com.example.other-plugin")
+		require.Contains(t, err.Error(), "com.example.upgrade-diff")
+		s.assertInstallationUntouched(t, tenantID)
+	})
+
 	t.Run("foreign tenant installation is not found", func(t *testing.T) {
 		s := newUpgradeStack(t, tenantID)
 		_, err := s.svc.PreviewUpgrade(context.Background(), tenantID+1, s.inst.ID)

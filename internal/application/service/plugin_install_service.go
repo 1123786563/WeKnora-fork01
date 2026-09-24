@@ -818,9 +818,24 @@ func (s *pluginService) PreviewUpgrade(
 		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
 	}
 
-	// Step 3: diff the ACCEPTED snapshot against the freshly verified
+	// Step 3: identity guard (T14-OCR1-F1) — the manifest at the long-lived
+	// URL may have been swapped wholesale to a DIFFERENT plugin (a
+	// self-consistent manifest of another plugin_id passes FetchAndVerify
+	// untouched). Previewing across identities would return a
+	// self-contradictory diff (PluginID names the installed plugin while the
+	// candidate fingerprint/tools belong to another), and a later accept
+	// would write ANOTHER plugin's snapshot into this installation row —
+	// silently bypassing the (tenant_id, plugin_id) uniqueness governance.
+	// Deterministic 4xx rejection, mirroring ConfirmInstallation's
+	// fingerprint/digest guard; the admin's path is uninstall + re-install.
+	if result.Manifest.PluginID != inst.PluginID {
+		return nil, fmt.Errorf("%w: manifest now declares plugin %q, not the installed %q; uninstall and re-install instead",
+			ErrPluginVerifyFailed, result.Manifest.PluginID, inst.PluginID)
+	}
+
+	// Step 4: diff the ACCEPTED snapshot against the freshly verified
 	// candidate snapshot, then stamp the identity/version pair the pure
-	// function cannot know. No write happens anywhere — steps 1-3 are reads.
+	// function cannot know. No write happens anywhere — steps 1-4 are reads.
 	diff := plugins.DiffSnapshots(
 		inst.ToolsSnapshot, result.Snapshot,
 		inst.EndpointURL, result.Manifest.Transport.Endpoint,
