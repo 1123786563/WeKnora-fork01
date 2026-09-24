@@ -1441,6 +1441,85 @@ func TestShutdownGracefullyReturnsNilAfterClose(t *testing.T) {
 	}
 }
 
+// TestRegisterRedirectHostPortSemantics（OCR 一轮 R12-E F18）：名单匹配按
+// host[:port]——裸 host 条目=该主机任意端口；host:port 条目=精确匹配。
+// 修复前 Hostname() 剥端口匹配裸名：host:port 条目永 Miss（运营者填法
+// 静默失效），且裸 host 放行同主机任意第三方端口。
+func TestRegisterRedirectHostPortSemantics(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	fakeJira := httptest.NewServer(testJiraAuthOK(t, "member@example.com", "tok", nil))
+	t.Cleanup(fakeJira.Close)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	base := "http://" + ln.Addr().String()
+	handler, err := NewHandler(Options{
+		BaseURL:              base,
+		JiraBaseURL:          fakeJira.URL,
+		AllowedRedirectHosts: []string{"bare.example.com", "pinned.example.com:8443"},
+	})
+	require.NoError(t, err)
+	svc := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = svc.Serve(ln) }()
+	t.Cleanup(func() { _ = svc.Shutdown(context.Background()) })
+
+	register := func(uri string) int {
+		body, err := json.Marshal(map[string]any{"redirect_uris": []string{uri}})
+		require.NoError(t, err)
+		resp, err := http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode
+	}
+	// 裸 host 条目：同主机任意端口放行（部署语义保持）。
+	require.Equal(t, http.StatusCreated, register("https://bare.example.com/cb"))
+	require.Equal(t, http.StatusCreated, register("https://bare.example.com:9999/cb"))
+	// host:port 条目：精确匹配放行、错端口拒绝。
+	require.Equal(t, http.StatusCreated, register("https://pinned.example.com:8443/cb"))
+	require.Equal(t, http.StatusBadRequest, register("https://pinned.example.com:9000/cb"),
+		"a pinned host:port entry must not admit other ports on the same host")
+	// 名单外主机仍整体拒绝。
+	require.Equal(t, http.StatusBadRequest, register("https://evil.example.com:8443/cb"))
+}
+
+// TestAuthorizePagesNoStoreHeader（OCR 一轮 R12-E F19）：凭据同意页与凭据
+// 错误页必须带 Cache-Control: no-store——与 writeJSON 同纪律，防共享缓存
+// 留存承载隐藏 state 与凭据交互上下文的页面快照。
+func TestAuthorizePagesNoStoreHeader(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirect := "https://client.example/cb"
+	clientID := testRegisterClient(t, base, redirect)
+	_, challenge := testPKCE(t)
+	q := url.Values{}
+	q.Set("response_type", "code")
+	q.Set("client_id", clientID)
+	q.Set("redirect_uri", redirect)
+	q.Set("state", "nostore-state")
+	q.Set("code_challenge", challenge)
+	q.Set("code_challenge_method", "S256")
+
+	page, err := http.Get(base + "/authorize?" + q.Encode())
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, page.Body)
+	_ = page.Body.Close()
+	require.Equal(t, http.StatusOK, page.StatusCode)
+	require.Equal(t, "no-store", page.Header.Get("Cache-Control"), "consent page must not be cacheable")
+
+	form := url.Values{}
+	form.Set("state", "nostore-state")
+	form.Set("email", "member@example.com")
+	form.Set("api_token", "wrong-token")
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	bad, err := noRedirect.PostForm(base+"/authorize", form)
+	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, bad.Body)
+	_ = bad.Body.Close()
+	require.Equal(t, "no-store", bad.Header.Get("Cache-Control"), "credential error page must not be cacheable")
+}
+
 // TestRunMainDrainsOnSIGTERM（跨任务转交 T01-OCR1-F9）：main() 曾以
 // context.Background() 启动 Run，而 Run 的优雅停机只挂 ctx.Done()——
 // Background 永不取消，shutdownGracefully（5s 宽限 + Close 强制回收）在
@@ -1491,4 +1570,56 @@ func TestRunMainDrainsOnSIGTERM(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("runMain did not return after SIGTERM — graceful shutdown unreachable (dead code)")
 	}
+}
+
+// TestAuthorizeConsumedStateCannotBeRebound（OCR 一轮 F2）：state 被消费后
+// 必须保留墓碑至原 TTL 过期——消费时 delete(pendingAuths, state) 会让
+// 「同 state 拒绝覆盖」的 409 守卫对已消费 state 失效：攻击者获知成员
+// state（浏览器历史/referrer/日志）后，可用自己的 client_id/redirect_uri/
+// PKCE 对同 state 重新 GET /authorize 重绑发码上下文；成员后退重交旧表单
+// （隐藏字段仍是同 state）时，凭据验证成功发出的授权码会 302 到攻击者
+// redirect_uri，攻击者持自己的 PKCE verifier 即可换取成员 access_token。
+func TestAuthorizeConsumedStateCannotBeRebound(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "member-token", nil))
+	memberRedirect := "https://client.example/cb"
+	attackerRedirect := "https://attacker.example/cb"
+	memberClient := testRegisterClient(t, base, memberRedirect)
+	attackerClient := testRegisterClient(t, base, attackerRedirect)
+	_, memberChallenge := testPKCE(t)
+	state := "leaked-state-001"
+
+	// 墓碑随登记时的原 TTL 过期——从步骤 1 起就用短 TTL：既覆盖步骤 1-3
+	// 的墓碑窗（本地往返毫秒级，300ms 充裕），又让步骤 4 无需等待默认
+	// 10 分钟。登记条目的 ExpiresAt = 登记时刻 + 本 TTL。
+	origTTL := pendingAuthTTL
+	pendingAuthTTL = 300 * time.Millisecond
+	t.Cleanup(func() { pendingAuthTTL = origTTL })
+
+	// 1) 成员发起授权并提交凭据：state 被消费、发码给成员客户端。
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, memberClient, memberRedirect, state, memberChallenge))
+	status, location := testAuthorizePOST(t, base, state, "member@example.com", "member-token")
+	require.Equal(t, http.StatusFound, status)
+	require.Contains(t, location, "code=")
+
+	// 2) 攻击者对已消费的同一 state 重新登记自己的授权请求（重绑定尝试）。
+	// 修复前：登记成功（200）→ 攻击成立；修复后：墓碑期内 409。
+	_, attackerChallenge := testPKCE(t)
+	require.Equal(t, http.StatusConflict,
+		testAuthorizeGET(t, base, attackerClient, attackerRedirect, state, attackerChallenge),
+		"a consumed state must not be re-registrable before its original TTL expires")
+
+	// 3) 成员后退重交旧表单（隐藏字段仍是同 state）：不得再发码。
+	resubmitStatus, resubmitLocation := testAuthorizePOST(t, base, state, "member@example.com", "member-token")
+	require.NotEqual(t, http.StatusFound, resubmitStatus,
+		"resubmitting an already-consumed state must not issue a code (got redirect: %s)", resubmitLocation)
+
+	// 4) 墓碑随原 TTL 过期失效：同 state 可开始全新授权流（OAuth 正常语义
+	//    ——state 由客户端生成，跨授权流可复用；攻击窗口被 TTL 限定）。
+	time.Sleep(400 * time.Millisecond)
+	require.Equal(t, http.StatusOK,
+		testAuthorizeGET(t, base, attackerClient, attackerRedirect, state, attackerChallenge),
+		"tombstone must expire with the original pendingAuthTTL")
+	status, location = testAuthorizePOST(t, base, state, "member@example.com", "member-token")
+	require.Equal(t, http.StatusFound, status)
+	require.Contains(t, location, attackerRedirect, "a fresh registration must complete the flow normally")
 }

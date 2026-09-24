@@ -119,7 +119,8 @@ type oauthServer struct {
 	// clients: 动态注册的 client_id -> 注册信息（含绑定的 redirect_uris）。
 	clients map[string]registeredClient
 	// pendingAuths: state -> 授权请求参数（进入表单页时登记，凭据验证成功
-	// 发码前一次性消费；凭据失败可同 state 重试，见 submitAuthorizeForm）。
+	// 发码时一次性消费并保留墓碑至原 TTL 过期——OCR 一轮 F2；凭据失败可
+	// 同 state 重试，见 submitAuthorizeForm）。
 	pendingAuths map[string]pendingAuth
 	// codes: 授权码 -> 发码上下文（一次性消费）。
 	codes map[string]issuedCode
@@ -156,10 +157,17 @@ type authorizationRequest struct {
 	CodeChallengeMethod string
 }
 
-// pendingAuth 是登记中的授权请求（含过期时间）。
+// pendingAuth 是登记中的授权请求（含过期时间）。Consumed 是墓碑标记
+// （OCR 一轮 F2）：发码消费时不再删除条目而是置 Consumed——否则
+// serveAuthorizeForm 的「同 state 拒绝覆盖」守卫只覆盖存活条目，攻击者
+// 获知成员 state 后可在消费后用自己的 client/redirect/PKCE 重新登记
+// （重绑定），成员后退重交旧表单时凭据发出的授权码被 302 到攻击者
+// redirect_uri。墓碑随原 ExpiresAt 被 sweepExpiredLocked 清扫——重绑
+// 窗口被 TTL 限定，且每个 state 至多占一个条目，容量界不变。
 type pendingAuth struct {
 	Request   authorizationRequest
 	ExpiresAt time.Time
+	Consumed  bool
 }
 
 // issuedCode 是授权码及其发码上下文。
@@ -413,8 +421,21 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		// 整分支终评 r2-012/r4-008：装配了 AllowedRedirectHosts 时，注册即
 		// 拒绝名单外 host——授权码的目的地在注册期收敛，而非到同意页才告警。
+		// 匹配按 host[:port]（OCR 一轮 R12 F18）：裸 host 条目=该主机任意
+		// 端口（部署语义保持）；host:port 条目=精确匹配（可钉住回调端口，
+		// 不放行同主机第三方端口）。此前按 Hostname() 裸名匹配——host:port
+		// 条目被剥端口后永不可能命中，运营者的钉端口写法静默失效。
 		if len(s.allowedRedirectHosts) > 0 {
-			if _, ok := s.allowedRedirectHosts[strings.ToLower(parsed.Hostname())]; !ok {
+			host := strings.ToLower(parsed.Host)
+			bareHost := strings.ToLower(parsed.Hostname())
+			allowed := false
+			for entry := range s.allowedRedirectHosts {
+				if entry == host || (entry == bareHost && !strings.Contains(entry, ":")) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
 				writeJSON(w, http.StatusBadRequest, map[string]any{
 					"error": "invalid_redirect_uri", "error_description": "redirect_uri host is not in the operator allowlist",
 				})
@@ -488,13 +509,22 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 	now := time.Now()
 	s.mu.Lock()
 	s.maybeSweepLocked(now)
-	// OCR T04-R2-4：对未过期的同 state 条目拒绝覆盖——否则攻击者获知成员
-	// state 后可用自己的 client/redirect/PKCE 重新绑定（授权请求固定）。
-	// 合法客户端每次授权流生成新 state（OAuth 语义），POST 重试不受影响。
-	if _, exists := s.pendingAuths[state]; exists {
-		s.mu.Unlock()
-		http.Error(w, "state is already in use; start a new authorization request", http.StatusConflict)
-		return
+	// OCR T04-R2-4 + OCR 一轮 F2：对未过期的同 state 条目（含已消费墓碑）
+	// 拒绝覆盖/重绑——否则攻击者获知成员 state 后可用自己的
+	// client/redirect/PKCE 重新绑定（授权请求固定），成员后退重交旧表单
+	// 时凭据发出的授权码被 302 到攻击者 redirect_uri。墓碑覆盖了「消费后
+	// 再登记」窗口（此前 delete 使守卫失效）。过期即删的单条判定不依赖
+	// 节流清扫（sweepMinInterval 可达 1s）——过期 state 必须可立即重新
+	// 开始全新授权流（OAuth 正常语义）。合法客户端每次授权流生成新 state，
+	// POST 重试不受影响。
+	if pending, exists := s.pendingAuths[state]; exists {
+		if now.After(pending.ExpiresAt) {
+			delete(s.pendingAuths, state)
+		} else {
+			s.mu.Unlock()
+			http.Error(w, "state is already in use; start a new authorization request", http.StatusConflict)
+			return
+		}
 	}
 	// OCR T04-R2-3：窗口内总量封顶——TTL 清扫只约束时间维度，未认证攻击者
 	// 高频 GET 可在窗口内无界填充。
@@ -541,11 +571,14 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 // setHTMLPageHeaders 写凭据录入面 HTML 页前的统一响应头：凭据同意页与
 // 凭据错误/上游故障页都可能承载成员凭据交互，必须拒绝第三方 iframe 嵌入
 // （整分支 OCR 二轮 F6：X-Frame-Options: DENY + CSP frame-ancestors 'none'，
-// 双头并存以覆盖新旧浏览器）。
+// 双头并存以覆盖新旧浏览器）；并禁缓存（OCR 一轮 R12 F19：与 writeJSON
+// 同纪律——共享缓存/中间代理不得留存承载隐藏 state 与凭据交互上下文的
+// 页面快照，OAuth 授权服务器页面的常规纪律是 no-store）。
 func setHTMLPageHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+	w.Header().Set("Cache-Control", "no-store")
 }
 
 // validateAuthorizationRequest 校验授权请求：response_type=code、client 已
@@ -646,9 +679,15 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 		delete(s.pendingAuths, state)
 		ok = false
 	}
+	// 已消费墓碑（OCR 一轮 F2）：state 已发过码——拒绝重交（发码走 302
+	// 回调，成员应使用已收到的授权码，而非后退重交表单）。墓碑保留至
+	// TTL（不在此删除）。
+	if ok && pending.Consumed {
+		ok = false
+	}
 	s.mu.Unlock()
 	if !ok {
-		http.Error(w, "unknown or expired state", http.StatusBadRequest)
+		http.Error(w, "unknown, expired or already-consumed state", http.StatusBadRequest)
 		return
 	}
 	// 凭据只进内存变量；Myself 失败信息不含凭据本身。
@@ -697,8 +736,17 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 		delete(s.pendingAuths, state)
 		still = false
 	}
+	// 并发同 state 双提交的输者（OCR 一轮 F2）：Myself 窗口内另一请求已
+	// 消费（Consumed=true）——不得再发码（一个 state 恰发一个码语义保持）。
+	if still && consumed.Consumed {
+		still = false
+	}
 	if still {
-		delete(s.pendingAuths, state)
+		// 消费即置墓碑（OCR 一轮 F2）：不删除条目，保留至原 ExpiresAt——
+		// 删除会让 serveAuthorizeForm 的 409 守卫失效，攻击者可对同 state
+		// 重新登记重绑发码上下文。占用界不变（每 state 至多一条至 TTL）。
+		consumed.Consumed = true
+		s.pendingAuths[state] = consumed
 		s.codes[code] = issuedCode{
 			Session:   oauthSession{Email: email, APIToken: apiToken},
 			Request:   consumed.Request,
