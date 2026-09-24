@@ -107,6 +107,12 @@ type GrantIncludedCreditsPayload struct {
 	Period             string    // "YYYY-MM", UTC
 	CreditsMicro       int64     // > 0 and cent-aligned (CreditsMicro % 10_000 == 0)
 	ExpiresAt          time.Time // exclusive period end, > grant time
+	// WalletName is the OPTIONAL deterministic wallet name override (#82,
+	// design decision D4): empty means the historical MonthlyWalletName (ALL
+	// existing callers are unchanged); the purchase first-period grant sets
+	// PurchaseWalletName(t, period) so its wallet identity never collides
+	// with the Base monthly batch (F11).
+	WalletName string
 }
 
 // Validate enforces the monthly grant contract: derived identity, strict
@@ -154,12 +160,27 @@ func MonthlyWalletName(tenantID uint64, period string) string {
 	return ExternalCustomerID(tenantID) + "-" + period
 }
 
+// PurchaseWalletName derives the deterministic PURCHASE wallet name
+// "weknora-tenant-<id>-purchase-<YYYY-MM>" for one first-period grant (#82,
+// design decision D4). It is a DISTINCT name family from MonthlyWalletName —
+// the "-purchase-" infix — so a purchase grant in the same (tenant, period)
+// can never collide with the Base monthly batch's byName/byMeta identity and
+// trigger a grant content conflict (t02 F11: same-identity different-content
+// grants are definitive conflicts).
+func PurchaseWalletName(tenantID uint64, period string) string {
+	return ExternalPurchaseSubscriptionID(tenantID) + "-" + period
+}
+
 // Wallet metadata keys — the E3 recovery-by-metadata obligation: a grant
 // whose create response was lost is recovered by querying wallets carrying
-// these markers, never by a blind re-create.
+// these markers, never by a blind re-create. WalletMetaPurchasePeriod is the
+// purchase wallet's OWN meta key (#82 D4): a purchase wallet NEVER writes
+// the WalletMetaPeriod key, so the Base monthly-batch meta matching can
+// never claim it.
 const (
-	WalletMetaTenant = "weknora_tenant"
-	WalletMetaPeriod = "weknora_period"
+	WalletMetaTenant         = "weknora_tenant"
+	WalletMetaPeriod         = "weknora_period"
+	WalletMetaPurchasePeriod = "purchase_period"
 )
 
 // MonthlyPeriod formats a time as the UTC calendar period "YYYY-MM".
