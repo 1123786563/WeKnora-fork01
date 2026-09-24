@@ -636,13 +636,20 @@ exceptions:
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
 
-# 临时测试装置垫片（B5 清理范围）——Ruling 2026-09-24-TEST-SUPPORT-SHIM（conventions §10.3）
-# 宿主测试文件依赖随迁未导出符号且禁改时授权的唯一 _test.go 垫片；IB2 先到先删，最迟 B5。
-temporary_test_shims:
-  - id: tshim-0001
-    file: internal/application/service/chunk_ingest_test_shim_test.go
-    ruling: 2026-09-24-TEST-SUPPORT-SHIM
-    owner: 21-knowledge-ingest
-    protected_test: internal/application/service/document_write_access_test.go
-    symbol: chunkService（service/chunk.go 随 K1.2 迁出后的宿主测试夹具类型）
-    remove_at: ib2
+# ----------------------------------------------------------------------------
+# 临时测试装置垫片台账（B5 清理范围）——Ruling 2026-09-24-TEST-SUPPORT-SHIM
+#（conventions.md §10.3）。本节为注释段追踪：passbguard 对本文件做 KnownFields(true)
+# 严格解码（tools/passbguard/load.go:37-39 exceptionLedgerFile 仅镜像 exceptions），
+# 顶层新增 schema 外 key 会破坏 barrier gate（OCR ocr-r1-1 裁定采用注释段形态，
+# 2026-09-25）。宿主测试文件依赖随迁未导出符号且禁改时授权的唯一 _test.go 垫片；
+# IB2 先到先删，最迟 B5；结构化删除批登记于 Integration Brief
+# docs/architecture/passb/briefs/b2-k-ingest.md。
+#
+# - id: tshim-0001
+#   file: internal/application/service/chunk_ingest_test_shim_test.go
+#   ruling: 2026-09-24-TEST-SUPPORT-SHIM
+#   owner: 21-knowledge-ingest
+#   protected_test: internal/application/service/document_write_access_test.go
+#   symbol: chunkService（service/chunk.go 随 K1.2 迁出后的宿主测试夹具类型）
+#   remove_at: ib2
+# ----------------------------------------------------------------------------

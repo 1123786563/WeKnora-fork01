@@ -1,5 +1,6 @@
 // Ruling 2026-09-24-TEST-SUPPORT-SHIM（conventions §10.3）
-// remove_at: ib2（IB2 先到先删，最迟 B5；台账「临时测试装置垫片（B5 清理范围）」追踪）
+// remove_at: ib2（IB2 先到先删，最迟 B5；追踪：exception-ledger.yaml「临时测试装置
+// 垫片台账」注释段 + Integration Brief docs/architecture/passb/briefs/b2-k-ingest.md §1）
 //
 // 孤儿测试装置垫片：document_write_access_test.go（K4 属主，本节点禁改）以
 // `&chunkService{chunkRepository: …, knowledgeRepo: …, kbRepository: …}` 构造
