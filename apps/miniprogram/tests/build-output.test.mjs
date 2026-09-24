@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { resolve, relative } from 'node:path';
 
 // D1/D2 的缺陷都在官方构建产物里（docs/plans/issue-140/task-6-live-validation.md）：
 // D1：artifact 页 JSON 的 t-button 引用被 Taro 解析成含 node_modules 段的 /npm/.pnpm/... 路径，
@@ -36,4 +36,65 @@ test('D2: base.wxml 的 t-button 模板必须绑定 tap 事件与真实属性', 
   for (const attr of ['block', 'disabled', 'loading', 'customStyle']) {
     assert.match(tmpl, new RegExp(`${attr}="\\{\\{i\\.${attr}\\}\\}"`), `t-button 模板必须绑定 ${attr} 属性`);
   }
+});
+
+// ---- F1（评审第 1 轮）：主包体积与拷贝范围 ----
+// 微信单包/主包上限 2MB：把整个 tdesign-miniprogram/miniprogram_dist 拷进主包会超限
+// （实测 2285KB）；拷贝必须收窄到 button 的运行时闭包并排除纯类型文件。
+
+function walkFiles(root) {
+  const out = [];
+  const visit = dir => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = resolve(dir, entry.name);
+      if (entry.isDirectory()) visit(p); else out.push(p);
+    }
+  };
+  visit(root);
+  return out;
+}
+
+test('F1: dist/npm/tdesign 不含 .d.ts 纯类型文件', { skip: skipReason }, () => {
+  const dts = walkFiles(resolve(dist, 'npm/tdesign')).filter(p => p.endsWith('.d.ts'));
+  assert.deepEqual(dts, [], `.d.ts 不应进入构建产物（发现 ${dts.length} 个，如 ${dts[0] ?? '无'}）`);
+});
+
+test('F1: 主包（dist 去分包目录）体积必须低于微信 2MB 上限', { skip: skipReason }, () => {
+  const appJson = JSON.parse(readFileSync(resolve(dist, 'app.json'), 'utf8'));
+  const subRoots = (appJson.subpackages ?? appJson.subPackages ?? []).map(s => resolve(dist, s.root));
+  const isSub = p => subRoots.some(r => p === r || p.startsWith(r + resolve('/')));
+  let main = 0;
+  for (const p of walkFiles(dist)) if (!isSub(p)) main += statSync(p).size;
+  const limit = 2 * 1024 * 1024;
+  assert.ok(main < limit, `主包 ${(main / 1024).toFixed(0)}KB 超过微信 2MB 上限（${(limit / 1024).toFixed(0)}KB）`);
+});
+
+test('F1: tdesign 拷贝闭包完整（button 及其 usingComponents 传递依赖 + common 运行时）', { skip: skipReason }, () => {
+  const tdesignDir = resolve(dist, 'npm/tdesign');
+  // button.json 的传递依赖必须在产物中（DevTools 加载 button 时按 json 递归解析）
+  const queue = ['button/button'];
+  const seen = new Set();
+  while (queue.length) {
+    const stem = queue.pop();
+    if (seen.has(stem)) continue;
+    seen.add(stem);
+    const jsonPath = resolve(tdesignDir, `${stem}.json`);
+    assert.ok(existsSync(jsonPath), `闭包组件 ${stem}.json 必须存在`);
+    const cfg = JSON.parse(readFileSync(jsonPath, 'utf8'));
+    for (const ref of Object.values(cfg.usingComponents ?? {})) {
+      queue.push(relative(resolve(tdesignDir), resolve(tdesignDir, stem, '..', ref)));
+    }
+    for (const ext of ['.js', '.wxml', '.wxss']) {
+      assert.ok(existsSync(resolve(tdesignDir, stem + ext)), `闭包组件文件 ${stem}${ext} 必须存在`);
+    }
+  }
+  // button.js 的 common 运行时依赖（../common/config、../common/src/index 等）
+  const buttonJs = readFileSync(resolve(tdesignDir, 'button/button.js'), 'utf8');
+  for (const m of buttonJs.matchAll(/from"(\.\.\/common[^"]*)"/g)) {
+    const dep = resolve(tdesignDir, 'button', m[1].endsWith('.js') ? m[1] : m[1] + '.js');
+    assert.ok(existsSync(dep), `button 运行时依赖 ${m[1]} 必须存在`);
+  }
+  // 收窄：未使用的组件目录不得拷入（防回归到全量拷贝）
+  const dirs = readdirSync(tdesignDir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name).sort();
+  assert.deepEqual(dirs, ['button', 'common', 'icon', 'loading'].sort(), 'tdesign 拷贝范围必须收窄到 button 闭包');
 });
