@@ -46,6 +46,8 @@ interface SettingDrawerProps {
   cancelText?: string;
   hideFooter?: boolean;
   zIndex?: number;
+  /** Vue :close-on-overlay-click 透传（默认 true；PlatformAPIKeys.vue 传 false）。 */
+  closeOnOverlayClick?: boolean;
   /** Vue `:class` 透传（如 `parser-engine-drawer parser-engine-drawer--builtin`）。 */
   drawerClass?: string;
   /** Vue #footer-left 槽。 */
@@ -69,7 +71,7 @@ export function SettingDrawer(props: SettingDrawerProps) {
     visible, title, description = '', icon = '', headerIcon, subtitle, headerExtra,
     width = '560px', resizable = true, minWidth = 480, maxWidth = 1200, storageKey = '',
     confirmLoading = false, confirmDisabled = false, confirmText = '', cancelText = '',
-    hideFooter = false, zIndex = 2500, drawerClass, footerLeft,
+    hideFooter = false, zIndex = 2500, drawerClass, footerLeft, closeOnOverlayClick = true,
     onVisibleChange, onConfirm, onCancel, children,
   } = props;
 
@@ -202,6 +204,7 @@ export function SettingDrawer(props: SettingDrawerProps) {
       zIndex={zIndex}
       placement="right"
       destroyOnClose
+      closeOnOverlayClick={closeOnOverlayClick}
       className={('setting-drawer' + (drawerClass ? ` ${drawerClass}` : '') + (drawerResizing ? ' setting-drawer--resizing' : ''))}
       onClose={handleClose}
     >

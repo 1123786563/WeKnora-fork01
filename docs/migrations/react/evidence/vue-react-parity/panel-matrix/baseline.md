@@ -74,7 +74,7 @@
 |---|---|---|---|
 | px-userprofile-change-password | 2.949 | 2.949 | ⚠️ 静态底差转交（判例 #27）：popconfirm 双端同构 (566,228,320×132)，弹层内仅 5px AA；2.949% 与 settings-userprofile 静态基线同值，全部来自分区静态底差 |
 | px-mymemory-usage-hint | 0 | 0 | ✅ |
-| px-models-model-card | 62.438 | 62.44 | ⬜ 未收敛：React wk-model-editor（dae977404 居中 dialog）vs Vue ModelEditorDialog（SettingDrawer 右抽屉 + model-editor-drawer 家族）；换壳+类名复刻待续 |
+| px-models-model-card | 62.438 | 0 | ✅ 已收敛（批 3 余量：wk-model-editor 居中壳→SettingDrawer model-editor-drawer 家族 + ModelEditorDialog 解剖移植 + CredentialResource 端口；19-08-35 终值 0） |
 | px-models-card-more | 0.764 | 0.003 | ✅ §13d dropdown 全局块带零（AA 残差） |
 | px-parser-engine-builtin | 65.353 | 0.002 | ✅ 已收敛（cae2d3269，单字形 AA 残差） |
 | px-storage-backend-card | 21.599 | 0.002 | ✅ 已收敛（35ccd539c；AA 残差） |
@@ -84,10 +84,10 @@
 | px-sandbox-what-is-hint | 0 | 0 | ✅ |
 | px-envvars-sandbox-key-hint | 1.837 | 0.011-1.837 | ⚠️ hint popover 本体同构；波动值来自 settings-envvars 静态底差相位（12-31-57 轮 0.011%、12-48-10 轮 1.837%——静态底色轮换项，交互弹层零差） |
 | px-skills-add | 56.966 | 0 | ✅ 已收敛（9f274c977；mouseAway 指针工件判例 #26） |
-| px-mcp-add-service | 54.278 | 54.278 | ⬜ 未收敛：React wks-modal 自制居中壳（McpSettingsPanel:990）vs Vue McpServiceDialog（SettingDrawer + mcp-drawer--{transport} + #header-extra mcp-steps + footer-left 上一步 + width 680/min560/max920/storageKey mcp-config-v2）；添加卡类名 mcp-add-card→service-card--add；根因已锁待续 |
+| px-mcp-add-service | 54.278 | 0 | ✅ 已收敛（批 3 余量：wks-modal 居中壳→SettingDrawer mcp-drawer--{transport} 家族 + 列表卡换 Vue 原名 service-card 家族（添加卡 service-card--add）+ McpServiceDialog 解剖移植；19-08-35 终值 0） |
 | px-websearch-provider-card | 14.26 | 0.002 | ✅ 已收敛（35ccd539c；AA 残差） |
 | px-websearch-card-more | 0.775 | 0 | ✅ 已收敛（35ccd539c，触发器已命中） |
-| px-platform-api-keys-create | 62.964 | 62.964 | ⬜ 未收敛：React pak-drawer 自制壳 + 简化勾选表单（PlatformApiKeysPanel:112）vs Vue SettingDrawer（api-key-create-drawer 家族 + 平台控制面/空间能力分组 + 全选行）；根因已锁待续 |
+| px-platform-api-keys-create | 62.964 | 0 | ✅ 已收敛（批 3 余量：pak-drawer 自制壳→SettingDrawer api-key-create-drawer 家族 + 整面板 Vue 原名类系（api-key-table/chip/popconfirm/t-dialog）+ PLATFORM_API_KEY_CAPABILITY_GROUPS 分组全选；19-08-35 终值 0） |
 | px-members-rbac-hint | 10.919 | 10.919 | ⚠️ 静态底差转交（判例 #27）：role-hint popover 双端同构 (620,118,360×120) 内 0px；10.919% 与 settings-members 静态基线同值 |
 | px-ollama-redetect | 2.496 | 2.197-2.496 | ⚠️ 静态底差转交（判例 #27）：弹层内 3px AA；差异与 settings-ollama 静态基线同源（轮间 2.197↔2.496 为静态底差相位波动） |
 

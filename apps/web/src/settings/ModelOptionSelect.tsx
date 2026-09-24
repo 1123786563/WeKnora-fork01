@@ -56,7 +56,13 @@ export function ModelOptionSelect({ value, options, disabled = false, clearable 
           ModelEditorDialog.vue lines 166-171/372-384); R484 G4 D4 removed the
           trigger-side description the scanner caught in the add-model dialog. */}
       <span className="wk-model-option-select__value"><span>{selected?.label ?? value}</span></span>
-      <span className="wk-model-option-select__chevron" aria-hidden="true">⌄</span>
+      {/* Vue t-select 的下拉箭头是内联 t-fake-arrow svg（16×16，stroke
+          black .9 / width 1.3），非 t-icon glyph——逐属性复刻以保证像素一致。 */}
+      <span className="wk-model-option-select__chevron" aria-hidden="true">
+        <svg className="t-fake-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3.75 5.7998L7.99274 10.0425L12.2361 5.79921" stroke="black" strokeOpacity="0.9" strokeWidth="1.3" />
+        </svg>
+      </span>
     </button>
     {open ? <div id={listboxId} className="wk-model-option-select__popup" role="listbox">{clearable ? <button type="button" role="option" aria-selected={value === ''} className="wk-model-option-select__clear" onClick={() => choose(-1)}>{clearLabel}</button> : null}{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} data-value={option.value} className={`wk-model-option-select__option${index === activeIndex ? ' is-active' : ''}${option.value === value ? ' is-selected' : ''}`} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}><span className="wk-model-option-select__option-title">{option.label}</span>{option.description ? <span className="wk-model-option-select__option-description">{option.description}</span> : null}</button>)}{onAddModel && addModelLabel ? <button type="button" className="wk-model-option-select__add" onClick={() => { onAddModel(); setOpen(false); }}>{addModelLabel}</button> : null}</div> : null}
   </div>;

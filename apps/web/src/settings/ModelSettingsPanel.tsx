@@ -20,6 +20,7 @@ import {
 // S6 抽屉收编：packages/ui 旧栈 表单栈离开（T15 硬前置）。Status 为无 TDesign 对应
 // 的语义 p 封装，走 shared/wk-legacy 原生标签 + .wk-status 类平移。
 import { WkStatus as Status } from "../shared/wk-legacy.tsx";
+import { SettingDrawer } from "./SettingDrawer.tsx";
 import { roleAtLeast } from "@weknora/views/settings/registry";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
 import { ModelOptionSelect } from "./ModelOptionSelect.tsx";
@@ -73,6 +74,112 @@ const TYPE_ICON: Record<ModelType, string> = {
   vllm: "image",
   asr: "sound",
 };
+/* CredentialResource.vue 同构端口（frontend/src/components/credentials/
+ * CredentialResource.vue）：configured=faux input(✓ 已配置 + 更换|移除)、
+ * confirm-remove=⚠ 确认行、unconfigured=faux empty(配置)、editing=t-input
+ * + 底部 取消/保存。字段 row-label 仅在多字段（api_key+app_secret）时渲染，
+ * 单字段沿用父级 .form-label（ModelEditorDialog API key / MCP 同款约定）。 */
+function CredentialResourcePort(props: {
+  t: (key: string) => string;
+  fields: Array<{ key: "api_key" | "app_secret"; label: string }>;
+  configured: Record<string, boolean>;
+  values: Record<string, string>;
+  onValueChange: (key: "api_key" | "app_secret", value: string) => void;
+  onSave: (key: "api_key" | "app_secret") => void;
+  onRemove: (key: "api_key" | "app_secret") => void;
+  busy: boolean;
+}) {
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [pendingRemoveKey, setPendingRemoveKey] = useState<string | null>(null);
+  const single = props.fields.length === 1;
+  return (
+    <div className="credential-resource">
+      {props.fields.map((field) => {
+        const configured = !!props.configured[field.key];
+        const editing = editingKey === field.key;
+        const pendingRemove = pendingRemoveKey === field.key;
+        return (
+          <div className="credential-row" key={field.key}>
+            {!single ? <div className="credential-row-label">{field.label}</div> : null}
+            {editing ? (
+              <div className="credential-edit">
+                <TInput
+                  type="password"
+                  autocomplete="new-password"
+                  prefixIcon={<TIcon name="lock-on" />}
+                  value={props.values[field.key] ?? ""}
+                  placeholder={props.t("credential.inputPlaceholder")}
+                  onChange={(value) => props.onValueChange(field.key, String(value))}
+                />
+                <div className="credential-edit-actions">
+                  <TButton size="small" variant="text" type="button" onClick={() => { setEditingKey(null); props.onValueChange(field.key, ""); }}>
+                    {props.t("common.cancel")}
+                  </TButton>
+                  <TButton
+                    size="small"
+                    theme="primary"
+                    loading={props.busy}
+                    disabled={!(props.values[field.key] ?? "").trim()}
+                    type="button"
+                    onClick={() => { props.onSave(field.key); setEditingKey(null); }}
+                  >
+                    {props.t("common.save")}
+                  </TButton>
+                </div>
+              </div>
+            ) : configured && pendingRemove ? (
+              <div className="credential-faux-input is-confirm-remove">
+                <TIcon name="error-circle-filled" className="status-icon warn" />
+                <span className="credential-faux-text danger">{props.t("credential.confirmRemovePrompt")}</span>
+                <div className="credential-actions">
+                  <TButton size="small" variant="text" type="button" onClick={() => setPendingRemoveKey(null)}>
+                    {props.t("common.cancel")}
+                  </TButton>
+                  <span className="action-divider" />
+                  <TButton
+                    size="small"
+                    variant="text"
+                    theme="danger"
+                    loading={props.busy}
+                    type="button"
+                    onClick={() => { props.onRemove(field.key); setPendingRemoveKey(null); }}
+                  >
+                    {props.t("credential.confirmRemove")}
+                  </TButton>
+                </div>
+              </div>
+            ) : configured ? (
+              <div className="credential-faux-input" title={props.t("credential.configured")}>
+                <TIcon name="check-circle-filled" className="status-icon success" />
+                <span className="credential-faux-text">{props.t("credential.configured")}</span>
+                <div className="credential-actions">
+                  <TButton size="small" variant="text" type="button" onClick={() => setEditingKey(field.key)}>
+                    {props.t("credential.update")}
+                  </TButton>
+                  <span className="action-divider" />
+                  <TButton size="small" variant="text" theme="danger" type="button" onClick={() => setPendingRemoveKey(field.key)}>
+                    {props.t("credential.remove")}
+                  </TButton>
+                </div>
+              </div>
+            ) : (
+              <div className="credential-faux-input is-empty" onClick={() => setEditingKey(field.key)}>
+                <TIcon name="lock-on" className="status-icon muted" />
+                <span className="credential-faux-text muted">{props.t("credential.unconfigured")}</span>
+                <div className="credential-actions">
+                  <TButton size="small" variant="text" theme="primary" type="button" onClick={(event) => { event.stopPropagation(); setEditingKey(field.key); }}>
+                    {props.t("credential.configure")}
+                  </TButton>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const BUILTIN_MODELS_DOC = "https://github.com/Tencent/WeKnora/blob/main/docs/BUILTIN_MODELS.md";
 const THINKING_CONTROL_OPTIONS: Array<{ value: string; key: string }> = [
   { value: "none", key: "none" },
@@ -1087,87 +1194,115 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
         </div>
       )}
       </TLoading>
-      {draft ? (
-        <div
-          className="wk-model-editor-overlay"
-          onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}
-        >
-        <div
-          className="wk-model-editor wk-model-editor-drawer"
-          role="dialog"
-          aria-modal="true"
-          aria-label={draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}
-        >
-          <div className="wk-settings-panel-heading">
-            <div>
-              <h3>{draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}</h3>
-              <p className="wk-muted">
-                {t(`model.editor.description.${draft.type}`) || t("model.editor.description.default")}
-              </p>
-            </div>
-            <TButton type="button" disabled={busy} onClick={closeEditor}>
-              {t("common.close")}
-            </TButton>
-          </div>
-          <form className="wk-settings-editor" onSubmit={(event) => void save(event)}>
-            {!draft.id ? (
-              <div className="form-item">
-                <h4>{t("model.editor.sectionType")}</h4>
-                <div className="wk-model-type-options" role="radiogroup" aria-label={t("model.editor.typeLabel")}>
-                  {TYPES.map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      role="radio"
-                      aria-checked={draft.type === type}
-                      className={draft.type === type ? "is-active" : ""}
-                      onClick={() => void selectModelType(type)}
-                    >
-                      {typeLabelOf(type)}
-                    </button>
-                  ))}
-                </div>
+      {/* Vue ModelEditorDialog.vue:1-403 — SettingDrawer 抽屉（
+          model-editor-drawer 家族 + sectionType 类型 pill + sectionSource 来源
+          + remote 厂商 section + sectionAdvanced）。基线册 px-models-model-card
+          根因收敛：wk-model-editor 居中壳 → SettingDrawer 家族。 */}
+      {draft ? <SettingDrawer
+        visible
+        title={draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}
+        description={t(`model.editor.description.${draft.type}`) || t("model.editor.description.default")}
+        icon={TYPE_ICON[draft.type]}
+        confirmLoading={busy}
+        confirmDisabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
+        drawerClass="model-editor-drawer"
+        footerLeft={draft.source === "remote" ? <>
+          <TButton
+            variant="outline"
+            loading={checking}
+            disabled={
+              !draft.name ||
+              (!draft.baseUrl && draft.provider !== "weknoracloud") ||
+              (draft.provider === "weknoracloud" && wkcState !== "configured")
+            }
+            onClick={() => void testConnection()}
+          >
+            {!checking && remoteMessage?.ok ? <TIcon name="check-circle-filled" className="status-icon available" />
+              : !checking && remoteMessage && !remoteMessage.ok ? <TIcon name="close-circle-filled" className="status-icon unavailable" /> : null}
+            {t("model.editor.testConnection")}
+          </TButton>
+          {remoteMessage ? (
+            <span className={'footer-test-message ' + (remoteMessage.ok ? 'success' : 'error')} title={remoteMessage.text}>
+              {remoteMessage.text}
+            </span>
+          ) : null}
+        </> : undefined}
+        onVisibleChange={(visible) => { if (!visible) closeEditor(); }}
+        onCancel={closeEditor}
+        onConfirm={() => { void save(new Event("submit") as unknown as React.FormEvent<HTMLFormElement>); }}
+      >
+        <form className="t-form t-form--layout-vertical" onSubmit={(event) => void save(event)}>
+          {!draft.id ? (
+            <section className="setting-drawer__section">
+              <h4 className="setting-drawer__section-title">{t("model.editor.sectionType")}</h4>
+              <div className="model-type-options" role="radiogroup" aria-label={t("model.editor.typeLabel")}>
+                {TYPES.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    role="radio"
+                    aria-checked={draft.type === type}
+                    className={'model-type-option' + (draft.type === type ? ' is-active' : '')}
+                    onClick={() => void selectModelType(type)}
+                  >
+                    <TIcon name={TYPE_ICON[type]} className="model-type-option__icon" />
+                    <span className="model-type-option__label">{typeLabelOf(type)}</span>
+                  </button>
+                ))}
               </div>
-            ) : null}
+            </section>
+          ) : null}
 
+          {/* Vue ModelEditorDialog.vue:54-149 — sectionSource：来源 pill +
+              rerank/ollama 提示 + Ollama 本地模型选择行 */}
+          <section className="setting-drawer__section">
+            <h4 className="setting-drawer__section-title">{t("model.editor.sectionSource")}</h4>
             <div className="form-item">
-              <h4>{t("model.editor.sectionSource")}</h4>
-              <div className="wk-source-options" role="radiogroup" aria-label={t("model.editor.sourceLabel")}>
+              <div className="source-options" role="radiogroup" aria-label={t("model.editor.sourceLabel")}>
                 <button
                   type="button"
                   role="radio"
                   aria-checked={draft.source === "remote"}
-                  className={draft.source === "remote" ? "is-active" : ""}
+                  className={'source-option' + (draft.source === "remote" ? ' is-active' : '')}
                   onClick={() => selectSource("remote")}
                 >
-                  {t("model.editor.sourceRemote")}
+                  <TIcon name="cloud" className="source-option__icon" />
+                  <span className="source-option__label">{t("model.editor.sourceRemote")}</span>
                 </button>
                 <button
                   type="button"
                   role="radio"
                   aria-checked={draft.source === "local"}
-                  className={draft.source === "local" ? "is-active" : ""}
+                  className={'source-option' + (draft.source === "local" ? ' is-active' : '') + (ollamaStatus === false || draft.type === "rerank" ? ' is-disabled' : '')}
                   disabled={ollamaStatus === false || draft.type === "rerank"}
                   onClick={() => selectSource("local")}
                 >
-                  {t("model.editor.sourceLocal")}
+                  <TIcon name="server" className="source-option__icon" />
+                  <span className="source-option__label">{t("model.editor.sourceLocal")}</span>
                 </button>
               </div>
               {draft.type === "rerank" ? (
-                <p className="wk-muted">{t("model.editor.ollamaNotSupportRerank")}</p>
+                <div className="ollama-unavailable-tip rerank-tip">
+                  <TIcon name="info-circle-filled" className="tip-icon info" />
+                  <span className="tip-text">{t("model.editor.ollamaNotSupportRerank")}</span>
+                </div>
               ) : draft.source === "local" && ollamaStatus === false ? (
-                <p className="wk-muted">
-                  {t("model.editor.ollamaUnavailable")}{" "}
-                  <TButton type="button" variant="text" onClick={() => navigate("/platform/settings?section=ollama")}>
+                <div className="ollama-unavailable-tip">
+                  <TIcon name="error-circle-filled" className="tip-icon" />
+                  <span className="tip-text">{t("model.editor.ollamaUnavailable")}</span>
+                  <TButton type="button" variant="text" size="small" className="tip-link" onClick={() => navigate("/platform/settings?section=ollama")}>
+                    <TIcon name="jump" />
                     {t("model.editor.goToOllamaSettings")}
                   </TButton>
-                </p>
+                </div>
               ) : null}
               {draft.source === "local" ? (
                 <div className="form-item">
-                  <label>
-                    {t("model.modelName")}
-                  </label>
+                  <label className="form-label required">{t("model.modelName")}</label>
+                  {/* Vue ModelEditorDialog.vue:109-147 — .model-select-row：
+                      filterable t-select（自研 combobox 逻辑零改动保留）+ 刷新
+                      按钮（text small refresh icon）。 */}
+                  <div className="model-select-row">
                   <div className="wk-ollama-combobox-wrap">
                       {/* 自研 combobox（Vue 端为 ModelEditorDialog.vue 的 filterable
                           t-select；React 侧逻辑零改动保留自研键盘导航），input 走原生
@@ -1215,13 +1350,13 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                           ) : null}
                         </div>
                       ) : null}
-                    </div>
-                    {nameError ? <span className="wk-field-error">{nameError}</span> : null}
-                  <div className="wk-list-actions">
-                    <TButton type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
-                      {t("model.editor.refreshList")}
-                    </TButton>
                   </div>
+                  <TButton type="button" variant="text" size="small" className="refresh-btn" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
+                    <TIcon name="refresh" />
+                    {t("model.editor.refreshList")}
+                  </TButton>
+                  </div>
+                  {nameError ? <span className="wk-field-error">{nameError}</span> : null}
                   {ollamaBusy ? <Status>{t("common.loading")}</Status> : null}
                   {downloadTask || downloadProgress !== null ? (
                     <Status>{`${draft.name} · ${downloadProgress !== null ? `${downloadProgress.toFixed(1)}%` : "0%"}`}</Status>
@@ -1229,210 +1364,195 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 </div>
               ) : null}
             </div>
+          </section>
 
-            {draft.source === "remote" ? (
+          {draft.source === "remote" ? (
+            <section className="setting-drawer__section">
+              <h4 className="setting-drawer__section-title">{t("model.editor.sectionProvider")}</h4>
               <div className="form-item">
-                <h4>{t("model.editor.sectionProvider")}</h4>
-                <label>
-                  {t("model.editor.providerLabel")}
-                  <ModelOptionSelect
-                    value={draft.provider}
-                    disabled={loadingProviders}
-                    options={editorProviderOptions}
-                    onChange={onProviderChange}
-                  />
-                </label>
-                {draft.provider === "weknoracloud" ? (
-                  wkcState === "loading" ? (
-                    <Status>{t("settings.weknoraCloud.checkingStatus")}</Status>
-                  ) : wkcState === "configured" ? (
-                    <Status tone="success">{t("settings.weknoraCloud.modelHintConfigured")}</Status>
-                  ) : (
-                    <Status tone="warning">
-                      {t(wkcState === "expired" ? "settings.weknoraCloud.credentialExpired" : "settings.weknoraCloud.credentialUnconfigured")}{" "}
-                      <TButton type="button" variant="text" onClick={() => navigate("/platform/settings?section=weknoracloud")}>
-                        {t("settings.weknoraCloud.goToSettings")}
-                      </TButton>
-                    </Status>
-                  )
-                ) : null}
-                <label>
-                  {t("model.modelName")}
-                  <TInput
-                    maxlength={100}
-                    placeholder={t(modelNamePlaceholderKey(draft.type, draft.source))}
-                    disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
-                    value={draft.name}
-                    onChange={(value) => changeName(String(value))}
-                    onBlur={blurName}
-                  />
-                  {nameError ? <span className="wk-field-error">{nameError}</span> : null}
-                </label>
-                <label>
-                  {t("model.editor.displayNameLabel")}
-                      <TInput
-                    maxlength={100}
-                    placeholder={t("model.editor.displayNamePlaceholder")}
-                    value={draft.displayName}
-                    onChange={(value) => updateDraft("displayName", String(value))}
-                  />
-                  <span className="wk-muted">{t("model.editor.displayNameDesc")}</span>
-                </label>
-                {draft.provider !== "weknoracloud" ? (
-                  <>
-                    <label>
-                      {t("model.editor.baseUrlLabel")}
-                      <TInput
-                        type="url"
-                        placeholder={t(baseUrlPlaceholderKey(draft.type))}
-                        value={draft.baseUrl}
-                        onChange={(value) => changeBaseUrl(String(value))}
-                        onBlur={blurBaseUrl}
-                      />
-                      {baseUrlError ? <span className="wk-field-error">{baseUrlError}</span> : null}
-                    </label>
-                    {draft.id ? (
-                      <div className="form-item">
-                        <label>
-                          {apiKeyLabel}
-                          <TInput
-                            type="password"
-                            autocomplete="new-password"
-                            placeholder={apiKeyPlaceholder}
-                            value={credentialValues.apiKey}
-                            onChange={(value) => setCredentialValues((current) => ({ ...current, apiKey: String(value) }))}
-                          />
-                        </label>
-                        <div className="wk-list-actions">
-                          {draft.credentials?.api_key?.configured ? <span title="configured" className="wk-cred-configured">✓</span> : null}
-                          <TButton
-                            type="button"
-                            disabled={credentialBusy || !credentialValues.apiKey.trim()}
-                            onClick={() => void saveCredentialField("apiKey")}
-                          >
-                            {t("common.save")}
-                          </TButton>
-                          {draft.credentials?.api_key?.configured ? (
-                            <TButton type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("api_key")}>
-                              {t("common.delete")}
-                            </TButton>
-                          ) : null}
-                        </div>
-                        {signed ? (
-                          <>
-                            <label>
-                              {secretKeyLabel}
-                              <TInput
-                                type="password"
-                                autocomplete="new-password"
-                                placeholder={secretKeyPlaceholder}
-                                value={credentialValues.appSecret}
-                                onChange={(value) => setCredentialValues((current) => ({ ...current, appSecret: String(value) }))}
-                              />
-                            </label>
-                            <div className="wk-list-actions">
-                              {draft.credentials?.app_secret?.configured ? <span title="configured" className="wk-cred-configured">✓</span> : null}
-                              <TButton
-                                type="button"
-                                disabled={credentialBusy || !credentialValues.appSecret.trim()}
-                                onClick={() => void saveCredentialField("appSecret")}
-                              >
-                                {t("common.save")}
-                              </TButton>
-                              {draft.credentials?.app_secret?.configured ? (
-                                <TButton type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("app_secret")}>
-                                  {t("common.delete")}
-                                </TButton>
-                              ) : null}
-                            </div>
-                            <p className="wk-muted">{credentialHint}</p>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <>
-                        <label>
-                          {apiKeyLabel}
-                  <TInput
-                            type="password"
-                            autocomplete="new-password"
-                            spellCheck={false}
-                            placeholder={apiKeyPlaceholder}
-                            value={draft.apiKey}
-                            onChange={(value) => updateDraft("apiKey", String(value))}
-                          />
-                        </label>
-                        {signed ? (
-                          <>
-                            <label>
-                              {secretKeyLabel}
-                      <TInput
-                                type="password"
-                                autocomplete="new-password"
-                                spellCheck={false}
-                                placeholder={secretKeyPlaceholder}
-                                value={draft.appSecret}
-                                onChange={(value) => updateDraft("appSecret", String(value))}
-                              />
-                            </label>
-                            <p className="wk-muted">{credentialHint}</p>
-                          </>
-                        ) : null}
-                      </>
-                    )}
-                    {signed === "lkeap" ? (
-                      <label>
-                        {t("model.editor.lkeap.regionLabel")}
-                        <TInput
-                          placeholder={t("model.editor.lkeap.regionPlaceholder")}
-                          value={draft.lkeapRegion}
-                          onChange={(value) => updateDraft("lkeapRegion", String(value))}
-                        />
-                        <span className="wk-muted">{t("model.editor.lkeap.regionDesc")}</span>
-                      </label>
-                    ) : null}
-                    <fieldset>
-                      <legend>{t("model.editor.customHeadersLabel")}</legend>
-                      <p className="wk-muted">{t("model.editor.customHeadersDesc")}</p>
-                      {draft.customHeaders.map((item, index) => (
-                        <div className="wk-model-header-row" key={index}>
-                                <TInput
-                            value={item.key}
-                            placeholder={t("model.editor.customHeadersKeyPlaceholder")}
-                            aria-label={t("model.editor.customHeadersKeyPlaceholder")}
-                            onChange={(value) => updateCustomHeader(index, "key", String(value))}
-                          />
-                          <TInput
-                            value={item.value}
-                            placeholder={t("model.editor.customHeadersValuePlaceholder")}
-                            aria-label={t("model.editor.customHeadersValuePlaceholder")}
-                            onChange={(value) => updateCustomHeader(index, "value", String(value))}
-                          />
-                          <TButton
-                            type="button"
-                            aria-label={t("common.delete")}
-                            onClick={() => removeCustomHeader(index)}
-                          >
-                            ✕
-                          </TButton>
-                        </div>
-                      ))}
-                      <TButton type="button" onClick={addCustomHeader}>
-                        {t("model.editor.customHeadersAdd")}
-                      </TButton>
-                    </fieldset>
-                  </>
-                ) : null}
+                <label className="form-label">{t("model.editor.providerLabel")}</label>
+                <ModelOptionSelect
+                  value={draft.provider}
+                  disabled={loadingProviders}
+                  options={editorProviderOptions}
+                  onChange={onProviderChange}
+                />
               </div>
-            ) : null}
-
-            {["embedding", "chat", "vllm"].includes(draft.type) ? (
+              {draft.provider === "weknoracloud" ? (
+                wkcState === "loading" ? (
+                  <div className="weknoracloud-hint">
+                    <TIcon name="loading" className="spinning hint-icon hint-icon--loading" />
+                    <span>{t("settings.weknoraCloud.checkingStatus")}</span>
+                  </div>
+                ) : wkcState === "configured" ? (
+                  <div className="weknoracloud-hint weknoracloud-hint--ok">
+                    <TIcon name="check-circle-filled" className="hint-icon hint-icon--ok" />
+                    <div>{t("settings.weknoraCloud.modelHintConfigured")}</div>
+                  </div>
+                ) : (
+                  <div className="weknoracloud-hint weknoracloud-hint--warn">
+                    <TIcon name="error-circle-filled" className="hint-icon hint-icon--warn" />
+                    <div style={{ flex: 1 }}>
+                      {t(wkcState === "expired" ? "settings.weknoraCloud.credentialExpired" : "settings.weknoraCloud.credentialUnconfigured")}
+                      <div style={{ marginTop: 8 }}>
+                        <TButton type="button" variant="text" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => navigate("/platform/settings?section=weknoracloud")}>
+                          <TIcon name="jump" />
+                          {t("settings.weknoraCloud.goToSettings")}
+                        </TButton>
+                      </div>
+                    </div>
+                  </div>
+                )
+              ) : null}
               <div className="form-item">
-                <h4>{t("model.editor.sectionAdvanced")}</h4>
-                {draft.type === "embedding" ? (
-                  <>
-                    <label>
-                      {t("model.editor.dimensionLabel")}
+                <label className="form-label required">{t("model.modelName")}</label>
+                <TInput
+                  maxlength={100}
+                  placeholder={t(modelNamePlaceholderKey(draft.type, draft.source))}
+                  disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
+                  value={draft.name}
+                  onChange={(value) => changeName(String(value))}
+                  onBlur={blurName}
+                />
+                {nameError ? <span className="wk-field-error">{nameError}</span> : null}
+              </div>
+              <div className="form-item">
+                <label className="form-label">{t("model.editor.displayNameLabel")}</label>
+                <TInput
+                  maxlength={100}
+                  placeholder={t("model.editor.displayNamePlaceholder")}
+                  value={draft.displayName}
+                  onChange={(value) => updateDraft("displayName", String(value))}
+                />
+                <p className="form-desc">{t("model.editor.displayNameDesc")}</p>
+              </div>
+              {draft.provider !== "weknoracloud" ? (
+                <>
+              <div className="form-item">
+                <label className="form-label required">{t("model.editor.baseUrlLabel")}</label>
+                <TInput
+                  type="url"
+                  placeholder={t(baseUrlPlaceholderKey(draft.type))}
+                  value={draft.baseUrl}
+                  onChange={(value) => changeBaseUrl(String(value))}
+                  onBlur={blurBaseUrl}
+                />
+                {baseUrlError ? <span className="wk-field-error">{baseUrlError}</span> : null}
+              </div>
+                {draft.id ? (
+                  <div className="form-item">
+                    <label className="form-label">{apiKeyLabel}</label>
+                    {/* Vue edit 模式：凭证由 CredentialResource 卡管理
+                        （ModelEditorDialog.vue:251-252），signed rerank 追加
+                        app_secret 字段行 + 提示。 */}
+                    <CredentialResourcePort
+                      t={t}
+                      fields={[
+                        { key: "api_key", label: apiKeyLabel },
+                        ...(signed ? [{ key: "app_secret" as const, label: secretKeyLabel }] : []),
+                      ]}
+                      configured={{
+                        api_key: !!draft.credentials?.api_key?.configured,
+                        app_secret: !!draft.credentials?.app_secret?.configured,
+                      }}
+                      values={{ apiKey: credentialValues.apiKey, app_secret: credentialValues.appSecret }}
+                      onValueChange={(key, value) => setCredentialValues((current) => ({ ...current, [key === "api_key" ? "apiKey" : "appSecret"]: value }))}
+                      onSave={(key) => void saveCredentialField(key === "api_key" ? "apiKey" : "appSecret")}
+                      onRemove={(key) => void removeCredentialField(key)}
+                      busy={credentialBusy}
+                    />
+                    {signed ? <p className="form-desc">{credentialHint}</p> : null}
+                  </div>
+                ) : (
+                  <div className="form-item">
+                    <label className="form-label">{apiKeyLabel}</label>
+                    <TInput
+                      type="password"
+                      autocomplete="new-password"
+                      spellCheck={false}
+                      placeholder={apiKeyPlaceholder}
+                      value={draft.apiKey}
+                      onChange={(value) => updateDraft("apiKey", String(value))}
+                    />
+                    {signed ? (
+                      <>
+                        <label className="form-label">{secretKeyLabel}</label>
+                        <TInput
+                          type="password"
+                          autocomplete="new-password"
+                          spellCheck={false}
+                          placeholder={secretKeyPlaceholder}
+                          value={draft.appSecret}
+                          onChange={(value) => updateDraft("appSecret", String(value))}
+                        />
+                        <p className="form-desc">{credentialHint}</p>
+                      </>
+                    ) : null}
+                  </div>
+                )}
+                {signed === "lkeap" ? (
+                  <div className="form-item">
+                    <label className="form-label">{t("model.editor.lkeap.regionLabel")}</label>
+                    <TInput
+                      placeholder={t("model.editor.lkeap.regionPlaceholder")}
+                      value={draft.lkeapRegion}
+                      onChange={(value) => updateDraft("lkeapRegion", String(value))}
+                    />
+                    <p className="form-desc">{t("model.editor.lkeap.regionDesc")}</p>
+                  </div>
+                ) : null}
+              <div className="form-item">
+                <div className="custom-headers-header">
+                  <label className="form-label" style={{ marginBottom: 0 }}>{t("model.editor.customHeadersLabel")}</label>
+                  <TButton variant="text" size="small" theme="primary" type="button" icon={<TIcon name="add" />} onClick={addCustomHeader}>
+                    {t("model.editor.customHeadersAdd")}
+                  </TButton>
+                </div>
+                <p className="form-desc custom-headers-desc">{t("model.editor.customHeadersDesc")}</p>
+                {draft.customHeaders.length > 0 ? <div className="custom-headers-list">
+                  {draft.customHeaders.map((item, index) => (
+                    <div className="custom-header-row" key={index}>
+                      <TInput
+                        className="custom-header-key"
+                        value={item.key}
+                        placeholder={t("model.editor.customHeadersKeyPlaceholder")}
+                        onChange={(value) => updateCustomHeader(index, "key", String(value))}
+                      />
+                      <TInput
+                        className="custom-header-value"
+                        value={item.value}
+                        placeholder={t("model.editor.customHeadersValuePlaceholder")}
+                        onChange={(value) => updateCustomHeader(index, "value", String(value))}
+                      />
+                      <TButton
+                        variant="text"
+                        shape="square"
+                        size="small"
+                        className="custom-header-remove"
+                        aria-label={t("common.delete")}
+                        type="button"
+                        onClick={() => removeCustomHeader(index)}
+                      >
+                        <TIcon name="close" />
+                      </TButton>
+                    </div>
+                  ))}
+                </div> : null}
+              </div>
+                </>
+              ) : null}
+            </section>
+          ) : null}
+
+          {/* Vue ModelEditorDialog.vue:316-399 — sectionAdvanced */}
+          {["embedding", "chat", "vllm"].includes(draft.type) ? (
+            <section className="setting-drawer__section">
+              <h4 className="setting-drawer__section-title">{t("model.editor.sectionAdvanced")}</h4>
+              {draft.type === "embedding" ? (
+                <>
+                  <div className="form-item">
+                    <label className="form-label">{t("model.editor.dimensionLabel")}</label>
+                    <div className="dimension-control">
                       <TInputNumber
                         min={128}
                         max={4096}
@@ -1441,108 +1561,79 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         value={draft.dimension}
                         onChange={(value) => updateDraft("dimension", fromTInputNumber(value))}
                       />
-                    </label>
-                    {draft.source === "local" && draft.name ? (
-                      <TButton type="button" disabled={checking || !draft.name.trim()} onClick={() => void checkOllamaDimension()}>
-                        {t("model.editor.checkDimension")}
-                      </TButton>
-                    ) : null}
+                      {draft.source === "local" && draft.name ? (
+                        <TButton type="button" variant="text" size="small" className="dimension-check-btn" disabled={checking || !draft.name.trim()} onClick={() => void checkOllamaDimension()}>
+                          <TIcon name="refresh" />
+                          {t("model.editor.checkDimension")}
+                        </TButton>
+                      ) : null}
+                    </div>
                     {dimensionMessage ? (
-                      <Status tone={dimensionMessage.ok ? "success" : "error"}>{dimensionMessage.text}</Status>
+                      <p className={'dimension-hint' + (dimensionMessage.ok ? ' success' : '')}>{dimensionMessage.text}</p>
                     ) : null}
-                    <div className="wk-switch-row">
-                      <TSwitch value={draft.supportsDimensionOverride} onChange={(checked) => updateDraft("supportsDimensionOverride", Boolean(checked))} aria-label={t("model.editor.dimensionOverrideLabel")} />
-                      <span className="wk-switch-row__label">{t("model.editor.dimensionOverrideLabel")}</span>
-                      <span className="wk-switch-row__desc">{t("model.editor.dimensionOverrideDesc")}</span>
+                  </div>
+                  <div className="form-item">
+                    <label className="form-label">{t("model.editor.dimensionOverrideLabel")}</label>
+                    <div className="vision-toggle">
+                      <TSwitch value={draft.supportsDimensionOverride} onChange={(checked) => updateDraft("supportsDimensionOverride", Boolean(checked))} />
+                      <span className="form-desc form-desc--inline">{t("model.editor.dimensionOverrideDesc")}</span>
                     </div>
-                  </>
-                ) : null}
-                {draft.type === "chat" || draft.type === "vllm" ? (
-                  <label>
-                    {t("model.editor.contextWindowLabel")}
-                    <TInputNumber
-                      min={1024}
-                      max={10000000}
-                      placeholder={t("model.editor.contextWindowPlaceholder", { value: DEFAULT_MODEL_CONTEXT_WINDOW })}
-                      value={draft.contextWindow}
-                      onChange={(value) => updateDraft("contextWindow", fromTInputNumber(value))}
-                    />
-                    <span className="wk-muted">{t("model.editor.contextWindowDesc")}</span>
-                  </label>
-                ) : null}
-                {draft.type === "chat" ? (
-                  <>
-                    <div className="wk-switch-row">
-                      <TSwitch value={draft.supportsVision} onChange={(checked) => updateDraft("supportsVision", Boolean(checked))} aria-label={t("model.editor.supportsVisionLabel")} />
-                      <span className="wk-switch-row__label">{t("model.editor.supportsVisionLabel")}</span>
-                      <span className="wk-switch-row__desc">{t("model.editor.supportsVisionDesc")}</span>
-                    </div>
-                  </>
-                ) : null}
-                {draft.type === "chat" && draft.source === "remote" ? (
-                  <label>
-                    {t("model.editor.thinkingControlLabel")}
-                    <ModelOptionSelect
-                      value={draft.thinkingControl}
-                      options={thinkingOptions}
-                      onChange={(value) => {
-                        setThinkingManual(true);
-                        updateDraft("thinkingControl", value);
-                      }}
-                    />
-                    <span className="wk-muted">{t("model.editor.thinkingControlDesc")}</span>
-                  </label>
-                ) : null}
-                <label>
-                  {t("model.editor.maxConcurrencyLabel")}
+                  </div>
+                </>
+              ) : null}
+              {draft.type === "chat" || draft.type === "vllm" ? (
+                <div className="form-item">
+                  <label className="form-label">{t("model.editor.contextWindowLabel")}</label>
                   <TInputNumber
-                    min={0}
-                    max={4096}
-                    placeholder={t("model.editor.maxConcurrencyPlaceholder")}
-                    value={draft.maxConcurrency}
-                    onChange={(value) => updateDraft("maxConcurrency", fromTInputNumber(value))}
+                    min={1024}
+                    max={10000000}
+                    placeholder={t("model.editor.contextWindowPlaceholder", { value: DEFAULT_MODEL_CONTEXT_WINDOW })}
+                    value={draft.contextWindow}
+                    onChange={(value) => updateDraft("contextWindow", fromTInputNumber(value))}
                   />
-                  <span className="wk-muted">{t("model.editor.maxConcurrencyDesc")}</span>
-                </label>
+                  <p className="form-desc">{t("model.editor.contextWindowDesc")}</p>
+                </div>
+              ) : null}
+              {draft.type === "chat" ? (
+                <div className="form-item">
+                  <label className="form-label">{t("model.editor.supportsVisionLabel")}</label>
+                  <div className="vision-toggle">
+                    <TSwitch value={draft.supportsVision} onChange={(checked) => updateDraft("supportsVision", Boolean(checked))} />
+                    <span className="form-desc form-desc--inline">{t("model.editor.supportsVisionDesc")}</span>
+                  </div>
+                </div>
+              ) : null}
+              {draft.type === "chat" && draft.source === "remote" ? (
+                <div className="form-item">
+                  <label className="form-label">{t("model.editor.thinkingControlLabel")}</label>
+                  <ModelOptionSelect
+                    value={draft.thinkingControl}
+                    options={thinkingOptions}
+                    onChange={(value) => {
+                      setThinkingManual(true);
+                      updateDraft("thinkingControl", value);
+                    }}
+                  />
+                  <p className="form-desc">{t("model.editor.thinkingControlDesc")}</p>
+                </div>
+              ) : null}
+              <div className="form-item">
+                <label className="form-label">{t("model.editor.maxConcurrencyLabel")}</label>
+                <TInputNumber
+                  min={0}
+                  max={4096}
+                  placeholder={t("model.editor.maxConcurrencyPlaceholder")}
+                  value={draft.maxConcurrency}
+                  onChange={(value) => updateDraft("maxConcurrency", fromTInputNumber(value))}
+                />
+                <p className="form-desc">{t("model.editor.maxConcurrencyDesc")}</p>
               </div>
-            ) : null}
+            </section>
+          ) : null}
 
-            {draftError ? <Status tone="error">{draftError}</Status> : null}
-            <div className="wk-list-actions">
-              {draft.source === "remote" ? (
-                <TButton
-                  type="button"
-                  loading={checking}
-                  disabled={
-                    !draft.name ||
-                    (!draft.baseUrl && draft.provider !== "weknoracloud") ||
-                    (draft.provider === "weknoracloud" && wkcState !== "configured")
-                  }
-                  onClick={() => void testConnection()}
-                >
-                  {t("model.editor.testConnection")}
-                </TButton>
-              ) : null}
-              {remoteMessage ? (
-                <Status tone={remoteMessage.ok ? "success" : "error"}>{remoteMessage.text}</Status>
-              ) : null}
-              {/* R484 G4 D4 — Vue footer order (SettingDrawer.vue footer):
-                  footer-left 测试连接, footer-right 取消 then 保存. */}
-              <TButton type="button" disabled={busy} onClick={closeEditor}>
-                {t("common.cancel")}
-              </TButton>
-              <TButton
-                type="submit"
-                loading={busy}
-                disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
-              >
-                {t("common.save")}
-              </TButton>
-            </div>
-          </form>
-        </div>
-        </div>
-      ) : null}
+          {draftError ? <Status tone="error">{draftError}</Status> : null}
+        </form>
+      </SettingDrawer> : null}
       {debugOpen ? (
         <ModelDebugPanel
           client={client}

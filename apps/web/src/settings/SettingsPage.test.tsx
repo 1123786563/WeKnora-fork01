@@ -390,22 +390,24 @@ test('platform API keys section renders the Vue table and one-time token surface
     .find((button) => button.textContent === '创建平台 API Key');
   assert.ok(openCreate, 'the alert outline button opens the create drawer');
   await act(async () => openCreate?.click());
-  // The settings shell itself is role="dialog" — scope to the create drawer.
-  const drawer = container.querySelector('.pak-drawer[role="dialog"]');
+  // 批 3：创建抽屉换 SettingDrawer 同构（Vue api-key-create-drawer 家族，
+  // t-drawer body portal），抽屉家族类锚 .api-key-create-drawer。
+  const drawer = document.querySelector('.api-key-create-drawer');
   assert.ok(drawer, 'the Vue create drawer renders');
-  // S6：tdesign Input 的 aria-label 落在 wrapper 上（restProps 透传根），取
-  // 内层 input 驱动。
-  const name = drawer.querySelector<HTMLInputElement>('[aria-label="密钥名称"] input');
-  assert.ok(name);
+  const name = drawer.querySelector<HTMLInputElement>('.api-key-dialog-row input');
+  assert.ok(name, 'the name input renders in the Vue dialog row');
   await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(name, 'new-key'); name.dispatchEvent(new dom.window.Event('input', { bubbles: true })); });
-  const capability = drawer.querySelector<HTMLInputElement>('.pak-cap-item input');
+  const capability = drawer.querySelector<HTMLInputElement>('.api-key-capability-item input');
   assert.ok(capability);
   await act(async () => capability?.click());
   const createButton = Array.from(drawer.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '创建平台 API Key');
   assert.ok(createButton);
   await act(async () => createButton?.click());
   await act(async () => {});
-  assert.ok(container.querySelector('[role="alert"]'), 'creation renders the one-time token surface');
+  // Vue 创建成功走 t-dialog（PlatformAPIKeys.vue:194-204）而非内联卡。
+  const tokenDialog = document.querySelector('.t-dialog');
+  assert.ok(tokenDialog, 'creation opens the Vue one-time token dialog');
+  assert.match(tokenDialog?.textContent ?? '', /wk-secret|复制密钥/);
 });
 
 // R484 G4 D7 (R482 report-B3.md D7): Vue Settings.vue renders ONLY the

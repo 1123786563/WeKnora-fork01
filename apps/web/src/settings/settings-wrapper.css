@@ -331,7 +331,8 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
    header is present (SettingsPage.tsx is out of this agent's scope). */
 .wk-settings-section:has(.runtime-queues) > .wk-settings-panel-heading { display: none; }
 
-/* Vue PlatformAPIKeys.vue — pak-* slice (platform-api-keys section). */
+/* Vue PlatformAPIKeys.vue — 页面级 slice（platform-api-keys section）。
+   表格/chips/抽屉平移块在 settings.td.css §19（批 3 收敛换 Vue 原名类系）。 */
 .platform-api-keys { width: 100%; }
 /* Vue .platform-api-keys .section-header keeps the scoped 20px margin and
    the t-alert carries 16px/24px padding. */
@@ -340,31 +341,6 @@ span.wk-tag--default { background: #f3f3f3; color: rgba(0, 0, 0, 0.9); line-heig
    组件样式随库走；页面级仅保留 Vue .security-alert 的 20px 下边距
    （PlatformAPIKeys.vue:381-383）。 */
 .platform-api-keys .security-alert { margin-bottom: 20px; }
-.pak-keys-section { overflow: hidden; border: 1px solid var(--color-line-input, #dcdcdc); border-radius: 10px; background: var(--color-surface, #fff); }
-.pak-keys-state { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 120px; color: rgba(0, 0, 0, 0.6); font-size: 13px; line-height: normal; }
-.pak-keys-state--empty { flex-direction: column; gap: 12px; }
-.pak-table-wrap { width: 100%; overflow-x: auto; }
-.pak-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.pak-table th, .pak-table td { padding: 13px 14px; border-bottom: 1px solid var(--color-line-soft, #e7e7e7); text-align: left; vertical-align: middle; }
-.pak-table th { background: var(--color-surface-muted, #f3f3f3); color: var(--color-faint, #98a2b8); font-size: 12px; font-weight: 500; line-height: 1.4; }
-.pak-table td { color: var(--color-muted, #66758b); font-size: 13px; line-height: 1.45; }
-.pak-table tbody tr:last-child td { border-bottom: 0; }
-.pak-table th:nth-child(1), .pak-table td:nth-child(1) { width: 11%; }
-.pak-table th:nth-child(2), .pak-table td:nth-child(2) { width: 17%; }
-.pak-key-name { color: var(--color-ink, #172033); font-weight: 500; }
-.pak-key-fingerprint { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
-.pak-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.pak-chip { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; background: var(--color-surface-muted, #f3f3f3); color: var(--color-muted, #66758b); font-size: 11px; line-height: 1.5; }
-.pak-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--color-danger-strong, #d54941); cursor: pointer; }
-.pak-icon-btn:hover { background: var(--color-danger-wash, #fdecea); }
-.pak-docs-link { display: inline-block; margin-top: 12px; color: var(--color-primary, #2e6de6); font-size: 13px; }
-.pak-drawer { position: fixed; inset: 0; z-index: 1200; }
-.pak-drawer-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); overflow-y: auto; padding: 24px; background: var(--color-surface, #fff); box-shadow: -8px 0 24px rgba(23, 32, 51, 0.14); }
-.pak-field { display: grid; gap: 6px; margin-bottom: 16px; color: var(--color-ink, #172033); font-size: 13px; font-weight: 500; }
-.pak-cap-group { border: 1px solid var(--color-line-soft, #edf0f5); border-radius: 8px; padding: 12px; }
-.pak-cap-group__title { margin-bottom: 8px; font-size: 13px; font-weight: 600; }
-.pak-cap-items { display: grid; gap: 10px; }
-.pak-cap-item { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 6px; font-weight: 400; }
 /* PlatformAPIKeys.vue owns its section header; suppress the wrapper heading
    (old registry copy) when this panel is mounted. */
 .wk-settings-section:has(.platform-api-keys) > .wk-settings-panel-heading { display: none; }

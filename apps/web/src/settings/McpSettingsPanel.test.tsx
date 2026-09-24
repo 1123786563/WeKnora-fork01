@@ -99,7 +99,7 @@ test('MCP settings renders the Vue dashed add-service tile in the owner empty st
   }));
   assert.doesNotMatch(html, /暂无 MCP 服务/);
   assert.match(html, /添加服务/);
-  assert.match(html, /wk-mcp-add-tile/, 'tile keeps the Vue dashed service-card--add border hook');
+  assert.match(html, /service-card--add/, 'tile keeps the Vue dashed service-card--add border hook');
 });
 
 test('MCP settings renders service metadata and admin actions', () => {
@@ -113,8 +113,8 @@ test('MCP settings renders service metadata and admin actions', () => {
   assert.match(html, /编辑/);
   assert.match(html, /删除/);
   assert.match(html, /添加服务/);
-  assert.match(html, /wk-mcp-page-header/);
-  assert.match(html, /wk-mcp-page-header h2|<h2>/);
+  assert.match(html, /section-header/);
+  assert.match(html, /section-header h2|<h2>/);
 });
 
 test('MCP settings uses shared Vue-derived Chinese copy for the default locale', () => {
@@ -126,7 +126,8 @@ test('MCP settings uses shared Vue-derived Chinese copy for the default locale',
   assert.match(html, /MCP 服务管理/);
   assert.match(html, /管理外部 MCP/);
   assert.match(html, /添加服务/);
-  assert.match(html, /已启用/);
+  // Vue 列表卡状态用 common.on/off（McpSettings.vue:79），非 enabled/disabled。
+  assert.match(html, /开启/);
   assert.equal(formatMessage('zh-CN', 'mcpServiceDialog.testConnection'), '测试连接');
   assert.equal(formatMessage('en-US', 'mcpServiceDialog.testConnection'), 'Test connection');
 });
@@ -240,7 +241,7 @@ test('MCP metadata automatically refreshes when Vue cache lookup returns empty',
     const nameInput = document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement | null;
     const urlInput = document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement | null;
     await act(async () => { setInputValue(nameInput!, 'Docs'); setInputValue(urlInput!, 'https://example.com/mcp'); });
-    await act(async () => { submitForm(document.querySelector('.wks-mcp-drawer form') as HTMLFormElement); });
+    await act(async () => { submitForm(document.querySelector('.mcp-drawer form') as HTMLFormElement); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(refreshCalls, 1, 'empty cache triggers one Vue-compatible refresh');
     assert.match(document.querySelector('section[aria-label="Tools 清单"]')?.textContent ?? '', /1 个工具/);
@@ -264,10 +265,10 @@ test('MCP tools render from a cached Vue snapshot while policy loading keeps swi
     const nameInput = document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement;
     const urlInput = document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement;
     await act(async () => { setInputValue(nameInput, 'Docs'); setInputValue(urlInput, 'https://example.com/mcp'); });
-    await act(async () => { submitForm(document.querySelector('.wks-mcp-drawer form') as HTMLFormElement); });
+    await act(async () => { submitForm(document.querySelector('.mcp-drawer form') as HTMLFormElement); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.match(document.body.textContent ?? '', /search/);
-    const switches = Array.from(document.querySelectorAll('[role="switch"]')) as HTMLButtonElement[];
+    const switches = Array.from(document.querySelectorAll('[role="switch"]')).filter((control) => !control.classList.contains('t-switch') && !control.closest('.t-switch')) as HTMLButtonElement[];
     assert.equal(switches.length, 2);
     assert.ok(switches.every((control) => control.disabled), 'policy switches stay disabled while Vue policy loading is pending');
     await act(async () => { policyGate.resolve([]); await policyGate.promise; });
@@ -288,11 +289,11 @@ test('MCP metadata refresh keeps cached tool policies interactive like Vue', asy
     const nameInput = document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement;
     const urlInput = document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement;
     await act(async () => { setInputValue(nameInput, 'Docs'); setInputValue(urlInput, 'https://example.com/mcp'); });
-    await act(async () => { submitForm(document.querySelector('.wks-mcp-drawer form') as HTMLFormElement); });
+    await act(async () => { submitForm(document.querySelector('.mcp-drawer form') as HTMLFormElement); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const refreshButton = findButton('刷新');
     assert.ok(refreshButton, 'cached metadata exposes refresh');
-    const switches = Array.from(document.querySelectorAll('[role="switch"]')) as HTMLButtonElement[];
+    const switches = Array.from(document.querySelectorAll('[role="switch"]')).filter((control) => !control.classList.contains('t-switch') && !control.closest('.t-switch')) as HTMLButtonElement[];
     assert.equal(switches.length, 2);
     assert.ok(switches.every((control) => !control.disabled), 'cached policies are interactive before refresh');
     await act(async () => { refreshButton?.click(); });
@@ -305,7 +306,11 @@ test('MCP metadata refresh keeps cached tool policies interactive like Vue', asy
 
 function findButton(label: string): HTMLButtonElement | undefined {
   // S6：tdesign Button 的 disabled 态渲染 div.t-button（台账 #7），经类查询。
-  return Array.from(document.querySelectorAll('button, .t-button')).find((button) => (button.textContent ?? '').includes(label)) as HTMLButtonElement | undefined;
+  // 批 3：Vue icon-btn 无 sr-only 文本（service-card__icon-btn 仅 svg +
+  // aria-label/title），按钮查找同步匹配可访问名。
+  return Array.from(document.querySelectorAll('button, .t-button')).find((button) => (button.textContent ?? '').includes(label)
+    || (button.getAttribute('aria-label') ?? '').includes(label)
+    || (button.getAttribute('title') ?? '').includes(label)) as HTMLButtonElement | undefined;
 }
 function buttonDisabled(label: string): boolean | undefined {
   return findButton(label)?.classList.contains('t-is-disabled');
@@ -339,14 +344,15 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
   const root = await mountEditor(React.createElement(McpSettingsPanel, { client: mcpStubClient(), initialServices: [], role: 'admin' }));
   try {
     await act(async () => { findButton('添加服务')?.click(); });
-    const dialog = document.querySelector('.wks-mcp-drawer');
+    const dialog = document.querySelector('.mcp-drawer');
     assert.ok(dialog, 'drawer renders');
-    assert.ok(dialog?.parentElement?.classList.contains('wks-mcp-overlay'), 'drawer uses the Vue right-side overlay shell');
+    // SettingDrawer 同构：t-drawer 根挂 mcp-drawer--{transport} 家族类。
+    assert.ok(dialog?.classList.contains('mcp-drawer--sse'), 'drawer carries the Vue transport family class');
     assert.ok(document.querySelector('[role="separator"][aria-orientation="vertical"]'), 'resizable Vue drawer exposes a vertical separator handle');
     const text = dialog?.textContent ?? '';
-    // Scope to fieldset legends: the steps nav also says 连接配置.
-    const legends = Array.from(dialog?.querySelectorAll('legend') ?? []).map((el) => el.textContent ?? '');
-    const sections = ['基本信息', '连接配置', '认证配置', '高级配置'].map((title) => legends.indexOf(title));
+    // Scope to section titles: the steps nav also says 连接配置.
+    const titles = Array.from(dialog?.querySelectorAll('.setting-drawer__section-title') ?? []).map((el) => el.textContent ?? '');
+    const sections = ['基本信息', '连接配置', '认证配置', '高级配置'].map((title) => titles.indexOf(title));
     assert.ok(sections.every((index) => index >= 0), 'all Vue sections render');
     assert.ok(sections[0] < sections[1] && sections[1] < sections[2] && sections[2] < sections[3], 'Vue section order preserved');
     assert.match(text, /关闭后该服务不会被调用/);
@@ -356,16 +362,16 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
     // 「已启用」 diff was an innerText tokenization artifact (Vue concatenates
     // the two inline spans; the live DOMs are equivalent) — this locks the
     // aligned state so the SSE prefix cannot silently disappear.
-    const subtitle = dialog?.querySelector('.wk-settings-panel-heading p') ?? null;
+    const subtitle = dialog?.querySelector('.setting-drawer__subtitle') ?? null;
     assert.ok(subtitle, 'the drawer subtitle renders');
     assert.match(subtitle.textContent ?? '', /SSE/, 'the transport label prefixes the chip');
     assert.match(subtitle.textContent ?? '', /已启用/, 'the enabled chip renders');
-    const unitText = Array.from(dialog?.querySelectorAll('span.wk-mcp-unit') ?? []).map((node) => node.textContent).join('');
+    const unitText = Array.from(dialog?.querySelectorAll('span.number-input__unit') ?? []).map((node) => node.textContent).join('');
     assert.equal(unitText, '秒次秒', 'advanced inputs show Vue unit suffixes');
-    const transportGroup = dialog?.querySelector('[role="radiogroup"][aria-label="传输类型"]');
+    const transportGroup = dialog?.querySelector('[role="radiogroup"]');
     assert.ok(transportGroup, 'Vue segmented transport group renders');
-    assert.deepEqual(Array.from(transportGroup?.querySelectorAll('[role="radio"]') ?? []).map((button) => button.textContent?.trim()), ['SSE', 'HTTP Streamable']);
-    const footerButtons = Array.from(dialog?.querySelectorAll('.wk-mcp-footer button') ?? []).map((button) => button.textContent ?? '');
+    assert.deepEqual(Array.from(transportGroup?.querySelectorAll('.source-option') ?? []).map((button) => button.textContent?.trim()), ['SSE', 'HTTP Streamable']);
+    const footerButtons = Array.from(dialog?.querySelectorAll('.setting-drawer__footer button') ?? []).map((button) => button.textContent ?? '');
     assert.ok(footerButtons.some((label) => label.includes('取消')) && footerButtons.some((label) => label.includes('保存并下一步')), 'footer cancel + confirm render');
     assert.ok(footerButtons.findIndex((label) => label.includes('取消')) < footerButtons.findIndex((label) => label.includes('保存并下一步')), 'Vue footer order: cancel before confirm');
     assert.ok(!findButton('测试连接'), 'Vue baseline has no reachable test-connection UI');
@@ -382,9 +388,9 @@ test('the owner empty-state add tile opens the Vue add drawer like the admin til
     const addTile = findButton('添加服务');
     assert.ok(addTile, 'owner empty state renders the Vue add-service tile');
     await act(async () => { addTile?.click(); });
-    const dialog = document.querySelector('.wks-mcp-drawer');
+    const dialog = document.querySelector('.mcp-drawer');
     assert.ok(dialog, 'clicking the tile opens the Vue add drawer');
-    assert.match(dialog?.getAttribute('aria-label') ?? '', /添加/);
+    assert.match(dialog?.querySelector('.setting-drawer__title')?.textContent ?? '', /添加/);
   } finally {
     await unmountEditor(root);
   }
@@ -398,9 +404,9 @@ test('editing a stdio service coerces to SSE exactly like Vue McpServiceDialog.v
   }));
   try {
     await act(async () => { findButton('编辑')?.click(); });
-    const dialog = document.querySelector('.wks-mcp-drawer');
-    const transportGroup = dialog?.querySelector('[role="radiogroup"][aria-label="传输类型"]');
-    assert.equal(transportGroup?.querySelector('[role="radio"][aria-checked="true"]')?.textContent?.trim(), 'SSE');
+    const dialog = document.querySelector('.mcp-drawer');
+    const transportGroup = dialog?.querySelector('[role="radiogroup"]');
+    assert.equal(transportGroup?.querySelector('.source-option.is-active')?.textContent?.trim(), 'SSE');
     assert.equal(dialog?.textContent?.includes('Stdio') ?? false, false);
   } finally {
     await unmountEditor(root);
@@ -439,14 +445,14 @@ test('step 2 gates save on tool sync and shows the Vue usage counter, hint and g
     assert.ok(nameInput && urlInput, 'Vue placeholders render');
     await act(async () => { setInputValue(nameInput, 'Docs'); });
     await act(async () => { setInputValue(urlInput, 'https://example.com/mcp'); });
-    const form = document.querySelector('.wks-mcp-drawer form') as HTMLFormElement | null;
+    const form = document.querySelector('.mcp-drawer form') as HTMLFormElement | null;
     assert.ok(form, 'drawer form renders');
     await act(async () => { submitForm(form); });
-    const dialog = document.querySelector('.wks-mcp-drawer');
+    const dialog = document.querySelector('.mcp-drawer');
     const text = dialog?.textContent ?? '';
     assert.match(text, /服务用途/);
     assert.match(text, /模型先读取服务用途/);
-    assert.match(text, /0\/16000/);
+    // Vue 无字符计数 span（:maxlength 由 t-textarea 承担），批 3 已删计数器。
     assert.match(text, /根据已同步且启用的 Tools 生成精简说明/);
     const saveButton = findButton('保存');
     assert.ok(buttonDisabled('保存'), 'save is gated until tools are synced (Vue confirm-disabled)');
@@ -500,9 +506,9 @@ test('MCP policy updates lock only the tool being saved like the Vue directory',
       setInputValue(document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement, 'Docs');
       setInputValue(document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement, 'https://example.com/mcp');
     });
-    await act(async () => { submitForm(document.querySelector('.wks-mcp-drawer form') as HTMLFormElement); });
+    await act(async () => { submitForm(document.querySelector('.mcp-drawer form') as HTMLFormElement); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    const switches = Array.from(document.querySelectorAll('[role="switch"]')) as HTMLButtonElement[];
+    const switches = Array.from(document.querySelectorAll('[role="switch"]')).filter((control) => !control.classList.contains('t-switch') && !control.closest('.t-switch')) as HTMLButtonElement[];
     assert.equal(switches.length, 4, 'two policy switches per tool');
     await act(async () => { switches[0].click(); });
     assert.equal(switches[0].disabled, true, 'the saving tool is disabled');
@@ -550,7 +556,7 @@ test('step 2 save persists usage_instructions and rejects empty instructions lik
     assert.ok(nameInput && urlInput, 'edit draft placeholders render');
     await act(async () => { setInputValue(nameInput, 'Docs'); });
     await act(async () => { setInputValue(urlInput, 'https://example.com/mcp'); });
-    const form = document.querySelector('.wks-mcp-drawer form') as HTMLFormElement | null;
+    const form = document.querySelector('.mcp-drawer form') as HTMLFormElement | null;
     assert.ok(form);
     await act(async () => { submitForm(form); });
     // Metadata resolves immediately; flush it so toolsSynced is settled.
@@ -558,10 +564,9 @@ test('step 2 save persists usage_instructions and rejects empty instructions lik
     // Step 2 with empty usage: submit must be blocked with the Vue warning copy.
     await act(async () => { submitForm(form); });
     assert.match(document.body.textContent ?? '', /使用说明不能为空/);
-    const usageTextarea = document.querySelector('.wks-mcp-drawer textarea') as HTMLTextAreaElement | null;
+    const usageTextarea = document.querySelector('.mcp-drawer textarea') as HTMLTextAreaElement | null;
     assert.ok(usageTextarea, 'usage textarea renders in step 2');
     await act(async () => { setInputValue(usageTextarea, 'Use for docs'); });
-    assert.match(document.body.textContent ?? '', /12\/16000/);
     await act(async () => { submitForm(form); });
     const usageUpdate = updates.find((patch) => typeof patch.usage_instructions === 'string');
     assert.equal(usageUpdate?.usage_instructions, 'Use for docs');
