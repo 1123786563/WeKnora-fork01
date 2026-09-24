@@ -46,6 +46,22 @@ func IsOAuthProtected(err error) bool {
 // OAuth-protected endpoint MUST wrap the error with ErrOAuthProtectedEndpoint.
 type EndpointLister func(ctx context.Context, transportType string, endpointURL string) ([]*types.MCPTool, error)
 
+// boundedEchoError keeps an error's full identity chain (Unwrap) while
+// bounding its Error() text. The OAuth pass-through branch needs both: the
+// handler classifies the fault with errors.Is/As on the sentinel and the
+// underlying *mcp.OAuthRequiredError, while the chain's message comes from
+// the mcp-go SDK failure path and is remote-controlled unbounded text
+// ("tens of MB within the 30s timeout") that would otherwise land verbatim
+// in the admin-facing 400 body. %.512s gives it the same bounded-echo rune
+// budget as every other untrusted echo in this file (OCR T01-OCR1-F14).
+type boundedEchoError struct {
+	err     error
+	bounded string
+}
+
+func (e *boundedEchoError) Error() string { return e.bounded }
+func (e *boundedEchoError) Unwrap() error { return e.err }
+
 // maxManifestBytes bounds the manifest download (1 MiB): an untrusted URL
 // must not be able to make WeKnora buffer arbitrary amounts of data. It is a
 // security boundary, so it is a compile-time constant — nothing (tests
@@ -114,9 +130,14 @@ func FetchAndVerify(ctx context.Context, manifestURL string, lister EndpointList
 	if err != nil {
 		if IsOAuthProtected(err) {
 			// The adapter already wrapped the MCP layer's OAuthRequiredError
-			// with the sentinel via double %w (both identities preserved) —
-			// pass it through unchanged.
-			return nil, err
+			// with the sentinel via double %w (both identities preserved).
+			// Pass the IDENTITY through, but bound the Error() echo: the
+			// chain's text is remote-controlled and unbounded (see below),
+			// and the handler concatenates it into the admin-facing 400
+			// body (OCR T01-OCR1-F14). Unwrap keeps errors.Is/As working —
+			// TestFetchAndVerifyPreservesOAuthErrorChain and
+			// TestFetchAndVerifyBoundsOAuthErrorEcho lock both halves.
+			return nil, &boundedEchoError{err: err, bounded: fmt.Sprintf("%.512s", err.Error())}
 		}
 		// The adapter surfaces the remote MCP server's JSON-RPC
 		// error.message verbatim, unbounded (tens of MB within the 30s

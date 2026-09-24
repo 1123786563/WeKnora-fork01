@@ -299,6 +299,46 @@ func TestFetchAndVerifyPreservesOAuthErrorChain(t *testing.T) {
 	require.ErrorAs(t, err, &oauthErr, "underlying *mcp.OAuthRequiredError must stay unwrappable")
 }
 
+// TestFetchAndVerifyBoundsOAuthErrorEcho (OCR T01-OCR1-F14): the OAuth
+// sentinel branch passes the adapter error through, and that chain's Error()
+// text comes from the mcp-go SDK handshake/call failure — remote-controlled
+// and unbounded (this file's production path budgets it at "tens of MB
+// within the 30s timeout"). The non-OAuth branch already bounds its echo
+// with %.512s; the OAuth branch must bound its Error() text with the same
+// discipline while keeping the identity chain (sentinel +
+// *mcp.OAuthRequiredError) unwrappable for the handler's errors.Is/As.
+func TestFetchAndVerifyBoundsOAuthErrorEcho(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	m := validManifest()
+	manifestJSON, _ := json.Marshal(m)
+	base := newControlledPluginHost(t,
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(manifestJSON)
+		},
+		func(http.ResponseWriter, *http.Request) {}, // endpoint never reached: fake lister
+	)
+	m.Transport.Endpoint = base + "/mcp"
+	manifestJSON, _ = json.Marshal(m)
+	// Remote-controlled tail a malicious MCP server appends to the SDK
+	// failure chain — far beyond any sane echo budget.
+	remoteControlled := strings.Repeat("X", 10_000)
+	lister := func(context.Context, string, string) ([]*types.MCPTool, error) {
+		return nil, fmt.Errorf("%w: %w: %s", ErrOAuthProtectedEndpoint, &mcp.OAuthRequiredError{
+			MetadataURL: "https://auth.example.invalid/.well-known/oauth-protected-resource",
+			Err:         errors.New("401 unauthorized"),
+		}, remoteControlled)
+	}
+	_, err := FetchAndVerify(context.Background(), base+"/manifest.json", lister)
+	require.ErrorIs(t, err, ErrOAuthProtectedEndpoint)
+	require.True(t, IsOAuthProtected(err), "bounded echo must keep the sentinel identity")
+	var oauthErr *mcp.OAuthRequiredError
+	require.ErrorAs(t, err, &oauthErr, "bounded echo must keep the OAuthRequiredError identity")
+	require.NotContains(t, err.Error(), remoteControlled, "unbounded remote-controlled text must not survive the echo")
+	require.LessOrEqual(t, len([]rune(err.Error())), 512, "OAuth branch echo must obey the %.512s bounded-echo discipline")
+}
+
 // TestBuildVerifiedSnapshotScopesAreDefensivelyCopied (OCR T01-R2-2): the
 // snapshot is the tenant-facing authority; its Scopes must not share backing
 // arrays with the untrusted manifest document handed out in the same
@@ -497,4 +537,21 @@ func TestFetchAndVerifyFailsFastOnNilLister(t *testing.T) {
 	_, err := FetchAndVerify(context.Background(), base+"/manifest.json", nil)
 	require.ErrorContains(t, err, "lister")
 	require.Zero(t, requests.Load(), "nil lister must fail before any network request is sent")
+}
+
+// TestBuildVerifiedSnapshotDedupesUnvettedNames（OCR 一轮 R12-E F04）：
+// 契约「同一名字（声明与否）是一条差异、只报一次」同样覆盖未通过名称
+// 净化的条目——同名非法名出现 N 次只产生一条问题（此前仅按索引逐条
+// append，N 次即 N 条，与 34-36 行文档契约不一致）。
+func TestBuildVerifiedSnapshotDedupesUnvettedNames(t *testing.T) {
+	badName := "bad\u2028name"
+	live := []*types.MCPTool{
+		{Name: badName, InputSchema: []byte(`{"type":"object"}`)},
+		{Name: badName, InputSchema: []byte(`{"type":"object"}`)},
+		{Name: badName, InputSchema: []byte(`{"type":"object"}`)},
+	}
+	_, _, err := BuildVerifiedSnapshot(validManifest(), live)
+	require.Error(t, err)
+	count := strings.Count(err.Error(), "must not contain control, format, private-use or line/paragraph separator")
+	require.Equal(t, 1, count, "an unvetted name served N times is ONE discrepancy, reported once")
 }
