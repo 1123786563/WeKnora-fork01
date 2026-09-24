@@ -163,6 +163,164 @@ const ALL_PAGES = [
     actions: [{ clickCss: ['.header-action-btn:has(.org-create-icon)'], clickAria: ['创建共享空间'], clickText: ['创建共享空间', '新建共享空间', '创建空间'] }] },
   { id: 'ix-kb-doc-detail', kind: 'kb', name: 'Parity KB Demo',
     actions: [{ clickText: ['mermaid-arch-demo'] }] },
+  // —— 面板扫描项（panel-matrix Phase I 全量入表，55 项；id 规范 px-<页面>-<面板>）——
+  // 来源：docs/migrations/react/evidence/vue-react-parity/panel-matrix/matrix.md
+  // 「建议新增扫描项 55 项 = 表内 53 行（parser 10 卡归并代表入口）+ 全局壳 2」；
+  // 选择器兜底链照 matrix（含 C 类命名异构归并：.kb-info-button↔aria 查看知识库信息、
+  // .t-select-input↔.t-select、composer 触发器异构等）。破坏性面板只打开不确认；
+  // hover 门控触发器用真实 hover 序列（hoverCss，矩阵已标注）。
+  //
+  // —— 批 1：全局壳 + 对话域 ——
+  // 用户菜单 dropdown（42 个登录页通用壳触发器，代表页 kb-list；双端同名 .user-button）
+  { id: 'px-shell-user-menu', path: '/platform/knowledge-bases',
+    actions: [{ clickCss: ['.user-button'] }] },
+  // 会话行"更多" popover：hover 门控（matrix：hover .submenu_item → click .menu-more-wrap，
+  // 双端同名；React 端菜单面板常驻 DOM 打开只切状态——aria-expanded 口径，matrix 口径 4）
+  { id: 'px-shell-session-more', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ hoverCss: ['.submenu_item'], clickCss: ['.menu-more-wrap'] }] },
+  // chat 沙箱终端：Vue drawer(chat-sandbox-panel) vs React 首检出 tooltip（异构 A3，待核）
+  { id: 'px-chat-sandbox', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickAria: ['沙箱终端'], clickCss: ['.sandbox-header-toggle__btn'] }] },
+  // chat 添加到知识库：Vue drawer(t-drawer--right) vs React dialog(wk-bookmark-dialog)（异构 A1）
+  { id: 'px-chat-addtokb', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickText: ['添加到知识库'] }] },
+  // chat 请求信息：Vue popover(chat-request-info-popup) vs React dialog(chat-request-card)（异构 A2）
+  { id: 'px-chat-reqinfo', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickText: ['请求信息'] }] },
+  // composer 智能体选择（B1 组）：Vue .control-btn.agent-mode-btn（文案"快速问答"）与
+  // React .wk-chat-agent-chip（aria=选择智能体）打开同一 agent-selector overlay——
+  // 双端触发器异构、面板同功能，一条兜底链覆盖两行矩阵记录
+  { id: 'px-chat-agent-selector', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickAria: ['选择智能体'], clickCss: ['.agent-mode-btn', '.wk-chat-agent-chip'], clickText: ['快速问答'] }] },
+  // composer 模型选择：Vue .model-selector-trigger → model-selector-overlay；React 为
+  // native select 的 .wk-chat-model-chip（B1 待核实对端）
+  { id: 'px-chat-model-selector', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ clickCss: ['.model-selector-trigger', '.wk-chat-model-chip'] }] },
+  // chat 附件按钮 tooltip（B8）：hover 门控 t-tooltip（Vue .attachment-upload-btn /
+  // React aria=上传附件 的 .wk-chat-control-icon），纯 hover 序列不点击（避免文件选择器）
+  { id: 'px-chat-attach-tooltip', kind: 'chat', name: '工具调用 Parity Fixture',
+    actions: [{ hoverCss: ['.attachment-upload-btn', '[aria-label="上传附件"]'] }] },
+  // —— 批 2：知识库域 ——
+  // KB 面包屑下拉（A4：Vue t-popup vs React 自定义 dropdown，5 页同款逐页入表）
+  { id: 'px-kb-faq-breadcrumb', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  { id: 'px-kb-demo-breadcrumb', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  { id: 'px-kb-wiki-breadcrumb', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  { id: 'px-kb-wiki-tab-graph-breadcrumb', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=graph', settle: 3500,
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  { id: 'px-kb-wiki-tab-wiki-breadcrumb', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickCss: ['.breadcrumb-link.dropdown'] }] },
+  // FAQ 卡片更多菜单（.card-more-btn 双端一致）
+  { id: 'px-kb-faq-card-more', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.card-more-btn'] }] },
+  // 查看知识库信息（.kb-info-button(Vue) ↔ aria 查看知识库信息(React)，popover+drawer；代表页 kb-faq）
+  { id: 'px-kb-faq-kb-info', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.kb-info-button'], clickAria: ['查看知识库信息'] }] },
+  // 按标签筛选 select 两半区（ix-faq-tagfilter 已扫主区；prefix/suffix 半区 3 页逐项）
+  { id: 'px-kb-faq-tagfilter-prefix', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__prefix'] }] },
+  { id: 'px-kb-faq-tagfilter-suffix', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__suffix'] }] },
+  { id: 'px-kb-demo-tagfilter-prefix', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__prefix'] }] },
+  { id: 'px-kb-demo-tagfilter-suffix', kind: 'kb', name: 'Parity KB Demo',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__suffix'] }] },
+  { id: 'px-kb-wiki-tagfilter-prefix', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__prefix'] }] },
+  { id: 'px-kb-wiki-tagfilter-suffix', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.doc-tag-filter-trigger__suffix'] }] },
+  // KB 文档工具栏筛选 select（.t-select-input(Vue) ↔ .t-select(React) 命名异构；
+  // 双端同名 .doc-type-select，取第 1 个 = 文件类型筛选，代表整排 select 弹层）
+  { id: 'px-kb-faq-doctype-select', kind: 'kb', name: 'Parity FAQ Fixture',
+    actions: [{ clickCss: ['.doc-type-select >> nth=0'] }] },
+  { id: 'px-kb-wiki-doctype-select', kind: 'kb', name: 'Wiki Parity Fixture',
+    actions: [{ clickCss: ['.doc-type-select >> nth=0'] }] },
+  // wiki 工具栏（B2：树形视图/新建目录/全库概览 React 未检出，新建页面双端 dialog）
+  { id: 'px-kb-wiki-tab-wiki-newpage', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickAria: ['新建页面'], clickCss: ['.wiki-tab-bar-action'] }] },
+  { id: 'px-kb-wiki-tab-wiki-newdir', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickAria: ['新建目录'] }] },
+  { id: 'px-kb-wiki-tab-wiki-treeview', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickAria: ['树形视图'], clickCss: ['.wiki-view-toggle-btn.active'] }] },
+  { id: 'px-kb-wiki-tab-wiki-overview', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+    actions: [{ clickText: ['全库概览'] }] },
+  // —— 批 3：设置——账户/模型/引擎卡片 ——
+  // userprofile 修改密码（popover+confirm；只开第一层 popover，绝不点确认）
+  { id: 'px-userprofile-change-password', path: '/platform/settings?section=userprofile', settle: 2000,
+    actions: [{ clickAria: ['修改密码'] }] },
+  { id: 'px-mymemory-usage-hint', path: '/platform/settings?section=mymemory', settle: 2000,
+    actions: [{ clickAria: ['查看哪些记忆会在对话里被使用'] }] },
+  // models 模型卡片 drawer（代表 mock-embedding-model；React 为 wk-model-editor 异构 DOM）
+  { id: 'px-models-model-card', path: '/platform/settings?section=models', settle: 2000,
+    actions: [{ clickCss: ['.model-card--embedding.model-card--clickable'], clickText: ['mock-embedding-model'] }] },
+  // models 卡片更多菜单（A9：.model-card__more(Vue .t-button__text span) / React lost 待补测）
+  { id: 'px-models-card-more', path: '/platform/settings?section=models', settle: 2000,
+    actions: [{ clickCss: ['.model-card__more', '.model-card__action-btn'] }] },
+  // parser 引擎卡片 drawer（代表：内置 DocReader；其余 9 张同款归并——matrix 批 3.5）
+  { id: 'px-parser-engine-builtin', path: '/platform/settings?section=parser', settle: 2000,
+    actions: [{ clickCss: ['.engine-card--builtin'] }] },
+  // storage backend 卡片 drawer（代表 Parity COS）+ 卡片更多菜单（A9 同族）
+  { id: 'px-storage-backend-card', path: '/platform/settings?section=storage', settle: 2000,
+    actions: [{ clickCss: ['.backend-card--cos.backend-card--clickable'], clickText: ['Parity COS'] }] },
+  { id: 'px-storage-card-more', path: '/platform/settings?section=storage', settle: 2000,
+    actions: [{ clickCss: ['.backend-card__action-btn'] }] },
+  // vectorstore 添加数据库（B4：Vue drawer / React 未检出）+ PostgreSQL 卡片（B5：React drawer）
+  { id: 'px-vectorstore-add-db', path: '/platform/settings?section=vectorstore', settle: 2000,
+    actions: [{ clickCss: ['.store-card--add'], clickText: ['添加数据库'] }] },
+  { id: 'px-vectorstore-pg-card', path: '/platform/settings?section=vectorstore', settle: 2000,
+    actions: [{ clickCss: ['.backend-card.is-env'], clickText: ['PostgreSQL'] }] },
+  // hint 类 popover（hint-trigger 同款两处）
+  { id: 'px-sandbox-what-is-hint', path: '/platform/settings?section=sandbox', settle: 2000,
+    actions: [{ clickAria: ['什么是沙箱？'], clickCss: ['.hint-trigger'] }] },
+  { id: 'px-envvars-sandbox-key-hint', path: '/platform/settings?section=envvars', settle: 2000,
+    actions: [{ clickAria: ['沙箱密钥说明'], clickCss: ['.hint-trigger'] }] },
+  // skills 添加技能（A8：Vue drawer vs React dialog+drawer）
+  { id: 'px-skills-add', path: '/platform/settings?section=skills', settle: 2000,
+    actions: [{ clickText: ['添加技能'] }] },
+  // mcp 添加服务 drawer（双端一致）
+  { id: 'px-mcp-add-service', path: '/platform/settings?section=mcp', settle: 2000,
+    actions: [{ clickCss: ['.service-card--add'], clickText: ['添加服务'] }] },
+  // websearch provider 卡片 drawer（代表 Tavily）+ 卡片更多菜单（A9 同族）
+  { id: 'px-websearch-provider-card', path: '/platform/settings?section=websearch', settle: 2000,
+    actions: [{ clickCss: ['.provider-card--tavily.provider-card--clickable'], clickText: ['Tavily'] }] },
+  { id: 'px-websearch-card-more', path: '/platform/settings?section=websearch', settle: 2000,
+    actions: [{ clickCss: ['.provider-card__more'] }] },
+  // platform-api-keys 创建（drawer 双端一致；只开不创建）
+  { id: 'px-platform-api-keys-create', path: '/platform/settings?section=platform-api-keys', settle: 2000,
+    actions: [{ clickText: ['创建平台 API Key'] }] },
+  // members 角色权限说明（A7：popover vs popover+dialog）
+  { id: 'px-members-rbac-hint', path: '/platform/settings?section=members', settle: 2000,
+    actions: [{ clickAria: ['角色权限说明'] }] },
+  // ollama 重新检测（A11 低置信：React 检出疑似 backdrop，Vue 无）
+  { id: 'px-ollama-redetect', path: '/platform/settings?section=ollama', settle: 2000,
+    actions: [{ clickText: ['重新检测'] }] },
+  // —— 批 4：系统/集成/免登录 ——
+  // system-global（/platform/system 落点）：配置来源与优先级 hint + 创建用户（A5：popover vs dialog）
+  { id: 'px-system-auth-priority', path: '/platform/settings?section=system-global', settle: 2000,
+    actions: [{ clickAria: ['配置来源与优先级'], clickCss: ['.hint-trigger'] }] },
+  { id: 'px-system-create-user', path: '/platform/settings?section=system-global', settle: 2000,
+    actions: [{ clickCss: ['.create-user-trigger'], clickAria: ['创建用户'] }] },
+  // integration（/platform/integrations 落点 im）：按智能体筛选（A6）+ 添加渠道（B3）
+  { id: 'px-integrations-agent-filter', path: '/platform/integrations', settle: 2000,
+    actions: [{ clickAria: ['按智能体筛选'], clickCss: ['.integrations-agent-filter'] }] },
+  { id: 'px-integrations-add-channel', path: '/platform/integrations', settle: 2000,
+    actions: [{ clickCss: ['.channel-card--add'], clickText: ['添加渠道'] }] },
+  { id: 'px-integration-embed-agent-filter', path: '/platform/settings?section=integration-embed', settle: 2000,
+    actions: [{ clickAria: ['按智能体筛选'] }] },
+  // integration-api 创建 API Key（B6：Vue drawer / React 未检出）
+  { id: 'px-integration-api-create-key', path: '/platform/settings?section=integration-api', settle: 2000,
+    actions: [{ clickText: ['创建 API Key'] }] },
+  // 免登录：语言切换 dropdown + 创建账户（mode 切换到注册表单；postSettle 覆盖切换过渡）
+  { id: 'px-login-lang', path: '/login', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true,
+    actions: [{ clickText: ['简体中文'], clickCss: ['.header-link'] }] },
+  { id: 'px-register-lang', path: '/register', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true,
+    actions: [{ clickText: ['简体中文'], clickCss: ['.header-link'] }] },
+  { id: 'px-login-register-confirm', path: '/login', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true, postSettle: 3200,
+    actions: [{ clickText: ['创建账户'], clickCss: ['.register-cta__button'] }] },
+  { id: 'px-register-register-confirm', path: '/register', auth: false, settle: 3200, freezeCarousel: true, syncAnimPhase: true, postSettle: 3200,
+    actions: [{ clickText: ['创建账户'], clickCss: ['.register-cta__button'] }] },
 ];
 const PAGES = PAGE_FILTER.length ? ALL_PAGES.filter(p => PAGE_FILTER.includes(p.id)) : ALL_PAGES;
 
@@ -504,10 +662,31 @@ async function main() {
           }
           if (p.actions) {
             for (const action of p.actions) {
-              const ok = await clickFirst(active, action);
+              let ok = false;
+              // hover 门控触发器（panel-matrix 标注）：先真实 hover 揭示/触发（CSS
+              // :hover 门控的会话行"更多"、t-tooltip 类附件提示），再走点击兜底链。
+              // hover 与 click 一样按候选链取首个可见命中；命中后停留 hoverWait 让
+              // 揭示过渡/tooltip 展示走完——此间不冻结动画（freeze 会把揭示过渡冻
+              // 在开头），定格交给点击后的稳态门。
+              if (action.hoverCss) {
+                for (const s of action.hoverCss) {
+                  try {
+                    for (const loc of await active.locator(s).all()) {
+                      if (await loc.isVisible().catch(() => false)) { await loc.hover(); ok = true; break; }
+                    }
+                  } catch { /* next candidate */ }
+                  if (ok) break;
+                }
+                await active.waitForTimeout(action.hoverWait ?? 700);
+              }
+              if (action.clickAria || action.clickCss || action.clickText) {
+                ok = await clickFirst(active, action);
+              }
               if (!ok) warnings.push(tag + ' 未命中 ' + JSON.stringify(action));
               // 点击可能触发新的过渡动画/数据请求，截图前再过一遍稳态门定格。
-              await waitForSteady(active, 1100, p.noFreeze, p.syncAnimPhase);
+              // postSettle：面板项可覆盖（如 login 创建账户点击后同路由切注册表单，
+              // 需要更长过渡窗口）。
+              await waitForSteady(active, p.postSettle ?? 1100, p.noFreeze, p.syncAnimPhase);
             }
           }
           const file = join(outDir, `${p.id}-${tag}.png`);
