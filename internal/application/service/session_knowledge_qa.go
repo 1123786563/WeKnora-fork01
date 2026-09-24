@@ -33,6 +33,14 @@ func (s *sessionService) KnowledgeQA(
 		req.WebSearchEnabled,
 	)
 
+	// T15（ADR-0002）：明确请求推理时才推理。当前部署的 QA 链路尚未接入语义推理
+	// 服务（Semantica rollout 试点门控），一律以「推理未完成」显式收尾并提供重试
+	// 入口，不得用普通检索结果冒充推理成功。
+	if req.ReasoningMode != "" {
+		s.emitReasoningIncomplete(ctx, eventBus, req)
+		return nil
+	}
+
 	// Span the request setup (KB / model resolution, search target building,
 	// agent override application). This covers the visible gap between trace
 	// start and the first stage observation in the Langfuse timeline.
@@ -723,7 +731,11 @@ func (s *sessionService) KnowledgeQAByEvent(ctx context.Context,
 		// emitted after the pipeline returned — by then the `complete` event had
 		// already closed the stream, so the frontend only saw citations on refresh.
 		if eventType == types.CHAT_COMPLETION_STREAM {
-			emitKnowledgeReferencesEvent(ctx, chatManage)
+			// T15：交付前撤权重校验 + 引用帧 + 证据信封帧；全部证据失权时作废本
+			// 回答（固定文案已发），不进入 completion。
+			if s.deliverKnowledgeEvidence(ctx, chatManage) == types.EvidenceStateRevoked {
+				return nil
+			}
 		}
 		err := s.eventManager.Trigger(stageCtx, eventType, chatManage)
 		if understandProgress != nil && eventType == types.QUERY_UNDERSTAND {
@@ -777,6 +789,7 @@ func (s *sessionService) KnowledgeQAByEvent(ctx context.Context,
 				"reason":      "search_nothing",
 				"strategy":    string(chatManage.FallbackStrategy),
 			})
+			s.emitKnowledgeEvidenceEvent(ctx, chatManage, types.EvidenceStateNoEvidence, types.EvidenceReasoning{})
 			s.handleFallbackResponse(ctx, chatManage)
 			return nil
 		}
@@ -1211,6 +1224,154 @@ func emitKnowledgeReferencesEvent(ctx context.Context, chatManage *types.ChatMan
 		},
 	}); err != nil {
 		logger.Errorf(ctx, "Failed to emit references event: %v", err)
+	}
+}
+
+const (
+	// knowledgeEvidenceRevokedCopy 撤权作废的固定文案（ADR-0002：受影响结果作废）。
+	knowledgeEvidenceRevokedCopy = "本回答所依据的知识访问已被撤销，结果已作废。请重新提问。"
+	// knowledgeReasoningUnavailableCopy 显式请求推理但部署未接入语义推理服务的诚实收尾
+	//（ADR-0002：显示推理未完成和重试入口，不能用普通检索结果冒充推理成功）。
+	knowledgeReasoningUnavailableCopy = "推理未完成：当前部署尚未接入语义推理服务。请稍后重试，或改用普通知识问答。"
+)
+
+// deliverKnowledgeEvidence 在答案流开始前交付证据（T15）：交付前撤权重校验 →
+// 引用帧（既有形状，现为过滤后行集）→ 证据信封帧。全部证据失权时按 ADR-0002
+// 作废本回答（固定文案 fallback），返回状态供调用方跳过 completion。
+func (s *sessionService) deliverKnowledgeEvidence(ctx context.Context, chatManage *types.ChatManage) types.AnswerEvidenceState {
+	state := s.applyEvidenceRevocation(ctx, chatManage)
+	emitKnowledgeReferencesEvent(ctx, chatManage)
+	s.emitKnowledgeEvidenceEvent(ctx, chatManage, state, types.EvidenceReasoning{})
+	if state == types.EvidenceStateRevoked {
+		s.emitFallbackAnswer(ctx, chatManage, knowledgeEvidenceRevokedCopy)
+	}
+	return state
+}
+
+// applyEvidenceRevocation 在交付前对每条检索结果的知识库读权限做实时重校验
+// （ADR-0002：删除或撤权立即阻止失效证据——执行中请求在交付前重校验，受影响
+// 结果作废或重算）。被撤销、从未获准或不可归属（KnowledgeBaseID 为空/KB 已删除）
+// 的行同时从证据与 prompt 上下文（MergeResult）移除。无法完成校验时按全失权处理
+// （fail closed：不能证明权限即不得交付）。
+func (s *sessionService) applyEvidenceRevocation(ctx context.Context, chatManage *types.ChatManage) types.AnswerEvidenceState {
+	if len(chatManage.MergeResult) == 0 {
+		return types.EvidenceStateNoEvidence
+	}
+	if s.knowledgeBaseService == nil || s.kbShareService == nil {
+		chatManage.MergeResult = nil
+		return types.EvidenceStateRevoked
+	}
+	kbIDs := make([]string, 0, len(chatManage.MergeResult))
+	for _, result := range chatManage.MergeResult {
+		if result != nil && result.KnowledgeBaseID != "" {
+			kbIDs = append(kbIDs, result.KnowledgeBaseID)
+		}
+	}
+	kbs, err := s.knowledgeBaseService.GetKnowledgeBasesByIDsOnly(ctx, uniqueNonEmptyStrings(kbIDs))
+	if err != nil {
+		chatManage.MergeResult = nil
+		return types.EvidenceStateRevoked
+	}
+	kbTenant := make(map[string]uint64, len(kbs))
+	for _, kb := range kbs {
+		if kb != nil {
+			kbTenant[kb.ID] = kb.TenantID
+		}
+	}
+	permissions := kbReadPermissions(ctx, s.kbShareService)
+	kept := make([]*types.SearchResult, 0, len(chatManage.MergeResult))
+	for _, result := range chatManage.MergeResult {
+		if result == nil || result.KnowledgeBaseID == "" {
+			continue
+		}
+		tenantID, ok := kbTenant[result.KnowledgeBaseID]
+		if !ok {
+			continue // KB 已删除/不可见：与撤权同形
+		}
+		allowed, err := permissions.Check(result.KnowledgeBaseID, tenantID, types.OrgRoleViewer)
+		if err != nil || !allowed {
+			continue
+		}
+		kept = append(kept, result)
+	}
+	chatManage.MergeResult = kept
+	if len(kept) == 0 {
+		return types.EvidenceStateRevoked
+	}
+	return types.EvidenceStateCited
+}
+
+// emitKnowledgeEvidenceEvent 组装并发射证据信封（T15）。信封先过交付不变量
+// （ValidateAnswerEvidence）：不自洽的证据不得上线。
+func (s *sessionService) emitKnowledgeEvidenceEvent(ctx context.Context, chatManage *types.ChatManage, state types.AnswerEvidenceState, reasoning types.EvidenceReasoning) {
+	if chatManage == nil || chatManage.EventBus == nil {
+		return
+	}
+	if reasoning.State == "" {
+		reasoning.State = types.EvidenceReasoningNotRequested
+	}
+	retrievedAt := time.Now().UTC()
+	envelope := types.AnswerEvidence{
+		State:             state,
+		SemanticGraphUsed: false, // 本地检索路径显式注明未使用语义图谱（ADR-0002）
+		RetrievedAt:       retrievedAt.Format(time.RFC3339),
+		Citations:         []types.EvidenceCitation{},
+		Conclusions:       []types.EvidenceConclusion{},
+		Reasoning:         reasoning,
+	}
+	if state == types.EvidenceStateCited {
+		citations := types.CitationsFromSearchResults(chatManage.MergeResult, retrievedAt)
+		citationIDs := make([]string, 0, len(citations))
+		for _, citation := range citations {
+			citationIDs = append(citationIDs, citation.CitationID)
+		}
+		envelope.Citations = citations
+		envelope.Conclusions = []types.EvidenceConclusion{types.ConclusionFromNativeAnswer(chatManage.ChatModelID, citationIDs)}
+	}
+	if err := types.ValidateAnswerEvidence(envelope); err != nil {
+		logger.Errorf(ctx, "Refusing to emit invalid answer evidence: %v", err)
+		return
+	}
+	if err := chatManage.EventBus.Emit(ctx, types.Event{
+		ID:        generateEventID("evidence"),
+		Type:      types.EventType(event.EventAgentEvidence),
+		SessionID: chatManage.SessionID,
+		Data:      event.AgentEvidenceData{Evidence: envelope},
+	}); err != nil {
+		logger.Errorf(ctx, "Failed to emit answer evidence event: %v", err)
+	}
+}
+
+// emitReasoningIncomplete 处理显式推理请求的诚实不可用（ADR-0002）：证据信封标注
+// reasoning.state=incomplete + retryable，随后以固定文案收尾；零结论零引用，
+// 不执行检索，不用普通检索结果冒充推理成功。
+func (s *sessionService) emitReasoningIncomplete(ctx context.Context, eventBus *event.EventBus, req *types.QARequest) {
+	envelope := types.AnswerEvidence{
+		State:             types.EvidenceStateNoEvidence,
+		SemanticGraphUsed: false,
+		RetrievedAt:       time.Now().UTC().Format(time.RFC3339),
+		Citations:         []types.EvidenceCitation{},
+		Conclusions:       []types.EvidenceConclusion{},
+		Reasoning: types.EvidenceReasoning{
+			Requested: true, Mode: req.ReasoningMode,
+			State: types.EvidenceReasoningIncomplete, Reason: "semantic_reasoning_unavailable", Retryable: true,
+		},
+	}
+	if err := eventBus.Emit(ctx, event.Event{
+		ID:        generateEventID("evidence"),
+		Type:      event.EventAgentEvidence,
+		SessionID: req.Session.ID,
+		Data:      event.AgentEvidenceData{Evidence: envelope},
+	}); err != nil {
+		logger.Errorf(ctx, "Failed to emit reasoning-incomplete evidence event: %v", err)
+	}
+	if err := eventBus.Emit(ctx, event.Event{
+		ID:        generateEventID("fallback"),
+		Type:      event.EventAgentFinalAnswer,
+		SessionID: req.Session.ID,
+		Data:      event.AgentFinalAnswerData{Content: knowledgeReasoningUnavailableCopy, Done: true, IsFallback: true},
+	}); err != nil {
+		logger.Errorf(ctx, "Failed to emit reasoning-unavailable fallback answer: %v", err)
 	}
 }
 
