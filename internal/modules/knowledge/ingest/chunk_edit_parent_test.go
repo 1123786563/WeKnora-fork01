@@ -7,10 +7,66 @@ import (
 	"testing"
 	"time"
 
+	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
+
+// editParentWriteGuard 是 chunk_edit_parent_test 随迁后的测试本地写授权守卫
+// （K1.2 R2 seam 注入，plan 21 §8 K1.2「若……证明需要注入……并在报告登记」条款；
+// no-op 守卫会使 writableChunk 直接失败，故注入最小功能等值版）。宿主包级
+// write-family 函数属 K4（knowledge_write.go），ingest 不可 import 宿主（环），
+// 完整授权语义仍由宿主 document_write_access_test.go 族锚定。
+type editParentWriteGuard struct{}
+
+func (editParentWriteGuard) WriteResourceIDs(ids []string) ([]string, error) { return ids, nil }
+
+func (editParentWriteGuard) WriteExecutionTenant(ctx context.Context) (uint64, error) {
+	tenant, ok := types.TenantIDFromContext(ctx)
+	if !ok || tenant == 0 {
+		return 0, apperrors.NewUnauthorizedError("workspace context unavailable")
+	}
+	return tenant, nil
+}
+
+func (editParentWriteGuard) LoadKnowledgeWrite(
+	ctx context.Context, repo interfaces.KnowledgeRepository, lookup KBByIDLookup, id string,
+) (*types.Knowledge, *types.KnowledgeBase, error) {
+	tenant, err := editParentWriteGuard{}.WriteExecutionTenant(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	knowledge, err := repo.GetKnowledgeByID(ctx, tenant, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if knowledge == nil || knowledge.ID != id || knowledge.TenantID != tenant {
+		return nil, nil, apperrors.NewNotFoundError("knowledge not found")
+	}
+	kb, err := lookup.GetKnowledgeBaseByID(ctx, knowledge.KnowledgeBaseID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if kb == nil || kb.ID != knowledge.KnowledgeBaseID || kb.TenantID != knowledge.TenantID {
+		return nil, nil, apperrors.NewForbiddenError("knowledge does not belong to its knowledge base")
+	}
+	return knowledge, kb, nil
+}
+
+func (editParentWriteGuard) LoadKnowledgeWriteBatch(
+	ctx context.Context, repo interfaces.KnowledgeRepository, lookup KBByIDLookup, ids []string,
+) ([]*types.Knowledge, error) {
+	result := make([]*types.Knowledge, 0, len(ids))
+	for _, id := range ids {
+		knowledge, _, err := editParentWriteGuard{}.LoadKnowledgeWrite(ctx, repo, lookup, id)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, knowledge)
+	}
+	return result, nil
+}
 
 type editableChunkRepo struct {
 	interfaces.ChunkRepository
@@ -163,6 +219,7 @@ func TestUpdateDocumentChunkPreservesGeneratedQuestionsAcrossRevision(t *testing
 		chunkRepository: repo,
 		knowledgeRepo:   editableChunkKnowledgeRepo{},
 		kbRepository:    editableChunkKBRepo{},
+		writeGuard:      editParentWriteGuard{},
 	}
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
 	ctx = (&access.KBAccess{

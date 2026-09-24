@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/searchutil"
@@ -16,8 +15,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
 )
-
-var ErrChunkRevisionConflict = repository.ErrChunkRevisionConflict
 
 // chunkService implements the ChunkService interface
 // It provides operations for managing document chunks in the knowledge base
@@ -30,13 +27,23 @@ type chunkService struct {
 	retrieveEngine  interfaces.RetrieveEngineRegistry
 	ownership       retriever.TenantStoreOwnership
 	task            interfaces.TaskEnqueuer
-	spanTracker     SpanTracker
+	// Pass B K1.2 R2 seam（plan 21 §6.3）：writeGuard 承载 K4 属主写授权族，
+	// spanTrace/enqueueSummaryRefresh/indexContentFn 承载 SpanTracker/
+	// enqueueSummaryRefresh/buildKnowledgeIndexContent 的构造注入，禁包级 var。
+	writeGuard             KnowledgeWriteGuard
+	spanTrace              SpanTraceSeam
+	enqueueSummaryRefresh  func(context.Context, interfaces.KnowledgeRepository, interfaces.TaskEnqueuer, KBByIDLookup, *types.Knowledge) error
+	indexContentFn         func(knowledge *types.Knowledge, content string) string
 }
 
 // NewChunkService creates a new chunk service
 // It initializes a service with the provided chunk repository
 // Parameters:
 //   - chunkRepository: Repository for chunk operations
+//   - writeGuard: K4 写授权 seam（KnowledgeWriteGuard，plan §6.3）
+//   - spanTrace: SpanTracker 投影 seam（SpanTraceSeam，plan §6.3）
+//   - enqueueSummaryRefresh: 宿主 summary 刷新入队闭包（plan §6.3）
+//   - indexContentFn: 宿主 buildKnowledgeIndexContent 闭包（K4 属主，plan §6.3 增量）
 //
 // Returns:
 //   - interfaces.ChunkService: Initialized chunk service implementation
@@ -48,17 +55,23 @@ func NewChunkService(
 	retrieveEngine interfaces.RetrieveEngineRegistry,
 	ownership retriever.TenantStoreOwnership,
 	task interfaces.TaskEnqueuer,
-	spanTracker SpanTracker,
+	writeGuard KnowledgeWriteGuard,
+	spanTrace SpanTraceSeam,
+	enqueueSummaryRefresh func(context.Context, interfaces.KnowledgeRepository, interfaces.TaskEnqueuer, KBByIDLookup, *types.Knowledge) error,
+	indexContentFn func(knowledge *types.Knowledge, content string) string,
 ) interfaces.ChunkService {
 	return &chunkService{
-		chunkRepository: chunkRepository,
-		knowledgeRepo:   knowledgeRepo,
-		kbRepository:    kbRepository,
-		modelService:    modelService,
-		retrieveEngine:  retrieveEngine,
-		ownership:       ownership,
-		task:            task,
-		spanTracker:     spanTracker,
+		chunkRepository:       chunkRepository,
+		knowledgeRepo:         knowledgeRepo,
+		kbRepository:          kbRepository,
+		modelService:          modelService,
+		retrieveEngine:        retrieveEngine,
+		ownership:             ownership,
+		task:                  task,
+		writeGuard:            writeGuard,
+		spanTrace:             spanTrace,
+		enqueueSummaryRefresh: enqueueSummaryRefresh,
+		indexContentFn:        indexContentFn,
 	}
 }
 
@@ -328,7 +341,7 @@ func (s *chunkService) DeleteChunks(ctx context.Context, ids []string) error {
 // Returns:
 //   - error: Any error encountered during bulk deletion
 func (s *chunkService) DeleteChunksByKnowledgeID(ctx context.Context, knowledgeID string) error {
-	if _, err := loadKnowledgeWriteBatch(ctx, s.knowledgeRepo, s.kbRepository, []string{knowledgeID}); err != nil {
+	if _, err := s.writeGuard.LoadKnowledgeWriteBatch(ctx, s.knowledgeRepo, s.kbRepository, []string{knowledgeID}); err != nil {
 		return err
 	}
 	logger.Info(ctx, "Start deleting all chunks by knowledge ID")
@@ -351,7 +364,7 @@ func (s *chunkService) DeleteChunksByKnowledgeID(ctx context.Context, knowledgeI
 }
 
 func (s *chunkService) DeleteByKnowledgeList(ctx context.Context, ids []string) error {
-	if _, err := loadKnowledgeWriteBatch(ctx, s.knowledgeRepo, s.kbRepository, ids); err != nil {
+	if _, err := s.writeGuard.LoadKnowledgeWriteBatch(ctx, s.knowledgeRepo, s.kbRepository, ids); err != nil {
 		return err
 	}
 	logger.Info(ctx, "Start deleting all chunks by knowledge IDs")
@@ -504,9 +517,9 @@ func (s *chunkService) UpdateDocumentChunk(
 	}
 	if bodyChanged || newEnabled != revision.IsEnabled {
 		knowledge, getErr := s.knowledgeRepo.GetKnowledgeByID(ctx, chunk.TenantID, chunk.KnowledgeID)
-		if getErr == nil {
-			if err := enqueueSummaryRefresh(
-				ctx, s.knowledgeRepo, s.task, s.kbRepository, s.spanTracker, knowledge,
+		if getErr == nil && s.enqueueSummaryRefresh != nil {
+			if err := s.enqueueSummaryRefresh(
+				ctx, s.knowledgeRepo, s.task, s.kbRepository, knowledge,
 			); err != nil {
 				logger.Warnf(ctx, "Chunk saved but summary refresh enqueue failed for %s: %v", knowledge.ID, err)
 			}
@@ -690,7 +703,7 @@ func (s *chunkService) syncChunkIndex(ctx context.Context, chunk *types.Chunk) e
 		return err
 	}
 	items := []*types.IndexInfo{{
-		Content: buildKnowledgeIndexContent(knowledge, chunk.EmbeddingContent()), SourceID: chunk.ID,
+		Content: s.indexContentFn(knowledge, chunk.EmbeddingContent()), SourceID: chunk.ID,
 		SourceType: types.ChunkSourceType, ChunkID: chunk.ID,
 		KnowledgeID: chunk.KnowledgeID, KnowledgeBaseID: chunk.KnowledgeBaseID,
 		KnowledgeType: kb.Type, IsEnabled: true,
@@ -705,7 +718,7 @@ func (s *chunkService) syncChunkIndex(ctx context.Context, chunk *types.Chunk) e
 				continue
 			}
 			items = append(items, &types.IndexInfo{
-				Content: buildKnowledgeIndexContent(knowledge, question.Question), SourceID: types.GeneratedQuestionSourceID(chunk.ID, question.ID),
+				Content: s.indexContentFn(knowledge, question.Question), SourceID: types.GeneratedQuestionSourceID(chunk.ID, question.ID),
 				SourceType: types.ChunkSourceType, ChunkID: chunk.ID,
 				KnowledgeID: chunk.KnowledgeID, KnowledgeBaseID: chunk.KnowledgeBaseID,
 				KnowledgeType: kb.Type, IsEnabled: true,
