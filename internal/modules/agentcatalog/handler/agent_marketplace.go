@@ -11,9 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	acrepo "github.com/Tencent/WeKnora/internal/modules/agentcatalog/repository"
 	acatsvc "github.com/Tencent/WeKnora/internal/modules/agentcatalog/service"
-	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
