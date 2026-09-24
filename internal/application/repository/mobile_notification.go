@@ -23,6 +23,7 @@ type NotificationIntent struct {
 	OwnerID     string
 	DeviceID    string
 	Environment string
+	AppID       string
 	Kind        string
 	RunID       string
 	ExpiresAt   time.Time
@@ -49,6 +50,7 @@ type mobileNotificationRow struct {
 	OwnerID       string
 	DeviceID      string
 	Environment   string
+	AppID         string `gorm:"column:app_id"`
 	Kind          string
 	RunID         string
 	ExpiresAt     time.Time
@@ -161,6 +163,10 @@ func (s *NotificationStore) SaveCheckpoint(ctx context.Context, consumer string,
 func NewNotificationStore(db *gorm.DB) *NotificationStore { return &NotificationStore{db: db} }
 
 func validateNotificationIntent(in NotificationIntent) error {
+	in.AppID = NormalizeMobileAppID(in.AppID)
+	if err := ValidateMobileAppID(in.AppID); err != nil {
+		return err
+	}
 	if in.EventID == "" || in.OwnerID == "" || in.DeviceID == "" || in.Environment == "" ||
 		in.Kind == "" || in.RunID == "" || in.ExpiresAt.IsZero() {
 		return errors.New("invalid_notification_intent")
@@ -176,7 +182,8 @@ func validateNotificationIntent(in NotificationIntent) error {
 func notificationID(in NotificationIntent) string {
 	// The unique constraint is authoritative. A deterministic ID makes logs,
 	// retries and support tooling refer to the same intent without token data.
-	return fmt.Sprintf("%d:%s:%s:%s:%s", in.TenantID, in.EventID, in.OwnerID, in.DeviceID, in.Environment)
+	// AppID is part of the identity: one event fans out to one intent per app.
+	return fmt.Sprintf("%d:%s:%s:%s:%s:%s", in.TenantID, in.EventID, in.OwnerID, in.DeviceID, in.Environment, in.AppID)
 }
 
 // Enqueue inserts an intent idempotently. Replaying the same event after a
@@ -185,6 +192,7 @@ func (s *NotificationStore) Enqueue(ctx context.Context, in NotificationIntent) 
 	if s == nil || s.db == nil {
 		return errors.New("notification_store_unavailable")
 	}
+	in.AppID = NormalizeMobileAppID(in.AppID)
 	if err := validateNotificationIntent(in); err != nil {
 		return err
 	}
@@ -203,7 +211,7 @@ func (s *NotificationStore) Enqueue(ctx context.Context, in NotificationIntent) 
 	}
 	row := mobileNotificationRow{
 		ID: notificationID(in), TenantID: in.TenantID, EventID: in.EventID,
-		OwnerID: in.OwnerID, DeviceID: in.DeviceID, Environment: in.Environment,
+		OwnerID: in.OwnerID, DeviceID: in.DeviceID, Environment: in.Environment, AppID: in.AppID,
 		Kind: in.Kind, RunID: in.RunID, ExpiresAt: in.ExpiresAt.UTC(), State: "pending",
 	}
 	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
@@ -230,6 +238,7 @@ func (s *NotificationStore) Claim(ctx context.Context, worker string, limit int,
 				  AND d.owner_id = mobile_notification_intents.owner_id
 				  AND d.device_id = mobile_notification_intents.device_id
 				  AND d.environment = mobile_notification_intents.environment
+				  AND d.app_id = mobile_notification_intents.app_id
 				  AND d.revoked_at IS NULL) AND
 			EXISTS (SELECT 1 FROM agent_runs r
 				WHERE r.tenant_id = mobile_notification_intents.tenant_id
@@ -257,13 +266,13 @@ func (s *NotificationStore) Claim(ctx context.Context, worker string, limit int,
 			// Capture the registration revision after leasing. The provider call
 			// may race with a device rebind; the revoker receives this snapshot
 			// as an expected version and therefore cannot revoke the replacement.
-			deviceRevision, revisionErr := s.activeDeviceRevision(tx, candidate.TenantID, candidate.OwnerID, candidate.DeviceID, candidate.Environment)
+			deviceRevision, revisionErr := s.activeDeviceRevision(tx, candidate.TenantID, candidate.OwnerID, candidate.DeviceID, candidate.Environment, candidate.AppID)
 			if revisionErr != nil {
 				return revisionErr
 			}
 			out = append(out, NotificationDelivery{
 				ID:             candidate.ID,
-				Intent:         NotificationIntent{TenantID: candidate.TenantID, EventID: candidate.EventID, OwnerID: candidate.OwnerID, DeviceID: candidate.DeviceID, Environment: candidate.Environment, Kind: candidate.Kind, RunID: candidate.RunID, ExpiresAt: candidate.ExpiresAt},
+				Intent:         NotificationIntent{TenantID: candidate.TenantID, EventID: candidate.EventID, OwnerID: candidate.OwnerID, DeviceID: candidate.DeviceID, Environment: candidate.Environment, AppID: candidate.AppID, Kind: candidate.Kind, RunID: candidate.RunID, ExpiresAt: candidate.ExpiresAt},
 				DeviceRevision: deviceRevision, Attempt: candidate.Attempt + 1, Fence: newFence, LeaseUntil: until,
 			})
 		}
@@ -272,7 +281,7 @@ func (s *NotificationStore) Claim(ctx context.Context, worker string, limit int,
 	return out, err
 }
 
-func (s *NotificationStore) activeDeviceRevision(tx *gorm.DB, tenant uint64, owner, device, environment string) (int64, error) {
+func (s *NotificationStore) activeDeviceRevision(tx *gorm.DB, tenant uint64, owner, device, environment, appID string) (int64, error) {
 	// A few repository unit tests intentionally provide a minimal legacy
 	// mobile_devices table. Those tests do not exercise device revocation, so
 	// preserve their schema-only claim coverage while production migrations
@@ -282,8 +291,8 @@ func (s *NotificationStore) activeDeviceRevision(tx *gorm.DB, tenant uint64, own
 	}
 	var row struct{ Revision int64 }
 	err := tx.Table("mobile_devices").Select("revision").Where(
-		"tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ? AND revoked_at IS NULL",
-		tenant, owner, device, environment).Take(&row).Error
+		"tenant_id = ? AND owner_id = ? AND device_id = ? AND environment = ? AND app_id = ? AND revoked_at IS NULL",
+		tenant, owner, device, environment, NormalizeMobileAppID(appID)).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, ErrMobileDeviceNotFound
 	}
@@ -410,7 +419,7 @@ func (s *NotificationStore) RevalidateDelivery(ctx context.Context, d Notificati
 	now := time.Now().UTC()
 	q := s.db.WithContext(ctx).Model(&mobileNotificationRow{}).
 		Where(`id = ? AND state = 'in_flight' AND lease_owner = ? AND fence = ? AND expires_at > ? AND
-			EXISTS (SELECT 1 FROM mobile_devices md WHERE md.tenant_id = mobile_notification_intents.tenant_id AND md.owner_id = mobile_notification_intents.owner_id AND md.device_id = mobile_notification_intents.device_id AND md.environment = mobile_notification_intents.environment AND md.revoked_at IS NULL) AND
+			EXISTS (SELECT 1 FROM mobile_devices md WHERE md.tenant_id = mobile_notification_intents.tenant_id AND md.owner_id = mobile_notification_intents.owner_id AND md.device_id = mobile_notification_intents.device_id AND md.environment = mobile_notification_intents.environment AND md.app_id = mobile_notification_intents.app_id AND md.revoked_at IS NULL) AND
 			EXISTS (SELECT 1 FROM agent_runs ar WHERE ar.tenant_id = mobile_notification_intents.tenant_id AND ar.run_id = mobile_notification_intents.run_id AND ar.owner_id = mobile_notification_intents.owner_id)`, d.ID, worker, d.Fence, now)
 	if d.Intent.Kind == "interaction_requested" {
 		interactionID, ok := s.interactionIDForDelivery(ctx, d)
@@ -541,8 +550,9 @@ func (s *NotificationStore) projectEventTx(tx *gorm.DB, evt RunNotificationEvent
 	var devices []struct {
 		DeviceID    string
 		Environment string
+		AppID       string
 	}
-	if err := tx.Table("mobile_devices").Select("device_id, environment").
+	if err := tx.Table("mobile_devices").Select("device_id, environment, app_id").
 		Where("tenant_id = ? AND owner_id = ? AND revoked_at IS NULL", evt.TenantID, run.OwnerID).Find(&devices).Error; err != nil {
 		return err
 	}
@@ -550,7 +560,7 @@ func (s *NotificationStore) projectEventTx(tx *gorm.DB, evt RunNotificationEvent
 		in := NotificationIntent{
 			TenantID: evt.TenantID, EventID: eventIdentity(evt.TenantID, evt.RunID, evt.Seq),
 			OwnerID: run.OwnerID, DeviceID: device.DeviceID, Environment: device.Environment,
-			Kind: kind, RunID: evt.RunID, ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+			AppID: device.AppID, Kind: kind, RunID: evt.RunID, ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
 		}
 		if err := enqueueNotificationTx(tx, in); err != nil {
 			return err
@@ -560,12 +570,13 @@ func (s *NotificationStore) projectEventTx(tx *gorm.DB, evt RunNotificationEvent
 }
 
 func enqueueNotificationTx(tx *gorm.DB, in NotificationIntent) error {
+	in.AppID = NormalizeMobileAppID(in.AppID)
 	if err := validateNotificationIntent(in); err != nil {
 		return err
 	}
 	row := mobileNotificationRow{
 		ID: notificationID(in), TenantID: in.TenantID, EventID: in.EventID,
-		OwnerID: in.OwnerID, DeviceID: in.DeviceID, Environment: in.Environment,
+		OwnerID: in.OwnerID, DeviceID: in.DeviceID, Environment: in.Environment, AppID: in.AppID,
 		Kind: in.Kind, RunID: in.RunID, ExpiresAt: in.ExpiresAt.UTC(), State: "pending",
 	}
 	return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
