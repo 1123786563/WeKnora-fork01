@@ -64,6 +64,7 @@ export function NewTaskScreen({ state, onUpdate, onSetAttachments, onToggleKnowl
       ))}
       {!state.readiness.ready && state.readiness.reason !== undefined && <Text>{state.readiness.reason}</Text>}
       {state.inFlight !== undefined && state.inFlight.phase !== 'rejected' && <Text>{`Unresolved submission ${state.inFlight.requestId} (${state.inFlight.phase}) — retrying keeps the same request id`}</Text>}
+      {state.offline && <Text>当前离线：草稿已加密保存，恢复联网后请手动点击提交确认发送。</Text>}
       {state.error !== undefined && <Text>{state.error}</Text>}
       <Button title="Submit task" disabled={state.submitting || !state.readiness.ready || state.loading} onPress={() => { void onSubmit(); }} />
       <Button title="Keep draft" onPress={() => { void onCancel(); }} />
