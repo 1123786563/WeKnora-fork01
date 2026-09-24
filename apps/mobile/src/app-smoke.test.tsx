@@ -230,7 +230,7 @@ test('the home header activates any listed tenant through the runtime callback',
   });
 
   const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
-  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'View all tasks', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');
+  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'View all tasks', 'Open Resources', 'Open Inbox', 'Load home'], 'with more than one tenant every tenant is a header switch button');
   const single = render(HomeScreen, {
     deploymentLabel: 'WeKnora',
     tenants: [{ id: '7', name: 'Acme' }],
@@ -816,4 +816,91 @@ test('the task detail error chain maps codes to copy instead of leaking raw inte
   assert.match(screen, /INTERRUPTION_COPY/, 'interruption 原因必须经文案映射（B2-F40）');
   assert.match(screen, /INTERRUPTION_COPY\[view\.interruption\.reason\]/, '不得直出内部码');
   assert.match(tasks, /title="Details"/, '打开按钮文案与同屏英文统一（B2-F5）');
+});
+
+test('the inbox route exists behind a default export', async () => {
+  const inboxRoute = await import('./app/inbox.tsx');
+  assert.equal(typeof inboxRoute.default, 'function', 'src/app/inbox.tsx must default-export the inbox route');
+});
+
+test('notification navigation re-authorizes, parses the safe deep link, and never performs business actions', async () => {
+  const { openNotificationFromInbox } = await import('./composition.ts');
+
+  const calls: string[] = [];
+  const pushes: Array<{ path: string; params?: Record<string, string> }> = [];
+  const push = (path: string, params?: Record<string, string>): void => { pushes.push({ path, params }); };
+  const navigableInbox = {
+    resolveTarget: () => ({ kind: 'task-detail' as const, taskId: 't-1', runId: 'r-1' }),
+    markRead: async (id: string) => { calls.push(`markRead:${id}`); },
+  };
+  const invalidInbox = {
+    resolveTarget: () => undefined,
+    markRead: navigableInbox.markRead,
+  };
+  const authorized = { surface: 'authorized' as const };
+  const unauthorized = { surface: 'deployment-login' as const };
+
+  assert.equal(await openNotificationFromInbox(navigableInbox, authorized, { notificationId: 'n-1' }, push), 'navigated');
+  assert.deepEqual(pushes, [{ path: '/tasks/detail', params: { taskId: 't-1', runId: 'r-1' } }]);
+  assert.deepEqual(calls, ['markRead:n-1']);
+
+  pushes.length = 0; calls.length = 0;
+  assert.equal(await openNotificationFromInbox(navigableInbox, unauthorized, { notificationId: 'n-1' }, push), 'blocked-unauthorized');
+  assert.deepEqual(pushes, [], 'an unauthorized surface must not navigate');
+  assert.deepEqual(calls, [], 'an unauthorized surface must not mark read');
+
+  assert.equal(await openNotificationFromInbox(invalidInbox, authorized, { notificationId: 'n-2' }, push), 'invalid-link');
+  assert.deepEqual(pushes, [], 'a malformed deep link must not navigate');
+  assert.deepEqual(calls, [], 'a malformed deep link must not mark read');
+});
+
+test('device registration is fail-closed without a native push token or device identity', async () => {
+  const { registerActiveDeviceIfPossible } = await import('./composition.ts');
+  const authorizedRuntime = {
+    snapshot: () => ({ surface: 'authorized' as const, deployment: { origin: 'https://weknora.example.test', label: 'Test' } }),
+    authorizedRequest: async () => { throw new Error('must not reach the wire without a token'); },
+    scopeLease: () => undefined,
+  };
+  const unauthorizedRuntime = { snapshot: () => ({ surface: 'deployment-login' as const }) };
+
+  assert.equal(await registerActiveDeviceIfPossible(authorizedRuntime as never, { token: async () => undefined }, { deviceId: async () => 'device-1' }), 'no-token');
+  assert.equal(await registerActiveDeviceIfPossible(authorizedRuntime as never, { token: async () => 'tok' }, { deviceId: async () => undefined }), 'no-device-id');
+  assert.equal(await registerActiveDeviceIfPossible(unauthorizedRuntime as never, { token: async () => 'tok' }, { deviceId: async () => 'device-1' }), 'unauthorized');
+});
+
+test('the home surface keeps a reachable inbox entry point and the inbox screen renders projections', async () => {
+  const { HomeScreen } = await import('./screens/HomeScreen.tsx');
+  hooks().__reset();
+  const home = render(HomeScreen, {
+    deploymentLabel: 'Test', tenants: [{ id: '7' }], activeTenantId: '7',
+    onActivateTenant: () => {}, onSignOut: async () => {},
+    taskOffice: { home: async () => ({ needsMe: [], running: [], recentlyCompleted: [], unreadNotifications: 0, asOf: '2026-09-24T00:00:00Z' }) },
+  });
+  assert.notEqual(
+    descendants(home).find(({ type, props }) => type === 'Button' && props.title === 'Open Inbox'),
+    undefined,
+    'HomeScreen must keep an Open Inbox entry point',
+  );
+
+  const { InboxScreen } = await import('./screens/InboxScreen.tsx');
+  hooks().__reset();
+  const opened: string[] = [];
+  const screen = render(InboxScreen, {
+    view: {
+      items: [
+        { notificationId: 'n-1', kind: 'attention', title: '需要你处理', body: '', createdAt: '2026-09-24T01:00:00Z', read: false, deepLink: 'weknora://tasks/detail?taskId=t-1&runId=r-1' },
+        { notificationId: 'n-2', kind: 'budget', title: '预算事件', body: '', createdAt: '2026-09-24T02:00:00Z', read: true },
+      ],
+      unreadCount: 1,
+      duplicateNotificationIds: [],
+    },
+    loading: false,
+    onRefresh: () => {}, onLoadMore: () => {},
+    onOpenNotification: (item: { notificationId: string }) => { opened.push(item.notificationId); },
+  });
+  const texts = descendants(screen).filter(({ type }) => type === 'Text').map(({ props }) => String(props.children));
+  assert.ok(texts.some((text) => text.includes('未读 1')), 'unread count is visible');
+  const row = descendants(screen).find(({ type, props }) => type === 'Button' && String(props.title).includes('需要你处理'));
+  (row!.props.onPress as () => void)();
+  assert.deepEqual(opened, ['n-1'], 'tapping a row hands the item to the composition-owned navigation seam');
 });

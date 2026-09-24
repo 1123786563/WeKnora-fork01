@@ -17,6 +17,11 @@ import { createNativeSecureCredentialStore } from './adapters/credential-store.t
 import { createNativeSecureDeploymentStore } from './adapters/deployment-store.ts';
 import { streamAuthorizedSse, type SseFetchLike } from './adapters/sse-stream.ts';
 import { createNativeSecureDeploymentRegistry } from './adapters/deployment-registry.ts';
+import { createDeviceRegistry, createNotificationInbox, type DeviceRegistry, type InboxItem, type NotificationInbox } from '@weknora/mobile-core';
+import { createMobileDeviceRemote } from '@weknora/api-client/mobile/devices';
+import { createMobileInboxRemote } from '@weknora/api-client/mobile/inbox';
+import { createNativePushTokenIfAvailable } from './adapters/push-token.ts';
+import { createNativeDeviceIdentity, nativeDevicePlatform } from './adapters/device-identity.ts';
 import { HomeScreen } from './screens/HomeScreen.tsx';
 import { TasksScreen } from './screens/TasksScreen.tsx';
 import { DeploymentLoginScreen, validatedDeploymentOrigin } from './screens/DeploymentLoginScreen.tsx';
@@ -123,6 +128,80 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice
   return office;
 }
 
+const deviceRegistries = new Map<string, DeviceRegistry>();
+
+/** Device Registry 按 deployment origin 记忆化（同 taskOfficeFor 模式）：授权读通道与
+ * scope lease 全部经 Runtime——设备注册的 token 不出 Runtime，注册身份按 Deployment 隔离（ADR-0007）。 */
+function deviceRegistryFor(activeRuntime: Pick<MobileRuntime, 'authorizedRequest' | 'scopeLease'>, origin: string): DeviceRegistry {
+  let registry = deviceRegistries.get(origin);
+  if (!registry) {
+    registry = createDeviceRegistry({
+      remote: createMobileDeviceRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+      lease: () => activeRuntime.scopeLease(),
+    });
+    deviceRegistries.set(origin, registry);
+  }
+  return registry;
+}
+
+const notificationInboxes = new Map<string, NotificationInbox>();
+
+/** 行动通知 Inbox 按 deployment origin 记忆化（同 taskOfficeFor 模式）。 */
+export function notificationInboxFor(activeRuntime: MobileRuntime, origin: string): NotificationInbox {
+  let inbox = notificationInboxes.get(origin);
+  if (!inbox) {
+    inbox = createNotificationInbox({
+      remote: createMobileInboxRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+      lease: () => activeRuntime.scopeLease(),
+    });
+    notificationInboxes.set(origin, inbox);
+  }
+  return inbox;
+}
+
+/** 通知点击的唯一安全入口（#41 AC1/AC2）：安全深链解析 → 重新鉴权检查（fail closed）→
+ * 导航 /tasks/detail（权威 Task 同步由 #35 的 TaskOffice.open + snapshot 水合承担）→
+ * 本地 markRead（已读是投影，不是业务操作）。绝不执行通知描述的业务操作。 */
+export async function openNotificationFromInbox(
+  inbox: Pick<NotificationInbox, 'resolveTarget' | 'markRead'>,
+  snapshot: Pick<RuntimeSnapshot, 'surface'>,
+  item: Pick<InboxItem, 'notificationId'>,
+  push: (path: string, params?: Record<string, string>) => void,
+): Promise<'navigated' | 'blocked-unauthorized' | 'invalid-link'> {
+  const target = inbox.resolveTarget(item as InboxItem);
+  if (target === undefined) return 'invalid-link';
+  if (snapshot.surface !== 'authorized') return 'blocked-unauthorized';
+  push('/tasks/detail', { taskId: target.taskId, runId: target.runId });
+  await inbox.markRead(item.notificationId);
+  return 'navigated';
+}
+
+/** 设备注册入口（spec §4「注册设备与 App 前后台生命周期」）：无原生 push token 或无安全
+ * 设备身份时 fail closed 跳过；注册失败不阻塞授权主流程（best effort）。 */
+export async function registerActiveDeviceIfPossible(
+  activeRuntime: Pick<MobileRuntime, 'snapshot' | 'authorizedRequest' | 'scopeLease'>,
+  tokenSource: { token(): Promise<string | undefined> } = createNativePushTokenIfAvailable(),
+  identity: { deviceId(): Promise<string | undefined> } = createNativeDeviceIdentity(),
+): Promise<'registered' | 'no-token' | 'no-device-id' | 'unauthorized' | 'failed'> {
+  const snapshot = activeRuntime.snapshot();
+  const origin = snapshot.deployment?.origin;
+  if (snapshot.surface !== 'authorized' || origin === undefined) return 'unauthorized';
+  const token = await tokenSource.token();
+  if (token === undefined) return 'no-token';
+  const deviceId = await identity.deviceId();
+  if (deviceId === undefined) return 'no-device-id';
+  try {
+    await deviceRegistryFor(activeRuntime, origin).register({
+      deviceId,
+      token,
+      platform: nativeDevicePlatform(),
+    });
+    return 'registered';
+  } catch {
+    return 'failed';
+  }
+}
+
 /** /tasks 应用根：授权面才渲染列表屏，其余面回到 Runtime 裁决的 Surface。 */
 export function MobileTasks({ onOpenTask }: { onOpenTask?: (taskId: string, runId: string) => void } = {}) {
   const activeRuntime = runtime();
@@ -209,9 +288,20 @@ export function createDeploymentListSync(
 export function MobileApp() {
   const activeRuntime = runtime();
   const booted = useRef(false);
+  const registeredFor = useRef(new Set<string>());
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   useEffect(() => {
     bootRuntimeOnce(activeRuntime, booted);
+  }, [activeRuntime]);
+  // T11（#41）：进入授权面后 best-effort 注册设备（每个 origin 一次；无 push token 时 fail closed 静默跳过）
+  useEffect(() => {
+    const unsubscribe = activeRuntime.subscribe((next) => {
+      if (next.surface !== 'authorized' || !next.deployment) return;
+      if (registeredFor.current.has(next.deployment.origin)) return;
+      registeredFor.current.add(next.deployment.origin);
+      void registerActiveDeviceIfPossible(activeRuntime).catch(() => undefined);
+    });
+    return unsubscribe;
   }, [activeRuntime]);
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
   // registry 内容只在 surface/origin 变化的发布中变化：依赖收窄，tenant 切换等发布不再重复读安全存储。
