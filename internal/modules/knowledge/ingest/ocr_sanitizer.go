@@ -57,6 +57,12 @@ func sanitizeOCRText(raw string) string {
 	return strings.TrimSpace(text)
 }
 
+// SanitizeOCRText 导出包装（plan §6.1，K0 §6.2 组 D R1）：conversation
+// 调用方（temporary_document.go:541）经宿主 R1-10 shim 消费同一实现。
+func SanitizeOCRText(raw string) string {
+	return sanitizeOCRText(raw)
+}
+
 // stripMarkdownCodeBlock removes a markdown code-fence wrapper that some
 // models add around their output (e.g. ```html\n...\n``` or ```markdown\n...\n```).
 func stripMarkdownCodeBlock(text string) string {

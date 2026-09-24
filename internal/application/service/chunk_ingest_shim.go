@@ -1,18 +1,22 @@
 // Pass B 过渡 shim：删除点 ib2（Integration Brief 登记，plan 21-knowledge-ingest §6.2/§7.5）。
 // K1（b2-k-ingest）定义的 chunk 摄取域符号已随 service/chunk.go + chunk_write.go +
-// service/extract.go 搬迁至 internal/modules/knowledge/ingest；本文件为宿主包仍被
-// 引用的调用方保留无逻辑转发声明（spec §13 M3 兼容别名，真源唯一在 ingest 包）。
+// service/extract.go + service/image_multimodal.go + service/ocr_sanitizer.go 搬迁至
+// internal/modules/knowledge/ingest；本文件为宿主包仍被引用的调用方保留无逻辑转发
+// 声明（spec §13 M3 兼容别名，真源唯一在 ingest 包）。
 package service
 
 import (
 	"context"
 	"database/sql"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/modules/airesource/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/ingest"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/redis/go-redis/v9"
 )
 
 // ErrChunkRevisionConflict 哨兵转发（plan §6.2 R1-1）：保护 knowledge_process.go:2282
@@ -154,3 +158,78 @@ func enqueueDataTableSummaryIfNeeded(
 		ingest.NewDataTableSummaryEnqueuer(normalizeFileExtension, isDataTableFileType, getFileType),
 		ctx, client, tenantID, knowledgeID, fileName, fileType, summaryModelID, embeddingModelID)
 }
+
+// NewImageMultimodalService 转发（plan §6.2 R1-5）：保护 container.go:411
+// （dig Provide，dig.Name("imageMultimodal")）。签名保持搬迁前原样（末参
+// spanTracker SpanTracker）——dig 容器在 K1→K4 期间仍按旧装配解析；seam 化
+// 新参（spanTrace/两哨兵 error/previewTextFn/resolveProcessConfigFn/
+// postProcessTaskOptionsFn）在本函数体内以适配器与本包/repository 函数值就地
+// 供给，零逻辑复制。哨兵注入发生在宿主边界（ingest 禁 import 宿主
+// repository，plan §6.3）；ib2 由集成工程师切换 container 直供后删除。
+func NewImageMultimodalService(
+	chunkService interfaces.ChunkService,
+	modelService interfaces.ModelService,
+	kbService interfaces.KnowledgeBaseService,
+	knowledgeRepo interfaces.KnowledgeRepository,
+	tenantRepo interfaces.TenantRepository,
+	retrieveEngine interfaces.RetrieveEngineRegistry,
+	ownership retriever.TenantStoreOwnership,
+	ollamaService *ollama.OllamaService,
+	taskEnqueuer interfaces.TaskEnqueuer,
+	redisClient *redis.Client,
+	fileSvc interfaces.FileService,
+	storageResolver interfaces.StorageBackendResolver,
+	resourceCatalog interfaces.ResourceCatalog,
+	spanTracker SpanTracker,
+) interfaces.TaskHandler {
+	return ingest.NewImageMultimodalService(
+		chunkService,
+		modelService,
+		kbService,
+		knowledgeRepo,
+		tenantRepo,
+		retrieveEngine,
+		ownership,
+		ollamaService,
+		taskEnqueuer,
+		redisClient,
+		fileSvc,
+		storageResolver,
+		resourceCatalog,
+		NewSpanTraceSeamAdapter(spanTracker),
+		repository.ErrKnowledgeNotFound,
+		repository.ErrKnowledgeBaseNotFound,
+		previewText,
+		ResolveProcessConfig,
+		knowledgePostProcessTaskOptions,
+	)
+}
+
+// isFinalAsynqAttempt 转发（plan §6.2 R1-7）：保护 knowledge_process.go
+// :1125/:1497/:1868（K4 属主，禁改）与本文件内 NewChunkExtractService 的
+// 函数值直供；真源唯一在 ingest（isFinalAsynqAttempt 随 image_multimodal.go
+// 搬迁，K1.4）。
+func isFinalAsynqAttempt(ctx context.Context) bool {
+	return ingest.IsFinalAsynqAttempt(ctx)
+}
+
+// sanitizeOCRText 转发（plan §6.2 R1-10，K0 §6.2 组 D）：保护 conversation
+// 属主 temporary_document.go:541（禁改，ib2 改写项走 Integration Brief）。
+func sanitizeOCRText(raw string) string {
+	return ingest.SanitizeOCRText(raw)
+}
+
+// buildVLMCaptionPrompt 转发（plan §6.2 R1-10，K0 §6.2 组 D）：保护
+// conversation 属主 temporary_document.go:560（禁改，ib2 改写项走
+// Integration Brief）。
+func buildVLMCaptionPrompt(ctx context.Context, cfg types.VLMConfig) string {
+	return ingest.BuildVLMCaptionPrompt(ctx, cfg)
+}
+
+// vlmOCRPrompt / vlmOCRScannedPDFPrompt 转发常量（K1.4 R1 增量，超出 §6.2
+// 字面清单）：保护 conversation 属主 temporary_document.go:513/:515（禁改，
+// ib2 改写项走 Integration Brief）；真源唯一在 ingest。
+const (
+	vlmOCRPrompt           = ingest.VlmOCRPrompt
+	vlmOCRScannedPDFPrompt = ingest.VlmOCRScannedPDFPrompt
+)

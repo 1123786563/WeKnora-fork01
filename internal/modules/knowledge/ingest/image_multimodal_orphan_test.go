@@ -6,13 +6,27 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 )
+
+// 测试本地哨兵孪生值（plan §6.3 末行）：ingest 禁 import 宿主 repository 包
+// （R1-8 shim import 环），原测试中 4 处 repository.ErrKnowledgeNotFound /
+// ErrKnowledgeBaseNotFound 改以 errors.New 孪生值注入同名字段——比对语义不变
+// （字段即 errors.Is 的比对目标），双跑差分锚定。
+var (
+	testKnowledgeNotFound     = errors.New("knowledge not found")
+	testKnowledgeBaseNotFound = errors.New("knowledge base not found")
+)
+
+// testPostProcessTaskOptions 是 K1.4 增量 seam（postProcessTaskOptionsFn）的
+// 测试桩：本文件用例仅断言入队计数与任务类型，不涉及 options 内容；生产路径
+// 由宿主 shim 注入真源 knowledgePostProcessTaskOptions（零复制），生产代码对
+// nil 字段保持快速失败、不设静默回退。
+func testPostProcessTaskOptions() []asynq.Option { return nil }
 
 type orphanKnowledgeRepo struct {
 	interfaces.KnowledgeRepository
@@ -42,7 +56,10 @@ func (s *orphanKBService) GetKnowledgeBaseByIDOnly(_ context.Context, _ string) 
 
 func TestShouldDropOrphanedMultimodal(t *testing.T) {
 	t.Parallel()
-	svc := &ImageMultimodalService{}
+	svc := &ImageMultimodalService{
+		knowledgeNotFoundErr:     testKnowledgeNotFound,
+		knowledgeBaseNotFoundErr: testKnowledgeBaseNotFound,
+	}
 
 	drop, err := svc.shouldDropOrphanedMultimodal(context.Background(), &types.ImageMultimodalPayload{
 		KnowledgeID: "missing",
@@ -51,7 +68,7 @@ func TestShouldDropOrphanedMultimodal(t *testing.T) {
 		t.Fatalf("nil repo should not drop: drop=%v err=%v", drop, err)
 	}
 
-	svc.knowledgeRepo = &orphanKnowledgeRepo{err: repository.ErrKnowledgeNotFound}
+	svc.knowledgeRepo = &orphanKnowledgeRepo{err: testKnowledgeNotFound}
 	drop, err = svc.shouldDropOrphanedMultimodal(context.Background(), &types.ImageMultimodalPayload{
 		KnowledgeID: "missing",
 	})
@@ -68,7 +85,7 @@ func TestShouldDropOrphanedMultimodal(t *testing.T) {
 	}
 
 	svc.knowledgeRepo = &orphanKnowledgeRepo{knowledge: &types.Knowledge{ParseStatus: types.ParseStatusProcessing}}
-	svc.kbService = &orphanKBService{err: repository.ErrKnowledgeBaseNotFound}
+	svc.kbService = &orphanKBService{err: testKnowledgeBaseNotFound}
 	drop, err = svc.shouldDropOrphanedMultimodal(context.Background(), &types.ImageMultimodalPayload{
 		KnowledgeID:     "live",
 		KnowledgeBaseID: "missing-kb",
@@ -81,8 +98,10 @@ func TestShouldDropOrphanedMultimodal(t *testing.T) {
 func TestImageMultimodalHandleDropsMissingKnowledge(t *testing.T) {
 	t.Parallel()
 	svc := &ImageMultimodalService{
-		knowledgeRepo: &orphanKnowledgeRepo{err: repository.ErrKnowledgeNotFound},
-		kbService:     &orphanKBService{kb: &types.KnowledgeBase{ID: "kb-1"}},
+		knowledgeNotFoundErr:     testKnowledgeNotFound,
+		knowledgeBaseNotFoundErr: testKnowledgeBaseNotFound,
+		knowledgeRepo:            &orphanKnowledgeRepo{err: testKnowledgeNotFound},
+		kbService:                &orphanKBService{kb: &types.KnowledgeBase{ID: "kb-1"}},
 	}
 	payload, err := json.Marshal(types.ImageMultimodalPayload{
 		TenantID:        1,
@@ -120,10 +139,13 @@ func TestImageMultimodalHandleDropFinalizesPendingCounter(t *testing.T) {
 
 	enqueuer := &orphanTaskEnqueuer{}
 	svc := &ImageMultimodalService{
-		knowledgeRepo: &orphanKnowledgeRepo{err: repository.ErrKnowledgeNotFound},
-		kbService:     &orphanKBService{kb: &types.KnowledgeBase{ID: "kb-1"}},
-		redisClient:   rdb,
-		taskEnqueuer:  enqueuer,
+		knowledgeNotFoundErr:     testKnowledgeNotFound,
+		knowledgeBaseNotFoundErr: testKnowledgeBaseNotFound,
+		knowledgeRepo:            &orphanKnowledgeRepo{err: testKnowledgeNotFound},
+		kbService:                &orphanKBService{kb: &types.KnowledgeBase{ID: "kb-1"}},
+		redisClient:              rdb,
+		taskEnqueuer:             enqueuer,
+		postProcessTaskOptionsFn: testPostProcessTaskOptions,
 	}
 	const knowledgeID = "missing"
 	redisKey := "multimodal:pending:" + knowledgeID
