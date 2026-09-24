@@ -7,6 +7,7 @@ import { act } from 'react'
 import type { Root } from 'react-dom/client'
 import { createScopeController } from '@weknora/domain/scope'
 import type { WeKnoraClient } from '@weknora/api-client'
+import { ApiError } from '../../../../packages/api-client/src/errors.ts'
 import type { Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityReceipt } from '../../../../packages/career-core/src/contracts.ts'
 import { EvaluationDetailPage, OpportunityEvidencePage, OpportunityImportPanel } from './OpportunityPage.tsx'
 
@@ -326,6 +327,90 @@ test('rapid repeated evaluation clicks issue only one request while pending', as
  resolveEvaluation({ ...evaluation, requestId: requests[0]!, evaluationId: 'evaluation-once' })
  await act(async () => { await settle() })
  assert.equal(requests.length, 1)
+})
+
+test('transient conversation evaluation timeout reconciles receipt then retries the same request ID', async () => {
+ const postIds: string[] = []
+ const lookupIds: string[] = []
+ const recovered: EvaluationReceipt = { kind: 'evaluation_created', requestId: 'placeholder', evaluationId: 'evaluation-timeout-recovered', opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId, profileRevision: 5, status: 'unknown' }
+ let postAttempt = 0
+ const result = await mountImport({
+  importOpportunity: async (input: { requestId: string }) => ({ ...receipt, requestId: input.requestId }),
+  evaluateOpportunity: async (input: { requestId: string }) => { postIds.push(input.requestId); postAttempt += 1; if (postAttempt === 1) throw new ApiError({ code: 'TIMEOUT', message: 'Request timed out' }); return { ...recovered, requestId: input.requestId } },
+  evaluationReceipt: async (requestId: string) => { lookupIds.push(requestId); throw Object.assign(new Error('not found'), { code: 'not_found' }) },
+ })
+ await act(async () => { setInput(result.container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, 'transient fixed JD') })
+ await act(async () => { byLabel(result.container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(result.container, 'button', '评估此 JD').click(); await settle() })
+ assert.match(result.container.textContent ?? '', /无法确认评估是否已保存/)
+ const originalRequestId = postIds[0]
+ await act(async () => { byLabel(result.container, 'button', '查询评估回执').click(); await settle() })
+ assert.equal(lookupIds[0], originalRequestId)
+ await act(async () => { byLabel(result.container, 'button', '使用原请求编号重试').click(); await settle() })
+ assert.deepEqual(postIds, [originalRequestId, originalRequestId])
+})
+
+test('stable evidence evaluation timeout reuses the same intent after a not-found receipt', async () => {
+ const postIds: string[] = []
+ const lookupIds: string[] = []
+ let attempts = 0
+ const client = { career: {
+  opportunityEvidence: async () => evidence,
+  evaluateOpportunity: async (input: { requestId: string }) => { postIds.push(input.requestId); attempts += 1; if (attempts === 1) throw new ApiError({ code: 'TIMEOUT', message: 'Request timed out' }); return { ...evaluation, requestId: input.requestId, evaluationId: 'evaluation-stable-retried' } },
+  evaluationReceipt: async (requestId: string) => { lookupIds.push(requestId); throw Object.assign(new Error('not found'), { code: 'not_found' }) },
+ } } as unknown as WeKnoraClient
+ const container = render(React.createElement(OpportunityEvidencePage, { client, scopeController: createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' }), opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId }))
+ await act(async () => { await settle(); await settle() })
+ await act(async () => { byLabel(container, 'button', '使用当前档案重新评估').click(); await settle() })
+ const originalRequestId = postIds[0]
+ assert.match(container.textContent ?? '', /无法确认评估是否已保存/)
+ await act(async () => { byLabel(container, 'button', '查询评估回执').click(); await settle() })
+ assert.equal(lookupIds[0], originalRequestId)
+ await act(async () => { byLabel(container, 'button', '使用原请求编号重试').click(); await settle() })
+ assert.deepEqual(postIds, [originalRequestId, originalRequestId])
+})
+
+test('navigating the same evidence page from snapshot A to B clears A before B can evaluate', async () => {
+ const evidenceA = { ...evidence, rawText: 'PRIVATE JD A' }
+ const evidenceB: OpportunityEvidence = { ...evidence, opportunityId: 'opp-b', snapshotId: 'snapshot-b', rawText: 'JD B' }
+ let resolveB!: (value: OpportunityEvidence) => void
+ const evaluationRequests: Array<{ requestId: string; opportunityId: string; snapshotId: string }> = []
+ const client = { career: {
+  opportunityEvidence: async (opportunityId: string) => opportunityId === receipt.opportunityId ? evidenceA : new Promise<OpportunityEvidence>((resolve) => { resolveB = resolve }),
+  evaluateOpportunity: async (input: typeof evaluationRequests[number]) => { evaluationRequests.push(input); return { ...evaluation, requestId: input.requestId, evaluationId: input.snapshotId === receipt.snapshotId ? 'evaluation-a' : 'evaluation-b', opportunityId: input.opportunityId, snapshotId: input.snapshotId, status: input.snapshotId === receipt.snapshotId ? 'ineligible' : 'eligible' } },
+ } } as unknown as WeKnoraClient
+ const scope = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
+ const renderPage = (opportunityId: string, snapshotId: string) => React.createElement(OpportunityEvidencePage, { client, scopeController: scope, opportunityId, snapshotId })
+ const container = render(renderPage(receipt.opportunityId, receipt.snapshotId))
+ await act(async () => { await settle(); await settle() })
+ assert.match(container.textContent ?? '', /PRIVATE JD A/)
+ await act(async () => { byLabel(container, 'button', '使用当前档案重新评估').click(); await settle() })
+ assert.ok(container.querySelector('.wk-evaluation-status--ineligible'))
+ await act(async () => { root!.render(renderPage('opp-b', 'snapshot-b')); await settle() })
+ assert.doesNotMatch(container.textContent ?? '', /PRIVATE JD A/)
+ assert.doesNotMatch(container.textContent ?? '', /evaluation-a|不符合|档案修订 4/)
+ assert.equal(container.querySelector('button'), null)
+ await act(async () => { resolveB(evidenceB); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /JD B/)
+ await act(async () => { byLabel(container, 'button', '使用当前档案重新评估').click(); await settle() })
+ assert.deepEqual(evaluationRequests.map(({ opportunityId, snapshotId }) => [opportunityId, snapshotId]), [[receipt.opportunityId, receipt.snapshotId], ['opp-b', 'snapshot-b']])
+})
+
+test('navigating the same evaluation detail from A to B hides A status and provenance', async () => {
+ const evaluationB: Evaluation = { ...evaluation, evaluationId: 'evaluation-b', opportunityId: 'opp-b', snapshotId: 'snapshot-b', profileRevision: 9, status: 'unknown', hard: { overall: 'unknown', rules: [{ ruleId: 'graduation-year', criterion: '毕业届别', outcome: 'unknown', reasonCode: 'confirmed_graduation_year_missing' }] }, soft: { matches: [] }, facts: [], snapshot: { ...evaluation.snapshot, opportunityId: 'opp-b', snapshotId: 'snapshot-b', rawText: 'JD B' } }
+ let resolveB!: (value: Evaluation) => void
+ const client = { career: { evaluation: async (id: string) => id === evaluation.evaluationId ? evaluation : new Promise<Evaluation>((resolve) => { resolveB = resolve }) } } as unknown as WeKnoraClient
+ const scope = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
+ const container = render(React.createElement(EvaluationDetailPage, { client, scopeController: scope, evaluationId: evaluation.evaluationId }))
+ await act(async () => { await settle(); await settle() })
+ assert.match(container.textContent ?? '', /档案修订 4/)
+ await act(async () => { root!.render(React.createElement(EvaluationDetailPage, { client, scopeController: scope, evaluationId: 'evaluation-b' })); await settle() })
+ assert.doesNotMatch(container.textContent ?? '', /档案修订 4|仅限2027届/)
+ await act(async () => { resolveB(evaluationB); await settle(); await settle() })
+ assert.match(container.textContent ?? '', /档案修订 9/)
+ assert.match(container.textContent ?? '', /JD B/)
+ assert.doesNotMatch(container.textContent ?? '', /档案修订 4|仅限2027届/)
+ assert.doesNotMatch(container.textContent ?? '', /查看评估结果（档案修订 4，不符合）/)
 })
 
 test('evaluation detail marks missing profile as unknown and safely reports forbidden or malformed responses', async () => {
