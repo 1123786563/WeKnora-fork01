@@ -309,8 +309,11 @@ func newOCProductEngine(t *testing.T, opts ...ocEngineOpt) *ocTestEnv {
 	actions := v1.Group("/apps/actions", actionHandler.RequireActionCapabilityForWrites())
 	actions.POST("/prepare", actionHandler.PrepareAction)
 	actions.GET("/:id", actionHandler.GetAction)
-	actions.POST("/:id/approve", actionHandler.ApproveAction)
 	actions.POST("/:id/execute", actionHandler.ExecuteAction)
+	// T12 (#42, ruling via escalation): approve mirrors the production
+	// router — outside the capability gate, owned by the ApproveAction
+	// predicate (initiator / personal-connection owner / owner-admin).
+	v1.POST("/apps/actions/:id/approve", actionHandler.ApproveAction)
 
 	return &ocTestEnv{engine: engine, db: db, dispatcher: dispatcher, gate: gate, guard: guard, apiKeys: apiKeys}
 }
