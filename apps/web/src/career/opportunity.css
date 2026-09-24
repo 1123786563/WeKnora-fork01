@@ -90,6 +90,18 @@
 .wk-evaluation-detail__citations small { display: block; margin-top: 4px; color: var(--td-text-color-secondary, #666); }
 .wk-evaluation-detail__snapshot pre { max-height: 60vh; overflow: auto; margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.55; }
 .wk-evaluation-detail__facts li { margin: 8px 0; overflow-wrap: anywhere; }
+.wk-evaluation-action { box-sizing: border-box; min-width: 0; margin: 16px 0; padding: clamp(16px, 3vw, 24px); border: 1px solid var(--td-component-border, #dcdcdc); border-radius: 10px; background: var(--td-bg-color-container, #fff); }
+.wk-evaluation-action h2 { margin: 0 0 8px; }
+.wk-evaluation-action p { overflow-wrap: anywhere; }
+.wk-evaluation-action__status,
+.wk-evaluation-status { box-sizing: border-box; min-width: 0; margin: 10px 0; padding: 12px 14px; border-left: 4px solid var(--td-warning-color, #d68b00); border-radius: 4px; background: var(--td-warning-color-1, #fff7e6); overflow-wrap: anywhere; }
+.wk-evaluation-status--ineligible { border-left-color: var(--td-error-color, #b42318); background: var(--td-error-color-1, #fff1f0); }
+.wk-evaluation-status--eligible { border-left-color: var(--td-success-color, #2ba471); background: var(--td-success-color-1, #e8f8f0); }
+.wk-evaluation-status p { margin: 6px 0 0; }
+.wk-evaluation-action ul { margin: 10px 0; padding-left: 22px; }
+.wk-evaluation-action li { margin: 6px 0; overflow-wrap: anywhere; }
+.wk-evaluation-action a { color: var(--td-brand-color, #0052d9); text-decoration: underline; text-underline-offset: 2px; }
+.wk-evaluation-action a:focus-visible { outline: 3px solid var(--td-brand-color-focus, #0052d9); outline-offset: 3px; }
 @media (max-width: 640px) {
   .wk-opportunity-import__metadata,
   .wk-opportunity-evidence__meta dl,
@@ -97,4 +109,5 @@
   .wk-opportunity-evidence .wk-header { align-items: flex-start; flex-direction: column; gap: 12px; }
   .wk-evaluation-detail__hard ol,
   .wk-evaluation-detail__soft ul { padding-left: 18px; }
+  .wk-evaluation-action ul { padding-left: 18px; }
 }

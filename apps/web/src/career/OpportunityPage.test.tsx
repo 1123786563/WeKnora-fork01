@@ -7,7 +7,7 @@ import { act } from 'react'
 import type { Root } from 'react-dom/client'
 import { createScopeController } from '@weknora/domain/scope'
 import type { WeKnoraClient } from '@weknora/api-client'
-import type { Evaluation, OpportunityEvidence, OpportunityReceipt } from '../../../../packages/career-core/src/contracts.ts'
+import type { Evaluation, EvaluationReceipt, OpportunityEvidence, OpportunityReceipt } from '../../../../packages/career-core/src/contracts.ts'
 import { EvaluationDetailPage, OpportunityEvidencePage, OpportunityImportPanel } from './OpportunityPage.tsx'
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } }
@@ -196,6 +196,8 @@ test('explicitly evaluates the pinned JD, prioritizes hard ineligible over soft 
  assert.equal((calls[0] as { opportunityId: string }).opportunityId, receipt.opportunityId)
  assert.equal((calls[0] as { snapshotId: string }).snapshotId, receipt.snapshotId)
  assert.match(result.container.textContent ?? '', /评估已保存/)
+ assert.match(result.container.querySelector('.wk-evaluation-status')?.textContent ?? '', /不符合/)
+ assert.ok(result.container.querySelector('.wk-evaluation-status--ineligible'))
  assert.equal((byLabel(result.container, 'a', '查看评估结果（档案修订 4）') as HTMLAnchorElement).getAttribute('href'), '/platform/career/evaluations/evaluation-old')
  await act(async () => { byLabel(result.container, 'button', '重新评估当前档案').click(); await settle() })
  assert.equal(calls.length, 2)
@@ -242,6 +244,88 @@ test('evaluation detail reload keeps the same evaluation ID and scope switch cle
  assert.match(container.textContent ?? '', /空间已切换/)
  assert.doesNotMatch(container.textContent ?? '', /档案修订 4/)
  assert.equal(reads, 1)
+})
+
+test('saved evidence page can re-evaluate the same fixed snapshot after navigation and link a fresh result', async () => {
+ const created: Array<{ requestId: string; opportunityId: string; snapshotId: string }> = []
+ const fresh: EvaluationReceipt = { kind: 'evaluation_created', requestId: 'new-request', evaluationId: 'evaluation-new', opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId, profileRevision: 5, status: 'unknown' }
+ const client = { career: { opportunityEvidence: async () => evidence, evaluateOpportunity: async (input: typeof created[number]) => { created.push(input); return { ...fresh, requestId: input.requestId } } } } as unknown as WeKnoraClient
+ const container = render(React.createElement(OpportunityEvidencePage, { client, scopeController: createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' }), opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId }))
+ await act(async () => { await settle(); await settle() })
+ await act(async () => { byLabel(container, 'button', '使用当前档案重新评估').click(); await settle() })
+ assert.equal(created.length, 1)
+ assert.equal(created[0]?.opportunityId, receipt.opportunityId)
+ assert.equal(created[0]?.snapshotId, receipt.snapshotId)
+ assert.match(container.textContent ?? '', /待确认/)
+ assert.equal((byLabel(container, 'a', '查看新评估结果') as HTMLAnchorElement).getAttribute('href'), '/platform/career/evaluations/evaluation-new')
+})
+
+test('old evaluation detail can create a distinct current-profile evaluation while retaining its historical conclusion', async () => {
+ const created: Array<{ requestId: string; opportunityId: string; snapshotId: string }> = []
+ const fresh: EvaluationReceipt = { kind: 'evaluation_created', requestId: 'new-request', evaluationId: 'evaluation-new', opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId, profileRevision: 5, status: 'eligible' }
+ const client = { career: { evaluation: async () => evaluation, evaluateOpportunity: async (input: typeof created[number]) => { created.push(input); return { ...fresh, requestId: input.requestId } } } } as unknown as WeKnoraClient
+ const container = render(React.createElement(EvaluationDetailPage, { client, scopeController: createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' }), evaluationId: evaluation.evaluationId }))
+ await act(async () => { await settle(); await settle() })
+ await act(async () => { byLabel(container, 'button', '使用当前档案重新评估').click(); await settle() })
+ assert.equal(created.length, 1)
+ assert.notEqual(created[0]?.requestId, evaluation.requestId)
+ assert.equal(created[0]?.snapshotId, evaluation.snapshotId)
+ assert.match(container.textContent ?? '', /档案修订 4/)
+ assert.match(container.textContent ?? '', /不符合/)
+ assert.match(container.textContent ?? '', /当前评估资格：符合已识别条件/)
+ assert.equal((byLabel(container, 'a', '查看新评估结果') as HTMLAnchorElement).getAttribute('href'), '/platform/career/evaluations/evaluation-new')
+})
+
+test('saved conversation result distinguishes an unknown evaluation receipt immediately', async () => {
+ const result = await mountImport({
+  importOpportunity: async (input: { requestId: string }) => ({ ...receipt, requestId: input.requestId }),
+  evaluateOpportunity: async (input: { requestId: string }) => ({ ...evaluation, requestId: input.requestId, evaluationId: 'evaluation-unknown', profileRevision: 4, status: 'unknown', hard: { overall: 'unknown', rules: [{ ruleId: 'graduation-year', criterion: '毕业届别', outcome: 'unknown', reasonCode: 'confirmed_graduation_year_missing' }] }, soft: { matches: [] }, facts: [] }),
+ })
+ await act(async () => { setInput(result.container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, '仅限2027届') })
+ await act(async () => { byLabel(result.container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(result.container, 'button', '评估此 JD').click(); await settle() })
+ assert.match(result.container.querySelector('.wk-evaluation-status')?.textContent ?? '', /待确认/)
+ assert.ok(result.container.querySelector('.wk-evaluation-status--unknown'))
+})
+
+test('unknown evaluation outcome recovers through the original request receipt without duplicating intent', async () => {
+ const requests: string[] = []
+ const lookups: string[] = []
+ const resolved: EvaluationReceipt = { kind: 'evaluation_created', requestId: 'placeholder', evaluationId: 'evaluation-recovered', opportunityId: receipt.opportunityId, snapshotId: receipt.snapshotId, profileRevision: 6, status: 'ineligible' }
+ const result = await mountImport({
+  importOpportunity: async (input: { requestId: string }) => ({ ...receipt, requestId: input.requestId }),
+  evaluateOpportunity: async (input: { requestId: string }) => { requests.push(input.requestId); throw Object.assign(new Error('unknown outcome'), { code: 'outcome_unknown' }) },
+  evaluationReceipt: async (requestId: string) => { lookups.push(requestId); return { ...resolved, requestId } },
+ })
+ await act(async () => { setInput(result.container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, 'fixed JD') })
+ await act(async () => { byLabel(result.container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(result.container, 'button', '评估此 JD').click(); await settle() })
+ assert.match(result.container.textContent ?? '', /无法确认评估是否已保存/)
+ await act(async () => { byLabel(result.container, 'button', '查询评估回执').click(); await settle() })
+ assert.equal(requests.length, 1)
+ assert.equal(lookups[0], requests[0])
+ assert.match(result.container.textContent ?? '', /不符合/)
+ assert.equal((byLabel(result.container, 'a', '查看评估结果（档案修订 6）') as HTMLAnchorElement).getAttribute('href'), '/platform/career/evaluations/evaluation-recovered')
+})
+
+test('rapid repeated evaluation clicks issue only one request while pending', async () => {
+ let resolveEvaluation!: (value: Evaluation) => void
+ const requests: string[] = []
+ const result = await mountImport({
+  importOpportunity: async (input: { requestId: string }) => ({ ...receipt, requestId: input.requestId }),
+  evaluateOpportunity: async (input: { requestId: string }) => { requests.push(input.requestId); return new Promise<Evaluation>((resolve) => { resolveEvaluation = resolve }) },
+ })
+ await act(async () => { setInput(result.container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, 'fixed JD') })
+ await act(async () => { byLabel(result.container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => {
+  const button = byLabel(result.container, 'button', '评估此 JD')
+  button.click(); button.click()
+  await settle()
+ })
+ assert.equal(requests.length, 1)
+ resolveEvaluation({ ...evaluation, requestId: requests[0]!, evaluationId: 'evaluation-once' })
+ await act(async () => { await settle() })
+ assert.equal(requests.length, 1)
 })
 
 test('evaluation detail marks missing profile as unknown and safely reports forbidden or malformed responses', async () => {
