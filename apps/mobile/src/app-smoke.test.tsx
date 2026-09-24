@@ -24,7 +24,7 @@ const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, push() {} }, useLocalSearchParams() { return {}; } }",
   'expo-secure-store': "module.exports = { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }",
   'expo-web-browser': "module.exports = { openAuthSessionAsync: async () => ({ type: 'dismiss' }) }",
-  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView' }",
+  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView', Image: 'Image' }",
   react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
 };
 const stubDir = mkdtempSync(join(tmpdir(), 'weknora-mobile-stub-'));
@@ -969,6 +969,64 @@ test('the /new lifecycle host disposes its controller on unmount, including afte
   const afterSecond = calls.length;
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls.length, afterSecond);
+});
+
+test('the task detail screen exposes the materials entry point', async () => {
+  const screen = await import('./screens/TaskDetailScreen.tsx');
+  const offline = screen.TaskDetailScreen({ view: undefined, loading: false, error: 'x', onRefresh: () => {}, onOpenMaterials: () => {} });
+  assert.ok(JSON.stringify(offline).includes('重试'), 'offline fallback still renders');
+  const view: import('@weknora/mobile-core').TaskDetailView = {
+    taskId: 'task-1', runId: 'run-1', title: '报告', lifecycle: 'active', runStatus: 'succeeded', attention: 'none',
+    executionStatus: 'succeeded', settlementStatus: 'settled', revision: 1, cursor: 2, incomplete: false, connection: 'drained',
+    timeline: [], duplicateSeqs: [],
+  };
+  const withEntry = screen.TaskDetailScreen({ view, loading: false, onRefresh: () => {}, onOpenMaterials: () => {} });
+  assert.ok(JSON.stringify(withEntry).includes('任务材料'), 'the materials entry renders when the callback is provided');
+  const withoutEntry = screen.TaskDetailScreen({ view, loading: false, onRefresh: () => {} });
+  assert.ok(!JSON.stringify(withoutEntry).includes('任务材料'), 'no entry without the callback (older callers compile unchanged)');
+});
+
+test('the materials screen and route consume the Task Material interface only', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const composition = readFileSync(join(here, 'composition.ts'), 'utf8');
+  assert.match(composition, /createTaskMaterial\(/, 'composition must instantiate the Task Material module');
+  assert.match(composition, /createMobileMaterialRemote/, 'composition must bind the remote adapter to the module');
+  for (const relative of ['screens/MaterialsScreen.tsx', 'materials-view.ts', 'app/tasks/materials.tsx']) {
+    const source = readFileSync(join(here, relative), 'utf8');
+    assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Task Material Interface only`);
+  }
+  const route = await import('./app/tasks/materials.tsx');
+  assert.equal(typeof route.default, 'function', 'src/app/tasks/materials.tsx must default-export the materials route');
+  const screen = await import('./screens/MaterialsScreen.tsx');
+  assert.equal(typeof screen.MaterialsScreen, 'function');
+});
+
+test('the malformed diff pane falls back to the raw text behind its notice', async () => {
+  const { MaterialsScreen } = await import('./screens/MaterialsScreen.tsx');
+  hooks().__reset();
+  const view: import('@weknora/mobile-core').MaterialView = {
+    kind: 'diff',
+    entry: { materialId: 'msg-1:1', index: 1, kind: 'diff', name: 'changes.diff', mime: 'text/x-diff', size: 30, version: 'bbbbbbbbbbbbbbbb', sourceRun: 'run-1' },
+    preview: { state: 'supported' },
+    hunks: [],
+    malformed: true,
+    raw: 'not a parseable unified diff\n',
+  };
+  const element = render(MaterialsScreen, {
+    index: undefined, view, loading: false,
+    onOpenMaterial: () => {}, onOpenTerminal: () => {}, onOpenEvidence: () => {},
+    onDownload: () => {}, onShare: () => {}, onRefresh: () => {}, onBack: () => {},
+  });
+  // react stub 的 createElement 不执行子组件：对 MaterialViewPane 元素二次渲染（与 RuntimeSurface 测试同模式）。
+  const paneElement = descendants(element).find(({ type }) => typeof type === 'function' && (type as { name?: string }).name === 'MaterialViewPane');
+  assert.ok(paneElement, 'the diff view mounts the material view pane');
+  const pane = render(paneElement.type as (props: unknown) => unknown, paneElement.props);
+  const texts = descendants(pane).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).flatMap((part) => (typeof part === 'string' ? [part] : []));
+  assert.equal(texts.some((text) => text.includes('无法解析为标准 diff')), true, 'the malformed notice renders');
+  assert.equal(texts.some((text) => text.includes('not a parseable unified diff')), true, 'the raw text must render behind the notice (module contract: raw is always set for diff views)');
 });
 
 test('the attention inbox route, screen and view consume the task office interface only', async () => {

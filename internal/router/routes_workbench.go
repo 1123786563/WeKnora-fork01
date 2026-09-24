@@ -45,6 +45,9 @@ func RegisterWorkbenchRoutes(r *gin.RouterGroup, h *session.WorkbenchReadHandler
 		workbench.GET("/:run_id", h.GetWorkbenchExecution)
 		workbench.GET("/:run_id/snapshot", h.GetWorkbenchSnapshot)
 		workbench.GET("/:run_id/events", h.StreamWorkbenchEvents)
+		// T16: read-only terminal log paging — no input lane exists here; the
+		// interactive PTY stays on the web sandbox surface only.
+		workbench.GET("/:run_id/terminal-log", h.GetWorkbenchTerminalLog)
 		// source-events is the Paseo bridge's authenticated write callback
 		// (remote nodes reporting events back), not a read: mounting it in
 		// the gated group would let WEKNORA_WORKBENCH_READ_ENABLED=false

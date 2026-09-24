@@ -12,6 +12,7 @@
     "./mobile/runtime": "./src/mobile/runtime.ts",
     "./mobile/task-office": "./src/mobile/task-office.ts",
     "./mobile/legacy-tasks": "./src/mobile/legacy-tasks.ts",
+    "./mobile/materials": "./src/mobile/materials.ts",
     "./mobile/resources": "./src/mobile/resources.ts",
     "./transport": "./src/transport/json.ts"
   },

@@ -45,14 +45,35 @@ func NewWorkbenchArtifactHandler(runs OwnedRunReader, refs ArtifactRefReader) *W
 // adds the session-wide index used to address the artifact on the signed-URL
 // endpoint.
 type workbenchArtifactItem struct {
-	Index     int    `json:"index"`
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Mime      string `json:"mime"`
-	Version   string `json:"version"`
+	Index   int    `json:"index"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Mime    string `json:"mime"`
+	Version string `json:"version"`
+	// Digest is the persisted SHA-256 of the artifact bytes when the
+	// producer recorded one; the content-addressed proof behind Version.
+	Digest    string `json:"digest,omitempty"`
 	Size      int64  `json:"size"`
 	SourceRun string `json:"source_run"`
 	CreatedAt any    `json:"created_at"`
+}
+
+// artifactVersionOf derives the immutable version identity of a
+// message-bound artifact. Content-addressed when the persisted bytes carry
+// a SHA-256 digest, otherwise the (message, index) binding itself: both
+// change when the content changes, and neither can be rewritten in place —
+// artifact versions insert without upsert (repository.ErrArtifactVersion-
+// Conflict on any difference) and a re-produced file lands under a new
+// message binding.
+func artifactVersionOf(ref types.SessionArtifactRef) string {
+	digest := strings.TrimSpace(ref.Artifact.ContentHash)
+	if len(digest) >= 16 {
+		return digest[:16]
+	}
+	if digest != "" {
+		return digest
+	}
+	return ref.MessageID + ":" + strconv.Itoa(ref.Index)
 }
 
 func artifactListItemFromRef(runID string, position int, ref types.SessionArtifactRef) workbenchArtifactItem {
@@ -71,7 +92,8 @@ func artifactListItemFromRef(runID string, position int, ref types.SessionArtifa
 		ID:        ref.MessageID + ":" + strconv.Itoa(ref.Index),
 		Name:      ref.Artifact.FileName,
 		Mime:      contentType,
-		Version:   "1",
+		Version:   artifactVersionOf(ref),
+		Digest:    strings.TrimSpace(ref.Artifact.ContentHash),
 		Size:      ref.Artifact.FileSize,
 		SourceRun: runID,
 		CreatedAt: ref.Artifact.CreatedAt,
@@ -103,7 +125,9 @@ func (h *WorkbenchArtifactHandler) ListWorkbenchArtifacts(c *gin.Context) {
 	for position, ref := range refs {
 		items = append(items, artifactListItemFromRef(run.Key.RunID, position, ref))
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items}})
+	// terminal declares whether this server mounts the read-only terminal
+	// log endpoint; older deployments omit the flag and clients degrade.
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items, "terminal": gin.H{"available": true}}})
 }
 
 // CreateWorkbenchArtifactSignedURL godoc

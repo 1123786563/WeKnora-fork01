@@ -107,7 +107,7 @@ func TestListWorkbenchArtifactsProjectsMessageBoundRefs(t *testing.T) {
 	require.Equal(t, "application/octet-stream", first.Mime) // .md has no stdlib mime; unknown types force download
 	require.Equal(t, int64(128), first.Size)
 	require.Equal(t, "run-1", first.SourceRun)
-	require.Equal(t, "1", first.Version)
+	require.Equal(t, "msg-1:0", first.Version) // 无 ContentHash 时以 (message, index) 绑定地址为版本身份
 }
 
 func TestListWorkbenchArtifactsScopesByOwner(t *testing.T) {
@@ -120,6 +120,48 @@ func TestListWorkbenchArtifactsScopesByOwner(t *testing.T) {
 	h.ListWorkbenchArtifacts(c)
 	require.Equal(t, http.StatusNotFound, c.Writer.Status())
 	require.Zero(t, refs.calls)
+}
+
+func TestListWorkbenchArtifactsDerivesVersionFromDigest(t *testing.T) {
+	digest := "aaaaaaaaaaaabbbbbbbbbbccccccccccccdddddddddddd"
+	refs := artifactRefReaderStub{refs: []types.SessionArtifactRef{
+		{MessageID: "msg-9", Index: 0, Artifact: types.MessageArtifact{
+			URL: "local://tenant/1/report.md", FileName: "report.md", FileType: ".md", FileSize: 10,
+			ContentHash: digest,
+			CreatedAt:   time.Unix(1_700_000_000, 0),
+		}},
+	}}
+	h := NewWorkbenchArtifactHandler(artifactRunStub(), &refs)
+	c, rec := artifactContext()
+	h.ListWorkbenchArtifacts(c)
+	require.Equal(t, http.StatusOK, c.Writer.Status())
+	var body struct {
+		Data struct {
+			Items []workbenchArtifactItem `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Data.Items, 1)
+	// 内容寻址：版本取 digest 前缀，digest 原文随行下发——内容变则两者变，不可原地改写。
+	require.Equal(t, digest[:16], body.Data.Items[0].Version)
+	require.Equal(t, digest, body.Data.Items[0].Digest)
+}
+
+func TestListWorkbenchArtifactsDeclaresTerminalAvailability(t *testing.T) {
+	refs := artifactRefReaderStub{refs: artifactRefs()}
+	h := NewWorkbenchArtifactHandler(artifactRunStub(), &refs)
+	c, rec := artifactContext()
+	h.ListWorkbenchArtifacts(c)
+	require.Equal(t, http.StatusOK, c.Writer.Status())
+	var body struct {
+		Data struct {
+			Terminal struct {
+				Available bool `json:"available"`
+			} `json:"terminal"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.True(t, body.Data.Terminal.Available, "this server version mounts the terminal-log endpoint; older deployments omit the flag")
 }
 
 // ─── signed url ──────────────────────────────────────────────────────────────
