@@ -34,7 +34,7 @@ export type { ScenarioTaskBackend, ScenarioTaskBackendHandlers } from './task-of
 export { createScriptedTaskStream, createScenarioTaskDetailBackend, createInMemoryTaskProjectionStore } from './task-office/in-memory-task-detail.ts';
 export { createTaskDetail, TASK_DETAIL_HISTORY_LIMIT } from './task-office/task-detail.ts';
 export type {
-  PersistedTaskProjection, TaskBackendDetail, TaskBackendEvent, TaskConnectionState, TaskDetailView,
+  OfflineTaskSnapshot, PersistedTaskProjection, TaskBackendDetail, TaskBackendEvent, TaskConnectionState, TaskDetailView,
   TaskDetailBackendPort, TaskDetailPorts, TaskHandle, TaskInterruptionReason, TaskProjectionStore, TaskStreamControlFrame,
 } from './task-office/task-detail.ts';
 export type { TaskLifecycleState, TaskTimelineEntry, TaskTimelineKind, TaskTimelineSourceEvent } from './task-office/task-timeline.ts';
