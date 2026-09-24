@@ -169,3 +169,40 @@ func TestClaimJoinsAppIDSoRevokedAppDoesNotResurrect(t *testing.T) {
 		Intent: NotificationIntent{TenantID: 1, EventID: "1:r1:9", OwnerID: "u1", DeviceID: "shared-x", Environment: "dev", AppID: "enterprise:acme", Kind: "completed", RunID: "r1"},
 	}, "worker-app"), "the final authorization seam must join on app_id, not just the device id")
 }
+
+// TestMobileDeviceAppDownMigrationsDeleteEnterpriseRows guards the rollback
+// symmetry mandated by review round 1: one physical device registering under
+// the official AND an enterprise app is the core scenario of this feature, so
+// both down migrations must deterministically drop enterprise rows BEFORE the
+// pre-app unique/primary constraints are rebuilt. Without the DELETE, the
+// duplicate keys from dual-app rows fail the constraint rebuild and the
+// rollback is stuck at 000114 (sqlite) / 000193 (PostgreSQL).
+func TestMobileDeviceAppDownMigrationsDeleteEnterpriseRows(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
+	for _, tc := range []struct {
+		file          string
+		deviceRebuild string
+	}{
+		{file: "migrations/sqlite/000114_mobile_device_app.down.sql", deviceRebuild: "CREATE TABLE mobile_devices_rebuilt"},
+		{file: "migrations/versioned/000193_mobile_device_app.down.sql", deviceRebuild: "ADD PRIMARY KEY (tenant_id, owner_id, device_id, environment)"},
+	} {
+		script, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(tc.file)))
+		require.NoError(t, err, tc.file)
+		sql := string(script)
+		intentsDelete := strings.Index(sql, "DELETE FROM mobile_notification_intents WHERE app_id <> 'official'")
+		require.GreaterOrEqual(t, intentsDelete, 0, "%s must deterministically drop enterprise intents", tc.file)
+		devicesDelete := strings.Index(sql, "DELETE FROM mobile_devices WHERE app_id <> 'official'")
+		require.GreaterOrEqual(t, devicesDelete, 0, "%s must deterministically drop enterprise devices", tc.file)
+		intentsRebuild := strings.Index(sql, "ADD CONSTRAINT uq_mobile_notification_identity")
+		if intentsRebuild < 0 {
+			intentsRebuild = strings.Index(sql, "UNIQUE (tenant_id, event_id, owner_id, device_id, environment)")
+		}
+		require.GreaterOrEqual(t, intentsRebuild, 0, "%s must rebuild the intents identity constraint", tc.file)
+		require.Less(t, intentsDelete, intentsRebuild, "%s: enterprise intents must be dropped before the identity constraint is rebuilt", tc.file)
+		devicePK := strings.Index(sql, tc.deviceRebuild)
+		require.GreaterOrEqual(t, devicePK, 0, "%s must rebuild the device primary key", tc.file)
+		require.Less(t, devicesDelete, devicePK, "%s: enterprise devices must be dropped before the primary key is rebuilt", tc.file)
+	}
+}
