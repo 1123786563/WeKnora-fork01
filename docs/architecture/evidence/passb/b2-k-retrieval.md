@@ -21,6 +21,22 @@
 - **提交**：独立 commit（与 K2.3 搬迁 commit 分离，满足 Ruling「独立 commit」与 conventions §4 提交隔离）。
 - **回收**：remove_at=ib2；ib2 经门面/端口合法化或 ADR 修订后由 barrier 删除两侧行并回写计数。
 
-## 2. 高风险差分（§7.3，K2.8 落盘）
+## 2. import 例外计数基线变更登记——K2.4（conventions §8 / Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY）
+
+- **变更**：import 例外计数 107 → **110**（+3）。
+- **时间/任务**：2026-09-25，K2.4（按 Ruling 2026-09-25-DEFERRED-FILE-SPLIT 收缩范围：`internal/application/service` → `internal/modules/knowledge/retrieval/app/` 迁移 knowledgebase_access.go、slug_fuzzy.go、graph.go 三文件后显形）。
+- **批准依据**：同 §1（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY；计划 §5.6 种子表已预录 graph.go 两条与 knowledgebase_access.go 一条）。
+- **变更清单**（file→package，两侧逐字一致；§5.6 种子表行 4/5 精确命中，无多退少补）：
+
+| id | importer | imported | plan | remove_at |
+|---|---|---|---|---|
+| exc-0108 | `internal/modules/knowledge/retrieval/app/knowledgebase_access.go` | `github.com/Tencent/WeKnora/internal/modules/policy/access` | 22-knowledge-retrieval | ib2 |
+| exc-0109 | `internal/modules/knowledge/retrieval/app/graph.go` | `github.com/Tencent/WeKnora/internal/modules/airesource/models/chat` | 22-knowledge-retrieval | ib2 |
+| exc-0110 | `internal/modules/knowledge/retrieval/app/graph.go` | `github.com/Tencent/WeKnora/internal/modules/airesource/models/utils` | 22-knowledge-retrieval | ib2 |
+
+- **PassBTask 口径**：沿用 §1 所述偏差（`B-knowledge` 模块级 id，非计划模板的 `K2.7`；passbguard PassBTaskModule 映射约束，K2.3 已登记待协调者确认，K2.7 沿用同口径）。
+- **登记位置/提交/回收**：同 §1 模式（check.go 数据行 + ledger exc-0108..0110 + 头部计数 107→110；独立 commit；remove_at=ib2）。
+
+## 3. 高风险差分（§7.3，K2.8 落盘）
 
 （待 K2.8 Step 1 执行后补全：TypeIndexDelete tag 侧、HybridSearch/融合/FAQ 混排/分组、KB 活动审计流、KB 读权限/租户解析四面双跑。）
