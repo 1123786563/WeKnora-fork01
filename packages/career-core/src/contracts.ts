@@ -81,7 +81,19 @@ export type OpportunityEvidence = { opportunityId: string; observationId: string
 
 const opportunityStatuses: OpportunityStatus[] = ['stored', 'needs_review']
 function validIdentifier(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 }
-function validTimestamp(value: unknown): value is string { return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value)) }
+function validTimestamp(value: unknown): value is string {
+ if (typeof value !== 'string') return false
+ const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value)
+ if (!match) return false
+ const [, yearText, monthText, dayText, hourText, minuteText, secondText, , , offsetHourText, offsetMinuteText] = match
+ const year = Number(yearText), month = Number(monthText), day = Number(dayText)
+ const hour = Number(hourText), minute = Number(minuteText), second = Number(secondText)
+ const offsetHour = offsetHourText === undefined ? 0 : Number(offsetHourText)
+ const offsetMinute = offsetMinuteText === undefined ? 0 : Number(offsetMinuteText)
+ const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+ const monthDays = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+ return month >= 1 && month <= 12 && day >= 1 && day <= (monthDays[month - 1] ?? 0) && hour <= 23 && minute <= 59 && second <= 59 && offsetHour <= 23 && offsetMinute <= 59 && Number.isFinite(Date.parse(value))
+}
 function decodeOpportunityValue(value: unknown): OpportunityExtractedValue {
  if (!isRecord(value)) throw new TypeError('invalid opportunity extracted value')
  if (value.state === 'unknown' && value.value === undefined) return { state: 'unknown' }
@@ -93,7 +105,7 @@ export function decodeOpportunityReceipt(value: unknown): OpportunityReceipt {
  return { kind: 'opportunity_imported', requestId: value.requestId, opportunityId: value.opportunityId, observationId: value.observationId, snapshotId: value.snapshotId, status: value.status as OpportunityStatus, acquiredAt: value.acquiredAt }
 }
 export function decodeOpportunityEvidence(value: unknown): OpportunityEvidence {
- if (!isRecord(value) || !validIdentifier(value.opportunityId) || !validIdentifier(value.observationId) || !validIdentifier(value.snapshotId) || typeof value.rawText !== 'string' || typeof value.rawSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.rawSha256) || !isRecord(value.extracted) || !isRecord(value.source) || !validIdentifier(value.source.kind) || (value.source.label !== undefined && typeof value.source.label !== 'string') || (value.source.referenceId !== undefined && typeof value.source.referenceId !== 'string') || !validTimestamp(value.acquiredAt) || !opportunityStatuses.includes(value.status as OpportunityStatus)) throw new TypeError('invalid opportunity evidence')
+ if (!isRecord(value) || !validIdentifier(value.opportunityId) || !validIdentifier(value.observationId) || !validIdentifier(value.snapshotId) || typeof value.rawText !== 'string' || value.rawText.trim().length === 0 || typeof value.rawSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.rawSha256) || !isRecord(value.extracted) || !isRecord(value.source) || !validIdentifier(value.source.kind) || (value.source.label !== undefined && typeof value.source.label !== 'string') || (value.source.referenceId !== undefined && typeof value.source.referenceId !== 'string') || !validTimestamp(value.acquiredAt) || !opportunityStatuses.includes(value.status as OpportunityStatus)) throw new TypeError('invalid opportunity evidence')
  const extracted: OpportunityFields = {
   title: decodeOpportunityValue(value.extracted.title),
   company: decodeOpportunityValue(value.extracted.company),

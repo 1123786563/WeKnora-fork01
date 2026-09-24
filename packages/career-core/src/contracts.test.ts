@@ -36,6 +36,9 @@ test('opportunity receipt decoder accepts the exact import receipt and rejects m
  assert.throws(() => decodeOpportunityReceipt({ ...opportunityReceipt, opportunityId: undefined }))
  assert.throws(() => decodeOpportunityReceipt({ ...opportunityReceipt, status: 'failed' }))
  assert.throws(() => decodeOpportunityReceipt({ ...opportunityReceipt, acquiredAt: 'yesterday' }))
+ assert.throws(() => decodeOpportunityReceipt({ ...opportunityReceipt, acquiredAt: '2026-02-30T01:02:03Z' }))
+ const offsetTimestamp = '2026-09-24T09:02:03+08:00'
+ assert.equal(decodeOpportunityReceipt({ ...opportunityReceipt, acquiredAt: offsetTimestamp }).acquiredAt, offsetTimestamp)
 })
 
 test('opportunity evidence decoder preserves explicit unknown fields and inert raw text', () => {
@@ -50,4 +53,9 @@ test('opportunity evidence decoder preserves explicit unknown fields and inert r
  assert.throws(() => decodeOpportunityEvidence({ ...opportunityEvidence, extracted: { ...opportunityEvidence.extracted, batch: { state: 'missing' } } }))
  assert.throws(() => decodeOpportunityEvidence({ ...opportunityEvidence, extracted: { ...opportunityEvidence.extracted, title: { state: 'known' } } }))
  assert.throws(() => decodeOpportunityEvidence({ ...opportunityEvidence, rawSha256: 'invalid' }))
+ assert.throws(() => decodeOpportunityEvidence({ ...opportunityEvidence, rawText: '' }))
+ assert.throws(() => decodeOpportunityEvidence({ ...opportunityEvidence, rawText: ' \n\t ' }))
+ assert.throws(() => decodeOpportunityEvidence({ ...opportunityEvidence, acquiredAt: '2026-02-30T01:02:03Z' }))
+ const exactText = '\n  original JD text\r\n\twith spacing  \n'
+ assert.equal(decodeOpportunityEvidence({ ...opportunityEvidence, rawText: exactText }).rawText, exactText)
 })
