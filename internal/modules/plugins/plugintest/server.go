@@ -94,6 +94,9 @@ type Server struct {
 	writeCalls  atomic.Int64
 	oauth       oauthStub
 	metadataURL string // baseURL 下的 protected-resource 文档地址（Start 时定型）
+	// manifestMutations 是经 ManifestHandler_mutate 登记的清单改写钩子
+	//（升级差异场景：只改清单声明——版本/端点——不动 live 目录）。
+	manifestMutations []func(*types.PluginManifest)
 }
 
 // New returns an unstarted server with default identity.
@@ -261,7 +264,24 @@ func (s *Server) Manifest() *types.PluginManifest {
 	if anyAuth {
 		m.Auth = &types.PluginAuth{PersonalOAuth: true, Scopes: authScopes}
 	}
+	// 改写钩子在持锁态逐个应用——钩子必须是纯改写，不得回调 Server 的
+	// 加锁方法（会自锁）；每次序列化都重放，因此 /manifest.json 始终反映
+	// 改写后的清单。
+	for _, mutate := range s.manifestMutations {
+		if mutate != nil {
+			mutate(m)
+		}
+	}
 	return m
+}
+
+// ManifestHandler_mutate 登记一个清单改写钩子：此后的每次 Manifest() 与
+// /manifest.json 序列化都会重放它（计划 Task 10 Produces——升级差异场景
+// 用它发布候选版本号或改写端点声明，而保持 live 目录不变）。
+func (s *Server) ManifestHandler_mutate(fn func(*types.PluginManifest)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.manifestMutations = append(s.manifestMutations, fn)
 }
 
 func (s *Server) handleManifest(w http.ResponseWriter, _ *http.Request) {
