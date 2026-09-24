@@ -71,6 +71,12 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 	// /apps/actions.
 	budgetGroup := r.Group("/commercial", commercialHandler.RequireExplicitCommercialCapability())
 	budgetGroup.POST("/tasks/:id/budget/extend", commercialHandler.ExtendTaskBudget)
+	// T09 (#39): the task budget readout (estimated/used/reserved/remaining
+	// from the ROOT budget row — delegated runs charge it exactly once) plus
+	// delegated/paused run lists and the caller's own can_extend verdict.
+	// Read gate lives in the handler: billing authority, the task owner
+	// (sessions.user_id) or a #42 task-grant holder.
+	budgetGroup.GET("/tasks/:id/budget", commercialHandler.GetTaskBudget)
 
 	// C05: platform refund REVIEW — a separate permission path from the
 	// tenant billing gate above (review moves money out of the space, so
