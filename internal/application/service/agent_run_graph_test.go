@@ -16,10 +16,13 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/event"
 	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+	appconn "github.com/Tencent/WeKnora/internal/modules/appconnector"
+	"github.com/Tencent/WeKnora/internal/modules/craft"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/Tencent/WeKnora/internal/utils"
@@ -58,6 +61,8 @@ func openDurableRunTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(
 		"INSERT INTO users (id, username, email, password_hash, tenant_id)"+
 			" VALUES ('u1','u1','u1@example.test','x',1)").Error)
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at)
+		VALUES (1,'u1','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
 	require.NoError(t, db.Exec(
 		"INSERT INTO sessions (id, tenant_id, title, user_id, engine_type)"+
 			" VALUES ('s1',1,'session-1','u1','trpc')").Error)
@@ -200,11 +205,12 @@ func newDurableRunSessionService(t *testing.T, _ *gorm.DB) *sessionService {
 	manager := mcp.NewMCPManager(nil)
 	t.Cleanup(manager.Shutdown)
 	return &sessionService{
-		cfg:           nil,
-		messageRepo:   &durableRunMessageRepo{},
-		modelService:  &durableRunModelService{chat: &fakeAgentChatModel{}},
-		agentService:  &agentService{mcpManager: manager},
-		memoryService: nil,
+		cfg:             nil,
+		messageRepo:     &durableRunMessageRepo{},
+		modelService:    &durableRunModelService{chat: &fakeAgentChatModel{}},
+		agentService:    &agentService{mcpManager: manager},
+		memoryService:   nil,
+		craftTaskAccess: &runActorTaskAccessChecker{},
 	}
 }
 
@@ -236,6 +242,415 @@ func admitDurableRun(t *testing.T, store *repository.AgentRunStore, snapshot jso
 	})
 	require.NoError(t, err)
 	return key
+}
+
+func admitDurableCraftRunAsActor(t *testing.T, store *repository.AgentRunStore, snapshot json.RawMessage, actor string) agentruntime.RunKey {
+	t.Helper()
+	user, err := json.Marshal(map[string]any{"role": "user", "content": "hello"})
+	require.NoError(t, err)
+	assistant, err := json.Marshal(map[string]any{"role": "assistant", "content": ""})
+	require.NoError(t, err)
+	key := agentruntime.RunKey{TenantID: 1, RunID: "craft-run-" + t.Name()}
+	_, err = store.Admit(durableRunCtx(), agentruntime.Admission{
+		Key: key, SessionID: "s1", UserID: "u1", ActorUserID: actor,
+		RequestID: "craft-request-" + t.Name(), AssistantMessageID: "craft-assistant-" + t.Name(),
+		RequestHash: "craft-hash-" + t.Name(), Snapshot: snapshot,
+		UserMessage: user, AssistantMessage: assistant, Deadline: time.Now().Add(time.Hour),
+	})
+	require.NoError(t, err)
+	return key
+}
+
+type runActorMCPObservation struct {
+	CallerUserID  string
+	Principal     types.Principal
+	ContextUserID string
+	VisibleIDs    []string
+}
+
+type runActorTaskAccessChecker struct {
+	userID     string
+	calls      int
+	err        error
+	scope      craft.Scope
+	action     craft.TaskAction
+	registered bool
+	lookupErr  error
+}
+
+func (c *runActorTaskAccessChecker) IsCraftTask(context.Context, uint64, string) (bool, error) {
+	return c.registered, c.lookupErr
+}
+
+func (c *runActorTaskAccessChecker) CheckTaskAccess(_ context.Context, scope craft.Scope, action craft.TaskAction) error {
+	c.calls++
+	c.scope, c.action = scope, action
+	if action != craft.TaskWrite {
+		return craft.ErrForbidden
+	}
+	c.userID = scope.UserID
+	return c.err
+}
+
+type countingDurableRunModelService struct {
+	durableRunModelService
+	calls int
+}
+
+func (s *countingDurableRunModelService) GetChatModel(ctx context.Context, modelID string) (chat.Chat, error) {
+	s.calls++
+	return s.durableRunModelService.GetChatModel(ctx, modelID)
+}
+
+type runActorMCPService struct {
+	interfaces.MCPServiceService
+	observations []runActorMCPObservation
+}
+
+type runActorConnectorFacade struct {
+	subject      appconn.OCSubject
+	sessionID    string
+	toolCallID   string
+	prepareCalls int
+}
+
+func (f *runActorConnectorFacade) PrepareForTool(_ context.Context, subject appconn.OCSubject, sessionID, toolCallID, _, _ string, _ json.RawMessage) (string, error) {
+	f.subject, f.sessionID, f.toolCallID = subject, sessionID, toolCallID
+	f.prepareCalls++
+	return "action-pending", nil
+}
+
+func (*runActorConnectorFacade) StatusForTool(context.Context, appconn.OCSubject, string) (string, error) {
+	return appconn.ActionAwaitingApproval, nil
+}
+
+func TestDurableCraftActorFlowsThroughAppConnectorToolSubject(t *testing.T) {
+	run := agentruntime.Run{
+		Key: agentruntime.RunKey{TenantID: 1, RunID: "run-actor-tool"}, SessionID: "s1",
+		UserID: "u1", ActorUserID: "collaborator",
+	}
+	manifest := []craft.Input{}
+	snapshot := DurableRunSnapshot{CraftInputManifest: &manifest}
+	access := &runActorTaskAccessChecker{registered: true}
+	svc := &sessionService{craftTaskAccess: access}
+	_, actorID, isCraft, err := svc.durableRunActorContext(durableRunCtx(), run, snapshot)
+	require.NoError(t, err)
+	require.True(t, isCraft)
+	ctx := durableRunActorIdentityContext(durableRunCtx(), run.Key.TenantID, actorID)
+	ctx = durableToolExecContext(ctx, run, actorID, event.NewEventBus())
+	meta, ok := tools.ToolExecFromContext(ctx)
+	require.True(t, ok)
+	meta.ToolCallID = "connector-call"
+	ctx = tools.WithToolExecContext(ctx, meta)
+
+	facade := &runActorConnectorFacade{}
+	tool := tools.NewAppConnectorTool(facade)
+	_, err = tool.Execute(ctx, json.RawMessage(`{"connection_id":"private-connection","action_id":"mail.read","input":{"id":"1"}}`))
+	var wait *agentruntime.OCActionWaitError
+	require.ErrorAs(t, err, &wait, "the real model-facing tool prepares then parks for human approval")
+	require.Equal(t, 1, facade.prepareCalls)
+	require.Equal(t, appconn.OCSubject{TenantID: 1, ActorID: "collaborator"}, facade.subject)
+	require.Equal(t, "s1", facade.sessionID)
+	require.Equal(t, "connector-call", facade.toolCallID)
+}
+
+func (s *runActorMCPService) ListMCPServices(ctx context.Context, _ uint64) ([]*types.MCPService, error) {
+	caller := types.CallerFromContext(ctx)
+	principal, _ := types.PrincipalFromContext(ctx)
+	ids := []string{}
+	var services []*types.MCPService
+	switch caller.UserID {
+	case "collaborator":
+		ids = append(ids, "collaborator-private")
+		services = []*types.MCPService{{ID: "collaborator-private", TenantID: 1, Name: "collaborator private", Enabled: true}}
+	case "u1":
+		ids = append(ids, "owner-private")
+		services = []*types.MCPService{{ID: "owner-private", TenantID: 1, Name: "owner private", Enabled: true}}
+	}
+	s.observations = append(s.observations, runActorMCPObservation{
+		CallerUserID: caller.UserID, Principal: principal,
+		ContextUserID: func() string { id, _ := types.UserIDFromContext(ctx); return id }(),
+		VisibleIDs:    ids,
+	})
+	return services, nil
+}
+
+func TestExecuteDurableCraftRunRestoresActorAcrossWorkerLeaseRecovery(t *testing.T) {
+	db := openDurableRunTestDB(t)
+	require.NoError(t, db.Exec(`INSERT INTO users (id,username,email,password_hash,tenant_id) VALUES ('collaborator','collaborator','collaborator@example.test','x',1)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at) VALUES (1,'collaborator','contributor','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+	_, err := repository.NewCraftStore(db).PutWorkspace(durableRunCtx(), craft.Workspace{
+		Scope: craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"},
+	}, 0)
+	require.NoError(t, err)
+	store := repository.NewAgentRunStore(db)
+	config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MCPSelectionMode: "all", MultiTurnEnabled: true}
+	snapshot, err := BuildDurableCraftRunSnapshot("collaborator work", nil, "model-1", "", config, []craft.Input{})
+	require.NoError(t, err)
+	key := admitDurableCraftRunAsActor(t, store, snapshot, "collaborator")
+	run, err := store.Get(durableRunCtx(), key)
+	require.NoError(t, err)
+	var durableSnapshot DurableRunSnapshot
+	require.NoError(t, json.Unmarshal(run.Snapshot, &durableSnapshot))
+	require.NotNil(t, durableSnapshot.CraftWorkspaceSeed, "the repository must attach the selected Workspace head")
+	require.Equal(t, "u1", run.UserID, "Task storage owner remains durable owner")
+	require.Equal(t, "collaborator", run.ActorUserID)
+
+	first, err := store.Claim(durableRunCtx(), key, "worker-1", time.Minute)
+	require.NoError(t, err)
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).
+		Update("lease_until", time.Now().Add(-time.Second)).Error)
+	second, err := store.Claim(durableRunCtx(), key, "worker-2", time.Minute)
+	require.NoError(t, err)
+	require.NotEqual(t, first.Owner, second.Owner)
+
+	prev := RegisteredAgentRunService()
+	RegisterAgentRunService(NewAgentRunService(store))
+	t.Cleanup(func() { RegisterAgentRunService(prev) })
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	observer := &runActorMCPService{}
+	model := &recordingDurableRunChat{}
+	access := &runActorTaskAccessChecker{registered: true}
+	svc := &sessionService{
+		messageRepo:     &durableRunMessageRepo{},
+		modelService:    &durableRunModelService{chat: model},
+		agentService:    &agentService{mcpServiceService: observer, mcpManager: manager},
+		craftTaskAccess: access,
+	}
+	require.NoError(t, svc.ExecuteDurableRun(durableRunCtx(), second))
+
+	require.Len(t, observer.observations, 1)
+	seen := observer.observations[0]
+	require.Equal(t, "collaborator", seen.CallerUserID)
+	require.Equal(t, types.Principal{Type: types.PrincipalWebUser, ID: "collaborator"}, seen.Principal)
+	require.Equal(t, "collaborator", seen.ContextUserID)
+	require.Equal(t, []string{"collaborator-private"}, seen.VisibleIDs, "Owner's private connector must not be loaded")
+	require.NotEqual(t, second.Owner, seen.CallerUserID, "worker lease owner is never an authorization actor")
+	require.Equal(t, 1, access.calls)
+	require.Equal(t, "collaborator", access.userID, "current TaskWrite is checked as the admitted actor")
+	require.Equal(t, craft.TaskWrite, access.action)
+	require.Equal(t, craft.Scope{TenantID: 1, UserID: "collaborator", SessionID: "s1"}, access.scope)
+	toolCtx := durableToolExecContext(durableRunCtx(), run, "collaborator", event.NewEventBus())
+	toolMeta, ok := tools.ToolExecFromContext(toolCtx)
+	require.True(t, ok)
+	require.Equal(t, "collaborator", toolMeta.UserID, "HITL/OAuth tool metadata carries the durable actor")
+	require.Equal(t, run.UserID, "u1", "storage owner remains separate from tool principal")
+}
+
+func TestExecuteDurableCraftRunRejectsLegacySnapshotWithoutWorkspaceSeed(t *testing.T) {
+	db := openDurableRunTestDB(t)
+	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+	store := repository.NewAgentRunStore(db)
+	snapshot, err := BuildDurableRunSnapshot("legacy Craft run", nil, "model-1", "", &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}})
+	require.NoError(t, err)
+	key := agentruntime.RunKey{TenantID: 1, RunID: "legacy-seed-" + t.Name()}
+	requestID, assistantID := "legacy-seed-request-"+t.Name(), "legacy-seed-assistant-"+t.Name()
+	require.NoError(t, db.Table("agent_runs").Create(map[string]any{
+		"tenant_id": key.TenantID, "run_id": key.RunID, "session_id": "s1", "owner_id": "u1", "actor_user_id": "u1",
+		"request_id": requestID, "assistant_message_id": assistantID, "request_hash": "legacy-seed-hash",
+		"driver": "platform", "status": "queued", "snapshot": string(snapshot), "graph_version": "1", "schema_version": 1,
+		"deadline": time.Now().Add(time.Hour),
+	}).Error)
+	require.NoError(t, db.Table("sessions").Where("tenant_id = ? AND id = ?", key.TenantID, "s1").
+		Update("active_agent_run_id", key.RunID).Error)
+	fence, err := store.Claim(durableRunCtx(), key, "worker-legacy-seed", time.Minute)
+	require.NoError(t, err)
+	prev := RegisteredAgentRunService()
+	RegisterAgentRunService(NewAgentRunService(store))
+	t.Cleanup(func() { RegisterAgentRunService(prev) })
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	model := &countingDurableRunModelService{durableRunModelService: durableRunModelService{chat: &recordingDurableRunChat{}}}
+	access := &runActorTaskAccessChecker{registered: true}
+	svc := &sessionService{
+		messageRepo: &durableRunMessageRepo{}, modelService: model,
+		agentService: &agentService{mcpManager: manager}, craftTaskAccess: access,
+	}
+
+	err = svc.ExecuteDurableRun(durableRunCtx(), fence)
+	require.ErrorIs(t, err, craft.ErrInvalidInput)
+	require.Zero(t, model.calls, "a legacy Craft run without a frozen seed fails before model resolution")
+}
+
+func TestExecuteDurableCraftRunRechecksTaskWriteBeforeModelResolution(t *testing.T) {
+	db := openDurableRunTestDB(t)
+	require.NoError(t, db.Exec(`INSERT INTO users (id,username,email,password_hash,tenant_id) VALUES ('collaborator','collaborator','collaborator@example.test','x',1)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at) VALUES (1,'collaborator','contributor','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+	store := repository.NewAgentRunStore(db)
+	config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}
+	snapshot, err := BuildDurableCraftRunSnapshot("revoked task", nil, "model-1", "", config, []craft.Input{})
+	require.NoError(t, err)
+	key := admitDurableCraftRunAsActor(t, store, snapshot, "collaborator")
+	fence, err := store.Claim(durableRunCtx(), key, "worker-retry", time.Minute)
+	require.NoError(t, err)
+	prev := RegisteredAgentRunService()
+	RegisterAgentRunService(NewAgentRunService(store))
+	t.Cleanup(func() { RegisterAgentRunService(prev) })
+	model := &countingDurableRunModelService{durableRunModelService: durableRunModelService{chat: &recordingDurableRunChat{}}}
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	observer := &runActorMCPService{}
+	access := &runActorTaskAccessChecker{err: craft.ErrForbidden, registered: true}
+	svc := &sessionService{
+		messageRepo: &durableRunMessageRepo{}, modelService: model,
+		agentService: &agentService{mcpServiceService: observer, mcpManager: manager}, craftTaskAccess: access,
+	}
+	err = svc.ExecuteDurableRun(durableRunCtx(), fence)
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	require.Equal(t, 1, access.calls)
+	require.Equal(t, "collaborator", access.userID)
+	require.Zero(t, model.calls, "revoked TaskWrite is rejected before model resolution")
+	require.Empty(t, observer.observations, "revoked TaskWrite is rejected before capability resolution")
+}
+
+func TestExecuteDurableRunRejectsUnmarkedLegacyCraftRunWithoutActor(t *testing.T) {
+	testExecuteDurableRunRejectsUnmarkedLegacyCraftRunWithoutActor(t, false)
+}
+
+func TestExecuteDurableRunRejectsUnmarkedLegacyCraftRunWithoutActorAfterSessionDelete(t *testing.T) {
+	testExecuteDurableRunRejectsUnmarkedLegacyCraftRunWithoutActor(t, true)
+}
+
+func testExecuteDurableRunRejectsUnmarkedLegacyCraftRunWithoutActor(t *testing.T, deleteSession bool) {
+	t.Helper()
+	db := openDurableRunTestDB(t)
+	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+	store := repository.NewAgentRunStore(db)
+	snapshot, err := BuildDurableRunSnapshot("legacy unmarked craft", nil, "model-1", "", &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}})
+	require.NoError(t, err)
+	key := admitDurableCraftRunAsActor(t, store, snapshot, "u1")
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Update("actor_user_id", nil).Error)
+	require.NoError(t, store.AppendInput(durableRunCtx(), key, agentruntime.RunInput{
+		SteerID: "after-legacy", Mode: "after", Message: json.RawMessage(`{"role":"user","content":"follow up"}`),
+	}))
+	fence, err := store.Claim(durableRunCtx(), key, "worker-legacy-unmarked", time.Minute)
+	require.NoError(t, err)
+	prev := RegisteredAgentRunService()
+	RegisterAgentRunService(NewAgentRunService(store))
+	t.Cleanup(func() { RegisterAgentRunService(prev) })
+	model := &countingDurableRunModelService{durableRunModelService: durableRunModelService{chat: &recordingDurableRunChat{}}}
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	observer := &runActorMCPService{}
+	access := NewCraftAccessService(db)
+	require.NoError(t, access.CheckTaskAccess(durableRunCtx(), craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s1"}, craft.TaskWrite), "fixture Owner has current TaskWrite, so falling back to owner would execute")
+	if deleteSession {
+		require.NoError(t, db.Table("sessions").Where("tenant_id = ? AND id = ?", 1, "s1").Update("deleted_at", time.Now()).Error,
+			"simulate a retained Craft registration with a soft-deleted Session and a still-live Run lease")
+	}
+	svc := &sessionService{
+		messageRepo: &durableRunMessageRepo{}, modelService: model,
+		agentService: &agentService{mcpServiceService: observer, mcpManager: manager}, craftTaskAccess: access,
+	}
+	err = svc.ExecuteDurableRun(durableRunCtx(), fence)
+	require.ErrorIs(t, err, craft.ErrForbidden, "Craft kind is determined by durable registration, not manifest version")
+	require.Zero(t, model.calls, "historical Craft runs without an actor fail before model resolution")
+	require.Empty(t, observer.observations)
+	var runs int64
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND session_id = ?", 1, "s1").Count(&runs).Error)
+	require.EqualValues(t, 1, runs, "actorless historical Craft run cannot admit a follow-up")
+	admitAfterFollowUps(durableRunCtx(), store, key, DurableRunSnapshot{}, true, access)
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND session_id = ?", 1, "s1").Count(&runs).Error)
+	require.EqualValues(t, 1, runs, "follow-up path independently refuses actorless registered Craft run")
+}
+
+func TestDurableRunClassificationLookupFailureAndManifestDisagreementFailClosed(t *testing.T) {
+	t.Run("lookup error", func(t *testing.T) {
+		db := openDurableRunTestDB(t)
+		store := repository.NewAgentRunStore(db)
+		key := admitDurableRun(t, store, durableRunSnapshot(t))
+		fence, err := store.Claim(durableRunCtx(), key, "worker-lookup-error", time.Minute)
+		require.NoError(t, err)
+		prev := RegisteredAgentRunService()
+		RegisterAgentRunService(NewAgentRunService(store))
+		t.Cleanup(func() { RegisterAgentRunService(prev) })
+		model := &countingDurableRunModelService{durableRunModelService: durableRunModelService{chat: &recordingDurableRunChat{}}}
+		manager := mcp.NewMCPManager(nil)
+		t.Cleanup(manager.Shutdown)
+		access := &runActorTaskAccessChecker{lookupErr: errors.New("registration query unavailable")}
+		svc := &sessionService{messageRepo: &durableRunMessageRepo{}, modelService: model,
+			agentService: &agentService{mcpManager: manager}, craftTaskAccess: access}
+		err = svc.ExecuteDurableRun(durableRunCtx(), fence)
+		require.ErrorIs(t, err, craft.ErrForbidden)
+		require.Zero(t, model.calls, "classification failure is not treated as generic")
+	})
+
+	t.Run("manifest without registration", func(t *testing.T) {
+		db := openDurableRunTestDB(t)
+		store := repository.NewAgentRunStore(db)
+		config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}}
+		snapshot, err := BuildDurableCraftRunSnapshot("mismatched registration", nil, "model-1", "", config, []craft.Input{})
+		require.NoError(t, err)
+		key := admitDurableCraftRunAsActor(t, store, snapshot, "u1")
+		fence, err := store.Claim(durableRunCtx(), key, "worker-mismatch", time.Minute)
+		require.NoError(t, err)
+		prev := RegisteredAgentRunService()
+		RegisterAgentRunService(NewAgentRunService(store))
+		t.Cleanup(func() { RegisterAgentRunService(prev) })
+		model := &countingDurableRunModelService{durableRunModelService: durableRunModelService{chat: &recordingDurableRunChat{}}}
+		manager := mcp.NewMCPManager(nil)
+		t.Cleanup(manager.Shutdown)
+		access := &runActorTaskAccessChecker{registered: false}
+		svc := &sessionService{messageRepo: &durableRunMessageRepo{}, modelService: model,
+			agentService: &agentService{mcpManager: manager}, craftTaskAccess: access}
+		err = svc.ExecuteDurableRun(durableRunCtx(), fence)
+		require.ErrorIs(t, err, craft.ErrForbidden)
+		require.Zero(t, model.calls, "stale/new Craft snapshot cannot mask a missing registered Task")
+	})
+}
+
+func TestExecuteDurableGenericLegacyRunRetainsOwnerFallback(t *testing.T) {
+	db := openDurableRunTestDB(t)
+	store := repository.NewAgentRunStore(db)
+	key := admitDurableRun(t, store, durableRunSnapshot(t))
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Update("actor_user_id", nil).Error)
+	fence, err := store.Claim(durableRunCtx(), key, "worker-generic", time.Minute)
+	require.NoError(t, err)
+	prev := RegisteredAgentRunService()
+	RegisterAgentRunService(NewAgentRunService(store))
+	t.Cleanup(func() { RegisterAgentRunService(prev) })
+	model := &recordingDurableRunChat{}
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	access := &runActorTaskAccessChecker{registered: false}
+	svc := &sessionService{messageRepo: &durableRunMessageRepo{}, modelService: &durableRunModelService{chat: model},
+		agentService: &agentService{mcpManager: manager}, craftTaskAccess: access}
+	require.NoError(t, svc.ExecuteDurableRun(durableRunCtx(), fence))
+	require.NotEmpty(t, model.messages, "ordinary legacy sessions retain their previous identity behavior")
+}
+
+func TestExecuteDurableCraftRunRejectsLegacyMissingActorBeforeCapabilities(t *testing.T) {
+	db := openDurableRunTestDB(t)
+	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id,tenant_id,kind) VALUES ('s1',1,'web')`).Error)
+	store := repository.NewAgentRunStore(db)
+	config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}
+	snapshot, err := BuildDurableCraftRunSnapshot("legacy actor", nil, "model-1", "", config, []craft.Input{})
+	require.NoError(t, err)
+	key := admitDurableCraftRunAsActor(t, store, snapshot, "u1")
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).Update("actor_user_id", nil).Error)
+	fence, err := store.Claim(durableRunCtx(), key, "worker-legacy", time.Minute)
+	require.NoError(t, err)
+
+	prev := RegisteredAgentRunService()
+	RegisterAgentRunService(NewAgentRunService(store))
+	t.Cleanup(func() { RegisterAgentRunService(prev) })
+	model := &recordingDurableRunChat{}
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	observer := &runActorMCPService{}
+	svc := &sessionService{
+		messageRepo:     &durableRunMessageRepo{},
+		modelService:    &durableRunModelService{chat: model},
+		agentService:    &agentService{mcpServiceService: observer, mcpManager: manager},
+		craftTaskAccess: &runActorTaskAccessChecker{registered: true},
+	}
+	err = svc.ExecuteDurableRun(durableRunCtx(), fence)
+	require.ErrorIs(t, err, craft.ErrForbidden)
+	require.Empty(t, model.messages, "legacy actorless Craft Run fails before model access")
+	require.Empty(t, observer.observations, "legacy actorless Craft Run fails before capability resolution")
 }
 
 func durableRunSnapshot(t *testing.T) json.RawMessage {
@@ -273,6 +688,33 @@ func TestDurableRunSnapshotRoundTripKeepsRuntimeFields(t *testing.T) {
 	require.Equal(t, []string{"skill-1"}, restored.PinnedSkillNames)
 	require.True(t, restored.SharedAgentReadOnly)
 	require.Equal(t, []string{tools.ToolThinking}, restored.AllowedTools)
+}
+
+func TestDurableCraftRunSnapshotKeepsManifestOutOfModelMessage(t *testing.T) {
+	config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}
+	inputs := []craft.Input{{Ref: "resource://selected-secret-ref", Name: "selected.json",
+		SHA256: strings.Repeat("a", 64), Bytes: 12}}
+	raw, err := BuildDurableCraftRunSnapshot("visible query", nil, "model-1", "", config, inputs)
+	require.NoError(t, err)
+	var encoded map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &encoded))
+	require.Contains(t, encoded, "craft_input_manifest")
+	require.NotContains(t, string(encoded["query"]), "selected-secret-ref")
+
+	parsed, err := ParseDurableRunSnapshot(raw)
+	require.NoError(t, err)
+	require.NotNil(t, parsed.CraftInputManifest)
+	require.Equal(t, inputs, *parsed.CraftInputManifest)
+	message, err := durableUserMessage(parsed)
+	require.NoError(t, err)
+	require.Equal(t, "visible query", message.Content)
+	require.NotContains(t, message.Content, "selected-secret-ref")
+
+	legacy, err := BuildDurableRunSnapshot("legacy query", nil, "model-1", "", config)
+	require.NoError(t, err)
+	legacyParsed, err := ParseDurableRunSnapshot(legacy)
+	require.NoError(t, err, "version-1 ordinary snapshots without Craft metadata remain compatible")
+	require.Nil(t, legacyParsed.CraftInputManifest)
 }
 
 func TestParseDurableRunSnapshotRejectsUnknownVersion(t *testing.T) {
@@ -337,9 +779,10 @@ func TestExecuteDurableRunPreservesImageInputThroughProductionGraph(t *testing.T
 	manager := mcp.NewMCPManager(nil)
 	t.Cleanup(manager.Shutdown)
 	svc := &sessionService{
-		messageRepo:  &durableRunMessageRepo{},
-		modelService: &durableRunModelService{chat: model},
-		agentService: &agentService{mcpManager: manager},
+		messageRepo:     &durableRunMessageRepo{},
+		modelService:    &durableRunModelService{chat: model},
+		agentService:    &agentService{mcpManager: manager},
+		craftTaskAccess: &runActorTaskAccessChecker{},
 	}
 	require.NoError(t, svc.ExecuteDurableRun(durableRunCtx(), fence))
 
@@ -397,9 +840,10 @@ func TestExecuteDurableRunExecutesMCPDiscoveryAndCallThroughProductionGraph(t *t
 	t.Cleanup(manager.Shutdown)
 	model := &scriptedMCPDurableRunChat{}
 	svc := &sessionService{
-		messageRepo:  &durableRunMessageRepo{},
-		modelService: &durableRunModelService{chat: model},
-		agentService: &agentService{mcpServiceService: mcpService, mcpManager: manager},
+		messageRepo:     &durableRunMessageRepo{},
+		modelService:    &durableRunModelService{chat: model},
+		agentService:    &agentService{mcpServiceService: mcpService, mcpManager: manager},
+		craftTaskAccess: &runActorTaskAccessChecker{},
 	}
 	config := &types.AgentConfig{
 		AllowedTools: []string{tools.ToolThinking}, MCPSelectionMode: "all", MultiTurnEnabled: true,

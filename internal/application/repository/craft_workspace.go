@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -154,6 +155,18 @@ func (s *CraftStore) PutWorkspace(ctx context.Context, in craft.Workspace, expec
 				return fmt.Errorf("%w: session %d/%s already has a workspace binding",
 					craft.ErrConflict, in.Scope.TenantID, in.Scope.SessionID)
 			}
+			head := craftDraftHeadRow{
+				WorkspaceID: row.ID, TenantID: row.TenantID, Revision: 0, State: string(craft.DraftHeadEmpty),
+			}
+			if err := tx.Create(&head).Error; err != nil {
+				return err
+			}
+			origin := craftDraftOriginRow{
+				WorkspaceID: row.ID, TenantID: row.TenantID, OriginRevision: 0, OriginState: string(craft.DraftHeadEmpty),
+			}
+			if err := tx.Create(&origin).Error; err != nil {
+				return err
+			}
 			out = row.view()
 			return nil
 		}
@@ -202,16 +215,26 @@ func validateCraftTask(task craft.Task) error {
 		task.Fence.TenantID != task.Scope.TenantID {
 		return fmt.Errorf("%w: incomplete delegation request", craft.ErrInvalidInput)
 	}
+	if task.SnapshotDigestVersion != craftSnapshotDigestVersion || len(task.SnapshotDigest) != 64 ||
+		task.Fence.SnapshotDigestVersion != task.SnapshotDigestVersion || task.Fence.SnapshotDigest != task.SnapshotDigest {
+		return fmt.Errorf("%w: delegation requires a fence-matched admitted snapshot identity", craft.ErrInvalidInput)
+	}
+	digestBytes, err := hex.DecodeString(task.SnapshotDigest)
+	if err != nil || hex.EncodeToString(digestBytes) != task.SnapshotDigest {
+		return fmt.Errorf("%w: malformed admitted snapshot identity", craft.ErrInvalidInput)
+	}
 	return nil
 }
 
-// sameDelegationRequest compares the caller-controlled request identity: the
-// fence contributes only its run key because a recovered worker replays the
-// same logical call under a new owner and epoch.
+// sameDelegationRequest compares the caller-controlled request identity. The
+// live owner and epoch may change during recovery, but the Run key and its
+// immutable admission digest remain part of the delegation identity.
 func sameDelegationRequest(a, b craft.Task) bool {
 	if a.ToolCallID != b.ToolCallID || a.WorkspaceID != b.WorkspaceID || a.Prompt != b.Prompt ||
 		a.RequestHash != b.RequestHash || !craft.SameScope(a.Scope, b.Scope) ||
 		a.Fence.TenantID != b.Fence.TenantID || a.Fence.RunID != b.Fence.RunID ||
+		a.Fence.SnapshotDigestVersion != b.Fence.SnapshotDigestVersion || a.Fence.SnapshotDigest != b.Fence.SnapshotDigest ||
+		a.SnapshotDigestVersion != b.SnapshotDigestVersion || a.SnapshotDigest != b.SnapshotDigest ||
 		len(a.Inputs) != len(b.Inputs) || len(a.SkillDigests) != len(b.SkillDigests) ||
 		!a.Deadline.Equal(b.Deadline) {
 		return false
@@ -268,6 +291,11 @@ func (s *CraftStore) PrepareTask(ctx context.Context, in craft.Task) (craft.Task
 		}
 		if run.SessionID != in.Scope.SessionID || run.OwnerID != in.Scope.UserID {
 			return fmt.Errorf("%w: delegation scope does not match run %s", craft.ErrForbidden, in.Fence.RunID)
+		}
+		if !validCraftAdmittedSnapshot(run) ||
+			in.SnapshotDigestVersion != run.SnapshotDigestVersion || in.SnapshotDigest != run.SnapshotDigest ||
+			in.Fence.SnapshotDigestVersion != run.SnapshotDigestVersion || in.Fence.SnapshotDigest != run.SnapshotDigest {
+			return fmt.Errorf("%w: delegation snapshot identity does not match the admitted Run", craft.ErrConflict)
 		}
 		var ws craftWorkspaceRow
 		e := tx.Where("id = ? AND tenant_id = ?", in.WorkspaceID, in.Fence.TenantID).Take(&ws).Error

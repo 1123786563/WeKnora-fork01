@@ -44,6 +44,19 @@ export interface CraftSubmitRunInput {
   base_version_id?: string;
 }
 
+export type CraftInputDecisionAction = 'continue' | 'cancel';
+export interface CraftInputDecisionAcknowledgement {
+  ref: string;
+  action: CraftInputDecisionAction;
+}
+
+export type CraftAccessRole = 'owner' | 'collaborator' | 'viewer';
+export type CraftGrantableAccessRole = Exclude<CraftAccessRole, 'owner'>;
+export interface CraftAccessMember {
+  user_id: string;
+  role: CraftAccessRole;
+}
+
 function unwrap(value: unknown, label: string): unknown {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Expected a craft ' + label + ' envelope' });
@@ -63,6 +76,32 @@ function unwrap(value: unknown, label: string): unknown {
     throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Craft ' + label + ' envelope is missing data' });
   }
   return envelope.data;
+}
+
+function parseCraftAccessMembers(value: unknown): CraftAccessMember[] {
+  const data = unwrap(value, 'access member list');
+  if (!Array.isArray(data)) {
+    throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Craft access member list must be an array' });
+  }
+  const ids = new Set<string>();
+  return data.map((member): CraftAccessMember => {
+    if (typeof member !== 'object' || member === null || Array.isArray(member)) {
+      throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Craft access member must be an object' });
+    }
+    const row = member as Record<string, unknown>;
+    if (typeof row.user_id !== 'string' || row.user_id.trim() === '' ||
+      (row.role !== 'owner' && row.role !== 'collaborator' && row.role !== 'viewer') || ids.has(row.user_id)) {
+      throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Craft access member has an invalid identity or role' });
+    }
+    ids.add(row.user_id);
+    return { user_id: row.user_id, role: row.role };
+  });
+}
+
+function requireCraftActionSuccess(value: unknown, label: string): void {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value) && (value as Record<string, unknown>).success === true) return;
+  unwrap(value, label); // Throws the server's structured error; successful actions need no data member.
+  throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Craft ' + label + ' response was invalid' });
 }
 
 /**
@@ -124,6 +163,32 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
         signal,
       }), 'workspace view'));
     },
+    /** GET /sessions/:id/craft/access — role and members from the Task ACL. */
+    async accessMembers(sessionId: string, signal?: AbortSignal): Promise<CraftAccessMember[]> {
+      return parseCraftAccessMembers(await request({
+        method: 'GET',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/access',
+        signal,
+      }));
+    },
+    /** POST /sessions/:id/craft/access — owner-only on the server. */
+    async grantAccess(sessionId: string, userId: string, role: CraftGrantableAccessRole, signal?: AbortSignal): Promise<void> {
+      requireCraftActionSuccess(await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/access',
+        body: { user_id: userId, role },
+        signal,
+      }), 'access grant');
+    },
+    /** POST /sessions/:id/craft/access/revoke — owner-only on the server. */
+    async revokeAccess(sessionId: string, userId: string, signal?: AbortSignal): Promise<void> {
+      requireCraftActionSuccess(await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/access/revoke',
+        body: { user_id: userId },
+        signal,
+      }), 'access revoke');
+    },
     async addInput(sessionId: string, input: CraftAddInputInput, signal?: AbortSignal): Promise<CraftInputView> {
       return parseCraftInputView(unwrap(await request({
         method: 'POST',
@@ -131,6 +196,28 @@ export function createCraftApi(request: (input: ClientRequest) => Promise<unknow
         body: { resource_ref: input.resource_ref, expected_sha256: input.expected_sha256 },
         signal,
       }), 'input'));
+    },
+    /** POST /craft/inputs/decision — decision is bound to the exact accepted input ref. */
+    async decideInput(
+      sessionId: string,
+      ref: string,
+      action: CraftInputDecisionAction,
+      signal?: AbortSignal,
+    ): Promise<CraftInputDecisionAcknowledgement> {
+      const data = unwrap(await request({
+        method: 'POST',
+        path: '/api/v1/sessions/' + encodeURIComponent(sessionId) + '/craft/inputs/decision',
+        body: { ref, action },
+        signal,
+      }), 'input decision');
+      if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Craft input decision acknowledgement must be an object' });
+      }
+      const acknowledgement = data as Record<string, unknown>;
+      if (acknowledgement.ref !== ref || acknowledgement.action !== action) {
+        throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Craft input decision acknowledgement did not match the requested input and action' });
+      }
+      return { ref, action };
     },
     /** POST /runs — retries must reuse the same request_id (the server replays admission). */
     async submit(sessionId: string, input: CraftSubmitRunInput, signal?: AbortSignal): Promise<CraftRunView> {

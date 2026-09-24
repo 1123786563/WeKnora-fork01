@@ -84,6 +84,14 @@ func validateDelegateTask(task craft.Task) error {
 	if task.RequestHash == "" {
 		return fmt.Errorf("%w: delegation requires a request hash", craft.ErrInvalidInput)
 	}
+	if task.SnapshotDigestVersion != 1 || len(task.SnapshotDigest) != 64 ||
+		task.Fence.SnapshotDigestVersion != task.SnapshotDigestVersion || task.Fence.SnapshotDigest != task.SnapshotDigest {
+		return fmt.Errorf("%w: delegation requires a known admitted snapshot identity", craft.ErrInvalidInput)
+	}
+	decoded, err := hex.DecodeString(task.SnapshotDigest)
+	if err != nil || hex.EncodeToString(decoded) != task.SnapshotDigest {
+		return fmt.Errorf("%w: invalid admitted snapshot identity", craft.ErrInvalidInput)
+	}
 	return nil
 }
 

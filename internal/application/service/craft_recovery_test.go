@@ -358,10 +358,14 @@ func newCraftRecoveryRealHarness(t *testing.T, digest string) *craftRecoveryReal
 	require.NoError(t, err)
 	promptID, err := opencode.NewMessageID()
 	require.NoError(t, err)
+	fenceA.SnapshotDigestVersion = 1
+	fenceA.SnapshotDigest = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 	task := craft.Task{
 		ID: "dlg_craft_rec_1", ToolCallID: "call-c-1", Prompt: "goal: recover the round",
 		RequestHash: "rh-1", Scope: scope, Fence: fenceA, WorkspaceID: workspace.ID,
-		PromptMessageID: promptID, Deadline: time.Now().Add(5 * time.Minute),
+		SnapshotDigestVersion: 1,
+		SnapshotDigest:        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+		PromptMessageID:       promptID, Deadline: time.Now().Add(5 * time.Minute),
 	}
 	_, err = craftStore.PrepareTask(context.Background(), task)
 	require.NoError(t, err)
@@ -541,6 +545,8 @@ func TestCraftRecoveryManualRetryUsesDecisionWithoutResubmission(t *testing.T) {
 	delegate := NewCraftDelegateService(h.craftStore, after)
 	retriedTask := h.task
 	retriedTask.Fence = nextFence
+	retriedTask.Fence.SnapshotDigestVersion = retriedTask.SnapshotDigestVersion
+	retriedTask.Fence.SnapshotDigest = retriedTask.SnapshotDigest
 	result, err := delegate.Delegate(context.Background(), retriedTask)
 	require.NoError(t, err)
 	require.Equal(t, "succeeded", result.Status)

@@ -105,6 +105,13 @@ type CraftSessionConfig struct {
 	// ActiveRuns is the R05 production active-run query, used as the
 	// database-side belt before admission's slot reservation decides.
 	ActiveRuns CraftRunActivity
+	// Access authorizes each current Craft Task read/write using the caller's
+	// active membership incarnation and explicit Task grant.
+	Access craft.TaskAccessChecker
+	// TaskList is the bounded owner-and-grant query for the dedicated Craft
+	// list. It stays separate from the per-Task checker because list access is
+	// a paginated collection query.
+	TaskList CraftTaskListQuery
 	// TemporaryDocs resolves uploads completed through the existing session
 	// attachment entrance.
 	TemporaryDocs interfaces.TemporaryDocumentService
@@ -126,6 +133,8 @@ type CraftSessionService struct {
 	versions      craft.VersionStore
 	runs          *AgentRunService
 	activeRuns    CraftRunActivity
+	access        craft.TaskAccessChecker
+	taskList      CraftTaskListQuery
 	temporaryDocs interfaces.TemporaryDocumentService
 	files         interfaces.FileService
 	models        interfaces.ModelService
@@ -146,8 +155,9 @@ func NewCraftSessionService(cfg CraftSessionConfig) (*CraftSessionService, error
 	}
 	return &CraftSessionService{
 		db: cfg.DB, sessions: cfg.Sessions, store: cfg.Store, versions: cfg.Versions,
-		runs: cfg.Runs, activeRuns: cfg.ActiveRuns, temporaryDocs: cfg.TemporaryDocs,
-		files: cfg.Files, models: cfg.Models, gate: cfg.Gate, now: now,
+		runs: cfg.Runs, activeRuns: cfg.ActiveRuns, access: cfg.Access, taskList: cfg.TaskList,
+		temporaryDocs: cfg.TemporaryDocs,
+		files:         cfg.Files, models: cfg.Models, gate: cfg.Gate, now: now,
 	}, nil
 }
 
@@ -166,32 +176,43 @@ type craftSessionRow struct {
 func (craftSessionRow) TableName() string { return "craft_sessions" }
 
 type craftSessionRequestRow struct {
-	TenantID    uint64    `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
-	UserID      string    `gorm:"column:user_id;primaryKey"`
-	Purpose     string    `gorm:"column:purpose;primaryKey"`
-	RequestID   string    `gorm:"column:request_id;primaryKey"`
-	RequestHash string    `gorm:"column:request_hash"`
-	SessionID   string    `gorm:"column:session_id"`
-	CreatedAt   time.Time `gorm:"column:created_at"`
+	TenantID       uint64     `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
+	UserID         string     `gorm:"column:user_id;primaryKey"`
+	Purpose        string     `gorm:"column:purpose;primaryKey"`
+	RequestID      string     `gorm:"column:request_id;primaryKey"`
+	RequestHash    string     `gorm:"column:request_hash"`
+	SessionID      string     `gorm:"column:session_id"`
+	AdmissionRunID string     `gorm:"column:admission_run_id"`
+	AdmissionToken string     `gorm:"column:admission_token"`
+	AdmissionState string     `gorm:"column:admission_state"`
+	LeaseExpiresAt *time.Time `gorm:"column:lease_expires_at"`
+	CreatedAt      time.Time  `gorm:"column:created_at"`
 }
 
 func (craftSessionRequestRow) TableName() string { return "craft_session_requests" }
 
 type craftWorkspaceInputRow struct {
-	WorkspaceID string    `gorm:"column:workspace_id;primaryKey"`
-	TenantID    uint64    `gorm:"column:tenant_id"`
-	Ref         string    `gorm:"column:ref"`
-	Name        string    `gorm:"column:name"`
-	SHA256      string    `gorm:"column:sha256"`
-	Bytes       int64     `gorm:"column:bytes"`
-	CitationID  string    `gorm:"column:citation_id"`
-	CreatedAt   time.Time `gorm:"column:created_at"`
+	WorkspaceID           string    `gorm:"column:workspace_id;primaryKey"`
+	TenantID              uint64    `gorm:"column:tenant_id"`
+	Ref                   string    `gorm:"column:ref"`
+	Name                  string    `gorm:"column:name"`
+	SHA256                string    `gorm:"column:sha256"`
+	Bytes                 int64     `gorm:"column:bytes"`
+	CitationID            string    `gorm:"column:citation_id"`
+	RecognitionAccepted   *bool     `gorm:"column:recognition_accepted"`
+	RecognitionUnderstood *bool     `gorm:"column:recognition_understood"`
+	RecognitionReason     *string   `gorm:"column:recognition_reason"`
+	CreatedAt             time.Time `gorm:"column:created_at"`
 }
 
 func (craftWorkspaceInputRow) TableName() string { return "craft_workspace_inputs" }
 
 func (r craftWorkspaceInputRow) input() craft.Input {
-	return craft.Input{Ref: r.Ref, Name: r.Name, SHA256: r.SHA256, Bytes: r.Bytes, CitationID: r.CitationID}
+	in := craft.Input{Ref: r.Ref, Name: r.Name, SHA256: r.SHA256, Bytes: r.Bytes, CitationID: r.CitationID}
+	if r.RecognitionAccepted != nil && r.RecognitionUnderstood != nil && r.RecognitionReason != nil {
+		in.Recognition = &craft.InputRecognition{Accepted: *r.RecognitionAccepted, Understood: *r.RecognitionUnderstood, Reason: *r.RecognitionReason}
+	}
+	return in
 }
 
 // -----------------------------------------------------------------------------
@@ -212,11 +233,18 @@ func (s *CraftSessionService) readSession(ctx context.Context, scope craft.Scope
 	if scope.TenantID == 0 || scope.UserID == "" || sessionID == "" {
 		return nil, fmt.Errorf("%w: incomplete craft scope", craft.ErrInvalidInput)
 	}
-	session, err := s.sessions.GetSession(ctx, sessionID)
-	if err != nil || session == nil {
-		return nil, craft.ErrNotFound
+	taskScope := scope
+	taskScope.SessionID = sessionID
+	if s.access != nil {
+		if err := craft.RequireTaskAccess(ctx, s.access, taskScope, craft.TaskRead); err != nil {
+			return nil, err
+		}
+		return s.loadCraftTaskSession(ctx, taskScope)
 	}
-	if session.TenantID != scope.TenantID {
+	// Legacy/test assemblies without T08 can only use the strict owner path.
+	// Never inherit SessionService's tenant-Admin fallback for Craft content.
+	session, err := s.sessions.GetOwnedSession(ctx, sessionID)
+	if err != nil || session == nil || session.TenantID != scope.TenantID || session.UserID != scope.UserID {
 		return nil, craft.ErrNotFound
 	}
 	return session, nil
@@ -230,14 +258,24 @@ func (s *CraftSessionService) writeSession(ctx context.Context, scope craft.Scop
 	if scope.TenantID == 0 || scope.UserID == "" || sessionID == "" {
 		return nil, fmt.Errorf("%w: incomplete craft scope", craft.ErrInvalidInput)
 	}
-	if readable, rerr := s.readSession(ctx, scope, sessionID); rerr == nil && readable.UserID != scope.UserID {
-		return nil, fmt.Errorf("%w: session %s belongs to %s", craft.ErrForbidden, sessionID, readable.UserID)
+	taskScope := scope
+	taskScope.SessionID = sessionID
+	var session *types.Session
+	var err error
+	if s.access != nil {
+		if err := craft.RequireTaskAccess(ctx, s.access, taskScope, craft.TaskWrite); err != nil {
+			return nil, err
+		}
+		session, err = s.loadCraftTaskSession(ctx, taskScope)
+	} else {
+		// Without the ACL assembly, keep only the pre-existing owner behavior;
+		// a tenant Admin or unverified collaborator never inherits write access.
+		session, err = s.sessions.GetOwnedSession(ctx, sessionID)
 	}
-	session, err := s.sessions.GetOwnedSession(ctx, sessionID)
 	if err != nil || session == nil {
 		return nil, craft.ErrNotFound
 	}
-	if session.TenantID != scope.TenantID || session.UserID != scope.UserID {
+	if session.TenantID != scope.TenantID || s.access == nil && session.UserID != scope.UserID {
 		return nil, craft.ErrNotFound
 	}
 	if session.EngineType != string(types.AgentEngineTRPC) {
@@ -245,6 +283,23 @@ func (s *CraftSessionService) writeSession(ctx context.Context, scope craft.Scop
 			craft.ErrConflict, sessionID, session.EngineType)
 	}
 	return session, nil
+}
+
+// loadCraftTaskSession resolves storage ownership only after the caller's
+// current Task role has been checked. The caller scope remains distinct from
+// ownerScopeOf(session), which is used for workspace/version persistence.
+func (s *CraftSessionService) loadCraftTaskSession(ctx context.Context, scope craft.Scope) (*types.Session, error) {
+	var session types.Session
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ? AND deleted_at IS NULL", scope.TenantID, scope.SessionID).
+		Take(&session).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, craft.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
 }
 
 // craftRow returns the craft registration of a session in the caller's tenant.
@@ -447,8 +502,8 @@ type CraftSessionSummary struct {
 	UpdatedAt   time.Time
 }
 
-// List returns the caller's craft sessions newest-first with an opaque
-// updated_at+id cursor, following the existing per-user session list scope.
+// List returns the caller's owned and currently granted Craft sessions
+// newest-first with an opaque updated_at+id cursor.
 func (s *CraftSessionService) List(ctx context.Context, scope craft.Scope, cursor string, limit int) ([]CraftSessionSummary, string, error) {
 	if limit <= 0 {
 		limit = 20
@@ -461,27 +516,46 @@ func (s *CraftSessionService) List(ctx context.Context, scope craft.Scope, curso
 		return nil, "", err
 	}
 
-	type listRow struct {
-		SessionID   string    `gorm:"column:session_id"`
-		WorkspaceID string    `gorm:"column:workspace_id"`
-		Kind        string    `gorm:"column:kind"`
-		Title       string    `gorm:"column:title"`
-		UpdatedAt   time.Time `gorm:"column:updated_at"`
+	var rows []CraftSessionSummary
+	if s.taskList != nil {
+		rows, err = s.taskList.ListAccessibleCraftSessions(ctx, scope.TenantID, scope.UserID, afterTime, afterID, limit+1)
+	} else if s.access != nil {
+		return nil, "", craft.ErrForbidden
+	} else {
+		// Compatibility for owner-only assemblies: no shared Task IDs are
+		// materialized or inferred when the list-query port is unavailable.
+		type listRow struct {
+			SessionID   string    `gorm:"column:session_id"`
+			WorkspaceID string    `gorm:"column:workspace_id"`
+			Kind        string    `gorm:"column:kind"`
+			Title       string    `gorm:"column:title"`
+			UpdatedAt   time.Time `gorm:"column:updated_at"`
+		}
+		query := s.db.WithContext(ctx).Table("craft_sessions").
+			Select("craft_sessions.session_id, craft_sessions.kind, sessions.title, sessions.updated_at, craft_workspaces.id AS workspace_id").
+			Joins("JOIN sessions ON sessions.id = craft_sessions.session_id AND sessions.tenant_id = craft_sessions.tenant_id").
+			Joins("LEFT JOIN craft_workspaces ON craft_workspaces.tenant_id = craft_sessions.tenant_id AND craft_workspaces.session_id = craft_sessions.session_id").
+			Where("craft_sessions.tenant_id = ? AND sessions.user_id = ? AND sessions.deleted_at IS NULL",
+				scope.TenantID, scope.UserID).
+			Order("sessions.updated_at DESC, sessions.id DESC").
+			Limit(limit + 1)
+		if afterTime != nil {
+			query = query.Where("(sessions.updated_at < ? OR (sessions.updated_at = ? AND sessions.id < ?))",
+				*afterTime, *afterTime, afterID)
+		}
+		var ownRows []listRow
+		if err := query.Find(&ownRows).Error; err != nil {
+			return nil, "", err
+		}
+		rows = make([]CraftSessionSummary, 0, len(ownRows))
+		for _, row := range ownRows {
+			rows = append(rows, CraftSessionSummary{
+				SessionID: row.SessionID, WorkspaceID: row.WorkspaceID, Kind: row.Kind,
+				Title: row.Title, EngineType: string(types.AgentEngineTRPC), UpdatedAt: row.UpdatedAt,
+			})
+		}
 	}
-	query := s.db.WithContext(ctx).Table("craft_sessions").
-		Select("craft_sessions.session_id, craft_sessions.kind, sessions.title, sessions.updated_at, craft_workspaces.id AS workspace_id").
-		Joins("JOIN sessions ON sessions.id = craft_sessions.session_id AND sessions.tenant_id = craft_sessions.tenant_id").
-		Joins("LEFT JOIN craft_workspaces ON craft_workspaces.tenant_id = craft_sessions.tenant_id AND craft_workspaces.session_id = craft_sessions.session_id").
-		Where("craft_sessions.tenant_id = ? AND sessions.user_id = ? AND sessions.deleted_at IS NULL",
-			scope.TenantID, scope.UserID).
-		Order("sessions.updated_at DESC, sessions.id DESC").
-		Limit(limit + 1)
-	if afterTime != nil {
-		query = query.Where("(sessions.updated_at < ? OR (sessions.updated_at = ? AND sessions.id < ?))",
-			*afterTime, *afterTime, afterID)
-	}
-	var rows []listRow
-	if err := query.Find(&rows).Error; err != nil {
+	if err != nil {
 		return nil, "", err
 	}
 	next := ""
@@ -490,14 +564,7 @@ func (s *CraftSessionService) List(ctx context.Context, scope craft.Scope, curso
 		last := rows[len(rows)-1]
 		next = encodeCraftCursor(last.UpdatedAt, last.SessionID)
 	}
-	out := make([]CraftSessionSummary, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, CraftSessionSummary{
-			SessionID: row.SessionID, WorkspaceID: row.WorkspaceID, Kind: row.Kind,
-			Title: row.Title, EngineType: string(types.AgentEngineTRPC), UpdatedAt: row.UpdatedAt,
-		})
-	}
-	return out, next, nil
+	return rows, next, nil
 }
 
 func encodeCraftCursor(updatedAt time.Time, sessionID string) string {
@@ -606,6 +673,11 @@ func (s *CraftSessionService) AssociateInput(
 		Ref: document.ResourceRef, Name: document.FileName, SHA256: digest,
 		Bytes: document.FileSize, CitationID: document.ID, CreatedAt: s.now(),
 	}
+	recognition := recognizeCraftInput(document.FileName, content)
+	accepted, understood, reason := true, recognition.Understood, recognition.Reason
+	row.RecognitionAccepted = &accepted
+	row.RecognitionUnderstood = &understood
+	row.RecognitionReason = &reason
 	created := s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
 	if created.Error != nil {
 		return craft.Input{}, created.Error
@@ -695,6 +767,14 @@ func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, r
 	if err := req.Validate(); err != nil {
 		return agentruntime.Run{}, err
 	}
+	if req.BaseVersionID != "" {
+		return agentruntime.Run{}, fmt.Errorf("%w: historical Artifact Versions cannot be used as Craft edit seeds", craft.ErrUnsupported)
+	}
+	caller := types.CallerFromContext(ctx)
+	if caller.TenantID != scope.TenantID || caller.UserID == "" || caller.UserID != scope.UserID {
+		return agentruntime.Run{}, craft.ErrForbidden
+	}
+	actorUserID := caller.UserID
 	if !s.gate.Enabled {
 		return agentruntime.Run{}, fmt.Errorf("%w: craft is not enabled on this deployment", craft.ErrUnsupported)
 	}
@@ -716,20 +796,17 @@ func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, r
 	if err != nil {
 		return agentruntime.Run{}, err
 	}
-	if base := strings.TrimSpace(req.BaseVersionID); base != "" {
-		if _, err := s.versions.Get(ctx, owner, base); err != nil {
-			return agentruntime.Run{}, err
-		}
-	}
-
 	requestID := "craft-" + strings.TrimSpace(req.RequestID)
 
 	// Live-run guard (belt) for genuinely fresh keys only: when this key
 	// already has an admission, Submit replays it below and must not be
 	// blocked by the slot another run holds. Admission's slot reservation
 	// remains the arbiter for fresh admissions.
-	var priorRun struct{ RunID string }
-	priorErr := s.db.WithContext(ctx).Table("agent_runs").Select("run_id").
+	var priorRun struct {
+		RunID       string
+		ActorUserID string
+	}
+	priorErr := s.db.WithContext(ctx).Table("agent_runs").Select("run_id, actor_user_id").
 		Where("tenant_id = ? AND owner_id = ? AND request_id = ?", session.TenantID, session.UserID, requestID).
 		Take(&priorRun).Error
 	if errors.Is(priorErr, gorm.ErrRecordNotFound) {
@@ -741,6 +818,10 @@ func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, r
 		}
 	} else if priorErr != nil {
 		return agentruntime.Run{}, priorErr
+	} else if priorRun.ActorUserID == "" || priorRun.ActorUserID != actorUserID {
+		// Reject a cross-actor same-key replay before touching any T01 input
+		// decision/admission claim; the owner remains only the storage key.
+		return agentruntime.Run{}, craft.ErrConflict
 	}
 
 	modelID, err := s.craftChatModelID(ctx)
@@ -753,6 +834,9 @@ func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, r
 	}
 
 	runID := uuid.NewString()
+	if priorErr == nil {
+		runID = priorRun.RunID
+	}
 	assistantID := craftDeterministicUUID("assistant", session.TenantID, session.UserID, requestID)
 	userMessageID := craftDeterministicUUID("user", session.TenantID, session.UserID, requestID)
 	digest := sha256.Sum256(append(append([]byte(nil), snapshot...), []byte(assistantID)...))
@@ -764,10 +848,15 @@ func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, r
 	if err != nil {
 		return agentruntime.Run{}, err
 	}
+	inputClaims, runID, err := s.claimInputDecisions(ctx, session, authorized, requestID, runID, actorUserID)
+	if err != nil {
+		return agentruntime.Run{}, err
+	}
 	run, err := s.runs.Submit(ctx, agentruntime.Admission{
 		Key:                agentruntime.RunKey{TenantID: session.TenantID, RunID: runID},
 		SessionID:          session.ID,
 		UserID:             session.UserID,
+		ActorUserID:        actorUserID,
 		UserMessageID:      userMessageID,
 		RequestID:          requestID,
 		AssistantMessageID: assistantID,
@@ -776,8 +865,12 @@ func (s *CraftSessionService) StartRun(ctx context.Context, scope craft.Scope, r
 		UserMessage:        user,
 		AssistantMessage:   assistant,
 		Deadline:           s.now().Add(30 * time.Minute),
+		InputClaims:        inputClaims,
 	})
 	if err != nil {
+		// Keep the durable claim until lease recovery. A local error cannot
+		// prove Submit did not commit on another connection; clearing it here
+		// could reopen a decision while a Run is already durable.
 		if errors.Is(err, agentruntime.ErrRunActive) {
 			if conflict := s.activeRunConflict(ctx, session); conflict != nil {
 				return agentruntime.Run{}, conflict
@@ -863,8 +956,8 @@ func (s *CraftSessionService) craftChatModelID(ctx context.Context) (string, err
 	return "", fmt.Errorf("%w: no chat model is configured for craft runs", craft.ErrUnsupported)
 }
 
-// craftRunSnapshot freezes the run's request identity: the prompt, the
-// authorized input manifest and the base version, plus the agent config whose
+// craftRunSnapshot freezes the run's request identity: the prompt and the
+// authorized input manifest, plus the agent config whose
 // tool whitelist opens craft_delegate for the craft session. The whitelist is
 // server-assembled; the client never supplies tool or model identity.
 func craftRunSnapshot(req CraftRunRequest, inputs []craft.Input, modelID string) ([]byte, error) {
@@ -880,10 +973,6 @@ func craftRunSnapshot(req CraftRunRequest, inputs []craft.Input, modelID string)
 			fmt.Fprintf(&query, "\n- %s（%d 字节，引用 %s）", path, in.Bytes, in.Ref)
 		}
 	}
-	if base := strings.TrimSpace(req.BaseVersionID); base != "" {
-		fmt.Fprintf(&query, "\n\n[基线版本] %s", base)
-	}
-
 	allowed := tools.DefaultAllowedTools()
 	allowed = append(allowed, "craft_delegate")
 	config := &types.AgentConfig{
@@ -892,7 +981,17 @@ func craftRunSnapshot(req CraftRunRequest, inputs []craft.Input, modelID string)
 		HistoryTurns:     5,
 		AllowedTools:     allowed,
 	}
-	return BuildDurableRunSnapshot(query.String(), nil, modelID, "", config)
+	knowledgeBaseIDs := []string{}
+	if req.KnowledgeScope != "" {
+		canonical, err := canonicalCraftKnowledgeBaseIDs([]string{req.KnowledgeScope})
+		if err != nil {
+			return nil, fmt.Errorf("invalid Craft knowledge scope: %w", err)
+		}
+		knowledgeBaseIDs = canonical
+	}
+	queryText := query.String()
+	selection := CraftKnowledgeSelectionSnapshot{Query: req.Prompt, KnowledgeBaseIDs: knowledgeBaseIDs}
+	return BuildDurableCraftRunSnapshotWithKnowledgeSelection(queryText, nil, modelID, "", config, inputs, selection)
 }
 
 // craftDeterministicUUID derives a stable uuid-shaped identity so retried

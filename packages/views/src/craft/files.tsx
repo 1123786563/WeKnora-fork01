@@ -8,7 +8,7 @@
 // explicit "—"), and every Check with its recorded status. "Continue from this
 // version" is deliberately absent: restore lands with C05.
 import React from 'react';
-import type { CraftVersionView } from '@weknora/contracts';
+import type { CraftInputView, CraftVersionView } from '@weknora/contracts';
 import { Button } from '@weknora/ui';
 import { craftStrings, downloadFileName, formatBytes, historyRows, type CraftLocale } from './presentation.ts';
 
@@ -113,4 +113,50 @@ export function CraftFiles(props: CraftFilesProps) {
       )}
     </div>
   );
+}
+
+export interface CraftInputDecisionPanelProps {
+  locale: CraftLocale;
+  inputs: readonly CraftInputView[];
+  /** Resolves only after the server has persisted the decision. */
+  onDecide(ref: string, action: 'continue' | 'cancel'): Promise<void>;
+}
+
+// The warning describes the two separate facts the API provides. The buttons
+// send a decision only; Run admission stays on the server and must validate
+// that its matching continue decision was durably acknowledged.
+export function CraftInputDecisionPanel(props: CraftInputDecisionPanelProps) {
+  const [pending, setPending] = React.useState<string | null>(null);
+  const [decided, setDecided] = React.useState<Record<string, 'continue' | 'cancel'>>({});
+  const [error, setError] = React.useState<string | null>(null);
+  const zh = props.locale === 'zh';
+  const opaque = props.inputs.filter((input) => input.recognition?.accepted && !input.recognition.understood);
+  if (opaque.length === 0) return null;
+  const decide = async (ref: string, action: 'continue' | 'cancel') => {
+    setPending(ref);
+    setError(null);
+    try {
+      await props.onDecide(ref, action);
+      setDecided((prior) => ({ ...prior, [ref]: action }));
+    } catch {
+      setError(zh ? '无法记录决定，请重试' : 'Could not record decision. Try again.');
+    } finally {
+      setPending(null);
+    }
+  };
+  return <section aria-label={zh ? '未识别的输入材料' : 'Unrecognized input materials'}>
+    <h3>{zh ? '未识别的输入材料' : 'Unrecognized input materials'}</h3>
+    {opaque.map((input) => <div key={input.ref}>
+      <strong>{input.name}</strong>{' '}
+      <span>{zh ? '已接收，但尚未理解内容' : 'Accepted, but content was not understood'}</span>
+      <code> {input.ref}</code>
+      {decided[input.ref] ? <p>{decided[input.ref] === 'continue'
+        ? (zh ? '已确认继续' : 'Continue acknowledged')
+        : (zh ? '已取消' : 'Cancelled')}</p> : <>
+        <button type="button" disabled={pending !== null} onClick={() => void decide(input.ref, 'continue')}>{zh ? '继续' : 'Continue'}</button>
+        <button type="button" disabled={pending !== null} onClick={() => void decide(input.ref, 'cancel')}>{zh ? '取消' : 'Cancel'}</button>
+      </>}
+    </div>)}
+    {error ? <p role="alert">{error}</p> : null}
+  </section>;
 }

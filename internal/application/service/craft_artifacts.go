@@ -1,13 +1,10 @@
-// Package service - Craft immutable artifact versions (W01).
+// Package service - Craft artifact collection and private Run candidates.
 //
-// CraftArtifactService turns one finished delegation's workspace output into
-// an immutable craft.Version: files are read from the sandbox output the
-// session is bound to, validated against the collection rules, uploaded
-// through the same resource storage the tenant already uses, and only then
-// published through craft.VersionStore in a single transaction. Identity
-// follows content (path + SHA-256 + size, sorted by path), never path+mtime,
-// so a rewrite under an unchanged mtime still produces a new version and old
-// versions keep serving their pinned bytes forever.
+// Legacy callers may still publish a finished delegation's output as an
+// immutable craft.Version. RunView callers instead pass a per-Run source and
+// persist a private candidate, without touching VersionStore. Both routes
+// share bounded path/list/read/manifest validation and upload content-addressed
+// bytes before creating a durable row.
 package service
 
 import (
@@ -82,11 +79,21 @@ type ArtifactEvidenceSource func(ctx context.Context, task craft.Task) craft.Art
 // CraftArtifactService collects one delegation's workspace output into an
 // immutable, run-linked version.
 type CraftArtifactService struct {
-	source   SandboxArtifactSource
-	files    interfaces.FileService
-	versions craft.VersionStore
-	evidence ArtifactEvidenceSource
-	config   CraftArtifactConfig
+	source     SandboxArtifactSource
+	files      interfaces.FileService
+	versions   craft.VersionStore
+	candidates craft.CandidateStore
+	evidence   ArtifactEvidenceSource
+	config     CraftArtifactConfig
+}
+
+// RunBoundSandboxArtifactSource identifies the verified generation it reads.
+// Task and generation identity are constructed by the server-side source
+// factory; callers must not supply values derived from client/model input.
+type RunBoundSandboxArtifactSource interface {
+	SandboxArtifactSource
+	CraftArtifactRunID() string
+	CraftArtifactGeneration() string
 }
 
 // NewCraftArtifactService assembles the artifact service from the
@@ -109,6 +116,24 @@ func NewCraftArtifactService(
 		evidence: evidence,
 		config:   config.withDefaults(),
 	}
+}
+
+// NewCraftArtifactServiceWithCandidates adds the private candidate writer
+// while retaining the legacy VersionStore route for CollectForKind callers.
+func NewCraftArtifactServiceWithCandidates(
+	source SandboxArtifactSource,
+	files interfaces.FileService,
+	versions craft.VersionStore,
+	candidates craft.CandidateStore,
+	evidence ArtifactEvidenceSource,
+	config CraftArtifactConfig,
+) *CraftArtifactService {
+	if candidates == nil {
+		panic("craft: NewCraftArtifactServiceWithCandidates requires a candidate store")
+	}
+	s := NewCraftArtifactService(source, files, versions, evidence, config)
+	s.candidates = candidates
+	return s
 }
 
 // stagedArtifact is one accepted output file with its bytes in memory,
@@ -157,77 +182,9 @@ func (s *CraftArtifactService) CollectForKind(ctx context.Context, task craft.Ta
 		return craft.Version{}, fmt.Errorf("%w: incomplete delegation request", craft.ErrInvalidInput)
 	}
 
-	entries, err := s.source.ListSessionFiles(ctx, task.Scope.SessionID, s.config.OutputDir)
+	files, err := s.stageAndUpload(ctx, task, kind, s.source)
 	if err != nil {
-		return craft.Version{}, fmt.Errorf("craft: list workspace output: %w", err)
-	}
-
-	staged := make([]stagedArtifact, 0, len(entries))
-	var total int64
-	for _, entry := range entries {
-		switch entry.Type {
-		case sandbox.RemoteEntryDir:
-			continue // directory structure, not content
-		case sandbox.RemoteEntryFile:
-		default:
-			// Symlinks and devices: the collector cannot verify where they
-			// point, so the round fails closed instead of following them.
-			return craft.Version{}, fmt.Errorf("%w: output entry %q is not a regular file",
-				craft.ErrInvalidInput, entry.Path)
-		}
-		rel, err := craft.ArtifactRelativePath(s.config.OutputDir, entry.Path)
-		if err != nil {
-			return craft.Version{}, err
-		}
-		if entry.Size > s.config.MaxFileBytes {
-			return craft.Version{}, fmt.Errorf("%w: artifact %q lists %d bytes over the %d cap",
-				craft.ErrInvalidInput, rel, entry.Size, s.config.MaxFileBytes)
-		}
-		data, err := s.source.ReadSessionFile(ctx, task.Scope.SessionID, entry.Path)
-		if err != nil {
-			return craft.Version{}, fmt.Errorf("craft: read artifact %q: %w", rel, err)
-		}
-		if int64(len(data)) > s.config.MaxFileBytes {
-			return craft.Version{}, fmt.Errorf("%w: artifact %q read %d bytes over the %d cap",
-				craft.ErrInvalidInput, rel, len(data), s.config.MaxFileBytes)
-		}
-		total += int64(len(data))
-		if total > s.config.MaxTotalBytes {
-			return craft.Version{}, fmt.Errorf("%w: round read %d bytes over the %d total cap",
-				craft.ErrInvalidInput, total, s.config.MaxTotalBytes)
-		}
-		staged = append(staged, stagedArtifact{rel: rel, data: data})
-	}
-	sort.Slice(staged, func(i, j int) bool { return staged[i].rel < staged[j].rel })
-
-	// Server-side manifest admission (D01/D02/D03 wiring): the kinds whose
-	// skill contract is a manifest.json must carry one, and it must validate
-	// against the kind's own rules — recalc/preview/parse for spreadsheets,
-	// render/pages/sources for slides, generate/modify/preview/export for
-	// documents. The gate fires BEFORE any upload or publish, so a faked or
-	// inconsistent manifest leaves no version visible at all.
-	if err := craftValidateStagedManifest(kind, staged); err != nil {
-		logger.Warnf(ctx, "[CraftArtifact] manifest admission rejected the round: %v", err)
 		return craft.Version{}, err
-	}
-
-	// Upload the complete object set first; the manifest is all-or-nothing.
-	files := make([]craft.File, 0, len(staged))
-	for _, a := range staged {
-		sum := sha256.Sum256(a.data)
-		digest := hex.EncodeToString(sum[:])
-		// Content-addressed storage name: republishing the same bytes lands
-		// on the same object, so retries never duplicate blobs.
-		storageName := "craft_" + digest + "_" + safeFileName(path.Base(a.rel))
-		ref, err := s.files.SaveBytes(ctx, a.data, task.Scope.TenantID, storageName, false)
-		if err != nil {
-			logger.Warnf(ctx, "[CraftArtifact] upload failed for %s: %v (already-uploaded objects stay for O03 deferred reclamation)", a.rel, err)
-			return craft.Version{}, fmt.Errorf("craft: upload artifact %q: %w", a.rel, err)
-		}
-		files = append(files, craft.File{
-			Path: a.rel, Ref: ref, SHA256: digest,
-			MIME: craftArtifactMIME(a.rel), Bytes: int64(len(a.data)),
-		})
 	}
 
 	digest, err := craft.ManifestDigest(files)
@@ -254,6 +211,123 @@ func (s *CraftArtifactService) CollectForKind(ctx context.Context, task craft.Ta
 	logger.Infof(ctx, "[CraftArtifact] published version %s workspace %s run %s files %d",
 		published.ID, task.WorkspaceID, task.Fence.RunID, len(published.Files))
 	return published, nil
+}
+
+// CollectCandidate stages one verified Run's output as a private immutable
+// candidate. The per-call source is checked against both the task Run and the
+// independently supplied server-verified generation before any list/read or
+// upload. This path never calls VersionStore.Publish.
+func (s *CraftArtifactService) CollectCandidate(
+	ctx context.Context,
+	task craft.Task,
+	kind string,
+	source RunBoundSandboxArtifactSource,
+	verifiedGeneration string,
+) (craft.Candidate, error) {
+	if s == nil || s.files == nil || s.candidates == nil {
+		return craft.Candidate{}, fmt.Errorf("%w: private candidate service is not assembled", craft.ErrInvalidInput)
+	}
+	if !craft.KnownKind(kind) {
+		return craft.Candidate{}, fmt.Errorf("%w: unknown artifact kind %q", craft.ErrInvalidInput, kind)
+	}
+	if task.Scope.TenantID == 0 || task.Scope.UserID == "" || task.Scope.SessionID == "" ||
+		task.Fence.TenantID != task.Scope.TenantID || task.Fence.RunID == "" || task.WorkspaceID == "" {
+		return craft.Candidate{}, fmt.Errorf("%w: incomplete Run candidate request", craft.ErrInvalidInput)
+	}
+	if source == nil || strings.TrimSpace(verifiedGeneration) == "" || len(verifiedGeneration) > 128 ||
+		strings.ContainsAny(verifiedGeneration, "\x00\r\n\t ") || source.CraftArtifactRunID() != task.Fence.RunID ||
+		source.CraftArtifactGeneration() != verifiedGeneration {
+		return craft.Candidate{}, fmt.Errorf("%w: artifact source differs from the verified Run generation", craft.ErrConflict)
+	}
+	files, err := s.stageAndUpload(ctx, task, kind, source)
+	if err != nil {
+		return craft.Candidate{}, err
+	}
+	digest, err := craft.ManifestDigest(files)
+	if err != nil {
+		return craft.Candidate{}, err
+	}
+	evidence := craft.ArtifactEvidence{}
+	if s.evidence != nil {
+		evidence = s.evidence(ctx, task)
+	}
+	candidate := craft.Candidate{
+		ID:    craft.CandidateID(task.WorkspaceID, task.Fence.RunID, digest),
+		Scope: task.Scope, WorkspaceID: task.WorkspaceID, RunID: task.Fence.RunID,
+		Generation: verifiedGeneration, Kind: kind, ManifestDigest: digest,
+		Files: files, Evidence: evidence, Checks: craft.BuildChecks(kind, files, evidence),
+	}
+	if err := candidate.Validate(task.Scope); err != nil {
+		return craft.Candidate{}, err
+	}
+	stored, err := s.candidates.PutCandidate(ctx, task.Scope, candidate)
+	if err != nil {
+		logger.Warnf(ctx, "[CraftArtifact] candidate seal failed for run %s: %v (uploaded objects stay for O03 deferred reclamation)", task.Fence.RunID, err)
+		return craft.Candidate{}, err
+	}
+	return stored, nil
+}
+
+// stageAndUpload centralizes the bounded path/list/read/manifest rules shared
+// by legacy publication and private Run candidate staging.
+func (s *CraftArtifactService) stageAndUpload(
+	ctx context.Context,
+	task craft.Task,
+	kind string,
+	source SandboxArtifactSource,
+) ([]craft.File, error) {
+	entries, err := source.ListSessionFiles(ctx, task.Scope.SessionID, s.config.OutputDir)
+	if err != nil {
+		return nil, fmt.Errorf("craft: list workspace output: %w", err)
+	}
+	staged := make([]stagedArtifact, 0, len(entries))
+	var total int64
+	for _, entry := range entries {
+		switch entry.Type {
+		case sandbox.RemoteEntryDir:
+			continue
+		case sandbox.RemoteEntryFile:
+		default:
+			return nil, fmt.Errorf("%w: output entry %q is not a regular file", craft.ErrInvalidInput, entry.Path)
+		}
+		rel, err := craft.ArtifactRelativePath(s.config.OutputDir, entry.Path)
+		if err != nil {
+			return nil, err
+		}
+		if entry.Size > s.config.MaxFileBytes {
+			return nil, fmt.Errorf("%w: artifact %q lists %d bytes over the %d cap", craft.ErrInvalidInput, rel, entry.Size, s.config.MaxFileBytes)
+		}
+		data, err := source.ReadSessionFile(ctx, task.Scope.SessionID, entry.Path)
+		if err != nil {
+			return nil, fmt.Errorf("craft: read artifact %q: %w", rel, err)
+		}
+		if int64(len(data)) > s.config.MaxFileBytes {
+			return nil, fmt.Errorf("%w: artifact %q read %d bytes over the %d cap", craft.ErrInvalidInput, rel, len(data), s.config.MaxFileBytes)
+		}
+		total += int64(len(data))
+		if total > s.config.MaxTotalBytes {
+			return nil, fmt.Errorf("%w: round read %d bytes over the %d total cap", craft.ErrInvalidInput, total, s.config.MaxTotalBytes)
+		}
+		staged = append(staged, stagedArtifact{rel: rel, data: data})
+	}
+	sort.Slice(staged, func(i, j int) bool { return staged[i].rel < staged[j].rel })
+	if err := craftValidateStagedManifest(kind, staged); err != nil {
+		logger.Warnf(ctx, "[CraftArtifact] manifest admission rejected the round: %v", err)
+		return nil, err
+	}
+	files := make([]craft.File, 0, len(staged))
+	for _, a := range staged {
+		sum := sha256.Sum256(a.data)
+		digest := hex.EncodeToString(sum[:])
+		storageName := "craft_" + digest + "_" + safeFileName(path.Base(a.rel))
+		ref, err := s.files.SaveBytes(ctx, a.data, task.Scope.TenantID, storageName, false)
+		if err != nil {
+			logger.Warnf(ctx, "[CraftArtifact] upload failed for %s: %v (already-uploaded objects stay for O03 deferred reclamation)", a.rel, err)
+			return nil, fmt.Errorf("craft: upload artifact %q: %w", a.rel, err)
+		}
+		files = append(files, craft.File{Path: a.rel, Ref: ref, SHA256: digest, MIME: craftArtifactMIME(a.rel), Bytes: int64(len(a.data))})
+	}
+	return files, nil
 }
 
 // craftArtifactMIME reports the MIME type served for one artifact path; the

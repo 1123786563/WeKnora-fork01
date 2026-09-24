@@ -7,7 +7,7 @@ export type { BearerCredential, EmbedCredential, Credential, CredentialAdapter }
 export { createCommercialApi } from './commercial.ts';
 export { createAppConnectorApi } from './appconnector.ts';
 export { createCraftApi, craftDownloadPath } from './craft/index.ts';
-export type { CraftApi, CraftCreateSessionInput, CraftListSessionsParams, CraftAddInputInput, CraftSubmitRunInput } from './craft/index.ts';
+export type { CraftApi, CraftCreateSessionInput, CraftListSessionsParams, CraftAddInputInput, CraftSubmitRunInput, CraftAccessRole, CraftGrantableAccessRole, CraftAccessMember, CraftInputDecisionAction, CraftInputDecisionAcknowledgement } from './craft/index.ts';
 export type { CraftSessionCreatedView, CraftSessionSummaryView, CraftSessionPageView, CraftRunView, CraftVersionView, CraftVersionsPageView, CraftWorkspaceView, CraftInputView, CraftPreviewTicketView, CraftRunEventView, CraftEventPayloadView, CraftSessionKind, CraftEventKind } from '@weknora/contracts';
 export type { ConnectionView, InstallationView, SyncStatusView, SyncBindingView, SyncPauseReason, CreateInstallationInput, UpgradeInstallationInput, CreateConnectionInput } from '@weknora/contracts';
 export type { OrderView, CommercialSummary, QuoteView, QuoteInput, CreateOrderInput, RefundInput, RefundView } from '@weknora/contracts';

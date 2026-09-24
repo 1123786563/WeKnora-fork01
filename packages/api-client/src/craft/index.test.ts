@@ -93,3 +93,78 @@ test('delegationStatus polls the read-only endpoint', async () => {
   const out = await api.delegationStatus('s1', 'run_1', 'dlg_1');
   if (out.phase !== 'canceled') throw new Error('bad phase');
 });
+
+test('access API lists validated roles and posts grants and revocations through authenticated transport', async () => {
+  const calls: ClientRequest[] = [];
+  const signal = new AbortController().signal;
+  const api = createCraftApi(async (input) => {
+    calls.push(input);
+    if (input.method === 'GET') return { success: true, data: [
+      { user_id: 'owner/id', role: 'owner' },
+      { user_id: 'viewer', role: 'viewer' },
+    ] };
+    return { success: true };
+  });
+  assert.deepEqual(await api.accessMembers('session / id', signal), [
+    { user_id: 'owner/id', role: 'owner' },
+    { user_id: 'viewer', role: 'viewer' },
+  ]);
+  await api.grantAccess('session / id', 'new-user', 'collaborator', signal);
+  await api.revokeAccess('session / id', 'viewer', signal);
+  assert.deepEqual(calls.map(({ method, path, body }) => ({ method, path, body })), [
+    { method: 'GET', path: '/api/v1/sessions/session%20%2F%20id/craft/access', body: undefined },
+    { method: 'POST', path: '/api/v1/sessions/session%20%2F%20id/craft/access', body: { user_id: 'new-user', role: 'collaborator' } },
+    { method: 'POST', path: '/api/v1/sessions/session%20%2F%20id/craft/access/revoke', body: { user_id: 'viewer' } },
+  ]);
+  assert.ok(calls.every((call) => call.signal === signal), 'all methods pass the caller cancellation signal');
+});
+
+test('access API rejects malformed members and propagates forbidden and aborted requests', async () => {
+  const malformed = createCraftApi(async () => ({ success: true, data: [{ user_id: 'viewer', role: 'admin' }] }));
+  await assert.rejects(() => malformed.accessMembers('s1'), (error: unknown) => error instanceof ApiError && error.code === 'INVALID_RESPONSE');
+
+  const forbidden = createCraftApi(async () => ({ success: false, error: { code: 'FORBIDDEN', message: 'Task access denied' } }));
+  await assert.rejects(() => forbidden.accessMembers('s1'), (error: unknown) => error instanceof ApiError && error.code === 'FORBIDDEN');
+
+  const controller = new AbortController();
+  controller.abort();
+  const aborted = createCraftApi(async ({ signal }) => {
+    if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    return { success: true, data: [] };
+  });
+  await assert.rejects(() => aborted.accessMembers('s1', controller.signal), (error: unknown) => error instanceof Error && error.name === 'AbortError');
+});
+
+test('input decisions post an exact ref and action and validate the acknowledged envelope', async () => {
+  const calls: ClientRequest[] = [];
+  const signal = new AbortController().signal;
+  const api = createCraftApi(async (input) => {
+    calls.push(input);
+    return { success: true, data: { ref: 'opaque://accepted-1', action: 'continue' } };
+  });
+  assert.deepEqual(await api.decideInput('session / one', 'opaque://accepted-1', 'continue', signal), {
+    ref: 'opaque://accepted-1', action: 'continue',
+  });
+  assert.deepEqual(calls, [{
+    method: 'POST',
+    path: '/api/v1/sessions/session%20%2F%20one/craft/inputs/decision',
+    body: { ref: 'opaque://accepted-1', action: 'continue' },
+    signal,
+  }]);
+});
+
+test('input decision rejects a mismatched acknowledgement and preserves forbidden and abort errors', async () => {
+  const mismatch = createCraftApi(async () => ({ success: true, data: { ref: 'opaque://other', action: 'continue' } }));
+  await assert.rejects(() => mismatch.decideInput('s1', 'opaque://accepted-1', 'continue'), (error: unknown) => error instanceof ApiError && error.code === 'INVALID_RESPONSE');
+
+  const forbidden = createCraftApi(async () => ({ success: false, error: { code: 'FORBIDDEN', message: 'decision denied' } }));
+  await assert.rejects(() => forbidden.decideInput('s1', 'opaque://accepted-1', 'continue'), (error: unknown) => error instanceof ApiError && error.code === 'FORBIDDEN');
+
+  const controller = new AbortController();
+  controller.abort();
+  const aborted = createCraftApi(async ({ signal }) => {
+    if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    return { success: true, data: { ref: 'opaque://accepted-1', action: 'continue' } };
+  });
+  await assert.rejects(() => aborted.decideInput('s1', 'opaque://accepted-1', 'continue', controller.signal), (error: unknown) => error instanceof Error && error.name === 'AbortError');
+});

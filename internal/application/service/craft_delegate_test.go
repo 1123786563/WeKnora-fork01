@@ -190,13 +190,33 @@ func delegateTestScope() craft.Scope {
 func delegateTestTask(goal string) craft.Task {
 	scope := delegateTestScope()
 	return craft.Task{
-		ToolCallID:  "call-1",
-		Prompt:      "build: " + goal,
-		RequestHash: "hash-" + goal,
-		Scope:       scope,
-		Fence:       agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: scope.TenantID, RunID: "run-1"}, Owner: "worker-1", Epoch: 2},
-		WorkspaceID: "ws-7",
-		Deadline:    time.Now().Add(time.Hour),
+		ToolCallID:            "call-1",
+		Prompt:                "build: " + goal,
+		RequestHash:           "hash-" + goal,
+		Scope:                 scope,
+		Fence:                 agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: scope.TenantID, RunID: "run-1"}, Owner: "worker-1", Epoch: 2, SnapshotDigestVersion: 1, SnapshotDigest: strings.Repeat("d", 64)},
+		SnapshotDigestVersion: 1,
+		SnapshotDigest:        strings.Repeat("d", 64),
+		WorkspaceID:           "ws-7",
+		Deadline:              time.Now().Add(time.Hour),
+	}
+}
+
+func TestValidateDelegateTaskRequiresFenceMatchedSnapshotIdentity(t *testing.T) {
+	base := delegateTestTask("identity")
+	if err := validateDelegateTask(base); err != nil {
+		t.Fatalf("valid admitted identity rejected: %v", err)
+	}
+	legacy := base
+	legacy.SnapshotDigestVersion = 0
+	legacy.SnapshotDigest = ""
+	if err := validateDelegateTask(legacy); !errors.Is(err, craft.ErrInvalidInput) {
+		t.Fatalf("legacy task error = %v, want invalid input", err)
+	}
+	changed := base
+	changed.SnapshotDigest = strings.Repeat("e", 64)
+	if err := validateDelegateTask(changed); !errors.Is(err, craft.ErrInvalidInput) {
+		t.Fatalf("mismatched task/fence identity error = %v, want invalid input", err)
 	}
 }
 
@@ -265,7 +285,10 @@ func TestDelegateSettlesDispatchingUnknownByObservationOnly(t *testing.T) {
 
 	// A recovered worker replays the same tool call under a NEW fence.
 	recovered := original
-	recovered.Fence = agentruntime.Fence{RunKey: original.Fence.RunKey, Owner: "worker-2", Epoch: 9}
+	recovered.Fence = agentruntime.Fence{
+		RunKey: original.Fence.RunKey, Owner: "worker-2", Epoch: 9,
+		SnapshotDigestVersion: original.SnapshotDigestVersion, SnapshotDigest: original.SnapshotDigest,
+	}
 	result, err := svc.Delegate(context.Background(), recovered)
 	require.NoError(t, err)
 	require.Equal(t, "succeeded", result.Status, "a completed runtime round settles as succeeded")
@@ -710,11 +733,12 @@ func TestExecuteDurableRunCraftDelegationLoop(t *testing.T) {
 	manager := mcp.NewMCPManager(nil)
 	t.Cleanup(manager.Shutdown)
 	svc := &sessionService{
-		cfg:           nil,
-		messageRepo:   &durableRunMessageRepo{},
-		modelService:  &durableRunModelService{chat: model},
-		agentService:  &agentService{db: db, mcpManager: manager, craft: delegation},
-		memoryService: nil,
+		cfg:             nil,
+		messageRepo:     &durableRunMessageRepo{},
+		modelService:    &durableRunModelService{chat: model},
+		agentService:    &agentService{db: db, mcpManager: manager, craft: delegation},
+		memoryService:   nil,
+		craftTaskAccess: NewCraftAccessService(db),
 	}
 
 	runStore := repository.NewAgentRunStore(db)

@@ -45,6 +45,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/approval"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/experts"
+	agentruntime "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/subagents"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/memory"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/mcp"
@@ -485,6 +486,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// is affected — craft_delegate only opens for tRPC sessions that already
 	// have a bound Craft workspace.
 	must(container.Provide(repository.NewCraftStore))
+	// R5 RunView material assembly is a separate, default-off capability. It
+	// exists for downstream H3 wiring, but no local workDir is ever used as a
+	// material source. Missing deployment pins leave Provider/ResolveMaterial
+	// nil and preserve the unavailable behavior.
+	must(container.Provide(provideCraftRunViewProductionAssembly))
 	// T08 Task ACL is one persistent service instance shared through its
 	// concrete API and the narrow craft.TaskAccessChecker port. Feature
 	// registration is owned by the router assembly that receives this registry.
@@ -1043,6 +1049,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// O03 wiring: the craft tombstone at the session-deletion entrance (the
 	// Handler is fully constructible here — the router below resolves it).
 	must(container.Invoke(registerCraftAccessFeature))
+	must(container.Invoke(registerCraftInputFeature))
 	must(container.Invoke(wireCraftSessionTombstone))
 
 	// Router configuration
@@ -2524,6 +2531,7 @@ func newCraftSessionService(
 	documents interfaces.TemporaryDocumentService,
 	files interfaces.FileService,
 	models interfaces.ModelService,
+	access *service.CraftAccessService,
 	runtime *AgentRuntime,
 ) (*service.CraftSessionService, error) {
 	runs := runtime.Runs
@@ -2534,6 +2542,7 @@ func newCraftSessionService(
 		DB: db, Sessions: sessions, Store: store, Versions: versions,
 		Runs: runs, ActiveRuns: service.CraftActiveRunsQuery(db),
 		TemporaryDocs: documents, Files: files, Models: models,
+		Access: access, TaskList: access,
 		Gate: craftFeatureGateFromEnv(),
 	})
 }
@@ -2545,10 +2554,12 @@ func newCraftPreviewService(
 	versions craft.VersionStore,
 	files interfaces.FileService,
 	checks craft.PreviewCheckStore,
+	access *service.CraftAccessService,
 ) *service.CraftPreviewService {
 	return service.NewCraftPreviewService(versions, files, checks, service.CraftPreviewConfig{
 		AppOrigin:     strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_APP_ORIGIN")),
 		PreviewOrigin: strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_ORIGIN")),
+		AccessChecker: access,
 	})
 }
 
@@ -2649,6 +2660,148 @@ func newCraftKnowledgeService(
 		Search: service.BindCraftKnowledgeSearch(knowledgeBases),
 		Writer: writer,
 	})
+}
+
+type craftRunViewAdmittedRunReader interface {
+	Get(context.Context, agentruntime.RunKey) (agentruntime.Run, error)
+}
+
+// CraftRunViewProductionAssembly is the server-owned RunView dependency set
+// offered to downstream Craft assembly. An unavailable assembly is a normal
+// default-off state; callers must treat nil Provider/ResolveMaterial as a
+// hard refusal and must never substitute the legacy local work directory.
+type CraftRunViewProductionAssembly struct {
+	Provider           *CraftRunViewContainerProvider
+	RuntimeCoordinator *CraftRunViewRuntimeCoordinator
+	Store              craft.RunViewStore
+	ResolveMaterial    func(context.Context, craft.Task) (CraftRunViewMaterialHandle, error)
+	Close              func() error
+	Unavailable        string
+}
+
+const (
+	craftRunViewImageBinarySHA256 = "3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e"
+)
+
+// craftRunViewProductionConfigFromEnv reads only explicit server deployment
+// pins. In particular, it does not infer an image digest from a local image
+// ID or from Docker's RepoDigests.
+func craftRunViewProductionConfigFromEnv() (CraftRunViewContainerProviderConfig, string, bool) {
+	config := CraftRunViewContainerProviderConfig{
+		SandboxRoot:          strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_SANDBOX_ROOT")),
+		ImageReference:       strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_IMAGE_REFERENCE")),
+		ImageDigest:          strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_IMAGE_DIGEST")),
+		OpenCodeBinarySHA256: craftRunViewImageBinarySHA256,
+		RuntimeConfigSHA256:  strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_RUNTIME_CONFIG_SHA256")),
+		OpenCodeVersion:      craftRunViewOpenCodeVersion,
+		ProjectID:            strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_PROJECT_ID")),
+	}
+	endpoint := strings.TrimSpace(os.Getenv("CRAFT_RUNVIEW_DOCKER_ENDPOINT"))
+	complete := config.SandboxRoot != "" && config.ImageReference != "" && config.ImageDigest != "" &&
+		config.RuntimeConfigSHA256 != "" && config.ProjectID != "" && endpoint != ""
+	return config, endpoint, complete
+}
+
+func provideCraftRunViewProductionAssembly(db *gorm.DB, runs *repository.AgentRunStore) *CraftRunViewProductionAssembly {
+	config, endpoint, complete := craftRunViewProductionConfigFromEnv()
+	if !complete {
+		return &CraftRunViewProductionAssembly{Unavailable: "RunView production pins are incomplete"}
+	}
+	engine, err := NewCraftRunViewDockerEngine(endpoint)
+	if err != nil {
+		return &CraftRunViewProductionAssembly{Unavailable: fmt.Sprintf("RunView Docker engine unavailable: %v", err)}
+	}
+	assembly, err := assembleCraftRunViewProduction(config, repository.NewCraftRunViewStore(db), runs, engine)
+	if err != nil {
+		_ = engine.Close()
+		return &CraftRunViewProductionAssembly{Unavailable: fmt.Sprintf("RunView provider unavailable: %v", err)}
+	}
+	assembly.Close = engine.Close
+	return assembly
+}
+
+// assembleCraftRunViewProduction is the testable constructor behind the
+// production DI provider. Its resolver verifies the current durable Run and
+// writer slot before the coordinator can allocate a generation or create a
+// container/session.
+func assembleCraftRunViewProduction(
+	config CraftRunViewContainerProviderConfig,
+	store craft.RunViewStore,
+	runs craftRunViewAdmittedRunReader,
+	engine CraftRunViewContainerEngine,
+) (*CraftRunViewProductionAssembly, error) {
+	return assembleCraftRunViewProductionWithAPI(config, store, runs, engine, newCraftRunViewSessionAPI)
+}
+
+func assembleCraftRunViewProductionWithAPI(
+	config CraftRunViewContainerProviderConfig,
+	store craft.RunViewStore,
+	runs craftRunViewAdmittedRunReader,
+	engine CraftRunViewContainerEngine,
+	apiFactory craftRunViewSessionAPIFactory,
+) (*CraftRunViewProductionAssembly, error) {
+	if store == nil || runs == nil {
+		return nil, unresolvedCraftRunView("RunView store or durable Run reader is missing", nil)
+	}
+	provider, err := newCraftRunViewContainerProvider(config, engine, apiFactory)
+	if err != nil {
+		return nil, err
+	}
+	coordinator, err := NewCraftRunViewRuntimeCoordinator(store, provider, "/workspace")
+	if err != nil {
+		return nil, err
+	}
+	assembly := &CraftRunViewProductionAssembly{
+		Provider: provider, RuntimeCoordinator: coordinator, Store: store,
+	}
+	assembly.ResolveMaterial = func(ctx context.Context, task craft.Task) (CraftRunViewMaterialHandle, error) {
+		if err := ctx.Err(); err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("material resolution canceled", err)
+		}
+		if task.Fence.TenantID == 0 || task.Fence.TenantID != task.Scope.TenantID ||
+			task.Scope.UserID == "" || task.Scope.SessionID == "" || task.WorkspaceID == "" ||
+			task.Fence.RunID == "" || task.Fence.Owner == "" || task.Fence.Epoch < 1 {
+			return CraftRunViewMaterialHandle{}, fmt.Errorf("%w: incomplete admitted Craft Task fence", craft.ErrForbidden)
+		}
+		key := craft.RunViewKey{TenantID: task.Scope.TenantID, OwnerID: task.Scope.UserID, SessionID: task.Scope.SessionID, RunID: task.Fence.RunID}
+		if err := craft.ValidateRunViewKey(key); err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("admitted Run identity is invalid", err)
+		}
+		run, err := runs.Get(ctx, agentruntime.RunKey{TenantID: task.Scope.TenantID, RunID: task.Fence.RunID})
+		if err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("load durable admitted Run", err)
+		}
+		caller := types.CallerFromContext(ctx)
+		if run.Key != (agentruntime.RunKey{TenantID: task.Scope.TenantID, RunID: task.Fence.RunID}) ||
+			run.UserID != task.Scope.UserID || run.SessionID != task.Scope.SessionID ||
+			run.ActorUserID == "" || caller.TenantID != run.Key.TenantID || caller.UserID != run.ActorUserID ||
+			run.Status != "running" || run.Owner == "" || run.Owner != task.Fence.Owner ||
+			run.Epoch < 1 || run.Epoch != task.Fence.Epoch || !run.LeaseUntil.After(time.Now()) {
+			return CraftRunViewMaterialHandle{}, fmt.Errorf("%w: durable admitted Run actor or writer fence changed", craft.ErrConflict)
+		}
+		version, digest, err := repository.CraftAdmittedSnapshotIdentity(run.Snapshot)
+		if err != nil || version != run.SnapshotDigestVersion || digest != run.SnapshotDigest ||
+			task.SnapshotDigestVersion != version || task.SnapshotDigest != digest ||
+			task.Fence.SnapshotDigestVersion != version || task.Fence.SnapshotDigest != digest {
+			return CraftRunViewMaterialHandle{}, fmt.Errorf("%w: Task snapshot identity does not match the durable admitted Run", craft.ErrConflict)
+		}
+		snapshot, err := service.ParseDurableRunSnapshot(run.Snapshot)
+		if err != nil || snapshot.CraftWorkspaceSeed == nil || snapshot.CraftWorkspaceSeed.WorkspaceID != task.WorkspaceID {
+			return CraftRunViewMaterialHandle{}, fmt.Errorf("%w: durable Run snapshot does not authorize this Workspace", craft.ErrConflict)
+		}
+		if err := ctx.Err(); err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("material resolution canceled after Run verification", err)
+		}
+		runtime, err := coordinator.Resolve(ctx, key)
+		if err != nil {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("resolve admitted RunView runtime", err)
+		}
+		if runtime.View.Key != key || runtime.View.State != craft.RunViewStateBound {
+			return CraftRunViewMaterialHandle{}, unresolvedCraftRunView("admitted RunView is not bound to this task", nil)
+		}
+		return provider.MaterialHandle(ctx, store, key, runtime)
+	}
+	return assembly, nil
 }
 
 // validateCraftKnowledgeAssembly constructs the craft knowledge build at

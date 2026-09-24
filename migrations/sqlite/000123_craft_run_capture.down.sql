@@ -1,0 +1,10 @@
+DROP TRIGGER IF EXISTS trg_craft_capture_block_new_run;
+DROP TRIGGER IF EXISTS trg_craft_capture_terminal_enqueue;
+DROP TRIGGER IF EXISTS trg_craft_capture_file_no_delete;
+DROP TRIGGER IF EXISTS trg_craft_capture_file_no_update;
+DROP TRIGGER IF EXISTS trg_craft_capture_file_no_insert;
+DROP TRIGGER IF EXISTS trg_craft_capture_sealed_digest_immutable;
+DROP TRIGGER IF EXISTS trg_craft_capture_advanced_immutable;
+DROP TRIGGER IF EXISTS trg_craft_capture_identity_immutable;
+DROP TABLE IF EXISTS craft_run_capture_files;
+DROP TABLE IF EXISTS craft_run_captures;

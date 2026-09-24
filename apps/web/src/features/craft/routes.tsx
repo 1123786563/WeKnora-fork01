@@ -19,17 +19,19 @@
 //     wildcard files route (W03), the authorized sandbox terminal ticket,
 //     and the /auth/me identity used for the owner write gate.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { WeKnoraClient } from '@weknora/api-client';
+import type { CraftAccessMember, CraftGrantableAccessRole, CraftInputDecisionAction, CraftSubmitRunInput, WeKnoraClient } from '@weknora/api-client';
 import { createCraftApi, createServerSentEventParser, craftDownloadPath } from '@weknora/api-client';
 import { submitDraftWithAttachments } from '@weknora/core/craft/command-bridge';
-import type { CraftCapabilitiesView, CraftSessionKind, CraftSessionSummaryView, CraftVersionView } from '@weknora/contracts';
+import type { CraftCapabilitiesView, CraftInputView, CraftSessionKind, CraftSessionSummaryView, CraftVersionView } from '@weknora/contracts';
 import type { ScopeController } from '@weknora/domain/scope';
 import { createCraftWorkbenchController, type CraftEventFrame, type CraftEventTransport, type CraftSyncError } from '@weknora/core/craft/controller';
 import { authorizationHeader, type LegacyPlatformSession } from '../../platform/legacy-session.ts';
 import { CraftHome, capabilitiesFromView, type CraftAttachmentDraft, type CraftHomeCreateInput } from '@weknora/views/craft/home';
 import { CraftLibrary } from '@weknora/views/craft/library';
 import { CraftTemplates } from '@weknora/views/craft/templates';
-import { CraftWorkbench, type CraftInteractionActionInput } from '@weknora/views/craft/workbench';
+import { CraftWorkbench, createCraftWorkbenchFeatures, type CraftInteractionActionInput } from '@weknora/views/craft/workbench';
+import { CraftAccess } from '@weknora/views/craft/access';
+import { CraftInputDecisionPanel } from '@weknora/views/craft/files';
 import { createCraftMessageLog, downloadFileName, type CraftLocale } from '@weknora/views/craft/presentation';
 import { createSessionCraftInteractionClient, CraftInteractionPanel } from '@weknora/views/craft/interaction';
 
@@ -206,26 +208,41 @@ export function CraftRoutes(props: CraftRoutesProps) {
 
   // Identity for the owner write gate (the terminal entry is owner-scoped).
   const [meId, setMeId] = useState<string | null>(null);
+  const [identifiedSession, setIdentifiedSession] = useState<LegacyPlatformSession | null>(null);
   useEffect(() => {
     if (session.credential.kind === 'anonymous') {
       setMeId(null);
+      setIdentifiedSession(session);
       return;
     }
     let cancelled = false;
+    setIdentifiedSession(null);
     void client
       .request({ method: 'GET', path: '/api/v1/auth/me' })
       .then((value: unknown) => {
         if (cancelled) return;
         const row = value as { data?: { user?: { id?: unknown } } };
         setMeId(typeof row?.data?.user?.id === 'string' ? row.data.user.id : null);
+        setIdentifiedSession(session);
       })
       .catch(() => {
-        if (!cancelled) setMeId(null);
+        if (!cancelled) {
+          setMeId(null);
+          setIdentifiedSession(session);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [client, session]);
+  const currentMeId = identifiedSession === session ? meId : null;
+
+  const [accessState, setAccessState] = useState<{
+    sessionId: string;
+    status: 'loading' | 'ready' | 'error';
+    members: CraftAccessMember[];
+    error: string | null;
+  }>({ sessionId: '', status: 'loading', members: [], error: null });
 
   // --- Home data -------------------------------------------------------------
   const [homeList, setHomeList] = useState<{ status: 'loading' | 'error' | 'ready'; error: string | null; items: CraftSessionSummaryView[]; nextCursor: string | null; capabilities: CraftCapabilitiesView | null }>({
@@ -298,6 +315,86 @@ export function CraftRoutes(props: CraftRoutesProps) {
   const sessionId = route.name === 'workbench' ? route.sessionId : null;
   const [workbenchInfo, setWorkbenchInfo] = useState<{ title: string; kind: string; ownerId: string; snapshotVersionId: string | null; updatedAt: string; resumed: boolean } | null>(null);
   const [versions, setVersions] = useState<{ status: 'loading' | 'ready' | 'error'; items: CraftVersionView[] }>({ status: 'loading', items: [] });
+  const [inputDecisionState, setInputDecisionState] = useState<{ sessionId: string; inputs: CraftInputView[] }>({ sessionId: '', inputs: [] });
+  const pendingRequestIdRef = useRef<string | null>(null);
+  const pendingSubmitRef = useRef<{
+    sessionId: string;
+    attachmentIds: string[];
+    body: CraftSubmitRunInput;
+  } | null>(null);
+  const pendingInputDecisions = useRef(new Map<string, {
+    sessionId: string;
+    resolve(ref: string): void;
+    reject(error: Error): void;
+  }>());
+
+  const activeSessionId = useRef<string | null>(null);
+  activeSessionId.current = sessionId;
+
+  useEffect(() => {
+    setInputDecisionState({ sessionId: sessionId ?? '', inputs: [] });
+    pendingRequestIdRef.current = null;
+    pendingSubmitRef.current = null;
+    return () => {
+      pendingRequestIdRef.current = null;
+      pendingSubmitRef.current = null;
+      if (sessionId === null) return;
+      for (const [key, pending] of pendingInputDecisions.current) {
+        if (pending.sessionId === sessionId) {
+          pendingInputDecisions.current.delete(key);
+          pending.reject(new Error('Task changed before the input decision was acknowledged.'));
+        }
+      }
+    };
+  }, [sessionId]);
+
+  const refreshAccess = useCallback(async (targetSessionId: string) => {
+    const members = await craftApi.accessMembers(targetSessionId, scopeController.current().signal);
+    if (activeSessionId.current === targetSessionId) {
+      setAccessState({ sessionId: targetSessionId, status: 'ready', members, error: null });
+    }
+  }, [craftApi, scopeController]);
+
+  useEffect(() => {
+    if (sessionId === null) {
+      setAccessState({ sessionId: '', status: 'loading', members: [], error: null });
+      return;
+    }
+    let cancelled = false;
+    setAccessState({ sessionId, status: 'loading', members: [], error: null });
+    void craftApi.accessMembers(sessionId, scopeController.current().signal)
+      .then((members) => {
+        if (!cancelled) setAccessState({ sessionId, status: 'ready', members, error: null });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setAccessState({ sessionId, status: 'error', members: [], error: error instanceof Error ? error.message : String(error) });
+      });
+    return () => { cancelled = true; };
+  }, [craftApi, sessionId, scopeController]);
+
+  const grantAccess = useCallback(async (userId: string, grantRole: CraftGrantableAccessRole) => {
+    if (sessionId === null) throw new Error('No active Craft Task');
+    await craftApi.grantAccess(sessionId, userId, grantRole, scopeController.current().signal);
+    try {
+      await refreshAccess(sessionId);
+    } catch (error) {
+      if (activeSessionId.current === sessionId) {
+        setAccessState({ sessionId, status: 'error', members: [], error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  }, [craftApi, sessionId, scopeController, refreshAccess]);
+
+  const revokeAccess = useCallback(async (userId: string) => {
+    if (sessionId === null) throw new Error('No active Craft Task');
+    await craftApi.revokeAccess(sessionId, userId, scopeController.current().signal);
+    try {
+      await refreshAccess(sessionId);
+    } catch (error) {
+      if (activeSessionId.current === sessionId) {
+        setAccessState({ sessionId, status: 'error', members: [], error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  }, [craftApi, sessionId, scopeController, refreshAccess]);
 
   const loadVersions = useCallback(async () => {
     if (sessionId === null) return;
@@ -359,7 +456,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, craftApi, scopeController, controller, loadVersions, loadHomeList]);
 
-  const canWrite = workbenchInfo !== null && meId !== null && workbenchInfo.ownerId === meId;
+  const canWrite = workbenchInfo !== null && currentMeId !== null && workbenchInfo.ownerId === currentMeId;
 
   const issuePreview = useCallback(
     async (versionId: string) => craftApi.preview(sessionId ?? '', versionId, scopeController.current().signal),
@@ -426,7 +523,35 @@ export function CraftRoutes(props: CraftRoutesProps) {
   const pendingDecisions = useRef<CraftInteractionActionInput[]>([]);
   // CFT-S01-T008: the live submit intent's idempotency key. Null = no live
   // intent; minted on first send, reused across retries, cleared on success.
-  const pendingRequestIdRef = useRef<string | null>(null);
+  const decisionKey = (targetSessionId: string, ref: string) => `${targetSessionId}\u0000${ref}`;
+  const waitForInputDecision = useCallback((targetSessionId: string, input: CraftInputView): Promise<string> => {
+    if (activeSessionId.current !== targetSessionId) return Promise.reject(new Error('Task changed before the input decision was requested.'));
+    const key = decisionKey(targetSessionId, input.ref);
+    return new Promise<string>((resolve, reject) => {
+      pendingInputDecisions.current.set(key, { sessionId: targetSessionId, resolve, reject });
+      setInputDecisionState((prior) => ({
+        sessionId: targetSessionId,
+        inputs: prior.sessionId === targetSessionId && !prior.inputs.some((pending) => pending.ref === input.ref)
+          ? [...prior.inputs, input]
+          : prior.sessionId === targetSessionId ? prior.inputs : [input],
+      }));
+    });
+  }, []);
+
+  const decideInput = useCallback(async (ref: string, action: CraftInputDecisionAction): Promise<void> => {
+    if (sessionId === null || activeSessionId.current !== sessionId) throw new Error('Task changed before the input decision was recorded.');
+    const key = decisionKey(sessionId, ref);
+    const pending = pendingInputDecisions.current.get(key);
+    if (pending === undefined || pending.sessionId !== sessionId) throw new Error('This input decision is no longer active.');
+    const acknowledgement = await craftApi.decideInput(sessionId, ref, action, scopeController.current().signal);
+    if (activeSessionId.current !== sessionId || pendingInputDecisions.current.get(key) !== pending) {
+      throw new Error('Task changed before the input decision was acknowledged.');
+    }
+    pendingInputDecisions.current.delete(key);
+    if (acknowledgement.action === 'continue') pending.resolve(acknowledgement.ref);
+    else pending.reject(new Error('Run cancelled because an unrecognized input was not continued.'));
+  }, [craftApi, scopeController, sessionId]);
+
   const handleInteractionAction = useCallback((input: CraftInteractionActionInput) => {
     pendingDecisions.current = [...pendingDecisions.current, input];
     // Visible feedback without pretending the backend accepted it.
@@ -454,6 +579,15 @@ export function CraftRoutes(props: CraftRoutesProps) {
           // the run submission must reference — the raw attachment id is only
           // the upload's address, not the workspace input ref (W06 finding).
           const input = await craftApi.addInput(sessionId, { resource_ref: attachmentId, expected_sha256: digest }, scopeController.current().signal);
+          if (activeSessionId.current !== sessionId) throw new Error('Task changed while the attachment was being accepted.');
+          if (input.recognition === null || !input.recognition.accepted) {
+            throw new Error('Craft input acceptance was not confirmed by the server.');
+          }
+          if (!input.recognition.understood) {
+            const decidedRef = await waitForInputDecision(sessionId, input);
+            if (activeSessionId.current !== sessionId) throw new Error('Task changed before the Run could be submitted.');
+            return decidedRef;
+          }
           return input.ref;
         }
         if (status === 'failed') throw new Error(`attachment processing failed: ${attachment.name}`);
@@ -461,7 +595,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
       }
       throw new Error(`attachment processing timed out: ${attachment.name}`);
     },
-    [sessionId, authedFetch, craftApi, scopeController],
+    [sessionId, authedFetch, craftApi, scopeController, waitForInputDecision],
   );
 
   const setAttachmentState = useCallback((id: string, state: HomeAttachment['state']) => {
@@ -472,6 +606,42 @@ export function CraftRoutes(props: CraftRoutesProps) {
     async (prompt: string): Promise<void> => {
       const current = attachments;
       if (sessionId === null) throw new Error('no active craft session');
+
+      const pendingSubmit = pendingSubmitRef.current;
+      if (pendingSubmit !== null) {
+        const attachmentsMatch = pendingSubmit.attachmentIds.length === current.length
+          && pendingSubmit.attachmentIds.every((id, index) => id === current[index]?.id);
+        if (pendingSubmit.sessionId !== sessionId) {
+          throw new Error('A previous Run outcome belongs to another Task. Start a new send in this Task.');
+        }
+        if (pendingRequestIdRef.current !== pendingSubmit.body.request_id) {
+          throw new Error('The previous Run outcome is unresolved. Refresh this Task before starting another send.');
+        }
+        if (prompt !== pendingSubmit.body.prompt || !attachmentsMatch) {
+          throw new Error('A previous Run outcome is unresolved. Retry the original prompt and attachments before changing them.');
+        }
+
+        // The server may already have admitted this Run. Replay the immutable
+        // wire body directly so retries cannot upload a second input ref.
+        const replay: CraftSubmitRunInput = {
+          request_id: pendingSubmit.body.request_id,
+          prompt: pendingSubmit.body.prompt,
+          input_refs: [...(pendingSubmit.body.input_refs ?? [])],
+          knowledge_scope: pendingSubmit.body.knowledge_scope,
+          base_version_id: pendingSubmit.body.base_version_id,
+        };
+        await craftApi.submit(sessionId, replay, scopeController.current().signal);
+        pendingRequestIdRef.current = null;
+        pendingSubmitRef.current = null;
+        setInputDecisionState({ sessionId, inputs: [] });
+        setAttachments([]);
+        setCreationScope(null);
+        setCreationPrompt(null);
+        await controller.load(sessionId);
+        return;
+      }
+
+      setInputDecisionState({ sessionId, inputs: [] });
       // CFT-S01-T008: the submit intent is frozen through the command bridge.
       // The requestId is minted ONCE per intent and survives lost responses —
       // a retry of the same composer draft reuses it, so the server replays
@@ -504,8 +674,25 @@ export function CraftRoutes(props: CraftRoutesProps) {
                 throw error;
               }
             },
-            submitDraft: (command, signal) =>
-              craftApi.submit(sessionId, command, signal ?? scopeController.current().signal),
+            submitDraft: (command, signal) => {
+              if (activeSessionId.current !== sessionId) throw new Error('Task changed before the Run could be submitted.');
+              const body: CraftSubmitRunInput = Object.freeze({
+                request_id: command.request_id,
+                prompt: command.prompt,
+                input_refs: Object.freeze([...command.input_refs]) as unknown as string[],
+                knowledge_scope: command.knowledge_scope,
+                base_version_id: command.base_version_id,
+              });
+              pendingSubmitRef.current = {
+                sessionId,
+                attachmentIds: Object.freeze(current.map((attachment) => attachment.id)) as unknown as string[],
+                body,
+              };
+              return craftApi.submit(sessionId, {
+                ...body,
+                input_refs: [...(body.input_refs ?? [])],
+              }, signal ?? scopeController.current().signal);
+            },
           },
         );
       } catch (error) {
@@ -514,13 +701,53 @@ export function CraftRoutes(props: CraftRoutesProps) {
         throw error;
       }
       pendingRequestIdRef.current = null;
+      pendingSubmitRef.current = null;
+      setInputDecisionState({ sessionId, inputs: [] });
       setAttachments([]);
       setCreationScope(null);
       setCreationPrompt(null);
       await controller.load(sessionId);
     },
-    [attachments, sessionId, uploadAndAssociate, craftApi, creationScope, scopeController, controller, setAttachmentState],
+    [attachments, sessionId, uploadAndAssociate, craftApi, creationScope, scopeController, controller, setAttachmentState, setInputDecisionState],
   );
+
+  const accessFeatures = useMemo(() => createCraftWorkbenchFeatures([
+    {
+      name: 'input-decision',
+      // Keep the gate visible while the mobile workbench is on its
+      // conversation tab; placing it in the aside could deadlock a send.
+      slot: 'header',
+      render: () => sessionId === null ? null : <CraftInputDecisionPanel
+        key={sessionId}
+        locale={locale}
+        inputs={inputDecisionState.sessionId === sessionId ? inputDecisionState.inputs : []}
+        onDecide={decideInput}
+      />,
+    },
+    {
+      name: 'task-access',
+      slot: 'aside',
+      render: () => {
+        if (sessionId === null) return null;
+        if (accessState.sessionId !== sessionId || accessState.status === 'loading') {
+          return <p role="status">Loading Task access…</p>;
+        }
+        if (accessState.status === 'error') {
+          return <p role="alert">Task access unavailable: {accessState.error ?? 'Could not load access information.'}</p>;
+        }
+        const currentMember = currentMeId === null ? undefined : accessState.members.find((member) => member.user_id === currentMeId);
+        if (currentMember === undefined) {
+          return <p role="status">Your Task role could not be confirmed. Access controls are unavailable.</p>;
+        }
+        return <CraftAccess
+          role={currentMember.role}
+          members={accessState.members}
+          onGrant={grantAccess}
+          onRevoke={revokeAccess}
+        />;
+      },
+    },
+  ]), [sessionId, locale, inputDecisionState, decideInput, accessState, currentMeId, grantAccess, revokeAccess]);
 
   if (route.name === 'home') {
     return (
@@ -601,6 +828,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
       ) : (
         <div>
         <CraftWorkbench
+          features={accessFeatures}
           locale={locale}
           sessionId={route.sessionId}
           title={workbenchInfo.title}

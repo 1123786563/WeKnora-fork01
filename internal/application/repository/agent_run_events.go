@@ -121,6 +121,9 @@ func (s *AgentRunStore) Finalize(ctx context.Context, fence agentruntime.Fence, 
 			}
 			return agentruntime.ErrLeaseLost
 		}
+		if err := rejectUnresolvedCraftRunViewEffects(tx, fence.RunKey); err != nil {
+			return err
+		}
 		var run agentRunRow
 		if err := runScope(tx, fence.RunKey).Take(&run).Error; err != nil {
 			return err

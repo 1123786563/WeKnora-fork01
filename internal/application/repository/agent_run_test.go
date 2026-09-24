@@ -70,6 +70,9 @@ func seedRunFixtures(t *testing.T, db *gorm.DB) {
 		 VALUES ('u1', 'u1', 'u1@example.test', 'x', 1)`,
 	).Error)
 	require.NoError(t, db.Exec(
+		`INSERT INTO tenant_members (tenant_id, user_id, role, status) VALUES (1, 'u1', 'admin', 'active')`,
+	).Error)
+	require.NoError(t, db.Exec(
 		`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type) VALUES
 		 ('s1', 1, 'session-1', 'u1', 'trpc'),
 		 ('s2', 1, 'session-2', 'u1', 'trpc')`,
@@ -161,6 +164,119 @@ func TestAgentRunAdmissionIdempotent(t *testing.T) {
 	var assistantID string
 	require.NoError(t, store.db.Table("messages").Where("role = 'assistant'").Pluck("id", &assistantID).Error)
 	require.Equal(t, "a1", assistantID)
+}
+
+func TestAgentRunAdmissionRejectsRotatedInputClaimToken(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openRunTestDB(t)
+			paused := NewAgentRunStore(db)
+			recoveredDB := reopenRunDB(t, db)
+			pausedAdmission := testAdmission()
+			pausedAdmission.Key.RunID = "craft-fenced-run"
+			pausedAdmission.InputClaims = []agentruntime.InputAdmissionClaim{{
+				DecisionKey: "decision-key", RunID: pausedAdmission.Key.RunID, Token: "claim-token-before-restart",
+			}}
+			now := time.Now()
+			require.NoError(t, db.Exec(`INSERT INTO craft_session_requests
+		(tenant_id, user_id, purpose, request_id, request_hash, session_id, admission_run_id, admission_token, admission_state, lease_expires_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				1, "u1", "input_admission", "decision-key", "decision-hash", "s1", pausedAdmission.Key.RunID,
+				"claim-token-before-restart", "claimed", now.Add(time.Minute), now).Error)
+
+			// Model the recovery CAS on a separate live connection while claimant A is
+			// paused before Submit. Its old token must no longer admit the Run.
+			require.NoError(t, recoveredDB.Table("craft_session_requests").Where(
+				"tenant_id = ? AND user_id = ? AND session_id = ? AND purpose = ? AND request_id = ? AND admission_token = ? AND admission_state = ?",
+				1, "u1", "s1", "input_admission", "decision-key", "claim-token-before-restart", "claimed",
+			).Updates(map[string]any{
+				"admission_token":  "claim-token-after-restart",
+				"lease_expires_at": time.Now().Add(time.Minute),
+			}).Error)
+
+			_, err := paused.Admit(context.Background(), pausedAdmission)
+			require.ErrorIs(t, err, agentruntime.ErrConflict, "the delayed pre-restart claimant must be fenced")
+			var runs int64
+			require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 1, pausedAdmission.Key.RunID).Count(&runs).Error)
+			require.Zero(t, runs)
+
+			recoveredAdmission := pausedAdmission
+			recoveredAdmission.InputClaims = []agentruntime.InputAdmissionClaim{{
+				DecisionKey: "decision-key", RunID: recoveredAdmission.Key.RunID, Token: "claim-token-after-restart",
+			}}
+			first, err := NewAgentRunStore(recoveredDB).Admit(context.Background(), recoveredAdmission)
+			require.NoError(t, err)
+			replay, err := paused.Admit(context.Background(), recoveredAdmission)
+			require.NoError(t, err)
+			require.Equal(t, first.Key, replay.Key)
+			require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND request_id = ?", 1, recoveredAdmission.RequestID).Count(&runs).Error)
+			require.EqualValues(t, 1, runs)
+			var state string
+			require.NoError(t, db.Table("craft_session_requests").Select("admission_state").Where(
+				"tenant_id = ? AND user_id = ? AND session_id = ? AND purpose = ? AND request_id = ?",
+				1, "u1", "s1", "input_admission", "decision-key",
+			).Scan(&state).Error)
+			require.Equal(t, "admitted", state)
+		})
+	}
+}
+
+func TestAgentRunAdmissionRejectsExpiredInputClaimLease(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openRunTestDB(t)
+			in := testAdmission()
+			in.Key.RunID = "expired-craft-run"
+			in.InputClaims = []agentruntime.InputAdmissionClaim{{
+				DecisionKey: "expired-decision", RunID: in.Key.RunID, Token: "current-token",
+			}}
+			now := time.Now()
+			require.NoError(t, db.Exec(`INSERT INTO craft_session_requests
+		(tenant_id, user_id, purpose, request_id, request_hash, session_id, admission_run_id, admission_token, admission_state, lease_expires_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				1, "u1", "input_admission", "expired-decision", "decision-hash", "s1", in.Key.RunID,
+				"current-token", "claimed", now.Add(-time.Minute), now).Error)
+			_, err := NewAgentRunStore(db).Admit(context.Background(), in)
+			require.ErrorIs(t, err, agentruntime.ErrConflict, "an expired lease permits recovery, not admission")
+			var runs int64
+			require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 1, in.Key.RunID).Count(&runs).Error)
+			require.Zero(t, runs)
+		})
+	}
+}
+
+func TestAgentRunAdmissionCannotOmitActiveCraftInputClaim(t *testing.T) {
+	db := openRunTestDB(t)
+	require.NoError(t, db.Exec(`INSERT INTO craft_sessions (session_id, tenant_id, kind) VALUES ('s1', 1, 'web')`).Error)
+	now := time.Now()
+	require.NoError(t, db.Exec(`INSERT INTO craft_session_requests
+		(tenant_id, user_id, purpose, request_id, request_hash, session_id, admission_run_id, admission_token, admission_state, lease_expires_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		1, "u1", "input_admission", "active-decision", "decision-hash", "s1", "active-craft-run",
+		"active-token", "claimed", now.Add(time.Minute), now).Error)
+
+	// The ordinary API caller does not have authority to omit a live Craft
+	// fence and admit another Run through the same Craft session.
+	unfenced := testAdmission()
+	unfenced.ActorUserID = "u1"
+	_, err := NewAgentRunStore(db).Admit(context.Background(), unfenced)
+	require.ErrorIs(t, err, agentruntime.ErrConflict)
+	require.NoError(t, db.Exec(`INSERT INTO craft_session_requests
+		(tenant_id, user_id, purpose, request_id, request_hash, session_id, admission_run_id, admission_token, admission_state, lease_expires_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		1, "u1", "input_admission", "second-active-decision", "decision-hash-2", "s1", "second-active-run",
+		"second-active-token", "claimed", now.Add(time.Minute), now).Error)
+	partial := testAdmission()
+	partial.Key.RunID = "active-craft-run"
+	partial.ActorUserID = "u1"
+	partial.InputClaims = []agentruntime.InputAdmissionClaim{{
+		DecisionKey: "active-decision", RunID: "active-craft-run", Token: "active-token",
+	}}
+	_, err = NewAgentRunStore(db).Admit(context.Background(), partial)
+	require.ErrorIs(t, err, agentruntime.ErrConflict, "a claim bundle cannot omit another pending fence")
+	var runs int64
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND session_id = ?", 1, "s1").Count(&runs).Error)
+	require.Zero(t, runs)
 }
 
 func TestAgentRunAdmissionGuards(t *testing.T) {

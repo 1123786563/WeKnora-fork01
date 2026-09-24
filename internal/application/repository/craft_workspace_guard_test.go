@@ -94,6 +94,7 @@ func TestCraftWorkspaceGuardStaleFenceCannotPublish(t *testing.T) {
 	_, err := store.PrepareTask(ctx, craft.Task{
 		ToolCallID: "c-guard", Prompt: "guard", RequestHash: "rh-guard",
 		Scope: craftTestScope(), Fence: fence, WorkspaceID: ws.ID,
+		SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 		Deadline: time.Now().Add(30 * time.Minute).UTC().Truncate(time.Microsecond),
 	})
 	require.NoError(t, err)
@@ -107,6 +108,7 @@ func TestCraftWorkspaceGuardStaleFenceCannotPublish(t *testing.T) {
 	_, err = store.PrepareTask(ctx, craft.Task{
 		ToolCallID: "c-guard-2", Prompt: "guard-2", RequestHash: "rh-guard-2",
 		Scope: craftTestScope(), Fence: fence, WorkspaceID: ws.ID,
+		SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 		Deadline: time.Now().Add(30 * time.Minute).UTC().Truncate(time.Microsecond),
 	})
 	require.ErrorIs(t, err, craft.ErrConflict, "a stale worker cannot prepare (thus cannot publish)")

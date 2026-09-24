@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -247,6 +248,290 @@ func TestClientValidationAndRedirectBoundary(t *testing.T) {
 	}
 	if _, err := redirectClient.CreateSession(context.Background()); err == nil {
 		t.Fatal("followed redirect to another host")
+	}
+}
+
+func TestWithDirectoryAddsImmutableHeaderToScopedClientRequests(t *testing.T) {
+	const directory = "/runviews/task-7/version-9"
+	var requests []string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("x-opencode-directory"); got != directory {
+			t.Errorf("%s %s directory header = %q, want %q", r.Method, r.URL.Path, got, directory)
+		}
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/session":
+			fmt.Fprint(w, `{"id":"ses_run"}`)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/prompt_async"):
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/message"):
+			fmt.Fprint(w, `[]`)
+		case r.Method == http.MethodGet && r.URL.Path == "/session/status":
+			fmt.Fprint(w, `{}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/event":
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, ": heartbeat\n\n")
+		case r.Method == http.MethodPost && (strings.HasSuffix(r.URL.Path, "/abort") || strings.Contains(r.URL.Path, "/question/") || strings.Contains(r.URL.Path, "/permissions/")):
+			fmt.Fprint(w, `true`)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	legacy, err := NewClient(server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := legacy.WithDirectory(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	sessionID, err := client.CreateSession(ctx)
+	if err != nil || sessionID != "ses_run" {
+		t.Fatalf("CreateSession() = %q, %v", sessionID, err)
+	}
+	if err := client.Prompt(ctx, sessionID, "msg_0019a468fdc1ABCDEFGHIJKLMN", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Messages(ctx, sessionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Status(ctx, sessionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Abort(ctx, sessionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ReplyQuestion(ctx, "question-1", [][]string{{"answer"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RejectQuestion(ctx, "question-2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ReplyPermission(ctx, sessionID, "permission-1", "once"); err != nil {
+		t.Fatal(err)
+	}
+	events, err := client.Events(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadAll(events); err != nil {
+		t.Fatal(err)
+	}
+	events.Close()
+	if len(requests) != 9 {
+		t.Fatalf("requests = %v, want all 9 scoped client methods", requests)
+	}
+	if _, err := client.WithDirectory("/runviews/other"); err == nil {
+		t.Fatal("bound client allowed retargeting")
+	}
+}
+
+func TestWithDirectoryRejectsNonCanonicalOrHeaderUnsafePaths(t *testing.T) {
+	client, err := NewClient("http://example.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, directory := range []string{"", "relative/run", "/run/../other", "/run//other", "/run/.", "/", "/run/list:a", "/run/list;a", "/run/line\nbreak", "/run/tab\tpath", "/run/del\x7fpath", "/run\\other"} {
+		t.Run(fmt.Sprintf("%q", directory), func(t *testing.T) {
+			if _, err := client.WithDirectory(directory); err == nil {
+				t.Fatalf("WithDirectory(%q) succeeded", directory)
+			}
+		})
+	}
+}
+
+func TestWithDirectoryClonesDoNotCrossContaminateHeaders(t *testing.T) {
+	var seen []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("x-opencode-directory"))
+		fmt.Fprint(w, `{"id":"ses_test"}`)
+	}))
+	defer server.Close()
+	legacy, err := NewClient(server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := legacy.WithDirectory("/runviews/first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := legacy.WithDirectory("/runviews/second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, client := range []*Client{first, second, first, legacy} {
+		if _, err := client.CreateSession(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []string{"/runviews/first", "/runviews/second", "/runviews/first", ""}
+	if fmt.Sprint(seen) != fmt.Sprint(want) {
+		t.Fatalf("directory headers = %q, want %q", seen, want)
+	}
+}
+
+func TestWithDirectoryRedirectsPreserveBindingAndRejectLoss(t *testing.T) {
+	t.Run("same origin preserves header", func(t *testing.T) {
+		var seen []string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen = append(seen, r.Header.Get("x-opencode-directory"))
+			if r.URL.Path == "/session" {
+				http.Redirect(w, r, "/create", http.StatusTemporaryRedirect)
+				return
+			}
+			fmt.Fprint(w, `{"id":"ses_test"}`)
+		}))
+		defer server.Close()
+		client, err := NewClient(server.URL, server.Client())
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, err = client.WithDirectory("/runviews/redirect")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.CreateSession(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if fmt.Sprint(seen) != fmt.Sprint([]string{"/runviews/redirect", "/runviews/redirect"}) {
+			t.Fatalf("redirect headers = %q", seen)
+		}
+	})
+
+	t.Run("custom policy cannot strip header", func(t *testing.T) {
+		var destinationCalls atomic.Int32
+		destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			destinationCalls.Add(1)
+			fmt.Fprint(w, `{"id":"ses_wrong"}`)
+		}))
+		defer destination.Close()
+		source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/redirect", http.StatusTemporaryRedirect)
+		}))
+		defer source.Close()
+		httpClient := source.Client()
+		httpClient.CheckRedirect = func(request *http.Request, _ []*http.Request) error {
+			request.Header.Del("x-opencode-directory")
+			return nil
+		}
+		client, err := NewClient(source.URL, httpClient)
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, err = client.WithDirectory("/runviews/redirect")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.CreateSession(context.Background()); err == nil {
+			t.Fatal("redirect that lost directory binding was followed")
+		}
+		if got := destinationCalls.Load(); got != 0 {
+			t.Fatalf("redirect destination called %d times, want 0", got)
+		}
+	})
+
+	t.Run("cross origin remains blocked", func(t *testing.T) {
+		var destinationCalls atomic.Int32
+		destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			destinationCalls.Add(1)
+			fmt.Fprint(w, `{"id":"ses_wrong"}`)
+		}))
+		defer destination.Close()
+		source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, destination.URL, http.StatusTemporaryRedirect)
+		}))
+		defer source.Close()
+		client, err := NewClient(source.URL, source.Client())
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, err = client.WithDirectory("/runviews/redirect")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.CreateSession(context.Background()); err == nil {
+			t.Fatal("cross-origin redirect was followed")
+		}
+		if got := destinationCalls.Load(); got != 0 {
+			t.Fatalf("redirect destination called %d times, want 0", got)
+		}
+	})
+}
+
+func TestWithDirectoryRejectsRedirectQueryDirectoryOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		location   string
+		mutate     bool
+		wantTarget string
+	}{
+		{name: "even same value is rejected", location: "/session?directory=/runviews/intended", wantTarget: "/runviews/intended"},
+		{name: "plain override", location: "/session?directory=/other/run", wantTarget: "/other/run"},
+		{name: "encoded parameter name", location: "/session?%64irectory=/other/run", wantTarget: "/other/run"},
+		{name: "duplicate parameter", location: "/session?directory=/runviews/intended&directory=/other/run", wantTarget: "/other/run"},
+		{name: "custom callback adds override", location: "/session?unused=1", mutate: true, wantTarget: "/other/run"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var targetCalls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/session" && r.URL.RawQuery == "" {
+					http.Redirect(w, r, tc.location, http.StatusTemporaryRedirect)
+					return
+				}
+				targetCalls.Add(1)
+				fmt.Fprint(w, `{"id":"ses_test"}`)
+			}))
+			defer server.Close()
+			httpClient := server.Client()
+			if tc.mutate {
+				httpClient.CheckRedirect = func(request *http.Request, _ []*http.Request) error {
+					request.URL.RawQuery = "directory=" + url.QueryEscape(tc.wantTarget)
+					return nil
+				}
+			}
+			client, err := NewClient(server.URL, httpClient)
+			if err != nil {
+				t.Fatal(err)
+			}
+			client, err = client.WithDirectory("/runviews/intended")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := client.CreateSession(context.Background()); err == nil {
+				t.Fatal("followed same-origin redirect with directory query override")
+			}
+			if got := targetCalls.Load(); got != 0 {
+				t.Fatalf("redirect target reached %d times, want 0", got)
+			}
+		})
+	}
+}
+
+func TestUnboundClientRetainsLegacyDirectoryQueryRedirectBehavior(t *testing.T) {
+	var targetCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/session" && r.URL.RawQuery == "" {
+			http.Redirect(w, r, "/session?directory=/legacy/run", http.StatusTemporaryRedirect)
+			return
+		}
+		targetCalls.Add(1)
+		fmt.Fprint(w, `{"id":"ses_legacy"}`)
+	}))
+	defer server.Close()
+	client, err := NewClient(server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := client.CreateSession(context.Background()); err != nil || got != "ses_legacy" {
+		t.Fatalf("legacy CreateSession() = %q, %v", got, err)
+	}
+	if got := targetCalls.Load(); got != 1 {
+		t.Fatalf("legacy redirect target reached %d times, want 1", got)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,13 +52,53 @@ type RunConfigRuntimeSnapshot struct {
 // removed model fails recovery with a concrete reason instead of being
 // overridden by the snapshot.
 type DurableRunSnapshot struct {
-	Version       int                      `json:"version"`
-	Query         string                   `json:"query"`
-	ImageURLs     []string                 `json:"image_urls,omitempty"`
-	ModelID       string                   `json:"model_id"`
-	RerankModelID string                   `json:"rerank_model_id,omitempty"`
-	AgentConfig   json.RawMessage          `json:"agent_config"`
-	Runtime       RunConfigRuntimeSnapshot `json:"runtime"`
+	Version                 int                              `json:"version"`
+	Query                   string                           `json:"query"`
+	ImageURLs               []string                         `json:"image_urls,omitempty"`
+	ModelID                 string                           `json:"model_id"`
+	RerankModelID           string                           `json:"rerank_model_id,omitempty"`
+	AgentConfig             json.RawMessage                  `json:"agent_config"`
+	Runtime                 RunConfigRuntimeSnapshot         `json:"runtime"`
+	CraftInputManifest      *[]craft.Input                   `json:"craft_input_manifest,omitempty"`
+	CraftKnowledgeSelection *CraftKnowledgeSelectionSnapshot `json:"craft_knowledge_selection,omitempty"`
+	CraftWorkspaceSeed      *CraftWorkspaceSeedSnapshot      `json:"craft_workspace_seed,omitempty"`
+}
+
+// CraftKnowledgeSelectionSnapshot freezes the admitted retrieval query and
+// selected knowledge-base IDs as server-only Run metadata. It is never
+// appended to the model-facing prompt.
+type CraftKnowledgeSelectionSnapshot struct {
+	Query            string   `json:"query"`
+	KnowledgeBaseIDs []string `json:"knowledge_base_ids"`
+}
+
+// CraftWorkspaceSeedSnapshot freezes the server-selected Workspace draft
+// head for a Craft Run. It is durable metadata and is never model-facing.
+type CraftWorkspaceSeedSnapshot struct {
+	WorkspaceID    string               `json:"workspace_id"`
+	State          craft.DraftHeadState `json:"state"`
+	DraftRevision  int64                `json:"draft_revision"`
+	SourceRunID    string               `json:"source_run_id,omitempty"`
+	ManifestDigest string               `json:"manifest_digest,omitempty"`
+}
+
+func (s CraftWorkspaceSeedSnapshot) Validate() error {
+	if strings.TrimSpace(s.WorkspaceID) == "" || s.WorkspaceID != strings.TrimSpace(s.WorkspaceID) || s.DraftRevision < 0 {
+		return fmt.Errorf("%w: invalid Craft Workspace seed identity or revision", craft.ErrInvalidInput)
+	}
+	switch s.State {
+	case craft.DraftHeadEmpty:
+		if s.DraftRevision != 0 || s.SourceRunID != "" || s.ManifestDigest != "" {
+			return fmt.Errorf("%w: empty Craft Workspace seed must be revision zero without a manifest", craft.ErrInvalidInput)
+		}
+	case craft.DraftHeadSelected:
+		if s.DraftRevision < 1 || strings.TrimSpace(s.SourceRunID) == "" || s.SourceRunID != strings.TrimSpace(s.SourceRunID) || !craft.ValidSHA256(s.ManifestDigest) {
+			return fmt.Errorf("%w: selected Craft Workspace seed requires revision, source Run and lowercase manifest digest", craft.ErrInvalidInput)
+		}
+	default:
+		return fmt.Errorf("%w: unknown Craft Workspace seed state %q", craft.ErrInvalidInput, s.State)
+	}
+	return nil
 }
 
 // BuildDurableRunSnapshot freezes the resolved request configuration at
@@ -69,6 +110,51 @@ func BuildDurableRunSnapshot(
 	modelID, rerankModelID string,
 	config *types.AgentConfig,
 ) (json.RawMessage, error) {
+	return buildDurableRunSnapshot(query, images, modelID, rerankModelID, config, nil, nil)
+}
+
+// BuildDurableCraftRunSnapshot freezes selected inputs and an explicit empty
+// KB selection for compatibility callers. New admission code with a selected
+// KB should call BuildDurableCraftRunSnapshotWithKnowledgeSelection.
+func BuildDurableCraftRunSnapshot(
+	query string,
+	images []string,
+	modelID, rerankModelID string,
+	config *types.AgentConfig,
+	inputs []craft.Input,
+) (json.RawMessage, error) {
+	return BuildDurableCraftRunSnapshotWithKnowledgeSelection(query, images, modelID, rerankModelID, config, inputs,
+		CraftKnowledgeSelectionSnapshot{Query: query, KnowledgeBaseIDs: []string{}})
+}
+
+// BuildDurableCraftRunSnapshotWithKnowledgeSelection freezes the admitted
+// Craft input manifest together with the exact retrieval query and selected
+// knowledge bases. IDs are canonicalized before these bytes enter the Run
+// admission digest.
+func BuildDurableCraftRunSnapshotWithKnowledgeSelection(
+	query string,
+	images []string,
+	modelID, rerankModelID string,
+	config *types.AgentConfig,
+	inputs []craft.Input,
+	knowledgeSelection CraftKnowledgeSelectionSnapshot,
+) (json.RawMessage, error) {
+	selected := append([]craft.Input{}, inputs...)
+	selection, err := canonicalCraftKnowledgeSelection(query, knowledgeSelection)
+	if err != nil {
+		return nil, err
+	}
+	return buildDurableRunSnapshot(query, images, modelID, rerankModelID, config, &selected, selection)
+}
+
+func buildDurableRunSnapshot(
+	query string,
+	images []string,
+	modelID, rerankModelID string,
+	config *types.AgentConfig,
+	craftInputs *[]craft.Input,
+	craftKnowledge *CraftKnowledgeSelectionSnapshot,
+) (json.RawMessage, error) {
 	if query == "" || modelID == "" || config == nil {
 		return nil, fmt.Errorf("durable run snapshot requires a query, model id and agent config")
 	}
@@ -77,12 +163,14 @@ func BuildDurableRunSnapshot(
 		return nil, fmt.Errorf("marshal agent config: %w", err)
 	}
 	snapshot := DurableRunSnapshot{
-		Version:       durableRunSnapshotVersion,
-		Query:         query,
-		ImageURLs:     append([]string(nil), images...),
-		ModelID:       modelID,
-		RerankModelID: rerankModelID,
-		AgentConfig:   cfgRaw,
+		Version:                 durableRunSnapshotVersion,
+		Query:                   query,
+		ImageURLs:               append([]string(nil), images...),
+		ModelID:                 modelID,
+		RerankModelID:           rerankModelID,
+		AgentConfig:             cfgRaw,
+		CraftInputManifest:      craftInputs,
+		CraftKnowledgeSelection: craftKnowledge,
 		Runtime: RunConfigRuntimeSnapshot{
 			SandboxConfigID:     config.SandboxConfigID,
 			VLMModelID:          config.VLMModelID,
@@ -100,9 +188,52 @@ func BuildDurableRunSnapshot(
 	return raw, nil
 }
 
+func canonicalCraftKnowledgeSelection(query string, selection CraftKnowledgeSelectionSnapshot) (*CraftKnowledgeSelectionSnapshot, error) {
+	if query == "" || selection.Query == "" || len(selection.Query) > MaxCraftPromptBytes {
+		return nil, fmt.Errorf("durable Craft knowledge selection requires a bounded retrieval query")
+	}
+	if selection.KnowledgeBaseIDs == nil {
+		return nil, fmt.Errorf("durable Craft knowledge selection IDs must be an explicit list")
+	}
+	if len(selection.KnowledgeBaseIDs) > 1 {
+		return nil, fmt.Errorf("%w: the current Craft Run contract permits at most one selected knowledge base", craft.ErrInvalidInput)
+	}
+	ids := []string{}
+	if len(selection.KnowledgeBaseIDs) > 0 {
+		canonical, err := canonicalCraftKnowledgeBaseIDs(selection.KnowledgeBaseIDs)
+		if err != nil {
+			return nil, fmt.Errorf("durable Craft knowledge selection is invalid: %w", err)
+		}
+		ids = canonical
+	}
+	return &CraftKnowledgeSelectionSnapshot{Query: selection.Query, KnowledgeBaseIDs: ids}, nil
+}
+
+func validateCraftKnowledgeSelection(modelQuery string, selection CraftKnowledgeSelectionSnapshot) error {
+	canonical, err := canonicalCraftKnowledgeSelection(modelQuery, selection)
+	if err != nil {
+		return err
+	}
+	if len(selection.KnowledgeBaseIDs) != len(canonical.KnowledgeBaseIDs) {
+		return fmt.Errorf("durable Craft knowledge selection is not canonical")
+	}
+	for i := range selection.KnowledgeBaseIDs {
+		if selection.KnowledgeBaseIDs[i] != canonical.KnowledgeBaseIDs[i] {
+			return fmt.Errorf("durable Craft knowledge selection is not canonical")
+		}
+	}
+	return nil
+}
+
 // ParseDurableRunSnapshot strictly decodes an admitted snapshot and rejects
 // unknown versions instead of decoding them into empty values.
 func ParseDurableRunSnapshot(raw json.RawMessage) (DurableRunSnapshot, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return DurableRunSnapshot{}, fmt.Errorf("decode durable run snapshot fields: %w", err)
+	}
+	_, hasCraftKnowledgeSelection := fields["craft_knowledge_selection"]
+	_, hasCraftWorkspaceSeed := fields["craft_workspace_seed"]
 	var snapshot DurableRunSnapshot
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -118,7 +249,50 @@ func ParseDurableRunSnapshot(raw json.RawMessage) (DurableRunSnapshot, error) {
 	if snapshot.Query == "" || snapshot.ModelID == "" || len(snapshot.AgentConfig) == 0 {
 		return DurableRunSnapshot{}, fmt.Errorf("durable run snapshot is missing query, model id or agent config")
 	}
+	if snapshot.CraftInputManifest != nil {
+		if *snapshot.CraftInputManifest == nil {
+			return DurableRunSnapshot{}, fmt.Errorf("durable run snapshot has a null Craft input manifest")
+		}
+		if err := craft.ValidateInputManifest(*snapshot.CraftInputManifest); err != nil {
+			return DurableRunSnapshot{}, fmt.Errorf("durable run snapshot has an invalid Craft input manifest: %w", err)
+		}
+	}
+	if hasCraftKnowledgeSelection {
+		if snapshot.CraftKnowledgeSelection == nil {
+			return DurableRunSnapshot{}, fmt.Errorf("durable run snapshot has a null Craft knowledge selection")
+		}
+		if err := validateCraftKnowledgeSelection(snapshot.Query, *snapshot.CraftKnowledgeSelection); err != nil {
+			return DurableRunSnapshot{}, fmt.Errorf("durable run snapshot has an invalid Craft knowledge selection: %w", err)
+		}
+	} else if snapshot.CraftInputManifest != nil {
+		// Version-1 Craft snapshots predate durable KB selection. Their
+		// deliberate compatibility behavior is no selected KB, never all KBs.
+		snapshot.CraftKnowledgeSelection = &CraftKnowledgeSelectionSnapshot{
+			Query: snapshot.Query, KnowledgeBaseIDs: []string{},
+		}
+	}
+	if hasCraftWorkspaceSeed {
+		if snapshot.CraftWorkspaceSeed == nil {
+			return DurableRunSnapshot{}, fmt.Errorf("durable run snapshot has a null Craft Workspace seed")
+		}
+		if err := snapshot.CraftWorkspaceSeed.Validate(); err != nil {
+			return DurableRunSnapshot{}, fmt.Errorf("durable run snapshot has an invalid Craft Workspace seed: %w", err)
+		}
+	}
 	return snapshot, nil
+}
+
+// requireCraftWorkspaceSeed is called only once the durable run has been
+// classified. Generic snapshots stay compatible; every Craft execution needs
+// an explicitly resolved seed and may not infer empty from a legacy row.
+func requireCraftWorkspaceSeed(snapshot DurableRunSnapshot, isCraftTask bool) error {
+	if !isCraftTask {
+		return nil
+	}
+	if snapshot.CraftWorkspaceSeed == nil {
+		return fmt.Errorf("%w: Craft durable run is missing its Workspace seed", craft.ErrInvalidInput)
+	}
+	return snapshot.CraftWorkspaceSeed.Validate()
 }
 
 // RestoreAgentConfig rebuilds the resolved AgentConfig, re-attaching the
@@ -324,20 +498,20 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 	if run.Owner != fence.Owner || run.Epoch != fence.Epoch {
 		return fmt.Errorf("%w: durable run fence superseded", agentruntime.ErrLeaseLost)
 	}
-	// The worker's context carries no request identity: the run row is the
-	// authoritative tenant/owner scope for everything the graph touches
-	// (model resolution, tools, storage), so inject it here. Without this
-	// the first MustTenantIDFromContext in the model path panics.
-	ctx = context.WithValue(ctx, types.TenantIDContextKey, fence.TenantID)
-	if run.Owner != "" {
-		ctx = types.WithPrincipal(ctx, types.Principal{
-			Type: types.PrincipalWebUser, ID: run.Owner,
-		})
-	}
 	snapshot, err := ParseDurableRunSnapshot(run.Snapshot)
 	if err != nil {
 		return fmt.Errorf("durable run %s: %w", fence.RunID, err)
 	}
+	ctx, actorID, isCraftTask, err := s.durableRunActorContext(ctx, run, snapshot)
+	if err != nil {
+		return fmt.Errorf("durable run %s actor authorization: %w", fence.RunID, err)
+	}
+	if err := requireCraftWorkspaceSeed(snapshot, isCraftTask); err != nil {
+		return fmt.Errorf("durable run %s: %w", fence.RunID, err)
+	}
+	// Worker contexts carry no request identity. The durable authenticated
+	// actor is restored independently from the owner storage scope and lease.
+	ctx = durableRunActorIdentityContext(ctx, fence.TenantID, actorID)
 	config, err := snapshot.RestoreAgentConfig()
 	if err != nil {
 		return fmt.Errorf("durable run %s: %w", fence.RunID, err)
@@ -437,18 +611,7 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 		// MCP wrappers read the exec context for approval/OAuth metadata;
 		// without it the durable path would fail the preflight instead of
 		// parking. The run-scoped bus is detached from SSE lifetimes.
-		meta := &tools.ToolExecContext{
-			SessionID:          run.SessionID,
-			AssistantMessageID: run.AssistantMessageID,
-			RequestID:          run.RequestID,
-			UserID:             run.UserID,
-			EventBus:           bus,
-			ApprovalCtx:        tctx,
-		}
-		if dispatch, ok := agentruntime.ToolDispatchFromContext(tctx); ok {
-			meta.ToolCallID = dispatch.CallID
-		}
-		tctx = tools.WithToolExecContext(tctx, meta)
+		tctx = durableToolExecContext(tctx, run, actorID, bus)
 		// Directory discovery and the call proxy are already dispatched when
 		// they hit OAuth, so a durable park there would misclassify as an
 		// unknown outcome; the non-interactive path returns a notice instead.
@@ -482,9 +645,71 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 		}
 		return execErr
 	}
-	admitAfterFollowUps(context.WithoutCancel(ctx), store, fence.RunKey, snapshot)
+	admitAfterFollowUps(context.WithoutCancel(ctx), store, fence.RunKey, snapshot, isCraftTask, s.craftTaskAccess)
 	trimRetainedEvents(context.WithoutCancel(ctx), store, fence.RunKey)
 	return nil
+}
+
+func durableRunActorIdentityContext(ctx context.Context, tenantID uint64, actorID string) context.Context {
+	ctx = context.WithValue(ctx, types.TenantIDContextKey, tenantID)
+	ctx = types.WithCaller(ctx, types.Caller{TenantID: tenantID, UserID: actorID})
+	ctx = types.WithPrincipal(ctx, types.Principal{Type: types.PrincipalWebUser, ID: actorID})
+	return context.WithValue(ctx, types.UserIDContextKey, actorID)
+}
+
+func durableToolExecContext(
+	ctx context.Context, run agentruntime.Run, actorID string, bus *event.EventBus,
+) context.Context {
+	meta := &tools.ToolExecContext{
+		SessionID:          run.SessionID,
+		AssistantMessageID: run.AssistantMessageID,
+		RequestID:          run.RequestID,
+		UserID:             actorID,
+		EventBus:           bus,
+		ApprovalCtx:        ctx,
+	}
+	if dispatch, ok := agentruntime.ToolDispatchFromContext(ctx); ok {
+		meta.ToolCallID = dispatch.CallID
+	}
+	return tools.WithToolExecContext(ctx, meta)
+}
+
+// durableRunActorContext proves the actor before model or capability resolution.
+// New Craft snapshots require an immutable actor and a fresh TaskWrite check;
+// legacy Craft rows have no safe owner/worker fallback. Generic legacy runs
+// retain their historical storage-user identity when no actor was recorded.
+func (s *sessionService) durableRunActorContext(
+	ctx context.Context, run agentruntime.Run, snapshot DurableRunSnapshot,
+) (context.Context, string, bool, error) {
+	if s.craftTaskAccess == nil {
+		return ctx, "", false, craft.ErrForbidden
+	}
+	registeredCraft, err := s.craftTaskAccess.IsCraftTask(ctx, run.Key.TenantID, run.SessionID)
+	if err != nil {
+		return ctx, "", false, fmt.Errorf("%w: classify durable session: %v", craft.ErrForbidden, err)
+	}
+	markedCraft := snapshot.CraftInputManifest != nil
+	if markedCraft && !registeredCraft {
+		return ctx, "", false, craft.ErrForbidden
+	}
+	isCraftTask := registeredCraft || markedCraft
+	actorID := strings.TrimSpace(run.ActorUserID)
+	if actorID == "" {
+		if isCraftTask {
+			return ctx, "", false, craft.ErrForbidden
+		}
+		actorID = strings.TrimSpace(run.UserID)
+	}
+	if actorID == "" {
+		return ctx, "", false, craft.ErrForbidden
+	}
+	if isCraftTask {
+		scope := craft.Scope{TenantID: run.Key.TenantID, UserID: actorID, SessionID: run.SessionID}
+		if err := s.craftTaskAccess.CheckTaskAccess(ctx, scope, craft.TaskWrite); err != nil {
+			return ctx, "", false, craft.ErrForbidden
+		}
+	}
+	return ctx, actorID, isCraftTask, nil
 }
 
 // durableRunFailureEvent classifies a durable run's terminal error into the
@@ -533,7 +758,7 @@ const durableEventRetention = 1000
 // and are only admissible once it reached a terminal state (spec 11).
 func admitAfterFollowUps(
 	ctx context.Context, store agentruntime.RunStore,
-	key agentruntime.RunKey, snapshot DurableRunSnapshot,
+	key agentruntime.RunKey, snapshot DurableRunSnapshot, knownCraft bool, taskAccess craft.TaskRunAccess,
 ) {
 	reader, ok := store.(trpcagent.RunInputSource)
 	if !ok {
@@ -544,6 +769,42 @@ func admitAfterFollowUps(
 		return
 	}
 	first := pending[0]
+	storedRun, err := store.Get(ctx, key)
+	if err != nil {
+		return
+	}
+	if taskAccess == nil {
+		return
+	}
+	registeredCraft, lookupErr := taskAccess.IsCraftTask(ctx, key.TenantID, storedRun.SessionID)
+	if lookupErr != nil {
+		return
+	}
+	markedCraft := snapshot.CraftInputManifest != nil
+	if markedCraft && !registeredCraft {
+		return
+	}
+	isCraftTask := registeredCraft || markedCraft
+	if knownCraft != isCraftTask {
+		return
+	}
+	actorID := strings.TrimSpace(storedRun.ActorUserID)
+	if actorID == "" {
+		if isCraftTask {
+			return
+		}
+		actorID = strings.TrimSpace(storedRun.UserID)
+	}
+	if actorID == "" {
+		return
+	}
+	if isCraftTask {
+		if taskAccess.CheckTaskAccess(ctx, craft.Scope{
+			TenantID: key.TenantID, UserID: actorID, SessionID: storedRun.SessionID,
+		}, craft.TaskWrite) != nil {
+			return
+		}
+	}
 	var payload struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
@@ -569,6 +830,7 @@ func admitAfterFollowUps(
 		Key:                agentruntime.RunKey{TenantID: key.TenantID, RunID: uuid.NewString()},
 		SessionID:          runField(store, key, func(r agentruntime.Run) string { return r.SessionID }),
 		UserID:             runField(store, key, func(r agentruntime.Run) string { return r.UserID }),
+		ActorUserID:        actorID,
 		RequestID:          "followup-" + first.SteerID,
 		AssistantMessageID: uuid.NewString(),
 		RequestHash:        hex.EncodeToString(digest[:]),

@@ -42,9 +42,14 @@ ARG OPENCODE_SHA256_AMD64=6ce6570e7db9a40e7bd3304ebdfff607920bde8cafd2eb5587bd7a
 # sha256 of the binary inside opencode-linux-arm64.tar.gz (v1.18.4)
 ARG OPENCODE_SHA256_ARM64=3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl \
- && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries; \
+    sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl; \
+    rm -rf /var/lib/apt/lists/*
 RUN set -eux; \
     case "${TARGETARCH}" in \
       amd64) arch=x64; digest="${OPENCODE_SHA256_AMD64}";; \
@@ -70,9 +75,12 @@ RUN set -eux; \
 FROM debian:bookworm-slim AS runtime
 ARG OPENCODE_VERSION
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    printf '%s\n' 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries; \
+    sed -i 's|deb.debian.org|ftp.cn.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
 
 # Dedicated non-root account; fixed ids so mounts can address it numerically.
 RUN groupadd --system --gid 10001 craft \
@@ -101,15 +109,26 @@ RUN install -d -o root -g root -m 0755 /workspace \
 # recorded in docker/craft/spreadsheet-requirements.lock; apt's repository
 # signature verification pins the debs at install time, and the build fails
 # loudly if openpyxl or soffice do not run.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      python3 \
-      python3-openpyxl \
-      libreoffice-calc-nogui \
-      fonts-noto-cjk \
- && rm -rf /var/lib/apt/lists/* \
- && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])' \
- && soffice --version
+RUN set -eux; \
+    if [ -f /etc/apt/apt.conf.d/docker-clean ]; then rm -f /etc/apt/apt.conf.d/docker-clean; fi; \
+    apt-get update; \
+    attempt=1; \
+    while :; do \
+      if apt-get install -y --no-install-recommends \
+        python3 \
+        python3-openpyxl \
+        libreoffice-calc-nogui \
+        fonts-noto-cjk; then \
+        break; \
+      fi; \
+      if [ "$attempt" -ge 3 ]; then echo "apt install failed after $attempt attempts" >&2; exit 1; fi; \
+      echo "apt install attempt $attempt failed; retrying" >&2; \
+      attempt=$((attempt + 1)); \
+    done; \
+    rm -f /var/cache/apt/archives/*.deb; \
+    rm -rf /var/lib/apt/lists/*; \
+    python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])'; \
+    soffice --version
 
 # ---------- D03: slides toolchain (python-pptx + LibreOffice Impress + poppler) ----
 # The craft-slides skill writes decks with python-pptx, renders them to PDF
@@ -133,15 +152,26 @@ ARG XLSXWRITER_URL=https://files.pythonhosted.org/packages/a7/ea/53d1fe468e63e09
 ARG TYPING_EXTENSIONS_VERSION=4.12.2
 ARG TYPING_EXTENSIONS_SHA256=04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d
 ARG TYPING_EXTENSIONS_URL=https://files.pythonhosted.org/packages/26/9f/ad63fc0248c5379346306f8668cda6e2e2e9c95e01216d2b8ffd9ff037d0/typing_extensions-4.12.2-py3-none-any.whl
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      curl \
-      python3-pip \
-      python3-pil \
-      libreoffice-impress-nogui \
-      poppler-utils \
- && rm -rf /var/lib/apt/lists/* \
- && for w in "${PYTHON_PPTX_URL} ${PYTHON_PPTX_SHA256}" "${XLSXWRITER_URL} ${XLSXWRITER_SHA256}" "${TYPING_EXTENSIONS_URL} ${TYPING_EXTENSIONS_SHA256}"; do \
+RUN set -eux; \
+    if [ -f /etc/apt/apt.conf.d/docker-clean ]; then rm -f /etc/apt/apt.conf.d/docker-clean; fi; \
+    apt-get update; \
+    attempt=1; \
+    while :; do \
+      if apt-get install -y --no-install-recommends \
+        curl \
+        python3-pip \
+        python3-pil \
+        libreoffice-impress-nogui \
+        poppler-utils; then \
+        break; \
+      fi; \
+      if [ "$attempt" -ge 3 ]; then echo "apt install failed after $attempt attempts" >&2; exit 1; fi; \
+      echo "apt install attempt $attempt failed; retrying" >&2; \
+      attempt=$((attempt + 1)); \
+    done; \
+    rm -f /var/cache/apt/archives/*.deb; \
+    rm -rf /var/lib/apt/lists/*; \
+    for w in "${PYTHON_PPTX_URL} ${PYTHON_PPTX_SHA256}" "${XLSXWRITER_URL} ${XLSXWRITER_SHA256}" "${TYPING_EXTENSIONS_URL} ${TYPING_EXTENSIONS_SHA256}"; do \
       set -- ${w}; \
       curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 3 -o "/tmp/$(basename "$1")" "$1"; \
       echo "$2  /tmp/$(basename "$1")" | sha256sum -c -; \

@@ -66,11 +66,15 @@ type Input struct {
 type Task struct {
 	ID, ToolCallID, Prompt, PromptMessageID, RequestHash string
 	Scope
-	Fence        runtime.Fence
-	WorkspaceID  string
-	Inputs       []Input
-	SkillDigests []string
-	Deadline     time.Time
+	Fence runtime.Fence
+	// SnapshotDigest is the versioned identity of the final admitted Run
+	// snapshot, including repository-selected Workspace seed data.
+	SnapshotDigestVersion int
+	SnapshotDigest        string
+	WorkspaceID           string
+	Inputs                []Input
+	SkillDigests          []string
+	Deadline              time.Time
 }
 
 // Check is one verification performed on a produced artifact. Status is

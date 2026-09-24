@@ -85,6 +85,11 @@ type Fence struct {
 	Owner                                    string
 	Epoch                                    int64
 	TargetID, WorkspaceRef, Prompt, Provider string
+	// SnapshotDigest identifies the immutable, server-admitted Craft snapshot.
+	// Version zero is reserved for legacy Runs and must fail closed at Craft
+	// dispatch boundaries.
+	SnapshotDigestVersion int
+	SnapshotDigest        string
 	// The following values are server-owned execution-binding metadata. They
 	// are restored from the immutable admission snapshot, never accepted from
 	// a remote provider response.
@@ -112,22 +117,25 @@ type RunInput struct {
 
 // Run is the durable execution query view.
 type Run struct {
-	Key                RunKey
-	SessionID          string
-	UserID             string
-	RequestID          string
-	AssistantMessageID string
-	Driver             string
-	TargetID           string
-	BudgetRef          string
-	Status             string
-	WaitReason         string
-	Owner              string
-	Revision           int64
-	Epoch              int64
-	LeaseUntil         time.Time
-	Deadline           time.Time
-	Snapshot           json.RawMessage
+	Key                   RunKey
+	SessionID             string
+	UserID                string
+	ActorUserID           string
+	RequestID             string
+	AssistantMessageID    string
+	Driver                string
+	TargetID              string
+	BudgetRef             string
+	Status                string
+	WaitReason            string
+	Owner                 string
+	Revision              int64
+	Epoch                 int64
+	LeaseUntil            time.Time
+	Deadline              time.Time
+	Snapshot              json.RawMessage
+	SnapshotDigestVersion int
+	SnapshotDigest        string
 }
 
 // Admission contains the immutable request and initial business messages.
@@ -148,7 +156,10 @@ type Admission struct {
 	UsageStatus            string
 	UsageDimensions        map[string]int64
 	UserID                 string
-	RequestID              string
+	// ActorUserID is the immutable authenticated human who admitted this Run.
+	// UserID remains the owning user and storage scope for the Task Session.
+	ActorUserID string
+	RequestID   string
 	// UserMessageID optionally reuses the handler-persisted user message row
 	// instead of creating a second one; empty generates a fresh id.
 	UserMessageID      string
@@ -163,6 +174,20 @@ type Admission struct {
 	UserMessage      json.RawMessage
 	AssistantMessage json.RawMessage
 	Deadline         time.Time
+	// InputClaims carries server-created Craft input admission fences. It is
+	// optional so ordinary Run admission remains compatible. Each claim is
+	// validated and transitioned in the same transaction as the Run row.
+	InputClaims []InputAdmissionClaim
+}
+
+// InputAdmissionClaim fences one selected opaque Craft input decision. The
+// decision key is a server-derived digest of the selected input reference;
+// RunID and Token are allocated and persisted by the Craft service before
+// Submit and are never decoded from a user-facing request.
+type InputAdmissionClaim struct {
+	DecisionKey string
+	RunID       string
+	Token       string
 }
 
 // Decision is a durable user resolution for a run waiting on an external

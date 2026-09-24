@@ -135,6 +135,8 @@ func openCraftHTTPDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(
 		"INSERT INTO users (id, username, email, password_hash, tenant_id) VALUES"+
 			" ('u1', 'u1', 'u1@example.test', 'x', 1), ('u2', 'u2', 'u2@example.test', 'x', 1)").Error)
+	require.NoError(t, db.Exec(`INSERT INTO tenant_members (tenant_id,user_id,role,status,joined_at,created_at,updated_at)
+		VALUES (1,'u1','owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).Error)
 	t.Cleanup(func() {
 		conn, e := db.DB()
 		if e == nil {
@@ -207,7 +209,11 @@ func newCraftHTTPEnv(t *testing.T, gate service.CraftFeatureGate) *craftHTTPEnv 
 	})
 	craftSessions := env.engine.Group("/api/v1/craft/sessions")
 	sessions := env.engine.Group("/api/v1/sessions")
-	RegisterCraftSessionRoutes(craftSessions, sessions, env.handler, nil)
+	inputFeatures := NewCraftFeatureRoutes()
+	require.NoError(t, inputFeatures.Register("input", func(group CraftRouteGroup) {
+		RegisterCraftInputRoutes(group, NewCraftInputHandler(env.svc))
+	}))
+	RegisterCraftSessionRoutes(craftSessions, sessions, env.handler, nil, inputFeatures)
 	return env
 }
 
@@ -287,6 +293,12 @@ func TestCraftHTTPOwnerCreatesUploadsRunsTwoRounds(t *testing.T) {
 	require.Contains(t, w.Body.String(), "tempdocs://doc-ready")
 	require.Contains(t, w.Body.String(), "sha256")
 
+	// The `.txt` upload is accepted but not auto-understood. The owner must
+	// explicitly continue it before the Run can consume it.
+	w = env.do(t, http.MethodPost, "/api/v1/sessions/"+sessionID+"/craft/inputs/decision", "",
+		`{"ref":"tempdocs://doc-ready","action":"continue"}`)
+	require.Equal(t, http.StatusOK, w.Code, "input decision body: %s", w.Body.String())
+
 	// Round one is admitted as a main run and answers the existing RunView.
 	w = env.do(t, http.MethodPost, "/api/v1/sessions/"+sessionID+"/craft/runs", "",
 		fmt.Sprintf("{\"request_id\":\"run-1\",\"prompt\":\"做一个落地页\",\"input_refs\":[\"tempdocs://doc-ready\"]}"))
@@ -325,8 +337,9 @@ func TestCraftHTTPOwnerCreatesUploadsRunsTwoRounds(t *testing.T) {
 
 // TestCraftHTTPViewerReadOnlyAndCrossTenantInvisible pins the session-level
 // permission chain over HTTP: a same-tenant non-admin viewer does not see
-// another user's craft session, a tenant admin reads it through the existing
-// shared fallback but every write is a 403, and a foreign tenant sees nothing.
+// another user's craft session, the legacy test assembly's owner-only
+// fallback does not let a tenant admin bypass Task grants, and a foreign
+// tenant sees nothing.
 func TestCraftHTTPViewerReadOnlyAndCrossTenantInvisible(t *testing.T) {
 	env := newCraftHTTPEnv(t, service.CraftFeatureGate{Enabled: true, Kinds: []string{"web"}})
 	created := env.createSession(t, "key-1", "站点", "web")
@@ -345,15 +358,16 @@ func TestCraftHTTPViewerReadOnlyAndCrossTenantInvisible(t *testing.T) {
 	w = env.do(t, http.MethodGet, "/api/v1/sessions/"+sessionID+"/craft/versions", "viewer", "")
 	require.Equal(t, http.StatusNotFound, w.Code)
 
-	// A tenant admin reads through the shared fallback but cannot write.
+	// This harness intentionally omits the T08 Task ACL, so no shared Craft
+	// access is inferred from SessionService's tenant-admin fallback.
 	w = env.do(t, http.MethodGet, "/api/v1/sessions/"+sessionID+"/craft", "admin", "")
-	require.Equal(t, http.StatusOK, w.Code, "admin view: %s", w.Body.String())
+	require.Equal(t, http.StatusNotFound, w.Code, "admin view: %s", w.Body.String())
 	w = env.do(t, http.MethodPost, "/api/v1/sessions/"+sessionID+"/craft/inputs", "admin",
 		fmt.Sprintf("{\"resource_ref\":\"doc-ready\",\"expected_sha256\":%q}", craftDigest("material")))
-	require.Equal(t, http.StatusForbidden, w.Code, "admin write: %s", w.Body.String())
+	require.Equal(t, http.StatusNotFound, w.Code, "admin write: %s", w.Body.String())
 	w = env.do(t, http.MethodPost, "/api/v1/sessions/"+sessionID+"/craft/runs", "admin",
 		"{\"request_id\":\"r\",\"prompt\":\"go\"}")
-	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Equal(t, http.StatusNotFound, w.Code)
 
 	// A foreign tenant never sees the session.
 	w = env.do(t, http.MethodGet, "/api/v1/sessions/"+sessionID+"/craft", "foreigntenant", "")
@@ -489,8 +503,7 @@ func TestCraftHTTPListAndVersionDownload(t *testing.T) {
 	// Publish a real version for the first session, then download its pinned
 	// entry file through the full chain.
 	sessionID := first["session_id"].(string)
-	workspaceID := "ws-http-" + sessionID
-	env.db.Exec("UPDATE craft_workspaces SET id = ? WHERE session_id = ?", workspaceID, sessionID)
+	workspaceID := first["workspace_id"].(string)
 	page := "<h1>v1</h1>"
 	files := []craft.File{{
 		Path: "index.html", Ref: "blob://http-index", SHA256: craftDigest(page),

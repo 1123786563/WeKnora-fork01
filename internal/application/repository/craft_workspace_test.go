@@ -34,6 +34,19 @@ func craftToolPlan(callID string) agentruntime.ToolPlan {
 	}
 }
 
+func craftWorkspaceBoundTestSnapshot(query, workspaceID string) json.RawMessage {
+	raw, err := json.Marshal(map[string]any{
+		"version": 1, "query": query, "model_id": "model-1", "agent_config": json.RawMessage(`{}`),
+		"craft_input_manifest":      []craft.Input{},
+		"craft_knowledge_selection": map[string]any{"query": query, "knowledge_base_ids": []string{}},
+		"craft_workspace_seed":      map[string]any{"workspace_id": workspaceID, "state": "empty", "draft_revision": 0},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return raw
+}
+
 // seedCraftRun admits, claims and journal-plans a real run so delegation rows
 // satisfy the agent_runs and agent_tool_calls foreign keys through the
 // production APIs instead of raw inserts.
@@ -41,6 +54,7 @@ func seedCraftRun(t *testing.T, db *gorm.DB, runID, callID string) agentruntime.
 	t.Helper()
 	ctx := context.Background()
 	runs := NewAgentRunStore(db)
+	snapshot := json.RawMessage(`{"version":1,"craft":true}`)
 	_, err := runs.Admit(ctx, agentruntime.Admission{
 		Key:                agentruntime.RunKey{TenantID: 1, RunID: runID},
 		SessionID:          "s1",
@@ -48,12 +62,18 @@ func seedCraftRun(t *testing.T, db *gorm.DB, runID, callID string) agentruntime.
 		RequestID:          "craft-" + runID,
 		AssistantMessageID: "craft-a-" + runID,
 		RequestHash:        "craft-h-" + runID,
-		Snapshot:           json.RawMessage(`{"version":1,"craft":true}`),
+		Snapshot:           snapshot,
 		UserMessage:        json.RawMessage(`{"role":"user","content":"make a site"}`),
 		AssistantMessage:   json.RawMessage(`{"role":"assistant","content":""}`),
 		Deadline:           time.Now().Add(time.Hour),
 	})
 	require.NoError(t, err)
+	digest, err := craftAdmittedSnapshotDigest(snapshot)
+	require.NoError(t, err)
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", 1, runID).Updates(map[string]any{
+		"snapshot_digest_version": craftSnapshotDigestVersion,
+		"snapshot_digest":         digest,
+	}).Error)
 	fence, err := runs.Claim(ctx, agentruntime.RunKey{TenantID: 1, RunID: runID}, "craft-worker", time.Hour)
 	require.NoError(t, err)
 	_, err = runs.EnsureToolPlan(ctx, fence, craftToolPlan(callID))
@@ -111,6 +131,13 @@ func TestCraftWorkspaceConcurrentCreateProducesSingleBinding(t *testing.T) {
 				Where("tenant_id = ? AND session_id = ?", scope.TenantID, scope.SessionID).
 				Count(&bound).Error)
 			require.EqualValues(t, 1, bound)
+			var winning craftWorkspaceRow
+			require.NoError(t, db.Where("tenant_id = ? AND session_id = ?", scope.TenantID, scope.SessionID).Take(&winning).Error)
+			var heads int64
+			require.NoError(t, db.Table("craft_workspace_draft_heads").
+				Where("tenant_id = ? AND workspace_id = ?", scope.TenantID, winning.ID).
+				Count(&heads).Error)
+			require.EqualValues(t, 1, heads)
 			got, err := store.GetWorkspace(context.Background(), scope)
 			require.NoError(t, err)
 			require.Equal(t, "sbx-race", got.SandboxID)
@@ -191,6 +218,7 @@ func TestCraftPrepareTaskIdempotencyAndConflicts(t *testing.T) {
 			task := craft.Task{
 				ToolCallID: "c1", Prompt: "build the landing page", RequestHash: "rh-1",
 				Scope: scope, Fence: fence, WorkspaceID: ws.ID,
+				SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 				Inputs:       []craft.Input{{Ref: "resource://in/brief", Name: "brief.md", SHA256: "sha-in", Bytes: 12}},
 				SkillDigests: []string{"sha256:skill"},
 				Deadline:     time.Now().Add(30 * time.Minute).UTC().Truncate(time.Microsecond),
@@ -252,6 +280,45 @@ func TestCraftPrepareTaskIdempotencyAndConflicts(t *testing.T) {
 	}
 }
 
+func TestCraftPrepareTaskRejectsChangedDurableSnapshotWithRecomputedDigest(t *testing.T) {
+	db := openCraftDB(t)
+	store := NewCraftStore(db)
+	ctx := context.Background()
+	fence := seedCraftRun(t, db, "r-craft-stale-snapshot", "c-stale-snapshot")
+	scope := craftTestScope()
+	ws := putCraftWorkspace(t, store)
+	originalSnapshot := craftWorkspaceBoundTestSnapshot("build the landing page", ws.ID)
+	originalDigest, err := craftAdmittedSnapshotDigest(originalSnapshot)
+	require.NoError(t, err)
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", fence.TenantID, fence.RunID).Updates(map[string]any{
+		"snapshot":                string(originalSnapshot),
+		"snapshot_digest_version": craftSnapshotDigestVersion,
+		"snapshot_digest":         originalDigest,
+	}).Error)
+	fence.SnapshotDigestVersion, fence.SnapshotDigest = craftSnapshotDigestVersion, originalDigest
+	task := craft.Task{
+		ToolCallID: "c-stale-snapshot", Prompt: "build the landing page", RequestHash: "rh-stale-snapshot",
+		Scope: scope, Fence: fence, WorkspaceID: ws.ID,
+		SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
+	}
+
+	changedSnapshot := craftWorkspaceBoundTestSnapshot("a changed valid query", ws.ID)
+	changedDigest, err := craftAdmittedSnapshotDigest(changedSnapshot)
+	require.NoError(t, err)
+	require.NotEqual(t, task.SnapshotDigest, changedDigest)
+	require.NoError(t, db.Table("agent_runs").Where("tenant_id = ? AND run_id = ?", fence.TenantID, fence.RunID).Updates(map[string]any{
+		"snapshot":                string(changedSnapshot),
+		"snapshot_digest_version": craftSnapshotDigestVersion,
+		"snapshot_digest":         changedDigest,
+	}).Error)
+
+	_, err = store.PrepareTask(ctx, task) // original Task/Fence still carry the old admission identity
+	require.ErrorIs(t, err, craft.ErrConflict)
+	var delegations int64
+	require.NoError(t, db.Table("craft_delegations").Where("tenant_id = ? AND run_id = ?", fence.TenantID, fence.RunID).Count(&delegations).Error)
+	require.Zero(t, delegations, "identity mismatch is rejected before the delegation row is written")
+}
+
 // TestCraftSaveResultFenceAndIdempotency: results commit only under the live
 // run fence, identical replays are idempotent, different results for a
 // finished delegation are rejected, and an expired epoch cannot write.
@@ -267,6 +334,7 @@ func TestCraftSaveResultFenceAndIdempotency(t *testing.T) {
 			task, err := store.PrepareTask(ctx, craft.Task{
 				ToolCallID: "c1", Prompt: "build", RequestHash: "rh-1",
 				Scope: scope, Fence: fence, WorkspaceID: ws.ID,
+				SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 			})
 			require.NoError(t, err)
 
@@ -306,6 +374,7 @@ func TestCraftSaveResultFenceAndIdempotency(t *testing.T) {
 			task2, err := store.PrepareTask(ctx, craft.Task{
 				ToolCallID: "c2", Prompt: "refine", RequestHash: "rh-2",
 				Scope: scope, Fence: fence, WorkspaceID: ws.ID,
+				SnapshotDigestVersion: fence.SnapshotDigestVersion, SnapshotDigest: fence.SnapshotDigest,
 			})
 			require.NoError(t, err)
 			require.NoError(t, db.Exec("UPDATE agent_runs SET epoch = epoch + 1 WHERE tenant_id = 1 AND run_id = 'r-craft-1'").Error)
@@ -313,6 +382,28 @@ func TestCraftSaveResultFenceAndIdempotency(t *testing.T) {
 			require.ErrorIs(t, err, craft.ErrConflict)
 			_, err = store.GetResult(ctx, scope, task2.ID)
 			require.ErrorIs(t, err, craft.ErrNotFound)
+		})
+	}
+}
+
+func TestCraftWorkspaceCreatesExplicitDraftHeadAndLegacyIsUnresolved(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := openCraftDB(t)
+			ws := putCraftWorkspace(t, NewCraftStore(db))
+			store := NewCraftDraftHeadStore(db)
+			got, err := store.Read(context.Background(), craftTestScope(), ws.ID)
+			require.NoError(t, err)
+			require.Equal(t, craft.DraftHeadEmpty, got.State)
+			require.Zero(t, got.Revision)
+
+			legacy := craft.Workspace{ID: "ws-legacy", Scope: craft.Scope{TenantID: 1, UserID: "u1", SessionID: "s2"}}
+			_, err = NewCraftStore(db).PutWorkspace(context.Background(), legacy, 0)
+			require.NoError(t, err)
+			// Simulate a pre-migration Workspace whose trustworthy head is absent.
+			require.NoError(t, db.Exec("DELETE FROM craft_workspace_draft_heads WHERE workspace_id = ?", legacy.ID).Error)
+			_, err = store.Read(context.Background(), legacy.Scope, legacy.ID)
+			require.ErrorIs(t, err, craft.ErrDraftHeadUnresolved)
 		})
 	}
 }
