@@ -214,3 +214,59 @@ func TestCreateInstallationDuplicateKeySentinel(t *testing.T) {
 	dup3.TenantID = 8
 	require.NoError(t, repo.CreateInstallation(ctx, &dup3))
 }
+
+// TestHardDeleteServiceCascadeCleansOAuthRows（T06-OCR1-F5）：以 service_id
+// 键控的派生表不止 mcp_tool_approvals——mcp_oauth_tokens（成员个人令牌，
+// AES-256-GCM 加密）与 mcp_oauth_clients 同键控。卸载硬删 mcp_services 后
+// 这些行若不被级联清理，敏感凭据在服务已删后无限期滞留（旗舰 Jira 场景：
+// 成员授权后管理员卸载必然命中）。手工服务的行原样保留。mcp_metadata 为
+// PG-only 表（SQLite 面不存在），由方言分支跳过。
+func TestHardDeleteServiceCascadeCleansOAuthRows(t *testing.T) {
+	ctx := context.Background()
+	db := newPluginPreviewTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&types.MCPService{}, &types.MCPToolApproval{},
+		&types.MCPOAuthToken{}, &types.MCPOAuthClient{},
+	))
+	repo := NewPluginRepository(db)
+
+	mkService := func(id string) *types.MCPService {
+		return &types.MCPService{ID: id, TenantID: 7, Name: "svc-" + id, TransportType: "http"}
+	}
+	require.NoError(t, db.Create(mkService("svc-plugin")).Error)
+	require.NoError(t, db.Create(mkService("svc-manual")).Error)
+	for _, svc := range []string{"svc-plugin", "svc-manual"} {
+		require.NoError(t, db.Create(&types.MCPToolApproval{
+			ID: "appr-" + svc, TenantID: 7, ServiceID: svc, ToolName: "tool-a",
+		}).Error)
+		// UserID/PrincipalID 唯一索引（tenant, principal, service）——每服务唯一值。
+		require.NoError(t, db.Create(&types.MCPOAuthToken{
+			ID: "tok-" + svc, TenantID: 7, UserID: "user-" + svc, ServiceID: svc,
+			PrincipalType: "user", PrincipalID: "user-" + svc, AccessToken: "tok",
+		}).Error)
+		require.NoError(t, db.Create(&types.MCPOAuthClient{
+			ID: "cli-" + svc, TenantID: 7, ServiceID: svc, ClientID: "cid-" + svc,
+		}).Error)
+	}
+
+	require.NoError(t, repo.HardDeleteServiceCascade(ctx, 7, "svc-plugin"))
+
+	count := func(model any, where string, args ...any) int64 {
+		t.Helper()
+		var n int64
+		require.NoError(t, db.Model(model).Where(where, args...).Count(&n).Error)
+		return n
+	}
+	// 插件侧全清：服务、审批、成员令牌、动态客户端注册。
+	require.EqualValues(t, 0, count(&types.MCPService{}, "id = ?", "svc-plugin"))
+	require.EqualValues(t, 0, count(&types.MCPToolApproval{}, "service_id = ?", "svc-plugin"))
+	require.EqualValues(t, 0, count(&types.MCPOAuthToken{}, "service_id = ?", "svc-plugin"),
+		"member OAuth tokens keyed to the removed service must be cascade-cleaned")
+	require.EqualValues(t, 0, count(&types.MCPOAuthClient{}, "service_id = ?", "svc-plugin"),
+		"dynamic-client rows keyed to the removed service must be cascade-cleaned")
+	// 手工侧原样保留。
+	require.EqualValues(t, 1, count(&types.MCPService{}, "id = ?", "svc-manual"))
+	require.EqualValues(t, 1, count(&types.MCPToolApproval{}, "service_id = ?", "svc-manual"))
+	require.EqualValues(t, 1, count(&types.MCPOAuthToken{}, "service_id = ?", "svc-manual"))
+	require.EqualValues(t, 1, count(&types.MCPOAuthClient{}, "service_id = ?", "svc-manual"))
+}

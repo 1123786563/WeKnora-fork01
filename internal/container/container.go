@@ -325,6 +325,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(manager *mcp.MCPManager) plugins.EndpointLister {
 		return NewPluginMCPEndpointLister(manager)
 	}))
+	// Plugin install/state/uninstall flows close the manager's cached MCP
+	// clients when a materialized service row is hard-deleted or flipped
+	// (T06-OCR1-F7/F13) — same composition-root seam pattern as the lister.
+	must(container.Provide(func(manager *mcp.MCPManager) service.MCPClientCloser {
+		return func(serviceID string) { _ = manager.CloseClient(serviceID) }
+	}))
 
 	// Sandbox manager fallback is disabled; executable backends are resolved
 	// from named workspace configurations.

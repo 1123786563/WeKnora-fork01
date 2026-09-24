@@ -292,6 +292,9 @@ type installTestStack struct {
 	manifest      *types.PluginManifest
 	manifestBytes *[]byte
 	previewID     string
+	// closedClients 记录 MCPClientCloser seam 收到的 serviceID（T06-OCR1
+	// F7/F13：卸载/停用启用后必须关闭 manager 缓存连接）。
+	closedClients *[]string
 }
 
 // replaceManifest 热替换受控 host 上的清单文档（自洽漂移场景）。
@@ -486,7 +489,9 @@ func newInstallTestStackCustom(
 	pluginRepo.approvalRepo = approvalRepo
 	mcpSvcService := service.NewMCPServiceService(mcpRepo, nil, nil)
 	approvalSvc := service.NewMCPToolApprovalService(approvalRepo, mcpRepo)
-	svc := service.NewPluginService(pluginRepo, mcpSvcService, mcpRepo, approvalSvc, lister.asEndpointLister())
+	closed := &[]string{}
+	closer := service.MCPClientCloser(func(serviceID string) { *closed = append(*closed, serviceID) })
+	svc := service.NewPluginService(pluginRepo, mcpSvcService, mcpRepo, approvalSvc, lister.asEndpointLister(), closer)
 
 	resp, err := svc.PreviewFromManifest(context.Background(), tenantID, "admin-1", srv.URL+"/manifest.json")
 	require.NoError(t, err)
@@ -502,6 +507,7 @@ func newInstallTestStackCustom(
 		manifest:      m,
 		manifestBytes: manifestJSONPtr,
 		previewID:     resp.PreviewID,
+		closedClients: closed,
 	}
 }
 
@@ -674,18 +680,25 @@ func TestSetInstallationStateSyncsService(t *testing.T) {
 	s := newInstallTestStack(t, 7)
 	resp, err := s.confirm(t, 7, s.previewID)
 	require.NoError(t, err)
+	serviceID := s.mcpRepo.services[0].ID
+	require.Empty(t, *s.closedClients, "confirm itself must not close the fresh client")
 
 	// disable → 安装行 disabled 且物化服务 Enabled=false。
 	_, err = s.svc.SetInstallationState(context.Background(), 7, resp.InstallationID, types.PluginInstallationDisabled)
 	require.NoError(t, err)
 	require.Equal(t, types.PluginInstallationDisabled, s.pluginRepo.installations[0].State)
 	require.False(t, s.mcpRepo.services[0].Enabled)
+	require.Equal(t, []string{serviceID}, *s.closedClients,
+		"disable must recycle the manager's cached client (T06-OCR1-F13)")
 
-	// enable → 反向。
+	// enable → 反向；连接同样回收（手动路径 enable 分支同款语义）。
+	*s.closedClients = []string{}
 	_, err = s.svc.SetInstallationState(context.Background(), 7, resp.InstallationID, types.PluginInstallationActive)
 	require.NoError(t, err)
 	require.Equal(t, types.PluginInstallationActive, s.pluginRepo.installations[0].State)
 	require.True(t, s.mcpRepo.services[0].Enabled)
+	require.Equal(t, []string{serviceID}, *s.closedClients,
+		"enable must recycle the cached client so the next call reconnects with fresh config")
 
 	// 未知 state → 参数错误。
 	_, err = s.svc.SetInstallationState(context.Background(), 7, resp.InstallationID, "bogus")
@@ -817,6 +830,10 @@ func TestUninstallInstallationReleasesUniqueSlot(t *testing.T) {
 	require.Empty(t, s.mcpRepo.services)
 	require.Empty(t, s.approvalRepo.rows)
 	require.Equal(t, []string{serviceID}, s.pluginRepo.hardDeletedSvc)
+	// 级联删除成功后必须关闭 manager 缓存连接（T06-OCR1-F7）：行已删而
+	// SSE 长连接（内存持有成员令牌）滞留到进程重启是连接/凭据泄漏。
+	require.Equal(t, []string{serviceID}, *s.closedClients,
+		"uninstall must close the manager's cached client for the removed service")
 
 	// 唯一槽已释放：新预览可重新安装。
 	newPreview, err := s.svc.PreviewFromManifest(context.Background(), 7, "admin-1", s.pluginRepo.previews[0].ManifestURL)
@@ -881,6 +898,21 @@ func TestConfirmInstallationAuthConfigFromVerifiedBaseline(t *testing.T) {
 	require.Len(t, s2.mcpRepo.services, 1)
 	require.Nil(t, s2.mcpRepo.services[0].AuthConfig,
 		"no verified tool-level auth requirement → no materialized OAuth config, fresh flip ignored")
+
+	// 场景 3（T06-OCR1-F8）：requires_personal_auth=false 的工具（无个人
+	// 授权需求）仍可在声明里夹带 scopes——并集不得把它们计入成员个人
+	// OAuth 授权请求，否则只读工具可把 write:xxx 混进最小授权范围。
+	s3 := newInstallTestStackCustom(t, 7, func(m *types.PluginManifest) {
+		// search 保持授权声明 [read:jira]；create_issue（无授权需求）夹带
+		// [write:jira, admin:jira]。
+		m.Tools[1].Scopes = []string{"write:jira", "admin:jira"}
+	})
+	resp3, err := s3.confirm(t, 7, s3.previewID)
+	require.NoError(t, err)
+	require.NotEmpty(t, resp3.InstallationID)
+	require.NotNil(t, s3.mcpRepo.services[0].AuthConfig)
+	require.Equal(t, []string{"read:jira"}, s3.mcpRepo.services[0].AuthConfig.Scopes,
+		"scopes union must collect ONLY tools that require personal auth — an unauthenticated tool's declared scopes never enter the member OAuth grant")
 }
 
 // TestGenericMCPAPIRejectsPluginManagedServices（跨任务转交 T04-OCR1-F6）：

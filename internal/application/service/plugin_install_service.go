@@ -17,6 +17,26 @@ import (
 	"gorm.io/gorm"
 )
 
+// MCPClientCloser closes the MCPManager's cached client connection(s) for
+// one service (T06-OCR1-F7/F13). The manager caches SSE/long-lived clients
+// keyed by serviceID (plus per-principal variants for OAuth), and cleanup
+// only evicts dead ones — a hard-deleted or disabled service would keep its
+// live connection, holding member tokens in memory, until process restart.
+// The composition root injects the real closer over the airesource
+// MCPManager (same seam pattern as EndpointLister); tests inject counters.
+type MCPClientCloser func(serviceID string)
+
+// closeServiceClient is the nil-safe wrapper: a closer-less wiring (preview
+// tests) simply skips; the close itself is best-effort — the manager's own
+// CloseClient already swallows "not connected".
+func (s *pluginService) closeServiceClient(ctx context.Context, serviceID string) {
+	if s.clientCloser == nil || serviceID == "" {
+		return
+	}
+	s.clientCloser(serviceID)
+	logger.GetLogger(ctx).Infof("plugin service client closed: %s", serviceID)
+}
+
 // PluginSnapshotLookup builds the production runtime guard provider over
 // the plugin repository (T09): a service with no installation row (every
 // manual MCP service) resolves to (nil, nil) — the tools layer reads that
@@ -264,16 +284,22 @@ func (s *pluginService) reclassifyPreviewMiss(ctx context.Context, tenantID uint
 // config from the preview's verified tool-level declarations (跨任务转交
 // T01-OCR1-F3): oauth is configured only when at least one reviewed tool
 // requires personal auth, and the scopes are the union (first-seen order) of
-// the reviewed tools' scope lists. With no tool-level requirement the result
-// is nil — a fresh manifest auth flip is not a reviewed requirement.
+// the scopes declared by tools that REQUIRE personal auth. Scopes carried by
+// tools with requires_personal_auth=false (T06-OCR1-F8) are deliberately
+// excluded: an unauthenticated tool's declared scopes must never widen the
+// member's personal OAuth grant — a read-only tool smuggling write:xxx into
+// the authorization request would violate the spec's least-privilege
+// posture. With no tool-level requirement the result is nil — a fresh
+// manifest auth flip is not a reviewed requirement.
 func oauthConfigFromVerifiedBaseline(snapshot []types.PluginToolSnapshot) *types.MCPAuthConfig {
 	requiresOAuth := false
 	var scopes []string
 	seen := map[string]bool{}
 	for _, tool := range snapshot {
-		if tool.RequiresPersonalAuth {
-			requiresOAuth = true
+		if !tool.RequiresPersonalAuth {
+			continue
 		}
+		requiresOAuth = true
 		for _, s := range tool.Scopes {
 			if !seen[s] {
 				seen[s] = true
@@ -313,6 +339,11 @@ func (s *pluginService) compensateInstallation(
 		if err := s.pluginRepo.HardDeleteServiceCascade(compCtx, tenantID, serviceID); err != nil {
 			logger.GetLogger(ctx).Errorf(
 				"plugin installation compensation: failed to cascade-delete materialized service %s: %v", serviceID, err)
+		} else {
+			// The rows are gone — drop the manager's cached client too
+			// (T06-OCR1-F7): a live SSE connection holding member tokens
+			// must not outlive the service it pointed at.
+			s.closeServiceClient(compCtx, serviceID)
 		}
 	}
 	if err := s.pluginRepo.DeleteInstallation(compCtx, tenantID, installationID); err != nil {
@@ -374,6 +405,13 @@ func (s *pluginService) SetInstallationState(
 			logger.GetLogger(ctx).Errorf("failed to sync materialized service state: %v", err)
 			return ErrInstallationPersistFailed
 		}
+		// The DB row moved — recycle the cached client (T06-OCR1-F13): the
+		// manager only re-reads config when a caller asks for a client, and
+		// a disabled service's live SSE connection (per-principal OAuth
+		// variants included) would otherwise linger until process restart.
+		// Manual UpdateMCPService closes on BOTH transitions for the same
+		// reason (enable gets a clean reconnect) — mirror it.
+		s.closeServiceClient(ctx, inst.ServiceID)
 		return nil
 	}
 	flipInstallation := func() error {
@@ -431,6 +469,9 @@ func (s *pluginService) UninstallInstallation(
 			logger.GetLogger(ctx).Errorf("failed to cascade-delete materialized service: %v", err)
 			return ErrInstallationPersistFailed
 		}
+		// Rows gone → cached client goes too (T06-OCR1-F7): same
+		// close-before-return discipline as the manual DeleteMCPService.
+		s.closeServiceClient(ctx, inst.ServiceID)
 	}
 	if err := s.pluginRepo.DeleteInstallation(ctx, tenantID, installationID); err != nil {
 		logger.GetLogger(ctx).Errorf("failed to delete plugin installation: %v", err)

@@ -131,6 +131,10 @@ type pluginService struct {
 	mcpServiceRepo      interfaces.MCPServiceRepository
 	toolApprovalService interfaces.MCPToolApprovalService
 	lister              plugins.EndpointLister
+	// clientCloser (T06-OCR1-F7/F13) closes the manager's cached MCP
+	// clients for a service after the plugin domain hard-deletes or flips
+	// its materialized row — injected by the composition root, nil-safe.
+	clientCloser MCPClientCloser
 }
 
 // NewPluginService creates a new plugin service.
@@ -140,6 +144,7 @@ func NewPluginService(
 	mcpServiceRepo interfaces.MCPServiceRepository,
 	toolApprovalService interfaces.MCPToolApprovalService,
 	lister plugins.EndpointLister,
+	clientCloser MCPClientCloser,
 ) interfaces.PluginService {
 	return &pluginService{
 		pluginRepo:          pluginRepo,
@@ -147,6 +152,7 @@ func NewPluginService(
 		mcpServiceRepo:      mcpServiceRepo,
 		toolApprovalService: toolApprovalService,
 		lister:              lister,
+		clientCloser:        clientCloser,
 	}
 }
 

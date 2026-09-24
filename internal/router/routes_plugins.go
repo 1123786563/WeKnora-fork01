@@ -32,8 +32,12 @@ func RegisterPluginRoutes(r *gin.RouterGroup, pluginHandler *handler.PluginHandl
 		// Ops-only self-heal channel (rulings.md R4): removes a failed
 		// confirm's leftover rows. NOT a user-facing feature — the
 		// user-visible governance endpoint stays "disable" and the web UI
-		// must never surface a delete/uninstall entry.
-		pluginRoutes.DELETE("/installations/:id", g.Admin(), pluginHandler.UninstallInstallation)
+		// must never surface a delete/uninstall entry. Guarded at
+		// SystemAdmin, NOT workspace Admin (T06-OCR1-F1): the workspace
+		// admin's sanctioned lever is disable (reversible, keeps audit
+		// trails); a hard cascade that destroys member approvals and
+		// releases the unique slot is an operator action.
+		pluginRoutes.DELETE("/installations/:id", g.SystemAdmin(), pluginHandler.UninstallInstallation)
 		pluginRoutes.GET("/installations", g.Viewer(), pluginHandler.ListInstallations)
 		pluginRoutes.GET("/installations/:id", g.Viewer(), pluginHandler.GetInstallation)
 	}

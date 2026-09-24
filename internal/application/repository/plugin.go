@@ -218,24 +218,49 @@ func (r *pluginRepository) DeleteInstallation(ctx context.Context, tenantID uint
 }
 
 // HardDeleteServiceCascade HARD-deletes a plugin-materialized MCP service
-// row together with its derived per-tool approval rows (OCR round-1 R12
-// F21): the mcp_tool_approvals FK only cascades on a hard DELETE, while the
-// shared MCPServiceRepository.Delete is a soft delete — compensating with
-// it would leave policy rows keyed to a dead serviceID forever, and each
-// failed retry would strand one more soft-deleted service. The plugin
-// domain owns its derived rows, so the cascade lives here rather than on
-// the shared MCP service repository.
+// row together with EVERY service_id-keyed derived row (OCR round-1 R12
+// F21, T06-OCR1-F5): mcp_tool_approvals, mcp_oauth_tokens (member personal
+// tokens, AES-256-GCM at rest) and mcp_oauth_clients on every driver, plus
+// mcp_metadata on PostgreSQL (dialect-gated — the table has no SQLite
+// twin). Without the full sweep, uninstalling after members authorized
+// would strand sensitive credential rows on a dead service forever. The
+// mcp_tool_approvals FK only cascades on a hard DELETE, the shared
+// MCPServiceRepository.Delete is a soft delete, and production SQLite DSNs
+// never enable foreign_keys — these explicit deletes are the only cleanup
+// there is. The plugin domain owns its derived rows, so the cascade lives
+// here rather than on the shared MCP service repository.
 func (r *pluginRepository) HardDeleteServiceCascade(ctx context.Context, tenantID uint64, serviceID string) error {
 	if serviceID == "" {
 		return nil
 	}
-	if err := r.db.WithContext(ctx).
-		Unscoped().
-		Where("tenant_id = ? AND id = ?", tenantID, serviceID).
-		Delete(&types.MCPService{}).Error; err != nil {
+	// Derived rows FIRST (T06-OCR1-F5): every service_id-keyed table must be
+	// swept before the service row goes — member OAuth tokens (AES-256-GCM
+	// at rest) and dynamic-client registrations would otherwise strand on a
+	// dead service forever. Production SQLite DSNs never enable
+	// foreign_keys, so these explicit deletes are the only cleanup there is.
+	deleteDerived := func(model any) error {
+		return r.db.WithContext(ctx).
+			Where("tenant_id = ? AND service_id = ?", tenantID, serviceID).
+			Delete(model).Error
+	}
+	if err := deleteDerived(&types.MCPToolApproval{}); err != nil {
 		return err
 	}
+	if err := deleteDerived(&types.MCPOAuthToken{}); err != nil {
+		return err
+	}
+	if err := deleteDerived(&types.MCPOAuthClient{}); err != nil {
+		return err
+	}
+	if r.db.Dialector.Name() == "postgres" {
+		// mcp_metadata is a PostgreSQL-only table — the SQLite migration
+		// stream never creates it, so the delete is dialect-gated.
+		if err := deleteDerived(&types.MCPMetadata{}); err != nil {
+			return err
+		}
+	}
 	return r.db.WithContext(ctx).
-		Where("tenant_id = ? AND service_id = ?", tenantID, serviceID).
-		Delete(&types.MCPToolApproval{}).Error
+		Unscoped().
+		Where("tenant_id = ? AND id = ?", tenantID, serviceID).
+		Delete(&types.MCPService{}).Error
 }

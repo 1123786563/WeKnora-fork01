@@ -86,9 +86,10 @@ func previewFakeLister() plugins.EndpointLister {
 }
 
 // newPreviewServiceForTest 用最小依赖构造预览路径服务（T06 扩展了
-// NewPluginService 的依赖面；预览路径不触碰安装/MCP 物化 seam，nil 即可）。
+// NewPluginService 的依赖面；预览路径不触碰安装/MCP 物化/连接关闭 seam，
+// nil 即可）。
 func newPreviewServiceForTest(repo interfaces.PluginRepository, lister plugins.EndpointLister) interfaces.PluginService {
-	return service.NewPluginService(repo, nil, nil, nil, lister)
+	return service.NewPluginService(repo, nil, nil, nil, lister, nil)
 }
 
 func TestPreviewPersistsFingerprintAndExpiry(t *testing.T) {
