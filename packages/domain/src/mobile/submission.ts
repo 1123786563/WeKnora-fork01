@@ -163,6 +163,49 @@ export function createSubmissionCoordinator(store: SubmissionStore, transport: S
       return next;
     },
 
+    /**
+     * 同一意图的受控重入（显式驱动，区别于「unknown 不自动重发」的自动语义）：
+     * - 无持久 entry：等同 submit（新意图）；
+     * - 有 entry 且 scope/摘要不一致：SubmissionConflictError（零网络）；
+     * - bound：直接返回原 run（零网络）；
+     * - awaiting_*：先 lookup 对账原请求；仅当服务端明确 unknown（无持久记录，
+     *   即该 request_id 从未 CreatePending 成功、无 Task/预算预占）才以同一
+     *   request_id 重发——绝不换 ID 重建任务。
+     */
+    async resume(input: MobileStartInput, scope: SubmissionScope): Promise<SubmitOutcome> {
+      const digest = inputDigest(input);
+      const existing = store.load(input.request_id);
+      if (!existing) return this.submit(input, scope);
+      if (!sameScope(existing.scope, scope)) {
+        throw new SubmissionConflictError(input.request_id, existing.input_digest, `${digest} (scope mismatch)`);
+      }
+      if (existing.input_digest !== digest) {
+        throw new SubmissionConflictError(input.request_id, existing.input_digest, digest);
+      }
+      if (existing.phase === 'bound' && existing.run_id) {
+        return { entry: existing, dispatched: false };
+      }
+      const lookup = await transport.lookup(input.request_id);
+      if (lookup.state !== 'unknown') {
+        return { entry: await this.reconcile(input.request_id, scope), dispatched: false };
+      }
+      try {
+        const ack = await transport.start(input);
+        if (ack.request_id !== input.request_id) {
+          const entry: SubmissionEntry = { request_id: input.request_id, input_digest: digest, scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() };
+          store.save(entry);
+          return { entry, dispatched: true };
+        }
+        const entry: SubmissionEntry = { request_id: input.request_id, input_digest: digest, scope, phase: 'bound', run_id: ack.run_id, updated_at: new Date().toISOString() };
+        store.save(entry);
+        return { entry, dispatched: true };
+      } catch {
+        const entry: SubmissionEntry = { request_id: input.request_id, input_digest: digest, scope, phase: 'awaiting_reconciliation', updated_at: new Date().toISOString() };
+        store.save(entry);
+        return { entry, dispatched: true };
+      }
+    },
+
     /** 受控重试：仅 rejected 允许；新意图=新 request_id（由调用方生成并经用户确认）。 */
     retryEntry(requestId: string): SubmissionEntry {
       const existing = store.load(requestId);

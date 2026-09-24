@@ -230,7 +230,7 @@ test('the home header activates any listed tenant through the runtime callback',
   });
 
   const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
-  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'View all tasks', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');
+  assert.deepEqual(buttons, ['Acme', 'Beta', 'Sign out', 'New task', 'View all tasks', 'Open Resources', 'Load home'], 'with more than one tenant every tenant is a header switch button');
   const single = render(HomeScreen, {
     deploymentLabel: 'WeKnora',
     tenants: [{ id: '7', name: 'Acme' }],
@@ -816,4 +816,153 @@ test('the task detail error chain maps codes to copy instead of leaking raw inte
   assert.match(screen, /INTERRUPTION_COPY/, 'interruption 原因必须经文案映射（B2-F40）');
   assert.match(screen, /INTERRUPTION_COPY\[view\.interruption\.reason\]/, '不得直出内部码');
   assert.match(tasks, /title="Details"/, '打开按钮文案与同屏英文统一（B2-F5）');
+});
+
+test('the universal New entry renders the recommended lead agent, budget control and a blocked-submit reason', async () => {
+  const { NewTaskScreen } = await import('./screens/NewTaskScreen.tsx');
+  const state = {
+    draft: { text: '整理周报', agentId: 'a-general', budgetUpper: 200, attachments: [{ id: 'f-1', name: 'a.pdf', readiness: 'scanning' }], knowledgeIds: ['kb-1'] },
+    agents: [
+      { id: 'a-general', name: '通用主理', summary: '', kind: 'general', capability: { state: 'supported', reason: '' } },
+      { id: 'a-coding', name: '编码', summary: '', kind: 'coding', capability: { state: 'supported', reason: '' } },
+    ],
+    knowledge: [{ id: 'kb-1', title: '团队知识库', scanStatus: 'indexed', documentCount: 3, updatedAt: '2026-09-24T00:00:00Z' }],
+    recommendation: { agent: { id: 'a-general', name: '通用主理', summary: '', kind: 'general', capability: { state: 'supported', reason: '' } }, basis: 'kind-general' },
+    readiness: { ready: false, reason: 'attachments_not_ready', blockingAttachments: [{ id: 'f-1', name: 'a.pdf', readiness: 'scanning' }] },
+    loading: false,
+    submitting: false,
+    inFlight: { requestId: 'req-old', phase: 'awaiting_reconciliation', dispatched: false },
+  };
+  const events: string[] = [];
+  const element = render(NewTaskScreen, {
+    state,
+    onUpdate: () => { events.push('update'); },
+    onSetAttachments: () => { events.push('attachments'); },
+    onToggleKnowledge: () => { events.push('knowledge'); },
+    onSubmit: () => { events.push('submit'); },
+    onCancel: () => { events.push('cancel'); },
+    onRefreshAgents: () => { events.push('refresh'); },
+  });
+  const text = descendants(element).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
+  assert.equal(text.includes('通用主理'), true, 'the recommended lead agent is visible');
+  assert.equal(text.includes('attachments_not_ready'), true, 'a blocked submit surfaces its reason, never a fake success');
+  assert.equal(text.includes('req-old'), true, 'an unresolved intent from before is surfaced');
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.equal(buttons.some((title) => String(title).includes('✓ 团队知识库')), true, 'attached knowledge is visibly selected');
+  assert.equal(buttons.includes('Submit task'), true);
+  assert.equal(buttons.includes('Keep draft'), true);
+});
+
+test('the universal New entry caps goal text at the source so one intent record stays inside the SecureStore envelope', async () => {
+  const { NewTaskScreen, GOAL_TEXT_MAX_LENGTH } = await import('./screens/NewTaskScreen.tsx');
+  hooks().__reset();
+  assert.equal(GOAL_TEXT_MAX_LENGTH, 500, 'R1 裁决第三层：maxLength=500（主控裁决的工程默认值）');
+  const baseState = {
+    draft: { text: '', agentId: null, budgetUpper: 0, attachments: [] as never[], knowledgeIds: [] as string[] },
+    agents: [],
+    knowledge: [],
+    recommendation: { agent: null, basis: 'none' },
+    readiness: { ready: false, reason: 'text_required' as const, blockingAttachments: [] },
+    loading: false,
+    submitting: false,
+    inFlight: undefined,
+  };
+  const props = {
+    onUpdate: () => {},
+    onSetAttachments: () => {},
+    onToggleKnowledge: () => {},
+    onSubmit: () => {},
+    onCancel: () => {},
+    onRefreshAgents: () => {},
+  };
+  const goalInputOf = (tree: unknown) => descendants(tree).find(({ type, props: input }) => type === 'TextInput' && input.placeholder === '今天想完成什么？');
+
+  // 500 字（达上限）：maxLength 生效 + 超长提示出现
+  const capped = render(NewTaskScreen, { state: { ...baseState, draft: { ...baseState.draft, text: '目'.repeat(500) } }, ...props });
+  const goalInput = goalInputOf(capped);
+  assert.ok(goalInput, 'the goal TextInput renders');
+  assert.equal((goalInput!.props as { maxLength?: number }).maxLength, 500, 'the goal TextInput enforces maxLength=500 at the source (R1 layer 3)');
+  const cappedText = descendants(capped).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
+  assert.equal(cappedText.includes('目标文本已达 500 字上限'), true, 'the over-limit hint is visible at the cap');
+
+  // 499 字：提示不出现（不打扰未触界的输入）
+  const under = render(NewTaskScreen, { state: { ...baseState, draft: { ...baseState.draft, text: '目'.repeat(499) } }, ...props });
+  const underText = descendants(under).filter(({ type }) => type === 'Text').flatMap(({ props }) => props.children).join(' ');
+  assert.equal(underText.includes('目标文本已达'), false, 'the hint stays hidden below the cap');
+
+  // 字节预算交叉验证：最坏情形（500 个中文字 × 3B UTF-8 + UUID 形态 requestId/sessionId
+  // + scope 固定开销）的单条意图记录序列化后仍在 Android SecureStore ~2048B 信封内——
+  // 修复前无上限时 560+ 中文字即超限，intent log 的 setItemAsync 抛错使提交永久失败。
+  const { randomUUID } = await import('node:crypto');
+  const worstCaseRecord = {
+    requestId: randomUUID(),
+    sessionId: randomUUID(),
+    goal: { text: '目'.repeat(GOAL_TEXT_MAX_LENGTH), agentId: 'a-general', budgetUpper: 200 },
+    scope: { origin: 'https://weknora.example.test', tenantID: 'tenant-1', userID: 'user-1' },
+    persistedAt: '2026-09-24T00:00:00Z',
+  };
+  const serializedBytes = new TextEncoder().encode(JSON.stringify([worstCaseRecord])).length;
+  assert.ok(serializedBytes <= 2048, `worst-case single intent record must fit the Android SecureStore ~2048B envelope but was ${serializedBytes} bytes`);
+});
+
+test('the /new route reaches the Task Office through the composition root, never the wire directly', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(resolve(workspaceRoot, 'apps/mobile/src/app/new.tsx'), 'utf8');
+  assert.equal(/activeTaskOffice\(\)/.test(source), true, 'the route must obtain the office via activeTaskOffice()');
+  assert.equal(/workbench\/executions/.test(source), false, 'screens never call wire paths directly (module-seams §10)');
+});
+
+test('the home screen exposes the universal New entry', async () => {
+  const { HomeScreen } = await import('./screens/HomeScreen.tsx');
+  hooks().__reset();
+  const element = render(HomeScreen, {
+    deploymentLabel: 'Acme',
+    tenants: [{ id: 'tenant-1', name: 'Acme' }],
+    activeTenantId: 'tenant-1',
+    onActivateTenant: () => {},
+    onSignOut: async () => {},
+    taskOffice: {
+      home: async () => ({ needsMe: [], running: [], recentlyCompleted: [], unreadNotifications: 0, asOf: '' }),
+      tasks: async () => ({ items: [], duplicateRunIds: [] }),
+      moreTasks: async () => ({ items: [], duplicateRunIds: [] }),
+      archive: async () => {},
+      restore: async () => {},
+      open: () => { throw new Error('unused'); },
+      start: async () => { throw new Error('unused'); },
+      reconcilePending: async () => [],
+    },
+  });
+  const buttons = descendants(element).filter(({ type }) => type === 'Button').map(({ props }) => props.title);
+  assert.equal(buttons.includes('New task'), true);
+});
+
+test('the /new lifecycle host disposes its controller on unmount, including after async creation', async () => {
+  const route = await import('./app/new.tsx');
+  const calls: string[] = [];
+  const office = {
+    start: async () => { calls.push('start'); throw new Error('unused'); },
+    reconcilePending: async () => { calls.push('reconcilePending'); return []; },
+  };
+  // mount → 等待异步创建完成（init 会调用 office.reconcilePending，证明 controller 已创建）
+  // → unmount → 再等一轮 microtask：卸载后不得再有任何 office 调用（cleanup 必须拿到
+  // 已创建的 controller 并 dispose，而不是首帧 state 的 stale closure）。
+  hooks().__beginRender();
+  void route.NewTaskRouteLifecycle({ office: office as unknown as Parameters<typeof route.NewTaskRouteLifecycle>[0]['office'] });
+  hooks().__mount();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.filter((entry) => entry === 'reconcilePending').length >= 1, true, 'initialization reconciled during the mounted period');
+  hooks().__unmount();
+  const afterUnmount = calls.length;
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, afterUnmount, 'no office calls may happen after unmount');
+  // 第二轮 mount/unmount 验证循环稳定（重复挂载不残留）
+  hooks().__beginRender();
+  void route.NewTaskRouteLifecycle({ office: office as unknown as Parameters<typeof route.NewTaskRouteLifecycle>[0]['office'] });
+  hooks().__mount();
+  await new Promise((resolve) => setImmediate(resolve));
+  hooks().__unmount();
+  const afterSecond = calls.length;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, afterSecond);
 });

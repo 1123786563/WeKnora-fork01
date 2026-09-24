@@ -13,11 +13,12 @@ export { createInMemoryResourceRemote } from './shelf/in-memory-resource-remote.
 export type { ResourceRemote, ResourceShelfPorts } from './shelf/ports.ts';
 export type { ResourceClass, ResourceClassVerdict, ResourcePage, ResourceQuery, ResourceShelf, ResourceShelfHandle, SelectionVerdict, ShelfCloseReason, ShelfInvalidationEvent } from './shelf/types.ts';
 export { createTaskOffice, TaskOfficeError } from './task-office/task-office.ts';
+export { createInMemoryIntentLog } from './task-office/task-office.ts';
 export { createScenarioTaskBackend, emptyOverview } from './task-office/in-memory-task-backend.ts';
 export type {
-  AttentionState, HomeView, InteractionCard, TaskBackendListInput, TaskBackendOverview, TaskBackendPage,
-  TaskBackendPort, TaskBackendRun, TaskCard, TaskListPage, TaskOffice, TaskOfficeErrorCode, TaskOfficePorts,
-  TaskOfficeQuery, TaskStatusFilter,
+  AttentionState, HomeView, InteractionCard, SubmissionIntentLog, SubmissionIntentRecord, TaskBackendListInput, TaskBackendLookup, TaskBackendOverview, TaskBackendPage,
+  TaskBackendPort, TaskBackendRun, TaskBackendStartAck, TaskBackendStartInput, TaskCard, TaskListPage, TaskOffice, TaskOfficeErrorCode,
+  TaskOfficeGoal, TaskOfficePorts, TaskOfficeQuery, TaskStartReceipt, TaskStatusFilter,
 } from './task-office/task-office.ts';
 export type { ScenarioTaskBackend, ScenarioTaskBackendHandlers } from './task-office/in-memory-task-backend.ts';
 export { createScriptedTaskStream, createScenarioTaskDetailBackend, createInMemoryTaskProjectionStore } from './task-office/in-memory-task-detail.ts';

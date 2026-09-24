@@ -22,6 +22,26 @@ import { TasksScreen } from './screens/TasksScreen.tsx';
 import { DeploymentLoginScreen, validatedDeploymentOrigin } from './screens/DeploymentLoginScreen.tsx';
 import { UpgradeRequiredScreen } from './screens/UpgradeRequiredScreen.tsx';
 import { ReadOnlyScreen } from './screens/ReadOnlyScreen.tsx';
+import type { ScopedStore } from '@weknora/mobile-core';
+import { createNativeRequestId } from './adapters/request-id.ts';
+import { createNativeSecureIntentLog } from './adapters/intent-log.ts';
+
+/** App 生命周期单例：Runtime 撤销 scope 时 revoke 的就是这把 vault（#32）。 */
+const nativeScopedVault = createNativeScopedVaultIfAvailable();
+let nativeIntentLog: ReturnType<typeof createNativeSecureIntentLog> | undefined;
+/** 惰性解析 expo-secure-store（与 pendingOidcStore 的函数体内 require 同模式；app-smoke 环境有 stub）。 */
+const intentLogOf = (): ReturnType<typeof createNativeSecureIntentLog> => (nativeIntentLog ??= createNativeSecureIntentLog());
+
+/** 授权 scope 的加密 drafts（New 屏离线草稿）；无 vault 或无授权 scope 返回 undefined（fail soft）。 */
+export async function openScopedDraftStore(): Promise<ScopedStore | undefined> {
+  const lease = runtime().scopeLease();
+  if (!nativeScopedVault || !lease) return undefined;
+  try {
+    return await nativeScopedVault.open(lease);
+  } catch {
+    return undefined;
+  }
+}
 
 export const OIDC_REDIRECT_URI = 'weknora://oidc';
 const cloudFromBuild = typeof process !== 'undefined' ? process.env.EXPO_PUBLIC_WEKNORA_CLOUD_ORIGIN : undefined;
@@ -54,7 +74,7 @@ export function createNativeMobileRuntime(): MobileRuntime {
     deploymentStore: createNativeSecureDeploymentStore(),
     deploymentRegistry: createNativeSecureDeploymentRegistry(),
     clientVersion: CLIENT_PROTOCOL_VERSION,
-    scopedVault: createNativeScopedVaultIfAvailable(),
+    scopedVault: nativeScopedVault,
     remoteFor(origin) {
       const client = createWeKnoraClient({ baseURL: origin, transport: createJsonTransport(nativeFetch) });
       return createMobileRuntimeRemote({ origin, request: client.request });
@@ -117,6 +137,8 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice
       // 显式装配（R1-F20 最小修复）：App 重启恢复需要持久 TaskProjectionStore（SQLite 后端，Round 2）；
       // 此处显式传 in-memory store 使「未注入持久化」成为组合根的显式决策而非静默回退。
       store: createInMemoryTaskProjectionStore(),
+      intentLog: intentLogOf(),
+      newRequestId: createNativeRequestId(),
     });
     taskOffices.set(origin, office);
   }

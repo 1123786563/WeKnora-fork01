@@ -107,3 +107,85 @@ test('rejected submissions allow controlled retry with a fresh request_id', asyn
   const pendingEntry = await other.submit(input({ request_id: 'request-pending' }), scope);
   assert.throws(() => other.retryEntry(pendingEntry.request_id), /explicitly rejected/);
 });
+
+test('resume resubmits the same request id only after an explicit unknown lookup', async () => {
+  const starts: MobileStartInput[] = [];
+  const lookups: string[] = [];
+  let failFirstStart = true;
+  const transport: SubmissionTransport = {
+    start: async (input) => {
+      starts.push(input);
+      if (failFirstStart) {
+        failFirstStart = false;
+        throw new Error('request lost');
+      }
+      return { run_id: 'run-resumed', request_id: input.request_id, status: 'admitted' };
+    },
+    lookup: async (requestId) => { lookups.push(requestId); return { state: 'unknown' }; },
+  };
+  const store = createInMemorySubmissionStore();
+  const coordinator = createSubmissionCoordinator(store, transport);
+  // 首次提交：网络失败 → entry 落在 awaiting_reconciliation，同 ID 保留
+  const first = await coordinator.submit(input(), scope);
+  assert.equal(first.entry.phase, 'awaiting_reconciliation');
+  assert.equal(starts.length, 1);
+  // 同一意图重入：先 lookup；unknown → 同 ID 重发（不换 ID）
+  const resumed = await coordinator.resume(input(), scope);
+  assert.equal(resumed.entry.phase, 'bound');
+  assert.equal(resumed.entry.run_id, 'run-resumed');
+  assert.equal(resumed.dispatched, true);
+  assert.equal(starts.length, 2, 'exactly one resubmission');
+  assert.equal(starts[1]!.request_id, input().request_id, 'the SAME request id is reused');
+  assert.deepEqual(lookups, [input().request_id]);
+  // 再次重入（已 bound）：直接返回，零网络
+  const again = await coordinator.resume(input(), scope);
+  assert.equal(again.entry.run_id, 'run-resumed');
+  assert.equal(again.dispatched, false);
+  assert.equal(starts.length, 2);
+  assert.equal(lookups.length, 1);
+});
+
+test('resume reconciles instead of resubmitting when the server knows the request', async () => {
+  const starts: MobileStartInput[] = [];
+  const transport: SubmissionTransport = {
+    start: async (input) => { starts.push(input); throw new Error('request lost'); },
+    lookup: async () => ({ state: 'admitted' as const, run_id: 'run-original' }),
+  };
+  const store = createInMemorySubmissionStore();
+  const coordinator = createSubmissionCoordinator(store, transport);
+  await coordinator.submit(input(), scope);
+  const resumed = await coordinator.resume(input(), scope);
+  assert.equal(resumed.entry.phase, 'bound');
+  assert.equal(resumed.entry.run_id, 'run-original');
+  assert.equal(resumed.dispatched, false, 'a server-known request is reconciled, never re-POSTed');
+  assert.equal(starts.length, 1);
+});
+
+test('resume rejects an entry persisted under a different scope with zero network', async () => {
+  let network = 0;
+  const transport: SubmissionTransport = {
+    start: async () => { network += 1; throw new Error('unused'); },
+    lookup: async () => { network += 1; throw new Error('unused'); },
+  };
+  const store = createInMemorySubmissionStore();
+  const coordinator = createSubmissionCoordinator(store, transport);
+  await coordinator.submit(input(), scope);
+  await assert.rejects(
+    coordinator.resume(input(), { origin: 'https://other.example', tenantID: 't1', userID: 'u1' }),
+    SubmissionConflictError,
+  );
+  assert.equal(network, 1, 'only the original submit dispatched; the scope-conflicting resume added zero network');
+});
+
+test('resume with a changed input digest conflicts without network', async () => {
+  let network = 0;
+  const transport: SubmissionTransport = {
+    start: async () => { network += 1; throw new Error('unused'); },
+    lookup: async () => { network += 1; throw new Error('unused'); },
+  };
+  const store = createInMemorySubmissionStore();
+  const coordinator = createSubmissionCoordinator(store, transport);
+  await coordinator.submit(input(), scope);
+  await assert.rejects(coordinator.resume(input({ text: '不同的目标' }), scope), SubmissionConflictError);
+  assert.equal(network, 1, 'only the original submit dispatched; the digest-conflicting resume added zero network');
+});
