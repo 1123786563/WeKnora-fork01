@@ -10,7 +10,7 @@
     "dev:weapp": "taro build --type weapp --watch",
     "build:weapp": "taro build --type weapp",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test": "tsx --test tests/*.test.mjs",
     "tokens:check": "node scripts/check-tokens.mjs",
     "tokens:build": "node scripts/build-tokens.mjs"
   },
@@ -24,6 +24,7 @@
     "@weknora/api-client": "workspace:*",
     "@weknora/contracts": "workspace:*",
     "@weknora/domain": "workspace:*",
+    "@weknora/mobile-core": "workspace:*",
     "core-js": "3.41.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"

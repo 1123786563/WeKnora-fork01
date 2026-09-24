@@ -82,6 +82,8 @@ function paths() {
 }
 
 export default Taro;
-export const stub = { reset, lastCall, succeed, fail, emitHeaders, emitChunk, paths, state,
+// dispatch 同时挂到 stub 对象与命名导出：测试驱动面经 stub.dispatch 调用（platform-adapters.test.mjs）。
+export const stub = { reset, lastCall, succeed, fail, emitHeaders, emitChunk, paths, state, dispatch,
   /** 安装网络 handler：handler(call, task) 必须自行调用 succeed/fail 或 emit*。 */
   use(fn) { state.handler = fn; } };
+export { dispatch };
