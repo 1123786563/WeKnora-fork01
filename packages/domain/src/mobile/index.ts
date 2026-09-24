@@ -5,6 +5,7 @@ export * from './submission.ts';
 export * from './query-scope.ts';
 export * from './session-list.ts';
 export * from './agent-options.ts';
+export * from './lead-agent.ts';
 export * from './resource-presentation.ts';
 export * from './task-form.ts';
 export * from './execution-presentation.ts';
