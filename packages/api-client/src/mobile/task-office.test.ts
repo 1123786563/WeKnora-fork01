@@ -284,3 +284,46 @@ test('task office remote decide maps the ack and classifies honest outcomes', as
   assert.equal(await coded(new ApiError({ status: 403, code: 'HTTP_403', message: 'revoked' })), 'INTERACTION_GONE');
   assert.equal(await coded(new ApiError({ status: 500, code: 'HTTP_500', message: 'boom' })), 'HTTP_500', '未知错误原样上抛（由上层折叠为后端错误）');
 });
+
+test('task office remote command: 202 ack maps to runId/nextRunId; 409 and transport failures map to contract codes', async () => {
+  const seen: ClientRequest[] = [];
+  const request = async (input: ClientRequest): Promise<unknown> => {
+    seen.push(input);
+    const action = typeof input.body === 'object' && input.body !== null && (input.body as { action?: string }).action === 'queue_next' ? 'queue_next' : 'cancel';
+    return { success: true, data: { run_id: 'run-1', action, next_run_id: 'run-2' } };
+  };
+  const remote = createTaskOfficeRemote({ origin: 'https://weknora.example', request });
+  const ack = await remote.command({ runId: 'run-1', action: 'queue_next', text: 'next', expectedRevision: 5, intentId: 'qid-1' });
+  assert.equal(ack.nextRunId, 'run-2');
+  assert.equal(seen[0]?.path, '/api/v1/workbench/executions/run-1/commands');
+  assert.deepEqual(seen[0]?.body, { action: 'queue_next', text: 'next', expected_revision: 5, external_pending_id: 'qid-1' });
+
+  const conflictRemote = createTaskOfficeRemote({ origin: 'https://weknora.example', request: async () => { throw new ApiError({ status: 409, code: 'HTTP_409', message: 'conflict' }); } });
+  await assert.rejects(
+    () => conflictRemote.command({ runId: 'run-1', action: 'cancel', expectedRevision: 5 }),
+    (error: unknown) => (error as { code?: string }).code === 'TASK_COMMAND_CONFLICT',
+  );
+
+  const transportRemote = createTaskOfficeRemote({ origin: 'https://weknora.example', request: async () => { throw new Error('network down'); } });
+  await assert.rejects(
+    () => transportRemote.command({ runId: 'run-1', action: 'cancel', expectedRevision: 5 }),
+    (error: unknown) => (error as { code?: string }).code === 'TASK_COMMAND_UNKNOWN',
+  );
+});
+
+test('task office remote command folds every ApiError into the two contract codes', async () => {
+  // 与 decide 不同：command 的翻译是封闭二分——409/404 确定性冲突，其余（含 502
+  // command_recovery_unknown 与 5xx）投递结果未知，一律折叠为 TASK_COMMAND_UNKNOWN。
+  const coded = async (error: ApiError): Promise<string | undefined> => {
+    const failing = createTaskOfficeRemote({ origin: 'https://weknora.example', request: async () => { throw error; } });
+    try {
+      await failing.command({ runId: 'run-1', action: 'cancel', expectedRevision: 5 });
+      return undefined;
+    } catch (caught) {
+      return (caught as { code?: string }).code;
+    }
+  };
+  assert.equal(await coded(new ApiError({ status: 404, code: 'HTTP_404', message: 'not found' })), 'TASK_COMMAND_CONFLICT');
+  assert.equal(await coded(new ApiError({ status: 502, code: 'command_recovery_unknown', message: 'command_recovery_unknown: remote command' })), 'TASK_COMMAND_UNKNOWN');
+  assert.equal(await coded(new ApiError({ status: 500, code: 'HTTP_500', message: 'boom' })), 'TASK_COMMAND_UNKNOWN');
+});
