@@ -84,7 +84,29 @@ func testPKCE(t *testing.T) (verifier, challenge string) {
 	return verifier, base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-// testAuthorizeGET 拉取授权表单（返回 HTTP 状态码）。
+// testFormNonceRe 从授权表单 HTML 提取服务端生成的表单 nonce
+// （OCR 二轮 F1：form_nonce 隐藏字段，提交时须原样往返）。
+var testFormNonceRe = regexp.MustCompile(`name="form_nonce" value="([0-9a-f]+)"`)
+
+// testFormNonces 记录 testAuthorizeGET 拉到的 state -> form_nonce，供
+// testAuthorizePOST 自动附带——模拟真实浏览器对隐藏字段的往返。攻击
+// 场景测试用 testAuthorizePOSTWithNonce 显式指定（陈旧表单 = 显式传
+// 旧 nonce）。各测试的 state 互不重叠，重登记同 state 时覆盖为最新
+// 页面的 nonce（浏览器语义：最新渲染的表单）。
+var testFormNonces sync.Map
+
+// testFormNonceOf 返回最近一次 testAuthorizeGET 为该 state 记录的
+// form_nonce（未登记过返回空串）。
+func testFormNonceOf(state string) string {
+	v, ok := testFormNonces.Load(state)
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+// testAuthorizeGET 拉取授权表单（返回 HTTP 状态码；表单 nonce 自动记录）。
 func testAuthorizeGET(t *testing.T, base, clientID, redirectURI, state, challenge string) int {
 	t.Helper()
 	q := url.Values{}
@@ -97,16 +119,29 @@ func testAuthorizeGET(t *testing.T, base, clientID, redirectURI, state, challeng
 	resp, err := http.Get(base + "/authorize?" + q.Encode())
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	if m := testFormNonceRe.FindSubmatch(body); m != nil {
+		testFormNonces.Store(state, string(m[1]))
+	}
 	return resp.StatusCode
 }
 
-// testAuthorizePOST 提交凭据表单（返回 HTTP 状态码与 Location）。关闭重定向
-// 跟随——302 的目标 redirect_uri 是虚构域名，客户端语义上也不该替成员访问。
+// testAuthorizePOST 提交凭据表单（自动附带最近一次 GET 记录的 nonce；
+// 返回 HTTP 状态码与 Location）。关闭重定向跟随——302 的目标
+// redirect_uri 是虚构域名，客户端语义上也不该替成员访问。
 func testAuthorizePOST(t *testing.T, base, state, email, apiToken string) (int, string) {
+	t.Helper()
+	return testAuthorizePOSTWithNonce(t, base, state, testFormNonceOf(state), email, apiToken)
+}
+
+// testAuthorizePOSTWithNonce 提交凭据表单并显式指定表单 nonce——攻击
+// 场景专用（陈旧表单提交 = 传旧页面 nonce；无 nonce 表单 = 传空串）。
+func testAuthorizePOSTWithNonce(t *testing.T, base, state, nonce, email, apiToken string) (int, string) {
 	t.Helper()
 	form := url.Values{}
 	form.Set("state", state)
+	form.Set("form_nonce", nonce)
 	form.Set("email", email)
 	form.Set("api_token", apiToken)
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -688,6 +723,7 @@ func TestAuthorizeStateConsumedExactlyOnceUnderConcurrency(t *testing.T) {
 			defer wg.Done()
 			form := url.Values{}
 			form.Set("state", state)
+			form.Set("form_nonce", testFormNonceOf(state)) // 并发提交携带同一表单 nonce
 			form.Set("email", "member@example.com")
 			form.Set("api_token", "tok")
 			resp, err := noRedirect.PostForm(base+"/authorize", form)
@@ -966,15 +1002,23 @@ func TestAuthorizePagesDenyFraming(t *testing.T) {
 
 	page, err := http.Get(base + "/authorize?" + q.Encode())
 	require.NoError(t, err)
-	_, _ = io.Copy(io.Discard, page.Body)
+	pageBody, err := io.ReadAll(page.Body)
 	_ = page.Body.Close()
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, page.StatusCode)
 	require.Equal(t, "DENY", page.Header.Get("X-Frame-Options"), "consent page must deny framing")
 	require.Equal(t, "frame-ancestors 'none'", page.Header.Get("Content-Security-Policy"), "consent page must set frame-ancestors")
+	// 凭据错误页断言走 POST：nonce 随隐藏字段往返（OCR 二轮 F1）。
+	framingNonce := ""
+	if n := testFormNonceRe.FindSubmatch(pageBody); n != nil {
+		framingNonce = string(n[1])
+	}
+	require.NotEmpty(t, framingNonce, "consent form must carry a form nonce")
 
 	// 凭据错误页（401）同属凭据录入面。
 	form := url.Values{}
 	form.Set("state", "framing-state")
+	form.Set("form_nonce", framingNonce)
 	form.Set("email", "member@example.com")
 	form.Set("api_token", "wrong-token")
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -1107,6 +1151,10 @@ func TestAuthorizeFormRoundTripsEscapedState(t *testing.T) {
 	m := regexp.MustCompile(`<input type="hidden" name="state" value="([^"]*)">`).FindSubmatch(body)
 	require.NotNil(t, m, "the consent form must carry the hidden state field")
 	browserState := html.UnescapeString(string(m[1]))
+	// 表单 nonce 同为隐藏字段：浏览器会与 state 一并回传（OCR 二轮 F1）。
+	if n := testFormNonceRe.FindSubmatch(body); n != nil {
+		testFormNonces.Store(browserState, string(n[1]))
+	}
 
 	status, location := testAuthorizePOST(t, base, browserState, "member@example.com", "tok")
 	require.Equal(t, http.StatusFound, status,
@@ -1501,13 +1549,20 @@ func TestAuthorizePagesNoStoreHeader(t *testing.T) {
 
 	page, err := http.Get(base + "/authorize?" + q.Encode())
 	require.NoError(t, err)
-	_, _ = io.Copy(io.Discard, page.Body)
+	pageBody, err := io.ReadAll(page.Body)
 	_ = page.Body.Close()
+	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, page.StatusCode)
 	require.Equal(t, "no-store", page.Header.Get("Cache-Control"), "consent page must not be cacheable")
+	nostoreNonce := ""
+	if n := testFormNonceRe.FindSubmatch(pageBody); n != nil {
+		nostoreNonce = string(n[1])
+	}
+	require.NotEmpty(t, nostoreNonce, "consent form must carry a form nonce")
 
 	form := url.Values{}
 	form.Set("state", "nostore-state")
+	form.Set("form_nonce", nostoreNonce)
 	form.Set("email", "member@example.com")
 	form.Set("api_token", "wrong-token")
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -1622,4 +1677,196 @@ func TestAuthorizeConsumedStateCannotBeRebound(t *testing.T) {
 	status, location = testAuthorizePOST(t, base, state, "member@example.com", "member-token")
 	require.Equal(t, http.StatusFound, status)
 	require.Contains(t, location, attackerRedirect, "a fresh registration must complete the flow normally")
+}
+
+// TestAuthorizeStaleFormRebindRejected（OCR 二轮 F1 攻击路径②）：成员提交
+// 超过 TTL 的陈旧表单。原条目过期后，攻击者经 serveAuthorizeForm 的
+// 「过期即删+重登记」路径用自己的 client/redirect/PKCE 登记同 state；
+// 成员浏览器后退重交陈旧表单（隐藏字段仍是原登记的 nonce/绑定参数）时，
+// 发码上下文取自攻击者条目——携带成员 Jira 凭据会话的授权码被 302 到
+// 攻击者 redirect_uri。服务端必须校验表单 nonce 与登记条目一致。
+func TestAuthorizeStaleFormRebindRejected(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "member-token", nil))
+	memberRedirect := "https://client.example/cb"
+	attackerRedirect := "https://attacker.example/cb"
+	memberClient := testRegisterClient(t, base, memberRedirect)
+	attackerClient := testRegisterClient(t, base, attackerRedirect)
+	_, memberChallenge := testPKCE(t)
+	state := "stale-form-state"
+
+	origTTL := pendingAuthTTL
+	pendingAuthTTL = 300 * time.Millisecond
+	t.Cleanup(func() { pendingAuthTTL = origTTL })
+
+	// 1) 成员拉取授权表单（nonce₁ 随表单发给成员浏览器）。
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, memberClient, memberRedirect, state, memberChallenge))
+	staleNonce := testFormNonceOf(state)
+	require.NotEmpty(t, staleNonce, "authorization form must carry a form nonce")
+
+	// 2) 成员搁置表单超过 TTL——原登记过期。
+	time.Sleep(400 * time.Millisecond)
+
+	// 3) 攻击者对同 state 重新登记（过期后 state 可复用是正常语义）。
+	_, attackerChallenge := testPKCE(t)
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, attackerClient, attackerRedirect, state, attackerChallenge),
+		"a state past its TTL may start a fresh authorization flow")
+
+	// 4) 成员提交陈旧表单（隐藏字段仍是 nonce₁）：不得发码。
+	// 修复前：nonce 不被校验 → 发码上下文=攻击者条目 → 302 攻击者
+	// redirect_uri（攻击成立）；修复后：nonce 不匹配 → 400 拒绝。
+	status, location := testAuthorizePOSTWithNonce(t, base, state, staleNonce, "member@example.com", "member-token")
+	require.NotEqual(t, http.StatusFound, status,
+		"a stale form (nonce of the expired registration) must not issue a code (got redirect: %s)", location)
+	require.NotContains(t, location, attackerRedirect, "the member's code must never reach the attacker redirect_uri")
+}
+
+// TestAuthorizeRebindDuringMyselfWindowRejected（OCR 二轮 F1 攻击路径①）：
+// 成员在 TTL 临界提交表单——第一次检查通过后，Myself 调用窗口（最长
+// 30s）内原条目过期；攻击者重登记同 state，第二次检查若只校验「存活
+// 且未消费」就会消费攻击者条目发码。时序：TTL=120ms；POST 于 ~10ms
+// 过第一次检查；攻击 GET 于 150ms（原条目已过期）；Myself sleep 200ms
+// 于 ~210ms 返回（攻击条目 150+120=270ms 前仍存活）。
+func TestAuthorizeRebindDuringMyselfWindowRejected(t *testing.T) {
+	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("member@example.com:member-token"))
+	slowMyself := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond) // 跨过原条目 TTL 与攻击者重登记时刻
+		if r.URL.Path != "/rest/api/3/myself" || r.Header.Get("Authorization") != expectedAuth {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"emailAddress": "member@example.com"})
+	})
+	base, _ := newTestService(t, slowMyself)
+
+	memberRedirect := "https://client.example/cb"
+	attackerRedirect := "https://attacker.example/cb"
+	memberClient := testRegisterClient(t, base, memberRedirect)
+	attackerClient := testRegisterClient(t, base, attackerRedirect)
+	_, memberChallenge := testPKCE(t)
+	state := "myself-window-state"
+
+	origTTL := pendingAuthTTL
+	pendingAuthTTL = 120 * time.Millisecond
+	t.Cleanup(func() { pendingAuthTTL = origTTL })
+
+	// 1) 成员拉表单并立刻提交（第一次检查通过，进入 Myself 等待）。
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, memberClient, memberRedirect, state, memberChallenge))
+	submittedNonce := testFormNonceOf(state)
+	type postResult struct {
+		status   int
+		location string
+	}
+	done := make(chan postResult, 1)
+	go func() {
+		status, location := testAuthorizePOSTWithNonce(t, base, state, submittedNonce, "member@example.com", "member-token")
+		done <- postResult{status: status, location: location}
+	}()
+
+	// 2) 原条目过期后（>120ms，且早于 Myself 返回的 ~210ms），攻击者
+	//    重登记同 state。
+	time.Sleep(150 * time.Millisecond)
+	_, attackerChallenge := testPKCE(t)
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, attackerClient, attackerRedirect, state, attackerChallenge),
+		"the expired registration must be replaceable (fresh-flow semantics)")
+
+	// 3) Myself 验证成员凭据成功返回：第二次检查必须拒绝——发码上下文
+	//    已是攻击者条目（nonce 不匹配）。修复前：302 攻击者 redirect_uri。
+	res := <-done
+	require.NotEqual(t, http.StatusFound, res.status,
+		"a credential submission whose registration was replaced during the Myself window must not issue a code (got redirect: %s)", res.location)
+	require.NotContains(t, res.location, attackerRedirect, "the member's code must never reach the attacker redirect_uri")
+}
+
+// TestAllowedRedirectHostsIPv6Semantics（OCR 二轮 F2）：冒号守卫的唯一
+// 实际作用是排除裸 IPv6 名单条目（Hostname() 对 IPv6 返回无括号地址，
+// 含冒号 → `entry == bareHost && !strings.Contains(entry, ":")` 恒
+// false）——运营者按「裸 host=任意端口」语义写 IPv6 地址将静默失效。
+func TestAllowedRedirectHostsIPv6Semantics(t *testing.T) {
+	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
+	t.Cleanup(utils.ResetSSRFWhitelistForTest)
+	fakeJira := httptest.NewServer(testJiraAuthOK(t, "member@example.com", "tok", nil))
+	t.Cleanup(fakeJira.Close)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	handler, err := NewHandler(Options{
+		BaseURL:              "http://" + ln.Addr().String(),
+		JiraBaseURL:          fakeJira.URL,
+		AllowedRedirectHosts: []string{"::1", "[2001:db8::1]", "pinned.example.com:8443"},
+	})
+	require.NoError(t, err)
+	svc := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = svc.Serve(ln) }()
+	t.Cleanup(func() { _ = svc.Shutdown(context.Background()) })
+	base := "http://" + ln.Addr().String()
+
+	register := func(uri string) int {
+		body, err := json.Marshal(map[string]any{"redirect_uris": []string{uri}})
+		require.NoError(t, err)
+		resp, err := http.Post(base+"/register", "application/json", strings.NewReader(string(body)))
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode
+	}
+	// 裸 IPv6 条目（::1）= 该主机任意端口：修复前被冒号守卫静默拒绝。
+	require.Equal(t, http.StatusCreated, register("https://[::1]:9443/cb"),
+		"a bare IPv6 allowlist entry must admit any port on that host")
+	// 括号 IPv6 条目（[2001:db8::1]）= 精确 host 形态匹配（URI 同为括号形态）。
+	require.Equal(t, http.StatusCreated, register("https://[2001:db8::1]/cb"),
+		"a bracketed IPv6 allowlist entry must match the bracketed host form")
+	// 钉端口条目不放宽到省略默认端口的 URI 形态（钉住即精确）。
+	require.Equal(t, http.StatusBadRequest, register("https://pinned.example.com/cb"),
+		"a pinned host:port entry must not admit the port-elided form")
+}
+
+// TestNewHandlerRejectsDefaultPortAllowlistEntries（OCR 二轮 F2）：:80/
+// :443 名单条目对省略默认端口的同名 URI 永不命中（url.Parse 不物化默认
+// 端口）——静默失效的歧义写法应在启动期 fail-closed，而非运行期静默。
+func TestNewHandlerRejectsDefaultPortAllowlistEntries(t *testing.T) {
+	for _, entry := range []string{"a.example.com:443", "b.example.com:80", "[::1]:443"} {
+		_, err := NewHandler(Options{
+			BaseURL:              "http://127.0.0.1:8021",
+			JiraBaseURL:          "http://127.0.0.1:9",
+			AllowedRedirectHosts: []string{entry},
+		})
+		require.Error(t, err, "default-port allowlist entry %q must fail-closed at startup", entry)
+	}
+	// 非默认端口与裸 host/IPv6 形态不受影响。
+	for _, hosts := range [][]string{{"a.example.com:8443"}, {"::1"}, {"good.example.com"}} {
+		_, err := NewHandler(Options{
+			BaseURL:              "http://127.0.0.1:8021",
+			JiraBaseURL:          "http://127.0.0.1:9",
+			AllowedRedirectHosts: hosts,
+		})
+		require.NoError(t, err, "non-default-port entries must stay accepted: %v", hosts)
+	}
+}
+
+// TestIssueCodeRedirectNoStore（OCR 二轮 F3）：发码 302 的 Location 查询
+// 参数携带授权码（敏感度不低于承载隐藏 state 的页面快照）——共享缓存/
+// 中间代理不得留存该响应，与 writeJSON/HTML 页的 no-store 纪律一致。
+func TestIssueCodeRedirectNoStore(t *testing.T) {
+	base, _ := newTestService(t, testJiraAuthOK(t, "member@example.com", "tok", nil))
+	redirect := "https://client.example/cb"
+	clientID := testRegisterClient(t, base, redirect)
+	_, challenge := testPKCE(t)
+	state := "nostore-302-state"
+	require.Equal(t, http.StatusOK, testAuthorizeGET(t, base, clientID, redirect, state, challenge))
+
+	form := url.Values{}
+	form.Set("state", state)
+	form.Set("form_nonce", testFormNonceOf(state))
+	form.Set("email", "member@example.com")
+	form.Set("api_token", "tok")
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := noRedirect.PostForm(base+"/authorize", form)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+	require.Contains(t, resp.Header.Get("Location"), "code=")
+	require.Equal(t, "no-store", resp.Header.Get("Cache-Control"),
+		"the code-bearing 302 must not be cacheable by shared caches/proxies")
 }

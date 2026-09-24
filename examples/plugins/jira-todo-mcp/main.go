@@ -210,6 +210,25 @@ func parseHostList(raw string) []string {
 	return hosts
 }
 
+// validateAllowedRedirectHosts 启动期校验名单条目（OCR 二轮 F2）：:80/
+// :443 钉端口条目对省略默认端口的同名 URI 永不命中（url.Parse 不物化
+// 默认端口，https://a.example.com/cb 的 Host 是 "a.example.com" 而非
+// "a.example.com:443"）——这种写法只会静默失效，fail-closed 拒绝启动
+// 并提示改写裸 host。net.SplitHostPort 只对「host:port / [v6]:port」
+// 形态成功，裸 IPv6 字面量（含多冒号无括号）报错——不受影响。
+func validateAllowedRedirectHosts(hosts []string) error {
+	for _, entry := range hosts {
+		_, port, err := net.SplitHostPort(entry)
+		if err != nil {
+			continue // 裸 host / 裸 IPv6 条目，无端口语义
+		}
+		if port == "80" || port == "443" {
+			return fmt.Errorf("AllowedRedirectHosts entry %q pins a default port that URIs normally elide (url.Parse does not materialize it); use the bare host instead", entry)
+		}
+	}
+	return nil
+}
+
 // NewHandler 校验 Options 并组装完整 HTTP handler：/mcp（MCP 端点）、
 // OAuth 端点集与 /manifest.json。
 func NewHandler(opts Options) (http.Handler, error) {
@@ -218,6 +237,9 @@ func NewHandler(opts Options) (http.Handler, error) {
 	}
 	// fail-closed：PLUGIN_JIRA_BASE_URL 缺失时拒绝启动，不猜测默认值。
 	if err := validateBaseURL("JiraBaseURL", opts.JiraBaseURL); err != nil {
+		return nil, err
+	}
+	if err := validateAllowedRedirectHosts(opts.AllowedRedirectHosts); err != nil {
 		return nil, err
 	}
 	oauthSrv := newOAuthServer(opts.BaseURL, opts.JiraBaseURL, opts.AllowedRedirectHosts)

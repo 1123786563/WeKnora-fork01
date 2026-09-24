@@ -164,10 +164,18 @@ type authorizationRequest struct {
 // （重绑定），成员后退重交旧表单时凭据发出的授权码被 302 到攻击者
 // redirect_uri。墓碑随原 ExpiresAt 被 sweepExpiredLocked 清扫——重绑
 // 窗口被 TTL 限定，且每个 state 至多占一个条目，容量界不变。
+// FormNonce 是服务端为每次登记生成的表单 nonce（crypto/rand，OCR 二轮
+// F1）：墓碑只覆盖「消费后重登记」，TTL 过期边界的重登记（陈旧表单
+// 提交、Myself 30s 窗口内原条目过期后被替换）仍是合法登记——发码前
+// 必须校验提交表单的 nonce 与登记条目一致，否则携带成员凭据会话的
+// 授权码会以攻击者重登记的 Request 为上下文发出（302 攻击者
+// redirect_uri）。nonce 只随表单 HTML 到达成员浏览器，攻击者自己的
+// 登记拿到的是不同 nonce。
 type pendingAuth struct {
 	Request   authorizationRequest
 	ExpiresAt time.Time
 	Consumed  bool
+	FormNonce string
 }
 
 // issuedCode 是授权码及其发码上下文。
@@ -422,15 +430,18 @@ func (s *oauthServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		// 整分支终评 r2-012/r4-008：装配了 AllowedRedirectHosts 时，注册即
 		// 拒绝名单外 host——授权码的目的地在注册期收敛，而非到同意页才告警。
 		// 匹配按 host[:port]（OCR 一轮 R12 F18）：裸 host 条目=该主机任意
-		// 端口（部署语义保持）；host:port 条目=精确匹配（可钉住回调端口，
-		// 不放行同主机第三方端口）。此前按 Hostname() 裸名匹配——host:port
-		// 条目被剥端口后永不可能命中，运营者的钉端口写法静默失效。
+		// 端口（部署语义保持，含裸 IPv6 字面量——Hostname() 返回无括号
+		// 形态，直接比对即可命中，OCR 二轮 F2：旧冒号守卫唯一实际作用
+		// 是让裸 IPv6 条目在任何 URI 形态下静默失效）；host:port 条目=
+		// 精确匹配 parsed.Host（可钉住回调端口；IPv6 括号写法 [::1]:8443
+		// 同形态匹配；省略默认端口的 URI 不匹配钉端口条目——url.Parse
+		// 不物化默认端口，:80/:443 歧义条目已由 NewHandler 启动期拒绝）。
 		if len(s.allowedRedirectHosts) > 0 {
 			host := strings.ToLower(parsed.Host)
 			bareHost := strings.ToLower(parsed.Hostname())
 			allowed := false
 			for entry := range s.allowedRedirectHosts {
-				if entry == host || (entry == bareHost && !strings.Contains(entry, ":")) {
+				if entry == host || entry == bareHost {
 					allowed = true
 					break
 				}
@@ -533,7 +544,8 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "too many pending authorizations", http.StatusTooManyRequests)
 		return
 	}
-	s.pendingAuths[state] = pendingAuth{Request: req, ExpiresAt: now.Add(pendingAuthTTL)}
+	formNonce := randomToken()
+	s.pendingAuths[state] = pendingAuth{Request: req, ExpiresAt: now.Add(pendingAuthTTL), FormNonce: formNonce}
 	s.mu.Unlock()
 	// 同意页透明化（整分支终评 r2-012/r4-008）：开放动态注册意味着任何人
 	// 都能成为「请求方」——成员提交凭据前必须看到请求方（注册名，缺失回落
@@ -560,12 +572,13 @@ func (s *oauthServer) serveAuthorizeForm(w http.ResponseWriter, r *http.Request)
 <p>输入你的 Jira 邮箱与 API token（仅用于本次授权验证，服务不保存凭据）。</p>
 <form method="POST" action="/authorize">
 <input type="hidden" name="state" value="%s">
+<input type="hidden" name="form_nonce" value="%s">
 <label>邮箱 <input type="email" name="email" required autocomplete="off"></label><br>
 <label>API token <input type="password" name="api_token" required autocomplete="off"></label><br>
 <button type="submit">授权</button>
 </form>
 </body></html>`,
-		html.EscapeString(displayName), html.EscapeString(redirectDisplay), html.EscapeString(state))
+		html.EscapeString(displayName), html.EscapeString(redirectDisplay), html.EscapeString(state), html.EscapeString(formNonce))
 }
 
 // setHTMLPageHeaders 写凭据录入面 HTML 页前的统一响应头：凭据同意页与
@@ -670,6 +683,7 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 		return
 	}
 	state := r.PostFormValue("state")
+	formNonce := r.PostFormValue("form_nonce")
 	email := strings.TrimSpace(r.PostFormValue("email"))
 	apiToken := r.PostFormValue("api_token")
 	now := time.Now()
@@ -683,6 +697,11 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 	// 回调，成员应使用已收到的授权码，而非后退重交表单）。墓碑保留至
 	// TTL（不在此删除）。
 	if ok && pending.Consumed {
+		ok = false
+	}
+	// 表单 nonce（OCR 二轮 F1）：提交必须携带该登记条目的 nonce——空或
+	// 不匹配即非本登记签发的表单（陈旧表单、攻击者构造表单）。fail-closed。
+	if ok && (formNonce == "" || formNonce != pending.FormNonce) {
 		ok = false
 	}
 	s.mu.Unlock()
@@ -741,6 +760,13 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 	if still && consumed.Consumed {
 		still = false
 	}
+	// 登记同一性（OCR 二轮 F1）：Myself 窗口（最长 30s）内原条目可能已
+	// 过期并被攻击者重登记——此刻条目即便存活且未消费，只要 nonce 与
+	// 成员提交表单的 nonce 不一致，就不再是成员发起的那次登记，绝不能
+	// 以它为发码上下文（否则授权码被 302 到攻击者 redirect_uri）。
+	if still && consumed.FormNonce != formNonce {
+		still = false
+	}
 	if still {
 		// 消费即置墓碑（OCR 一轮 F2）：不删除条目，保留至原 ExpiresAt——
 		// 删除会让 serveAuthorizeForm 的 409 守卫失效，攻击者可对同 state
@@ -770,6 +796,10 @@ func (s *oauthServer) submitAuthorizeForm(w http.ResponseWriter, r *http.Request
 		query.Set("state", state)
 	}
 	redirect.RawQuery = query.Encode()
+	// 发码 302 的 Location 查询参数携带授权码——敏感度不低于承载隐藏
+	// state 的页面快照（OCR 二轮 F3）：与 writeJSON/HTML 页同纪律拒绝
+	// 共享缓存/中间代理留存，防授权码泄露给后续命中同 URL 的调用方。
+	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, redirect.String(), http.StatusFound)
 }
 
