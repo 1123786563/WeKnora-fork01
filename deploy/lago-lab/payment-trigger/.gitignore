@@ -1,0 +1,5 @@
+# Local secrets and run transients -- never commit.
+lab.env
+runs/
+__pycache__/
+*.pyc

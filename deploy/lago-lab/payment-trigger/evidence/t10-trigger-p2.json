@@ -1,0 +1,37 @@
+{
+  "contract_notes": [
+    "poll exhausted: second (settle) payment method import (attempts=31)",
+    "same-pcid upsert did not mint a second import; trying a fresh provider customer carrying the settle pm",
+    "poll exhausted: second pm import via fresh provider customer (attempts=31)",
+    "fresh-pcid upsert did not mint a second import either; continuing \u2014 (e) activation is the P2 verdict"
+  ],
+  "evidence": {
+    "retry_response": {
+      "code": "invoice_not_found",
+      "error": "Not Found",
+      "status": 404
+    }
+  },
+  "expected": "(a) stuck provider intent canceled; (b) settle pm attached+default; (c) Lago re-imports it as a SECOND payment method; (d) POST /api/v1/invoices/{id}/retry_payment {} answers 200; (e) subscription reaches active within the poll window with exactly ONE succeeded payment and the invoice finalized/numbered/payment_status=succeeded with entitlements 200 (F1)",
+  "observed": {
+    "cancel_status": 200,
+    "customer_upsert_status": 200,
+    "customer_upsert_status_fresh_pcid": 200,
+    "error": "retry_payment rejected (HTTP 404)",
+    "payment_methods_count_fresh_pcid": 1,
+    "payment_methods_count_same_pcid": 1,
+    "pm_poll_attempts": 31,
+    "retry_body": {
+      "code": "invoice_not_found",
+      "error": "Not Found",
+      "status": 404
+    },
+    "retry_status": 404,
+    "second_pm_imported": false,
+    "settle_pm_attached": true
+  },
+  "phase": "trigger",
+  "recorded_at": "2026-09-24T16:25:00.223631+00:00",
+  "run_id": "6f45ed2f-9774-4256-a15b-04d52c2afd6e",
+  "status": "fail"
+}

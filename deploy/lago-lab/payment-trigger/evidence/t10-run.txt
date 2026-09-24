@@ -1,0 +1,20 @@
+[2026-09-24T16:22:33.641586+00:00] run start
+[2026-09-24T16:22:33.644687+00:00] run_id=6f45ed2f-9774-4256-a15b-04d52c2afd6e output_dir=/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/issue72-n82/deploy/lago-lab/payment-trigger/evidence
+[2026-09-24T16:22:33.749969+00:00] lago health HTTP 200
+[2026-09-24T16:22:34.356661+00:00] graphql loginUser: ok
+[2026-09-24T16:22:34.388816+00:00] phase gated_3ds: start
+[2026-09-24T16:22:42.456068+00:00] phase gated_3ds: pass (8.1s)
+[2026-09-24T16:22:42.456098+00:00] phase payment_probe: start
+[2026-09-24T16:22:46.813017+00:00] phase payment_probe: pass (4.4s)
+[2026-09-24T16:22:46.813043+00:00] phase trigger: start
+[2026-09-24T16:25:00.226380+00:00] phase trigger: fail (133.4s)
+[2026-09-24T16:25:00.226445+00:00] phase retry_dup: start
+[2026-09-24T16:25:00.226876+00:00] phase retry_dup: blocked-env (0.0s)
+[2026-09-24T16:25:00.226906+00:00] phase paid_retry: start
+[2026-09-24T16:25:00.227721+00:00] phase paid_retry: blocked-env (0.0s)
+[2026-09-24T16:25:00.227756+00:00] phase cleanup: start
+[2026-09-24T16:25:01.753607+00:00] phase cleanup: pass (1.5s)
+[2026-09-24T16:25:01.753949+00:00] overall verdict: fail
+[2026-09-24T16:25:01.753976+00:00] run finished
+[2026-09-24T16:25:01.775192+00:00] secrets scan: 10 files, 0 scrubbed, hits_after_scrub=0
+[2026-09-24T16:25:01.775883+00:00] run finished

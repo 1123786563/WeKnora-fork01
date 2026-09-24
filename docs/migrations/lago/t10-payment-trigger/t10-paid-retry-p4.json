@@ -1,0 +1,12 @@
+{
+  "contract_notes": [],
+  "evidence": {},
+  "expected": "POST /api/v1/invoices/{paid_id}/retry_payment answers HTTP 405 with the Lago error code invalid_status (F2: the POST verb route exists, the state refuses)",
+  "observed": {
+    "blocked_reason": "requires the trigger phase to have activated the subscription"
+  },
+  "phase": "paid_retry",
+  "recorded_at": "2026-09-24T16:25:00.226959+00:00",
+  "run_id": "6f45ed2f-9774-4256-a15b-04d52c2afd6e",
+  "status": "blocked-env"
+}

@@ -1,0 +1,15 @@
+{
+  "contract_notes": [],
+  "evidence": {},
+  "expected": "gated create (activation_rules payment/timeout_hours=0) is immediately incomplete; the customer's default (3DS) payment method is imported to Lago before the create",
+  "observed": {
+    "payment_methods_imported": 1,
+    "poll_attempts": 2,
+    "subscription_external_id": "weknora-t10-6f45ed2f-sub-a",
+    "subscription_status": "incomplete"
+  },
+  "phase": "gated_3ds",
+  "recorded_at": "2026-09-24T16:22:42.455133+00:00",
+  "run_id": "6f45ed2f-9774-4256-a15b-04d52c2afd6e",
+  "status": "pass"
+}
