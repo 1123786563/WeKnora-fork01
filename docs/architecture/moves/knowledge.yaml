@@ -132,10 +132,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Graph (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/image_multimodal.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Image multimodal (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/kb_activity.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Kb activity (application/service)
@@ -271,10 +267,6 @@ legacy_files:
   - path: internal/application/service/knowledgebase_search_storegroup.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledgebase search storegroup (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/ocr_sanitizer.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Ocr sanitizer (application/service)
     passb_task: B-knowledge
   - path: internal/application/service/parser_url_security.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
