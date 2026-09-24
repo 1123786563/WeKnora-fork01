@@ -182,6 +182,20 @@ var importExceptions = []importException{
 		PassBTask: "B-knowledge",
 	},
 	{
+		ImporterFile: "internal/modules/knowledge/faq/knowledge_faq_import.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；" +
+			"23-knowledge-wikifaq K3.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/faq/knowledge_faq_import.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；" +
+			"23-knowledge-wikifaq K3.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
 		ImporterFile: "internal/modules/appconnector/service/appconnector/oc_recovery.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial",
 		Reason: "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，" +

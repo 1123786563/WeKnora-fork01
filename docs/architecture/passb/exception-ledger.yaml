@@ -701,3 +701,15 @@ exceptions:
     plan: 23-knowledge-wikifaq
     remove_at: ib2
     reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0117
+    from: internal/modules/knowledge/faq/knowledge_faq_import.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/embedding"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；23-knowledge-wikifaq K3.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0118
+    from: internal/modules/knowledge/faq/knowledge_faq_import.go
+    to: "github.com/Tencent/WeKnora/internal/modules/policy/access"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/application/service 直引；23-knowledge-wikifaq K3.2 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
