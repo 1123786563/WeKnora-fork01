@@ -22,6 +22,7 @@ import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
 import type { ChatMentionView, ChatSubmission } from '@weknora/views/chat/composer';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
+import { MessagePlugin } from 'tdesign-react';
 import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
 // R490 B1 — Vue Input-field.vue agent-scoped KB filter for the @ mention popup.
 import { deriveKbFilterForAgent, isKbModelReady, mergeSharedKbsForMention, resolveMentionAgentKbScope } from './mention-agent-filter.ts';
@@ -958,6 +959,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       title: formatManualBookmarkTitle(question.trim(), copy.bookmarkSessionExcerpt),
       content: buildManualBookmarkContent(answer, copy.bookmarkNoAnswerContent),
     });
+    // Vue botmsg.vue:391 MessagePlugin.info(t('chat.editorOpened')) — the
+    // body-level t-message info toast that rides on top of the opened editor
+    // drawer (px-chat-addtokb parity). main.tsx installs the react-19 adapter
+    // so the imperative API works under React 19.
+    MessagePlugin.info(copy.bookmarkEditorOpened);
   }, [messages, copy]);
 
   const onRateMessage = useCallback(async (messageId: string, rating: FeedbackRating): Promise<void> => {    setRatings((prev) => ({ ...prev, [messageId]: rating }));

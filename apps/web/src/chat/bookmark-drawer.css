@@ -1,0 +1,531 @@
+/*
+ * px-chat-addtokb 收敛件：添加到知识库右抽屉（SettingDrawer.vue + manual-
+ * knowledge-editor.vue 样式平移；Vue t-drawer chrome 由 tdesign-react Drawer
+ * 同族输出，此处只平移 SettingDrawer 的 chrome 定制 + 编辑器内容样式）。
+ * 源：frontend/src/components/settings/SettingDrawer.vue（scoped+unscoped 块）、
+ *     frontend/src/components/manual-knowledge-editor.vue（scoped 块）。
+ */
+
+/* ---------- SettingDrawer.vue header/footer/section（scoped 展平） ---------- */
+.setting-drawer__header-block {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  gap: 8px;
+}
+
+.setting-drawer__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.setting-drawer__header-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 192, 95, 0.1);
+  color: var(--td-brand-color);
+  font-size: 16px;
+  transition: background 0.2s ease;
+}
+
+.setting-drawer__header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-drawer__title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setting-drawer__subtitle {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--td-text-color-secondary);
+}
+
+.setting-drawer__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: setting-drawer-body-in 0.28s ease both;
+}
+
+@keyframes setting-drawer-body-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.setting-drawer__body .setting-drawer__section {
+  padding: 12px 0 16px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: setting-drawer-section-in 0.32s ease both;
+}
+
+.setting-drawer__body .setting-drawer__section:first-child {
+  padding-top: 0;
+  animation-delay: 0.04s;
+}
+
+.setting-drawer__body .setting-drawer__section:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.setting-drawer__body .setting-drawer__section:nth-child(3) {
+  animation-delay: 0.12s;
+}
+
+.setting-drawer__body .setting-drawer__section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+@keyframes setting-drawer-section-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.setting-drawer__body .setting-drawer__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 4px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-drawer__body .setting-drawer__section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: var(--td-brand-color);
+  border-radius: 2px;
+}
+
+.setting-drawer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.setting-drawer__footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-drawer__footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* ---------- SettingDrawer.vue unscoped 块（body 弹层 chrome） ---------- */
+.setting-drawer {
+  max-width: 100vw;
+}
+
+.setting-drawer .t-drawer__content {
+  min-width: 0;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.setting-drawer .t-drawer__header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.setting-drawer .t-drawer__body {
+  padding: 16px 18px;
+}
+
+.setting-drawer .t-drawer__footer {
+  padding: 10px 18px;
+  border-top: 1px solid var(--td-component-stroke);
+  box-shadow: 0 -2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.setting-drawer-resize-handle {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  margin-left: -6px;
+  cursor: col-resize;
+  z-index: 2501;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: setting-drawer-resize-handle-in 0.28s cubic-bezier(0.38, 0, 0.24, 1) both;
+}
+
+@keyframes setting-drawer-resize-handle-in {
+  from { transform: translateX(var(--setting-drawer-travel)); }
+  to { transform: translateX(0); }
+}
+
+.setting-drawer-resize-line {
+  width: 2px;
+  height: 48px;
+  border-radius: 1px;
+  background: var(--td-component-border);
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.setting-drawer-resize-handle:hover .setting-drawer-resize-line,
+.setting-drawer-resize-handle--active .setting-drawer-resize-line {
+  opacity: 1;
+  background: var(--td-brand-color);
+}
+
+.t-drawer.setting-drawer--resizing .t-drawer__content {
+  transition: none !important;
+}
+
+/* ---------- manual-knowledge-editor.vue scoped 块 ---------- */
+.manual-editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.manual-editor-footer-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--td-text-color-placeholder);
+}
+
+.manual-editor-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.manual-editor-footer-actions .t-button {
+  min-width: 88px;
+}
+
+.manual-editor-cancel-btn {
+  border-color: transparent;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.manual-editor-cancel-btn:hover {
+  border-color: var(--td-component-stroke);
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+
+.form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.form-label.required::after {
+  content: '*';
+  margin-left: 4px;
+  color: var(--td-error-color);
+}
+
+.kb-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.kb-row .t-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 内容分组：让编辑区占满（视口高度兜底，同 Vue）。 */
+.editor-section {
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  border-bottom: 1px solid var(--td-component-stroke);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.editor-toolbar__format {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.editor-toolbar__format::-webkit-scrollbar {
+  height: 0;
+}
+
+.editor-toolbar__view {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+  border-left: 1px solid var(--td-component-stroke);
+}
+
+.toggle-view-btn {
+  min-width: 92px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 7px;
+  background: var(--td-bg-color-container);
+  color: var(--td-text-color-secondary);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.toggle-view-btn:hover {
+  border-color: rgba(7, 192, 95, 0.45);
+  background: rgba(7, 192, 95, 0.06);
+  color: var(--td-brand-color);
+  box-shadow: 0 2px 6px rgba(7, 192, 95, 0.1);
+}
+
+.toggle-view-btn.is-preview {
+  border-color: rgba(7, 192, 95, 0.5);
+  background: rgba(7, 192, 95, 0.1);
+  color: var(--td-brand-color);
+}
+
+.toggle-view-btn:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.toggle-view-btn .t-button__icon {
+  margin-right: 5px;
+  font-size: 15px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--td-component-stroke);
+  margin: 0 4px;
+}
+
+.toolbar-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--td-text-color-secondary);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.toolbar-btn .t-icon {
+  color: var(--td-text-color-secondary);
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.toolbar-btn:hover {
+  background: rgba(7, 192, 95, 0.08);
+  color: var(--td-brand-color);
+}
+
+.toolbar-btn:hover .t-icon {
+  color: var(--td-brand-color);
+}
+
+.toolbar-btn.active {
+  background: rgba(7, 192, 95, 0.12);
+  color: var(--td-brand-color);
+}
+
+.toolbar-btn.active .t-icon {
+  color: var(--td-brand-color);
+}
+
+.toolbar-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(7, 192, 95, 0.25);
+}
+
+.toolbar-btn:active {
+  background: rgba(7, 192, 95, 0.15);
+  transform: translateY(0.5px);
+}
+
+.editor-area {
+  /* 抽屉为整屏高，减去 header/footer/基本信息分组的大致高度（同 Vue）。 */
+  height: calc(100vh - 360px);
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--td-bg-color-container);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editor-area:focus-within {
+  border-color: var(--td-brand-color);
+  box-shadow: 0 0 0 2px rgba(7, 192, 95, 0.1);
+}
+
+.editor-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--td-bg-color-container);
+}
+
+.editor-textarea {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-textarea .t-textarea__inner {
+  flex: 1;
+  height: 100% !important;
+  resize: none;
+  border: none;
+  border-radius: 0;
+  padding: 14px 16px;
+  font-family: var(--app-font-family-mono);
+  font-size: 14px;
+  line-height: 1.7;
+  background: var(--td-bg-color-container);
+}
+
+.editor-textarea .t-textarea__inner:focus {
+  box-shadow: none;
+}
+
+.editor-pane--preview {
+  background: var(--td-bg-color-container);
+}
+
+.preview-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--td-bg-color-container);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--td-text-color-primary);
+}
+
+.preview-container h1,
+.preview-container h2,
+.preview-container h3,
+.preview-container h4 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.preview-container code {
+  background: var(--td-bg-color-container-hover);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: var(--app-font-family-mono);
+}
+
+.preview-container pre {
+  background: var(--td-bg-color-container-hover);
+  padding: 12px;
+  border-radius: 6px;
+  overflow: auto;
+}
+
+.preview-container blockquote {
+  border-left: 4px solid var(--td-brand-color);
+  padding-left: 12px;
+  color: var(--td-text-color-secondary);
+  margin: 16px 0;
+  background: rgba(7, 192, 95, 0.08);
+}
+
+.manual-editor__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+}
+
+.manual-editor__warning {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--td-error-color);
+}
