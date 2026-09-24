@@ -214,9 +214,15 @@ func TestCareerOpportunityConcurrentSameRequestReconcilesOneReceipt(t *testing.T
 	close(beginTransaction)
 	for range workers {
 		if err := <-errs; err != nil {
-			var unknown *OutcomeUnknownError
-			require.ErrorAs(t, err, &unknown)
-			require.Equal(t, "concurrent-jd", unknown.RequestID)
+			if errors.Is(err, ErrOutcomeUnknown) {
+				var unknown *OutcomeUnknownError
+				require.ErrorAs(t, err, &unknown)
+				require.Equal(t, "concurrent-jd", unknown.RequestID)
+			} else {
+				// SQLite can reject the first receipt read with SQLITE_LOCKED;
+				// this is a definite pre-write failure and is returned unchanged.
+				require.True(t, isSQLiteBusy(err), "unexpected concurrent import error: %v", err)
+			}
 		}
 		<-receipts
 	}
@@ -273,6 +279,31 @@ func TestCareerOpportunityAmbiguousCommitReturnsPersistedReceipt(t *testing.T) {
 	var count int64
 	require.NoError(t, o.db.Model(&opportunitySnapshot{}).Count(&count).Error)
 	require.EqualValues(t, 1, count)
+}
+
+func TestCareerOpportunityFirstReceiptReadFailureReturnsOriginalDatabaseError(t *testing.T) {
+	o, ctx := newOpportunityOffice(t, "owner", 80)
+	selectFailure := errors.New("injected first opportunity receipt SELECT failure")
+	registered := false
+	err := o.db.Callback().Query().Before("gorm:query").Register("test:fail-first-opportunity-receipt-read", func(tx *gorm.DB) {
+		if tx.Statement.Table == "career_opportunity_receipts" && !registered {
+			registered = true
+			tx.AddError(selectFailure)
+		}
+	})
+	require.NoError(t, err)
+	_, err = o.ImportJD(ctx, ImportJDInput{RequestID: "read-failed", RawText: "No write was attempted"})
+	require.True(t, registered, "the injected failure must hit the initial receipt SELECT")
+	require.ErrorIs(t, err, selectFailure)
+	require.NotErrorIs(t, err, ErrOutcomeUnknown)
+	require.NoError(t, o.db.Callback().Query().Remove("test:fail-first-opportunity-receipt-read"))
+	var count int64
+	require.NoError(t, o.db.Model(&opportunity{}).Count(&count).Error)
+	require.Zero(t, count)
+	require.NoError(t, o.db.Model(&opportunitySnapshot{}).Count(&count).Error)
+	require.Zero(t, count)
+	require.NoError(t, o.db.Model(&opportunityReceipt{}).Count(&count).Error)
+	require.Zero(t, count)
 }
 
 func newOpportunityOffice(t *testing.T, user string, tenant uint64) (*Office, context.Context) {

@@ -178,6 +178,7 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 	if o.beforeOpportunityTransaction != nil {
 		o.beforeOpportunityTransaction()
 	}
+	persistenceMayHaveCommitted := false
 	err = o.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing opportunityReceipt
 		err := tx.Where("tenant_id=? AND user_id=? AND request_id=?", s.TenantID, s.UserID, input.RequestID).First(&existing).Error
@@ -205,6 +206,9 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 		if err != nil {
 			return err
 		}
+		// Once the first insert is attempted, a later database error may
+		// leave the caller uncertain about whether the transaction committed.
+		persistenceMayHaveCommitted = true
 		if err = tx.Create(&opportunity{ID: oppID, TenantID: s.TenantID, UserID: s.UserID, CreatedAt: acquiredAt}).Error; err != nil {
 			return err
 		}
@@ -223,6 +227,9 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 		return result, nil
 	}
 	if errors.Is(err, ErrIdempotencyConflict) {
+		return OpportunityReceipt{}, err
+	}
+	if !persistenceMayHaveCommitted {
 		return OpportunityReceipt{}, err
 	}
 	// The transaction may have committed even when the acknowledgement or
