@@ -48,11 +48,10 @@ func newAgentRuntime(
 		// released its writer slot. Drain the durable craft capture outbox for
 		// the workspace generations sealed by this run; the periodic recovery
 		// scan retries anything stranded by a crash between the terminal
-		// commit and this point. Best-effort: a capture failure must never
-		// fail an already-terminal run.
-		if craftCapture != nil {
-			craftCapture.AfterTerminal(context.WithoutCancel(ctx), fence)
-		}
+		// commit and this point. Best-effort with a bounded budget: a capture
+		// failure or a hung dependency must never fail an already-terminal
+		// run nor pin this worker's executor slot indefinitely.
+		drainCraftCaptureAfterTerminal(ctx, craftCapture, fence)
 		return err
 	}
 	var r *AgentRuntime

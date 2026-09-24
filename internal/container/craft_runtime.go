@@ -1566,6 +1566,13 @@ type runBoundCraftArtifactSource struct {
 	material  CraftRunViewMaterialHandle
 	outputDir string
 
+	// captureBindingOnly switches verifyBinding to the offline contract: the
+	// Run is already terminal and fenced writer-free by SQL, so binding keeps
+	// the durable writer-fence and immutable on-disk layout identity checks
+	// but must not depend on in-process container bindings or a live engine
+	// (stranded receipts must stay resolvable after restart/teardown).
+	captureBindingOnly bool
+
 	mu     sync.Mutex
 	listed map[string]runBoundArtifactIdentity
 	// afterDirectoryRead is an inert-by-default deterministic filesystem race
@@ -1587,12 +1594,27 @@ type runBoundArtifactIdentity struct {
 }
 
 func newRunBoundCraftArtifactSource(ctx context.Context, runtime *localCraftRuntime, task craft.Task, material CraftRunViewMaterialHandle, outputDir string) (*runBoundCraftArtifactSource, error) {
+	return newRunBoundCraftArtifactSourceWithMode(ctx, runtime, task, material, outputDir, false)
+}
+
+// newRunBoundCraftArtifactSourceForCapture builds the Run-bound source for
+// the post-terminal capture path. Unlike the dispatch-time source it never
+// revalidates the live engine binding: a capture source must remain
+// resolvable after a process restart (empty in-memory binding table) or
+// after the generation container stopped or was removed, otherwise stranded
+// receipts would retry forever and never converge.
+func newRunBoundCraftArtifactSourceForCapture(ctx context.Context, runtime *localCraftRuntime, task craft.Task, material CraftRunViewMaterialHandle, outputDir string) (*runBoundCraftArtifactSource, error) {
+	return newRunBoundCraftArtifactSourceWithMode(ctx, runtime, task, material, outputDir, true)
+}
+
+func newRunBoundCraftArtifactSourceWithMode(ctx context.Context, runtime *localCraftRuntime, task craft.Task, material CraftRunViewMaterialHandle, outputDir string, captureBindingOnly bool) (*runBoundCraftArtifactSource, error) {
 	if outputDir != craftLocalOutputDir {
 		return nil, fmt.Errorf("%w: RunView artifact output path is fixed by the verified generation", craft.ErrInvalidInput)
 	}
 	source := &runBoundCraftArtifactSource{
 		runtime: runtime, task: task, material: material,
 		outputDir: outputDir, listed: make(map[string]runBoundArtifactIdentity),
+		captureBindingOnly: captureBindingOnly,
 	}
 	if err := source.verifyBinding(ctx); err != nil {
 		return nil, err
@@ -1622,7 +1644,16 @@ func (s *runBoundCraftArtifactSource) verifyBinding(ctx context.Context) error {
 	if err != nil || snapshot.CraftWorkspaceSeed == nil || snapshot.CraftWorkspaceSeed.WorkspaceID != s.task.WorkspaceID {
 		return fmt.Errorf("%w: artifact source Run snapshot differs from its Workspace", craft.ErrConflict)
 	}
-	if err := s.material.provider.RevalidateMaterialHandle(ctx, s.material); err != nil {
+	if s.captureBindingOnly {
+		// Capture contract: only the immutable on-disk layout identity is
+		// revalidated. RevalidateMaterialHandle (used on the dispatch path)
+		// additionally consults the in-process binding table and performs live
+		// engine inspection, which a terminal Run after a restart or container
+		// teardown can no longer satisfy.
+		if err := s.material.provider.verifyMaterialHandle(s.material); err != nil {
+			return unresolvedCraftRunView("Run-bound capture material changed", err)
+		}
+	} else if err := s.material.provider.RevalidateMaterialHandle(ctx, s.material); err != nil {
 		return unresolvedCraftRunView("Run-bound artifact material changed", err)
 	}
 	return ctx.Err()
@@ -1757,7 +1788,7 @@ func walkRunBoundArtifactTree(ctx context.Context, dirFD int, prefix, outputDir 
 			}
 			identities[rel] = identity
 			entryPath := outputDir + "/" + rel
-			*entries = append(*entries, sandbox.RemoteDirEntry{Name: name, Path: entryPath, Type: sandbox.RemoteEntryDir})
+			*entries = append(*entries, sandbox.RemoteDirEntry{Name: name, Path: entryPath, Type: sandbox.RemoteEntryDir, ModTime: time.Unix(0, identity.mtime)})
 			nestedErr := walkRunBoundArtifactTree(ctx, openedFD, rel, outputDir, identities, entries, total, entryCount, afterDirectoryRead)
 			var after unix.Stat_t
 			statErr := unix.Fstat(openedFD, &after)
@@ -1804,12 +1835,14 @@ func walkRunBoundArtifactTree(ctx context.Context, dirFD int, prefix, outputDir 
 				return fmt.Errorf("%w: RunView output file changed during list", craft.ErrConflict)
 			}
 			identity.size = before.Size
+			identity.mtime = runBoundStatTimestamp(before, "Mtim", "Mtimespec")
+			identity.ctime = runBoundStatTimestamp(before, "Ctim", "Ctimespec")
 			sum := sha256.Sum256(listedBytes)
 			identity.digest = hex.EncodeToString(sum[:])
 			identities[rel] = identity
 			*total += before.Size
 			*entries = append(*entries, sandbox.RemoteDirEntry{Name: name, Path: outputDir + "/" + rel,
-				Type: sandbox.RemoteEntryFile, Size: before.Size})
+				Type: sandbox.RemoteEntryFile, Size: before.Size, ModTime: time.Unix(0, identity.mtime)})
 		default:
 			return fmt.Errorf("%w: RunView output contains a symlink or non-regular entry", craft.ErrInvalidInput)
 		}
@@ -1865,6 +1898,40 @@ func runBoundSameNames(a, b []string) bool {
 	}
 	for i := range a {
 		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// snapshotListed returns a copy of the last completed walk's full identity
+// table: per entry the sha256 digest and the device/inode/mode/size/dir/
+// nlink/mtime/ctime identity. Holders compare it with listedMatches after a
+// later walk; the mutex discipline keeps the table race-free.
+func (s *runBoundCraftArtifactSource) snapshotListed() map[string]runBoundArtifactIdentity {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]runBoundArtifactIdentity, len(s.listed))
+	for k, v := range s.listed {
+		out[k] = v
+	}
+	return out
+}
+
+// listedMatches reports whether the last completed walk produced exactly the
+// supplied identity table. Comparing the complete identity — not a projection
+// of entry fields — makes a same-size in-place content rewrite between two
+// walks detectable through the changed digest (and mtime/ctime), which a
+// Name/Path/Type/Size-only comparison would silently miss.
+func (s *runBoundCraftArtifactSource) listedMatches(expected map[string]runBoundArtifactIdentity) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.listed) != len(expected) {
+		return false
+	}
+	for k, v := range expected {
+		got, ok := s.listed[k]
+		if !ok || got != v {
 			return false
 		}
 	}

@@ -34,6 +34,7 @@ func (s *quiescentRunViewArtifactSource) VerifyCraftCaptureQuiescent(ctx context
 	if err != nil {
 		return fmt.Errorf("quiescence list: %w", err)
 	}
+	firstIdentity := s.snapshotListed()
 	second, err := s.ListSessionFiles(ctx, s.task.Scope.SessionID, s.outputDir)
 	if err != nil {
 		return fmt.Errorf("quiescence re-list: %w", err)
@@ -46,6 +47,12 @@ func (s *quiescentRunViewArtifactSource) VerifyCraftCaptureQuiescent(ctx context
 			first[i].Type != second[i].Type || first[i].Size != second[i].Size {
 			return fmt.Errorf("%w: RunView output entry %q changed during the quiescence proof", craft.ErrBusy, first[i].Path)
 		}
+	}
+	// The projected-entry comparison above stays for a precise error message,
+	// but it is blind to same-size content rewrites: the walks' full identity
+	// tables (sha256 digest plus stat identity per entry) must also agree.
+	if !s.listedMatches(firstIdentity) {
+		return fmt.Errorf("%w: RunView output content identity changed during the quiescence proof", craft.ErrBusy)
 	}
 	return nil
 }
@@ -146,7 +153,7 @@ func (r *CraftRunCaptureRunner) resolveSource(ctx context.Context, receipt repos
 		Scope: receipt.Scope, WorkspaceID: receipt.WorkspaceID,
 		Fence: runtime.Fence{RunKey: runtime.RunKey{TenantID: key.TenantID, RunID: key.RunID}, Epoch: epoch},
 	}
-	source, err := newRunBoundCraftArtifactSource(ctx, &localCraftRuntime{db: r.db}, task, material, craftLocalOutputDir)
+	source, err := newRunBoundCraftArtifactSourceForCapture(ctx, &localCraftRuntime{db: r.db}, task, material, craftLocalOutputDir)
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +219,25 @@ func (r *CraftRunCaptureRunner) Unavailable() string {
 		return "capture runner is not assembled"
 	}
 	return r.unavailable
+}
+
+// craftCaptureAfterTerminalBudget bounds the immediate post-terminal drain.
+// AfterTerminal runs synchronously inside the worker's executor goroutine;
+// without a deadline a stuck engine, database or object store would pin the
+// worker's concurrency slot indefinitely. Whatever the budget cannot finish
+// stays pending for the periodic recovery scan, which has its own interval
+// budget.
+const craftCaptureAfterTerminalBudget = 15 * time.Second
+
+// drainCraftCaptureAfterTerminal applies the bounded budget around the
+// executor-seam drain so a hung dependency cannot hold the worker slot.
+func drainCraftCaptureAfterTerminal(ctx context.Context, drain craftCaptureAfterTerminal, fence runtime.Fence) {
+	if drain == nil {
+		return
+	}
+	drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), craftCaptureAfterTerminalBudget)
+	defer cancel()
+	drain.AfterTerminal(drainCtx, fence)
 }
 
 // craftCaptureAfterTerminal is the executor seam: the container's graph
