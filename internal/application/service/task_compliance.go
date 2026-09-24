@@ -34,7 +34,10 @@ type TaskComplianceStorePort interface {
 	OpenComplianceAccess(ctx context.Context, access types.TaskComplianceAccess) (types.TaskComplianceAccess, error)
 	ActiveComplianceAccess(ctx context.Context, tenantID uint64, taskID, adminID string, now time.Time) (*types.TaskComplianceAccess, error)
 	ListTaskMessages(ctx context.Context, taskID string, limit int) ([]types.TaskMessageFact, error)
-	PurgeTask(ctx context.Context, tenantID uint64, taskID string) error
+	// PurgeTask is added back in Task 6 (retention purge); the port grows
+	// with implemented capability (ruling via escalation, t13 #43 task 4:
+	// a port method declared ahead of its only implementation is masked by
+	// test stubs and explodes at the first real wiring point).
 }
 
 // TaskComplianceService carries the compliance surface and the deletion
