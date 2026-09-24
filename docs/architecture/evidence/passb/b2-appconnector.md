@@ -310,3 +310,47 @@ moved 原签名逐字一致（§4.1）；`ErrMissingTenantScope` 模块副本消
 | `make check-backend-architecture` | 0 | `total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`、`OK (0 violations)` |
 | `make verify-module-moves` | 0 | `OK (16 manifests verified)`（行删除生效） |
 
+## 6. 重派复验（B2-AC.3 第二轮，2026-09-24 @ 派发 BASE `6e8c84860` = T4 终态）
+
+**背景**：T3 原于 2026-09-24 在 `33f8c3ea3` 定稿（§2/§3/§5），T4 交付 Brief+报告于
+`6e8c84860`。协调者在 `6e8c84860`（=本轮派发 BASE）重派 B2-AC.3；本轮按计划 T3
+步骤 1–4 在该终态**逐步复跑全部验证命令**，作为对 §2/§3/§5 证据在节点最终状态上的
+再验证。本轮 diff 仅含本追加节（evidence 文件本身）。
+
+### 6.1 差分复跑（步骤 1，逐条命令 + 退出码）
+
+| # | 命令（原文，@ `6e8c84860`） | 退出码 | 关键输出 |
+|---|---|---|---|
+| 1 | `go build ./...` | 0 | 仅 cmd/desktop、cmd/server 预存 `ld: warning: ignoring duplicate libraries: '-lc++'` 非致命警告（同基线） |
+| 2 | `go test ./internal/modules/appconnector/handler/ -run 'TestAppInstallationLifecycle\|TestAppConnectionCreate\|TestAppSyncStatus\|TestAppActionPipeline' -count=1 -v` | 0 | T1 用例族 4 用例全 PASS（`ok .../handler 1.903s`） |
+| 3 | `go test ./internal/modules/appconnector/handler/ -run 'TestAppConnectionOAuthFlow\|TestOC\|TestDecodeOCPrepare' -count=1 -v` | 0 | `--- PASS` 计数 **21**（顶层 21 用例，含 A02 内 4 子测试；0 FAIL；`ok .../handler`） |
+| 4 | `go test ./internal/modules/appconnector/... -count=1` | 0 | **6 包全 ok**：root 0.198s / connectorcontrol 2.824s / handler 4.105s / openconnector 1.270s / repository 1.541s / service 5.520s |
+| 5 | `go test ./internal/modules/appconnector/ -run 'TestActionExecuteWrapsIntentBudgetInner\|TestActionIntentDenialBlocksEverything\|TestActionBudgetDenialNeverDispatches' -count=1 -v` | 0 | U05 计量 3 用例全 PASS |
+| 6 | `go test ./internal/container/ -run 'TestOCProductRoutesRegisterWithoutConflict\|TestProductionWiringInjectsDispatcherIntoService\|TestNewOCArmedActionServiceEnabledRequiresFullConfig\|TestNewOCArmedActionServiceDisabledKeepsRefusingDispatcher' -count=1 -v` | 0 | 装配面 4 用例全 PASS（经 shim，`ok .../container 5.283s`） |
+| 7 | `go test ./internal/handler/ -count=1` | 0 | 宿主包全量零回归（经 shim，`ok .../handler 2.001s`） |
+
+### 6.2 别名/例外/计数复验（步骤 2–4）
+
+- **别名三命令**：`git ls-tree HEAD internal/appconnector internal/connectorcontrol
+  internal/application/repository/appconnector internal/application/service/appconnector`
+  → 输出空、退出码 0；旧 import path grep（§3.1 命令 2 原文）→ 零命中、退出码 1；
+  `git show b0ef8895a --stat` → 摘录与 §3.1 逐字一致（418 deletions）。结论不变：
+  **5 条 alias 行 = 空义务**。
+- **exc-0058..0061 现状**：grep 实测 3 文件 4 行 import 原样在位
+  （adapter.go:9、action.go:12、oc_recovery.go:45、oc_recovery.go:46）——零删除、零改动。
+- **exc-0028 消费方**：`go doc ./internal/modules/appconnector` 双跑（临时 worktree
+  @`67ac22c96` 802 行 vs HEAD `6e8c84860` 802 行）→ `diff` 输出空、退出码 0
+  （导出面零变化）；`go build ./internal/modules/agentruntime/agent/tools/` → 退出码 0。
+- **计数门禁**：`make check-backend-architecture` → `literal=564 apiKeyRoute=69 handle=0
+  total=633 | redis=23 lite=23 | hooks=58 | modules=16` + `OK (0 violations)`、退出码 0；
+  `make verify-module-moves` → `OK (16 manifests verified)`、退出码 0。与 §5.1 逐字一致。
+- **节点全量 diff 复核**：`git diff ced88ecb1 --name-only | sort` = 20 文件
+  （§5.2 的 18 文件 + T4 交付的 briefs/reports 2 文件）；`grep -E 'internal/router/|
+  internal/container/|internal/bootstrap/|^go\.(mod|sum)$|^migrations/'` → 零命中、
+  退出码 1。router/container/bootstrap/go.mod/go.sum/migrations 零触碰结论在终态成立。
+
+### 6.3 复验结论
+
+§2 差分矩阵、§3 别名/例外核销、§5 计数核验的全部证据在 T4 终态 `6e8c84860`
+（节点 HEAD）上**全部复现成立**；本轮无新发现、无偏差。
+
