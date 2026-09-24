@@ -421,7 +421,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     const configPanel = key === 'retrieval'
       ? <ConfigSettingsPanel client={client} section="retrieval" initialValue={sectionPayload} models={models} />
       : key === 'parser'
-        ? <ParserEngineSettingsPanel client={client} />
+        ? <ParserEngineSettingsPanel client={client} role={role} />
         : null;
     // Vue ChatHistorySettings.vue 自持 section-header 与统计区（T12b 平移）。
     const chatHistoryPanel = key === 'chathistory'

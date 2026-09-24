@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-// S6 抽屉收编：配置抽屉离开 packages/ui 旧栈 表单栈（T15 硬前置），组件换 tdesign。
-import { Alert, Button as TButton, Checkbox as TCheckbox, Input as TInput, Loading, Select as TSelect, Tooltip } from 'tdesign-react';
+import { roleAtLeast, type SettingsRole } from '@weknora/views/settings/registry';
+import { Alert, Button as TButton, Checkbox as TCheckbox, Input as TInput, Loading, Select as TSelect, Tag as TTag, Tooltip } from 'tdesign-react';
+import { Icon as TIcon } from 'tdesign-icons-react';
 import { WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
+import { SettingDrawer } from './SettingDrawer.tsx';
 
 /* Full port of Vue ParserEngineSettings.vue: the engine-card grid (monogram
    badge + display name + availability status + localized description), the
@@ -12,10 +14,9 @@ import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
    WeKnoraCloud credential state inline alert, and the test-connection /
    save flows.
 
-   TDesign 同构迁移（批次 2 收尾）：列表域（section-header / loading / error /
-   empty / engine-cards）按 Vue SFC 逐节点复刻，样式在 settings.td.css §13；
-   配置抽屉沿用 React 表单栈（批次先例：resource/mcp/models 编辑器同口径，
-   扫描稳态不可达，待后续批次收编）。 */
+   TDesign 同构迁移（批 3 面板收敛）：列表域与配置抽屉均按 Vue SFC 逐节点
+   复刻——抽屉走 SettingDrawer.tsx（SettingDrawer.vue 同构端口，t-drawer
+   chrome + scrim + footer-left 测试连接），样式在 settings.td.css §13/§13b。 */
 
 type Copy = (key: string, values?: Record<string, string | number>) => string;
 
@@ -81,6 +82,23 @@ const DEFAULT_CONFIG: ParserConfig = {
 
 const CONFIGURABLE_ENGINES = new Set(['mineru', 'mineru_cloud', 'paddleocr_vl', 'paddleocr_vl_cloud']);
 
+/* Vue ParserEngineSettings.vue:406-413 —— 副标题内联文档外链（mineru 系/
+   paddleocr 系/markitdown/weknoracloud）。 */
+const ENGINE_DOC_LINKS: Record<string, string> = {
+  weknoracloud: 'https://developers.weixin.qq.com/doc/aispeech/knowledge/atomic_capability/atomic_interface.html',
+  markitdown: 'https://github.com/microsoft/markitdown',
+  mineru: 'https://github.com/opendatalab/MinerU',
+  mineru_cloud: 'https://mineru.net/apiManage/docs',
+  paddleocr_vl: 'https://github.com/PaddlePaddle/PaddleOCR',
+  paddleocr_vl_cloud: 'https://aistudio.baidu.com/paddleocr',
+};
+
+/** Vue $t('settings.parser.checking', fallback)：键缺失时回落默认值。 */
+function checkingLabel(t: Copy): string {
+  const translated = t('settings.parser.checking');
+  return translated !== 'settings.parser.checking' ? translated : t('settings.parser.testConnection');
+}
+
 const ENGINE_ORDER: Record<string, number> = {
   builtin: 0,
   weknoracloud: 1,
@@ -97,7 +115,7 @@ function rowText(row: ParserEngineRow, key: keyof ParserEngineRow): string {
   return typeof row[key] === 'string' ? (row[key] as string) : '';
 }
 
-export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient }) {
+export function ParserEngineSettingsPanel({ client, role = 'owner' }: { client: WeKnoraClient; role?: SettingsRole }) {
   // Stable translator: recreating it per render would re-trigger the load
   // effect below (the callbacks close over it).
   const [t] = useState(() => settingsT(readInitialLocale()));
@@ -116,6 +134,18 @@ export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient })
   const [wkcState, setWkcState] = useState<'loading' | 'unconfigured' | 'configured' | 'expired'>('loading');
 
   const hasBuiltinEngine = engines.some((engine) => rowText(engine, 'Name') === 'builtin');
+
+  /* 抽屉表单字段写入（等价旧 EngineDrawer 内部 set helper）。 */
+  const setConfigField = useCallback(<K extends keyof ParserConfig>(key: K, value: ParserConfig[K]) => {
+    setConfig((current) => ({ ...current, [key]: value }));
+  }, []);
+
+  /* Vue goToWkcSettings：关闭设置壳后打开 weknoracloud 分区。React 走路由
+     query 切换（settings 壳常驻，等价 uiStore.openSettings('weknoracloud')）。 */
+  const goToWkcSettings = useCallback(() => {
+    window.history.pushState({}, '', '/platform/settings?section=weknoracloud');
+    window.dispatchEvent(new window.PopStateEvent('popstate'));
+  }, []);
 
   const sortedEngines = [...engines].sort((a, b) => {
     const oa = ENGINE_ORDER[rowText(a, 'Name')] ?? 100;
@@ -327,28 +357,190 @@ export function ParserEngineSettingsPanel({ client }: { client: WeKnoraClient })
         })}
       </div>}
     </>}
-    {drawerEngine ? <EngineDrawer
-      name={drawerName}
-      initial={initialOf(drawerName)}
+    {drawerEngine ? <SettingDrawer
+      visible={drawerEngine !== null}
       title={displayOf(drawerName)}
-      desc={descOf(drawerName, rowText(drawerEngine, 'Description'))}
-      needsTest={needsTestButton}
-      saving={saving}
-      checking={checking}
-      checkMessage={checkMessage}
-      checkOk={checkOk}
-      connected={connected}
-      docreaderAddrEnv={docreaderAddrEnv}
-      docreaderTransport={docreaderTransport}
-      wkcState={wkcState}
-      config={config}
-      fileTypes={drawerFileTypes}
-      t={t}
-      onCheck={() => void onCheck()}
-      onSave={() => void onSave()}
-      onClose={() => setDrawerEngine(null)}
-      setConfig={setConfig}
-    /> : null}
+      drawerClass={`parser-engine-drawer parser-engine-drawer--${drawerName}`}
+      hideFooter={!roleAtLeast(role, 'admin') && !needsTestButton}
+      confirmLoading={saving}
+      headerIcon={<span className="header-icon__text">{initialOf(drawerName)}</span>}
+      subtitle={<>
+        <span>{descOf(drawerName, rowText(drawerEngine, 'Description'))}</span>
+        {ENGINE_DOC_LINKS[drawerName] ? <a
+          href={ENGINE_DOC_LINKS[drawerName]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="doc-link doc-link--inline"
+        >
+          {t('settings.parser.docs')}
+          <TIcon name="link" className="link-icon" />
+        </a> : null}
+      </>}
+      footerLeft={needsTestButton ? <>
+        <TButton variant="outline" loading={checking} onClick={() => void onCheck()}
+          icon={!checking && checkOk && checkMessage ? <TIcon name="check-circle-filled" className="status-icon available" />
+            : !checking && checkMessage && !checkOk ? <TIcon name="close-circle-filled" className="status-icon unavailable" /> : undefined}
+        >
+          {checking ? checkingLabel(t) : t('settings.parser.testConnection')}
+        </TButton>
+        {checkMessage ? <span className={'footer-test-message' + (checkOk ? ' success' : ' error')} title={checkMessage}>{checkMessage}</span> : null}
+      </> : undefined}
+      onConfirm={() => void onSave()}
+      onCancel={() => setDrawerEngine(null)}
+      onVisibleChange={(visible) => { if (!visible) setDrawerEngine(null); }}
+    >
+      <div>
+        {/* Section 1 — 支持文件类型 */}
+        {drawerFileTypes.length ? <section className="setting-drawer__section">
+          <h4 className="setting-drawer__section-title">{t('settings.parser.supportedFileTypes')}</h4>
+          <div className="file-types">
+            {drawerFileTypes.map((ft) => <span key={ft} className="file-type-chip">{ft}</span>)}
+          </div>
+        </section> : null}
+
+        {/* Section 2 — 状态信息（DocReader 连接 / WeKnoraCloud 凭证） */}
+        {drawerName === 'builtin' || drawerName === 'weknoracloud' ? <section className="setting-drawer__section">
+          <h4 className="setting-drawer__section-title">{t('settings.parser.statusSection')}</h4>
+          {drawerName === 'builtin' ? <div className="docreader-block">
+            <div className="status-line">
+              <TTag theme={connected ? 'success' : 'danger'} variant="light" size="small">
+                {connected ? t('settings.parser.connected') : t('settings.parser.disconnected')}
+              </TTag>
+              <TTag theme="default" variant="light" size="small">{docreaderTransport === 'http' ? 'HTTP' : 'gRPC'}</TTag>
+              {docreaderAddrEnv ? <span className="env-hint">{t('settings.parser.currentAddr')}: {docreaderAddrEnv}</span> : null}
+            </div>
+            <p className="form-desc">{t('settings.parser.envVarHint')}</p>
+          </div> : <>
+            {wkcState === 'configured' ? <div className="inline-alert inline-alert--ok">
+              <TIcon name="check-circle-filled" className="inline-alert__icon" />
+              <span>{t('settings.weknoraCloud.credentialConfigured')}</span>
+            </div> : wkcState === 'loading' ? <div className="inline-alert">
+              <TIcon name="loading" className="inline-alert__icon spinning" />
+              <span>{t('settings.weknoraCloud.checkingStatus')}</span>
+            </div> : <div className="inline-alert inline-alert--warn">
+              <TIcon name="error-circle-filled" className="inline-alert__icon" />
+              <span className="inline-alert__text">
+                {wkcState === 'expired' ? t('settings.weknoraCloud.credentialExpired') : t('settings.weknoraCloud.unconfigured')}
+              </span>
+              <a className="inline-alert__action" onClick={goToWkcSettings}>
+                {t('settings.weknoraCloud.goToSettings')}
+                <TIcon name="chevron-right" />
+              </a>
+            </div>}
+          </>}
+        </section> : null}
+
+        {/* Section 3 — mineru 自建配置 */}
+        {drawerName === 'mineru' ? <section className="setting-drawer__section">
+          <h4 className="setting-drawer__section-title">{t('settings.parser.configSection')}</h4>
+          <div className="form-item">
+            <label className="form-label">{t('settings.parser.selfHostedEndpoint')}</label>
+            <TInput value={config.mineru_endpoint} placeholder={t('settings.parser.mineruEndpointPlaceholder')} clearable onChange={(value) => setConfigField('mineru_endpoint', String(value))} />
+          </div>
+          <div className="form-item">
+            <label className="form-label">Backend</label>
+            <TSelect className="wk-parser-sel-mineru-model" value={config.mineru_model} placeholder={t('settings.parser.defaultPipeline')} clearable onChange={(value) => setConfigField('mineru_model', String(value))}>
+              <TSelect.Option value="pipeline" label="pipeline" />
+              <TSelect.Option value="vlm-auto-engine" label="vlm-auto-engine" />
+              <TSelect.Option value="vlm-http-client" label="vlm-http-client" />
+              <TSelect.Option value="hybrid-auto-engine" label="hybrid-auto-engine" />
+              <TSelect.Option value="hybrid-http-client" label="hybrid-http-client" />
+            </TSelect>
+          </div>
+          <div className="form-item">
+            <label className="form-label">vLLM {t('settings.parser.serverUrl')}</label>
+            <TInput data-testid="mineru-vllm-server-url" value={config.mineru_vlm_server_url} placeholder={t('settings.parser.vlmServerUrlPlaceholder')} clearable onChange={(value) => setConfigField('mineru_vlm_server_url', String(value))} />
+            <p className="form-desc">{t('settings.parser.vlmServerUrlHint')}</p>
+          </div>
+          <div className="form-item">
+            <label className="form-label">{t('settings.parser.parseMethodLabel')}</label>
+            <TSelect className="wk-parser-sel-mineru-parse-method" value={config.mineru_parse_method} onChange={(value) => setConfigField('mineru_parse_method', String(value))}>
+              <TSelect.Option value="auto" label={t('settings.parser.parseMethodAuto')} />
+              <TSelect.Option value="ocr" label={t('settings.parser.parseMethodOCR')} />
+              <TSelect.Option value="txt" label={t('settings.parser.parseMethodText')} />
+            </TSelect>
+            <p className="form-desc">{t('settings.parser.parseMethodHint')}</p>
+          </div>
+          <div className="form-item">
+            <label className="form-label">{t('settings.parser.featuresLabel')}</label>
+            <div className="form-toggles">
+              <TCheckbox checked={config.mineru_enable_formula} onChange={(checked) => setConfigField('mineru_enable_formula', Boolean(checked))} label={t('settings.parser.formulaRecognition')} />
+              <TCheckbox checked={config.mineru_enable_table} onChange={(checked) => setConfigField('mineru_enable_table', Boolean(checked))} label={t('settings.parser.tableRecognition')} />
+            </div>
+          </div>
+          <div className="form-item">
+            <label className="form-label">{t('settings.parser.language')}</label>
+            <TInput data-testid="mineru-language" value={config.mineru_language} placeholder={t('settings.parser.languagePlaceholder')} clearable onChange={(value) => setConfigField('mineru_language', String(value))} />
+          </div>
+        </section> : null}
+
+        {/* Section 3 — mineru_cloud 云 API 配置 */}
+        {drawerName === 'mineru_cloud' ? <section className="setting-drawer__section">
+          <h4 className="setting-drawer__section-title">{t('settings.parser.configSection')}</h4>
+          <div className="form-item">
+            <label className="form-label required">API Key</label>
+            <TInput type="password" value={config.mineru_api_key} placeholder={t('settings.parser.mineruCloudApiKeyPlaceholder')} clearable onChange={(value) => setConfigField('mineru_api_key', String(value))} prefixIcon={<TIcon name="lock-on" />} />
+          </div>
+          <div className="form-item">
+            <label className="form-label">Model Version</label>
+            <TSelect className="wk-parser-sel-mineru-cloud-model" value={config.mineru_cloud_model} placeholder={t('settings.parser.defaultPipeline')} clearable onChange={(value) => setConfigField('mineru_cloud_model', String(value))}>
+              <TSelect.Option value="pipeline" label="pipeline" />
+              <TSelect.Option value="vlm" label={t('settings.parser.vlmLabel')} />
+              <TSelect.Option value="MinerU-HTML" label={t('settings.parser.mineruHtmlLabel')} />
+            </TSelect>
+          </div>
+          <div className="form-item">
+            <label className="form-label">{t('settings.parser.featuresLabel')}</label>
+            <div className="form-toggles">
+              <TCheckbox checked={config.mineru_cloud_enable_formula} onChange={(checked) => setConfigField('mineru_cloud_enable_formula', Boolean(checked))} label={t('settings.parser.formulaRecognition')} />
+              <TCheckbox checked={config.mineru_cloud_enable_table} onChange={(checked) => setConfigField('mineru_cloud_enable_table', Boolean(checked))} label={t('settings.parser.tableRecognition')} />
+              <TCheckbox checked={config.mineru_cloud_enable_ocr} onChange={(checked) => setConfigField('mineru_cloud_enable_ocr', Boolean(checked))} label="OCR" />
+            </div>
+          </div>
+          <div className="form-item">
+            <label className="form-label">{t('settings.parser.language')}</label>
+            <TInput value={config.mineru_cloud_language} placeholder={t('settings.parser.languagePlaceholder')} clearable onChange={(value) => setConfigField('mineru_cloud_language', String(value))} />
+          </div>
+        </section> : null}
+
+        {/* Section 3 — paddleocr_vl 自建配置 */}
+        {drawerName === 'paddleocr_vl' ? <section className="setting-drawer__section">
+          <h4 className="setting-drawer__section-title">{t('settings.parser.configSection')}</h4>
+          <div className="form-item">
+            <label className="form-label required">{t('settings.parser.selfHostedEndpoint')}</label>
+            <TInput data-testid="paddleocr-vl-endpoint" value={config.paddleocr_vl_endpoint} placeholder={t('settings.parser.paddleocrVlEndpointPlaceholder')} clearable onChange={(value) => setConfigField('paddleocr_vl_endpoint', String(value))} />
+            <p className="form-desc">{t('settings.parser.paddleocrVlEndpointHint')}</p>
+          </div>
+          <div className="form-item">
+            <label className="form-label">{t('settings.parser.featuresLabel')}</label>
+            <div className="form-toggles">
+              <TCheckbox checked={config.paddleocr_vl_use_seal_recognition} onChange={(checked) => setConfigField('paddleocr_vl_use_seal_recognition', Boolean(checked))} label={t('settings.parser.sealRecognition')} />
+              <TCheckbox checked={config.paddleocr_vl_use_chart_recognition} onChange={(checked) => setConfigField('paddleocr_vl_use_chart_recognition', Boolean(checked))} label={t('settings.parser.chartRecognition')} />
+            </div>
+          </div>
+        </section> : null}
+
+        {/* Section 3 — paddleocr_vl_cloud 云 API 配置 */}
+        {drawerName === 'paddleocr_vl_cloud' ? <section className="setting-drawer__section">
+          <h4 className="setting-drawer__section-title">{t('settings.parser.configSection')}</h4>
+          <div className="form-item">
+            <label className="form-label required">Token</label>
+            <TInput type="password" value={config.paddleocr_vl_cloud_token} placeholder={t('settings.parser.paddleocrVlCloudTokenPlaceholder')} clearable onChange={(value) => setConfigField('paddleocr_vl_cloud_token', String(value))} prefixIcon={<TIcon name="lock-on" />} />
+          </div>
+          <div className="form-item">
+            <label className="form-label">Model</label>
+            <TInput data-testid="paddleocr-vl-cloud-model" value={config.paddleocr_vl_cloud_model} placeholder="PaddleOCR-VL-1.6" clearable onChange={(value) => setConfigField('paddleocr_vl_cloud_model', String(value))} />
+          </div>
+          <div className="form-item">
+            <label className="form-label">{t('settings.parser.featuresLabel')}</label>
+            <div className="form-toggles">
+              <TCheckbox checked={config.paddleocr_vl_cloud_use_seal_recognition} onChange={(checked) => setConfigField('paddleocr_vl_cloud_use_seal_recognition', Boolean(checked))} label={t('settings.parser.sealRecognition')} />
+              <TCheckbox checked={config.paddleocr_vl_cloud_use_chart_recognition} onChange={(checked) => setConfigField('paddleocr_vl_cloud_use_chart_recognition', Boolean(checked))} label={t('settings.parser.chartRecognition')} />
+            </div>
+          </div>
+        </section> : null}
+      </div>
+    </SettingDrawer> : null}
   </div>;
 }
 
@@ -394,149 +586,3 @@ function EngineCard({ name, initial, title, desc, statusLabel, statusTone, statu
   </button>;
 }
 
-function EngineDrawer(props: {
-  name: string; initial: string; title: string; desc: string;
-  needsTest: boolean; saving: boolean; checking: boolean;
-  checkMessage: string; checkOk: boolean; connected: boolean;
-  docreaderAddrEnv: string; docreaderTransport: string;
-  wkcState: 'loading' | 'unconfigured' | 'configured' | 'expired';
-  config: ParserConfig; fileTypes: string[];
-  t: Copy; onCheck: () => void; onSave: () => void; onClose: () => void;
-  setConfig: React.Dispatch<React.SetStateAction<ParserConfig>>;
-}) {
-  const { name, config, setConfig, t } = props;
-  const set = <K extends keyof ParserConfig>(key: K, value: ParserConfig[K]) => setConfig((current) => ({ ...current, [key]: value }));
-  return <div className="engine-drawer-overlay" role="presentation" onClick={props.onClose}>
-    <section
-      role="dialog"
-      aria-modal="true"
-      aria-label={props.title}
-      className="engine-drawer"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <header className="engine-drawer__header">
-        <span className="engine-drawer__badge" aria-hidden="true">{props.initial}</span>
-        <div className="engine-drawer__head-text">
-          <h3 className="engine-drawer__title">{props.title}</h3>
-          <p className="engine-drawer__desc">{props.desc}</p>
-        </div>
-        <button type="button" className="engine-drawer__close" aria-label={t('common.cancel')} onClick={props.onClose}>✕</button>
-      </header>
-      <div className="engine-drawer__body">
-        {props.fileTypes.length ? <section className="engine-drawer__section">
-          <h4 className="engine-drawer__section-title">{t('settings.parser.supportedFileTypes')}</h4>
-          <div className="engine-drawer__filetypes">{props.fileTypes.map((ft) => <span key={ft} className="engine-drawer__filetype">{ft}</span>)}</div>
-        </section> : null}
-        {name === 'builtin' || name === 'weknoracloud' ? <section className="engine-drawer__section">
-          <h4 className="engine-drawer__section-title">{t('settings.parser.statusSection')}</h4>
-          {name === 'builtin' ? <div>
-            <div className="engine-drawer__status-row">
-              <Status tone={props.connected ? 'success' : 'error'}>{props.connected ? t('settings.parser.connected') : t('settings.parser.disconnected')}</Status>
-              <Status>{props.docreaderTransport === 'http' ? 'HTTP' : 'gRPC'}</Status>
-              {props.docreaderAddrEnv ? <span className="engine-drawer__addr">{t('settings.parser.currentAddr')}: {props.docreaderAddrEnv}</span> : null}
-            </div>
-            <p className="engine-drawer__hint">{t('settings.parser.envVarHint')}</p>
-          </div> : <div>
-            {props.wkcState === 'configured' ? <Status tone="success">{t('settings.weknoraCloud.credentialConfigured')}</Status>
-              : props.wkcState === 'loading' ? <Status>{t('settings.weknoraCloud.checkingStatus')}</Status>
-              : <div className="engine-drawer__cred-row">
-                  <span>{props.wkcState === 'expired' ? t('settings.weknoraCloud.credentialExpired') : t('settings.weknoraCloud.unconfigured')}</span>
-                  <a className="engine-drawer__cred-link" href="/platform/settings?section=weknoracloud" onClick={(event) => { event.preventDefault(); window.history.pushState({}, '', '/platform/settings?section=weknoracloud'); window.dispatchEvent(new window.PopStateEvent('popstate')); }}>{t('settings.weknoraCloud.goToSettings')}</a>
-                </div>}
-          </div>}
-        </section> : null}
-        {name === 'mineru' ? <section className="engine-drawer__form">
-          <h4 className="engine-drawer__section-title">{t('settings.parser.configSection')}</h4>
-          <label className="engine-drawer__label">{t('settings.parser.selfHostedEndpoint')}
-            <TInput value={config.mineru_endpoint} placeholder={t('settings.parser.mineruEndpointPlaceholder')} onChange={(value) => set('mineru_endpoint', String(value))} />
-          </label>
-          <label className="engine-drawer__label">Backend
-            <TSelect className="wk-parser-sel-mineru-model" value={config.mineru_model} onChange={(value) => set('mineru_model', String(value))}>
-              <TSelect.Option value="pipeline" label="pipeline" />
-              <TSelect.Option value="vlm-auto-engine" label="vlm-auto-engine" />
-              <TSelect.Option value="vlm-http-client" label="vlm-http-client" />
-              <TSelect.Option value="hybrid-auto-engine" label="hybrid-auto-engine" />
-              <TSelect.Option value="hybrid-http-client" label="hybrid-http-client" />
-            </TSelect>
-          </label>
-          <label className="engine-drawer__label">vLLM {t('settings.parser.serverUrl')}
-            <TInput data-testid="mineru-vllm-server-url" value={config.mineru_vlm_server_url} placeholder={t('settings.parser.vlmServerUrlPlaceholder')} onChange={(value) => set('mineru_vlm_server_url', String(value))} />
-            <span className="engine-drawer__hint">{t('settings.parser.vlmServerUrlHint')}</span>
-          </label>
-          <label className="engine-drawer__label">{t('settings.parser.parseMethodLabel')}
-            <TSelect className="wk-parser-sel-mineru-parse-method" value={config.mineru_parse_method} onChange={(value) => set('mineru_parse_method', String(value))}>
-              <TSelect.Option value="auto" label={t('settings.parser.parseMethodAuto')} />
-              <TSelect.Option value="ocr" label={t('settings.parser.parseMethodOCR')} />
-              <TSelect.Option value="txt" label={t('settings.parser.parseMethodText')} />
-            </TSelect>
-            <span className="engine-drawer__hint">{t('settings.parser.parseMethodHint')}</span>
-          </label>
-          <div className="engine-drawer__checks">
-            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_enable_formula} onChange={(checked) => set('mineru_enable_formula', Boolean(checked))} label={t('settings.parser.formulaRecognition')} /></label>
-            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_enable_table} onChange={(checked) => set('mineru_enable_table', Boolean(checked))} label={t('settings.parser.tableRecognition')} /></label>
-          </div>
-          <label className="engine-drawer__label">{t('settings.parser.language')}
-            <TInput data-testid="mineru-language" value={config.mineru_language} placeholder={t('settings.parser.languagePlaceholder')} onChange={(value) => set('mineru_language', String(value))} />
-          </label>
-        </section> : null}
-        {name === 'mineru_cloud' ? <section className="engine-drawer__form">
-          <h4 className="engine-drawer__section-title">{t('settings.parser.configSection')}</h4>
-          <label className="engine-drawer__label">API Key
-            <TInput type="password" autocomplete="new-password" value={config.mineru_api_key} placeholder={t('settings.parser.mineruCloudApiKeyPlaceholder')} onChange={(value) => set('mineru_api_key', String(value))} />
-          </label>
-          <label className="engine-drawer__label">Model Version
-            <TSelect className="wk-parser-sel-mineru-cloud-model" value={config.mineru_cloud_model} onChange={(value) => set('mineru_cloud_model', String(value))}>
-              <TSelect.Option value="pipeline" label="pipeline" />
-              <TSelect.Option value="vlm" label={t('settings.parser.vlmLabel')} />
-              <TSelect.Option value="MinerU-HTML" label={t('settings.parser.mineruHtmlLabel')} />
-            </TSelect>
-          </label>
-          <div className="engine-drawer__checks">
-            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_cloud_enable_formula} onChange={(checked) => set('mineru_cloud_enable_formula', Boolean(checked))} label={t('settings.parser.formulaRecognition')} /></label>
-            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_cloud_enable_table} onChange={(checked) => set('mineru_cloud_enable_table', Boolean(checked))} label={t('settings.parser.tableRecognition')} /></label>
-            <label className="engine-drawer__check"><TCheckbox checked={config.mineru_cloud_enable_ocr} onChange={(checked) => set('mineru_cloud_enable_ocr', Boolean(checked))} label="OCR" /></label>
-          </div>
-          <label className="engine-drawer__label">{t('settings.parser.language')}
-            <TInput value={config.mineru_cloud_language} placeholder={t('settings.parser.languagePlaceholder')} onChange={(value) => set('mineru_cloud_language', String(value))} />
-          </label>
-        </section> : null}
-        {name === 'paddleocr_vl' ? <section className="engine-drawer__form">
-          <h4 className="engine-drawer__section-title">{t('settings.parser.configSection')}</h4>
-          <label className="engine-drawer__label">{t('settings.parser.selfHostedEndpoint')}
-            <TInput data-testid="paddleocr-vl-endpoint" value={config.paddleocr_vl_endpoint} placeholder={t('settings.parser.paddleocrVlEndpointPlaceholder')} onChange={(value) => set('paddleocr_vl_endpoint', String(value))} />
-            <span className="engine-drawer__hint">{t('settings.parser.paddleocrVlEndpointHint')}</span>
-          </label>
-          <div className="engine-drawer__checks">
-            <label className="engine-drawer__check"><TCheckbox checked={config.paddleocr_vl_use_seal_recognition} onChange={(checked) => set('paddleocr_vl_use_seal_recognition', Boolean(checked))} label={t('settings.parser.sealRecognition')} /></label>
-            <label className="engine-drawer__check"><TCheckbox checked={config.paddleocr_vl_use_chart_recognition} onChange={(checked) => set('paddleocr_vl_use_chart_recognition', Boolean(checked))} label={t('settings.parser.chartRecognition')} /></label>
-          </div>
-        </section> : null}
-        {name === 'paddleocr_vl_cloud' ? <section className="engine-drawer__form">
-          <h4 className="engine-drawer__section-title">{t('settings.parser.configSection')}</h4>
-          <label className="engine-drawer__label">Token
-            <TInput type="password" autocomplete="new-password" value={config.paddleocr_vl_cloud_token} placeholder={t('settings.parser.paddleocrVlCloudTokenPlaceholder')} onChange={(value) => set('paddleocr_vl_cloud_token', String(value))} />
-          </label>
-          <label className="engine-drawer__label">Model
-            <TInput data-testid="paddleocr-vl-cloud-model" value={config.paddleocr_vl_cloud_model} placeholder="PaddleOCR-VL-1.6" onChange={(value) => set('paddleocr_vl_cloud_model', String(value))} />
-          </label>
-          <div className="engine-drawer__checks">
-            <label className="engine-drawer__check"><TCheckbox checked={config.paddleocr_vl_cloud_use_seal_recognition} onChange={(checked) => set('paddleocr_vl_cloud_use_seal_recognition', Boolean(checked))} label={t('settings.parser.sealRecognition')} /></label>
-            <label className="engine-drawer__check"><TCheckbox checked={config.paddleocr_vl_cloud_use_chart_recognition} onChange={(checked) => set('paddleocr_vl_cloud_use_chart_recognition', Boolean(checked))} label={t('settings.parser.chartRecognition')} /></label>
-          </div>
-        </section> : null}
-      </div>
-      {props.needsTest ? <footer className="engine-drawer__footer">
-        <span className="engine-drawer__footer-left">
-          <TButton type="button" loading={props.checking} onClick={props.onCheck}>{t('settings.parser.testConnection')}</TButton>
-          {props.checkMessage ? <span className={"engine-drawer__footer-msg" + (props.checkOk ? " engine-drawer__footer-msg--ok" : " engine-drawer__footer-msg--err")} title={props.checkMessage}>{props.checkMessage}</span> : null}
-        </span>
-        <span className="engine-drawer__footer-right">
-          <TButton type="button" onClick={props.onClose}>{t('common.cancel')}</TButton>
-          <TButton type="button" theme="primary" loading={props.saving} onClick={props.onSave}>{t('common.save')}</TButton>
-        </span>
-      </footer> : <footer className="engine-drawer__footer engine-drawer__footer--end">
-        <TButton type="button" onClick={props.onClose}>{t('common.cancel')}</TButton>
-      </footer>}
-    </section>
-  </div>;
-}

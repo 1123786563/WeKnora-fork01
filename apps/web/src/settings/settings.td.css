@@ -5130,179 +5130,417 @@
   padding: 0.7rem;
 }
 
-/* parser 配置抽屉（EngineDrawer，原 utility 串平移；wrapper.css 的
-   .parser-engine-settings --color-* 重映射块随本次收编删除）。 */
-.wk-settings-drawer-root .engine-drawer-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1300;
-  display: flex;
-  justify-content: flex-end;
-  background: rgba(0, 0, 0, 0.5);
-}
-.wk-settings-drawer-root .engine-drawer {
+/* ==== §13b. ParserEngineSettings 抽屉（SettingDrawer 同构，批 3 收敛） ====
+ * Vue ParserEngineSettings.vue:96-378 的 SettingDrawer 内容 + SettingDrawer.vue
+ * scoped/unscoped 样式平移。抽屉经 t-drawer attach body 渲染，slot 内容样式
+ * 以 .parser-engine-drawer（Vue :class 透传）为锚——等价 Vue 端 slot 内容
+ * 携父 SFC data-v 作用于 portal DOM 的语义。 */
+.setting-drawer__header-block {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 560px;
-  max-width: 92vw;
-  background: #ffffff;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.2);
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  gap: 8px;
 }
-.wk-settings-drawer-root .engine-drawer__header {
+.setting-drawer__header {
   display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  border-bottom: 1px solid #e7e7e7;
-  padding: 1rem 1.25rem;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
 }
-.wk-settings-drawer-root .engine-drawer__badge {
-  display: inline-flex;
-  width: 2.5rem;
-  height: 2.5rem;
+.setting-drawer__header-icon {
   flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  background: #f3f3f3;
+  background: rgba(7, 192, 95, 0.1);
+  color: var(--td-brand-color);
+  font-size: 16px;
+  transition: background 0.2s ease;
+}
+.setting-drawer__header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.setting-drawer__header-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+.setting-drawer__header-actions:empty {
+  display: none;
+}
+.setting-drawer__header-actions .t-button {
+  white-space: nowrap;
+}
+.setting-drawer__header-extra {
+  width: 100%;
+  min-width: 0;
+}
+.setting-drawer__title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--td-brand-color, #07c05f);
-}
-.wk-settings-drawer-root .engine-drawer__head-text {
-  min-width: 0;
-  flex: 1;
-}
-.wk-settings-drawer-root .engine-drawer__title {
-  margin: 0;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
+}
+.setting-drawer__subtitle {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--td-text-color-secondary);
+}
+.setting-drawer__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: setting-drawer-body-in 0.28s ease both;
+}
+@keyframes setting-drawer-body-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.setting-drawer__body .setting-drawer__section {
+  padding: 12px 0 16px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: setting-drawer-section-in 0.32s ease both;
+}
+.setting-drawer__body .setting-drawer__section:first-child {
+  padding-top: 0;
+  animation-delay: 0.04s;
+}
+.setting-drawer__body .setting-drawer__section:nth-child(2) {
+  animation-delay: 0.08s;
+}
+.setting-drawer__body .setting-drawer__section:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.setting-drawer__body .setting-drawer__section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+@keyframes setting-drawer-section-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.setting-drawer__body .setting-drawer__section-title {
+  font-size: 13px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.9);
-}
-.wk-settings-drawer-root .engine-drawer__desc {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.6);
-}
-.wk-settings-drawer-root .engine-drawer__close {
-  cursor: pointer;
-  border: 0;
-  background: transparent;
-  padding: 4px;
-  color: rgba(0, 0, 0, 0.6);
-}
-.wk-settings-drawer-root .engine-drawer__body {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  padding: 1rem 1.25rem;
-}
-.wk-settings-drawer-root .engine-drawer__section,
-.wk-settings-drawer-root .engine-drawer__form {
-  margin-bottom: 1.25rem;
-}
-.wk-settings-drawer-root .engine-drawer__form {
-  display: grid;
-  gap: 0.75rem;
-}
-.wk-settings-drawer-root .engine-drawer__section-title {
-  margin: 0 0 0.5rem;
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.9);
-}
-.wk-settings-drawer-root .engine-drawer__form .engine-drawer__section-title {
-  margin: 0;
-}
-.wk-settings-drawer-root .engine-drawer__filetypes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.wk-settings-drawer-root .engine-drawer__filetype {
-  border-radius: 9999px;
-  border: 1px solid #e7e7e7;
-  background: #f3f3f3;
-  padding: 2px 8px;
-  font-size: 11px;
-  /* Vue .file-type-chip color: var(--td-text-color-secondary) */
-  color: rgba(0, 0, 0, 0.6);
-}
-.wk-settings-drawer-root .engine-drawer__status-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-.wk-settings-drawer-root .engine-drawer__addr {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.6);
-}
-.wk-settings-drawer-root .engine-drawer__hint {
-  margin: 0.5rem 0 0;
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.4);
-}
-.wk-settings-drawer-root .engine-drawer__cred-row {
+  color: var(--td-text-color-primary);
+  margin: 0 0 4px;
+  user-select: none;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 13px;
-  color: #ad4b00;
+  gap: 8px;
 }
-.wk-settings-drawer-root .engine-drawer__cred-link {
-  cursor: pointer;
-  color: #245a9b;
+.setting-drawer__body .setting-drawer__section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: var(--td-brand-color);
+  border-radius: 2px;
 }
-.wk-settings-drawer-root .engine-drawer__cred-link:hover {
-  text-decoration: underline;
-}
-.wk-settings-drawer-root .engine-drawer__label {
-  display: grid;
-  gap: 0.25rem;
-  font-size: 13px;
-  font-weight: 500;
-  color: #27364d;
-}
-.wk-settings-drawer-root .engine-drawer__label .engine-drawer__hint {
-  margin: 0;
-}
-.wk-settings-drawer-root .engine-drawer__checks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  font-size: 13px;
-}
-.wk-settings-drawer-root .engine-drawer__check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.wk-settings-drawer-root .engine-drawer__footer {
+.setting-drawer__footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  border-top: 1px solid #e7e7e7;
-  padding: 0.75rem 1.25rem;
+  gap: 12px;
+  width: 100%;
 }
-.wk-settings-drawer-root .engine-drawer__footer--end {
-  justify-content: flex-end;
-}
-.wk-settings-drawer-root .engine-drawer__footer-left,
-.wk-settings-drawer-root .engine-drawer__footer-right {
+.setting-drawer__footer-left {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
-.wk-settings-drawer-root .engine-drawer__footer-msg {
+.setting-drawer__footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+/* SettingDrawer.vue unscoped 块（§2.5 原样平移——服务 body portal 弹层）。 */
+.setting-drawer {
+  max-width: 100vw;
+}
+.setting-drawer .t-drawer__content {
+  min-width: 0;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+.setting-drawer .t-drawer__header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+.setting-drawer .t-drawer__body {
+  padding: 16px 18px;
+}
+.setting-drawer .t-drawer__footer {
+  padding: 10px 18px;
+  border-top: 1px solid var(--td-component-stroke);
+  box-shadow: 0 -2px 8px rgba(15, 23, 42, 0.04);
+}
+.setting-drawer-resize-handle {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  margin-left: -6px;
+  cursor: col-resize;
+  z-index: 2501;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: setting-drawer-resize-handle-in 0.28s cubic-bezier(0.38, 0, 0.24, 1) both;
+}
+@keyframes setting-drawer-resize-handle-in {
+  from { transform: translateX(var(--setting-drawer-travel)); }
+  to { transform: translateX(0); }
+}
+.setting-drawer-resize-line {
+  width: 2px;
+  height: 48px;
+  border-radius: 1px;
+  background: var(--td-component-border);
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.setting-drawer-resize-handle:hover .setting-drawer-resize-line,
+.setting-drawer-resize-handle--active .setting-drawer-resize-line {
+  opacity: 1;
+  background: var(--td-brand-color);
+}
+.t-drawer.setting-drawer--resizing .t-drawer__content {
+  transition: none !important;
+}
+/* ParserEngineSettings.vue unscoped 块：per-engine header-icon 配色。 */
+.parser-engine-drawer--builtin .setting-drawer__header-icon,
+.parser-engine-drawer--weknoracloud .setting-drawer__header-icon {
+  background: rgba(7, 192, 95, 0.12);
+  color: #07C05F;
+}
+.parser-engine-drawer--simple .setting-drawer__header-icon {
+  background: rgba(70, 70, 70, 0.1);
+  color: #464646;
+}
+.parser-engine-drawer--markitdown .setting-drawer__header-icon {
+  background: rgba(0, 137, 255, 0.12);
+  color: #0089FF;
+}
+.parser-engine-drawer--mineru .setting-drawer__header-icon,
+.parser-engine-drawer--mineru_cloud .setting-drawer__header-icon,
+.parser-engine-drawer--paddleocr_vl .setting-drawer__header-icon,
+.parser-engine-drawer--paddleocr_vl_cloud .setting-drawer__header-icon {
+  background: rgba(98, 53, 187, 0.12);
+  color: #6235BB;
+}
+/* ParserEngineSettings.vue scoped 抽屉内容（data-v 语义 → .parser-engine-drawer 锚）。 */
+.parser-engine-drawer .header-icon__text {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.parser-engine-drawer .form-item {
+  margin-bottom: 0;
+}
+.parser-engine-drawer .form-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  line-height: 1.4;
+}
+.parser-engine-drawer .form-label.required::before {
+  content: '*';
+  color: var(--td-error-color);
+  margin-right: 4px;
+  font-weight: 500;
+  line-height: 1;
+}
+.parser-engine-drawer .form-desc {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-placeholder);
+}
+.parser-engine-drawer .t-input,
+.parser-engine-drawer .t-select,
+.parser-engine-drawer .t-textarea,
+.parser-engine-drawer .t-input-number {
+  width: 100%;
+  font-size: 13px;
+}
+.parser-engine-drawer .t-checkbox {
+  font-size: 13px;
+}
+.parser-engine-drawer .t-checkbox .t-checkbox__label {
+  font-size: 13px;
+  color: var(--td-text-color-primary);
+}
+.parser-engine-drawer .docreader-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--td-bg-color-container-hover);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+}
+.parser-engine-drawer .docreader-block .form-desc {
+  margin-top: 0;
+}
+.parser-engine-drawer .status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.parser-engine-drawer .env-hint {
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+.parser-engine-drawer .file-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.parser-engine-drawer .file-type-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-component);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+.parser-engine-drawer .inline-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--td-text-color-secondary);
+  flex-wrap: wrap;
+}
+.parser-engine-drawer .inline-alert__icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  color: var(--td-text-color-placeholder);
+}
+.parser-engine-drawer .inline-alert--ok .inline-alert__icon {
+  color: var(--td-success-color);
+}
+.parser-engine-drawer .inline-alert--warn {
+  color: var(--td-text-color-primary);
+}
+.parser-engine-drawer .inline-alert--warn .inline-alert__icon {
+  color: var(--td-warning-color, #f97316);
+}
+.parser-engine-drawer .inline-alert__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.parser-engine-drawer .inline-alert__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-brand-color);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+.parser-engine-drawer .inline-alert__action:hover {
+  color: var(--td-brand-color-active);
+}
+.parser-engine-drawer .inline-alert__action .t-icon {
+  font-size: 14px;
+}
+.parser-engine-drawer .spinning {
+  animation: parser-spin 1s linear infinite;
+}
+@keyframes parser-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.parser-engine-drawer .form-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 8px 0 0;
+}
+.parser-engine-drawer .footer-test-message {
+  font-size: 12px;
+  line-height: 1.4;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.parser-engine-drawer .footer-test-message.success {
+  color: var(--td-brand-color-active);
+}
+.parser-engine-drawer .footer-test-message.error {
+  color: var(--td-error-color);
+}
+.parser-engine-drawer .status-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.parser-engine-drawer .status-icon.available {
+  color: var(--td-brand-color);
+}
+.parser-engine-drawer .status-icon.unavailable {
+  color: var(--td-error-color);
+}
+.parser-engine-drawer .doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-brand-color);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.parser-engine-drawer .doc-link:hover {
+  color: var(--td-brand-color-active);
+}
+.parser-engine-drawer .doc-link .link-icon {
+  font-size: 14px;
+}
+.parser-engine-drawer .doc-link--inline {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  vertical-align: baseline;
+}
+.parser-engine-drawer .doc-link--inline .link-icon {
   font-size: 12px;
 }
-.wk-settings-drawer-root .engine-drawer__footer-msg--ok { color: #0a7f43; }
-.wk-settings-drawer-root .engine-drawer__footer-msg--err { color: #c23434; }
 
 /* sandbox 配置向导/网络规则抽屉 + inventory 抽屉（S6 平移段）。 */
 .wk-settings-drawer-root .wk-form-grid {
