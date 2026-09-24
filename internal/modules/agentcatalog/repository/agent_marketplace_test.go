@@ -2,12 +2,15 @@ package repository
 
 import (
 	"context"
-	"os"
+	"database/sql"
 	"path/filepath"
 	"runtime"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/golang-migrate/migrate/v4"
+	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -233,12 +236,29 @@ func TestAgentMarketplaceSQLiteDownWithPublishedListing(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, listed[0].CurrentReleaseID)
 
+	// Roll 000109 back through the migrate engine over the same
+	// migrations/sqlite file source the suite migrated up with — it executes
+	// the shipped 000109_tenant_agent_marketplace.down.sql verbatim (this suite
+	// migrated up to 109, the head of the sqlite chain, so one step down runs
+	// exactly that script). The migrate instance deliberately shares gorm's
+	// pool and is never Close()d — driver Close would take the pool down with
+	// it (the host helper only closes because its migrator owns a dedicated
+	// handle). Adaptation note: the host original read the down file and
+	// executed it as one dynamic statement; the security gate rejects dynamic
+	// SQL execution, so the rollback now runs via the migrate runner. The
+	// executed script and every assertion below are unchanged.
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
+	require.NoError(t, err)
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
-	down, err := os.ReadFile(filepath.Join(repoRoot, "migrations/sqlite/000109_tenant_agent_marketplace.down.sql"))
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../.."))
+	down, err := migrate.NewWithDatabaseInstance(
+		"file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver,
+	)
 	require.NoError(t, err)
-	require.NoError(t, db.Exec(string(down)).Error)
+	require.NoError(t, down.Steps(-1))
 	for _, table := range []string{"agent_marketplace_listings", "agent_release_submissions", "agent_release_reviews", "agent_releases"} {
 		require.False(t, db.Migrator().HasTable(table), "down migration must remove %s", table)
 	}
@@ -336,4 +356,46 @@ func seedMarketplaceVersionForTenant(t *testing.T, db *gorm.DB, id string, tenan
 func seedMarketplaceVersionNumber(t *testing.T, db *gorm.DB, id, agentID string, tenantID uint64, versionNumber int) {
 	t.Helper()
 	require.NoError(t, db.Exec(`INSERT INTO agent_versions (id, tenant_id, agent_id, version_number, snapshot, source_sha256, frozen_by) VALUES (?, ?, ?, ?, '{}', 'sha', 'author')`, id, tenantID, agentID, versionNumber).Error)
+}
+
+// openRunTestDB is a test-support copy of the host helper at
+// internal/application/repository/agent_run_test.go:29, which stays behind
+// with the agent-run plane and is invisible across packages. The nine moved
+// marketplace cases only consume the sqlite branch (full migration chain on a
+// file-backed db so PRAGMA/database_list and the 000109 down-migration case
+// keep working), so this copy carries that branch verbatim — the host postgres
+// subtest branch (openPostgresRunTestDB) and the agent-run seedRunFixtures are
+// omitted (none of the moved cases use "/postgres" subtests, and the
+// marketplace FK chains reference agent_versions/listings/releases only, never
+// tenants — seedRunFixtures seeds unrelated rows). Pass B (25c) transitional
+// test apparatus, filed under the TEST-SUPPORT-SHIM ruling family — remove_at:
+// ib2.
+func openRunTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../.."))
+	dbPath := filepath.Join(t.TempDir(), "agent-runs.db")
+	dsn := "file:" + dbPath + "?_foreign_keys=on&_busy_timeout=5000"
+
+	sqlDB, err := sql.Open("sqlite3", dsn)
+	require.NoError(t, err)
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
+	require.NoError(t, err)
+	migrator, err := migrate.NewWithDatabaseInstance(
+		"file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver,
+	)
+	require.NoError(t, err)
+	require.NoError(t, migrator.Up())
+	_, _ = migrator.Close()
+
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		conn, e := db.DB()
+		if e == nil {
+			_ = conn.Close()
+		}
+	})
+	return db
 }
