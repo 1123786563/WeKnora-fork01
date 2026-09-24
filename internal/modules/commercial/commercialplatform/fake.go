@@ -67,6 +67,28 @@ type FakeSubscription struct {
 	PlanCode         string
 }
 
+// fakePurchase is one stored authority-side PAYMENT-GATED purchase
+// subscription (#81): created incomplete by create_purchase_subscription,
+// advanced to active only by the (test) activation hook.
+type fakePurchase struct {
+	ExternalID       string
+	ExternalCustomer string
+	PlanCode         string
+	AmountFen        int64
+	Currency         string
+	Status           string // "incomplete"|"active"|"canceled"
+	InvoiceFees      []commercial.InvoiceLineSnapshot
+}
+
+// FakePurchaseSubscription is the observable purchase-subscription state for
+// tests (#81): a fresh create is always incomplete.
+type FakePurchaseSubscription struct {
+	ExternalID       string
+	ExternalCustomer string
+	PlanCode         string
+	Status           string // "incomplete"|"active"|"canceled" —— fake 建即 incomplete
+}
+
 // FakeAdapter is the deterministic in-process CommercialPlatform used by
 // tests and dev environments. SetReadiness stores one readiness snapshot;
 // ReadSnapshot copies it back verbatim. The W3 customer surface is a real
@@ -92,6 +114,11 @@ type FakeAdapter struct {
 	subs       map[string]fakeSubscription
 	wallets    []fakeWallet
 	nextWallet int
+	// T09 state (#81): a real in-memory payment-gated purchase authority —
+	// purchase subscriptions keyed by external id, and the provider binding
+	// per external customer (external customer id → provider customer id).
+	purchaseSubs     map[string]fakePurchase
+	providerBindings map[string]string
 	// now is the injectable clock (expiry/settle determinism); nil = real
 	// time. baseFeatures primes the benefits feature map. walletSettleLag
 	// models the a1 after-commit settlement lag (default 0 — the fake's
@@ -115,10 +142,12 @@ type fakeCommand struct {
 // never fabricates platform state either.
 func NewFakeAdapter() *FakeAdapter {
 	return &FakeAdapter{
-		customers: map[string]FakeCustomer{},
-		receipts:  map[string]commercial.CommandReceipt{},
-		commands:  map[string]fakeCommand{},
-		subs:      map[string]fakeSubscription{},
+		customers:        map[string]FakeCustomer{},
+		receipts:         map[string]commercial.CommandReceipt{},
+		commands:         map[string]fakeCommand{},
+		subs:             map[string]fakeSubscription{},
+		purchaseSubs:     map[string]fakePurchase{},
+		providerBindings: map[string]string{},
 	}
 }
 
@@ -200,6 +229,59 @@ func (f *FakeAdapter) Subscriptions() []FakeSubscription {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ExternalID < out[j].ExternalID })
 	return out
+}
+
+// PurchaseSubscriptions returns the stored payment-gated purchase
+// subscriptions sorted by external id (#81) — the identity assertion
+// surface: count must be exactly one per tenant.
+func (f *FakeAdapter) PurchaseSubscriptions() []FakePurchaseSubscription {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]FakePurchaseSubscription, 0, len(f.purchaseSubs))
+	for _, s := range f.purchaseSubs {
+		out = append(out, FakePurchaseSubscription{
+			ExternalID: s.ExternalID, ExternalCustomer: s.ExternalCustomer,
+			PlanCode: s.PlanCode, Status: s.Status,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ExternalID < out[j].ExternalID })
+	return out
+}
+
+// ProviderBindings returns the stored provider bindings (external customer
+// id → provider customer id) — the #81 binding assertion surface.
+func (f *FakeAdapter) ProviderBindings() map[string]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[string]string, len(f.providerBindings))
+	for k, v := range f.providerBindings {
+		out[k] = v
+	}
+	return out
+}
+
+// ActivatePurchase advances the purchase subscription to active (#82 前的
+// 手动推进钩子)：真实环境由 provider 收款驱动（t02 F9）。
+func (f *FakeAdapter) ActivatePurchase(extPurchaseSubscriptionID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.purchaseSubs[extPurchaseSubscriptionID]; ok {
+		s.Status = "active"
+		f.purchaseSubs[extPurchaseSubscriptionID] = s
+	}
+}
+
+// SetPurchaseInvoiceFees injects the invoice line fees the purchase snapshot
+// answers (#81 D2 condition 3): the finalized-stage interface #82/#84
+// consume — the open stage always answers EMPTY regardless of this knob
+// being unset (nothing is fabricated).
+func (f *FakeAdapter) SetPurchaseInvoiceFees(extPurchaseSubscriptionID string, fees []commercial.InvoiceLineSnapshot) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.purchaseSubs[extPurchaseSubscriptionID]; ok {
+		s.InvoiceFees = append([]commercial.InvoiceLineSnapshot(nil), fees...)
+		f.purchaseSubs[extPurchaseSubscriptionID] = s
+	}
 }
 
 // SetReadiness primes the readiness snapshot returned by ReadSnapshot.
@@ -325,6 +407,38 @@ func (f *FakeAdapter) ReadSnapshot(_ context.Context, query commercial.SnapshotQ
 			}
 		}
 		return commercial.Snapshot{Kind: commercial.SnapshotKindBenefits, Benefits: b}, nil
+	case commercial.SnapshotKindPurchase:
+		if query.TenantID == 0 {
+			return commercial.Snapshot{}, commercial.ErrPlatformUnsupported
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		p := &commercial.PurchaseSnapshot{
+			TenantID:  query.TenantID,
+			State:     commercial.PurchaseStateAbsent,
+			CheckedAt: f.nowUTC(),
+		}
+		if sub, held := f.purchaseSubs[commercial.ExternalPurchaseSubscriptionID(query.TenantID)]; held {
+			switch sub.Status {
+			case "incomplete":
+				p.State = commercial.PurchaseStateAwaitingPayment
+			case "active":
+				p.State = commercial.PurchaseStateActive
+			case "canceled":
+				p.State = commercial.PurchaseStateCanceled
+			default:
+				return commercial.Snapshot{}, fmt.Errorf("%w: unknown purchase status", commercial.ErrPlatformInvalidResponse)
+			}
+			p.PlanCode = sub.PlanCode
+			p.AmountFen = sub.AmountFen
+			p.Currency = sub.Currency
+			// Open-stage lines are never fabricated (F3-F5); the injected
+			// fees model the finalized stage only.
+			if sub.Status == "active" && len(sub.InvoiceFees) > 0 {
+				p.InvoiceFees = append([]commercial.InvoiceLineSnapshot(nil), sub.InvoiceFees...)
+			}
+		}
+		return commercial.Snapshot{Kind: commercial.SnapshotKindPurchase, Purchase: p}, nil
 	default:
 		return commercial.Snapshot{}, commercial.ErrPlatformUnsupported
 	}
@@ -524,6 +638,58 @@ func (f *FakeAdapter) SubmitCommand(_ context.Context, cmd commercial.Command) (
 		return commercial.CommandReceipt{
 			Key:        cmd.Key,
 			ExternalID: walletName,
+			RecordedAt: f.nowUTC(),
+		}, nil
+
+	case commercial.CommandKindCreatePurchaseSubscription:
+		payload, ok := cmd.Payload.(commercial.CreatePurchaseSubscriptionPayload)
+		if !ok {
+			return commercial.CommandReceipt{}, commercial.ErrPlatformUnsupported
+		}
+		if err := payload.Validate(); err != nil {
+			return commercial.CommandReceipt{}, fmt.Errorf("%w: %v", commercial.ErrPlatformInvalidResponse, err)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		// ensureProviderBinding semantics: the create command guarantees the
+		// customer carries a provider binding (D3) — recorded by the fake at
+		// first create, never duplicated.
+		if f.providerBindings == nil {
+			f.providerBindings = map[string]string{}
+		}
+		if _, bound := f.providerBindings[payload.ExternalCustomerID]; !bound {
+			f.providerBindings[payload.ExternalCustomerID] = "fake-provider-" + payload.ExternalCustomerID
+		}
+		if existing, held := f.purchaseSubs[payload.ExternalPurchaseSubscriptionID]; held {
+			if existing.PlanCode != payload.PlanCode {
+				// Concurrent plan change (AC4): a held purchase on a different
+				// plan code is a definitive conflict — no second subscription,
+				// the late caller re-quotes.
+				return commercial.CommandReceipt{}, fmt.Errorf("%w: purchase plan conflict", commercial.ErrPlatformInvalidResponse)
+			}
+			// Identity replay: same purchase identity + same plan → the same
+			// receipt, never a second subscription or a second gating invoice
+			// (F7: never re-POST).
+			return commercial.CommandReceipt{
+				Key:        cmd.Key,
+				ExternalID: payload.ExternalPurchaseSubscriptionID,
+				RecordedAt: f.nowUTC(),
+			}, nil
+		}
+		if f.purchaseSubs == nil {
+			f.purchaseSubs = map[string]fakePurchase{}
+		}
+		f.purchaseSubs[payload.ExternalPurchaseSubscriptionID] = fakePurchase{
+			ExternalID:       payload.ExternalPurchaseSubscriptionID,
+			ExternalCustomer: payload.ExternalCustomerID,
+			PlanCode:         payload.PlanCode,
+			AmountFen:        payload.AmountFen,
+			Currency:         payload.Currency,
+			Status:           "incomplete",
+		}
+		return commercial.CommandReceipt{
+			Key:        cmd.Key,
+			ExternalID: payload.ExternalPurchaseSubscriptionID,
 			RecordedAt: f.nowUTC(),
 		}, nil
 

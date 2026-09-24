@@ -21,6 +21,18 @@ function formatCny(amountFen: string): string {
   return `¥${(Number.parseInt(amountFen, 10) / 100).toFixed(2)}`;
 }
 
+// 行项目 kind 的显示名（闭合集合；第一切片只有订阅费）。
+function lineItemLabel(kind: string): string {
+  return kind === 'subscription_fee' ? '订阅费' : kind;
+}
+
+// 冻结权益 key 的显示名（未知 key 原样显示——spec L210：页面词汇稳定，不含平台词汇）。
+const FEATURE_LABELS: Record<string, string> = {
+  advanced_models: '高级模型',
+  api_access: 'API 访问',
+  priority_support: '优先支持',
+};
+
 function isTerminal(order: OrderView): boolean {
   return order.fulfillment === 'fulfilled' || order.payment === 'closed';
 }
@@ -38,9 +50,6 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
   const queryKey = useMemo(() => scopedKey(scope.scope, 'commercial-checkout'), [scope.scope]);
   // The only order this page may ever query or create; set once, never replaced by a new purchase.
   const orderIdRef = useRef<string>(orderId);
-  // Generated at most once per mount; every retry (including a lost createOrder response)
-  // reuses this same key so the backend deduplicates instead of charging twice.
-  const idempotencyKeyRef = useRef<string>('');
   const quoteRef = useRef<QuoteView | null>(null);
 
   useEffect(() => {
@@ -64,14 +73,14 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
           );
           if (!active || !scopeController.isCurrent(currentScope.scope)) return;
         }
-        if (!idempotencyKeyRef.current) {
-          idempotencyKeyRef.current = `checkout-${scope.scope.tenantId ?? 'none'}-${crypto.randomUUID()}`;
-        }
-        const order = await client.commercial.createOrder(
-          { quote_id: quoteRef.current.id, provider: 'wechat', idempotency_key: idempotencyKeyRef.current },
+        // #81：提交走 payment-gated purchase。重试语义：同一 quote 重试就是同一次
+        // purchase 调用，后端按身份幂等返回同一订单（不产生第二张订单/第二张账单）。
+        const purchase = await client.commercial.purchase(
+          { quote_id: quoteRef.current.id, provider: 'wechat' },
           currentScope.signal,
         );
         // From here on this page only re-queries the same order id; it never creates another order.
+        const order = purchase.order ?? (await client.commercial.getOrder('', currentScope.signal));
         orderIdRef.current = order.id;
         if (active && scopeController.isCurrent(currentScope.scope)) {
           setState({ status: 'ready', order, quote: quoteRef.current });
@@ -139,13 +148,46 @@ export function CheckoutPage({ client, scopeController, orderId }: CheckoutPageP
             <section aria-live="polite">
               <h2>{spaceName} 的订单</h2>
               <p>{orderMessage(state.order)}</p>
+              {/* AC3：购买成功后产品状态为「待付款」，付费权益未开通。 */}
+              <p>
+                <Status>待付款（权益未开通）</Status>
+              </p>
+              {/* 渠道支付入口（审查 F2）：渠道请求创建后展示跳转链接，用户由此完成支付。 */}
+              {state.order.checkout_url ? (
+                <p>
+                  <a href={state.order.checkout_url} target="_blank" rel="noreferrer">前往支付</a>
+                </p>
+              ) : null}
               <Button type="button" onClick={refreshOrder}>刷新订单状态</Button>
             </section>
+            {/* AC1：报价冻结面——币种、行项目、权益与过期时间原样呈现。 */}
+            {state.quote ? (
+              <section>
+                <h3>报价明细（{state.quote.currency ?? 'CNY'}）</h3>
+                {state.quote.line_items?.length ? (
+                  <ul className="wk-list">
+                    {state.quote.line_items.map((li, i) => (
+                      <li key={`${li.kind}-${i}`}>
+                        <strong>{lineItemLabel(li.kind)}{li.name ? `（${li.name}）` : ''}</strong>
+                        <span>{formatCny(li.amount_fen)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {state.quote.features ? (
+                  <p className="wk-muted">
+                    包含权益：
+                    {Object.entries(state.quote.features).filter(([, on]) => on).map(([key]) => FEATURE_LABELS[key] ?? key).join('、')}
+                  </p>
+                ) : null}
+                <p className="wk-muted">报价有效期至：{new Date(state.quote.expires_at).toLocaleString()}</p>
+              </section>
+            ) : null}
             <ul className="wk-list">
               <li><strong>订单号</strong><span>{state.order.id}</span></li>
               <li><strong>人民币实付</strong><span>{formatCny(state.order.amount_fen)}</span></li>
               <li><strong>计费周期</strong><span>月周期（按月结算）</span></li>
-              <li><strong>升级差价</strong><span>{state.quote ? `${formatCny(state.quote.amount_fen)}（按报价折算，已含升级差价）` : '按实际报价折算'}</span></li>
+              <li><strong>套餐金额</strong><span>{state.quote ? `${formatCny(state.quote.amount_fen)}（按报价折算）` : '按实际报价折算'}</span></li>
             </ul>
             <p className="wk-muted">{RECHARGE_EXPIRY_NOTE}</p>
           </>

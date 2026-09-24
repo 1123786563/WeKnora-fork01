@@ -70,6 +70,11 @@ type CommercialHandler struct {
 	// — the account read then answers the #78 fail-closed envelope WITHOUT
 	// a benefits object (documented, never 500 for a wiring gap).
 	benefits *commercialsvc.BenefitsService
+	// purchases is the W5 (#81) payment-gated purchase coordination; nil
+	// until the container wires it — the purchase endpoints then fail
+	// closed with 501 (the order-pipeline posture), never a fabricated
+	// state.
+	purchases *commercialsvc.PurchaseService
 }
 
 // NewCommercialHandler builds the handler and makes sure the resource
@@ -235,7 +240,10 @@ func (h *CommercialHandler) Summary(c *gin.Context) {
 // fields stay in the same object (information superset; unknown fields pass
 // through the parsers by convention).
 func quoteWire(q commercialsvc.QuoteView) gin.H {
-	return gin.H{
+	// #81 AC1 additive freeze: the currency, the frozen entitlements and the
+	// line items ride along when present (legacy quotes answer without
+	// them, JSON-omitted).
+	wire := gin.H{
 		"id":            q.ID,
 		"plan_key":      q.PlanKey,
 		"plan_version":  q.PlanVersion,
@@ -244,6 +252,24 @@ func quoteWire(q commercialsvc.QuoteView) gin.H {
 		"credits_micro": q.CreditsMicro,
 		"expires_at":    q.ExpiresAt,
 	}
+	if q.Currency != "" {
+		wire["currency"] = q.Currency
+	}
+	if len(q.Features) > 0 {
+		wire["features"] = q.Features
+	}
+	if len(q.LineItems) > 0 {
+		lines := make([]gin.H, 0, len(q.LineItems))
+		for _, li := range q.LineItems {
+			lines = append(lines, gin.H{
+				"kind":       li.Kind,
+				"name":       li.Name,
+				"amount_fen": strconv.FormatInt(li.AmountFen, 10),
+			})
+		}
+		wire["line_items"] = lines
+	}
+	return wire
 }
 
 // orderWire projects the service order onto the wire contract the web
@@ -351,6 +377,113 @@ func (h *CommercialHandler) SetBillingAccountService(s *commercialsvc.BillingAcc
 // #78 envelope without a benefits object — never a fabricated plan.
 func (h *CommercialHandler) SetBenefitsService(s *commercialsvc.BenefitsService) {
 	h.benefits = s
+}
+
+// SetPurchaseService wires the W5 purchase chain (injection point for the
+// container, #81). Until it is called, the purchase endpoints fail closed
+// with 501 — the edge never fabricates a purchase.
+func (h *CommercialHandler) SetPurchaseService(s *commercialsvc.PurchaseService) {
+	h.purchases = s
+}
+
+// purchaseWire projects the service purchase onto the wire contract the web
+// parsers expect (packages/contracts parsePurchaseView): the CLOSED state
+// token, a digit-string amount_fen and the order object when one exists.
+// No Lago vocabulary, no external identity, no raw status ever crosses.
+func purchaseWire(p commercialsvc.PurchaseView) gin.H {
+	wire := gin.H{"state": p.State}
+	if p.Order != nil {
+		wire["order"] = orderWire(*p.Order)
+	}
+	if p.PlanKey != "" {
+		wire["plan_key"] = p.PlanKey
+	}
+	if p.PlanVersion != 0 {
+		wire["plan_version"] = p.PlanVersion
+	}
+	if p.AmountFen != 0 {
+		wire["amount_fen"] = strconv.FormatInt(p.AmountFen, 10)
+	}
+	if p.Currency != "" {
+		wire["currency"] = p.Currency
+	}
+	if p.Reason != "" {
+		wire["reason"] = p.Reason
+	}
+	return wire
+}
+
+// Purchase serves POST /commercial/purchases (#81): submit a frozen quote
+// into the payment-gated purchase. The match gate runs BEFORE any channel
+// payment request: a mismatch answers 409 invoice_quote_mismatch with zero
+// channel calls.
+func (h *CommercialHandler) Purchase(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.purchases == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "purchase pipeline not configured"})
+		return
+	}
+	var req struct {
+		QuoteID  string `json:"quote_id"`
+		Provider string `json:"provider"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.QuoteID == "" || req.Provider == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "quote_id and provider are required"})
+		return
+	}
+	view, err := h.purchases.Purchase(c.Request.Context(), tenantID, req.QuoteID, req.Provider, "billing-admin")
+	switch {
+	case err == nil:
+		c.JSON(http.StatusCreated, gin.H{"success": true, "data": purchaseWire(view)})
+	case errors.Is(err, commercialsvc.ErrInvoiceQuoteMismatch):
+		c.JSON(http.StatusConflict, gin.H{"error": "invoice_quote_mismatch"})
+	case errors.Is(err, repocommercial.ErrQuoteExpired):
+		c.JSON(http.StatusConflict, gin.H{"error": "quote expired"})
+	case errors.Is(err, repocommercial.ErrQuoteVersionConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut; please re-quote"})
+	case errors.Is(err, commercialsvc.ErrPurchasePlanConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "purchase_plan_conflict"})
+	case errors.Is(err, commercialsvc.ErrQuoteLegacySnapshot):
+		c.JSON(http.StatusConflict, gin.H{"error": "quote predates the purchase freeze; please re-quote"})
+	case errors.Is(err, commercialsvc.ErrPurchasePlanCharges):
+		c.JSON(http.StatusConflict, gin.H{"error": "this plan version is not purchasable yet; please re-quote later"})
+	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
+		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found for this tenant"})
+	case errors.Is(err, repocommercial.ErrPlanNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "no published plan version for this quote"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+}
+
+// PurchaseStatus serves GET /commercial/purchase (#81): the caller space's
+// purchase projection in closed product vocabulary — absent when no
+// purchase exists, never a fabricated state.
+func (h *CommercialHandler) PurchaseStatus(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.purchases == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "purchase pipeline not configured"})
+		return
+	}
+	view, err := h.purchases.PurchaseStatus(c.Request.Context(), tenantID)
+	switch {
+	case err == nil:
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": purchaseWire(view)})
+	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
+		c.JSON(http.StatusNotFound, gin.H{"error": "purchase not found for this tenant"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
 }
 
 // tenantDisplayName reads the space's display name for the ADVISORY

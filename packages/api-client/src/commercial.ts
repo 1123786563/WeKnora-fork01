@@ -2,12 +2,14 @@ import {
   parseCommercialSummary,
   parseCommercialUsageList,
   parseOrderView,
+  parsePurchaseView,
   parseQuoteView,
   parseRefundView,
   type CommercialSummary,
   type CommercialUsageRow,
   type CreateOrderInput,
   type OrderView,
+  type PurchaseView,
   type QuoteInput,
   type QuoteView,
   type RefundInput,
@@ -57,6 +59,15 @@ export function createCommercialApi(request: (input: ClientRequest) => Promise<u
     },
     async createOrder(input: CreateOrderInput, signal?: AbortSignal): Promise<OrderView> {
       return parseOrderView(unwrap(await request({ method: 'POST', path: '/api/v1/commercial/orders', body: input, signal })));
+    },
+    // #81: the payment-gated purchase. A retry with the same quote_id is
+    // idempotent server-side (the SAME order answers); the match gate runs
+    // before any channel payment request.
+    async purchase(input: { quote_id: string; provider: 'wechat' | 'alipay' }, signal?: AbortSignal): Promise<PurchaseView> {
+      return parsePurchaseView(unwrap(await request({ method: 'POST', path: '/api/v1/commercial/purchases', body: input, signal })));
+    },
+    async purchaseStatus(signal?: AbortSignal): Promise<PurchaseView> {
+      return parsePurchaseView(unwrap(await request({ method: 'GET', path: '/api/v1/commercial/purchase', signal })));
     },
     async requestRefund(input: RefundInput, signal?: AbortSignal): Promise<{ id: string; state: string }> {
       const data = unwrap(await request({ method: 'POST', path: '/api/v1/commercial/refunds', body: input, signal }));

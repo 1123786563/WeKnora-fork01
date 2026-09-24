@@ -1,0 +1,124 @@
+# T09 (#81) real-stack run — operator timeline
+
+Stack: the operator's RUNNING `weknora-lago-*` compose project (pinned
+release v1.53.0), API 127.0.0.1:48889, loopback only — path A of the plan's
+Step 0 (no rebuild; `lago.sh up` deliberately NOT run so the running
+containers' keys stayed authoritative). Credentials were read at run time
+from the containers (`docker exec … printenv LAGO_ORG_*`) and
+`~/.zcode/issue72-stripe.env` (`source` only). No secret is committed,
+logged or echoed below; keys appear as `<redacted>`.
+
+Timeline (2026-09-23, local):
+
+1. Health + credentials
+   - `curl -sf http://127.0.0.1:48889/health` → "lago healthy"
+   - `LAGO_API_KEY=<redacted>` (43 chars), operator email/password
+     `<redacted>` from the running api container.
+2. Provider registration (F2: GraphQL + operator JWT; REST org key alone is
+   insufficient) — script `/tmp/t09-provider-register.py` (credentials ONLY
+   via env; fixed, validated loopback target; S1-style checks):
+   - `loginUser` → JWT ok
+   - `x-lago-organization` resolved via GET /api/v1/organizations
+     (v1.53.0 requires the header for org-scoped mutations — without it the
+     mutation answers "Missing organization id")
+   - `addStripePaymentProvider(code=weknora-stripe, secretKey=<redacted>)`
+     → `{"id":"6991abe8-…","code":"weknora-stripe","name":"WeKnora Stripe"}`
+3. WeKnora backend (`go run ./cmd/server`, :8080) with
+   `WEKNORA_COMMERCIAL_PLATFORM_PROVIDER=lago`,
+   `WEKNORA_COMMERCIAL_PLATFORM_URL=http://127.0.0.1:48889`,
+   `WEKNORA_COMMERCIAL_PLATFORM_API_KEY=<redacted>`,
+   `WEKNORA_COMMERCIAL_STRIPE_API_KEY=<redacted>` (test key, env only),
+   `WEKNORA_COMMERCIAL_STRIPE_PM_TOKEN=pm_card_visa` (provider TEST
+   payment-method id; dev/test only). GET /health → 200.
+   - NOTE: backend ran on `DB_DRIVER=sqlite`; the #80 benefits EnsureSchema
+     emits a SQLite-only `AUTOINCREMENT` DDL on the PostgreSQL path
+     (pre-existing defect → follow-up ticket, outside #81).
+   - Test operator seeded via POST /auth/register + /auth/login (tenant 1,
+     role owner); platform `plan_publish` grant inserted into the local
+     sqlite `commercial_grants` (tenant_id=0) for the admin surface.
+4. Tagged integration test (real stack; keys via env, never files):
+
+     LAGO_INTEGRATION_BASE_URL=http://127.0.0.1:48889 \
+     LAGO_INTEGRATION_API_KEY=<redacted> \
+     LAGO_INTEGRATION_STRIPE_API_KEY=<redacted> \
+     LAGO_INTEGRATION_STRIPE_PM_TOKEN=pm_card_visa \
+     go test -tags lago_integration ./internal/modules/commercial/commercialplatform/ \
+       -run TestLagoPurchaseIntegration -count=1 -v -timeout 300s
+
+   → --- PASS: TestLagoPurchaseIntegration (9.84s). Phases proven on the
+     pinned release:
+     1. (AC1) #79 publish of (pro, v1) 9900 fen CNY + quote freeze: CNY,
+        one subscription_fee line of 9900, advanced_models frozen, expiry
+        present.
+     2. (AC3) gated create via the REAL seam: receipt echoes the
+        deterministic purchase identity; snapshot = awaiting_payment,
+        amount 9900, CNY, InvoiceFees EMPTY (open stage never fabricated).
+     3. (AC3) entitlements CLOSED while gated: raw probe
+        GET /api/v1/customers/weknora-tenant-<A>-purchase-tenant
+        /entitlements → 404, no feature payload.
+     4. (AC4) same-key replay → NO second create; explicit-status[] index
+        shows EXACTLY ONE subscription for the identity (F6 trap avoided).
+     5. (AC4) replay changed nothing observable (state/amount stable).
+     6. (AC4) different plan on the same identity →
+        ErrPlatformInvalidResponse, count still 1; tenant B's full chain
+        leaves A's counts untouched.
+
+5. API-chain end-to-end (browser step NOT run — see honest note below):
+
+   a. POST /api/v1/admin/plans/drafts → 201 draft (pro, 9900, CNY,
+      advanced_models); POST …/drafts/pro/1/publish → 201 published with
+      receipt `publish_plan_version:pro:1`.
+   b. POST /api/v1/commercial/quotes → 201
+      {"amount_fen":"9900","currency":"CNY","line_items":[{"kind":
+      "subscription_fee","name":"Pro","amount_fen":"9900"}],
+      "features":{"advanced_models":true},"expires_at":+30min,
+      "plan_version":1}  ← AC1 wire assertions all green.
+   c. POST /api/v1/commercial/purchases → gated subscription created +
+      match gate PASSED → checkout layer answered 503
+      `payment_provider_unconfigured: "wechat"` (no channel credentials in
+      this environment — the honest blocked-env posture; the order-level
+      channel assertions live in the stub-provider unit tests).
+   d. GET /api/v1/commercial/purchase → 200 closed product state from the
+      authoritative face. Under the collectable `pm_card_visa` the runtime
+      advanced the purchase to `active` within seconds (F9 full path);
+      under the creation-instant window the tagged integration test asserts
+      `awaiting_payment` (Phase 2). The awaiting→active projection is #82's
+      domain.
+   f. RETRY over a fresh quote → again exactly one subscription and one
+      gating invoice (below); still 503 at the channel layer (expected).
+   g. Lago DB authoritative check:
+        SELECT count(*) FROM subscriptions WHERE
+          external_id='weknora-tenant-1-purchase';  → 1
+      API index (explicit statuses) → count: 1, statuses: [active].
+   h. Lago DB authoritative invoice check (subscription invoice_type=0):
+        BEFORE retry: 2   AFTER retry: 2   ← no duplicate invoice.
+      (One 0-fen invoice belongs to the #80 BASE subscription
+      `weknora-tenant-1-sub`; one 2540-fen prorated invoice belongs to
+      `weknora-tenant-1-purchase` — see F12 in DECISION.md §2b.)
+   i. AC2 mismatch: a freshly cut quote's snapshot was drifted to
+      price_fen=8800 (local sqlite; the published catalog row itself is
+      trigger-protected — `published_plan_immutable` refused the direct
+      edit, the #79 immutability working as designed) → POST /purchases →
+      HTTP 409 {"error":"invoice_quote_mismatch"}; GET /commercial/orders →
+      data:[] — NO channel payment request existed at any point.
+
+6. Honest gaps (recorded, not papered over):
+   - Browser/Playwright walk (plan Step 3) NOT executed: the e2e
+     "awaiting_payment" assertion cannot be observed stably on this stack —
+     the provider auto-collect advances the purchase inside seconds (run §3
+     step d). The page-level assertions (¥99.00, line item, frozen
+     features, 待付款 rendering) are covered by
+     `apps/web/src/commercial/CheckoutPage.test.tsx` (passing); screenshots
+     01–05 were therefore not produced.
+   - Channel adapters carry no credentials here; order-level idempotency is
+     proven by unit tests with a counting stub provider
+     (`TestPurchaseRetryReturnsExistingOrderWithoutDuplicates`,
+     `TestPurchaseRouteMismatchReturns409WithoutOrder`).
+
+7. S3 red-line self-check (committed artifacts):
+
+     grep -rn "sk_te" + "st_" | "rk_li" + "ve_" over
+       docs/migrations/lago/t09-quote-invoice/ and
+       deploy/lago/evidence/t09-run.txt            → CLEAN
+   (the grep pattern is split in this record so the document does not
+   itself carry the literal shape it greps for)

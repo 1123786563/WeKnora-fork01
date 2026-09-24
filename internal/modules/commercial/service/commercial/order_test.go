@@ -390,3 +390,36 @@ func TestOpenOrderClaimLosesWholeUnitOnStaleVersion(t *testing.T) {
 		t.Fatalf("losing claim consumed its quote: count=%d err=%v", used, err)
 	}
 }
+
+// seedPublishedProWithFeatures 按 seedPublishedPlan 的同型模式 seed 一个带
+// features 的版本（#81 AC1：quote 冻结名/币种/权益）。
+func seedPublishedProWithFeatures(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	def, _ := json.Marshal(domain.PlanVersion{Key: "pro", Version: 4, Price: 99_00, Monthly: 9_900_000,
+		Features: map[string]bool{"advanced_models": true}, Currency: domain.CurrencyCNY, Name: "Pro"})
+	if err := db.Create(&repocommercial.PlanRow{PlanKey: "pro", Version: 4,
+		DefinitionJSON: string(def), ExternalID: "ext-pro-4", State: domain.PlanStatePublished}).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateQuoteFreezesLineItemsFeaturesAndCurrency(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	seedPublishedProWithFeatures(t, db)
+	q, err := svc.CreateQuote(context.Background(), 7, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Currency != "CNY" {
+		t.Fatalf("currency = %q, want CNY", q.Currency)
+	}
+	if len(q.LineItems) != 1 || q.LineItems[0].Kind != "subscription_fee" || q.LineItems[0].AmountFen != 9900 {
+		t.Fatalf("line items = %+v, want single subscription_fee 9900", q.LineItems)
+	}
+	if !q.Features["advanced_models"] {
+		t.Fatalf("features = %+v, must freeze plan entitlements", q.Features)
+	}
+	if q.ExpiresAt == "" {
+		t.Fatal("expiry must be present")
+	}
+}

@@ -181,15 +181,19 @@ func TestFuncDeclNamesRecursive(t *testing.T) {
 // 实测（代码为事实源）：564 literal + 69 + 0 = 633 —— 文档的 line-sweep 在
 // routes_knowledge.go 少数 1 个 GET（该文件在 f4acb2154 基线修正时即为 90 处调用，
 // 文档表记 89；全仓仅 GET 222 vs 文档 221 一处之差，其余方法全部吻合）。
-// worker 23+23 两侧一致；hooks 58。 ----
+// worker 23+23 两侧一致；hooks 58。
+// #81 增量（issue-72(#81): purchase endpoints，69fd9b16d 前置提交）：
+// routes_commercial.go +2 literal（POST /purchases、GET /purchase）、
+// container.go +1 Invoke（SetPurchaseService 装配）→ 566 literal + 69 + 0 =
+// 635；hooks 59。审查第 2 轮 F8：基线随代码同步（代码为事实源）。 ----
 
 const (
-	wantRouteLiteral  = 564
+	wantRouteLiteral  = 566
 	wantRouteAPIKey   = 69
 	wantRouteHandle   = 0
-	wantRouteTotal    = 633
+	wantRouteTotal    = 635
 	wantWorkersPerMix = 23
-	wantHooks         = 58
+	wantHooks         = 59
 )
 
 func repoRoot(t *testing.T) string {

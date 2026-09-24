@@ -1016,6 +1016,16 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.OrderService) {
 		h.SetOrderService(s)
 	}))
+	// W5 (#81): the payment-gated purchase chain behind
+	// POST /commercial/purchases and GET /commercial/purchase. dig resolves
+	// the collaborators (BillingAccountService, PlanVersionService,
+	// OrderService) in their own blocks above; the platform seam arrives
+	// from the commercial platform provider. Until wired, the endpoints
+	// fail closed with 501 (the order-pipeline posture).
+	must(container.Provide(commercialsvc.NewPurchaseService))
+	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.PurchaseService) {
+		h.SetPurchaseService(s)
+	}))
 	// Provider payment callbacks share the same channel adapters: the
 	// router injects this handler into RegisterCommercialRoutes so a
 	// configured channel's notifications verify, confirm their order and

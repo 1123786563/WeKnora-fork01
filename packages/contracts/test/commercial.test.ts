@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseCommercialSummary, parseCommercialUsageList, parseOrderView, parseQuoteView, parseRefundView } from '../src/commercial.ts';
+import { parseCommercialSummary, parseCommercialUsageList, parseOrderView, parsePurchaseView, parseQuoteView, parseRefundView } from '../src/commercial.ts';
 
 const order = { id: 'o1', payment: 'paid', fulfillment: 'pending', amount_fen: '100', currency: 'CNY' };
 
@@ -292,4 +292,27 @@ test('rejects malformed refund views', () => {
     { ...refund, state: 42 },
   ];
   for (const value of malformed) assert.throws(() => parseRefundView(value), /invalid refund/);
+});
+
+test('parsePurchaseView accepts awaiting_payment with order', () => {
+  const v = parsePurchaseView({ state: 'awaiting_payment',
+    order: { id: 'ord_1', quote_id: 'qt_1', state: 'pending', amount_fen: '9900', currency: 'CNY',
+      payment: 'pending', fulfillment: 'pending', version: 1 },
+    plan_key: 'pro', plan_version: 1, amount_fen: '9900', currency: 'CNY' });
+  assert.equal(v.state, 'awaiting_payment');
+  assert.equal(v.order?.id, 'ord_1');
+});
+
+test('parsePurchaseView rejects raw provider states', () => {
+  assert.throws(() => parsePurchaseView({ state: 'incomplete' }));
+  assert.throws(() => parsePurchaseView({ state: 'awaiting_payment', amount_fen: 9900 })); // 非数字串
+});
+
+test('parseQuoteView passes through frozen line items', () => {
+  const q = parseQuoteView({ id: 'qt_1', amount_fen: '9900', credit_delta: '9900000',
+    expires_at: '2026-09-23T12:00:00Z', currency: 'CNY',
+    features: { advanced_models: true },
+    line_items: [{ kind: 'subscription_fee', name: 'Pro', amount_fen: '9900' }] });
+  assert.equal(q.line_items?.[0]?.kind, 'subscription_fee');
+  assert.equal(q.features?.advanced_models, true);
 });

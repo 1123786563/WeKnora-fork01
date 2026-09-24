@@ -2,6 +2,9 @@ export interface OrderView {
  id: string; payment: 'pending'|'paid'|'closed';
  fulfillment: 'pending'|'processing'|'fulfilled'|'attention';
  amount_fen: string; currency: 'CNY';
+ // The channel checkout link when a payment request was created (#81, the
+ // payment entry the checkout page renders); absent while unpaid/unconfigured.
+ checkout_url?:string;
 }
 // The commercial summary wire shape mirrors the handler projection
 // (internal/handler/commercial.go Summary): the purchased subscription or
@@ -17,7 +20,11 @@ export interface CommercialSummary {
  base_tier:boolean; base_tier_key?:string; can_manage_billing:boolean;
 }
 export interface CommercialUsageRow { resource:string; used:number; limit:number|null }
-export interface QuoteView { id:string;amount_fen:string;credit_delta:string;expires_at:string; }
+export interface QuoteView {
+ id:string;amount_fen:string;credit_delta:string;expires_at:string;
+ // #81 AC1 additive freeze fields (legacy quotes answer without them):
+ currency?:string; features?:Record<string,boolean>; line_items?:PurchaseLineItemView[];
+}
 export interface QuoteInput { plan_key:string; plan_version:number; subscription_version:number; }
 export interface CreateOrderInput { quote_id:string; provider:'wechat'|'alipay'; idempotency_key:string; }
 export interface RefundInput { order_id:string; amount_fen:string; reason:string; idempotency_key:string; }
@@ -86,7 +93,33 @@ export function parseQuoteView(value:unknown):QuoteView {
  const amount_fen=digitString(v.amount_fen,'amount_fen','quote');
  if(typeof v.credit_delta!=='string'||!/^-?\d+$/.test(v.credit_delta)) throw new Error('invalid quote (credit_delta)');
  const expires_at=nonEmptyString(v.expires_at,'expires_at','quote');
- return {id,amount_fen,credit_delta:v.credit_delta,expires_at};
+ const out:QuoteView = {id,amount_fen,credit_delta:v.credit_delta,expires_at};
+ // #81 AC1 freeze pass-through: currency, frozen entitlements and the
+ // subscription-fee line items ride along when present (never invented).
+ if(v.currency!==undefined) {
+  nonEmptyString(v.currency,'currency','quote');
+  out.currency = v.currency as string;
+ }
+ if(v.features!==undefined) {
+  if(typeof v.features!=='object'||v.features===null||Array.isArray(v.features)) throw new Error('invalid quote (features)');
+  const features:Record<string,boolean> = {};
+  for(const [k,val] of Object.entries(v.features as Record<string,unknown>)) {
+   if(typeof val!=='boolean') throw new Error('invalid quote (features)');
+   features[k]=val;
+  }
+  out.features = features;
+ }
+ if(v.line_items!==undefined) {
+  if(!Array.isArray(v.line_items)) throw new Error('invalid quote (line_items)');
+  out.line_items = v.line_items.map((row):PurchaseLineItemView=>{
+   if(typeof row!=='object'||row===null) throw new Error('invalid quote (line_items)');
+   const li=row as Record<string,unknown>;
+   return { kind: nonEmptyString(li.kind,'kind','quote line item'),
+    name: typeof li.name==='string'?li.name:'',
+    amount_fen: digitString(li.amount_fen,'amount_fen','quote line item') };
+  });
+ }
+ return out;
 }
 
 export interface RefundView { id:string; state:string; amount_fen:string; locked_credits:string; }
@@ -115,4 +148,42 @@ export function parseRefundView(value:unknown):RefundView {
   // represented by a lower value.
   const locked_credits=digitString(v.locked_credits,'locked_credits','refund');
   return {id,state:v.state,amount_fen,locked_credits};
+}
+
+// #81 purchase vocabulary: PurchaseLineItemView is one frozen invoice line
+// (kind is the closed subscription_fee token in the first slice);
+// PurchaseView.state is the CLOSED product token set — the provider's raw
+// states (e.g. incomplete) NEVER cross this contract (spec L210). Reason is
+// the closed platform-failure token, present only on a non-confirmable
+// answer.
+export interface PurchaseLineItemView { kind:string; name:string; amount_fen:string }
+export interface PurchaseView {
+  state:'awaiting_payment'|'active'|'absent'|'canceled';
+  order?:OrderView; plan_key?:string; plan_version?:number;
+  amount_fen?:string; currency?:string; reason?:string;
+}
+
+const PURCHASE_STATES = new Set<string>(['awaiting_payment','active','absent','canceled']);
+const PURCHASE_REASONS = new Set<string>(['unconfigured','unreachable','invalid_response','unsupported']);
+
+export function parsePurchaseView(value:unknown):PurchaseView {
+  if(typeof value!=='object'||value===null||Array.isArray(value)) throw new Error('invalid purchase');
+  const v=value as Record<string,unknown>;
+  if(typeof v.state!=='string'||!PURCHASE_STATES.has(v.state)) throw new Error('invalid purchase (state)');
+  const out:PurchaseView = { state: v.state as PurchaseView['state'] };
+  if(v.order!==undefined&&v.order!==null) out.order = parseOrderView(v.order);
+  if(v.plan_key!==undefined) out.plan_key = nonEmptyString(v.plan_key,'plan_key','purchase');
+  if(v.plan_version!==undefined) {
+    const n = integer(v.plan_version,'plan_version','purchase');
+    out.plan_version = n;
+  }
+  if(v.amount_fen!==undefined&&v.amount_fen!==null&&v.amount_fen!=='') {
+    out.amount_fen = digitString(v.amount_fen,'amount_fen','purchase');
+  }
+  if(v.currency!==undefined&&v.currency!=='') out.currency = nonEmptyString(v.currency,'currency','purchase');
+  if(v.reason!==undefined&&v.reason!=='') {
+    if(typeof v.reason!=='string'||!PURCHASE_REASONS.has(v.reason)) throw new Error('invalid purchase (reason)');
+    out.reason = v.reason;
+  }
+  return out;
 }
