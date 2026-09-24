@@ -1,4 +1,4 @@
--- SQLite twin of versioned migration 000191.
+-- SQLite twin of versioned migration 000192.
 CREATE TABLE agent_adoptions (
  id VARCHAR(36) NOT NULL, tenant_id INTEGER NOT NULL, listing_id VARCHAR(36) NOT NULL,
  accepted_release_id VARCHAR(36) NOT NULL, state VARCHAR(32) NOT NULL DEFAULT 'active',
