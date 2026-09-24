@@ -1,0 +1,360 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
+	"github.com/Tencent/WeKnora/internal/types"
+)
+
+var (
+	ErrPublicMarketplaceNotFound        = errors.New("public marketplace resource not found")
+	ErrPublicMarketplaceInvalidDecision = errors.New("invalid public marketplace review decision")
+	ErrPublicMarketplaceReviewConflict  = errors.New("public marketplace submission already has a review")
+	ErrPublicMarketplaceDigestMismatch  = errors.New("public marketplace reviewed digest does not match submission")
+	ErrPublicMarketplacePointerConflict = errors.New("public marketplace listing pointer changed")
+	ErrPublicMarketplaceReleaseConflict = errors.New("public marketplace release conflict")
+)
+
+// PublicCatalogRow pairs a discoverable public listing with its current
+// release. It deliberately carries NO adopter-derived data (spec §12).
+type PublicCatalogRow struct {
+	Listing types.PublicMarketplaceListingEntity
+	Release *types.PublicAgentReleaseEntity
+}
+
+// PublicMarketplaceRepository owns the public catalog and introduction
+// ledger SQL. Platform tables are not tenant-scoped; the adopter-side
+// introduction ledger always binds the adopter tenant id. Every statement
+// is parameter-bound.
+type PublicMarketplaceRepository interface {
+	VerifyPublisher(ctx context.Context, row *types.VerifiedPublisherEntity) (*types.VerifiedPublisherEntity, bool, error)
+	RevokePublisher(ctx context.Context, tenantID uint64) error
+	ListVerifiedPublishers(ctx context.Context) ([]types.VerifiedPublisherEntity, error)
+	GetVerifiedPublisher(ctx context.Context, tenantID uint64) (*types.VerifiedPublisherEntity, error)
+	CreatePublicSubmission(ctx context.Context, listing *types.PublicMarketplaceListingEntity, submission *types.PublicReleaseSubmissionEntity) (*types.PublicReleaseSubmissionEntity, error)
+	ListPublicSubmissions(ctx context.Context, publisherTenantID uint64) ([]types.PublicReleaseSubmissionEntity, error)
+	ListPublicReviewQueue(ctx context.Context) ([]types.PublicReleaseSubmissionEntity, error)
+	GetPublicSubmission(ctx context.Context, submissionID string) (*types.PublicReleaseSubmissionEntity, error)
+	GetPublicListing(ctx context.Context, listingID string) (*types.PublicMarketplaceListingEntity, error)
+	GetPublicRelease(ctx context.Context, releaseID string) (*types.PublicAgentReleaseEntity, error)
+	ReviewAndPublishPublicTx(ctx context.Context, expectedPriorReleaseID, submissionID, expectedDigest string, decision types.AgentReleaseReviewDecision) (*types.PublicReleaseReviewEntity, *types.PublicAgentReleaseEntity, error)
+	ListPublicCatalog(ctx context.Context) ([]PublicCatalogRow, error)
+	IntroduceRelease(ctx context.Context, adopterTenantID uint64, actorID string, listing *types.PublicMarketplaceListingEntity, release *types.PublicAgentReleaseEntity) (*types.TenantIntroducedReleaseEntity, *types.AgentAdoptionEntity, bool, error)
+}
+
+type publicMarketplaceRepository struct{ db *gorm.DB }
+
+func NewPublicMarketplaceRepository(db *gorm.DB) PublicMarketplaceRepository {
+	return &publicMarketplaceRepository{db: db}
+}
+
+func (r *publicMarketplaceRepository) VerifyPublisher(ctx context.Context, row *types.VerifiedPublisherEntity) (*types.VerifiedPublisherEntity, bool, error) {
+	if row == nil || row.TenantID == 0 {
+		return nil, false, fmt.Errorf("invalid verified publisher row")
+	}
+	var existing types.VerifiedPublisherEntity
+	err := r.db.WithContext(ctx).Where("tenant_id = ?", row.TenantID).First(&existing).Error
+	if err == nil {
+		if existing.State == "verified" && existing.VerifiedBy == row.VerifiedBy {
+			return &existing, false, nil
+		}
+		existing.State = "verified"
+		existing.VerifiedBy = row.VerifiedBy
+		existing.Note = row.Note
+		existing.VerifiedAt = row.VerifiedAt
+		existing.UpdatedAt = time.Now().UTC()
+		if err := r.db.WithContext(ctx).Model(&types.VerifiedPublisherEntity{}).Where("tenant_id = ?", row.TenantID).
+			Updates(map[string]any{"state": existing.State, "verified_by": existing.VerifiedBy, "note": existing.Note, "verified_at": existing.VerifiedAt, "updated_at": existing.UpdatedAt}).Error; err != nil {
+			return nil, false, err
+		}
+		return &existing, false, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, err
+	}
+	created := *row
+	if created.State == "" {
+		created.State = "verified"
+	}
+	created.UpdatedAt = created.VerifiedAt
+	inserted := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&created)
+	if inserted.Error != nil {
+		return nil, false, inserted.Error
+	}
+	if inserted.RowsAffected == 1 {
+		return &created, true, nil
+	}
+	var winner types.VerifiedPublisherEntity
+	if err := r.db.WithContext(ctx).Where("tenant_id = ?", row.TenantID).First(&winner).Error; err != nil {
+		return nil, false, err
+	}
+	return &winner, false, nil
+}
+
+func (r *publicMarketplaceRepository) RevokePublisher(ctx context.Context, tenantID uint64) error {
+	updated := r.db.WithContext(ctx).Model(&types.VerifiedPublisherEntity{}).
+		Where("tenant_id = ?", tenantID).
+		Updates(map[string]any{"state": "revoked", "updated_at": time.Now().UTC()})
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return ErrPublicMarketplaceNotFound
+	}
+	return nil
+}
+
+func (r *publicMarketplaceRepository) ListVerifiedPublishers(ctx context.Context) ([]types.VerifiedPublisherEntity, error) {
+	rows := []types.VerifiedPublisherEntity{}
+	err := r.db.WithContext(ctx).Order("verified_at ASC, tenant_id ASC").Find(&rows).Error
+	return rows, err
+}
+
+func (r *publicMarketplaceRepository) GetVerifiedPublisher(ctx context.Context, tenantID uint64) (*types.VerifiedPublisherEntity, error) {
+	var row types.VerifiedPublisherEntity
+	err := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *publicMarketplaceRepository) CreatePublicSubmission(ctx context.Context, listing *types.PublicMarketplaceListingEntity, submission *types.PublicReleaseSubmissionEntity) (*types.PublicReleaseSubmissionEntity, error) {
+	if submission == nil || submission.PublisherTenantID == 0 || strings.TrimSpace(submission.SourceListingID) == "" || strings.TrimSpace(submission.SourceReleaseID) == "" || strings.TrimSpace(submission.BundleDigest) == "" || len(submission.Bundle) == 0 {
+		return nil, fmt.Errorf("invalid public marketplace submission")
+	}
+	var result types.PublicReleaseSubmissionEntity
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var source types.AgentReleaseEntity
+		if err := tx.Where("tenant_id = ? AND id = ?", submission.PublisherTenantID, submission.SourceReleaseID).First(&source).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrPublicMarketplaceNotFound
+			}
+			return err
+		}
+		var row types.PublicMarketplaceListingEntity
+		err := tx.Where("publisher_tenant_id = ? AND source_listing_id = ?", submission.PublisherTenantID, submission.SourceListingID).First(&row).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if listing == nil {
+				return fmt.Errorf("public listing details required for first submission")
+			}
+			row = types.PublicMarketplaceListingEntity{
+				ID: uuid.NewString(), PublisherTenantID: submission.PublisherTenantID, SourceListingID: submission.SourceListingID,
+				DisplayName: listing.DisplayName, Summary: listing.Summary, State: "listed",
+				CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+			}
+			if err := tx.Create(&row).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+		result = *submission
+		result.ID, result.PublicListingID = uuid.NewString(), row.ID
+		if result.Status == "" {
+			result.Status = "submitted"
+		}
+		result.CreatedAt = time.Now().UTC()
+		return tx.Create(&result).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (r *publicMarketplaceRepository) ListPublicSubmissions(ctx context.Context, publisherTenantID uint64) ([]types.PublicReleaseSubmissionEntity, error) {
+	rows := []types.PublicReleaseSubmissionEntity{}
+	err := r.db.WithContext(ctx).Where("publisher_tenant_id = ?", publisherTenantID).Order("created_at ASC, id ASC").Find(&rows).Error
+	return rows, err
+}
+
+func (r *publicMarketplaceRepository) ListPublicReviewQueue(ctx context.Context) ([]types.PublicReleaseSubmissionEntity, error) {
+	rows := []types.PublicReleaseSubmissionEntity{}
+	err := r.db.WithContext(ctx).
+		Where("status IN ?", []string{"submitted", "in_review"}).
+		Where("NOT EXISTS (SELECT 1 FROM public_release_reviews reviews WHERE reviews.submission_id = public_release_submissions.id)").
+		Order("created_at ASC, id ASC").Find(&rows).Error
+	return rows, err
+}
+
+func (r *publicMarketplaceRepository) GetPublicSubmission(ctx context.Context, submissionID string) (*types.PublicReleaseSubmissionEntity, error) {
+	var row types.PublicReleaseSubmissionEntity
+	err := r.db.WithContext(ctx).Where("id = ?", strings.TrimSpace(submissionID)).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *publicMarketplaceRepository) GetPublicListing(ctx context.Context, listingID string) (*types.PublicMarketplaceListingEntity, error) {
+	var row types.PublicMarketplaceListingEntity
+	err := r.db.WithContext(ctx).Where("id = ?", strings.TrimSpace(listingID)).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *publicMarketplaceRepository) GetPublicRelease(ctx context.Context, releaseID string) (*types.PublicAgentReleaseEntity, error) {
+	var row types.PublicAgentReleaseEntity
+	err := r.db.WithContext(ctx).Where("id = ?", strings.TrimSpace(releaseID)).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *publicMarketplaceRepository) ReviewAndPublishPublicTx(ctx context.Context, expectedPriorReleaseID, submissionID, expectedDigest string, decision types.AgentReleaseReviewDecision) (*types.PublicReleaseReviewEntity, *types.PublicAgentReleaseEntity, error) {
+	if decision.Decision != "approved" && decision.Decision != "rejected" && decision.Decision != "changes_requested" {
+		return nil, nil, ErrPublicMarketplaceInvalidDecision
+	}
+	var review *types.PublicReleaseReviewEntity
+	var release *types.PublicAgentReleaseEntity
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var submission types.PublicReleaseSubmissionEntity
+		if err := tx.Where("id = ?", strings.TrimSpace(submissionID)).First(&submission).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrPublicMarketplaceNotFound
+			}
+			return err
+		}
+		if submission.BundleDigest != expectedDigest {
+			return ErrPublicMarketplaceDigestMismatch
+		}
+		if submission.Status != "submitted" && submission.Status != "in_review" {
+			return ErrPublicMarketplaceInvalidDecision
+		}
+		review = &types.PublicReleaseReviewEntity{ID: uuid.NewString(), SubmissionID: submission.ID, ReviewerID: decision.ReviewerID, ReviewedDigest: expectedDigest, Decision: decision.Decision, Reason: decision.Reason, CreatedAt: time.Now().UTC()}
+		if err := tx.Create(review).Error; err != nil {
+			return err
+		}
+		if decision.Decision != "approved" {
+			return nil
+		}
+		var max int
+		if err := tx.Model(&types.PublicAgentReleaseEntity{}).Where("listing_id = ?", submission.PublicListingID).Select("COALESCE(MAX(release_number), 0)").Scan(&max).Error; err != nil {
+			return err
+		}
+		release = &types.PublicAgentReleaseEntity{
+			ID: uuid.NewString(), ListingID: submission.PublicListingID, SubmissionID: submission.ID,
+			PublisherTenantID: submission.PublisherTenantID, ReleaseNumber: max + 1,
+			SemanticVersion: submission.SemanticVersion, BundleDigest: submission.BundleDigest,
+			ManifestJSON: submission.ManifestJSON, DependencyLockJSON: submission.DependencyLockJSON,
+			Bundle: append([]byte(nil), submission.Bundle...), PublishedBy: decision.ReviewerID, CreatedAt: time.Now().UTC(),
+		}
+		if err := tx.Create(release).Error; err != nil {
+			return err
+		}
+		query := tx.Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", submission.PublicListingID)
+		if expectedPriorReleaseID == "" {
+			query = query.Where("current_release_id IS NULL")
+		} else {
+			query = query.Where("current_release_id = ?", expectedPriorReleaseID)
+		}
+		updated := query.Updates(map[string]any{"current_release_id": release.ID, "updated_at": time.Now().UTC()})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return ErrPublicMarketplacePointerConflict
+		}
+		return nil
+	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return nil, nil, ErrPublicMarketplaceReviewConflict
+		}
+		return nil, nil, err
+	}
+	return review, release, nil
+}
+
+func (r *publicMarketplaceRepository) ListPublicCatalog(ctx context.Context) ([]PublicCatalogRow, error) {
+	rows := []types.PublicMarketplaceListingEntity{}
+	if err := r.db.WithContext(ctx).Where("state = ? AND current_release_id IS NOT NULL", "listed").Order("created_at ASC, id ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]PublicCatalogRow, 0, len(rows))
+	for i := range rows {
+		release, err := r.GetPublicRelease(ctx, *rows[i].CurrentReleaseID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, PublicCatalogRow{Listing: rows[i], Release: release})
+	}
+	return out, nil
+}
+
+// IntroduceRelease is the cross-tenant propagation primitive: it copies ONE
+// approved public release's portable content verbatim into the adopter
+// tenant's introduction ledger and creates/updates the tenant's Adoption
+// for that public listing, all in one transaction. Concurrent introduces of
+// the same (tenant, public release) converge on the winner's row.
+func (r *publicMarketplaceRepository) IntroduceRelease(ctx context.Context, adopterTenantID uint64, actorID string, listing *types.PublicMarketplaceListingEntity, release *types.PublicAgentReleaseEntity) (*types.TenantIntroducedReleaseEntity, *types.AgentAdoptionEntity, bool, error) {
+	var introduced types.TenantIntroducedReleaseEntity
+	var adoption *types.AgentAdoptionEntity
+	created := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Where("tenant_id = ? AND public_release_id = ?", adopterTenantID, release.ID).First(&introduced).Error
+		if err == nil {
+			adoption, _, err = adoptListingTx(tx, &types.AgentAdoptionEntity{
+				TenantID: adopterTenantID, ListingID: listing.ID, AcceptedReleaseID: introduced.ID,
+				State: "active", CreatedBy: actorID,
+			})
+			return err
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		introduced = types.TenantIntroducedReleaseEntity{
+			ID: uuid.NewString(), TenantID: adopterTenantID, PublicListingID: listing.ID, PublicReleaseID: release.ID,
+			DisplayName: listing.DisplayName, Summary: listing.Summary, SemanticVersion: release.SemanticVersion,
+			BundleDigest: release.BundleDigest, ManifestJSON: release.ManifestJSON,
+			DependencyLockJSON: release.DependencyLockJSON, Bundle: append([]byte(nil), release.Bundle...),
+			IntroducedBy: actorID, IntroducedAt: time.Now().UTC(),
+		}
+		inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&introduced)
+		if inserted.Error != nil {
+			return inserted.Error
+		}
+		if inserted.RowsAffected == 1 {
+			created = true
+		} else {
+			var winner types.TenantIntroducedReleaseEntity
+			if err := tx.Where("tenant_id = ? AND public_release_id = ?", adopterTenantID, release.ID).First(&winner).Error; err != nil {
+				return err
+			}
+			introduced = winner
+		}
+		adoption, _, err = adoptListingTx(tx, &types.AgentAdoptionEntity{
+			TenantID: adopterTenantID, ListingID: listing.ID, AcceptedReleaseID: introduced.ID,
+			State: "active", CreatedBy: actorID,
+		})
+		return err
+	})
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return &introduced, adoption, created, nil
+}
