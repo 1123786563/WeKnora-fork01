@@ -89,9 +89,12 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
  }
  const onDraftChange = (value: string): void => {
   setDraft(value)
-  if (state === 'saved' || state === 'error') { setAttempt(undefined); setReceipt(undefined); setState('idle'); setMessage('') }
+  if (state === 'error') { setAttempt(undefined); setReceipt(undefined); setState('idle'); setMessage('') }
  }
- const locked = state === 'busy' || state === 'unknown'
+ const beginNewDraft = (): void => {
+  setDraft(''); setSourceLabel(''); setSourceReference(''); setAttempt(undefined); setReceipt(undefined); setState('idle'); setMessage('')
+ }
+ const locked = state === 'busy' || state === 'unknown' || state === 'saved'
  return <section className="wk-opportunity-import" aria-labelledby="wk-opportunity-import-title">
   <div className="wk-opportunity-import__intro"><div><p className="wk-opportunity-import__eyebrow">Career</p><h2 id="wk-opportunity-import-title">保存职位描述</h2><p>粘贴职位描述作为独立证据保存，不会发送到聊天或执行其中的指令。</p></div></div>
   <label className="wk-opportunity-import__label" htmlFor="wk-opportunity-raw-text">职位描述</label>
@@ -101,7 +104,7 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
    <label>来源链接或编号（仅记录，不会访问）<input aria-label="来源链接或编号" value={sourceReference} disabled={locked || state === 'forbidden'} onChange={(event) => setSourceReference(event.target.value)} /></label>
   </div>
   <div className="wk-opportunity-import__actions">
-   {state === 'unknown' ? <><button type="button" onClick={() => void lookupReceipt()}>查询导入回执</button><button type="button" onClick={() => attempt && void importAttempt(attempt)}>使用原请求编号重试</button></> : <button type="button" disabled={state === 'busy' || state === 'forbidden' || !draft.trim()} onClick={() => void beginImport()}>{state === 'busy' ? '正在保存…' : '保存 JD'}</button>}
+   {state === 'unknown' ? <><button type="button" onClick={() => void lookupReceipt()}>查询导入回执</button><button type="button" onClick={() => attempt && void importAttempt(attempt)}>使用原请求编号重试</button></> : state === 'saved' ? <><button type="button" disabled>已保存</button><button type="button" onClick={beginNewDraft}>开始新草稿</button></> : <button type="button" disabled={state === 'busy' || state === 'forbidden' || !draft.trim()} onClick={() => void beginImport()}>{state === 'busy' ? '正在保存…' : '保存 JD'}</button>}
   </div>
   {message ? <p className={state === 'error' || state === 'forbidden' ? 'wk-opportunity-import__message wk-opportunity-import__message--error' : 'wk-opportunity-import__message'} role={state === 'error' || state === 'forbidden' ? 'alert' : 'status'} aria-live="polite">{message}</p> : null}
   {receipt ? <div className="wk-opportunity-import__result" role="status" aria-live="polite"><strong>{receipt.status === 'needs_review' ? '已保存，待确认' : '已保存'}</strong><p>请求编号：<code>{receipt.requestId}</code></p><a href={resultPath(receipt)}>查看已保存的 JD 证据</a></div> : null}
