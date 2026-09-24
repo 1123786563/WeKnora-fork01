@@ -8,7 +8,6 @@ import (
 	"errors"
 	"time"
 
-	codedelivery "github.com/Tencent/WeKnora/internal/modules/codedelivery"
 	"gorm.io/gorm"
 )
 
@@ -138,12 +137,17 @@ func (s *DeliveryStore) LatestApproverForAction(ctx context.Context, actionID st
 	return row.Actor, row.Actor != "", nil
 }
 
-// State constants mirror the module-level DeliveryState vocabulary.
+// State constants mirror the module-level DeliveryState vocabulary. They are
+// string literals ON PURPOSE: the repository package must NOT import its
+// parent (the parent's service imports this store — importing the parent
+// back is an import cycle; T22 #52 task 5). The values are pinned equal to
+// the parent's DeliveryState constants by the parent's service_prepare_test
+// alignment assertions.
 const (
-	StatePrepared   = string(codedelivery.DeliveryPrepared)
-	StateDispatched = string(codedelivery.DeliveryDispatched)
-	StatePushed     = string(codedelivery.DeliveryPushed)
-	StateDelivered  = string(codedelivery.DeliveryDelivered)
-	StateFailed     = string(codedelivery.DeliveryFailed)
-	StateUnknown    = string(codedelivery.DeliveryUnknown)
+	StatePrepared   = "prepared"
+	StateDispatched = "dispatched"
+	StatePushed     = "pushed"
+	StateDelivered  = "delivered"
+	StateFailed     = "failed"
+	StateUnknown    = "unknown"
 )
