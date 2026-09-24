@@ -29,3 +29,11 @@ test('a corrupted or missing draft body reads as undefined, never crashes the Ne
   assert.equal(await drafts.load(), undefined);
   assert.equal(await createScopedNewTaskDrafts(memoryDrafts()).load(), undefined);
 });
+
+test('a corrupted draft degrades field-by-field instead of crashing the screen (B3-F42)', async () => {
+  const backing = memoryDrafts();
+  await backing.put({ id: 'new-task', body: JSON.stringify({ text: 42, attachments: 'not-an-array', knowledgeIds: null, budgetUpper: 'x' }) });
+  const drafts = createScopedNewTaskDrafts(backing);
+  const draft = await drafts.load();
+  assert.deepEqual(draft, { text: '', agentId: null, budgetUpper: 0, attachments: [], knowledgeIds: [] }, '脏字段逐项降级，evaluateSubmitReadiness 不再抛 TypeError');
+});

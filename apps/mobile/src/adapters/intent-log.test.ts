@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { TaskOfficeError } from '@weknora/mobile-core';
 import { createSecureIntentLog } from './intent-log.ts';
 import type { SecureStorePort } from './secure-store.ts';
 
@@ -73,11 +74,43 @@ test('the byte budget evicts the oldest entries once the serialized log exceeds 
   assert.ok(await log.load('req-b'), 'the newest intent survives the eviction');
 });
 
-test('a single oversized record is kept alone instead of dropping the newest intent', async () => {
+test('a single record beyond the budget fails explicitly instead of hitting the SecureStore limit (B3-F38)', async () => {
   const secure = memoryStore();
   const log = createSecureIntentLog(secure);
-  await log.save(bigRecord('req-1', 'z'.repeat(1600)));
-  assert.equal((await log.load('req-1'))?.goal.text.length, 1600, 'the newest intent persists even when one record alone exceeds the budget');
+  const hugeGoal = {
+    text: '长'.repeat(500), // 500 中文 ≈1500B
+    agentId: 'a-1', budgetUpper: 200,
+    knowledgeIds: Array.from({ length: 24 }, (_unused, index) => `kb-${index}-0123456789abcdef0123456789abcdef`), // 24×39 ≈ 936B
+    attachments: [],
+  };
+  await assert.rejects(
+    log.save({ requestId: 'req-big', sessionId: 'session-1', goal: hugeGoal, scope, persistedAt: '2026-09-24T00:00:00Z' }),
+    (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_INVALID_INPUT',
+    '单条超限必须显式抛可行动错误码，而不是 setItemAsync 底层错误让提交永久失败',
+  );
+  assert.equal(secure.dump(), null, '超限记录不得落盘（部分状态）');
+});
+
+test('a single oversized record is refused with an actionable error code (B3-F38 supersedes the keep-alone adjudication)', async () => {
+  const secure = memoryStore();
+  const log = createSecureIntentLog(secure);
+  await assert.rejects(
+    log.save(bigRecord('req-1', 'z'.repeat(1600))),
+    (error: unknown) => error instanceof TaskOfficeError && error.code === 'TASK_OFFICE_INVALID_INPUT',
+    '单条超限：maxLength 的 500 字估算漏算 knowledgeIds/attachments——合法组合越限后必须有可行动错误码而非底层抛错',
+  );
+  assert.equal(secure.dump(), null, '拒绝时不落任何部分状态');
+});
+
+test('concurrent saves serialize instead of overwriting each other (B3-F51)', async () => {
+  const secure = memoryStore();
+  const log = createSecureIntentLog(secure);
+  await Promise.all([
+    log.save(record),
+    log.save({ ...record, requestId: 'req-2', sessionId: 'session-78' }),
+  ]);
+  assert.equal((await log.load('req-1'))?.sessionId, 'session-77', '先写记录不得被后写整包覆盖丢失');
+  assert.equal((await log.load('req-2'))?.sessionId, 'session-78');
 });
 
 test('records within the byte budget are all kept', async () => {

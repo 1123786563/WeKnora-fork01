@@ -19,13 +19,25 @@ export function createScopedNewTaskDrafts(store: ScopedDraftLike): NewTaskDraftP
     async load() {
       const entry = await store.get(NEW_TASK_DRAFT_ID).catch(() => undefined);
       if (!entry) return undefined;
+      let value: unknown;
       try {
-        const value: unknown = JSON.parse(entry.body);
-        if (typeof value !== 'object' || value === null) return undefined;
-        return value as NewTaskDraft; // 字段级校验由 evaluateSubmitReadiness 在投影时兜底
+        value = JSON.parse(entry.body);
       } catch {
         return undefined;
       }
+      if (typeof value !== 'object' || value === null) return undefined;
+      // 字段级防御（B3-F42）：脏持久化体逐项降级为空值——evaluateSubmitReadiness
+      // 直接 draft.text.trim()/attachments.filter()，脏类型会让 New 屏整屏崩溃。
+      const row = value as Partial<NewTaskDraft> & Record<string, unknown>;
+      const cleanArray = <T>(candidate: unknown): T[] => (Array.isArray(candidate) ? candidate as T[] : []);
+      const draft: NewTaskDraft = {
+        text: typeof row.text === 'string' ? row.text : '',
+        agentId: typeof row.agentId === 'string' ? row.agentId : null,
+        budgetUpper: typeof row.budgetUpper === 'number' && Number.isSafeInteger(row.budgetUpper) && row.budgetUpper >= 0 ? row.budgetUpper : 0,
+        attachments: cleanArray(row.attachments),
+        knowledgeIds: cleanArray(row.knowledgeIds),
+      };
+      return draft;
     },
     async save(draft) {
       await store.put({ id: NEW_TASK_DRAFT_ID, body: JSON.stringify(draft) });
