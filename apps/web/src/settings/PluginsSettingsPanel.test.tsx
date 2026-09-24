@@ -18,7 +18,7 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { PluginsSettingsPanel, formatPreviewExpiry, parsePluginPreviewEnvelope, pluginPreviewRequest } = await import('./PluginsSettingsPanel.tsx');
+const { PluginsSettingsPanel, formatPreviewExpiry } = await import('./PluginsSettingsPanel.tsx');
 const { ApiError } = await import('@weknora/api-client');
 
 function previewEnvelope(): unknown {
@@ -58,89 +58,10 @@ test('插件面板对 viewer 隐藏提交表单（registry minRole=admin）', ()
   assert.match(html, /管理员/);
 });
 
-test('pluginPreviewRequest 构造 POST 预览请求并在空 URL 上拒绝', () => {
-  const request = pluginPreviewRequest('https://plugins.example.com/manifest.json');
-  assert.equal(request.method, 'POST');
-  assert.equal(request.path, '/api/v1/plugins/installations/preview');
-  assert.deepEqual(request.body, { manifest_url: 'https://plugins.example.com/manifest.json' });
-  assert.throws(() => pluginPreviewRequest('   '), /manifest/);
-});
-
-test('parsePluginPreviewEnvelope 拒绝非法 envelope（非 success/缺字段）', () => {
-  assert.throws(() => parsePluginPreviewEnvelope({ success: false }), /success/);
-  const missing = previewEnvelope() as { data: Record<string, unknown> };
-  delete missing.data.endpoint_url;
-  assert.throws(() => parsePluginPreviewEnvelope(missing), /endpoint_url/);
-  const toolMissingAuth = previewEnvelope() as { data: { tools: Array<Record<string, unknown>> } };
-  delete toolMissingAuth.data.tools[0]!.requires_personal_auth;
-  assert.throws(() => parsePluginPreviewEnvelope(toolMissingAuth), /requires_personal_auth/);
-  const value = parsePluginPreviewEnvelope(previewEnvelope());
-  assert.equal(value.previewId, 'p-1');
-  assert.equal(value.tools[1]!.scopes.length, 0, 'null scopes collapse to an empty list');
-});
-
 test('formatPreviewExpiry 本地化有效期并防御非法时间串', () => {
   const formatted = formatPreviewExpiry('2026-09-23T12:00:00Z');
   assert.ok(formatted.includes('2026'), 'a parseable expiry renders a localized date');
   assert.equal(formatPreviewExpiry('not-a-date'), 'not-a-date', 'an unparseable expiry falls back to the raw string');
-});
-
-// ---- T03-OCR1-F1：面板镜像解析器与 api-client parsePluginPreview 的 parity 锁 ----
-// 面板层解析器是 packages/api-client/src/plugins.ts 的镜像（@weknora/api-client
-// 仅暴露 index.ts 入口，parsePluginPreview 未导出，所有权内无法复用；Ruling
-// R-T03-2）。两侧测试独立、漂移不交叉报警——本测试用同一 fixture 集锁定
-// 「双解析器同时接受/同时拒绝、成功时字段一致」，后端 DTO 调整时任一侧
-// 遗漏即红。T08 挂载 client.plugins 后应删除镜像并撤掉本测试（单一来源）。
-test('面板解析器与 api-client parsePluginPreview 在共享 fixture 上行为一致（parity 锁）', async () => {
-  const { parsePluginPreview } = await import('../../../../packages/api-client/src/plugins.ts');
-  const dropField = (field: string): unknown => {
-    const envelope = previewEnvelope() as { data: Record<string, unknown> };
-    delete envelope.data[field];
-    return envelope;
-  };
-  const mutateField = (field: string, value: unknown): unknown => {
-    const envelope = previewEnvelope() as { data: Record<string, unknown> };
-    envelope.data[field] = value;
-    return envelope;
-  };
-  const mutateTool = (index: number, field: string, value: unknown): unknown => {
-    const envelope = previewEnvelope() as { data: { tools: Array<Record<string, unknown>> } };
-    if (value === undefined) delete envelope.data.tools[index]![field];
-    else envelope.data.tools[index]![field] = value;
-    return envelope;
-  };
-  const sseTransport = previewEnvelope() as { data: Record<string, unknown> };
-  sseTransport.data.transport_type = 'sse';
-  const fixtures: Array<[string, unknown]> = [
-    ['合法 envelope（null scopes 工具）', previewEnvelope()],
-    ['合法 sse transport', sseTransport],
-    ['非 success envelope', { success: false }],
-    ['非对象输入', null],
-    ['缺 data', { success: true }],
-    ...['preview_id', 'plugin_id', 'version', 'name', 'transport_type', 'endpoint_url', 'tools', 'identity_fingerprint', 'expires_at'].map((field) => [`缺 ${field}`, dropField(field)] as [string, unknown]),
-    ['preview_id 空串', mutateField('preview_id', '')],
-    ['transport_type 枚举外', mutateField('transport_type', 'stdio')],
-    ['tools 非数组', mutateField('tools', {})],
-    ['expires_at 非字符串', mutateField('expires_at', 123)],
-    ['顶层 description 非 string', mutateField('description', 42)],
-    ['工具行缺 name', mutateTool(0, 'name', undefined)],
-    ['工具行 description 非 string', mutateTool(0, 'description', 9)],
-    ['工具行 read_only 非 boolean', mutateTool(0, 'read_only', 'yes')],
-    ['工具行缺 requires_personal_auth', mutateTool(0, 'requires_personal_auth', undefined)],
-    ['工具行 scopes 非字符串数组', mutateTool(0, 'scopes', [1])],
-  ];
-  type Attempt = { ok: true; value: unknown } | { ok: false };
-  const attempt = (run: () => unknown): Attempt => {
-    try { return { ok: true, value: run() }; } catch { return { ok: false }; }
-  };
-  for (const [name, fixture] of fixtures) {
-    const apiSide = attempt(() => parsePluginPreview(structuredClone(fixture)));
-    const panelSide = attempt(() => parsePluginPreviewEnvelope(structuredClone(fixture)));
-    assert.equal(panelSide.ok, apiSide.ok, `${name}：面板解析器与 api-client 解析器的接受/拒绝必须一致`);
-    if (apiSide.ok && panelSide.ok) {
-      assert.deepEqual(panelSide.value, apiSide.value, `${name}：两侧映射字段必须一致`);
-    }
-  }
 });
 
 // ---- jsdom interaction: paste → submit → preview card / error state ----
@@ -196,7 +117,10 @@ function submitForm(form: HTMLFormElement) {
 }
 
 test('插件面板管理员可提交清单地址并渲染预览结果', async () => {
-  const { client, captured } = stubClient(async () => previewEnvelope());
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET') return { success: true, data: [] };
+    return previewEnvelope();
+  });
   const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
   try {
     const input = document.querySelector('input[type="url"]') as HTMLInputElement | null;
@@ -205,10 +129,10 @@ test('插件面板管理员可提交清单地址并渲染预览结果', async ()
     const form = document.querySelector('form');
     assert.ok(form, 'preview form renders');
     await act(async () => { submitForm(form); });
-    assert.equal(captured.length, 1, 'one preview request fires');
-    assert.equal(captured[0]!.method, 'POST');
-    assert.equal(captured[0]!.path, '/api/v1/plugins/installations/preview');
-    assert.deepEqual(captured[0]!.body, { manifest_url: 'https://plugins.example.com/manifest.json' });
+    const previewRequests = captured.filter((entry) => entry.path === '/api/v1/plugins/installations/preview');
+    assert.equal(previewRequests.length, 1, 'one preview request fires');
+    assert.equal(previewRequests[0]!.method, 'POST');
+    assert.deepEqual(previewRequests[0]!.body, { manifest_url: 'https://plugins.example.com/manifest.json' });
     const card = document.querySelector('[data-testid="plugin-preview-card"]');
     assert.ok(card, 'the preview card renders');
     const text = card?.textContent ?? '';
@@ -285,13 +209,172 @@ test('插件面板对网络类普通错误给出统一中文文案（console.war
   }
 });
 
-test('插件面板拒绝空 URL 提交且不发请求', async () => {
+test('插件面板拒绝空 URL 提交且不发预览请求', async () => {
   const { client, captured } = stubClient(async () => previewEnvelope());
   const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
   try {
     await act(async () => { submitForm(document.querySelector('form')!); });
-    assert.equal(captured.length, 0, 'no request fires for an empty URL');
+    assert.equal(captured.filter((entry) => entry.path === '/api/v1/plugins/installations/preview').length, 0, 'no preview request fires for an empty URL');
     assert.match(document.querySelector('[data-testid="plugin-preview-error"]')?.textContent ?? '', /请输入/);
+  } finally {
+    await unmount(root);
+  }
+});
+
+// ---- T08: 确认安装 / 已安装列表 / 停用启用 / 卸载范围明示 ----
+
+const jiraSummary = {
+  installation_id: 'inst-1',
+  plugin_id: 'com.example.jira-todo',
+  name: 'Jira 本周待办',
+  version: '1.2.0',
+  state: 'active',
+  drift_state: 'none',
+  requires_personal_auth: true,
+  tool_count: 2,
+};
+
+function installationEnvelope(): unknown {
+  return {
+    success: true,
+    data: {
+      installation_id: 'inst-1',
+      plugin_id: 'com.example.jira-todo',
+      name: 'Jira 本周待办',
+      description: '个人待办视角',
+      version: '1.2.0',
+      state: 'active',
+      drift_state: 'none',
+      transport_type: 'http-streamable',
+      endpoint_url: 'https://plugins.example.com/jira-todo/v1.2.0/mcp',
+      service_id: 'svc-1',
+      tools: [
+        { name: 'search_my_week_issues', description: '搜索本周待办', read_only: true, requires_personal_auth: true, scopes: ['read:jira-work'], enabled: true },
+        { name: 'create_todo', description: '创建待办', read_only: false, requires_personal_auth: true, scopes: null, enabled: false },
+      ],
+    },
+  };
+}
+
+async function flushEffects(times = 4) {
+  for (let i = 0; i < times; i += 1) await act(async () => {});
+}
+
+function findButtonByText(root: ParentNode, text: string): HTMLButtonElement | null {
+  const buttons = Array.from(root.querySelectorAll('button'));
+  return buttons.find((button) => (button.textContent ?? '').trim() === text) ?? null;
+}
+
+test('预览卡出现确认安装按钮：点击消费 preview_id，列表出现该插件且版本正确', async () => {
+  const installed: unknown[] = [];
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [...installed] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations') {
+      installed.push({ ...jiraSummary });
+      return installationEnvelope();
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/preview') {
+      return previewEnvelope();
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    await act(async () => { setInputValue(document.querySelector('input[type="url"]') as HTMLInputElement, 'https://plugins.example.com/manifest.json'); });
+    await act(async () => { submitForm(document.querySelector('form')!); });
+    const card = document.querySelector('[data-testid="plugin-preview-card"]');
+    assert.ok(card, 'the preview card renders');
+    const confirmButton = findButtonByText(card as ParentNode, '确认安装');
+    assert.ok(confirmButton, 'the confirm-install button renders on the preview card');
+    await act(async () => { confirmButton!.click(); });
+    await flushEffects();
+    const confirmRequest = captured.find((entry) => entry.method === 'POST' && entry.path === '/api/v1/plugins/installations');
+    assert.ok(confirmRequest, 'a confirm request fires');
+    assert.deepEqual(confirmRequest!.body, { preview_id: 'p-1' }, 'the confirm body carries the preview card preview_id');
+    const list = document.querySelector('[data-testid="plugin-installations"]');
+    assert.ok(list, 'the installed list renders');
+    const text = list?.textContent ?? '';
+    assert.match(text, /Jira 本周待办/);
+    assert.match(text, /1\.2\.0/);
+    assert.ok(!document.querySelector('[data-testid="plugin-preview-card"]'), 'the consumed preview card is dismissed after a confirmed install');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('管理员列表行有停用按钮：点击调用 disable 端点并更新状态徽标', async () => {
+  const rows: unknown[] = [{ ...jiraSummary }];
+  const { client, captured } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [...rows] };
+    }
+    if (input.method === 'POST' && input.path === '/api/v1/plugins/installations/inst-1/disable') {
+      rows[0] = { ...jiraSummary, state: 'disabled' };
+      const disabled = installationEnvelope() as { data: Record<string, unknown> };
+      disabled.data.state = 'disabled';
+      return disabled;
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await flushEffects();
+    const list = document.querySelector('[data-testid="plugin-installations"]');
+    assert.ok(list, 'the installed list renders');
+    assert.match(list?.textContent ?? '', /启用中/, 'an active installation carries the active badge');
+    assert.match(list?.textContent ?? '', /无漂移/, 'the drift badge renders');
+    const disableButton = findButtonByText(list as ParentNode, '停用');
+    assert.ok(disableButton, 'the admin list row carries a disable button');
+    await act(async () => { disableButton!.click(); });
+    await flushEffects();
+    assert.equal(captured.filter((entry) => entry.path === '/api/v1/plugins/installations/inst-1/disable').length, 1, 'the disable endpoint fires exactly once');
+    const refreshed = document.querySelector('[data-testid="plugin-installations"]')?.textContent ?? '';
+    assert.match(refreshed, /已停用/, 'the state badge flips to disabled');
+    assert.ok(findButtonByText(document, '启用'), 'an enable button replaces the disable button');
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('viewer 列表只读：无停用/启用/确认安装操作', async () => {
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary }] };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'viewer' }));
+  try {
+    await flushEffects();
+    const html = document.body.innerHTML;
+    assert.match(html, /Jira 本周待办/, 'the viewer still discovers the installed plugin');
+    assert.match(html, /1\.2\.0/, 'the viewer sees the accepted version');
+    assert.match(html, /启用中/, 'the viewer sees the state badge');
+    for (const forbidden of ['停用', '启用', '确认安装']) {
+      assert.ok(!findButtonByText(document, forbidden), `viewer must not see the ${forbidden} action`);
+    }
+  } finally {
+    await unmount(root);
+  }
+});
+
+test('卸载范围明示：面板不出现卸载/删除插件的入口与文案（停用即治理终点）', async () => {
+  const { client } = stubClient(async (input) => {
+    if (input.method === 'GET' && input.path === '/api/v1/plugins/installations') {
+      return { success: true, data: [{ ...jiraSummary, state: 'disabled' }] };
+    }
+    throw new Error(`unexpected request ${input.method} ${input.path}`);
+  });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'owner' }));
+  try {
+    await flushEffects();
+    const html = document.body.innerHTML;
+    assert.doesNotMatch(html, /卸载/, 'no uninstall entry or copy surfaces');
+    assert.doesNotMatch(html, /删除插件/, 'no delete-plugin copy surfaces');
+    assert.equal(Array.from(document.querySelectorAll('button')).filter((button) => (button.textContent ?? '').includes('删除')).length, 0, 'no delete buttons render');
   } finally {
     await unmount(root);
   }

@@ -1,20 +1,29 @@
 import * as React from "react";
-import { useState } from "react";
-import type { ClientRequest, WeKnoraClient } from "@weknora/api-client";
+import { useEffect, useState } from "react";
+import type { WeKnoraClient } from "@weknora/api-client";
 import { Button, Input, Status } from "@weknora/ui";
 import { roleAtLeast } from "@weknora/views/settings/registry";
+// 单一来源解析器/请求构造（T08 收敛）：packages/api-client/src/plugins.ts 的
+// 严格 envelope 契约直接深路径复用（生产先例 SandboxSettingsPanel.tsx 对
+// packages/views/src/settings/registry.ts），不再维护面板层镜像副本——转交
+// 发现 T06-OCR3-F1/T03-OCR1-F1/T07-OCR1-F1/T09-OCR1-F3 的统一解法。
+import {
+  createPluginsApi,
+  type PluginInstallationSummary,
+  type PluginPreviewResult,
+} from "../../../../packages/api-client/src/plugins.ts";
 
 /**
- * 管理端插件清单预览面板（Issue #108 / 计划 T03）。
+ * 管理端插件面板（Issue #108/#110 / 计划 T03 + T08）。
  *
- * 空间管理员粘贴插件清单 URL → POST /api/v1/plugins/installations/preview
- * → 展示平台核验后的预览卡（插件名/版本/端点/工具表/读写与需授权徽标/
- * 有效期）与错误态。本面板不含“确认安装”按钮（T08 加入）。
+ * 空间管理员粘贴插件清单 URL → 核验预览 → 在预览卡上「确认安装」（消费
+ * preview_id，POST /plugins/installations）→ 已安装列表出现该插件（版本/
+ * 状态/漂移徽标），管理侧可停用/启用。卸载范围明示（计划 Task 8 Step 3
+ * 与 rulings.md R4）：本版不提供插件删除入口，用户可见的治理终点是
+ * 「停用」——停用后 Agent 不再调用，成员连接与审计记录保留。
  *
- * schema 展示取舍（Spec US9，计划 Task 3 Step 7 明示）：平台核验、界面
- * 不渲染原文——后端仅在清单声明的 input_schema_digest 与远端实际目录的
- * digest 完全一致时才产生此预览（不一致整卡拒绝），因此界面只展示工具
- * 元数据与“schema 指纹已核验”徽标，远端 schema JSON 原文不进管理界面。
+ * schema 展示取舍（Spec US9）：平台核验、界面不渲染原文——后端仅在清单
+ * 声明的 input_schema_digest 与远端实际目录 digest 一致时才产生预览。
  *
  * i18n 说明：本面板文案为直书中文字面量——packages/i18n 不在本任务文件
  * 所有权内，i18n key 迁移由后续任务统一（先例：McpSettingsPanel 走
@@ -27,106 +36,15 @@ const pluginBadgeInfo = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#e8f1ff
 const pluginBadgeWarn = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#fffaeb] text-[#b54708]";
 const pluginBadgeMuted = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#f2f4f8] text-[#66758b]";
 
-const PREVIEW_PATH = "/api/v1/plugins/installations/preview";
-
-type RecordValue = Record<string, unknown>;
-
-/** 面板层预览视图（与 api-client PluginPreviewResult 同构）。 */
-export interface PluginPreviewView {
-  readonly previewId: string;
-  readonly pluginId: string;
-  readonly version: string;
-  readonly name: string;
-  readonly description: string;
-  readonly transportType: string;
-  readonly endpointUrl: string;
-  readonly tools: ReadonlyArray<{
-    readonly name: string;
-    readonly description: string;
-    readonly readOnly: boolean;
-    readonly requiresPersonalAuth: boolean;
-    readonly scopes: readonly string[];
-  }>;
-  readonly identityFingerprint: string;
-  readonly expiresAt: string;
-}
-
-function record(value: unknown, path: string): RecordValue {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error(`${path} must be an object`);
-  return value as RecordValue;
-}
-
-function required(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.trim() === "") throw new Error(`${path} must be a non-empty string`);
-  return value;
-}
-
-function text(value: unknown, path: string): string {
-  if (typeof value !== "string") throw new Error(`${path} must be a string`);
-  return value;
-}
-
-function flag(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") throw new Error(`${path} must be a boolean`);
-  return value;
-}
-
-function scopes(value: unknown, path: string): string[] {
-  // Go nil slice 序列化为 null：声明无 scope 的工具合法。
-  if (value === null || value === undefined) return [];
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) throw new Error(`${path} must be a string array`);
-  return value as string[];
-}
-
-/**
- * 面板层严格 envelope 解析器——镜像 packages/api-client/src/plugins.ts 的
- * parsePluginPreview（该导出尚未挂进 @weknora/api-client 入口清单，T08
- * 挂载 client.plugins 后收敛为单一来源）。拒绝非 success envelope 与任何
- * 缺失/畸形字段，远端不可信数据不直接进入渲染树。
- */
-export function parsePluginPreviewEnvelope(value: unknown): PluginPreviewView {
-  const envelope = record(value, PREVIEW_PATH);
-  if (envelope.success !== true) throw new Error(`${PREVIEW_PATH}.success must be true`);
-  const data = record(envelope.data, `${PREVIEW_PATH}.data`);
-  const transportType = required(data.transport_type, `${PREVIEW_PATH}.data.transport_type`);
-  if (transportType !== "http-streamable" && transportType !== "sse") throw new Error(`${PREVIEW_PATH}.data.transport_type is invalid`);
-  const toolRows = data.tools;
-  if (!Array.isArray(toolRows)) throw new Error(`${PREVIEW_PATH}.data.tools must be an array`);
-  const tools = toolRows.map((item, index) => {
-    const row = record(item, `${PREVIEW_PATH}.data.tools[${index}]`);
-    return {
-      name: required(row.name, `${PREVIEW_PATH}.data.tools[${index}].name`),
-      description: text(row.description, `${PREVIEW_PATH}.data.tools[${index}].description`),
-      readOnly: flag(row.read_only, `${PREVIEW_PATH}.data.tools[${index}].read_only`),
-      requiresPersonalAuth: flag(row.requires_personal_auth, `${PREVIEW_PATH}.data.tools[${index}].requires_personal_auth`),
-      scopes: scopes(row.scopes, `${PREVIEW_PATH}.data.tools[${index}].scopes`),
-    };
-  });
-  return {
-    previewId: required(data.preview_id, `${PREVIEW_PATH}.data.preview_id`),
-    pluginId: required(data.plugin_id, `${PREVIEW_PATH}.data.plugin_id`),
-    version: required(data.version, `${PREVIEW_PATH}.data.version`),
-    name: required(data.name, `${PREVIEW_PATH}.data.name`),
-    description: text(data.description, `${PREVIEW_PATH}.data.description`),
-    transportType,
-    endpointUrl: required(data.endpoint_url, `${PREVIEW_PATH}.data.endpoint_url`),
-    tools,
-    identityFingerprint: required(data.identity_fingerprint, `${PREVIEW_PATH}.data.identity_fingerprint`),
-    expiresAt: required(data.expires_at, `${PREVIEW_PATH}.data.expires_at`),
-  };
-}
-
-/** 构造预览 POST 请求（纯函数，供测试与组件共用）。 */
-export function pluginPreviewRequest(manifestUrl: string): ClientRequest {
-  const url = manifestUrl.trim();
-  if (url === "") throw new Error("manifestUrl must not be empty");
-  return { method: "POST", path: PREVIEW_PATH, body: { manifest_url: url } };
-}
-
 /** 预览有效期本地化；非法时间串原样回显（不猜测远端数据语义）。 */
 export function formatPreviewExpiry(expiresAt: string, locale = "zh-CN"): string {
   const date = new Date(expiresAt);
   return Number.isNaN(date.getTime()) ? expiresAt : date.toLocaleString(locale);
+}
+
+/** ApiError（后端/网络拒绝）原文透传；其余错误统一中文并 console.warn 留痕。 */
+function apiErrorMessage(cause: unknown): string | null {
+  return cause instanceof Error && cause.name === "ApiError" ? cause.message : null;
 }
 
 type Props = {
@@ -138,9 +56,35 @@ export function PluginsSettingsPanel({ client, role }: Props) {
   // registry 条目 minRole=admin：viewer 不给提交面（rank 比较，owner 同样可预览）。
   const canEdit = roleAtLeast(role, "admin");
   const [manifestUrl, setManifestUrl] = useState("");
-  const [preview, setPreview] = useState<PluginPreviewView | null>(null);
+  const [preview, setPreview] = useState<PluginPreviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [installations, setInstallations] = useState<readonly PluginInstallationSummary[]>([]);
+  const [listError, setListError] = useState<string | null>(null);
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
+
+  const pluginsApi = createPluginsApi((input) => client.request(input));
+
+  const refreshInstallations = React.useCallback(async () => {
+    try {
+      setInstallations(await pluginsApi.listInstallations());
+      setListError(null);
+    } catch (cause) {
+      const message = apiErrorMessage(cause);
+      if (message === null) {
+        console.warn("plugin installations load failed:", cause);
+        setListError("已安装插件加载失败");
+      } else {
+        setListError(message);
+      }
+    }
+  }, [client]);
+
+  useEffect(() => {
+    void refreshInstallations();
+  }, [refreshInstallations]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -153,23 +97,69 @@ export function PluginsSettingsPanel({ client, role }: Props) {
     }
     setBusy(true);
     setError(null);
+    setConfirmError(null);
     try {
-      const envelope = await client.request(pluginPreviewRequest(url));
-      setPreview(parsePluginPreviewEnvelope(envelope));
+      setPreview(await pluginsApi.previewInstallation(url));
     } catch (cause) {
       setPreview(null);
       // 错误分类（OCR low）：后端/网络经 request 抛 ApiError，message 是后端
       // 可读文案（SSRF 拒绝等）——沿用 McpSettingsPanel 原文透传先例；解析器
       // 自产的英文诊断串（含内部 API 路径）属客户端自身校验失败，不进中文
       // 管理界面——统一中文文案，原始错误 console.warn 留痕。
-      if (cause instanceof Error && cause.name === "ApiError") {
-        setError(cause.message);
-      } else {
+      const message = apiErrorMessage(cause);
+      if (message === null) {
         console.warn("plugin preview failed:", cause);
         setError("插件清单预览失败：核验未通过");
+      } else {
+        setError(message);
       }
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function confirmInstall() {
+    if (!preview || confirming || !canEdit) return;
+    setConfirming(true);
+    setConfirmError(null);
+    try {
+      await pluginsApi.confirmInstallation(preview.previewId);
+      // 预览已消费：撤卡并刷新已安装列表（列表将出现该插件与已接受版本）。
+      setPreview(null);
+      await refreshInstallations();
+    } catch (cause) {
+      const message = apiErrorMessage(cause);
+      if (message === null) {
+        console.warn("plugin confirm failed:", cause);
+        setConfirmError("确认安装失败，请重试");
+      } else {
+        setConfirmError(message);
+      }
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  async function toggleState(item: PluginInstallationSummary) {
+    if (!canEdit || actionBusyId !== null) return;
+    setActionBusyId(item.installationId);
+    setListError(null);
+    try {
+      await pluginsApi.setInstallationState(
+        item.installationId,
+        item.state === "active" ? "disabled" : "active",
+      );
+      await refreshInstallations();
+    } catch (cause) {
+      const message = apiErrorMessage(cause);
+      if (message === null) {
+        console.warn("plugin state change failed:", cause);
+        setListError("插件状态变更失败，请重试");
+      } else {
+        setListError(message);
+      }
+    } finally {
+      setActionBusyId(null);
     }
   }
 
@@ -179,7 +169,7 @@ export function PluginsSettingsPanel({ client, role }: Props) {
         <div>
           <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal] text-[rgb(0_0_0_/_90%)]">插件管理</h2>
           <p className="wk-muted m-0 text-[14px] leading-[1.6] text-[rgb(0_0_0_/_60%)]">
-            粘贴插件清单地址，核验并预览远端声明的插件版本与工具目录
+            粘贴插件清单地址，核验并预览远端声明的插件版本与工具目录；确认后安装到本空间
           </p>
         </div>
       </div>
@@ -271,8 +261,69 @@ export function PluginsSettingsPanel({ client, role }: Props) {
               </tbody>
             </table>
           </div>
+          {canEdit ? (
+            <div className="flex flex-wrap items-center gap-3 border-t border-[#eef1f5] p-3">
+              <Button type="button" variant="primary" loading={confirming} onClick={() => void confirmInstall()}>
+                确认安装
+              </Button>
+              <span className="text-[12px] leading-[18px] text-[#66758b]">
+                确认后为本空间固定安装该版本（写入工具默认停用）；预览随即失效
+              </span>
+              {confirmError ? (
+                <span data-testid="plugin-confirm-error">
+                  <Status tone="error">确认失败：{confirmError}</Status>
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </article>
       ) : null}
+      <section aria-label="已安装插件" data-testid="plugin-installations" className="grid gap-2">
+        <h3 className="m-0 text-[15px] font-semibold leading-[21px]">已安装插件</h3>
+        <p className="wk-muted m-0 text-[12px] leading-[18px] text-[#66758b]">
+          插件治理以停用为终点：停用后 Agent 不再调用该插件，成员连接与审计记录保留。
+        </p>
+        {listError ? <Status tone="error">已安装插件加载失败：{listError}</Status> : null}
+        {installations.length === 0 ? (
+          <Status>暂无已安装插件</Status>
+        ) : (
+          <ul className="m-0 grid list-none gap-2 p-0">
+            {installations.map((item) => (
+              <li
+                key={item.installationId}
+                className="flex flex-wrap items-center gap-2 rounded-[10px] border border-[#dce3ed] bg-white p-3 text-[13px] leading-[20px]"
+              >
+                <span className="min-w-0 font-medium [overflow-wrap:anywhere]">{item.name}</span>
+                <code className="text-[12px] text-[#66758b] [overflow-wrap:anywhere]">{item.pluginId}</code>
+                <span className={pluginBadgeInfo}>{item.version}</span>
+                {item.state === "active" ? (
+                  <span className={pluginBadgeOk}>启用中</span>
+                ) : (
+                  <span className={pluginBadgeMuted}>已停用</span>
+                )}
+                {item.driftState === "detected" ? (
+                  <span className={pluginBadgeWarn}>检测到漂移</span>
+                ) : (
+                  <span className={pluginBadgeMuted}>无漂移</span>
+                )}
+                {item.requiresPersonalAuth ? <span className={pluginBadgeInfo}>需个人授权</span> : null}
+                <span className="text-[#66758b]">{item.toolCount} 个工具</span>
+                {canEdit ? (
+                  <span className="ml-auto">
+                    <Button
+                      type="button"
+                      loading={actionBusyId === item.installationId}
+                      onClick={() => void toggleState(item)}
+                    >
+                      {item.state === "active" ? "停用" : "启用"}
+                    </Button>
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </section>
   );
 }

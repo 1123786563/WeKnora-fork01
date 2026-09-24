@@ -1,4 +1,4 @@
-export type IntegrationKey = 'im' | 'embed' | 'api' | 'cli' | 'chrome' | 'claw';
+export type IntegrationKey = 'im' | 'embed' | 'api' | 'cli' | 'chrome' | 'claw' | 'plugins';
 export type IntegrationOperation = 'manage' | 'open' | 'external';
 
 export interface IntegrationSection {
@@ -19,6 +19,12 @@ export const INTEGRATION_SECTIONS: readonly IntegrationSection[] = [
   { key: 'cli', viewId: 'CliIntegrationLanding', apiDomain: null, minRole: 'viewer', external: true, externalUrl: 'https://github.com/Tencent/WeKnora/blob/main/cli/README.md', operations: ['external', 'open'] },
   { key: 'chrome', viewId: 'ChromeExtensionLanding', apiDomain: null, minRole: 'viewer', external: true, externalUrl: 'https://chromewebstore.google.com/detail/jpemjbopikggjlmikmclgbmkhhopjdgd', operations: ['external', 'open'] },
   { key: 'claw', viewId: 'ClawSkillLanding', apiDomain: null, minRole: 'viewer', external: true, externalUrl: 'https://clawhub.ai/lyingbug/weknora', operations: ['external', 'open'] },
+  // T08 (issue #110): member plugin discovery — every workspace member sees
+  // WHAT is installed; the read surface lives in apps/web/src/integrations/
+  // PluginsPanel.tsx. No capability: the section ships with the integrations
+  // page by default (same tier as im/embed); governance actions stay on the
+  // admin settings panel, never here.
+  { key: 'plugins', viewId: 'PluginDiscoverPanel', apiDomain: null, minRole: 'viewer', external: false, operations: ['manage'] },
 ] as const;
 
 export function integrationKeyFromQuery(search: string): IntegrationKey {

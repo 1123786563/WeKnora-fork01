@@ -36,6 +36,11 @@ const HEADING_KEYS: Record<IntegrationKey, string> = {
   cli: 'integrations.cli.title',
   chrome: 'integrations.chrome.title',
   claw: 'integrations.claw.title',
+  // T08 (issue #110): member plugin discovery copy — the i18n entries and the
+  // panel mounting in the integrations page are wired by a later slice that
+  // owns the i18n tables / page.tsx tab content; the key resolves to itself
+  // until then and no current consumer renders this tab.
+  plugins: 'integrations.plugins.title',
 };
 
 const DESCRIPTION_KEYS: Record<IntegrationKey, string> = {
@@ -45,6 +50,7 @@ const DESCRIPTION_KEYS: Record<IntegrationKey, string> = {
   cli: 'integrations.cli.subtitle',
   chrome: 'integrations.chrome.subtitle',
   claw: 'integrations.claw.subtitle',
+  plugins: 'integrations.plugins.subtitle',
 };
 
 interface ChannelListKeys {
