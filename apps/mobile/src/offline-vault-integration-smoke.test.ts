@@ -1,12 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { emitOfflineVaultIntegrationEvidence, offlineVaultIntegrationConfig, runOfflineVaultIntegration } from './offline-vault-integration-smoke.ts';
 
 const env = () => process.env as Record<string, string | undefined>;
-const here = dirname(fileURLToPath(import.meta.url));
 
 test('integration stays opt-in: missing credentials skip, never fake a pass', () => {
   const config = offlineVaultIntegrationConfig({ ...env(), WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: undefined });
@@ -39,9 +35,20 @@ test('live end-to-end offline cache, gate and confirmation through the highest s
   assert.equal(evidence.onlineResync, 'recovered', 'an explicit resync recovers the authoritative view once back online');
 });
 
-test('the integration runner is total: a failing transport still yields evidence, not a rejection', () => {
-  const source = readFileSync(join(here, 'offline-vault-integration-smoke.ts'), 'utf8');
-  assert.match(source, /finally\s*\{/);
-  assert.match(source, /catch \(error\)/);
-  assert.match(source, /errorReason/, 'failures land in the evidence contract');
+test('the integration runner is total: a failing transport still yields evidence, not a rejection', async () => {
+  // RFC 2606 保留 TLD（.invalid）永不解析：等价 transport 层故障，不触达任何真实部署。
+  const config = offlineVaultIntegrationConfig({
+    WEKNORA_MOBILE_TEST_DEPLOYMENT_URL: 'https://integration-smoke-unreachable.invalid',
+    WEKNORA_MOBILE_TEST_EMAIL: 'e',
+    WEKNORA_MOBILE_TEST_PASSWORD: 'p',
+  });
+  assert.equal(config.enabled, true);
+  const evidence = await runOfflineVaultIntegration(config); // 行为断言：await 不 reject
+  assert.equal(evidence.deploymentOrigin, 'https://integration-smoke-unreachable.invalid');
+  assert.equal(evidence.onlineStart, 'failed');
+  assert.equal(typeof evidence.errorReason, 'string');
+  const emitted: string[] = [];
+  emitOfflineVaultIntegrationEvidence(evidence, (record) => { emitted.push(record); });
+  assert.equal(emitted.length, 1);
+  assert.equal(JSON.parse(emitted[0]!).onlineStart, 'failed');
 });
