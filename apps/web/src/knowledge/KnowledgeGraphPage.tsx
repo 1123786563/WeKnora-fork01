@@ -83,7 +83,9 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
         if (!active) return;
         setKbMeta(kb as KBSurfaceKB);
         setCanManage(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
-        setKbList((list as { id: unknown; name: unknown }[]).map((item) => ({ id: String(item.id), name: String(item.name) })));
+        // Vue KBSwitcherDropdown iconFor(item.type)：faq→chat-bubble-help、其余
+        // folder——type 不透传会让首行图标回落 folder（tab=graph 面包屑残差根因）。
+        setKbList((list as { id: unknown; name: unknown; type?: unknown }[]).map((item) => ({ id: String(item.id), name: String(item.name), type: typeof item.type === "string" ? item.type : undefined })));
         setParserEngines((engines.data ?? []) as { Name: string; FileTypes?: string[]; Available?: boolean }[]);
       })
       .catch(() => {

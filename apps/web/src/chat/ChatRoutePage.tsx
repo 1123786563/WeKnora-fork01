@@ -22,6 +22,8 @@ import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
 import type { ChatMentionView, ChatSubmission } from '@weknora/views/chat/composer';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
+import { navigate } from '../platform/navigation.ts';
+import { MessagePlugin } from 'tdesign-react';
 import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
 // R490 B1 — Vue Input-field.vue agent-scoped KB filter for the @ mention popup.
 import { deriveKbFilterForAgent, isKbModelReady, mergeSharedKbsForMention, resolveMentionAgentKbScope } from './mention-agent-filter.ts';
@@ -958,6 +960,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       title: formatManualBookmarkTitle(question.trim(), copy.bookmarkSessionExcerpt),
       content: buildManualBookmarkContent(answer, copy.bookmarkNoAnswerContent),
     });
+    // Vue botmsg.vue:391 MessagePlugin.info(t('chat.editorOpened')) — the
+    // body-level t-message info toast that rides on top of the opened editor
+    // drawer (px-chat-addtokb parity). main.tsx installs the react-19 adapter
+    // so the imperative API works under React 19.
+    MessagePlugin.info(copy.bookmarkEditorOpened);
   }, [messages, copy]);
 
   const onRateMessage = useCallback(async (messageId: string, rating: FeedbackRating): Promise<void> => {    setRatings((prev) => ({ ...prev, [messageId]: rating }));
@@ -1893,6 +1900,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       disabled: disabledAgentIds.includes(agent.id),
       description: typeof agent.description === 'string' ? agent.description : undefined,
       is_builtin: agent.is_builtin,
+      // Vue AgentSelector builtin-avatar 分支（v-else-if="agent.avatar"）：emoji 头像
+      avatar: typeof agent.avatar === 'string' && agent.avatar ? agent.avatar : undefined,
       config: agent.config,
     }))}
     selectedAgentId={selectedAgentId}
@@ -1923,6 +1932,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setUserModelPick(modelId);
       setSelectedModelId(modelId);
     }}
+    onModelAdd={() => { navigate('/platform/settings?section=models&subsection=chat'); }}
     headerUtilityItems={headerUtilityItems}
     headerSlot={selectedSessionId ? (
       <ChatHeader
@@ -1950,8 +1960,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         operationFailed={copy.operationFailed}
       />
     ) : undefined}
-    sandboxToggleSlot={(
-      <SandboxHeaderToggle copy={copy} label={copy.openSandboxPanel} onOpen={() => void openTerminal()} />
+    sandboxToggleSlot={(open) => (
+      /* px-chat-sandbox：Vue sandboxPanel.open() 是即时状态翻转，无异步
+         provision（供给发生在终端 tab 激活时）——open 回调直接开面板。 */
+      <SandboxHeaderToggle copy={copy} label={copy.openSandboxPanel} onOpen={open} />
     )}
     starterQuestions={starterQuestions}
     onForkMessage={forkAtMessage}
@@ -2014,6 +2026,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onCitationClick={openCitation}
     onArtifactDownload={downloadArtifact}
     onArtifactPreview={previewArtifact}
+    onArtifactDownloadPanel={(item) => { void downloadArtifact(item.messageId, item.index); }}
+    onArtifactPreviewPanel={(item) => { void previewArtifact(item.messageId, item.index); }}
     terminal={selectedSessionId ? terminal : undefined}
     onOpenTerminal={selectedSessionId ? openTerminal : undefined}
     onTerminalInput={selectedSessionId ? terminalInput : undefined}

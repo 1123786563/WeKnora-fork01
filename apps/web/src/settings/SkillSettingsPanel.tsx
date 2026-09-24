@@ -14,6 +14,7 @@ import { initialSkillTimelineState, installProgressPercent, reduceSkillTimelineF
 import { WkCard as Card, WkStatus as Status } from '../shared/wk-legacy.tsx';
 import { AddIcon, DeleteIcon, FolderIcon, Icon as TIcon } from 'tdesign-icons-react';
 import { Button as TButton, Checkbox as TCheckbox, Dialog as TDialog, Empty as TEmpty, Input as TInput, Loading as TLoading, Popup as TPopup, Select as TSelect, Switch as TSwitch, Textarea as TTextarea, Tooltip as TTooltip } from 'tdesign-react';
+import { SettingDrawer } from './SettingDrawer.tsx';
 import { renderChatMarkdown } from '../../../../packages/views/src/chat/markdown.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { pushSettingsToast } from './settings-toast.tsx';
@@ -176,53 +177,6 @@ function useSkillDrawerDialog(): { dialogClassName: string; width: string } {
   return { dialogClassName: 'wk-skill-drawer' + (resizing ? ' is-resizing' : ''), width: width + 'px' };
 }
 
-function DrawerShell({ open, spec, children }: { open: boolean; spec: DrawerWidthSpec; children: React.ReactNode }) {
-  const [width, setWidth] = useState(spec.defaultWidth);
-  const [resizing, setResizing] = useState(false);
-  const widthRef = useRef(width);
-  widthRef.current = width;
-
-  useEffect(() => {
-    if (!open) return;
-    setWidth(readStoredDrawerWidth(spec));
-    const onWindowResize = () => setWidth((current) => clampDrawerWidth(current, spec));
-    window.addEventListener('resize', onWindowResize);
-    return () => window.removeEventListener('resize', onWindowResize);
-  }, [open, spec]);
-
-  function onHandleDown(event: React.MouseEvent) {
-    event.preventDefault();
-    const start = { x: event.clientX, width: widthRef.current };
-    setResizing(true);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    const onMove = (move: MouseEvent) => setWidth(clampDrawerWidth(start.width + (start.x - move.clientX), spec));
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      setResizing(false);
-      try {
-        window.localStorage.setItem(spec.storageKey, String(clampDrawerWidth(widthRef.current, spec)));
-      } catch {
-        // localStorage can throw in private mode / quota errors.
-      }
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }
-
-  return <SkillDrawerWidthContext.Provider value={{ width, resizing }}>
-    <div className="wk-settings-context-contents">
-      {children}
-      {open ? <div className="wk-skill-drawer-handle" role="presentation" onMouseDown={onHandleDown}>
-        <div className={'wk-skill-drawer-handle__bar' + (resizing ? ' is-active' : '')} />
-      </div> : null}
-    </div>
-  </SkillDrawerWidthContext.Provider>;
-}
-
 const INSTALLER_AGENT_ID = 'builtin-skill-installer';
 const LAST_CHAT_MODEL_KEY = 'weknora_last_chat_model_id';
 const SKILL_POLL_INTERVAL_MS = 2500;
@@ -275,18 +229,6 @@ function SkillSectionHeader({ helpContent }: { helpContent: string }) {
  * badge (32px, radius 9, brand 10% tint) + 15px/600 title + 12px subtitle,
  * rendered inside the shared Dialog h2.
  */
-function DrawerTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) {
-  /* S6 Tailwind 收编：标题簇 utilities → settings.td.css skills 抽屉段
-     .wk-skill-drawer-heading 家族（TDialog portal 挂 body，unscoped）。 */
-  return <span className="wk-skill-drawer-heading">
-    <span className="wk-skill-drawer-heading__icon" aria-hidden="true">{icon}</span>
-    <span className="wk-skill-drawer-heading__text">
-      <span className="wk-skill-drawer-heading__title">{title}</span>
-      {subtitle ? <span className="wk-skill-drawer-heading__subtitle">{subtitle}</span> : null}
-    </span>
-  </span>;
-}
-
 function readLastChatModelId(): string {
   try {
     return typeof window === 'undefined' ? '' : (window.localStorage.getItem(LAST_CHAT_MODEL_KEY) || '');
@@ -869,7 +811,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
   onToast: (tone: 'success' | 'warning' | 'error', message: string) => void;
   onManage: (record: SandboxConfigRecord, skillId: string, catalogName: string) => void;
 }) {
-  const drawerDialog = useSkillDrawerDialog();
+
   const [step, setStep] = useState(0);
   const [registeredId, setRegisteredId] = useState('');
   const [source, setSource] = useState('');
@@ -995,70 +937,96 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
     }
   }
 
-  return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.add}>
-  <TDialog footer={false} visible={open} header={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={t('settings.skills.addSkill')} subtitle={stepDescription} />} {...drawerDialog} onClose={() => onClose(registeredId || undefined)}>
-    <nav className="skill-add-steps" aria-label={t('settings.skills.addProgress')}>
+  /* Vue SkillSettings.vue:132-265 添加向导走 SettingDrawer：#header-extra
+     步骤条、#footer-left 上一步、confirm 按主步语义（保存并下一步/安装）。 */
+  return <SettingDrawer
+    visible={open}
+    title={t('settings.skills.addSkill')}
+    description={stepDescription}
+    icon={SKILL_ICON}
+    width="680px" minWidth={560} maxWidth={920}
+    storageKey={SKILL_DRAWER_SPECS.add.storageKey}
+    confirmLoading={primaryLoading}
+    confirmDisabled={primaryDisabled}
+    confirmText={primaryText}
+    headerExtra={<nav className="skill-add-steps" aria-label={t('settings.skills.addProgress')}>
       {steps.map((title, index) => {
         const clickable = canJump(index);
-        return <button key={title} type="button" disabled={!clickable} aria-current={step === index ? 'step' : undefined}
-          className={`skill-add-step${step === index ? ' is-active' : ''}${step > index ? ' is-done' : ''}${clickable ? ' is-clickable' : ''}`}
-          onClick={() => { if (clickable) setStep(index); }}>
-          <span className="skill-add-step__marker">{step > index ? '✓' : index + 1}</span>
-          <span className="skill-add-step__title">{title}</span>
-        </button>;
+        /* Vue component :is（SkillSettings.vue:138-143）：可跳转才渲染 button，
+           否则 div——避免浏览器 button 默认样式（边框/内边距/13.33px 字号）
+           撑高步骤条（与 Vue 24px 行高差 6px，连带 body 整体下移）。 */
+        const marker = <span className="skill-add-step__marker">{step > index ? <TIcon name="check" /> : index + 1}</span>;
+        const titleSpan = <span className="skill-add-step__title">{title}</span>;
+        const line = index < steps.length - 1 ? <span className="skill-add-step__line" aria-hidden="true" /> : null;
+        const cls = `skill-add-step${step === index ? ' is-active' : ''}${step > index ? ' is-done' : ''}${clickable ? ' is-clickable' : ''}`;
+        return clickable
+          ? <button key={title} type="button" aria-current={step === index ? 'step' : undefined} className={cls}
+              onClick={() => setStep(index)}>
+              {marker}{titleSpan}{line}
+            </button>
+          : <div key={title} className={cls} aria-current={step === index ? 'step' : undefined}>
+              {marker}{titleSpan}{line}
+            </div>;
       })}
-    </nav>
+    </nav>}
+    footerLeft={step > 0 ? <TButton variant="outline" onClick={() => setStep((current) => Math.max(0, current - 1))}>{t('settings.sandbox.back')}</TButton> : undefined}
+    onConfirm={() => void handlePrimary()}
+    onVisibleChange={(visible) => { if (!visible) onClose(registeredId || undefined); }}
+  >
     {error ? <Status tone="error">{error}</Status> : null}
-    {step > 0 && parsedCard ? <article className="parsed-skill"><div className="parsed-skill__inner"><div className="parsed-skill__body">
-      <div className="parsed-skill__head">
-        <span className="parsed-skill__icon" aria-hidden="true">⚡</span>
-        <div className="parsed-skill__title-row">
-          <h3 className="parsed-skill__title" title={parsedCard.name}>{parsedCard.name}</h3>
-          {parsedCard.version ? <span className="parsed-skill__version">{parsedCard.version}</span> : null}
+    {step > 0 && parsedCard ? <article className="skill-card parsed-skill">
+      <div className="skill-card__main">
+        <div className="skill-card__body">
+          <div className="skill-card__header">
+            <div className="skill-card__badge" aria-hidden="true"><TIcon name={SKILL_ICON} size="14px" /></div>
+            <h3 className="skill-card__title" title={parsedCard.name}>{parsedCard.name}</h3>
+            {parsedCard.version ? <span className="skill-card__type">{parsedCard.version}</span> : null}
+          </div>
+          {parsedCard.description ? <p className="skill-card__desc" title={parsedCard.description}>{compactSkillText(parsedCard.description)}</p> : null}
         </div>
       </div>
-      {parsedCard.description ? <p className="parsed-skill__desc" title={parsedCard.description}>{compactSkillText(parsedCard.description)}</p> : null}
-    </div></div></article> : null}
+    </article> : null}
     {step === 0 ? <>
-      <section className="wk-settings-editor">
-        <h4>{t('settings.sandbox.skillSourceSection')}</h4>
-        <p className="wk-muted">{t('settings.sandbox.skillSourceSectionHint', { size: maxSkillBundleMB() })}</p>
-        <label>{t('settings.sandbox.skillSourcePlaceholder')}
-          <TInput value={source} placeholder={t('settings.sandbox.skillSourcePlaceholder')} disabled={addBusy || Boolean(registeredId)} onChange={(value) => setSource(String(value))} />
-        </label>
+      <section className="setting-drawer__section">
+        <h4 className="setting-drawer__section-title">{t('settings.sandbox.skillSourceSection')}</h4>
+        <p className="installer-model-hint">{t('settings.sandbox.skillSourceSectionHint', { size: maxSkillBundleMB() })}</p>
+        <TInput value={source} placeholder={t('settings.sandbox.skillSourcePlaceholder')} disabled={addBusy || Boolean(registeredId)} onChange={(value) => setSource(String(value))} />
       </section>
-      <section className="wk-settings-editor">
-        <h4>{t('settings.sandbox.skillUploadSection')}</h4>
-        <p className="wk-muted">{t('settings.sandbox.skillUploadSectionHint', { size: maxSkillBundleMB() })}</p>
-        <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="wk-sr-file-input" disabled={addBusy || Boolean(registeredId)} onChange={(event) => acceptFile(event.currentTarget.files?.[0] ?? null)} />
-        <div className={`wk-skill-dropzone${pendingFile ? ' is-filled' : ''}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); acceptFile(event.dataTransfer.files?.[0] ?? null); }}>
-          {uploading ? <SkillUploadProgress percent={uploadPercent} t={t} /> : pendingFile ? <span className="wk-skill-dropzone__selected">{t('settings.skills.addFileSelected', { name: pendingFile.name })}</span> : <>
-            <span className="wk-skill-dropzone__click">{t('settings.sandbox.skillUploadClick')}</span>
-            <span className="wk-skill-dropzone__drag">{t('settings.sandbox.skillUploadDrag')}</span>
-          </>}
+      <section className="setting-drawer__section">
+        <h4 className="setting-drawer__section-title">{t('settings.sandbox.skillUploadSection')}</h4>
+        <p className="installer-model-hint">{t('settings.sandbox.skillUploadSectionHint', { size: maxSkillBundleMB() })}</p>
+        <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="file-input-hidden" disabled={addBusy || Boolean(registeredId)} onChange={(event) => acceptFile(event.currentTarget.files?.[0] ?? null)} />
+        <div className={'file-upload-area file-upload-area--large' + (pendingFile ? ' has-file' : '') + (addBusy || registeredId ? ' is-disabled' : '')}
+          onClick={() => { if (!addBusy && !registeredId) fileInputRef.current?.click(); }}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => { event.preventDefault(); acceptFile(event.dataTransfer.files?.[0] ?? null); }}>
+          <div className="file-upload-content">
+            <div className="file-upload-icon-wrap" aria-hidden="true"><TIcon name="cloud-upload" size="32px" className="upload-icon" /></div>
+            <div className="upload-text">
+              {uploading ? <SkillUploadProgress percent={uploadPercent} t={t} /> : pendingFile ? <span className="upload-file-name">{t('settings.skills.addFileSelected', { name: pendingFile.name })}</span> : <>
+                <span className="upload-primary-text">{t('settings.sandbox.skillUploadClick')}</span>
+                <span className="upload-secondary-text">{t('settings.sandbox.skillUploadDrag')}</span>
+              </>}
+            </div>
+          </div>
         </div>
-        {pendingFile && !registeredId ? <TButton type="button" disabled={addBusy} onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}>{t('settings.skills.addClearFile')}</TButton> : null}
+        {pendingFile && !registeredId ? <TButton type="button" variant="text" size="small" disabled={addBusy} onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}>{t('settings.skills.addClearFile')}</TButton> : null}
       </section>
     </> : <>
-      {configs.length > 0 ? <section className="wk-settings-editor">
-        <h4>{t('settings.skills.pickSandboxes')}</h4>
-        <p className="wk-muted">{t('settings.skills.pickSandboxesHint')}</p>
+      {configs.length > 0 ? <section className="setting-drawer__section">
+        <h4 className="setting-drawer__section-title">{t('settings.skills.pickSandboxes')}</h4>
+        <p className="installer-model-hint">{t('settings.skills.pickSandboxesHint')}</p>
         <SandboxPickList client={client} item={pickItem} configs={configs} mode="all" sessionIds={sessionIds} targetIds={targetIds} onToggle={setPick} t={t}
           metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
           onManage={(record, installation) => { if (installation.skillId) onManage(record, installation.skillId, parsedCard?.name ?? ''); }} />
-      </section> : <p className="wk-muted">{t('settings.skills.emptyNoSandboxHint')}</p>}
-      {targetIds.length > 0 ? <section className="wk-settings-editor">
-        <h4>{t('settings.sandbox.skillInstallerModel')}</h4>
-        <p className="wk-muted">{t('settings.sandbox.skillInstallerModelHint')}</p>
+      </section> : <p className="installer-model-hint">{t('settings.skills.emptyNoSandboxHint')}</p>}
+      {targetIds.length > 0 ? <section className="setting-drawer__section">
+        <h4 className="setting-drawer__section-title">{t('settings.sandbox.skillInstallerModel')}</h4>
+        <p className="installer-model-hint">{t('settings.sandbox.skillInstallerModelHint')}</p>
         <InstallerModelSelect installer={installer} t={t} />
       </section> : null}
     </>}
-    <div className="wk-list-actions">
-      {step > 0 ? <TButton type="button" onClick={() => setStep((current) => Math.max(0, current - 1))}>{t('settings.sandbox.back')}</TButton> : null}
-      <TButton type="button" loading={primaryLoading} disabled={primaryDisabled} onClick={() => void handlePrimary()}>{primaryText}</TButton>
-    </div>
-  </TDialog>
-  </DrawerShell>;
+  </SettingDrawer>;
 }
 
 /** Install-onto-sandboxes drawer opened from a catalog chip (SkillSettings.vue:267-314, 1074-1104). */
@@ -1075,7 +1043,7 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
   onToast: (tone: 'success' | 'warning' | 'error', message: string) => void;
   onManage: (record: SandboxConfigRecord, skillId: string, catalogName: string) => void;
 }) {
-  const drawerDialog = useSkillDrawerDialog();
+
   const [targetIds, setTargetIds] = useState<string[]>([]);
   const [sessionIds, setSessionIds] = useState<string[]>([]);
   const [installing, setInstalling] = useState(false);
@@ -1124,24 +1092,31 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
     }
   }
 
-  return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.install}>
-  <TDialog footer={false} visible={open} header={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={t('settings.skills.installToSandbox')} subtitle={description} />} {...drawerDialog} onClose={onClose}>
+  /* Vue SkillSettings.vue:267-314 安装抽屉：SettingDrawer + confirm 主按钮。 */
+  return <SettingDrawer
+    visible={open}
+    title={t('settings.skills.installToSandbox')}
+    description={description}
+    icon={SKILL_ICON}
+    width="560px" minWidth={480} maxWidth={760}
+    storageKey={SKILL_DRAWER_SPECS.install.storageKey}
+    confirmLoading={installing}
+    confirmDisabled={confirmDisabled}
+    confirmText={confirmText}
+    onConfirm={() => void confirm()}
+    onVisibleChange={(visible) => { if (!visible) onClose(); }}
+  >
     {error ? <Status tone="error">{error}</Status> : null}
     <SandboxPickList client={client} item={item} configs={configs} mode="remaining" sessionIds={sessionIds} targetIds={targetIds}
       onToggle={(configId, checked) => setTargetIds((current) => (checked ? [...new Set([...current, configId])] : current.filter((id) => id !== configId)))} t={t}
       metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
       onManage={(record, installation) => { if (installation.skillId && item) onManage(record, installation.skillId, item.name); }} />
-    {targetIds.length > 0 ? <section className="wk-settings-editor">
-      <h4>{t('settings.sandbox.skillInstallerModel')}</h4>
-      <p className="wk-muted">{t('settings.sandbox.skillInstallerModelHint')}</p>
+    {targetIds.length > 0 ? <section className="setting-drawer__section">
+      <h4 className="setting-drawer__section-title">{t('settings.sandbox.skillInstallerModel')}</h4>
+      <p className="installer-model-hint">{t('settings.sandbox.skillInstallerModelHint')}</p>
       <InstallerModelSelect installer={installer} t={t} />
     </section> : null}
-    <div className="wk-list-actions">
-      <TButton type="button" onClick={onClose}>{t('common.cancel')}</TButton>
-      <TButton type="button" loading={installing} disabled={confirmDisabled} onClick={() => void confirm()}>{confirmText}</TButton>
-    </div>
-  </TDialog>
-  </DrawerShell>;
+  </SettingDrawer>;
 }
 
 function isSkillBusy(skill: InstalledSkill): boolean {
@@ -1392,7 +1367,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
   onChanged: () => void;
   onToast: (tone: 'success' | 'warning' | 'error', message: string) => void;
 }) {
-  const drawerDialog = useSkillDrawerDialog();
+
   const [skill, setSkill] = useState<InstalledSkill | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1584,8 +1559,18 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
   }
 
   const errorLines = installErrorLines(skill?.error);
-  return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.manage}>
-  <TDialog footer={false} visible={open} header={<DrawerTitle icon={<TIcon name={SKILL_ICON} size="16px" />} title={target?.catalogName ?? ''} subtitle={target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : undefined} />} {...drawerDialog} onClose={onClose}>
+  /* Vue SkillSettings.vue:316-321 管理抽屉：SettingDrawer hideFooter + z-index 2600。 */
+  return <SettingDrawer
+    visible={open}
+    title={target?.catalogName ?? ''}
+    description={target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : undefined}
+    icon={SKILL_ICON}
+    width="680px" minWidth={560} maxWidth={920}
+    storageKey={SKILL_DRAWER_SPECS.manage.storageKey}
+    hideFooter
+    zIndex={2600}
+    onVisibleChange={(visible) => { if (!visible) onClose(); }}
+  >
     {loading ? <Status>{t('common.loading')}</Status> : null}
     {error ? <Status tone="error">{error}</Status> : null}
     {skill ? uninstallDone ? <div className="skill-manage__done">
@@ -1667,8 +1652,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
         />
       </section> : null}
     </> : !loading && !error ? <Status>{t('common.loading')}</Status> : null}
-  </TDialog>
-  </DrawerShell>;
+  </SettingDrawer>;
 }
 
 /** Vue focus-drawer progress ring (SandboxSkillsPanel.vue:239-248 t-progress circle + percent). */

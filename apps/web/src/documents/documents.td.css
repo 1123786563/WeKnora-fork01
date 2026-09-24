@@ -2402,6 +2402,8 @@
   font-size: 16px;
 }
 
+/* KBInfoPopover.vue scoped 全量平移（B2 批 2：popover 完整 section 版，
+   与 faq.td.css 同款共享——弹层 portal 到 body）。 */
 .kb-info-card {
   min-width: 280px;
   max-width: 360px;
@@ -2412,7 +2414,6 @@
   font-size: 12px;
   color: var(--td-text-color-primary);
   overflow: hidden;
-  font-family: var(--app-font-family);
 }
 
 .kb-info-card-header {
@@ -2426,67 +2427,151 @@
 
 .kb-info-card-body {
   flex: 1 1 auto;
-  min-height: 0;
   overflow-y: auto;
-  margin: 0 -6px;
-  padding: 0 6px;
-  scrollbar-width: thin;
+  margin: 0 -16px;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.kb-info-card-body .setting-drawer__section {
+  padding: 12px 0 16px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kb-info-card-body .setting-drawer__section:first-child {
+  padding-top: 0;
+}
+
+.kb-info-card-body .setting-drawer__section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.kb-info-card-body .setting-drawer__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-primary);
+  margin: 0 0 4px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kb-info-card-body .setting-drawer__section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: var(--td-brand-color);
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 .kb-info-card-row {
   display: flex;
-  gap: 8px;
   align-items: flex-start;
-  line-height: 20px;
-  margin-bottom: 6px;
-}
-
-.kb-info-card-row:last-child {
-  margin-bottom: 0;
+  gap: 8px;
+  padding: 0;
+  line-height: 1.6;
 }
 
 .kb-info-card-label {
-  flex-shrink: 0;
-  width: 72px;
-  color: var(--td-text-color-placeholder);
+  flex: 0 0 80px;
+  color: var(--td-text-color-secondary);
 }
 
 .kb-info-card-value {
   flex: 1;
-  min-width: 0;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   color: var(--td-text-color-primary);
   word-break: break-word;
 }
 
 .kb-info-card-value-block {
   display: block;
+  color: var(--td-text-color-secondary);
+  white-space: pre-wrap;
+}
+
+.kb-info-card-value-number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.kb-info-card-value-mono {
+  font-family: var(--td-font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--td-text-color-secondary);
 }
 
 .kb-info-card-ext {
-  display: inline-block;
-  margin: 0 4px 4px 0;
-  padding: 0 6px;
-  border-radius: 999px;
-  border: 1px solid var(--td-component-stroke);
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--td-bg-color-component, #f5f7fa);
   color: var(--td-text-color-secondary);
+  font-family: var(--td-font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
-  line-height: 18px;
+  line-height: 1.4;
 }
 
 .kb-info-card-hint {
   color: var(--td-text-color-placeholder);
-  margin-left: 6px;
+  font-size: 11px;
 }
 
-.kb-info-card .setting-drawer__section {
-  margin-bottom: 12px;
-}
-
-.kb-info-card .setting-drawer__section-title {
+/* VectorStoreBadge.vue scoped 平移（弹层 portal 到 body，unscoped 生效）。 */
+.vs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--td-text-color-secondary);
-  margin: 0 0 8px;
+  line-height: 1.4;
+  background: var(--td-bg-color-component, #f5f7fa);
+  color: var(--td-text-color-primary, #1d2129);
+}
+
+.vs-badge-env {
+  background: var(--td-brand-color-1, #ecf2fe);
+  color: var(--td-brand-color-7, #0052d9);
+}
+
+.vs-badge-user {
+  background: var(--td-success-color-1, #e8f8f2);
+  color: var(--td-success-color-7, #00754a);
+}
+
+.vs-badge-shared {
+  background: var(--td-warning-color-1, #fff1e9);
+  color: var(--td-warning-color-7, #b85b00);
+}
+
+.vs-badge-warn {
+  background: var(--td-error-color-1, #fde9e6);
+  color: var(--td-error-color-7, #b32700);
+}
+
+.vs-badge-icon {
+  font-size: 14px;
+}
+
+.vs-badge-engine {
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+.vs-badge-warn-tag {
+  margin-left: 4px;
 }
 
 /* ============ DocumentActionMenu.vue scoped（popup portal，unscoped 平移） ============ */
@@ -2628,7 +2713,9 @@
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
   text-align: left;
-  font-family: var(--app-font-family);
+  /* 无 font-family：Vue KBSwitcherDropdown scoped 同样不设——原生 button 走
+     UA 表单字体（实测 Arial）。显式 var(--app-font-family) 会切到 system 栈，
+     与 Vue 端 UA Arial 产生整行字形 AA 差（B2 批 2 breadcrumb 0.239% 根因）。 */
 }
 
 .kb-switcher-row:hover {
@@ -2667,4 +2754,11 @@
   text-align: center;
   font-size: 12px;
   color: var(--td-text-color-placeholder);
+}
+
+/* KBInfoPopover tooltip 锚点（B2 批 2）：Tooltip 与 Popup 的事件注入互不穿透，
+   inline-flex 隔离层包裹按钮（26×26，布局零影响；display:contents 无盒不响应
+   mouseenter）。 */
+.kb-info-popover-anchor {
+  display: inline-flex;
 }

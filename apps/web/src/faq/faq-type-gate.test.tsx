@@ -109,6 +109,7 @@ function fakeClient({ kbType = 'faq', listError }: FakeOptions = {}) {
         },
       },
       auth: { me: async () => ({ user: { id: 'u1', roles: [], memberships: [] }, membership: { role: 'owner' }, can_access_all_tenants: false, knowledge_base: { user_id: 'u1' } }) },
+      identity: { organizations: { knowledgeBaseShares: { listShared: async () => [] } } },
     },
     listCalls: () => listCalls,
     rawRequests: () => rawRequests,

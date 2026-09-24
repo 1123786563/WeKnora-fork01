@@ -237,13 +237,15 @@ const ALL_PAGES = [
   { id: 'px-kb-wiki-tagfilter-suffix', kind: 'kb', name: 'Wiki Parity Fixture',
     actions: [{ clickCss: ['.doc-tag-filter-trigger__suffix'] }] },
   // KB 文档工具栏筛选 select（.t-select-input(Vue) ↔ .t-select(React) 命名异构；
-  // 双端同名 .doc-type-select，取第 1 个 = 文件类型筛选，代表整排 select 弹层）
-  { id: 'px-kb-faq-doctype-select', kind: 'kb', name: 'Parity FAQ Fixture',
+  // 双端同名 .doc-type-select，取第 1 个 = 文件类型筛选，代表整排 select 弹层）。
+  // B2 批 2 修正：FAQ KB 的 FAQ 视图工具栏没有该 select（matrix kb-faq 行无此
+  // 触发器，基线假零）——代表页改文档库 kb-demo；kb-wiki 页同款由下项覆盖。
+  { id: 'px-kb-faq-doctype-select', kind: 'kb', name: 'Parity KB Demo',
     actions: [{ clickCss: ['.doc-type-select >> nth=0'] }] },
   { id: 'px-kb-wiki-doctype-select', kind: 'kb', name: 'Wiki Parity Fixture',
     actions: [{ clickCss: ['.doc-type-select >> nth=0'] }] },
   // wiki 工具栏（B2：树形视图/新建目录/全库概览 React 未检出，新建页面双端 dialog）
-  { id: 'px-kb-wiki-tab-wiki-newpage', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
+  { id: 'px-kb-wiki-tab-wiki-newpage', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500, mouseAway: true,
     actions: [{ clickAria: ['新建页面'], clickCss: ['.wiki-tab-bar-action'] }] },
   { id: 'px-kb-wiki-tab-wiki-newdir', kind: 'kb', name: 'Wiki Parity Fixture', suffix: '?tab=wiki', settle: 3500,
     actions: [{ clickAria: ['新建目录'] }] },
@@ -282,7 +284,7 @@ const ALL_PAGES = [
   { id: 'px-envvars-sandbox-key-hint', path: '/platform/settings?section=envvars', settle: 2000,
     actions: [{ clickAria: ['沙箱密钥说明'], clickCss: ['.hint-trigger'] }] },
   // skills 添加技能（A8：Vue drawer vs React dialog+drawer）
-  { id: 'px-skills-add', path: '/platform/settings?section=skills', settle: 2000,
+  { id: 'px-skills-add', path: '/platform/settings?section=skills', settle: 2000, mouseAway: true,
     actions: [{ clickText: ['添加技能'] }] },
   // mcp 添加服务 drawer（双端一致）
   { id: 'px-mcp-add-service', path: '/platform/settings?section=mcp', settle: 2000,
@@ -702,6 +704,16 @@ async function main() {
               // postSettle：面板项可覆盖（如 login 创建账户点击后同路由切注册表单，
               // 需要更长过渡窗口）。
               await waitForSteady(active, p.postSettle ?? 1100, p.noFreeze, p.syncAnimPhase);
+            }
+            // mouseAway（页标志）：点击把指针留在触发点，面板弹开后 headless 的
+            // :hover 链会间歇落在面板内元素上（px-kb-wiki-tab-wiki-newpage 实测：
+            // Vue 端指针 hover 链落进 slug 输入框 → .t-input:hover 品牌色边框环，
+            // React 端落空白；两库 hover 规则逐字相同，属指针位置工件而非面板差异，
+            // probe 取证 mouse=(555,226) 但 :hover 链在 slug inner、scrollY=0）。
+            // 双端统一把指针移到角落清掉 hover 态再截图，消除这类偶然伪差。
+            if (p.mouseAway) {
+              await active.mouse.move(4, 4).catch(() => {});
+              await active.waitForTimeout(300);
             }
           }
           const file = join(outDir, `${p.id}-${tag}.png`);

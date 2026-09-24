@@ -823,6 +823,9 @@
 .wk-vc-composer-15 {
   position: relative;
   display: inline-flex;
+  /* Vue .control-btn 同款 border-box（button UA 自带；div 化后需显式，否则
+     0.5px 边框外撑 2px 把 shell 撑高——px-chat-agent-selector 实证）。 */
+  box-sizing: border-box;
   height: 30px;
   cursor: pointer;
   align-items: center;

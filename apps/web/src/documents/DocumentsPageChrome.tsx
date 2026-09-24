@@ -12,6 +12,7 @@ import { Popup, Tooltip } from 'tdesign-react';
 import { Icon as TIcon } from 'tdesign-icons-react';
 import { createTranslator } from '../i18n.ts';
 import { navigate } from '../platform/navigation.ts';
+import { KBInfoPopover, type KBInfoPopoverKB } from './KBInfoPopover.tsx';
 import {
   documentsKBDetailPath,
   documentsKBListPath,
@@ -73,6 +74,14 @@ export interface DocumentsBreadcrumbProps {
   kbName?: string | null;
   kbList?: KBChromeListItem[];
   kbMeta?: KBChromeMeta;
+  /** KBInfoPopover 完整数据源（B2 批 2）：优先于 kbMeta。 */
+  kbInfo?: KBInfoPopoverKB | null;
+  /** Vue authStore.user?.id（owner 判定）。 */
+  infoUserId?: string;
+  /** Vue orgStore currentSharedKb。 */
+  infoSharedKb?: { orgName: string; sharedAt: string } | null;
+  /** Vue effectiveKBPermission。 */
+  infoPermission?: string;
   /** Vue passes supportedFileTypes into KBInfoPopover. */
   supportedFileTypes?: string[];
   /** Vue gates the gear on canManage; the page maps it to its permission signal. */
@@ -90,10 +99,8 @@ export interface DocumentsBreadcrumbProps {
 }
 
 export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
-  const { t, knowledgeBaseId, kbName, kbList = [], kbMeta, supportedFileTypes, canManage = false, onOpenSettings, onNavigate = defaultNavigate, tabs } = props;
+  const { t, knowledgeBaseId, kbName, kbList = [], kbMeta, kbInfo = null, infoUserId, infoSharedKb = null, infoPermission, supportedFileTypes, canManage = false, onOpenSettings, onNavigate = defaultNavigate, tabs } = props;
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
-  const sortedFileTypes = supportedFileTypes ? [...supportedFileTypes].sort() : [];
   const hasTabs = !!tabs && tabs.length > 0;
   // Vue KBSwitcherDropdown：当前 KB 置顶，其余保持调用方顺序。
   const sortedKbList = (() => {
@@ -174,52 +181,17 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
         )}
       </h2>
       <div className="kb-title-actions">
-        {kbMeta ? (
-          <Popup
-            visible={infoOpen}
-            trigger="click"
-            placement="bottom-right"
-            overlayStyle={{ padding: 0 }}
-            overlayInnerStyle={{ padding: 0 }}
-            onVisibleChange={setInfoOpen}
-            content={(
-              <div className="kb-info-card">
-                <div className="kb-info-card-header">{t('knowledgeBase.infoCard.title')}</div>
-                <div className="kb-info-card-body">
-                  <div className="kb-info-card-row">
-                    <span className="kb-info-card-label">{t('knowledgeBase.infoCard.type')}</span>
-                    <span className="kb-info-card-value">{kbMeta.type?.toLowerCase() === 'faq' ? t('knowledgeEditor.basic.typeFAQ') : t('knowledgeEditor.basic.typeDocument')}</span>
-                  </div>
-                  {kbMeta.description ? (
-                    <div className="kb-info-card-row">
-                      <span className="kb-info-card-label">{t('knowledgeBase.description')}</span>
-                      <span className="kb-info-card-value kb-info-card-value-block">{kbMeta.description}</span>
-                    </div>
-                  ) : null}
-                  {kbMeta.createdAt ? (
-                    <div className="kb-info-card-row">
-                      <span className="kb-info-card-label">{t('knowledgeBase.infoCard.createdAt')}</span>
-                      <span className="kb-info-card-value">{kbMeta.createdAt}</span>
-                    </div>
-                  ) : null}
-                  {sortedFileTypes.length > 0 ? (
-                    <div className="kb-info-card-row">
-                      <span className="kb-info-card-label">{t('knowledgeBase.infoCard.supportedFileTypes')}</span>
-                      <span className="kb-info-card-value">
-                        {sortedFileTypes.map((fileType) => (
-                          <span key={fileType} className="kb-info-card-ext">{`.${fileType}`}</span>
-                        ))}
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            )}
-          >
-            <button type="button" className="kb-info-button" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen}>
-              <TIcon name="info-circle" size="16px" />
-            </button>
-          </Popup>
+        {(kbInfo ?? kbMeta) ? (
+          <KBInfoPopover
+            t={t}
+            /* kbMeta fallback 仅服务测试桩（真实调用方均传完整 kbInfo）；
+               完整 popover 数据面以后端 created_at/统计/绑定字段为准。 */
+            kbInfo={(kbInfo ?? { type: kbMeta!.type, description: kbMeta!.description }) as KBInfoPopoverKB}
+            supportedFileTypes={supportedFileTypes}
+            userId={infoUserId}
+            sharedKb={infoSharedKb}
+            permission={infoPermission}
+          />
         ) : null}
         {canManage ? (
           <Tooltip content={t('knowledgeBase.settings')} placement="top">

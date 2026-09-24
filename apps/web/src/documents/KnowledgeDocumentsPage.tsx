@@ -228,6 +228,7 @@ import {
   ListIcon,
   type KBChromeListItem,
 } from "./DocumentsPageChrome.tsx";
+import type { KBInfoPopoverKB } from "./KBInfoPopover.tsx";
 
 interface KnowledgeDocumentsPageProps {
   client: WeKnoraClient;
@@ -3046,6 +3047,9 @@ export function KnowledgeDocumentsPage({
   const [systemInfo, setSystemInfo] = useState<Record<string, unknown> | null>(null);
   // Vue authStore.me — the admin gate for the graph extraction actions.
   const [me, setMe] = useState<KBSurfaceMe | null>(null);
+  // KBInfoPopover 访问段（B2 批 2）：Vue orgStore currentSharedKb /
+  // effectiveKBPermission 同源的 org share 行解析。
+  const [infoShared, setInfoShared] = useState<{ sharedKb: { orgName: string; sharedAt: string } | null; permission: string }>({ sharedKb: null, permission: "" });
   // Vue activeSection + the unavailable-fallback watch (L1309-1313).
   const [activeSection, setActiveSection] = useState<UploadConfirmSectionKey>("tags");
   // Vue KbUploadSourceDropdown: menu + URL sub-dialog state.
@@ -3155,6 +3159,22 @@ export function KnowledgeDocumentsPage({
         setKbMeta(kb as KBSurfaceKB);
         setKbMetaError(null);
         setMe(me as KBSurfaceMe | null);
+        {
+          const grant = findSharedKBGrant(sharedRows, knowledgeBaseId);
+          const row = Array.isArray(sharedRows)
+            ? (sharedRows as Array<Record<string, unknown>>).find((entry) => {
+              const entryKb = entry?.knowledge_base as { id?: unknown } | null | undefined;
+              return entryKb && String(entryKb.id) === knowledgeBaseId;
+            })
+            : null;
+          setInfoShared({
+            sharedKb: grant && row ? {
+              orgName: typeof row.org_name === "string" ? row.org_name : "",
+              sharedAt: typeof row.shared_at === "string" ? row.shared_at : "",
+            } : null,
+            permission: grant?.permission ?? "",
+          });
+        }
         setConfirmState(uploadConfirmStateFromKb(kb as KBSurfaceKB));
         setCanContribute(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
         setCanDownload(canDownloadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null, sharedRows));
@@ -4225,11 +4245,10 @@ export function KnowledgeDocumentsPage({
             knowledgeBaseId={knowledgeBaseId}
             kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
             kbList={kbList}
-            kbMeta={{
-              type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
-              description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
-              createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
-            }}
+            kbInfo={kbMeta as unknown as KBInfoPopoverKB | null}
+            infoUserId={typeof me?.user?.id === "string" ? me.user.id : ""}
+            infoSharedKb={infoShared.sharedKb}
+            infoPermission={infoShared.permission}
             supportedFileTypes={[...supportedFileTypes]}
             canManage={canContribute}
             onOpenSettings={() => setKbSettingsOpen(true)}

@@ -5279,179 +5279,417 @@
   padding: 0.7rem;
 }
 
-/* parser 配置抽屉（EngineDrawer，原 utility 串平移；wrapper.css 的
-   .parser-engine-settings --color-* 重映射块随本次收编删除）。 */
-.wk-settings-drawer-root .engine-drawer-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1300;
-  display: flex;
-  justify-content: flex-end;
-  background: rgba(0, 0, 0, 0.5);
-}
-.wk-settings-drawer-root .engine-drawer {
+/* ==== §13b. ParserEngineSettings 抽屉（SettingDrawer 同构，批 3 收敛） ====
+ * Vue ParserEngineSettings.vue:96-378 的 SettingDrawer 内容 + SettingDrawer.vue
+ * scoped/unscoped 样式平移。抽屉经 t-drawer attach body 渲染，slot 内容样式
+ * 以 .parser-engine-drawer（Vue :class 透传）为锚——等价 Vue 端 slot 内容
+ * 携父 SFC data-v 作用于 portal DOM 的语义。 */
+.setting-drawer__header-block {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 560px;
-  max-width: 92vw;
-  background: #ffffff;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.2);
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  gap: 8px;
 }
-.wk-settings-drawer-root .engine-drawer__header {
+.setting-drawer__header {
   display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  border-bottom: 1px solid #e7e7e7;
-  padding: 1rem 1.25rem;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
 }
-.wk-settings-drawer-root .engine-drawer__badge {
-  display: inline-flex;
-  width: 2.5rem;
-  height: 2.5rem;
+.setting-drawer__header-icon {
   flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  background: #f3f3f3;
+  background: rgba(7, 192, 95, 0.1);
+  color: var(--td-brand-color);
+  font-size: 16px;
+  transition: background 0.2s ease;
+}
+.setting-drawer__header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.setting-drawer__header-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+.setting-drawer__header-actions:empty {
+  display: none;
+}
+.setting-drawer__header-actions .t-button {
+  white-space: nowrap;
+}
+.setting-drawer__header-extra {
+  width: 100%;
+  min-width: 0;
+}
+.setting-drawer__title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--td-brand-color, #07c05f);
-}
-.wk-settings-drawer-root .engine-drawer__head-text {
-  min-width: 0;
-  flex: 1;
-}
-.wk-settings-drawer-root .engine-drawer__title {
-  margin: 0;
+  line-height: 1.4;
+  color: var(--td-text-color-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
+}
+.setting-drawer__subtitle {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--td-text-color-secondary);
+}
+.setting-drawer__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: setting-drawer-body-in 0.28s ease both;
+}
+@keyframes setting-drawer-body-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.setting-drawer__body .setting-drawer__section {
+  padding: 12px 0 16px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: setting-drawer-section-in 0.32s ease both;
+}
+.setting-drawer__body .setting-drawer__section:first-child {
+  padding-top: 0;
+  animation-delay: 0.04s;
+}
+.setting-drawer__body .setting-drawer__section:nth-child(2) {
+  animation-delay: 0.08s;
+}
+.setting-drawer__body .setting-drawer__section:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.setting-drawer__body .setting-drawer__section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+@keyframes setting-drawer-section-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.setting-drawer__body .setting-drawer__section-title {
+  font-size: 13px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.9);
-}
-.wk-settings-drawer-root .engine-drawer__desc {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.6);
-}
-.wk-settings-drawer-root .engine-drawer__close {
-  cursor: pointer;
-  border: 0;
-  background: transparent;
-  padding: 4px;
-  color: rgba(0, 0, 0, 0.6);
-}
-.wk-settings-drawer-root .engine-drawer__body {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  padding: 1rem 1.25rem;
-}
-.wk-settings-drawer-root .engine-drawer__section,
-.wk-settings-drawer-root .engine-drawer__form {
-  margin-bottom: 1.25rem;
-}
-.wk-settings-drawer-root .engine-drawer__form {
-  display: grid;
-  gap: 0.75rem;
-}
-.wk-settings-drawer-root .engine-drawer__section-title {
-  margin: 0 0 0.5rem;
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.9);
-}
-.wk-settings-drawer-root .engine-drawer__form .engine-drawer__section-title {
-  margin: 0;
-}
-.wk-settings-drawer-root .engine-drawer__filetypes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.wk-settings-drawer-root .engine-drawer__filetype {
-  border-radius: 9999px;
-  border: 1px solid #e7e7e7;
-  background: #f3f3f3;
-  padding: 2px 8px;
-  font-size: 11px;
-  /* Vue .file-type-chip color: var(--td-text-color-secondary) */
-  color: rgba(0, 0, 0, 0.6);
-}
-.wk-settings-drawer-root .engine-drawer__status-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-.wk-settings-drawer-root .engine-drawer__addr {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.6);
-}
-.wk-settings-drawer-root .engine-drawer__hint {
-  margin: 0.5rem 0 0;
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.4);
-}
-.wk-settings-drawer-root .engine-drawer__cred-row {
+  color: var(--td-text-color-primary);
+  margin: 0 0 4px;
+  user-select: none;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 13px;
-  color: #ad4b00;
+  gap: 8px;
 }
-.wk-settings-drawer-root .engine-drawer__cred-link {
-  cursor: pointer;
-  color: #245a9b;
+.setting-drawer__body .setting-drawer__section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: var(--td-brand-color);
+  border-radius: 2px;
 }
-.wk-settings-drawer-root .engine-drawer__cred-link:hover {
-  text-decoration: underline;
-}
-.wk-settings-drawer-root .engine-drawer__label {
-  display: grid;
-  gap: 0.25rem;
-  font-size: 13px;
-  font-weight: 500;
-  color: #27364d;
-}
-.wk-settings-drawer-root .engine-drawer__label .engine-drawer__hint {
-  margin: 0;
-}
-.wk-settings-drawer-root .engine-drawer__checks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  font-size: 13px;
-}
-.wk-settings-drawer-root .engine-drawer__check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.wk-settings-drawer-root .engine-drawer__footer {
+.setting-drawer__footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  border-top: 1px solid #e7e7e7;
-  padding: 0.75rem 1.25rem;
+  gap: 12px;
+  width: 100%;
 }
-.wk-settings-drawer-root .engine-drawer__footer--end {
-  justify-content: flex-end;
-}
-.wk-settings-drawer-root .engine-drawer__footer-left,
-.wk-settings-drawer-root .engine-drawer__footer-right {
+.setting-drawer__footer-left {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
-.wk-settings-drawer-root .engine-drawer__footer-msg {
+.setting-drawer__footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+/* SettingDrawer.vue unscoped 块（§2.5 原样平移——服务 body portal 弹层）。 */
+.setting-drawer {
+  max-width: 100vw;
+}
+.setting-drawer .t-drawer__content {
+  min-width: 0;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+.setting-drawer .t-drawer__header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+.setting-drawer .t-drawer__body {
+  padding: 16px 18px;
+}
+.setting-drawer .t-drawer__footer {
+  padding: 10px 18px;
+  border-top: 1px solid var(--td-component-stroke);
+  box-shadow: 0 -2px 8px rgba(15, 23, 42, 0.04);
+}
+.setting-drawer-resize-handle {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  margin-left: -6px;
+  cursor: col-resize;
+  z-index: 2501;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: setting-drawer-resize-handle-in 0.28s cubic-bezier(0.38, 0, 0.24, 1) both;
+}
+@keyframes setting-drawer-resize-handle-in {
+  from { transform: translateX(var(--setting-drawer-travel)); }
+  to { transform: translateX(0); }
+}
+.setting-drawer-resize-line {
+  width: 2px;
+  height: 48px;
+  border-radius: 1px;
+  background: var(--td-component-border);
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.setting-drawer-resize-handle:hover .setting-drawer-resize-line,
+.setting-drawer-resize-handle--active .setting-drawer-resize-line {
+  opacity: 1;
+  background: var(--td-brand-color);
+}
+.t-drawer.setting-drawer--resizing .t-drawer__content {
+  transition: none !important;
+}
+/* ParserEngineSettings.vue unscoped 块：per-engine header-icon 配色。 */
+.parser-engine-drawer--builtin .setting-drawer__header-icon,
+.parser-engine-drawer--weknoracloud .setting-drawer__header-icon {
+  background: rgba(7, 192, 95, 0.12);
+  color: #07C05F;
+}
+.parser-engine-drawer--simple .setting-drawer__header-icon {
+  background: rgba(70, 70, 70, 0.1);
+  color: #464646;
+}
+.parser-engine-drawer--markitdown .setting-drawer__header-icon {
+  background: rgba(0, 137, 255, 0.12);
+  color: #0089FF;
+}
+.parser-engine-drawer--mineru .setting-drawer__header-icon,
+.parser-engine-drawer--mineru_cloud .setting-drawer__header-icon,
+.parser-engine-drawer--paddleocr_vl .setting-drawer__header-icon,
+.parser-engine-drawer--paddleocr_vl_cloud .setting-drawer__header-icon {
+  background: rgba(98, 53, 187, 0.12);
+  color: #6235BB;
+}
+/* ParserEngineSettings.vue scoped 抽屉内容（data-v 语义 → .parser-engine-drawer 锚）。 */
+.parser-engine-drawer .header-icon__text {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.parser-engine-drawer .form-item {
+  margin-bottom: 0;
+}
+.parser-engine-drawer .form-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  line-height: 1.4;
+}
+.parser-engine-drawer .form-label.required::before {
+  content: '*';
+  color: var(--td-error-color);
+  margin-right: 4px;
+  font-weight: 500;
+  line-height: 1;
+}
+.parser-engine-drawer .form-desc {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-placeholder);
+}
+.parser-engine-drawer .t-input,
+.parser-engine-drawer .t-select,
+.parser-engine-drawer .t-textarea,
+.parser-engine-drawer .t-input-number {
+  width: 100%;
+  font-size: 13px;
+}
+.parser-engine-drawer .t-checkbox {
+  font-size: 13px;
+}
+.parser-engine-drawer .t-checkbox .t-checkbox__label {
+  font-size: 13px;
+  color: var(--td-text-color-primary);
+}
+.parser-engine-drawer .docreader-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--td-bg-color-container-hover);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+}
+.parser-engine-drawer .docreader-block .form-desc {
+  margin-top: 0;
+}
+.parser-engine-drawer .status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.parser-engine-drawer .env-hint {
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+.parser-engine-drawer .file-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.parser-engine-drawer .file-type-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-component);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+.parser-engine-drawer .inline-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--td-text-color-secondary);
+  flex-wrap: wrap;
+}
+.parser-engine-drawer .inline-alert__icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  color: var(--td-text-color-placeholder);
+}
+.parser-engine-drawer .inline-alert--ok .inline-alert__icon {
+  color: var(--td-success-color);
+}
+.parser-engine-drawer .inline-alert--warn {
+  color: var(--td-text-color-primary);
+}
+.parser-engine-drawer .inline-alert--warn .inline-alert__icon {
+  color: var(--td-warning-color, #f97316);
+}
+.parser-engine-drawer .inline-alert__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.parser-engine-drawer .inline-alert__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-brand-color);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+.parser-engine-drawer .inline-alert__action:hover {
+  color: var(--td-brand-color-active);
+}
+.parser-engine-drawer .inline-alert__action .t-icon {
+  font-size: 14px;
+}
+.parser-engine-drawer .spinning {
+  animation: parser-spin 1s linear infinite;
+}
+@keyframes parser-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.parser-engine-drawer .form-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 8px 0 0;
+}
+.parser-engine-drawer .footer-test-message {
+  font-size: 12px;
+  line-height: 1.4;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.parser-engine-drawer .footer-test-message.success {
+  color: var(--td-brand-color-active);
+}
+.parser-engine-drawer .footer-test-message.error {
+  color: var(--td-error-color);
+}
+.parser-engine-drawer .status-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.parser-engine-drawer .status-icon.available {
+  color: var(--td-brand-color);
+}
+.parser-engine-drawer .status-icon.unavailable {
+  color: var(--td-error-color);
+}
+.parser-engine-drawer .doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-brand-color);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.parser-engine-drawer .doc-link:hover {
+  color: var(--td-brand-color-active);
+}
+.parser-engine-drawer .doc-link .link-icon {
+  font-size: 14px;
+}
+.parser-engine-drawer .doc-link--inline {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  vertical-align: baseline;
+}
+.parser-engine-drawer .doc-link--inline .link-icon {
   font-size: 12px;
 }
-.wk-settings-drawer-root .engine-drawer__footer-msg--ok { color: #0a7f43; }
-.wk-settings-drawer-root .engine-drawer__footer-msg--err { color: #c23434; }
 
 /* sandbox 配置向导/网络规则抽屉 + inventory 抽屉（S6 平移段）。 */
 .wk-settings-drawer-root .wk-form-grid {
@@ -5557,134 +5795,7 @@
   width: 34px;
   height: 18px;
 }
-/* 添加向导：解析预览卡（parsed-skill 家族，原 utility 串）。 */
-.parsed-skill {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  overflow: hidden;
-  border-radius: 10px;
-  background: #ffffff;
-  transition: border-color 180ms, box-shadow 180ms;
-  min-width: 0;
-  height: 100%;
-  border: 1px solid #e7e7e7;
-}
-.parsed-skill__inner {
-  display: flex;
-  align-items: stretch;
-  padding: 0.75rem;
-  min-width: 0;
-  flex: 1;
-}
-.parsed-skill__body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.parsed-skill__head {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  min-width: 0;
-  min-height: 28px;
-}
-.parsed-skill__icon {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.875rem;
-  background: #f4f6fa;
-  color: rgba(0, 0, 0, 0.6);
-}
-.parsed-skill__title-row {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 0.375rem;
-}
-.parsed-skill__title {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.25rem;
-  /* Vue .skill-card__title color: var(--td-text-color-primary) */
-  color: rgba(0, 0, 0, 0.9);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.parsed-skill__version {
-  flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 18px;
-  color: rgba(0, 0, 0, 0.6);
-}
-.parsed-skill__desc {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  margin: 0;
-  overflow: hidden;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  color: rgba(0, 0, 0, 0.6);
-  overflow-wrap: anywhere;
-}
-/* 上传 dropzone。 */
-.wk-sr-file-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-.wk-skill-dropzone {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 6rem;
-  padding: 0.875rem;
-  border-radius: 10px;
-  cursor: pointer;
-  text-align: center;
-  border: 1px dashed #cbd5e1;
-  background: #fafbfd;
-}
-.wk-skill-dropzone.is-filled {
-  border-style: solid;
-  border-color: var(--td-brand-color, #07c05f);
-  background: #f4f8ff;
-}
-.wk-skill-dropzone__selected {
-  font-size: 13px;
-  color: var(--td-brand-color, #07c05f);
-  overflow-wrap: anywhere;
-}
-.wk-skill-dropzone__click {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: #27364d;
-}
-.wk-skill-dropzone__drag {
-  display: block;
-  margin-top: 2px;
-  font-size: 0.75rem;
-  color: rgba(0, 0, 0, 0.4);
-}
+/* 添加向导解析预览卡改走 Vue .skill-card.parsed-skill（仅 margin 修饰，见 §13e）。 */
 /* sandbox pick 行族（SkillSettings.vue:1841-1953 视觉）。 */
 .sandbox-pick-list {
   display: grid;
@@ -6130,3 +6241,583 @@
 .wk-settings-context-contents { display: contents; }
 /* B4：.wk-settings-hint-anchor（priority hint in-tree 定位锚）随弹层换 tdesign
    Popup 已删，不再有消费者。 */
+
+/* ==== §13c. 资源三抽屉（storage-backend / vectorstore / websearch，批 3 收敛） ====
+ * Vue StorageBackendSettings.vue / VectorStoreSettings.vue / WebSearchSettings.vue
+ * 的 SettingDrawer 内容 scoped 块平移，锚在各抽屉 :class 家族（§13b 同款约定：
+ * t-drawer attach body 渲染，slot 内容样式以抽屉家族类为锚，等价 Vue 端 slot
+ * 内容携父 SFC data-v 作用于 portal DOM）。三个 SFC 的
+ * .form-item/.form-label/.form-desc/.vision-toggle/.status-icon/.header-icon__*
+ * 声明逐字相同——按家族分组选择器；各抽屉独有块随后；per-engine unscoped
+ * 配色块原样平移（Vue unscoped，这里同为全局）。 */
+
+/* ---- 共享表单原子（StorageBackendSettings.vue:640-677 / VectorStoreSettings.vue
+   :1093-1116 / WebSearchSettings.vue:1020-1066 逐字同款） ---- */
+.storage-backend-drawer .form-item,
+.vectorstore-drawer .form-item,
+.websearch-drawer .form-item { margin-bottom: 0; }
+
+.storage-backend-drawer .form-label,
+.vectorstore-drawer .form-label,
+.websearch-drawer .form-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+  line-height: 1.4;
+}
+.storage-backend-drawer .form-label.required::before,
+.vectorstore-drawer .form-label.required::before,
+.websearch-drawer .form-label.required::before {
+  content: '*';
+  color: var(--td-error-color);
+  margin-right: 4px;
+  font-weight: 500;
+  line-height: 1;
+}
+.storage-backend-drawer .form-desc,
+.vectorstore-drawer .form-desc,
+.websearch-drawer .form-desc {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-placeholder);
+}
+.storage-backend-drawer .form-desc--inline,
+.vectorstore-drawer .form-desc--inline,
+.websearch-drawer .form-desc--inline { margin: 0; }
+/* VectorStoreSettings.vue:1112-1114 —— TLS 警告等"危险确认"红字（仅 vector 抽屉）。 */
+.vectorstore-drawer .form-desc--warn { color: var(--td-error-color); }
+
+/* Vue :deep(.t-input/.t-select/.t-textarea) 宽度整流（websearch 另含
+   .t-input-number）。 */
+.storage-backend-drawer .t-input,
+.storage-backend-drawer .t-select,
+.storage-backend-drawer .t-textarea,
+.vectorstore-drawer .t-input,
+.vectorstore-drawer .t-select,
+.vectorstore-drawer .t-textarea,
+.websearch-drawer .t-input,
+.websearch-drawer .t-select,
+.websearch-drawer .t-textarea,
+.websearch-drawer .t-input-number {
+  width: 100%;
+  font-size: 13px;
+}
+
+/* Vue .vision-toggle（三 SFC 同款 switch 行）。 */
+.storage-backend-drawer .vision-toggle,
+.vectorstore-drawer .vision-toggle,
+.websearch-drawer .vision-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* footer-left 测试按钮状态 icon（三 SFC 同款）。 */
+.storage-backend-drawer .status-icon,
+.vectorstore-drawer .status-icon,
+.websearch-drawer .status-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.storage-backend-drawer .status-icon.available,
+.vectorstore-drawer .status-icon.available,
+.websearch-drawer .status-icon.available { color: var(--td-brand-color); }
+.storage-backend-drawer .status-icon.unavailable,
+.vectorstore-drawer .status-icon.unavailable,
+.websearch-drawer .status-icon.unavailable { color: var(--td-error-color); }
+
+/* ---- 抽屉头 #headerIcon 徽章（三 SFC scoped 同款：img/mono/text 三级阶梯） ----
+ * 容器 32px 圆角底色在全局 .setting-drawer__header-icon（§13b）；mono 用
+ * --logo-url mask 染 currentColor；per-engine 配色由文末 unscoped 块注入。 */
+.storage-backend-drawer .header-icon__img,
+.vectorstore-drawer .header-icon__img,
+.websearch-drawer .header-icon__img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  display: block;
+}
+.storage-backend-drawer .header-icon__mono,
+.vectorstore-drawer .header-icon__mono,
+.websearch-drawer .header-icon__mono {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  background-color: currentColor;
+  -webkit-mask-image: var(--logo-url);
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-image: var(--logo-url);
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+.storage-backend-drawer .header-icon__text,
+.vectorstore-drawer .header-icon__text,
+.websearch-drawer .header-icon__text {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ---- vectorstore 抽屉独有（VectorStoreSettings.vue:1139-1240） ---- */
+.vectorstore-drawer .inline-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--td-text-color-secondary);
+  flex-wrap: wrap;
+  white-space: pre-line;
+}
+.vectorstore-drawer .inline-alert__icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  color: var(--td-text-color-placeholder);
+}
+.vectorstore-drawer .inline-alert__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vectorstore-drawer .inline-alert--info {
+  color: var(--td-text-color-primary);
+}
+.vectorstore-drawer .inline-alert--info .inline-alert__icon {
+  color: var(--td-brand-color);
+}
+/* 编辑模式只读字段列表（engine immutable 提示下方轻量 readonly 行）。 */
+.vectorstore-drawer .readonly-fields {
+  padding: 10px 12px;
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: 8px;
+}
+.vectorstore-drawer .readonly-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+.vectorstore-drawer .readonly-row:last-child { border-bottom: none; }
+.vectorstore-drawer .readonly-label {
+  color: var(--td-text-color-placeholder);
+  font-size: 11px;
+  white-space: nowrap;
+  min-width: 80px;
+}
+.vectorstore-drawer .readonly-value {
+  color: var(--td-text-color-primary);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  word-break: break-all;
+}
+/* 高级索引展开/收起按钮。 */
+.vectorstore-drawer .advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  user-select: none;
+  align-self: flex-start;
+}
+.vectorstore-drawer .advanced-toggle:hover { color: var(--td-brand-color); }
+.vectorstore-drawer .advanced-toggle .t-icon { font-size: 14px; }
+/* Number input：去原生 spinner（与 MCP 高级配置同款）。 */
+.vectorstore-drawer .number-input input::-webkit-outer-spin-button,
+.vectorstore-drawer .number-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+.vectorstore-drawer .number-input input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ---- storage 抽屉独有：MinIO 部署模式 pill segmented
+   （StorageBackendSettings.vue:686-740） ---- */
+.storage-backend-drawer .source-options {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: var(--td-bg-color-component);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+}
+.storage-backend-drawer .source-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+.storage-backend-drawer .source-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.storage-backend-drawer .source-option:hover:not(.is-active):not(:disabled) {
+  color: var(--td-text-color-primary);
+  background: var(--td-bg-color-container-hover);
+}
+.storage-backend-drawer .source-option.is-active {
+  background: var(--td-bg-color-container);
+  border-color: var(--td-brand-color);
+  color: var(--td-brand-color);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.storage-backend-drawer .source-option__icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.storage-backend-drawer .source-option__label { white-space: nowrap; }
+
+/* ---- websearch 抽屉独有：副标题文档外链（WebSearchSettings.vue:1121-1152） ---- */
+.websearch-drawer .doc-link,
+.websearch-drawer .doc-link--inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--td-brand-color);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.websearch-drawer .doc-link:hover,
+.websearch-drawer .doc-link--inline:hover { color: var(--td-brand-color-active); }
+.websearch-drawer .doc-link .link-icon,
+.websearch-drawer .doc-link--inline .link-icon { font-size: 14px; }
+.websearch-drawer .doc-link--inline {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  vertical-align: baseline;
+}
+.websearch-drawer .doc-link--inline .link-icon { font-size: 12px; }
+
+/* ---- per-engine header-icon 配色（三 SFC unscoped 块原样平移） ----
+ * 各规则镜像 scoped 块里同名 list-card 徽章配色，保持列表卡 → 抽屉 hand-off
+ * 视觉连续；彩色 logo 容器加白底 + 1px 内描边。 */
+.storage-backend-drawer .setting-drawer__header-icon:has(.header-icon__img),
+.vectorstore-drawer .setting-drawer__header-icon:has(.header-icon__img),
+.websearch-drawer .setting-drawer__header-icon:has(.header-icon__img) {
+  background: var(--td-bg-color-container, #fff);
+  box-shadow: inset 0 0 0 1px var(--td-component-stroke);
+}
+
+/* StorageBackendSettings.vue unscoped:764-771。 */
+.storage-backend-drawer--local .setting-drawer__header-icon { background: rgba(70, 70, 70, 0.1); color: #464646; }
+.storage-backend-drawer--minio .setting-drawer__header-icon { background: rgba(225, 38, 38, 0.12); color: #C0382B; }
+.storage-backend-drawer--cos .setting-drawer__header-icon { background: rgba(0, 82, 217, 0.1); color: #0052D9; }
+.storage-backend-drawer--tos .setting-drawer__header-icon { background: rgba(0, 137, 255, 0.12); color: #0089FF; }
+.storage-backend-drawer--s3 .setting-drawer__header-icon { background: rgba(255, 153, 0, 0.12); color: #D97706; }
+.storage-backend-drawer--oss .setting-drawer__header-icon { background: rgba(255, 90, 0, 0.12); color: #E55A00; }
+.storage-backend-drawer--ks3 .setting-drawer__header-icon { background: rgba(7, 192, 95, 0.12); color: #07A050; }
+.storage-backend-drawer--obs .setting-drawer__header-icon { background: rgba(206, 17, 38, 0.1); color: #CE1126; }
+
+/* VectorStoreSettings.vue unscoped:1293-1325。 */
+.vectorstore-drawer--qdrant .setting-drawer__header-icon { background: rgba(225, 38, 38, 0.12); color: #E12626; }
+.vectorstore-drawer--milvus .setting-drawer__header-icon { background: rgba(0, 137, 255, 0.12); color: #0089FF; }
+.vectorstore-drawer--weaviate .setting-drawer__header-icon { background: rgba(7, 192, 95, 0.12); color: #07A050; }
+.vectorstore-drawer--elasticsearch .setting-drawer__header-icon,
+.vectorstore-drawer--elasticfaiss .setting-drawer__header-icon { background: rgba(255, 153, 0, 0.12); color: #D97706; }
+.vectorstore-drawer--postgres .setting-drawer__header-icon { background: rgba(0, 82, 217, 0.1); color: #0052D9; }
+.vectorstore-drawer--opensearch .setting-drawer__header-icon { background: rgba(98, 53, 187, 0.12); color: #6235BB; }
+.vectorstore-drawer--infinity .setting-drawer__header-icon { background: rgba(98, 53, 187, 0.12); color: #6235BB; }
+.vectorstore-drawer--tencent_vectordb .setting-drawer__header-icon { background: rgba(0, 82, 217, 0.1); color: #0052D9; }
+.vectorstore-drawer--doris .setting-drawer__header-icon { background: rgba(255, 90, 0, 0.12); color: #E55A00; }
+.vectorstore-drawer--sqlite .setting-drawer__header-icon { background: rgba(70, 70, 70, 0.1); color: #464646; }
+
+/* WebSearchSettings.vue unscoped:1168-1203。 */
+.websearch-drawer--duckduckgo .setting-drawer__header-icon { background: rgba(222, 88, 51, 0.12); color: #DE5833; }
+.websearch-drawer--bing .setting-drawer__header-icon { background: rgba(0, 137, 255, 0.12); color: #0089FF; }
+.websearch-drawer--google .setting-drawer__header-icon { background: rgba(66, 133, 244, 0.12); color: #4285F4; }
+.websearch-drawer--tavily .setting-drawer__header-icon { background: rgba(98, 53, 187, 0.12); color: #6235BB; }
+.websearch-drawer--baidu .setting-drawer__header-icon { background: rgba(41, 50, 225, 0.12); color: #2932E1; }
+.websearch-drawer--searxng .setting-drawer__header-icon { background: rgba(33, 86, 137, 0.12); color: #215689; }
+.websearch-drawer--ollama .setting-drawer__header-icon { background: rgba(70, 70, 70, 0.12); color: #464646; }
+.websearch-drawer--keenable .setting-drawer__header-icon { background: rgba(20, 158, 130, 0.12); color: #149E82; }
+.websearch-drawer--zhipu .setting-drawer__header-icon { background: rgba(37, 99, 235, 0.12); color: #2563EB; }
+
+/* ==== §13d. TDesign Dropdown 统一样式（批 3 收敛） ====
+ * Vue dropdown-menu.less「四、TDesign Dropdown 统一样式」（main.ts 全局引入，
+ * frontend/src/assets/dropdown-menu.less:352-484）平移。tdesign-react Dropdown
+ * 默认菜单度量（menu padding 6px/min-width 0/item 3px 8px 28px）与 vue-next
+ * + 该全局块（menu padding 4px/min-width 148px/边框阴影毛玻璃、item 8px 12px
+ * 36px、error 项分隔线）差出一整档——settings 域三个 TDropdown 消费者
+ * （Resource 卡三点菜单/Model 卡菜单/Sandbox 卡菜单）统一走此块对齐。
+ * React 端 TDropdown 仅 settings 域使用（Model/Resource/Sandbox 三面板），
+ * 全局选择器与 Vue 端等价、无外溢。 */
+@keyframes dropdownSlideIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.t-popup__content .t-dropdown__menu {
+  background: var(--td-bg-color-container);
+  border: 0.5px solid var(--td-component-stroke);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  padding: 4px;
+  min-width: 148px;
+  animation: dropdownSlideIn 0.18s cubic-bezier(0.2, 0, 0, 1) both;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s ease;
+}
+.t-popup__content .t-dropdown__menu::-webkit-scrollbar { width: 6px; }
+.t-popup__content .t-dropdown__menu::-webkit-scrollbar-track { background: transparent; }
+.t-popup__content .t-dropdown__menu::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border: none;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+.t-popup__content .t-dropdown__menu:hover {
+  scrollbar-color: var(--td-scrollbar-color, rgba(0, 0, 0, 0.18)) transparent;
+}
+.t-popup__content .t-dropdown__menu:hover::-webkit-scrollbar-thumb {
+  background-color: var(--td-scrollbar-color, rgba(0, 0, 0, 0.18));
+}
+.t-popup__content .t-dropdown__menu::-webkit-scrollbar-thumb:hover {
+  background-color: var(--td-scrollbar-hover-color, rgba(0, 0, 0, 0.32));
+}
+.t-popup__content .t-dropdown__item {
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 1px 0;
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+  font-size: 14px;
+  color: var(--td-text-color-primary);
+  cursor: pointer;
+  min-width: auto !important;
+  max-width: 100% !important;
+  display: flex !important;
+  align-items: center;
+  width: 100%;
+  position: relative;
+}
+.t-popup__content .t-dropdown__item:hover {
+  background: var(--td-bg-color-container-hover);
+  color: var(--td-text-color-primary);
+}
+.t-popup__content .t-dropdown__item:active {
+  background: var(--td-bg-color-container-active);
+  transform: scale(0.98);
+}
+.t-popup__content .t-dropdown__item .t-dropdown__item-icon {
+  flex-shrink: 0;
+  margin-right: 8px;
+  color: var(--td-text-color-secondary);
+  display: flex;
+  align-items: center;
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+.t-popup__content .t-dropdown__item .t-dropdown__item-icon .t-icon { font-size: 16px; }
+.t-popup__content .t-dropdown__item:hover .t-dropdown__item-icon { color: var(--td-text-color-primary); }
+.t-popup__content .t-dropdown__item .t-dropdown__item-text {
+  color: inherit !important;
+  font-size: 14px !important;
+  line-height: 20px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+/* TDesign error 主题项（删除操作）：上方 1px 分隔线 + error 色系。 */
+.t-popup__content .t-dropdown__item.t-dropdown__item--theme-error {
+  color: var(--td-error-color-6) !important;
+  margin-top: 4px;
+  position: relative;
+}
+.t-popup__content .t-dropdown__item.t-dropdown__item--theme-error::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  background: var(--td-component-stroke);
+}
+.t-popup__content .t-dropdown__item.t-dropdown__item--theme-error .t-dropdown__item-icon {
+  color: var(--td-error-color-6);
+}
+.t-popup__content .t-dropdown__item.t-dropdown__item--theme-error:hover {
+  background: var(--td-error-color-1);
+  color: var(--td-error-color-6) !important;
+}
+.t-popup__content .t-dropdown__item.t-dropdown__item--theme-error:hover .t-dropdown__item-icon {
+  color: var(--td-error-color-6);
+}
+.t-popup__content .t-dropdown__item.t-dropdown__item--theme-error:active {
+  background: var(--td-error-color-2);
+}
+
+/* ==== §13e. skills 抽屉内容（SettingDrawer 同构，批 3 收敛） ====
+ * Vue SkillSettings.vue scoped 块平移：#header-extra 步骤条（skill-add-steps
+ * 家族 L1748-1835）、分区提示 .installer-model-hint（L10000 附近）、
+ * 上传区 .file-upload-area 家族（L1960-2035）、解析预览卡 .parsed-skill 修饰
+ * （主体走列表 .skill-card 家族，仅 margin）。抽屉 slot 内容经 body portal，
+ * 类名全局唯一。 */
+.skill-add-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.skill-add-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--td-text-color-placeholder);
+  transition: color 0.15s ease;
+}
+.skill-add-step:not(:last-child) { flex: 1; }
+.skill-add-step.is-active { color: var(--td-brand-color); }
+.skill-add-step.is-done { color: var(--td-text-color-secondary); }
+.skill-add-step.is-clickable {
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.skill-add-step.is-clickable:hover:not(.is-active) { color: var(--td-brand-color); }
+.skill-add-step.is-clickable:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.skill-add-step__marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.skill-add-step.is-active .skill-add-step__marker {
+  background: var(--td-brand-color);
+  border-color: var(--td-brand-color);
+  color: #fff;
+}
+.skill-add-step.is-done .skill-add-step__marker {
+  background: color-mix(in srgb, var(--td-brand-color) 12%, transparent);
+  border-color: color-mix(in srgb, var(--td-brand-color) 35%, transparent);
+  color: var(--td-brand-color);
+}
+.skill-add-step__title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-add-step__line {
+  flex: 1;
+  min-width: 16px;
+  height: 1px;
+  margin: 0 4px;
+  background: var(--td-component-stroke);
+}
+.skill-add-step.is-done .skill-add-step__line {
+  background: color-mix(in srgb, var(--td-brand-color) 35%, transparent);
+}
+.installer-model-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--td-text-color-secondary);
+}
+.file-input-hidden { display: none; }
+.file-upload-area {
+  border: 1px dashed var(--td-component-stroke);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.file-upload-area:hover:not(.is-disabled) {
+  border-color: var(--td-brand-color);
+  background: color-mix(in srgb, var(--td-brand-color) 4%, transparent);
+}
+.file-upload-area.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.file-upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 20px;
+}
+.file-upload-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--td-brand-color) 12%, transparent);
+}
+.upload-icon { color: var(--td-brand-color); }
+.upload-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.upload-primary-text {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+.upload-secondary-text {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+}
+.upload-file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-brand-color);
+}
+/* Vue .parsed-skill：仅 margin 修饰，卡体走列表 .skill-card 家族。 */
+.skill-card.parsed-skill { margin: 0 0 16px; }

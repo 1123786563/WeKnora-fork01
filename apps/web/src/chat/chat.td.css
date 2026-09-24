@@ -1634,3 +1634,976 @@
   border-top-left-radius: 100%;
   box-shadow: var(--td-shadow-inset-left, inset 0.5px 0 0 0 #dcdcdc), var(--td-shadow-inset-bottom, inset 0 -0.5px 0 0 #dcdcdc);
 }
+
+/* ===== §14 AgentSelector.vue（composer 智能体下拉；Vue Teleport body →
+   views 包 in-tree fixed 同几何，类名/样式值 scoped 原样平移） ===== */
+.agent-selector-overlay,
+.agent-selector-overlay *,
+.agent-selector-overlay *::before,
+.agent-selector-overlay *::after {
+  box-sizing: border-box;
+}
+
+.agent-selector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: transparent;
+  touch-action: none;
+}
+
+.agent-selector-dropdown {
+  position: fixed;
+  background: var(--td-bg-color-container);
+  border: .5px solid var(--td-component-border);
+  border-radius: 8px;
+  box-shadow: var(--td-shadow-2);
+  display: flex;
+  flex-direction: column;
+  z-index: 10001;
+  margin: 0;
+  transform-origin: top left;
+  animation: agentSelectorFadeIn 0.15s ease-out;
+}
+
+@keyframes agentSelectorFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.agent-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-bottom: .5px solid var(--td-component-stroke);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--td-text-color-secondary);
+}
+
+.agent-selector-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--td-brand-color);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  flex-shrink: 0;
+  /* Vue 端是 router-link <a>（无 UA button 默认）；React button 复位到同基线 */
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+}
+
+.agent-selector-add:hover {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.agent-selector-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 4px 8px;
+}
+
+.agent-group:not(:last-child) {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: .5px solid var(--td-component-stroke);
+}
+
+.agent-group-title {
+  font-size: 11px;
+  color: var(--td-text-color-placeholder);
+  padding: 8px 12px 4px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.agent-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  margin: 0 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-radius: 5px;
+  /* Vue 端是 div（Teleport body，继承 body 14px 字号；宽度自动填满）。
+     React in-tree 在 .chat(20px) 内——显式对齐 Vue 继承链的 14px 基准。 */
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: inherit;
+}
+
+.agent-option:hover,
+.agent-option.selected {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.agent-option.empty {
+  color: var(--td-text-color-placeholder);
+  cursor: default;
+  text-align: center;
+  padding: 16px 8px;
+  min-height: auto;
+}
+
+.agent-option.empty:hover {
+  background: transparent;
+}
+
+.agent-option-name {
+  font-size: 12px;
+  color: var(--td-text-color-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 22px;
+}
+
+.shared-tag {
+  font-size: 10px;
+  color: var(--td-text-color-placeholder);
+  flex-shrink: 0;
+  line-height: 22px;
+}
+
+.agent-option-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.not-ready-icon {
+  flex-shrink: 0;
+  color: var(--td-warning-color, #ed7b2f);
+  cursor: default;
+  display: block;
+  line-height: 1;
+}
+
+.builtin-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.agent-selector-overlay .builtin-icon .t-icon {
+  display: block;
+  line-height: 1;
+}
+
+.builtin-icon.normal {
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color-active);
+}
+
+.builtin-icon.agent {
+  background: rgba(124, 77, 255, 0.1);
+  color: var(--td-brand-color);
+}
+
+.builtin-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+  background: var(--td-bg-color-secondarycontainer, #f5f5f5);
+  overflow: hidden;
+}
+
+/* AgentAvatar.vue（small 变体，与 agents.td.css §2 同源；chat 页独立加载） */
+.agent-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  box-shadow: var(--td-shadow-2);
+  overflow: hidden;
+}
+
+.agent-avatar.agent-avatar-small {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.agent-avatar.agent-avatar-small .agent-avatar-letter {
+  font-size: 11px;
+}
+
+.agent-avatar.agent-avatar-small .agent-sparkles {
+  display: none;
+}
+
+.agent-avatar-letter {
+  position: relative;
+  z-index: 1;
+  color: var(--td-text-color-anti);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--app-font-family);
+}
+
+/* ===== §15 Input-field.vue 模型下拉（model-selector-overlay；Vue Teleport
+   body → views 包 in-tree fixed 同几何，3673-3853 原样平移） ===== */
+.model-selector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: transparent;
+  touch-action: none;
+}
+
+.model-selector-dropdown {
+  position: fixed;
+  z-index: 10000;
+  background: var(--td-bg-color-container);
+  border: .5px solid var(--td-component-border);
+  border-radius: 10px;
+  box-shadow: var(--td-shadow-2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transform-origin: top left;
+  animation: modelSelectorFadeIn 0.15s ease-out;
+}
+
+@keyframes modelSelectorFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.model-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: .5px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+}
+
+.model-selector-content {
+  flex: 1;
+  min-height: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 8px;
+}
+
+.model-selector-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: .5px solid transparent;
+  background: transparent;
+  color: var(--td-brand-color);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+  /* Vue 端 button 无 font-family 规则 → UA 默认按钮字体（本环境 Arial）；
+     apps/web styles.css 的表单控件 reset（font: inherit）会盖成系统栈——
+     「+」ASCII 字形度量随字体改变（px-chat-model-selector 36px 残差根因）。
+     revert 回滚 author 层 reset、恢复 UA 值，与 Vue 同一解析路径。 */
+  font-family: revert;
+  line-height: inherit;
+}
+
+.model-selector-add .add-icon {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 400;
+}
+
+.model-selector-add:hover {
+  color: var(--td-brand-color-hover);
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.model-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.model-option:last-child {
+  margin-bottom: 0;
+}
+
+.model-option:hover,
+.model-option.selected {
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.model-option.empty {
+  color: var(--td-text-color-placeholder);
+  cursor: default;
+  text-align: center;
+  padding: 20px 8px;
+}
+
+.model-option.empty:hover {
+  background: transparent;
+}
+
+.model-option-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.model-option-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--td-text-color-secondary);
+}
+
+.model-option-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.model-option-name {
+  font-size: 12px;
+  color: var(--td-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.model-option-raw-name {
+  font-size: 11px;
+  color: var(--td-text-color-placeholder);
+  flex-shrink: 0;
+}
+
+.model-option-ctx {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-secondarycontainer);
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 18px;
+}
+
+.model-option-ctx.is-default {
+  color: var(--td-text-color-placeholder);
+}
+
+/* ===== §16 SandboxSidePanel.vue + ChatArtifactsPanel.vue（px-chat-sandbox）
+   Vue 三 tab 侧面板（fixed 右缘 420 可拖宽）+ 产物 tab 内容，scoped 原样平移。 ===== */
+.chat-sandbox-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 100vw);
+  max-width: 100vw;
+  z-index: 1201;
+  display: flex;
+  flex-direction: column;
+  background: var(--td-bg-color-container);
+  border-left: 1px solid var(--td-component-stroke);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.06);
+}
+
+@media (min-width: 1400px) {
+  .chat-sandbox-panel.is-shifted {
+    right: 420px;
+  }
+}
+
+.chat-sandbox-panel.is-resizing {
+  transition: none;
+  user-select: none;
+}
+
+.chat-sandbox-panel.is-resizing .chat-sandbox-panel__body,
+.chat-sandbox-panel.is-resizing .chat-sandbox-panel__tabs {
+  pointer-events: none;
+}
+
+.chat-sandbox-panel__resize-handle {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  bottom: 0;
+  width: 7px;
+  z-index: 3;
+  cursor: col-resize;
+}
+
+.chat-sandbox-panel__resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 3px;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.chat-sandbox-panel__resize-handle:hover::after,
+.chat-sandbox-panel.is-resizing .chat-sandbox-panel__resize-handle::after {
+  background: var(--td-brand-color);
+}
+
+.chat-sandbox-panel__close {
+  border: 0;
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-secondary);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+  line-height: inherit;
+  padding: 0;
+}
+
+.chat-sandbox-panel__close:hover {
+  background: color-mix(in srgb, var(--td-text-color-primary) 8%, var(--td-bg-color-secondarycontainer));
+  color: var(--td-text-color-primary);
+}
+
+.chat-sandbox-panel__tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+}
+
+.chat-sandbox-panel__tablist {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.chat-sandbox-panel__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.chat-sandbox-panel__tab:hover {
+  color: var(--td-text-color-primary);
+  background: var(--td-bg-color-container-hover);
+}
+
+.chat-sandbox-panel__tab.is-active {
+  color: var(--td-text-color-primary);
+  background: var(--td-bg-color-secondarycontainer);
+  font-weight: 500;
+}
+
+.chat-sandbox-panel__tab:focus-visible {
+  outline: 2px solid var(--td-text-color-secondary);
+  outline-offset: -2px;
+}
+
+.chat-sandbox-panel__tab-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--td-text-color-primary) 8%, transparent);
+  color: var(--td-text-color-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-sandbox-panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+}
+
+.chat-sandbox-panel__body.is-flush {
+  padding: 0;
+}
+
+.chat-sandbox-panel__terminal,
+.chat-sandbox-panel__artifacts {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.chat-sandbox-panel__placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--td-text-color-placeholder);
+  font-size: 13px;
+}
+
+.chat-sandbox-panel__placeholder p {
+  margin: 0;
+}
+
+/* —— ChatArtifactsPanel.vue —— */
+.chat-artifacts-panel {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.artifact-panel-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: var(--td-text-color-placeholder);
+  font-size: 13px;
+  text-align: center;
+}
+
+.artifact-panel-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+
+.artifact-panel-banner-spin {
+  animation: artifact-panel-spin 0.8s linear infinite;
+}
+
+@keyframes artifact-panel-spin {
+  to { transform: rotate(360deg); }
+}
+
+.artifact-list {
+  margin: 0;
+  padding: 0 4px 12px;
+  list-style: none;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.artifact-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  border-radius: 8px;
+}
+
+.artifact-item.is-previewable {
+  cursor: pointer;
+}
+
+.artifact-item:hover {
+  background: var(--td-bg-color-container-hover);
+}
+
+.artifact-filters {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 12px 12px;
+}
+
+.artifact-scope {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+}
+
+.artifact-scope button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.artifact-scope button[aria-pressed='true'] {
+  background: var(--td-bg-color-container);
+  color: var(--td-text-color-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.artifact-scope button:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
+}
+
+.artifact-scope button span {
+  color: var(--td-text-color-placeholder);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.artifact-search input {
+  width: 100%;
+  border-radius: 7px;
+}
+
+.artifact-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.artifact-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.artifact-open:focus-visible {
+  outline: 2px solid var(--td-text-color-secondary);
+  outline-offset: 4px;
+}
+
+.artifact-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  color: var(--td-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artifact-meta {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--td-text-color-placeholder);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.artifact-meta-sep {
+  opacity: 0.6;
+}
+
+.artifact-download.t-button {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  color: var(--td-text-color-secondary);
+  transition: background-color 0.15s ease, color 0.15s ease;
+  padding: 0;
+}
+
+.artifact-download.t-button:not(.t-is-disabled):not(.t-is-loading):hover {
+  background: color-mix(in srgb, var(--td-text-color-primary) 10%, var(--td-bg-color-container));
+  color: var(--td-text-color-primary);
+}
+
+.artifact-download.t-button:not(.t-is-disabled):not(.t-is-loading):active {
+  background: color-mix(in srgb, var(--td-text-color-primary) 16%, var(--td-bg-color-container));
+}
+
+.artifact-download.t-button:focus-visible {
+  outline: 2px solid var(--td-text-color-secondary);
+  outline-offset: 2px;
+}
+
+/* —— ArtifactFileIcon.vue + artifact-file-icon.less —— */
+.artifact-file-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 32px;
+  height: 38px;
+}
+
+.artifact-file-icon-svg {
+  display: block;
+  flex-shrink: 0;
+  width: 32px;
+  height: 38px;
+  color: var(--td-text-color-secondary);
+}
+
+.artifact-file-icon-svg.kind-file-word { color: #5381c4; }
+.artifact-file-icon-svg.kind-file-excel { color: #419781; }
+.artifact-file-icon-svg.kind-file-powerpoint { color: #c18a4e; }
+.artifact-file-icon-svg.kind-file-pdf { color: #c56868; }
+.artifact-file-icon-svg.kind-image,
+.artifact-file-icon-svg.kind-video { color: #9273bd; }
+.artifact-file-icon-svg.kind-code,
+.artifact-file-icon-svg.kind-sound { color: #5d95ad; }
+
+.artifact-file-icon-svg .file-sheet {
+  fill: var(--td-bg-color-container);
+  stroke: currentColor;
+  stroke-opacity: 0.35;
+  stroke-width: 1.2;
+}
+
+.artifact-file-icon-svg .file-fold,
+.artifact-file-icon-svg .file-lines {
+  stroke: currentColor;
+  stroke-opacity: 0.35;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.artifact-file-icon-svg text {
+  fill: #fff;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 7px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+
+/* §15 续 —— composer 模型触发器闭合态（Vue .model-selector-trigger 行为面）：
+   hover 底色 + 展开态箭头旋转（.model-dropdown-arrow.rotate）。 */
+.wk-chat-model-display > div.wk-chat-model-chip:hover {
+  background: var(--td-bg-color-secondarycontainer-hover, #e6e6e6);
+}
+
+.wk-chat-model-chip .wk-chat-chip-arrow,
+.wk-chat-agent-chip .wk-vc-composer-17 {
+  transition: transform 0.12s;
+}
+
+.wk-chat-model-chip[aria-expanded='true'] .wk-chat-chip-arrow,
+.wk-chat-agent-chip[aria-expanded='true'] .wk-vc-composer-17 {
+  transform: rotate(180deg);
+}
+
+/* ===== §18 ChatQuestionMinimap.vue（px-chat-sandbox 根因②：问答目录轨道） =====
+   Vue scoped 块逐条平移；类名自带 question-minimap 前缀（scoped 语义天然成立）。
+   挂载于 .chat（position:relative）左缘竖直居中，pointer-events 仅轨道/面板可命中。 */
+.question-minimap {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 11;
+  display: flex;
+  align-items: stretch;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.question-minimap__rail,
+.question-minimap__bridge,
+.question-minimap__panel {
+  pointer-events: auto;
+}
+
+.question-minimap__rail {
+  position: relative;
+  width: 24px;
+  height: 100%;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.question-minimap__rail:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 2px;
+}
+
+.question-minimap__tick {
+  position: absolute;
+  left: 0;
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--td-text-color-secondary);
+  opacity: 0.4;
+  transform: translateY(-50%);
+  transform-origin: left center;
+  transition: transform 120ms ease-out, background 120ms ease-out, opacity 120ms ease-out;
+}
+
+.question-minimap__tick--active {
+  background: var(--td-brand-color);
+  opacity: 0.85;
+}
+
+.question-minimap__bridge {
+  width: 8px;
+}
+
+.question-minimap__panel {
+  position: absolute;
+  left: 20px;
+  width: 220px;
+  max-height: min(280px, 40vh);
+  padding: 6px 8px;
+  overflow: hidden;
+  scrollbar-width: none;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 6px;
+  background: var(--td-bg-color-container);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.question-minimap__panel::-webkit-scrollbar {
+  display: none;
+}
+
+.question-minimap__question,
+.question-minimap__answer {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.question-minimap__question {
+  overflow: hidden;
+  color: var(--td-text-color-primary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question-minimap__answer {
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--td-text-color-secondary);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  opacity: 0.8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .question-minimap__tick {
+    transition: none;
+  }
+}

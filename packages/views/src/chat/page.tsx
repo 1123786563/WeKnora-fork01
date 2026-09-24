@@ -11,6 +11,14 @@ import { ToolApprovalCard } from './tool-approval.tsx';
 import type { ArtifactPreviewPayload } from './artifact-preview.tsx';
 import { splitLiveThinking, type LiveThinkingState } from './live-thinking.ts';
 import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
+import {
+  SandboxSidePanel,
+  collectSessionArtifacts,
+  initialSandboxPanelWidth,
+  type SandboxArtifactItem,
+  type SandboxPanelTab,
+} from './sandbox-side-panel.tsx';
+import { ChatQuestionMinimap, type ChatMessageLike } from './question-minimap.tsx';
 
 // Re-exported for route hosts on the mapped ./chat/page subpath: the
 // ChatRoutePage transient row strips `<think>` content with the same Vue
@@ -33,6 +41,8 @@ export interface ChatAgentOption {
   disabled?: boolean;
   description?: string;
   is_builtin?: boolean;
+  /** Vue CustomAgent.avatar —— 下拉 builtin-avatar emoji 分支。 */
+  avatar?: string;
   config?: Record<string, unknown>;
 }
 
@@ -227,9 +237,11 @@ export interface ChatPageProps {
   modelContext?: string;
   /** True when the context spec is the 200K default (dims the suffix). */
   modelContextIsDefault?: boolean;
-  modelOptions?: readonly { id: string; name: string }[];
+  modelOptions?: readonly { id: string; name: string; rawName?: string; contextLabel?: string; contextIsDefault?: boolean }[];
   selectedModelId?: string;
   onModelChange?(modelId: string): void;
+  /** Vue 模型下拉「+ 添加模型」（handleGoToConversationModels → 设置页模型分区）。 */
+  onModelAdd?(): void;
   /**
    * R484 D15 — Vue Input-field.vue web-search toggle, forwarded to the
    * composer globe button. Visibility gates on readiness (tenant default
@@ -253,8 +265,16 @@ export interface ChatPageProps {
    * 注入。缺省回退为结构面（.chat-header 标题 + ⋯ 按钮，无弹层）。
    */
   headerSlot?: ReactNode;
-  /** Vue index.vue .sandbox-header-toggle 注入（宿主 t-tooltip 版）；缺省回退为结构面。 */
-  sandboxToggleSlot?: ReactNode;
+  /**
+   * Vue index.vue .sandbox-header-toggle 注入（宿主 t-tooltip 版）；缺省回退为
+   * 结构面。render-prop：open 即时开面板（Vue sandboxPanel.open()，无异步
+   * provision —— 供给在终端 tab 激活时才发生）。
+   */
+  sandboxToggleSlot?: (open: () => void) => ReactNode;
+  /** 会话产物行下载（SandboxSidePanel 产物 tab 行 + 消息面共用宿主动作）。 */
+  onArtifactDownloadPanel?(item: SandboxArtifactItem): void;
+  /** 会话产物行预览（宿主 artifact-preview 通道）。 */
+  onArtifactPreviewPanel?(item: SandboxArtifactItem): void;
 }
 
 export function messageReferenceValues(messages: readonly ChatMessage[]): unknown[] {
@@ -503,8 +523,22 @@ export function ChatPage(props: ChatPageProps) {
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
-  // Vue sandbox panel: closed until the header toggle opens it.
+  // Vue sandbox panel (useChatSandboxPanel)：closed until the header toggle
+  // opens it — 打开是即时状态翻转（Vue sandboxPanel.open()），终端供给发生在
+  // 终端 tab 激活后（TerminalPanel 自带启动面），与异步 provision 解耦。
   const [terminalOpen, setTerminalOpen] = useState(props.terminalOpen ?? false);
+  const [sandboxTab, setSandboxTab] = useState<SandboxPanelTab>('artifacts');
+  const [sandboxWidth, setSandboxWidth] = useState(() => initialSandboxPanelWidth());
+  function openSandboxPanel(tab?: SandboxPanelTab): void {
+    if (tab) setSandboxTab(tab);
+    setTerminalOpen(true);
+  }
+  function setSandboxPanelWidth(next: number): void {
+    const clamped = Math.min(1200, Math.max(320, Math.round(next)));
+    setSandboxWidth(clamped);
+    try { window.localStorage.setItem('sandbox_panel_width', String(clamped)); } catch { /* storage unavailable */ }
+  }
+  const sandboxArtifacts = useMemo(() => collectSessionArtifacts(props.messages), [props.messages]);
   // Vue chat references live behind the collapsed 检索完成 summary
   // (ChatReferencesDrawer); the shared panel stays closed until that opens it.
   const [referencesOpen, setReferencesOpen] = useState(false);
@@ -547,6 +581,44 @@ export function ChatPage(props: ChatPageProps) {
   // Vue index.vue：回底按钮常驻 DOM（v-show），点击滚回 .chat_scroll_box 底部。
   const scrollBoxRef = useRef<HTMLDivElement | null>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
+  /* Vue useStickyBottomOnResize：用户未上滚时，消息列表尺寸变化（沙箱面板
+     开合让位 padding-right → 气泡变窄换行增多）把 scrollTop 钉在底部——
+     px-chat-sandbox 实证：缺这层 React 停在顶部而 Vue 滚到底（41px 位差）。 */
+  useEffect(() => {
+    const box = scrollBoxRef.current;
+    const messageList = box?.firstElementChild;
+    if (!messageList || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (userScrolledUp) return;
+      const container = scrollBoxRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    });
+    observer.observe(messageList);
+    return () => observer.disconnect();
+  }, [userScrolledUp]);
+  /* Vue index.vue jumpToQuestion（367-382）：问答目录点击 → 目标消息行平滑滚入
+     + is-minimap-target 1.2s 品牌色闪烁（CSS 在 chat.td.css，动画名保留原名）。 */
+  const [minimapTargetId, setMinimapTargetId] = useState('');
+  const minimapFlashTimer = useRef<number | null>(null);
+  const jumpToQuestion = (id: string) => {
+    const root = scrollBoxRef.current;
+    if (!root || !id) return;
+    const el = root.querySelector(`[data-message-id="${CSS.escape(id)}"]`);
+    if (!el) return;
+
+    const offset = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;
+    const nearEnd = root.scrollHeight - offset < root.clientHeight + 80;
+    setUserScrolledUp(!nearEnd);
+
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+
+    setMinimapTargetId(id);
+    if (minimapFlashTimer.current) window.clearTimeout(minimapFlashTimer.current);
+    minimapFlashTimer.current = window.setTimeout(() => {
+      setMinimapTargetId('');
+      minimapFlashTimer.current = null;
+    }, 1200);
+  };
   const sandboxAvailable = Boolean(props.terminal || props.onOpenTerminal);
   const streaming = props.stream?.phase === 'streaming';
   // R471-A1: Vue isAgentStreamSession() parity — see the canSteer prop doc.
@@ -595,6 +667,7 @@ export function ChatPage(props: ChatPageProps) {
       modelOptions={props.modelOptions}
       selectedModelId={props.selectedModelId}
       onModelChange={props.onModelChange}
+      onModelAdd={props.onModelAdd}
       webSearchVisible={props.webSearchVisible}
       webSearchConfigured={props.webSearchConfigured}
       webSearchEnabled={props.webSearchEnabled}
@@ -616,7 +689,7 @@ export function ChatPage(props: ChatPageProps) {
       className={'chat'
         + (referencesOpen ? ' has-references-panel' : '')
         + (terminalOpen ? ' has-sandbox-panel' : '')}
-      style={{ '--sandbox-panel-width': '420px' } as React.CSSProperties}>
+      style={{ '--sandbox-panel-width': `${sandboxWidth}px` } as React.CSSProperties}>
       {props.headerSlot ?? (
         /* 结构回退面（无 tdesign 弹层）：.chat-header + 标题 + ⋯ 按钮。 */
         <header className="chat-header">
@@ -630,9 +703,9 @@ export function ChatPage(props: ChatPageProps) {
         </header>
       )}
       {/* 沙箱面板收起时：图标镜像会话左上角三个点（Vue index.vue sandbox-header-toggle）。 */}
-      {sandboxAvailable && !terminalOpen ? (props.sandboxToggleSlot ?? (
+      {sandboxAvailable && !terminalOpen ? (props.sandboxToggleSlot ? props.sandboxToggleSlot(() => openSandboxPanel()) : (
         <div className="sandbox-header-toggle">
-          <button type="button" className="sandbox-header-toggle__btn" aria-label={copy.openSandboxPanel} onClick={() => setTerminalOpen(true)}>
+          <button type="button" className="sandbox-header-toggle__btn" aria-label={copy.openSandboxPanel} onClick={() => openSandboxPanel()}>
             <svg viewBox="0 0 20 20" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <rect x="1.5" y="1.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="1.2" />
               <line x1="12.5" y1="1.5" x2="12.5" y2="18.5" stroke="currentColor" strokeWidth="1.2" />
@@ -673,6 +746,17 @@ export function ChatPage(props: ChatPageProps) {
           onArtifactPreview={props.onArtifactPreview}
           scrollContainerRef={scrollBoxRef}
           onScrolledUpChange={setUserScrolledUp}
+          minimapTargetId={minimapTargetId}
+        />
+        {/* Vue index.vue:143 ChatQuestionMinimap —— .chat_scroll_box 的紧邻兄弟，
+            挂 .chat_thread 内（DOM 实测：Vue 端 minimap 父级即 .chat_thread，
+            relative x280/w580/h576，top:50%=288；挂外层 .chat 会左偏 20px、
+            下移 72px —— px-chat-sandbox 残差根因）。 */}
+        <ChatQuestionMinimap
+          copy={copy}
+          scrollContainerRef={scrollBoxRef}
+          messages={props.messages as unknown as readonly ChatMessageLike[]}
+          onJump={jumpToQuestion}
         />
       </div>
       <div
@@ -689,15 +773,22 @@ export function ChatPage(props: ChatPageProps) {
         {props.onSteer && canSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} steerQueue={props.steerQueue} onSteerPromote={props.onSteerPromote} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} attachments={props.attachments} onSteerWarning={props.onSteerWarning} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
         {composerNode}
       </div>
-      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer wk-vc-page-41" role="complementary" aria-label={copy.sandboxPanelTitle}>
-        <div className="wk-chat-sandbox-drawer-head wk-vc-page-42">
-          <span>{copy.sandboxPanelTitle}</span>
-          <button type="button" className="wk-chat-sandbox-drawer-close wk-vc-page-43" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
-          </button>
-        </div>
-        <TerminalPanel copy={copy} terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
-      </aside> : null}
+      {sandboxAvailable && terminalOpen ? <SandboxSidePanel
+        copy={copy}
+        visible={terminalOpen}
+        activeTab={sandboxTab}
+        width={sandboxWidth}
+        sessionId={props.selectedSessionId}
+        shifted={referencesOpen}
+        artifacts={sandboxArtifacts}
+        artifactsCollecting={props.stream?.artifactsPending}
+        terminal={<TerminalPanel copy={copy} terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />}
+        onTabChange={(tab) => { setSandboxTab(tab); if (tab === 'terminal') { /* Vue 首切终端 tab 即供给（SandboxTerminal 连接）*/ void props.onOpenTerminal?.().catch(() => undefined); } }}
+        onClose={() => setTerminalOpen(false)}
+        onWidthChange={setSandboxPanelWidth}
+        onArtifactDownload={props.onArtifactDownloadPanel}
+        onArtifactPreview={props.onArtifactPreviewPanel}
+      /> : null}
     </div>;
   }
 
@@ -807,15 +898,6 @@ export function ChatPage(props: ChatPageProps) {
           onArtifactPreview={props.onArtifactPreview}
         />}
       </div>
-      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer wk-vc-page-41" role="complementary" aria-label={copy.sandboxPanelTitle}>
-        <div className="wk-chat-sandbox-drawer-head wk-vc-page-42">
-          <span>{copy.sandboxPanelTitle}</span>
-          <button type="button" className="wk-chat-sandbox-drawer-close wk-vc-page-43" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
-          </button>
-        </div>
-        <TerminalPanel copy={copy} terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
-      </aside> : null}
     </section>
   </main>;
 }

@@ -6,6 +6,7 @@ import {
   resolveAgentNotReadySection,
   type AgentNotReadyReasonKey,
 } from './agent-readiness.ts';
+import { SpriteIcon } from './message-face.tsx';
 
 /**
  * Agent picker panel, ported from upstream AgentSelector.vue (2026-09-18
@@ -21,6 +22,8 @@ export interface AgentSelectorAgent {
   disabled?: boolean;
   description?: string;
   is_builtin?: boolean;
+  /** Vue CustomAgent.avatar emoji fallback before the letter avatar. */
+  avatar?: string;
   config?: Record<string, unknown>;
 }
 
@@ -50,15 +53,122 @@ const DETAIL_PANEL_GAP = 8;
 const DETAIL_HIDE_DELAY_MS = 400;
 const DROPDOWN_WIDTH = 220;
 
+/** Vue api/agent.ts BUILTIN_QUICK_ANSWER_ID / BUILTIN_SMART_REASONING_ID. */
+const BUILTIN_QUICK_ANSWER_ID = 'builtin-quick-answer';
+const BUILTIN_SMART_REASONING_ID = 'builtin-smart-reasoning';
+
+/** Vue AgentSelector.vue updateDropdownPosition (544-592) — ported verbatim:
+ * opens below while 100px+6 fits under the anchor, otherwise anchors the
+ * dropdown's bottom edge 6px above the trigger top (bottom CSS, not a
+ * top-minus-maxHeight computation that leaves a floating gap). */
+function vueDropdownStyle(anchor: DOMRect): React.CSSProperties {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const dropdownWidth = DROPDOWN_WIDTH;
+  const offsetY = 6;
+
+  let left = Math.floor(anchor.left);
+  const minLeft = 16;
+  const maxLeft = Math.max(16, vw - dropdownWidth - 16);
+  left = Math.max(minLeft, Math.min(maxLeft, left));
+
+  const preferredDropdownHeight = 280;
+  const minDropdownHeight = 100;
+  const topMargin = 20;
+  const spaceBelow = vh - anchor.bottom;
+  const spaceAbove = anchor.top;
+
+  if (spaceBelow >= minDropdownHeight + offsetY) {
+    return {
+      position: 'fixed',
+      width: `${dropdownWidth}px`,
+      left: `${left}px`,
+      top: `${Math.floor(anchor.bottom + offsetY)}px`,
+      maxHeight: `${Math.min(preferredDropdownHeight, spaceBelow - offsetY - 16)}px`,
+      zIndex: 10001,
+    };
+  }
+  const availableHeight = spaceAbove - offsetY - topMargin;
+  const actualHeight = availableHeight >= preferredDropdownHeight
+    ? preferredDropdownHeight
+    : Math.max(minDropdownHeight, availableHeight);
+  return {
+    position: 'fixed',
+    width: `${dropdownWidth}px`,
+    left: `${left}px`,
+    bottom: `${vh - anchor.top + offsetY}px`,
+    maxHeight: `${actualHeight}px`,
+    zIndex: 10001,
+  };
+}
+
+/** Vue AgentAvatar.vue (size=small) — hashed gradient + first letter. The
+ *  sparkles decoration is display:none on the small variant. */
+function agentAvatarGradient(name: string): { from: string; to: string } {
+  const gradients = [
+    { from: '#667eea', to: '#764ba2' }, { from: '#4facfe', to: '#00f2fe' },
+    { from: '#43e97b', to: '#38f9d7' }, { from: '#11998e', to: '#38ef7d' },
+    { from: '#5ee7df', to: '#b490ca' }, { from: '#48c6ef', to: '#6f86d6' },
+    { from: '#a8edea', to: '#fed6e3' }, { from: '#667db6', to: '#0082c8' },
+    { from: '#36d1dc', to: '#5b86e5' }, { from: '#56ab2f', to: '#a8e063' },
+    { from: '#614385', to: '#516395' }, { from: '#02aab0', to: '#00cdac' },
+    { from: '#6a82fb', to: '#fc5c7d' }, { from: '#834d9b', to: '#d04ed6' },
+    { from: '#4776e6', to: '#8e54e9' }, { from: '#00b09b', to: '#96c93d' },
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) - hash) + name.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return gradients[Math.abs(hash) % gradients.length]!;
+}
+
+function AgentAvatar({ name }: { name: string }) {
+  const trimmed = name.trim();
+  const firstChar = trimmed.charAt(0);
+  const letter = !firstChar ? '?' : (/[a-zA-Z]/.test(firstChar) ? firstChar.toUpperCase() : firstChar);
+  const g = agentAvatarGradient(trimmed);
+  return (
+    <div
+      className="agent-avatar agent-avatar-small"
+      style={{ background: `linear-gradient(135deg, ${g.from} 0%, ${g.to} 100%)` }}
+      aria-hidden="true"
+    >
+      <span className="agent-avatar-letter" style={{ textShadow: `0 1px 2px ${g.to}80, 0 0 8px ${g.from}30` }}>{letter}</span>
+    </div>
+  );
+}
+
+/** Vue AgentSelector.vue builtin icon boxes (22×22 rounded, brand-tinted). */
+function AgentOptionIcon({ agent }: { agent: AgentSelectorAgent }) {
+  if (agent.id === BUILTIN_QUICK_ANSWER_ID || agent.id === BUILTIN_SMART_REASONING_ID) {
+    const smart = agent.config?.agent_mode === 'smart-reasoning';
+    return (
+      <div className={'builtin-icon ' + (smart ? 'agent' : 'normal')}>
+        <SpriteIcon name={smart ? 'control-platform' : 'chat'} size="13px" />
+      </div>
+    );
+  }
+  if (agent.avatar) {
+    return <div className="builtin-avatar">{agent.avatar}</div>;
+  }
+  return (
+    <div className="builtin-icon normal">
+      <SpriteIcon name="app" size="13px" />
+    </div>
+  );
+}
+
 function missingItemLabel(copy: ChatCopyTable, key: AgentNotReadyReasonKey): string {
   return key === 'rerank_model' ? copy.agentMissingRerankModel : copy.agentMissingChatModel;
 }
 
 /**
  * R484 D14 — Vue AgentSelector.vue:31-35 renders TDesign `error-circle` (a
- * circled exclamation mark) as the not-ready marker. The bare ⚠ text glyph
- * diverged visually from the Vue baseline; this svg mirrors the TDesign
- * error-circle geometry.
+ * circled exclamation mark) as the not-ready marker inside the trailing
+ * .agent-option-actions slot (22×22). The bare ⚠ text glyph diverged
+ * visually from the Vue baseline; the sprite use mirrors the TDesign
+ * error-circle geometry (台账 #10).
  */
 function NotReadyMarker(props: { agentId: string; label: string }) {
   return (
@@ -67,13 +177,9 @@ function NotReadyMarker(props: { agentId: string; label: string }) {
       data-agent-not-ready={props.agentId}
       aria-label={props.label}
       title={props.label}
-      className="wk-vc-agent-selector-1"
+      className="agent-option-actions"
     >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-        <circle cx="7" cy="7" r="5.6" stroke="currentColor" strokeWidth="1.3" />
-        <line x1="7" y1="4" x2="7" y2="7.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-        <circle cx="7" cy="10" r="0.8" fill="currentColor" />
-      </svg>
+      <SpriteIcon name="error-circle" className="not-ready-icon" size="14px" />
     </span>
   );
 }
@@ -134,106 +240,105 @@ export function AgentSelectorPanel(props: AgentSelectorProps) {
     props.onSelect(agent.id, agent);
   }
 
-  function selectQuickAnswer(): void {
-    props.onSelect('', null);
-  }
-
   function configureAgent(agent: AgentSelectorAgent): void {
     const keys = notReadyKeysFor(agent);
     props.onConfigureAgent(agent, resolveAgentNotReadySection(keys), resolveAgentNotReadyHighlight(keys));
   }
 
-  const builtinAgents = agents.filter((agent) => agent.is_builtin === true);
+  /* Vue AgentSelector.vue builtinAgents mapping — the two builtins always
+   * display the localized mode name/description (input.normalMode /
+   * input.agentMode), regardless of the backend row's stored name.
+   * Vue selectedAgentId 恒为 agent id（快速问答=builtin-quick-answer）；React
+   * host 以 '' 表示快速问答，此处对齐 Vue 口径再比较（selected 行高亮）。 */
+  const effectiveCurrentAgentId = currentAgentId || BUILTIN_QUICK_ANSWER_ID;
+  const builtinAgents = agents
+    .filter((agent) => agent.is_builtin === true)
+    .map((agent) => {
+      if (agent.id === BUILTIN_QUICK_ANSWER_ID) return { ...agent, name: copy.quickAnswer, description: copy.inputNormalModeDesc };
+      if (agent.id === BUILTIN_SMART_REASONING_ID) return { ...agent, name: copy.inputAgentMode, description: copy.inputAgentModeDesc };
+      return agent;
+    });
   const customAgents = agents.filter((agent) => agent.is_builtin !== true);
   const activeDetail = activeDetailId === null ? null
     : (agents.find((agent) => agent.id === activeDetailId) ?? null);
-  const quickAnswerActive = currentAgentId === '';
 
-  const anchor = props.anchorRect;
-  const dropdownLeft = Math.max(16, Math.min(anchor.left, window.innerWidth - DROPDOWN_WIDTH - 16));
-  const openDownward = window.innerHeight - anchor.bottom >= 120;
-  const dropdownTop = openDownward ? anchor.bottom + 6 : Math.max(20, anchor.top - 6 - Math.min(280, anchor.top - 26));
-  const dropdownMaxHeight = openDownward
-    ? Math.min(280, window.innerHeight - anchor.bottom - 22)
-    : Math.min(280, anchor.top - 26);
+  const dropdownStyle = vueDropdownStyle(props.anchorRect);
 
   const dropdown = (
-    <div className="wk-agent-selector-overlay wk-vc-agent-selector-2" onClick={props.onClose}>
+    <div className="agent-selector-overlay" onClick={props.onClose}>
       <div
         role="dialog"
         aria-label={copy.selectAgent}
-        className="wk-agent-selector-dropdown wk-vc-agent-selector-3"
-        style={{ left: dropdownLeft, top: dropdownTop, width: DROPDOWN_WIDTH, maxHeight: dropdownMaxHeight }}
+        className="agent-selector-dropdown"
+        style={dropdownStyle}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="wk-vc-agent-selector-4">
-          <span className="wk-vc-agent-selector-5">{copy.selectAgent}</span>
+        <div className="agent-selector-header">
+          <span>{copy.selectAgent}</span>
           <button
             type="button"
-            className="wk-vc-agent-selector-6"
+            className="agent-selector-add"
             onClick={() => { props.onClose(); props.onManage(); }}
           >
-            <span aria-hidden="true">+</span>{copy.agentManageAgents}
+            <span className="add-icon" aria-hidden="true">+</span><span className="add-text">{copy.agentManageAgents}</span>
           </button>
         </div>
-        <div className="wk-vc-agent-selector-7">
-          {agents.length === 0 ? (
-            <div className="wk-vc-agent-selector-8">{copy.agentNoAgents}</div>
-          ) : null}
+        <div className="agent-selector-content">
           {builtinAgents.length > 0 ? (
-            <div className="wk-agent-selector-group">
-              <div className="wk-vc-agent-selector-9">{copy.agentBuiltinGroup}</div>
+            <div className="agent-group">
+              <div className="agent-group-title">{copy.agentBuiltinGroup}</div>
               {builtinAgents.map((agent) => (
-                <button
-                  type="button"
+                <div
                   key={agent.id}
                   ref={(el) => { if (el) optionRefs.current.set(agent.id, el); }}
                   data-agent-id={agent.id}
-                  className={`wk-vc-agent-selector-27 ${currentAgentId === agent.id ? 'wk-vc-agent-selector-28' : 'wk-vc-agent-selector-29'}`}
+                  className={'agent-option' + (effectiveCurrentAgentId === agent.id ? ' selected' : '')}
                   onMouseEnter={() => onOptionEnter(agent)}
                   onMouseLeave={onOptionLeave}
                   onFocus={() => onOptionEnter(agent)}
                   onClick={() => selectAgent(agent)}
                 >
-                  <span className="wk-agent-option-icon wk-vc-agent-selector-10" aria-hidden="true">{agent.config?.agent_mode === 'smart-reasoning' ? '✦' : '💬'}</span>
-                  <span className="wk-vc-agent-selector-11">{agent.name}</span>
+                  <AgentOptionIcon agent={agent} />
+                  <span className="agent-option-name">{agent.name}</span>
                   {notReadyKeysFor(agent).length > 0 ? (
                     <NotReadyMarker agentId={agent.id} label={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} />
                   ) : null}
-                </button>
+                </div>
               ))}
             </div>
           ) : null}
           {customAgents.length > 0 ? (
-            <div className="wk-agent-selector-group">
-              <div className="wk-vc-agent-selector-9">{copy.agentCustomGroup}</div>
+            <div className="agent-group">
+              <div className="agent-group-title">{copy.agentCustomGroup}</div>
               {customAgents.map((agent) => (
-                <button
-                  type="button"
+                <div
                   key={agent.id}
                   ref={(el) => { if (el) optionRefs.current.set(agent.id, el); }}
                   data-agent-id={agent.id}
-                  className={`wk-vc-agent-selector-27 ${currentAgentId === agent.id ? 'wk-vc-agent-selector-28' : 'wk-vc-agent-selector-29'}`}
+                  className={'agent-option' + (effectiveCurrentAgentId === agent.id ? ' selected' : '')}
                   onMouseEnter={() => onOptionEnter(agent)}
                   onMouseLeave={onOptionLeave}
                   onFocus={() => onOptionEnter(agent)}
                   onClick={() => selectAgent(agent)}
                 >
-                  <span className="wk-vc-agent-selector-12" aria-hidden="true">{agent.name.slice(0, 1).toUpperCase()}</span>
-                  <span className="wk-vc-agent-selector-11">{agent.name}</span>
+                  <AgentAvatar name={agent.name} />
+                  <span className="agent-option-name">{agent.name}</span>
                   {notReadyKeysFor(agent).length > 0 ? (
                     <NotReadyMarker agentId={agent.id} label={formatChatCopy(copy, 'agentNotReadyHint', { items: agentNotReadyLabels(copy, notReadyKeysFor(agent)).join('、') })} />
                   ) : null}
-                </button>
+                </div>
               ))}
             </div>
+          ) : null}
+          {builtinAgents.length === 0 && customAgents.length === 0 ? (
+            <div className="agent-option empty">{copy.agentNoAgents}</div>
           ) : null}
         </div>
       </div>
       {activeDetail && detailRect ? <AgentDetailCard
         copy={copy}
         agent={activeDetail}
-        isCurrent={activeDetail.id === currentAgentId}
+        isCurrent={activeDetail.id === effectiveCurrentAgentId}
         notReadyKeys={notReadyKeysFor(activeDetail)}
         anchorRect={detailRect}
         onEnter={clearHideTimer}

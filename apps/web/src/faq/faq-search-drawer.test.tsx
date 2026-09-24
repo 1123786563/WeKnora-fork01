@@ -67,6 +67,7 @@ function fakeClient(searchData: Array<Record<string, unknown>>, options: { searc
         },
       },
       auth: { me: async () => ({ user: { id: 'u1', roles: [], memberships: [] }, membership: { role: 'owner' }, can_access_all_tenants: false }) },
+      identity: { organizations: { knowledgeBaseShares: { listShared: async () => [] } } },
     },
     searchCalls,
   };

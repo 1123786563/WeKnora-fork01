@@ -26,10 +26,20 @@ import { renderChatMarkdown } from './markdown.ts';
  * page.tsx headerSlot 注入真实 tdesign 组件。
  */
 
-/** tdesign Icon 同构输出（sprite <use>，与 tdesign-icons-react 同路径，台账 #10）。 */
-function SpriteIcon(props: { name: string; className?: string }) {
+/** tdesign Icon 同构输出（sprite <use>，与 tdesign-icons-react 同路径，台账 #10）。
+ *  size 走内联 font-size（Vue TIcon size 同机制）：sprite 注入的 .t-icon
+ *  { width:1em; height:1em } 会压过 svg width/height 表现属性。 */
+export function SpriteIcon(props: { name: string; className?: string; size?: string }) {
   return (
-    <svg className={'t-icon t-icon-' + props.name + (props.className ? ' ' + props.className : '')} viewBox="0 0 24 24" width="1em" height="1em" fill="none" aria-hidden="true">
+    <svg
+      className={'t-icon t-icon-' + props.name + (props.className ? ' ' + props.className : '')}
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      aria-hidden="true"
+      style={props.size ? { fontSize: props.size } : undefined}
+    >
       <use href={'#t-icon-' + props.name} />
     </svg>
   );
