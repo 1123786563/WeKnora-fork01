@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -484,4 +485,66 @@ func execMigrationFile(db *sql.DB, path string) error {
 		return fmt.Errorf("exec %s: %w", path, err)
 	}
 	return nil
+}
+
+// Step-0 debt from the T14 subtask-1 review: exhausting all retry attempts
+// on a persistent creation race must surface the typed conflict instead of
+// leaking the raw unique/lock error, and the race classification may only
+// match the marker classes the fix-r1 plan allows.
+func TestEnsureApplicationTaskRetryExhaustionReturnsTypedConflict(t *testing.T) {
+	coordinator := NewApplicationTaskCoordinator(nil)
+	calls := 0
+	once := func(context.Context, uint64, string, interfaces.CareerApplicationTaskIntent) (interfaces.CareerApplicationTaskLink, error) {
+		calls++
+		return interfaces.CareerApplicationTaskLink{}, errors.New("database is locked")
+	}
+	link, err := coordinator.ensureWithRetry(
+		context.Background(), 701, "owner-1", applicationTaskIntent(), once,
+	)
+	require.Empty(t, link.TaskID)
+	require.Empty(t, link.RunID)
+	require.ErrorIs(t, err, ErrApplicationTaskConflict)
+	require.NotEqual(t, "database is locked", err.Error(), "raw race error must not leak to the caller")
+	require.Equal(t, 3, calls, "the bounded retry budget must stay at three attempts")
+}
+
+func TestEnsureApplicationTaskNonRaceErrorIsReturnedAsIs(t *testing.T) {
+	coordinator := NewApplicationTaskCoordinator(nil)
+	calls := 0
+	cause := errors.New("connection refused")
+	once := func(context.Context, uint64, string, interfaces.CareerApplicationTaskIntent) (interfaces.CareerApplicationTaskLink, error) {
+		calls++
+		return interfaces.CareerApplicationTaskLink{}, cause
+	}
+	link, err := coordinator.ensureWithRetry(
+		context.Background(), 701, "owner-1", applicationTaskIntent(), once,
+	)
+	require.Empty(t, link.TaskID)
+	require.ErrorIs(t, err, cause)
+	require.Equal(t, 1, calls, "non-race errors must not be retried")
+}
+
+func TestIsApplicationTaskCreationRaceMatchesOnlyPlannedMarkers(t *testing.T) {
+	for _, err := range []error{
+		gorm.ErrDuplicatedKey,
+		fmt.Errorf("insert session: %w", gorm.ErrDuplicatedKey),
+		errors.New(`duplicate key value violates unique constraint "uq_agent_runs_request"`),
+		errors.New(`duplicate key value violates unique constraint "uq_workbench_application_tasks_request"`),
+		errors.New("database is locked"),
+		errors.New("database table is locked"),
+		errors.New("sqlite_busy: will retry preparable statement"),
+	} {
+		require.Truef(t, isApplicationTaskCreationRace(err), "planned race marker rejected: %v", err)
+	}
+	for _, err := range []error{
+		errors.New("unique constraint failed: career_facts.tenant_id"),
+		errors.New(`duplicate key value violates unique constraint "uq_career_applications_scope"`),
+		errors.New("sqlstate 23505 without a request constraint name"),
+		errors.New("deadlock detected"),
+		errors.New("serialization failure: sqlstate 40001"),
+		errors.New("sqlstate 40P01"),
+		errors.New("connection refused"),
+	} {
+		require.Falsef(t, isApplicationTaskCreationRace(err), "marker outside the fix-r1 plan accepted: %v", err)
+	}
 }

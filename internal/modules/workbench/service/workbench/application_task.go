@@ -54,6 +54,22 @@ type applicationTaskSnapshot struct {
 	Title         string `json:"title"`
 }
 
+// applicationTaskMaxAttempts bounds how often EnsureCareerApplicationTask
+// retries a creation race. applicationTaskRetryPause spaces the retries far
+// enough apart that SQLite lock contention on a busy host clears between
+// attempts; the previous 1ms+2ms budget flaked on slow CI.
+const (
+	applicationTaskMaxAttempts = 3
+)
+
+func applicationTaskRetryPause(attempt int) time.Duration {
+	return time.Duration(attempt+1) * 10 * time.Millisecond
+}
+
+type applicationTaskEnsure func(
+	context.Context, uint64, string, interfaces.CareerApplicationTaskIntent,
+) (interfaces.CareerApplicationTaskLink, error)
+
 func (c *ApplicationTaskCoordinator) EnsureCareerApplicationTask(
 	ctx context.Context,
 	tenantID uint64,
@@ -64,22 +80,43 @@ func (c *ApplicationTaskCoordinator) EnsureCareerApplicationTask(
 	if err != nil {
 		return interfaces.CareerApplicationTaskLink{}, err
 	}
+	return c.ensureWithRetry(ctx, tenantID, ownerID, intent, c.ensureOnce)
+}
 
-	for attempt := 0; attempt < 3; attempt++ {
-		link, err := c.ensureOnce(ctx, tenantID, ownerID, intent)
+// ensureWithRetry retries only errors attributable to concurrent request
+// creation. When the bounded budget is exhausted while the error is still a
+// race, the caller receives the typed ErrApplicationTaskConflict (wrapping
+// the last race evidence) instead of the raw unique/lock error.
+func (c *ApplicationTaskCoordinator) ensureWithRetry(
+	ctx context.Context,
+	tenantID uint64,
+	ownerID string,
+	intent interfaces.CareerApplicationTaskIntent,
+	ensure applicationTaskEnsure,
+) (interfaces.CareerApplicationTaskLink, error) {
+	var lastRace error
+	for attempt := 0; attempt < applicationTaskMaxAttempts; attempt++ {
+		link, err := ensure(ctx, tenantID, ownerID, intent)
 		if err == nil {
 			return link, nil
 		}
-		if attempt == 2 || !isApplicationTaskCreationRace(err) {
+		if !isApplicationTaskCreationRace(err) {
 			return interfaces.CareerApplicationTaskLink{}, err
+		}
+		lastRace = err
+		if attempt == applicationTaskMaxAttempts-1 {
+			break
 		}
 		select {
 		case <-ctx.Done():
 			return interfaces.CareerApplicationTaskLink{}, ctx.Err()
-		case <-time.After(time.Duration(attempt+1) * time.Millisecond):
+		case <-time.After(applicationTaskRetryPause(attempt)):
 		}
 	}
-	return interfaces.CareerApplicationTaskLink{}, ErrApplicationTaskConflict
+	return interfaces.CareerApplicationTaskLink{}, fmt.Errorf(
+		"%w: creation still racing after %d attempts: %v",
+		ErrApplicationTaskConflict, applicationTaskMaxAttempts, lastRace,
+	)
 }
 
 func (c *ApplicationTaskCoordinator) ensureOnce(
@@ -195,6 +232,11 @@ func (c *ApplicationTaskCoordinator) ensureOnce(
 	return link, nil
 }
 
+// isApplicationTaskCreationRace accepts exactly the three evidence classes
+// the fix-r1 plan allows: gorm.ErrDuplicatedKey, the two request-uniqueness
+// constraint names, and SQLite database-lock contention. Generic unique-key
+// markers (unique constraint / duplicate key / 23505) would also swallow
+// unrelated tables' constraint failures, so they must not match.
 func isApplicationTaskCreationRace(err error) bool {
 	if err == nil {
 		return false
@@ -204,8 +246,11 @@ func isApplicationTaskCreationRace(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	for _, marker := range []string{
-		"unique constraint", "duplicate key", "23505", "database is locked",
-		"database table is locked", "sqlite_busy",
+		"uq_agent_runs_request",
+		"uq_workbench_application_tasks_request",
+		"database is locked",
+		"database table is locked",
+		"sqlite_busy",
 	} {
 		if strings.Contains(message, marker) {
 			return true
