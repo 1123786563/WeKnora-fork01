@@ -1,7 +1,7 @@
-# 实施报告 — b2-k-wikifaq（23-knowledge-wikifaq，K3.1–K3.3 已完成 / K3.4 待执行）
+# 实施报告 — b2-k-wikifaq（23-knowledge-wikifaq，K3.1–K3.4 全部完成）
 
-> 节点分支 `codex/passb-b2-k-wikifaq`。行号与命令输出基准：K3.3 完成时 HEAD（见 §1 命令包）。
-> 报告状态：K3.3 更新（Integration Brief + 断链登记 + legacy/README 机械补齐）。K3.4 收口时在本文件追加门禁终跑与差分终稿指针。
+> 节点分支 `codex/passb-b2-k-wikifaq`。行号与命令输出基准：K3.4 收口 HEAD（见 §1 命令包）。
+> 报告状态：K3.4 收口更新（evidence 终稿四行差分表 + hook 恢复手工差分双跑 + 门禁终跑；K3.1–K3.3 内容见 git 历史与 evidence §1–§2）。
 
 ## 0. 任务与提交对照
 
@@ -13,26 +13,30 @@
 | K3.2 faq 域 6 文件迁入 | `f6dfba041` | `refactor(knowledge): K3 faq 域 6 文件迁入 … 并保持冻结端口委托` |
 | K3.2 例外登记 | `b9a82d2c6` | faq 2 条 import 例外（Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY） |
 | K3.2 审阅修复 | `b15dec368` | deleteFAQChunkVectors 扣减块恢复 BASE 结构（review finding critical） |
-| K3.3 Brief 与断链登记 | （本 commit） | `docs(passb): b2-k-wikifaq Integration Brief 与断链登记` |
+| K3.3 Brief 与断链登记 | `1a4505abd` | `docs(passb): b2-k-wikifaq Integration Brief 与断链登记` |
+| K3.4 差分证据与门禁收口 | （本 commit） | `docs(passb): b2-k-wikifaq 差分证据与门禁收口`（evidence §3 终稿 + 本报告追加） |
 
-## 1. conventions §1.2 命令包（K3.3 实跑，2026-09-25）
+## 1. conventions §1.2 命令包（K3.4 终跑 = 最终 HEAD 工作树，2026-09-25；K3.3 期同套命令均绿，见 git 历史）
 
 基线说明：DAG `b2-k-wikifaq.base_sha` 尚未由协调者回填（本地副本 `status=pending` 滞后，§9 协调者独占）；本报告以**节点工作起点 = 基线对齐 merge `1c9d812d0`**（其后首个节点自有 commit 为 `b981d13e3`，`git log --format='%h %p' -1 b981d13e3` 实测父即 `1c9d812d0`）。
 
 | 命令（原文） | 退出码 | 关键输出 |
 |---|---|---|
 | `go build ./...` | 0 | 仅 `ld: warning: ignoring duplicate libraries: '-lc++'`（cmd/desktop、cmd/server 链接器警告，与迁移无关） |
-| `go test -count=1 ./internal/modules/knowledge/...` | 0 | 18 包 `ok`、0 `FAIL`；含 `internal/modules/knowledge/faq`、`…/kbfreeze`（2 守卫）、`…/wiki` |
+| `go test -count=1 ./internal/modules/knowledge/...` | 0 | 18 个有测试包 `ok`、0 `FAIL`；含 `internal/modules/knowledge/faq`、`…/kbfreeze`（2 守卫）、`…/wiki` |
 | `make check-backend-architecture` | 0 | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
 | `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |
+| `git diff --stat 1c9d812d0..HEAD` | 0 | `57 files changed, 2326 insertions(+), 556 deletions(-)`（K3.4 commit 仅追加修改已列 2 产物文件——evidence 与本报告——路径集合不变） |
+| `git diff --name-only 1c9d812d0..HEAD \| sort` | 0 | 57 路径（§2 逐条归类）；禁改文件 pattern（rbac_lookups/qa.go/knowledge.go/routes_knowledge/task.go/go.mod/internal/types/kbfreeze/module.go/治理三件套/recover_pending/reset_pending）grep 零命中（exit 1） |
+| hook 恢复双跑 | 0/0 | `go test -count=1 -v ./internal/container/ -run 'TestRecoverPendingWikiTasks_RecreatesOneTriggerPerLaneAndKB\|TestResetPendingTasks_DurableWikiOpSurvivesLiteRestart\|TestResetPendingTasks_LiteWikiDoesNotHideOtherLostSubtasks'`——旧侧（`git worktree add --detach /tmp/k34-base-1c9d812d 1c9d812d0`）与新侧（HEAD）均 3/3 PASS，日志逐字节一致（removed 2 / recreated 3） |
 
-计数奇偶（conventions §8）：633 路由 / 23+23 worker / 58 hooks 与 `docs/architecture/evidence/pass-a-acceptance.md` 台账一致（三方一致口径；guard 实测输出见上表）。本节点零路由/worker/钩子增删。
+计数奇偶（conventions §8）：633 路由（564+69）/ 23+23 worker / 58 hooks，guard 实测 == `docs/architecture/evidence/pass-a-acceptance.md` 台账（:22/:23/:24）== manifests 发现值（三方一致）。本节点零路由/worker/钩子增删。
 
 K3.1/K3.2 期实跑命令与 T0/T1/T2 双跑输出：见 `docs/architecture/evidence/passb/b2-k-wikifaq.md` §0–§2（含 `go test ./internal/application/repository/` 全包 357s、`go vet`、`gofmt -l` 空等），此处不重复粘贴。
 
 ## 2. 变更清单 vs owned_files 逐条核对
 
-`git diff --name-only 1c9d812d0..HEAD | sort` 基线为 55 文件；K3.3 追加 3 项变更（legacy/README.md 补删、Brief、本报告）后共 57 文件，逐条归类：
+`git diff --name-only 1c9d812d0..HEAD | sort` 基线为 55 文件；K3.3 追加 3 项变更（legacy/README.md 补删、Brief、本报告）后共 57 文件；K3.4 仅修改其中已列 2 产物文件（evidence、本报告），**路径集合终态仍为 57**，逐条归类：
 
 | 类别（计划 §3.2 授权条目） | 文件 | 核对 |
 |---|---|---|
@@ -69,11 +73,11 @@ K3.1/K3.2 期实跑命令与 T0/T1/T2 双跑输出：见 `docs/architecture/evid
 
 ## 6. 未完成项（如实）
 
-1. **K3.4 未执行**（下一任务）：evidence §3 章终稿（四行差分表现散于 §1/§2 各节，需收口为终表）、门禁终跑与奇偶复核已在 §1 预跑（K3.4 需在最终 HEAD 复跑）、向协调者回报（建议 `review`、`task_ids=[K3.1,K3.2,K3.3,K3.4]` + §5 修订差异）。
+1. **K3.4 已执行完毕**（本 commit）：evidence §3 终稿（四行差分终表 + hook 恢复手工差分双跑 + T0/T1/T2 对照 + 门禁终跑）落库；门禁四项 + §1.2 命令包在最终 HEAD 工作树实跑全绿（§1 表）；计数奇偶三方一致复核（§1 尾段）。**向协调者回报（本节点不改 DAG，conventions §9）**：建议 DAG `b2-k-wikifaq` 置 `review`、`task_ids=[K3.1,K3.2,K3.3,K3.4]`；随报 §5 六条计划偏差/实测修订（组 A 扩面 8 符号/常量族 + `EnqueueWikiRetractWithError` 命名差异、组 B `hash`/`contains` 实测零调用未建 seam、W3 增量、接口 FAQ 面第 15 方法补录、§10.4 二选一实际选择、faq 2 条 import 例外 exc-0117/0118）供协调者回填 DAG notes。
 2. **DAG 字段**：`base_sha`/`status`/`task_ids` 未回填——协调者独占（conventions §9）。
 3. **ib2 残差**：7 兼容文件、13 条 import 例外、3+1 测试垫片/伴生、双副本 2 处、container.go:316 转核验——全部登记于 Brief「其它 ib2 登记」节，删除点 ib2（最迟 B5）。
 4. 本节点不改 DAG/治理三件套（ownership-matrix 18 行删除归 ib2 delete_barrier 收口）。
 
 ## 7. 高风险差分证据指针（conventions §6）
 
-`docs/architecture/evidence/passb/b2-k-wikifaq.md`：§1.2 TypeWikiIngest/TypeWikiFinalize 状态机、§1.4 wiki fixer、§2.3 TypeFAQImport、§1.1/§0 recover 面 T0 基线与 `make` 门禁输出；K3.4 补 hook 恢复手工差分（构造 task_pending_ops 两行）终表。
+`docs/architecture/evidence/passb/b2-k-wikifaq.md` 终稿：**§3.1 四行差分终表**（① TypeWikiIngest/TypeWikiFinalize 状态机 132/132、② TypeFAQImport 8+15、③ recoverPendingWikiTasks hook 恢复双跑逐字节一致、④ Wiki 页面/文件夹操作）；§3.2 hook 恢复逐项等价论证（recover 文件零改动 + W1 真类型别名 + 结构体逐字节一致）；§3.3 T0 基线 vs T1/T2 终态对照；§3.4 门禁终跑与计数奇偶；细节展开 §1.2/§1.3/§1.4/§2.3/§2.5/§2.8。

@@ -1,6 +1,6 @@
 # Evidence — b2-k-wikifaq（Pass B 23-knowledge-wikifaq）
 
-> 状态：K3.1+K3.2 草稿（§1 wiki 差分 / §2 faq 差分已建立，K3.4 终稿收口四行全表）。节点基线 BASE=7ffaf6cc4（K3.2 起点；K3.1 段基线 4649630df）；节点分支 codex/passb-b2-k-wikifaq。
+> 状态：**终稿**（K3.1/K3.2 差分 §1–§2 + K3.4 §3 收口：计划 §8 四行差分终表、hook 恢复手工差分双跑、T0 vs T1/T2 终态对照、门禁终跑）。节点基线 BASE=7ffaf6cc4（K3.2 起点；K3.1 段基线 4649630df）；节点分支 codex/passb-b2-k-wikifaq；差分对照基线（节点工作起点）= 基线对齐 merge `1c9d812d0`。
 
 ## 0. T0 旧实现基线（迁移前，2026-09-25 实跑）
 
@@ -125,7 +125,46 @@ T0 service 18 − {TestAcquireFAQCreateGuard×3}（随迁 faq 包，3/3 PASS）=
 - **全面自查（防同类）**：对 5 个 service 侧迁移文件做「HEAD 逆向机械变换（package/接收者/seam 前缀/R1 改名）→ 与 BASE diff」——knowledge_faq_batch.go、knowledge_faq_create_guard.go 0 差异；faq_clone_sync.go/knowledge_faq.go/knowledge_faq_import.go 仅剩 22 行 R1 导出注释；faq_handler.go 仅剩 seam 机制声明差异（字段/构造器/访问器/2 调用点）；knowledge_faq_create_guard_test.go 仅剩构造面等价改写（`&knowledgeService{redisClient}`→`NewService(Deps{RedisClient})`）+注释。**无其他行为差异。**
 - **修复后复跑**：`go build ./...` exit0；`go test -count=1 ./internal/modules/knowledge/faq/...` ok；`go test -count=1 ./internal/application/service/ -run 'FAQ|Knowledge'` ok；`go test -count=1 ./internal/modules/knowledge/...` exit0；`make verify-module-moves` OK；`make check-backend-architecture` OK（633/23+23/58 不变）；`gofmt -l` 空。
 
-## 3. K3.3/K3.4 章（占位，后续任务填充）
+## 3. K3.4 终稿 — 计划 §8 高风险差分四行终表 + hook 恢复手工差分（2026-09-25 实跑）
 
-- Integration Brief、断链登记、终稿四行差分表与节点门禁收口：K3.3/K3.4 填充。
+### 3.1 四行差分终表
+
+| 面（计划 §8） | 锚定用例清单 | 双跑命令与结果 | 等价比对结论 |
+|---|---|---|---|
+| ① `TypeWikiIngest`/`TypeWikiFinalize` 状态机 | `TestEnqueueWikiFinalizeOnlySchedulesAcceptedRows`、`TestProcessWikiFinalizeDefersFolderPruneWhileIngestIsPending`、`TestIsTransientLLMError_*` 5 用例、`TestWikiDeletedKnowledgeBaseCleanupFailureRetries`、guard 双任务类型 drain 用例（wiki_ingest_test.go / wiki_ingest_retry_test.go / wiki_ingest_dedup_test.go / wiki_deleted_kb_guard_test.go） | T0：§0（repo 2 + service 85/92 顶层口径）；T1/T2 终态：`go test -count=1 -v ./internal/modules/knowledge/wiki/` → **132 顶层 PASS / 0 FAIL / 0 SKIP**（exit 0） | **等价**（§1.2 逐用例）：`wiki-finalize-<kbID>` TaskID 去重、5-docs-per-batch fan-out（`WikiMaxDocsPerBatch=5`）、MaxRetry 10、Timeout 60/30min、ErrWikiIngestConcurrent 同实例退避全部保留；132 = K3.1 记录 130 + OCR R1 回归 2（commit `7ffaf6cc4` seams_test.go 增 `TestNewSpanNormalizesNilAndTypedNil`/`TestSpanWrapperControlFlowParity`，git log 实证） |
+| ② FAQ 导入 `TypeFAQImport` | `TestAcquireFAQCreateGuard{RejectsConcurrentSameQuestion,IsolatesUnrelatedCreates,FallsBackWithoutRedis}`（随迁）、`TestParseOptionalFAQEnabled`/`TestFAQListEntries{Passes,Rejects}…`（随迁）、`TestNewService*` 2 锚定、留驻 `TestFAQImport{CompletedOutcome,ActivityDetails}` 等 15（经垫片委托） | T0：§2.1（service 18 + handler 3）；T1/T2 终态：`go test -count=1 -v ./internal/modules/knowledge/faq/` → **8 顶层 PASS / 0 FAIL / 0 SKIP**（exit 0）；`go test -count=1 ./internal/application/service/ -run 'FAQ'` → 15 顶层 PASS（§2.2） | **等价**（§2.3/§2.5 逐用例）：dry-run 零写入、memFAQProgress 指针共享、失败 CSV 生成、断点续跑/幂等；集合差 = 随迁 3 守卫用例，逐一比对无缺漏 |
+| ③ `recoverPendingWikiTasks` 重启恢复（hook 恢复手工差分，**K3.4 新增双跑**） | `TestRecoverPendingWikiTasks_RecreatesOneTriggerPerLaneAndKB`（reset_pending_tasks_test.go:355，构造 knowledge_bases 3 行 active×2+deleted×1 与 task_pending_ops 6 行：同 lane 重复 ×2、finalize lane、跨租户、kb-deleted、kb-missing）、`TestResetPendingTasks_DurableWikiOpSurvivesLiteRestart`(:191)、`TestResetPendingTasks_LiteWikiDoesNotHideOtherLostSubtasks`(:216) | **双跑**（同命令 `go test -count=1 -v ./internal/container/ -run 'TestRecoverPendingWikiTasks_RecreatesOneTriggerPerLaneAndKB|TestResetPendingTasks_DurableWikiOpSurvivesLiteRestart|TestResetPendingTasks_LiteWikiDoesNotHideOtherLostSubtasks'`）：旧侧 = 临时 worktree `git worktree add --detach /tmp/k34-base-1c9d812d 1c9d812d0`（迁移前基线），新侧 = 本分支 HEAD。两侧输出**逐字节一致**：`[WikiRecovery] removed 2 pending row(s) for deleted knowledge bases` + `recreated 3 trigger(s) from durable pending queues`，3/3 PASS，exit 0 | **等价**（§3.2 逐项论证）：重建数 3=3（同 lane 单 trigger）、fail-closed 清除数 2=2（deleted+missing）、payload 租户路由断言（7/7/8）双侧 PASS；Timeout 60/30min、MaxRetry 10、`asynq.TaskID("wiki-finalize-"+scopeID)` 去重——recover_pending_wiki_tasks.go 本节点零改动（§3.2） |
+| ④ Wiki 页面/文件夹操作 | wiki_page_test.go、wiki_page_revision_test.go、wiki_folder_prune_finalize_test.go、wiki_slug_handles_test.go、wiki_linkify_test.go、wiki_page_repository_test.go（4 哨兵） | 同①包内运行（132/132）；`TestRepairContentLinks` 宿主真实 seam 双跑见 §1.3（3/3 子用例 PASS） | **等价**（§1.2/§1.3）：冻结 WikiPageService 方法集逐用例一致；`ErrWikiPageNotFound/ErrWikiFolderNotFound/ErrWikiFolderNotEmpty/ErrWikiFolderConflict` 4 哨兵标识不变（随迁包内符号，断言未动） |
+
+### 3.2 hook 恢复逐项等价论证（行 ③ 支撑证据）
+
+1. **实现零改动**：`git diff 1c9d812d0..HEAD -- internal/container/` 仅 container.go 一个文件——`knowledgeWiki.NewWikiPageRepository` provider 行 + 1 import 行 + 4 注释行（Ruling 2026-09-25-CYCLE-FORCED-COMPOSITION 提前落地，IB2 转核验）；`recover_pending_wiki_tasks.go` 与 `reset_pending_tasks_test.go` 均不在 diff 中（字节不变）。`asynq.Timeout(60*time.Minute)`/finalize 分支 `30*time.Minute`、`asynq.MaxRetry(10)`、`asynq.TaskID("wiki-finalize-"+scope.ScopeID)` 与 ErrTaskIDConflict/ErrDuplicateTask 吸收分支逐字保留。
+2. **唯一依赖变化的等价性**：`recover_pending_wiki_tasks.go:75` 的 `service.WikiIngestPayload` 现经宿主 W1（wiki_k3_compat.go:77 `type WikiIngestPayload = wiki.WikiIngestPayload`）解析——**真类型别名**（非新类型）；wiki 包 `type WikiIngestPayload struct`（含 `types.TracingContext` 内嵌与 3 字段 JSON tag）与 BASE `git show 1c9d812d0:internal/application/service/wiki_ingest.go` 同段**逐字节一致**（本任务 diff 实证）→ `json.Marshal` 输出字节不变、测试侧 `json.Unmarshal` 同构。
+3. **可观察行为双跑**：见 §3.1 行③——旧侧（迁移前 `1c9d812d0`）与新侧（HEAD）日志输出（removed 2 / recreated 3）、断言集（3 用例）、退出码（0）全部一致；`TestResetPendingTasks_DurableWikiOpSurvivesLiteRestart`（Lite 重启 durable wiki op 存活）与 `TestResetPendingTasks_LiteWikiDoesNotHideOtherLostSubtasks`（Lite wiki 不遮蔽其它丢失子任务，日志 `Reset 1 stuck knowledge parsing tasks`）双侧同输出。
+
+### 3.3 T0 基线 vs T1/T2 终态对照（K3.4 终跑）
+
+| 面 | T0（迁移前，§0/§2.1 记录） | T1/T2 终态（K3.4 实跑） | 结论 |
+|---|---|---|---|
+| repository Wiki 面 | 2 PASS | 随迁 wiki 包（wiki_page_repository_test.go，包内 132 之一） | 集合一致 |
+| service Wiki\|Linkify\|Slug | 85 PASS / 0 SKIP（顶层 92 口径） | wiki 包 132 PASS / 0 FAIL / 0 SKIP（= 130 集合 + OCR R1 2 回归，行①） | 集合一致（增量有 commit 实证） |
+| session WikiFixer 面 | 5 PASS | wiki 包 wiki_fixer_scope_test.go 5/5（行④/§1.4） | 逐用例一致 |
+| service FAQ 面 | 18 顶层 PASS | faq 包 8（含守卫 3+filter 3+锚定 2）+ 宿主留驻 15（§2.2） | 18 = 3 随迁 + 15 留驻，精确差集（§2.5） |
+| handler FAQ 面 | 3 顶层 PASS | faq 包 3/3（断言面等价改写 §2.4-1） | 等价 |
+| container hook 恢复 | （旧侧双跑）3 PASS | 3 PASS，输出逐字节一致（§3.1 行③） | 等价 |
+
+### 3.4 K3.4 门禁终跑（conventions §1.2，2026-09-25，基线=节点工作起点 `1c9d812d0`）
+
+| 命令（原文） | 退出码 | 关键输出 |
+|---|---|---|
+| `go build ./...` | 0 | 仅 `ld: warning: ignoring duplicate libraries: '-lc++'`（cmd/desktop、cmd/server 链接器警告，与迁移无关） |
+| `go test -count=1 ./internal/modules/knowledge/...` | 0 | 18 个有测试包全 `ok`、0 `FAIL`（含 `…/knowledge/faq`、`…/kbfreeze`、`…/wiki`） |
+| `make check-backend-architecture` | 0 | `architectureguard: literal=564 apiKeyRoute=69 handle=0 total=633 \| redis=23 lite=23 \| hooks=58 \| modules=16`；`OK (0 violations)` |
+| `make verify-module-moves` | 0 | `modulemove: OK (16 manifests verified)` |
+| `git diff --stat 1c9d812d0..HEAD` | 0 | `57 files changed, 2326 insertions(+), 556 deletions(-)`（K3.4 commit 仅追加修改已列 2 产物文件，路径集合不变） |
+| `git diff --name-only 1c9d812d0..HEAD \| sort` | 0 | 57 路径，与 §3.2 可写清单求差集=**空**（归类核对见节点报告 §2；禁改文件 pattern grep 零命中 exit 1） |
+
+计数奇偶（conventions §8 三方一致）：guard 实测 633（564 literal+69 apiKeyRoute）/ 23+23 / 58 == `docs/architecture/evidence/pass-a-acceptance.md` 台账（:22 路由 633 同分解、:23 Redis/Lite worker 23/23、:24 hooks 58）== manifests 发现值（`modulemove verify` 16 manifests OK）。本节点零路由/worker/钩子增删。
+
+18 条 legacy 路径零残留终验（验收 #3）：逐条 `git ls-files --error-unmatch` → 全部无 RESIDUE（K3.4 复跑）。
 
