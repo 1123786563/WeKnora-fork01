@@ -60,3 +60,31 @@ test('malformed rows are skipped while healthy rows survive', async () => {
   const log = createSecureIntentLog(secure);
   assert.deepEqual((await log.listScope(scope)).map((row) => row.requestId), ['req-1']);
 });
+
+const bigRecord = (id: string, body: string) => ({ ...record, requestId: id, goal: { ...goal, text: body } });
+
+test('the byte budget evicts the oldest entries once the serialized log exceeds 1536 bytes', async () => {
+  const secure = memoryStore();
+  const log = createSecureIntentLog(secure);
+  await log.save(bigRecord('req-a', 'a'.repeat(700)));
+  assert.ok(await log.load('req-a'), 'a single ~0.9KB record fits the budget');
+  await log.save(bigRecord('req-b', 'b'.repeat(700)));
+  assert.equal(await log.load('req-a'), undefined, 'the oldest entry is evicted when the whole log exceeds the 1536-byte budget');
+  assert.ok(await log.load('req-b'), 'the newest intent survives the eviction');
+});
+
+test('a single oversized record is kept alone instead of dropping the newest intent', async () => {
+  const secure = memoryStore();
+  const log = createSecureIntentLog(secure);
+  await log.save(bigRecord('req-1', 'z'.repeat(1600)));
+  assert.equal((await log.load('req-1'))?.goal.text.length, 1600, 'the newest intent persists even when one record alone exceeds the budget');
+});
+
+test('records within the byte budget are all kept', async () => {
+  const secure = memoryStore();
+  const log = createSecureIntentLog(secure);
+  await log.save(record);
+  await log.save({ ...record, requestId: 'req-2', sessionId: 'session-78' });
+  assert.ok(await log.load('req-1'));
+  assert.ok(await log.load('req-2'), 'healthy small logs are never trimmed');
+});
