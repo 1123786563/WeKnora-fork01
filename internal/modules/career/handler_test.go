@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -176,4 +177,85 @@ func TestCareerApplicationHandlerMapsLinkOutcomes(t *testing.T) {
 	status, payload = receiptRequest("handler-missing")
 	require.Equal(t, 404, status)
 	require.Contains(t, payload, "not_found")
+}
+
+func TestCareerSearchHandlerMapsQuotaRefusalUnknownAndReceipt(t *testing.T) {
+	o, _, gate, ctx := newSearchFixtureOffice(t)
+	require.NoError(t, o.ClaimSpace(ctx))
+	base := context.WithValue(context.Background(), types.UserIDContextKey, "owner")
+	base = context.WithValue(base, types.TenantIDContextKey, uint64(91))
+	h := &Handler{office: o, members: &memberListStub{members: []*types.TenantMember{{UserID: "owner", TenantID: 91, Role: types.TenantRoleOwner}}}}
+	request := func(method, target, body string) *httptest.ResponseRecorder {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+		c.Request = httptest.NewRequest(method, target, reader).WithContext(base)
+		if body != "" {
+			c.Request.Header.Set("Content-Type", "application/json")
+		}
+		h.SearchOnce(c)
+		return rec
+	}
+
+	// Quota refusal maps to a typed 429 that is recoverable by replay.
+	gate.refused = true
+	rec := request(http.MethodPost, "/api/v1/career/searches", `{"requestId":"search-http-quota","query":"go engineer","expectedRevision":0}`)
+	require.Equal(t, 429, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "search_quota_refused")
+
+	// A successful one-shot search returns the frozen receipt shape.
+	gate.refused = false
+	input, _ := json.Marshal(SearchOnceInput{RequestID: "search-http", Query: "go engineer", ExpectedRevision: 0})
+	rec = request(http.MethodPost, "/api/v1/career/searches", string(input))
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	var receipt SearchOnceReceipt
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &receipt))
+	require.Equal(t, "search_once", receipt.Kind)
+	require.Equal(t, SearchStatusCompleted, receipt.Status)
+	require.Len(t, receipt.Results, 2)
+
+	// Malformed or trailing JSON is rejected.
+	rec = request(http.MethodPost, "/api/v1/career/searches", `{"requestId":"search-http-bad","query":"go","expectedRevision":0,"extra":1}`)
+	require.Equal(t, 400, rec.Code, rec.Body.String())
+
+	// The receipt endpoint replays by request ID and 404s unknown requests.
+	gin.SetMode(gin.TestMode)
+	receiptRec := httptest.NewRecorder()
+	receiptCtx, _ := gin.CreateTestContext(receiptRec)
+	receiptCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/searches/receipt?requestId=search-http", nil).WithContext(base)
+	h.SearchReceipt(receiptCtx)
+	require.Equal(t, 200, receiptRec.Code, receiptRec.Body.String())
+	require.Contains(t, receiptRec.Body.String(), `"kind":"search_once"`)
+
+	gin.SetMode(gin.TestMode)
+	missingRec := httptest.NewRecorder()
+	missingCtx, _ := gin.CreateTestContext(missingRec)
+	missingCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/searches/receipt?requestId=missing", nil).WithContext(base)
+	h.SearchReceipt(missingCtx)
+	require.Equal(t, 404, missingRec.Code)
+
+	// The result read path serves the same stored receipt by search ID.
+	gin.SetMode(gin.TestMode)
+	getRec := httptest.NewRecorder()
+	getCtx, _ := gin.CreateTestContext(getRec)
+	getCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/searches/"+receipt.SearchID, nil).WithContext(base)
+	getCtx.Params = gin.Params{{Key: "searchId", Value: receipt.SearchID}}
+	h.GetSearch(getCtx)
+	require.Equal(t, 200, getRec.Code, getRec.Body.String())
+	require.Contains(t, getRec.Body.String(), `"results":`)
+
+	// An intruder from another tenant is rejected at the scope gate.
+	gin.SetMode(gin.TestMode)
+	intruderRec := httptest.NewRecorder()
+	intruderCtx, _ := gin.CreateTestContext(intruderRec)
+	intruderBase := context.WithValue(context.Background(), types.UserIDContextKey, "intruder")
+	intruderBase = context.WithValue(intruderBase, types.TenantIDContextKey, uint64(91))
+	intruderCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/career/searches/"+receipt.SearchID, nil).WithContext(intruderBase)
+	intruderCtx.Params = gin.Params{{Key: "searchId", Value: receipt.SearchID}}
+	h.GetSearch(intruderCtx)
+	require.Equal(t, 403, intruderRec.Code)
 }

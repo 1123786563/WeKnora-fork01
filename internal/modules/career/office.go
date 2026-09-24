@@ -237,6 +237,11 @@ type Office struct {
 	// invoked for unapproved sources.
 	sourcePolicy    SourcePolicy
 	sourceTransport SourceTransport
+	// One-shot search seams (T11): the registry enumerates vetted searchable
+	// sources (production starts empty) and the quota gate is the only quota
+	// authority (production enforces nothing yet; the real ledger is T21).
+	searchRegistry  SearchSourceRegistry
+	searchQuotaGate SearchQuotaGate
 	// These hooks only synchronize transaction-boundary and error-path tests.
 	beforeFirstWrite             func()
 	afterReceiptPersist          func()
@@ -246,13 +251,14 @@ type Office struct {
 	afterEvaluationCommit        func() error
 	afterEvaluationReceiptMiss   func()
 	failApplicationReadyUpdate   func() error
+	failSearchTerminalCommit     func() error
 }
 
 func NewOffice(db *gorm.DB) (*Office, error) {
 	if db == nil {
 		return nil, errors.New("career database required")
 	}
-	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}}
+	models := []any{&profile{}, &space{}, &fact{}, &factVersion{}, &proposal{}, &change{}, &receipt{}, &sourceRevision{}, &opportunity{}, &opportunityObservation{}, &opportunitySnapshot{}, &opportunityReceipt{}, &evaluationRecord{}, &applicationRecord{}, &searchRecord{}, &searchResultRecord{}}
 	if db.Dialector.Name() == "sqlite" {
 		present := 0
 		for _, model := range models {
@@ -285,7 +291,13 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 		return nil, err
 	}
 	policy := SourcePolicy(emptySourcePolicy{})
-	return &Office{db: db, sourcePolicy: policy, sourceTransport: newCareerSourceTransport(policy, transportDialOptions{})}, nil
+	return &Office{
+		db:              db,
+		sourcePolicy:    policy,
+		sourceTransport: newCareerSourceTransport(policy, transportDialOptions{}),
+		searchRegistry:  emptySearchSourceRegistry{},
+		searchQuotaGate: passThroughSearchQuotaGate{},
+	}, nil
 }
 
 func validateSQLiteCareerSchema(db *gorm.DB) error {
@@ -304,6 +316,8 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_opportunity_receipts":     {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 		"career_evaluations":              {"id", "tenant_id", "user_id", "request_id", "fingerprint", "intent", "opportunity_id", "snapshot_id", "profile_revision", "receipt_body", "evaluation_body", "created_at"},
 		"career_applications":             {"id", "tenant_id", "user_id", "request_id", "fingerprint", "opportunity_id", "snapshot_id", "evaluation_id", "profile_revision", "evidence_body", "batch_identity", "continue_despite_hard_failure", "evaluation_status", "qualified", "warning_body", "link_state", "task_id", "run_id", "receipt_body", "created_at", "updated_at"},
+		"career_searches":                 {"id", "tenant_id", "user_id", "request_id", "fingerprint", "status", "claim_token", "lease_until", "query", "receipt_body", "created_at", "completed_at"},
+		"career_search_results":           {"id", "tenant_id", "user_id", "search_id", "source_id", "link", "checked_at", "qualification", "uncertainty", "created_at"},
 	}
 	for table, columns := range requiredColumns {
 		for _, column := range columns {
@@ -320,6 +334,8 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_opportunity_receipts": {"tenant_id", "user_id", "request_id"},
 		"career_evaluations":          {"tenant_id", "user_id", "request_id"},
 		"career_applications":         {"tenant_id", "user_id", "request_id"},
+		"career_searches":             {"tenant_id", "user_id", "request_id"},
+		"career_search_results":       {"tenant_id", "user_id", "search_id", "link"},
 	} {
 		if err := requireSQLiteUniqueConstraint(db, table, columns); err != nil {
 			return fmt.Errorf("incomplete Career SQLite schema: %w; apply database migrations before startup", err)

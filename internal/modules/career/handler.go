@@ -101,6 +101,12 @@ func writeError(c *gin.Context, e error) {
 	case errors.Is(e, ErrOutcomeUnknown):
 		status = 504
 		code = "outcome_unknown"
+	case errors.Is(e, ErrSearchNotFound):
+		status = 404
+		code = "not_found"
+	case errors.Is(e, ErrSearchQuotaRefused):
+		status = http.StatusTooManyRequests
+		code = "search_quota_refused"
 	}
 	body := gin.H{"code": code, "message": e.Error()}
 	if errors.Is(e, ErrRevisionConflict) {
@@ -469,6 +475,71 @@ func (h *Handler) ReconcileApplicationLink(c *gin.Context) {
 		return
 	}
 	receipt, err := h.office.ReconcileApplicationLink(ctx, req.RequestID)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+const maxSearchBodyBytes = 16 * 1024
+
+// SearchOnce runs exactly one durable job search per request ID. It never
+// creates a continuous rule; sources are only reached through the vetted
+// policy/transport seams and the receipt reports the truthful coverage.
+func (h *Handler) SearchOnce(c *gin.Context) {
+	ctx, ok := h.scope(c, true)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSearchBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input SearchOnceInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "search request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.SearchOnce(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// SearchReceipt replays the terminal receipt of a one-shot search by its
+// original request ID.
+func (h *Handler) SearchReceipt(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.FindSearchReceipt(ctx, c.Query("requestId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// GetSearch serves the stored result set of one durable search by its ID.
+func (h *Handler) GetSearch(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	receipt, err := h.office.Search(ctx, c.Param("searchId"))
 	if err != nil {
 		writeError(c, err)
 		return
