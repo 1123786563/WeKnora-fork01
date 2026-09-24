@@ -219,9 +219,7 @@ func TestCareerOpportunityConcurrentSameRequestReconcilesOneReceipt(t *testing.T
 				require.ErrorAs(t, err, &unknown)
 				require.Equal(t, "concurrent-jd", unknown.RequestID)
 			} else {
-				// SQLite can reject the first receipt read with SQLITE_LOCKED;
-				// this is a definite pre-write failure and is returned unchanged.
-				require.True(t, isSQLiteBusy(err), "unexpected concurrent import error: %v", err)
+				require.FailNow(t, "concurrent import must return a receipt or typed outcome_unknown, got: %v", err)
 			}
 		}
 		<-receipts

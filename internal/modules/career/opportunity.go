@@ -189,6 +189,10 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 			return json.Unmarshal([]byte(existing.Body), &result)
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			// A transient SQLite lock can mean another same-request transaction
+			// is still committing. Reconcile once through the bounded scoped path;
+			// permanent query failures remain ordinary persistence errors.
+			persistenceMayHaveCommitted = isSQLiteBusy(err)
 			return err
 		}
 
