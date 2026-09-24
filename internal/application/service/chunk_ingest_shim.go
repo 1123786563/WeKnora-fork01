@@ -233,3 +233,10 @@ const (
 	vlmOCRPrompt           = ingest.VlmOCRPrompt
 	vlmOCRScannedPDFPrompt = ingest.VlmOCRScannedPDFPrompt
 )
+
+// validateParserEngineOverrideURLs 转发（K1.5 R1 增量，超出 §6.2 字面清单）：
+// 保护 knowledge_process.go:3750（K4 属主，禁改）；真源唯一在 ingest
+// （parser_url_security.go 随 K1.5 搬迁，导出包装 ValidateParserEngineOverrideURLs）。
+func validateParserEngineOverrideURLs(overrides map[string]string) error {
+	return ingest.ValidateParserEngineOverrideURLs(overrides)
+}

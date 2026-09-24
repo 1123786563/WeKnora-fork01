@@ -31,3 +31,10 @@ func validateParserEngineOverrideURLs(overrides map[string]string) error {
 	}
 	return nil
 }
+
+// ValidateParserEngineOverrideURLs 导出包装（plan §6.1 R1 三件套之 2 增量，
+// 同 K1.4 SanitizeOCRText 模式）：K4 属主宿主调用方
+// knowledge_process.go:3750 经宿主 service 包 R1 shim 消费同一实现。
+func ValidateParserEngineOverrideURLs(overrides map[string]string) error {
+	return validateParserEngineOverrideURLs(overrides)
+}

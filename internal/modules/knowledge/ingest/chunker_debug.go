@@ -1,4 +1,4 @@
-// Package handler — chunker_debug.go exposes a read-only preview endpoint
+// chunker_debug.go exposes a read-only preview endpoint
 // that runs the adaptive chunker on supplied text without touching the DB
 // or generating embeddings. Used by the KB editor's debug panel so users
 // can experiment with chunking parameters before committing to a re-index.
