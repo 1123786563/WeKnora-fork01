@@ -580,6 +580,57 @@ func portOf(t *testing.T, server *httptest.Server) string {
 	return fmt.Sprintf("%d", addr.Port)
 }
 
+// ---- 9. frozen failure classifications (T09 Wave1 debt repayment) -----------
+
+// TestImportURLFrozenFailureClassifications covers the five frozen failure
+// classifications that stayed unasserted after T09: not_found, blocked,
+// unsupported_content, empty_content, and response_too_large. Each case runs
+// through the public ImportURL seam so the durable observation, snapshot, and
+// receipt all carry the bounded classification.
+func TestImportURLFrozenFailureClassifications(t *testing.T) {
+	cases := []struct {
+		name         string
+		code         string
+		wantStatus   string
+		wantComplete string
+	}{
+		{name: "not_found", code: FailureNotFound, wantStatus: SourceStatusNotFound, wantComplete: CompletenessUnknown},
+		{name: "blocked", code: FailureAccessBlocked, wantStatus: SourceStatusBlocked, wantComplete: CompletenessUnknown},
+		{name: "unsupported_content", code: FailureUnsupportedContent, wantStatus: SourceStatusFetchFailed, wantComplete: CompletenessUnknown},
+		{name: "empty_content", code: FailureEmptyContent, wantStatus: SourceStatusFetchFailed, wantComplete: CompletenessUnknown},
+		{name: "response_too_large", code: FailureResponseTooLarge, wantStatus: SourceStatusFetchFailed, wantComplete: CompletenessUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rawURL := "https://jobs.example.com/posting/frozen-" + tc.name
+			o, _, ctx := approvedSourceOffice(t, map[string]scriptedFetch{
+				rawURL: {err: &SourceFetchError{Code: tc.code, Err: errors.New("scripted " + tc.name)}},
+			})
+			result, err := o.ImportURL(ctx, ImportURLInput{RequestID: "url-frozen-" + tc.name, URL: rawURL})
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStatus, result.SourceStatus)
+			require.Equal(t, tc.code, result.FailureCode)
+			require.Equal(t, tc.wantComplete, result.Completeness)
+			require.True(t, result.NeedsUserJD)
+			// The classification must also be durable: the observation row and
+			// the explicitly empty snapshot keep the bounded code as evidence.
+			observations, err := o.OpportunityObservations(ctx, result.OpportunityID)
+			require.NoError(t, err)
+			require.Len(t, observations, 1)
+			require.Equal(t, tc.wantStatus, observations[0].SourceStatus)
+			require.Equal(t, tc.code, observations[0].FailureCode)
+			evidence, err := o.OpportunityEvidence(ctx, result.OpportunityID, result.SnapshotID)
+			require.NoError(t, err)
+			require.Empty(t, evidence.RawText)
+			require.Equal(t, OpportunityNeedsReview, evidence.Status)
+			// Replay returns the identical durable classification.
+			replay, err := o.ImportURL(ctx, ImportURLInput{RequestID: "url-frozen-" + tc.name, URL: rawURL})
+			require.NoError(t, err)
+			require.Equal(t, result, replay)
+		})
+	}
+}
+
 // transportTestDialer builds the injectable dial/resolver pair used to exercise
 // the production transport against local httptest servers without weakening
 // the SSRF guard: DNS always "resolves" to a public IP and every dial is routed

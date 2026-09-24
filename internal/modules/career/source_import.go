@@ -560,6 +560,10 @@ func classifySourceFetch(result SourceFetchResult, fetchErr error, adapterID, ad
 			code = boundedSourceFailureCode(fetchFailure.Code)
 		}
 		evidence.failureCode = code
+		// Nothing readable was acquired, so completeness is explicitly unknown
+		// rather than empty — consistent with the frozen enum used by the
+		// policy_unverified and login-wall paths.
+		evidence.completeness = CompletenessUnknown
 		switch code {
 		case FailureLoginRequired:
 			evidence.sourceStatus = SourceStatusLoginRequired
