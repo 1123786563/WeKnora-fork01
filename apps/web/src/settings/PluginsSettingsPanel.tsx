@@ -158,7 +158,16 @@ export function PluginsSettingsPanel({ client, role }: Props) {
       setPreview(parsePluginPreviewEnvelope(envelope));
     } catch (cause) {
       setPreview(null);
-      setError(cause instanceof Error ? cause.message : "插件清单预览失败");
+      // 错误分类（OCR low）：后端/网络经 request 抛 ApiError，message 是后端
+      // 可读文案（SSRF 拒绝等）——沿用 McpSettingsPanel 原文透传先例；解析器
+      // 自产的英文诊断串（含内部 API 路径）属客户端自身校验失败，不进中文
+      // 管理界面——统一中文文案，原始错误 console.warn 留痕。
+      if (cause instanceof Error && cause.name === "ApiError") {
+        setError(cause.message);
+      } else {
+        console.warn("plugin preview failed:", cause);
+        setError("插件清单预览失败：核验未通过");
+      }
     } finally {
       setBusy(false);
     }

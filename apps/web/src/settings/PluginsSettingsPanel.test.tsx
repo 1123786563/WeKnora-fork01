@@ -19,6 +19,7 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 const { PluginsSettingsPanel, formatPreviewExpiry, parsePluginPreviewEnvelope, pluginPreviewRequest } = await import('./PluginsSettingsPanel.tsx');
+const { ApiError } = await import('@weknora/api-client');
 
 function previewEnvelope(): unknown {
   return {
@@ -82,6 +83,64 @@ test('formatPreviewExpiry 本地化有效期并防御非法时间串', () => {
   const formatted = formatPreviewExpiry('2026-09-23T12:00:00Z');
   assert.ok(formatted.includes('2026'), 'a parseable expiry renders a localized date');
   assert.equal(formatPreviewExpiry('not-a-date'), 'not-a-date', 'an unparseable expiry falls back to the raw string');
+});
+
+// ---- T03-OCR1-F1：面板镜像解析器与 api-client parsePluginPreview 的 parity 锁 ----
+// 面板层解析器是 packages/api-client/src/plugins.ts 的镜像（@weknora/api-client
+// 仅暴露 index.ts 入口，parsePluginPreview 未导出，所有权内无法复用；Ruling
+// R-T03-2）。两侧测试独立、漂移不交叉报警——本测试用同一 fixture 集锁定
+// 「双解析器同时接受/同时拒绝、成功时字段一致」，后端 DTO 调整时任一侧
+// 遗漏即红。T08 挂载 client.plugins 后应删除镜像并撤掉本测试（单一来源）。
+test('面板解析器与 api-client parsePluginPreview 在共享 fixture 上行为一致（parity 锁）', async () => {
+  const { parsePluginPreview } = await import('../../../../packages/api-client/src/plugins.ts');
+  const dropField = (field: string): unknown => {
+    const envelope = previewEnvelope() as { data: Record<string, unknown> };
+    delete envelope.data[field];
+    return envelope;
+  };
+  const mutateField = (field: string, value: unknown): unknown => {
+    const envelope = previewEnvelope() as { data: Record<string, unknown> };
+    envelope.data[field] = value;
+    return envelope;
+  };
+  const mutateTool = (index: number, field: string, value: unknown): unknown => {
+    const envelope = previewEnvelope() as { data: { tools: Array<Record<string, unknown>> } };
+    if (value === undefined) delete envelope.data.tools[index]![field];
+    else envelope.data.tools[index]![field] = value;
+    return envelope;
+  };
+  const sseTransport = previewEnvelope() as { data: Record<string, unknown> };
+  sseTransport.data.transport_type = 'sse';
+  const fixtures: Array<[string, unknown]> = [
+    ['合法 envelope（null scopes 工具）', previewEnvelope()],
+    ['合法 sse transport', sseTransport],
+    ['非 success envelope', { success: false }],
+    ['非对象输入', null],
+    ['缺 data', { success: true }],
+    ...['preview_id', 'plugin_id', 'version', 'name', 'transport_type', 'endpoint_url', 'tools', 'identity_fingerprint', 'expires_at'].map((field) => [`缺 ${field}`, dropField(field)] as [string, unknown]),
+    ['preview_id 空串', mutateField('preview_id', '')],
+    ['transport_type 枚举外', mutateField('transport_type', 'stdio')],
+    ['tools 非数组', mutateField('tools', {})],
+    ['expires_at 非字符串', mutateField('expires_at', 123)],
+    ['顶层 description 非 string', mutateField('description', 42)],
+    ['工具行缺 name', mutateTool(0, 'name', undefined)],
+    ['工具行 description 非 string', mutateTool(0, 'description', 9)],
+    ['工具行 read_only 非 boolean', mutateTool(0, 'read_only', 'yes')],
+    ['工具行缺 requires_personal_auth', mutateTool(0, 'requires_personal_auth', undefined)],
+    ['工具行 scopes 非字符串数组', mutateTool(0, 'scopes', [1])],
+  ];
+  type Attempt = { ok: true; value: unknown } | { ok: false };
+  const attempt = (run: () => unknown): Attempt => {
+    try { return { ok: true, value: run() }; } catch { return { ok: false }; }
+  };
+  for (const [name, fixture] of fixtures) {
+    const apiSide = attempt(() => parsePluginPreview(structuredClone(fixture)));
+    const panelSide = attempt(() => parsePluginPreviewEnvelope(structuredClone(fixture)));
+    assert.equal(panelSide.ok, apiSide.ok, `${name}：面板解析器与 api-client 解析器的接受/拒绝必须一致`);
+    if (apiSide.ok && panelSide.ok) {
+      assert.deepEqual(panelSide.value, apiSide.value, `${name}：两侧映射字段必须一致`);
+    }
+  }
 });
 
 // ---- jsdom interaction: paste → submit → preview card / error state ----
@@ -173,8 +232,10 @@ test('插件面板管理员可提交清单地址并渲染预览结果', async ()
   }
 });
 
-test('插件面板渲染校验失败错误且不残留预览卡', async () => {
-  const { client } = stubClient(async () => { throw new Error('manifest URL rejected: 私网地址禁止访问'); });
+test('插件面板渲染校验失败错误且不残留预览卡（后端 ApiError 原文透传）', async () => {
+  // 真实链路中后端拒绝（SSRF/清单非法等）经 request 抛 ApiError，message 为
+  // 后端可读文案——沿用 McpSettingsPanel 的原文透传先例。
+  const { client } = stubClient(async () => { throw new ApiError({ code: 'HTTP_400', message: 'manifest URL rejected: 私网地址禁止访问' }); });
   const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
   try {
     await act(async () => { setInputValue(document.querySelector('input[type="url"]') as HTMLInputElement, 'http://127.0.0.1/manifest.json'); });
@@ -188,15 +249,38 @@ test('插件面板渲染校验失败错误且不残留预览卡', async () => {
   }
 });
 
-test('插件面板把非法 envelope 解析失败呈现为错误态', async () => {
+test('插件面板把非法 envelope 解析失败呈现为中文错误态且不暴露内部路径', async () => {
   const { client } = stubClient(async () => ({ success: false }));
   const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
   try {
     await act(async () => { setInputValue(document.querySelector('input[type="url"]') as HTMLInputElement, 'https://plugins.example.com/manifest.json'); });
     await act(async () => { submitForm(document.querySelector('form')!); });
-    assert.ok(document.querySelector('[data-testid="plugin-preview-error"]'), 'a non-success envelope surfaces as the error state');
+    const errorBanner = document.querySelector('[data-testid="plugin-preview-error"]');
+    assert.ok(errorBanner, 'a non-success envelope surfaces as the error state');
+    // OCR low：解析器自产的英文诊断串（含内部 API 路径）不进中文管理界面。
+    assert.match(errorBanner?.textContent ?? '', /核验未通过/);
+    assert.doesNotMatch(errorBanner?.textContent ?? '', /\/api\/v1\//);
     assert.ok(!document.querySelector('[data-testid="plugin-preview-card"]'));
   } finally {
+    await unmount(root);
+  }
+});
+
+test('插件面板对网络类普通错误给出统一中文文案（console.warn 留痕）', async () => {
+  const warnings: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  const { client } = stubClient(async () => { throw new Error('fetch failed'); });
+  const root = await mount(React.createElement(PluginsSettingsPanel, { client, role: 'admin' }));
+  try {
+    await act(async () => { setInputValue(document.querySelector('input[type="url"]') as HTMLInputElement, 'https://plugins.example.com/manifest.json'); });
+    await act(async () => { submitForm(document.querySelector('form')!); });
+    const errorBanner = document.querySelector('[data-testid="plugin-preview-error"]');
+    assert.ok(errorBanner);
+    assert.match(errorBanner?.textContent ?? '', /核验未通过/);
+    assert.ok(warnings.length >= 1, 'the raw cause is preserved in console.warn');
+  } finally {
+    console.warn = originalWarn;
     await unmount(root);
   }
 });
