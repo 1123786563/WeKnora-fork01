@@ -39,6 +39,26 @@ func TestParseRepoRefAndWorkspaceRoot(t *testing.T) {
 	require.Equal(t, "/workspace/octocat/hello-world", WorkspaceRepoRoot(repo))
 }
 
+// 路径穿越回归：repo 段不得携带 ".."，否则 WorkspaceRepoRoot 拼接可突破
+// 固定 /workspace 根（与任务分支后缀、交付文件路径同一防线）。
+func TestParseRepoRefRefusesDotDotSegments(t *testing.T) {
+	for _, bad := range []string{"../hello", "octocat/..", "octocat/a..b", "..", "octocat/../hello"} {
+		_, err := ParseRepoRef(bad)
+		require.ErrorIs(t, err, ErrRepoRefInvalid, "input %q must be refused", bad)
+	}
+	// 传导面：材料快照守卫复用同一 repo 校验，.. 段材料同被拒。
+	mat := DeliveryMaterial{
+		Repo:          RepoRef{Owner: "..", Name: "hello"},
+		BaselineSHA:   "b" + strings.Repeat("0", 39),
+		Branch:        TaskBranchOf("s-1"),
+		Files:         []FileChange{{Path: "main.go"}},
+		CommitMessage: "m",
+		PRTitle:       "t",
+	}
+	_, err := ParseDeliveryMaterial(mustJSON(t, mat))
+	require.ErrorIs(t, err, ErrRepoRefInvalid)
+}
+
 // git hash-object 与本实现同构：真实 git 生成的 blob sha 必须一致。
 func TestGitBlobSHAMatchesRealGit(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {

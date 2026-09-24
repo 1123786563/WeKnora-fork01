@@ -86,9 +86,12 @@ func (r RepoRef) String() string { return r.Owner + "/" + r.Name }
 var repoRefPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
 // ParseRepoRef accepts exactly "owner/name" (single slash, no scheme).
+// Any segment carrying ".." is refused so WorkspaceRepoRoot can never
+// concatenate its way out of the fixed /workspace root — the same guard
+// task branch suffixes and delivery file paths enforce.
 func ParseRepoRef(v string) (RepoRef, error) {
 	v = strings.TrimSpace(v)
-	if !repoRefPattern.MatchString(v) {
+	if !repoRefPattern.MatchString(v) || strings.Contains(v, "..") {
 		return RepoRef{}, fmt.Errorf("%w: %q", ErrRepoRefInvalid, v)
 	}
 	parts := strings.SplitN(v, "/", 2)
