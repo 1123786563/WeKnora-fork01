@@ -6,6 +6,7 @@ import { createChatSessionsApi } from '../chat/sessions.ts';
 import { createExecutionsApi, executionEventsRequest } from './executions.ts';
 import { createInteractionsApi } from './interactions.ts';
 import { createOverviewApi } from './overview.ts';
+import { requireDeploymentOrigin } from './deployment-origin.ts';
 import type { ClientRequest } from '../client.ts';
 import type { RequestLookup, StartAck, StartExecutionInput } from './executions.ts';
 
@@ -56,17 +57,6 @@ export interface RemoteDecisionRecord {
   action: InteractionAction;
   argsHash: string;
   expectedRevision: number;
-}
-
-function requireDeploymentOrigin(origin: string): string {
-  let parsed: URL;
-  if (typeof origin !== 'string' || origin.trim() === '') throw new Error('deployment origin is required');
-  try { parsed = new URL(origin); } catch { throw new Error(`deployment origin must be an absolute URL: ${origin}`); }
-  if (parsed.protocol !== 'https:') throw new Error('deployment origin must use HTTPS');
-  if (parsed.username !== '' || parsed.password !== '') throw new Error('deployment origin must not embed user info');
-  if (parsed.pathname !== '/') throw new Error('deployment origin must not include a path');
-  if (parsed.search !== '' || parsed.hash !== '') throw new Error('deployment origin must not include a query or fragment');
-  return parsed.origin;
 }
 
 function unwrap(value: unknown): void {
@@ -240,7 +230,7 @@ export function createTaskOfficeRemote(options: TaskOfficeRemoteOptions) {
             (translated as unknown as { code?: string }).code = message;
             throw translated;
           };
-          if (error.status === 409 || error.status === 400) coded('INTERACTION_SUPERSEDED');
+          if (error.status === 409) coded('INTERACTION_SUPERSEDED'); // B3-F43：400 是确定性客户端错误，透传原始 ApiError
           if (error.status === 502 && error.code === 'command_recovery_unknown') coded('INTERACTION_DELIVERY_UNKNOWN');
           if (error.status === 404 || error.status === 403 || error.status === 410) coded('INTERACTION_GONE');
         }

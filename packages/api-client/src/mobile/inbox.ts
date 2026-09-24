@@ -1,9 +1,10 @@
 import type { ClientRequest } from '../client.ts';
+import { requireDeploymentOrigin } from './deployment-origin.ts';
 
 type Request = (input: ClientRequest) => Promise<unknown>;
 
 export interface MobileInboxRemoteOptions {
-  /** 部署 Origin：构造即强校验（同 createMobileDeviceRemote 模式）。 */
+  /** 部署 Origin：构造即强校验（共享 requireDeploymentOrigin，B3-F11 收敛）。 */
   origin: string;
   /** 授权通道（MobileRuntime.authorizedRequest 或测试替身）；本适配器不新建传输。 */
   request: Request;
@@ -32,21 +33,6 @@ export interface MobileInboxRemote {
   inbox(cursor?: string): Promise<RemoteInboxPage>;
   /** POST /api/v1/workbench/inbox/read（workbench_inbox.go:214）——只置已读，服务端不执行任何业务操作。 */
   markRead(notificationId: string): Promise<void>;
-}
-
-function requireDeploymentOrigin(origin: string): void {
-  let parsed: URL;
-  if (typeof origin !== 'string' || origin.trim() === '') throw new Error('deployment origin is required');
-  try {
-    parsed = new URL(origin);
-  } catch {
-    throw new Error(`deployment origin must be an absolute URL: ${origin}`);
-  }
-  if (parsed.protocol !== 'https:') throw new Error('deployment origin must use HTTPS');
-  if (parsed.username !== '' || parsed.password !== '') throw new Error('deployment origin must not embed user info');
-  if (parsed.hostname === '') throw new Error('deployment origin must include a host');
-  if (parsed.pathname !== '/') throw new Error('deployment origin must not include a path');
-  if (parsed.search !== '' || parsed.hash !== '') throw new Error('deployment origin must not include a query or fragment');
 }
 
 function requireString(value: unknown, label: string): string {

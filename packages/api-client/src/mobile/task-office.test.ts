@@ -274,7 +274,9 @@ test('task office remote decide maps the ack and classifies honest outcomes', as
     }
   };
   assert.equal(await coded(new ApiError({ status: 409, code: 'HTTP_409', message: 'conflict' })), 'INTERACTION_SUPERSEDED');
-  assert.equal(await coded(new ApiError({ status: 400, code: 'HTTP_400', message: 'interaction_action_mismatch' })), 'INTERACTION_SUPERSEDED');
+  // B3-F43：400 是确定性客户端错误（action/kind 不匹配等），原始 ApiError 透传——
+  // 不得冒充「已被处理」终态后丢失原因、阻断重试与提示。
+  assert.equal(await coded(new ApiError({ status: 400, code: 'HTTP_400', message: 'interaction_action_mismatch' })), 'HTTP_400', '400 透传原始 wire code，不再翻译为 superseded');
   assert.equal(await coded(new ApiError({ status: 502, code: 'command_recovery_unknown', message: 'command_recovery_unknown: remote interaction' })), 'INTERACTION_DELIVERY_UNKNOWN');
   assert.equal(await coded(new ApiError({ status: 502, code: 'HTTP_502', message: 'upstream broke' })), 'HTTP_502', '非 command_recovery_unknown 的 502 不得伪装成 delivery-unknown（原样上抛，wire code 透传）');
   assert.equal(await coded(new ApiError({ status: 410, code: 'HTTP_410', message: 'interaction_expired' })), 'INTERACTION_GONE');

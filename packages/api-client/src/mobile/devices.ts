@@ -1,11 +1,12 @@
 import type { ClientRequest } from '../client.ts';
+import { requireDeploymentOrigin } from './deployment-origin.ts';
 
 type Request = (input: ClientRequest) => Promise<unknown>;
 
 export interface MobileDeviceRemoteOptions {
   /**
-   * 部署 Origin。构造即强校验（与 createMobileRuntimeRemote / createTaskOfficeRemote 同一
-   * requireDeploymentOrigin 模式）：绝对 HTTPS、无 userinfo、无 path/query/fragment。
+   * 部署 Origin。构造即强校验（共享 requireDeploymentOrigin，B3-F11 收敛）：
+   * 绝对 HTTPS、含 host、无 userinfo、无 path/query/fragment。
    */
   origin: string;
   /** 授权通道（MobileRuntime.authorizedRequest 或测试替身）；本适配器不新建传输。 */
@@ -32,21 +33,6 @@ export interface MobileDeviceRemote {
   revoke(input: { deviceId: string; revision?: number }): Promise<void>;
   /** GET /api/v1/mobile/devices（mobile_device.go:386）——敏感列 json:"-" 不上 wire。 */
   list(): Promise<MobileDeviceRegistration[]>;
-}
-
-function requireDeploymentOrigin(origin: string): void {
-  let parsed: URL;
-  if (typeof origin !== 'string' || origin.trim() === '') throw new Error('deployment origin is required');
-  try {
-    parsed = new URL(origin);
-  } catch {
-    throw new Error(`deployment origin must be an absolute URL: ${origin}`);
-  }
-  if (parsed.protocol !== 'https:') throw new Error('deployment origin must use HTTPS');
-  if (parsed.username !== '' || parsed.password !== '') throw new Error('deployment origin must not embed user info');
-  if (parsed.hostname === '') throw new Error('deployment origin must include a host');
-  if (parsed.pathname !== '/') throw new Error('deployment origin must not include a path');
-  if (parsed.search !== '' || parsed.hash !== '') throw new Error('deployment origin must not include a query or fragment');
 }
 
 function requireDeviceId(deviceId: string): string {

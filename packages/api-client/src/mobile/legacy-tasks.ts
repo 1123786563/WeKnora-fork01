@@ -1,6 +1,7 @@
 import { parseChatMessageListResponse, responseType } from '@weknora/contracts';
 import { createServerSentEventParser, parseChatEvent } from '../chat/stream.ts';
 import type { ClientRequest } from '../client.ts';
+import { requireDeploymentOrigin } from './deployment-origin.ts';
 
 type Request = (input: ClientRequest) => Promise<unknown>;
 
@@ -17,17 +18,6 @@ export interface LegacyTaskRemoteOptions {
 export interface RemoteLegacyTask { taskId: string; title: string; attention: 'none'; archivedAt?: string; updatedAt: string }
 export interface RemoteLegacyPage { items: RemoteLegacyTask[]; nextCursor?: string }
 export interface RemoteLegacyMessage { messageId: string; role: 'user' | 'assistant' | 'system'; content: string; createdAt?: string }
-
-function requireDeploymentOrigin(origin: string): string {
-  let parsed: URL;
-  if (typeof origin !== 'string' || origin.trim() === '') throw new Error('deployment origin is required');
-  try { parsed = new URL(origin); } catch { throw new Error(`deployment origin must be an absolute URL: ${origin}`); }
-  if (parsed.protocol !== 'https:') throw new Error('deployment origin must use HTTPS');
-  if (parsed.username !== '' || parsed.password !== '') throw new Error('deployment origin must not embed user info');
-  if (parsed.pathname !== '/') throw new Error('deployment origin must not include a path');
-  if (parsed.search !== '' || parsed.hash !== '') throw new Error('deployment origin must not include a query or fragment');
-  return parsed.origin;
-}
 
 function legacyRow(item: unknown, path: string): RemoteLegacyTask {
   if (typeof item !== 'object' || item === null || Array.isArray(item)) throw new Error(`${path} must be an object`);
