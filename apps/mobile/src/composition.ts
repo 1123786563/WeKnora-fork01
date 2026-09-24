@@ -9,6 +9,7 @@ import { createScopedVault, createWebCryptoCipher, createInMemoryTaskProjectionS
 import type { MobileRuntime, RuntimeSnapshot, ScopedVault, Deployment } from '@weknora/mobile-core';
 import { createTaskOffice, type TaskOffice } from '@weknora/mobile-core';
 import { createTaskOfficeRemote } from '@weknora/api-client/mobile/task-office';
+import { createMobileLegacyTaskRemote } from '@weknora/api-client/mobile/legacy-tasks';
 import { createNativeOidcBrowser } from './adapters/oidc-browser.ts';
 import { createNativeSecurePendingOidcStore } from './adapters/secure-store.ts';
 import type { SecureStorePort } from './adapters/secure-store.ts';
@@ -113,6 +114,11 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice
     office = createTaskOffice({
       backend: remote,
       detail: remote,
+      legacy: createMobileLegacyTaskRemote({
+        origin,
+        request: (input) => activeRuntime.authorizedRequest(input),
+        stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk),
+      }),
       lease: () => activeRuntime.scopeLease(),
       // 显式装配（R1-F20 最小修复）：App 重启恢复需要持久 TaskProjectionStore（SQLite 后端，Round 2）；
       // 此处显式传 in-memory store 使「未注入持久化」成为组合根的显式决策而非静默回退。
@@ -124,7 +130,7 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice
 }
 
 /** /tasks 应用根：授权面才渲染列表屏，其余面回到 Runtime 裁决的 Surface。 */
-export function MobileTasks({ onOpenTask }: { onOpenTask?: (taskId: string, runId: string) => void } = {}) {
+export function MobileTasks({ onOpenTask, onOpenLegacy }: { onOpenTask?: (taskId: string, runId: string) => void; onOpenLegacy?: () => void } = {}) {
   const activeRuntime = runtime();
   const snapshot = useSyncExternalStore(activeRuntime.subscribe, activeRuntime.snapshot, activeRuntime.snapshot);
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return null;
@@ -132,6 +138,7 @@ export function MobileTasks({ onOpenTask }: { onOpenTask?: (taskId: string, runI
     key: deploymentScopeKey(snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
     taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin),
     ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string; runId: string }) => onOpenTask(card.taskId, card.runId) }),
+    ...(onOpenLegacy === undefined ? {} : { onOpenLegacy }),
   });
 }
 

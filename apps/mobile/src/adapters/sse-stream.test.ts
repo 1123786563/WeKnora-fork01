@@ -66,3 +66,20 @@ test('a failed SSE response releases its body (R1-F50)', async () => {
   );
   assert.equal(cancelled, 1, '非 2xx 分支也必须 cancel body（401 刷新重试反复放大连接占用）');
 });
+
+test('a POST stream carries the JSON body and content-type for chat follow-ups', async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  await streamAuthorizedSse(
+    'https://weknora.example.test',
+    { method: 'POST', path: '/api/v1/knowledge-chat/lg-1', body: { query: '继续这个话题' } },
+    'access-1',
+    () => undefined,
+    async (url, init) => { calls.push({ url, init: init as RequestInit }); return new Response(streamOf(['data: {"response_type":"complete"}\n\n'])); },
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.init!.method, 'POST');
+  assert.equal(calls[0]!.init!.body, '{"query":"继续这个话题"}');
+  const headers = calls[0]!.init!.headers as Record<string, string>;
+  assert.equal(headers['content-type'], 'application/json');
+  assert.equal(headers.accept, 'text/event-stream');
+});
