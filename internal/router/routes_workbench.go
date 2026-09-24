@@ -215,3 +215,20 @@ func RegisterWorkbenchTaskStateRoutes(r *gin.RouterGroup, h *session.WorkbenchTa
 	tasks.POST("/:task_id/archive", h.Archive)
 	tasks.DELETE("/:task_id/archive", h.Restore)
 }
+
+// RegisterWorkbenchTaskGrantRoutes exposes the per-task collaboration grants
+// (T12). Same Viewer/API-key boundary as the other workbench lanes; the
+// owner-only predicate lives in the service (a non-owner caller gets a 403,
+// a cross-tenant probe a uniform 404). Wildcard names: the POST tree already
+// binds :task_id via /workbench/tasks/:task_id/archive, and the DELETE tree
+// likewise, so every route here reuses :task_id (gin requires identical
+// wildcard names per verb tree).
+func RegisterWorkbenchTaskGrantRoutes(r *gin.RouterGroup, h *session.WorkbenchTaskGrantsHandler, g *rbacGuards) {
+	if h == nil || g == nil {
+		return
+	}
+	tasks := g.apiKeyGroup(r.Group("/workbench/tasks", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	tasks.POST("/:task_id/grants", h.Grant)
+	tasks.GET("/:task_id/grants", h.List)
+	tasks.DELETE("/:task_id/grants/:grantee_id", h.Revoke)
+}

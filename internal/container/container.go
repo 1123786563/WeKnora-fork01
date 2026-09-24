@@ -282,6 +282,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(NewWorkbenchInboxHandler))
 	must(container.Provide(repository.NewWorkbenchTaskStateStore))
 	must(container.Provide(NewWorkbenchTaskStateHandler))
+	must(container.Provide(NewWorkbenchTaskGrantsHandler))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
