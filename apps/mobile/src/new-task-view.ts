@@ -152,6 +152,9 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
         persistDraft();
         return undefined;
       }
+      // submitting 必须在首个 await（网络探测）之前同步置位（审查修复轮 1）：
+      // 检查-置位原子，同帧双击在探测挂起期间即被 submitting 守卫拒绝，绝不双派发计费 Run。
+      publish({ ...state, submitting: true, offline: false, error: undefined });
       // T10（#40）离线确认门：派发前拒绝（AC2——离线不能执行 Run），草稿保持加密保存。
       let offline = false;
       if (ports.network !== undefined) {
@@ -162,7 +165,6 @@ export function createNewTaskController(ports: NewTaskControllerPorts): NewTaskC
         publish({ ...state, submitting: false, offline: true, error: OFFLINE_SUBMIT_COPY });
         return undefined;
       }
-      publish({ ...state, submitting: true, offline: false, error: undefined });
       try {
         const receipt = await ports.office.start(
           {

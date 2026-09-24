@@ -280,3 +280,28 @@ test('no network port keeps the existing behavior (no interception)', async () =
   assert.equal(receipt?.runId, 'run-1');
   controller.dispose();
 });
+
+test('a double submit while the network probe is in flight dispatches office.start only once', async () => {
+  let probesHang = false;
+  const hungProbes: Array<(online: boolean) => void> = [];
+  const office = officeDouble();
+  const controller = createNewTaskController({
+    office,
+    agents: async () => [LEAD_AGENT],
+    newRequestId: () => 'req-1',
+    network: {
+      online: () => (probesHang ? new Promise<boolean>((resolve) => { hungProbes.push(resolve); }) : Promise.resolve(true)),
+    },
+  });
+  await controller.whenInitialized(); // 初始化探测不挂起（probesHang 尚为 false）
+  controller.update({ text: '双击目标' });
+  probesHang = true; // 仅 submit 期间的探测挂起
+  const first = controller.submit();
+  const second = controller.submit(); // 探测挂起期间的同帧第二次点击：必须被 submitting 守卫拒绝
+  probesHang = false;
+  hungProbes.forEach((resolve) => { resolve(true); }); // 放行所有挂起的探测
+  const [receipt] = await Promise.all([first, second]);
+  assert.equal(receipt?.runId, 'run-1');
+  assert.equal(office.calls.length, 1, 'a double click during the probe must not create two billing Runs');
+  controller.dispose();
+});
