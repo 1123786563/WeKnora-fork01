@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
@@ -23,7 +24,7 @@ func NewWorkbenchReadHandler(
 	ingestor *repository.ExecutionObservationStore,
 	lists *repository.WorkbenchListStore,
 ) *session.WorkbenchReadHandler {
-	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists)
+	return session.NewWorkbenchReadHandler(runs, snapshots, ingestor).WithTaskFacts(lists).WithGrantedRuns(runs)
 }
 
 // NewWorkbenchArtifactHandler wires the artifact list + signed-link surfaces
@@ -124,4 +125,14 @@ func NewMobileDeviceHandler(store *repository.MobileDeviceStore) *handler.Mobile
 // authenticated context.
 func NewWorkbenchTaskStateHandler(states *repository.WorkbenchTaskStateStore) *session.WorkbenchTaskStateHandler {
 	return session.NewWorkbenchTaskStateHandler(states)
+}
+
+// NewWorkbenchTaskGrantsHandler wires the task collaboration grants to the
+// durable store; tenant/owner always come from the authenticated context.
+func NewWorkbenchTaskGrantsHandler(
+	grants *repository.TaskGrantStore,
+	sessions interfaces.SessionRepository,
+	members interfaces.TenantMemberRepository,
+) *session.WorkbenchTaskGrantsHandler {
+	return session.NewWorkbenchTaskGrantsHandler(service.NewTaskGrantService(grants, sessions, members))
 }
