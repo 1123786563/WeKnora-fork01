@@ -1259,3 +1259,22 @@ test('the legacy screen shows the explicit empty state when no office is active'
   assert.ok(json.includes('请先登录'), 'B3-F22：显式空态文案渲染（不永久停留 loading）');
   assert.ok(!json.includes('Loading'), 'loading 已复位');
 });
+
+test('composition caches instances by deployment scope key and registration failures do not permanently occupy an origin', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, 'composition.ts'), 'utf8');
+  // B3-F26：四个模块级缓存必须以 origin::tenant 为键（deploymentScopeKey）。
+  const cacheFactories = ['taskOffices', 'deviceRegistries', 'notificationInboxes', 'taskMaterials'];
+  for (const cache of cacheFactories) {
+    assert.match(source, new RegExp(`(?:const|let)\\s+${cache}\\s*=\\s*new Map<string`), `${cache} 存在`);
+  }
+  assert.ok((source.match(/deploymentScopeKey\(/g) ?? []).length >= 5, '缓存工厂统一走 deploymentScopeKey（含定义自身）');
+  // B3-F28：注册不再「先标记、后尝试、永不重试」——registeredFor.add 移到成功回调之后。
+  assert.doesNotMatch(source, /registeredFor\.current\.add\(next\.deployment\.origin\);\s*\n\s*void registerActiveDeviceIfPossible/, '先标记模式必须移除');
+  assert.match(source, /registrationAttempts/, '会话内有界重试的尝试计数存在');
+  // B3-F29：openNotificationFromInbox 的 item 参数类型对齐实现（读 deepLink），删除 as 断言。
+  assert.doesNotMatch(source, /as InboxItem/, 'as InboxItem 断言必须删除');
+});

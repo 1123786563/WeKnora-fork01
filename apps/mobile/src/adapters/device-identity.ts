@@ -8,18 +8,29 @@ export interface NativeDeviceIdentity {
 }
 
 export function createSecureDeviceIdentity(store: SecureStorePort): NativeDeviceIdentity {
+  let inflight: Promise<string | undefined> | undefined;
   return {
     async deviceId(): Promise<string | undefined> {
+      // 并发首次调用共享同一次 read-generate-write（B3-F49）：各自生成 uuid 后
+      // 写覆盖先写会产生收不到推送的幽灵设备记录。
+      if (inflight !== undefined) return inflight;
+      inflight = (async (): Promise<string | undefined> => {
+        try {
+          const existing = await store.getItemAsync(DEVICE_ID_KEY);
+          if (typeof existing === 'string' && existing.trim() !== '') return existing.trim();
+          const generated = globalThis.crypto?.randomUUID
+            ? globalThis.crypto.randomUUID()
+            : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+          await store.setItemAsync(DEVICE_ID_KEY, generated);
+          return generated;
+        } catch {
+          return undefined; // fail closed：无安全存储即无设备身份，不注册
+        }
+      })();
       try {
-        const existing = await store.getItemAsync(DEVICE_ID_KEY);
-        if (typeof existing === 'string' && existing.trim() !== '') return existing.trim();
-        const generated = globalThis.crypto?.randomUUID
-          ? globalThis.crypto.randomUUID()
-          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-        await store.setItemAsync(DEVICE_ID_KEY, generated);
-        return generated;
-      } catch {
-        return undefined; // fail closed：无安全存储即无设备身份，不注册
+        return await inflight;
+      } finally {
+        inflight = undefined; // 完成后允许后续直读
       }
     },
   };

@@ -7,10 +7,17 @@
 export function createNativeRequestId(): () => string {
   return (): string => {
     if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+    // Hermes 无 globalThis.crypto：expo-crypto 的 CSPRNG 是主路径（B3-F27）。
+    try {
+      const expoCrypto = require('expo-crypto') as { randomUUID?: () => string };
+      if (typeof expoCrypto.randomUUID === 'function') return expoCrypto.randomUUID();
+    } catch { /* expo-crypto 未安装（测试 stub 环境）：落既有兜底链 */ }
     const bytes = new Uint8Array(16);
     if (typeof globalThis.crypto?.getRandomValues === 'function') {
       globalThis.crypto.getRandomValues(bytes);
     } else {
+      // Math.random 兜底强度低于 CSPRNG 但可用性优先（mobile-core 的 fail-closed
+      // 纪律会阻断整个提交流）；expo-crypto 是缺省安装项。
       for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
     }
     bytes[6] = (bytes[6]! & 0x0f) | 0x40;

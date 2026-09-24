@@ -127,6 +127,19 @@ export interface RuntimeSurfaceProps {
   onSwitchDeployment?: (origin: string) => Promise<void>;
 }
 
+/** 四个模块级缓存统一以 origin::tenant 为键（B3-F26）：remount 只换组件不换缓存实例，
+ * 同 origin 切租户/用户时不得复用含前 scope 残留状态（submissionStore、accumulated、
+ * inbox view）的实例。条目超 8 个清最旧（防泄漏）。 */
+const MAX_CACHE_ENTRIES = 8;
+const cachePut = <T>(cache: Map<string, T>, key: string, make: () => T): T => {
+  const existing = cache.get(key);
+  if (existing !== undefined) return existing;
+  if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value!);
+  const created = make();
+  cache.set(key, created);
+  return created;
+};
+
 const taskOffices = new Map<string, TaskOffice>();
 
 /** remount key 必须含 deployment origin（R1-F48/F49）：两部署租户 id 相同（自增小整数常见）时
@@ -135,12 +148,11 @@ export function deploymentScopeKey(origin: string, activeTenantId: string): stri
   return `${origin}::${activeTenantId}`;
 }
 
-/** Task Office 按 deployment origin 记忆化；lease 由 Runtime 提供，切租户即 fail closed。 */
-function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice {
-  let office = taskOffices.get(origin);
-  if (!office) {
+/** Task Office 按 deployment scope key 记忆化；lease 由 Runtime 提供，切租户即 fail closed。 */
+function taskOfficeFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): TaskOffice {
+  return cachePut(taskOffices, deploymentScopeKey(origin, tenantId), () => {
     const remote = createTaskOfficeRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input), stream: (input, onChunk) => activeRuntime.authorizedEventStream(input, onChunk) });
-    office = createTaskOffice({
+    return createTaskOffice({
       backend: remote,
       detail: remote,
       interactions: remote,
@@ -156,40 +168,28 @@ function taskOfficeFor(activeRuntime: MobileRuntime, origin: string): TaskOffice
       intentLog: intentLogOf(),
       newRequestId: createNativeRequestId(),
     });
-    taskOffices.set(origin, office);
-  }
-  return office;
+  });
 }
 
 const deviceRegistries = new Map<string, DeviceRegistry>();
 
-/** Device Registry 按 deployment origin 记忆化（同 taskOfficeFor 模式）：授权读通道与
+/** Device Registry 按 deployment scope key 记忆化（同 taskOfficeFor 模式）：授权读通道与
  * scope lease 全部经 Runtime——设备注册的 token 不出 Runtime，注册身份按 Deployment 隔离（ADR-0007）。 */
-function deviceRegistryFor(activeRuntime: Pick<MobileRuntime, 'authorizedRequest' | 'scopeLease'>, origin: string): DeviceRegistry {
-  let registry = deviceRegistries.get(origin);
-  if (!registry) {
-    registry = createDeviceRegistry({
-      remote: createMobileDeviceRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
-      lease: () => activeRuntime.scopeLease(),
-    });
-    deviceRegistries.set(origin, registry);
-  }
-  return registry;
+function deviceRegistryFor(activeRuntime: Pick<MobileRuntime, 'authorizedRequest' | 'scopeLease'>, origin: string, tenantId: string): DeviceRegistry {
+  return cachePut(deviceRegistries, deploymentScopeKey(origin, tenantId), () => createDeviceRegistry({
+    remote: createMobileDeviceRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+    lease: () => activeRuntime.scopeLease(),
+  }));
 }
 
 const notificationInboxes = new Map<string, NotificationInbox>();
 
-/** 行动通知 Inbox 按 deployment origin 记忆化（同 taskOfficeFor 模式）。 */
-export function notificationInboxFor(activeRuntime: MobileRuntime, origin: string): NotificationInbox {
-  let inbox = notificationInboxes.get(origin);
-  if (!inbox) {
-    inbox = createNotificationInbox({
-      remote: createMobileInboxRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
-      lease: () => activeRuntime.scopeLease(),
-    });
-    notificationInboxes.set(origin, inbox);
-  }
-  return inbox;
+/** 行动通知 Inbox 按 deployment scope key 记忆化（同 taskOfficeFor 模式）。 */
+export function notificationInboxFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): NotificationInbox {
+  return cachePut(notificationInboxes, deploymentScopeKey(origin, tenantId), () => createNotificationInbox({
+    remote: createMobileInboxRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) }),
+    lease: () => activeRuntime.scopeLease(),
+  }));
 }
 
 /** 通知点击的唯一安全入口（#41 AC1/AC2）：安全深链解析 → 重新鉴权检查（fail closed）→
@@ -198,10 +198,10 @@ export function notificationInboxFor(activeRuntime: MobileRuntime, origin: strin
 export async function openNotificationFromInbox(
   inbox: Pick<NotificationInbox, 'resolveTarget' | 'markRead'>,
   snapshot: Pick<RuntimeSnapshot, 'surface'>,
-  item: Pick<InboxItem, 'notificationId'>,
+  item: Pick<InboxItem, 'notificationId' | 'deepLink'>,
   push: (path: string, params?: Record<string, string>) => void,
 ): Promise<'navigated' | 'blocked-unauthorized' | 'invalid-link'> {
-  const target = inbox.resolveTarget(item as InboxItem);
+  const target = inbox.resolveTarget(item); // 实现读 deepLink——参数类型与之对齐（B3-F29）
   if (target === undefined) return 'invalid-link';
   if (snapshot.surface !== 'authorized') return 'blocked-unauthorized';
   push('/tasks/detail', { taskId: target.taskId, runId: target.runId });
@@ -224,7 +224,7 @@ export async function registerActiveDeviceIfPossible(
   const deviceId = await identity.deviceId();
   if (deviceId === undefined) return 'no-device-id';
   try {
-    await deviceRegistryFor(activeRuntime, origin).register({
+    await deviceRegistryFor(activeRuntime, origin, snapshot.identity?.activeTenantId ?? '').register({
       deviceId,
       token,
       platform: nativeDevicePlatform(),
@@ -242,7 +242,7 @@ export function MobileTasks({ onOpenTask, onOpenLegacy }: { onOpenTask?: (taskId
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return null;
   return createElement(TasksScreen, {
     key: deploymentScopeKey(snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
-    taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin),
+    taskOffice: taskOfficeFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? ''),
     ...(onOpenTask === undefined ? {} : { onOpenTask: (card: { taskId: string; runId: string }) => onOpenTask(card.taskId, card.runId) }),
     ...(onOpenLegacy === undefined ? {} : { onOpenLegacy }),
   });
@@ -253,20 +253,17 @@ export function activeTaskOffice(): TaskOffice | undefined {
   const activeRuntime = runtime();
   const snapshot = activeRuntime.snapshot();
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
-  return taskOfficeFor(activeRuntime, snapshot.deployment.origin);
+  return taskOfficeFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
 }
 
 const taskMaterials = new Map<string, TaskMaterial>();
 
-/** Task Material 按 deployment origin 记忆化；lease 由 Runtime 提供，切租户即 fail closed（module-seams §7）。 */
-function taskMaterialFor(activeRuntime: MobileRuntime, origin: string): TaskMaterial {
-  let material = taskMaterials.get(origin);
-  if (!material) {
+/** Task Material 按 deployment scope key 记忆化；lease 由 Runtime 提供，切租户即 fail closed（module-seams §7）。 */
+function taskMaterialFor(activeRuntime: MobileRuntime, origin: string, tenantId: string): TaskMaterial {
+  return cachePut(taskMaterials, deploymentScopeKey(origin, tenantId), () => {
     const remote = createMobileMaterialRemote({ origin, request: (input) => activeRuntime.authorizedRequest(input) });
-    material = createTaskMaterial({ remote, blob: createFetchBlobAdapter(), share: createNativeSharePortIfAvailable() });
-    taskMaterials.set(origin, material);
-  }
-  return material;
+    return createTaskMaterial({ remote, blob: createFetchBlobAdapter(), share: createNativeSharePortIfAvailable() });
+  });
 }
 
 /** 详情/材料路由经此取当前授权 scope 的 Task Material（无授权面返回 undefined）。 */
@@ -274,7 +271,7 @@ export function activeTaskMaterial(): TaskMaterial | undefined {
   const activeRuntime = runtime();
   const snapshot = activeRuntime.snapshot();
   if (snapshot.surface !== 'authorized' || !snapshot.deployment || !snapshot.identity?.userId) return undefined;
-  return taskMaterialFor(activeRuntime, snapshot.deployment.origin);
+  return taskMaterialFor(activeRuntime, snapshot.deployment.origin, snapshot.identity.activeTenantId ?? '');
 }
 
 /** Selects a visible surface only from the presentation-safe Runtime snapshot. */
@@ -287,7 +284,7 @@ export function RuntimeSurface({ snapshot, deployments, onSignIn, onBeginOidc, o
       activeTenantId: snapshot.identity.activeTenantId,
       onActivateTenant: (tenantId: string) => { void onActivateTenant(tenantId); },
       onSignOut,
-      taskOffice: taskOfficeFor(runtime(), snapshot.deployment.origin),
+      taskOffice: taskOfficeFor(runtime(), snapshot.deployment.origin, snapshot.identity.activeTenantId),
       otherDeployments: (deployments ?? []).filter((deployment) => deployment.origin !== snapshot.deployment?.origin),
       onSwitchDeployment,
     });
@@ -344,6 +341,7 @@ export function MobileApp() {
   const activeRuntime = runtime();
   const booted = useRef(false);
   const registeredFor = useRef(new Set<string>());
+  const registrationAttempts = useRef(new Map<string, number>());
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   useEffect(() => {
     bootRuntimeOnce(activeRuntime, booted);
@@ -353,8 +351,16 @@ export function MobileApp() {
     const unsubscribe = activeRuntime.subscribe((next) => {
       if (next.surface !== 'authorized' || !next.deployment) return;
       if (registeredFor.current.has(next.deployment.origin)) return;
-      registeredFor.current.add(next.deployment.origin);
-      void registerActiveDeviceIfPossible(activeRuntime).catch(() => undefined);
+      // 有界重试（B3-F28）：no-token/failed 不永久占用 origin——iOS 首次安装未授
+      // 通知权限时，会话内还有重试路径；成功才标记 registeredFor。
+      const attempts = registrationAttempts.current.get(next.deployment.origin) ?? 0;
+      if (attempts >= 2) return;
+      registrationAttempts.current.set(next.deployment.origin, attempts + 1);
+      void registerActiveDeviceIfPossible(activeRuntime)
+        .then((outcome) => {
+          if (outcome === 'registered') registeredFor.current.add(next.deployment!.origin);
+        })
+        .catch(() => undefined); // 失败：surface 下次变化再试（直至会话上限）
     });
     return unsubscribe;
   }, [activeRuntime]);

@@ -79,7 +79,8 @@ export interface NotificationInbox {
   markRead(notificationId: string): Promise<void>;
   /** 推送同步 hint：只触发一次权威重投影，不携带/写入任何业务状态（AC1 客户端半边）。 */
   applyHint(hint: { kind?: string }): Promise<InboxView>;
-  resolveTarget(item: InboxItem): DeepLinkTarget | undefined;
+  /** 只读 deepLink 字段——参数类型与之对齐（调用方可传 InboxItem 子集，B3-F29）。 */
+  resolveTarget(item: Pick<InboxItem, 'notificationId' | 'deepLink'>): DeepLinkTarget | undefined;
   subscribe(listener: (view: InboxView) => void): () => void;
 }
 
@@ -172,7 +173,7 @@ export function createNotificationInbox(ports: NotificationInboxPorts): Notifica
       void hint; // hint 只是触发器：kind 不进入任何状态或视图（AC1）
       return fetchPage(true);
     },
-    resolveTarget(item: InboxItem): DeepLinkTarget | undefined {
+    resolveTarget(item: Pick<InboxItem, 'notificationId' | 'deepLink'>): DeepLinkTarget | undefined {
       return parseNotificationDeepLink(item.deepLink ?? '');
     },
     subscribe(listener) {

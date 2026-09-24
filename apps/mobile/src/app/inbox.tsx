@@ -93,5 +93,5 @@ export default function InboxRoute() {
       </View>
     );
   }
-  return <InboxRouteLifecycle inbox={notificationInboxFor(activeRuntime, origin)} />;
+  return <InboxRouteLifecycle inbox={notificationInboxFor(activeRuntime, origin, snapshot.identity?.activeTenantId ?? '')} />;
 }
