@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -104,4 +105,36 @@ func TestInteractionServiceListInboxScopesIdentityAndFailsClosed(t *testing.T) {
 	stub := &interactionStoreStub{current: contract.InteractionDecision{ID: "i1", Kind: "budget", ArgsHash: "a"}}
 	_, err = NewInteractionService(stub, nil, nil).ListInbox(interactionContext(), 50)
 	require.ErrorIs(t, err, ErrCapabilityUnavailable)
+}
+
+// 过期 pending 行没有清理路径且必为最旧（created_at ASC 窗口头）。若过期
+// 谓词只在 Go 侧 skip，SQL LIMIT 先截断窗口，过期行累积满窗口后活待办被
+// 静默饿死——过期过滤必须下推到 SQL 谓词（参数绑定）。
+func TestGormInteractionStoreListPendingDoesNotStarveWhenExpiredRowsFillWindow(t *testing.T) {
+	dsn := "file:" + t.TempDir() + "/inbox-starve.db?_foreign_keys=on&_busy_timeout=10000"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.AutoMigrate(&interactionRow{}, &inboxRunRow{}, &inboxSessionRow{}))
+	now := time.Now().UTC()
+	past := now.Add(-time.Hour)
+	for i := 0; i < 3; i++ {
+		require.NoError(t, db.Create(&interactionRow{
+			TenantID: 7, ID: fmt.Sprintf("i-expired-%d", i), RunID: "run-live", OwnerID: "u1",
+			Kind: "tool_approval", ArgsHash: "h-old", Status: "pending", ExpiresAt: &past,
+			CreatedAt: now.Add(time.Duration(i) * time.Minute), UpdatedAt: now,
+		}).Error)
+	}
+	require.NoError(t, db.Create(&interactionRow{
+		TenantID: 7, ID: "i-alive", RunID: "run-live", OwnerID: "u1",
+		Kind: "tool_approval", ArgsHash: "h-alive", Status: "pending",
+		CreatedAt: now.Add(time.Hour), UpdatedAt: now,
+	}).Error)
+	store := NewGormInteractionStore(db)
+	items, err := store.ListPending(context.Background(), 7, "u1", 3)
+	require.NoError(t, err)
+	require.Len(t, items, 1, "窗口被过期行填满时活待办仍必须可见：过期过滤先于 LIMIT 生效")
+	require.Equal(t, "i-alive", items[0].ID)
 }

@@ -208,10 +208,12 @@ func (s *GormInteractionStore) List(ctx context.Context, tenantID uint64, ownerI
 
 // ListPending returns the owner's open interactions across runs: the Attention
 // Inbox read (T08). It reuses the overview's archived-task LEFT JOIN so the
-// inbox and the home projection never disagree, and expired prompts are
-// filtered in Go (dialect-safe) so the inbox never offers an undecidable row.
-// Interactions whose run row is dangling stay visible: the LEFT JOIN keeps
-// sessions.archived_at NULL, matching the overview semantics exactly.
+// inbox and the home projection never disagree, and expired prompts are pruned
+// by a bound SQL predicate so they can never fill the LIMIT window and starve
+// live prompts; a Go-side skip remains as a clock-skew guard between the
+// predicate and the scan. Interactions whose run row is dangling stay visible:
+// the LEFT JOIN keeps sessions.archived_at NULL, matching the overview
+// semantics exactly.
 func (s *GormInteractionStore) ListPending(ctx context.Context, tenantID uint64, ownerID string, limit int) ([]workbench.InteractionDecision, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -222,7 +224,7 @@ func (s *GormInteractionStore) ListPending(ctx context.Context, tenantID uint64,
 		Select("workbench_interactions.*").
 		Joins("LEFT JOIN agent_runs ar ON ar.tenant_id = workbench_interactions.tenant_id AND ar.run_id = workbench_interactions.run_id").
 		Joins("LEFT JOIN sessions ON sessions.tenant_id = ar.tenant_id AND sessions.id = ar.session_id").
-		Where("workbench_interactions.tenant_id = ? AND workbench_interactions.owner_id = ? AND workbench_interactions.status = ? AND sessions.archived_at IS NULL", tenantID, ownerID, "pending").
+		Where("workbench_interactions.tenant_id = ? AND workbench_interactions.owner_id = ? AND workbench_interactions.status = ? AND sessions.archived_at IS NULL AND (workbench_interactions.expires_at IS NULL OR workbench_interactions.expires_at > ?)", tenantID, ownerID, "pending", time.Now()).
 		Order("workbench_interactions.created_at ASC, workbench_interactions.id ASC").
 		Limit(limit).Find(&rows).Error
 	if err != nil {
