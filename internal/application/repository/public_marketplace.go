@@ -247,6 +247,11 @@ func (r *publicMarketplaceRepository) ReviewAndPublishPublicTx(ctx context.Conte
 		}
 		review = &types.PublicReleaseReviewEntity{ID: uuid.NewString(), SubmissionID: submission.ID, ReviewerID: decision.ReviewerID, ReviewedDigest: expectedDigest, Decision: decision.Decision, Reason: decision.Reason, CreatedAt: time.Now().UTC()}
 		if err := tx.Create(review).Error; err != nil {
+			// 唯一 review 约束（uq_public_release_review_submission，000114:81）
+			// 冲突 = 该 submission 已有审核决定。
+			if isUniqueViolation(err) {
+				return ErrPublicMarketplaceReviewConflict
+			}
 			return err
 		}
 		if decision.Decision != "approved" {
@@ -264,6 +269,13 @@ func (r *publicMarketplaceRepository) ReviewAndPublishPublicTx(ctx context.Conte
 			Bundle: append([]byte(nil), submission.Bundle...), PublishedBy: decision.ReviewerID, CreatedAt: time.Now().UTC(),
 		}
 		if err := tx.Create(release).Error; err != nil {
+			// release 唯一索引（uq_public_agent_releases_number/semantic/digest，
+			// 000114:82-84）冲突 = 与既有公共 release 撞号/版本/摘要，必须与
+			// review 冲突区分（fix round 1：原统一出口把这类冲突误标为
+			// ReviewConflict，令 ErrPublicMarketplaceReleaseConflict 不可达）。
+			if isUniqueViolation(err) {
+				return ErrPublicMarketplaceReleaseConflict
+			}
 			return err
 		}
 		query := tx.Model(&types.PublicMarketplaceListingEntity{}).Where("id = ?", submission.PublicListingID)
@@ -282,9 +294,6 @@ func (r *publicMarketplaceRepository) ReviewAndPublishPublicTx(ctx context.Conte
 		return nil
 	})
 	if err != nil {
-		if isUniqueViolation(err) {
-			return nil, nil, ErrPublicMarketplaceReviewConflict
-		}
 		return nil, nil, err
 	}
 	return review, release, nil
