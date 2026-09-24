@@ -228,6 +228,11 @@ func (sourceRevision) TableName() string              { return "career_source_re
 type Office struct {
 	db                   *gorm.DB
 	opportunityExtractor opportunityExtractor
+	// Source policy owns URL source trust; production starts with an empty
+	// allowlist. The transport is a narrow HTTP-only adapter and must never be
+	// invoked for unapproved sources.
+	sourcePolicy    SourcePolicy
+	sourceTransport SourceTransport
 	// These hooks only synchronize transaction-boundary and error-path tests.
 	beforeFirstWrite             func()
 	afterReceiptPersist          func()
@@ -274,7 +279,8 @@ func NewOffice(db *gorm.DB) (*Office, error) {
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS career_source_request_scope ON career_source_revisions (tenant_id, user_id, request_id) WHERE request_id <> ''").Error; err != nil {
 		return nil, err
 	}
-	return &Office{db: db}, nil
+	policy := SourcePolicy(emptySourcePolicy{})
+	return &Office{db: db, sourcePolicy: policy, sourceTransport: newCareerSourceTransport(policy, transportDialOptions{})}, nil
 }
 
 func validateSQLiteCareerSchema(db *gorm.DB) error {
@@ -288,7 +294,7 @@ func validateSQLiteCareerSchema(db *gorm.DB) error {
 		"career_receipts":                 {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 		"career_source_revisions":         {"id", "tenant_id", "user_id", "revision", "file_name", "mime_type", "size", "digest", "request_id", "intent_hash", "expected_revision", "claim_token", "lease_until", "resource_ref", "status", "error_category", "error_message", "extracted_text", "missing_categories", "review_flags", "created_at", "completed_at"},
 		"career_opportunities":            {"id", "tenant_id", "user_id", "created_at"},
-		"career_opportunity_observations": {"id", "tenant_id", "user_id", "opportunity_id", "snapshot_id", "source_kind", "source_label", "source_ref", "acquired_at", "created_at"},
+		"career_opportunity_observations": {"id", "tenant_id", "user_id", "opportunity_id", "snapshot_id", "source_kind", "source_label", "source_ref", "acquired_at", "created_at", "source_status", "completeness", "failure_code", "submitted_url", "final_url", "adapter_id", "adapter_version", "observed_http_status"},
 		"career_opportunity_snapshots":    {"id", "tenant_id", "user_id", "opportunity_id", "observation_id", "raw_text", "raw_sha256", "extracted", "status", "acquired_at", "created_at"},
 		"career_opportunity_receipts":     {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 		"career_evaluations":              {"id", "tenant_id", "user_id", "request_id", "fingerprint", "intent", "opportunity_id", "snapshot_id", "profile_revision", "receipt_body", "evaluation_body", "created_at"},

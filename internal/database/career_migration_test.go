@@ -28,7 +28,7 @@ func TestCareerMigrationCreatesPersonalEvidenceSchema(t *testing.T) {
 	}
 	for table, columns := range map[string][]string{
 		"career_opportunities":            {"id", "tenant_id", "user_id", "created_at"},
-		"career_opportunity_observations": {"id", "tenant_id", "user_id", "opportunity_id", "snapshot_id", "source_kind", "source_label", "source_ref", "acquired_at", "created_at"},
+		"career_opportunity_observations": {"id", "tenant_id", "user_id", "opportunity_id", "snapshot_id", "source_kind", "source_label", "source_ref", "acquired_at", "created_at", "source_status", "completeness", "failure_code", "submitted_url", "final_url", "adapter_id", "adapter_version", "observed_http_status"},
 		"career_opportunity_snapshots":    {"id", "tenant_id", "user_id", "opportunity_id", "observation_id", "raw_text", "raw_sha256", "extracted", "status", "acquired_at", "created_at"},
 		"career_opportunity_receipts":     {"tenant_id", "user_id", "request_id", "fingerprint", "body", "created_at"},
 		"career_evaluations":              {"id", "tenant_id", "user_id", "request_id", "fingerprint", "intent", "opportunity_id", "snapshot_id", "profile_revision", "receipt_body", "evaluation_body", "created_at"},
@@ -128,7 +128,7 @@ func TestCareerOpportunitySQLiteMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 117, version)
+	require.Equal(t, 119, version)
 	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
@@ -144,6 +144,54 @@ func TestCareerOpportunitySQLiteMigrationUpDownUp(t *testing.T) {
 	require.True(t, sqliteTableExists(t, db, "career_source_revisions"))
 }
 
+func TestSourceObservationMigrationUpAndDown(t *testing.T) {
+	root := sqliteRepoRoot(t)
+	chdirAndRestore(t, root)
+	for _, tree := range []string{"migrations/versioned/000198_source_import_observations.up.sql", "migrations/versioned/000198_source_import_observations.down.sql", "migrations/sqlite/000119_source_import_observations.up.sql", "migrations/sqlite/000119_source_import_observations.down.sql"} {
+		require.FileExistsf(t, filepath.Join(root, tree), "paired migration files must exist: %s", tree)
+	}
+	path := filepath.Join(t.TempDir(), "career-source-observation.db")
+	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
+	db := openSQLiteDB(t, path)
+	version, _ := sqliteMigrationState(t, db)
+	require.Equal(t, 119, version)
+	addedColumns := []string{"source_status", "completeness", "failure_code", "submitted_url", "final_url", "adapter_id", "adapter_version", "observed_http_status"}
+	preservedColumns := []string{"id", "tenant_id", "user_id", "opportunity_id", "snapshot_id", "source_kind", "source_label", "source_ref", "acquired_at", "created_at"}
+	columnPresent := func(column string) bool {
+		var count int
+		require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('career_opportunity_observations') WHERE name = ?", column).Scan(&count))
+		return count == 1
+	}
+	for _, column := range addedColumns {
+		require.Truef(t, columnPresent(column), "up migration must add %s", column)
+	}
+	_, err := db.Exec("INSERT INTO career_opportunity_observations (id,tenant_id,user_id,opportunity_id,snapshot_id,source_kind,source_label,source_ref,acquired_at,created_at,source_status,completeness,failure_code,submitted_url,final_url,adapter_id,adapter_version,observed_http_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+		"obs-1", uint64(42), "u", "opp-1", "snap-1", "url", "", "https://jobs.example.test/j", "2026-09-25 00:00:00", "2026-09-25 00:00:00", "partial", "incomplete", "timeout", "https://jobs.example.test/j", "https://jobs.example.test/final", "stub", "1", 200)
+	require.NoError(t, err)
+
+	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = m.Close() })
+	// 117/118 are reserved for the parallel T14 tasks and absent from this
+	// baseline, so the nearest real prior version is 116.
+	require.NoError(t, m.Migrate(116))
+	downVersion, _ := sqliteMigrationState(t, db)
+	require.Equal(t, 116, downVersion)
+	require.True(t, sqliteTableExists(t, db, "career_opportunity_observations"), "down migration must keep the table")
+	for _, column := range preservedColumns {
+		require.Truef(t, columnPresent(column), "down migration must preserve %s", column)
+	}
+	for _, column := range addedColumns {
+		require.Falsef(t, columnPresent(column), "down migration must drop only the added column %s", column)
+	}
+	require.NoError(t, m.Up())
+	version, _ = sqliteMigrationState(t, db)
+	require.Equal(t, 119, version)
+	for _, column := range addedColumns {
+		require.Truef(t, columnPresent(column), "re-applying up must restore %s", column)
+	}
+}
+
 func TestCareerEvaluationSQLiteMigrationUpDownUp(t *testing.T) {
 	root := sqliteRepoRoot(t)
 	chdirAndRestore(t, root)
@@ -151,7 +199,7 @@ func TestCareerEvaluationSQLiteMigrationUpDownUp(t *testing.T) {
 	require.NoError(t, RunMigrationsWithOptions("sqlite3://unused", MigrationOptions{SQLiteDBPath: path}))
 	db := openSQLiteDB(t, path)
 	version, _ := sqliteMigrationState(t, db)
-	require.Equal(t, 117, version)
+	require.Equal(t, 119, version)
 	m, err := newSQLiteMigrator("file://"+filepath.Join(root, "migrations/sqlite"), path, "", true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })

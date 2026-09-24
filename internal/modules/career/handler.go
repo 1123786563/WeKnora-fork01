@@ -252,6 +252,58 @@ func (h *Handler) OpportunityEvidence(c *gin.Context) {
 	c.JSON(http.StatusOK, evidence)
 }
 
+const maxImportURLBodyBytes = 16 * 1024
+
+// ImportURL records one URL import attempt with truthful source integrity.
+// The office layer performs all network I/O outside any database transaction
+// and reconciles through a durable receipt; failures surface as bounded
+// classifications, never raw upstream errors.
+func (h *Handler) ImportURL(c *gin.Context) {
+	ctx, ok := h.scope(c, true)
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxImportURLBodyBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	var input ImportURLInput
+	if err := decoder.Decode(&input); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": gin.H{"code": "request_too_large", "message": "URL import request is too large"}})
+			return
+		}
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeError(c, ErrInvalidRequest)
+		return
+	}
+	receipt, err := h.office.ImportURLReceipt(ctx, input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, receipt)
+}
+
+// OpportunityObservations lists the immutable observation history of one
+// opportunity under the current owner's authenticated scope.
+func (h *Handler) OpportunityObservations(c *gin.Context) {
+	ctx, ok := h.scope(c, false)
+	if !ok {
+		return
+	}
+	observations, err := h.office.OpportunityObservations(ctx, c.Param("opportunityId"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"observations": observations})
+}
+
 func (h *Handler) OpportunityReceipt(c *gin.Context) {
 	ctx, ok := h.scope(c, false)
 	if !ok {

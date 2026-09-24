@@ -42,6 +42,16 @@ type opportunityObservation struct {
 	SourceRef     string `gorm:"type:text"`
 	AcquiredAt    time.Time
 	CreatedAt     time.Time
+	// T09 URL source evidence columns. Older manual observations keep the
+	// zero values; the paired migration adds these columns additively.
+	SourceStatus       string `gorm:"size:32;not null;default:''"`
+	Completeness       string `gorm:"size:16;not null;default:''"`
+	FailureCode        string `gorm:"size:32;not null;default:''"`
+	SubmittedURL       string `gorm:"type:text;not null;default:''"`
+	FinalURL           string `gorm:"type:text;not null;default:''"`
+	AdapterID          string `gorm:"size:64;not null;default:''"`
+	AdapterVersion     string `gorm:"size:32;not null;default:''"`
+	ObservedHTTPStatus int
 }
 
 type opportunitySnapshot struct {
@@ -73,10 +83,12 @@ func (opportunitySnapshot) TableName() string    { return "career_opportunity_sn
 func (opportunityReceipt) TableName() string     { return "career_opportunity_receipts" }
 
 type ImportJDInput struct {
-	RequestID       string `json:"requestId"`
-	RawText         string `json:"rawText"`
-	SourceLabel     string `json:"sourceLabel,omitempty"`
-	SourceReference string `json:"sourceReference,omitempty"`
+	RequestID          string `json:"requestId"`
+	RawText            string `json:"rawText"`
+	SourceLabel        string `json:"sourceLabel,omitempty"`
+	SourceReference    string `json:"sourceReference,omitempty"`
+	OpportunityID      string `json:"opportunityId,omitempty"`
+	PriorObservationID string `json:"priorObservationId,omitempty"`
 }
 
 type ExtractedValue struct {
@@ -202,7 +214,28 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 			return err
 		}
 		acquiredAt := time.Now().UTC()
-		oppID, observationID, snapshotID := uuid.NewString(), uuid.NewString(), uuid.NewString()
+		// Optional owner-scoped append: a user JD supplied after a URL
+		// observation joins the same opportunity as a new immutable snapshot.
+		// The original URL observation is never rewritten or replaced.
+		oppID := uuid.NewString()
+		if input.OpportunityID != "" || input.PriorObservationID != "" {
+			if input.OpportunityID == "" || input.PriorObservationID == "" {
+				return ErrInvalidRequest
+			}
+			var prior opportunityObservation
+			err := tx.Where("tenant_id=? AND user_id=? AND opportunity_id=? AND id=?", s.TenantID, s.UserID, input.OpportunityID, input.PriorObservationID).First(&prior).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrOpportunityNotFound
+			}
+			if err != nil {
+				return err
+			}
+			if prior.SourceKind != "url" {
+				return ErrInvalidRequest
+			}
+			oppID = input.OpportunityID
+		}
+		observationID, snapshotID := uuid.NewString(), uuid.NewString()
 		rawDigest := sha256.Sum256([]byte(input.RawText))
 		source := OpportunitySource{Kind: "manual_paste", Label: input.SourceLabel, ReferenceID: input.SourceReference}
 		result = OpportunityReceipt{Kind: "opportunity_imported", RequestID: input.RequestID, OpportunityID: oppID, ObservationID: observationID, SnapshotID: snapshotID, Status: status, AcquiredAt: acquiredAt}
@@ -213,8 +246,15 @@ func (o *Office) ImportJD(ctx context.Context, input ImportJDInput) (Opportunity
 		// Once the first insert is attempted, a later database error may
 		// leave the caller uncertain about whether the transaction committed.
 		persistenceMayHaveCommitted = true
-		if err = tx.Create(&opportunity{ID: oppID, TenantID: s.TenantID, UserID: s.UserID, CreatedAt: acquiredAt}).Error; err != nil {
-			return err
+		if oppID == input.OpportunityID {
+			var existing opportunity
+			if err = tx.Where("tenant_id=? AND user_id=? AND id=?", s.TenantID, s.UserID, oppID).First(&existing).Error; err != nil {
+				return err
+			}
+		} else {
+			if err = tx.Create(&opportunity{ID: oppID, TenantID: s.TenantID, UserID: s.UserID, CreatedAt: acquiredAt}).Error; err != nil {
+				return err
+			}
 		}
 		if err = tx.Create(&opportunityObservation{ID: observationID, TenantID: s.TenantID, UserID: s.UserID, OpportunityID: oppID, SnapshotID: snapshotID, SourceKind: source.Kind, SourceLabel: source.Label, SourceRef: source.ReferenceID, AcquiredAt: acquiredAt, CreatedAt: acquiredAt}).Error; err != nil {
 			return err

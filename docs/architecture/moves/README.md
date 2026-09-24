@@ -143,3 +143,11 @@ F0 的 16 份 manifest 与 633 条路由是原始历史快照，保持其原始�
 T10 Evaluation 增加 3 条 Career 路由。当前 architectureguard 基线为 650 条路由，代码
 发现计数为 581 literal、69 apiKeyRoute、0 handle；Worker（Redis/Lite）仍为 23/23，hooks
 仍为 58。此前 647 条基线保留为历史检查点。
+
+## 2026-09-25 T09 Source Import 路由基线更新
+
+T09 链接导入增加 2 条 Career 路由（POST opportunities/import-url、GET
+opportunities/:opportunityId/observations；既有 POST opportunities/import 为原路由扩展，
+不新增计数）。当前 architectureguard 基线为 652 条路由，代码发现计数为
+583 literal、69 apiKeyRoute、0 handle；Worker（Redis/Lite）仍为 23/23，hooks 仍为
+58。此前 650 条基线保留为历史检查点。
