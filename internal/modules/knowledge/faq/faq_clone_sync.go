@@ -1,4 +1,4 @@
-package service
+package faq
 
 import (
 	"context"
@@ -10,20 +10,25 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-type faqStatusSyncPlan struct {
+// FAQStatusSyncPlan（原宿主未导出类型 faqStatusSyncPlan，Pass B K3.2 R1
+// 导出：宿主 D1(b) 委托 buildFAQStatusSyncPlan 需在跨包签名中命名返回类型；
+// 字段集不变。）
+type FAQStatusSyncPlan struct {
 	Pairs   []types.FAQChunkSyncPair
 	SrcByID map[string]*types.FAQChunkStatus
 	DstByID map[string]*types.FAQChunkStatus
 }
 
-func (s *knowledgeService) buildFAQStatusSyncPlan(
+// BuildFAQStatusSyncPlan（原宿主未导出方法 buildFAQStatusSyncPlan，Pass B
+// K3.2 R1 导出：K4 knowledge_clone_move.go:700 经 D1(b) 委托调用。）
+func (s *Service) BuildFAQStatusSyncPlan(
 	ctx context.Context,
 	srcTenantID, dstTenantID uint64,
 	matched []types.FAQChunkSyncPair,
 	resolveTag func(srcTagID string) string,
-) (*faqStatusSyncPlan, error) {
+) (*FAQStatusSyncPlan, error) {
 	if len(matched) == 0 {
-		return &faqStatusSyncPlan{}, nil
+		return &FAQStatusSyncPlan{}, nil
 	}
 	srcIDs := make([]string, 0, len(matched))
 	dstIDs := make([]string, 0, len(matched))
@@ -53,10 +58,12 @@ func (s *knowledgeService) buildFAQStatusSyncPlan(
 			pairs = append(pairs, p)
 		}
 	}
-	return &faqStatusSyncPlan{Pairs: pairs, SrcByID: srcByID, DstByID: dstByID}, nil
+	return &FAQStatusSyncPlan{Pairs: pairs, SrcByID: srcByID, DstByID: dstByID}, nil
 }
 
-func (s *knowledgeService) syncFAQChunkStatusBatch(
+// SyncFAQChunkStatusBatch（原宿主未导出方法 syncFAQChunkStatusBatch，Pass B
+// K3.2 R1 导出：K4 knowledge_clone_move.go:885 经 D1(b) 委托调用。）
+func (s *Service) SyncFAQChunkStatusBatch(
 	ctx context.Context,
 	dstKB *types.KnowledgeBase,
 	pairs []types.FAQChunkSyncPair,

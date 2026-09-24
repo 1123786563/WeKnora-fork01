@@ -1,4 +1,4 @@
-package service
+package faq
 
 import (
 	"context"
@@ -27,7 +27,7 @@ import (
 
 // UpsertFAQEntries imports or appends FAQ entries asynchronously.
 // Returns task ID (UUID) for tracking import progress.
-func (s *knowledgeService) UpsertFAQEntries(ctx context.Context,
+func (s *Service) UpsertFAQEntries(ctx context.Context,
 	kbID string, payload *types.FAQBatchUpsertPayload,
 ) (string, error) {
 	if payload == nil || len(payload.Entries) == 0 {
@@ -41,7 +41,7 @@ func (s *knowledgeService) UpsertFAQEntries(ctx context.Context,
 	}
 
 	// 验证知识库是否存在且有效
-	kb, ctx, err := s.writableFAQKnowledgeBase(ctx, kbID)
+	kb, ctx, err := s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return "", err
 	}
@@ -238,11 +238,11 @@ func (s *knowledgeService) UpsertFAQEntries(ctx context.Context,
 	enqueueSucceeded = true
 
 	if !payload.DryRun {
-		recordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionFAQImportStarted,
+		s.seams.RecordKBActivity(ctx, s.audit, tenantID, kbID, types.AuditActionFAQImportStarted,
 			"faq_entry", knowledgeID, types.AuditOutcomeAccepted,
 			map[string]any{
 				"task_id": taskID, "mode": payload.Mode, "total": len(payload.Entries),
-				"trigger": kbActivityTrigger(ctx), "processing_status": "pending",
+				"trigger": s.seams.KBActivityTrigger(ctx), "processing_status": "pending",
 			})
 	}
 
@@ -254,7 +254,7 @@ func faqImportEntriesFileName(taskID string, enqueuedAt int64) (string, error) {
 }
 
 // generateFailedEntriesCSV 生成失败条目的 CSV 文件并上传
-func (s *knowledgeService) generateFailedEntriesCSV(ctx context.Context,
+func (s *Service) generateFailedEntriesCSV(ctx context.Context,
 	tenantID uint64, taskID string, failedEntries []types.FAQFailedEntry,
 ) (string, error) {
 	// 生成 CSV 内容
@@ -327,7 +327,7 @@ func csvEscape(s string) string {
 }
 
 // saveFAQImportResultToDatabase 保存FAQ导入结果统计到数据库
-func (s *knowledgeService) saveFAQImportResultToDatabase(ctx context.Context,
+func (s *Service) saveFAQImportResultToDatabase(ctx context.Context,
 	payload *types.FAQImportPayload, progress *types.FAQImportProgress, originalTotalEntries int,
 ) error {
 	// 获取FAQ知识库实例
@@ -451,7 +451,7 @@ func buildFAQPartialFailedEntry(idx int, entry *types.FAQEntryPayload,
 }
 
 // executeFAQDryRunValidation 执行 FAQ dry run 验证，返回通过验证的条目索引
-func (s *knowledgeService) executeFAQDryRunValidation(ctx context.Context,
+func (s *Service) executeFAQDryRunValidation(ctx context.Context,
 	payload *types.FAQImportPayload, progress *types.FAQImportProgress,
 ) []int {
 	entries := payload.Entries
@@ -482,7 +482,7 @@ func (s *knowledgeService) executeFAQDryRunValidation(ctx context.Context,
 //
 // 阶段二（后校验，仅合并候选）：
 //  4. 对合并后的完整数据重跑反例校验 → 冲突则整条回退到合并前状态
-func (s *knowledgeService) validateEntriesForAppendModeWithProgress(ctx context.Context,
+func (s *Service) validateEntriesForAppendModeWithProgress(ctx context.Context,
 	tenantID uint64, kbID string, entries []types.FAQEntryPayload, progress *types.FAQImportProgress,
 ) []int {
 	totalEntries := len(entries)
@@ -790,7 +790,7 @@ func (s *knowledgeService) validateEntriesForAppendModeWithProgress(ctx context.
 // 1. 标准问 - 对比所有标准问 → 整条QA失败「标准问冲突」
 // 2. 相似问 - 对比所有标准问+相似问 → 单条问法失败「相似问冲突」（仅移除冲突的相似问）
 // 3. 反例 - 对比当前QA下所有标准问+相似问 → 单条问法失败「反例冲突」（仅移除冲突的反例）
-func (s *knowledgeService) validateEntriesForReplaceModeWithProgress(ctx context.Context,
+func (s *Service) validateEntriesForReplaceModeWithProgress(ctx context.Context,
 	entries []types.FAQEntryPayload, progress *types.FAQImportProgress,
 ) []int {
 	totalEntries := len(entries)
@@ -1018,7 +1018,7 @@ type faqMergeOperation struct {
 // 内部 master 行为，对应开源版仅 "重复 = 失败" 的简化逻辑。FAQ 导入的
 // 常见使用方式是"导出修改后重新 append"，需要这种合并语义才能正确叠加
 // 新的相似问而不丢历史数据。
-func (s *knowledgeService) calculateAppendOperations(ctx context.Context,
+func (s *Service) calculateAppendOperations(ctx context.Context,
 	tenantID uint64, kbID string, entries []types.FAQEntryPayload,
 ) (newEntries []types.FAQEntryPayload, mergeOps []faqMergeOperation, skippedCount int, err error) {
 	if len(entries) == 0 {
@@ -1155,7 +1155,7 @@ func (s *knowledgeService) calculateAppendOperations(ctx context.Context,
 
 // calculateReplaceOperations 计算Replace模式下需要删除、创建、更新的条目
 // 同时过滤掉同批次内标准问或相似问重复的条目
-func (s *knowledgeService) calculateReplaceOperations(ctx context.Context,
+func (s *Service) calculateReplaceOperations(ctx context.Context,
 	tenantID uint64, knowledgeID string, newEntries []types.FAQEntryPayload,
 ) ([]types.FAQEntryPayload, []*types.Chunk, int, error) {
 	// 获取 kbID 用于解析 tag
@@ -1302,7 +1302,7 @@ func (s *knowledgeService) calculateReplaceOperations(ctx context.Context,
 				return uuid, nil
 			}
 			// 缓存未命中，回退到数据库查询（可能需要创建）
-			return s.resolveTagID(ctx, kbID, entry)
+			return s.ResolveTagID(ctx, kbID, entry)
 		}
 		tagName := entry.TagName
 		if tagName == "" {
@@ -1312,7 +1312,7 @@ func (s *knowledgeService) calculateReplaceOperations(ctx context.Context,
 			return uuid, nil
 		}
 		// 缓存未命中，回退到数据库查询（可能需要创建）
-		return s.resolveTagID(ctx, kbID, entry)
+		return s.ResolveTagID(ctx, kbID, entry)
 	}
 
 	// 计算需要创建的条目（利用已经计算好的hash，避免重复计算）
@@ -1370,7 +1370,7 @@ func (s *knowledgeService) calculateReplaceOperations(ctx context.Context,
 }
 
 // executeFAQImport 执行实际的FAQ导入逻辑
-func (s *knowledgeService) executeFAQImport(ctx context.Context, taskID string, kbID string,
+func (s *Service) executeFAQImport(ctx context.Context, taskID string, kbID string,
 	payload *types.FAQBatchUpsertPayload, tenantID uint64, processedCount int,
 	progress *types.FAQImportProgress,
 ) (err error) {
@@ -1391,7 +1391,7 @@ func (s *knowledgeService) executeFAQImport(ctx context.Context, taskID string, 
 		}
 	}()
 
-	kb, ctx, err = s.writableFAQKnowledgeBase(ctx, kbID)
+	kb, ctx, err = s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return err
 	}
@@ -1521,7 +1521,7 @@ func (s *knowledgeService) executeFAQImport(ctx context.Context, taskID string, 
 			}
 
 			// 解析 TagID
-			tagID, err := s.resolveTagID(ctx, kbID, &entry)
+			tagID, err := s.ResolveTagID(ctx, kbID, &entry)
 			if err != nil {
 				logger.ErrorWithFields(ctx, err, map[string]interface{}{
 					"entry":   entry,
@@ -1579,7 +1579,7 @@ func (s *knowledgeService) executeFAQImport(ctx context.Context, taskID string, 
 		// 索引chunks
 		indexStartTime := time.Now()
 		// 注意：如果索引失败，defer中的recovery机制会自动回滚已创建的chunks和索引数据
-		if err := s.indexFAQChunks(ctx, kb, faqKnowledge, chunks, embeddingModel, true, false); err != nil {
+		if err := s.IndexFAQChunks(ctx, kb, faqKnowledge, chunks, embeddingModel, true, false); err != nil {
 			return fmt.Errorf("failed to index chunks: %w", err)
 		}
 		indexDuration := time.Since(indexStartTime)
@@ -1672,7 +1672,7 @@ func (s *knowledgeService) executeFAQImport(ctx context.Context, taskID string, 
 }
 
 // updateFAQImportProgressStatus updates the FAQ import progress in Redis
-func (s *knowledgeService) updateFAQImportProgressStatus(
+func (s *Service) updateFAQImportProgressStatus(
 	ctx context.Context,
 	taskID string,
 	instanceID string,
@@ -1718,7 +1718,7 @@ func (s *knowledgeService) updateFAQImportProgressStatus(
 
 // cleanupFAQEntriesFileOnFinalFailure 在任务最终失败时清理对象存储中的 entries 文件
 // 只有当 retryCount >= maxRetry 时才执行清理，否则重试时还需要使用这个文件
-func (s *knowledgeService) cleanupFAQEntriesFileOnFinalFailure(ctx context.Context, entriesURL string, retryCount, maxRetry int) {
+func (s *Service) cleanupFAQEntriesFileOnFinalFailure(ctx context.Context, entriesURL string, retryCount, maxRetry int) {
 	if entriesURL == "" || retryCount < maxRetry {
 		return
 	}
@@ -1738,7 +1738,7 @@ type runningFAQImportInfo struct {
 
 // getRunningFAQImportInfo checks if there's a running FAQ import task for the given KB
 // Returns the task info if found, nil otherwise
-func (s *knowledgeService) getRunningFAQImportInfo(ctx context.Context, kbID string) (*runningFAQImportInfo, error) {
+func (s *Service) getRunningFAQImportInfo(ctx context.Context, kbID string) (*runningFAQImportInfo, error) {
 	if s.redisClient == nil {
 		if v, ok := s.memFAQRunningImport.Load(kbID); ok {
 			return v.(*runningFAQImportInfo), nil
@@ -1765,7 +1765,7 @@ func (s *knowledgeService) getRunningFAQImportInfo(ctx context.Context, kbID str
 
 // getRunningFAQImportTaskID checks if there's a running FAQ import task for the given KB
 // Returns the task ID if found, empty string otherwise (for backward compatibility)
-func (s *knowledgeService) getRunningFAQImportTaskID(ctx context.Context, kbID string) (string, error) {
+func (s *Service) getRunningFAQImportTaskID(ctx context.Context, kbID string) (string, error) {
 	info, err := s.getRunningFAQImportInfo(ctx, kbID)
 	if err != nil {
 		return "", err
@@ -1777,7 +1777,7 @@ func (s *knowledgeService) getRunningFAQImportTaskID(ctx context.Context, kbID s
 }
 
 // setRunningFAQImportInfo sets the running task info for a KB
-func (s *knowledgeService) setRunningFAQImportInfo(ctx context.Context, kbID string, info *runningFAQImportInfo) error {
+func (s *Service) setRunningFAQImportInfo(ctx context.Context, kbID string, info *runningFAQImportInfo) error {
 	if s.redisClient == nil {
 		s.memFAQRunningImport.Store(kbID, info)
 		return nil
@@ -1791,7 +1791,7 @@ func (s *knowledgeService) setRunningFAQImportInfo(ctx context.Context, kbID str
 }
 
 // clearRunningFAQImportTaskID clears the running task ID for a KB
-func (s *knowledgeService) clearRunningFAQImportTaskID(ctx context.Context, kbID string) error {
+func (s *Service) clearRunningFAQImportTaskID(ctx context.Context, kbID string) error {
 	if s.redisClient == nil {
 		s.memFAQRunningImport.Delete(kbID)
 		return nil
@@ -1800,7 +1800,7 @@ func (s *knowledgeService) clearRunningFAQImportTaskID(ctx context.Context, kbID
 	return s.redisClient.Del(ctx, key).Err()
 }
 
-func (s *knowledgeService) clearRunningFAQImportInfoIfMatches(ctx context.Context, kbID, taskID, instanceID string, enqueuedAt int64) error {
+func (s *Service) clearRunningFAQImportInfoIfMatches(ctx context.Context, kbID, taskID, instanceID string, enqueuedAt int64) error {
 	if s.redisClient == nil {
 		if v, ok := s.memFAQRunningImport.Load(kbID); ok {
 			info, _ := v.(*runningFAQImportInfo)
@@ -1835,7 +1835,7 @@ func runningFAQImportInfoMatches(info *runningFAQImportInfo, taskID, instanceID 
 
 // incrementalIndexFAQEntry 增量更新FAQ条目的索引
 // 只对内容变化的部分进行embedding计算和索引更新，跳过未变化的部分
-func (s *knowledgeService) incrementalIndexFAQEntry(
+func (s *Service) incrementalIndexFAQEntry(
 	ctx context.Context,
 	kb *types.KnowledgeBase,
 	knowledge *types.Knowledge,
@@ -2016,7 +2016,10 @@ func (s *knowledgeService) incrementalIndexFAQEntry(
 	return nil
 }
 
-func (s *knowledgeService) indexFAQChunks(ctx context.Context,
+// IndexFAQChunks 为 FAQ chunks 构建并写入向量索引（原宿主未导出方法
+// indexFAQChunks，Pass B K3.2 R1 导出：K4 knowledge_clone_move.go:855 经
+// D1(b) 委托调用）。
+func (s *Service) IndexFAQChunks(ctx context.Context,
 	kb *types.KnowledgeBase, knowledge *types.Knowledge,
 	chunks []*types.Chunk, embeddingModel embedding.Embedder,
 	adjustStorage bool, needDelete bool,
@@ -2129,7 +2132,7 @@ func (s *knowledgeService) indexFAQChunks(ctx context.Context,
 	return err
 }
 
-func (s *knowledgeService) deleteFAQChunkVectors(ctx context.Context,
+func (s *Service) deleteFAQChunkVectors(ctx context.Context,
 	kb *types.KnowledgeBase, knowledge *types.Knowledge, chunks []*types.Chunk,
 ) error {
 	if len(chunks) == 0 {
@@ -2167,18 +2170,20 @@ func (s *knowledgeService) deleteFAQChunkVectors(ctx context.Context,
 			if tenantInfo.StorageUsed < 0 {
 				tenantInfo.StorageUsed = 0
 			}
-		}
-		if knowledge.StorageSize >= size {
-			knowledge.StorageSize -= size
-		} else {
-			knowledge.StorageSize = 0
+			if knowledge.StorageSize >= size {
+				knowledge.StorageSize -= size
+			} else {
+				knowledge.StorageSize = 0
+			}
 		}
 	}
 	knowledge.UpdatedAt = time.Now()
 	return s.repo.UpdateKnowledge(ctx, knowledge)
 }
 
-func faqImportCompletedOutcome(successCount, failedCount, skippedCount int) types.AuditOutcome {
+// FaqImportCompletedOutcome（原宿主未导出函数 faqImportCompletedOutcome，
+// Pass B K3.2 R1 导出：宿主测试支撑垫片经委托调用——kb_activity_test.go 直测）。
+func FaqImportCompletedOutcome(successCount, failedCount, skippedCount int) types.AuditOutcome {
 	if successCount > 0 && (failedCount > 0 || skippedCount > 0) {
 		return types.AuditOutcomePartial
 	}
@@ -2194,7 +2199,9 @@ func faqImportCompletedOutcome(successCount, failedCount, skippedCount int) type
 	return types.AuditOutcomeSuccess
 }
 
-func faqImportActivityDetails(payload *types.FAQImportPayload, progress *types.FAQImportProgress, totalEntries int) map[string]any {
+// FaqImportActivityDetails（原宿主未导出函数 faqImportActivityDetails，
+// Pass B K3.2 R1 导出：宿主测试支撑垫片经委托调用——kb_activity_test.go 直测）。
+func FaqImportActivityDetails(payload *types.FAQImportPayload, progress *types.FAQImportProgress, totalEntries int) map[string]any {
 	details := map[string]any{"mode": payload.Mode}
 	if progress == nil {
 		return details
@@ -2223,7 +2230,7 @@ func faqImportActivityDetails(payload *types.FAQImportPayload, progress *types.F
 	return details
 }
 
-func (s *knowledgeService) recordFAQImportKBActivity(
+func (s *Service) recordFAQImportKBActivity(
 	ctx context.Context,
 	payload *types.FAQImportPayload,
 	progress *types.FAQImportProgress,
@@ -2234,24 +2241,24 @@ func (s *knowledgeService) recordFAQImportKBActivity(
 	if s == nil || payload == nil || payload.DryRun || payload.KBID == "" {
 		return
 	}
-	recordKBActivity(ctx, s.audit, payload.TenantID, payload.KBID, action,
-		"faq_entry", payload.KnowledgeID, outcome, faqImportActivityDetails(payload, progress, totalEntries))
+	s.seams.RecordKBActivity(ctx, s.audit, payload.TenantID, payload.KBID, action,
+		"faq_entry", payload.KnowledgeID, outcome, FaqImportActivityDetails(payload, progress, totalEntries))
 }
 
 // ProcessFAQImport handles Asynq FAQ import tasks (including dry run mode)
-func (s *knowledgeService) ProcessFAQImport(ctx context.Context, t *asynq.Task) error {
+func (s *Service) ProcessFAQImport(ctx context.Context, t *asynq.Task) error {
 	var payload types.FAQImportPayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
 		logger.Errorf(ctx, "failed to unmarshal FAQ import task payload: %v", err)
 		return fmt.Errorf("failed to unmarshal task payload: %w", err)
 	}
 	ctx = payload.Initiator.Apply(ctx)
-	ctx = withKBActivityTask(ctx, payload.TaskID, kbActivityTrigger(ctx))
+	ctx = s.seams.WithKBActivityTask(ctx, payload.TaskID, s.seams.KBActivityTrigger(ctx))
 
 	ctx = logger.WithRequestID(ctx, uuid.New().String())
 	ctx = logger.WithField(ctx, "faq_import", payload.TaskID)
 	ctx = types.WithExecutionTenant(ctx, payload.TenantID)
-	kb, err := s.validateFAQKnowledgeBase(ctx, payload.KBID)
+	kb, err := s.ValidateFAQKnowledgeBase(ctx, payload.KBID)
 	if err != nil {
 		if errors.Is(err, repository.ErrKnowledgeBaseNotFound) {
 			return fmt.Errorf("%w: FAQ task KB no longer exists", asynq.SkipRetry)
@@ -2490,7 +2497,7 @@ func (s *knowledgeService) ProcessFAQImport(ctx context.Context, t *asynq.Task) 
 }
 
 // finalizeFAQValidation 完成 FAQ 验证/导入任务，生成失败条目 CSV（如果有）
-func (s *knowledgeService) finalizeFAQValidation(ctx context.Context, payload *types.FAQImportPayload,
+func (s *Service) finalizeFAQValidation(ctx context.Context, payload *types.FAQImportPayload,
 	progress *types.FAQImportProgress, originalTotalEntries int,
 ) error {
 	// 清理对象存储中的 entries 文件（如果有）
@@ -2586,7 +2593,7 @@ func (s *knowledgeService) finalizeFAQValidation(ctx context.Context, payload *t
 		payload.TaskID, payload.DryRun, progress.SuccessCount, progress.AddedCount, progress.MergedCount, progress.FailedCount, progress.PartialFailedCount)
 
 	if !payload.DryRun {
-		outcome := faqImportCompletedOutcome(progress.SuccessCount, progress.FailedCount, progress.SkippedCount)
+		outcome := FaqImportCompletedOutcome(progress.SuccessCount, progress.FailedCount, progress.SkippedCount)
 		s.recordFAQImportKBActivity(ctx, payload, progress, originalTotalEntries,
 			types.AuditActionFAQImportCompleted, outcome)
 	}
@@ -2602,7 +2609,7 @@ func (s *knowledgeService) finalizeFAQValidation(ctx context.Context, payload *t
 // 必要时这里逐条 fan-out 索引（EFPutDocument），而不是合并 chunks 批量
 // 重建：因为索引底层是按 SourceID 覆盖写入，按合并后的最终内容直接 put
 // 即可。
-func (s *knowledgeService) executeFAQMergeOperations(
+func (s *Service) executeFAQMergeOperations(
 	ctx context.Context,
 	taskID string,
 	kb *types.KnowledgeBase,
@@ -2682,7 +2689,7 @@ func (s *knowledgeService) executeFAQMergeOperations(
 		}
 
 		// 4. 重建索引（EFPutDocument 会自动覆盖相同 SourceID）
-		if err := s.indexFAQChunks(ctx, kb, faqKnowledge, mergedChunks, embeddingModel, false, false); err != nil {
+		if err := s.IndexFAQChunks(ctx, kb, faqKnowledge, mergedChunks, embeddingModel, false, false); err != nil {
 			return mergedCount, fmt.Errorf("failed to re-index merged chunks: %w", err)
 		}
 
@@ -2722,7 +2729,7 @@ func (s *knowledgeService) executeFAQMergeOperations(
 //     让用户在 append 模式下看到合并了多少条历史 FAQ 而不是只看到总成功数。
 //
 // 内部 master 原始实现；HEAD 版本之前没有，所有完成消息只有 "正在处理第 N/M 条"。
-func (s *knowledgeService) buildFAQImportResultMessage(prefix string, progress *types.FAQImportProgress) string {
+func (s *Service) buildFAQImportResultMessage(prefix string, progress *types.FAQImportProgress) string {
 	parts := []string{prefix}
 	parts = append(parts, fmt.Sprintf("上传 %d 条", progress.Total))
 
@@ -2760,7 +2767,7 @@ func getFAQImportRunningKey(kbID string) string {
 }
 
 // saveFAQImportProgress saves the FAQ import progress to Redis
-func (s *knowledgeService) saveFAQImportProgress(ctx context.Context, progress *types.FAQImportProgress) error {
+func (s *Service) saveFAQImportProgress(ctx context.Context, progress *types.FAQImportProgress) error {
 	if s.redisClient == nil {
 		progress.UpdatedAt = time.Now().Unix()
 		s.memFAQProgress.Store(progress.TaskID, progress)
@@ -2776,7 +2783,7 @@ func (s *knowledgeService) saveFAQImportProgress(ctx context.Context, progress *
 }
 
 // GetFAQImportProgress retrieves the progress of an FAQ import task
-func (s *knowledgeService) GetFAQImportProgress(ctx context.Context, taskID string) (*types.FAQImportProgress, error) {
+func (s *Service) GetFAQImportProgress(ctx context.Context, taskID string) (*types.FAQImportProgress, error) {
 	if s.redisClient == nil {
 		if v, ok := s.memFAQProgress.Load(taskID); ok {
 			return v.(*types.FAQImportProgress), nil
@@ -2824,13 +2831,13 @@ func (s *knowledgeService) GetFAQImportProgress(ctx context.Context, taskID stri
 }
 
 // UpdateLastFAQImportResultDisplayStatus updates the display status of FAQ import result
-func (s *knowledgeService) UpdateLastFAQImportResultDisplayStatus(ctx context.Context, kbID string, displayStatus string) error {
+func (s *Service) UpdateLastFAQImportResultDisplayStatus(ctx context.Context, kbID string, displayStatus string) error {
 	// 验证displayStatus参数
 	if displayStatus != "open" && displayStatus != "close" {
 		return werrors.NewBadRequestError("invalid display status, must be 'open' or 'close'")
 	}
 
-	kb, ctx, err := s.writableFAQKnowledgeBase(ctx, kbID)
+	kb, ctx, err := s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return err
 	}

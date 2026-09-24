@@ -136,10 +136,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Extract (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/faq_clone_sync.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Faq clone sync (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/graph.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Graph (application/service)
@@ -179,22 +175,6 @@ legacy_files:
   - path: internal/application/service/knowledge_delete_plan.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledge delete plan (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/knowledge_faq.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Knowledge faq (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/knowledge_faq_batch.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Knowledge faq batch (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/knowledge_faq_create_guard.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Knowledge faq create guard (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/knowledge_faq_import.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Knowledge faq import (application/service)
     passb_task: B-knowledge
   - path: internal/application/service/knowledge_housekeeping.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
@@ -328,10 +308,6 @@ legacy_files:
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Chunker debug (handler)
     passb_task: B-knowledge
-  - path: internal/handler/faq.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Faq (handler)
-    passb_task: B-knowledge
   - path: internal/handler/kb_access.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Kb access (handler)
@@ -383,6 +359,14 @@ legacy_files:
   - path: internal/handler/session/wiki_fixer_scope_compat.go
     reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（B0.3 去方法化 *Handler 方法薄委托，保 qa.go:205 编译）；删除点 ib2
     navigation_label: Wiki fixer scope k3 compat (handler/session)
+    passb_task: B-knowledge
+  - path: internal/application/service/knowledge_faq_k3_delegate.go
+    reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（冻结接口 FAQ 面 15 方法 + 4 未导出方法一行委托 + faqSvc() seam 接线，保 K2/K4/路由 worker 编译）；删除点 ib2
+    navigation_label: Knowledge faq k3 delegate (application/service)
+    passb_task: B-knowledge
+  - path: internal/handler/faq_k3_compat.go
+    reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（FAQHandler 类型别名 + NewFAQHandler 转发 + helper seam 接线，保 routes_knowledge.go:143 与 container.go:725 编译）；删除点 ib2
+    navigation_label: Faq k3 compat (handler)
     passb_task: B-knowledge
 owned_files:
   move_sources:

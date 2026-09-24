@@ -1,4 +1,4 @@
-package service
+package faq
 
 import (
 	"context"
@@ -20,7 +20,7 @@ func sortedFAQIDs[V any](values map[int64]V) []int64 {
 
 // loadFAQWriteChunks validates the entire selection before the first mutation.
 // Copies keep planning from mutating repository-owned snapshots on rejection.
-func (s *knowledgeService) loadFAQWriteChunks(
+func (s *Service) loadFAQWriteChunks(
 	ctx context.Context,
 	kb *types.KnowledgeBase,
 	ids []int64,
@@ -63,7 +63,7 @@ type faqFieldPlan struct {
 	excludeIDs []string
 }
 
-func (s *knowledgeService) planFAQFields(
+func (s *Service) planFAQFields(
 	ctx context.Context,
 	kb *types.KnowledgeBase,
 	req *types.FAQEntryFieldsBatchUpdate,
@@ -131,7 +131,7 @@ func validateFAQTagScope(tag *types.KnowledgeTag, tenantID uint64, kbID string) 
 	return nil
 }
 
-func (s *knowledgeService) validateFAQImportTags(
+func (s *Service) validateFAQImportTags(
 	ctx context.Context,
 	kb *types.KnowledgeBase,
 	entries []types.FAQEntryPayload,

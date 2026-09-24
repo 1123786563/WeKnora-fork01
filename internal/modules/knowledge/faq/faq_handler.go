@@ -1,6 +1,14 @@
-package handler
+// faq_handler.go 迁自 internal/handler/faq.go（Pass B 23-knowledge-wikifaq
+// K3.2）。原宿主对 handler 包内两个 helper 的依赖改为构造注入 seam：
+//   - parseCommaSeparatedTagIDs（宿主 knowledge.go:2546，K4 属主留驻）
+//   - requireTaskProgressTenant（宿主 task_progress_auth.go:14，留驻）
+//
+// 本包禁止 import 宿主 internal/handler（防与 H2 宿主兼容层反向成环）；
+// 生产接线由 H2（faq_k3_compat.go）传宿主现行函数，行为等价。
+package faq
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,17 +32,46 @@ import (
 type FAQHandler struct {
 	knowledgeService interfaces.KnowledgeService
 	kbService        interfaces.KnowledgeBaseService
+
+	// parseTagIDs / requireTaskProgressTenant 是 Pass B (23-knowledge-wikifaq
+	// K3.2) 对宿主 handler 包 helper 的注入端口（见文件头）。生产恒经 H2 接线；
+	// 零值构造（路由注册类测试的 &FAQHandler{}）不触达处理方法，触达时以
+	// splitTagIDs / checkTaskProgressTenant 的回落语义兜底。
+	parseTagIDs               func(raw string) []string
+	requireTaskProgressTenant func(ctx context.Context, taskID string) error
 }
 
 // NewFAQHandler creates a new FAQ handler.
 func NewFAQHandler(
 	knowledgeService interfaces.KnowledgeService,
 	kbService interfaces.KnowledgeBaseService,
+	parseTagIDs func(raw string) []string,
+	requireTaskProgressTenant func(ctx context.Context, taskID string) error,
 ) *FAQHandler {
 	return &FAQHandler{
-		knowledgeService: knowledgeService,
-		kbService:        kbService,
+		knowledgeService:          knowledgeService,
+		kbService:                 kbService,
+		parseTagIDs:               parseTagIDs,
+		requireTaskProgressTenant: requireTaskProgressTenant,
 	}
+}
+
+// splitTagIDs 经 seam 解析逗号分隔 tag 过滤；未接线（零值构造）时返回
+// nil——与空查询串的迁移前行为一致（不过滤）。
+func (h *FAQHandler) splitTagIDs(raw string) []string {
+	if h.parseTagIDs == nil {
+		return nil
+	}
+	return h.parseTagIDs(raw)
+}
+
+// checkTaskProgressTenant 经 seam 校验任务进度端点的租户归属；未接线时
+// fail-closed 返回未授权（生产恒接线，回落仅可能出现在零值构造上）。
+func (h *FAQHandler) checkTaskProgressTenant(ctx context.Context, taskID string) error {
+	if h.requireTaskProgressTenant == nil {
+		return errors.NewUnauthorizedError("Unauthorized")
+	}
+	return h.requireTaskProgressTenant(ctx, taskID)
 }
 
 // faqDeleteRequest is a request for deleting FAQ entries in batch
@@ -65,14 +102,14 @@ type updateLastFAQImportResultDisplayStatusRequest struct {
 // @Accept       json
 // @Produce      json
 // @Param        id           path      string  true   "知识库ID"
-// @Param        page         query     int     false  "页码"
-// @Param        page_size    query     int     false  "每页数量"
-// @Param        tag_id       query     int     false  "标签ID筛选(seq_id)，兼容旧版单标签"
-// @Param        tag_ids      query     string  false  "标签UUID筛选，逗号分隔（OR语义）"
-// @Param        keyword      query     string  false  "关键词搜索"
-// @Param        search_field query     string  false  "搜索字段: standard_question(标准问题), similar_questions(相似问法), answers(答案), 默认搜索全部"
-// @Param        sort_order   query     string  false  "排序方式: asc(按更新时间正序), 默认按更新时间倒序"
-// @Param        is_enabled   query     bool    false  "启用状态筛选；不传时返回全部"
+// @Param        page         query      int     false  "页码"
+// @Param        page_size    query      int     false  "每页数量"
+// @Param        tag_id       query      int     false  "标签ID筛选(seq_id)，兼容旧版单标签"
+// @Param        tag_ids      query      string  false  "标签UUID筛选，逗号分隔（OR语义）"
+// @Param        keyword      query      string  false  "关键词搜索"
+// @Param        search_field query      string  false  "搜索字段: standard_question(标准问题), similar_questions(相似问法), answers(答案), 默认搜索全部"
+// @Param        sort_order   query      string  false  "排序方式: asc(按更新时间正序), 默认按更新时间倒序"
+// @Param        is_enabled   query      bool    false  "启用状态筛选；不传时返回全部"
 // @Success      200        {object}  map[string]interface{}  "FAQ列表"
 // @Failure      400        {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
@@ -89,7 +126,7 @@ func (h *FAQHandler) ListEntries(c *gin.Context) {
 		return
 	}
 
-	tagUUIDs := parseCommaSeparatedTagIDs(c.Query("tag_ids"))
+	tagUUIDs := h.splitTagIDs(c.Query("tag_ids"))
 	var legacyTagSeqID int64
 	tagIDStr := c.Query("tag_id")
 	if tagIDStr != "" {
@@ -189,8 +226,8 @@ func (h *FAQHandler) UpsertEntries(c *gin.Context) {
 // @Tags         FAQ管理
 // @Accept       json
 // @Produce      json
-// @Param        id       path      string                true  "知识库ID"
-// @Param        request  body      types.FAQEntryPayload true  "FAQ条目"
+// @Param        id       path      string                true   "知识库ID"
+// @Param        request  body      types.FAQEntryPayload true   "FAQ条目"
 // @Success      200      {object}  map[string]interface{}  "创建的FAQ条目"
 // @Failure      400      {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
@@ -226,9 +263,9 @@ func (h *FAQHandler) CreateEntry(c *gin.Context) {
 // @Tags         FAQ管理
 // @Accept       json
 // @Produce      json
-// @Param        id        path      string                true  "知识库ID"
-// @Param        entry_id  path      int                   true  "FAQ条目ID(seq_id)"
-// @Param        request   body      types.FAQEntryPayload true  "FAQ条目"
+// @Param        id        path      string                true   "知识库ID"
+// @Param        entry_id  path      int                   true   "FAQ条目ID(seq_id)"
+// @Param        request   body      types.FAQEntryPayload true   "FAQ条目"
 // @Success      200       {object}  map[string]interface{}  "更新成功"
 // @Failure      400       {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
@@ -371,7 +408,7 @@ func (h *FAQHandler) DeleteEntries(c *gin.Context) {
 // @Tags         FAQ管理
 // @Accept       json
 // @Produce      json
-// @Param        id       path      string                true  "知识库ID"
+// @Param        id       path      string                true   "知识库ID"
 // @Param        request  body      types.FAQSearchRequest  true  "搜索请求"
 // @Success      200      {object}  map[string]interface{}  "搜索结果"
 // @Failure      400      {object}  errors.AppError         "请求参数错误"
@@ -461,8 +498,8 @@ func (h *FAQHandler) ExportEntries(c *gin.Context) {
 // @Tags         FAQ管理
 // @Accept       json
 // @Produce      json
-// @Param        id        path      string  true  "知识库ID"
-// @Param        entry_id  path      int     true  "FAQ条目ID(seq_id)"
+// @Param        id        path      string  true   "知识库ID"
+// @Param        entry_id  path      int     true   "FAQ条目ID(seq_id)"
 // @Success      200       {object}  map[string]interface{}  "FAQ条目详情"
 // @Failure      400       {object}  errors.AppError         "请求参数错误"
 // @Failure      404       {object}  errors.AppError         "条目不存在"
@@ -498,7 +535,7 @@ func (h *FAQHandler) GetEntry(c *gin.Context) {
 // @Tags         FAQ管理
 // @Accept       json
 // @Produce      json
-// @Param        task_id  path      string  true  "任务ID"
+// @Param        task_id  path      string  true   "任务ID"
 // @Success      200      {object}  map[string]interface{}  "导入进度"
 // @Failure      404      {object}  errors.AppError         "任务不存在"
 // @Security     Bearer
@@ -507,7 +544,7 @@ func (h *FAQHandler) GetEntry(c *gin.Context) {
 func (h *FAQHandler) GetImportProgress(c *gin.Context) {
 	ctx := c.Request.Context()
 	taskID := secutils.SanitizeForLog(c.Param("task_id"))
-	if err := requireTaskProgressTenant(ctx, taskID); err != nil {
+	if err := h.checkTaskProgressTenant(ctx, taskID); err != nil {
 		c.Error(err)
 		return
 	}

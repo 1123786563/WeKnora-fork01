@@ -1,4 +1,13 @@
-package handler
+// faq_enabled_filter_test.go 迁自 internal/handler/faq_enabled_filter_test.go
+// （Pass B 23-knowledge-wikifaq K3.2，白盒字面量 &FAQHandler{knowledgeService:…}
+// 随 faq.go 同迁——迁移前 T0 宿主运行 3 用例 PASS，迁移后同用例双跑等价）。
+//
+// 迁移适配（计划外、等价保持）：原第三用例经 middleware.ErrorHandler 断言
+// HTTP 400；faq 包测试 import middleware 会构成测试期 import 环
+// （middleware→service→faq），故改为在错误边界断言 AppError.HTTPCode==400
+// ——ErrorHandler 对 AppError 原样渲染 HTTPCode（error_handler.go:22），
+// 可观察契约等价。
+package faq
 
 import (
 	"context"
@@ -6,7 +15,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/middleware"
+	werrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
@@ -120,16 +129,22 @@ func TestFAQListEntriesRejectsInvalidEnabledFilter(t *testing.T) {
 
 	service := &faqListKnowledgeServiceStub{}
 	handler := &FAQHandler{knowledgeService: service}
-	router := gin.New()
-	router.Use(middleware.ErrorHandler())
-	router.GET("/knowledge-bases/:id/faq/entries", handler.ListEntries)
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest("GET", "/knowledge-bases/kb-1/faq/entries?is_enabled=invalid", nil)
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Params = gin.Params{{Key: "id", Value: "kb-1"}}
+	context.Request = httptest.NewRequest("GET", "/knowledge-bases/kb-1/faq/entries?is_enabled=invalid", nil)
 
-	router.ServeHTTP(recorder, request)
+	handler.ListEntries(context)
 
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	if len(context.Errors) == 0 {
+		t.Fatal("expected the invalid enabled filter to produce a handler error")
+	}
+	appErr, ok := werrors.IsAppError(context.Errors.Last().Err)
+	if !ok {
+		t.Fatalf("expected an app error, got %v", context.Errors.Last().Err)
+	}
+	// ErrorHandler 对 AppError 原样渲染 HTTPCode；断言同一 400 契约。
+	if appErr.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("HTTP code = %d, want %d", appErr.HTTPCode, http.StatusBadRequest)
 	}
 	if service.callCount != 0 {
 		t.Fatalf("service call count = %d, want 0", service.callCount)

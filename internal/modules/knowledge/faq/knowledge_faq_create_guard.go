@@ -1,4 +1,4 @@
-package service
+package faq
 
 import (
 	"context"
@@ -48,7 +48,7 @@ func faqCreateGuardKey(tenantID uint64, kbID string, standardQuestion string) st
 // When Redis is unavailable the guard degrades to a process-local map rather
 // than rejecting the write, so a Redis outage cannot block FAQ authoring; the
 // cross-instance protection is simply lost for the duration.
-func (s *knowledgeService) acquireFAQCreateGuard(
+func (s *Service) acquireFAQCreateGuard(
 	ctx context.Context,
 	tenantID uint64,
 	kbID string,

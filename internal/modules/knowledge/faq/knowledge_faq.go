@@ -1,4 +1,4 @@
-package service
+package faq
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 )
 
 // ListFAQEntries lists FAQ entries under a FAQ knowledge base.
-func (s *knowledgeService) ListFAQEntries(ctx context.Context,
+func (s *Service) ListFAQEntries(ctx context.Context,
 	kbID string, page *types.Pagination, tagUUIDs []string, legacyTagSeqID int64, keyword string, searchField string, sortOrder string,
 	isEnabled *bool,
 ) (*types.PageResult, error) {
@@ -28,12 +28,12 @@ func (s *knowledgeService) ListFAQEntries(ctx context.Context,
 		page = &types.Pagination{}
 	}
 	keyword = strings.TrimSpace(keyword)
-	kb, err := s.validateFAQKnowledgeBase(ctx, kbID)
+	kb, err := s.ValidateFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return nil, err
 	}
 
-	effectiveTenantID, err := resolveKBReadTenant(ctx, kb, s.kbShareService)
+	effectiveTenantID, err := s.seams.ResolveKBReadTenant(ctx, kb, s.kbShareService)
 	if err != nil {
 		return nil, err
 	}
@@ -112,14 +112,14 @@ func (s *knowledgeService) ListFAQEntries(ctx context.Context,
 const faqCreateIndexBudget = 5 * time.Second
 
 // CreateFAQEntry creates a single FAQ entry synchronously.
-func (s *knowledgeService) CreateFAQEntry(ctx context.Context,
+func (s *Service) CreateFAQEntry(ctx context.Context,
 	kbID string, payload *types.FAQEntryPayload,
 ) (*types.FAQEntry, error) {
 	if payload == nil {
 		return nil, werrors.NewBadRequestError("请求体不能为空")
 	}
 
-	kb, ctx, err := s.writableFAQKnowledgeBase(ctx, kbID)
+	kb, ctx, err := s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func (s *knowledgeService) CreateFAQEntry(ctx context.Context,
 	}
 
 	// 解析 TagID
-	tagID, err := s.resolveTagID(ctx, kbID, payload)
+	tagID, err := s.ResolveTagID(ctx, kbID, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func (s *knowledgeService) CreateFAQEntry(ctx context.Context,
 
 	// 索引chunk：交互式创建给索引步骤设硬上限，避免 embedding 抖动把请求拖长
 	indexCtx, cancelIndex := context.WithTimeout(ctx, faqCreateIndexBudget)
-	indexErr := s.indexFAQChunks(indexCtx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, true, false)
+	indexErr := s.IndexFAQChunks(indexCtx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, true, false)
 	cancelIndex()
 	if indexErr != nil {
 		// 如果索引失败，删除已创建的chunk。回滚失败会留下一条 stored 状态的
@@ -249,7 +249,7 @@ func (s *knowledgeService) CreateFAQEntry(ctx context.Context,
 			entry.TagName = tag.Name
 		}
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeCreated,
+	s.seams.RecordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeCreated,
 		"faq_entry", chunk.ID, types.AuditOutcomeSuccess,
 		map[string]any{"entry_id": chunk.SeqID, "source_type": "faq"})
 
@@ -257,14 +257,14 @@ func (s *knowledgeService) CreateFAQEntry(ctx context.Context,
 }
 
 // GetFAQEntry retrieves a single FAQ entry by seq_id.
-func (s *knowledgeService) GetFAQEntry(ctx context.Context,
+func (s *Service) GetFAQEntry(ctx context.Context,
 	kbID string, entrySeqID int64,
 ) (*types.FAQEntry, error) {
 	if entrySeqID <= 0 {
 		return nil, werrors.NewBadRequestError("条目ID不能为空")
 	}
 
-	kb, err := s.validateFAQKnowledgeBase(ctx, kbID)
+	kb, err := s.ValidateFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return nil, err
 	}
@@ -314,13 +314,13 @@ func (s *knowledgeService) GetFAQEntry(ctx context.Context,
 }
 
 // UpdateFAQEntry updates a single FAQ entry.
-func (s *knowledgeService) UpdateFAQEntry(ctx context.Context,
+func (s *Service) UpdateFAQEntry(ctx context.Context,
 	kbID string, entrySeqID int64, payload *types.FAQEntryPayload,
 ) (*types.FAQEntry, error) {
 	if payload == nil {
 		return nil, werrors.NewBadRequestError("请求体不能为空")
 	}
-	kb, ctx, err := s.writableFAQKnowledgeBase(ctx, kbID)
+	kb, ctx, err := s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return nil, err
 	}
@@ -445,7 +445,7 @@ func (s *knowledgeService) UpdateFAQEntry(ctx context.Context,
 		}
 
 		// 使用 needDelete=false，因为 EFPutDocument 会自动覆盖相同 SourceID 的文档
-		if err := s.indexFAQChunks(ctx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, false, false); err != nil {
+		if err := s.IndexFAQChunks(ctx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, false, false); err != nil {
 			return nil, err
 		}
 	}
@@ -472,7 +472,7 @@ func (s *knowledgeService) UpdateFAQEntry(ctx context.Context,
 			entry.TagName = tag.Name
 		}
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeUpdated,
+	s.seams.RecordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeUpdated,
 		"faq_entry", chunk.ID, types.AuditOutcomeSuccess,
 		map[string]any{"entry_id": chunk.SeqID, "source_type": "faq"})
 
@@ -481,14 +481,14 @@ func (s *knowledgeService) UpdateFAQEntry(ctx context.Context,
 
 // AddSimilarQuestions adds similar questions to a FAQ entry.
 // This will append the new questions to the existing similar questions list.
-func (s *knowledgeService) AddSimilarQuestions(ctx context.Context,
+func (s *Service) AddSimilarQuestions(ctx context.Context,
 	kbID string, entrySeqID int64, questions []string,
 ) (*types.FAQEntry, error) {
 	if len(questions) == 0 {
 		return nil, werrors.NewBadRequestError("相似问列表不能为空")
 	}
 
-	kb, ctx, err := s.writableFAQKnowledgeBase(ctx, kbID)
+	kb, ctx, err := s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +600,7 @@ func (s *knowledgeService) AddSimilarQuestions(ctx context.Context,
 		}
 	} else {
 		// Combined mode, re-index the whole entry
-		if err := s.indexFAQChunks(ctx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, false, false); err != nil {
+		if err := s.IndexFAQChunks(ctx, kb, faqKnowledge, []*types.Chunk{chunk}, embeddingModel, false, false); err != nil {
 			return nil, err
 		}
 	}
@@ -630,10 +630,10 @@ func (s *knowledgeService) AddSimilarQuestions(ctx context.Context,
 }
 
 // UpdateFAQEntryStatus updates enable status for a FAQ entry.
-func (s *knowledgeService) UpdateFAQEntryStatus(ctx context.Context,
+func (s *Service) UpdateFAQEntryStatus(ctx context.Context,
 	kbID string, entryID string, isEnabled bool,
 ) error {
-	kb, ctx, err := s.writableFAQKnowledgeBase(ctx, kbID)
+	kb, ctx, err := s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return err
 	}
@@ -664,7 +664,7 @@ func (s *knowledgeService) UpdateFAQEntryStatus(ctx context.Context,
 	if err := retrieveEngine.BatchUpdateChunkEnabledStatus(ctx, chunkStatusMap); err != nil {
 		return err
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeUpdated,
+	s.seams.RecordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeUpdated,
 		"faq_entry", chunk.ID, types.AuditOutcomeSuccess,
 		map[string]any{"entry_id": chunk.SeqID, "changed_fields": []string{"enabled"}})
 
@@ -676,13 +676,13 @@ func (s *knowledgeService) UpdateFAQEntryStatus(ctx context.Context,
 // Supports two modes:
 // 1. By entry seq_id: use ByID field
 // 2. By Tag seq_id: use ByTag field to apply the same update to all entries under a tag
-func (s *knowledgeService) UpdateFAQEntryFieldsBatch(ctx context.Context,
+func (s *Service) UpdateFAQEntryFieldsBatch(ctx context.Context,
 	kbID string, req *types.FAQEntryFieldsBatchUpdate,
 ) error {
 	if req == nil || (len(req.ByID) == 0 && len(req.ByTag) == 0) {
 		return nil
 	}
-	kb, ctx, err := s.writableFAQKnowledgeBase(ctx, kbID)
+	kb, ctx, err := s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return err
 	}
@@ -850,7 +850,7 @@ func (s *knowledgeService) UpdateFAQEntryFieldsBatch(ctx context.Context,
 			}
 		}
 	}
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeUpdated,
+	s.seams.RecordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeUpdated,
 		"faq_entry", "", types.AuditOutcomeSuccess,
 		map[string]any{"count": len(req.ByID), "tag_groups": len(req.ByTag), "batch": true})
 
@@ -858,8 +858,8 @@ func (s *knowledgeService) UpdateFAQEntryFieldsBatch(ctx context.Context,
 }
 
 // UpdateFAQEntryTag updates the tag assigned to an FAQ entry.
-func (s *knowledgeService) UpdateFAQEntryTag(ctx context.Context, kbID string, entryID string, tagID *string) error {
-	kb, ctx, err := s.writableFAQKnowledgeBase(ctx, kbID)
+func (s *Service) UpdateFAQEntryTag(ctx context.Context, kbID string, entryID string, tagID *string) error {
+	kb, ctx, err := s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return err
 	}
@@ -906,7 +906,7 @@ func (s *knowledgeService) UpdateFAQEntryTag(ctx context.Context, kbID string, e
 
 // UpdateFAQEntryTagBatch updates tags for FAQ entries in batch.
 // Key: entry seq_id, Value: tag seq_id (nil to remove tag)
-func (s *knowledgeService) UpdateFAQEntryTagBatch(ctx context.Context, kbID string, updates map[int64]*int64) error {
+func (s *Service) UpdateFAQEntryTagBatch(ctx context.Context, kbID string, updates map[int64]*int64) error {
 	req := &types.FAQEntryFieldsBatchUpdate{ByID: make(map[int64]types.FAQEntryFieldsUpdate, len(updates))}
 	for id, tag := range updates {
 		value := int64(0) // nil in the tag API means remove the tag.
@@ -919,11 +919,11 @@ func (s *knowledgeService) UpdateFAQEntryTagBatch(ctx context.Context, kbID stri
 }
 
 // SearchFAQEntries searches FAQ entries using hybrid search.
-func (s *knowledgeService) SearchFAQEntries(ctx context.Context,
+func (s *Service) SearchFAQEntries(ctx context.Context,
 	kbID string, req *types.FAQSearchRequest,
 ) ([]*types.FAQEntry, error) {
 	// Validate FAQ knowledge base
-	kb, err := s.validateFAQKnowledgeBase(ctx, kbID)
+	kb, err := s.ValidateFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return nil, err
 	}
@@ -1253,13 +1253,13 @@ func (s *knowledgeService) SearchFAQEntries(ctx context.Context,
 }
 
 // DeleteFAQEntries deletes FAQ entries in batch by seq_id.
-func (s *knowledgeService) DeleteFAQEntries(ctx context.Context,
+func (s *Service) DeleteFAQEntries(ctx context.Context,
 	kbID string, entrySeqIDs []int64,
 ) error {
 	if len(entrySeqIDs) == 0 {
 		return werrors.NewBadRequestError("请选择需要删除的 FAQ 条目")
 	}
-	kb, ctx, err := s.writableFAQKnowledgeBase(ctx, kbID)
+	kb, ctx, err := s.seams.WritableFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return err
 	}
@@ -1305,8 +1305,8 @@ func (s *knowledgeService) DeleteFAQEntries(ctx context.Context,
 	for _, chunk := range chunksToRemove {
 		titles = append(titles, faqChunkQuestion(chunk))
 	}
-	kbActivityAppendSampleTitles(details, titles...)
-	recordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeBatchDeleted,
+	s.seams.KBActivityAppendSampleTitles(details, titles...)
+	s.seams.RecordKBActivity(ctx, s.audit, tenantID, kb.ID, types.AuditActionKnowledgeBatchDeleted,
 		"faq_entry", "", types.AuditOutcomeSuccess, details)
 	return nil
 }
@@ -1316,8 +1316,8 @@ func (s *knowledgeService) DeleteFAQEntries(ctx context.Context,
 // 分类(必填), 问题(必填), 相似问题(选填-多个用##分隔), 反例问题(选填-多个用##分隔),
 // 机器人回答(必填-多个用##分隔), 是否全部回复(选填-默认FALSE), 是否停用(选填-默认FALSE),
 // 是否禁止被推荐(选填-默认False 可被推荐)
-func (s *knowledgeService) ExportFAQEntries(ctx context.Context, kbID string) ([]byte, error) {
-	kb, err := s.validateFAQKnowledgeBase(ctx, kbID)
+func (s *Service) ExportFAQEntries(ctx context.Context, kbID string) ([]byte, error) {
+	kb, err := s.ValidateFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return nil, err
 	}
@@ -1349,8 +1349,8 @@ func (s *knowledgeService) ExportFAQEntries(ctx context.Context, kbID string) ([
 
 // ExportFAQEntriesJSON 以 JSON 数组形式导出 FAQ 知识库下的全部条目，
 // 字段与 FAQEntryPayload 兼容，便于"导出 → 编辑 → 重新 append 导入"循环。
-func (s *knowledgeService) ExportFAQEntriesJSON(ctx context.Context, kbID string) ([]byte, error) {
-	kb, err := s.validateFAQKnowledgeBase(ctx, kbID)
+func (s *Service) ExportFAQEntriesJSON(ctx context.Context, kbID string) ([]byte, error) {
+	kb, err := s.ValidateFAQKnowledgeBase(ctx, kbID)
 	if err != nil {
 		return nil, err
 	}
@@ -1377,7 +1377,7 @@ func (s *knowledgeService) ExportFAQEntriesJSON(ctx context.Context, kbID string
 	return s.buildFAQJSON(chunks, tagMap)
 }
 
-func (s *knowledgeService) buildFAQJSON(chunks []*types.Chunk, tagMap map[string]string) ([]byte, error) {
+func (s *Service) buildFAQJSON(chunks []*types.Chunk, tagMap map[string]string) ([]byte, error) {
 	entries := make([]types.FAQExportEntry, 0, len(chunks))
 	for _, chunk := range chunks {
 		meta, err := chunk.FAQMetadata()
@@ -1408,7 +1408,7 @@ func (s *knowledgeService) buildFAQJSON(chunks []*types.Chunk, tagMap map[string
 }
 
 // buildTagMap builds a map from tag_id to tag_name for the given knowledge base.
-func (s *knowledgeService) buildTagMap(ctx context.Context, tenantID uint64, kbID string) (map[string]string, error) {
+func (s *Service) buildTagMap(ctx context.Context, tenantID uint64, kbID string) (map[string]string, error) {
 	const pageSize = 1000
 	tagMap := make(map[string]string)
 
@@ -1431,7 +1431,7 @@ func (s *knowledgeService) buildTagMap(ctx context.Context, tenantID uint64, kbI
 }
 
 // buildFAQCSV builds CSV content from FAQ chunks.
-func (s *knowledgeService) buildFAQCSV(chunks []*types.Chunk, tagMap map[string]string) []byte {
+func (s *Service) buildFAQCSV(chunks []*types.Chunk, tagMap map[string]string) []byte {
 	var buf strings.Builder
 
 	// Write CSV header (matching import example format)
@@ -1498,7 +1498,10 @@ func boolToCSV(b bool) string {
 	return "FALSE"
 }
 
-func (s *knowledgeService) validateFAQKnowledgeBase(ctx context.Context, kbID string) (*types.KnowledgeBase, error) {
+// ValidateFAQKnowledgeBase 校验 FAQ 知识库（原宿主未导出方法
+// validateFAQKnowledgeBase，Pass B K3.2 R1 导出：宿主 D1(b) 委托与
+// knowledgebase_access.go:42（K2 属主，留驻）经委托链调用）。
+func (s *Service) ValidateFAQKnowledgeBase(ctx context.Context, kbID string) (*types.KnowledgeBase, error) {
 	if kbID == "" {
 		return nil, werrors.NewBadRequestError("知识库 ID 不能为空")
 	}
@@ -1516,7 +1519,7 @@ func (s *knowledgeService) validateFAQKnowledgeBase(ctx context.Context, kbID st
 	return kb, nil
 }
 
-func (s *knowledgeService) findFAQKnowledge(
+func (s *Service) findFAQKnowledge(
 	ctx context.Context,
 	tenantID uint64,
 	kbID string,
@@ -1533,7 +1536,7 @@ func (s *knowledgeService) findFAQKnowledge(
 	return nil, nil
 }
 
-func (s *knowledgeService) ensureFAQKnowledge(
+func (s *Service) ensureFAQKnowledge(
 	ctx context.Context,
 	tenantID uint64,
 	kb *types.KnowledgeBase,
@@ -1589,7 +1592,7 @@ func faqChunkQuestion(chunk *types.Chunk) string {
 	return strings.TrimSpace(chunk.Content)
 }
 
-func (s *knowledgeService) chunkToFAQEntry(chunk *types.Chunk, kb *types.KnowledgeBase, tagSeqIDMap map[string]int64) (*types.FAQEntry, error) {
+func (s *Service) chunkToFAQEntry(chunk *types.Chunk, kb *types.KnowledgeBase, tagSeqIDMap map[string]int64) (*types.FAQEntry, error) {
 	meta, err := chunk.FAQMetadata()
 	if err != nil {
 		return nil, err
@@ -1653,7 +1656,7 @@ func buildFAQChunkContent(meta *types.FAQChunkMetadata, mode types.FAQIndexMode)
 // checkFAQQuestionDuplicate 检查标准问和相似问是否与知识库中其他条目重复
 // excludeChunkID 用于排除当前正在编辑的条目（更新时使用）
 // 按照批量导入时的检查方式：先构建已存在问题集合，再统一检查
-func (s *knowledgeService) checkFAQQuestionDuplicate(
+func (s *Service) checkFAQQuestionDuplicate(
 	ctx context.Context,
 	tenantID uint64,
 	kbID string,
@@ -1752,13 +1755,16 @@ func (s *knowledgeService) checkFAQQuestionDuplicate(
 	return werrors.NewBadRequestError("标准问或相似问与已有条目重复")
 }
 
-// faqTagResolver resolves a payload's TagID/TagName to the tag's internal UUID.
-type faqTagResolver func(*types.FAQEntryPayload) (string, error)
+// FAQTagResolver resolves a payload's TagID/TagName to the tag's internal UUID.
+// （原宿主未导出类型 faqTagResolver，Pass B K3.2 R1 导出：宿主测试支撑垫片
+// 经委托调用。）
+type FAQTagResolver func(*types.FAQEntryPayload) (string, error)
 
-// buildFAQTagResolver 预加载 entries 引用的 tag UUID 映射，避免逐条 resolveTagID。
-func (s *knowledgeService) buildFAQTagResolver(
+// BuildFAQTagResolver 预加载 entries 引用的 tag UUID 映射，避免逐条 ResolveTagID。
+// （原宿主未导出方法 buildFAQTagResolver，Pass B K3.2 R1 导出。）
+func (s *Service) BuildFAQTagResolver(
 	ctx context.Context, kbID string, entries []types.FAQEntryPayload,
-) faqTagResolver {
+) FAQTagResolver {
 	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
 
 	var seqIDs []int64
@@ -1812,7 +1818,7 @@ func (s *knowledgeService) buildFAQTagResolver(
 				return uuid, nil
 			}
 		}
-		return s.resolveTagID(ctx, kbID, e)
+		return s.ResolveTagID(ctx, kbID, e)
 	}
 }
 
@@ -1822,10 +1828,12 @@ func hashQuestion(question string) string {
 	return hex.EncodeToString(h[:4])
 }
 
-// resolveTagID resolves tag ID (UUID) from payload, prioritizing tag_id (seq_id) over tag_name
+// ResolveTagID resolves tag ID (UUID) from payload, prioritizing tag_id (seq_id) over tag_name
 // If no tag is specified, creates or finds the "未分类" tag
 // Returns the internal UUID of the tag
-func (s *knowledgeService) resolveTagID(ctx context.Context, kbID string, payload *types.FAQEntryPayload) (string, error) {
+// （原宿主未导出方法 resolveTagID，Pass B K3.2 R1 导出：宿主测试支撑垫片
+// 经委托调用。）
+func (s *Service) ResolveTagID(ctx context.Context, kbID string, payload *types.FAQEntryPayload) (string, error) {
 	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
 
 	// 如果提供了 tag_id (seq_id)，优先使用 tag_id
@@ -1904,7 +1912,7 @@ func buildFAQIndexContent(meta *types.FAQChunkMetadata, mode types.FAQIndexMode)
 }
 
 // buildFAQIndexInfoList 构建FAQ索引信息列表，支持分别索引模式
-func (s *knowledgeService) buildFAQIndexInfoList(
+func (s *Service) buildFAQIndexInfoList(
 	ctx context.Context,
 	kb *types.KnowledgeBase,
 	chunk *types.Chunk,

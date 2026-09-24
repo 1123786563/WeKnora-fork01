@@ -1,4 +1,4 @@
-package service
+package faq
 
 import (
 	"context"
@@ -8,7 +8,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func newGuardService(t *testing.T) *knowledgeService {
+// newGuardService 迁自宿主 knowledge_faq_create_guard_test.go（构造面改为
+// faq.NewService；RedisClient 接线语义与迁移前 &knowledgeService{redisClient}
+// 字面量一致）。本文件与 service_test.go 的同名守卫锚定用例构成双跑等价
+// 证据（K3.2 Step 7）。
+func newGuardService(t *testing.T) *Service {
 	t.Helper()
 	mr, err := miniredis.Run()
 	if err != nil {
@@ -17,7 +21,7 @@ func newGuardService(t *testing.T) *knowledgeService {
 	t.Cleanup(mr.Close)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	return &knowledgeService{redisClient: rdb}
+	return NewService(Deps{RedisClient: rdb})
 }
 
 func TestAcquireFAQCreateGuardRejectsConcurrentSameQuestion(t *testing.T) {
@@ -74,7 +78,7 @@ func TestAcquireFAQCreateGuardIsolatesUnrelatedCreates(t *testing.T) {
 }
 
 func TestAcquireFAQCreateGuardFallsBackWithoutRedis(t *testing.T) {
-	svc := &knowledgeService{}
+	svc := NewService(Deps{})
 	ctx := context.Background()
 
 	release, err := svc.acquireFAQCreateGuard(ctx, 1, "kb-lite", "哈哈哈")
