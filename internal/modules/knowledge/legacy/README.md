@@ -20,7 +20,6 @@
 | `internal/application/service/chunk.go` | Chunk (application/service) | `B-knowledge` |
 | `internal/application/service/chunk_write.go` | Chunk write (application/service) | `B-knowledge` |
 | `internal/application/service/extract.go` | Extract (application/service) | `B-knowledge` |
-| `internal/application/service/faq_clone_sync.go` | Faq clone sync (application/service) | `B-knowledge` |
 | `internal/application/service/graph.go` | Graph (application/service) | `B-knowledge` |
 | `internal/application/service/image_multimodal.go` | Image multimodal (application/service) | `B-knowledge` |
 | `internal/application/service/kb_activity.go` | Kb activity (application/service) | `B-knowledge` |
@@ -31,10 +30,6 @@
 | `internal/application/service/knowledge_create.go` | Knowledge create (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_delete.go` | Knowledge delete (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_delete_plan.go` | Knowledge delete plan (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_faq.go` | Knowledge faq (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_faq_batch.go` | Knowledge faq batch (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_faq_create_guard.go` | Knowledge faq create guard (application/service) | `B-knowledge` |
-| `internal/application/service/knowledge_faq_import.go` | Knowledge faq import (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_housekeeping.go` | Knowledge housekeeping (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_index_content.go` | Knowledge index content (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_post_process.go` | Knowledge post process (application/service) | `B-knowledge` |
@@ -68,7 +63,6 @@
 | `internal/application/service/tag_access.go` | Tag access (application/service) | `B-knowledge` |
 | `internal/handler/chunk.go` | Chunk (handler) | `B-knowledge` |
 | `internal/handler/chunker_debug.go` | Chunker debug (handler) | `B-knowledge` |
-| `internal/handler/faq.go` | Faq (handler) | `B-knowledge` |
 | `internal/handler/kb_access.go` | Kb access (handler) | `B-knowledge` |
 | `internal/handler/knowledge.go` | Knowledge (handler) | `B-knowledge` |
 | `internal/handler/knowledge_download.go` | Knowledge download (handler) | `B-knowledge` |
