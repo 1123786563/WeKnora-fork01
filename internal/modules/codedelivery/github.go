@@ -44,9 +44,13 @@ func itoa(v int) string {
 type GitHubRepoInfo struct{ DefaultBranch string }
 
 // TreeEntry is one tree mutation: set a path to a blob sha, or delete it.
+// Authoritative shape is {Path, SHA, Mode} with SHA=="" meaning delete — the
+// plan's Interfaces line ("Deleted bool") is an internal brief contradiction
+// (T22 #52 task 2 review round 1); deletion is signaled by the empty SHA,
+// encoded as a null wire sha. Downstream tasks must use this shape.
 type TreeEntry struct {
 	Path string
-	SHA  string // "" = delete
+	SHA  string // "" = delete (wire: null sha)
 	Mode string // "100644" default
 }
 

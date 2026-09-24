@@ -403,6 +403,26 @@ func TestGitHubClientWireChainCreatesBranchAndDraftPR(t *testing.T) {
 	require.Zero(t, e.Calls()["PUT /pulls/merge"])
 }
 
+// TestGitHubClientCreateTreeDeleteEntryUsesEmptySHA 把 TreeEntry 的删除语义
+// 钉死为契约证据：SHA=="" 在 wire 层编码为 null sha，目标 path 从结果树消失、
+// 其余 entry 保留。这是 Task 2 权威形态（TreeEntry{Path,SHA,Mode}，SHA==""=
+// 删除）的回归守卫——brief Interfaces 段的 TreeEntry{Path,SHA,Deleted bool}
+// 是内部矛盾笔误，若 Task 5/6 按其编码将编译失败而非静默漂移（控制器裁决材料
+// 见 .superpowers/sdd/plan-t52/task-2-report.md）。
+func TestGitHubClientCreateTreeDeleteEntryUsesEmptySHA(t *testing.T) {
+	e := newGitHubEmulator(t)
+	factory := NewGitHubClientFactory(http.DefaultClient, e.srv.URL)
+	client := factory(e.token, RepoRef{Owner: "octocat", Name: "hello"})
+	ctx := context.Background()
+
+	treeSHA, err := client.CreateTree(ctx, "tree-baseline", []TreeEntry{{Path: "README.md"}})
+	require.NoError(t, err)
+	tree, err := client.Tree(ctx, treeSHA)
+	require.NoError(t, err)
+	require.NotContains(t, tree, "README.md")
+	require.Contains(t, tree, "main.go")
+}
+
 func TestGitHubClientClassifiesDefiniteVsUnobservable(t *testing.T) {
 	e := newGitHubEmulator(t)
 	factory := NewGitHubClientFactory(http.DefaultClient, e.srv.URL)
