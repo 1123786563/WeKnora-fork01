@@ -46,28 +46,28 @@
 | px-chat-model-selector | 1.64 | 根因 D |
 | px-chat-attach-tooltip | 0.342 | 已收敛至 0.001，残差豁免 #25 |
 
-### 批 2：知识库域（19 项）
-| id | 基线 | 备注 |
-|---|---|---|
-| px-kb-faq-breadcrumb | 0.239 | A4 面包屑菜单（5 页） |
-| px-kb-demo-breadcrumb | 0.234 | |
-| px-kb-wiki-breadcrumb | 0.237 | |
-| px-kb-wiki-tab-graph-breadcrumb | 0.254 | |
-| px-kb-wiki-tab-wiki-breadcrumb | 0.255 | |
-| px-kb-faq-card-more | 0 | ✅ |
-| px-kb-faq-kb-info | 3.276 | popover+drawer（.kb-info-button ↔ aria） |
-| px-kb-faq-tagfilter-prefix | 0 | ✅ |
-| px-kb-faq-tagfilter-suffix | 0 | ✅ |
-| px-kb-demo-tagfilter-prefix | 0 | ✅ |
-| px-kb-demo-tagfilter-suffix | 0 | ✅ |
-| px-kb-wiki-tagfilter-prefix | 0 | ✅ |
-| px-kb-wiki-tagfilter-suffix | 0 | ✅ |
-| px-kb-faq-doctype-select | 0(未命中假零) | 触发器 `.doc-type-select` 未命中待修（kb 页文档工具栏 select） |
-| px-kb-wiki-doctype-select | 0 | ✅（同款选择器，wiki 页命中） |
-| px-kb-wiki-tab-wiki-newpage | 76.154 | B2：Vue t-dialog vs React wk-dialog 异构 |
-| px-kb-wiki-tab-wiki-newdir | 1.235 | React 未检出触发器（warning） |
-| px-kb-wiki-tab-wiki-treeview | 2.764 | |
-| px-kb-wiki-tab-wiki-overview | 3.201 | React lost |
+### 批 2：知识库域（19 项）——已收敛（run `auto-scan/2026-09-24T08-41-39`，19/19 全 0.00%）
+| id | 基线 | 终值 | 备注 |
+|---|---|---|---|
+| px-kb-faq-breadcrumb | 0.239 | 0.00 | A4 面包屑菜单（27ee21189） |
+| px-kb-demo-breadcrumb | 0.234 | 0.00 | 同上 |
+| px-kb-wiki-breadcrumb | 0.237 | 0.00 | 同上 |
+| px-kb-wiki-tab-graph-breadcrumb | 0.254 | 0.00 | 27ee21189 + kbList type 透传修复（KnowledgeGraphPage） |
+| px-kb-wiki-tab-wiki-breadcrumb | 0.255 | 0.00 | 同上（WikiPage） |
+| px-kb-faq-card-more | 0 | 0.00 | ✅ |
+| px-kb-faq-kb-info | 3.276 | 0.00 | popover+drawer（02a6f91b7） |
+| px-kb-faq-tagfilter-prefix | 0 | 0.00 | ✅ |
+| px-kb-faq-tagfilter-suffix | 0 | 0.00 | ✅ |
+| px-kb-demo-tagfilter-prefix | 0 | 0.00 | ✅ |
+| px-kb-demo-tagfilter-suffix | 0 | 0.00 | ✅ |
+| px-kb-wiki-tagfilter-prefix | 0 | 0.00 | ✅ |
+| px-kb-wiki-tagfilter-suffix | 0 | 0.00 | ✅ |
+| px-kb-faq-doctype-select | 0(未命中假零) | 0.00 | 触发器已修（代表页改 kb-demo），真值 0 |
+| px-kb-wiki-doctype-select | 0 | 0.00 | ✅（同款选择器，wiki 页命中） |
+| px-kb-wiki-tab-wiki-newpage | 76.154 | 0.00 | WkDialog→tdesign Dialog 同构平移 + mouseAway 整定（hover 指针工件，见 auto-scan.mjs 注） |
+| px-kb-wiki-tab-wiki-newdir | 1.235 | 0.00 | WikiFolderActions 弹层平移（触发器 warning 已消） |
+| px-kb-wiki-tab-wiki-treeview | 2.764 | 0.00 | 树形视图/目录行/reader 头部平移（选择器多匹配假设证伪：双端单匹配同位） |
+| px-kb-wiki-tab-wiki-overview | 3.201 | 0.00 | 索引概览 reader 头部平移 |
 
 ### 批 3：设置域（18 项）
 | id | 基线 | 备注 |
@@ -105,11 +105,11 @@
 | px-login-register-confirm | 0 | ✅ |
 | px-register-register-confirm | 0 | ✅ |
 
-## 触发器未命中（基线 warning，除 addtokb/reqinfo 已修外）
+## 触发器未命中（基线 warning；批 2 已全消，余 A9 两项批 3 处置）
 
-- px-kb-faq-doctype-select：双端 `.doc-type-select` 未命中（kb-faq 页 FAQ 视图工具栏无该 select，kb-wiki 命中）——批 2 修正触发器或改代表页。
+- ~~px-kb-faq-doctype-select~~：已修（代表页改 kb-demo，真值 0.00）。
 - px-storage-card-more / px-websearch-card-more：React 端 `.backend-card__action-btn` / `.provider-card__more` 未命中（A9 React lost，与矩阵一致）。
-- px-kb-wiki-tab-wiki-newdir：React 无「新建目录」入口（B2）。
+- ~~px-kb-wiki-tab-wiki-newdir~~：已修（WikiFolderActions 目录操作弹层平移，0.00%）。
 
 ## 批 1 待收敛项根因（已代码级定位）
 
