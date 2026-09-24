@@ -17,9 +17,23 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  SVGElement: dom.window.SVGElement,
+  DocumentFragment: dom.window.DocumentFragment,
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
+  FocusEvent: dom.window.FocusEvent,
+  NodeFilter: dom.window.NodeFilter,
+  MouseEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
   PointerEvent: dom.window.PointerEvent,
+  getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame?.bind(dom.window) ?? ((cb: FrameRequestCallback) => setTimeout(cb, 16)),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame?.bind(dom.window) ?? clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -87,21 +101,76 @@ async function mountCreateForm(client: WeKnoraClient) {
   assert.ok(newPageBtn, '新建页面 entry button present for contributors');
   await act(async () => newPageBtn.click());
   await act(async () => {});
-  // R486 P3-1: Vue renders creation as a t-dialog (WikiBrowser.vue L734), not
-  // an inline editor — the React port must open a modal dialog instead.
-  const dialog = document.body.querySelector('[role="dialog"]');
+  // R486 P3-1: Vue renders creation as a t-dialog (WikiBrowser.vue L734) — the
+  // React port rides the raw tdesign Dialog since parity batch 2 (panel
+  // px-kb-wiki-tab-wiki-newpage 76.154%→0, run auto-scan/2026-09-24T08-41-39):
+  // the DOM is the literal .t-dialog__wrap tree, so the t-dialog shape is
+  // asserted on the tdesign classes instead of the retired WkDialog
+  // ([role=dialog]/aria-modal/.wk-dialog-close never existed on raw t-dialog).
+  const dialog = document.body.querySelector('.t-dialog__wrap');
   assert.ok(dialog, 'create form opens as a modal dialog (Vue t-dialog shape)');
-  const form = dialog.querySelector('form');
+  assert.ok(dialogVisibleCard(), 'the dialog card is shown (tdesign hides via display:none, it does not unmount)');
+  const form = dialog.querySelector('.wiki-create-page-form');
   assert.ok(form, 'create form inside the dialog');
-  return { container, dialog: dialog as HTMLElement, form: form as HTMLFormElement };
+  return { container, dialog: dialog as HTMLElement, form: form as HTMLElement };
 }
 
-function fieldInput(form: HTMLFormElement, labelText: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
-  const labels = [...form.querySelectorAll('label')];
-  const label = labels.find((candidate) => candidate.textContent?.trim().startsWith(labelText));
-  if (!label) return null;
-  const control = label.querySelector('input, textarea, select');
-  return control as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
+/** tdesign Dialog 关闭后保留 .t-dialog__wrap 骨架（卡片 display:none）——判定
+ * 「弹窗开着」要看没有 display:none 的 .t-dialog 卡片。注意：不能用
+ * `:not([style*=…])` 复合选择器——jsdom 的 nwsapi 对它在稍大的子树上会
+ * 病态回溯直接卡死（t6 实测），改成简单选择器 + JS 过滤。 */
+function dialogVisibleCard(): HTMLElement | null {
+  const cards = document.body.querySelectorAll<HTMLElement>('.t-dialog__wrap .t-dialog');
+  for (const card of cards) {
+    if (!(card.getAttribute('style') ?? '').includes('display: none')) return card;
+  }
+  return null;
+}
+
+/** tdesign Dialog 关闭后走 zoom-exit 过渡（jsdom 无 transitionend，靠兜底
+ * 定时器收尾）。不等过渡完成就 unmount 会让 act 永远等不到静止——关闭弹窗的
+ * 测试在收尾前先等 ~350ms 让退场过渡落地。 */
+async function settleDialogExit() {
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+}
+
+/** tdesign footer 按文案取按钮（取消在前、确认在后，tdesign 固定顺序）。 */
+function footerButton(dialog: Element, text: string): HTMLButtonElement {
+  const button = [...dialog.querySelectorAll('.t-dialog__footer button')].find((b) => b.textContent?.trim() === text);
+  assert.ok(button, `${text} button in the t-dialog footer`);
+  return button as HTMLButtonElement;
+}
+
+function fieldControl(form: Element, labelText: string): HTMLInputElement | HTMLTextAreaElement | null {
+  // Vue 平移后的字段骨架：.wiki-create-page-field = label + tdesign 控件兄弟节点。
+  const label = [...form.querySelectorAll('label')].find((candidate) => candidate.textContent?.trim().startsWith(labelText));
+  const field = label?.parentElement;
+  if (!field) return null;
+  return field.querySelector('input, textarea');
+}
+
+/** tdesign Select 交互（children-options 形态，WikiPage TdSelect.Option 同款，
+ * 实测需 inner .t-input 上的 mousedown+click 才开层；options-prop 形态才是
+ * wrap click 即开——见 TenantMembersPanel.test）。 */
+async function pickSelectOption(scope: Element, optionText: string) {
+  await openSelectPopup(scope);
+  const options = () => Array.from(document.body.querySelectorAll<HTMLElement>('.t-select-option'));
+  const target = options().find((el) => (el.textContent ?? '').trim() === optionText);
+  assert.ok(target, `option missing: ${optionText} (have ${options().map((el) => el.textContent).join(',')})`);
+  await act(async () => { target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
+/** 打开 tdesign Select 弹层（children-options 形态）。 */
+async function openSelectPopup(scope: Element) {
+  const inner = scope.querySelector('.t-select__wrap .t-input') as HTMLElement | null;
+  assert.ok(inner, '页面类型 t-select trigger present');
+  await act(async () => {
+    inner.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    inner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  // tdesign Popup 的开层经 rAF/异步过渡，0ms tick 不稳定（submit 流实测需 ~50ms）。
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
 
 // ─── R484 B1-6: create-form field set parity (Vue WikiBrowser.vue t-dialog L734-764) ───
@@ -117,8 +186,8 @@ function fieldInput(form: HTMLFormElement, labelText: string): HTMLInputElement 
 
 test('新建页面 opens a modal dialog titled 新建 Wiki 页面, leaving the inline editor to edit mode', async () => {
   const { dialog, form } = await mountCreateForm(wikiClient());
-  assert.equal(dialog.getAttribute('aria-modal'), 'true', 'dialog is modal like t-dialog');
-  assert.equal(dialog.querySelector('h2')?.textContent, '新建 Wiki 页面', 'dialog header uses wikiBrowser.newPageTitle');
+  assert.ok(dialog.querySelector('.t-dialog'), 'tdesign modal dialog card rendered (t-dialog shape)');
+  assert.equal(dialog.querySelector('.t-dialog__header-content')?.textContent, '新建 Wiki 页面', 'dialog header uses wikiBrowser.newPageTitle');
   // The create form lives in the dialog, not in the inline wk-wiki-editor.
   assert.equal(form.className.includes('wk-wiki-editor'), false, 'create form is not the inline editor');
   const inlineEditor = document.body.querySelector('form.wk-wiki-editor');
@@ -127,7 +196,7 @@ test('新建页面 opens a modal dialog titled 新建 Wiki 页面, leaving the i
     'inline wk-wiki-editor stays hidden while the create dialog is open',
   );
   // Vue t-dialog close affordance: the header × closes without posting.
-  const closeBtn = dialog.querySelector<HTMLButtonElement>('button.wk-dialog-close');
+  const closeBtn = dialog.querySelector<HTMLElement>('.t-dialog__close');
   assert.ok(closeBtn, 'dialog header close (×) present');
 });
 
@@ -149,30 +218,34 @@ test('create form mirrors the Vue dialog field set: 标题/Slug+hint/页面类�
   assert.equal(labels.some((text) => (text ?? '').includes('一句话摘要')), false, 'create form must not render the edit-mode summary field');
 
   // Placeholders + the slug help line mirror the Vue dialog copy.
-  assert.equal((fieldInput(form, '标题') as HTMLInputElement)?.placeholder, '请输入页面标题');
-  assert.equal((fieldInput(form, 'Slug') as HTMLInputElement)?.placeholder, '例如 concept/my-topic');
+  assert.equal((fieldControl(form, '标题') as HTMLInputElement)?.placeholder, '请输入页面标题');
+  assert.equal((fieldControl(form, 'Slug') as HTMLInputElement)?.placeholder, '例如 concept/my-topic');
   assert.match(form.textContent ?? '', /由字母\/数字\/中划线组成，可用 \/ 分层，创建后不可修改/, 'slug help hint present');
-  assert.equal((fieldInput(form, '正文') as HTMLTextAreaElement)?.placeholder, 'Markdown 正文，支持 [[页面链接]] 语法');
+  assert.equal((fieldControl(form, '正文') as HTMLTextAreaElement)?.placeholder, 'Markdown 正文，支持 [[页面链接]] 语法');
 
   // Content is optional in Vue (newPageContentLabel 正文（可选）): no required attr.
-  assert.equal((fieldInput(form, '正文') as HTMLTextAreaElement)?.required, false, '正文 is optional like Vue');
+  assert.equal((fieldControl(form, '正文') as HTMLTextAreaElement)?.required, false, '正文 is optional like Vue');
 });
 
 test('create form type select offers the four Vue page types with 概念 default', async () => {
   const { form } = await mountCreateForm(wikiClient());
-  const typeSelect = fieldInput(form, '页面类型');
-  assert.ok(typeSelect, '页面类型 select present');
-  assert.equal(typeSelect.tagName, 'SELECT');
-  const options = [...(typeSelect as HTMLSelectElement).options].map((option) => option.textContent?.trim());
-  assert.deepEqual(options, ['概念', '实体', '综合', '对比']);
-  assert.deepEqual([...(typeSelect as HTMLSelectElement).options].map((option) => option.value), ['concept', 'entity', 'synthesis', 'comparison']);
-  assert.equal((typeSelect as HTMLSelectElement).value, 'concept', 'concept is the Vue default');
+  const trigger = fieldControl(form, '页面类型') as HTMLInputElement | null;
+  assert.ok(trigger, '页面类型 t-select trigger present');
+  assert.equal(trigger.value, '概念', 'concept (概念) is the Vue default shown in the trigger');
+  // 打开弹层枚举选项（值→文案映射由 submit 测试的 page_type=entity 断言覆盖）。
+  await openSelectPopup(form);
+  const options = [...document.body.querySelectorAll<HTMLElement>('.t-select-option')].map((option) => (option.textContent ?? '').trim());
+  assert.deepEqual(options, ['概念', '实体', '综合', '对比'], 'four Vue page types in order');
 });
+
+
+
+
 
 test('create form title input auto-syncs the slug as <type>/<slugified-title> until touched', async () => {
   const { form } = await mountCreateForm(wikiClient());
-  const title = fieldInput(form, '标题') as HTMLInputElement;
-  const slug = fieldInput(form, 'Slug') as HTMLInputElement;
+  const title = fieldControl(form, '标题') as HTMLInputElement;
+  const slug = fieldControl(form, 'Slug') as HTMLInputElement;
 
   await act(async () => setInputValue(title, 'My Topic!'));
   assert.equal(slug.value, 'concept/my-topic', 'slug derives from the type prefix + slugified title');
@@ -185,27 +258,24 @@ test('create form title input auto-syncs the slug as <type>/<slugified-title> un
   // A fresh title edit before touching keeps syncing with the ASCII filter.
   const client2 = wikiClient();
   const second = await mountCreateForm(client2);
-  const title2 = fieldInput(second.form, '标题') as HTMLInputElement;
+  const title2 = fieldControl(second.form, '标题') as HTMLInputElement;
   await act(async () => setInputValue(title2, 'Hello--World 2026'));
-  assert.equal((fieldInput(second.form, 'Slug') as HTMLInputElement).value, 'concept/hello-world-2026', 'repeated dashes collapse and edges trim');
+  assert.equal((fieldControl(second.form, 'Slug') as HTMLInputElement).value, 'concept/hello-world-2026', 'repeated dashes collapse and edges trim');
 });
 
 test('create submit posts the Vue payload {slug,title,page_type,content} without summary', async () => {
   const client = wikiClient();
-  const { form } = await mountCreateForm(client);
-  await act(async () => setInputValue(fieldInput(form, '标题') as HTMLInputElement, '架构决策'));
-  await act(async () => setInputValue(fieldInput(form, 'Slug') as HTMLInputElement, 'concept/adr'));
-  const select = fieldInput(form, '页面类型') as HTMLSelectElement;
-  await act(async () => {
-    select.value = 'entity';
-    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  });
-  await act(async () => setInputValue(fieldInput(form, '正文') as HTMLTextAreaElement, '# 正文内容'));
+  const { dialog, form } = await mountCreateForm(client);
+  // 先开 select 弹层选实体（concept → entity，page_type 值映射），再填字段。
+  await pickSelectOption(form, '实体');
+  await act(async () => setInputValue(fieldControl(form, '标题') as HTMLInputElement, '架构决策'));
+  await act(async () => setInputValue(fieldControl(form, 'Slug') as HTMLInputElement, 'concept/adr'));
+  await act(async () => setInputValue(fieldControl(form, '正文') as HTMLTextAreaElement, '# 正文内容'));
 
-  const confirm = [...form.querySelectorAll('button')].find((button) => button.textContent?.trim() === '确认');
-  assert.ok(confirm, 'confirm button uses common.confirm 确认');
+  const confirm = footerButton(dialog, '确认');
   await act(async () => confirm.click());
   await act(async () => {});
+  await settleDialogExit();
 
   assert.equal(client.created.length, 1, 'one create call');
   assert.deepEqual(Object.keys(client.created[0]!).sort(), ['content', 'page_type', 'slug', 'title'], `payload keys: ${JSON.stringify(client.created[0])}`);
@@ -215,45 +285,45 @@ test('create submit posts the Vue payload {slug,title,page_type,content} without
   assert.equal(client.created[0]!.content, '# 正文内容');
 
   // Vue submitCreatePage closes the dialog on success (WikiBrowser.vue L3052).
-  assert.equal(document.body.querySelector('[role="dialog"]'), null, 'dialog closes after a successful create');
+  assert.equal(dialogVisibleCard(), null, 'dialog closes after a successful create');
 });
 
 test('create form allows an empty 正文 (Vue optional content) and blocks empty title/slug', async () => {
   const client = wikiClient();
-  const { form } = await mountCreateForm(client);
-  const confirm = [...form.querySelectorAll('button')].find((button) => button.textContent?.trim() === '确认');
-  assert.ok(confirm);
+  const { dialog, form } = await mountCreateForm(client);
+  const confirm = footerButton(dialog, '确认');
 
   // Empty title + slug → the Vue newPageMissingFields warning, no request.
   await act(async () => confirm.click());
   await act(async () => {});
   assert.equal(client.created.length, 0, 'nothing posted with empty title/slug');
-  const dialogAfterInvalid = document.body.querySelector('[role="dialog"]');
+  const dialogAfterInvalid = dialogVisibleCard();
   assert.ok(dialogAfterInvalid, 'dialog stays open on validation failure so the user can fix the fields');
   assert.match(dialogAfterInvalid.textContent ?? '', /请填写标题和 Slug/, 'Vue newPageMissingFields warning shown');
 
   // Title+slug with EMPTY content still creates (正文 is optional).
-  await act(async () => setInputValue(fieldInput(form, '标题') as HTMLInputElement, '空正文页'));
-  await act(async () => setInputValue(fieldInput(form, 'Slug') as HTMLInputElement, 'concept/empty-body'));
+  await act(async () => setInputValue(fieldControl(form, '标题') as HTMLInputElement, '空正文页'));
+  await act(async () => setInputValue(fieldControl(form, 'Slug') as HTMLInputElement, 'concept/empty-body'));
   await act(async () => confirm.click());
   await act(async () => {});
+  await settleDialogExit();
   assert.equal(client.created.length, 1, 'empty content is submittable like Vue');
   assert.equal(client.created[0]!.content, '');
-  assert.equal(document.body.querySelector('[role="dialog"]'), null, 'dialog closes after the successful create');
+  assert.equal(dialogVisibleCard(), null, 'dialog closes after the successful create');
 });
 
 test('create form pairs 确认 with a 取消 cancel that closes the dialog without posting', async () => {
   const client = wikiClient();
-  const { form } = await mountCreateForm(client);
-  const cancel = [...form.querySelectorAll('button')].find((button) => button.textContent?.trim() === '取消');
-  assert.ok(cancel, 'cancel button uses common.cancel 取消');
-  await act(async () => setInputValue(fieldInput(form, '标题') as HTMLInputElement, '草稿'));
+  const { dialog, form } = await mountCreateForm(client);
+  const cancel = footerButton(dialog, '取消');
+  await act(async () => setInputValue(fieldControl(form, '标题') as HTMLInputElement, '草稿'));
   await act(async () => cancel.click());
   await act(async () => {});
   assert.equal(client.created.length, 0, 'cancel never posts');
+  await settleDialogExit();
   // Vue t-dialog cancel just sets visible=false: the dialog disappears and
   // the draft is dropped (the form is re-seeded on the next open).
-  assert.equal(document.body.querySelector('[role="dialog"]'), null, 'cancel closes the create dialog');
+  assert.equal(dialogVisibleCard(), null, 'cancel closes the create dialog');
   const inlineEditor = document.body.querySelector('form.wk-wiki-editor');
   assert.ok(!inlineEditor || (inlineEditor.getAttribute('style') ?? '').includes('display: none'), 'cancel does not fall back into the inline editor');
 });
@@ -261,11 +331,12 @@ test('create form pairs 确认 with a 取消 cancel that closes the dialog witho
 test('dialog × close drops the draft like the Vue t-dialog cancel', async () => {
   const client = wikiClient();
   const { dialog } = await mountCreateForm(client);
-  await act(async () => setInputValue(dialog.querySelector('form input') as HTMLInputElement, '草稿'));
-  const closeBtn = dialog.querySelector<HTMLButtonElement>('button.wk-dialog-close');
+  await act(async () => setInputValue(dialog.querySelector('.wiki-create-page-form input') as HTMLInputElement, '草稿'));
+  const closeBtn = dialog.querySelector<HTMLElement>('.t-dialog__close');
   assert.ok(closeBtn);
   await act(async () => closeBtn.click());
   await act(async () => {});
   assert.equal(client.created.length, 0, 'header close never posts');
-  assert.equal(document.body.querySelector('[role="dialog"]'), null, 'header close closes the create dialog');
+  await settleDialogExit();
+  assert.equal(dialogVisibleCard(), null, 'header close closes the create dialog');
 });
