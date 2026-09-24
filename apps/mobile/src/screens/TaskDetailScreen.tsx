@@ -9,6 +9,7 @@ export interface TaskDetailScreenProps {
   error?: string;
   onRefresh(): void;
   onOpenMaterials?: () => void;
+  onOpenBudget?: () => void;
 }
 
 const CONNECTION_LABELS: Record<TaskDetailView['connection'], string> = { syncing: '同步中', live: '已连接', interrupted: '连接中断，可恢复', drained: '已同步' };
@@ -17,7 +18,7 @@ const LIFECYCLE_LABELS: Record<TaskDetailView['lifecycle'], string> = { active: 
 const INTERRUPTION_COPY: Record<string, string> = { gap: '事件流出现缺口', 'cursor-expired': '同步游标过期', 'stream-error': '实时通道中断', 'stream-ended-nonterminal': '事件流提前结束', 'persist-failed': '本地保存失败', 'stream-unavailable': '此部署暂无实时通道，可手动刷新' };
 
 /** 结果优先详情屏：状态卡 + 三层状态 + attention 横幅在前，时间线事实流在后；原始证据默认折叠、按需展开。 */
-export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials }: TaskDetailScreenProps) {
+export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMaterials, onOpenBudget }: TaskDetailScreenProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
   // B2-F41：expanded 以 runId 隔离——切换任务（组件复用）时不携带上一个任务的展开状态。
   const runKey = view?.runId ?? '';
@@ -66,6 +67,7 @@ export function TaskDetailScreen({ view, loading, error, onRefresh, onOpenMateri
       ))}
       {view.duplicateSeqs.length > 0 && <Text>已忽略重复事件：{view.duplicateSeqs.join(', ')}</Text>}
       {onOpenMaterials !== undefined && <Button title="任务材料" onPress={onOpenMaterials} />}
+      {onOpenBudget !== undefined && <Button title="任务预算" onPress={onOpenBudget} />}
       <Button title="重新同步快照" onPress={onRefresh} disabled={loading} />
       {error !== undefined && <Text>{error}</Text>}
     </ScrollView>

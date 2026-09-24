@@ -6,7 +6,7 @@ import { createTaskDetailController, TASK_OFFICE_ERROR_COPY, type TaskDetailCont
 import { TaskDetailScreen } from '../../screens/TaskDetailScreen.tsx';
 
 /** /tasks/detail 挂载生命周期宿主：handle 在 effect 内创建、卸载即 dispose——与 /resources 同一模式。 */
-export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials }: { taskId: string; runId: string; onOpenMaterials?: () => void }) {
+export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials, onOpenBudget }: { taskId: string; runId: string; onOpenMaterials?: () => void; onOpenBudget?: () => void }) {
   const [state, setState] = useState<TaskDetailViewState>({ loading: true });
   const controllerRef = useRef<TaskDetailController | undefined>(undefined);
   useEffect(() => {
@@ -35,7 +35,7 @@ export function TaskDetailRouteLifecycle({ taskId, runId, onOpenMaterials }: { t
       controllerRef.current = undefined;
     };
   }, [taskId, runId]);
-  return <TaskDetailScreen view={state.view} loading={state.loading} error={state.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} />;
+  return <TaskDetailScreen view={state.view} loading={state.loading} error={state.error} onRefresh={() => { void controllerRef.current?.refresh(); }} onOpenMaterials={onOpenMaterials} onOpenBudget={onOpenBudget} />;
 }
 
 /** Expo Router 文件路由：/tasks/detail?taskId=..&runId=..。只消费 Task Office Interface。 */
@@ -46,6 +46,7 @@ export default function TaskDetailRoute() {
       taskId={String(params.taskId ?? '')}
       runId={String(params.runId ?? '')}
       onOpenMaterials={() => { router.push({ pathname: '/tasks/materials', params: { runId: String(params.runId ?? '') } }); }}
+      onOpenBudget={() => { router.push({ pathname: '/tasks/budget', params: { taskId: String(params.taskId ?? '') } }); }}
     />
   );
 }

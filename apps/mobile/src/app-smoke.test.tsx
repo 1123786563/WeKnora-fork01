@@ -24,7 +24,7 @@ const NATIVE_MODULE_STUBS: Record<string, string> = {
   'expo-router': "module.exports = { Stack: function Stack() { return null; }, router: { replace() {}, push() {} }, useLocalSearchParams() { return {}; } }",
   'expo-secure-store': "module.exports = { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }",
   'expo-web-browser': "module.exports = { openAuthSessionAsync: async () => ({ type: 'dismiss' }) }",
-  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView', Image: 'Image' }",
+  'react-native': "module.exports = { View: 'View', Text: 'Text', TextInput: 'TextInput', Button: 'Button', ScrollView: 'ScrollView', Image: 'Image', Switch: 'Switch' }",
   react: "let values = []; let cursor = 0; let pendingEffects = []; let effectCleanups = []; module.exports = { __beginRender() { cursor = 0; }, __reset() { values = []; cursor = 0; pendingEffects = []; effectCleanups = []; }, useState(initial) { const index = cursor++; if (!(index in values)) values[index] = initial; return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }]; }, useRef(value) { const index = cursor++; if (!(index in values)) values[index] = { current: value }; return values[index]; }, useEffect(setup) { pendingEffects.push(setup); }, __mount() { for (const setup of pendingEffects.splice(0)) effectCleanups.push(setup()); }, __unmount() { for (const cleanup of effectCleanups.splice(0)) { if (typeof cleanup === 'function') cleanup(); } }, useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }, createElement(type, props, ...children) { return { type, props: { ...(props || {}), ...(children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }) } }; } };",
 };
 const stubDir = mkdtempSync(join(tmpdir(), 'weknora-mobile-stub-'));
@@ -1294,4 +1294,26 @@ test('composition caches instances by deployment scope key and registration fail
   assert.match(source, /registrationAttempts/, '会话内有界重试的尝试计数存在');
   // B3-F29：openNotificationFromInbox 的 item 参数类型对齐实现（读 deepLink），删除 as 断言。
   assert.doesNotMatch(source, /as InboxItem/, 'as InboxItem 断言必须删除');
+});
+
+test('the task budget route keeps an Expo Router screen consuming the Task Office interface only', async () => {
+  const route = await import('./app/tasks/budget.tsx');
+  assert.equal(typeof route.default, 'function', 'src/app/tasks/budget.tsx must default-export the Expo Router screen');
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const relative of ['screens/TaskBudgetScreen.tsx', 'task-budget-view.ts', 'app/tasks/budget.tsx']) {
+    const source = readFileSync(join(here, relative), 'utf8');
+    assert.equal(/@weknora\/(api-client|contracts)/.test(source), false, `${relative} must consume the Task Office Interface only (module-seams §10)`);
+  }
+});
+
+test('composition wires the concrete budget remote into the Task Office (source-level, parallel-batch guard)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, 'composition.ts'), 'utf8');
+  assert.match(source, /budget:\s*createMobileTaskBudgetRemote/, 'taskOfficeFor must assemble the budget remote on the authorized channel');
 });
