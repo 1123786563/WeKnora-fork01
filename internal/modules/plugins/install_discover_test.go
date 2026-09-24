@@ -126,6 +126,49 @@ func TestConfirmInstallationVanishedPreviewReadsExpired(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrPreviewExpired)
 }
 
+// TestGetMyConnectionStatusHealsEmptyServiceIDAnchor（T07-OCR2-F3）：
+// confirm 中断窗口（安装行 service_id 空、物化服务与成员令牌已在）下，
+// 连接视图不得退化为「unauthorized 且授权/撤销路径皆空」的死端——按
+// mcp_services.plugin_installation_id 反查孤儿后照常给出三态与端点路径
+// （与 UninstallInstallation 的 T07-OCR1-F5 自愈同款）。
+func TestGetMyConnectionStatusHealsEmptyServiceIDAnchor(t *testing.T) {
+	ctx := context.Background()
+	tenantID := uint64(1)
+	principal := types.Principal{Type: types.PrincipalWebUser, ID: "user-a"}
+
+	inst := connectionStatusInstallation("inst-win", "", true) // 中断窗口：service_id 空
+	repo := &installPreviewRepo{}
+	repo.installations = []*types.PluginInstallation{inst}
+	mcpRepo := &fakeInstallMCPServiceRepo{services: []*types.MCPService{{
+		ID: "svc-orphan", TenantID: tenantID, Name: "plugin:com.example.p",
+		PluginInstallationID: &inst.ID,
+	}}}
+	oauthRepo := &fakeConnectionOAuthRepo{tokens: map[string]*types.MCPOAuthToken{}}
+	oauthRepo.tokens[oauthTokenKey(tenantID, principal, "svc-orphan")] = &types.MCPOAuthToken{
+		AccessToken: "tok-a", ExpiresAt: time.Now().Add(time.Hour),
+	}
+	svc := service.NewPluginService(repo, nil, mcpRepo, nil, nil, nil, oauthRepo)
+
+	status, err := svc.GetMyConnectionStatus(ctx, tenantID, "inst-win", principal)
+	require.NoError(t, err)
+	require.True(t, status.Authorized, "token found via the orphan back-reference, not the empty service_id")
+	require.Equal(t, types.PluginConnectionAuthorized, status.State)
+	require.Equal(t, "svc-orphan", status.ServiceID)
+	require.Equal(t, "/api/v1/mcp-services/svc-orphan/oauth/authorize-url", status.AuthorizeURLPath)
+	require.Equal(t, "/api/v1/mcp-services/svc-orphan/oauth/token", status.RevokePath)
+
+	// 反查不到孤儿（物化从未发生，如崩溃早于 CreateMCPService）且装配无
+	// mcpServiceRepo（T11 fake 层形态）：不 panic、按降级视图返回。
+	degradedSvc, _ := newConnectionStatusService([]*types.PluginInstallation{
+		connectionStatusInstallation("inst-none", "", true),
+	})
+	degraded, err := degradedSvc.GetMyConnectionStatus(ctx, tenantID, "inst-none", principal)
+	require.NoError(t, err)
+	require.False(t, degraded.Authorized)
+	require.Empty(t, degraded.AuthorizeURLPath)
+	require.Empty(t, degraded.RevokePath)
+}
+
 // TestManualMCPServiceUnaffectedByInstallations（T07/B9 守护）：预置一行
 // 手工 mcp_services（plugin_installation_id NULL、无 approval 行）——安装
 // 插件后手工服务列表语义不变，且手工工具在无 approval 行时仍视为启用

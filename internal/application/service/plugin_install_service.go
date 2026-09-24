@@ -536,6 +536,12 @@ func (s *pluginService) serviceIDByInstallation(
 	tenantID uint64,
 	installationID string,
 ) (string, error) {
+	// nil 装配防御（最小测试夹具形态，如 connection_status_test 的
+	// mcpServiceRepo=nil 装配）：无可反查的存储时按「无孤儿」处理，
+	// 调用方保持既有空 service_id 行为，绝不 panic。
+	if s.mcpServiceRepo == nil {
+		return "", nil
+	}
 	services, err := s.mcpServiceRepo.List(ctx, tenantID)
 	if err != nil {
 		return "", err
@@ -679,11 +685,32 @@ func (s *pluginService) GetMyConnectionStatus(
 
 	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
 	if err != nil {
+		// 读路径故障用连接域读语义哨兵（mapPluginConnectionError 与
+		// ErrInstallationPersistFailed 同落 5xx，仅日志归类更准确）。
 		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
-		return nil, ErrInstallationPersistFailed
+		return nil, ErrConnectionQueryFailed
 	}
 	if inst == nil {
 		return nil, ErrInstallationNotFound
+	}
+	if inst.ServiceID == "" {
+		// T07-OCR2-F3 中断窗口自愈（与 UninstallInstallation 的
+		// T07-OCR1-F5 同款）：confirm 在 CreateMCPService 之后、
+		// UpdateInstallationServiceID 持久化之前中断时，安装行
+		// service_id 为空而物化服务行（及可能已存的成员令牌）已在——
+		// 直接以空 service_id 查询必然无命中，成员会看到 unauthorized
+		// 且授权/撤销路径皆空的死端视图。按
+		// mcp_services.plugin_installation_id 反查孤儿后照常给出三态与
+		// 端点路径；反查故障 fail-closed（连接域 5xx 哨兵）。
+		resolved, resolveErr := s.serviceIDByInstallation(ctx, tenantID, installationID)
+		if resolveErr != nil {
+			logger.GetLogger(ctx).Errorf("failed to resolve orphan materialized service for installation %s: %v", installationID, resolveErr)
+			return nil, ErrConnectionQueryFailed
+		}
+		if resolved != "" {
+			logger.GetLogger(ctx).Infof("connection status healing empty service_id anchor: installation %s resolves to orphan service %s", installationID, resolved)
+			inst.ServiceID = resolved
+		}
 	}
 
 	conn := &types.PluginMyConnection{
