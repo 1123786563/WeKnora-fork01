@@ -75,3 +75,26 @@ type TaskMessageFact struct {
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// TaskMetadataView is the administrator's default, metadata-only view of one
+// task, joined with the tenant policy. The marker method is a compile-time
+// guard: adding a content field to this view must be a visible, deliberate
+// change (the compliance flow's whole point is that metadata needs no
+// reason and content does).
+type TaskMetadataView struct {
+	Metadata TaskMetadataFacts `json:"metadata"`
+	Policy   *TenantTaskPolicy `json:"policy"`
+}
+
+// MetadataOnly marks the view as content-free (compile-time guard only).
+// Exported because the guard lives in the service package's test: a Go
+// interface literal with an unexported method can only be satisfied by
+// types in the declaring package.
+func (TaskMetadataView) MetadataOnly() {}
+
+// TaskContentView is the windowed private-content projection.
+type TaskContentView struct {
+	TaskID   string               `json:"task_id"`
+	Window   TaskComplianceAccess `json:"window"`
+	Messages []TaskMessageFact    `json:"messages"`
+}
