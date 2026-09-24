@@ -11,6 +11,7 @@ import (
 	"context"
 
 	kbretrieval "github.com/Tencent/WeKnora/internal/modules/knowledge/retrieval/app"
+	"github.com/Tencent/WeKnora/internal/modules/policy/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -103,3 +104,59 @@ var ErrSemanticScopeUnavailable = kbretrieval.ErrSemanticScopeUnavailable
 var ErrSemanticModelPolicyDisabled = kbretrieval.ErrSemanticModelPolicyDisabled
 
 var ErrSemanticModelPricingUnavailable = kbretrieval.ErrSemanticModelPricingUnavailable
+
+// --- K2.4 追加（22-knowledge-retrieval.md §5.1 读权限族 + §5.2 方法再归置）：
+// knowledgebase_access.go / slug_fuzzy.go / graph.go 已物理迁移至
+// internal/modules/knowledge/retrieval/app。以下一行委托保持留守宿主调用方
+// （knowledgebase_search_shared.go:45/83、tag.go:85、knowledge.go:830、
+// knowledge_faq.go:36、knowledge_create/delete_plan/write.go、
+// wiki_ingest.go:1670、wiki_page.go:1191 等）零改动编译；
+// ib2 集成屏障直连后随本文件一并删除。---
+
+func kbReadPermissions(ctx context.Context, shares access.KBShareLookup) *access.KBPermissions {
+	return kbretrieval.KBReadPermissions(ctx, shares)
+}
+
+func resolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares access.KBShareLookup) (uint64, error) {
+	return kbretrieval.ResolveKBReadTenant(ctx, kb, shares)
+}
+
+func requireKBWrite(ctx context.Context, kb *types.KnowledgeBase) (context.Context, error) {
+	return kbretrieval.RequireKBWrite(ctx, kb)
+}
+
+func withKBWriteTenantInfo(
+	ctx context.Context,
+	kb *types.KnowledgeBase,
+	tenants interfaces.TenantRepository,
+) (context.Context, error) {
+	return kbretrieval.WithKBWriteTenantInfo(ctx, kb, tenants)
+}
+
+func resolveDeadSlug(
+	deadSlug string,
+	displayText string,
+	liveSlugs map[string]struct{},
+	titleToSlug map[string]string,
+) (string, bool) {
+	return kbretrieval.ResolveDeadSlug(deadSlug, displayText, liveSlugs, titleToSlug)
+}
+
+// writableFAQKnowledgeBase 方法再归置（§5.2 行 3 / Ruling 2026-09-25-DEFERRED-FILE-SPLIT）：
+// 原定义于 knowledgebase_access.go:38-51，接收者类型 knowledgeService 定义于
+// knowledge.go（K4 留守），方法文本随 K2.4 迁出后落此，方法体一行不改。
+// K4 调用点（knowledge_faq.go / knowledge_faq_import.go）零改动。
+func (s *knowledgeService) writableFAQKnowledgeBase(
+	ctx context.Context,
+	kbID string,
+) (*types.KnowledgeBase, context.Context, error) {
+	kb, err := s.validateFAQKnowledgeBase(ctx, kbID)
+	if err != nil {
+		return nil, ctx, err
+	}
+	ctx, err = requireKBWrite(ctx, kb)
+	if err == nil {
+		ctx, err = withKBWriteTenantInfo(ctx, kb, s.tenantRepo)
+	}
+	return kb, ctx, err
+}

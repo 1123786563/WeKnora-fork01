@@ -128,10 +128,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Faq clone sync (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/graph.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Graph (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/image_multimodal.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Image multimodal (application/service)
@@ -244,10 +240,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledgebase (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/knowledgebase_access.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Knowledgebase access (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/knowledgebase_search.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledgebase search (application/service)
@@ -287,10 +279,6 @@ legacy_files:
   - path: internal/application/service/semantic_model.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Semantic model (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/slug_fuzzy.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Slug fuzzy (application/service)
     passb_task: B-knowledge
   - path: internal/application/service/tag.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)

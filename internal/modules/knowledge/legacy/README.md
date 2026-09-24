@@ -24,7 +24,7 @@
 | `internal/application/service/chunk_write.go` | Chunk write (application/service) | `B-knowledge` |
 | `internal/application/service/extract.go` | Extract (application/service) | `B-knowledge` |
 | `internal/application/service/faq_clone_sync.go` | Faq clone sync (application/service) | `B-knowledge` |
-| `internal/application/service/graph.go` | Graph (application/service) | `B-knowledge` |
+| `internal/application/service/graph.go` | Graph (application/service) | `B-knowledge` — **已迁移**（K2.4 → `retrieval/app/`） |
 | `internal/application/service/image_multimodal.go` | Image multimodal (application/service) | `B-knowledge` |
 | `internal/application/service/kb_activity.go` | Kb activity (application/service) | `B-knowledge` |
 | `internal/application/service/kbshare.go` | Kbshare (application/service) | `B-knowledge` |
@@ -53,7 +53,7 @@
 | `internal/application/service/knowledge_util.go` | Knowledge util (application/service) | `B-knowledge` |
 | `internal/application/service/knowledge_write.go` | Knowledge write (application/service) | `B-knowledge` |
 | `internal/application/service/knowledgebase.go` | Knowledgebase (application/service) | `B-knowledge` |
-| `internal/application/service/knowledgebase_access.go` | Knowledgebase access (application/service) | `B-knowledge` |
+| `internal/application/service/knowledgebase_access.go` | Knowledgebase access (application/service) | `B-knowledge` — **已迁移**（K2.4 → `retrieval/app/`） |
 | `internal/application/service/knowledgebase_search.go` | Knowledgebase search (application/service) | `B-knowledge` |
 | `internal/application/service/knowledgebase_search_fanout.go` | Knowledgebase search fanout (application/service) | `B-knowledge` |
 | `internal/application/service/knowledgebase_search_faq.go` | Knowledgebase search faq (application/service) | `B-knowledge` |
@@ -67,7 +67,7 @@
 | `internal/application/service/semantic_model_capability.go` | Semantic model capability (application/service) | `B-knowledge` — **已迁移**（K2.3 → `retrieval/app/`） |
 | `internal/application/service/semantic_model_policy.go` | Semantic model policy (application/service) | `B-knowledge` — **已迁移**（K2.3 → `retrieval/app/`） |
 | `internal/application/service/semantic_scope.go` | Semantic scope (application/service) | `B-knowledge` — **已迁移**（K2.3 → `retrieval/app/`） |
-| `internal/application/service/slug_fuzzy.go` | Slug fuzzy (application/service) | `B-knowledge` |
+| `internal/application/service/slug_fuzzy.go` | Slug fuzzy (application/service) | `B-knowledge` — **已迁移**（K2.4 → `retrieval/app/`） |
 | `internal/application/service/tag.go` | Tag (application/service) | `B-knowledge` |
 | `internal/application/service/tag_access.go` | Tag access (application/service) | `B-knowledge` |
 | `internal/application/service/wiki_ingest.go` | Wiki ingest (application/service) | `B-knowledge` |
