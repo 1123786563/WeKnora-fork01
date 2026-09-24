@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,6 +38,8 @@ type stubPluginInstallService struct {
 	getResp  *types.PluginInstallationResult
 	getErr   error
 	gotGetID string
+
+	uninstallErr error
 }
 
 func (s *stubPluginInstallService) ConfirmInstallation(
@@ -67,6 +70,13 @@ func (s *stubPluginInstallService) GetInstallation(
 	return s.getResp, s.getErr
 }
 
+func (s *stubPluginInstallService) UninstallInstallation(
+	_ context.Context, tenantID uint64, installationID string,
+) error {
+	s.gotTenant, s.gotGetID = tenantID, installationID
+	return s.uninstallErr
+}
+
 func newPluginInstallRouter(svc interfaces.PluginService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -82,6 +92,7 @@ func newPluginInstallRouter(svc interfaces.PluginService) *gin.Engine {
 	r.POST("/plugins/installations/preview", h.PreviewManifest)
 	r.POST("/plugins/installations/:id/disable", h.DisableInstallation)
 	r.POST("/plugins/installations/:id/enable", h.EnableInstallation)
+	r.DELETE("/plugins/installations/:id", h.UninstallInstallation)
 	r.GET("/plugins/installations", h.ListInstallations)
 	r.GET("/plugins/installations/:id", h.GetInstallation)
 	return r
@@ -211,4 +222,39 @@ func TestPluginDiscoveryHandlers(t *testing.T) {
 		w = doPluginInstallRequest(newPluginInstallRouter(stub2), http.MethodGet, "/plugins/installations/inst-1", "")
 		require.Equal(t, http.StatusNotFound, w.Code)
 	})
+}
+
+// TestConfirmInstallationHandlerUnmappedErrorsAreServerSide（OCR 一轮 R12-A
+// F01/F02）：F02——ErrPreviewPersistFailed 是服务层已收敛的 5xx 哨兵，必须
+// 映射 500（此前漏列落入 default 判 400）；F01——未映射错误（如第 7 步
+// MarkPreviewConsumed 的非 NotFound 仓储故障经补偿原样上抛的驱动错误）
+// 保守按 500 处理且固定文案，驱动内部文本不得进入响应体。
+func TestConfirmInstallationHandlerUnmappedErrorsAreServerSide(t *testing.T) {
+	t.Run("preview persist sentinel maps to 500", func(t *testing.T) {
+		stub := &stubPluginInstallService{confirmErr: service.ErrPreviewPersistFailed}
+		w := doPluginInstallRequest(newPluginInstallRouter(stub), http.MethodPost, "/plugins/installations", `{"preview_id":"preview-1"}`)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+
+	t.Run("unknown repo fault maps to 500 without driver text", func(t *testing.T) {
+		stub := &stubPluginInstallService{confirmErr: errors.New("pq: connection refused (host=10.0.0.5:5432)")}
+		w := doPluginInstallRequest(newPluginInstallRouter(stub), http.MethodPost, "/plugins/installations", `{"preview_id":"preview-1"}`)
+		require.Equal(t, http.StatusInternalServerError, w.Code, "unmapped faults are conservatively server-side")
+		require.NotContains(t, w.Body.String(), "connection refused")
+		require.NotContains(t, w.Body.String(), "10.0.0.5")
+	})
+}
+
+// TestUninstallInstallationHandler（OCR 一轮 R12-B F06b）：卸载入口 200 /
+// 404 映射。
+func TestUninstallInstallationHandler(t *testing.T) {
+	stub := &stubPluginInstallService{}
+	w := doPluginInstallRequest(newPluginInstallRouter(stub), http.MethodDelete, "/plugins/installations/inst-1", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "inst-1", stub.gotGetID)
+	require.Equal(t, uint64(7), stub.gotTenant)
+
+	stub2 := &stubPluginInstallService{uninstallErr: service.ErrInstallationNotFound}
+	w = doPluginInstallRequest(newPluginInstallRouter(stub2), http.MethodDelete, "/plugins/installations/inst-1", "")
+	require.Equal(t, http.StatusNotFound, w.Code)
 }

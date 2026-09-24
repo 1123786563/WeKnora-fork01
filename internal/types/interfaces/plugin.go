@@ -66,6 +66,13 @@ type PluginRepository interface {
 	// must free the (tenant_id, plugin_id) unique slot so the admin can
 	// retry. Installations are governance state, not audit history.
 	DeleteInstallation(ctx context.Context, tenantID uint64, id string) error
+
+	// HardDeleteServiceCascade HARD-deletes a plugin-materialized MCP
+	// service row AND its derived per-tool approval rows (OCR round-1 R12
+	// F21): the approvals FK only cascades on hard DELETE, so the shared
+	// MCPServiceRepository.Delete (soft) would orphan policy rows keyed to
+	// a dead serviceID. Used by the confirm compensation and by uninstall.
+	HardDeleteServiceCascade(ctx context.Context, tenantID uint64, serviceID string) error
 }
 
 // PluginService defines the plugin business logic. T02 landed the manifest
@@ -90,6 +97,14 @@ type PluginService interface {
 	// SetInstallationState disables/enables an installation and syncs the
 	// materialized MCP service's Enabled flag (state ∈ {active, disabled}).
 	SetInstallationState(ctx context.Context, tenantID uint64, installationID, state string) (*types.PluginInstallationResult, error)
+
+	// UninstallInstallation removes an installation entirely (OCR round-1
+	// R12 F06b): the materialized service and its derived policy rows are
+	// hard-cascade-deleted, then the installation row — releasing the
+	// (tenant, plugin) unique slot so the plugin is installable again.
+	// This is the self-heal entry for compensation residue; normal pause
+	// flow remains SetInstallationState(disabled).
+	UninstallInstallation(ctx context.Context, tenantID uint64, installationID string) error
 
 	// ListInstallations returns the member-facing summaries of every
 	// installation in the tenant.

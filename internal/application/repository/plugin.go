@@ -3,10 +3,12 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -15,6 +17,13 @@ import (
 type pluginRepository struct {
 	db *gorm.DB
 }
+
+// ErrInstallationDuplicateKey marks a (tenant_id, plugin_id) unique-index
+// conflict on CreateInstallation (OCR round-1 R12 F15): two concurrent
+// confirms of the same plugin both pass the service's duplicate check, and
+// the loser must read this as "already installed" (409), never as a raw
+// driver error mapped to a blanket 500.
+var ErrInstallationDuplicateKey = errors.New("plugin installation already exists for this workspace")
 
 // NewPluginRepository creates a new plugin repository.
 func NewPluginRepository(db *gorm.DB) interfaces.PluginRepository {
@@ -77,9 +86,29 @@ func (r *pluginRepository) DeleteExpiredPreviews(ctx context.Context, before tim
 		Delete(&types.PluginPreview{}).Error
 }
 
-// CreateInstallation persists one accepted installation row.
+// CreateInstallation persists one accepted installation row. A unique-index
+// conflict on (tenant_id, plugin_id) surfaces as ErrInstallationDuplicateKey
+// (OCR round-1 R12 F15) — PostgreSQL 23505, gorm's translated sentinel, and
+// SQLite's "UNIQUE constraint failed" text are all recognized.
 func (r *pluginRepository) CreateInstallation(ctx context.Context, inst *types.PluginInstallation) error {
-	return r.db.WithContext(ctx).Create(inst).Error
+	err := r.db.WithContext(ctx).Create(inst).Error
+	if err != nil && isInstallationDuplicateKey(err) {
+		return ErrInstallationDuplicateKey
+	}
+	return err
+}
+
+// isInstallationDuplicateKey recognizes the (tenant_id, plugin_id) unique
+// conflict across the supported drivers.
+func isInstallationDuplicateKey(err error) bool {
+	if errors.Is(err, gorm.ErrDuplicatedKey) || errors.Is(err, ErrInstallationDuplicateKey) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+	return strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
 // GetInstallation retrieves an installation by ID within a tenant; not
@@ -186,4 +215,27 @@ func (r *pluginRepository) DeleteInstallation(ctx context.Context, tenantID uint
 		Unscoped().
 		Where("tenant_id = ? AND id = ?", tenantID, id).
 		Delete(&types.PluginInstallation{}).Error
+}
+
+// HardDeleteServiceCascade HARD-deletes a plugin-materialized MCP service
+// row together with its derived per-tool approval rows (OCR round-1 R12
+// F21): the mcp_tool_approvals FK only cascades on a hard DELETE, while the
+// shared MCPServiceRepository.Delete is a soft delete — compensating with
+// it would leave policy rows keyed to a dead serviceID forever, and each
+// failed retry would strand one more soft-deleted service. The plugin
+// domain owns its derived rows, so the cascade lives here rather than on
+// the shared MCP service repository.
+func (r *pluginRepository) HardDeleteServiceCascade(ctx context.Context, tenantID uint64, serviceID string) error {
+	if serviceID == "" {
+		return nil
+	}
+	if err := r.db.WithContext(ctx).
+		Unscoped().
+		Where("tenant_id = ? AND id = ?", tenantID, serviceID).
+		Delete(&types.MCPService{}).Error; err != nil {
+		return err
+	}
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND service_id = ?", tenantID, serviceID).
+		Delete(&types.MCPToolApproval{}).Error
 }

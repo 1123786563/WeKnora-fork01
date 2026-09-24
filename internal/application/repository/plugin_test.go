@@ -183,3 +183,34 @@ func TestGetByServiceIDScopesByTenant(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, got, "empty service_id short-circuits")
 }
+
+// TestCreateInstallationDuplicateKeySentinel（OCR 一轮 R12 F15）：并发确认
+// 的输家在 (tenant_id, plugin_id) 唯一索引处收到约束冲突——仓储必须改写
+// 为 ErrInstallationDuplicateKey 哨兵（服务层据此映射 409），不得把原始
+// 驱动错误透传成笼统 500。AutoMigrate 依 gorm tag 建出唯一索引。
+func TestCreateInstallationDuplicateKeySentinel(t *testing.T) {
+	ctx := context.Background()
+	db := newPluginPreviewTestDB(t)
+	require.NoError(t, db.AutoMigrate(&types.PluginInstallation{}))
+	repo := NewPluginRepository(db)
+	row := &types.PluginInstallation{
+		ID: "inst-dup", TenantID: 7, PluginID: "com.example.jira-todo",
+		Name: "Jira", ManifestURL: "https://x.example.com/m.json", AcceptedVersion: "1.0.0",
+		TransportType: "http-streamable", EndpointURL: "https://x.example.com/mcp",
+		ToolsSnapshot: types.PluginPreviewTools{{Name: "t", InputSchemaDigest: "d"}},
+		ToolsDigest:   "digest", ServiceID: "svc", State: types.PluginInstallationActive, CreatedBy: "a",
+	}
+	require.NoError(t, repo.CreateInstallation(ctx, row))
+
+	// 同 (tenant, plugin) 第二行：SQLite 报 UNIQUE constraint failed → 哨兵。
+	dup := *row
+	dup.ID = "inst-dup-2"
+	err := repo.CreateInstallation(ctx, &dup)
+	require.ErrorIs(t, err, ErrInstallationDuplicateKey)
+
+	// 不同租户不受唯一索引约束。
+	dup3 := *row
+	dup3.ID = "inst-dup-3"
+	dup3.TenantID = 8
+	require.NoError(t, repo.CreateInstallation(ctx, &dup3))
+}

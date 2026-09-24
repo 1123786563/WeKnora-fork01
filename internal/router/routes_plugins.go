@@ -29,6 +29,7 @@ func RegisterPluginRoutes(r *gin.RouterGroup, pluginHandler *handler.PluginHandl
 		pluginRoutes.POST("/installations", g.Admin(), pluginHandler.ConfirmInstallation)
 		pluginRoutes.POST("/installations/:id/disable", g.Admin(), pluginHandler.DisableInstallation)
 		pluginRoutes.POST("/installations/:id/enable", g.Admin(), pluginHandler.EnableInstallation)
+		pluginRoutes.DELETE("/installations/:id", g.Admin(), pluginHandler.UninstallInstallation)
 		pluginRoutes.GET("/installations", g.Viewer(), pluginHandler.ListInstallations)
 		pluginRoutes.GET("/installations/:id", g.Viewer(), pluginHandler.GetInstallation)
 	}

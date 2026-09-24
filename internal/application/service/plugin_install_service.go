@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent/tools"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
@@ -74,6 +75,12 @@ var (
 	// ErrInstallationMaterializeFailed: 5xx fault while materializing the
 	// MCP service / tool policies (after compensation).
 	ErrInstallationMaterializeFailed = errors.New("failed to materialize plugin installation")
+
+	// ErrPluginVerifyFailed: the confirm-time re-verification rejected the
+	// remote document (invalid manifest, declaration mismatch) — a
+	// deterministic 4xx rejection of the confirmed input, mirroring the
+	// preview path. Fetch faults keep their own 503 sentinel.
+	ErrPluginVerifyFailed = errors.New("plugin verification failed")
 )
 
 // ConfirmInstallation implements the compensated seven-step confirm flow
@@ -126,10 +133,16 @@ func (s *pluginService) ConfirmInstallation(
 
 	// Step 4: re-fetch and re-verify the remote. The admin reviewed THIS
 	// fingerprint and digest; anything that moved since is a different
-	// document and must go through a fresh preview.
+	// document and must go through a fresh preview. Verification faults are
+	// wrapped in a 4xx-class sentinel (fetch faults keep ErrManifestFetchFailed
+	// → 503; OAuth-protected keeps its own marker) so the handler's default
+	// branch can stay conservatively 5xx (OCR round-1 R12 F01).
 	result, err := plugins.FetchAndVerify(ctx, preview.ManifestURL, s.lister)
 	if err != nil {
-		return nil, err // deterministic verification fault / fetch fault — handler maps
+		if errors.Is(err, plugins.ErrManifestFetchFailed) || plugins.IsOAuthProtected(err) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %v", ErrPluginVerifyFailed, err)
 	}
 	if result.ToolsDigest != preview.ToolsDigest || result.IdentityFingerprint != preview.IdentityFingerprint {
 		return nil, ErrPreviewContentChanged
@@ -153,8 +166,13 @@ func (s *pluginService) ConfirmInstallation(
 		CreatedBy:       actorID,
 	}
 
-	// Step 5: installation row.
+	// Step 5: installation row. A unique-index conflict means a concurrent
+	// confirm of the same plugin won the race — surface the 409 semantics,
+	// never a blanket 500 (OCR round-1 R12 F15).
 	if err := s.pluginRepo.CreateInstallation(ctx, installation); err != nil {
+		if errors.Is(err, repository.ErrInstallationDuplicateKey) {
+			return nil, fmt.Errorf("%w: %q was installed concurrently", ErrPluginAlreadyInstalled, preview.PluginID)
+		}
 		logger.GetLogger(ctx).Errorf("failed to persist plugin installation: %v", err)
 		return nil, ErrInstallationPersistFailed
 	}
@@ -200,36 +218,67 @@ func (s *pluginService) ConfirmInstallation(
 	}
 
 	// Step 7: consume the preview exactly once. A lost race here surfaces
-	// as ErrRecordNotFound — the same verdict as the friendly check above.
+	// as ErrRecordNotFound — re-read the preview to distinguish "already
+	// consumed" from "crossed the TTL boundary mid-confirm" (OCR round-1
+	// R12 F17: a fresh 15-minute TTL can expire between step 2 and here,
+	// across the remote re-verification); any other repo fault is wrapped
+	// in the 5xx sentinel so the handler never sees raw driver text
+	// (R12 F01).
 	if err := s.pluginRepo.MarkPreviewConsumed(ctx, tenantID, previewID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = ErrPreviewAlreadyConsumed
+			err = s.reclassifyPreviewMiss(ctx, tenantID, previewID)
+		} else {
+			logger.GetLogger(ctx).Errorf("failed to consume plugin preview: %v", err)
+			err = ErrInstallationPersistFailed
 		}
-		logger.GetLogger(ctx).Errorf("failed to consume plugin preview: %v", err)
 		return nil, s.compensateInstallation(ctx, tenantID, installation.ID, materialized.ID, err)
 	}
 
 	return s.installationResult(ctx, tenantID, installation)
 }
 
-// compensateInstallation rolls a failed confirm back to zero: soft-delete
-// the materialized service (plugin-derived rows carry no history value)
+// reclassifyPreviewMiss disambiguates a MarkPreviewConsumed zero-row update
+// (OCR round-1 R12 F17): consumed-at-set → already consumed; anything else
+// (expiry crossed mid-confirm, or the row vanished) reads as expired. The
+// verdict never misreports an unconsumed-but-expired preview as consumed.
+func (s *pluginService) reclassifyPreviewMiss(ctx context.Context, tenantID uint64, previewID string) error {
+	preview, err := s.pluginRepo.GetPreview(ctx, tenantID, previewID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to re-read plugin preview: %v", err)
+		return ErrPreviewAlreadyConsumed
+	}
+	if preview != nil && preview.ConsumedAt == nil {
+		return ErrPreviewExpired
+	}
+	return ErrPreviewAlreadyConsumed
+}
+
+// compensateInstallation rolls a failed confirm back to zero: hard-cascade
+// delete the materialized service WITH its derived policy rows (R12 F21 —
+// the shared soft delete would orphan approvals keyed to a dead serviceID)
 // and hard-delete the installation row so the (tenant, plugin) unique slot
-// is free. Compensation is best-effort — its own failures are logged, and
-// the ORIGINAL cause is what the caller sees.
+// is free. The compensation runs on a FRESH context derived via
+// context.WithoutCancel with its own timeout (R12 F14): the original
+// request ctx may already be cancelled (client disconnect mid-confirm) —
+// reusing it would fail BOTH compensation writes and strand the unique
+// slot with no self-heal. Compensation is still best-effort — its own
+// failures are logged, the ORIGINAL cause is what the caller sees, and
+// the uninstall endpoint (R12 F06b) is the operator's self-heal entry.
 func (s *pluginService) compensateInstallation(
 	ctx context.Context,
 	tenantID uint64,
 	installationID, serviceID string,
 	cause error,
 ) error {
+	compCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancel()
 	if serviceID != "" {
-		if err := s.mcpServiceRepo.Delete(ctx, tenantID, serviceID); err != nil {
+		if err := s.pluginRepo.HardDeleteServiceCascade(compCtx, tenantID, serviceID); err != nil {
 			logger.GetLogger(ctx).Errorf(
-				"plugin installation compensation: failed to remove materialized service %s: %v", serviceID, err)
+				"plugin installation compensation: failed to cascade-delete materialized service %s: %v", serviceID, err)
 		}
 	}
-	if err := s.pluginRepo.DeleteInstallation(ctx, tenantID, installationID); err != nil {
+	if err := s.pluginRepo.DeleteInstallation(compCtx, tenantID, installationID); err != nil {
 		logger.GetLogger(ctx).Errorf(
 			"plugin installation compensation: failed to remove installation %s: %v", installationID, err)
 	}
@@ -241,6 +290,15 @@ func (s *pluginService) compensateInstallation(
 // UpdatedAt refresh matters: the manager caches clients keyed by config,
 // and the refreshed timestamp invalidates them so a disabled installation
 // stops serving on the next registration pass, not "eventually".
+//
+// Directional write order (OCR round-1 R12 F16): every failure face
+// converges FAIL-CLOSED instead of relying on rollback. disable flips the
+// SERVICE first — if the installation update then fails, tools are already
+// invisible (the runtime only reads service.Enabled) and a retry heals.
+// enable flips the INSTALLATION first — if the service sync then fails,
+// the service stays disabled (fail-closed) while the installation reads
+// active, and a retry completes it. The unreachable state is exactly the
+// dangerous one: installation=disabled with service Enabled=true.
 func (s *pluginService) SetInstallationState(
 	ctx context.Context,
 	tenantID uint64,
@@ -258,31 +316,90 @@ func (s *pluginService) SetInstallationState(
 	if inst == nil {
 		return nil, ErrInstallationNotFound
 	}
-	if err := s.pluginRepo.UpdateInstallationState(ctx, tenantID, installationID, state); err != nil {
-		logger.GetLogger(ctx).Errorf("failed to update plugin installation state: %v", err)
-		return nil, ErrInstallationPersistFailed
-	}
-	inst.State = state
 
-	if inst.ServiceID != "" {
+	syncService := func(enabled bool) error {
+		if inst.ServiceID == "" {
+			return nil
+		}
 		svc, err := s.mcpServiceRepo.GetByID(ctx, tenantID, inst.ServiceID)
 		if err != nil {
 			logger.GetLogger(ctx).Errorf("failed to load materialized service for state sync: %v", err)
-			return nil, ErrInstallationPersistFailed
+			return ErrInstallationPersistFailed
 		}
-		if svc != nil {
-			svc.Enabled = state == types.PluginInstallationActive
-			svc.UpdatedAt = time.Now()
-			if err := s.mcpServiceRepo.Update(ctx, svc); err != nil {
-				logger.GetLogger(ctx).Errorf("failed to sync materialized service state: %v", err)
-				return nil, ErrInstallationPersistFailed
-			}
+		if svc == nil {
+			// Materialized row already gone — the installation state itself
+			// is authoritative; nothing to sync.
+			return nil
 		}
-		// svc == nil: materialized row already gone — the installation
-		// state itself is authoritative; nothing to sync.
+		svc.Enabled = enabled
+		svc.UpdatedAt = time.Now()
+		if err := s.mcpServiceRepo.Update(ctx, svc); err != nil {
+			logger.GetLogger(ctx).Errorf("failed to sync materialized service state: %v", err)
+			return ErrInstallationPersistFailed
+		}
+		return nil
+	}
+	flipInstallation := func() error {
+		if err := s.pluginRepo.UpdateInstallationState(ctx, tenantID, installationID, state); err != nil {
+			logger.GetLogger(ctx).Errorf("failed to update plugin installation state: %v", err)
+			return ErrInstallationPersistFailed
+		}
+		inst.State = state
+		return nil
+	}
+
+	if state == types.PluginInstallationDisabled {
+		// disable: service first, installation second.
+		if err := syncService(false); err != nil {
+			return nil, err
+		}
+		if err := flipInstallation(); err != nil {
+			return nil, err
+		}
+	} else {
+		// enable: installation first, service second.
+		if err := flipInstallation(); err != nil {
+			return nil, err
+		}
+		if err := syncService(true); err != nil {
+			return nil, err
+		}
 	}
 
 	return s.installationResult(ctx, tenantID, inst)
+}
+
+// UninstallInstallation removes an installation entirely (OCR round-1 R12
+// F06b): the materialized service and its derived policy rows are
+// hard-cascade-deleted first, then the installation row — releasing the
+// (tenant, plugin) unique slot. Service-first ordering keeps every failure
+// face safe: if the installation delete fails after the service is gone,
+// the row remains (retryable) and the orphan-less guard (T09 F20)
+// fail-closes the missing-snapshot case.
+func (s *pluginService) UninstallInstallation(
+	ctx context.Context,
+	tenantID uint64,
+	installationID string,
+) error {
+	inst, err := s.pluginRepo.GetInstallation(ctx, tenantID, installationID)
+	if err != nil {
+		logger.GetLogger(ctx).Errorf("failed to load plugin installation: %v", err)
+		return ErrInstallationPersistFailed
+	}
+	if inst == nil {
+		return ErrInstallationNotFound
+	}
+	if inst.ServiceID != "" {
+		if err := s.pluginRepo.HardDeleteServiceCascade(ctx, tenantID, inst.ServiceID); err != nil {
+			logger.GetLogger(ctx).Errorf("failed to cascade-delete materialized service: %v", err)
+			return ErrInstallationPersistFailed
+		}
+	}
+	if err := s.pluginRepo.DeleteInstallation(ctx, tenantID, installationID); err != nil {
+		logger.GetLogger(ctx).Errorf("failed to delete plugin installation: %v", err)
+		return ErrInstallationPersistFailed
+	}
+	return nil
 }
 
 // ListInstallations returns the member-facing summaries of the tenant's

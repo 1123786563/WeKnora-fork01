@@ -227,6 +227,32 @@ func (h *PluginHandler) setInstallationState(c *gin.Context, state string) {
 	})
 }
 
+// UninstallInstallation godoc
+// @Summary      卸载插件安装
+// @Description  彻底移除一个插件安装：硬级联删除物化 MCP 服务与逐工具策略行并释放 (tenant, plugin) 唯一槽——补偿残留的自愈入口；常规停用请用 disable
+// @Tags         插件
+// @Produce      json
+// @Param        id   path  string  true  "安装 ID"
+// @Success      200  {object}  map[string]interface{}  "卸载完成"
+// @Failure      404  {object}  errors.AppError         "安装不存在"
+// @Failure      500  {object}  errors.AppError         "持久化失败"
+// @Security     Bearer
+// @Router       /plugins/installations/{id} [delete]
+func (h *PluginHandler) UninstallInstallation(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+	if err := h.pluginService.UninstallInstallation(ctx, tenantID, c.Param("id")); err != nil {
+		mapPluginInstallationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // ListInstallations godoc
 // @Summary      列出本空间已安装插件
 // @Description  成员发现面：返回本空间全部插件安装的摘要（版本/状态/漂移态/工具数），跨空间不可见
@@ -353,7 +379,8 @@ func mapPluginInstallationError(c *gin.Context, err error) {
 	case stderrors.Is(err, service.ErrPreviewAlreadyConsumed),
 		stderrors.Is(err, service.ErrPreviewExpired),
 		stderrors.Is(err, service.ErrPreviewContentChanged),
-		stderrors.Is(err, service.ErrInstallationStateInvalid):
+		stderrors.Is(err, service.ErrInstallationStateInvalid),
+		stderrors.Is(err, service.ErrPluginVerifyFailed):
 		c.Error(errors.NewBadRequestError(err.Error()))
 	case stderrors.Is(err, service.ErrPluginAlreadyInstalled):
 		c.Error(errors.NewConflictError(err.Error()))
@@ -362,13 +389,22 @@ func mapPluginInstallationError(c *gin.Context, err error) {
 		c.Error(errors.NewServiceUnavailableError("插件清单抓取失败：清单服务不可达或返回异常状态，请稍后重试"))
 	case plugins.IsOAuthProtected(err):
 		c.Error(errors.NewBadRequestError(err.Error()))
-	case stderrors.Is(err, service.ErrInstallationPersistFailed),
+	case stderrors.Is(err, service.ErrPreviewPersistFailed),
+		stderrors.Is(err, service.ErrInstallationPersistFailed),
 		stderrors.Is(err, service.ErrInstallationMaterializeFailed):
+		// ErrPreviewPersistFailed joins the 5xx family (OCR round-1 R12 F02):
+		// step 1's GetPreview repo fault surfaces this sentinel and it was
+		// previously missing from the table — a server-side fault misread
+		// as a 400 with the sentinel text in the body.
 		c.Error(errors.NewInternalServerError(err.Error()))
 	default:
-		// FetchAndVerify's deterministic verification faults (invalid
-		// manifest, declaration mismatch) are rejections of the confirmed
-		// input → 4xx, mirroring the preview path.
-		c.Error(errors.NewBadRequestError(err.Error()))
+		// Unmapped errors are conservatively SERVER-side (OCR round-1 R12 F01):
+		// e.g. a non-NotFound MarkPreviewConsumed repo fault reaches here as a
+		// raw driver error after compensation — its text (table names,
+		// connection internals) must never reach the response body, and the
+		// ConfirmInstallation godoc's @Failure 500 contract holds. Details go
+		// to the server log only.
+		logger.Error(c.Request.Context(), "Unmapped plugin installation error", err)
+		c.Error(errors.NewInternalServerError("插件安装失败：服务端内部故障，请稍后重试"))
 	}
 }

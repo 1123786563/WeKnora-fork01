@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/modules/plugins"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -42,9 +43,16 @@ func (l *mutableLister) asEndpointLister() plugins.EndpointLister {
 type fakeInstallMCPServiceRepo struct {
 	services  []*types.MCPService
 	createErr error
+	// onCreate 在 Create 失败前触发（R12 F14：取消调用方 ctx 后返回错误，
+	// 检验补偿是否仍能在已取消 ctx 下完成）。
+	onCreate  func()
+	updateErr error
 }
 
 func (r *fakeInstallMCPServiceRepo) Create(_ context.Context, svc *types.MCPService) error {
+	if r.onCreate != nil {
+		r.onCreate()
+	}
 	if r.createErr != nil {
 		return r.createErr
 	}
@@ -54,7 +62,11 @@ func (r *fakeInstallMCPServiceRepo) Create(_ context.Context, svc *types.MCPServ
 func (r *fakeInstallMCPServiceRepo) GetByID(_ context.Context, tenantID uint64, id string) (*types.MCPService, error) {
 	for _, svc := range r.services {
 		if svc.TenantID == tenantID && svc.ID == id {
-			return svc, nil
+			// 拷贝语义（与真实 gorm 扫描一致）：调用方对返回值的修改不落库，
+			// 除非 Update 成功——否则「Update 失败但 Enabled 已翻」的假象会
+			// 掩盖方向序写入的真实行为（R12 F16 测试）。
+			cp := *svc
+			return &cp, nil
 		}
 	}
 	return nil, nil
@@ -91,6 +103,9 @@ func (r *fakeInstallMCPServiceRepo) ListByIDs(_ context.Context, tenantID uint64
 	return out, nil
 }
 func (r *fakeInstallMCPServiceRepo) Update(_ context.Context, svc *types.MCPService) error {
+	if r.updateErr != nil {
+		return r.updateErr
+	}
 	for _, existing := range r.services {
 		if existing.TenantID == svc.TenantID && existing.ID == svc.ID {
 			existing.Enabled = svc.Enabled
@@ -112,9 +127,11 @@ func (r *fakeInstallMCPServiceRepo) Delete(_ context.Context, tenantID uint64, i
 }
 
 // fakeInstallApprovalRepo 内存实现 MCPToolApprovalRepository（000042 upsert
-// 语义的简化版：nil patch 字段不覆盖）。
+// 语义的简化版：nil patch 字段不覆盖）。upsertErr 注入策略写失败
+// （R12 F21：检验补偿的硬级联清理）。
 type fakeInstallApprovalRepo struct {
-	rows map[string]*types.MCPToolApproval
+	rows      map[string]*types.MCPToolApproval
+	upsertErr error
 }
 
 func approvalKey(serviceID, toolName string) string { return serviceID + "|" + toolName }
@@ -142,6 +159,9 @@ func (r *fakeInstallApprovalRepo) IsEnabled(_ context.Context, tenantID uint64, 
 	return true, nil
 }
 func (r *fakeInstallApprovalRepo) UpsertPolicy(_ context.Context, tenantID uint64, serviceID, toolName string, patch types.MCPToolPolicyPatch) error {
+	if r.upsertErr != nil {
+		return r.upsertErr
+	}
 	if r.rows == nil {
 		r.rows = map[string]*types.MCPToolApproval{}
 	}
@@ -282,6 +302,16 @@ func (s *installTestStack) replaceManifest(doc []byte) {
 type installPreviewRepo struct {
 	fakePluginInstallRepo
 	previews []*types.PluginPreview
+	// 与同栈其余 fake 的交叉引用：HardDeleteServiceCascade 需要级联清理
+	// mcp_services 与 mcp_tool_approvals（R12 F21/F06）。
+	mcpRepo      *fakeInstallMCPServiceRepo
+	approvalRepo *fakeInstallApprovalRepo
+	// ctxAware 模拟真实 DB 驱动对已取消 ctx 的语义（R12 F14）：补偿若
+	// 复用已取消的请求 ctx，删除会以 ctx 错误失败、安装行残留。
+	ctxAware       bool
+	updateStateErr error
+	onTenantPlugin func()
+	hardDeletedSvc []string
 }
 
 func (r *installPreviewRepo) CreatePreview(_ context.Context, p *types.PluginPreview) error {
@@ -313,6 +343,81 @@ func (r *installPreviewRepo) MarkPreviewConsumed(_ context.Context, tenantID uin
 	return gorm.ErrRecordNotFound
 }
 func (r *installPreviewRepo) DeleteExpiredPreviews(_ context.Context, before time.Time) error {
+	return nil
+}
+
+func (r *installPreviewRepo) GetInstallationByTenantPlugin(_ context.Context, tenantID uint64, pluginID string) (*types.PluginInstallation, error) {
+	if r.onTenantPlugin != nil {
+		r.onTenantPlugin()
+	}
+	for _, inst := range r.installations {
+		if inst.TenantID == tenantID && inst.PluginID == pluginID {
+			return inst, nil
+		}
+	}
+	return nil, nil
+}
+
+func (r *installPreviewRepo) UpdateInstallationState(ctx context.Context, tenantID uint64, id, state string) error {
+	if r.ctxAware {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if r.updateStateErr != nil {
+		return r.updateStateErr
+	}
+	for _, inst := range r.installations {
+		if inst.TenantID == tenantID && inst.ID == id {
+			inst.State = state
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
+}
+
+func (r *installPreviewRepo) DeleteInstallation(ctx context.Context, tenantID uint64, id string) error {
+	if r.ctxAware {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	r.deleteInstCall++
+	kept := r.installations[:0]
+	for _, inst := range r.installations {
+		if inst.TenantID != tenantID || inst.ID != id {
+			kept = append(kept, inst)
+		}
+	}
+	r.installations = kept
+	return nil
+}
+
+// HardDeleteServiceCascade 模拟仓储的插件派生行硬级联删除：物化服务 +
+// 逐工具策略行一并清除（R12 F21：软删服务不触发 FK 级联，策略行会成孤儿）。
+func (r *installPreviewRepo) HardDeleteServiceCascade(ctx context.Context, tenantID uint64, serviceID string) error {
+	if r.ctxAware {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	r.hardDeletedSvc = append(r.hardDeletedSvc, serviceID)
+	if r.mcpRepo != nil {
+		kept := r.mcpRepo.services[:0]
+		for _, svc := range r.mcpRepo.services {
+			if svc.TenantID != tenantID || svc.ID != serviceID {
+				kept = append(kept, svc)
+			}
+		}
+		r.mcpRepo.services = kept
+	}
+	if r.approvalRepo != nil && r.approvalRepo.rows != nil {
+		for key, row := range r.approvalRepo.rows {
+			if row.TenantID == tenantID && row.ServiceID == serviceID {
+				delete(r.approvalRepo.rows, key)
+			}
+		}
+	}
 	return nil
 }
 
@@ -364,6 +469,8 @@ func newInstallTestStack(t *testing.T, tenantID uint64) *installTestStack {
 	pluginRepo := &installPreviewRepo{}
 	mcpRepo := &fakeInstallMCPServiceRepo{}
 	approvalRepo := &fakeInstallApprovalRepo{}
+	pluginRepo.mcpRepo = mcpRepo
+	pluginRepo.approvalRepo = approvalRepo
 	mcpSvcService := service.NewMCPServiceService(mcpRepo, nil, nil)
 	approvalSvc := service.NewMCPToolApprovalService(approvalRepo, mcpRepo)
 	svc := service.NewPluginService(pluginRepo, mcpSvcService, mcpRepo, approvalSvc, lister.asEndpointLister())
@@ -574,4 +681,134 @@ func TestSetInstallationStateSyncsService(t *testing.T) {
 	// 不存在/跨租户 → not found。
 	_, err = s.svc.SetInstallationState(context.Background(), 8, resp.InstallationID, types.PluginInstallationDisabled)
 	require.ErrorIs(t, err, service.ErrInstallationNotFound)
+}
+
+// TestConfirmInstallationCompensatesWithCancelledContext（OCR 一轮 R12-B
+// F14）：确认请求的 ctx 在物化失败时已取消——补偿必须用独立于请求的
+// ctx 完成（WithoutCancel），否则补偿删除被同一取消打回，安装行残留并
+// 永久占用 (tenant, plugin) 唯一槽。fake 的 ctxAware 模拟 DB 驱动对已
+// 取消 ctx 的拒绝语义。
+func TestConfirmInstallationCompensatesWithCancelledContext(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	s.pluginRepo.ctxAware = true
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mcpRepo.createErr = errors.New("boom: mcp_services down")
+	s.mcpRepo.onCreate = cancel // 物化失败同时取消调用方 ctx
+
+	_, err := s.svc.ConfirmInstallation(ctx, 7, "admin-1", s.previewID)
+	require.Error(t, err)
+	// 补偿在已取消的请求 ctx 下仍完成：安装行被删（唯一槽释放）。
+	require.Empty(t, s.pluginRepo.installations,
+		"compensation must run on a cancellation-independent context")
+
+	// 修复物化故障后可重新确认成功。
+	s.mcpRepo.createErr = nil
+	s.mcpRepo.onCreate = nil
+	resp, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.InstallationID)
+}
+
+// TestConfirmInstallationDuplicateKeyMapsToConflict（OCR 一轮 R12-B F15）：
+// 并发确认同一 plugin 的输家在唯一索引处收到约束冲突——必须改写为
+// ErrPluginAlreadyInstalled（handler 409 语义），而非笼统 500。
+func TestConfirmInstallationDuplicateKeyMapsToConflict(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	s.pluginRepo.createInstErr = repository.ErrInstallationDuplicateKey
+	_, err := s.confirm(t, 7, s.previewID)
+	require.ErrorIs(t, err, service.ErrPluginAlreadyInstalled)
+	require.Empty(t, s.mcpRepo.services, "losing racer must not materialize a service")
+}
+
+// TestConfirmInstallationPolicyWriteFailureHardCascades（OCR 一轮 R12-B
+// F21）：SetPolicy 循环失败触发补偿——物化服务与已写策略行必须硬级联
+// 删除（软删服务不触发 FK 级联，策略行会按死 serviceID 键控成孤儿）。
+func TestConfirmInstallationPolicyWriteFailureHardCascades(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	s.approvalRepo.upsertErr = errors.New("approval store down")
+
+	_, err := s.confirm(t, 7, s.previewID)
+	require.Error(t, err)
+	require.Empty(t, s.pluginRepo.installations)
+	require.Empty(t, s.mcpRepo.services, "materialized service must be hard-deleted, not soft-deleted")
+	require.Empty(t, s.approvalRepo.rows, "derived policy rows must be cascade-cleaned")
+
+	// 修复后可重装。
+	s.approvalRepo.upsertErr = nil
+	resp, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.InstallationID)
+}
+
+// TestConfirmInstallationExpiredAcrossTTLDistinguished（OCR 一轮 R12-B
+// F17）：确认跨越 TTL 边界（Step 2 判定未过期、Step 7 执行时已过期）
+// ——MarkPreviewConsumed 的 ErrRecordNotFound 必须重读 preview 区分
+// 「已消费」与「已过期」，不得一律误报 ErrPreviewAlreadyConsumed。
+func TestConfirmInstallationExpiredAcrossTTLDistinguished(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	// Step 3（重复安装判定）时把预览改为过期：Step 2 已通过、Step 7 时
+	// MarkPreviewConsumed 命中过期分支。
+	s.pluginRepo.onTenantPlugin = func() {
+		for _, p := range s.pluginRepo.previews {
+			p.ExpiresAt = time.Now().Add(-time.Minute)
+		}
+	}
+	_, err := s.confirm(t, 7, s.previewID)
+	require.ErrorIs(t, err, service.ErrPreviewExpired)
+}
+
+// TestSetInstallationStateFailureStaysFailClosed（OCR 一轮 R12-B F16）：
+// 两段写任一失败不得产生「installation=disabled 而 mcp_services.Enabled=
+// true」的 fail-open 不一致——方向序写入使失败面收敛 fail-closed。
+func TestSetInstallationStateFailureStaysFailClosed(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	resp, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err)
+
+	// 场景 1：服务同步失败（disable：服务先行，失败则安装行不翻转——
+	// 两者保持一致的 active/enabled 态，可重试）。
+	s.mcpRepo.updateErr = errors.New("svc store down")
+	_, err = s.svc.SetInstallationState(context.Background(), 7, resp.InstallationID, types.PluginInstallationDisabled)
+	require.Error(t, err)
+	require.Equal(t, types.PluginInstallationActive, s.pluginRepo.installations[0].State,
+		"disable must not flip the installation when the service sync failed")
+	require.True(t, s.mcpRepo.services[0].Enabled)
+
+	// 场景 2：安装行更新失败（disable：服务已禁用——即使安装行仍 active，
+	// 运行时只认 service.Enabled，失败面是 fail-closed 的）。
+	s.mcpRepo.updateErr = nil
+	s.pluginRepo.updateStateErr = errors.New("inst store down")
+	_, err = s.svc.SetInstallationState(context.Background(), 7, resp.InstallationID, types.PluginInstallationDisabled)
+	require.Error(t, err)
+	require.False(t, s.mcpRepo.services[0].Enabled,
+		"disable must take effect on the runtime-facing service even if the installation row update failed")
+}
+
+// TestUninstallInstallationReleasesUniqueSlot（OCR 一轮 R12-B F06b）：
+// 卸载入口硬级联删除物化服务与策略行并释放 (tenant, plugin) 唯一槽——
+// 补偿残留自此可自愈，无需人工修库。跨租户/不存在 → not found。
+func TestUninstallInstallationReleasesUniqueSlot(t *testing.T) {
+	s := newInstallTestStack(t, 7)
+	resp, err := s.confirm(t, 7, s.previewID)
+	require.NoError(t, err)
+	require.Len(t, s.mcpRepo.services, 1)
+	require.Len(t, s.approvalRepo.rows, 2)
+	serviceID := s.mcpRepo.services[0].ID
+
+	// 跨租户 → not found（不泄露存在性）。
+	require.ErrorIs(t, s.svc.UninstallInstallation(context.Background(), 8, resp.InstallationID), service.ErrInstallationNotFound)
+
+	require.NoError(t, s.svc.UninstallInstallation(context.Background(), 7, resp.InstallationID))
+	require.Empty(t, s.pluginRepo.installations)
+	require.Empty(t, s.mcpRepo.services)
+	require.Empty(t, s.approvalRepo.rows)
+	require.Equal(t, []string{serviceID}, s.pluginRepo.hardDeletedSvc)
+
+	// 唯一槽已释放：新预览可重新安装。
+	newPreview, err := s.svc.PreviewFromManifest(context.Background(), 7, "admin-1", s.pluginRepo.previews[0].ManifestURL)
+	require.NoError(t, err)
+	reinstalled, err := s.confirm(t, 7, newPreview.PreviewID)
+	require.NoError(t, err)
+	require.NotEqual(t, resp.InstallationID, reinstalled.InstallationID)
 }
