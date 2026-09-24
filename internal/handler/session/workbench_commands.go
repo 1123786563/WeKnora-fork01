@@ -110,11 +110,12 @@ func (h *WorkbenchCommandHandler) Command(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid request"})
 		return
 	}
-	if err := h.interactions.Command(commandContext(c), c.Param("run_id"), command); err != nil {
+	ack, err := h.interactions.Command(commandContext(c), c.Param("run_id"), command)
+	if err != nil {
 		writeWorkbenchCommandError(c, err)
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": gin.H{"run_id": strings.TrimSpace(c.Param("run_id")), "action": command.Action}})
+	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": ack})
 }
 
 func writeWorkbenchCommandError(c *gin.Context, err error) {
@@ -144,6 +145,10 @@ func writeWorkbenchCommandError(c *gin.Context, err error) {
 	case errors.Is(err, workbenchservice.ErrInteractionNotFound), errors.Is(err, gorm.ErrRecordNotFound), errors.Is(err, agentruntime.ErrNotFound):
 		status = http.StatusNotFound
 	case errors.Is(err, agentruntime.ErrConflict):
+		status = http.StatusConflict
+	case errors.Is(err, agentruntime.ErrRunActive):
+		// The follow-up admission raced another write run on the session: a
+		// deterministic conflict, not a server error.
 		status = http.StatusConflict
 	case strings.Contains(err.Error(), "context is required") || strings.Contains(err.Error(), "actor context is required"):
 		status = http.StatusUnauthorized

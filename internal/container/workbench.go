@@ -74,11 +74,17 @@ func NewWorkbenchInteractionStore(db *gorm.DB) *workbenchservice.GormInteraction
 	return workbenchservice.NewGormInteractionStore(db)
 }
 
-func NewWorkbenchInteractionService(store *workbenchservice.GormInteractionStore, gate *approval.Gate, streams interfaces.StreamManager) *workbenchservice.Service {
+func NewWorkbenchInteractionService(store *workbenchservice.GormInteractionStore, gate *approval.Gate, streams interfaces.StreamManager, runs *repository.AgentRunStore, admission *workbenchservice.AdmissionCoordinator) *workbenchservice.Service {
 	// Command ports are intentionally nil until the lifecycle/stream adapters
 	// are supplied by the runtime container; command requests fail closed with
 	// capability_unavailable rather than mutating a different subsystem.
-	return workbenchservice.NewInteractionServiceWithApproval(store, workbenchservice.NewGormSteerPort(storeDB(store), streams), workbenchservice.NewGormCancelPort(storeDB(store)), gate)
+	return workbenchservice.NewInteractionServiceWithRestart(
+		store,
+		workbenchservice.NewGormSteerPort(storeDB(store), streams),
+		workbenchservice.NewGormCancelPort(storeDB(store)),
+		gate,
+		workbenchservice.NewGormRunRestartPort(storeDB(store), admission),
+	)
 }
 
 // storeDB is kept in the service constructor's dependency graph through the

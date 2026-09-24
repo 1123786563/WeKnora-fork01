@@ -446,6 +446,7 @@ type Service struct {
 	steer             SteerPort
 	cancel            CancelPort
 	approval          *approval.Gate
+	restart           RunRestartPort
 	remoteInteraction RemoteInteractionPort
 }
 
@@ -475,6 +476,17 @@ func NewInteractionServiceWithApproval(store InteractionStore, steer SteerPort, 
 	return &Service{store: store, steer: steer, cancel: cancel, approval: gate}
 }
 
+// NewInteractionServiceWithRestart installs the queue_next re-admission port.
+// A nil restart keeps queue_next fail-closed (capability_unavailable) — the
+// same discipline as a missing steer or cancel port.
+func NewInteractionServiceWithRestart(store InteractionStore, steer SteerPort, cancel CancelPort, gate *approval.Gate, restart RunRestartPort) *Service {
+	svc := NewInteractionServiceWithApproval(store, steer, cancel, gate)
+	if svc != nil {
+		svc.restart = restart
+	}
+	return svc
+}
+
 func identity(ctx context.Context) (uint64, string, error) {
 	tenant, ok := types.TenantIDFromContext(ctx)
 	if !ok || tenant == 0 {
@@ -496,6 +508,19 @@ func canonicalOwnerID(ctx context.Context, fallback string) string {
 		return principal.StorageID()
 	}
 	return strings.TrimSpace(fallback)
+}
+
+// runOwnerID is the owner projection for run-keyed commands (cancel/steer/
+// queue_next): agent_runs.owner_id is written by admission's contextIdentity
+// via UserIDFromContext, so the command predicate must read the same value.
+// The principal storage id (web_user:<id>) belongs to the interaction rows,
+// not to run rows — mixing them made cancel/steer never match web-admitted
+// runs (T37 difference record 6).
+func runOwnerID(ctx context.Context) string {
+	if uid, ok := types.UserIDFromContext(ctx); ok && strings.TrimSpace(uid) != "" {
+		return strings.TrimSpace(uid)
+	}
+	return canonicalOwnerID(ctx, "")
 }
 
 func (s *Service) List(ctx context.Context, runID string) ([]workbench.InteractionDecision, error) {
@@ -605,29 +630,57 @@ func (s *Service) Decide(ctx context.Context, id string, input workbench.Interac
 	return result, nil
 }
 
-func (s *Service) Command(ctx context.Context, runID string, command workbench.ExecutionCommand) error {
-	tenant, owner, err := identity(ctx)
+func (s *Service) Command(ctx context.Context, runID string, command workbench.ExecutionCommand) (workbench.CommandAck, error) {
+	tenant, _, err := identity(ctx) // tenant + actor existence (web_user:<id> synthesized from UserID when no principal)
 	if err != nil {
-		return err
+		return workbench.CommandAck{}, err
 	}
+	owner := runOwnerID(ctx)
 	if err := command.Validate(); err != nil {
-		return err
+		return workbench.CommandAck{}, err
 	}
 	if s == nil || strings.TrimSpace(runID) == "" {
-		return ErrInteractionNotFound
+		return workbench.CommandAck{}, ErrInteractionNotFound
 	}
 	switch command.Action {
 	case "cancel":
 		if s.cancel == nil {
-			return ErrCapabilityUnavailable
+			return workbench.CommandAck{}, ErrCapabilityUnavailable
 		}
-		return s.cancel.Cancel(ctx, tenant, owner, runID, command.ExpectedRevision)
+		if err := s.cancel.Cancel(ctx, tenant, owner, runID, command.ExpectedRevision); err != nil {
+			return workbench.CommandAck{}, err
+		}
+		return workbench.CommandAck{RunID: runID, Action: "cancel"}, nil
 	case "steer":
 		if s.steer == nil {
-			return ErrCapabilityUnavailable
+			return workbench.CommandAck{}, ErrCapabilityUnavailable
 		}
-		return s.steer.Steer(ctx, tenant, owner, runID, command.Text, command.ExpectedRevision)
+		if err := s.steer.Steer(ctx, tenant, owner, runID, command.Text, command.ExpectedRevision); err != nil {
+			return workbench.CommandAck{}, err
+		}
+		return workbench.CommandAck{RunID: runID, Action: "steer"}, nil
+	case "queue_next":
+		if s.restart == nil {
+			return workbench.CommandAck{}, ErrCapabilityUnavailable
+		}
+		next, err := s.restart.Restart(ctx, tenant, owner, runID, command.Text, queueNextRequestID(command), command.ExpectedRevision)
+		if err != nil {
+			return workbench.CommandAck{}, err
+		}
+		return workbench.CommandAck{RunID: runID, Action: "queue_next", NextRunID: next}, nil
 	default:
-		return workbench.ErrCommandActionMismatch
+		return workbench.CommandAck{}, workbench.ErrCommandActionMismatch
 	}
+}
+
+// queueNextRequestID derives the admission request id from the command's
+// idempotency id, so a network-retried queue_next reconciles onto the same
+// follow-up run (spec: every unknown-outcome command carries a durable
+// idempotency identity). The "queue-" prefix keeps the namespace disjoint
+// from start request ids in workbench_requests.
+func queueNextRequestID(command workbench.ExecutionCommand) string {
+	if id := strings.TrimSpace(command.ExternalPendingID); id != "" {
+		return "queue-" + id
+	}
+	return "queue-" + uuid.NewString()
 }
