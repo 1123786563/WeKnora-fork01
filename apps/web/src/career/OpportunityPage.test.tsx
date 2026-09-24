@@ -350,6 +350,80 @@ test('transient conversation evaluation timeout reconciles receipt then retries 
  assert.deepEqual(postIds, [originalRequestId, originalRequestId])
 })
 
+test('evaluation POST 403 clears an earlier saved JD, evaluation history, and pending intent', async () => {
+ let evalCount = 0
+ const container = await mountImport({
+  importOpportunity: async (input: { requestId: string }) => ({ ...receipt, requestId: input.requestId }),
+  evaluateOpportunity: async (input: { requestId: string }) => {
+   evalCount += 1
+   if (evalCount === 2) throw new ApiError({ code: 'forbidden', message: 'Forbidden' })
+   return { ...evaluation, requestId: input.requestId }
+  },
+ }).then((x) => x.container)
+ await act(async () => { setInput(container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, 'private earlier JD') })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '评估此 JD').click(); await settle() })
+ assert.ok(container.querySelector('a[href*="snapshotId="]'))
+ assert.ok(container.querySelector('a[href*="/evaluations/"]'))
+ await act(async () => { byLabel(container, 'button', '重新评估当前档案').click(); await settle() })
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')?.value, '')
+ assert.doesNotMatch(container.textContent ?? '', /private earlier JD|查看已保存的 JD 证据|查看评估结果|资格判断：/)
+ assert.equal(container.querySelector('a[href*="snapshotId="]'), null)
+ assert.equal(container.querySelector('a[href*="/evaluations/"]'), null)
+ assert.match(container.textContent ?? '', /当前空间不可访问此评估/)
+})
+
+test('evaluation receipt lookup 403 clears an earlier saved JD and evaluation history', async () => {
+ let evalCount = 0
+ const container = await mountImport({
+  importOpportunity: async (input: { requestId: string }) => ({ ...receipt, requestId: input.requestId }),
+  evaluateOpportunity: async (input: { requestId: string }) => {
+   evalCount += 1
+   if (evalCount === 2) throw new ApiError({ code: 'TIMEOUT', message: 'Request timed out' })
+   return { ...evaluation, requestId: input.requestId }
+  },
+  evaluationReceipt: async () => { throw new ApiError({ code: 'forbidden', message: 'Forbidden' }) },
+ }).then((x) => x.container)
+ await act(async () => { setInput(container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, 'private earlier JD') })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '评估此 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '重新评估当前档案').click(); await settle() })
+ assert.ok(container.querySelector('a[href*="snapshotId="]'))
+ assert.ok(container.querySelector('a[href*="/evaluations/"]'))
+ await act(async () => { byLabel(container, 'button', '查询评估回执').click(); await settle() })
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')?.value, '')
+ assert.doesNotMatch(container.textContent ?? '', /private earlier JD|查看已保存的 JD 证据|查看评估结果|资格判断：/)
+ assert.equal(container.querySelector('a[href*="snapshotId="]'), null)
+ assert.equal(container.querySelector('a[href*="/evaluations/"]'), null)
+ assert.match(container.textContent ?? '', /当前空间不可访问此评估/)
+})
+
+test('a late evaluation response after scope change cannot restore cleared conversation state', async () => {
+ let evalCount = 0
+ let resolveLate!: (value: EvaluationReceipt) => void
+ const scope = createScopeController({ origin: 'https://weknora.test', userId: 'u', tenantId: 't' })
+ const { container } = await mountImport({
+  importOpportunity: async (input: { requestId: string }) => ({ ...receipt, requestId: input.requestId }),
+  evaluateOpportunity: async (input: { requestId: string }) => {
+   evalCount += 1
+   if (evalCount === 1) return { ...evaluation, requestId: input.requestId }
+   return new Promise<EvaluationReceipt>((resolve) => { resolveLate = resolve })
+  },
+ }, scope)
+ await act(async () => { setInput(container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')!, 'private earlier JD') })
+ await act(async () => { byLabel(container, 'button', '保存 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '评估此 JD').click(); await settle() })
+ await act(async () => { byLabel(container, 'button', '重新评估当前档案').click() })
+ scope.switchScope('https://weknora.test', 'u2', 't2')
+ await act(async () => { await settle() })
+ resolveLate({ ...evaluation, requestId: 'late-evaluation-request', evaluationId: 'evaluation-late' })
+ await act(async () => { await settle() })
+ assert.equal(container.querySelector<HTMLTextAreaElement>('[aria-label="职位描述"]')?.value, '')
+ assert.doesNotMatch(container.textContent ?? '', /private earlier JD|查看已保存的 JD 证据|查看评估结果|资格判断：/)
+ assert.equal(container.querySelector('a[href*="snapshotId="]'), null)
+ assert.equal(container.querySelector('a[href*="/evaluations/"]'), null)
+})
+
 test('stable evidence evaluation timeout reuses the same intent after a not-found receipt', async () => {
  const postIds: string[] = []
  const lookupIds: string[] = []

@@ -46,10 +46,11 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
 
  const clearPrivate = useCallback((notice: string, nextState: 'forbidden' | 'scope-changed' = 'forbidden') => {
   setDraft(''); setSourceLabel(''); setSourceReference(''); setAttempt(undefined); setReceipt(undefined); setState(nextState); setMessage(notice)
+  setEvaluationReceipt(undefined); setEvaluationReceipts([]); setEvaluationRequestId(''); setEvaluationState('idle'); setEvaluationMessage('')
  }, [])
  useEffect(() => {
   const activeScope = scopeController.current()
-  const clear = () => { clearPrivate('空间已切换或登录已失效，已清除职位描述。', 'scope-changed'); setEvaluationReceipt(undefined); setEvaluationReceipts([]); setEvaluationRequestId(''); setEvaluationState('idle'); setEvaluationMessage('') }
+  const clear = () => clearPrivate('空间已切换或登录已失效，已清除职位描述。', 'scope-changed')
   activeScope.signal?.addEventListener('abort', clear, { once: true })
   return () => activeScope.signal?.removeEventListener('abort', clear)
  }, [clearPrivate, scopeController, scope.scope.generation])
@@ -121,7 +122,7 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
-   if (parsed.code === 'forbidden') { setEvaluationReceipt(undefined); setEvaluationState('error'); setEvaluationMessage('当前空间不可访问此评估。') }
+   if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此评估。'); return }
    else if (isUncertainWrite(cause)) { setEvaluationState('unknown'); setEvaluationMessage('暂时无法确认评估是否已保存。请先查询原请求回执，再决定是否使用同一编号重试。') }
    else { setEvaluationState('error'); setEvaluationMessage('评估未完成。请检查档案和职位快照后重试。') }
   } finally { evaluationInFlight.current = false }
@@ -139,7 +140,7 @@ export function OpportunityImportPanel({ client, scopeController }: { client: We
   } catch (cause) {
    if (!scopeController.isCurrent(requestScope.scope)) return
    const parsed = errorDetails(cause)
-   if (parsed.code === 'forbidden') { setEvaluationReceipt(undefined); setEvaluationState('error'); setEvaluationMessage('当前空间不可访问此评估。') }
+   if (parsed.code === 'forbidden') { clearPrivate('当前空间不可访问此评估。'); return }
    else { setEvaluationState('unknown'); setEvaluationMessage(parsed.code === 'not_found' ? '尚未找到评估回执。可使用原请求编号重试。' : '评估回执暂时无法读取。原请求编号已保留。') }
   } finally { evaluationInFlight.current = false }
  }
