@@ -268,10 +268,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Knowledgebase search storegroup (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/parser_url_security.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Parser url security (application/service)
-    passb_task: B-knowledge
   - path: internal/application/service/semantic_model.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Semantic model (application/service)
@@ -335,14 +331,6 @@ legacy_files:
   - path: internal/application/service/wiki_slug_handles.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Wiki slug handles (application/service)
-    passb_task: B-knowledge
-  - path: internal/handler/chunk.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Chunk (handler)
-    passb_task: B-knowledge
-  - path: internal/handler/chunker_debug.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Chunker debug (handler)
     passb_task: B-knowledge
   - path: internal/handler/faq.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)

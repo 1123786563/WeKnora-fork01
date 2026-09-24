@@ -1,4 +1,4 @@
-package handler
+package ingest
 
 import (
 	"bytes"
@@ -211,7 +211,7 @@ func TestPreviewChunking_ParentChildMatchesIngestion(t *testing.T) {
 	}
 	w, parsed := postPreview(t, PreviewChunkingRequest{Text: text, ChunkingConfig: payload})
 	if w.Code != http.StatusOK {
-		t.Fatalf("status %d body=%s", w.Code, w.Body.String())
+		t.Fatalf("status %d", w.Code)
 	}
 
 	base := chunker.NormalizeSplitterConfig(chunker.SplitterConfig{
@@ -253,7 +253,7 @@ func TestPreviewChunking_SingleLevelUnchanged(t *testing.T) {
 	}
 	w, parsed := postPreview(t, PreviewChunkingRequest{Text: text, ChunkingConfig: payload})
 	if w.Code != http.StatusOK {
-		t.Fatalf("status %d body=%s", w.Code, w.Body.String())
+		t.Fatalf("status %d", w.Code)
 	}
 
 	want, _ := chunker.SplitWithDiagnostics(text, chunker.NormalizeSplitterConfig(chunker.SplitterConfig{
@@ -280,7 +280,7 @@ func TestPreviewChunking_ParentChildDefaultSizes(t *testing.T) {
 	}
 	w, parsed := postPreview(t, PreviewChunkingRequest{Text: text, ChunkingConfig: payload})
 	if w.Code != http.StatusOK {
-		t.Fatalf("status %d body=%s", w.Code, w.Body.String())
+		t.Fatalf("status %d", w.Code)
 	}
 
 	base := chunker.NormalizeSplitterConfig(chunker.SplitterConfig{
@@ -321,7 +321,7 @@ func TestPreviewChunking_LineEndingsMatchUpload(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			w, parsed := postPreview(t, PreviewChunkingRequest{Text: text, ChunkingConfig: payload})
 			if w.Code != http.StatusOK {
-				t.Fatalf("status %d body=%s", w.Code, w.Body.String())
+				t.Fatalf("status %d", w.Code)
 			}
 			data := parsed["data"].(map[string]any)
 			preview := data["chunks"].([]any)
