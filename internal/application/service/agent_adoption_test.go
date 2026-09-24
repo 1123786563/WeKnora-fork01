@@ -221,3 +221,40 @@ func TestAgentAdoptionServicePublishRefusesTamperedRelease(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match its recorded digest")
 }
+
+// TestBuildLocalAgentModelSelectionIsOrderIndependent pins the explicit
+// model-selection rule of buildLocalAgent: when several capability mappings
+// each carry a model, the binding of the lexicographically smallest
+// capability wins, regardless of the order the mappings arrive in. The rule
+// used to be implicit in ListCapabilityMappings' capability ASC ordering;
+// it must not depend on it.
+func TestBuildLocalAgentModelSelectionIsOrderIndependent(t *testing.T) {
+	variant := &types.AgentAdoptionVariantEntity{Name: "Helper"}
+	payload := types.AgentReleasePayload{AgentMode: "quick-answer"}
+	manifest := types.AgentReleaseManifest{ReleaseMetadata: types.ReleaseMetadata{Summary: "s"}}
+	// Reverse of the repository's capability ASC order: the smallest
+	// capability carrying a model is "knowledge".
+	reverseOrder := []types.AgentVariantCapabilityMappingEntity{
+		{Capability: "tool-search", ModelID: " model-tool ", KnowledgeBaseIDs: `["kb-tool"]`},
+		{Capability: "knowledge", ModelID: "model-knowledge", KnowledgeBaseIDs: `["kb-1"]`},
+		{Capability: "vision", KnowledgeBaseIDs: `["kb-vision"]`},
+	}
+	ascOrder := []types.AgentVariantCapabilityMappingEntity{reverseOrder[1], reverseOrder[2], reverseOrder[0]}
+
+	built := buildLocalAgent(variant, payload, manifest, reverseOrder)
+	require.Equal(t, "model-knowledge", built.Config.ModelID, "the smallest capability with a model wins even when rows arrive unordered")
+	require.Equal(t, "model-knowledge", buildLocalAgent(variant, payload, manifest, ascOrder).Config.ModelID, "selection is identical under the repository's ASC order")
+
+	// Every knowledge binding is accumulated regardless of order, and the
+	// model-less capability contributes no model.
+	require.ElementsMatch(t, []string{"kb-1", "kb-tool", "kb-vision"}, built.Config.KnowledgeBases)
+	require.Equal(t, "Helper", built.Name)
+	require.Equal(t, "quick-answer", built.Config.AgentMode)
+
+	// With a single model-bearing mapping the selection is that model,
+	// whitespace-trimmed, and an all-model-less variant builds no model.
+	onlyTool := []types.AgentVariantCapabilityMappingEntity{reverseOrder[0]}
+	require.Equal(t, "model-tool", buildLocalAgent(variant, payload, manifest, onlyTool).Config.ModelID)
+	noModel := []types.AgentVariantCapabilityMappingEntity{reverseOrder[2], {Capability: "web", KnowledgeBaseIDs: `["kb-web"]`}}
+	require.Empty(t, buildLocalAgent(variant, payload, manifest, noModel).Config.ModelID)
+}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -53,22 +54,16 @@ func NewAgentAdoptionRepository(db *gorm.DB) AgentAdoptionRepository {
 
 // AdoptListing inserts the (tenant, listing)-unique Adoption or returns the
 // existing row; re-adopting with a different release advances the accepted
-// pointer (spec §8 step 3 "建立或更新 Adoption").
+// pointer (spec §8 step 3 "建立或更新 Adoption"). Concurrent first adopts
+// converge: when two requests race past the missing-row check, the insert
+// that loses to uq_agent_adoptions_scope falls back to the existing row and
+// reconciles the accepted pointer, so both callers get an idempotent result
+// instead of a unique-index error.
 func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *types.AgentAdoptionEntity) (*types.AgentAdoptionEntity, bool, error) {
 	var existing types.AgentAdoptionEntity
 	err := r.db.WithContext(ctx).Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&existing).Error
 	if err == nil {
-		if existing.AcceptedReleaseID == adoption.AcceptedReleaseID {
-			return &existing, false, nil
-		}
-		existing.AcceptedReleaseID = adoption.AcceptedReleaseID
-		existing.UpdatedAt = time.Now().UTC()
-		if err := r.db.WithContext(ctx).Model(&types.AgentAdoptionEntity{}).
-			Where("tenant_id = ? AND id = ?", existing.TenantID, existing.ID).
-			Updates(map[string]any{"accepted_release_id": existing.AcceptedReleaseID, "updated_at": existing.UpdatedAt}).Error; err != nil {
-			return nil, false, err
-		}
-		return &existing, false, nil
+		return r.reconcileAdoption(ctx, &existing, adoption.AcceptedReleaseID)
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, false, err
@@ -80,10 +75,37 @@ func (r *agentAdoptionRepository) AdoptListing(ctx context.Context, adoption *ty
 	if created.State == "" {
 		created.State = "active"
 	}
-	if err := r.db.WithContext(ctx).Create(&created).Error; err != nil {
+	inserted := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&created)
+	if inserted.Error != nil {
+		return nil, false, inserted.Error
+	}
+	if inserted.RowsAffected == 1 {
+		return &created, true, nil
+	}
+	// Lost the race to uq_agent_adoptions_scope: re-read the winner's row
+	// and reconcile, exactly like a sequential re-adopt.
+	var winner types.AgentAdoptionEntity
+	if err := r.db.WithContext(ctx).Where("tenant_id = ? AND listing_id = ?", adoption.TenantID, adoption.ListingID).First(&winner).Error; err != nil {
 		return nil, false, err
 	}
-	return &created, true, nil
+	return r.reconcileAdoption(ctx, &winner, adoption.AcceptedReleaseID)
+}
+
+// reconcileAdoption is the shared existing-row path: an Adoption accepted at
+// the same Release returns as-is; a different Release advances the accepted
+// pointer (last write wins, matching sequential adopt semantics).
+func (r *agentAdoptionRepository) reconcileAdoption(ctx context.Context, existing *types.AgentAdoptionEntity, acceptedReleaseID string) (*types.AgentAdoptionEntity, bool, error) {
+	if existing.AcceptedReleaseID == acceptedReleaseID {
+		return existing, false, nil
+	}
+	existing.AcceptedReleaseID = acceptedReleaseID
+	existing.UpdatedAt = time.Now().UTC()
+	if err := r.db.WithContext(ctx).Model(&types.AgentAdoptionEntity{}).
+		Where("tenant_id = ? AND id = ?", existing.TenantID, existing.ID).
+		Updates(map[string]any{"accepted_release_id": existing.AcceptedReleaseID, "updated_at": existing.UpdatedAt}).Error; err != nil {
+		return nil, false, err
+	}
+	return existing, false, nil
 }
 
 func (r *agentAdoptionRepository) GetAdoption(ctx context.Context, tenantID uint64, adoptionID string) (*types.AgentAdoptionEntity, error) {

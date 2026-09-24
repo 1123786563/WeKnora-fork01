@@ -474,13 +474,26 @@ func encodeIDList(ids []string) string {
 // Variant's local capability mapping into a local Agent Definition draft.
 // The payload never carries KB/model bindings (T28 allow-list boundary);
 // every local binding here comes from the mapping rows.
+//
+// Model selection is an explicit, order-independent rule: when several
+// mappings each carry a model, the binding of the lexicographically
+// smallest capability name wins. (ListCapabilityMappings already returns
+// rows ordered capability ASC, so this reproduces the historical "first
+// non-empty ModelID" outcome while staying deterministic even for
+// unordered input.)
 func buildLocalAgent(variant *types.AgentAdoptionVariantEntity, payload types.AgentReleasePayload, manifest types.AgentReleaseManifest, mappings []types.AgentVariantCapabilityMappingEntity) *types.CustomAgent {
 	knowledgeBases := []string{}
 	modelID := ""
+	modelCapability := ""
 	for _, mapping := range mappings {
 		knowledgeBases = append(knowledgeBases, decodeIDList(mapping.KnowledgeBaseIDs)...)
-		if modelID == "" {
-			modelID = strings.TrimSpace(mapping.ModelID)
+		trimmed := strings.TrimSpace(mapping.ModelID)
+		if trimmed == "" {
+			continue
+		}
+		if modelID == "" || mapping.Capability < modelCapability {
+			modelID = trimmed
+			modelCapability = mapping.Capability
 		}
 	}
 	config := types.CustomAgentConfig{
