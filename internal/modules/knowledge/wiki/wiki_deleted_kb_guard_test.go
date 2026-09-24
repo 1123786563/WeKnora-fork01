@@ -1,4 +1,4 @@
-package service
+package wiki
 
 import (
 	"context"
@@ -6,13 +6,26 @@ import (
 	"errors"
 	"testing"
 
-	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// errKBDeletedStandin 模拟宿主 repository.ErrKnowledgeBaseNotFound 哨兵。
+// K3.1 后 wiki 包不再 import 宿主 repository（与 repo 侧 escapeLikePattern
+// 转发 shim 成环），生产判定经 Seams.IsKnowledgeBaseNotFound 注入
+// errors.Is(err, repository.ErrKnowledgeBaseNotFound)；本测试以同构的
+// errors.Is 匹配保持等价覆盖。
+var errKBDeletedStandin = errors.New("knowledge base not found (standin)")
+
+// guardTestSeams 返回与 W2 生产接线同构的 KB-not-found 判定 seam。
+func guardTestSeams() Seams {
+	return Seams{IsKnowledgeBaseNotFound: func(err error) bool {
+		return errors.Is(err, errKBDeletedStandin)
+	}}
+}
 
 type wikiKBGuardPendingRepo struct {
 	interfaces.TaskPendingOpsRepository
@@ -143,8 +156,9 @@ func TestWikiHandlersDrainDeletedKnowledgeBaseQueue(t *testing.T) {
 				rows: []*types.TaskPendingOp{{ID: 1, ScopeID: "kb-deleted"}},
 			}
 			svc := &wikiIngestService{
-				kbService:   &wikiGuardKBService{err: apprepo.ErrKnowledgeBaseNotFound},
+				kbService:   &wikiGuardKBService{err: errKBDeletedStandin},
 				pendingRepo: repo,
+				seams:       guardTestSeams(),
 			}
 
 			err := svc.Handle(context.Background(), asynq.NewTask(taskType, payload))
@@ -161,8 +175,9 @@ func TestWikiDeletedKnowledgeBaseCleanupFailureRetries(t *testing.T) {
 	wantErr := errors.New("cleanup failed")
 	repo := &wikiKBGuardPendingRepo{deleteErr: wantErr}
 	svc := &wikiIngestService{
-		kbService:   &wikiGuardKBService{err: apprepo.ErrKnowledgeBaseNotFound},
+		kbService:   &wikiGuardKBService{err: errKBDeletedStandin},
 		pendingRepo: repo,
+		seams:       guardTestSeams(),
 	}
 
 	err = svc.ProcessWikiIngest(

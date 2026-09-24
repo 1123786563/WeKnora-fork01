@@ -17,7 +17,6 @@
 | `internal/application/repository/semantic_outbox.go` | Semantic outbox (application/repository) | `B-knowledge` |
 | `internal/application/repository/semantic_scope_epoch.go` | Semantic scope epoch (application/repository) | `B-knowledge` |
 | `internal/application/repository/tag.go` | Tag (application/repository) | `B-knowledge` |
-| `internal/application/repository/wiki_page.go` | Wiki page (application/repository) | `B-knowledge` |
 | `internal/application/service/chunk.go` | Chunk (application/service) | `B-knowledge` |
 | `internal/application/service/chunk_write.go` | Chunk write (application/service) | `B-knowledge` |
 | `internal/application/service/extract.go` | Extract (application/service) | `B-knowledge` |
@@ -67,15 +66,6 @@
 | `internal/application/service/slug_fuzzy.go` | Slug fuzzy (application/service) | `B-knowledge` |
 | `internal/application/service/tag.go` | Tag (application/service) | `B-knowledge` |
 | `internal/application/service/tag_access.go` | Tag access (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest.go` | Wiki ingest (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest_batch.go` | Wiki ingest batch (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest_cite.go` | Wiki ingest cite (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest_dedup.go` | Wiki ingest dedup (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_ingest_taxonomy.go` | Wiki ingest taxonomy (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_linkify.go` | Wiki linkify (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_lint.go` | Wiki lint (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_page.go` | Wiki page (application/service) | `B-knowledge` |
-| `internal/application/service/wiki_slug_handles.go` | Wiki slug handles (application/service) | `B-knowledge` |
 | `internal/handler/chunk.go` | Chunk (handler) | `B-knowledge` |
 | `internal/handler/chunker_debug.go` | Chunker debug (handler) | `B-knowledge` |
 | `internal/handler/faq.go` | Faq (handler) | `B-knowledge` |
@@ -85,7 +75,5 @@
 | `internal/handler/knowledgebase.go` | Knowledgebase (handler) | `B-knowledge` |
 | `internal/handler/semantic_internal.go` | Semantic internal (handler) | `B-knowledge` |
 | `internal/handler/semantic_model_policy.go` | Semantic model policy (handler) | `B-knowledge` |
-| `internal/handler/session/wiki_fixer_scope.go` | Wiki fixer scope (handler/session) | `B-knowledge` |
 | `internal/handler/tag.go` | Tag (handler) | `B-knowledge` |
 | `internal/handler/task_progress_auth.go` | Task progress auth (handler) | `B-knowledge` |
-| `internal/handler/wiki_page.go` | Wiki page (handler) | `B-knowledge` |

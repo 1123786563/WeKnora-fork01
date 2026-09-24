@@ -1,4 +1,4 @@
-package service
+package wiki
 
 import (
 	"context"
@@ -58,6 +58,10 @@ type WikiLintService struct {
 	wikiService      interfaces.WikiPageService
 	kbService        interfaces.KnowledgeBaseService
 	knowledgeService interfaces.KnowledgeService
+	// seams carries the Pass B (23-knowledge-wikifaq W0) injection port to
+	// the host-package removeSourceRef (K4 owner, pre-ib2). Wired by the
+	// host ctor compat layer (W2).
+	seams Seams
 }
 
 // NewWikiLintService creates a new wiki lint service
@@ -65,11 +69,13 @@ func NewWikiLintService(
 	wikiService interfaces.WikiPageService,
 	kbService interfaces.KnowledgeBaseService,
 	knowledgeService interfaces.KnowledgeService,
+	seams Seams,
 ) *WikiLintService {
 	return &WikiLintService{
 		wikiService:      wikiService,
 		kbService:        kbService,
 		knowledgeService: knowledgeService,
+		seams:            seams,
 	}
 }
 
@@ -406,7 +412,7 @@ func (s *WikiLintService) AutoFix(ctx context.Context, kbID string) (int, error)
 			if page.PageType == types.WikiPageTypeIndex {
 				continue
 			}
-			remaining := removeSourceRef(page.SourceRefs, issue.TargetSlug)
+			remaining := s.seams.RemoveSourceRef(page.SourceRefs, issue.TargetSlug)
 			if len(remaining) == 0 {
 				if err := s.wikiService.DeletePage(ctx, kbID, page.Slug); err == nil {
 					fixed++

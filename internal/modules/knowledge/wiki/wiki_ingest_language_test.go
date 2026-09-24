@@ -1,4 +1,4 @@
-package service
+package wiki
 
 import (
 	"context"
@@ -28,9 +28,9 @@ func TestNewWikiIngestPendingOpPersistsResolvedLanguage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pendingOp, err := newWikiIngestPendingOp(tt.ctx, 7, "kb-1", "knowledge-1")
+			pendingOp, err := NewWikiIngestPendingOp(tt.ctx, 7, "kb-1", "knowledge-1")
 			if err != nil {
-				t.Fatalf("newWikiIngestPendingOp() error = %v", err)
+				t.Fatalf("NewWikiIngestPendingOp() error = %v", err)
 			}
 			var op WikiPendingOp
 			if err := json.Unmarshal(pendingOp.Payload, &op); err != nil {

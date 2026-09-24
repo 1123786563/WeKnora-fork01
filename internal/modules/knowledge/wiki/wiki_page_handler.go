@@ -1,4 +1,4 @@
-package handler
+package wiki
 
 import (
 	"context"
@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
-	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -22,25 +20,32 @@ import (
 type WikiPageHandler struct {
 	wikiService   interfaces.WikiPageService
 	kbService     interfaces.KnowledgeBaseService
-	lintService   *service.WikiLintService
+	lintService   *WikiLintService
 	auditService  interfaces.AuditLogService
 	memoryService interfaces.MemoryService
+	// recordWikiContentActivity is the Pass B (23-knowledge-wikifaq W0)
+	// injection port to the host-package K2 symbol
+	// service.RecordWikiContentActivity. Wired by the host compat layer
+	// (H1); nil leaves manual activity projection off (best-effort).
+	recordWikiContentActivity RecordWikiContentActivityFn
 }
 
 // NewWikiPageHandler creates a new wiki page handler
 func NewWikiPageHandler(
 	wikiService interfaces.WikiPageService,
 	kbService interfaces.KnowledgeBaseService,
-	lintService *service.WikiLintService,
+	lintService *WikiLintService,
 	auditService interfaces.AuditLogService,
 	memoryService interfaces.MemoryService,
+	recordWikiContentActivity RecordWikiContentActivityFn,
 ) *WikiPageHandler {
 	return &WikiPageHandler{
-		wikiService:   wikiService,
-		kbService:     kbService,
-		lintService:   lintService,
-		auditService:  auditService,
-		memoryService: memoryService,
+		wikiService:              wikiService,
+		kbService:                kbService,
+		lintService:              lintService,
+		auditService:             auditService,
+		memoryService:            memoryService,
+		recordWikiContentActivity: recordWikiContentActivity,
 	}
 }
 
@@ -252,8 +257,8 @@ func (h *WikiPageHandler) UpdateFolder(c *gin.Context) {
 // @Summary      Delete an empty wiki folder
 // @Description  Delete a folder that has no pages and no child folders
 // @Tags         Wiki
-// @Param        kb_id     path  string  true  "Knowledge base ID"
-// @Param        folder_id path  string  true  "Folder ID"
+// @Param        kb_id     path  string  true   "Knowledge base ID"
+// @Param        folder_id path  string  true   "Folder ID"
 // @Success      204
 // @Failure      400  {object}  errors.AppError
 // @Failure      404  {object}  errors.AppError
@@ -316,9 +321,9 @@ func (h *WikiPageHandler) MovePage(c *gin.Context) {
 // writeWikiFolderError maps folder/page service errors to HTTP status codes.
 func writeWikiFolderError(c *gin.Context, err error) {
 	switch {
-	case stderrors.Is(err, repository.ErrWikiFolderNotFound), stderrors.Is(err, repository.ErrWikiPageNotFound):
+	case stderrors.Is(err, ErrWikiFolderNotFound), stderrors.Is(err, ErrWikiPageNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case stderrors.Is(err, repository.ErrWikiFolderConflict), stderrors.Is(err, repository.ErrWikiFolderNotEmpty):
+	case stderrors.Is(err, ErrWikiFolderConflict), stderrors.Is(err, ErrWikiFolderNotEmpty):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -395,10 +400,10 @@ func (h *WikiPageHandler) CreatePage(c *gin.Context) {
 func (h *WikiPageHandler) recordManualWikiActivity(
 	ctx context.Context, page *types.WikiPage, action string,
 ) {
-	if page == nil {
+	if page == nil || h.recordWikiContentActivity == nil {
 		return
 	}
-	service.RecordWikiContentActivity(ctx, h.auditService, page.TenantID,
+	h.recordWikiContentActivity(ctx, h.auditService, page.TenantID,
 		page.KnowledgeBaseID, map[string]int{action: 1})
 }
 
@@ -428,7 +433,7 @@ func (h *WikiPageHandler) GetPage(c *gin.Context) {
 
 	page, err := h.wikiService.GetPageBySlug(c.Request.Context(), kbID, slug)
 	if err != nil {
-		if stderrors.Is(err, repository.ErrWikiPageNotFound) {
+		if stderrors.Is(err, ErrWikiPageNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
 			return
 		}
@@ -481,7 +486,7 @@ func (h *WikiPageHandler) UpdatePage(c *gin.Context) {
 
 	existing, err := h.wikiService.GetPageBySlug(ctx, kbID, slug)
 	if err != nil {
-		if stderrors.Is(err, repository.ErrWikiPageNotFound) {
+		if stderrors.Is(err, ErrWikiPageNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
 			return
 		}
@@ -530,9 +535,9 @@ func (h *WikiPageHandler) UpdatePage(c *gin.Context) {
 	updated, err := h.wikiService.UpdatePage(ctx, &page)
 	if err != nil {
 		switch {
-		case stderrors.Is(err, repository.ErrWikiPageNotFound):
+		case stderrors.Is(err, ErrWikiPageNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
-		case stderrors.Is(err, repository.ErrWikiPageConflict):
+		case stderrors.Is(err, ErrWikiPageConflict):
 			c.JSON(http.StatusConflict, gin.H{"error": "Wiki page was modified by someone else"})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -585,7 +590,7 @@ func (h *WikiPageHandler) ListRevisions(c *gin.Context) {
 		}
 		rev, err := h.wikiService.GetRevision(ctx, kbID, slug, version)
 		if err != nil {
-			if stderrors.Is(err, repository.ErrWikiPageNotFound) {
+			if stderrors.Is(err, ErrWikiPageNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page revision not found"})
 				return
 			}
@@ -610,7 +615,7 @@ func (h *WikiPageHandler) ListRevisions(c *gin.Context) {
 
 	resp, err := h.wikiService.ListRevisions(ctx, kbID, slug, limit, offset)
 	if err != nil {
-		if stderrors.Is(err, repository.ErrWikiPageNotFound) {
+		if stderrors.Is(err, ErrWikiPageNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
 			return
 		}
@@ -629,7 +634,7 @@ func (h *WikiPageHandler) ListRevisions(c *gin.Context) {
 // @Tags         Wiki
 // @Accept       json
 // @Produce      json
-// @Param        kb_id   path  string                       true  "Knowledge base ID"
+// @Param        kb_id   path  string                       true   "Knowledge base ID"
 // @Param        revert  body  types.WikiPageRevertRequest  true  "Revert target"
 // @Success      200  {object}  types.WikiPage
 // @Failure      400  {object}  errors.AppError
@@ -663,11 +668,11 @@ func (h *WikiPageHandler) RevertPage(c *gin.Context) {
 	updated, err := h.wikiService.RevertPageToVersion(ctx, kbID, slug, req.Version)
 	if err != nil {
 		switch {
-		case stderrors.Is(err, repository.ErrWikiPageNotFound):
+		case stderrors.Is(err, ErrWikiPageNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page or revision not found"})
-		case stderrors.Is(err, repository.ErrWikiPageConflict):
+		case stderrors.Is(err, ErrWikiPageConflict):
 			c.JSON(http.StatusConflict, gin.H{"error": "Wiki page was modified by someone else"})
-		case stderrors.Is(err, service.ErrWikiRevertToCurrentVersion):
+		case stderrors.Is(err, ErrWikiRevertToCurrentVersion):
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -707,7 +712,7 @@ func (h *WikiPageHandler) DeletePage(c *gin.Context) {
 	page, _ := h.wikiService.GetPageBySlug(ctx, kbID, slug)
 
 	if err := h.wikiService.DeletePage(ctx, kbID, slug); err != nil {
-		if stderrors.Is(err, repository.ErrWikiPageNotFound) {
+		if stderrors.Is(err, ErrWikiPageNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
 			return
 		}
@@ -789,7 +794,7 @@ const (
 // @Description  size tractable for knowledge bases with tens of thousands of pages.
 // @Tags         Wiki
 // @Produce      json
-// @Param        kb_id   path  string  true   "Knowledge base ID"
+// @Param        kb_id   path   string  true   "Knowledge base ID"
 // @Param        mode    query string  false  "overview (default) | ego"
 // @Param        center  query string  false  "Center slug for ego mode"
 // @Param        depth   query int     false  "Ego BFS depth (1-3, default 1)"
@@ -882,7 +887,7 @@ func (h *WikiPageHandler) GetGraph(c *gin.Context) {
 // @Description  Returns aggregate statistics about the wiki
 // @Tags         Wiki
 // @Produce      json
-// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        kb_id  path  string  true   "Knowledge base ID"
 // @Success      200  {object}  types.WikiStats
 // @Security     Bearer
 // @Router       /knowledgebase/{kb_id}/wiki/stats [get]
@@ -1019,7 +1024,7 @@ func (h *WikiPageHandler) SearchPages(c *gin.Context) {
 // @Summary      Rebuild wiki links
 // @Description  Re-parse all pages and rebuild bidirectional link references
 // @Tags         Wiki
-// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        kb_id  path  string  true   "Knowledge base ID"
 // @Success      200  {object}  map[string]string
 // @Security     Bearer
 // @Router       /knowledgebase/{kb_id}/wiki/rebuild-links [post]
@@ -1043,8 +1048,8 @@ func (h *WikiPageHandler) RebuildLinks(c *gin.Context) {
 // @Description  Perform a comprehensive health check on the wiki
 // @Tags         Wiki
 // @Produce      json
-// @Param        kb_id  path  string  true  "Knowledge base ID"
-// @Success      200  {object}  service.WikiLintReport
+// @Param        kb_id  path  string  true   "Knowledge base ID"
+// @Success      200  {object}  WikiLintReport
 // @Security     Bearer
 // @Router       /knowledgebase/{kb_id}/wiki/lint [get]
 func (h *WikiPageHandler) Lint(c *gin.Context) {
@@ -1068,7 +1073,7 @@ func (h *WikiPageHandler) Lint(c *gin.Context) {
 // @Description  Automatically fix fixable wiki issues (broken links, etc.)
 // @Tags         Wiki
 // @Produce      json
-// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        kb_id  path  string  true   "Knowledge base ID"
 // @Success      200  {object}  map[string]interface{}
 // @Security     Bearer
 // @Router       /knowledgebase/{kb_id}/wiki/auto-fix [post]

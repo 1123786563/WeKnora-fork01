@@ -1,4 +1,4 @@
-package session
+package wiki
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func TestResolveBuiltinWikiFixerTenantScope_SharedEditorUsesSourceTenant(t *test
 		isShared:   true,
 	}
 
-	gotAgent, effectiveTenantID := resolveBuiltinWikiFixerTenantScope(
+	gotAgent, effectiveTenantID := ResolveBuiltinWikiFixerTenantScope(
 		context.Background(),
 		agent,
 		10,
@@ -81,7 +81,7 @@ func TestResolveBuiltinWikiFixerTenantScope_SharedViewerDoesNotSwitchTenant(t *t
 		isShared:   true,
 	}
 
-	gotAgent, effectiveTenantID := resolveBuiltinWikiFixerTenantScope(
+	gotAgent, effectiveTenantID := ResolveBuiltinWikiFixerTenantScope(
 		context.Background(),
 		agent,
 		10,
@@ -106,7 +106,7 @@ func TestResolveBuiltinWikiFixerTenantScope_IgnoresNonWikiFixerAgents(t *testing
 		isShared:   true,
 	}
 
-	gotAgent, effectiveTenantID := resolveBuiltinWikiFixerTenantScope(
+	gotAgent, effectiveTenantID := ResolveBuiltinWikiFixerTenantScope(
 		context.Background(),
 		agent,
 		10,
@@ -127,7 +127,7 @@ func TestResolveBuiltinWikiFixerTenantScope_RequiresSingleKnowledgeBase(t *testi
 		kb: &types.KnowledgeBase{ID: "kb-shared", TenantID: 20},
 	}
 
-	gotAgent, effectiveTenantID := resolveBuiltinWikiFixerTenantScope(
+	gotAgent, effectiveTenantID := ResolveBuiltinWikiFixerTenantScope(
 		context.Background(),
 		agent,
 		10,
@@ -146,7 +146,7 @@ func TestResolveBuiltinWikiFixerTenantScope_FallsBackOnLookupOrPermissionErrors(
 	agent := &types.CustomAgent{ID: types.BuiltinWikiFixerID, TenantID: 10}
 
 	t.Run("kb lookup error", func(t *testing.T) {
-		gotAgent, effectiveTenantID := resolveBuiltinWikiFixerTenantScope(
+		gotAgent, effectiveTenantID := ResolveBuiltinWikiFixerTenantScope(
 			context.Background(),
 			agent,
 			10,
@@ -161,7 +161,7 @@ func TestResolveBuiltinWikiFixerTenantScope_FallsBackOnLookupOrPermissionErrors(
 	})
 
 	t.Run("permission check error", func(t *testing.T) {
-		gotAgent, effectiveTenantID := resolveBuiltinWikiFixerTenantScope(
+		gotAgent, effectiveTenantID := ResolveBuiltinWikiFixerTenantScope(
 			context.Background(),
 			agent,
 			10,

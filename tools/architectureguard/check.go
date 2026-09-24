@@ -105,6 +105,83 @@ type importException struct {
 // 前缀或子串匹配；一条豁免只压制该精确 file→package 对的 forbidden-import。
 var importExceptions = []importException{
 	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_fixer_scope.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/policy/access",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_batch.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_batch.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_cite.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_cite.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_cite.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_taxonomy.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_ingest_taxonomy.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
+		ImporterFile: "internal/modules/knowledge/wiki/wiki_slug_handles.go",
+		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext",
+		Reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；" +
+			"23-knowledge-wikifaq 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记",
+		PassBTask: "B-knowledge",
+	},
+	{
 		ImporterFile: "internal/modules/appconnector/service/appconnector/oc_recovery.go",
 		ImportedPath: "github.com/Tencent/WeKnora/internal/modules/commercial/service/commercial",
 		Reason: "预存横向包耦合（Pass A 前双方均在 internal/application/service 下，" +

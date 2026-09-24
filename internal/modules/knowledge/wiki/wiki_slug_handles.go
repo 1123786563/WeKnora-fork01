@@ -1,4 +1,4 @@
-package service
+package wiki
 
 import "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
 

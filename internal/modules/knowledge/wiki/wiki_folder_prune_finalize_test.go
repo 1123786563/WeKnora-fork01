@@ -1,4 +1,4 @@
-package service
+package wiki
 
 import (
 	"context"
@@ -57,7 +57,7 @@ func (s *folderPrunePendingRepoStub) PeekBatch(
 func (s *folderPrunePendingRepoStub) PendingCount(
 	_ context.Context, taskType, _, _ string,
 ) (int64, error) {
-	if taskType == wikiTaskType {
+	if taskType == WikiTaskType {
 		return s.ingestPending, nil
 	}
 	s.finalizeCounts++

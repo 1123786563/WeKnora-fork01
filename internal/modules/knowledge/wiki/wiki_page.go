@@ -1,4 +1,4 @@
-package service
+package wiki
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -47,6 +46,10 @@ type wikiPageService struct {
 	kbService       interfaces.KnowledgeBaseService
 	taskPendingRepo interfaces.TaskPendingOpsRepository
 	redisClient     *redis.Client
+	// seams carries the Pass B (23-knowledge-wikifaq W0) injection port to
+	// the host-package resolveDeadSlug (K2 owner, pre-ib2). Wired by the
+	// host ctor compat layer (W2).
+	seams Seams
 }
 
 // NewWikiPageService creates a new wiki page service
@@ -56,6 +59,7 @@ func NewWikiPageService(
 	kbService interfaces.KnowledgeBaseService,
 	taskPendingRepo interfaces.TaskPendingOpsRepository,
 	redisClient *redis.Client,
+	seams Seams,
 ) interfaces.WikiPageService {
 	return &wikiPageService{
 		repo:            repo,
@@ -63,6 +67,7 @@ func NewWikiPageService(
 		kbService:       kbService,
 		taskPendingRepo: taskPendingRepo,
 		redisClient:     redisClient,
+		seams:           seams,
 	}
 }
 
@@ -426,7 +431,7 @@ func (s *wikiPageService) DeletePage(ctx context.Context, kbID string, slug stri
 func (s *wikiPageService) GetIndex(ctx context.Context, kbID string) (*types.WikiPage, error) {
 	page, err := s.repo.GetBySlug(ctx, kbID, "index")
 	if err != nil {
-		if errors.Is(err, repository.ErrWikiPageNotFound) {
+		if errors.Is(err, ErrWikiPageNotFound) {
 			// Create default index page
 			return s.createDefaultPage(ctx, kbID, "index", "Index", types.WikiPageTypeIndex,
 				"# Wiki Index\n\nThis is the index page. It will be automatically updated as pages are added.\n")
@@ -855,7 +860,7 @@ func (s *wikiPageService) GetStats(ctx context.Context, kbID string) (*types.Wik
 	if s.taskPendingRepo != nil {
 		// Pending wiki ingest ops live in task_pending_ops keyed by
 		// (task_type="wiki:ingest", scope="knowledge_base", scope_id=kbID).
-		pendingTasks, _ = s.taskPendingRepo.PendingCount(ctx, wikiTaskType, wikiTaskScope, kbID)
+		pendingTasks, _ = s.taskPendingRepo.PendingCount(ctx, WikiTaskType, WikiTaskScope, kbID)
 	}
 	if s.redisClient != nil {
 		// The "active batch in progress" flag is still a Redis-only
@@ -1188,7 +1193,7 @@ func (s *wikiPageService) RepairContentLinks(
 		if cached, ok := resolveCache[key]; ok {
 			return cached, cached != ""
 		}
-		resolved, ok := resolveDeadSlug(norm, display, liveByPrefix[slugNamespace(norm)], titleToSlug)
+		resolved, ok := s.seams.ResolveDeadSlug(norm, display, liveByPrefix[slugNamespace(norm)], titleToSlug)
 		if !ok || resolved == norm {
 			resolveCache[key] = ""
 			return "", false
@@ -1397,7 +1402,7 @@ func (s *wikiPageService) applyFolderToPage(ctx context.Context, page *types.Wik
 	}
 	folder, err := s.repo.GetFolderByID(ctx, page.KnowledgeBaseID, page.FolderID)
 	if err != nil {
-		if errors.Is(err, repository.ErrWikiFolderNotFound) {
+		if errors.Is(err, ErrWikiFolderNotFound) {
 			return fmt.Errorf("wiki page references unknown folder %q", page.FolderID)
 		}
 		return fmt.Errorf("resolve page folder: %w", err)
@@ -1525,8 +1530,8 @@ func (s *wikiPageService) CreateFolder(
 	}
 
 	if _, err := s.repo.GetChildFolderByName(ctx, kbID, parentID, name); err == nil {
-		return nil, repository.ErrWikiFolderConflict
-	} else if !errors.Is(err, repository.ErrWikiFolderNotFound) {
+		return nil, ErrWikiFolderConflict
+	} else if !errors.Is(err, ErrWikiFolderNotFound) {
 		return nil, err
 	}
 
@@ -1567,7 +1572,7 @@ func (s *wikiPageService) FindOrCreateFolderPath(
 	for depth, name := range clean {
 		child, err := s.repo.GetChildFolderByName(ctx, kbID, parentID, name)
 		if err != nil {
-			if !errors.Is(err, repository.ErrWikiFolderNotFound) {
+			if !errors.Is(err, ErrWikiFolderNotFound) {
 				return "", nil, err
 			}
 			fp := name
@@ -1665,9 +1670,9 @@ func (s *wikiPageService) RenameOrMoveFolder(
 
 	if existing, err := s.repo.GetChildFolderByName(ctx, kbID, targetParent, name); err == nil {
 		if existing.ID != folder.ID {
-			return nil, repository.ErrWikiFolderConflict
+			return nil, ErrWikiFolderConflict
 		}
-	} else if !errors.Is(err, repository.ErrWikiFolderNotFound) {
+	} else if !errors.Is(err, ErrWikiFolderNotFound) {
 		return nil, err
 	}
 
@@ -1754,14 +1759,14 @@ func (s *wikiPageService) DeleteFolder(ctx context.Context, kbID string, id stri
 		return err
 	}
 	if len(children) > 0 {
-		return repository.ErrWikiFolderNotEmpty
+		return ErrWikiFolderNotEmpty
 	}
 	pages, err := s.repo.ListPagesByFolderIDs(ctx, kbID, []string{id})
 	if err != nil {
 		return err
 	}
 	if len(pages) > 0 {
-		return repository.ErrWikiFolderNotEmpty
+		return ErrWikiFolderNotEmpty
 	}
 	return s.repo.DeleteFolder(ctx, kbID, id)
 }
@@ -1834,8 +1839,8 @@ func (s *wikiPageService) PruneEmptyFolderChains(
 			continue
 		}
 		if err := s.repo.DeleteFolder(ctx, kbID, folder.ID); err != nil {
-			if errors.Is(err, repository.ErrWikiFolderNotFound) ||
-				errors.Is(err, repository.ErrWikiFolderNotEmpty) {
+			if errors.Is(err, ErrWikiFolderNotFound) ||
+				errors.Is(err, ErrWikiFolderNotEmpty) {
 				continue
 			}
 			return deleted, err

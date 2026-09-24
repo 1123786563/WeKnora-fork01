@@ -1,4 +1,4 @@
-package repository
+package wiki
 
 import (
 	"context"
@@ -15,12 +15,18 @@ import (
 	"gorm.io/gorm"
 )
 
-// wikiPagesTestDDL is a minimal SQLite-compatible subset of the
-// production wiki_pages DDL (migrations/versioned/000037_wiki_and_indexing.up.sql).
-// JSONB is stored as TEXT in SQLite; the StringArray Scan/Value pair
-// handles the JSON round-trip unchanged.
-const wikiPagesTestDDL = `
-CREATE TABLE IF NOT EXISTS wiki_pages (
+// setupWikiPagesTestDB builds an in-memory SQLite schema that mirrors the
+// production wiki DDL (migrations/versioned/000037_wiki_and_indexing.up.sql
+// + 000075_wiki_page_revisions.up.sql). JSONB is stored as TEXT in SQLite;
+// the StringArray Scan/Value pair handles the JSON round-trip unchanged.
+// DDL literals are static constants — no user input reaches these Exec
+// calls (Pass B 23-knowledge-wikifaq 迁移注记：原文件以包级常量 + Exec 传入，
+// 安全门禁要求内联字面量形态，语句集与原文件逐条等价).
+func setupWikiPagesTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS wiki_pages (
     id                VARCHAR(36) PRIMARY KEY,
     tenant_id         INTEGER NOT NULL,
     knowledge_base_id VARCHAR(36) NOT NULL,
@@ -48,13 +54,21 @@ CREATE TABLE IF NOT EXISTS wiki_pages (
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     deleted_at        DATETIME
-);
-`
-
-// wikiPageRevisionsTestDDL mirrors the production wiki_page_revisions DDL
-// (migrations/versioned/000075_wiki_page_revisions.up.sql) for SQLite.
-const wikiPageRevisionsTestDDL = `
-CREATE TABLE IF NOT EXISTS wiki_page_revisions (
+);`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS wiki_folders (
+    id                VARCHAR(36) PRIMARY KEY,
+    tenant_id         INTEGER NOT NULL DEFAULT 0,
+    knowledge_base_id VARCHAR(36) NOT NULL,
+    parent_id         VARCHAR(36) NOT NULL DEFAULT '',
+    name              VARCHAR(255) NOT NULL,
+    path              VARCHAR(1024) NOT NULL DEFAULT '',
+    depth             INTEGER NOT NULL DEFAULT 0,
+    sort_order        INTEGER NOT NULL DEFAULT 0,
+    created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at        DATETIME
+);`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS wiki_page_revisions (
     id                VARCHAR(36) PRIMARY KEY,
     tenant_id         INTEGER NOT NULL,
     knowledge_base_id VARCHAR(36) NOT NULL,
@@ -71,40 +85,9 @@ CREATE TABLE IF NOT EXISTS wiki_page_revisions (
     editor_id         VARCHAR(64) NOT NULL DEFAULT '',
     edited_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_page_revisions_page_version
-    ON wiki_page_revisions (page_id, version);
-`
-
-// wikiFoldersTestDDL mirrors the production wiki_folders DDL for SQLite.
-const wikiFoldersTestDDL = `
-CREATE TABLE IF NOT EXISTS wiki_folders (
-    id                VARCHAR(36) PRIMARY KEY,
-    tenant_id         INTEGER NOT NULL DEFAULT 0,
-    knowledge_base_id VARCHAR(36) NOT NULL,
-    parent_id         VARCHAR(36) NOT NULL DEFAULT '',
-    name              VARCHAR(255) NOT NULL,
-    path              VARCHAR(1024) NOT NULL DEFAULT '',
-    depth             INTEGER NOT NULL DEFAULT 0,
-    sort_order        INTEGER NOT NULL DEFAULT 0,
-    created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-    deleted_at        DATETIME
-);
-`
-
-func setupWikiPagesTestDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.Exec(wikiPagesTestDDL).Error)
-	require.NoError(t, db.Exec(wikiFoldersTestDDL).Error)
-	for _, stmt := range strings.Split(strings.TrimSpace(wikiPageRevisionsTestDDL), ";") {
-		if strings.TrimSpace(stmt) == "" {
-			continue
-		}
-		require.NoError(t, db.Exec(stmt).Error)
-	}
+);`).Error)
+	require.NoError(t, db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_page_revisions_page_version
+    ON wiki_page_revisions (page_id, version);`).Error)
 	return db
 }
 

@@ -635,3 +635,69 @@ exceptions:
     plan: 40-workbench
     remove_at: ib4
     reason: "预存横向包耦合（Pass A 前为横向包互引/旧路径依赖，batch-a4 搬迁后显形），Pass A 不改边界"
+  - id: exc-0106
+    from: internal/modules/knowledge/wiki/wiki_fixer_scope.go
+    to: "github.com/Tencent/WeKnora/internal/modules/policy/access"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0107
+    from: internal/modules/knowledge/wiki/wiki_ingest.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0108
+    from: internal/modules/knowledge/wiki/wiki_ingest.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0109
+    from: internal/modules/knowledge/wiki/wiki_ingest_batch.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0110
+    from: internal/modules/knowledge/wiki/wiki_ingest_batch.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0111
+    from: internal/modules/knowledge/wiki/wiki_ingest_cite.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0112
+    from: internal/modules/knowledge/wiki/wiki_ingest_cite.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0113
+    from: internal/modules/knowledge/wiki/wiki_ingest_cite.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0114
+    from: internal/modules/knowledge/wiki/wiki_ingest_taxonomy.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0115
+    from: internal/modules/knowledge/wiki/wiki_ingest_taxonomy.go
+    to: "github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"
+  - id: exc-0116
+    from: internal/modules/knowledge/wiki/wiki_slug_handles.go
+    to: "github.com/Tencent/WeKnora/internal/modules/agentruntime/modelcontext"
+    plan: 23-knowledge-wikifaq
+    remove_at: ib2
+    reason: "预存横向包耦合（Pass B 前宿主 internal/handler|service 直引；23-knowledge-wikifaq K3.1 搬迁后显形），Ruling 2026-09-24-IMPORT-EXCEPTION-REGISTRY 登记"

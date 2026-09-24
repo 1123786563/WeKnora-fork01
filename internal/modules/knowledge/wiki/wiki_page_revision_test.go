@@ -1,11 +1,10 @@
-package service
+package wiki
 
 import (
 	"context"
 	"fmt"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	ifaces "github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
@@ -22,8 +21,8 @@ func newWikiRevisionTestService(t *testing.T) (context.Context, wikiRevisionTest
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&types.WikiFolder{}, &types.WikiPage{}, &types.WikiPageRevision{}))
-	repo := repository.NewWikiPageRepository(db)
-	svc := NewWikiPageService(repo, nil, nil, nil, nil)
+	repo := NewWikiPageRepository(db)
+	svc := NewWikiPageService(repo, nil, nil, nil, nil, Seams{})
 	return context.Background(), wikiRevisionTestHarness{svc: svc}, db
 }
 

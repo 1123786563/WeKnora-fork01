@@ -1,4 +1,4 @@
-package repository
+package wiki
 
 import (
 	"context"
@@ -8,17 +8,24 @@ import (
 	"strings"
 	"time"
 
+	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-// ErrWikiPageNotFound is returned when a wiki page is not found
-var ErrWikiPageNotFound = errors.New("wiki page not found")
-
-// ErrWikiPageConflict is returned when an optimistic lock conflict is detected
-var ErrWikiPageConflict = errors.New("wiki page version conflict")
+// Pass B (23-knowledge-wikifaq) 拓扑裁定：5 个哨兵的物理定义留在宿主
+// repository 包（他 owner agentruntime/agent/tools 以
+// repository.ErrWikiPageNotFound 做 errors.Is；且 repository→wiki import
+// 会经 agentruntime 传递成环）。此处别名保持同一错误实例，包内引用零语义变化。
+var (
+	ErrWikiPageNotFound    = apprepo.ErrWikiPageNotFound
+	ErrWikiPageConflict    = apprepo.ErrWikiPageConflict
+	ErrWikiFolderNotFound  = apprepo.ErrWikiFolderNotFound
+	ErrWikiFolderConflict  = apprepo.ErrWikiFolderConflict
+	ErrWikiFolderNotEmpty  = apprepo.ErrWikiFolderNotEmpty
+)
 
 // wikiPageRepository implements the WikiPageRepository interface
 type wikiPageRepository struct {
@@ -516,7 +523,7 @@ func (r *wikiPageRepository) ListBySourceRef(ctx context.Context, kbID string, s
 	}
 	// Escape LIKE metacharacters in the already-JSON-escaped prefix, then wrap
 	// with %…% to match anywhere in the serialized JSON array.
-	likePattern := "%" + escapeLikePattern(prefixStr) + "%"
+	likePattern := "%" + EscapeLikePattern(prefixStr) + "%"
 
 	var pages []*types.WikiPage
 	if err := r.db.WithContext(ctx).
@@ -553,7 +560,7 @@ func (r *wikiPageRepository) ListSlugsBySourceRef(ctx context.Context, kbID stri
 	if len(prefixStr) >= 2 && prefixStr[len(prefixStr)-1] == '"' {
 		prefixStr = prefixStr[:len(prefixStr)-1]
 	}
-	likePattern := "%" + escapeLikePattern(prefixStr) + "%"
+	likePattern := "%" + EscapeLikePattern(prefixStr) + "%"
 
 	var slugs []string
 	if err := r.db.WithContext(ctx).
@@ -633,17 +640,6 @@ func (r *wikiPageRepository) ListDistinctCategoryPaths(
 }
 
 // --- Folder tree (wiki_folders) ---
-
-// ErrWikiFolderNotFound is returned when a wiki folder is not found.
-var ErrWikiFolderNotFound = errors.New("wiki folder not found")
-
-// ErrWikiFolderConflict is returned when a sibling folder with the same name
-// already exists under the same parent.
-var ErrWikiFolderConflict = errors.New("wiki folder name conflict")
-
-// ErrWikiFolderNotEmpty is returned when a folder still has a live page or
-// child folder at the instant an atomic delete is attempted.
-var ErrWikiFolderNotEmpty = errors.New("wiki folder is not empty")
 
 func (r *wikiPageRepository) CreateFolder(ctx context.Context, folder *types.WikiFolder) error {
 	return r.db.WithContext(ctx).Create(folder).Error
@@ -871,7 +867,7 @@ func (r *wikiPageRepository) ListSummariesByKnowledgeIDs(
 			prefixStr = prefixStr[:len(prefixStr)-1]
 		}
 		clauses = append(clauses, "source_refs::text LIKE ?")
-		args = append(args, "%"+escapeLikePattern(prefixStr)+"%")
+			args = append(args, "%"+EscapeLikePattern(prefixStr)+"%")
 	}
 	if len(clauses) == 0 {
 		return nil, nil
@@ -1252,16 +1248,11 @@ func (r *wikiPageRepository) DeleteByID(ctx context.Context, id string) error {
 	return nil
 }
 
-// escapeLikePattern escapes LIKE / ILIKE metacharacters so the returned string
-// can be safely concatenated with % wildcards without unintended matches.
-// Order matters: escape the backslash first, then the wildcards.
-func escapeLikePattern(s string) string {
-	replacer := strings.NewReplacer(
-		`\`, `\\`,
-		`%`, `\%`,
-		`_`, `\_`,
-	)
-	return replacer.Replace(s)
+// EscapeLikePattern 转发到宿主 repository 包的单一定义（K3.1 拓扑裁定：
+// repository 侧保留定义避免与 wiki→agentruntime 传递环，见
+// repository/wiki_k3_repo_compat.go 头注与 Integration Brief）。
+func EscapeLikePattern(s string) string {
+	return apprepo.EscapeLikePattern(s)
 }
 
 // Search performs case-insensitive POSIX regex search on wiki pages within a knowledge base.

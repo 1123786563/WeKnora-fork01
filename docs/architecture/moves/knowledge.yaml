@@ -124,10 +124,6 @@ legacy_files:
     reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
     navigation_label: Tag (application/repository)
     passb_task: B-knowledge
-  - path: internal/application/repository/wiki_page.go
-    reason: trapped in horizontal repository package internal/application/repository (Pass B file split)
-    navigation_label: Wiki page (application/repository)
-    passb_task: B-knowledge
   - path: internal/application/service/chunk.go
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Chunk (application/service)
@@ -324,42 +320,6 @@ legacy_files:
     reason: trapped in horizontal service package internal/application/service (Pass B file split)
     navigation_label: Tag access (application/service)
     passb_task: B-knowledge
-  - path: internal/application/service/wiki_ingest.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Wiki ingest (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/wiki_ingest_batch.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Wiki ingest batch (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/wiki_ingest_cite.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Wiki ingest cite (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/wiki_ingest_dedup.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Wiki ingest dedup (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/wiki_ingest_taxonomy.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Wiki ingest taxonomy (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/wiki_linkify.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Wiki linkify (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/wiki_lint.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Wiki lint (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/wiki_page.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Wiki page (application/service)
-    passb_task: B-knowledge
-  - path: internal/application/service/wiki_slug_handles.go
-    reason: trapped in horizontal service package internal/application/service (Pass B file split)
-    navigation_label: Wiki slug handles (application/service)
-    passb_task: B-knowledge
   - path: internal/handler/chunk.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Chunk (handler)
@@ -396,10 +356,6 @@ legacy_files:
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Semantic model policy (handler)
     passb_task: B-knowledge
-  - path: internal/handler/session/wiki_fixer_scope.go
-    reason: trapped in horizontal session handler package internal/handler/session (Pass B file split)
-    navigation_label: Wiki fixer scope (handler/session)
-    passb_task: B-knowledge
   - path: internal/handler/tag.go
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Tag (handler)
@@ -408,9 +364,25 @@ legacy_files:
     reason: trapped in horizontal handler package internal/handler (Pass B file split)
     navigation_label: Task progress auth (handler)
     passb_task: B-knowledge
-  - path: internal/handler/wiki_page.go
-    reason: trapped in horizontal handler package internal/handler (Pass B file split)
-    navigation_label: Wiki page (handler)
+  - path: internal/application/service/wiki_k3_compat.go
+    reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（wiki 域符号转发，保 K1/K4 宿主调用点编译）；删除点 ib2
+    navigation_label: Wiki k3 compat (application/service)
+    passb_task: B-knowledge
+  - path: internal/application/service/wiki_k3_ctor_compat.go
+    reason: Pass B 23-knowledge-wikifaq 宿主构造器过渡 shim（dig Provide 形参不变 + W0 seam 接线）；删除点 ib2
+    navigation_label: Wiki k3 ctor compat (application/service)
+    passb_task: B-knowledge
+  - path: internal/application/repository/wiki_k3_repo_compat.go
+    reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（哨兵/EscapeLikePattern 单一定义物理留驻 + NewWikiPageRepository 转发）；删除点 ib2
+    navigation_label: Wiki k3 repo compat (application/repository)
+    passb_task: B-knowledge
+  - path: internal/handler/wiki_page_k3_compat.go
+    reason: Pass B 23-knowledge-wikifaq 宿主过渡 wrapper（routes/container 形参不变；rbac_lookups.go:105/:183 兼容义务见文件头）；删除点 ib2
+    navigation_label: Wiki page k3 compat (handler)
+    passb_task: B-knowledge
+  - path: internal/handler/session/wiki_fixer_scope_compat.go
+    reason: Pass B 23-knowledge-wikifaq 宿主过渡 shim（B0.3 去方法化 *Handler 方法薄委托，保 qa.go:205 编译）；删除点 ib2
+    navigation_label: Wiki fixer scope k3 compat (handler/session)
     passb_task: B-knowledge
 owned_files:
   move_sources:

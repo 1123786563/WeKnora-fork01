@@ -1,4 +1,4 @@
-package service
+package wiki
 
 import (
 	"context"
@@ -77,7 +77,7 @@ func (s *wikiIngestService) planBatchTaxonomy(
 		var itemsBlock strings.Builder
 		for _, it := range chunk {
 			fmt.Fprintf(&itemsBlock, "- slug: %s | title: %s | type: %s | about: %s\n",
-				it.slug, it.title, it.pageType, previewText(it.about, 120))
+				it.slug, it.title, it.pageType, PreviewText(it.about, 120))
 		}
 
 		raw, err := s.generateWithTemplate(ctx, chatModel, agent.WikiTaxonomyPlanPrompt, map[string]string{
@@ -189,7 +189,7 @@ func (s *wikiIngestService) selectRelevantFolders(
 	}
 	itemTexts := make([]string, len(items))
 	for i, it := range items {
-		itemTexts[i] = strings.TrimSpace(it.title + " " + previewText(it.about, 120))
+		itemTexts[i] = strings.TrimSpace(it.title + " " + PreviewText(it.about, 120))
 	}
 
 	folderVecs, err := embedder.BatchEmbed(ctx, folderTexts)

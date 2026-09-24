@@ -1,4 +1,4 @@
-package session
+package wiki
 
 import (
 	"context"
@@ -9,31 +9,18 @@ import (
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
+// wikiFixerKBLookup is the minimal KB lookup port ResolveBuiltinWikiFixerTenantScope
+// needs; satisfied structurally by interfaces.KnowledgeBaseService.
 type wikiFixerKBLookup interface {
 	GetKnowledgeBaseByIDOnly(ctx context.Context, id string) (*types.KnowledgeBase, error)
 }
 
 type wikiFixerKBSharePermission = access.KBShareLookup
 
-func (h *Handler) resolveWikiFixerTenantScope(
-	ctx context.Context,
-	agent *types.CustomAgent,
-	currentTenantID uint64,
-	callerTenantRole types.TenantRole,
-	kbIDs []string,
-) (*types.CustomAgent, uint64) {
-	return resolveBuiltinWikiFixerTenantScope(
-		ctx,
-		agent,
-		currentTenantID,
-		callerTenantRole,
-		kbIDs,
-		h.knowledgebaseService,
-		h.kbShareService,
-	)
-}
-
-func resolveBuiltinWikiFixerTenantScope(
+// ResolveBuiltinWikiFixerTenantScope keeps shared-KB wiki-fixer runs on the
+// source tenant. Exported by Pass B 23-knowledge-wikifaq (B0.3 Step 3
+// 去方法化裁定)；原先定义于 internal/handler/session/wiki_fixer_scope.go。
+func ResolveBuiltinWikiFixerTenantScope(
 	ctx context.Context,
 	agent *types.CustomAgent,
 	currentTenantID uint64,

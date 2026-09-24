@@ -90,6 +90,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/modules/execution/sandbox"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/docparser"
 	"github.com/Tencent/WeKnora/internal/modules/knowledge/retriever"
+	knowledgeWiki "github.com/Tencent/WeKnora/internal/modules/knowledge/wiki"
 	dorisRepo "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/doris"
 	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v7"
 	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/modules/knowledge/retriever/elasticsearch/v8"
@@ -308,7 +309,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewWebSearchStateService))
 	must(container.Provide(repository.NewDataSourceRepository))
 	must(container.Provide(repository.NewSyncLogRepository))
-	must(container.Provide(repository.NewWikiPageRepository))
+	// K3.1（Ruling 2026-09-25-CYCLE-FORCED-COMPOSITION）：provider 目标由
+	// repository.NewWikiPageRepository 切至 wiki 包——repository 侧转发 shim
+	// 因 wiki→agentruntime（prompt 常量）→agent/tools→repository import 环不可
+	// 编译；本行即 K3.3 Brief (a) 为 IB2 排期的同款切换提前落地，IB2 转核验项。
+	must(container.Provide(knowledgeWiki.NewWikiPageRepository))
 	must(container.Provide(repository.NewMemoryRepository))
 	must(container.Provide(repository.NewTaskPendingOpsRepository))
 	must(container.Provide(repository.NewTaskDeadLetterRepository))

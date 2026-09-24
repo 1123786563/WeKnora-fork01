@@ -1,4 +1,4 @@
-package service
+package wiki
 
 import (
 	"context"
@@ -168,9 +168,9 @@ return proposed
 	// any in-flight ingest.
 	wikiDeletedKeyPrefix = "wiki:deleted:"
 
-	// wikiDeletedTTL bounds how long we remember a deletion. Must comfortably
+	// WikiDeletedTTL bounds how long we remember a deletion. Must comfortably
 	// exceed the longest plausible ingest run (LLM extraction + reduce).
-	wikiDeletedTTL = 1 * time.Hour
+	WikiDeletedTTL = 1 * time.Hour
 
 	// wikiLLMMaxAttempts is the total attempt count (initial + retries) for
 	// every LLM call routed through generateWithTemplate. 3 was chosen to
@@ -194,14 +194,14 @@ return proposed
 	// a 2s base we wait 2s, 4s, 8s between attempts.
 	wikiLLMBackoffBase = 2 * time.Second
 
-	// wikiTaskType is the task_type stamp used in task_pending_ops and
+	// WikiTaskType is the task_type stamp used in task_pending_ops and
 	// task_dead_letters rows for this pipeline. Stable across the lifetime
 	// of any pending op so the follow-up consumer can pull it back.
-	wikiTaskType = "wiki:ingest"
+	WikiTaskType = "wiki:ingest"
 
-	// wikiTaskScope is the scope used by both pending ops and dead letters.
+	// WikiTaskScope is the scope used by both pending ops and dead letters.
 	// Wiki ingest is per-KB, so every op is scoped to a knowledge_base.
-	wikiTaskScope = types.TaskScopeKnowledgeBase
+	WikiTaskScope = types.TaskScopeKnowledgeBase
 
 	// --- Finalize lane (Phase 1: debounced KB-global convergence) ---------
 	//
@@ -372,6 +372,12 @@ type wikiIngestService struct {
 	pendingRepo    interfaces.TaskPendingOpsRepository
 	deadLetterRepo interfaces.TaskDeadLetterRepository
 	redisClient    *redis.Client // nil in Lite mode (no Redis)
+	// seams carries the Pass B (23-knowledge-wikifaq W0) injection ports to
+	// host-package symbols (K2/K4 owners, pre-ib2): finalizeSubtaskDetached /
+	// isLikelyRateLimitError / resolveDeadSlug. Wired by the host ctor
+	// compat layer (W2); zero-value services only reach these through
+	// production paths.
+	seams Seams
 	// spanTracker lets per-document map work surface as a
 	// postprocess.wiki subspan in the knowledge trace tree. Async
 	// batch design means we look up the parent attempt by knowledge
@@ -413,6 +419,7 @@ func NewWikiIngestService(
 	deadLetterRepo interfaces.TaskDeadLetterRepository,
 	redisClient *redis.Client,
 	spanTracker SpanTracker,
+	seams Seams,
 ) interfaces.TaskHandler {
 	svc := &wikiIngestService{
 		wikiService:    wikiService,
@@ -427,6 +434,7 @@ func NewWikiIngestService(
 		deadLetterRepo: deadLetterRepo,
 		redisClient:    redisClient,
 		spanTracker:    spanTracker,
+		seams:          seams,
 	}
 	return svc
 }
@@ -506,7 +514,7 @@ func EnqueueWikiIngest(
 	tenantID uint64,
 	kbID, knowledgeID string,
 ) (bool, error) {
-	pendingOp, err := newWikiIngestPendingOp(ctx, tenantID, kbID, knowledgeID)
+	pendingOp, err := NewWikiIngestPendingOp(ctx, tenantID, kbID, knowledgeID)
 	// Persist the pending op. A re-ingest of the same knowledge id while
 	// a previous op is still queued simply appends another row; the
 	// peekPendingList consumer collapses by dedup_key (== knowledge_id),
@@ -525,13 +533,13 @@ func EnqueueWikiIngest(
 		logger.Infof(ctx, "wiki ingest: skip enqueue for deleted KB %s", kbID)
 		return false, nil
 	}
-	if err := enqueueWikiIngestTrigger(ctx, task, tenantID, kbID); err != nil {
+	if err := EnqueueWikiIngestTrigger(ctx, task, tenantID, kbID); err != nil {
 		return true, err
 	}
 	return true, nil
 }
 
-func newWikiIngestPendingOp(
+func NewWikiIngestPendingOp(
 	ctx context.Context,
 	tenantID uint64,
 	kbID, knowledgeID string,
@@ -548,8 +556,8 @@ func newWikiIngestPendingOp(
 	}
 	return &types.TaskPendingOp{
 		TenantID: tenantID,
-		TaskType: wikiTaskType,
-		Scope:    wikiTaskScope,
+		TaskType: WikiTaskType,
+		Scope:    WikiTaskScope,
 		ScopeID:  kbID,
 		Op:       WikiOpIngest,
 		DedupKey: knowledgeID,
@@ -557,7 +565,7 @@ func newWikiIngestPendingOp(
 	}, nil
 }
 
-func enqueueWikiIngestTrigger(
+func EnqueueWikiIngestTrigger(
 	ctx context.Context,
 	task interfaces.TaskEnqueuer,
 	tenantID uint64,
@@ -602,10 +610,14 @@ func enqueueWikiIngestTrigger(
 func EnqueueWikiRetract(ctx context.Context, task interfaces.TaskEnqueuer,
 	pendingRepo interfaces.TaskPendingOpsRepository, payload WikiRetractPayload,
 ) {
-	_ = enqueueWikiRetract(ctx, task, pendingRepo, payload)
+	_ = EnqueueWikiRetractWithError(ctx, task, pendingRepo, payload)
 }
 
-func enqueueWikiRetract(
+// EnqueueWikiRetractWithError is the error-returning core of
+// EnqueueWikiRetract, exported by Pass B (23-knowledge-wikifaq §5.1) so the
+// host compat layer can forward the legacy unexported enqueueWikiRetract
+// call sites (knowledge_delete.go) without losing the error.
+func EnqueueWikiRetractWithError(
 	ctx context.Context,
 	task interfaces.TaskEnqueuer,
 	pendingRepo interfaces.TaskPendingOpsRepository,
@@ -627,8 +639,8 @@ func enqueueWikiRetract(
 	}
 	accepted, err := enqueueWikiPendingOp(ctx, pendingRepo, &types.TaskPendingOp{
 		TenantID: payload.TenantID,
-		TaskType: wikiTaskType,
-		Scope:    wikiTaskScope,
+		TaskType: WikiTaskType,
+		Scope:    WikiTaskScope,
 		ScopeID:  payload.KnowledgeBaseID,
 		Op:       WikiOpRetract,
 		DedupKey: payload.KnowledgeID,
@@ -728,7 +740,7 @@ func (s *wikiIngestService) enqueueFinalize(
 		if s.enqueueFinalizeRow(ctx, &types.TaskPendingOp{
 			TenantID: payload.TenantID,
 			TaskType: wikiFinalizeTaskType,
-			Scope:    wikiTaskScope,
+			Scope:    WikiTaskScope,
 			ScopeID:  payload.KnowledgeBaseID,
 			Op:       wikiFinalizeOpSlug,
 			DedupKey: slug,
@@ -746,7 +758,7 @@ func (s *wikiIngestService) enqueueFinalize(
 		if s.enqueueFinalizeRow(ctx, &types.TaskPendingOp{
 			TenantID: payload.TenantID,
 			TaskType: wikiFinalizeTaskType,
-			Scope:    wikiTaskScope,
+			Scope:    WikiTaskScope,
 			ScopeID:  payload.KnowledgeBaseID,
 			Op:       wikiFinalizeOpChange,
 			DedupKey: "",
@@ -756,12 +768,12 @@ func (s *wikiIngestService) enqueueFinalize(
 		}
 	}
 	if len(folderIDs) > 0 {
-		row := wikiFinalizeRow{FolderIDs: uniqueWikiFolderIDs(folderIDs)}
+		row := wikiFinalizeRow{FolderIDs: UniqueWikiFolderIDs(folderIDs)}
 		if b, err := json.Marshal(row); err == nil {
 			if s.enqueueFinalizeRow(ctx, &types.TaskPendingOp{
 				TenantID: payload.TenantID,
 				TaskType: wikiFinalizeTaskType,
-				Scope:    wikiTaskScope,
+				Scope:    WikiTaskScope,
 				ScopeID:  payload.KnowledgeBaseID,
 				Op:       wikiFinalizeOpFolderPrune,
 				DedupKey: "",
@@ -777,7 +789,7 @@ func (s *wikiIngestService) enqueueFinalize(
 	s.scheduleFinalize(ctx, payload)
 }
 
-func uniqueWikiFolderIDs(values []string) []string {
+func UniqueWikiFolderIDs(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	out := make([]string, 0, len(values))
 	for _, value := range values {
@@ -855,7 +867,7 @@ func (s *wikiIngestService) peekPendingList(ctx context.Context, kbID string, li
 	if limit <= 0 {
 		limit = wikiMaxDocsPerBatch
 	}
-	rows, err := s.pendingRepo.PeekBatch(ctx, wikiTaskType, wikiTaskScope, kbID, limit)
+	rows, err := s.pendingRepo.PeekBatch(ctx, WikiTaskType, WikiTaskScope, kbID, limit)
 	if err != nil {
 		// Surface the error so the caller can distinguish a transient DB
 		// failure from a genuinely empty queue: the former must trigger an
@@ -882,7 +894,7 @@ func (s *wikiIngestService) claimPendingList(ctx context.Context, kbID string, l
 	if limit <= 0 {
 		limit = wikiMaxDocsPerBatch
 	}
-	rows, err := s.pendingRepo.ClaimBatch(ctx, wikiTaskType, wikiTaskScope, kbID, limit,
+	rows, err := s.pendingRepo.ClaimBatch(ctx, WikiTaskType, WikiTaskScope, kbID, limit,
 		time.Now().Add(-wikiClaimStaleAfter))
 	if err != nil {
 		// A claim failure is transient (DB blip). Propagate it so the batch
@@ -1051,7 +1063,7 @@ func (s *wikiIngestService) scheduleStaleClaimRecheck(ctx context.Context, paylo
 	if s.pendingRepo == nil {
 		return false
 	}
-	count, err := s.pendingRepo.PendingCount(ctx, wikiTaskType, wikiTaskScope, payload.KnowledgeBaseID)
+	count, err := s.pendingRepo.PendingCount(ctx, WikiTaskType, WikiTaskScope, payload.KnowledgeBaseID)
 	if err != nil || count == 0 {
 		return false
 	}
@@ -1169,7 +1181,7 @@ func (s *wikiIngestService) finalizeWikiSubtask(ctx context.Context, knowledgeID
 	// always an intended drain (retErr=nil, final=true). Detached context: the
 	// wiki batch worker may be mid-shutdown or have a cancelled ctx when this
 	// runs; a swallowed failure would strand the parent in "finalizing".
-	finalizeSubtaskDetached(ctx, s.knowledgeRepo, knowledgeID, "wiki", nil, false, true)
+	s.seams.FinalizeSubtaskDetached(ctx, s.knowledgeRepo, knowledgeID, "wiki", nil, false, true)
 }
 
 // requeueFailedOps records in-batch failures.
@@ -1233,8 +1245,8 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 			payloadBytes, _ := json.Marshal(op)
 			if dlErr := s.deadLetterRepo.Insert(ctx, &types.TaskDeadLetter{
 				TenantID:  payload.TenantID,
-				TaskType:  wikiTaskType,
-				Scope:     wikiTaskScope,
+				TaskType:  WikiTaskType,
+				Scope:     WikiTaskScope,
 				ScopeID:   payload.KnowledgeBaseID,
 				RelatedID: op.KnowledgeID,
 				Payload:   payloadBytes,
@@ -1380,7 +1392,7 @@ type SlugUpdate struct {
 	DocSummary string
 }
 
-func previewText(s string, maxRunes int) string {
+func PreviewText(s string, maxRunes int) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "\t", " ")
@@ -1407,7 +1419,7 @@ func previewStringSlice(items []string, limit int) string {
 	}
 	out := make([]string, 0, len(items))
 	for _, it := range items {
-		out = append(out, previewText(it, 48))
+		out = append(out, PreviewText(it, 48))
 	}
 	if n > limit {
 		return fmt.Sprintf("[%s ...(+%d)]", strings.Join(out, ", "), n-limit)
@@ -1433,9 +1445,9 @@ func previewExtractedItems(items []extractedItem, limit int) []map[string]string
 	out := make([]map[string]string, 0, len(items))
 	for _, it := range items {
 		out = append(out, map[string]string{
-			"name":        previewText(it.Name, 60),
+			"name":        PreviewText(it.Name, 60),
 			"slug":        it.Slug,
-			"description": previewText(it.Description, 120),
+			"description": PreviewText(it.Description, 120),
 		})
 	}
 	return out
@@ -1493,7 +1505,7 @@ func previewNewSlugs(items []newSlugFromCitation, limit int) []map[string]string
 	out := make([]map[string]string, 0, len(items))
 	for _, it := range items {
 		out = append(out, map[string]string{
-			"name":   previewText(it.Name, 60),
+			"name":   PreviewText(it.Name, 60),
 			"slug":   it.Slug,
 			"type":   it.Type,
 			"chunks": fmt.Sprintf("%d", len(it.SourceChunks)),
@@ -1572,7 +1584,7 @@ func (s *wikiIngestService) sanitizeDeadSummaryLinks(
 		}
 		liveSlugs, titleToSlug := s.resolveLiveSlugs(ctx, batchCtx, candidateSlugs)
 
-		newContent, changed := stripDeadWikiLinks(page.Content, failedSlugs, liveSlugs, titleToSlug)
+		newContent, changed := stripDeadWikiLinks(page.Content, failedSlugs, liveSlugs, titleToSlug, s.seams.ResolveDeadSlug)
 		if !changed {
 			continue
 		}
@@ -1644,6 +1656,7 @@ func stripDeadWikiLinks(
 	deadSlugs map[string]struct{},
 	liveSlugs map[string]struct{},
 	titleToSlug map[string]string,
+	resolve ResolveDeadSlugFn,
 ) (string, bool) {
 	if len(deadSlugs) == 0 || content == "" {
 		return content, false
@@ -1667,12 +1680,14 @@ func stripDeadWikiLinks(
 		// resolver consults display-text reverse lookup, hyphen-
 		// normalized equality, and bigram similarity in that order;
 		// returns "" only when no candidate is safe.
-		if resolved, ok := resolveDeadSlug(slug, display, liveSlugs, titleToSlug); ok && resolved != slug {
-			changed = true
-			if display != "" {
-				return "[[" + resolved + "|" + display + "]]"
+		if resolve != nil {
+			if resolved, ok := resolve(slug, display, liveSlugs, titleToSlug); ok && resolved != slug {
+				changed = true
+				if display != "" {
+					return "[[" + resolved + "|" + display + "]]"
+				}
+				return "[[" + resolved + "]]"
 			}
-			return "[[" + resolved + "]]"
 		}
 
 		// (2) Strip — best-effort plain text. Prefer the LLM-supplied
@@ -1768,7 +1783,7 @@ func (s *wikiIngestService) cleanDeadLinks(ctx context.Context, kbID string, aff
 			}
 		}
 
-		newContent, changed := stripDeadWikiLinks(page.Content, deadSlugs, liveSlugs, titleToSlug)
+		newContent, changed := stripDeadWikiLinks(page.Content, deadSlugs, liveSlugs, titleToSlug, s.seams.ResolveDeadSlug)
 		if !changed {
 			continue
 		}
@@ -2953,7 +2968,7 @@ func appendUnique(arr types.StringArray, s string) types.StringArray {
 	return append(arr, s)
 }
 
-// minTextContentRunes is the minimum number of non-whitespace, non-image-reference
+// MinTextContentRunes is the minimum number of non-whitespace, non-image-reference
 // runes required for content to be considered substantive enough for LLM
 // summarization or wiki extraction. Documents below this threshold (e.g. a
 // scanned PDF where OCR yielded nothing AND no caption either) are routed to
@@ -2966,7 +2981,10 @@ func appendUnique(arr types.StringArray, s string) types.StringArray {
 //
 // Declared as a var (not const) so tests can override it and future config
 // plumbing can adjust it at runtime without a rebuild.
-var minTextContentRunes = 10
+// Pass B note (23-knowledge-wikifaq): the host package keeps a copy of the
+// default (W1 `minTextContentRunes`) for K4 readers; production code never
+// mutates either copy, see Integration Brief for the ib2 re-unification.
+var MinTextContentRunes = 10
 
 var (
 	// Markdown image references like ![alt](path) — pure visual placeholders
@@ -3161,10 +3179,10 @@ func stripImageMarkup(s string) string {
 	return s
 }
 
-// extractRealText returns the trimmed content with image markup stripped.
+// ExtractRealText returns the trimmed content with image markup stripped.
 // Cached at the call site for use both in the threshold check and in any
 // subsequent log message, avoiding redundant regex passes over large docs.
-func extractRealText(content string) string {
+func ExtractRealText(content string) string {
 	return strings.TrimSpace(stripImageMarkup(content))
 }
 
@@ -3173,14 +3191,14 @@ func extractRealText(content string) string {
 // to warrant an LLM call. It is the primary defence against filename-driven
 // hallucinations on scanned PDFs that have NO usable text at all.
 func hasSufficientTextContent(content string) bool {
-	return realTextRuneCount(content) >= minTextContentRunes
+	return RealTextRuneCount(content) >= MinTextContentRunes
 }
 
-// realTextRuneCount returns the rune length of the content after image
+// RealTextRuneCount returns the rune length of the content after image
 // markup is stripped. Uses utf8.RuneCountInString to avoid allocating a
 // rune slice for the count.
-func realTextRuneCount(content string) int {
-	return utf8.RuneCountInString(extractRealText(content))
+func RealTextRuneCount(content string) int {
+	return utf8.RuneCountInString(ExtractRealText(content))
 }
 
 // cleanLLMJSON strips markdown code-fence wrappers and sanitizes control characters

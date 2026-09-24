@@ -1,4 +1,4 @@
-package service
+package wiki
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modules/agentruntime/agent"
 	"github.com/Tencent/WeKnora/internal/modules/airesource/models/chat"
@@ -42,7 +41,7 @@ func (s *wikiIngestService) scheduleFollowUp(ctx context.Context, payload WikiIn
 	if s.pendingRepo == nil {
 		return false
 	}
-	count, err := s.pendingRepo.PendingCount(ctx, wikiTaskType, wikiTaskScope, payload.KnowledgeBaseID)
+	count, err := s.pendingRepo.PendingCount(ctx, WikiTaskType, WikiTaskScope, payload.KnowledgeBaseID)
 	if err != nil || count == 0 {
 		return false
 	}
@@ -279,7 +278,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 	}
 
 	kb, err := s.kbService.GetKnowledgeBaseByIDOnly(ctx, payload.KnowledgeBaseID)
-	if errors.Is(err, apprepo.ErrKnowledgeBaseNotFound) || (err == nil && kb == nil) {
+	if s.seams.isKnowledgeBaseNotFound(err) || (err == nil && kb == nil) {
 		exitStatus = "kb_deleted"
 		if cleanupErr := s.clearDeletedKnowledgeBasePendingOps(ctx, payload.KnowledgeBaseID); cleanupErr != nil {
 			return fmt.Errorf("wiki ingest: clear deleted KB queue: %w", cleanupErr)
@@ -487,7 +486,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 				mapMu.Lock()
 				retractOps++
 				retractHandled++
-				docPreview = append(docPreview, fmt.Sprintf("retract[%s]: %s (%d slugs)", previewText(op.KnowledgeID, 24), previewText(op.DocTitle, 48), len(slugSet)))
+				docPreview = append(docPreview, fmt.Sprintf("retract[%s]: %s (%d slugs)", PreviewText(op.KnowledgeID, 24), PreviewText(op.DocTitle, 48), len(slugSet)))
 
 				for slug := range slugSet {
 					slugUpdates[slug] = append(slugUpdates[slug], SlugUpdate{
@@ -517,7 +516,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 				mapMu.Lock()
 				ingestFailed++
 				failedOps = append(failedOps, op)
-				if isLikelyRateLimitError(err) {
+				if s.seams.IsLikelyRateLimitError(err) {
 					rateLimited = true
 				}
 				mapMu.Unlock()
@@ -529,7 +528,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 				mapMu.Lock()
 				ingestSucceeded++
 				docResults = append(docResults, result)
-				docPreview = append(docPreview, fmt.Sprintf("ingest[%s]: title=%s summary=%s", previewText(result.KnowledgeID, 24), previewText(result.DocTitle, 40), previewText(result.Summary, 64)))
+				docPreview = append(docPreview, fmt.Sprintf("ingest[%s]: title=%s summary=%s", PreviewText(result.KnowledgeID, 24), PreviewText(result.DocTitle, 40), PreviewText(result.Summary, 64)))
 				for _, u := range updates {
 					slugUpdates[u.Slug] = append(slugUpdates[u.Slug], u)
 				}
@@ -661,7 +660,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 				// instead of silently dropping the row at trim time.
 				logger.Warnf(reduceCtx, "wiki ingest: reduce failed for slug %s: %v", slug, reduceErr)
 				collectUnapplied(updates)
-				if isLikelyRateLimitError(reduceErr) {
+				if s.seams.IsLikelyRateLimitError(reduceErr) {
 					reduceMu.Lock()
 					rateLimited = true
 					reduceMu.Unlock()
@@ -716,7 +715,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 			wikiActivityActions["ingest"]++
 		}
 	}
-	RecordWikiContentActivity(tailCtx, s.audit, payload.TenantID, payload.KnowledgeBaseID, wikiActivityActions)
+	s.seams.RecordWikiContentActivity(tailCtx, s.audit, payload.TenantID, payload.KnowledgeBaseID, wikiActivityActions)
 
 	// Publish freshly-generated pages immediately (NOT deferred to finalize):
 	// users should see a document's wiki pages as soon as their content is
@@ -803,7 +802,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 		for _, p := range r.Pages {
 			entry := map[string]string{
 				"slug":  p.Slug,
-				"title": previewText(p.Title, 80),
+				"title": PreviewText(p.Title, 80),
 			}
 			if _, bad := failedAdditionSlugs[p.Slug]; bad {
 				droppedPages = append(droppedPages, entry)
@@ -971,7 +970,7 @@ func (s *wikiIngestService) ProcessWikiFinalize(ctx context.Context, t *asynq.Ta
 		defer s.liteFinalizeLocks.Delete(payload.KnowledgeBaseID)
 	}
 
-	rows, err := s.pendingRepo.PeekBatch(ctx, wikiFinalizeTaskType, wikiTaskScope, payload.KnowledgeBaseID, wikiFinalizeMaxRows)
+	rows, err := s.pendingRepo.PeekBatch(ctx, wikiFinalizeTaskType, WikiTaskScope, payload.KnowledgeBaseID, wikiFinalizeMaxRows)
 	if err != nil {
 		return fmt.Errorf("wiki finalize: peek: %w", err)
 	}
@@ -980,7 +979,7 @@ func (s *wikiIngestService) ProcessWikiFinalize(ctx context.Context, t *asynq.Ta
 	}
 
 	kb, err := s.kbService.GetKnowledgeBaseByIDOnly(ctx, payload.KnowledgeBaseID)
-	if errors.Is(err, apprepo.ErrKnowledgeBaseNotFound) || (err == nil && kb == nil) {
+	if s.seams.isKnowledgeBaseNotFound(err) || (err == nil && kb == nil) {
 		if cleanupErr := s.clearDeletedKnowledgeBasePendingOps(ctx, payload.KnowledgeBaseID); cleanupErr != nil {
 			return fmt.Errorf("wiki finalize: clear deleted KB queue: %w", cleanupErr)
 		}
@@ -1090,7 +1089,7 @@ func (s *wikiIngestService) ProcessWikiFinalize(ctx context.Context, t *asynq.Ta
 	pruneDeferred := false
 	deletedFolders := 0
 	if len(folderPruneIDs) > 0 {
-		pending, pErr := s.pendingRepo.PendingCount(ctx, wikiTaskType, wikiTaskScope, payload.KnowledgeBaseID)
+		pending, pErr := s.pendingRepo.PendingCount(ctx, WikiTaskType, WikiTaskScope, payload.KnowledgeBaseID)
 		if pErr != nil {
 			logger.Warnf(ctx, "wiki finalize: cannot verify ingest drain before folder prune: %v", pErr)
 			pruneDeferred = true
@@ -1098,7 +1097,7 @@ func (s *wikiIngestService) ProcessWikiFinalize(ctx context.Context, t *asynq.Ta
 			pruneDeferred = true
 		} else {
 			deleted, pruneErr := s.wikiService.PruneEmptyFolderChains(
-				ctx, payload.KnowledgeBaseID, uniqueWikiFolderIDs(folderPruneIDs))
+				ctx, payload.KnowledgeBaseID, UniqueWikiFolderIDs(folderPruneIDs))
 			if pruneErr != nil {
 				logger.Warnf(ctx, "wiki finalize: prune empty folders failed: %v", pruneErr)
 				pruneDeferred = true
@@ -1138,7 +1137,7 @@ func (s *wikiIngestService) ProcessWikiFinalize(ctx context.Context, t *asynq.Ta
 		s.scheduleFinalizeRetry(ctx, payload)
 		rescheduled = true
 	}
-	if n, cErr := s.pendingRepo.PendingCount(ctx, wikiFinalizeTaskType, wikiTaskScope, payload.KnowledgeBaseID); cErr == nil && n > 0 {
+	if n, cErr := s.pendingRepo.PendingCount(ctx, wikiFinalizeTaskType, WikiTaskScope, payload.KnowledgeBaseID); cErr == nil && n > 0 {
 		if !pruneDeferred {
 			s.scheduleFinalize(ctx, payload)
 		}
@@ -1339,8 +1338,8 @@ func (s *wikiIngestService) mapOneDocument(
 			sumLine, sumBody := splitSummaryLine(summaryContent)
 			s.tracker().EndSpan(ctx, summarySpan, types.JSONMap{
 				"chars":        utf8.RuneCountInString(summaryContent),
-				"summary_line": previewText(sumLine, 160),
-				"body_preview": previewText(sumBody, 320),
+				"summary_line": PreviewText(sumLine, 160),
+				"body_preview": PreviewText(sumBody, 320),
 			})
 		}
 	}()
@@ -1560,7 +1559,7 @@ func (s *wikiIngestService) mapOneDocument(
 
 	logger.Infof(ctx,
 		"wiki ingest: mapped knowledge %s title=%q candidates=%d chunks=%d batches=%d cited_chunks=%d uncited_slugs=%d new_slugs=%d updates=%d reparse_slugs=%d stale_slugs=%d pass0_fallback=%v elapsed=%s",
-		knowledgeID, previewText(docTitle, 80),
+		knowledgeID, PreviewText(docTitle, 80),
 		len(slugItems), len(chunks), batchCount, len(citedChunkSet), uncited, len(newSlugs),
 		len(updates), reparseOverlap, staleCount, pass0Failed,
 		time.Since(docStartedAt).Round(time.Millisecond),
@@ -1574,7 +1573,7 @@ func (s *wikiIngestService) mapOneDocument(
 	// "wiki processing for this knowledge" time the user sees in the
 	// trace viewer, not just the LLM extraction slice.
 	mapStats := types.JSONMap{
-		"doc_title":        previewText(docTitle, 120),
+		"doc_title":        PreviewText(docTitle, 120),
 		"chunks":           len(chunks),
 		"candidate_slugs":  len(slugItems),
 		"cited_chunks":     len(citedChunkSet),
@@ -1587,7 +1586,7 @@ func (s *wikiIngestService) mapOneDocument(
 		"summary_chars":    utf8.RuneCountInString(docSummary),
 		"pass0_fallback":   pass0Failed,
 		"classify_batches": batchCount,
-		"summary_preview":  previewText(docSummaryLine, 160),
+		"summary_preview":  PreviewText(docSummaryLine, 160),
 	}
 
 	return &docIngestResult{
@@ -1778,10 +1777,10 @@ func (s *wikiIngestService) reduceSlugUpdates(
 			"contributors":    contributors,
 		}
 		if page != nil {
-			out["page_title"] = previewText(page.Title, 160)
+			out["page_title"] = PreviewText(page.Title, 160)
 			out["page_type"] = string(page.PageType)
-			out["page_summary"] = previewText(page.Summary, 200)
-			out["content_preview"] = previewText(page.Content, 320)
+			out["page_summary"] = PreviewText(page.Summary, 200)
+			out["content_preview"] = PreviewText(page.Content, 320)
 			out["source_refs"] = len(page.SourceRefs)
 			out["chunk_refs"] = len(page.ChunkRefs)
 			out["aliases"] = []string(page.Aliases)
