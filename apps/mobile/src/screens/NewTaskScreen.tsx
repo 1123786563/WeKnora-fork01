@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button, Text, TextInput, View } from 'react-native';
 import type { NewTaskDraft, TaskAttachmentRef } from '@weknora/domain/mobile';
+import type { DictationState } from '@weknora/mobile-core';
+import { DICTATION_FAILURE_COPY } from '../dictation-view.ts';
 import type { NewTaskViewState } from '../new-task-view.ts';
 
 /**
@@ -21,10 +23,19 @@ export interface NewTaskScreenProps {
   onSubmit(): void;
   onCancel(): void;
   onRefreshAgents(): void;
+  /** 听写状态（组合根无原生捕获 Adapter 时为 undefined——屏不渲染任何听写元素，fail closed）。 */
+  dictation?: DictationState;
+  onDictationBegin?(): void;
+  onDictationFinish?(): void;
+  onDictationCancel?(): void;
+  onDictationEditTranscript?(text: string): void;
+  onDictationRetryTranscription?(): void;
+  onDictationConfirmTranscript?(): void;
+  onDictationDiscardTranscript?(): void;
 }
 
 /** 统一 New 入口屏（受控组件）：目标输入 + 推荐/改选主理 Agent + 附加知识 + 预算 + 就绪裁决（module-seams §10：Screen 不见 wire）。 */
-export function NewTaskScreen({ state, onUpdate, onSetAttachments, onToggleKnowledge, onSubmit, onCancel, onRefreshAgents }: NewTaskScreenProps) {
+export function NewTaskScreen({ state, onUpdate, onSetAttachments, onToggleKnowledge, onSubmit, onCancel, onRefreshAgents, dictation, onDictationBegin, onDictationFinish, onDictationCancel, onDictationEditTranscript, onDictationRetryTranscription, onDictationConfirmTranscript, onDictationDiscardTranscript }: NewTaskScreenProps) {
   // 预算输入的本地中间态（B3-F46）：''（未设置）与 0 是两个状态，双向折叠会
   // 把非纯数字的编辑中间态静默清零并渲染为空——本地保留原样，仅在合法数字时提交。
   const [budgetText, setBudgetText] = useState(state.draft.budgetUpper === 0 ? '' : String(state.draft.budgetUpper));
@@ -44,6 +55,52 @@ export function NewTaskScreen({ state, onUpdate, onSetAttachments, onToggleKnowl
       <Button title="Refresh agents" disabled={state.loading} onPress={() => { void onRefreshAgents(); }} />
       <TextInput value={state.draft.text} onChangeText={(text) => { onUpdate({ text }); }} placeholder="今天想完成什么？" multiline maxLength={GOAL_TEXT_MAX_LENGTH} editable={!state.loading} />
       {state.draft.text.length >= GOAL_TEXT_MAX_LENGTH && <Text>{`目标文本已达 ${GOAL_TEXT_MAX_LENGTH} 字上限，超出部分不会保存`}</Text>}
+      {dictation !== undefined && dictation.phase === 'idle' && (
+        <Button title="Dictate" disabled={state.loading || state.submitting} onPress={() => { onDictationBegin?.(); }} />
+      )}
+      {dictation !== undefined && dictation.phase === 'recording' && (
+        <View>
+          <Text>Recording…</Text>
+          <Button title="Stop dictation" onPress={() => { onDictationFinish?.(); }} />
+          <Button title="Cancel recording" onPress={() => { onDictationCancel?.(); }} />
+        </View>
+      )}
+      {dictation !== undefined && dictation.phase === 'transcribing' && (
+        <View>
+          <Text>Transcribing…</Text>
+          <Button title="Cancel transcription" onPress={() => { onDictationCancel?.(); }} />
+        </View>
+      )}
+      {dictation !== undefined && dictation.phase === 'review' && (
+        <View>
+          <Text>转写草稿（确认前可编辑）</Text>
+          <TextInput
+            value={dictation.transcript ?? ''}
+            onChangeText={(text) => { onDictationEditTranscript?.(text); }}
+            placeholder="转写草稿（确认前可编辑）"
+            multiline
+            maxLength={GOAL_TEXT_MAX_LENGTH}
+            editable={!state.loading && !state.submitting}
+          />
+          <Button title="Use transcript" disabled={state.submitting} onPress={() => { onDictationConfirmTranscript?.(); }} />
+          <Button title="Discard transcript" onPress={() => { onDictationDiscardTranscript?.(); }} />
+        </View>
+      )}
+      {dictation !== undefined && dictation.phase === 'denied' && (
+        <View>
+          <Text>{DICTATION_FAILURE_COPY.denied}</Text>
+          <Button title="Retry dictation" disabled={state.loading || state.submitting} onPress={() => { onDictationBegin?.(); }} />
+        </View>
+      )}
+      {dictation !== undefined && dictation.phase === 'failed' && (
+        <View>
+          <Text>{dictation.failure !== undefined ? DICTATION_FAILURE_COPY[dictation.failure] : ''}</Text>
+          {dictation.failure === 'transcription-failed' && (
+            <Button title="Retry transcription" onPress={() => { onDictationRetryTranscription?.(); }} />
+          )}
+          <Button title="Dismiss" onPress={() => { onDictationCancel?.(); }} />
+        </View>
+      )}
       <TextInput
         value={budgetText}
         onChangeText={(text) => { setBudgetText(text); onUpdate({ budgetUpper: /^\d+$/.test(text) ? Number(text) : 0 }); }}
